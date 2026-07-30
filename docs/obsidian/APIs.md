@@ -1,0 +1,241 @@
+---
+tags: [api]
+---
+
+# APIs
+
+Related: [[Backend]] · [[Business-Rules]] · [[Frontend]] · [[Database]]
+
+All endpoints live under `apps/backend/app/api/` (Next.js 14 App Router). This inventory covers **all 295 `route.ts` files** found in the tree, read directly (handler bodies, not just filenames) to confirm methods, behavior, and auth guards. Route handlers are meant to stay thin — business logic belongs in a service. Frontend access is only ever through `apps/frontend/src/features/*/api` wrappers — see [[Frontend]].
+
+**Headline finding:** 37 route files are deliberate `410 Gone` "tombstone" stubs, left over from a prior multi-hostel SaaS billing/subscription model that this codebase has moved away from (a "single-business migration" per in-code comments). They are intact files, not empty placeholders — kept so a stale caller/cron fails loudly instead of silently 404ing. See the dedicated section near the bottom.
+
+## Auth (`/api/auth/*`)
+
+**Since [[Decisions#ADR-031\|ADR-031]] (2026-07-28), Supabase Auth is the single authentication provider** — see [[Backend#Auth/session model|Backend's Auth/session model]] for the full architecture (dual-accept JWT verification, JIT identity linking via `profiles.auth_user_id`, `resolveSupabaseSession`). Login stays backend-mediated (the frontend never calls `supabase.auth.signInWithPassword()` directly) so rate-limiting, tenant-status checks, and the JIT linking step can still run; the response body now additionally returns `access_token`/`refresh_token`/`expires_in` so the frontend can call `supabase.auth.setSession()`.
+
+| Path | Methods | Summary | Auth |
+|---|---|---|---|
+| `/api/auth/login` | POST | Rate-limited login. Verifies bcrypt `password_hash` as before, then JIT-links/creates the matching `auth.users` row (`ensureSupabaseIdentity`) and mints a real Supabase session (`signInWithSupabasePassword`). Response body includes `access_token`/`refresh_token`/`expires_in` (previously stripped out) plus a harmless legacy-cookie fallback | Public (rate-limited) |
+| `/api/auth/register` | POST | **Not self-serve** despite the name — requires an existing OWNER session; verifies phone-OTP identity token, then registers a new owner | Requires OWNER session |
+| `/api/auth/owner-signup` | POST | Real StayO self-serve owner signup, added 2026-07-25 to close the `/register` gap above. Requires `{name, email, password, phone}` + a `phone_verification_otps` row already `VERIFIED` (within 30 min) for that phone via `/send-phone-otp`+`/verify-phone-otp`. Creates the `profiles` row via `authService.selfSignUpOwner()` (deliberately separate from `registerOwner`'s `ALLOW_OWNER_BOOTSTRAP` gate — see [[Decisions]] ADR), born already linked to a Supabase identity (no silent local-UUID fallback — creation failure now throws loudly), then logs the new owner in immediately via the same Supabase-session path as `/login`. Optional `lead_token` (added 2026-07-29, ADR-032): if present and valid, marks the corresponding `platform_leads` row `OWNER_ACTIVATED` and sets `converted_owner_id` — a failure here never fails the signup itself | Public (rate-limited) |
+| `/api/auth/onboarding-login` | POST | Phone+password login for bulk-imported tenants, also now Supabase-session-minting via the same `createSessionAndTokens` path. Fixed 2026-07-28: this route was missing from `middleware.ts`'s `PUBLIC_ROUTES`, making it unreachable — see [[Bugs]]. No live frontend caller yet | Public |
+| ~~`/api/auth/refresh`~~ | — | **Removed** (2026-07-28, ADR-031). Refresh is now entirely client-SDK-driven (`autoRefreshToken: true` on the Supabase JS client) | — |
+| `/api/auth/logout` / `/logout-all` | POST | Revoke current / all sessions. Still does Redis-based revocation (`sessionLifecycleService.revokeSession`) as before; additionally calls `supabase.auth.admin.signOut(token, "local"\|"global")` so the Supabase refresh token dies server-side too — net revocation is stronger than pre-migration, since Supabase access tokens are otherwise stateless/valid-until-`exp` | Session |
+| `/api/auth/me` | GET | Current profile + tenant context if role=TENANT. Now also returns `name` (Google login doesn't otherwise populate it anywhere). `touchSession()` (the legacy `refresh_tokens`-table liveness check) is now only called when `x-auth-mode: legacy` — calling it unconditionally would false-401 every fresh Supabase-mode session, since Supabase-minted sessions never write a `refresh_tokens` row (middleware's Redis-based idle check already covers Supabase mode) | Session |
+| `/api/auth/activity` | POST | Extends session liveness. Same `x-auth-mode: legacy` gating on `touchSession()` as `/me`, for the same reason | Session |
+| `/api/auth/change-password` | POST | Fixed 2026-07-28: previously always passed the local `profiles.id` to `supabase.auth.admin.updateUserById()`, which 500'd for any profile not yet linked 1:1 — now checks `profile.auth_user_id` first and falls back to `ensureSupabaseIdentity()` (JIT-link-then-update) if unset. See [[Bugs]] | Session |
+| `/api/auth/confirm-identity` | POST | Issues a 2-minute single-use signed "identity token" (re-verifies password) gating offline-payment/waive/cancel/change-rent actions (`ALLOWED_PURPOSES`); DB rate-limited. Unrelated to the Supabase migration — still `JWT_SECRET`/`jose`-based, unchanged | Session (OWNER) |
+| `/api/auth/forgot-password` / `/reset-password` | POST | Password reset flow, rate-limited. `completePasswordReset()` fixed 2026-07-28: previously looked up the Supabase user via unpaginated `supabase.auth.admin.listUsers()`, silently missing users past page 1 — now goes through `ensureSupabaseIdentity()`'s proper `$queryRaw` email lookup. See [[Bugs]] | Public |
+| `/api/auth/reset-onboarding-password` | POST | First-login reset for bulk-imported tenants | Public (rate-limited) |
+| ~~`/api/auth/google-callback`~~ | — | **Removed** (2026-07-28, ADR-031). Google login is now `supabase.auth.signInWithOAuth({ provider: 'google' })` on the frontend — a full-page PKCE redirect straight to Supabase, landing on the SPA's own `/auth/callback` route with an ordinary Supabase session already established. There is no server-side OAuth code-exchange step left for a callback route to do | — |
+| `/api/auth/send-phone-otp` / `/verify-phone-otp` | POST | | Public |
+| `/api/auth/csrf` | GET | Issues/refreshes CSRF cookie | Public |
+
+Tenant activation (`/api/tenants/activate`, see below) also mints a Supabase session on successful activation — its `createActivationResponse()` helper now keeps `refresh_token` in the response body (previously stripped) so the frontend can call `supabase.auth.setSession()` there too.
+
+## Tenants — core, invitation, activation, self-service
+
+`/api/tenants` (GET/POST list+create), `/api/tenants/[id]` (GET/PUT/DELETE), `/api/tenants/[id]/full` (aggregated profile), `/api/tenants/by-profile/[profileId]`, `/api/tenants/profile` (GET/PATCH self), `/api/tenants/invite`, `/api/tenants/resend-invitation`, `/api/tenants/[id]/cancel-invitation`, `/api/tenants/[id]/compliance-action` (RESEND_INVITE/REGENERATE_INVITE_TOKEN/EXTEND_INVITATION_EXPIRY/MARK_DOCUMENTS_VERIFIED/RESEND_RULES/REMIND_DOCUMENTS), `/api/tenants/[id]/reactivate`, `/api/tenants/owner/reactivation-requests(/[id]/decision)`, `/api/tenants/owner/tenants/[id]/overview`, `/api/tenants/[id]/notes` (GET/POST/DELETE), `/api/tenants/[id]/score`, `/api/tenants/[id]/photo`, `/api/tenants/increment-year` (GET preview/POST execute), `/api/tenants/transfer` (POST + GET history), `/api/tenants/export` (CSV), `/api/tenants/pending-documents`, `/api/tenants/onboarding/complete`.
+
+**Activation (public, token-gated, no session):** `/api/tenants/activate` (GET validate token / POST activate / PATCH multi-step activation workflow), `/api/tenants/activate/context`, `/api/tenants/activate/photo`, `/api/tenants/activate/signature`.
+
+**Documents** (`/api/tenants/[id]/documents/*`): list, `bulk-verify`, `[docId]/download` (proxies ImageKit or agreement PDF), `[docId]/message`, `[docId]/reject`, `[docId]/verify`.
+
+**Financial ledger/timeline** (`/api/tenants/[id]/financial-*`): `financial-ledger` (GET balance+history / POST record credit-or-debit), `financial-ledger/adjust` (apply future-credit against a specific obligation), `financial-ledger/refund-status` (PATCH), `financial-timeline` (unified read-only feed), `billing-timeline`.
+
+**Tenant self-service** (`/api/tenants/me/*`, all TENANT-scoped): `profile` (GET/PATCH), `complete-profile` (onboarding, multipart), `photo`, `room`, `score`, `documents` (GET/POST), `financial-ledger`, `financial-read-model` (the canonical `FinancialReadModel`, same source the owner overview reads — see [[Business-Rules]]), `billing-timeline`, `billing-frequency` (GET/POST, validated against cooldown/minimum-commitment/billing-period-cleanliness rules), `payments/history`, `onboarding-settings`, `reactivation-request`.
+
+## Agreements & Renewals
+
+`/api/agreements/history`, `/api/agreements/renewals` (owner queue), `/api/agreements/renewals/[agreementId]` (GET — Individual Renewal Workspace read model: current agreement, successor draft, full offer history, `RenewalTimelineEvent` timeline, `financialReadModelService` summary, `identificationDocument`s, and activation readiness once a successor exists — see [[Frontend]], [[Decisions]]), `/api/agreements/[id]/lifecycle-recovery`, `/api/agreements/[id]/renewal-draft`, `/api/agreements/[id]/renewal-offer`, `/api/agreements/[id]/sign-renewal`, `/api/agreements/renewal-offers` (GET list / POST bulk-generate — FLAT/PERCENTAGE/ROOM_CATEGORY/FLOOR_WISE/ROOM_WISE strategy, see [[Business-Rules]]), `/api/agreements/renewal-offers/[id]` (PATCH revise/supersede), `/api/agreements/renewal-offers/[id]/send`, `/api/agreements/renewal-audiences`, `/api/agreements/r4-readiness`, `/api/agreements/lifecycle-recovery` (+`/completion`, `/export`). Tenant side: `/api/tenant/agreement-renewal`, `/api/tenant/renewal-offer` (+`/[id]/accept|decline|discuss`), `/api/tenants/me/renewal-signature` (POST — session-authenticated ImageKit signature upload for the `sign-renewal` step above, mirrors `tenants/activate/signature` but resolves the tenant from session instead of an activation token; consumed by `/tenant/renewal`, see [[Frontend]], [[Decisions]] ADR-019), `/api/tenant/exit` (owner-processed exit, distinct from the move-out workflow below).
+
+## Change Requests (owner-edit ↔ tenant-approval workflow)
+
+`/api/change-requests` (GET list), `/api/change-requests/[id]` (GET detail + event timeline), `/api/change-requests/[id]/approve` (**TENANT only**), `/api/change-requests/[id]/reject` (**TENANT only**), `/api/change-requests/[id]/cancel` (**OWNER/ADMIN only**). Backs the `change_requests`/`change_request_events` tables — see [[Database]].
+
+## Owner Action Registry (catalog only)
+
+| Path | Methods | Summary | Auth |
+|---|---|---|---|
+| `/api/owner-actions?entity=<entity>&tenantId=<id>` | GET | Read-only catalog of which owner-facing actions are available for an entity — returns `{ success: true, data: OwnerActionSummary[] }`, each item `{ actionId, entity, category, label, available }` (`available` pre-evaluated server-side from `tenant.status` + `session.role` via `ownerActionRegistry.listForEntity`). Currently only `entity=tenant` has a frontend caller (`features/owner-actions/api`, from `TenantProfilePage.tsx`). 400 if `entity`/`tenantId` missing; 404/403 propagated from the `tenantService.getTenantById` lookup. Catalog-only — no action execution routes through this endpoint. See [[Features]] (Owner Action Registry). | Session (OWNER) |
+
+## Recovery / Corrections (`/api/recovery/cases/*`)
+
+Payment-correction cases (Reverse, Transfer, Edit Reference/Notes — see [[Business-Rules]] for the correction-case lifecycle and [[Features]] for the Business Recovery Platform). All five operations require an authenticated `OWNER`/`ADMIN` session; the caller's owner scope is resolved via `resolveOwnerScope` and the target hostel (for create) or the case's own `hostelId` (for detail/validate/execute — never a client-supplied value) is verified against that scope via `requireHostelBelongsToOwner` before any read or write. 401 if unauthenticated, 403 if the hostel/case doesn't belong to the caller's owner, 404 if the case id doesn't exist.
+
+| Path | Methods | Summary | Auth |
+|---|---|---|---|
+| `/api/recovery/cases?hostelId=<id>&status=<status>&domain=<domain>` | GET | List correction cases for a hostel (`hostelId` required query param; `status`/`domain` optional filters). | Session (OWNER/ADMIN) |
+| `/api/recovery/cases` | POST | Body `{hostelId, caseType, reason, input}` — creates a case via `recoveryService.createCase` then immediately runs `recoveryService.preview` in the same request, so the response already carries `status: "PREVIEW"` and the impact report in one round trip. | Session (OWNER/ADMIN) |
+| `/api/recovery/cases/[id]` | GET | Case detail, including its append-only `correction_case_events` trail (`{ ...case, events }`). | Session (OWNER/ADMIN) |
+| `/api/recovery/cases/[id]/validate` | POST | Runs dependency + policy checks (`recoveryService.validate`); transitions to `VALIDATED` if allowed, else 422 `VALIDATION_REJECTED`. | Session (OWNER/ADMIN) |
+| `/api/recovery/cases/[id]/execute` | POST | Runs the handler's compensating writes (`recoveryService.execute`); also serves as the retry entrypoint when `status = FAILED` (subject to the service's internal retry cap). | Session (OWNER/ADMIN) |
+
+## Hostels & Property Config
+
+`/api/owner/hostels` (GET list w/ occupancy stats / POST create — since 2026-07-29, ADR-032, a successful create also checks `platform_leads.converted_owner_id` for an `OWNER_ACTIVATED` lead belonging to this owner and advances it to `HOSTEL_CREATED`, non-fatally), `/api/hostels/[id]` (GET/PATCH/DELETE — archive is soft-delete), `/api/hostels/[id]/preferences` (+`/inspector`, `/metadata`, `/simulate` — reminder-decision debugging/preview tools), `/api/hostels/[id]/automation-config`, `/billing-config`, `/billing-defaults`, `/invite-defaults`, `/notification-config`, `/payment-config`, `/receipt-config`, `/security-config`, `/system-config` (each PATCHes one policy sub-object), `/api/hostels/[id]/logo` (POST/DELETE). Legacy compat: `/api/owner/me/hostel`, `/api/owner/me/preferences` (**only resolves an implicit hostel if the owner has exactly one active hostel**, else requires explicit `hostelId`), `/api/owner/me/profile`. Agreement templates: `/api/owner/hostels/[id]/agreement-template` (GET/POST — save_draft/publish/reset_section/reset_all, version-bumps on publish), `/preview`, `/signature`. `/api/owner/logo` — **always 410**, redirects callers to the hostel-scoped path. `/api/floors` (GET/POST), `/api/floors/[id]` (PATCH/DELETE).
+
+## Rooms & Allocations
+
+`/api/rooms` (GET grouped-or-flat with occupancy/capacity / POST create — blocks on archived hostel or duplicate room_no), `/api/rooms/[id]` (GET/PATCH — fires `room_updated` SSE event/DELETE — blocked if active allocations exist), `/api/rooms/[id]/overview`, `/api/rooms/[id]/invite-defaults`, `/api/allocations` (GET/POST), `/api/allocations/[id]/end`, `/api/allocations/shift`, `/api/allocations/tenant/[id]` (history), `/api/allocations/my-room` (alias of `/api/tenants/me/room`).
+
+## Payments — Core, Intents, Verification
+
+`/api/payments` (GET list / POST record manual owner payment), `/api/payments/[id]` (detail), `/api/payments/[id]/receipt` (streams PDF, rate-limited), `/api/payments/attempts/[id]`, `/api/payments/create-intent` (branches RENT/ADVANCE/DEPOSIT/multi-obligation), `/api/payments/confirm`, `/api/payments/manual-confirm`, `/api/payments/verify`, `/api/payments/test-intent` (**disabled in production**), `/api/payments/reconcile`, `/api/payments/record-offline` (requires the 2-step identity-confirmation token; aliased by `/api/payments/offline` and `/api/owner/payments/offline`), `/api/payments/pay-dues` (FIFO lump-sum allocation), `/api/payments/pay-link` (`OWNER` — any tenant/obligation in their hostel — or `TENANT` — self-generation only, force-scoped to `session.tenant_id`, `obligationId` disallowed), `/api/payments/pay/[token]` (**public**, unauthenticated token-gated payment page — POST body `action` branches: `client_diagnostic` (logging beacon), `preview` (given a payer-entered `amount`, returns a live FIFO-allocation breakdown via `financialPaymentFacade.previewSettlement`), `verify` (Razorpay signature verification), or the default/no-`action` branch, which validates the entered `amount` and starts checkout via `paymentService.createAmountPaymentIntent` — see [[Business-Rules#Flexible payment links]]), `/api/payments/dues`, `/api/payments/tenant-dues`, `/api/payments/tenant/[id]`, `/api/payments/preview`, `/api/payments/generate-preview`, `/api/payments/pending-verification`, `/api/payments/quick-collect/search`, `/api/payments/settlement-plan` (POST), `/api/payments/settlement-preview` (GET, read-only dry run).
+
+## Payment Obligations
+
+`/api/payments/obligations` (POST create — **no PATCH/PUT anywhere in this tree; confirmed no in-place edit endpoint exists**), `/api/payments/obligations/[id]/cancel` (identity-token gated, only if zero payments exist), `/api/payments/obligations/[id]/waive` (identity-token gated, writes a ledger correction), `/api/payments/obligations/[id]/history`, `/api/rent/generate` (GET preview / POST generate, gated behind an automation plan feature).
+
+`/api/tenants/[id]/change-rent` (POST) — changes a tenant's rent and reprices future obligations in place; see [[Business-Rules]] for the repricing rule and `rent-change-service.ts::applyRentChangeInTx`. Body: `{ hostelId, newRentAmount, effectiveFromMonth, reason, identityToken }`. Auth: Session (OWNER/ADMIN), `resolveOwnerScope` + `requireHostelBelongsToOwner(scope.owner_id, hostelId)`, plus identity-token confirmation (`verifyIdentityConfirmation`/`consumeIdentityTokenInTx`, purpose `CHANGE_RENT`/action `change_rent` — registered in `/api/auth/confirm-identity`'s `ALLOWED_PURPOSES`, same pattern as `CANCEL_OBLIGATION`/`WAIVE_OBLIGATION`). Looks up the tenant's most recent `SIGNED`/`EXPIRING_SOON`/`AGREEMENT_EXPIRED` agreement for the given hostel (404 if none). Response: `{ success: true, data: RentChangeResult }` where `RentChangeResult` is `{ agreementId, tenantId, oldRentAmount, newRentAmount, effectiveFromMonth, obligationsUpdated, updatedObligationIds }`. 401 no session, 403 hostel/identity mismatch, 400 missing/invalid body fields or missing hostel context, 404 no matching agreement. Route is thin — all repricing logic lives in the service, per this codebase's route/service split.
+
+## Move-Out & Settlement
+
+`/api/move-out/requests` (GET owner list / POST create — self-service tenant or owner-initiated eviction), `/api/move-out/requests/[id]` (detail + settlement preview), `/[id]/cancel`, `/[id]/reject`, `/[id]/inspect` (owner submits inspection), `/[id]/dispute` (raise/review/reject/resolve), `/[id]/settle` (owner approves, can override computed amount/direction), `/[id]/complete`, `/[id]/vacate`, `/[id]/feedback`. Tenant side: `/api/move-out/tenant`, `/api/move-out/timeline`. Owner-wide: `/api/move-out/vacancies`, `/api/move-out/analytics`.
+
+**`/api/admin/settlements/*` (13 routes) — all decommissioned (410).**
+
+## Food Planning & Voting (`/api/food/*`)
+
+Added 2026-07-26, real backend for the Monthly Food Planning & Voting (V1) rebuild — see [[Database]] (`food_menu_items`/`food_voting_periods`/`food_votes`/`food_schedules`/`food_schedule_meals`), [[Features]], [[Changelog]]. All owner-side routes follow the `getSession`/`resolveOwnerScope`/`requireHostelBelongsToOwner` pattern (`hostelId` always required, never optional or first-hostel-fallback — `app/api/food` is in `architectural-invariants-check.ts`'s scanned roots).
+
+| Path | Methods | Summary | Auth |
+|---|---|---|---|
+| `/api/food/menu-items?hostelId=&mealType=&includeInactive=` | GET | List the hostel's food-item library, optionally filtered by meal type; inactive items excluded unless `includeInactive=true` | Session (OWNER) |
+| `/api/food/menu-items` | POST | Create a library item `{hostelId, mealType, name}`; if a soft-deleted item with the same `(hostel_id, meal_type, name)` exists, reactivates it instead of erroring on the `@@unique` constraint | Session (OWNER) |
+| `/api/food/menu-items/[id]` | PATCH | Rename and/or toggle `is_active` | Session (OWNER) |
+| `/api/food/menu-items/[id]` | DELETE | Soft-delete only (`is_active=false`) — never hard-deletes, since past `food_schedule_meals` may reference the item (`onDelete: SetNull`, denormalized `item_name` snapshot preserves history) | Session (OWNER) |
+| `/api/food/voting-periods?hostelId=&month=` | GET | Current or specific-month voting period for a hostel | Session (OWNER) |
+| `/api/food/voting-periods` | POST | Open voting: `{hostelId, month, voting_starts_at, voting_ends_at}`, upserted on the `hostel_id_month` unique key (status DRAFT/OPEN) | Session (OWNER) |
+| `/api/food/voting-periods/[id]/close` | POST | Closes voting (status → CLOSED) | Session (OWNER) |
+| `/api/food/voting-periods/[id]/results` | GET | Per-meal-type vote tally (`groupBy` on `menu_item_id` within `meal_type`) | Session (OWNER) |
+| `/api/food/tenant/voting-period` | GET | Current voting period for the calling tenant's own hostel, plus active library items and the tenant's existing votes; resolves the tenant via `profile_id: session.sub` | Session (TENANT) |
+| `/api/food/tenant/vote` | POST | Toggle a vote `{meal_type, menu_item_id}` — **multi-select per meal type** (changed 2026-07-26, see [[Decisions]] ADR-029): adds the vote if not already cast, removes it if it is, based on the `voting_period_id_tenant_id_meal_type_menu_item_id` unique key; rejected if voting isn't `OPEN` or outside the start/end window, or if the item doesn't belong to the hostel/meal type | Session (TENANT) |
+| `/api/food/schedules/generate` | POST | `{hostelId, month, votingPeriodId}` — tallies votes per meal type (falls back to all active library items, ranked by name, if a meal type has zero votes), runs the weighted round-robin generator (`lib/services/food-schedule-generator.ts`), transactionally upserts the DRAFT `food_schedules` row + regenerates its 28 `food_schedule_meals`; idempotent re-run overwrites | Session (OWNER) |
+| `/api/food/schedules?hostelId=&month=` | GET | The schedule (28 meal cells) for a given month | Session (OWNER) |
+| `/api/food/schedules/[id]/meals/[mealId]` | PATCH | Owner edits one cell (swap `menu_item_id`+`item_name` snapshot); also flips the schedule's `source` to `MANUAL` | Session (OWNER) |
+| `/api/food/schedules/[id]/publish` | POST | DRAFT → PUBLISHED, sets `published_at` only on first publish, fans out an in-app notification to every active, profiled tenant of the hostel (`Promise.allSettled`) — edits made after publishing apply directly to the same live row, so there is no separate "republish" step | Session (OWNER) |
+| `/api/food/schedules/history?hostelId=` | GET | Past published months, owner view | Session (OWNER) |
+| `/api/food/tenant/schedule?month=` | GET | Published schedule for the tenant's own hostel; defaults to current month | Session (TENANT) |
+| `/api/food/tenant/schedule/history` | GET | Past published months, tenant view | Session (TENANT) |
+
+**Cron:** `/api/cron/food-carry-forward` (see Cron Jobs below) — daily, idempotent via `food_schedules`'s `@@unique([hostel_id, month])`; if a hostel has no schedule row yet for the current month and last month's row was `PUBLISHED`, clones its 28 meal cells into a new `DRAFT`/`CARRIED_FORWARD` row for the current month.
+
+The pre-existing generic "Food Polls" feature (arbitrary single/multi/rating/yes-no questions, `mockFoodPolls`) is **unrelated and untouched** — still fully mock, no backend, kept alongside this per explicit product decision (see [[Decisions]]).
+
+## Tenant App — Home/Room content (`/api/announcements`, `/api/hostel-events`, `/api/service-requests`, `/api/utility-status`, `/api/hostels/:id/house-rules`)
+
+Added 2026-07-26 for the real StayO tenant app (Home/Money/Room/Profile tabs) — see [[Database]], [[Features]], [[Changelog]].
+
+| Path | Methods | Summary | Auth |
+|---|---|---|---|
+| `/api/announcements?hostelId=` | GET, POST | Owner-authored notices for a hostel | Session (OWNER) |
+| `/api/announcements/[id]` | DELETE | | Session (OWNER) |
+| `/api/tenants/me/announcements` | GET | The tenant's own hostel's announcements | Session (TENANT) |
+| `/api/hostel-events?hostelId=&upcomingOnly=` | GET, POST | Owner-authored upcoming events. Named distinctly from the pre-existing `/api/events` (owner-dashboard SSE stream) to avoid collision | Session (OWNER) |
+| `/api/hostel-events/[id]` | DELETE | | Session (OWNER) |
+| `/api/tenants/me/events` | GET | Upcoming events for the tenant's own hostel | Session (TENANT) |
+| `/api/tenants/me/service-requests` | GET, POST | The tenant's own service requests (list / create) — one endpoint for all 6 request types (`type` in body: MAINTENANCE/ROOM_CHANGE/CLEANING/LOST_KEY/VISITOR_PASS/EXTRA_MATTRESS) | Session (TENANT) |
+| `/api/tenants/me/service-requests/[id]` | GET | Detail + full timeline for one of the tenant's own requests | Session (TENANT) |
+| `/api/service-requests?hostelId=&status=` | GET | Owner queue of tenant service requests for a hostel | Session (OWNER) |
+| `/api/service-requests/[id]/status` | PATCH | Owner assigns/progresses/resolves/rejects a request (`{status, note?, assignedTo?, eta?, feeAmount?}`) — appends a timeline event | Session (OWNER) |
+| `/api/utility-status?hostelId=` | GET | All 4 utility rows for a hostel | Session (OWNER) |
+| `/api/utility-status` | PATCH | Upsert one utility's status (`{hostelId, utility, status, note?}`) | Session (OWNER) |
+| `/api/hostels/:id/house-rules` | GET, PATCH | House-rules content (`{sections: [{title, items}]}`) — a dedicated endpoint, not folded into the hostel preferences policy blob | Session (OWNER) |
+| `/api/tenants/me/room` | GET | Extended 2026-07-26 to also return `utilityStatus` and `houseRules` alongside the pre-existing `room`/`roommates` | Session (TENANT) |
+
+## Admissions / Leads / Public Visit Site
+
+`/api/leads` (GET/POST), `/api/leads/[id]` (GET/PATCH), `/api/leads/[id]/notes`, `/api/leads/[id]/reserve-room`, `/api/leads/[id]/reservations/[reservationId]/cancel`, `/api/leads/[id]/convert-to-invitation` (**OWNER only**), `/api/leads/analytics`. Aliases: `/api/admissions/leads(/analytics)` → `/api/leads(/analytics)`. `/api/admissions/qr-code`. **Public microsite:** `/api/visit/[hostelSlug]`, `/api/visit/[hostelSlug]/activities` (rate-limited 120/hr), `/api/visit/[hostelSlug]/leads` (zod-validated, honeypot field).
+
+## Bulk Import
+
+`/api/bulk-import/upload` (parses XLSX/CSV, max 5MB), `/api/bulk-import/revalidate`, `/api/bulk-import/template`, `/api/bulk-import/[batch_id]` (status + funnel), `/api/bulk-import/[batch_id]/confirm` (GET preview / POST execute, idempotent retry-safe), `/api/bulk-import/google-form-prompt` (**OWNER only**).
+
+## Dashboard & Analytics
+
+`/api/dashboard` (combined shell, Redis-cached), `/api/dashboard/stats`, `/stats-shell`, `/summary` — **all three return the identical payload** (`dashboardService.getOwnerStatsShell`; code comment: "frontend calls both"), `/api/dashboard/stats-activity`, `/stats-analytics`, `/monthly-stats`, `/cashflow`, `/funnel`, `/operations`, `/tenants`, `/tenant/stats` (TENANT), `/portfolio-performance`, `/portfolio-shell`. `/api/owner/portfolio/summary` (cached snapshots only — code comment: "Operational data must never be fetched from this route"). `/api/analytics/dashboard`. `/api/activity`, `/api/activity/list` (near-duplicate feeds). `/api/owner/activity-logs` (large handler: full owner timeline with before/after cash & occupancy positions, plus a "needs attention" panel). `/api/expenses` (GET w/ `mode=suggestions`/`title_summary` / POST — GET filter params: `hostelId`, `categories` (csv), `status`, `sort`, `search`, `range`/`startDate`/`endDate`, `recurring` (`true`/`false`), `amountMin`/`amountMax`, `limit`/`offset`; response includes `kpis`, `category_breakdown`, `vendor_breakdown` (server-side `groupBy` on `vendor_name`, current month), `insights`, `monthly_trend`, `frequent_expenses`, `meta.categories`), `/api/expenses/[id]` (PUT/DELETE) — neither accepts `operational_type` as an input; it's always server-derived from `category` via `deriveOperationalType()`, see [[Business-Rules]]. `/api/expenses/export` (GET, rate-limited 10/min/owner) — CSV/XLSX (streamed) or PDF (business report) of expenses; accepts the same filter params as the list endpoint plus `format` (`csv`/`xlsx`/`pdf`, required), `scope` (`current_view`/`all_matching`/`selected`, default `all_matching`), `ids` (csv, required when `scope=selected`), and two display-only params — `vendor`, `paymentMethod` — used only to populate the report's Filter Snapshot (actual row filtering for both still goes through the merged `search` param). Built on the same `buildExpenseLedgerWhere()` query builder the list endpoint uses — see [[Decisions]] ADR-009. As of the report-content rework (see [[Changelog]]), the PDF and XLSX outputs also carry: a dynamic report title, export metadata (generated by/at, hostel, reporting period + duration, export scope, sort order, report version `v1`), a full filter snapshot, a Financial Summary (revenue/net profit/expense ratio computed via the shared `getBusinessRevenue`/`computeNetProfit`/`computeExpenseRatio` functions in `expense-service.ts` — see [[Decisions]] ADR-010 — plus average daily spend, largest expense/category/vendor, transaction count), and Payment Insights (per-status amount breakdown). CSV is unchanged (pure flat data). XLSX is now sectioned (Metadata → Financial Summary → Category Breakdown → Expense Table) rather than a single undifferentiated table.
+
+## Owner Finance / Billing / Subscription — mostly decommissioned
+
+`/api/owner/finance/{by-hostel,collections,summary,transfers}`, `/api/owner/me/{subscription,usage,activation}`, `/api/billing/{message-quota,overflow,plans,upgrade}`, `/api/addons*`, `/api/subscription`, `/api/plans`, `/api/usage`, `/api/admin/activation-analytics`, `/api/admin/finance-ops/invoices` — **all 410 Gone**, per in-code comment "Do not add this route back to vercel.json without a new design." Still live: `/api/owner/billing/frequency-requests` (GET list) and `/[id]/decision` (POST).
+
+## Owner — Misc
+
+`/api/owner/search` (navbar search), `/api/owner/integrity` (**no auth guard found in the file — flag**), `/api/owner/whatsapp/connections` (GET, DELETE `/[connectionId]`), `/api/owner/whatsapp/link-code`, `/api/owners/invitations` (**near-duplicate of `/api/tenants/invite`** — same underlying call, OWNER-only not ADMIN, unclear why both exist), `/api/profiles/unassigned/tenants`, `/api/profiles/[id]`, `/api/profile`, `/api/profile/me`.
+
+## Notifications & WhatsApp
+
+`/api/notifications` (GET), `/[id]/read`, `/api/notifications/send-reminder` (owner one-tap, consumes a reminder credit), `/api/notifications/test-reminder`. **Public webhooks:** `/api/webhooks/notifications/whatsapp` (Meta Cloud API — GET subscription challenge, POST HMAC-verified), `/api/webhooks/payments/razorpay` (POST, HMAC-SHA256 verified — the only signature-verification point in the codebase for payments). `/api/debug/send-test-otp` (**ADMIN only**), `/api/debug/whatsapp-health` (**no auth guard found — flag**, but only returns boolean env-presence flags).
+
+## Platform Admin Console (`/api/platform-admin/*`)
+
+Added 2026-07-26 — the backend for the StayO Platform Admin Console, per `Stayo Admin Dashboard/Stayo Admin.dc.html`. **Deliberately reverses ADR-006** (which removed the multi-hostel SaaS billing/subscription model) per explicit user product direction — see [[Decisions]] ADR-030. All routes require a real `ADMIN`-role session (`session.role === "ADMIN"`, strict — not `["OWNER","ADMIN"]`); there is no public self-serve admin signup, see `scripts/bootstrap-platform-admin.ts`. Unlike every hostel-scoped OWNER route elsewhere in this API, these are deliberately **cross-owner** (the entire point of a platform console) — `resolveOwnerScope`/`requireHostelBelongsToOwner` do not apply here and these routes are intentionally not in `architectural-invariants-check.ts`'s scanned roots (that check exists to catch OWNER-scoped code silently leaking cross-owner data, which has no meaning for a persona that is supposed to see everything).
+
+| Path | Methods | Summary |
+|---|---|---|
+| `/api/platform-admin/dashboard` | GET | 8-stat KPI overview (New Leads/Pending Approvals/Active Hostels/Total Tenants/Active Tenants/Platform Revenue/Collections/Pending Dues), Leads/Hostels previews (hostels preview includes full occupancy/revenue/dues, composed from the same aggregation `/hostels` uses), a Revenue Summary (Total Revenue/Platform Earnings/Pending Collections/This Month, composed from the same calc `/revenue` uses), and a derived Recent Activity feed (a live union of recent leads/hostels/invoices, not a dedicated log table) — extended 2026-07-27 to match `Stayo Admin.dc.html`'s full spec, see [[Bugs]] |
+| `/api/platform-admin/hostels?search=&verification=&listing=` | GET | Platform-wide hostel roster with real tenant/occupancy/revenue/dues figures composed from existing tables |
+| `/api/platform-admin/hostels/[id]` | GET | Full hostel detail (owner info, metrics, current subscription) |
+| `/api/platform-admin/hostels/[id]/approve-listing` | POST | `verification_status → VERIFIED`, `listing_status → LIVE` |
+| `/api/platform-admin/hostels/[id]/suspend-listing` | POST | `listing_status → SUSPENDED` |
+| `/api/platform-admin/hostels/[id]/reactivate` | POST | Back to `LIVE` (or `DRAFT` if never verified) from `SUSPENDED` |
+| `/api/platform-admin/hostels/[id]/subscription` | POST | Assign/change a hostel's plan (`{planId, autopayEnabled?}` — cycle/amount always come from the plan itself, not client-supplied, see [[Bugs]]) — creates the `hostel_subscriptions` row as `TRIAL` (14-day window) if none exists |
+| `/api/platform-admin/hostels/[id]/invoices` | POST | Records a subscription payment collected from the owner (no payment-gateway integration on this side for V1 — admin-recorded) — marks `PAID`, flips subscription to `ACTIVE`, advances `next_renewal_at` one cycle |
+| `/api/platform-admin/leads?search=&status=` | GET, POST | Prospective **hostel-owner** leads (list+search+filter / manual create) — distinct from the tenant-admissions `leads` table |
+| `/api/platform-admin/leads/[id]` | GET, PATCH | GET returns the lead plus a `timeline` array (its `systemEventLog` events, newest first — see [[Decisions]] ADR-032 for why this is a `metadata` JSON-path filter, not an indexed FK join). PATCH `{status}` is now restricted to `NEW`/`UNDER_REVIEW`/`LOST` only (400 otherwise) — `APPROVED` and beyond are system-managed, see `.../approve` below and [[Decisions]] ADR-032 |
+| `/api/platform-admin/leads/[id]/approve` | POST | **Added 2026-07-29 (ADR-032).** Replaces the old bare-PATCH "Approve": generates a single-use `platform_lead_invitations` token, sends the activation link (WhatsApp, email fallback — see `lead-invitation-service.ts`), logs every step, and only on a successful send advances status to `INVITE_SENT` (otherwise the lead stays `APPROVED` and the delivery error is returned). 409 `INVALID_TRANSITION` if the lead isn't `NEW`/`UNDER_REVIEW` |
+| `/api/platform-admin/revenue` | GET | Platform-wide KPIs: MRR/ARR/collected-this-month/pending/lifetime, plus `metrics` (active_hostels — `listing_status=LIVE` count, not all hostels, fixed 2026-07-27 — active_paying/active_tenants/trial_hostels/renewal_due/payment_failed/cancelled) |
+| `/api/platform-admin/revenue/hostels?search=&status=` | GET | Per-hostel subscription cards (plan, cycle, amount, autopay, next renewal, collected, tenant dues) |
+| `/api/platform-admin/revenue/export?report=revenue\|subscriptions\|outstanding\|gst` | GET | CSV export (GST report computes 18% on `platform_invoices.amount` at export time) |
+| `/api/platform-admin/plans` | GET, POST | Subscription plan catalog (list / create) |
+| `/api/platform-admin/plans/[id]` | PATCH | Toggle active/edit price/description |
+| `/api/platform-admin/admins` | GET, POST | Platform staff list / invite (creates a `profile` with `role: ADMIN` + a `platform_admins` row; no email delivery in V1 — the generated temporary password is returned directly to the inviting admin) |
+| `/api/platform-admin/notification-templates` | GET, POST | Admin-configured owner-facing message templates (list / create) |
+| `/api/platform-admin/notification-templates/[id]` | PATCH | Toggle active/edit body |
+| `/api/platform-admin/settings` | GET, PATCH | General platform settings (`{supportEmail, supportPhone, businessAddress}`), stored in `platform_settings` |
+| `/api/platform-admin/broadcast` | POST | `{message}` — fires an in-app notification (`notificationService.createNotification`) to every active `OWNER` profile |
+
+## Owner-Acquisition Funnel — Public Lead Capture & Activation (`/api/leads/*`)
+
+Public (no session — added to `middleware.ts`'s `PUBLIC_ROUTES`), backing the landing-page "Manage My Hostel" flow → Admin Console approval → real onboarding. Deliberately a separate `/api/leads/*` namespace from `/api/platform-admin/leads/*` (admin-only) to keep the public and admin surfaces cleanly split. See [[Decisions]] ADR-032, [[Database]].
+
+| Path | Methods | Summary |
+|---|---|---|
+| `/api/leads/self-serve` | POST | `{name, hostel_name, phone, google_email?, city?, bed_count?}`. Requires a fresh (≤30 min), `VERIFIED` `PhoneVerificationOtp` row for that phone with `purpose: "LEAD_CAPTURE"` (same OTP-gate pattern `/api/auth/owner-signup` uses) — this is the actual anti-spam gate, not the Google sign-in step, which is frontend-only. Creates a `platform_leads` row (`status: NEW`), logs `LEAD_CREATED` |
+| `/api/leads/invitation/[token]` | GET | Added 2026-07-29 (ADR-032). Public, token-gated context fetch for the owner-lead activation landing page — never looks up by the lead's raw `id`. 410 `INVALID`/`EXPIRED`/`CANCELLED`, 409 `ALREADY_ACTIVE`. On a valid `PENDING` lookup, flips to `OPENED` (idempotent — logs `LEAD_INVITE_OPENED` only on the first open) and returns `{name, hostel_name, phone, google_email, city}` for the onboarding wizard's prefill |
+| `/api/leads/invitation/[token]/complete` | POST | Added 2026-07-29 (ADR-032). Called once by the onboarding wizard's publish step after all floors/rooms are created — the one auto-progression step with no natural server-side hook (floor/room creation is a frontend-orchestrated loop of separate calls). No-ops quietly unless the lead is currently `HOSTEL_CREATED`, so it can never move a lead backwards or fail the owner's real flow |
+
+**Related fix while building this:** `GET /api/auth/me`'s `is_admin` field was hardcoded `false` (dead code from before `ADMIN` was a real, assignable role) — now `profile.role === "ADMIN"`. See [[Bugs]].
+
+## Admin / Finance-Ops / Reconciliation
+
+`/api/admin/finance-ops` (**ADMIN only**) + `/attempts(/[id])`, `/anomalies`, `/webhook-events`, `/reconciliation-runs`. `/api/admin/finance/reconciliation/issues` + `/[issueId]` + `/scan` — **note: this sibling group requires role OWNER, not ADMIN**, despite the shared `/admin/finance` URL prefix — a role-scope inconsistency worth confirming is intentional. **Update 2026-07-26:** `ADMIN` is now a real, assignable role (Platform Admin Console, above) — `/api/admin/finance-ops/*` is consequently no longer purely theoretical/unreachable as previously noted here, though no frontend still consumes it and it remains a functionally separate, older subsystem from `/api/platform-admin/*`.
+
+## Cron Jobs (Vercel Cron, `CRON_SECRET` bearer-gated)
+
+**Active:** `generate-rent`, `rent-reminders`, `agreement-lifecycle`, `daily-briefings`, `hostel-invariants`, `migration-audit`, `move-out-releases`, `reconcile-payments`, `admissions`, `food-carry-forward` (new 2026-07-26, `0 4 * * *`, see Food Planning & Voting above). **Marked FROZEN (do not schedule) but functional:** `data-retention`. **Marked DORMANT (analytics-repair-only):** `tenant-analytics` (POST). **Decommissioned (410):** `onboarding-nudges`, `process-autopay-retries`, `process-overflow`, `reconcile-addons`.
+
+## Misc / Platform Utility
+
+`/api/health` (DB check), `/api/metrics` (**no auth guard found — flag**, read-only counters), `/api/metrics/reset`, `/api/events` (SSE, OWNER/ADMIN), `/api/events-token` (60s short-lived JWT for the SSE connection), `/api/revalidate` (Sanity CMS webhook, shared-secret gated), `/api/verify/receipt` (**public**, signed-token receipt verification for printable/QR receipts), `/api/invoices/[id]`.
+
+## Decommissioned routes (410 Gone) — full list
+
+37 files unconditionally return `410 Gone` with a message referencing the "single-business migration": all of `addons*` (4), `billing/{message-quota,overflow,plans,upgrade}` (4), `plans`, `subscription`, `usage`, `admin/activation-analytics`, `admin/finance-ops/invoices`, `admin/settlements/*` (13), `owner/finance/*` (4), `owner/me/{subscription,usage,activation}` (3), plus 4 cron jobs (`onboarding-nudges`, `process-autopay-retries`, `process-overflow`, `reconcile-addons`). `owner/logo` also always 410s but for a different reason (redirects to the hostel-scoped logo route). These represent a **previously-removed multi-hostel SaaS billing/plan/subscription model** — see [[Decisions]] and [[Database]] (`usage_tracking` table).
+
+## Flagged for follow-up (not guessed — genuinely unclear from the code)
+
+- **No auth guard found**: `GET /api/owner/integrity`, `GET /api/metrics`, `GET /api/debug/whatsapp-health` (low-risk — booleans only, no secrets).
+- **Alias/re-export routes** (thin pass-throughs, not independent logic): `/api/admissions/leads(/analytics)` → `/api/leads(/analytics)`; `/api/allocations/my-room` → `/api/tenants/me/room`; `/api/payments/offline` and `/api/owner/payments/offline` → `/api/payments/record-offline`.
+- **Apparent duplicate**: `/api/owners/invitations` vs `/api/tenants/invite` — same underlying `invitationService.inviteTenant` call.
+- **Naming trap**: `/api/auth/register` is not self-serve registration despite the path name — requires an existing OWNER session.
+- **Role-scope inconsistency**: `/api/admin/finance-ops/*` requires ADMIN; sibling `/api/admin/finance/reconciliation/*` requires OWNER.
+- **Three dashboard routes return the identical payload**: `stats`, `stats-shell`, `summary`.
+
+## See also
+- [[Backend]] for the service layer behind these routes
+- [[Business-Rules]] for the domain logic these endpoints enforce
+- [[Features]] for which UI features call which endpoint groups
+- [[Decisions]] for the "single-business migration" that produced the 410 tombstones

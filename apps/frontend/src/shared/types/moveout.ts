@@ -1,0 +1,23 @@
+export const MOVE_OUT_STATUS = {
+  REQUESTED: 'REQUESTED',
+  SETTLEMENT_PENDING: 'SETTLEMENT_PENDING',
+  SETTLEMENT_APPROVED: 'SETTLEMENT_APPROVED',
+  PHYSICALLY_VACATED: 'PHYSICALLY_VACATED',
+  SETTLEMENT_PENDING_PAYMENT: 'SETTLEMENT_PENDING_PAYMENT',
+  COMPLETED: 'COMPLETED',
+  REJECTED: 'REJECTED',
+} as const;
+
+export type MoveOutStatus = (typeof MOVE_OUT_STATUS)[keyof typeof MOVE_OUT_STATUS];
+
+export const LEGACY_MOVE_OUT_STATUS = {
+  APPROVED: 'APPROVED',
+  VACATED: 'VACATED',
+} as const;
+
+export function canonicalMoveOutStatus(status: unknown): string {
+  const value = String(status ?? '').toUpperCase();
+  if (value === LEGACY_MOVE_OUT_STATUS.APPROVED) return MOVE_OUT_STATUS.SETTLEMENT_APPROVED;
+  if (value === LEGACY_MOVE_OUT_STATUS.VACATED) return MOVE_OUT_STATUS.PHYSICALLY_VACATED;
+  return value;
+}

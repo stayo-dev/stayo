@@ -1,0 +1,150 @@
+/*
+ * StayO design tokens — a brand-new theme that coexists with the legacy
+ * Shri Adithya theme.css rather than replacing it. Every token below is
+ * scoped under [data-app-theme="marketing"|"product"], so it only applies
+ * inside a StayO layout root that sets that attribute (via ThemeProvider);
+ * legacy screens rendered outside that scope keep resolving theme.css's
+ * unscoped :root values, completely untouched.
+ *
+ * The Tailwind @theme inline mapping (utility class -> CSS var name) and the
+ * base typography rules live once, in theme.css, and are shared by both the
+ * legacy and StayO token sets — intentionally not duplicated here.
+ *
+ * theme.css itself is not modified or imported by this file. See
+ * docs/migration/frontend-foundation-tracker.md for the plan to eventually
+ * retire it once every legacy screen has migrated to a StayO layout.
+ */
+
+@import './tokens/fonts.css';
+@import './tokens/marketing.css';
+@import './tokens/product.css';
+
+/*
+ * theme.css's `@theme inline` block never registers --color-success/-warning/
+ * -info as Tailwind utilities, even though the underlying --success/-warning/
+ * -info CSS variables exist in both the legacy :root and the StayO token
+ * sets above. Tailwind v4 merges @theme blocks across imported files, so
+ * this adds the missing mapping without touching theme.css — bg-success,
+ * text-warning, etc. become real utilities for legacy and StayO screens alike.
+ */
+@theme inline {
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+}
+
+/*
+ * Base font application + two plain (non-Tailwind-generated) helper classes.
+ * theme.css's `@theme inline` block never registers a --font-* namespace, so
+ * there is no `font-sans`/`font-display` Tailwind utility to reuse here —
+ * these are hand-written CSS classes, not Tailwind-generated ones, and work
+ * regardless of Tailwind's theme registration.
+ */
+[data-app-theme='marketing'],
+[data-app-theme='product'] {
+  font-family: var(--font-body);
+}
+
+[data-app-theme='marketing'] h1,
+[data-app-theme='marketing'] h2,
+[data-app-theme='marketing'] h3,
+[data-app-theme='product'] h1,
+[data-app-theme='product'] h2,
+[data-app-theme='product'] h3 {
+  font-family: var(--font-display);
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-body {
+  font-family: var(--font-body);
+}
+
+/*
+ * Keyframes for the Owner Onboarding "living world" SVG scene
+ * (features/owner-onboarding/components/OnboardingScene.tsx), ported
+ * verbatim from Owner Onboarding.dc.html. Prefixed `stayo-` to avoid any
+ * collision with legacy theme.css animation names.
+ */
+@keyframes stayoDropPin {
+  0% { opacity: 0; transform: translateY(-30px); }
+  62% { transform: translateY(5px); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes stayoCloudDrift {
+  0% { transform: translateX(0); }
+  50% { transform: translateX(46px); }
+  100% { transform: translateX(0); }
+}
+@keyframes stayoSunGlow {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 0.85; }
+}
+@keyframes stayoSpinSlow {
+  to { transform: rotate(360deg); }
+}
+@keyframes stayoBirdFly {
+  0% { transform: translate(-70px, 12px); opacity: 0; }
+  12% { opacity: 0.75; }
+  88% { opacity: 0.75; }
+  100% { transform: translate(240px, -22px); opacity: 0; }
+}
+@keyframes stayoSway {
+  0%, 100% { transform: rotate(-1.4deg); }
+  50% { transform: rotate(1.4deg); }
+}
+@keyframes stayoDustPuff {
+  0% { opacity: 0.45; transform: scale(0.4); }
+  100% { opacity: 0; transform: scale(1.8); }
+}
+@keyframes stayoSmokePuff {
+  0% { opacity: 0; transform: translateY(0) scale(0.5); }
+  25% { opacity: 0.4; }
+  100% { opacity: 0; transform: translateY(-48px) scale(1.5); }
+}
+@keyframes stayoStudentIn {
+  from { opacity: 0; transform: translateX(-30px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes stayoOwnerWave {
+  0%, 100% { transform: rotate(8deg); }
+  50% { transform: rotate(-34deg); }
+}
+@keyframes stayoPopIn {
+  from { opacity: 0; transform: scale(0.6); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes stayoSparkleBurst {
+  0% { opacity: 0; transform: scale(0) rotate(0); }
+  45% { opacity: 1; transform: scale(1) rotate(40deg); }
+  100% { opacity: 0; transform: scale(0.3) rotate(90deg); }
+}
+@keyframes stayoConfettiFall {
+  to { transform: translateY(680px) rotate(var(--stayo-confetti-rot)); }
+}
+@keyframes stayoBobPin {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-3px); }
+}
+@keyframes stayoScreenIn {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes stayoRiseIn {
+  from { opacity: 0; transform: translateY(22px) scaleY(0.7); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes stayoToastIn {
+  0% { opacity: 0; transform: translateY(-8px); }
+  12%, 88% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(-8px); }
+}
+@keyframes stayoNodePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(164,93,68,.34); }
+  50% { box-shadow: 0 0 0 7px rgba(164,93,68,0); }
+}

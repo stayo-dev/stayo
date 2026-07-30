@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "audit:r4-readiness": "npm --prefix apps/backend run audit:r4-readiness"
+  },
+  "dependencies": {
+    "@vercel/speed-insights": "^2.0.0",
+    "jsonwebtoken": "^9.0.3"
+  }
+}

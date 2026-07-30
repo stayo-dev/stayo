@@ -1,0 +1,25 @@
+{
+  "name": "Stayo",
+  "short_name": "Stayo",
+  "description": "Stayo — hostel management for owners, and a home-away-from-home portal for tenants.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#efe9e2",
+  "theme_color": "#b46a55",
+  "lang": "en-IN",
+  "categories": ["education", "travel", "lifestyle"],
+  "icons": [
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

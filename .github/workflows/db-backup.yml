@@ -1,0 +1,634 @@
+name: Daily DB Backup
+
+on:
+
+
+#   schedule:
+#     # Run daily at 2:00 AM UTC (7:30 AM IST)
+#     - cron: "0 2 * * *"
+#     # Run monthly snapshot at 2:30 AM UTC on the 1st of each month
+#     - cron: "30 2 1 * *"
+#     # Run weekly verification at 3:00 AM UTC on Sundays
+#     - cron: "0 3 * * 0"
+  workflow_dispatch: # Allow manual trigger
+env:
+  BACKUP_RETENTION_DAYS: 30
+  # Enforce SSL even if the connection string omits sslmode
+  PGSSLMODE: require
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Layer 0: Monthly Permanent Snapshot
+  # ─────────────────────────────────────────────
+  monthly-snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client gnupg jq
+
+      - name: Validate DIRECT_URL
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${DIRECT_URL:-}" ]]; then echo "❌ ERROR: DIRECT_URL is not set" >&2; exit 1; fi
+          if [[ "$DIRECT_URL" != *":5432"* ]]; then echo "❌ ERROR: DIRECT_URL must use port 5432" >&2; exit 1; fi
+          if [[ "$DIRECT_URL" == *"pooler"* ]]; then echo "❌ ERROR: DIRECT_URL must NOT use pooler" >&2; exit 1; fi
+          echo "✅ DIRECT_URL looks valid"
+
+      - name: Force IPv4 for Postgres (PGHOSTADDR)
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: |
+          set -euo pipefail
+          hp="${DIRECT_URL#*@}"
+          hostport="${hp%%/*}"
+          host="${hostport%%:*}"
+          echo "Resolving IPv4 for: $host"
+          out=$(getent hosts "$host" 2>/dev/null || true)
+          ipv4=$(awk '$1 !~ /:/{print $1; exit}' <<<"$out")
+          if [ -z "${ipv4:-}" ]; then
+            out=$(getent ahostsv4 "$host" 2>/dev/null || true)
+            ipv4=$(awk '{print $1; exit}' <<<"$out")
+          fi
+          if [ -z "${ipv4:-}" ]; then echo "❌ Could not resolve IPv4 for $host" >&2; exit 1; fi
+          echo "Using IPv4 $ipv4"
+          echo "PGHOSTADDR=$ipv4" >> $GITHUB_ENV
+
+      - name: Check if today is the 1st of the month
+        id: monthly
+        run: |
+          if [ "$(date +%d)" = "01" ]; then
+            echo "is_monthly=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_monthly=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create backup directory
+        if: steps.monthly.outputs.is_monthly == 'true'
+        run: mkdir -p backups
+
+      - name: Full database dump (monthly)
+        if: steps.monthly.outputs.is_monthly == 'true'
+        run: |
+          set -euo pipefail
+          pg_dump --version
+          hp="${DIRECT_URL#*@}"
+          hostport="${hp%%/*}"
+          host="${hostport%%:*}"
+          out=$(getent ahostsv4 "$host" 2>/dev/null || true)
+          ipv4=$(awk '{print $1; exit}' <<<"$out")
+          if [ -z "${ipv4:-}" ]; then
+            out=$(getent hosts "$host" 2>/dev/null || true)
+            ipv4=$(awk '$1 !~ /:/{print $1; exit}' <<<"$out")
+          fi
+          if [ -z "${ipv4:-}" ]; then echo "❌ Could not resolve IPv4 for $host" >&2; exit 1; fi
+          echo "Using IPv4 $ipv4 for pg_dump (monthly)"
+          sep=$( [[ "$DIRECT_URL" == *\?* ]] && echo '&' || echo '?' )
+          HOSTADDR_DSN="${DIRECT_URL}${sep}hostaddr=${ipv4}"
+          pg_dump "$HOSTADDR_DSN" \
+            --no-owner \
+            --no-privileges \
+            --clean \
+            --if-exists \
+            --format=custom \
+            --file=backups/monthly_snapshot_$(date +%Y-%m).dump
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+
+      - name: Full database dump (SQL format, monthly)
+        if: steps.monthly.outputs.is_monthly == 'true'
+        run: |
+          set -euo pipefail
+          hp="${DIRECT_URL#*@}"
+          hostport="${hp%%/*}"
+          host="${hostport%%:*}"
+          out=$(getent ahostsv4 "$host" 2>/dev/null || true)
+          ipv4=$(awk '{print $1; exit}' <<<"$out")
+          if [ -z "${ipv4:-}" ]; then
+            out=$(getent hosts "$host" 2>/dev/null || true)
+            ipv4=$(awk '$1 !~ /:/{print $1; exit}' <<<"$out")
+          fi
+          if [ -z "${ipv4:-}" ]; then echo "❌ Could not resolve IPv4 for $host" >&2; exit 1; fi
+          echo "Using IPv4 $ipv4 for pg_dump (monthly SQL)"
+          sep=$( [[ "$DIRECT_URL" == *\?* ]] && echo '&' || echo '?' )
+          HOSTADDR_DSN="${DIRECT_URL}${sep}hostaddr=${ipv4}"
+          pg_dump "$HOSTADDR_DSN" \
+            --no-owner \
+            --no-privileges \
+            --clean \
+            --if-exists \
+            | gzip > backups/monthly_snapshot_$(date +%Y-%m).sql.gz
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+
+      - name: Encrypt monthly SQL backup (GPG)
+        if: steps.monthly.outputs.is_monthly == 'true'
+        env:
+          GPG_PASSPHRASE: ${{ secrets.BACKUP_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GPG_PASSPHRASE:-}" ]; then echo "❌ Missing BACKUP_GPG_PASSPHRASE" >&2; exit 1; fi
+          BACKUP_FILE="backups/monthly_snapshot_$(date +%Y-%m).sql.gz"
+          echo "$GPG_PASSPHRASE" | gpg --batch --yes --passphrase-fd 0 -c --cipher-algo AES256 "$BACKUP_FILE"
+          rm "$BACKUP_FILE"
+
+      - name: Upload monthly snapshot to Supabase Storage (immutable)
+        if: steps.monthly.outputs.is_monthly == 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -euo pipefail
+          BACKUP_FILE=$(ls backups/monthly_snapshot_*.sql.gz.gpg | head -n 1)
+          STORAGE_PATH="snapshots/$(date +%Y-%m)/full.sql.gz.gpg"
+          curl -X POST \
+            "${SUPABASE_URL}/storage/v1/object/db-backups/${STORAGE_PATH}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"${BACKUP_FILE}" \
+            --fail-with-body
+
+      - name: Upload monthly snapshot artifact (permanent)
+        if: steps.monthly.outputs.is_monthly == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-monthly-snapshot-${{ github.run_id }}
+          path: backups/monthly_snapshot_*
+          retention-days: 10000 # Permanent (GitHub max)
+  # ─────────────────────────────────────────────
+  # Layer 1: Full Database Backup
+  # ─────────────────────────────────────────────
+  full-backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Validate DIRECT_URL
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${DIRECT_URL:-}" ]]; then echo "❌ ERROR: DIRECT_URL is not set" >&2; exit 1; fi
+          if [[ "$DIRECT_URL" != *":5432"* ]]; then echo "❌ ERROR: DIRECT_URL must use port 5432" >&2; exit 1; fi
+          if [[ "$DIRECT_URL" == *"pooler"* ]]; then echo "❌ ERROR: DIRECT_URL must NOT use pooler" >&2; exit 1; fi
+          echo "✅ DIRECT_URL looks valid"
+
+      - name: Force IPv4 for Postgres (PGHOSTADDR)
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: |
+          set -euo pipefail
+          hp="${DIRECT_URL#*@}"
+          hostport="${hp%%/*}"
+          host="${hostport%%:*}"
+          echo "Resolving IPv4 for: $host"
+          out=$(getent ahostsv4 "$host" 2>/dev/null || true)
+          ipv4=$(awk '{print $1; exit}' <<<"$out")
+          if [ -z "${ipv4:-}" ]; then
+            out=$(getent hosts "$host" 2>/dev/null || true)
+            ipv4=$(awk '$1 !~ /:/{print $1; exit}' <<<"$out")
+          fi
+          if [ -z "${ipv4:-}" ]; then echo "❌ Could not resolve IPv4 for $host" >&2; exit 1; fi
+          echo "Using IPv4 $ipv4"
+          echo "PGHOSTADDR=$ipv4" >> $GITHUB_ENV
+
+      - name: Verify PGHOSTADDR
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: |
+          set -euo pipefail
+          echo "PGHOSTADDR=$PGHOSTADDR"
+          hp="${DIRECT_URL#*@}"
+          hostport="${hp%%/*}"
+          host="${hostport%%:*}"
+          getent hosts "$host" || true
+
+      - name: Debug environment and connectivity
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: |
+          set -euo pipefail
+          echo "Runner: $(uname -a)"
+          which pg_dump || true
+          pg_dump --version
+          psql --version
+          if [ -z "${DIRECT_URL:-}" ]; then echo "ERROR: DIRECT_URL secret not set" >&2; exit 1; fi
+          # Print only host:port from DIRECT_URL (no credentials)
+          hostport="${DIRECT_URL#*@}"
+          hostport="${hostport%%/*}"
+          echo "Connecting to host:port -> ${hostport}"
+          echo "Resolving IPv4 and testing DB connectivity (no secrets logged)..."
+          # Resolve hostname -> IPv4
+          host="${hostport%%:*}"
+          out=$(getent ahostsv4 "$host" 2>/dev/null || true)
+          ipv4=$(awk '{print $1; exit}' <<<"$out")
+          if [ -z "${ipv4:-}" ]; then
+            out=$(getent hosts "$host" 2>/dev/null || true)
+            ipv4=$(awk '$1 !~ /:/{print $1; exit}' <<<"$out")
+          fi
+          if [ -z "${ipv4:-}" ]; then echo "❌ Could not resolve IPv4 for $host" >&2; exit 1; fi
+          echo "Using IPv4 $ipv4"
+          # Build hostname DSN with hostaddr=IPv4 to force IPv4 while keeping LB/TLS semantics
+          sep=$( [[ "$DIRECT_URL" == *\?* ]] && echo '&' || echo '?' )
+          HOSTADDR_DSN="${DIRECT_URL}${sep}hostaddr=${ipv4}"
+          psql "$HOSTADDR_DSN" -c "select now();" >/dev/null
+
+      - name: Create backup directory
+        run: mkdir -p backups
+
+      - name: Full database dump
+        run: |
+          set -euo pipefail
+          # Build IP-based DSN
+          hostport="${DIRECT_URL#*@}"; hostport="${hostport%%/*}"; host="${hostport%%:*}"
+          out=$(getent ahostsv4 "$host" 2>/dev/null || true)
+          ipv4=$(awk '{print $1; exit}' <<<"$out")
+          if [ -z "${ipv4:-}" ]; then
+            out=$(getent hosts "$host" 2>/dev/null || true)
+            ipv4=$(awk '$1 !~ /:/{print $1; exit}' <<<"$out")
+          fi
+          if [ -z "${ipv4:-}" ]; then echo "❌ Could not resolve IPv4 for $host" >&2; exit 1; fi
+          sep=$( [[ "$DIRECT_URL" == *\?* ]] && echo '&' || echo '?' )
+          HOSTADDR_DSN="${DIRECT_URL}${sep}hostaddr=${ipv4}"
+          pg_dump "$HOSTADDR_DSN" \
+            --no-owner \
+            --no-privileges \
+            --clean \
+            --if-exists \
+            --format=custom \
+            --file=backups/full_backup_$(date +%F).dump
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+
+      - name: Full database dump (SQL format)
+        run: |
+          set -euo pipefail
+          # Build IP-based DSN
+          hostport="${DIRECT_URL#*@}"; hostport="${hostport%%/*}"; host="${hostport%%:*}"
+          out=$(getent ahostsv4 "$host" 2>/dev/null || true)
+          ipv4=$(awk '{print $1; exit}' <<<"$out")
+          if [ -z "${ipv4:-}" ]; then
+            out=$(getent hosts "$host" 2>/dev/null || true)
+            ipv4=$(awk '$1 !~ /:/{print $1; exit}' <<<"$out")
+          fi
+          if [ -z "${ipv4:-}" ]; then echo "❌ Could not resolve IPv4 for $host" >&2; exit 1; fi
+          sep=$( [[ "$DIRECT_URL" == *\?* ]] && echo '&' || echo '?' )
+          HOSTADDR_DSN="${DIRECT_URL}${sep}hostaddr=${ipv4}"
+          pg_dump "$HOSTADDR_DSN" \
+            --no-owner \
+            --no-privileges \
+            --clean \
+            --if-exists \
+            | gzip > backups/full_backup_$(date +%F).sql.gz
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+
+      - name: Upload full backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-full-backup-${{ github.run_id }}
+          path: backups/full_backup_*
+          retention-days: 30
+
+  # ─────────────────────────────────────────────
+  # Layer 2: Financial Tables Backup (Critical)
+  # ─────────────────────────────────────────────
+  finance-backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Validate DIRECT_URL
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${DIRECT_URL:-}" ]]; then echo "❌ ERROR: DIRECT_URL is not set" >&2; exit 1; fi
+          if [[ "$DIRECT_URL" != *":5432"* ]]; then echo "❌ ERROR: DIRECT_URL must use port 5432" >&2; exit 1; fi
+          if [[ "$DIRECT_URL" == *"pooler"* ]]; then echo "❌ ERROR: DIRECT_URL must NOT use pooler" >&2; exit 1; fi
+          echo "✅ DIRECT_URL looks valid"
+
+      - name: Create backup directory
+        run: mkdir -p backups/finance
+
+      - name: Dump financial tables
+        run: |
+          set -euo pipefail
+          hp="${DIRECT_URL#*@}"; hostport="${hp%%/*}"; host="${hostport%%:*}"
+          out=$(getent ahostsv4 "$host" 2>/dev/null || true)
+          ipv4=$(awk '{print $1; exit}' <<<"$out")
+          if [ -z "${ipv4:-}" ]; then
+            out=$(getent hosts "$host" 2>/dev/null || true)
+            ipv4=$(awk '$1 !~ /:/{print $1; exit}' <<<"$out")
+          fi
+          if [ -z "${ipv4:-}" ]; then echo "❌ Could not resolve IPv4 for $host" >&2; exit 1; fi
+          sep=$( [[ "$DIRECT_URL" == *\?* ]] && echo '&' || echo '?' )
+          HOSTADDR_DSN="${DIRECT_URL}${sep}hostaddr=${ipv4}"
+          pg_dump "$HOSTADDR_DSN" \
+            --no-owner \
+            --no-privileges \
+            --clean \
+            --if-exists \
+            -t payments \
+            -t payment_attempts \
+            -t payment_webhook_events \
+            -t rent_obligations \
+            > backups/finance/finance_backup_$(date +%F).sql
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+
+      - name: Export payments CSV ledger
+        run: |
+          set -euo pipefail
+          hp="${DIRECT_URL#*@}"; hostport="${hp%%/*}"; host="${hostport%%:*}"
+          out=$(getent ahostsv4 "$host" 2>/dev/null || true)
+          ipv4=$(awk '{print $1; exit}' <<<"$out")
+          if [ -z "${ipv4:-}" ]; then
+            out=$(getent hosts "$host" 2>/dev/null || true)
+            ipv4=$(awk '$1 !~ /:/{print $1; exit}' <<<"$out")
+          fi
+          if [ -z "${ipv4:-}" ]; then echo "❌ Could not resolve IPv4 for $host" >&2; exit 1; fi
+          sep=$( [[ "$DIRECT_URL" == *\?* ]] && echo '&' || echo '?' )
+          HOSTADDR_DSN="${DIRECT_URL}${sep}hostaddr=${ipv4}"
+          psql "$HOSTADDR_DSN" -c "\COPY (
+            SELECT 
+              p.id,
+              p.student_id,
+              p.owner_id,
+              p.amount,
+              p.status,
+              p.payment_method,
+              p.reference_number,
+              p.month,
+              p.year,
+              p.created_at,
+              p.updated_at
+            FROM payments p 
+            ORDER BY p.created_at DESC
+          ) TO STDOUT WITH CSV HEADER" > backups/finance/payments_ledger_$(date +%F).csv
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+
+      - name: Export rent obligations CSV
+        run: |
+          set -euo pipefail
+          hp="${DIRECT_URL#*@}"; hostport="${hp%%/*}"; host="${hostport%%:*}"
+          out=$(getent ahostsv4 "$host" 2>/dev/null || true)
+          ipv4=$(awk '{print $1; exit}' <<<"$out")
+          if [ -z "${ipv4:-}" ]; then
+            out=$(getent hosts "$host" 2>/dev/null || true)
+            ipv4=$(awk '$1 !~ /:/{print $1; exit}' <<<"$out")
+          fi
+          if [ -z "${ipv4:-}" ]; then echo "❌ Could not resolve IPv4 for $host" >&2; exit 1; fi
+          sep=$( [[ "$DIRECT_URL" == *\?* ]] && echo '&' || echo '?' )
+          HOSTADDR_DSN="${DIRECT_URL}${sep}hostaddr=${ipv4}"
+          psql "$HOSTADDR_DSN" -c "\COPY (
+            SELECT * FROM rent_obligations ORDER BY created_at DESC
+          ) TO STDOUT WITH CSV HEADER" > backups/finance/rent_obligations_$(date +%F).csv
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+
+      - name: Compress finance backups
+        run: |
+          cd backups/finance
+          tar -czf ../finance_backup_$(date +%F).tar.gz .
+
+      - name: Upload finance backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-finance-backup-${{ github.run_id }}
+          path: backups/finance_backup_*.tar.gz
+          retention-days: 90
+
+  # ─────────────────────────────────────────────
+  # Layer 3: Upload to Supabase Storage
+  # ─────────────────────────────────────────────
+  upload-to-storage:
+    runs-on: ubuntu-latest
+    needs: [full-backup]
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client gnupg jq
+
+
+
+      - name: Download full backup artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: db-full-backup-${{ github.run_id }}
+          path: backups
+
+      - name: Verify backup integrity (pg_restore)
+        run: |
+          set -euo pipefail
+          BACKUP_FILE=$(ls backups/full_backup_*.dump | head -n 1)
+          pg_restore --list "$BACKUP_FILE"
+
+      - name: Encrypt backup with GPG
+        env:
+          GPG_PASSPHRASE: ${{ secrets.BACKUP_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GPG_PASSPHRASE:-}" ]; then echo "❌ Missing BACKUP_GPG_PASSPHRASE" >&2; exit 1; fi
+          BACKUP_FILE=$(ls backups/full_backup_*.sql.gz | head -n 1)
+          echo "$GPG_PASSPHRASE" | gpg --batch --yes --passphrase-fd 0 -c --cipher-algo AES256 "$BACKUP_FILE"
+          rm "$BACKUP_FILE"
+
+      - name: Upload to Supabase Storage
+        run: |
+          set -euo pipefail
+          BACKUP_FILE=$(ls backups/full_backup_*.sql.gz.gpg | head -n 1)
+          STORAGE_PATH="$(date +%F)/full.sql.gz.gpg"
+          # Upload using Supabase Storage REST API (fail loudly)
+          curl -X POST \
+            "${SUPABASE_URL}/storage/v1/object/db-backups/${STORAGE_PATH}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"${BACKUP_FILE}" \
+            --fail-with-body
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+  # ─────────────────────────────────────────────
+  # Layer 2: Weekly Verified Restore
+  # ─────────────────────────────────────────────
+  verify-weekly:
+    runs-on: ubuntu-latest
+    needs: [full-backup]
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: restoredb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 10s --health-timeout 5s --health-retries 10
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Determine if weekly run (Sunday UTC)
+        id: weekly
+        run: |
+          if [ "$(date -u +%u)" = "7" ]; then echo "is_weekly=true" >> $GITHUB_OUTPUT; else echo "is_weekly=false" >> $GITHUB_OUTPUT; fi
+
+      - name: Validate DIRECT_URL
+        if: steps.weekly.outputs.is_weekly == 'true'
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${DIRECT_URL:-}" ]]; then echo "❌ ERROR: DIRECT_URL is not set" >&2; exit 1; fi
+          if [[ "$DIRECT_URL" != *":5432"* ]]; then echo "❌ ERROR: DIRECT_URL must use port 5432" >&2; exit 1; fi
+          if [[ "$DIRECT_URL" == *"pooler"* ]]; then echo "❌ ERROR: DIRECT_URL must NOT use pooler" >&2; exit 1; fi
+          echo "✅ DIRECT_URL looks valid"
+
+      - name: Install tools
+        if: steps.weekly.outputs.is_weekly == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client jq
+
+      - name: Download full backup artifact
+        if: steps.weekly.outputs.is_weekly == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: db-full-backup-${{ github.run_id }}
+          path: backups
+
+      - name: Restore into temporary Postgres
+        if: steps.weekly.outputs.is_weekly == 'true'
+        env:
+          TEMP_DB_URL: postgresql://postgres:postgres@localhost:5432/restoredb
+        run: |
+          set -euo pipefail
+          BACKUP_FILE=$(ls backups/full_backup_*.dump | head -n 1)
+          echo "Using backup: $BACKUP_FILE"
+          pg_restore "$BACKUP_FILE" \
+            --dbname="$TEMP_DB_URL" \
+            --no-owner \
+            --no-privileges \
+            --clean \
+            --if-exists \
+            --single-transaction
+
+      - name: Compare table counts (source vs restore)
+        if: steps.weekly.outputs.is_weekly == 'true'
+        env:
+          SOURCE_DB_URL: ${{ secrets.DIRECT_URL }}
+          TEMP_DB_URL: postgresql://postgres:postgres@localhost:5432/restoredb
+        run: |
+          set -euo pipefail
+          tables=(payments payment_attempts payment_webhook_events rent_obligations profiles students rooms hostels)
+          echo "Resolving IPv4 for source and collecting counts..."
+          hp="${SOURCE_DB_URL#*@}"; hostport="${hp%%/*}"; host="${hostport%%:*}"
+          out=$(getent ahostsv4 "$host" 2>/dev/null || true)
+          ipv4=$(awk '{print $1; exit}' <<<"$out")
+          if [ -z "${ipv4:-}" ]; then
+            out=$(getent hosts "$host" 2>/dev/null || true)
+            ipv4=$(awk '$1 !~ /:/{print $1; exit}' <<<"$out")
+          fi
+          if [ -z "${ipv4:-}" ]; then echo "❌ Could not resolve IPv4 for $host" >&2; exit 1; fi
+          sep=$( [[ "$SOURCE_DB_URL" == *\?* ]] && echo '&' || echo '?' )
+          HOSTADDR_DSN="${SOURCE_DB_URL}${sep}hostaddr=${ipv4}"
+          echo "Collecting counts from source (hostaddr DSN)..."
+          : > source_counts.txt
+          for t in "${tables[@]}"; do
+            c=$(psql "$HOSTADDR_DSN" -At -c "SELECT COUNT(*) FROM $t;" 2>/dev/null || echo "N/A")
+            echo "$t $c" >> source_counts.txt
+          done
+          echo "Collecting counts from restore..."
+          : > restore_counts.txt
+          for t in "${tables[@]}"; do
+            c=$(psql "$TEMP_DB_URL" -At -c "SELECT COUNT(*) FROM $t;" 2>/dev/null || echo "N/A")
+            echo "$t $c" >> restore_counts.txt
+          done
+          echo "Source counts:" && cat source_counts.txt || true
+          echo "Restored counts:" && cat restore_counts.txt || true
+          # Fail if any table is missing (N/A)
+          if grep -q " N/A$" restore_counts.txt; then
+            echo "One or more required tables are missing in restored DB:" >&2
+            grep " N/A$" restore_counts.txt >&2 || true
+            exit 1
+          fi
+          if grep -q " N/A$" source_counts.txt; then
+            echo "Unexpected: one or more required tables missing in source DB:" >&2
+            grep " N/A$" source_counts.txt >&2 || true
+            exit 1
+          fi
+          if ! diff -u source_counts.txt restore_counts.txt; then
+            echo "Count mismatch between source and restored DB" >&2
+            exit 1
+          fi
+          # Minimal data integrity checks on restored DB
+          paypos=$(psql "$TEMP_DB_URL" -At -c "SELECT COUNT(*) FROM payments WHERE amount > 0;" 2>/dev/null || echo "0")
+          if [ "${paypos:-0}" -eq 0 ]; then echo "No payments with amount > 0 found in restored DB" >&2; exit 1; fi
+          ros=$(psql "$TEMP_DB_URL" -At -c "SELECT COUNT(*) FROM rent_obligations WHERE status IS NOT NULL;" 2>/dev/null || echo "0")
+          if [ "${ros:-0}" -eq 0 ]; then echo "No rent_obligations rows with non-null status in restored DB" >&2; exit 1; fi
+          echo "Counts match for critical tables."
+
+  # ─────────────────────────────────────────────
+  # Cleanup old backups from Supabase Storage
+  # ─────────────────────────────────────────────
+  cleanup-old-backups:
+    runs-on: ubuntu-latest
+    needs: [upload-to-storage, verify-weekly]
+    timeout-minutes: 10
+
+    steps:
+      - name: Cleanup backups older than 30 days
+        run: |
+          CUTOFF_DATE=$(date -d "30 days ago" +%F)
+          echo "Cleaning up backups older than ${CUTOFF_DATE}"
+          
+          # List objects in bucket
+          OBJECTS=$(curl -s \
+            "${SUPABASE_URL}/storage/v1/object/list/db-backups" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{"prefix":"","limit":1000}')
+          
+          echo "Found objects: ${OBJECTS}"
+          # Cleanup logic handled by retention policies
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

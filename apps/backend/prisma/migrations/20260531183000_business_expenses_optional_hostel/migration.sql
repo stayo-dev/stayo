@@ -1,0 +1,1 @@
+ALTER TABLE "expenses" ALTER COLUMN "hostel_id" DROP NOT NULL;

@@ -1,0 +1,20 @@
+/** Shared className tokens for the 12 onboarding step components — mirrors the
+ * `eyebrow`/`h1`/`sub`/`fieldLabel`/etc. style-string constants built once per
+ * render in Owner Onboarding.dc.html's script, translated to static Tailwind
+ * classes since React doesn't need to rebuild style strings every render. */
+export const eyebrow = 'mb-3.5 inline-block font-display text-[11px] font-bold tracking-[0.1em] text-[#B0806A]';
+export const h1 = 'mb-2.5 font-display text-[clamp(28px,3.6vw,42px)] font-extrabold leading-[1.08] tracking-tight text-foreground';
+export const sub = 'mb-7 max-w-[430px] text-base leading-relaxed text-muted-foreground';
+export const fieldLabel = 'font-display text-xs font-bold tracking-wide text-primary';
+export const textInput =
+  'mt-2 w-full border-0 border-b-2 border-border bg-transparent px-0.5 py-2.5 text-xl font-semibold text-foreground transition-colors focus:border-primary focus:outline-none';
+export const okNote = 'mt-1.5 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-success';
+export const tile = 'flex items-center justify-between rounded-2xl border border-border bg-card/90 px-4.5 py-4';
+export const tileTitle = 'font-display text-[15px] font-bold text-foreground';
+export const tileSub = 'text-[12.5px] font-medium text-muted-foreground';
+export const statCard = 'rounded-2xl border border-border bg-card/92 p-4.5';
+export const statK = 'text-xs font-medium text-muted-foreground';
+export const stepBtn =
+  'flex h-9.5 w-9.5 items-center justify-center rounded-[11px] border border-border bg-card font-display text-xl font-bold leading-none text-primary transition-transform active:scale-90';
+export const genBtn =
+  'inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl bg-foreground px-4.5 py-3 font-display text-sm font-bold text-background transition-transform active:scale-[0.97]';

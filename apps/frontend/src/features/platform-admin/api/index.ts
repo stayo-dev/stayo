@@ -1,0 +1,114 @@
+import api from '@lib/api-client';
+
+function unwrap(response: { data: any }) {
+  if (response.data && response.data.success !== undefined) {
+    return response.data.data !== undefined ? response.data.data : response.data;
+  }
+  return response.data;
+}
+
+export const platformAdminService = {
+  getHostels: async (params: { search?: string; verification?: string; listing?: string } = {}) => {
+    const response = await api.get('/platform-admin/hostels', { params });
+    return unwrap(response).hostels as any[];
+  },
+  getHostel: async (id: string) => {
+    const response = await api.get(`/platform-admin/hostels/${id}`);
+    return unwrap(response).hostel;
+  },
+  approveListing: async (id: string) => {
+    const response = await api.post(`/platform-admin/hostels/${id}/approve-listing`);
+    return unwrap(response);
+  },
+  suspendListing: async (id: string) => {
+    const response = await api.post(`/platform-admin/hostels/${id}/suspend-listing`);
+    return unwrap(response);
+  },
+  reactivateListing: async (id: string) => {
+    const response = await api.post(`/platform-admin/hostels/${id}/reactivate`);
+    return unwrap(response);
+  },
+
+  getLeads: async (params: { search?: string; status?: string } = {}) => {
+    const response = await api.get('/platform-admin/leads', { params });
+    return unwrap(response).leads as any[];
+  },
+  getLead: async (id: string) => {
+    const response = await api.get(`/platform-admin/leads/${id}`);
+    return unwrap(response);
+  },
+  updateLeadStatus: async (id: string, status: string) => {
+    const response = await api.patch(`/platform-admin/leads/${id}`, { status });
+    return unwrap(response);
+  },
+  approveLead: async (id: string) => {
+    const response = await api.post(`/platform-admin/leads/${id}/approve`);
+    return unwrap(response) as { lead: any; whatsapp_sent: boolean; whatsapp_error?: string; email_sent: boolean; email_error?: string };
+  },
+
+  getPlans: async () => {
+    const response = await api.get('/platform-admin/plans');
+    return unwrap(response).plans as any[];
+  },
+  createPlan: async (data: { name: string; priceAmount: number; billingCycle: string; description?: string }) => {
+    const response = await api.post('/platform-admin/plans', data);
+    return unwrap(response);
+  },
+  assignSubscription: async (hostelId: string, data: { planId: string; autopayEnabled?: boolean }) => {
+    const response = await api.post(`/platform-admin/hostels/${hostelId}/subscription`, data);
+    return unwrap(response);
+  },
+  recordInvoice: async (hostelId: string) => {
+    const response = await api.post(`/platform-admin/hostels/${hostelId}/invoices`);
+    return unwrap(response);
+  },
+  getRevenue: async () => {
+    const response = await api.get('/platform-admin/revenue');
+    return unwrap(response) as { kpis: any; metrics: any };
+  },
+  getRevenueHostels: async (params: { search?: string; status?: string } = {}) => {
+    const response = await api.get('/platform-admin/revenue/hostels', { params });
+    return unwrap(response).hostels as any[];
+  },
+  exportRevenueReport: (report: string) => {
+    window.open(`${api.defaults.baseURL}/platform-admin/revenue/export?report=${report}`, '_blank');
+  },
+
+  getDashboard: async () => {
+    const response = await api.get('/platform-admin/dashboard');
+    return unwrap(response) as { kpis: any; leads_preview: any[]; hostels_preview: any[]; revenue_summary: any; activity: any[] };
+  },
+
+  getAdmins: async () => {
+    const response = await api.get('/platform-admin/admins');
+    return unwrap(response).admins as any[];
+  },
+  inviteAdmin: async (data: { name: string; email: string; title: string }) => {
+    const response = await api.post('/platform-admin/admins', data);
+    return unwrap(response) as { admin: any; temporary_password: string };
+  },
+  getNotificationTemplates: async () => {
+    const response = await api.get('/platform-admin/notification-templates');
+    return unwrap(response).templates as any[];
+  },
+  toggleTemplateActive: async (id: string, isActive: boolean) => {
+    const response = await api.patch(`/platform-admin/notification-templates/${id}`, { isActive });
+    return unwrap(response);
+  },
+  updatePlan: async (id: string, data: { isActive?: boolean; priceAmount?: number }) => {
+    const response = await api.patch(`/platform-admin/plans/${id}`, data);
+    return unwrap(response);
+  },
+  getSettings: async () => {
+    const response = await api.get('/platform-admin/settings');
+    return unwrap(response).settings;
+  },
+  updateSettings: async (data: { supportEmail?: string; supportPhone?: string; businessAddress?: string }) => {
+    const response = await api.patch('/platform-admin/settings', data);
+    return unwrap(response).settings;
+  },
+  sendBroadcast: async (message: string) => {
+    const response = await api.post('/platform-admin/broadcast', { message });
+    return unwrap(response) as { sent: number; total: number };
+  },
+};

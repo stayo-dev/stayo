@@ -1,0 +1,83 @@
+{
+  "buildCommand": "vite build",
+  "outputDirectory": "dist",
+  "installCommand": "npm install",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://api.sriadithyahostels.in/api/:path*"
+    },
+    {
+      "source": "/pay/tenant/%7B%7B1%7D%7D:token",
+      "destination": "https://api.sriadithyahostels.in/api/payments/pay/:token"
+    },
+    {
+      "source": "/pay/tenant/\\{\\{1\\}\\}:token",
+      "destination": "https://api.sriadithyahostels.in/api/payments/pay/:token"
+    },
+    {
+      "source": "/pay/tenant/:token",
+      "destination": "https://api.sriadithyahostels.in/api/payments/pay/:token"
+    },
+    {
+      "source": "/pay/%7B%7B1%7D%7D:token",
+      "destination": "https://api.sriadithyahostels.in/api/payments/pay/:token"
+    },
+    {
+      "source": "/pay/\\{\\{1\\}\\}:token",
+      "destination": "https://api.sriadithyahostels.in/api/payments/pay/:token"
+    },
+    {
+      "source": "/pay/:token",
+      "destination": "https://api.sriadithyahostels.in/api/payments/pay/:token"
+    },
+    {
+      "source": "/((?!.*\\.[a-zA-Z0-9]{1,5}$).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "sriadithyahostels.in"
+        }
+      ],
+      "destination": "https://www.sriadithyahostels.in/:path*",
+      "permanent": true
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; media-src 'self' https://cdn.sanity.io https://media.w3.org https://www.w3schools.com; script-src 'self' 'unsafe-inline' https://accounts.google.com https://checkout.razorpay.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https: https://*.razorpay.com https://cdn.razorpay.com; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://api.sriadithyahostels.in https://accounts.google.com https://*.api.sanity.io https://api.razorpay.com; frame-src https://accounts.google.com https://www.google.com https://api.razorpay.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=(), payment=(self \"https://api.razorpay.com\")"
+        },
+        {
+          "key": "X-Robots-Tag",
+          "value": "index, follow"
+        }
+      ]
+    }
+  ]
+}

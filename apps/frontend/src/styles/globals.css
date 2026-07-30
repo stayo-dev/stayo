@@ -1,0 +1,26 @@
+@import 'tailwindcss' source(none);
+@source '../**/*.{js,ts,jsx,tsx}';
+
+@import 'tw-animate-css';
+@import './fonts.css';
+@import './theme.css';
+/* StayO's new brand theme — coexists with the legacy import above, scoped via
+ * [data-app-theme]. See stayo-theme.css for why this doesn't replace theme.css. */
+@import './stayo-theme.css';
+
+/*
+ * iOS Safari auto-zooms into any focused form control whose computed font-size
+ * is below 16px, and does not zoom back out — making mobile forms (Add Expense,
+ * Add Tenant, etc.) hard to use since our fields default to `text-sm` (14px).
+ * Below the Tailwind `sm` breakpoint, force form controls to 16px so focusing a
+ * field never triggers that zoom. This rule is intentionally UNLAYERED so it
+ * wins over Tailwind's layered `text-sm`/`text-xs` utilities without `!important`
+ * (unlayered styles outrank any cascade layer). Desktop keeps its denser 14px.
+ */
+@media (max-width: 639.98px) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}

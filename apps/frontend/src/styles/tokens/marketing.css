@@ -1,0 +1,51 @@
+/*
+ * StayO marketing-site tokens — extracted from Stayo Homepage.dc.html,
+ * Owner Onboarding.dc.html, AuthModal.dc.html, HeroShowcase.dc.html.
+ * Scoped under [data-app-theme="marketing"] so it never leaks outside a
+ * marketing-shell layout root. See docs/migration/frontend-foundation-tracker.md.
+ */
+[data-app-theme='marketing'] {
+  --background: #fbefe9;
+  --foreground: #2f2f2f;
+  --card: #ffffff;
+  --card-foreground: #2f2f2f;
+  --popover: #ffffff;
+  --popover-foreground: #2f2f2f;
+  --primary: #a45d44;
+  --primary-foreground: #ffffff;
+  --secondary: #f3e7dd;
+  --secondary-foreground: #2f2f2f;
+  --muted: #fbf8f3;
+  --muted-foreground: #7a6e64;
+  --accent: #d2986c;
+  --accent-foreground: #2f2f2f;
+  --destructive: #b8442f;
+  --destructive-foreground: #fbeae6;
+  --border: rgba(47, 47, 47, 0.1);
+  --input: transparent;
+  --input-background: #fbf8f3;
+  --switch-background: #e1d6c8;
+  --ring: #a45d44;
+  --font-weight-medium: 700;
+  --font-weight-normal: 400;
+  --chart-1: #a45d44;
+  --chart-2: #1f8a5b;
+  --chart-3: #d2986c;
+  --chart-4: #3b5fa8;
+  --chart-5: #b8442f;
+  --radius: 1.125rem;
+  --sidebar: #2f2f2f;
+  --sidebar-foreground: #ebd9c4;
+  --sidebar-primary: #a45d44;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #3a3a38;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #3a3a38;
+  --sidebar-ring: #a45d44;
+  --success: #1f8a5b;
+  --success-foreground: #ffffff;
+  --warning: #b8792b;
+  --warning-foreground: #ffffff;
+  --info: #3b5fa8;
+  --info-foreground: #ffffff;
+}

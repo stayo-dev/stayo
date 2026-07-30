@@ -1,0 +1,73 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+
+  --font-display: 'Playfair Display', serif;
+  --font-body: 'Poppins', sans-serif;
+
+  /* Sri Adithya Boys Hostel Color Palette */
+  --saffron: #F07B1D;
+  --navy: #1B2D5B;
+  --warm-ivory: #FFFDF5;
+  --warm-white: #FFFFFF;
+  --charcoal: #2C2C2A;
+  --golden: #FBB040;
+
+  --background: #FFFDF5;
+  --foreground: #2C2C2A;
+  --card: #FFFFFF;
+  --card-foreground: #2C2C2A;
+  --popover: #FFFFFF;
+  --popover-foreground: #2C2C2A;
+  --primary: #F07B1D;
+  --primary-foreground: #FFFFFF;
+  --secondary: #1B2D5B;
+  --secondary-foreground: #FFFFFF;
+  --muted: #FFFDF5;
+  --muted-foreground: #717182;
+  --accent: #FBB040;
+  --accent-foreground: #2C2C2A;
+  --destructive: #d4183d;
+  --destructive-foreground: #ffffff;
+  --border: rgba(0, 0, 0, 0.1);
+  --input: transparent;
+  --input-background: #f3f3f5;
+  --switch-background: #cbced4;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --ring: #F07B1D;
+  --radius: 0.5rem;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-body);
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}

@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Receipt {{invoice_number}}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    color: #1a1a2e;
+    background: #ffffff;
+    width: 595px;
+    min-height: 842px;
+    padding: 0;
+  }
+
+  .invoice-page {
+    width: 595px;
+    min-height: 842px;
+    padding: 48px 48px 32px 48px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+  }
+
+  .logo-block img {
+    max-width: 120px;
+    max-height: 60px;
+    object-fit: contain;
+  }
+
+  .logo-block .logo-placeholder {
+    font-size: 11px;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+  }
+
+  .invoice-no {
+    font-size: 11px;
+    color: #64748b;
+    text-align: right;
+    font-weight: 500;
+  }
+
+  /* ── TITLE ── */
+  .invoice-title {
+    font-size: 48px;
+    font-weight: 900;
+    letter-spacing: -2px;
+    color: #0f172a;
+    margin: 12px 0 6px 0;
+    line-height: 1;
+  }
+
+  /* ── META ROW ── */
+  .meta-row {
+    display: flex;
+    gap: 32px;
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .meta-item {
+    font-size: 11px;
+  }
+
+  .meta-item .label {
+    color: #94a3b8;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 2px;
+  }
+
+  .meta-item .value {
+    color: #1e293b;
+    font-weight: 600;
+    font-size: 12px;
+  }
+
+  /* ── ADDRESS BLOCKS ── */
+  .address-section {
+    display: flex;
+    justify-content: space-between;
+    gap: 40px;
+    margin-bottom: 36px;
+  }
+
+  .address-block {
+    flex: 1;
+  }
+
+  .address-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 8px;
+  }
+
+  .address-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 4px;
+  }
+
+  .address-detail {
+    font-size: 11px;
+    color: #475569;
+    line-height: 1.6;
+  }
+
+  .address-detail .tag {
+    display: inline-block;
+    background: #f1f5f9;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #475569;
+    margin-top: 4px;
+  }
+
+  /* ── TABLE ── */
+  .items-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 24px;
+  }
+
+  .items-table thead th {
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 10px 12px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    text-align: left;
+  }
+
+  .items-table thead th:last-child {
+    text-align: right;
+  }
+
+  .items-table thead th:nth-child(2) {
+    text-align: center;
+  }
+
+  .items-table tbody td {
+    padding: 14px 12px;
+    font-size: 12px;
+    color: #334155;
+    border-bottom: 1px solid #f1f5f9;
+  }
+
+  .items-table tbody td:last-child {
+    text-align: right;
+    font-weight: 600;
+    color: #0f172a;
+  }
+
+  .items-table tbody td:nth-child(2) {
+    text-align: center;
+    color: #64748b;
+  }
+
+  /* ── TOTALS ── */
+  .totals-section {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 36px;
+  }
+
+  .totals-box {
+    width: 240px;
+  }
+
+  .totals-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    font-size: 12px;
+    color: #475569;
+  }
+
+  .totals-row.discount .value {
+    color: #dc2626;
+  }
+
+  .totals-row.grand-total {
+    border-top: 2px solid #0f172a;
+    margin-top: 8px;
+    padding-top: 12px;
+    font-size: 16px;
+    font-weight: 800;
+    color: #0f172a;
+  }
+
+  .totals-row .value {
+    font-weight: 600;
+  }
+
+  .totals-row.grand-total .value {
+    color: #059669;
+  }
+
+  /* ── PAYMENT DETAILS ── */
+  .payment-section {
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 36px;
+  }
+
+  .payment-title {
+    font-size: 10px;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 10px;
+  }
+
+  .payment-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 24px;
+  }
+
+  .payment-item {
+    font-size: 11px;
+  }
+
+  .payment-item .p-label {
+    color: #94a3b8;
+    font-weight: 500;
+  }
+
+  .payment-item .p-value {
+    color: #1e293b;
+    font-weight: 600;
+  }
+
+  /* ── STATUS BADGE ── */
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .status-badge.paid {
+    background: #ecfdf5;
+    color: #059669;
+  }
+
+  .status-badge.paid::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    background: #059669;
+    border-radius: 50%;
+  }
+
+  .status-badge.pending {
+    background: #fef3c7;
+    color: #d97706;
+  }
+
+  /* ── FOOTER ── */
+  .footer {
+    border-top: 1px solid #e2e8f0;
+    padding-top: 16px;
+    text-align: center;
+  }
+
+  .footer-thanks {
+    font-size: 13px;
+    font-weight: 600;
+    color: #334155;
+    margin-bottom: 4px;
+  }
+
+  .footer-support {
+    font-size: 10px;
+    color: #94a3b8;
+  }
+
+  .footer-note {
+    font-size: 9px;
+    color: #cbd5e1;
+    margin-top: 8px;
+    font-style: italic;
+  }
+
+  /* ── DECORATIVE WAVE ── */
+  .wave-decoration {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 80px;
+    overflow: hidden;
+  }
+
+  .wave-decoration svg {
+    width: 100%;
+    height: 100%;
+  }
+</style>
+</head>
+<body>
+<div class="invoice-page">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="logo-block">
+      <!-- Dynamic Logo -->
+      {{#if hostel_logo}}
+        <img src="{{hostel_logo}}" alt="Logo" />
+      {{else}}
+        <div class="logo-placeholder">{{hostel_name}}</div>
+      {{/if}}
+    </div>
+    <div class="invoice-no">NO. {{invoice_number}}</div>
+  </div>
+
+  <!-- TITLE -->
+  <h1 class="invoice-title">RECEIPT</h1>
+
+  <!-- META ROW -->
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Date</div>
+      <div class="value">{{issue_date}}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Rent Month</div>
+      <div class="value">{{rent_month}}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Status</div>
+      <div class="value">
+        <span class="status-badge paid">Paid</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADDRESS SECTION -->
+  <div class="address-section">
+
+    <div class="address-block">
+      <div class="address-label">Billed To</div>
+      <div class="address-name">{{tenant_name}}</div>
+      <div class="address-detail">
+        Room: {{room_number}}<br>
+        ID: {{tenant_id}}<br>
+        Phone: {{tenant_phone}}<br>
+        {{tenant_email}}
+        <div class="tag">Tenant</div>
+      </div>
+    </div>
+
+    <div class="address-block">
+      <div class="address-label">From</div>
+      <div class="address-name">{{hostel_name}}</div>
+      <div class="address-detail">
+        {{hostel_address}}<br>
+        {{hostel_city}}, {{hostel_state}} {{hostel_pincode}}<br>
+        Phone: {{hostel_phone}}<br>
+        {{#if hostel_upi}}UPI: {{hostel_upi}}<br>{{/if}}
+        {{#if hostel_gst}}GST: {{hostel_gst}}{{/if}}
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ITEMS TABLE -->
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th>Description</th>
+        <th>Month</th>
+        <th>Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{#each line_items}}
+      <tr>
+        <td>{{this.description}}</td>
+        <td>{{this.month}}</td>
+        <td>{{currency}} {{this.amount}}</td>
+      </tr>
+      {{/each}}
+    </tbody>
+  </table>
+
+  <!-- TOTALS -->
+  <div class="totals-section">
+    <div class="totals-box">
+      <div class="totals-row">
+        <span class="label">Subtotal</span>
+        <span class="value">{{currency}} {{subtotal}}</span>
+      </div>
+      {{#if late_fee}}
+      <div class="totals-row">
+        <span class="label">Late Fee</span>
+        <span class="value">{{currency}} {{late_fee}}</span>
+      </div>
+      {{/if}}
+      {{#if discount}}
+      <div class="totals-row discount">
+        <span class="label">Discount</span>
+        <span class="value">-{{currency}} {{discount}}</span>
+      </div>
+      {{/if}}
+      <div class="totals-row grand-total">
+        <span class="label">Total Paid</span>
+        <span class="value">{{currency}} {{total_amount}}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAYMENT DETAILS -->
+  <div class="payment-section">
+    <div class="payment-title">Payment Details</div>
+    <div class="payment-grid">
+      <div class="payment-item">
+        <span class="p-label">Method: </span>
+        <span class="p-value">{{payment_method}}</span>
+      </div>
+      <div class="payment-item">
+        <span class="p-label">Transaction ID: </span>
+        <span class="p-value">{{transaction_id}}</span>
+      </div>
+      <div class="payment-item">
+        <span class="p-label">Payment Date: </span>
+        <span class="p-value">{{payment_date}}</span>
+      </div>
+      <div class="payment-item">
+        <span class="p-label">Collected By: </span>
+        <span class="p-value">{{collected_by}}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div class="footer-thanks">Thank you for staying with us!</div>
+    <div class="footer-support">For support: support@sriadithyahostels.in</div>
+    <div class="footer-note">This is a computer-generated invoice. No signature required.</div>
+  </div>
+
+  <!-- DECORATIVE WAVE -->
+  <div class="wave-decoration">
+    <svg viewBox="0 0 595 80" preserveAspectRatio="none">
+      <path d="M0,40 Q149,0 298,40 T595,40 L595,80 L0,80 Z" fill="#e2e8f0" opacity="0.5"/>
+      <path d="M0,55 Q149,20 298,55 T595,55 L595,80 L0,80 Z" fill="#475569" opacity="0.8"/>
+      <path d="M0,65 Q149,40 298,65 T595,65 L595,80 L0,80 Z" fill="#1e293b"/>
+    </svg>
+  </div>
+
+</div>
+</body>
+</html>

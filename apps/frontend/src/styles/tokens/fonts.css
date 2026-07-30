@@ -1,0 +1,12 @@
+/*
+ * StayO typography — Manrope (headings/labels/stats) + Inter (body).
+ * The actual font files are loaded via a <link rel="stylesheet"> in
+ * index.html, not a CSS @import here — see that file for why.
+ */
+[data-app-theme='marketing'],
+[data-app-theme='product'] {
+  --font-display: 'Manrope', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-hero: var(--font-display);
+  --font-sans: var(--font-body);
+}

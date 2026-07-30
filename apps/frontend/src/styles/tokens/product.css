@@ -1,0 +1,51 @@
+/*
+ * StayO product-app tokens — extracted from Stayo App.dc.html,
+ * Stayo Config.dc.html, Stayo Tenant.dc.html, TenantNav.dc.html, BottomNav.dc.html.
+ * Scoped under [data-app-theme="product"] so it never leaks outside an
+ * owner/tenant app-shell layout root. See docs/migration/frontend-foundation-tracker.md.
+ */
+[data-app-theme='product'] {
+  --background: #f7f3ef;
+  --foreground: #221e1a;
+  --card: #ffffff;
+  --card-foreground: #221e1a;
+  --popover: #ffffff;
+  --popover-foreground: #221e1a;
+  --primary: #b46a55;
+  --primary-foreground: #ffffff;
+  --secondary: #f7f3ef;
+  --secondary-foreground: #221e1a;
+  --muted: #f7f3ef;
+  --muted-foreground: #8a7f75;
+  --accent: #efe6da;
+  --accent-foreground: #221e1a;
+  --destructive: #b3402f;
+  --destructive-foreground: #fbeae7;
+  --border: #efe6da;
+  --input: transparent;
+  --input-background: #fffdfb;
+  --switch-background: #e2d5c7;
+  --ring: #b46a55;
+  --font-weight-medium: 700;
+  --font-weight-normal: 400;
+  --chart-1: #b46a55;
+  --chart-2: #1f7a52;
+  --chart-3: #b8792b;
+  --chart-4: #3b5fa8;
+  --chart-5: #b3402f;
+  --radius: 1.125rem;
+  --sidebar: #221e1a;
+  --sidebar-foreground: #d8cfc5;
+  --sidebar-primary: #b46a55;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #2a2521;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #2a2521;
+  --sidebar-ring: #b46a55;
+  --success: #1f7a52;
+  --success-foreground: #ffffff;
+  --warning: #b8792b;
+  --warning-foreground: #ffffff;
+  --info: #3b5fa8;
+  --info-foreground: #ffffff;
+}

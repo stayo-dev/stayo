@@ -1,0 +1,46 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.env
+.env.*
+!.env.example
+.codex
+# Logs
+logs/
+*.log
+
+# Frontend build artifacts
+apps/frontend/.vite/
+apps/frontend/dist/
+node_modules/
+
+# Local scripts
+gen_token.*
+debug_user.py
+uv.lock
+.python-version
+latest-otp.txt
+
+# Database backups (contain sensitive data)
+backups/
+db-dumps/
+*.dump
+*.sql.gz
+*_backup_*.sql
+*_ledger_*.csv
+*_obligations_*.csv
+
+# Local scratch files
+scratch/
+apps/backend/scratch/
+
+# Added by ggshield
+.cache_ggshield
+.superpowers/

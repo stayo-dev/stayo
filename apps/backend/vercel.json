@@ -1,0 +1,45 @@
+{
+  "regions": ["bom1"],
+  "crons": [
+    {
+      "path": "/api/cron/generate-rent",
+      "schedule": "30 18 * * *"
+    },
+    {
+      "path": "/api/cron/rent-reminders",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-payments",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/hostel-invariants",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/migration-audit",
+      "schedule": "15 1 * * *"
+    },
+    {
+      "path": "/api/cron/move-out-releases",
+      "schedule": "30 18 * * *"
+    },
+    {
+      "path": "/api/cron/admissions",
+      "schedule": "45 18 * * *"
+    },
+    {
+      "path": "/api/cron/agreement-lifecycle",
+      "schedule": "30 1 * * *"
+    },
+    {
+      "path": "/api/cron/daily-briefings",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/food-carry-forward",
+      "schedule": "0 4 * * *"
+    }
+  ]
+}

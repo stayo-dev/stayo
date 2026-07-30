@@ -1,0 +1,115 @@
+import { lazy, Suspense } from 'react';
+import { Navigate, Route } from 'react-router-dom';
+import { ErrorBoundary } from '@/app/components/ErrorBoundary';
+
+const OwnerAppShell = lazy(() =>
+  import('@/app/layouts/OwnerAppShell').then((m) => ({ default: m.OwnerAppShell })),
+);
+const OwnerProviderShell = lazy(() => import('./OwnerProviderShell').then((m) => ({ default: m.OwnerProviderShell })));
+
+const OwnerDashboardPreviewPage = lazy(() =>
+  import('@features/owner-onboarding/pages/OwnerDashboardPreviewPage').then((m) => ({ default: m.OwnerDashboardPreviewPage })),
+);
+const TenantsPage = lazy(() => import('@features/owner-tenants/pages/TenantsPage').then((m) => ({ default: m.TenantsPage })));
+const TenantDetailPage = lazy(() =>
+  import('@features/owner-tenants/pages/TenantDetailPage').then((m) => ({ default: m.TenantDetailPage })),
+);
+const HostelDrilldownLayout = lazy(() =>
+  import('@features/hostel-drilldown/layout/HostelDrilldownLayout').then((m) => ({ default: m.HostelDrilldownLayout })),
+);
+const HostelOverviewPage = lazy(() =>
+  import('@features/hostel-drilldown/pages/HostelOverviewPage').then((m) => ({ default: m.HostelOverviewPage })),
+);
+const HostelRoomsPage = lazy(() => import('@features/hostel-drilldown/pages/HostelRoomsPage').then((m) => ({ default: m.HostelRoomsPage })));
+const HostelTenantsPage = lazy(() =>
+  import('@features/hostel-drilldown/pages/HostelTenantsPage').then((m) => ({ default: m.HostelTenantsPage })),
+);
+const MoneyPage = lazy(() => import('@features/owner-money/pages/MoneyPage').then((m) => ({ default: m.MoneyPage })));
+const FoodPage = lazy(() => import('@features/owner-food/pages/FoodPage').then((m) => ({ default: m.FoodPage })));
+const AlertsPage = lazy(() => import('@features/owner-alerts/pages/AlertsPage').then((m) => ({ default: m.AlertsPage })));
+const MorePage = lazy(() => import('@features/owner-more/pages/MorePage').then((m) => ({ default: m.MorePage })));
+const MoreSettingsPage = lazy(() => import('@features/owner-more/pages/MoreSettingsPage').then((m) => ({ default: m.MoreSettingsPage })));
+const MoreBillingPage = lazy(() => import('@features/owner-more/pages/MoreBillingPage').then((m) => ({ default: m.MoreBillingPage })));
+const MoreProfilePage = lazy(() => import('@features/owner-more/pages/MoreProfilePage').then((m) => ({ default: m.MoreProfilePage })));
+const MoreHostelIdentityPage = lazy(() =>
+  import('@features/owner-more/pages/MoreHostelIdentityPage').then((m) => ({ default: m.MoreHostelIdentityPage })),
+);
+const MoreNoticesPage = lazy(() => import('@features/owner-more/pages/MoreNoticesPage').then((m) => ({ default: m.MoreNoticesPage })));
+const MoreServiceRequestsPage = lazy(() => import('@features/owner-more/pages/MoreServiceRequestsPage').then((m) => ({ default: m.MoreServiceRequestsPage })));
+const MoreHelpPage = lazy(() => import('@features/owner-more/pages/MoreHelpPage').then((m) => ({ default: m.MoreHelpPage })));
+const MoreAboutPage = lazy(() => import('@features/owner-more/pages/MoreAboutPage').then((m) => ({ default: m.MoreAboutPage })));
+
+function OwnerRouteFallback() {
+  return (
+    <div className="min-h-screen bg-background px-4 py-5">
+      <div className="mx-auto max-w-5xl space-y-4">
+        <div className="h-10 w-48 rounded-lg bg-muted animate-pulse" />
+        <div className="grid grid-cols-3 gap-3">
+          <div className="h-20 rounded-xl bg-muted animate-pulse" />
+          <div className="h-20 rounded-xl bg-muted animate-pulse" />
+          <div className="h-20 rounded-xl bg-muted animate-pulse" />
+        </div>
+        <div className="h-40 rounded-xl bg-muted animate-pulse" />
+      </div>
+    </div>
+  );
+}
+
+/** Exported so ConfigRoutes/OnboardingRoute can share the same owner auth-gate + fallback. */
+export function OwnerBoundary() {
+  return (
+    <ErrorBoundary context="owner-routes">
+      <Suspense fallback={<OwnerRouteFallback />}>
+        <OwnerProviderShell />
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
+/**
+ * StayO owner-app route tree, per Stayo App.dc.html's navigation state
+ * machine (tab / hostelScreen / moreScreen), implemented as real routes
+ * instead of client-only state. This is the single canonical owner app —
+ * these pages previously lived (mock-data-era) under `/get-started/*`
+ * behind a separate, non-`ProtectedRoute` gate; migrated here so a real
+ * logged-in owner session has somewhere real to land instead of the old
+ * RouteScaffold placeholders. Tab pages sit inside `OwnerAppShell`; Tenant
+ * Detail and the Hostel Drill-down are mounted as siblings outside it,
+ * rendered as full-screen takeovers with their own back button, not
+ * bottom-nav tabs.
+ */
+export function OwnerRoutes() {
+  return (
+    <Route element={<OwnerBoundary />}>
+      <Route element={<OwnerAppShell />}>
+        <Route path="/owner" element={<Navigate to="/owner/home" replace />} />
+        <Route path="/owner/home" element={<OwnerDashboardPreviewPage />} />
+
+        <Route path="/owner/tenants" element={<TenantsPage />} />
+
+        <Route path="/owner/money" element={<MoneyPage />} />
+        <Route path="/owner/food" element={<FoodPage />} />
+        <Route path="/owner/alerts" element={<AlertsPage />} />
+
+        <Route path="/owner/more" element={<MorePage />} />
+        <Route path="/owner/more/settings" element={<MoreSettingsPage />} />
+        <Route path="/owner/more/billing" element={<MoreBillingPage />} />
+        <Route path="/owner/more/profile" element={<MoreProfilePage />} />
+        <Route path="/owner/more/hostel" element={<MoreHostelIdentityPage />} />
+        <Route path="/owner/more/notices" element={<MoreNoticesPage />} />
+        <Route path="/owner/more/service-requests" element={<MoreServiceRequestsPage />} />
+        <Route path="/owner/more/help" element={<MoreHelpPage />} />
+        <Route path="/owner/more/about" element={<MoreAboutPage />} />
+      </Route>
+
+      <Route path="/owner/tenants/:tenantId" element={<TenantDetailPage />} />
+
+      <Route path="/owner/hostels/:hostelId" element={<HostelDrilldownLayout />}>
+        <Route index element={<Navigate to="overview" replace />} />
+        <Route path="overview" element={<HostelOverviewPage />} />
+        <Route path="rooms" element={<HostelRoomsPage />} />
+        <Route path="tenants" element={<HostelTenantsPage />} />
+      </Route>
+    </Route>
+  );
+}
