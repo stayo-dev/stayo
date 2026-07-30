@@ -20,7 +20,10 @@ const STATUSES = ['NEW', 'UNDER_REVIEW', 'APPROVED', 'INVITE_SENT', 'OWNER_ACTIV
 // onward is system-managed by the real approve/signup/hostel-creation flow
 // (see PATCH /api/platform-admin/leads/[id], which rejects anything else).
 const MANUALLY_SETTABLE_STATUSES = ['NEW', 'UNDER_REVIEW', 'LOST'];
-const APPROVABLE_STATUSES = ['NEW', 'UNDER_REVIEW'];
+// APPROVED means "approved, but the link failed to send" (see
+// lead-invitation-service.ts) — the button stays available so the admin
+// can retry, rather than the lead getting silently stuck.
+const APPROVABLE_STATUSES = ['NEW', 'UNDER_REVIEW', 'APPROVED'];
 
 const TIMELINE_LABEL: Record<string, string> = {
   LEAD_CREATED: 'Lead created',
@@ -73,16 +76,23 @@ export function AdminLeadsPage() {
 
   const statusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) => platformAdminService.updateLeadStatus(id, status),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'leads'] });
+      // The list query above is a *different* React Query key from the
+      // drawer's own detail query ('lead-detail', not 'leads') — without
+      // this, the open drawer kept showing the pre-mutation status/Approve
+      // button until manually reopened, letting a second click hit the
+      // now-stale button and 409 with "already approved/updated".
+      queryClient.invalidateQueries({ queryKey: ['admin', 'lead-detail', variables.id] });
     },
     onError: () => stayoToast.error('Could not update lead'),
   });
 
   const approveMutation = useMutation({
     mutationFn: (id: string) => platformAdminService.approveLead(id),
-    onSuccess: (result) => {
+    onSuccess: (result, id) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'leads'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'lead-detail', id] });
       if (result.whatsapp_sent) stayoToast.success('Activation link sent via WhatsApp');
       else if (result.email_sent) stayoToast.success('Activation link sent via email');
       else stayoToast.error(result.email_error || result.whatsapp_error || 'Approved, but the activation link could not be sent');
@@ -289,7 +299,7 @@ export function AdminLeadsPage() {
                     onClick={() => approveMutation.mutate(openLead.id)}
                     className="h-10 flex-1 rounded-[10px] bg-success text-[12.5px] font-bold text-white disabled:opacity-60"
                   >
-                    {approveMutation.isPending ? 'Sending…' : 'Approve Lead'}
+                    {approveMutation.isPending ? 'Sending…' : openLead.status === 'APPROVED' ? 'Retry Send' : 'Approve Lead'}
                   </button>
                   <button
                     type="button"

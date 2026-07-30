@@ -18,7 +18,11 @@ import { eventLog } from "../../../lib/services/event-log-service";
  */
 
 const DEFAULT_INVITE_DAYS = 7;
-const APPROVABLE_STATUSES = ["NEW", "UNDER_REVIEW"];
+// APPROVED is included so a lead whose send failed (e.g. email/WhatsApp
+// provider error) can be retried — it means "approved, not yet
+// successfully delivered," not "already delivered." A successful send
+// always moves the lead to INVITE_SENT, which is not retryable this way.
+const APPROVABLE_STATUSES = ["NEW", "UNDER_REVIEW", "APPROVED"];
 
 function generateToken() {
   return crypto.randomBytes(32).toString("hex");

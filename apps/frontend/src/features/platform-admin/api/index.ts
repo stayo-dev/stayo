@@ -79,6 +79,11 @@ export const platformAdminService = {
     return unwrap(response) as { kpis: any; leads_preview: any[]; hostels_preview: any[]; revenue_summary: any; activity: any[] };
   },
 
+  getNotifications: async () => {
+    const response = await api.get('/platform-admin/notifications');
+    return unwrap(response).notifications as Array<{ id: string; time: string; title: string; sub: string; color: string }>;
+  },
+
   getAdmins: async () => {
     const response = await api.get('/platform-admin/admins');
     return unwrap(response).admins as any[];

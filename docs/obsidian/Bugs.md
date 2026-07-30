@@ -38,6 +38,26 @@ Copy this block for each new entry:
 - **Fix:** now written by `POST /api/auth/owner-signup`'s optional `lead_token` handling, at the moment a lead's owner-signup completes (`leadInvitationService.activateInvitationForOwner()`), and read back by `POST /api/owner/hostels` to advance the lead to `HOSTEL_CREATED`. See [[Decisions#ADR-032|ADR-032]].
 - **Related:** [[Decisions]] ADR-032, [[APIs]], [[Changelog]]
 
+### Owner-activation links resolved to the old production domain instead of local dev
+
+- **Status:** fixed
+- **Found:** 2026-07-30, user reported that clicking the activation link in the approval email landed on the old `sriadithyahostels.in` site instead of the onboarding wizard.
+- **Area:** [[Backend]], [[Decisions#ADR-032|ADR-032]]
+- **Symptom:** every link built via `frontendUrl()` (`lib/config/domains.ts`) — including the owner-activation email from [[Decisions#ADR-032|ADR-032]] — pointed at `https://sriadithyahostels.in/...` even in local dev.
+- **Root cause:** `getFrontendUrl()` falls back to the hardcoded `PRODUCTION_FRONTEND_URL` constant whenever neither `NEXT_PUBLIC_FRONTEND_URL` nor `FRONTEND_URL` is set — both were unset in the working `.env`, so every environment silently got the production fallback, not just real production.
+- **Fix:** set `FRONTEND_URL="http://localhost:5174"` in `.env`. `getFrontendUrl()` itself was not changed — its production-runtime guard (`isProductionRuntime()`) is correct as-is; the bug was a missing local env var, not faulty fallback logic. Verified live: a fresh lead approved after the fix produced an email with a correctly-built `localhost:5174/owner-invite/...` link.
+- **Related:** [[Changelog]], [[Decisions#ADR-032|ADR-032]]
+
+### Admin Lead drawer showed stale status after approve/status mutations, letting a second click 409
+
+- **Status:** fixed
+- **Found:** 2026-07-30, user reported the dashboard kept saying "Link is already sent to you" and an error occurred while sending, despite no email having arrived.
+- **Area:** [[Frontend]], [[Decisions#ADR-032|ADR-032]]
+- **Symptom:** after approving a lead (or changing its status) from the open detail drawer, the drawer kept rendering the pre-mutation status and an active "Approve Lead" button. Clicking it again hit the now-stale button and the backend correctly rejected it with a 409 (`INVALID_TRANSITION`) — confirmed via backend log timestamps showing an initial `200` followed by two `409`s for the same lead.
+- **Root cause:** `AdminLeadsPage.tsx`'s `statusMutation`/`approveMutation` only invalidated the list query (`['admin','leads']`) on success — the drawer reads from a separate query key, `['admin','lead-detail', id]`, which was never invalidated.
+- **Fix:** both mutations now also invalidate `['admin','lead-detail', variables.id]`. Also added the success/error toasts the approve flow was missing entirely, and made `APPROVED` (send failed, not yet delivered) retryable via the same button, relabeled "Retry Send" for that state, instead of getting permanently stuck.
+- **Related:** [[Changelog]], [[Decisions#ADR-032|ADR-032]]
+
 ### Onboarding wizard's publish step silently dropped `city` even though the backend always accepted it
 
 - **Status:** fixed

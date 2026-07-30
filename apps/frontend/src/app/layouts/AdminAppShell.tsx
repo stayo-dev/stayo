@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { LayoutGrid, Building2, UserPlus, IndianRupee, MoreHorizontal, Search, Bell } from 'lucide-react';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
 import { useAdminSession } from '@features/admin-session/useAdminSession';
+import { platformAdminService } from '@features/platform-admin/api';
 
 /**
  * Admin console shell — sidebar chrome per Stayo Admin.dc.html. Desktop
@@ -33,11 +35,28 @@ const PAGE_HEADERS: Record<string, { title: string; subtitle: string }> = {
 
 const initials = (name: string) => name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 
+function timeAgo(iso: string) {
+  const ms = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(ms / 60_000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  return `${day}d ago`;
+}
+
 export function AdminAppShell() {
   const session = useAdminSession();
   const location = useLocation();
   const [notifOpen, setNotifOpen] = useState(false);
   const header = PAGE_HEADERS[location.pathname] ?? { title: 'Stayo Admin', subtitle: '' };
+  const notifications = useQuery({
+    queryKey: ['admin', 'notifications'],
+    queryFn: () => platformAdminService.getNotifications(),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
 
   return (
     <ThemeProvider theme="product">
@@ -100,6 +119,9 @@ export function AdminAppShell() {
                 className="relative flex h-9.5 w-9.5 items-center justify-center rounded-[10px] border border-[#E7DDD1] bg-white text-[#8A7F75] hover:text-foreground"
               >
                 <Bell className="h-[18px] w-[18px]" strokeWidth={1.9} />
+                {(notifications.data?.length ?? 0) > 0 && (
+                  <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-destructive" />
+                )}
               </button>
               {notifOpen && (
                 <>
@@ -108,7 +130,26 @@ export function AdminAppShell() {
                     <div className="flex items-center justify-between border-b border-[#EFE6DA] px-4 py-3.5">
                       <span className="font-display text-[13.5px] font-bold text-foreground">Notifications</span>
                     </div>
-                    <div className="px-4 py-6 text-center text-[12px] text-[#8A7F75]">No notifications yet.</div>
+                    <div className="max-h-[360px] overflow-y-auto">
+                      {notifications.isLoading ? (
+                        <div className="px-4 py-6 text-center text-[12px] text-[#8A7F75]">Loading…</div>
+                      ) : notifications.data && notifications.data.length > 0 ? (
+                        notifications.data.map((n) => (
+                          <div key={n.id} className="flex items-start gap-2.5 border-b border-[#F2ECE5] px-4 py-3 last:border-b-0">
+                            <span className="mt-1.5 h-1.5 w-1.5 flex-none rounded-full" style={{ background: n.color }} />
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-[12.5px] font-semibold text-foreground">{n.title}</div>
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="truncate text-[11.5px] text-[#9C9186]">{n.sub}</span>
+                                <span className="flex-none text-[11px] text-[#9C9186]">{timeAgo(n.time as unknown as string)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="px-4 py-6 text-center text-[12px] text-[#8A7F75]">No notifications yet.</div>
+                      )}
+                    </div>
                   </div>
                 </>
               )}

@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { composeRecentActivity } from "@/lib/services/platform-admin-activity-service";
 
 function requireAdmin(session: any) {
   if (!session || session.role !== "ADMIN") throw new Error("FORBIDDEN: Admin access only");
@@ -35,9 +36,7 @@ export async function GET(req: NextRequest) {
       lifetimePlatformRevenue,
       leadsPreview,
       hostelsPreview,
-      recentLeads,
-      recentHostels,
-      recentInvoices,
+      activity,
     ] = await Promise.all([
       prisma.platform_leads.count({ where: { status: "NEW" } }),
       prisma.hostels.count({ where: { verification_status: "PENDING" } }),
@@ -58,9 +57,7 @@ export async function GET(req: NextRequest) {
         take: 3,
         select: { id: true, name: true, city: true, listing_status: true, _count: { select: { tenants: true } } },
       }),
-      prisma.platform_leads.findMany({ orderBy: { updated_at: "desc" }, take: 5, where: { updated_at: { not: null } } }),
-      prisma.hostels.findMany({ orderBy: { created_at: "desc" }, take: 5, select: { id: true, name: true, created_at: true } }),
-      prisma.platform_invoices.findMany({ orderBy: { paid_at: "desc" }, take: 5, where: { status: "PAID" }, include: { hostels: { select: { name: true } } } }),
+      composeRecentActivity(8),
     ]);
 
     // MRR composed the same way as /api/platform-admin/revenue — one
@@ -85,33 +82,6 @@ export async function GET(req: NextRequest) {
     const duesByHostel = new Map(duesSums.map((r: any) => [r.hostel_id, Number(r._sum.amount ?? 0)]));
     const capacityByHostel = new Map(capacitySums.map((r: any) => [r.hostel_id, Number(r._sum.capacity ?? 0)]));
     const activeByHostel = new Map(activeTenantCounts.map((r: any) => [r.hostel_id, r._count._all]));
-
-    const activity = [
-      ...recentLeads.map((l: any) => ({
-        id: `lead:${l.id}`,
-        time: l.updated_at,
-        title: `${l.name} → ${l.status.replace("_", " ")}`,
-        sub: l.hostel_name,
-        color: "var(--info)",
-      })),
-      ...recentHostels.map((h: any) => ({
-        id: `hostel:${h.id}`,
-        time: h.created_at,
-        title: `New hostel: ${h.name}`,
-        sub: "Onboarded",
-        color: "var(--primary)",
-      })),
-      ...recentInvoices.map((i: any) => ({
-        id: `invoice:${i.id}`,
-        time: i.paid_at,
-        title: `Payment collected — ${i.hostels.name}`,
-        sub: `₹${Number(i.amount).toLocaleString("en-IN")}`,
-        color: "var(--success)",
-      })),
-    ]
-      .filter((a) => a.time)
-      .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
-      .slice(0, 8);
 
     return apiResponse({
       kpis: {
