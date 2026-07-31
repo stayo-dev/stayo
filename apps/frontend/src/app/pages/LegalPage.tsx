@@ -29,34 +29,34 @@ export function LegalPage() {
 
   useEffect(() => {
     // Dynamic SEO titles, meta descriptions, and canonical links
-    let pageTitle = "Legal & Policies | StayO";
-    let metaDescription = "Legal policies, terms and conditions, privacy policy, and refund rules for StayO.";
-    let canonicalUrl = "https://www.stayo.app/legal";
+    let pageTitle = "Legal & Policies | Stayo";
+    let metaDescription = "Legal policies, terms and conditions, privacy policy, and refund rules for Stayo.";
+    let canonicalUrl = "https://yourstayo.com/legal";
 
     if (activeSectionId === 'terms') {
-      pageTitle = "Terms & Conditions | StayO";
-      metaDescription = "Read the Terms & Conditions for utilizing StayO platform and accommodation services.";
-      canonicalUrl = "https://www.stayo.app/legal/terms";
+      pageTitle = "Terms & Conditions | Stayo";
+      metaDescription = "Read the Terms & Conditions for utilizing Stayo platform and accommodation services.";
+      canonicalUrl = "https://yourstayo.com/legal/terms";
     } else if (activeSectionId === 'privacy') {
-      pageTitle = "Privacy Policy | StayO";
-      metaDescription = "Privacy Policy for StayO. Learn how we collect, process, and protect tenant and payment data.";
-      canonicalUrl = "https://www.stayo.app/legal/privacy";
+      pageTitle = "Privacy Policy | Stayo";
+      metaDescription = "Privacy Policy for Stayo. Learn how we collect, process, and protect tenant and payment data.";
+      canonicalUrl = "https://yourstayo.com/legal/privacy";
     } else if (activeSectionId === 'refund') {
-      pageTitle = "Refund & Cancellation Policy | StayO";
-      metaDescription = "Official Refund and Cancellation Policy for StayO bookings and rent payments.";
-      canonicalUrl = "https://www.stayo.app/legal/refund-policy";
+      pageTitle = "Refund & Cancellation Policy | Stayo";
+      metaDescription = "Official Refund and Cancellation Policy for Stayo bookings and rent payments.";
+      canonicalUrl = "https://yourstayo.com/legal/refund-policy";
     } else if (activeSectionId === 'shipping') {
-      pageTitle = "Shipping & Delivery Policy | StayO";
-      metaDescription = "Shipping and Delivery Policy for StayO digital receipts and online accommodation services.";
-      canonicalUrl = "https://www.stayo.app/legal/shipping-policy";
+      pageTitle = "Shipping & Delivery Policy | Stayo";
+      metaDescription = "Shipping and Delivery Policy for Stayo digital receipts and online accommodation services.";
+      canonicalUrl = "https://yourstayo.com/legal/shipping-policy";
     } else if (activeSectionId === 'contact') {
-      pageTitle = "Contact Us | StayO";
-      metaDescription = "Get in touch with StayO for customer support, payment inquiries, and grievance redressal.";
-      canonicalUrl = "https://www.stayo.app/legal/contact";
+      pageTitle = "Contact Us | Stayo";
+      metaDescription = "Get in touch with Stayo for customer support, payment inquiries, and grievance redressal.";
+      canonicalUrl = "https://yourstayo.com/legal/contact";
     } else if (activeSectionId === 'data-deletion') {
-      pageTitle = "Data Deletion Instructions | StayO";
-      metaDescription = "Instructions on requesting account deletion and personal data removal from StayO.";
-      canonicalUrl = "https://www.stayo.app/legal/data-deletion";
+      pageTitle = "Data Deletion Instructions | Stayo";
+      metaDescription = "Instructions on requesting account deletion and personal data removal from Stayo.";
+      canonicalUrl = "https://yourstayo.com/legal/data-deletion";
     }
 
     document.title = pageTitle;
@@ -95,8 +95,8 @@ export function LegalPage() {
       "url": canonicalUrl,
       "publisher": {
         "@type": "Organization",
-        "name": "StayO",
-        "url": "https://www.stayo.app"
+        "name": "Trishul Solutions",
+        "url": "https://yourstayo.com"
       }
     });
     document.head.appendChild(ldJsonScript);

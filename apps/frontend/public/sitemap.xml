@@ -6,49 +6,55 @@
 
   <!-- ── Core public pages ────────────────────────────────────────────── -->
   <url>
-    <loc>https://www.sriadithyahostels.in/</loc>
+    <loc>https://yourstayo.com/</loc>
     <lastmod>2026-05-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://www.sriadithyahostels.in/about</loc>
+    <loc>https://yourstayo.com/about</loc>
     <lastmod>2026-05-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://www.sriadithyahostels.in/facilities</loc>
+    <loc>https://yourstayo.com/company</loc>
+    <lastmod>2026-07-30</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://yourstayo.com/facilities</loc>
     <lastmod>2026-05-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://www.sriadithyahostels.in/rooms</loc>
+    <loc>https://yourstayo.com/rooms</loc>
     <lastmod>2026-05-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://www.sriadithyahostels.in/gallery</loc>
+    <loc>https://yourstayo.com/gallery</loc>
     <lastmod>2026-05-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://www.sriadithyahostels.in/location</loc>
+    <loc>https://yourstayo.com/location</loc>
     <lastmod>2026-05-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://www.sriadithyahostels.in/contact</loc>
+    <loc>https://yourstayo.com/contact</loc>
     <lastmod>2026-05-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://www.sriadithyahostels.in/rules</loc>
+    <loc>https://yourstayo.com/rules</loc>
     <lastmod>2026-05-24</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.6</priority>
@@ -56,7 +62,7 @@
 
   <!-- ── Auth / utility ───────────────────────────────────────────────── -->
   <url>
-    <loc>https://www.sriadithyahostels.in/login</loc>
+    <loc>https://yourstayo.com/login</loc>
     <lastmod>2026-05-24</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
@@ -64,19 +70,19 @@
 
   <!-- ── Legal pages ──────────────────────────────────────────────────── -->
   <url>
-    <loc>https://www.sriadithyahostels.in/legal</loc>
+    <loc>https://yourstayo.com/legal</loc>
     <lastmod>2026-05-24</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
   </url>
   <url>
-    <loc>https://www.sriadithyahostels.in/legal#terms</loc>
+    <loc>https://yourstayo.com/legal#terms</loc>
     <lastmod>2026-05-24</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
-    <loc>https://www.sriadithyahostels.in/legal#privacy</loc>
+    <loc>https://yourstayo.com/legal#privacy</loc>
     <lastmod>2026-05-24</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>

@@ -1,4 +1,4 @@
-import { Home, Phone, MapPin, MessageCircle } from 'lucide-react';
+import { Home, Phone, MessageCircle, Mail } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const NAV_LINKS = [
@@ -6,8 +6,8 @@ const NAV_LINKS = [
   { to: '/facilities', label: 'Facilities' },
   { to: '/rooms', label: 'Rooms' },
   { to: '/gallery', label: 'Gallery' },
-  { to: '/location', label: 'Location' },
   { to: '/contact', label: 'Contact' },
+  { to: '/company', label: 'Company' },
 ];
 
 interface PublicLayoutProps {
@@ -25,17 +25,13 @@ export function PublicLayout({ children, title, subtitle }: PublicLayoutProps) {
       <div className="bg-[#1B2D5B] text-white py-2 px-4 text-sm">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-center md:justify-between gap-4">
           <div className="flex items-center gap-6">
-            <a href="tel:00000-00000" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+            <a href="tel:+917675080090" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
               <Phone className="w-4 h-4" />
-              <span>00000-00000</span>
+              <span>+91 76750 80090</span>
             </a>
-            <div className="flex items-center gap-2">
-              <MapPin className="w-4 h-4" />
-              <span>[City — TBD]</span>
-            </div>
           </div>
           <a
-            href="https://wa.me/910000000000"
+            href="https://wa.me/917675080090"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 hover:opacity-80 transition-opacity"
@@ -57,7 +53,7 @@ export function PublicLayout({ children, title, subtitle }: PublicLayoutProps) {
               className="text-lg font-semibold text-[#1B2D5B]"
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              StayO
+              Stayo
             </span>
           </Link>
 
@@ -116,12 +112,19 @@ export function PublicLayout({ children, title, subtitle }: PublicLayoutProps) {
                   <Home className="w-5 h-5 text-white" />
                 </div>
                 <span className="text-lg font-semibold" style={{ fontFamily: 'var(--font-display)' }}>
-                  StayO
+                  Stayo
                 </span>
               </div>
               <p className="text-white/80 text-sm">
-                Your home away from home — comfortable, safe, and affordable accommodation for
-                students near SNIST.
+                The Stay Operations Platform — a verified hostel marketplace and complete
+                management system in one.
+              </p>
+              <p className="text-white/50 text-xs mt-4">
+                Stayo is developed and operated by{' '}
+                <Link to="/company" className="text-white/70 hover:text-white no-underline font-semibold">
+                  Trishul Solutions
+                </Link>
+                .
               </p>
             </div>
 
@@ -158,12 +161,12 @@ export function PublicLayout({ children, title, subtitle }: PublicLayoutProps) {
             <div>
               <h4 className="font-semibold mb-4">Contact Us</h4>
               <div className="space-y-3 text-sm">
-                <a href="tel:00000-00000" className="flex items-center gap-2 text-white/80 hover:text-white transition-colors">
+                <a href="tel:+917675080090" className="flex items-center gap-2 text-white/80 hover:text-white transition-colors">
                   <Phone className="w-4 h-4" />
-                  <span>00000-00000</span>
+                  <span>+91 76750 80090</span>
                 </a>
                 <a
-                  href="https://wa.me/910000000000"
+                  href="https://wa.me/917675080090"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-2 text-white/80 hover:text-white transition-colors"
@@ -171,16 +174,16 @@ export function PublicLayout({ children, title, subtitle }: PublicLayoutProps) {
                   <MessageCircle className="w-4 h-4" />
                   <span>WhatsApp</span>
                 </a>
-                <div className="flex items-start gap-2 text-white/80">
-                  <MapPin className="w-4 h-4 mt-1 flex-shrink-0" />
-                  <span>[Registered address — TBD]</span>
-                </div>
+                <a href="mailto:contact@yourstayo.com" className="flex items-center gap-2 text-white/80 hover:text-white transition-colors">
+                  <Mail className="w-4 h-4" />
+                  <span>contact@yourstayo.com</span>
+                </a>
               </div>
             </div>
           </div>
 
           <div className="border-t border-white/20 pt-8 flex flex-wrap items-center justify-between gap-4 text-sm text-white/60">
-            <p className="m-0">&copy; {new Date().getFullYear()} StayO. All rights reserved.</p>
+            <p className="m-0">&copy; {new Date().getFullYear()} Trishul Solutions. All rights reserved.</p>
             <Link to="/login?signin=1" className="text-white/60 hover:text-white no-underline transition-colors">
               Tenant Login
             </Link>

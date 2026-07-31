@@ -11,11 +11,11 @@ export const legalSections = [
       },
       {
         type: "paragraph",
-        text: "This document is published in accordance with the provisions of Rule 3 (1) of the Information Technology (Intermediaries guidelines) Rules, 2011 that require publishing the rules and regulations, privacy policy and Terms of Use for access or usage of domain name https://www.stayo.app ('Website'), including the related mobile site and mobile application (hereinafter referred to as 'Platform').",
+        text: "This document is published in accordance with the provisions of Rule 3 (1) of the Information Technology (Intermediaries guidelines) Rules, 2011 that require publishing the rules and regulations, privacy policy and Terms of Use for access or usage of domain name https://yourstayo.com ('Website'), including the related mobile site and mobile application (hereinafter referred to as 'Platform').",
       },
       {
         type: "paragraph",
-        text: "The Platform is owned by StayO, with its registered office at [Registered address — TBD] (hereinafter referred to as 'Platform Owner', 'we', 'us', 'our').",
+        text: "The Platform (the 'Stayo' product) is owned and operated by Trishul Solutions (hereinafter referred to as 'Platform Owner', 'Trishul Solutions', 'we', 'us', 'our').",
       },
       {
         type: "paragraph",
@@ -35,7 +35,7 @@ export const legalSections = [
       },
       {
         type: "paragraph",
-        text: "StayO operates this Platform to facilitate tenant onboarding, room allocations, agreement generation, digital check-in, fee payments, and related communication. Accommodation services are provided at our physical premises at [Registered address — TBD].",
+        text: "Stayo operates this Platform to facilitate tenant onboarding, room allocations, agreement generation, digital check-in, fee payments, and related communication. All Services are delivered digitally through the Stayo platform.",
       },
       {
         type: "subheading",
@@ -91,7 +91,7 @@ export const legalSections = [
       },
       {
         type: "paragraph",
-        text: "In no event shall StayO or its representatives be liable for any indirect, incidental, special, consequential, or punitive damages arising out of or in connection with your use of the Platform or the physical services provided.",
+        text: "In no event shall Stayo or its representatives be liable for any indirect, incidental, special, consequential, or punitive damages arising out of or in connection with your use of the Platform or the physical services provided.",
       },
       {
         type: "subheading",
@@ -131,7 +131,7 @@ export const legalSections = [
       },
       {
         type: "paragraph",
-        text: "This Privacy Policy describes how StayO (collectively \"StayO, we, our, us\") collect, use, share, protect or otherwise process your information/personal data through our website https://www.stayo.app (hereinafter referred to as Platform). Please note that you may be able to browse certain sections of the Platform without registering with us. We do not offer any product/service under this Platform outside India and your personal data will primarily be stored and processed in India. By visiting this Platform, providing your information or availing any product/service offered on the Platform, you expressly agree to be bound by the terms and conditions of this Privacy Policy, the Terms of Use and the applicable service/product terms and conditions, and agree to be governed by the laws of India including but not limited to the laws applicable to data protection and privacy. If you do not agree please do not use or access our Platform.",
+        text: "This Privacy Policy applies to Stayo, a software platform developed and operated by Trishul Solutions. It describes how Trishul Solutions (collectively \"Trishul Solutions, we, our, us\") collect, use, share, protect or otherwise process your information/personal data through our website https://yourstayo.com (hereinafter referred to as Platform). Please note that you may be able to browse certain sections of the Platform without registering with us. We do not offer any product/service under this Platform outside India and your personal data will primarily be stored and processed in India. By visiting this Platform, providing your information or availing any product/service offered on the Platform, you expressly agree to be bound by the terms and conditions of this Privacy Policy, the Terms of Use and the applicable service/product terms and conditions, and agree to be governed by the laws of India including but not limited to the laws applicable to data protection and privacy. If you do not agree please do not use or access our Platform.",
       },
       {
         type: "subheading",
@@ -151,7 +151,7 @@ export const legalSections = [
       },
       {
         type: "notice",
-        text: "If you receive an email or a call from a person/association claiming to be StayO seeking personal data like debit/credit card PIN, net-banking or mobile banking password, never provide such information. Report any such incident immediately to an appropriate law enforcement agency.",
+        text: "If you receive an email or a call from a person/association claiming to be Stayo seeking personal data like debit/credit card PIN, net-banking or mobile banking password, never provide such information. Report any such incident immediately to an appropriate law enforcement agency.",
       },
       {
         type: "subheading",
@@ -219,7 +219,7 @@ export const legalSections = [
     content: [
       {
         type: "paragraph",
-        text: "All payments made to StayO for rent, admission fees, or advance security deposits are generally non-refundable once credited toward accommodation obligations.",
+        text: "All payments made to Stayo for rent, admission fees, or advance security deposits are generally non-refundable once credited toward accommodation obligations.",
       },
       {
         type: "paragraph",
@@ -240,9 +240,9 @@ export const legalSections = [
       {
         type: "contact_list",
         items: [
-          { label: "Name", value: "Chidiri Shiva Prakash" },
-          { label: "Email", value: "spchidiri2006@gmail.com" },
-          { label: "Mobile", value: "+91 8008046952" },
+          { label: "Entity", value: "Trishul Solutions" },
+          { label: "Email", value: "legal@yourstayo.com" },
+          { label: "Mobile", value: "+91 76750 80090" },
         ],
       },
     ],
@@ -255,7 +255,7 @@ export const legalSections = [
     content: [
       {
         type: "paragraph",
-        text: "StayO provides student and working professional accommodation services. No physical products are shipped or delivered as part of our operations.",
+        text: "Stayo provides student and working professional accommodation services. No physical products are shipped or delivered as part of our operations.",
       },
       {
         type: "paragraph",
@@ -284,14 +284,12 @@ export const legalSections = [
       {
         type: "contact_list",
         items: [
-          { label: "Customer Support", value: "Chidiri Shiva Prakash" },
-          { label: "Grievance Officer", value: "Chidiri Shiva Prakash" },
-          { label: "Business Email", value: "support@stayo.app" },
-          { label: "Grievance Email", value: "spchidiri2006@gmail.com" },
-          { label: "Mobile", value: "[Phone — TBD]" },
-          { label: "Support Mobile", value: "+91 7901070333" },
-          { label: "Grievance Phone", value: "+91 8008046952" },
-          { label: "Registered Office", value: "StayO, [Registered address — TBD]" },
+          { label: "Legal Entity", value: "Trishul Solutions" },
+          { label: "Product", value: "Stayo" },
+          { label: "Business Email", value: "contact@yourstayo.com" },
+          { label: "Support Email", value: "support@yourstayo.com" },
+          { label: "Grievance Email", value: "legal@yourstayo.com" },
+          { label: "Support Mobile", value: "+91 76750 80090" },
         ],
       },
     ],
@@ -304,7 +302,7 @@ export const legalSections = [
     content: [
       {
         type: "paragraph",
-        text: "StayO is committed to protecting your privacy and ensuring transparency regarding your personal data. If you have used our platform, registered an account, or logged in, you have the right to request the deletion of your data in accordance with applicable policies.",
+        text: "Stayo is committed to protecting your privacy and ensuring transparency regarding your personal data. If you have used our platform, registered an account, or logged in, you have the right to request the deletion of your data in accordance with applicable policies.",
       },
       {
         type: "subheading",
@@ -316,11 +314,11 @@ export const legalSections = [
       },
       {
         type: "paragraph",
-        text: "1. Self-Service Deletion: Log in to your StayO account, go to Profile/Settings, and click on 'Delete Account'. Please note that this action is permanent and cannot be undone.",
+        text: "1. Self-Service Deletion: Log in to your Stayo account, go to Profile/Settings, and click on 'Delete Account'. Please note that this action is permanent and cannot be undone.",
       },
       {
         type: "paragraph",
-        text: "2. Contact Support: Send a formal email request to our Data Officer at spchidiri2006@gmail.com with the subject line 'Personal Data Deletion Request'. Please include your registered mobile number and full name to help us identify your account.",
+        text: "2. Contact Support: Send a formal email request to our Data Protection Officer at privacy@yourstayo.com with the subject line 'Personal Data Deletion Request'. Please include your registered mobile number and full name to help us identify your account.",
       },
       {
         type: "subheading",
@@ -345,9 +343,9 @@ export const legalSections = [
       {
         type: "contact_list",
         items: [
-          { label: "Data Officer", value: "Chidiri Shiva Prakash" },
-          { label: "Email", value: "spchidiri2006@gmail.com" },
-          { label: "Phone", value: "+91 8008046952" },
+          { label: "Data Protection Officer", value: "Trishul Solutions — Data Protection Team" },
+          { label: "Email", value: "privacy@yourstayo.com" },
+          { label: "Phone", value: "+91 76750 80090" },
         ],
       },
     ],

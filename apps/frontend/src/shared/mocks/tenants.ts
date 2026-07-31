@@ -4,9 +4,8 @@
  * inventing their own (e.g. Money's collections view is just this same
  * array grouped differently). `hostelId`s match shared/mocks/dashboard.ts's
  * `mockProperties`. Content matches the shape and tone of the example data
- * in Stayo App.dc.html's Tenants list and Tenant Detail modal — renamed off
- * the design file's own leftover "Sri Adithya" placeholder branding to the
- * StayO mock hostels used elsewhere in this app.
+ * in Stayo App.dc.html's Tenants list and Tenant Detail modal — using the
+ * neutral Stayo mock hostels used elsewhere in this app.
  */
 
 export type TenantStatus = 'active' | 'overdue' | 'invited' | 'pending-docs';

@@ -30,7 +30,7 @@ export function AdminMorePage() {
   const rows = [
     { key: 'settings', title: 'Settings', icon: Settings, onClick: () => navigate('/admin/settings') },
     { key: 'profile', title: 'Profile', icon: User, onClick: () => setProfileOpen(true) },
-    { key: 'support', title: 'Support', icon: Mail, onClick: () => window.location.assign('mailto:support@stayo.in') },
+    { key: 'support', title: 'Support', icon: Mail, onClick: () => window.location.assign('mailto:support@yourstayo.com') },
     { key: 'broadcast', title: 'Broadcast Notice', icon: Megaphone, onClick: () => setBroadcastOpen(true) },
     { key: 'logout', title: 'Log Out', icon: LogOut, onClick: () => logout(), destructive: true },
   ];

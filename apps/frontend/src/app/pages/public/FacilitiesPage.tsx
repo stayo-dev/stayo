@@ -19,11 +19,11 @@ const FACILITIES = [
 
 export function FacilitiesPage() {
   useEffect(() => {
-    document.title = 'Facilities | StayO, Hyderabad';
+    document.title = 'Facilities | Stayo';
     const desc = document.querySelector('meta[name="description"]');
-    desc?.setAttribute('content', 'Explore all facilities at StayO — furnished rooms, meals, 24/7 security, Wi-Fi, study room, laundry, and more.');
+    desc?.setAttribute('content', 'Explore all facilities at Stayo — furnished rooms, meals, 24/7 security, Wi-Fi, study room, laundry, and more.');
     const canonical = document.querySelector('link[rel="canonical"]');
-    canonical?.setAttribute('href', 'https://www.stayo.app/facilities');
+    canonical?.setAttribute('href', 'https://yourstayo.com/facilities');
   }, []);
 
   return (

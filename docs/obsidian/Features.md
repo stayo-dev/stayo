@@ -89,9 +89,10 @@ This is an inventory of features **confirmed implemented** (live route + live UI
 
 | Feature | Route | Backing |
 |---|---|---|
-| StayO marketing landing page | `/` | `app/pages/public/LandingPage.tsx` — see "StayO owner acquisition journey" below. Replaced the legacy `HomePage.tsx` (now `@deprecated`, orphaned) as of the StayO rebuild's owner-journey phase. |
-| Legacy marketing site (remaining pages) | `/about`, `/facilities`, `/rooms`, `/gallery`, `/location`, `/contact`, `/pricing` | `app/pages/public/*`, Sanity CMS (`lib/sanity/`) — not yet migrated to the StayO design |
-| Legal pages | `/legal/*` | `content/legal.ts` |
+| StayO marketing landing page | `/` | `app/pages/public/LandingPage.tsx` — see "StayO owner acquisition journey" below. Replaced the legacy `HomePage.tsx` (now `@deprecated`, orphaned) as of the StayO rebuild's owner-journey phase. **2026-07-30:** company-identity layer added — "Company" nav link, a subtle "A product by Trishul Solutions" hero trust line, and the shared `MarketingFooter` (replaced the old dead-link inline footer). Also made interactive — `HostelDiscoveryDemo.tsx` turns the static hero search into a live client-side hostel finder (dropdown filters → instant iconed results → working demo Enquire modal); `HeroShowcase` cards gained icons; owner-tab "Get Verified" wired to owner auth. |
+| Company page (Trishul Solutions) | `/company` | `app/pages/public/CompanyPage.tsx` (marketing theme) + `content/company.ts` (single source of truth, products-array-driven). Introduces Trishul Solutions as the operating company with Stayo as flagship product — Hero · Mission · Vision · Core Principles · Products · attribution. Shares `MarketingFooter` + `shared/ui-patterns/TrishulMark.tsx`. See [[Decisions#ADR-033|ADR-033]]. |
+| Legacy marketing site (remaining pages) | `/about`, `/facilities`, `/rooms`, `/gallery`, `/location`, `/contact`, `/pricing` | `app/pages/public/*`, Sanity CMS (`lib/sanity/`) — not yet migrated to the StayO design. **2026-07-30:** legacy "Sri Adithya" identity purged; `/about` reframed to Stayo-the-platform + Trishul attribution; footer/copyright now credit Trishul Solutions; canonical domain `yourstayo.com`. |
+| Legal pages | `/legal/*` | `content/legal.ts` — **2026-07-30:** legal owner is now **Trishul Solutions** (product: Stayo); personal PII removed; `contact@`/`support@`/`privacy@`/`legal@ yourstayo.com`; `{{REGISTERED_BUSINESS_ADDRESS}}`/`{{BUSINESS_PHONE}}` placeholders pending. |
 | Hostel admissions microsite | `/visit/:hostelSlug` | `/api/visit/[hostelSlug]*` — public lead capture, honeypot-protected |
 | Receipt verification | `/verify/r/:token` | `/api/verify/receipt` — public, signed-token |
 

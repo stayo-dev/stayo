@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Search, LayoutGrid, ArrowRight, Check, Menu, X } from 'lucide-react';
 import { LoginModal, type LoginModalMode } from '@shared/ui-patterns/LoginModal';
 import { GoogleSignInModal } from '@shared/ui-patterns/GoogleSignInModal';
 import { HeroShowcase } from './components/HeroShowcase';
+import { HostelDiscoveryDemo } from './components/HostelDiscoveryDemo';
+import { MarketingFooter } from './components/MarketingFooter';
+import { TrishulMark } from '@shared/ui-patterns/TrishulMark';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 
@@ -49,13 +52,6 @@ const STUDENT_TESTIMONIALS = [
 const OWNER_TESTIMONIALS = [
   { text: 'Rent collection used to eat my weekends. Now reminders go out automatically and I see every payment in one place.', name: 'Rahul Verma', role: 'Owner · Sunrise Hostels' },
   { text: 'Enquiries doubled after I got verified, and onboarding tenants digitally cut my paperwork to zero.', name: 'Priya Nair', role: 'Owner · Nest Co-Living' },
-];
-
-const FOOTER_COLUMNS = [
-  { title: 'Company', links: ['About', 'Careers', 'Blog', 'Contact'] },
-  { title: 'Product', links: ['Marketplace', 'For Owners', 'Features', 'Pricing'] },
-  { title: 'Resources', links: ['Help Center', 'Owner Guide', 'Safety', 'Community'] },
-  { title: 'Legal', links: ['Privacy', 'Terms', 'Refunds', 'Trust & Safety'] },
 ];
 
 const NAV_LINKS = [
@@ -147,6 +143,9 @@ export function LandingPage() {
                 {link.label}
               </a>
             ))}
+            <Link to="/company" className="text-sm font-semibold text-foreground/80 hover:text-primary">
+              Company
+            </Link>
             <span className="h-5 w-px bg-border" />
             <button type="button" onClick={openTenantAuth} className="text-sm font-semibold text-foreground/80 hover:text-primary">
               {tenantUser ? `Hi, ${tenantUser.name.split(' ')[0]}` : 'Login'}
@@ -180,6 +179,13 @@ export function LandingPage() {
                 {link.label}
               </a>
             ))}
+            <Link
+              to="/company"
+              onClick={() => setMenuOpen(false)}
+              className="border-b border-border/50 py-2.5 text-[15px] font-semibold text-foreground"
+            >
+              Company
+            </Link>
             <a
               href="#search"
               onClick={() => setMenuOpen(false)}
@@ -282,6 +288,15 @@ export function LandingPage() {
                 </button>
               </div>
             )}
+
+            {/* Subtle company trust indicator — secondary to the Stayo hero */}
+            <Link
+              to="/company"
+              className="mt-7 inline-flex items-center gap-2 text-[13px] font-semibold text-muted-foreground transition-colors hover:text-primary"
+            >
+              <TrishulMark className="h-4 w-4 flex-none text-primary/70" />
+              A product by Trishul Solutions
+            </Link>
           </div>
 
           <div className="flex min-h-[420px] w-full items-center justify-self-center sm:min-h-[520px]">
@@ -325,41 +340,7 @@ export function LandingPage() {
           </div>
 
           {searchTab === 'search' ? (
-            <div className="rounded-[22px] border border-border bg-card p-3.5 shadow-[0_30px_70px_-42px_rgba(47,47,47,0.34)]">
-              <div className="flex flex-wrap items-stretch gap-0.5">
-                {[
-                  ['LOCATION', 'Pune, Maharashtra'],
-                  ['NEARBY COLLEGE', 'VIT Pune'],
-                  ['BUDGET', '₹5k – ₹9k'],
-                  ['SHARING', 'Triple'],
-                  ['MOVE-IN', '15 Jul 2026'],
-                ].map(([label, value]) => (
-                  <div key={label} className="min-w-[130px] flex-1 rounded-2xl px-4.5 py-3.5 hover:bg-muted">
-                    <div className="mb-1 font-display text-[11px] font-bold tracking-wide text-primary">{label}</div>
-                    <div className="text-[15px] font-semibold text-foreground">{value}</div>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  className="m-1.5 flex flex-none items-center gap-2 rounded-2xl bg-primary px-6.5 font-display text-[15px] font-bold text-primary-foreground shadow-[0_10px_24px_-10px_rgba(164,93,68,0.6)] transition-transform hover:scale-[1.03] max-sm:w-full max-sm:justify-center max-sm:py-3.5"
-                >
-                  <Search className="h-4 w-4" strokeWidth={2.4} />
-                  Search
-                </button>
-              </div>
-              <div className="flex flex-wrap items-center gap-2.5 px-1.5 pb-1 pt-3">
-                <span className="text-sm font-semibold text-muted-foreground">Popular:</span>
-                {['Hostels near VIT Pune', 'Girls hostel in Kota', 'Under ₹7,000', 'Single sharing'].map((p) => (
-                  <a
-                    key={p}
-                    href="#search"
-                    className="rounded-full border border-border bg-muted px-3.5 py-1.5 text-[13px] font-semibold text-foreground/80 hover:border-primary hover:text-primary"
-                  >
-                    {p}
-                  </a>
-                ))}
-              </div>
-            </div>
+            <HostelDiscoveryDemo />
           ) : (
             <div className="rounded-[22px] border border-white/10 bg-foreground p-3.5 shadow-[0_30px_70px_-42px_rgba(47,47,47,0.5)]">
               <div className="flex flex-wrap items-stretch gap-0.5">
@@ -375,6 +356,7 @@ export function LandingPage() {
                 ))}
                 <button
                   type="button"
+                  onClick={openOwnerAuth}
                   className="m-1.5 flex flex-none items-center gap-2 rounded-2xl bg-background px-6 font-display text-[15px] font-bold text-foreground transition-transform hover:scale-[1.03] max-sm:w-full max-sm:justify-center max-sm:py-3.5"
                 >
                   <Check className="h-4 w-4 text-primary" strokeWidth={2.6} />
@@ -666,33 +648,7 @@ export function LandingPage() {
       </section>
 
       {/* ============ FOOTER ============ */}
-      <footer id="footer" className="bg-foreground px-4 pb-8.5 pt-14 text-background sm:px-6">
-        <div className="mx-auto grid max-w-5xl gap-10 [grid-template-columns:1.5fr_repeat(auto-fit,minmax(120px,1fr))]">
-          <div className="min-w-[220px]">
-            <div className="mb-4 font-display text-xl font-extrabold text-background">Stayo</div>
-            <p className="mb-2 text-sm font-semibold text-[#D2986C]">Manage. Automate. Grow.</p>
-            <p className="max-w-[280px] text-[13.5px] leading-relaxed text-background/50">
-              The Stay Operations Platform — a verified hostel marketplace and complete management system in one.
-            </p>
-          </div>
-          {FOOTER_COLUMNS.map((col) => (
-            <div key={col.title}>
-              <div className="mb-3.5 font-display text-[13px] font-bold text-background">{col.title}</div>
-              <div className="flex flex-col gap-2.5">
-                {col.links.map((l) => (
-                  <a key={l} href="#footer" className="text-[13.5px] text-background/58 hover:text-background">
-                    {l}
-                  </a>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="mx-auto mt-11 flex max-w-5xl flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-5.5">
-          <span className="text-[13px] text-background/45">© {new Date().getFullYear()} Stayo. All rights reserved.</span>
-          <span className="text-[13px] text-background/45">Made for the future of hostel management.</span>
-        </div>
-      </footer>
+      <MarketingFooter />
     </div>
     </ThemeProvider>
   );

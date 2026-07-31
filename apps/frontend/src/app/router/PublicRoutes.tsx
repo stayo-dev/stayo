@@ -8,6 +8,7 @@ const LandingPage = lazy(() => import('@/app/pages/public/LandingPage').then((m)
 const LeadSignupCallbackPage = lazy(() => import('@/app/pages/public/LeadSignupCallbackPage').then((m) => ({ default: m.LeadSignupCallbackPage })));
 const OwnerLeadInvitePage = lazy(() => import('@/app/pages/public/OwnerLeadInvitePage').then((m) => ({ default: m.OwnerLeadInvitePage })));
 const AboutPage = lazy(() => import('@/app/pages/public/AboutPage').then((m) => ({ default: m.AboutPage })));
+const CompanyPage = lazy(() => import('@/app/pages/public/CompanyPage').then((m) => ({ default: m.CompanyPage })));
 const FacilitiesPage = lazy(() => import('@/app/pages/public/FacilitiesPage').then((m) => ({ default: m.FacilitiesPage })));
 const RoomsPage = lazy(() => import('@/app/pages/public/RoomsPage').then((m) => ({ default: m.RoomsPage })));
 const GalleryPage = lazy(() => import('@/app/pages/public/GalleryPage').then((m) => ({ default: m.GalleryPage })));
@@ -62,6 +63,7 @@ export function PublicRoutes() {
         <Route path="/lead-signup/callback" element={<LeadSignupCallbackPage />} />
         <Route path="/owner-invite/:token" element={<OwnerLeadInvitePage />} />
         <Route path="/about" element={<AboutPage />} />
+        <Route path="/company" element={<CompanyPage />} />
         <Route path="/facilities" element={<FacilitiesPage />} />
         <Route path="/rooms" element={<RoomsPage />} />
         <Route path="/gallery" element={<GalleryPage />} />

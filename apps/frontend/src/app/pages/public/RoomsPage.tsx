@@ -31,11 +31,11 @@ const ROOM_TYPES = [
 
 export function RoomsPage() {
   useEffect(() => {
-    document.title = 'Room Types & Pricing | StayO, Hyderabad';
+    document.title = 'Room Types & Pricing | Stayo';
     const desc = document.querySelector('meta[name="description"]');
-    desc?.setAttribute('content', 'Explore room types at StayO — single, double sharing, and triple sharing rooms. Affordable pricing with all amenities included.');
+    desc?.setAttribute('content', 'Explore room types at Stayo — single, double sharing, and triple sharing rooms. Affordable pricing with all amenities included.');
     const canonical = document.querySelector('link[rel="canonical"]');
-    canonical?.setAttribute('href', 'https://www.stayo.app/rooms');
+    canonical?.setAttribute('href', 'https://yourstayo.com/rooms');
   }, []);
 
   return (

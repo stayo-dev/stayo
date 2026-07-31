@@ -1,0 +1,118 @@
+name: Backend Cron (Vercel Hobby overflow)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Vercel Hobby (free) allows only 2 cron jobs. The 2 most critical ones
+# (generate-rent, rent-reminders) run via Vercel Cron — see
+# apps/backend/vercel.json. This workflow covers the OTHER 8 so the full
+# schedule works on the free tier.
+#
+# Each run GETs a CRON_SECRET-protected /api/cron/* endpoint exactly the way
+# Vercel Cron does: header `Authorization: Bearer <CRON_SECRET>`.
+#
+# Required repo config — Settings → Secrets and variables → Actions:
+#   • Secret   CRON_SECRET   — same value as the backend's CRON_SECRET env var
+#   • Variable BACKEND_URL   — e.g. https://api.yourstayo.com
+#                              (falls back to https://api.yourstayo.com if unset)
+#
+# Notes:
+#   • GitHub scheduled runs are best-effort and can be delayed a few minutes
+#     under load — fine for these daily jobs, not for second-level precision.
+#   • Scheduled workflows are auto-disabled after 60 days with no repo activity;
+#     a push re-enables them.
+#   • On upgrading to Vercel Pro: move these 8 back into vercel.json's `crons`
+#     (Pro allows 40) and delete/disable this workflow.
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_dispatch:
+    inputs:
+      endpoint:
+        description: Run one endpoint now (or "all")
+        type: choice
+        default: all
+        options:
+          - all
+          - hostel-invariants
+          - migration-audit
+          - agreement-lifecycle
+          - daily-briefings
+          - reconcile-payments
+          - food-carry-forward
+          - move-out-releases
+          - admissions
+  schedule:
+    - cron: "0 1 * * *"    # hostel-invariants
+    - cron: "15 1 * * *"   # migration-audit
+    - cron: "30 1 * * *"   # agreement-lifecycle
+    - cron: "0 2 * * *"    # daily-briefings
+    - cron: "30 3 * * *"   # reconcile-payments
+    - cron: "0 4 * * *"    # food-carry-forward
+    - cron: "30 18 * * *"  # move-out-releases
+    - cron: "45 18 * * *"  # admissions
+
+jobs:
+  run-cron:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Resolve endpoints for this trigger
+        id: resolve
+        env:
+          # A scheduled run exposes the exact cron string that fired.
+          FIRED_SCHEDULE: ${{ github.event.schedule }}
+          DISPATCH_ENDPOINT: ${{ github.event.inputs.endpoint }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ "$DISPATCH_ENDPOINT" = "all" ]; then
+              EP="hostel-invariants migration-audit agreement-lifecycle daily-briefings reconcile-payments food-carry-forward move-out-releases admissions"
+            else
+              EP="$DISPATCH_ENDPOINT"
+            fi
+          else
+            case "$FIRED_SCHEDULE" in
+              "0 1 * * *")   EP="hostel-invariants" ;;
+              "15 1 * * *")  EP="migration-audit" ;;
+              "30 1 * * *")  EP="agreement-lifecycle" ;;
+              "0 2 * * *")   EP="daily-briefings" ;;
+              "30 3 * * *")  EP="reconcile-payments" ;;
+              "0 4 * * *")   EP="food-carry-forward" ;;
+              "30 18 * * *") EP="move-out-releases" ;;
+              "45 18 * * *") EP="admissions" ;;
+              *)             EP="" ;;
+            esac
+          fi
+          echo "endpoints=$EP" >> "$GITHUB_OUTPUT"
+          echo "Resolved: ${EP:-<none>}"
+
+      - name: Call cron endpoints
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          BACKEND_URL: ${{ vars.BACKEND_URL }}
+          ENDPOINTS: ${{ steps.resolve.outputs.endpoints }}
+        run: |
+          set -uo pipefail
+          BASE="${BACKEND_URL:-https://api.yourstayo.com}"
+          BASE="${BASE%/}"
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::CRON_SECRET secret is not set"; exit 1
+          fi
+          if [ -z "${ENDPOINTS:-}" ]; then
+            echo "No endpoint resolved for this trigger — nothing to do."; exit 0
+          fi
+          fail=0
+          for ep in $ENDPOINTS; do
+            url="$BASE/api/cron/$ep"
+            echo "→ GET $url"
+            code=$(curl -sS -o /tmp/resp.txt -w "%{http_code}" --max-time 300 \
+              -H "Authorization: Bearer $CRON_SECRET" "$url"); rc=$?
+            if [ $rc -ne 0 ]; then code="000"; fi
+            echo "  HTTP $code (curl rc=$rc)"
+            head -c 500 /tmp/resp.txt 2>/dev/null || true; echo
+            case "$code" in
+              2*) echo "  ✓ $ep ok" ;;
+              *)  echo "::error::$ep returned $code"; fail=1 ;;
+            esac
+          done
+          exit $fail

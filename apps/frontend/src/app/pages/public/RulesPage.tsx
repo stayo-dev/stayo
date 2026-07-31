@@ -67,11 +67,11 @@ const RULES = [
 
 export function RulesPage() {
   useEffect(() => {
-    document.title = 'Hostel Rules & Regulations | StayO, Hyderabad';
+    document.title = 'Hostel Rules & Regulations | Stayo';
     const desc = document.querySelector('meta[name="description"]');
-    desc?.setAttribute('content', 'Read the hostel rules and regulations at StayO. Rules on entry timings, cleanliness, behaviour, visitors, and fees.');
+    desc?.setAttribute('content', 'Read the hostel rules and regulations at Stayo. Rules on entry timings, cleanliness, behaviour, visitors, and fees.');
     const canonical = document.querySelector('link[rel="canonical"]');
-    canonical?.setAttribute('href', 'https://www.stayo.app/rules');
+    canonical?.setAttribute('href', 'https://yourstayo.com/rules');
   }, []);
 
   return (

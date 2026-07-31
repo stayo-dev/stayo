@@ -59,7 +59,7 @@ export const mockRenewals: MockRenewal[] = [
 ];
 
 export const mockRequests: MockRequest[] = [
-  { id: 'request-1', name: 'Chidiri Shiva Prakash', detail: 'Asked to extend agreement by 6 months', type: 'Extension', read: false },
+  { id: 'request-1', name: 'Rahul Verma', detail: 'Asked to extend agreement by 6 months', type: 'Extension', read: false },
   { id: 'request-2', name: 'Rohan Reddy', detail: 'Requested room change to Room 210', type: 'Room change', read: false },
   { id: 'request-3', name: 'Rishi Singh Raj Purohit', detail: 'Asked about early move-out on 30 Aug', type: 'Move-out', read: true },
 ];

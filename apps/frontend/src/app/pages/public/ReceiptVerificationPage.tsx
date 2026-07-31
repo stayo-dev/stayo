@@ -32,11 +32,11 @@ export function ReceiptVerificationPage() {
 
   useEffect(() => {
     // Dynamic SEO Metadata
-    document.title = 'Verify Payment Receipt | StayO';
+    document.title = 'Verify Payment Receipt | Stayo';
     const desc = document.querySelector('meta[name="description"]');
     desc?.setAttribute(
       'content',
-      'Verify the authenticity of digital payment receipts issued by StayO, Hyderabad.'
+      'Verify the authenticity of digital payment receipts issued by Stayo, Hyderabad.'
     );
   }, []);
 
@@ -147,7 +147,7 @@ export function ReceiptVerificationPage() {
                   <span>Call Warden</span>
                 </a>
                 <a
-                  href="mailto:support@stayo.app"
+                  href="mailto:support@yourstayo.com"
                   className="no-underline font-semibold text-sm px-6 py-2.5 rounded-lg text-white hover:opacity-90 transition-opacity inline-flex items-center justify-center gap-2"
                   style={{ background: '#1B2D5B' }}
                 >
@@ -175,7 +175,7 @@ export function ReceiptVerificationPage() {
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>VERIFIED RECEIPT</span>
                   </div>
-                  <h2 className="text-xl font-bold text-white m-0 tracking-tight">StayO</h2>
+                  <h2 className="text-xl font-bold text-white m-0 tracking-tight">Stayo</h2>
                 </div>
               </div>
             </div>

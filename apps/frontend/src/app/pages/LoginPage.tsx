@@ -156,7 +156,7 @@ export function LoginPage() {
               Your home<br />away from home
             </h2>
             <p className="text-white/70 text-lg leading-relaxed max-w-sm">
-              Premium student accommodation near SNIST — safe, comfortable, and always welcoming.
+              Verified stays and a seamless tenant experience — safe, comfortable, and always welcoming.
             </p>
           </div>
 
@@ -164,7 +164,7 @@ export function LoginPage() {
           <div className="space-y-4">
             {[
               { icon: UtensilsCrossed, text: 'Fresh homely meals included daily' },
-              { icon: MapPin,          text: '400m from SNIST gate' },
+              { icon: MapPin,          text: 'Hostels close to your campus' },
               { icon: Shield,          text: '24/7 security & CCTV' },
             ].map(({ icon: Icon, text }) => (
               <div key={text} className="flex items-center gap-3">

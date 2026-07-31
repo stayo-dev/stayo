@@ -11,7 +11,7 @@ export const mockOwnerProfile = {
   initials: 'SR',
   name: 'Srinivasa Rao Yanam',
   role: 'Owner',
-  email: 'support@stayo.app',
+  email: 'support@yourstayo.com',
 };
 
 export const mockWorkspaceConfig = {

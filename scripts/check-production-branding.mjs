@@ -9,13 +9,20 @@ const forbidden = [
   /\bNIVA\b/i,
   /owner temporary/i,
   /temporary owner/i,
-  /Trishul Solutions/i,
-  /\bTrishul\b/i,
   /HMS SaaS/i,
   /HMS - Hostel Management System/i,
   /Advanced SaaS for Hostel Management/i,
   /SaaSInput/i,
-  /Welcome to Trishul/i,
+  // ── Retired identities — must never reappear in production output ──
+  // Stayo is the product; Trishul Solutions is the operating company (both
+  // are now permitted, and are asserted across the site on purpose). What
+  // must stay OUT of shipped output is the old single-hostel brand and the
+  // retired domains/contact it shipped with, so no conflicting identity
+  // leaks back in and undermines Meta / payment-provider verification.
+  /Sri\s*Adithya/i,
+  /sriadithyahostels/i,
+  /stayo\.app/i,
+  /spchidiri2006/i,
 ];
 
 const textFilePattern = /\.(html?|js|css|json|webmanifest|xml|txt|svg|map)$/i;

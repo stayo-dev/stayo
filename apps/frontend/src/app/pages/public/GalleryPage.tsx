@@ -19,15 +19,15 @@ const HIGHLIGHTS = [
 
 export function GalleryPage() {
   useEffect(() => {
-    document.title = 'Gallery | StayO, Hyderabad';
+    document.title = 'Gallery | Stayo';
     const desc = document.querySelector('meta[name="description"]');
-    desc?.setAttribute('content', 'See photos of StayO — rooms, dining hall, study areas, common spaces, and more.');
+    desc?.setAttribute('content', 'See photos of Stayo — rooms, dining hall, study areas, common spaces, and more.');
     const canonical = document.querySelector('link[rel="canonical"]');
-    canonical?.setAttribute('href', 'https://www.stayo.app/gallery');
+    canonical?.setAttribute('href', 'https://yourstayo.com/gallery');
   }, []);
 
   return (
-    <PublicLayout title="Gallery" subtitle="A look inside StayO.">
+    <PublicLayout title="Gallery" subtitle="A look inside Stayo.">
       <section className="max-w-6xl mx-auto px-6 py-16">
         <div className="grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
           {HIGHLIGHTS.map((h, i) => (

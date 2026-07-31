@@ -1,4 +1,4 @@
-import { Check, MapPin, ArrowUp, MessageSquare } from 'lucide-react';
+import { Check, MapPin, ArrowUp, MessageSquare, Building2, Home, Users } from 'lucide-react';
 
 interface HeroShowcaseProps {
   active: 'tenant' | 'owner';
@@ -11,6 +11,7 @@ const TENANT_LISTINGS = [
     price: '₹6,000',
     swatch: 'from-[#EBD9C4] to-[#F3E7D8]',
     cta: 'bg-primary text-primary-foreground',
+    icon: Building2,
   },
   {
     name: 'Nest Co-Living',
@@ -18,6 +19,7 @@ const TENANT_LISTINGS = [
     price: '₹8,500',
     swatch: 'from-[#E7D3C6] to-[#F0E1D3]',
     cta: 'bg-secondary text-primary',
+    icon: Users,
   },
   {
     name: 'Urban Roost Girls PG',
@@ -25,6 +27,7 @@ const TENANT_LISTINGS = [
     price: '₹11,000',
     swatch: 'from-[#E9D8CC] to-[#F2E5D9]',
     cta: 'bg-secondary text-primary',
+    icon: Home,
   },
 ];
 
@@ -55,9 +58,13 @@ export function HeroShowcase({ active }: HeroShowcaseProps) {
               </div>
             </div>
             <div className="flex flex-col gap-2.5 p-3.5">
-              {TENANT_LISTINGS.map((item) => (
+              {TENANT_LISTINGS.map((item) => {
+                const Icon = item.icon;
+                return (
                 <div key={item.name} className="flex gap-3 rounded-2xl border border-border/60 bg-muted p-2.5">
-                  <div className={`h-16 w-[78px] shrink-0 rounded-xl bg-gradient-to-br ${item.swatch}`} />
+                  <div className={`flex h-16 w-[78px] shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${item.swatch}`}>
+                    <Icon className="h-6 w-6 text-primary/70" strokeWidth={1.6} />
+                  </div>
                   <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
                     <div className="flex items-center gap-1.5">
                       <span className="truncate font-display text-[13px] font-bold text-foreground">
@@ -81,7 +88,8 @@ export function HeroShowcase({ active }: HeroShowcaseProps) {
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
           <div className="absolute -right-[2%] -top-[4%] hidden items-center gap-2 rounded-2xl border border-border bg-card px-3.5 py-2.5 shadow-[0_22px_44px_-18px_rgba(47,47,47,0.32)] sm:flex">

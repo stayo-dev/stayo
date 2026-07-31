@@ -5,11 +5,11 @@ export function ContactPage() {
   const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
-    document.title = 'Contact Us | StayO, Hyderabad';
+    document.title = 'Contact Us | Stayo';
     const desc = document.querySelector('meta[name="description"]');
-    desc?.setAttribute('content', 'Contact StayO for admission enquiries, fee details, room availability, and hostel visits. We\'re here to help.');
+    desc?.setAttribute('content', 'Contact Stayo for admission enquiries, fee details, room availability, and hostel visits. We\'re here to help.');
     const canonical = document.querySelector('link[rel="canonical"]');
-    canonical?.setAttribute('href', 'https://www.stayo.app/contact');
+    canonical?.setAttribute('href', 'https://yourstayo.com/contact');
   }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -29,22 +29,24 @@ export function ContactPage() {
               <div className="space-y-5">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: '#1e3a5f' }}>📞 Phone</p>
-                  <a href="tel:+917901070333" className="no-underline font-semibold text-slate-700 text-base hover:text-slate-900">
-                    +91 79010 70333
+                  <a href="tel:+917675080090" className="no-underline font-semibold text-slate-700 text-base hover:text-slate-900">
+                    +91 76750 80090
                   </a>
                 </div>
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: '#1e3a5f' }}>📧 Email</p>
-                  <a href="mailto:support@stayo.app" className="no-underline text-slate-600 text-sm hover:text-slate-900">
-                    support@stayo.app
+                  <a href="mailto:contact@yourstayo.com" className="no-underline text-slate-600 text-sm hover:text-slate-900 block">
+                    contact@yourstayo.com
+                  </a>
+                  <a href="mailto:support@yourstayo.com" className="no-underline text-slate-600 text-sm hover:text-slate-900 block">
+                    support@yourstayo.com
                   </a>
                 </div>
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: '#1e3a5f' }}>📍 Address</p>
+                  <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: '#1e3a5f' }}>🏢 Company</p>
                   <address className="not-italic text-slate-600 text-sm leading-7">
-                    StayO<br />
-                    Hyderabad, Telangana<br />
-                    India
+                    Trishul Solutions <span className="text-slate-400">(operator of Stayo)</span><br />
+                    Operating online across India
                   </address>
                 </div>
                 <div>
@@ -58,10 +60,10 @@ export function ContactPage() {
             </div>
 
             <div className="rounded-2xl p-6 text-white" style={{ background: '#1e3a5f' }}>
-              <p className="font-bold mb-2">🏠 Schedule a Visit</p>
+              <p className="font-bold mb-2">💬 We're here to help</p>
               <p className="text-slate-300 text-sm leading-relaxed">
-                We encourage prospective students and parents to visit the hostel in person before admission.
-                Call us to schedule a convenient time.
+                Questions about Stayo, listing your hostel, or finding a place to stay? Reach the
+                Trishul Solutions team by phone, email or WhatsApp — we typically respond within 24 hours.
               </p>
             </div>
           </div>

@@ -57,7 +57,7 @@ export function MoreHelpPage() {
             </span>
           }
           title="Email us"
-          meta="support@stayo.app"
+          meta="support@yourstayo.com"
           showChevron
           onClick={() => stayoToast.info('Coming soon')}
           className="px-4"

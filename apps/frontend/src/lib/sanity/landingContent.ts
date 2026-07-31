@@ -153,28 +153,28 @@ const fallbackImages = {
 
 export const fallbackLandingContent: LandingMarketingContent = {
   hostelProfile: {
-    name: 'StayO',
-    phone: '0000000000',
-    whatsappNumber: '910000000000',
-    email: 'support@stayo.app',
-    shortLocation: '[City — TBD]',
-    addressLines: ['StayO', '[Registered address — TBD]'],
+    name: 'Stayo',
+    phone: '+91 76750 80090',
+    whatsappNumber: '917675080090',
+    email: 'support@yourstayo.com',
+    shortLocation: 'India',
+    addressLines: ['Trishul Solutions'],
     locationTitle: 'Prime Location',
     locationDescription: 'Conveniently located near SNIST — your daily commute is just a 5-minute walk',
     distanceTitle: 'Just 400m from SNIST',
     distanceDescription: '5 minute walk to campus gate',
     googleMapsUrl: 'https://maps.google.com/',
-    googleMapsEmbedUrl: /* TODO: real StayO map embed */
+    googleMapsEmbedUrl: /* TODO: real Stayo map embed */
       'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d951.5284365512007!2d78.66220596962678!3d17.454269078321268!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3bcb770dd641583b%3A0xde3e95b9afb8c1b1!2sSri%20Adithya%20Boys%20Hostel!5e0!3m2!1sen!2sin!4v1780503771881!5m2!1sen!2sin',
-    ownerName: 'StayO Team',
+    ownerName: 'Stayo Team',
     ownerMessage: 'I personally respond to every enquiry.',
-    ownerPhoto: { url: '/hostel_icon.png', alt: 'StayO Logo' },
+    ownerPhoto: { url: '/hostel_icon.png', alt: 'Stayo Logo' },
   },
   seo: {
-    title: 'Best Student Hostels | StayO',
+    title: 'Best Student Hostels | Stayo',
     description:
       'Best Boys Hostel near SNIST with Home Food, Wi-Fi, CCTV security, and single/sharing room options. Walkable distance to SNIST college.',
-    canonicalUrl: 'https://stayo.app/',
+    canonicalUrl: 'https://yourstayo.com/',
   },
   hero: {
     title: '5 Minutes from SNIST Gate.',
@@ -183,8 +183,8 @@ export const fallbackLandingContent: LandingMarketingContent = {
     trustBadge: 'Trusted by SNIST students since 2019',
     highlights: ['Meals Included', 'CCTV + Warden', '400m from SNIST'],
     primaryCta: { label: 'Book a Room Visit', href: '#contact' },
-    secondaryCta: { label: 'Check Availability on WhatsApp', href: 'https://api.whatsapp.com/send?phone=910000000000' },
-    ownerImage: { url: '/hostel_icon.png', alt: 'StayO Logo' },
+    secondaryCta: { label: 'Check Availability on WhatsApp', href: 'https://api.whatsapp.com/send?phone=917675080090' },
+    ownerImage: { url: '/hostel_icon.png', alt: 'Stayo Logo' },
     carouselImages: [
       { url: '/SAH_Hostel_Galary_Building.webp', alt: 'Hostel Building', caption: 'Hostel Building' },
       { url: '/SAH_Room.webp', alt: 'Room', caption: '4-Sharing Room' },
@@ -225,7 +225,7 @@ export const fallbackLandingContent: LandingMarketingContent = {
       icon: 'utensils',
       title: 'Homely Food',
       description: "Fresh, daily meals included — just like mom's cooking",
-      image: { url: fallbackImages.food, alt: 'Homely food served at StayO' },
+      image: { url: fallbackImages.food, alt: 'Homely food served at Stayo' },
       bulletPoints: [
         '3 Hot Meals Daily (Breakfast, Lunch & Dinner)',
         'Sunday Special Meals & festive celebrations',
@@ -236,7 +236,7 @@ export const fallbackLandingContent: LandingMarketingContent = {
       icon: 'home',
       title: 'Homely Atmosphere',
       description: 'Warm, safe & comfortable — designed for students',
-      image: { url: fallbackImages.room, alt: 'Student room at StayO' },
+      image: { url: fallbackImages.room, alt: 'Student room at Stayo' },
       bulletPoints: [
         'Upgraded to 100 Mbps high-speed WiFi in every room',
         'Daily housekeeping & room cleaning',
@@ -247,7 +247,7 @@ export const fallbackLandingContent: LandingMarketingContent = {
       icon: 'map-pin',
       title: 'Prime Location',
       description: '400m from SNIST gate — walk in 5 minutes',
-      image: { url: fallbackImages.building, alt: 'StayO building location' },
+      image: { url: fallbackImages.building, alt: 'Stayo building location' },
       bulletPoints: [
         'Only 400m from SNIST gate (3 min walk)',
         'Safe well-lit walking path for students',
@@ -332,7 +332,7 @@ export const fallbackLandingContent: LandingMarketingContent = {
     },
     {
       question: 'Can we visit the hostel before confirming admission?',
-      answer: 'Absolutely. We encourage all students and parents to visit in person. Call or WhatsApp the StayO team at 00000-00000 to schedule a visit — most visits happen within 24 hours of enquiry.',
+      answer: 'Absolutely. We encourage all students and parents to visit in person. Call or WhatsApp the Stayo team at +91 76750 80090 to schedule a visit — most visits happen within 24 hours of enquiry.',
     },
   ],
   gallery: [
@@ -343,14 +343,14 @@ export const fallbackLandingContent: LandingMarketingContent = {
     { url: '/Hostel_Galary_Food_chicken_birany.webp', alt: 'Chicken Biryani', caption: 'Chicken Biryani' },
   ],
   admissionSteps: [
-    { stepNumber: 1, title: 'Reach Out', description: 'Call or WhatsApp the StayO team — get answers in minutes.' },
+    { stepNumber: 1, title: 'Reach Out', description: 'Call or WhatsApp the Stayo team — get answers in minutes.' },
     { stepNumber: 2, title: 'Visit the Hostel', description: 'Come see the room, food, and facilities in person.' },
     { stepNumber: 3, title: 'Pick Your Room', description: 'Select your preferred block and bed. We show you who your roommates are.' },
     { stepNumber: 4, title: 'Pay & Confirm', description: 'Simple deposit to reserve your bed. No hidden charges.' },
     { stepNumber: 5, title: 'Move In', description: 'Bring your things. Your home near SNIST is ready.' },
   ],
   footer: {
-    title: 'StayO',
+    title: 'Stayo',
     description: 'Your home away from home — providing comfortable, safe, and affordable accommodation for students near SNIST.',
     quickLinks: [
       { label: 'Home', href: '#home' },
@@ -360,7 +360,7 @@ export const fallbackLandingContent: LandingMarketingContent = {
       { label: 'Contact', href: '#contact' },
       { label: 'Tenant / Owner Login', href: '/login' },
     ],
-    copyright: '© 2026 StayO. All rights reserved.',
+    copyright: '© 2026 Stayo. All rights reserved.',
   },
   startingPrice: 8200,
   announcementBarEnabled: true,

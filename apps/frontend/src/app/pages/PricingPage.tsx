@@ -3,7 +3,7 @@ import { Check, ShieldCheck, Mail, Phone, ArrowRight } from 'lucide-react';
 
 export function PricingPage() {
   useEffect(() => {
-    document.title = "Room Plans & Pricing | StayO";
+    document.title = "Room Plans & Pricing | Stayo";
     
     // Manage meta tags for SEO
     let metaDescription = document.querySelector('meta[name="description"]');
@@ -20,7 +20,7 @@ export function PricingPage() {
       ogTitle.setAttribute('property', 'og:title');
       document.head.appendChild(ogTitle);
     }
-    ogTitle.setAttribute('content', 'Room Plans & Pricing | StayO');
+    ogTitle.setAttribute('content', 'Room Plans & Pricing | Stayo');
   }, []);
 
   const plans = [
@@ -148,7 +148,7 @@ export function PricingPage() {
             <ul className="space-y-3 text-amber-900/80">
               <li className="flex items-start gap-3">
                 <div className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-2 shrink-0" />
-                <p>All hostel rent payments must be made <strong>only through the official StayO web portal</strong>.</p>
+                <p>All hostel rent payments must be made <strong>only through the official Stayo web portal</strong>.</p>
               </li>
               <li className="flex items-start gap-3">
                 <div className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-2 shrink-0" />
@@ -180,7 +180,7 @@ export function PricingPage() {
           </div>
           <div className="flex items-center gap-3 px-6 py-3 bg-card border border-border shadow-sm rounded-xl">
             <Mail className="w-5 h-5 text-indigo-600" />
-            <span className="font-medium text-foreground">support@stayo.app</span>
+            <span className="font-medium text-foreground">support@yourstayo.com</span>
           </div>
         </div>
         <button className="px-8 py-4 bg-foreground text-background font-bold rounded-xl shadow-lg hover:bg-foreground/90 transition-all active:scale-[0.98]">

@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://www.sriadithyahostels.in/sitemap.xml
+Sitemap: https://yourstayo.com/sitemap.xml
