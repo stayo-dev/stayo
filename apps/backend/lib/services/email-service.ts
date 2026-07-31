@@ -3,13 +3,14 @@ import { eventLog } from "./event-log-service";
 import { formatCurrency } from "../format";
 import type { HostelPreferences } from "../preferences";
 import { frontendUrl } from "../config/domains";
+import { EMAIL, emailShell, emailButton, emailNote, emailLinkFallback } from "./email-theme";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-// No verified sending domain on the StayO Resend account yet — resend.dev's
+// No verified sending domain on the Stayo Resend account yet — resend.dev's
 // sandbox sender works without domain verification but Resend restricts it
 // to sending only to the account owner's own email. Update this once a real
 // domain is verified at resend.com/domains (see EMAIL_FROM in .env).
-const DEFAULT_FROM = "StayO <onboarding@resend.dev>";
+const DEFAULT_FROM = "Stayo <onboarding@resend.dev>";
 
 function resolveEmailFrom(value?: string | null) {
   const raw = String(value || "").trim();
@@ -27,7 +28,7 @@ function resolveEmailFrom(value?: string | null) {
     .trim();
 
   if (/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain)) {
-    return `StayO <noreply@${domain}>`;
+    return `Stayo <noreply@${domain}>`;
   }
 
   return DEFAULT_FROM;
@@ -110,48 +111,40 @@ export class EmailService {
 
     // Build financial breakdown rows
     let financialRows = `
-      <tr><td style="padding:8px 0;color:#64748b">Monthly Rent</td><td style="padding:8px 0;text-align:right;font-weight:600">${fmt(data.roomRent)}</td></tr>`;
+      <tr><td style="padding:9px 0;color:${EMAIL.mutedForeground}">Monthly Rent</td><td style="padding:9px 0;text-align:right;font-weight:700">${fmt(data.roomRent)}</td></tr>`;
     if (data.advanceDeposit && data.advanceDeposit > 0) {
       financialRows += `
-      <tr><td style="padding:8px 0;color:#64748b">Security Deposit</td><td style="padding:8px 0;text-align:right;font-weight:600">${fmt(data.advanceDeposit)}<br/><span style="font-weight:normal;font-size:11px;color:#94a3b8">Due on joining</span></td></tr>`;
+      <tr><td style="padding:9px 0;color:${EMAIL.mutedForeground}">Security Deposit</td><td style="padding:9px 0;text-align:right;font-weight:700">${fmt(data.advanceDeposit)}<br/><span style="font-weight:400;font-size:11.5px;color:${EMAIL.mutedForeground}">Due on joining</span></td></tr>`;
     }
     if (data.maintenanceCharge && data.maintenanceCharge > 0) {
       financialRows += `
-      <tr><td style="padding:8px 0;color:#64748b">Maintenance (${maintLabel})</td><td style="padding:8px 0;text-align:right;font-weight:600">${fmt(data.maintenanceCharge)}</td></tr>`;
+      <tr><td style="padding:9px 0;color:${EMAIL.mutedForeground}">Maintenance (${maintLabel})</td><td style="padding:9px 0;text-align:right;font-weight:700">${fmt(data.maintenanceCharge)}</td></tr>`;
     }
 
     const subject = `You're invited to join ${data.hostelName}`;
-    const html = `
-      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:0 auto;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;">
-        <div style="background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:28px 24px;color:#fff;">
-          <h1 style="margin:0;font-size:22px;">Welcome to ${data.hostelName}</h1>
-          <p style="margin:8px 0 0;opacity:0.9;font-size:14px;">Your new home is ready</p>
+    const html = emailShell({
+      title: `Welcome to ${data.hostelName}`,
+      subtitle: 'Your room is reserved — activate your account to move in.',
+      preheader: `${data.ownerName} invited you to ${data.hostelName}. Activate your Stayo account.`,
+      body: `
+        <p style="margin:0 0 14px;">Hello <strong>${data.tenantName}</strong>,</p>
+        <p style="margin:0 0 4px;"><strong>${data.ownerName}</strong> has invited you to join. Here are your details:</p>
+
+        <div style="background:${EMAIL.muted};border:1px solid ${EMAIL.border};border-radius:14px;padding:6px 16px;margin:18px 0;">
+          <table style="width:100%;border-collapse:collapse;font-size:14px;">
+            <tr><td style="padding:9px 0;color:${EMAIL.mutedForeground}">Room</td><td style="padding:9px 0;text-align:right;font-weight:700">${data.roomNumber}</td></tr>
+            <tr><td style="padding:9px 0;color:${EMAIL.mutedForeground}">Roommates</td><td style="padding:9px 0;text-align:right;font-size:13px">${roommateStr}</td></tr>
+            <tr><td style="padding:9px 0;color:${EMAIL.mutedForeground}">Joining date</td><td style="padding:9px 0;text-align:right;font-weight:700">${joiningStr}</td></tr>
+            <tr><td colspan="2" style="border-top:1px solid ${EMAIL.border};padding:0;height:8px"></td></tr>
+            ${financialRows}
+          </table>
         </div>
 
-        <div style="padding:24px;color:#1e293b;line-height:1.6;">
-          <p>Hello <strong>${data.tenantName}</strong>,</p>
-          <p><strong>${data.ownerName}</strong> has invited you to join. Here are your details:</p>
-
-          <div style="background:#f8fafc;border-radius:12px;padding:16px;margin:20px 0;border:1px solid #e2e8f0;">
-            <table style="width:100%;border-collapse:collapse;font-size:14px;">
-              <tr><td style="padding:8px 0;color:#64748b">Room</td><td style="padding:8px 0;text-align:right;font-weight:600">${data.roomNumber}</td></tr>
-              <tr><td style="padding:8px 0;color:#64748b">Roommates</td><td style="padding:8px 0;text-align:right;font-size:13px">${roommateStr}</td></tr>
-              <tr><td style="padding:8px 0;color:#64748b">Joining Date</td><td style="padding:8px 0;text-align:right;font-weight:600">${joiningStr}</td></tr>
-              <tr><td colspan="2" style="border-top:1px solid #e2e8f0;padding:0;height:8px"></td></tr>
-              ${financialRows}
-            </table>
-          </div>
-
-          <div style="text-align:center;margin:28px 0;">
-            <a href="${data.activationLink}" target="_blank" style="display:inline-block;background:#6366f1;color:#fff;padding:14px 32px;text-decoration:none;border-radius:10px;font-weight:700;font-size:16px;">
-              Activate Your Account
-            </a>
-          </div>
-
-          <p style="font-size:12px;color:#94a3b8;text-align:center;">This link expires in 48 hours. Contact your hostel owner if you need assistance.</p>
-        </div>
-      </div>
-    `;
+        ${emailButton('Activate your account', data.activationLink)}
+        ${emailNote('This link expires in 48 hours. Contact your hostel owner if you need a new one.')}
+        ${emailLinkFallback(data.activationLink)}
+      `,
+    });
     return this.sendEmail(data.toEmail, subject, html);
   }
 
@@ -162,28 +155,19 @@ export class EmailService {
     hostelName: string;
     activationLink: string;
   }) {
-    const subject = `You're approved — activate your StayO account for ${data.hostelName}`;
-    const html = `
-      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:0 auto;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;">
-        <div style="background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:28px 24px;color:#fff;">
-          <h1 style="margin:0;font-size:22px;">You're approved!</h1>
-          <p style="margin:8px 0 0;opacity:0.9;font-size:14px;">Let's get ${data.hostelName} set up on StayO</p>
-        </div>
-
-        <div style="padding:24px;color:#1e293b;line-height:1.6;">
-          <p>Hello <strong>${data.ownerName}</strong>,</p>
-          <p>Your hostel listing request has been reviewed and approved. Click below to finish setting up your StayO account and dashboard for <strong>${data.hostelName}</strong>.</p>
-
-          <div style="text-align:center;margin:28px 0;">
-            <a href="${data.activationLink}" target="_blank" style="display:inline-block;background:#6366f1;color:#fff;padding:14px 32px;text-decoration:none;border-radius:10px;font-weight:700;font-size:16px;">
-              Activate Your Account
-            </a>
-          </div>
-
-          <p style="font-size:12px;color:#94a3b8;text-align:center;">This link is single-use and expires in 7 days. Contact StayO support if you need a new one.</p>
-        </div>
-      </div>
-    `;
+    const subject = `You're approved — activate your Stayo account for ${data.hostelName}`;
+    const html = emailShell({
+      title: "You're approved",
+      subtitle: `Let's get ${data.hostelName} set up on Stayo.`,
+      preheader: `Finish setting up ${data.hostelName} on Stayo — your activation link is inside.`,
+      body: `
+        <p style="margin:0 0 14px;">Hello <strong>${data.ownerName}</strong>,</p>
+        <p style="margin:0 0 4px;">Your hostel listing request has been reviewed and approved. Finish setting up your account and dashboard for <strong>${data.hostelName}</strong>.</p>
+        ${emailButton('Activate your account', data.activationLink)}
+        ${emailNote('This link is single-use and expires in 7 days.')}
+        ${emailLinkFallback(data.activationLink)}
+      `,
+    });
     return this.sendEmail(data.toEmail, subject, html);
   }
 
@@ -227,7 +211,7 @@ export class EmailService {
     let subject = "";
     let title = "";
     let message = "";
-    let color = "#6366f1"; // Indigo default
+    let color: string = EMAIL.primary; // Stayo terracotta
 
     switch (data.type) {
       case "DUE_SOON":
@@ -239,19 +223,19 @@ export class EmailService {
         subject = `Overdue Payment Notice - ${data.rentMonth}`;
         title = "Payment Overdue";
         message = `Your rent payment of <strong>${formattedAmount}</strong> for ${data.rentMonth} is now past its due date (${data.dueDate}). Please settle this to avoid late fees.`;
-        color = "#f59e0b"; // Amber
+        color = EMAIL.accent; // Stayo warm accent
         break;
       case "FINAL_NOTICE":
         subject = `URGENT: Final Rent Notice - ${data.rentMonth}`;
         title = "Final Payment Notice";
         message = `URGENT: Your rent of <strong>${formattedAmount}</strong> for ${data.rentMonth} is significantly overdue. Please pay immediately to avoid service deactivation or additional penalties.`;
-        color = "#ef4444"; // Red
+        color = EMAIL.destructive;
         break;
       case "LATE_FEE_ADDED":
         subject = `Late Fee Applied - ${data.rentMonth}`;
         title = "Late Fee Added";
         message = `A late fee has been applied to your account for the month of ${data.rentMonth} as the payment is past the grace period.`;
-        color = "#7c3aed"; // Violet
+        color = EMAIL.primary;
         break;
     }
 
@@ -299,7 +283,7 @@ export class EmailService {
     let subject = "";
     let title = "";
     let message = "";
-    let color = "#6366f1"; // Indigo default
+    let color: string = EMAIL.primary; // Stayo terracotta
 
     switch (data.type) {
       case "DUE_SOON":
@@ -311,19 +295,19 @@ export class EmailService {
         subject = `Overdue Payment Notice - ${data.rentMonth}`;
         title = "Payment Overdue";
         message = `Your rent payment of <strong>${formattedAmount}</strong> for ${data.rentMonth} is now past its due date (${data.dueDate}). Please settle this to avoid late fees.`;
-        color = "#f59e0b"; // Amber
+        color = EMAIL.accent; // Stayo warm accent
         break;
       case "FINAL_NOTICE":
         subject = `URGENT: Final Rent Notice - ${data.rentMonth}`;
         title = "Final Payment Notice";
         message = `URGENT: Your rent of <strong>${formattedAmount}</strong> for ${data.rentMonth} is significantly overdue. Please pay immediately to avoid service deactivation or additional penalties.`;
-        color = "#ef4444"; // Red
+        color = EMAIL.destructive;
         break;
       case "LATE_FEE_ADDED":
         subject = `Late Fee Applied - ${data.rentMonth}`;
         title = "Late Fee Added";
         message = `A late fee has been applied to your account for the month of ${data.rentMonth} as the payment is past the grace period.`;
-        color = "#7c3aed"; // Violet
+        color = EMAIL.primary;
         break;
     }
 
