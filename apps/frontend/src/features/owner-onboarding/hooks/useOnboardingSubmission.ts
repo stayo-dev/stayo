@@ -5,6 +5,12 @@ import { onboardingApi } from '../api/onboardingApi';
 import { hostelLeadsApi } from '@features/hostel-leads/api';
 import type { OwnerOnboardingStateApi } from './useOwnerOnboardingState';
 
+/** The backend's 409 for a taken email (see /api/auth/owner-signup). */
+const isAlreadyRegistered = (error: unknown) => {
+  const err = (error as { response?: { status?: number; data?: { error?: { code?: string } } } })?.response;
+  return err?.status === 409 || err?.data?.error?.code === 'ALREADY_EXISTS';
+};
+
 const getErrorMessage = (error: unknown, fallback: string) => {
   const data = (error as { response?: { data?: { error?: { message?: string } } } })?.response?.data;
   return data?.error?.message || fallback;
@@ -27,20 +33,41 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 export function useOnboardingSubmission(s: OwnerOnboardingStateApi, leadToken?: string) {
   const { login } = useAuth();
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [sendingOtp, setSendingOtp] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [publishing, setPublishing] = useState(false);
 
   const completeSignup = async () => {
-    await onboardingApi.ownerSignup({
-      name: s.data.name.trim(),
-      email: s.data.email.trim(),
-      password,
-      phone: s.data.mobile.trim(),
-      ...(leadToken ? { lead_token: leadToken } : {}),
-    });
-    await login(s.data.email.trim(), password);
+    const email = s.data.email.trim();
+    try {
+      await onboardingApi.ownerSignup({
+        name: s.data.name.trim(),
+        email,
+        password,
+        phone: s.data.mobile.trim(),
+        ...(leadToken ? { lead_token: leadToken } : {}),
+      });
+    } catch (error) {
+      // The email already has a Stayo account — most often because this same
+      // person got partway through before. Don't dead-end them on a raw
+      // "Email already registered": if the password they just typed is the
+      // right one, log them in and carry on with the wizard.
+      if (!isAlreadyRegistered(error)) throw error;
+      try {
+        await login(email, password);
+        s.setOtpOpen(false);
+        s.go(s.step + 1);
+        stayoToast.success('You already had an account — signed you in.');
+        return;
+      } catch {
+        throw new Error(
+          'This email already has a Stayo account, and that password did not match. Log in instead, or reset your password.',
+        );
+      }
+    }
+    await login(email, password);
     s.setOtpOpen(false);
     s.go(s.step + 1);
   };
@@ -52,6 +79,10 @@ export function useOnboardingSubmission(s: OwnerOnboardingStateApi, leadToken?: 
     }
     if (password.trim().length < 8) {
       stayoToast.error('Password must be at least 8 characters.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      stayoToast.error('Both passwords must match.');
       return;
     }
     setSendingOtp(true);
@@ -134,6 +165,8 @@ export function useOnboardingSubmission(s: OwnerOnboardingStateApi, leadToken?: 
   return {
     password,
     setPassword,
+    confirmPassword,
+    setConfirmPassword,
     otpCode,
     setOtpCode,
     sendingOtp,

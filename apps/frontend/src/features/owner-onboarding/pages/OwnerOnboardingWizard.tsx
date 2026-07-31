@@ -170,7 +170,14 @@ export function OwnerOnboardingWizard() {
           <div key={s.screenId} className="w-full max-w-[540px]" style={{ animation: 'stayoScreenIn .45s cubic-bezier(.2,.8,.2,1) both' }}>
             {s.screenId === 'welcome' && <WelcomeStep />}
             {s.screenId === 'account' && (
-              <AccountStep data={s.data} setD={s.setD} password={submission.password} setPassword={submission.setPassword} />
+              <AccountStep
+                data={s.data}
+                setD={s.setD}
+                password={submission.password}
+                setPassword={submission.setPassword}
+                confirmPassword={submission.confirmPassword}
+                setConfirmPassword={submission.setConfirmPassword}
+              />
             )}
             {s.screenId === 'kyc' && <KycStep kyc={s.kyc} setKyc={s.setKyc} />}
             {s.screenId === 'create' && <CreateStep data={s.data} setD={s.setD} />}
