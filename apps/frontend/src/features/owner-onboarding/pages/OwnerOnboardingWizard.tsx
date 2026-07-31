@@ -223,7 +223,7 @@ export function OwnerOnboardingWizard() {
                 className="inline-flex items-center gap-2 rounded-[13px] bg-primary px-7.5 py-3.5 font-display text-base font-bold text-primary-foreground shadow-[0_12px_28px_-12px_rgba(164,93,68,0.65)] transition-transform hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-60"
               >
                 {s.screenId === 'account' && submission.sendingOtp
-                  ? 'Sending code…'
+                  ? 'Creating account…'
                   : s.screenId === 'publish' && submission.publishing
                   ? 'Publishing…'
                   : s.continueLabel}

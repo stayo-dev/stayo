@@ -3,9 +3,17 @@ import api from '@lib/api-client';
 const LEAD_OTP_PURPOSE = 'LEAD_CAPTURE';
 
 export const hostelLeadsApi = {
+  // `verification_required: false` means WhatsApp could not deliver a code and
+  // the backend has already recorded the number as unverified — the caller
+  // must skip its OTP step rather than wait for a code that will never arrive.
   sendLeadOtp: async (phone: string) => {
     const response = await api.post('/auth/send-phone-otp', { phone, purpose: LEAD_OTP_PURPOSE });
-    return response.data as { success: boolean; expires_in_seconds: number };
+    return response.data as {
+      success: boolean;
+      verification_required: boolean;
+      expires_in_seconds?: number;
+      reason?: string;
+    };
   },
   verifyLeadOtp: async (phone: string, otp: string) => {
     const response = await api.post('/auth/verify-phone-otp', { phone, otp, purpose: LEAD_OTP_PURPOSE });
