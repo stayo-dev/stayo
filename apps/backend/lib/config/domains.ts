@@ -1,8 +1,13 @@
-export const PRODUCTION_FRONTEND_URL = "https://sriadithyahostels.in";
-export const PRODUCTION_FRONTEND_WWW_URL = "https://www.sriadithyahostels.in";
-export const PRODUCTION_BACKEND_URL = "https://api.sriadithyahostels.in";
+export const PRODUCTION_FRONTEND_URL = "https://yourstayo.com";
+export const PRODUCTION_FRONTEND_WWW_URL = "https://www.yourstayo.com";
+export const PRODUCTION_BACKEND_URL = "https://api.yourstayo.com";
 
-const TEMPORARY_LEGACY_FRONTEND_ORIGINS: string[] = [];
+// Temporary Vercel preview URLs used while testing this deployment before
+// yourstayo.com's custom domain/DNS is live. Remove once VITE_API_URL /
+// the frontend both move to the real custom domains.
+const TEMPORARY_LEGACY_FRONTEND_ORIGINS: string[] = [
+  "https://stayo-drc3.vercel.app",
+];
 
 function normalizeUrl(value?: string | null) {
   const raw = String(value || "").trim();
