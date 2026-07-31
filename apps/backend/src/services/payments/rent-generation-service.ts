@@ -725,6 +725,119 @@ export class RentGenerationService {
   }
 
   /**
+   * Generate upcoming rent installments for ONE tenant, on demand (ADR-036).
+   *
+   * Exists because a tenant may pay more than is currently due, and StayO no
+   * longer parks the excess as a future-rent-credit balance — every rupee must
+   * land on a real installment. Called from the payment path *before* the
+   * settlement planner runs.
+   *
+   * Deliberately NOT `generateMonthlyRent()`: that method is hostel-wide and
+   * month-locked, so calling it here would create next month's rent for every
+   * tenant in the hostel as a side effect of one person paying ahead.
+   *
+   * Idempotency comes from the database, not the generation ledger:
+   * `@@unique([agreement_id, rent_month, obligation_type])` makes a duplicate
+   * impossible, and the monthly cron already tolerates pre-existing rows
+   * (`existingSet` pre-check + `createMany({ skipDuplicates: true })`). The
+   * `rent_generation_ledgers` key is deliberately left untouched — it is scoped
+   * to (owner, hostel, month), so marking it here would make the cron skip the
+   * whole hostel.
+   *
+   * Period maths reuses `billingScheduleService.buildInstallment`, the same
+   * computation the cron uses, so labels/sequences/due dates stay identical.
+   */
+  async ensureInstallmentsForTenant(input: {
+    tenantId: string;
+    ownerId: string;
+    hostelId: string;
+    /** Rupees still unallocated after every existing obligation is covered. */
+    amountNeeded: number;
+    tx?: any;
+  }): Promise<{ created: string[]; coveredAmount: number; exhausted: boolean }> {
+    const db = input.tx ?? prisma;
+    const created: string[] = [];
+    let coveredAmount = 0;
+
+    if (!input.amountNeeded || input.amountNeeded <= 0) {
+      return { created, coveredAmount: 0, exhausted: false };
+    }
+
+    const agreement = await (db as any).agreement.findFirst({
+      where: { tenant_id: input.tenantId, status: "ACTIVE" },
+      orderBy: { agreement_start_date: "desc" },
+    });
+
+    const monthlyRent = Number(agreement?.contract_rent) || 0;
+    if (!agreement || monthlyRent <= 0) {
+      // Nothing to bill against — the caller must refuse the excess rather
+      // than inventing an amount.
+      return { created, coveredAmount: 0, exhausted: true };
+    }
+
+    const frequency = (agreement.contract_payment_frequency || "MONTHLY") as PaymentFrequency;
+    const periodMonths = billingScheduleService.periodMonths(frequency);
+
+    const latest = await (db as any).rent_obligations.findFirst({
+      where: { tenant_id: input.tenantId, obligation_type: "RENT" },
+      orderBy: { rent_month: "desc" },
+      select: { rent_month: true },
+    });
+
+    const startFrom = latest?.rent_month ? new Date(latest.rent_month) : new Date();
+    let cursor = new Date(
+      Date.UTC(startFrom.getUTCFullYear(), startFrom.getUTCMonth() + periodMonths, 1),
+    );
+
+    const endDate = agreement.agreement_end_date ? new Date(agreement.agreement_end_date) : null;
+    let exhausted = false;
+
+    while (coveredAmount < input.amountNeeded) {
+      if (endDate && cursor > endDate) {
+        exhausted = true;
+        break;
+      }
+
+      const installment = billingScheduleService.buildInstallment({
+        frequency,
+        anchorDate: cursor,
+        monthlyRent,
+      });
+
+      try {
+        const row = await (db as any).rent_obligations.create({
+          data: {
+            tenant_id: input.tenantId,
+            owner_id: input.ownerId,
+            hostel_id: input.hostelId,
+            agreement_id: agreement.id,
+            rent_month: cursor,
+            amount: installment.amount,
+            total_amount: installment.amount,
+            due_date: installment.due_date,
+            status: "PENDING",
+            obligation_type: "RENT",
+            billing_period_start: installment.period_start,
+            billing_period_end: installment.period_end,
+            installment_label: installment.installment_label,
+            installment_sequence: installment.installment_sequence,
+          },
+        });
+        if (row?.id) created.push(row.id);
+      } catch (err: any) {
+        // P2002: the cron (or a concurrent payment) already created this
+        // period. The month is covered either way — keep going.
+        if (err?.code !== "P2002") throw err;
+      }
+
+      coveredAmount += installment.amount;
+      cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + periodMonths, 1));
+    }
+
+    return { created, coveredAmount, exhausted };
+  }
+
+  /**
    * Preview what would be generated without writing anything.
    * Pure read-only operation.
    */
