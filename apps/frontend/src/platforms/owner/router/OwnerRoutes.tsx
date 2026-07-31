@@ -38,6 +38,9 @@ const MoreNoticesPage = lazy(() => import('@features/owner-more/pages/MoreNotice
 const MoreServiceRequestsPage = lazy(() => import('@features/owner-more/pages/MoreServiceRequestsPage').then((m) => ({ default: m.MoreServiceRequestsPage })));
 const MoreHelpPage = lazy(() => import('@features/owner-more/pages/MoreHelpPage').then((m) => ({ default: m.MoreHelpPage })));
 const MoreAboutPage = lazy(() => import('@features/owner-more/pages/MoreAboutPage').then((m) => ({ default: m.MoreAboutPage })));
+const MoreWorkspaceConfigPage = lazy(() =>
+  import('@features/owner-more/pages/MoreWorkspaceConfigPage').then((m) => ({ default: m.MoreWorkspaceConfigPage })),
+);
 
 function OwnerRouteFallback() {
   return (
@@ -92,6 +95,7 @@ export function OwnerRoutes() {
         <Route path="/owner/alerts" element={<AlertsPage />} />
 
         <Route path="/owner/more" element={<MorePage />} />
+        <Route path="/owner/more/workspace-configuration" element={<MoreWorkspaceConfigPage />} />
         <Route path="/owner/more/settings" element={<MoreSettingsPage />} />
         <Route path="/owner/more/billing" element={<MoreBillingPage />} />
         <Route path="/owner/more/profile" element={<MoreProfilePage />} />

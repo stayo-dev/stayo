@@ -2,8 +2,9 @@ import { useNavigate } from 'react-router-dom';
 import { Settings2, HelpCircle, Info, LogOut, ChevronRight, FileText, CircleDot } from 'lucide-react';
 import { ListRow } from '@shared/ui-patterns/ListRow';
 import { stayoToast } from '@shared/ui-patterns/Toast';
-import { mockOwnerProfile, mockWorkspaceConfig, mockAgreementsSummary, mockPropertiesSummary } from '@shared/mocks/more';
+import { mockOwnerProfile, mockAgreementsSummary, mockPropertiesSummary } from '@shared/mocks/more';
 import { useMoreNav } from '../hooks/useMoreNav';
+import { useWorkspaceConfig } from '../hooks/useWorkspaceConfig';
 
 const card = 'overflow-hidden rounded-[20px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]';
 
@@ -11,6 +12,7 @@ const card = 'overflow-hidden rounded-[20px] border border-border bg-card shadow
 export function MorePage() {
   const navigate = useNavigate();
   const { signOut } = useMoreNav();
+  const { percentComplete, remainingCount, isLoading: configLoading } = useWorkspaceConfig();
 
   return (
     <div className="flex flex-col gap-3.5 px-4 pb-8 pt-6 sm:px-6">
@@ -28,7 +30,7 @@ export function MorePage() {
 
       <button
         type="button"
-        onClick={() => stayoToast.info('Coming soon')}
+        onClick={() => navigate('/owner/more/workspace-configuration')}
         className="flex items-center gap-3.5 rounded-[20px] bg-foreground px-[18px] py-4 text-left shadow-[0_12px_30px_rgba(34,30,26,0.22)]"
       >
         <span className="flex h-11 w-11 flex-none items-center justify-center rounded-[13px] bg-[rgba(217,144,111,0.18)]">
@@ -37,9 +39,13 @@ export function MorePage() {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="font-display text-[14.5px] font-bold text-background">Workspace Configuration</span>
-            <span className="flex-none rounded-full bg-primary/25 px-2 py-0.5 text-[9.5px] font-semibold text-primary">{mockWorkspaceConfig.percentComplete}%</span>
+            {!configLoading && (
+              <span className="flex-none rounded-full bg-primary/25 px-2 py-0.5 text-[9.5px] font-semibold text-primary">{percentComplete}%</span>
+            )}
           </div>
-          <div className="mt-0.5 truncate text-[11.5px] text-background/60">{mockWorkspaceConfig.caption}</div>
+          <div className="mt-0.5 truncate text-[11.5px] text-background/60">
+            {configLoading ? 'Loading…' : remainingCount === 0 ? 'All set' : `Finance, agreements & automation · ${remainingCount} to finish`}
+          </div>
         </div>
         <ChevronRight className="h-4 w-4 flex-none text-background/50" />
       </button>
