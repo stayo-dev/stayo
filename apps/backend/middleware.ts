@@ -23,6 +23,9 @@ const PUBLIC_ROUTES = [
   "/api/auth/csrf",
   "/api/tenants/activate",
   "/api/visit",
+  // Meta WhatsApp Cloud API. The canonical path plus its legacy mount — both
+  // are signature-verified (X-Hub-Signature-256), not session-authenticated.
+  "/api/webhooks/whatsapp",
   "/api/webhooks/notifications/whatsapp",
   "/api/webhooks/payments/razorpay",
   "/api/plans",

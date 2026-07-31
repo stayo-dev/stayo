@@ -294,6 +294,9 @@ export class WhatsAppWebhookEventService {
 
     const webhookEventId = crypto.randomUUID();
 
+    // ON CONFLICT DO NOTHING, not a bare INSERT: two Meta deliveries of the
+    // same body can race past the SELECT above, and a unique-violation here
+    // would turn a duplicate into a 500 (and another Meta retry).
     const inserted = await prisma.$queryRaw<Array<{
       id: string;
       processing_status: string;
@@ -325,10 +328,48 @@ export class WhatsAppWebhookEventService {
         ${input.signatureFailureReason || null},
         'RECEIVED'
       )
+      ON CONFLICT (event_hash) DO NOTHING
       RETURNING id::text, processing_status, processing_result
     `;
 
+    if (!inserted[0]) {
+      const raced = await prisma.$queryRaw<Array<{
+        id: string;
+        processing_status: string;
+        processing_result: unknown;
+      }>>`
+        SELECT id::text, processing_status, processing_result
+        FROM whatsapp_webhook_events
+        WHERE event_hash = ${eventHash}
+        LIMIT 1
+      `;
+      return { event: raced[0], duplicate: true, eventHash, payload };
+    }
+
     return { event: inserted[0], duplicate: false, eventHash, payload };
+  }
+
+  /**
+   * Take exclusive ownership of an event before running its handlers.
+   *
+   * Returns false when another delivery already holds it — that is the guard
+   * against a Meta retry re-running command handlers (and re-sending replies)
+   * while the first delivery is still in flight. A row left PROCESSING by a
+   * crashed process becomes claimable again after 10 minutes; FAILED rows are
+   * immediately claimable so a retry can recover them.
+   */
+  async claimForProcessing(eventId: string): Promise<boolean> {
+    const claimed = await prisma.$queryRaw<Array<{ id: string }>>`
+      UPDATE whatsapp_webhook_events
+      SET processing_status = 'PROCESSING'
+      WHERE id = ${eventId}::uuid
+        AND (
+          processing_status IN ('RECEIVED', 'FAILED')
+          OR (processing_status = 'PROCESSING' AND received_at < now() - interval '10 minutes')
+        )
+      RETURNING id::text
+    `;
+    return claimed.length > 0;
   }
 
   async processWebhookEvent(eventId: string, payload: unknown) {

@@ -179,7 +179,7 @@ export function OwnerOnboardingWizard() {
                 setConfirmPassword={submission.setConfirmPassword}
               />
             )}
-            {s.screenId === 'kyc' && <KycStep kyc={s.kyc} setKyc={s.setKyc} />}
+            {s.screenId === 'kyc' && <KycStep />}
             {s.screenId === 'create' && <CreateStep data={s.data} setD={s.setD} />}
             {s.screenId === 'location' && <LocationStep data={s.data} setD={s.setD} />}
             {s.screenId === 'details' && <DetailsStep data={s.data} setD={s.setD} />}
