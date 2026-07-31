@@ -167,10 +167,9 @@ function renderPage(content: {
               return '<div class="breakdown-row"><span>' + escapeHtml(a.label) + '</span><span>₹' + Number(a.allocated).toLocaleString('en-IN') + '</span></div>';
             })
             .join('');
-          const creditRow = plan.future_credit > 0
-            ? '<div class="breakdown-row"><span>Advance / Future Rent Credit</span><span>₹' + Number(plan.future_credit).toLocaleString('en-IN') + '</span></div>'
-            : '';
-          breakdownContent.innerHTML = (rows + creditRow) || '<p class="breakdown-loading">Enter an amount above.</p>';
+          // ADR-036: no advance/future-credit row — every rupee lands on an
+          // installment, so the breakdown is exactly the allocations.
+          breakdownContent.innerHTML = rows || '<p class="breakdown-loading">Enter an amount above.</p>';
         }
 
         async function fetchPreview(amount) {

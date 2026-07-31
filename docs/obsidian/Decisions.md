@@ -23,6 +23,27 @@ Architecture Decision Records — each entry below was **inferred from code evid
 
 ---
 
+## ADR-036: Remove future rent credit — every payment settles a real installment
+
+- **Date:** 2026-07-31
+- **Status:** accepted
+- **Context:** Paying more than was currently due parked the excess as a balance: the planner returned `future_credit`, and the engine credited it to `tenant_financial_ledger` (`FUTURE_RENT_CREDIT_TOPUP`), with a matching `EXISTING_CREDIT` funding source for spending it back down. That meant money could sit in an abstract balance that no installment accounted for, and owners had two different mental models for "what has this tenant paid". Requested directly by the product owner: payments should be marked against installments, full stop.
+- **Decision:** the credit balance is removed from the payment path entirely.
+  - The planner's `future_credit` becomes **`unallocated`** — money it could not place on any obligation, which is an *error condition*, never a balance.
+  - The engine's two ledger branches (the topup credit and the `EXISTING_CREDIT` debit) are deleted along with `fundingSource`, and a plan with `unallocated > 0` is refused (`BAD_REQUEST`).
+  - Before planning, an amount exceeding what is due generates the tenant's next installment(s) from their ACTIVE agreement via a new **tenant-scoped** `rentGenerationService.ensureInstallmentsForTenant`, then re-reads so the planner allocates across them.
+  - If the agreement cannot yield further installments (ended, or absent), the payment is **rejected** rather than parked.
+  - The settlement invariant becomes `Paid = ΣAllocations` exactly, with no credit term.
+- **Alternatives considered:**
+  - **Cap the amount at what is currently due** (rejected by the product owner — it refuses money the tenant is genuinely handing over).
+  - **Keep a small "unapplied" balance until an installment exists** (rejected — that is future credit under another name, the exact thing being removed).
+  - **Call the existing `generateMonthlyRent()` from the payment path** (rejected on evidence: it is hostel-wide and month-locked, so collecting one tenant's advance would have created next month's rent for *every* tenant in that hostel, inflating their dashboards and potentially triggering reminders).
+  - **Reuse `rent_generation_ledgers` for idempotency** (rejected on evidence: its key is `(owner, hostel, month)`, so marking it from a single-tenant path would make the monthly cron skip the whole hostel. The real guard is the pre-existing `@@unique([agreement_id, rent_month, obligation_type])` constraint, and the cron already tolerates pre-existing rows via `existingSet` + `createMany({ skipDuplicates: true })`).
+- **Consequences:** every rupee is now traceable to an installment, and the owner's "outstanding" is the whole story. Costs, stated plainly: **recording a payment can now create obligations**, which is new coupling between the payment path and rent generation (scoped to the paying tenant, and idempotent); and **the system will now refuse money** when a tenant tries to pay past the end of their agreement. Period maths reuses `billingScheduleService.buildInstallment`, the same computation the cron uses, so labels/sequences/due dates stay identical. Retained-but-dead for now, to avoid a migration on an empty table: `payment_groups.future_credit_amount` (always `0`), three `FinancialLedgerReason` enum values, and `/api/verify/receipt`'s ledger read (always `0`). Safe because `tenant_financial_ledger` was verified **empty (0 rows)** before the change — this was a code change with no balances to migrate.
+- **Related:** [[Business-Rules#Payment allocation|Business-Rules]], [[Database]], [[APIs]], [[Features]], [[Changelog]], plan at `docs/superpowers/plans/2026-07-31-remove-future-rent-credit.md`
+
+---
+
 ## ADR-035: One login surface (the Stayo popup), and tenant self-signup creates a *marketplace account*, not a tenant
 
 - **Date:** 2026-07-31

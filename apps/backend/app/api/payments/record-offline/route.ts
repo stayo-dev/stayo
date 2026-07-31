@@ -244,7 +244,7 @@ export async function POST(req: Request) {
       obligation_status: (result as any).newStatus || (result as any).overallStatus,
       payment_group_id: (result as any).groupId || null,
       allocations: (result as any).allocations || undefined,
-      future_credit: (result as any).futureCredit || 0,
+      future_credit: 0, // ADR-036: retained for response-shape compatibility
       settlement_breakdown: (result as any).settlementBreakdown || null,
     });
   } catch (error: any) {
