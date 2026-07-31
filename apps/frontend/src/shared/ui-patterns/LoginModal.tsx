@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { X } from 'lucide-react';
+import { Eye, EyeOff, X } from 'lucide-react';
 import { cn } from '@shared/lib/cn';
 import { useAuth } from '@context/AuthContext';
 import { authApi } from '@lib/authApi';
@@ -62,6 +62,7 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
   const [form, setForm] = useState<LoginModalForm>(EMPTY_FORM);
   const [otp, setOtp] = useState('');
   const [otpRequired, setOtpRequired] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -75,6 +76,7 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
     setForm(EMPTY_FORM);
     setOtp('');
     setOtpRequired(false);
+    setShowPassword(false);
     setError('');
     setSubmitting(false);
   }, [open, initialTab, isOwner]);
@@ -318,14 +320,25 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
                 )}
                 <label className="block">
                   <span className={labelClass}>PASSWORD</span>
-                  <input
-                    value={form.password}
-                    onChange={(e) => set('password', e.target.value)}
-                    type="password"
-                    placeholder="••••••••"
-                    autoComplete={isLogin ? 'current-password' : 'new-password'}
-                    className={inputClass}
-                  />
+                  <div className="relative">
+                    <input
+                      value={form.password}
+                      onChange={(e) => set('password', e.target.value)}
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="••••••••"
+                      autoComplete={isLogin ? 'current-password' : 'new-password'}
+                      className={`${inputClass} pr-11`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      aria-pressed={showPassword}
+                      className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted-foreground transition-colors hover:text-primary"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </label>
               </>
             )}
