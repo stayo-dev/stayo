@@ -80,7 +80,7 @@ describe("SettlementPlanner - buildSettlementPlan", () => {
     const plan = buildSettlementPlan(sampleObligations, 24000, policyPartialAllowed);
 
     expect(plan.payment_accepted).toBe(true);
-    expect(plan.future_credit).toBe(0);
+    expect(plan.unallocated).toBe(0);
     expect(plan.total_to_settle).toBe(24000);
     expect(plan.remaining_outstanding).toBe(0);
 
@@ -98,14 +98,16 @@ describe("SettlementPlanner - buildSettlementPlan", () => {
     expect(rent?.result).toBe("PAID");
   });
 
-  it("handles excess payments by allocating to future credit", () => {
+  it("reports excess as unallocated rather than crediting it", () => {
     const plan = buildSettlementPlan(sampleObligations, 25600, policyPartialAllowed);
 
     expect(plan.payment_accepted).toBe(true);
-    expect(plan.future_credit).toBe(1600);
+    expect(plan.unallocated).toBe(1600);
     expect(plan.total_to_settle).toBe(24000);
     expect(plan.remaining_outstanding).toBe(0);
-    expect(plan.warnings).toContain("₹1,600 will be credited as future rent");
+    expect(plan.warnings).toContain(
+      "₹1,600 exceeds every settleable installment and cannot be accepted",
+    );
   });
 
   it("applies policy minimum check when partial payments are allowed", () => {
@@ -185,7 +187,7 @@ describe("SettlementPlanner - buildSettlementPlan", () => {
     const plan = buildSettlementPlan(allPaid, 2000, policyPartialDisabled);
     expect(plan.payment_accepted).toBe(true);
     expect(plan.minimum_allowed).toBe(1);
-    expect(plan.future_credit).toBe(2000);
+    expect(plan.unallocated).toBe(2000);
     expect(plan.total_to_settle).toBe(0);
   });
 });

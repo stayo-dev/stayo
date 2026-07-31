@@ -170,7 +170,6 @@ export const paymentTransferHandler: CorrectionHandler<PaymentTransferDetail> = 
       paymentDate: new Date(),
       idempotencyKey: `correction:${kase.id}:forward`,
       userId: actor.actorId,
-      fundingSource: "NEW_PAYMENT",
     });
 
     return {

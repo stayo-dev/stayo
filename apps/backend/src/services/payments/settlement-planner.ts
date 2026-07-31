@@ -246,7 +246,14 @@ export interface SkippedObligation {
 
 export interface SettlementPlan {
   allocations: SettlementAllocation[];
-  future_credit: number;
+  /**
+   * Money the planner could not place on any obligation (ADR-036). This is an
+   * ERROR condition, never a balance — StayO no longer holds future rent
+   * credit. The payment service generates the tenant's next installment(s)
+   * before planning, so a well-formed call should always see 0 here; the
+   * engine refuses to settle a plan with anything left over.
+   */
+  unallocated: number;
   total_outstanding: number;
   total_to_settle: number;
   remaining_outstanding: number;
@@ -349,7 +356,7 @@ export function buildSettlementPlan(
     if (!chronoCheck.valid) {
       return {
         allocations: [],
-        future_credit: amountRupees,
+        unallocated: amountRupees,
         total_outstanding: rawObligations.reduce((sum, ob) => sum + Math.max(ob.amount - ob.paid, 0), 0),
         total_to_settle: 0,
         remaining_outstanding: rawObligations.reduce((sum, ob) => sum + Math.max(ob.amount - ob.paid, 0), 0),
@@ -414,10 +421,10 @@ export function buildSettlementPlan(
     remainingPaisa -= allocPaisa;
   }
 
-  const futureCreditPaisa = Math.max(remainingPaisa, 0);
-  const futureCredit = futureCreditPaisa / 100;
+  const unallocatedPaisa = Math.max(remainingPaisa, 0);
+  const unallocated = unallocatedPaisa / 100;
   const totalOutstanding = totalOutstandingPaisa / 100;
-  const totalToSettlePaisa = amountPaisa - futureCreditPaisa;
+  const totalToSettlePaisa = amountPaisa - unallocatedPaisa;
   const totalToSettle = totalToSettlePaisa / 100;
   const remainingOutstanding = Math.max(totalOutstanding - totalToSettle, 0);
 
@@ -473,8 +480,10 @@ export function buildSettlementPlan(
 
   // ── 4. Warnings ─────────────────────────────────────────────────────────────
   const warnings: string[] = [];
-  if (futureCredit > 0) {
-    warnings.push(`₹${futureCredit.toLocaleString("en-IN")} will be credited as future rent`);
+  if (unallocated > 0) {
+    warnings.push(
+      `₹${unallocated.toLocaleString("en-IN")} exceeds every settleable installment and cannot be accepted`,
+    );
   }
 
   // ── 5. Explanation (human-readable reasoning) ──────────────────────────────
@@ -521,11 +530,11 @@ export function buildSettlementPlan(
     }
   }
 
-  if (futureCredit > 0) {
+  if (unallocated > 0) {
     explanation.push({
-      text: `₹${futureCredit.toLocaleString("en-IN")} credited as future rent (excess after all allocations)`,
+      text: `₹${unallocated.toLocaleString("en-IN")} could not be allocated to any installment`,
       obligation_id: null,
-      reason: "FUTURE_CREDIT",
+      reason: "UNALLOCATED",
     });
   }
 
@@ -544,17 +553,17 @@ export function buildSettlementPlan(
   // ── 7. Summary ──────────────────────────────────────────────────────────────
   const activeAllocations = allocations.filter(a => a.allocated > 0);
   let summary: string;
-  if (activeAllocations.length === 0 && futureCredit > 0) {
-    summary = `₹${amountRupees.toLocaleString("en-IN")} → credited as future rent`;
-  } else if (futureCredit > 0) {
-    summary = `₹${amountRupees.toLocaleString("en-IN")} → ${activeAllocations.length} obligation(s) settled, ₹${futureCredit.toLocaleString("en-IN")} as future credit`;
+  if (activeAllocations.length === 0 && unallocated > 0) {
+    summary = `₹${amountRupees.toLocaleString("en-IN")} → no settleable installment`;
+  } else if (unallocated > 0) {
+    summary = `₹${amountRupees.toLocaleString("en-IN")} → ${activeAllocations.length} obligation(s) settled, ₹${unallocated.toLocaleString("en-IN")} unallocated`;
   } else {
     summary = `₹${amountRupees.toLocaleString("en-IN")} → ${activeAllocations.length} obligation(s) settled`;
   }
 
   return {
     allocations,
-    future_credit: futureCredit,
+    unallocated,
     total_outstanding: totalOutstanding,
     total_to_settle: totalToSettle,
     remaining_outstanding: remainingOutstanding,
