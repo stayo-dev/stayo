@@ -1,20 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  ArrowRight,
-  Building2,
-  Check,
-  Clock,
-  Mail,
-  Menu,
-  MessageCircle,
-  Phone,
-  Search,
-  X,
-} from 'lucide-react';
-import { ThemeProvider } from '@/app/providers/ThemeProvider';
+import { ArrowRight, Building2, Check, Clock, Mail, MessageCircle, Phone } from 'lucide-react';
 import { COMPANY } from '@/content/company';
-import { MarketingFooter } from './components/MarketingFooter';
+import { MarketingLayout } from './components/MarketingLayout';
 
 /**
  * /contact — rebuilt in the marketing theme (2026-07-31) so it matches the
@@ -31,14 +19,6 @@ import { MarketingFooter } from './components/MarketingFooter';
  * All contact details come from src/content/company.ts — never hardcoded.
  */
 
-/** Landing-page nav targets. Hash links are route-qualified so they work from here. */
-const NAV_LINKS = [
-  { to: '/#search', label: 'Hostels' },
-  { to: '/#journey', label: 'For Owners' },
-  { to: '/#why', label: 'Features' },
-  { to: '/#whatis', label: 'About' },
-];
-
 const INTENTS = [
   { value: 'list', label: 'List my hostel on Stayo' },
   { value: 'stay', label: 'Find a place to stay' },
@@ -54,7 +34,6 @@ const OFFICE_HOURS = [
 ];
 
 export function ContactPage() {
-  const [menuOpen, setMenuOpen] = useState(false);
   const [sent, setSent] = useState(false);
   const [form, setForm] = useState({
     name: '',
@@ -110,98 +89,12 @@ export function ContactPage() {
   };
 
   return (
-    <ThemeProvider theme="marketing">
-      <div className="min-h-screen overflow-x-hidden bg-background text-foreground [background-image:linear-gradient(rgba(120,80,70,.07)_1px,transparent_1px),linear-gradient(90deg,rgba(120,80,70,.07)_1px,transparent_1px)] [background-size:52px_52px]">
-
-        {/* ============ NAV ============ */}
-        <nav className="sticky top-0 z-[100] border-b border-border bg-background/85 backdrop-blur-lg">
-          <div className="mx-auto flex max-w-6xl items-center gap-5 px-4 py-3.5 sm:px-6">
-            <Link to="/" className="flex flex-none items-center gap-2">
-              <span className="font-display text-xl font-extrabold tracking-tight text-primary">Stayo</span>
-            </Link>
-            <div className="flex-1" />
-            <div className="hidden items-center gap-6 md:flex">
-              {NAV_LINKS.map((link) => (
-                <Link key={link.to} to={link.to} className="text-sm font-semibold text-foreground/80 hover:text-primary">
-                  {link.label}
-                </Link>
-              ))}
-              <span className="text-sm font-semibold text-primary">Contact</span>
-              <Link to="/company" className="text-sm font-semibold text-foreground/80 hover:text-primary">
-                Company
-              </Link>
-              <span className="h-5 w-px bg-border" />
-              <Link to="/login?signin=1" className="text-sm font-semibold text-foreground/80 hover:text-primary">
-                Login
-              </Link>
-              <Link
-                to="/#search"
-                className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4.5 py-2.5 font-display text-sm font-bold text-primary-foreground shadow-[0_8px_18px_-8px_rgba(164,93,68,0.6)] transition-transform hover:scale-[1.02]"
-              >
-                <Search className="h-3.5 w-3.5" strokeWidth={2.4} />
-                Search Hostels
-              </Link>
-            </div>
-            <button
-              type="button"
-              onClick={() => setMenuOpen((v) => !v)}
-              aria-label="Menu"
-              className="flex items-center justify-center rounded-[10px] border border-border bg-card p-2.5 md:hidden"
-            >
-              {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-            </button>
-          </div>
-          {menuOpen && (
-            <div className="flex flex-col gap-1 border-y border-border bg-card px-4 py-3 md:hidden">
-              {NAV_LINKS.map((link) => (
-                <Link
-                  key={link.to}
-                  to={link.to}
-                  onClick={() => setMenuOpen(false)}
-                  className="border-b border-border/50 py-2.5 text-[15px] font-semibold text-foreground"
-                >
-                  {link.label}
-                </Link>
-              ))}
-              <Link
-                to="/company"
-                onClick={() => setMenuOpen(false)}
-                className="border-b border-border/50 py-2.5 text-[15px] font-semibold text-foreground"
-              >
-                Company
-              </Link>
-              <Link
-                to="/login"
-                onClick={() => setMenuOpen(false)}
-                className="border-b border-border/50 py-2.5 text-[15px] font-semibold text-foreground"
-              >
-                Login
-              </Link>
-              <Link
-                to="/#search"
-                onClick={() => setMenuOpen(false)}
-                className="mt-2 rounded-xl bg-primary py-3 text-center font-display text-[15px] font-bold text-primary-foreground"
-              >
-                Search Hostels
-              </Link>
-            </div>
-          )}
-        </nav>
-
-        {/* ============ HERO ============ */}
-        <header className="px-4 pb-10 pt-16 sm:px-6">
-          <div className="mx-auto max-w-3xl text-center">
-            <div className="mb-3.5 font-display text-xs font-bold tracking-[0.14em] text-primary">CONTACT</div>
-            <h1 className="mb-5 text-balance font-display text-[clamp(32px,5vw,52px)] font-extrabold leading-[1.05] tracking-tight">
-              Talk to the Stayo team
-            </h1>
-            <p className="mx-auto max-w-xl text-[clamp(15px,1.5vw,18px)] leading-relaxed text-muted-foreground">
-              Listing a hostel, looking for a stay, or stuck on something? Reach us on WhatsApp for the fastest
-              reply — we typically get back within 24 hours.
-            </p>
-          </div>
-        </header>
-
+    <MarketingLayout
+      eyebrow="CONTACT"
+      title="Talk to the Stayo team"
+      subtitle="Listing a hostel, looking for a stay, or stuck on something? Reach us on WhatsApp for the fastest reply — we typically get back within 24 hours."
+      activeNav="contact"
+    >
         {/* ============ CHANNELS + ENQUIRY ============ */}
         <section className="px-4 pb-16 sm:px-6">
           <div className="mx-auto grid max-w-5xl gap-6 [grid-template-columns:repeat(auto-fit,minmax(320px,1fr))]">
@@ -400,9 +293,7 @@ export function ContactPage() {
           </div>
         </section>
 
-        <MarketingFooter />
-      </div>
-    </ThemeProvider>
+    </MarketingLayout>
   );
 }
 

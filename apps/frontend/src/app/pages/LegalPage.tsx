@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { legalSections } from '../../content/legal';
-import { PublicLayout } from './public/PublicLayout';
-import { FileText, Shield, RotateCcw, Truck, PhoneCall, Trash2 } from 'lucide-react';
+import { COMPANY } from '@/content/company';
+import { MarketingLayout } from './public/components/MarketingLayout';
+import { ArrowLeft, ArrowRight, FileText, Shield, RotateCcw, Truck, PhoneCall, Trash2 } from 'lucide-react';
 
 export function LegalPage() {
   const { pathname } = useLocation();
@@ -158,35 +159,46 @@ export function LegalPage() {
 
   if (isHub) {
     return (
-      <PublicLayout title="Legal & Policies" subtitle="Our commitment to transparency, privacy, and security.">
-        <section className="max-w-4xl mx-auto px-6 py-16">
-          <div className="grid gap-6 sm:grid-cols-2">
+      <MarketingLayout
+        eyebrow="LEGAL"
+        title="Legal & Policies"
+        subtitle="How Stayo handles your money, your data and your stay — in plain terms."
+      >
+        <section className="px-4 pb-16 sm:px-6">
+          <div className="mx-auto grid max-w-5xl gap-5 [grid-template-columns:repeat(auto-fit,minmax(280px,1fr))]">
             {hubCards.map((card) => (
               <Link
                 key={card.to}
                 to={card.to}
-                className="block p-7 bg-white rounded-2xl border border-slate-100 hover:border-slate-200 shadow-sm hover:shadow transition no-underline text-slate-700 hover:translate-y-[-2px] duration-200"
+                className="group flex flex-col rounded-[22px] border border-border bg-card p-7 shadow-[0_20px_50px_-34px_rgba(47,47,47,0.28)] transition-transform hover:-translate-y-1"
               >
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="p-3 bg-[#1B2D5B]/10 text-[#1B2D5B] rounded-xl">
-                    {card.icon}
-                  </div>
-                  <h3 className="font-extrabold text-[#1B2D5B] text-lg m-0" style={{ fontFamily: 'var(--font-display)' }}>
-                    {card.title}
-                  </h3>
-                </div>
-                <p className="text-sm text-slate-500 mb-6 leading-relaxed">
-                  {card.description}
-                </p>
-                <div className="flex items-center justify-between text-xs font-semibold pt-2 border-t border-slate-50">
-                  <span className="text-slate-400">Last updated: {card.lastUpdated}</span>
-                  <span className="text-[#F07B1D]">Read Policy &rarr;</span>
+                <span className="mb-5 flex h-11 w-11 items-center justify-center rounded-2xl bg-secondary text-primary">
+                  {card.icon}
+                </span>
+                <h2 className="mb-2 font-display text-[19px] font-bold text-foreground">{card.title}</h2>
+                <p className="mb-6 text-[13.5px] leading-relaxed text-muted-foreground">{card.description}</p>
+                <div className="mt-auto flex items-center justify-between border-t border-border pt-4">
+                  <span className="text-[11.5px] font-semibold text-muted-foreground">
+                    Updated {card.lastUpdated}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 font-display text-[13px] font-bold text-primary">
+                    Read
+                    <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" strokeWidth={2.4} />
+                  </span>
                 </div>
               </Link>
             ))}
           </div>
+
+          <p className="mx-auto mt-10 max-w-2xl text-center text-[12.5px] leading-relaxed text-muted-foreground">
+            Stayo is operated by {COMPANY.name}. Questions about any policy? Reach us at{' '}
+            <a href={`mailto:${COMPANY.emails.legal}`} className="font-semibold text-primary hover:underline">
+              {COMPANY.emails.legal}
+            </a>
+            .
+          </p>
         </section>
-      </PublicLayout>
+      </MarketingLayout>
     );
   }
 
@@ -194,89 +206,106 @@ export function LegalPage() {
 
   if (!section) {
     return (
-      <PublicLayout title="Not Found" subtitle="Requested policy section does not exist.">
-        <div className="max-w-3xl mx-auto px-6 py-16 text-center">
-          <Link to="/legal" className="no-underline font-bold text-sm px-6 py-3 rounded-lg text-white" style={{ background: '#1B2D5B' }}>
-            Back to Legal Hub
+      <MarketingLayout eyebrow="LEGAL" title="Policy not found" subtitle="That policy section doesn't exist.">
+        <div className="px-4 pb-20 text-center sm:px-6">
+          <Link
+            to="/legal"
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 font-display text-sm font-bold text-primary-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" strokeWidth={2.4} />
+            Back to Legal & Policies
           </Link>
         </div>
-      </PublicLayout>
+      </MarketingLayout>
     );
   }
 
   return (
-    <PublicLayout title={section.title} subtitle={section.subtitle}>
-      <article className="max-w-3xl mx-auto px-6 py-16">
-        <Link
-          to="/legal"
-          className="inline-flex items-center gap-2 text-sm font-semibold text-[#1B2D5B] hover:text-[#F07B1D] no-underline mb-10 transition-colors"
-        >
-          &larr; Back to Legal Hub
-        </Link>
+    <MarketingLayout eyebrow="LEGAL" title={section.title} subtitle={section.subtitle}>
+      <article className="px-4 pb-20 sm:px-6">
+        <div className="mx-auto max-w-3xl">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <Link
+              to="/legal"
+              className="inline-flex items-center gap-1.5 font-display text-[13px] font-bold text-primary hover:underline"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2.4} />
+              All policies
+            </Link>
+            <span className="rounded-full border border-border bg-card px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+              Updated {section.lastUpdated}
+            </span>
+          </div>
 
-        <div className="pb-6 mb-10 border-b border-slate-200 flex flex-wrap justify-between items-center gap-4">
-          <h2 className="text-2xl font-bold text-slate-800 m-0" style={{ fontFamily: 'var(--font-display)' }}>
-            Official Policy
-          </h2>
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider bg-slate-100 px-3 py-1.5 rounded-full">
-            Last updated: {section.lastUpdated}
-          </span>
-        </div>
-
-        <div className="space-y-6">
-          {section.content.map((block: any, idx: number) => {
-            switch (block.type) {
-              case 'subheading':
-                return (
-                  <h3 key={idx} className="text-lg font-bold text-slate-800 pt-6 pb-2 border-b border-slate-100">
-                    {block.text}
-                  </h3>
-                );
-              case 'notice':
-                return (
-                  <div key={idx} role="note" className="bg-amber-50 border border-amber-200 rounded-xl px-6 py-5">
-                    <p className="text-sm font-medium text-amber-800 leading-relaxed m-0">
-                      {block.text}
-                    </p>
-                  </div>
-                );
-              case 'contact_list':
-                return (
-                  <div key={idx} className="mt-4 rounded-xl border border-slate-100 overflow-hidden shadow-sm">
-                    {block.items.map((item: any, i: number) => (
-                      <div
-                        key={i}
-                        className={`flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-6 px-6 py-4 ${
-                          i % 2 === 0 ? 'bg-slate-50/50' : 'bg-transparent'
-                        }`}
+          <div className="rounded-[22px] border border-border bg-card p-6 shadow-[0_20px_50px_-34px_rgba(47,47,47,0.28)] sm:p-9">
+            <div className="flex flex-col gap-5">
+              {section.content.map((block: any, idx: number) => {
+                switch (block.type) {
+                  case 'subheading':
+                    return (
+                      <h2
+                        key={idx}
+                        className="mt-3 border-b border-border pb-2 font-display text-[19px] font-bold text-foreground first:mt-0"
                       >
-                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider w-36 shrink-0">
-                          {item.label}
-                        </span>
-                        <span className="font-semibold text-slate-700 break-words">{item.value}</span>
+                        {block.text}
+                      </h2>
+                    );
+                  case 'notice':
+                    return (
+                      <div key={idx} role="note" className="rounded-xl border border-primary/20 bg-secondary/50 px-5 py-4">
+                        <p className="m-0 text-[14px] font-semibold leading-relaxed text-foreground">{block.text}</p>
                       </div>
-                    ))}
-                  </div>
-                );
-              default:
-                return (
-                  <p key={idx} className="text-slate-600 leading-relaxed text-[0.95rem] m-0">
-                    {block.text}
-                  </p>
-                );
-            }
-          })}
-        </div>
+                    );
+                  case 'contact_list':
+                    return (
+                      <div key={idx} className="overflow-hidden rounded-xl border border-border">
+                        {block.items.map((item: any, i: number) => (
+                          <div
+                            key={i}
+                            className={`flex flex-col gap-1 px-5 py-3.5 sm:flex-row sm:items-center sm:gap-6 ${
+                              i % 2 === 0 ? 'bg-muted/40' : ''
+                            }`}
+                          >
+                            <span className="w-40 shrink-0 font-display text-[10.5px] font-bold uppercase tracking-wider text-primary">
+                              {item.label}
+                            </span>
+                            <span className="break-words text-[14px] font-semibold text-foreground">{item.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  default:
+                    return (
+                      <p key={idx} className="m-0 text-[15px] leading-[1.75] text-foreground/80">
+                        {block.text}
+                      </p>
+                    );
+                }
+              })}
+            </div>
+          </div>
 
-        <div className="mt-16 pt-10 border-t border-slate-100 flex flex-wrap gap-4 justify-between items-center">
-          <Link to="/legal" className="no-underline font-semibold text-sm px-6 py-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">
-            Other Policies
-          </Link>
-          <a href="tel:9392433422" className="no-underline font-semibold text-sm px-6 py-2.5 rounded-lg text-white transition-colors hover:opacity-90" style={{ background: '#1B2D5B' }}>
-            Call Support
-          </a>
+          <div className="mt-8 flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-border bg-muted/40 px-5 py-4">
+            <p className="m-0 text-[13px] text-muted-foreground">
+              Questions about this policy? We usually reply within 24 hours.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <a
+                href={`mailto:${COMPANY.emails.legal}`}
+                className="rounded-xl border border-border bg-card px-4 py-2 font-display text-[13px] font-bold text-foreground hover:border-primary"
+              >
+                {COMPANY.emails.legal}
+              </a>
+              <a
+                href={`tel:${COMPANY.phone.replace(/\s/g, '')}`}
+                className="rounded-xl bg-primary px-4 py-2 font-display text-[13px] font-bold text-primary-foreground"
+              >
+                Call {COMPANY.phone}
+              </a>
+            </div>
+          </div>
         </div>
       </article>
-    </PublicLayout>
+    </MarketingLayout>
   );
 }
