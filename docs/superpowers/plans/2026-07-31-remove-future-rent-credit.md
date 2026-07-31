@@ -50,6 +50,17 @@
 
 ---
 
+> **Revision (2026-07-31, after Task 1 landed):** Tasks 2–5 must land as **one
+> atomic commit**, not four. Measured on the real tree: renaming
+> `future_credit` → `unallocated` touches **20 non-test consumer sites** plus
+> **5 test files** (`settlement-planner`, `settlement-planner-policy`,
+> `quick-collect`, `receipt-verification`, `payment-link-flow`). The engine
+> reads `plan.future_credit` directly, so changing the planner alone leaves the
+> build broken. Keep the task sections below as the working order, but commit
+> once at the end of Task 5 with every consumer and test updated together.
+>
+> Task 1 is unaffected — it is self-contained and already committed (`e44a405`).
+
 ### Task 2: Planner stops producing future credit
 
 **Files:**

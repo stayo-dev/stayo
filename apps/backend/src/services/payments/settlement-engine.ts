@@ -7,8 +7,11 @@
  *   3. Creates a PaymentGroup record
  *   4. Creates Payment records per allocation
  *   5. Updates obligation statuses atomically (dual-write: old + new columns)
- *   6. Credits any excess as future rent credit
- *   7. Returns a complete SettlementResult (no re-querying needed)
+ *   6. Returns a complete SettlementResult (no re-querying needed)
+ *
+ * Excess money has nowhere to go (ADR-036): StayO no longer holds future rent
+ * credit, so a plan with `unallocated > 0` is refused outright. The payment
+ * service generates the tenant's next installment(s) before planning.
  *
  * Properties:
  *   - Operates ONLY within a Prisma transaction (tx)
@@ -54,7 +57,7 @@ export interface ExecutablePlan {
     allocated: number;
     result: "PAID" | "PARTIAL" | "UNCHANGED";
   }>;
-  future_credit: number;
+  unallocated: number;
   total_outstanding: number;
   total_to_settle: number;
   remaining_outstanding: number;
@@ -83,17 +86,6 @@ export interface ExecutionInput {
   source?: string;
   /** If true, skip rejection check (used for gateway finalization) */
   skipRejectionCheck?: boolean;
-  /**
-   * Where the money being settled comes from.
-   *   - "NEW_PAYMENT" (default): money just arrived. Any unallocated overflow
-   *     (plan.future_credit) is CREDITED to the ledger as new future credit.
-   *   - "EXISTING_CREDIT": money was already sitting in the tenant's future-
-   *     rent-credit balance and is being applied to dues. The applied amount
-   *     is DEBITED from the ledger instead — there is no overflow to credit
-   *     by construction, since the plan is built with amountPaid capped at
-   *     the available balance.
-   */
-  fundingSource?: "NEW_PAYMENT" | "EXISTING_CREDIT";
 }
 
 export interface SettlementAllocationResult {
@@ -118,7 +110,6 @@ export interface SettlementBreakdown {
     allocated: number;
     result: string;
   }[];
-  future_credit: number;
   total_settled: number;
   total_paid: number;
   total_due: number;
@@ -135,7 +126,6 @@ export interface SettlementResult {
   totalDue: number;
   totalPaid: number;
   remaining: number;
-  futureCredit: number;
   overallStatus: string;
   /** Structured breakdown for receipts/audit */
   settlementBreakdown: SettlementBreakdown;
@@ -216,8 +206,17 @@ export async function executePlanInTx(
     .filter(a => a.allocated > 0)
     .map(a => a.obligation_id);
 
-  if (obligationIds.length === 0 && plan.future_credit <= 0) {
-    throw new Error("BAD_REQUEST: Plan has no allocations and no future credit");
+  if (obligationIds.length === 0) {
+    throw new Error("BAD_REQUEST: Plan has no allocations");
+  }
+
+  // ADR-036: excess has nowhere to go — no future-rent-credit balance exists.
+  // The payment service must generate the tenant's next installment(s) before
+  // planning, so anything left over here is a caller bug, not a balance.
+  if (plan.unallocated > 0) {
+    throw new Error(
+      `BAD_REQUEST: Payment exceeds what can be settled — ₹${plan.unallocated} could not be allocated to any installment`,
+    );
   }
 
   let obligations: any[] = [];
@@ -274,7 +273,7 @@ export async function executePlanInTx(
       status: "COMPLETED",
       recorded_by: input.userId || input.offlineRecordedBy || null,
       notes: input.offlineNote || null,
-      future_credit_amount: plan.future_credit,
+      future_credit_amount: 0, // ADR-036: retained column, never credited again
       // settlement_breakdown is set after execution
     },
   });
@@ -358,46 +357,12 @@ export async function executePlanInTx(
     });
   }
 
-  // ── 7. Settle the ledger side of the funding source ─────────────────────────
+  // ── 7. No ledger side-effects ───────────────────────────────────────────────
+  // ADR-036: future rent credit was removed. Every rupee lands on a real
+  // installment (the payment service generates one if needed), so a settlement
+  // never credits or debits `tenant_financial_ledger`. The guard above rejects
+  // anything that could not be allocated.
   const ledgerEntries: string[] = [];
-  const futureCredit = plan.future_credit;
-  const fundingSource = input.fundingSource || "NEW_PAYMENT";
-
-  if (fundingSource === "EXISTING_CREDIT") {
-    // Money was already sitting in the tenant's future-rent-credit balance —
-    // debit exactly what was applied. No overflow to credit: the plan was
-    // built with amountPaid capped at the available balance by the caller.
-    const appliedAmount = plan.total_to_settle;
-    if (appliedAmount > 0) {
-      const debitResult = await tenantFinancialLedgerService.debitInTx(tx, {
-        tenantId: input.tenantId,
-        ownerId: tenant.owner_id || input.ownerId || "",
-        createdBy: input.userId || input.offlineRecordedBy || tenant.owner_id || "SYSTEM",
-        reason: "FUTURE_CREDIT_APPLIED",
-        amount: appliedAmount,
-        referenceId: paymentGroupId,
-        referenceType: "PAYMENT_GROUP",
-        notes: input.offlineNote || "Future rent credit applied against outstanding dues",
-      });
-      if (debitResult?.entry?.id) {
-        ledgerEntries.push(debitResult.entry.id);
-      }
-    }
-  } else if (futureCredit > 0) {
-    const ledgerResult = await tenantFinancialLedgerService.creditIdempotentInTx(tx, {
-      tenantId: input.tenantId,
-      ownerId: tenant.owner_id || input.ownerId || "",
-      createdBy: input.userId || input.offlineRecordedBy || tenant.owner_id || "SYSTEM",
-      amount: futureCredit,
-      referenceId: input.paymentAttemptId || paymentGroupId,
-      referenceType: input.paymentAttemptId ? "PAYMENT_ATTEMPT_REMAINDER" : "PAYMENT_GROUP_REMAINDER",
-      reason: "FUTURE_RENT_CREDIT_TOPUP",
-      notes: "Payment excess credited as future rent credit",
-    });
-    if (ledgerResult && 'entry' in ledgerResult && ledgerResult.entry?.id) {
-      ledgerEntries.push(ledgerResult.entry.id);
-    }
-  }
 
   // ── 8. Build settlement breakdown & store on payment group ─────────────────
   const totalPaid = Math.round(input.amountPaid * 100) / 100;
@@ -414,8 +379,7 @@ export async function executePlanInTx(
       allocated: a.allocated,
       result: a.new_status,
     })),
-    future_credit: futureCredit,
-    total_settled: totalPaid - futureCredit,
+    total_settled: totalPaid,
     total_paid: totalPaid,
     total_due: totalDue,
     remaining: dueRemaining,
@@ -437,7 +401,6 @@ export async function executePlanInTx(
     group_id: paymentGroupId,
     amount: totalPaid,
     allocations_count: allocations.length,
-    future_credit: futureCredit,
     overall_status: overallStatus,
   });
 
@@ -447,7 +410,6 @@ export async function executePlanInTx(
     totalDue,
     totalPaid,
     remaining: dueRemaining,
-    futureCredit,
     overallStatus,
     settlementBreakdown,
     plan,

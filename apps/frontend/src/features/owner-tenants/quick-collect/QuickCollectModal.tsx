@@ -158,6 +158,23 @@ export function QuickCollectModal({ open, onClose, initialTenant }: QuickCollect
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTenant?.id, payableObligations.length]);
 
+  /**
+   * What this amount will actually do, shown before Preview rather than after.
+   * The over-payment case describes real backend behaviour (ADR-036): there is
+   * no future-rent-credit balance any more — paying ahead generates the next
+   * installment and settles it.
+   */
+  const amountConsequence = useMemo(() => {
+    const entered = Number(amount);
+    const outstanding = selectedTenant?.outstanding ?? 0;
+    if (!entered) return 'Enter an amount, or tap a shortcut above.';
+    if (entered < outstanding) {
+      return `₹${(outstanding - entered).toLocaleString('en-IN')} will remain outstanding.`;
+    }
+    if (entered === outstanding) return 'Clears all dues.';
+    return `Clears all dues. ₹${(entered - outstanding).toLocaleString('en-IN')} goes to the next installment, which is created if it doesn't exist yet.`;
+  }, [amount, selectedTenant?.outstanding]);
+
   const previewQuery = useQuery({
     queryKey: ['owner', 'settlement-preview', selectedTenant?.id, amount, mode, [...selectedObligationIds].sort()],
     queryFn: () =>
@@ -364,7 +381,35 @@ export function QuickCollectModal({ open, onClose, initialTenant }: QuickCollect
               <span className="text-base font-bold text-primary">₹</span>
               <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" placeholder="Enter any amount" className="flex-1 min-w-0 bg-transparent px-2 py-3 font-display text-base font-bold text-foreground focus:outline-none" />
             </div>
-            <p className="mt-1 text-[11px] text-muted-foreground">Any amount accepted. System auto-settles obligations by priority.</p>
+
+            {/* Collecting the full outstanding is the common case — one tap
+                instead of typing it out on a phone. */}
+            {selectedTenant.outstanding > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {[
+                  { label: `Full ₹${selectedTenant.outstanding.toLocaleString('en-IN')}`, value: selectedTenant.outstanding },
+                  { label: `Half ₹${Math.round(selectedTenant.outstanding / 2).toLocaleString('en-IN')}`, value: Math.round(selectedTenant.outstanding / 2) },
+                ].map((chip) => {
+                  const active = Number(amount) === chip.value;
+                  return (
+                    <button
+                      key={chip.label}
+                      type="button"
+                      onClick={() => setAmount(String(chip.value))}
+                      className={`rounded-full border px-3 py-1.5 font-display text-[12px] font-bold transition-colors ${
+                        active
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-border bg-card text-foreground hover:border-primary'
+                      }`}
+                    >
+                      {chip.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <p className="mt-1.5 text-[11px] text-muted-foreground">{amountConsequence}</p>
           </label>
 
           <div className="flex rounded-xl bg-muted p-1">

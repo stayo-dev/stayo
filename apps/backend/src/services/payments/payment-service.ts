@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { isPayable, buildSettlementPlan, toObligationSnapshot, validateChronology, PAYABLE_STATUSES } from "./settlement-planner";
+import { rentGenerationService } from "./rent-generation-service";
 import { Prisma } from "@prisma/client";
 import { eventSystem } from "@/lib/events";
 import { PaymentProviderFactory } from "./provider-factory";
@@ -144,7 +145,7 @@ export class PaymentService {
     // Ledger credits tied to this attempt come in two distinct shapes that
     // must NOT be summed together:
     //  - A future-rent-credit topup, keyed directly by attemptId
-    //    (settlement-engine.ts's EXISTING_CREDIT/futureCredit branch,
+    //    (removed with future rent credit — ADR-036,
     //    referenceType PAYMENT_ATTEMPT_REMAINDER/PAYMENT_GROUP_REMAINDER).
     //    This is genuinely *unallocated* money — it did not go toward any
     //    obligation, so it belongs on the right-hand side of invariant #1
@@ -471,7 +472,7 @@ export class PaymentService {
       payment_group_id: res.groupId,
       amount: data.amountPaid,
       method: data.paymentMethod,
-      future_credit: res.futureCredit || 0,
+      future_credit: 0, // ADR-036: retained field, always zero
       jti,
       ip: data.offlineRecordedIp || null,
       note: data.offlineNote || null,
@@ -643,23 +644,10 @@ export class PaymentService {
           })),
         };
       }
-      const existingCredit = await prisma.tenant_financial_ledger.findFirst({
-        where: {
-          reference_id: data.idempotencyKey,
-          reference_type: "PAYMENT_GROUP_REMAINDER",
-          hostel_id: hostelId,
-        },
-        select: { amount: true, created_at: true },
-      });
-      if (existingCredit) {
-        return {
-          duplicate: true,
-          payment_group_id: data.idempotencyKey,
-          totalPaid: Number(existingCredit.amount),
-          payments: [],
-          futureCredit: Number(existingCredit.amount),
-        };
-      }
+      // ADR-036: the credit-remainder duplicate check was removed with future
+      // rent credit — no settlement writes PAYMENT_GROUP_REMAINDER any more, so
+      // this lookup could only ever return legacy rows. Duplicate detection is
+      // handled by the payment-group lookup above.
     }
 
     const groupId = crypto.randomUUID();
@@ -672,9 +660,11 @@ export class PaymentService {
 
       const result = await this._settleTenantRentPaymentInTx(tx, data, data.idempotencyKey || groupId);
 
-      // Settlement invariant: Paid = ΣAllocations + FutureCredit
+      // Settlement invariant (ADR-036): Paid = ΣAllocations exactly. There is
+      // no future-credit term any more — excess is impossible because the
+      // engine refuses an unallocated remainder.
       const totalAllocated = result.allocations.reduce((s: number, a: any) => s + a.allocated, 0);
-      const totalSettled = totalAllocated + (result.futureCredit || 0);
+      const totalSettled = totalAllocated;
       const tolerance = 0.01;
 
       if (Math.abs(totalSettled - data.amountPaid) > tolerance) {
@@ -689,7 +679,6 @@ export class PaymentService {
             details: {
               amount_paid: data.amountPaid,
               total_allocated: totalAllocated,
-              future_credit: result.futureCredit || 0,
               total_settled: totalSettled,
               difference: data.amountPaid - totalSettled,
               initial_outstanding: initialOutstanding,
@@ -703,7 +692,7 @@ export class PaymentService {
         throw new Error(
           `INVARIANT_VIOLATION: Settlement mismatch in recordTenantPayment. ` +
           `Paid: ₹${data.amountPaid}, Allocated: ₹${totalAllocated}, ` +
-          `Credit: ₹${result.futureCredit || 0}, Total Settled: ₹${totalSettled}`
+          `Total Settled: ₹${totalSettled}`
         );
       }
 
@@ -747,7 +736,7 @@ export class PaymentService {
         amount: a.allocated,
         status: a.new_status,
       })),
-      future_credit: txResult.futureCredit || 0,
+      future_credit: 0, // ADR-036: retained field, always zero
       method: data.paymentMethod,
       idempotency_key: data.idempotencyKey || null,
     });
@@ -1177,17 +1166,50 @@ export class PaymentService {
         FOR UPDATE
       `;
 
-      const obligations = await tx.rent_obligations.findMany({
-        where: {
-          tenant_id: tenantId,
-          hostel_id: hostelIdSafe,
-          status: { in: PAYABLE_STATUSES },
-          is_superseded: false,
-        },
+      const obligationWhere = {
+        tenant_id: tenantId,
+        hostel_id: hostelIdSafe,
+        status: { in: PAYABLE_STATUSES },
+        is_superseded: false,
+      };
+
+      let obligations = await tx.rent_obligations.findMany({
+        where: obligationWhere,
         include: { payments: { select: { amount_paid: true } } },
       });
 
-      const snapshots = obligations.map((ob: any) => toObligationSnapshot(ob));
+      let snapshots = obligations.map((ob: any) => toObligationSnapshot(ob));
+
+      // ADR-036: every rupee must land on a real installment — there is no
+      // future-rent-credit balance to absorb an overpayment. If the tenant is
+      // paying ahead, generate their next installment(s) from the agreement
+      // first, then re-read so the planner can allocate across them.
+      const outstandingTotal = snapshots.reduce(
+        (sum: number, ob: any) => sum + Math.max(Number(ob.amount) - Number(ob.paid), 0),
+        0,
+      );
+      if (amountRupees > outstandingTotal) {
+        const shortfall = amountRupees - outstandingTotal;
+        const generated = await rentGenerationService.ensureInstallmentsForTenant({
+          tenantId,
+          ownerId,
+          hostelId: hostelIdSafe,
+          amountNeeded: shortfall,
+          tx,
+        });
+
+        if (generated.exhausted) {
+          throw new Error(
+            `BAD_REQUEST: Cannot accept ₹${amountRupees} — only ₹${outstandingTotal + generated.coveredAmount} of installments exist for this tenant`,
+          );
+        }
+
+        obligations = await tx.rent_obligations.findMany({
+          where: obligationWhere,
+          include: { payments: { select: { amount_paid: true } } },
+        });
+        snapshots = obligations.map((ob: any) => toObligationSnapshot(ob));
+      }
 
       const hostelRecord = await tx.hostels.findUnique({
         where: { id: hostelIdSafe },

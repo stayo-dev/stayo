@@ -62,7 +62,6 @@ export interface ReceivePaymentResult {
   totalDue: number;
   totalPaid: number;
   remaining: number;
-  futureCredit: number;
   overallStatus: string;
   groupId: string;
   settlementBreakdown: SettlementResult["settlementBreakdown"];
@@ -165,7 +164,6 @@ export class FinancialPaymentFacade {
       totalDue: result.totalDue,
       totalPaid: result.totalPaid,
       remaining: result.remaining,
-      futureCredit: result.futureCredit,
       overallStatus: result.overallStatus,
       groupId: result.paymentGroupId,
       settlementBreakdown: result.settlementBreakdown,
@@ -266,7 +264,6 @@ export class FinancialPaymentFacade {
       userId: input.actorId,
       offlineNote: input.notes,
       source: "CREDIT_APPLICATION",
-      fundingSource: "EXISTING_CREDIT",
       skipRejectionCheck: true,
     });
 
@@ -275,7 +272,6 @@ export class FinancialPaymentFacade {
       totalDue: result.totalDue,
       totalPaid: result.totalPaid,
       remaining: result.remaining,
-      futureCredit: result.futureCredit,
       overallStatus: result.overallStatus,
       groupId: result.paymentGroupId,
       settlementBreakdown: result.settlementBreakdown,

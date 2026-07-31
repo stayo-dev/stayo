@@ -61,7 +61,12 @@ type VerifyOtpInput = {
 export class AuthOtpService {
   constructor(private readonly provider = notificationService) {}
 
-  async sendPhoneOtp(input: SendOtpInput) {
+  async sendPhoneOtp(input: SendOtpInput): Promise<{
+    success: true;
+    verification_required: boolean;
+    expires_in_seconds?: number;
+    reason?: SkipReason;
+  }> {
     const phone = normalizeWhatsAppPhone(input.phone);
     const purpose = input.purpose;
     const requestIp = input.requestIp || null;

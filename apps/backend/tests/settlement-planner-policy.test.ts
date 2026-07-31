@@ -170,14 +170,16 @@ describe('Settlement Planner — Payment Policy Validation', () => {
   // ═══════════════════════════════════════════════════════════════════════════
 
   describe('Edge Cases', () => {
-    it('should accept any amount when zero outstanding obligations', () => {
+    it('reports the full amount as unallocated when nothing is outstanding', () => {
       // All obligations fully paid
       const obs = [makeObligation({ id: 'ob1', amount: 10000, paid: 10000 })];
       const plan = buildSettlementPlan(obs, 5000, MANDATORY);
 
       expect(plan.payment_accepted).toBe(true);
-      expect(plan.future_credit).toBe(5000);
-      expect(plan.warnings).toContain('₹5,000 will be credited as future rent');
+      expect(plan.unallocated).toBe(5000);
+      expect(plan.warnings).toContain(
+        '₹5,000 exceeds every settleable installment and cannot be accepted',
+      );
     });
 
     it('should handle payment exceeding total outstanding gracefully', () => {
@@ -186,7 +188,7 @@ describe('Settlement Planner — Payment Policy Validation', () => {
 
       expect(plan.payment_accepted).toBe(true);
       expect(plan.allocations[0].result).toBe('PAID');
-      expect(plan.future_credit).toBe(5000);
+      expect(plan.unallocated).toBe(5000);
       expect(plan.total_to_settle).toBe(10000);
     });
 
@@ -208,7 +210,7 @@ describe('Settlement Planner — Payment Policy Validation', () => {
       const plan = buildSettlementPlan([], 100, MANDATORY);
 
       expect(plan.payment_accepted).toBe(true);
-      expect(plan.future_credit).toBe(100);
+      expect(plan.unallocated).toBe(100);
       expect(plan.minimum_allowed).toBe(1);
     });
 
@@ -256,17 +258,18 @@ describe('Settlement Planner — Payment Policy Validation', () => {
       expect(plan.total_outstanding).toBe(8000);
       expect(plan.total_to_settle).toBe(8000);
       expect(plan.remaining_outstanding).toBe(0);
-      expect(plan.future_credit).toBe(0);
+      expect(plan.unallocated).toBe(0);
       expect(plan.summary).toContain('2 obligation(s) settled');
     });
 
-    it('should compute summary for partial settlement with future credit', () => {
+    it('reports the leftover as unallocated in the summary', () => {
       const obs = [makeObligation({ id: 'ob1', amount: 5000, paid: 0 })];
       const plan = buildSettlementPlan(obs, 7000, PARTIAL);
 
       expect(plan.total_to_settle).toBe(5000);
-      expect(plan.future_credit).toBe(2000);
-      expect(plan.summary).toContain('future credit');
+      expect(plan.unallocated).toBe(2000);
+      expect(plan.summary).toContain('unallocated');
+      expect(plan.summary).not.toContain('future credit');
     });
 
     it('should preserve integer math (no floating point errors)', () => {
@@ -277,7 +280,7 @@ describe('Settlement Planner — Payment Policy Validation', () => {
       expect(plan.payment_accepted).toBe(true);
       expect(plan.allocations[0].result).toBe('PAID');
       // No floating point residual
-      expect(plan.future_credit).toBe(0);
+      expect(plan.unallocated).toBe(0);
     });
   });
 });

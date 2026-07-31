@@ -127,7 +127,7 @@ Since ADR-031, new sessions are minted by Supabase (`signInWithSupabasePassword(
 
 | Enum | Values |
 |---|---|
-| `FinancialLedgerReason` | SECURITY_DEPOSIT_COLLECTED, SECURITY_DEPOSIT_TOPUP, FUTURE_RENT_CREDIT_TOPUP, FUTURE_RENT_CREDIT_ADJUSTMENT, SECURITY_DEPOSIT_DEDUCTION, SECURITY_DEPOSIT_REFUNDED, LEDGER_CORRECTION, OBLIGATION_WAIVER, OBLIGATION_CANCELLATION, FUTURE_CREDIT_APPLIED |
+| `FinancialLedgerReason` | SECURITY_DEPOSIT_COLLECTED, SECURITY_DEPOSIT_TOPUP, ~~FUTURE_RENT_CREDIT_TOPUP~~, ~~FUTURE_RENT_CREDIT_ADJUSTMENT~~, SECURITY_DEPOSIT_DEDUCTION, SECURITY_DEPOSIT_REFUNDED, LEDGER_CORRECTION, OBLIGATION_WAIVER, OBLIGATION_CANCELLATION, ~~FUTURE_CREDIT_APPLIED~~ — **the three struck-through values are no longer written by any code** (2026-07-31, [[Decisions#ADR-036|ADR-036]]). They are deliberately left in the Postgres enum: dropping enum values forces a table rewrite, and `tenant_financial_ledger` was empty (verified 0 rows) when the payment path stopped writing them. Likewise `payment_groups.future_credit_amount` is retained but always written `0`, and `/api/verify/receipt` still reads a ledger balance that is now always zero. |
 | `FinancialLedgerType` | CREDIT, DEBIT |
 | `AttemptStatus` | CREATED, PENDING, PENDING_VERIFICATION, PROCESSING, SUCCESS, FAILED, EXPIRED, CANCELLED, PENDING_MANUAL_CONFIRMATION |
 | `PaymentStatus` | UPCOMING, PENDING, PARTIAL, PAID, OVERDUE, WAIVED, DRAFT, CANCELLED |
