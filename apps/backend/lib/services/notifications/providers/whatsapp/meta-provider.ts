@@ -877,6 +877,20 @@ function safeJson(raw: string): unknown {
   }
 }
 
+// Startup check. Deliberately logged rather than thrown (2026-07-31, ADR-034):
+// this runs at *module import*, so a half-configured environment used to
+// hard-500 every route that transitively imports this file — including the
+// signup OTP route, whose whole job is now to degrade gracefully when WhatsApp
+// is unavailable. Throwing here fired before any of that fallback logic could
+// run. `validateWhatsAppConfiguration()` still throws for callers that want to
+// assert; only this import-time invocation is non-fatal.
 if (process.env.OTP_PROVIDER === "whatsapp") {
-  validateWhatsAppConfiguration();
+  try {
+    validateWhatsAppConfiguration();
+  } catch (error) {
+    logger.error("whatsapp.configuration_invalid", {
+      error: error instanceof Error ? error.message : String(error),
+      consequence: "phone verification degrades to skipped for signup purposes",
+    });
+  }
 }
