@@ -185,7 +185,9 @@ export function QuickCollectModal({ open, onClose, initialTenant }: QuickCollect
         selectedTenant!.hostelId,
         mode === 'customize' ? selectedObligationIds : undefined,
       ) as Promise<SettlementPreviewResponse>,
-    enabled: step === 'preview' && Boolean(selectedTenant?.id) && Number(amount) > 0,
+    // Also live on the amount step: the owner should see exactly where the
+    // money lands *while* choosing it, not only after committing to Preview.
+    enabled: (step === 'amount' || step === 'preview') && Boolean(selectedTenant?.id) && Number(amount) > 0,
   });
   const preview = previewQuery.data;
   const allocations = (preview?.allocations ?? []).filter((a) => a.allocated > 0);
@@ -425,6 +427,59 @@ export function QuickCollectModal({ open, onClose, initialTenant }: QuickCollect
               </button>
             ))}
           </div>
+
+          {/* Live settlement breakdown — shows exactly which installment each
+              rupee lands on, updating as the amount or selection changes, so
+              the owner never has to reach Preview to find out. */}
+          {Number(amount) > 0 && (
+            <div className="rounded-xl border border-border bg-muted/40 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="font-display text-[10.5px] font-bold uppercase tracking-wider text-primary">
+                  {mode === 'suggested' ? 'Suggested settlement' : 'This selection settles'}
+                </span>
+                {previewQuery.isFetching && (
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+                )}
+              </div>
+
+              {previewQuery.isError ? (
+                <p className="text-[11.5px] text-muted-foreground">Could not work out the split. It will be shown on the next step.</p>
+              ) : allocations.length === 0 ? (
+                <p className="text-[11.5px] text-muted-foreground">
+                  {previewQuery.isFetching ? 'Working out where this goes…' : 'Nothing to settle with this amount.'}
+                </p>
+              ) : (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    {allocations.map((a, i) => (
+                      <div key={a.obligation_id} className="flex items-baseline justify-between gap-3">
+                        <span className="min-w-0 truncate text-[12.5px] text-foreground">
+                          <span className="mr-1.5 font-display text-[10px] font-bold text-muted-foreground">{i + 1}</span>
+                          {a.label}
+                        </span>
+                        <span className="flex-none font-display text-[12.5px] font-bold tabular-nums text-success">
+                          ₹{a.allocated.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {(preview?.remaining_outstanding ?? 0) > 0 && (
+                    <div className="mt-2 border-t border-border pt-2 text-[11.5px] text-muted-foreground">
+                      ₹{(preview?.remaining_outstanding ?? 0).toLocaleString('en-IN')} still outstanding after this
+                    </div>
+                  )}
+                  {preview?.payment_accepted === false && preview?.rejection_reason && (
+                    <div className="mt-2 rounded-lg bg-destructive/10 px-2.5 py-2 text-[11.5px] font-semibold text-destructive">
+                      {preview.rejection_reason}
+                    </div>
+                  )}
+                </>
+              )}
+              <p className="mt-2 text-[10.5px] leading-normal text-muted-foreground">
+                Rent is always settled oldest first, so nothing older is left behind.
+              </p>
+            </div>
+          )}
 
           {mode === 'customize' && (
             <div className="flex flex-col gap-2.5">
