@@ -1,0 +1,230 @@
+# Render Blueprint for the StayO backend (apps/backend — Next.js 14 App
+# Router). Frontend (apps/frontend) deploys separately on Vercel and is not
+# part of this file — see apps/frontend/vercel.json.
+#
+# Usage: Render dashboard > New > Blueprint > point at this repo. Render
+# reads this file and provisions the web service + cron jobs below. Every
+# `sync: false` env var must then be filled in manually in the Render
+# dashboard (Environment tab) — real secrets are never stored in this repo.
+#
+# Cron job list and schedules match the "Active" cron set documented in
+# docs/obsidian/APIs.md (10 routes) — do NOT add data-retention (frozen,
+# not meant to run) or tenant-analytics (dormant/manual-repair-only, POST),
+# and do NOT re-add onboarding-nudges / process-autopay-retries /
+# process-overflow / reconcile-addons (decommissioned, return 410).
+#
+# Cron jobs call BACKEND_URL=https://api.yourstayo.com directly (a plain
+# value, not Render's fromService linking) — this means cron runs will 401
+# with a connection error until api.yourstayo.com's DNS/custom-domain is
+# attached to the stayo-backend service. That's expected: none of these
+# schedules fire until the next scheduled time, giving room to finish
+# domain setup first. If you deploy under a different domain, update
+# BACKEND_URL in all 10 cron jobs below to match.
+
+services:
+  - type: web
+    name: stayo-backend
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: apps/backend
+    buildCommand: npm install && npm run prisma:generate && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        value: https://yourstayo.com
+      - key: NEXT_PUBLIC_FRONTEND_URL
+        value: https://yourstayo.com
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://yourstayo.com,https://www.yourstayo.com
+      # --- Secrets: set these manually in the Render dashboard ---
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      # --- Optional / feature-gated: only needed if that integration is
+      # actually configured (WhatsApp, ImageKit, Upstash Redis) ---
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_BUSINESS_ACCOUNT_ID
+        sync: false
+      - key: WHATSAPP_VERIFY_TOKEN
+        sync: false
+      - key: WHATSAPP_APP_SECRET
+        sync: false
+      - key: IMAGEKIT_PRIVATE_KEY
+        sync: false
+      - key: IMAGEKIT_URL_ENDPOINT
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+
+  # --- Cron jobs: each just calls the deployed web service's cron route
+  # with the shared CRON_SECRET bearer token. Uses a plain curl image so
+  # these don't need their own Node build/install step. ---
+  - type: cron
+    name: cron-generate-rent
+    runtime: image
+    image:
+      url: curlimages/curl:latest
+    plan: free
+    schedule: "30 18 * * *"
+    dockerCommand: 'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BACKEND_URL/api/cron/generate-rent"'
+    envVars:
+      - key: BACKEND_URL
+        value: https://api.yourstayo.com
+      - key: CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: cron-rent-reminders
+    runtime: image
+    image:
+      url: curlimages/curl:latest
+    plan: free
+    schedule: "0 2 * * *"
+    dockerCommand: 'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BACKEND_URL/api/cron/rent-reminders"'
+    envVars:
+      - key: BACKEND_URL
+        value: https://api.yourstayo.com
+      - key: CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: cron-reconcile-payments
+    runtime: image
+    image:
+      url: curlimages/curl:latest
+    plan: free
+    schedule: "30 3 * * *"
+    dockerCommand: 'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BACKEND_URL/api/cron/reconcile-payments"'
+    envVars:
+      - key: BACKEND_URL
+        value: https://api.yourstayo.com
+      - key: CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: cron-hostel-invariants
+    runtime: image
+    image:
+      url: curlimages/curl:latest
+    plan: free
+    schedule: "0 1 * * *"
+    dockerCommand: 'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BACKEND_URL/api/cron/hostel-invariants"'
+    envVars:
+      - key: BACKEND_URL
+        value: https://api.yourstayo.com
+      - key: CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: cron-migration-audit
+    runtime: image
+    image:
+      url: curlimages/curl:latest
+    plan: free
+    schedule: "15 1 * * *"
+    dockerCommand: 'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BACKEND_URL/api/cron/migration-audit"'
+    envVars:
+      - key: BACKEND_URL
+        value: https://api.yourstayo.com
+      - key: CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: cron-move-out-releases
+    runtime: image
+    image:
+      url: curlimages/curl:latest
+    plan: free
+    schedule: "30 18 * * *"
+    dockerCommand: 'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BACKEND_URL/api/cron/move-out-releases"'
+    envVars:
+      - key: BACKEND_URL
+        value: https://api.yourstayo.com
+      - key: CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: cron-admissions
+    runtime: image
+    image:
+      url: curlimages/curl:latest
+    plan: free
+    schedule: "45 18 * * *"
+    dockerCommand: 'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BACKEND_URL/api/cron/admissions"'
+    envVars:
+      - key: BACKEND_URL
+        value: https://api.yourstayo.com
+      - key: CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: cron-agreement-lifecycle
+    runtime: image
+    image:
+      url: curlimages/curl:latest
+    plan: free
+    schedule: "30 1 * * *"
+    dockerCommand: 'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BACKEND_URL/api/cron/agreement-lifecycle"'
+    envVars:
+      - key: BACKEND_URL
+        value: https://api.yourstayo.com
+      - key: CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: cron-daily-briefings
+    runtime: image
+    image:
+      url: curlimages/curl:latest
+    plan: free
+    schedule: "0 2 * * *"
+    dockerCommand: 'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BACKEND_URL/api/cron/daily-briefings"'
+    envVars:
+      - key: BACKEND_URL
+        value: https://api.yourstayo.com
+      - key: CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: cron-food-carry-forward
+    runtime: image
+    image:
+      url: curlimages/curl:latest
+    plan: free
+    schedule: "0 4 * * *"
+    dockerCommand: 'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BACKEND_URL/api/cron/food-carry-forward"'
+    envVars:
+      - key: BACKEND_URL
+        value: https://api.yourstayo.com
+      - key: CRON_SECRET
+        sync: false
