@@ -55,7 +55,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; media-src 'self' https://cdn.sanity.io https://media.w3.org https://www.w3schools.com; script-src 'self' 'unsafe-inline' https://accounts.google.com https://checkout.razorpay.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://api.yourstayo.com https://*.supabase.co wss://*.supabase.co https://ik.imagekit.io https://upload.imagekit.io https://accounts.google.com https://*.api.sanity.io https://api.razorpay.com; frame-src https://accounts.google.com https://www.google.com https://api.razorpay.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+          "value": "default-src 'self'; media-src 'self' https://cdn.sanity.io https://media.w3.org https://www.w3schools.com; script-src 'self' 'unsafe-inline' https://accounts.google.com https://checkout.razorpay.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://api.yourstayo.com https://stayo-backend-c5q7y0ob8-stayo-devs-projects.vercel.app https://*.supabase.co wss://*.supabase.co https://ik.imagekit.io https://upload.imagekit.io https://accounts.google.com https://*.api.sanity.io https://api.razorpay.com; frame-src https://accounts.google.com https://www.google.com https://api.razorpay.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
         },
         {
           "key": "X-Frame-Options",
