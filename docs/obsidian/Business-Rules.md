@@ -172,6 +172,20 @@ Phase 1 of the Business Recovery Platform (`docs/business-logic/business-recover
 8. `portfolio-service.ts` may not query raw transactional tables (payment/rentObligation/tenant) without a hostel-scoping proximity check.
 9. Frontend `useQuery` hooks must include `hostelId` in their query key (6 named exceptions).
 
+## Signup phone verification
+
+Added 2026-07-31 ([[Decisions#ADR-034|ADR-034]]). **Phone verification is required for signup only when the provider can actually deliver it.**
+
+1. **Mode resolution** (`lib/services/auth/phone-verification-mode.ts`): `PHONE_VERIFICATION_MODE=on|off` wins if set; otherwise verification is `on` only when `OTP_PROVIDER=whatsapp` **and** an access token **and** a phone-number ID **and** `WHATSAPP_OTP_TEMPLATE` are all present. (`WHATSAPP_BUSINESS_ACCOUNT_ID` is deliberately excluded — it isn't used to send.) Any other override value is ignored and logged.
+2. **Circuit breaker** (`lib/services/auth/otp-provider-breaker.ts`): 3 send failures within 10 minutes opens the breaker for 15 minutes, during which no call is made to Meta at all. After the cooldown one trial send is allowed — success closes it, failure re-opens it for another cooldown. State is in Redis with an in-process fallback; a breaker is advisory, so a per-instance view is acceptable.
+3. **Degradation is scoped to signup.** Only purposes `PHONE_VERIFICATION` and `LEAD_CAPTURE` degrade. Every other purpose keeps the hard `502 OTP_SEND_FAILED`.
+4. **A failing send degrades its own request**, not merely subsequent ones — the user who trips the breaker must not be the one who eats the error.
+5. **Rate limits are enforced before the skip path**, so it can never become an unthrottled way to write rows keyed by an arbitrary phone number.
+6. **The outcome is recorded, not enforced away**: `profiles.phone_verified`/`mobile_verified` and `platform_leads.phone_verified` carry which path a signup took, and the admin leads list shows an "Unverified" marker.
+7. **Explicit non-goal:** nothing retroactively verifies accounts or leads created while degraded. There is no login-time prompt, no dashboard banner, and no step-up gate for unverified users — turning the credentials on affects new signups only.
+
+See [[APIs]], [[Database]], [[Features]].
+
 ## Explicit "Unknown / needs clarification" items
 
 - Whether/where rent is prorated for partial-month billing.

@@ -90,6 +90,13 @@ Owner-acquisition funnel, phases 1–2. **`platform_leads.google_email`** (added
 
 See [[APIs]] (`/api/leads/*`, `/api/platform-admin/leads/[id]/approve`), [[Backend]], [[Decisions]] ADR-032.
 
+### `platform_leads.phone_verified` / `phone_verification_otps` `SKIPPED` + `UNAVAILABLE` states
+Added 2026-07-31 for the signup phone-verification fallback ([[Decisions#ADR-034|ADR-034]]). **`platform_leads.phone_verified Boolean @default(false)`** records whether the lead's number was really OTP-verified, or accepted unverified because WhatsApp could not deliver. Existing rows default to `false` — not a claim they were unverified, just that the row itself no longer proves otherwise; the historical truth stays in `phone_verification_otps`. Migration: `prisma/migrations/20260731000000_platform_leads_phone_verified/migration.sql` (idempotent `ADD COLUMN IF NOT EXISTS`). The same value is written to `profiles.phone_verified`/`mobile_verified` by `authService.selfSignUpOwner()`.
+
+**No schema change was needed for the new OTP-row states** — `phone_verification_otps.status` and `.provider_status` are plain string columns, not Prisma enums (see the note above about workflow sub-states as strings). A skipped verification writes `status = 'SKIPPED'`, `provider_status = 'UNAVAILABLE'`, `verified_at = now()` (the freshness windows downstream are measured from `verified_at`), and `failure_reason = 'whatsapp_unavailable:<reason>'`. Such a row **can never be verified**: `otp_hash` holds a hash of a value that was never sent, and `verifyPhoneOtp()` only ever reads `PENDING` rows. It is written rather than omitted so both signup gates still require the caller to have gone through `/api/auth/send-phone-otp` for that exact number.
+
+See [[APIs]] (`/api/auth/send-phone-otp`, `/api/leads/self-serve`, `/api/auth/owner-signup`), [[Business-Rules#Signup phone verification|Business-Rules]], [[Features]].
+
 ### `notifications.id` now has a default
 Fixed 2026-07-26 — see [[Bugs]]. `id` previously had no `@default(...)`, so every call to `NotificationService.createNotification()` across the entire codebase (not just the new Platform Admin broadcast feature that surfaced it) had always failed at the Prisma layer; call sites using `Promise.allSettled` fan-outs (e.g. Food's publish notification fan-out) silently swallowed the failure. Now `@default(dbgenerated("gen_random_uuid()"))`, matching every other id column in the schema.
 
