@@ -25,7 +25,11 @@ export async function POST(req: NextRequest) {
 
     return apiResponse({
       success: true,
-      expires_in_seconds: result.expires_in_seconds,
+      verification_required: result.verification_required,
+      ...(result.expires_in_seconds !== undefined
+        ? { expires_in_seconds: result.expires_in_seconds }
+        : {}),
+      ...(result.reason ? { reason: result.reason } : {}),
     });
   } catch (error: any) {
     if (error instanceof OtpServiceError) {

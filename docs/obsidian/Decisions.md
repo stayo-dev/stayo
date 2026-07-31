@@ -23,6 +23,29 @@ Architecture Decision Records — each entry below was **inferred from code evid
 
 ---
 
+## ADR-034: Signup phone verification degrades to "accepted unverified" when WhatsApp can't deliver — skip and record, not block
+
+- **Date:** 2026-07-31
+- **Status:** accepted
+- **Context:** StayO's WhatsApp Business setup is still incomplete (no Meta credentials, no approved OTP template), but every owner-acquisition entry point routed through a phone-OTP gate: the landing-page lead modal and the onboarding wizard's account step both call `POST /api/auth/send-phone-otp` → `MetaWhatsAppProvider.sendOtp()`, which throws without credentials. In production that is a `502` and signup is simply impossible. In development it was papered over by two workarounds inside `AuthOtpService.sendPhoneOtp` — a plaintext dump of every generated code to `apps/backend/latest-otp.txt`, and a `NODE_ENV !== "production"` bypass that returned `success: true` with nothing actually sent. Either way the user still faced a six-digit OTP screen for a code that could only be obtained by reading a file off disk. Both downstream gates (`/api/leads/self-serve`, `/api/auth/owner-signup`) additionally required a `VERIFIED` `phone_verification_otps` row within 30 minutes.
+- **Decision:** verification becomes conditional on the provider actually being able to deliver, and its absence is **recorded rather than enforced away**.
+  - A pure env-derived resolver (`resolvePhoneVerificationMode()`) returns `on` only when `OTP_PROVIDER=whatsapp` + access token + phone-number ID + `WHATSAPP_OTP_TEMPLATE` are all present, with `PHONE_VERIFICATION_MODE` as an explicit override in either direction.
+  - A circuit breaker (3 failures / 10 min → open 15 min → single half-open trial) stops burning a 10-second Meta timeout per signup when the provider is configured but broken.
+  - For purposes `PHONE_VERIFICATION` and `LEAD_CAPTURE` **only**, an undeliverable OTP writes a `SKIPPED` row (`provider_status: UNAVAILABLE`, `verified_at` set) and returns `verification_required: false`; the frontend then never renders its OTP step. All other purposes keep the hard `502`.
+  - Both signup gates move to one shared `resolveSignupPhoneVerification()` helper accepting `VERIFIED` **or** `SKIPPED` within the same 30-minute window, returning which — written to `profiles.phone_verified`/`mobile_verified` (previously hardcoded `true` in `selfSignUpOwner`) and to the new `platform_leads.phone_verified`.
+  - The two dev workarounds are deleted.
+  - **The two import-time `validateWhatsAppConfiguration()` calls** (`notification-service.ts`, and one at the bottom of `meta-provider.ts`) now log instead of throwing. Found during live verification: they run at *module import*, so a half-configured environment 500'd the route before any fallback logic could execute — the exact state this ADR exists to survive. The function still throws for callers that assert on it. See [[Bugs]].
+- **Alternatives considered:**
+  - **Email OTP as a fallback channel** (send the code via Resend instead, keeping real verification) — rejected: this environment's `RESEND_API_KEY` is separately known-invalid (see ADR-032's notes), so it would have swapped one unavailable channel for another, and a second delivery channel is more surface than the problem warrants. Revisit if email delivery becomes reliable and unverified numbers prove to be a real cost.
+  - **Blocking signup until WhatsApp is approved** — rejected: makes the entire owner-acquisition funnel unusable for an external dependency with no committed date.
+  - **Dropping the gate on the two signup endpoints entirely while degraded** — rejected: writing a `SKIPPED` row instead keeps both endpoints reachable only by a caller that just went through `/send-phone-otp` for that exact number, preserving the anti-spam property, and leaves an audit trail of *why* each number is unverified.
+  - **Degrading only requests *after* the breaker opens**, letting the failing request itself 502 — rejected: that hands one unlucky user per cooldown a dead end for a condition the system already knows about.
+  - **A login-time or step-up catch-up prompt for unverified users** — explicitly out of scope per the requester; this change is about the signup page, and a catch-up regime is a separate decision.
+- **Consequences:** signup works today, and turning verification back on is configuration-only (set the four variables, or `PHONE_VERIFICATION_MODE=on`) with no code change and no migration. Honestly named cost: **a real phone number that nobody confirmed can now back a lead or an owner account** — mitigated by human lead review before approval plus an "Unverified" marker in the admin leads list, and bounded by the fact that nothing retroactively verifies the backlog once WhatsApp is live. Second cost: with the breaker, a credentials expiry downgrades verification *silently*; the `otp.request.skipped` metric line makes the rate observable, but no alert is wired to it yet.
+- **Related:** [[Business-Rules#Signup phone verification|Business-Rules]], [[APIs]], [[Database]], [[Features]], [[Changelog]], [[Decisions#ADR-028|ADR-028]] (the signup path this modifies), [[Decisions#ADR-032|ADR-032]] (the same WhatsApp/email gap on the activation leg)
+
+---
+
 ## ADR-032: Owner-acquisition funnel phase 2 — real lead activation via a `tenant_invitations`-style token, not a shared table
 
 - **Date:** 2026-07-29

@@ -54,6 +54,14 @@ export function HostelLeadModal({ open, onClose, prefillName, googleEmail }: Hos
     if (!next) onClose();
   };
 
+  const submitLead = async () =>
+    hostelLeadsApi.submitLead({
+      name: ownerName.trim(),
+      hostel_name: hostelName.trim(),
+      phone: phone.trim(),
+      google_email: googleEmail,
+    });
+
   const submitDetails = async () => {
     if (!hostelName.trim() || !ownerName.trim() || !phone.trim()) {
       setError('Please fill in all fields.');
@@ -62,11 +70,22 @@ export function HostelLeadModal({ open, onClose, prefillName, googleEmail }: Hos
     setError('');
     setSendingOtp(true);
     try {
-      await hostelLeadsApi.sendLeadOtp(phone.trim());
+      const result = await hostelLeadsApi.sendLeadOtp(phone.trim());
+
+      // WhatsApp could not deliver a code (not configured yet, or the
+      // provider is failing). The backend has already recorded the number as
+      // unverified — go straight to the confirmation rather than showing an
+      // OTP screen for a code that will never arrive.
+      if (result.verification_required === false) {
+        await submitLead();
+        setStep('done');
+        return;
+      }
+
       setOtp(Array(6).fill(''));
       setStep('otp');
     } catch (err: any) {
-      setError(err?.response?.data?.error?.message || 'Could not send a verification code. Please try again.');
+      setError(err?.response?.data?.error?.message || 'Could not submit your details. Please try again.');
     } finally {
       setSendingOtp(false);
     }
@@ -94,12 +113,7 @@ export function HostelLeadModal({ open, onClose, prefillName, googleEmail }: Hos
     setError('');
     try {
       await hostelLeadsApi.verifyLeadOtp(phone.trim(), otp.join(''));
-      await hostelLeadsApi.submitLead({
-        name: ownerName.trim(),
-        hostel_name: hostelName.trim(),
-        phone: phone.trim(),
-        google_email: googleEmail,
-      });
+      await submitLead();
       setStep('done');
     } catch (err: any) {
       setError(err?.response?.data?.error?.message || 'Verification failed. Check the code and try again.');
@@ -172,7 +186,7 @@ export function HostelLeadModal({ open, onClose, prefillName, googleEmail }: Hos
                     <span className="h-[15px] w-[15px] animate-spin rounded-full border-2 border-white/40 border-t-white" />
                   ) : (
                     <>
-                      Send OTP
+                      Continue
                       <ArrowRight className="h-4 w-4" strokeWidth={2.4} />
                     </>
                   )}

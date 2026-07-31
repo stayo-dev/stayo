@@ -32,6 +32,19 @@ export function useOnboardingSubmission(s: OwnerOnboardingStateApi, leadToken?: 
   const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [publishing, setPublishing] = useState(false);
 
+  const completeSignup = async () => {
+    await onboardingApi.ownerSignup({
+      name: s.data.name.trim(),
+      email: s.data.email.trim(),
+      password,
+      phone: s.data.mobile.trim(),
+      ...(leadToken ? { lead_token: leadToken } : {}),
+    });
+    await login(s.data.email.trim(), password);
+    s.setOtpOpen(false);
+    s.go(s.step + 1);
+  };
+
   const submitAccount = async () => {
     if (!s.data.name.trim() || !s.data.mobile.trim() || !s.data.email.trim() || !password.trim()) {
       stayoToast.error('Fill in your name, mobile, email, and a password to continue.');
@@ -43,11 +56,19 @@ export function useOnboardingSubmission(s: OwnerOnboardingStateApi, leadToken?: 
     }
     setSendingOtp(true);
     try {
-      await onboardingApi.sendPhoneOtp(s.data.mobile.trim());
+      const result = await onboardingApi.sendPhoneOtp(s.data.mobile.trim());
+
+      // No code is coming — WhatsApp is unavailable and the backend has
+      // recorded the number as unverified. Create the account directly.
+      if (result.verification_required === false) {
+        await completeSignup();
+        return;
+      }
+
       setOtpCode('');
       s.setOtpOpen(true);
     } catch (error) {
-      stayoToast.error(getErrorMessage(error, 'Could not send a verification code. Please try again.'));
+      stayoToast.error(getErrorMessage(error, 'Could not create your account. Please try again.'));
     } finally {
       setSendingOtp(false);
     }
@@ -61,16 +82,7 @@ export function useOnboardingSubmission(s: OwnerOnboardingStateApi, leadToken?: 
     setVerifyingOtp(true);
     try {
       await onboardingApi.verifyPhoneOtp(s.data.mobile.trim(), otpCode.trim());
-      await onboardingApi.ownerSignup({
-        name: s.data.name.trim(),
-        email: s.data.email.trim(),
-        password,
-        phone: s.data.mobile.trim(),
-        ...(leadToken ? { lead_token: leadToken } : {}),
-      });
-      await login(s.data.email.trim(), password);
-      s.setOtpOpen(false);
-      s.go(s.step + 1);
+      await completeSignup();
     } catch (error) {
       stayoToast.error(getErrorMessage(error, 'Verification failed. Check the code and try again.'));
     } finally {

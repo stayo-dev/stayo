@@ -68,7 +68,7 @@ Two more corrections worth flagging up front, both affecting the API Mapping doc
 **Verified gaps/issues** (🔄 Refactor candidates, not blockers):
 - The refresh-token-reuse-detection logic exists in `session-lifecycle-service.ts` but the live `/api/auth/refresh` route doesn't call it — it manually re-validates the same token without rotating it. The security feature is written but not wired in.
 - `token_blacklist` table is written by a service method that the live logout route doesn't call — looks like dead code from an earlier logout design.
-- Dev-mode OTP bypass writes the OTP to a local file (`latest-otp.txt`) for phone-number test prefixes — needs stripping before any production cutover under the new brand (this file is already gitignored per the earlier repo reorg in this project).
+- ~~Dev-mode OTP bypass writes the OTP to a local file (`latest-otp.txt`) for phone-number test prefixes — needs stripping before any production cutover under the new brand.~~ **Resolved 2026-07-31**: both the `latest-otp.txt` dump and the `NODE_ENV !== "production"` send-error bypass were removed and replaced with a real, configuration-driven fallback — when WhatsApp can't deliver, the signup path skips verification and records the number as unverified rather than pretending a code was sent. See `docs/obsidian/Decisions.md` ADR-034.
 
 **StayO pages this serves**: Login, Owner Registration/Onboarding step 1, Forgot/Reset Password, Activation flow, session persistence for every authenticated screen.
 

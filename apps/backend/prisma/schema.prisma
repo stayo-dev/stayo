@@ -2901,6 +2901,7 @@ model platform_leads {
   hostel_name        String
   phone              String
   google_email       String?
+  phone_verified     Boolean             @default(false)
   city               String?
   bed_count          Int?
   status             PlatformLeadStatus  @default(NEW)

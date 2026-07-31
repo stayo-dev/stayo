@@ -28,6 +28,26 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### Landing nav's "About" pointed at a section that doesn't exist, and cross-route hash links never scrolled
+
+- **Status:** fixed
+- **Found:** 2026-07-31, while rebuilding `/contact` in the marketing theme — the new page copies the landing page's nav, which surfaced both problems.
+- **Area:** [[Frontend]]
+- **Symptom:** (1) Clicking "About" in the landing-page nav did nothing — it targeted `#vision`, but `LandingPage.tsx` only defines `top`, `whatis`, `why`, `journey` and `search`. (2) Any hash link arriving from another route (e.g. `/contact` → `/#search`) landed at the top of the landing page instead of the requested section.
+- **Root cause:** (1) a stale anchor left behind when the section was renamed/restructured — nothing validates that in-page anchors resolve. (2) React Router does not scroll to `#anchor` on navigation; the browser only does it for same-document anchor clicks, which is why in-page nav clicks always looked fine and the bug stayed invisible until a second page linked in.
+- **Fix:** repointed "About" to `#whatis` in both `LandingPage.tsx` and the new `ContactPage.tsx` nav; added a small mount effect in `LandingPage.tsx` that reads `window.location.hash` and `scrollIntoView`s the target on the next animation frame (after the section has rendered). In-page clicks are untouched.
+- **Related:** [[Features]], [[Changelog]]
+
+### A half-configured WhatsApp environment hard-500'd every route importing the notification service, at module import
+
+- **Status:** fixed
+- **Found:** 2026-07-31, during live end-to-end verification of the signup phone-verification fallback ([[Decisions#ADR-034|ADR-034]]) — setting `OTP_PROVIDER=whatsapp` with credentials but **without** `WHATSAPP_BUSINESS_ACCOUNT_ID` made `POST /api/auth/send-phone-otp` return a Next.js HTML 500 error page instead of the new graceful-degradation JSON.
+- **Area:** [[Backend]]
+- **Symptom:** every request to any route that transitively imports `lib/services/notification-service.ts` (or the Meta provider) failed with `CRITICAL CONFIGURATION ERROR: OTP_PROVIDER is set to 'whatsapp' but the following required environment variable(s) are missing: WHATSAPP_BUSINESS_ACCOUNT_ID` — a 500 HTML page, not a handled API error. Notably this is precisely the "WhatsApp half-configured" state the fallback exists to survive, and the fallback could never run.
+- **Root cause:** `validateWhatsAppConfiguration()` was invoked at **module top level** in two places — `notification-service.ts:5` and the bottom of `meta-provider.ts` — and throws. Because it runs at import time, it fired before any route handler, service method, or try/catch in the request path. It was written as a deploy-time fail-fast guard, but Next.js compiles route modules lazily, so in practice it fails at *request* time and takes the request down. The second call site (in `meta-provider.ts`) is the one that actually fired and was easy to miss — patching only `notification-service.ts` changed nothing.
+- **Fix:** both import-time invocations now `try`/`catch` and log loudly (`logger.error("whatsapp.configuration_invalid", …)` / `console.error`) instead of throwing. `validateWhatsAppConfiguration()` itself still throws for callers that want to assert on it, so `tests/whatsapp-provider.test.ts`'s expectations are unchanged. Verified live afterwards: the same half-configured environment now returns `{"success":true,"verification_required":false,"reason":"PROVIDER_SEND_FAILED"}` and, after three failures, `"PROVIDER_UNAVAILABLE"` from the circuit breaker.
+- **Related:** [[Decisions#ADR-034|ADR-034]], [[Business-Rules#Signup phone verification|Business-Rules]], [[Changelog]]
+
 ### `platform_leads.converted_owner_id` was schema-only dead code — no code ever wrote it
 
 - **Status:** fixed
