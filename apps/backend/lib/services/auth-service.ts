@@ -474,6 +474,49 @@ export class AuthService {
   }
 
   /**
+   * Returns the `auth.users` id to bind a brand-new profile to, creating the
+   * Supabase identity or **adopting an existing orphaned one**.
+   *
+   * The adoption case is real, not defensive: signing in with Google on the
+   * landing page's lead flow creates an `auth.users` row with no `profiles`
+   * row behind it. When that person later signs up properly, a blind
+   * `admin.createUser` is rejected ("email already registered") and the route
+   * surfaced an opaque 500. Callers have already checked `profiles` for a
+   * duplicate email, so an `auth.users` hit here means an orphan — claim it
+   * and set the password the user just chose.
+   */
+  private async provisionSupabaseIdentity(
+    normalizedEmail: string,
+    password: string,
+  ): Promise<{ userId: string; adopted: boolean }> {
+    const existing = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id FROM auth.users WHERE lower(email) = lower(${normalizedEmail}) LIMIT 1
+    `;
+
+    if (existing.length > 0) {
+      const authUserId = existing[0].id;
+      const { error } = await supabase.auth.admin.updateUserById(authUserId, {
+        password,
+        email_confirm: true,
+      });
+      if (error) {
+        throw new Error(`INTERNAL: Failed to adopt Supabase identity: ${error.message}`);
+      }
+      return { userId: authUserId, adopted: true };
+    }
+
+    const { data, error } = await supabase.auth.admin.createUser({
+      email: normalizedEmail,
+      password,
+      email_confirm: true,
+    });
+    if (error || !data.user?.id) {
+      throw new Error(`INTERNAL: Failed to create Supabase identity: ${error?.message || "unknown error"}`);
+    }
+    return { userId: data.user.id, adopted: false };
+  }
+
+  /**
    * Real self-serve StayO owner signup. Deliberately separate from
    * `registerOwner` above — that method's `ALLOW_OWNER_BOOTSTRAP` gate exists
    * to keep the legacy single-owner HMS from ever growing a second owner;
@@ -500,15 +543,7 @@ export class AuthService {
 
     // Born linked — same reasoning as registerOwner() above (ADR-031): no
     // silent local-UUID fallback.
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email: normalizedEmail,
-      password: data.password,
-      email_confirm: true,
-    });
-    if (authError || !authData.user?.id) {
-      throw new Error(`INTERNAL: Failed to create Supabase identity: ${authError?.message || "unknown error"}`);
-    }
-    const userId = authData.user.id;
+    const { userId, adopted } = await this.provisionSupabaseIdentity(normalizedEmail, data.password);
 
     const hashedPassword = await hashPassword(data.password);
 
@@ -532,7 +567,9 @@ export class AuthService {
 
       return profile;
     } catch (dbError) {
-      await supabase.auth.admin.deleteUser(userId);
+      // Only clean up an identity we created — deleting an adopted one would
+      // destroy a Supabase user that existed before this signup attempt.
+      if (!adopted) await supabase.auth.admin.deleteUser(userId);
       throw dbError;
     }
   }
@@ -573,15 +610,7 @@ export class AuthService {
     if (existingPhone) throw new Error("ALREADY_EXISTS: Phone number already registered");
 
     // Born linked — same reasoning as selfSignUpOwner above (ADR-031).
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email: normalizedEmail,
-      password: data.password,
-      email_confirm: true,
-    });
-    if (authError || !authData.user?.id) {
-      throw new Error(`INTERNAL: Failed to create Supabase identity: ${authError?.message || "unknown error"}`);
-    }
-    const userId = authData.user.id;
+    const { userId, adopted } = await this.provisionSupabaseIdentity(normalizedEmail, data.password);
 
     const hashedPassword = await hashPassword(data.password);
 
@@ -607,7 +636,9 @@ export class AuthService {
 
       return profile;
     } catch (dbError) {
-      await supabase.auth.admin.deleteUser(userId);
+      // Only clean up an identity we created — deleting an adopted one would
+      // destroy a Supabase user that existed before this signup attempt.
+      if (!adopted) await supabase.auth.admin.deleteUser(userId);
       throw dbError;
     }
   }

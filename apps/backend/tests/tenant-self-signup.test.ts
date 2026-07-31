@@ -7,6 +7,7 @@ vi.mock("@/lib/db", () => {
     auth: {
       admin: {
         createUser: vi.fn(),
+        updateUserById: vi.fn().mockResolvedValue({ error: null }),
         deleteUser: vi.fn().mockResolvedValue({}),
       },
     },
@@ -15,6 +16,8 @@ vi.mock("@/lib/db", () => {
     prisma: {
       profile: { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
       tenants: { findUnique: vi.fn() },
+      // auth.users lookup used to adopt an orphaned Supabase identity.
+      $queryRaw: vi.fn(),
     },
     supabase: supabaseMock,
   };
@@ -46,10 +49,41 @@ describe("selfSignUpTenant — marketplace account", () => {
     (prisma as any).profile.findUnique.mockResolvedValue(null);
     (prisma as any).profile.findFirst.mockResolvedValue(null);
     (prisma as any).profile.create.mockImplementation(async ({ data }: any) => data);
+    (prisma as any).$queryRaw.mockResolvedValue([]); // no orphaned auth user
     (await supabaseAdmin()).createUser.mockResolvedValue({
       data: { user: { id: NEW_USER_ID } },
       error: null,
     });
+  });
+
+  it("adopts an orphaned Supabase identity instead of failing", async () => {
+    // Real case: signing in with Google on the lead flow creates an auth.users
+    // row with no profile behind it. A blind createUser is then rejected and
+    // the route surfaced an opaque 500.
+    const ORPHAN_ID = "99999999-8888-7777-6666-555555555555";
+    (prisma as any).$queryRaw.mockResolvedValue([{ id: ORPHAN_ID }]);
+    const admin = await supabaseAdmin();
+
+    const profile: any = await authService.selfSignUpTenant(input);
+
+    expect(admin.createUser).not.toHaveBeenCalled();
+    expect(admin.updateUserById).toHaveBeenCalledWith(ORPHAN_ID, expect.objectContaining({
+      password: input.password,
+      email_confirm: true,
+    }));
+    expect(profile.id).toBe(ORPHAN_ID);
+    expect(profile.auth_user_id).toBe(ORPHAN_ID);
+  });
+
+  it("never deletes an adopted identity when the profile insert fails", async () => {
+    const ORPHAN_ID = "99999999-8888-7777-6666-555555555555";
+    (prisma as any).$queryRaw.mockResolvedValue([{ id: ORPHAN_ID }]);
+    (prisma as any).profile.create.mockRejectedValue(new Error("db down"));
+    const admin = await supabaseAdmin();
+
+    await expect(authService.selfSignUpTenant(input)).rejects.toThrow("db down");
+    // Deleting it would destroy a Supabase user that predates this signup.
+    expect(admin.deleteUser).not.toHaveBeenCalled();
   });
 
   it("creates a TENANT profile and never a tenants row", async () => {
