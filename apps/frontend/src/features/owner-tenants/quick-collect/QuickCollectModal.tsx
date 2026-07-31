@@ -46,7 +46,8 @@ interface SettlementAllocation {
 
 interface SettlementPreviewResponse {
   allocations: SettlementAllocation[];
-  future_credit: number;
+  /** ADR-036: money that could not be placed on any installment — an error, not a balance. */
+  unallocated: number;
   total_to_settle: number;
   remaining_outstanding: number;
   payment_accepted: boolean;
@@ -526,10 +527,12 @@ export function QuickCollectModal({ open, onClose, initialTenant }: QuickCollect
                   <div className="text-[9.5px] font-bold uppercase tracking-wide text-muted-foreground">Allocated · {allocations.length}</div>
                   <div className="font-display text-xl font-extrabold tabular-nums text-success">₹{preview.total_to_settle.toLocaleString('en-IN')}</div>
                 </div>
-                <div className="rounded-2xl border border-border bg-card p-3.5">
-                  <div className="text-[9.5px] font-bold uppercase tracking-wide text-muted-foreground">Future Credit</div>
-                  <div className="font-display text-xl font-extrabold tabular-nums text-[#6B4FBF]">₹{preview.future_credit.toLocaleString('en-IN')}</div>
-                </div>
+                {(preview.unallocated ?? 0) > 0 && (
+                  <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-3.5">
+                    <div className="text-[9.5px] font-bold uppercase tracking-wide text-destructive">Unallocated</div>
+                    <div className="font-display text-xl font-extrabold tabular-nums text-destructive">₹{(preview.unallocated ?? 0).toLocaleString('en-IN')}</div>
+                  </div>
+                )}
                 <div className="rounded-2xl border border-border bg-card p-3.5">
                   <div className="text-[9.5px] font-bold uppercase tracking-wide text-muted-foreground">Remaining Due</div>
                   <div className="font-display text-xl font-extrabold tabular-nums text-destructive">₹{preview.remaining_outstanding.toLocaleString('en-IN')}</div>

@@ -33,8 +33,20 @@ import { financialPaymentFacade } from "./financial-payment-facade";
 import { obligationEngine } from "./obligation-engine";
 import { financialPolicyEngine } from "./financial-policy-engine";
 
-// Boot-time validation of payment configuration
-validatePaymentEnvironment();
+// Boot-time validation of payment configuration. Deliberately logged rather
+// than thrown: this runs at *module import*, so an unconfigured gateway used to
+// hard-500 every route that transitively imports this file — including
+// read-only ones like /api/payments/tenant-dues, which never touch a gateway.
+// Gateway calls still fail loudly at the point of use, where the credentials
+// actually matter. Same reasoning as the WhatsApp startup check (ADR-034).
+try {
+  validatePaymentEnvironment();
+} catch (error) {
+  console.error(
+    "[payment-service] Payment gateway is not configured — online payment routes will fail until it is:",
+    error instanceof Error ? error.message : String(error),
+  );
+}
 
 
 const logger = getLogger("payment.service");

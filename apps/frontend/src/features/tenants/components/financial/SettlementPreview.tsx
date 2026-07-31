@@ -30,7 +30,7 @@ interface SettlementExplanation {
 
 interface SettlementPlanData {
   allocations: Allocation[];
-  future_credit: number;
+  unallocated: number;
   total_outstanding: number;
   total_to_settle: number;
   remaining_outstanding: number;
@@ -99,12 +99,12 @@ export function SettlementPreview({ plan, amount, onConfirm, onBack, isRecording
       </div>
 
       {/* Outcome summary — only the two numbers the owner actually needs after this */}
-      {(plan.future_credit > 0 || plan.remaining_outstanding > 0) && (
+      {((plan.unallocated ?? 0) > 0 || plan.remaining_outstanding > 0) && (
         <div className="flex gap-2">
-          {plan.future_credit > 0 && (
+          {(plan.unallocated ?? 0) > 0 && (
             <div className="flex-1 rounded-xl border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-center">
-              <p className="text-sm font-extrabold text-blue-600">{fmt(plan.future_credit)}</p>
-              <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mt-0.5">Future Credit</p>
+              <p className="text-sm font-extrabold text-destructive">{fmt(plan.unallocated ?? 0)}</p>
+              <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground mt-0.5">Unallocated</p>
             </div>
           )}
           {plan.remaining_outstanding > 0 && (
