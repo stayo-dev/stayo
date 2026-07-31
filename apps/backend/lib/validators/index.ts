@@ -30,6 +30,18 @@ export const OwnerSignupSchema = z.object({
   lead_token: z.string().min(1).optional(), // owner-acquisition funnel phase 2 — see lead-invitation-service.ts
 });
 
+/**
+ * Self-serve tenant signup — a marketplace account (browse/save/enquire), not
+ * a tenant *of a hostel*. No `lead_token` equivalent: a tenant becomes a real
+ * resident only via an owner's invitation + activation. See ADR-035.
+ */
+export const TenantSignupSchema = z.object({
+  email:    z.string().trim().email(),
+  password: z.string().min(8).max(64),
+  name:     z.string().min(2),
+  phone:    z.string().min(8).max(20),
+});
+
 export const ChangePasswordSchema = z.object({
   old_password: z.string().min(1),
   new_password: z.string().min(8),

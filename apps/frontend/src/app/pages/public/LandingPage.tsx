@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Search, LayoutGrid, ArrowRight, Check, Menu, X } from 'lucide-react';
-import { LoginModal, type LoginModalMode } from '@shared/ui-patterns/LoginModal';
+import { LoginModal, type LoginModalUser } from '@shared/ui-patterns/LoginModal';
 import { GoogleSignInModal } from '@shared/ui-patterns/GoogleSignInModal';
 import { HeroShowcase } from './components/HeroShowcase';
 import { HostelDiscoveryDemo } from './components/HostelDiscoveryDemo';
@@ -74,13 +74,19 @@ const NAV_LINKS = [
  */
 export function LandingPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const session = useOwnerSession();
+
+  // `/login` renders this page with the login popup open (ADR-035), so every
+  // redirect that needs a real URL — session expiry, the admin guard,
+  // password reset, tenant activation — still has one to point at.
+  const isLoginRoute = location.pathname === '/login';
 
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [heroTab, setHeroTab] = useState<'tenant' | 'owner'>('tenant');
   const [searchTab, setSearchTab] = useState<'search' | 'list'>('search');
-  const [tenantAuthOpen, setTenantAuthOpen] = useState(false);
+  const [tenantAuthOpen, setTenantAuthOpen] = useState(location.pathname === '/login');
   const [googleAuthOpen, setGoogleAuthOpen] = useState(false);
   const [tenantUser, setTenantUser] = useState<{ name: string; email: string } | null>(null);
 
@@ -129,9 +135,31 @@ export function LandingPage() {
     setTenantAuthOpen(true);
   };
 
-  const handleTenantAuthSuccess = (data: { mode: LoginModalMode; name: string; email: string }) => {
+  /**
+   * Role routing for the one login surface (ADR-035) — this is the logic the
+   * deleted `/login` page used to own. The tenant branch is the new part: a
+   * marketplace account has no `tenants` record, so `/tenant/home` (dues,
+   * agreements, room) has nothing to show it — it stays here to browse.
+   */
+  const handleAuthSuccess = (authUser: LoginModalUser) => {
     setTenantAuthOpen(false);
-    setTenantUser({ name: data.name, email: data.email });
+    const role = (authUser.role || '').toLowerCase();
+
+    if (role === 'admin') {
+      navigate('/admin', { replace: true });
+      return;
+    }
+    if (role === 'owner') {
+      navigate('/owner/home', { replace: true });
+      return;
+    }
+    if (authUser.tenantId) {
+      navigate('/tenant/home', { replace: true });
+      return;
+    }
+
+    setTenantUser({ name: authUser.name, email: authUser.email });
+    if (isLoginRoute) navigate('/', { replace: true });
   };
 
   const ownerCtaLabel = session.isAuthenticated && session.hostels.length > 0 ? 'Go to Dashboard' : 'Manage My Hostel';
@@ -139,7 +167,17 @@ export function LandingPage() {
   return (
     <ThemeProvider theme="marketing">
     <div className="overflow-x-hidden bg-background text-foreground [background-image:linear-gradient(rgba(120,80,70,.07)_1px,transparent_1px),linear-gradient(90deg,rgba(120,80,70,.07)_1px,transparent_1px)] [background-size:52px_52px]">
-      <LoginModal open={tenantAuthOpen} mode="tenant" onClose={() => setTenantAuthOpen(false)} onSuccess={handleTenantAuthSuccess} />
+      <LoginModal
+        open={tenantAuthOpen}
+        mode="tenant"
+        initialTab={new URLSearchParams(location.search).get('signup') === '1' ? 'signup' : 'login'}
+        onClose={() => {
+          setTenantAuthOpen(false);
+          // Don't strand the visitor on a bare /login with no dialog.
+          if (isLoginRoute) navigate('/', { replace: true });
+        }}
+        onSuccess={handleAuthSuccess}
+      />
       <GoogleSignInModal open={googleAuthOpen} onClose={() => setGoogleAuthOpen(false)} />
 
       {/* ============ NAV ============ */}

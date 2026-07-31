@@ -18,7 +18,6 @@ const RulesPage = lazy(() => import('@/app/pages/public/RulesPage').then((m) => 
 const LegalPage = lazy(() => import('@/app/pages/LegalPage').then((m) => ({ default: m.LegalPage })));
 const PricingPage = lazy(() => import('@/app/pages/PricingPage').then((m) => ({ default: m.PricingPage })));
 const VisitPage = lazy(() => import('@/app/pages/public/VisitPage').then((m) => ({ default: m.VisitPage })));
-const LoginPage = lazy(() => import('@/app/pages/LoginPage').then((m) => ({ default: m.LoginPage })));
 const AuthCallbackPage = lazy(() => import('@/app/pages/AuthCallbackPage').then((m) => ({ default: m.AuthCallbackPage })));
 const ForgotPasswordPage = lazy(() => import('@/app/pages/ForgotPasswordPage').then((m) => ({ default: m.ForgotPasswordPage })));
 const ResetPasswordPage = lazy(() => import('@/app/pages/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })));
@@ -60,6 +59,12 @@ export function PublicRoutes() {
       {/* ── Public hostel landing pages (SEO crawlable) ──────────────── */}
       <Route element={<PublicShell />}>
         <Route path="/" element={<LandingPage />} />
+        {/* ADR-035: one login surface. `/login` is the landing page with the
+            Stayo login popup already open — kept as a real URL because
+            session expiry, the admin guard, password reset and tenant
+            activation all need somewhere to redirect to. Lives here rather
+            than under AuthShell because the popup needs AuthProvider. */}
+        <Route path="/login" element={<LandingPage />} />
         <Route path="/lead-signup/callback" element={<LeadSignupCallbackPage />} />
         <Route path="/owner-invite/:token" element={<OwnerLeadInvitePage />} />
         <Route path="/about" element={<AboutPage />} />
@@ -88,7 +93,6 @@ export function PublicRoutes() {
 
       {/* ── Auth & utility ───────────────────────────────────────────── */}
       <Route element={<AuthShell />}>
-        <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />

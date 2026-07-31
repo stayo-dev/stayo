@@ -12,6 +12,7 @@ const PUBLIC_ROUTES = [
   "/api/health",
   "/api/auth/login",
   "/api/auth/owner-signup",
+  "/api/auth/tenant-signup",
   "/api/auth/send-otp",
   "/api/auth/verify-otp",
   "/api/auth/send-phone-otp",

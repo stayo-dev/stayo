@@ -28,6 +28,14 @@ interface AuthContextValue {
    * afterward via the auth-state listener below.
    */
   loginWithGoogle: () => Promise<void>;
+  /**
+   * Self-serve tenant signup (ADR-035) — creates a marketplace account and
+   * logs it straight in. Lives here rather than in a feature API wrapper
+   * because `shared/ui-patterns/LoginModal` is its caller and shared code
+   * may not import `@features/*` (scripts/check-architecture.mjs), and
+   * because minting a session is this context's job either way.
+   */
+  signUpTenant: (data: { name: string; email: string; phone: string; password: string }) => Promise<AuthUser>;
   updateUser: (patch: Partial<AuthUser>) => void;
   logout: (redirect?: boolean, options?: LogoutOptions) => void | Promise<void>;
 }
@@ -224,6 +232,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const signUpTenant = async (data: {
+    name: string;
+    email: string;
+    phone: string;
+    password: string;
+  }): Promise<AuthUser> => {
+    try {
+      const normalizedEmail = data.email.trim().toLowerCase();
+      // Same response/cookie shape as /auth/login, so the session handling
+      // below is deliberately identical to login()'s.
+      const response = await api.post('/auth/tenant-signup', {
+        name: data.name.trim(),
+        email: normalizedEmail,
+        phone: data.phone.trim(),
+        password: data.password,
+      });
+      queryClient.clear();
+      clearSessionScopedStorage();
+
+      const { access_token, refresh_token } = response.data;
+      const { error: sessionError } = await supabase.auth.setSession({ access_token, refresh_token });
+      if (sessionError) throw new Error(sessionError.message);
+
+      const userData = buildAuthUser({ ...response.data, email: normalizedEmail });
+      setUser(userData);
+      return userData;
+    } catch (error: unknown) {
+      if (!(error as { response?: unknown })?.response) {
+        throw new Error('Unable to connect. Check your internet.');
+      }
+      throw new Error(getApiErrorMessage(error) || 'Could not create your account.');
+    }
+  };
+
   const loginWithGoogle = async (): Promise<void> => {
     queryClient.clear();
     clearSessionScopedStorage();
@@ -260,7 +302,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, login, loginWithGoogle, updateUser, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, loginWithGoogle, signUpTenant, updateUser, logout, loading }}>
       {children}
       {showIdleWarning && user && (
         <SessionSecurityModal

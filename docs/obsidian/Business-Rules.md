@@ -172,6 +172,17 @@ Phase 1 of the Business Recovery Platform (`docs/business-logic/business-recover
 8. `portfolio-service.ts` may not query raw transactional tables (payment/rentObligation/tenant) without a hostel-scoping proximity check.
 9. Frontend `useQuery` hooks must include `hostelId` in their query key (6 named exceptions).
 
+## Account types — who can sign themselves up
+
+Added 2026-07-31 ([[Decisions#ADR-035|ADR-035]]).
+
+1. **Owners** self-sign-up via `/api/auth/owner-signup`, normally reached through the lead → admin approval → activation-link funnel. `profiles.role = OWNER`, `owner_id = own id`.
+2. **Tenants** self-sign-up via `/api/auth/tenant-signup`, creating a **marketplace account**: `role: TENANT`, `owner_id` null, **no `tenants` row**. This account can browse and enquire; it is not a tenant of any hostel.
+3. **A tenant *of a hostel*** is only ever created by an owner's invitation + activation. That flow reuses an existing marketplace profile rather than creating a second one — it rejects an existing profile only when that profile already has an *active* `tenants` row.
+4. **Admins** are never self-serve — first via `scripts/bootstrap-platform-admin.ts`, later by invitation.
+
+Consequences that surfaces must respect: a TENANT session can legitimately have `tenant_id: null`, so anything reading dues/agreements/room must tolerate its absence (`/api/auth/me` already does), and post-login routing sends such a user to hostel search rather than the tenant portal.
+
 ## Signup phone verification
 
 Added 2026-07-31 ([[Decisions#ADR-034|ADR-034]]). **Phone verification is required for signup only when the provider can actually deliver it.**

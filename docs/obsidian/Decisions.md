@@ -23,6 +23,27 @@ Architecture Decision Records — each entry below was **inferred from code evid
 
 ---
 
+## ADR-035: One login surface (the Stayo popup), and tenant self-signup creates a *marketplace account*, not a tenant
+
+- **Date:** 2026-07-31
+- **Status:** accepted
+- **Context:** Two login UIs existed side by side. `app/pages/LoginPage.tsx` (395 lines, `/login`) did the real work — `AuthContext.login()`, Google sign-in, role routing to `/admin` / `/owner/home` / `/tenant/home` — but was still in the retired navy identity (`#1B2D5B`, orange circle logo), so it looked like a different product from the landing page that links to it. `shared/ui-patterns/LoginModal.tsx`, the on-brand popup the landing page opens, was a **mock**: a 650ms `setTimeout` where the network call belonged, per its own doc comment. It had never authenticated anyone. Its "Sign Up" tab was equally decorative — there is no tenant self-signup endpoint, because tenants are invited by an owner into a specific room and then activate.
+- **Decision:** the popup becomes the single, real login surface.
+  - `LoginModal` gains real `login()`, `loginWithGoogle()`, server error surfacing, a Forgot password link, and the role routing the page owned.
+  - **`/login` is kept as a route** but renders `LandingPage` with the popup already open. A modal has no URL, and 12 call sites redirect to `/login` — session expiry (`AuthContext`), `RequireAdminSession`, password reset, tenant activation. Deleting the route would have broken all of them. It moves under `PublicShell` because the popup needs `AuthProvider`.
+  - `LoginPage.tsx` is deleted.
+  - **Tenant self-signup is real** (`POST /api/auth/tenant-signup`), and deliberately creates a `profiles` row with `role: TENANT`, `owner_id` null and **no `tenants` row** — a *marketplace account* (browse, save, enquire). A `tenants` record binds a person to a hostel, room and agreement, none of which exist at signup. Someone becomes a tenant *of a hostel* only through the existing invite → activate flow.
+- **Alternatives considered:**
+  - **Restyling `/login` as a full page and keeping both surfaces** (rejected — two login UIs to keep in sync is what produced this drift in the first place; one real surface is the point).
+  - **Deleting `/login` outright and only opening the modal from buttons** (rejected — redirects need a URL; session expiry would have had nowhere to land).
+  - **Redirecting `/login` → `/?login=1`** (rejected — a bookmarked `/login` would silently become the homepage in the address bar).
+  - **Creating a `tenants` row at signup with null hostel/room** (rejected — it would put a row into the table that every downstream financial and allocation query assumes is bound to a hostel; the nullable-everything tenant is exactly the kind of half-object that causes silent wrong-hostel bugs this codebase already has invariant checks against).
+  - **Leaving the Sign Up tab decorative or pointing it at hostel search** (offered and rejected by the requester, who chose to build real signup).
+- **Consequences:** one place to change login, and it's on-brand. The new account type is genuinely new to the product: a TENANT profile that is not anyone's tenant. Verified compatible with the invite flow before building — `tenant-invitation-lifecycle-service` only rejects an existing profile that already has an *active* `tenants` row, and otherwise updates the profile in place, so an owner inviting a self-registered user links to their account instead of colliding. Two smaller consequences handled deliberately: `is_profile_completed` is set true at signup (that flag gates the *invited* tenant's guardian/document wizard, which a marketplace account has no hostel to complete), and post-login routing sends a tenant **with** a `tenant_id` to `/tenant/home` but one **without** to the hostel search, since the portal renders dues and agreements that don't exist. Not yet designed: what the marketplace account can actually *do* beyond browsing — saved hostels and enquiry history are implied by the signup copy but not built.
+- **Related:** [[APIs]], [[Features]], [[Frontend]], [[Business-Rules]], [[Decisions#ADR-034|ADR-034]] (the phone-verification gate this reuses), [[Decisions#ADR-031|ADR-031]] (Supabase session plumbing), [[Changelog]]
+
+---
+
 ## ADR-034: Signup phone verification degrades to "accepted unverified" when WhatsApp can't deliver — skip and record, not block
 
 - **Date:** 2026-07-31

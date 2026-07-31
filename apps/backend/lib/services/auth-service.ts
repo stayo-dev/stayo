@@ -537,6 +537,81 @@ export class AuthService {
     }
   }
 
+  /**
+   * Self-serve tenant signup (ADR-035). Creates a **marketplace account**: a
+   * `profiles` row with `role: TENANT` and deliberately **no `tenants` row`.
+   *
+   * That distinction is the whole design. A `tenants` record binds a person to
+   * a hostel, a room and an agreement — none of which exist for someone who
+   * just signed up to browse. They become a tenant *of a hostel* only when an
+   * owner invites them and they activate, which reuses this same profile:
+   * `tenant-invitation-lifecycle-service` only rejects an existing profile
+   * that already has an active `tenants` row, and otherwise updates the
+   * profile in place rather than creating a second one.
+   *
+   * `is_profile_completed` is set true because that flag gates the *invited*
+   * tenant's onboarding wizard (guardian details, documents) — a marketplace
+   * account has no hostel to complete a profile for, and would otherwise be
+   * trapped in a redirect loop by `ProtectedTenantRoute`.
+   *
+   * Callers must verify the phone first (`resolveSignupPhoneVerification`),
+   * exactly as `/api/auth/owner-signup` does.
+   */
+  async selfSignUpTenant(data: {
+    email: string;
+    password: string;
+    name: string;
+    phone: string;
+    phoneVerified: boolean;
+  }) {
+    const normalizedEmail = data.email.trim().toLowerCase();
+
+    const existingEmail = await prisma.profile.findUnique({ where: { email: normalizedEmail } });
+    if (existingEmail) throw new Error("ALREADY_EXISTS: Email already registered");
+
+    const existingPhone = await prisma.profile.findFirst({ where: { phone: data.phone } });
+    if (existingPhone) throw new Error("ALREADY_EXISTS: Phone number already registered");
+
+    // Born linked — same reasoning as selfSignUpOwner above (ADR-031).
+    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      email: normalizedEmail,
+      password: data.password,
+      email_confirm: true,
+    });
+    if (authError || !authData.user?.id) {
+      throw new Error(`INTERNAL: Failed to create Supabase identity: ${authError?.message || "unknown error"}`);
+    }
+    const userId = authData.user.id;
+
+    const hashedPassword = await hashPassword(data.password);
+
+    try {
+      const profile = await prisma.profile.create({
+        data: {
+          id: userId,
+          email: normalizedEmail,
+          password_hash: hashedPassword,
+          name: data.name,
+          phone: data.phone,
+          role: "TENANT",
+          is_active: true,
+          // No owner_id: this account belongs to no hostel until an owner
+          // invites them. The column is nullable precisely for this.
+          phone_verified: data.phoneVerified,
+          mobile_verified: data.phoneVerified,
+          is_profile_completed: true,
+          auth_user_id: userId,
+          auth_linked_at: new Date(),
+        },
+      });
+
+      return profile;
+    } catch (dbError) {
+      await supabase.auth.admin.deleteUser(userId);
+      throw dbError;
+    }
+  }
+
   async changePassword(userId: string, oldPassword: string, newPassword: string) {
     const profile = await prisma.profile.findUnique({ where: { id: userId } });
     if (!profile) throw new Error("NOT_FOUND: User not found");
