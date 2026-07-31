@@ -171,6 +171,13 @@ export function ContactPage() {
                 Company
               </Link>
               <Link
+                to="/login"
+                onClick={() => setMenuOpen(false)}
+                className="border-b border-border/50 py-2.5 text-[15px] font-semibold text-foreground"
+              >
+                Login
+              </Link>
+              <Link
                 to="/#search"
                 onClick={() => setMenuOpen(false)}
                 className="mt-2 rounded-xl bg-primary py-3 text-center font-display text-[15px] font-bold text-primary-foreground"

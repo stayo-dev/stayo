@@ -240,6 +240,19 @@ export function LandingPage() {
             >
               Company
             </Link>
+            {/* Login is the only way into the app from here — the popup is the
+                single login surface (ADR-035), so leaving it out of the mobile
+                menu made logging in impossible on a phone. */}
+            <button
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                openTenantAuth();
+              }}
+              className="border-b border-border/50 py-2.5 text-left text-[15px] font-semibold text-foreground"
+            >
+              {tenantUser ? `Hi, ${tenantUser.name.split(' ')[0]}` : 'Login'}
+            </button>
             <a
               href="#search"
               onClick={() => setMenuOpen(false)}
