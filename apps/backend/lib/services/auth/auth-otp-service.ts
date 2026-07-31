@@ -7,6 +7,15 @@ import { maskWhatsAppPhone, normalizeWhatsAppPhone } from "@/lib/services/notifi
 import { notificationService } from "@/lib/services/notification-service";
 import { redisKeys } from "@/lib/redis/keys";
 import { checkFixedWindowLimit, setOneTimeLock, releaseOneTimeLock } from "@/lib/redis/rate-limit";
+import {
+  isSkippableOtpPurpose,
+  resolvePhoneVerificationMode,
+} from "@/lib/services/auth/phone-verification-mode";
+import {
+  isOtpBreakerOpen,
+  recordOtpSendFailure,
+  recordOtpSendSuccess,
+} from "@/lib/services/auth/otp-provider-breaker";
 
 const logger = getLogger("auth.otp-service");
 
@@ -20,6 +29,10 @@ const IP_SEND_LIMIT = 10;
 const IP_SEND_WINDOW_MS = 60 * 60 * 1000;
 const IP_VERIFY_LIMIT = 30;
 const IP_VERIFY_WINDOW_MS = 15 * 60 * 1000;
+const SKIPPED_STATUS = "SKIPPED";
+const SKIPPED_PROVIDER_STATUS = "UNAVAILABLE";
+
+export type SkipReason = "PROVIDER_NOT_CONFIGURED" | "PROVIDER_UNAVAILABLE" | "PROVIDER_SEND_FAILED";
 
 export class OtpServiceError extends Error {
   constructor(
@@ -54,20 +67,20 @@ export class AuthOtpService {
     const requestIp = input.requestIp || null;
     const now = new Date();
 
+    // Rate limits first, always — the skip path below must not become an
+    // unthrottled way to write rows keyed by an arbitrary phone number.
     await this.enforceSendRateLimits(phone, requestIp, now);
     await (prisma as any).phoneVerificationOtp.updateMany({
       where: { phone, purpose, status: "PENDING" },
       data: { status: "EXPIRED", failure_reason: "superseded by new OTP request" },
     });
 
-    const otp = String(crypto.randomInt(OTP_LENGTH_MIN, OTP_LENGTH_MAX_EXCLUSIVE));
-    try {
-      require("fs").writeFileSync(require("path").join(__dirname, "../../../latest-otp.txt"), `OTP: ${otp}\nPhone: ${phone}\nTime: ${new Date().toISOString()}`);
-      console.log(`[DEVELOPMENT] Saved latest OTP to latest-otp.txt: ${otp}`);
-    } catch (err) {
-      console.error("Failed to write latest OTP to file:", err);
+    const skipReason = await this.resolveSkipReason(purpose);
+    if (skipReason) {
+      return this.recordSkippedVerification({ phone, purpose, requestIp, reason: skipReason, now });
     }
 
+    const otp = String(crypto.randomInt(OTP_LENGTH_MIN, OTP_LENGTH_MAX_EXCLUSIVE));
     const otpHash = await bcrypt.hash(otp, 10);
     const expiresAt = new Date(now.getTime() + OTP_TTL_MS);
 
@@ -96,6 +109,7 @@ export class AuthOtpService {
           failure_reason: null,
         },
       });
+      await recordOtpSendSuccess();
 
       logger.metrics("otp.request.sent", {
         phone: maskWhatsAppPhone(phone),
@@ -106,31 +120,49 @@ export class AuthOtpService {
 
       return {
         success: true,
+        verification_required: true,
         expires_in_seconds: Math.floor(OTP_TTL_MS / 1000),
       };
     } catch (error: any) {
-      if (phone.startsWith("9115") || phone.startsWith("9198765") || process.env.NODE_ENV !== "production") {
-        console.log(`[DEVELOPMENT] Bypassing WhatsApp send error for test number ${phone}: ${error?.message || error}`);
+      const message = String(error?.message || error);
+      incrementOtpMetric("send_failures");
+
+      if (isSkippableOtpPurpose(purpose)) {
+        // The signup flow degrades rather than dead-ends. The user whose
+        // request trips the breaker must not be the one who eats the error.
+        await recordOtpSendFailure(message);
+        const skippedAt = new Date();
         await (prisma as any).phoneVerificationOtp.update({
           where: { id: record.id },
           data: {
-            provider_status: "SENT",
-            failure_reason: `Bypassed error in development: ${String(error?.message || error).slice(0, 200)}`,
+            status: SKIPPED_STATUS,
+            provider_status: SKIPPED_PROVIDER_STATUS,
+            verified_at: skippedAt,
+            failure_reason: `whatsapp_unavailable:PROVIDER_SEND_FAILED: ${message}`.slice(0, 500),
           },
         });
+
+        logger.warn("otp.request.skipped", {
+          phone: maskWhatsAppPhone(phone),
+          purpose,
+          otp_id: record.id,
+          reason: "PROVIDER_SEND_FAILED",
+          error: message,
+        });
+
         return {
           success: true,
-          expires_in_seconds: Math.floor(OTP_TTL_MS / 1000),
+          verification_required: false,
+          reason: "PROVIDER_SEND_FAILED" as SkipReason,
         };
       }
 
-      incrementOtpMetric("send_failures");
       await (prisma as any).phoneVerificationOtp.update({
         where: { id: record.id },
         data: {
           status: "FAILED",
           provider_status: "FAILED",
-          failure_reason: String(error?.message || error).slice(0, 500),
+          failure_reason: message.slice(0, 500),
         },
       });
 
@@ -139,11 +171,66 @@ export class AuthOtpService {
         purpose,
         otp_id: record.id,
         error_code: error?.providerCode || error?.code || "OTP_SEND_FAILED",
-        error: String(error?.message || error),
+        error: message,
       });
 
       throw new OtpServiceError("Failed to send OTP", "OTP_SEND_FAILED", 502);
     }
+  }
+
+  /**
+   * Why this request cannot be verified — or null when it can. Only the
+   * signup purposes degrade; see phone-verification-mode.ts.
+   */
+  private async resolveSkipReason(purpose: string): Promise<SkipReason | null> {
+    if (!isSkippableOtpPurpose(purpose)) return null;
+    if (resolvePhoneVerificationMode() === "off") return "PROVIDER_NOT_CONFIGURED";
+    if (await isOtpBreakerOpen()) return "PROVIDER_UNAVAILABLE";
+    return null;
+  }
+
+  /**
+   * Records that signup proceeded without verification. The row is written
+   * (rather than omitted) so the downstream signup gates still require the
+   * caller to have gone through this endpoint for this exact number, and so
+   * the audit trail shows why the number is unverified. `otp_hash` holds a
+   * hash of a value that is never sent, and `verifyPhoneOtp` only ever looks
+   * at PENDING rows — this row can never be verified.
+   */
+  private async recordSkippedVerification(params: {
+    phone: string;
+    purpose: string;
+    requestIp: string | null;
+    reason: SkipReason;
+    now: Date;
+  }) {
+    const { phone, purpose, requestIp, reason, now } = params;
+    const unusableHash = await bcrypt.hash(crypto.randomUUID(), 10);
+
+    const record = await (prisma as any).phoneVerificationOtp.create({
+      data: {
+        phone,
+        otp_hash: unusableHash,
+        purpose,
+        status: SKIPPED_STATUS,
+        max_attempts: MAX_ATTEMPTS,
+        expires_at: new Date(now.getTime() + OTP_TTL_MS),
+        verified_at: now,
+        provider_status: SKIPPED_PROVIDER_STATUS,
+        failure_reason: `whatsapp_unavailable:${reason}`,
+        request_ip: requestIp,
+      },
+    });
+
+    incrementOtpMetric("requests_total");
+    logger.metrics("otp.request.skipped", {
+      phone: maskWhatsAppPhone(phone),
+      purpose,
+      otp_id: record.id,
+      reason,
+    });
+
+    return { success: true, verification_required: false, reason };
   }
 
   async verifyPhoneOtp(input: VerifyOtpInput) {
