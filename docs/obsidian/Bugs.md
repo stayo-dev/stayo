@@ -28,6 +28,16 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### A Meta webhook retry could re-run inbound-command handlers and send a tenant the same reply twice
+
+- **Status:** fixed
+- **Found:** 2026-08-01, auditing the WhatsApp webhook ahead of Meta Cloud API integration.
+- **Area:** [[Backend]]
+- **Symptom:** never reproduced in production (inbound volume is still low), found by reading the delivery path against Meta's retry contract. A retried delivery of an inbound command (`DUES`, `PAY`, a button reply) could execute the handler a second time — a second WhatsApp reply to the tenant, a second set of Graph API sends.
+- **Root cause:** two compounding gaps. (1) The route awaited the *whole* pipeline — DB reads, dues computation, outbound sends — before answering 200, so a slow Graph API call could push Meta past its acknowledgement window and provoke a retry. (2) The duplicate guard read the stored status and only short-circuited on `PROCESSED`; a retry landing while the first delivery was still `PROCESSING` (exactly the case a slow send creates) fell straight through to the handlers. The raw-body hash made the *row* unique, but nothing made the *processing* exclusive.
+- **Fix:** the route now records the event, answers 200, and processes after the response (`lib/services/notifications/whatsapp-webhook-handler.ts`), so slowness no longer provokes retries; and `whatsappWebhookEventService.claimForProcessing()` (`whatsapp-webhook-event-service.ts`) makes the claim a conditional `UPDATE … RETURNING` that exactly one delivery wins — `RECEIVED`/`FAILED` are claimable, `PROCESSING` only after a 10-minute stale window so a crashed process can't wedge an event forever. The insert also became `ON CONFLICT (event_hash) DO NOTHING` + re-select, since two simultaneous deliveries could both pass the pre-check and turn a duplicate into a unique-violation 500 (which Meta would then retry again).
+- **Related:** [[Decisions#ADR-037|ADR-037]], [[APIs]], [[Changelog]]
+
 ### Landing nav's "About" pointed at a section that doesn't exist, and cross-route hash links never scrolled
 
 - **Status:** fixed

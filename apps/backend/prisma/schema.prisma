@@ -3017,7 +3017,7 @@ model platform_settings {
   updated_at DateTime? @db.Timestamptz(6)
 }
 
-/// Owner KYC documents (ADR-037). Deliberately separate from
+/// Owner KYC documents (ADR-038). Deliberately separate from
 /// `identificationDocument`, which is FK'd to `tenants` and cannot represent an
 /// owner. Files live in ImageKit; only metadata is stored here.
 model owner_documents {

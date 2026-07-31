@@ -23,6 +23,42 @@ Architecture Decision Records — each entry below was **inferred from code evid
 
 ---
 
+## ADR-038: Owner KYC is a real upload with an admin-only verified state, in its own table
+
+- **Date:** 2026-08-01
+- **Status:** accepted
+- **Context:** The onboarding KYC step was three toggles wired to local React state. Tapping one turned it green and the copy read "Required · auto-verified" and "Documents check automatically" — but nothing was uploaded, nothing was stored, and the state vanished on reload. There was no owner KYC endpoint in the codebase at all. An owner could reasonably finish onboarding believing they were identity-verified when no file had ever left their device, which is a trust problem and, for a platform handling rent, a compliance one.
+- **Decision:** build the real thing, in a new table.
+  - **`owner_documents`**, not `identification_documents`: the existing table is `tenant_id NOT NULL` and FK'd to `tenants`, so it structurally cannot hold an owner's document. Widening it would have meant a nullable tenant link on a table every tenant-document query already trusts.
+  - `GET`/`POST /api/owner/kyc-documents`, uploading to ImageKit through the same path `hostels/[id]/logo` already uses — no second upload mechanism.
+  - **`status` is always `PENDING` on upload**, and nothing in the request can set it. Only an admin review may move it to `VERIFIED`; the uploader can never assert their own verification, which was precisely the old UI's failure.
+  - **Re-uploading supersedes rather than overwrites**: the previous row is flipped `is_active = false` and kept. A unique index on `(profile_id, doc_type, is_active)` enforces exactly one active document per type while preserving what was submitted before.
+- **Alternatives considered:** widening `identification_documents` with a nullable `tenant_id` (rejected — it weakens a constraint that every existing tenant-document query depends on, to serve a different actor). Storing files as base64 in Postgres (rejected — ImageKit is already the document store, and identity documents do not belong in the primary database). Leaving the toggles and only correcting the copy (rejected as a stopgap: the step would still collect nothing, so "required before you go live" would remain unenforceable).
+- **Consequences:** owners can now actually submit Aadhaar/PAN/photo, and Stayo holds verifiable evidence rather than a checkbox. Two things this deliberately does **not** yet do: there is no admin review surface, so documents sit `PENDING` until one is built; and nothing blocks publishing on missing KYC — the copy says "required before you go live" but no gate enforces it. Both are follow-ups, and until the review UI exists no document can ever leave `PENDING`. Files land in a `/owner_kyc` ImageKit folder; locally, with no `IMAGEKIT_PRIVATE_KEY`, the shared mock uploader returns a data URL so the flow is testable end to end.
+- **Related:** [[APIs]], [[Database]], [[Features]], [[Business-Rules]], [[Changelog]]
+
+---
+
+## ADR-037: The Meta WhatsApp webhook is acknowledged first and processed after the response, at one canonical URL with two mounts
+
+- **Date:** 2026-08-01
+- **Status:** accepted
+- **Context:** Meta Business/WhatsApp verification requires a fixed callback URL, and the one being registered is `https://yourstayo.com/api/webhooks/whatsapp`. The implementation already existed but was mounted at `/api/webhooks/notifications/whatsapp`, so the URL Meta would call did not resolve. Two further mismatches with the Cloud API's delivery contract: the route ran the *entire* inbound-command pipeline (DB reads, dues computation, outbound Graph API sends) **before** returning 200, and its duplicate guard only short-circuited events already marked `PROCESSED`. Meta retries a delivery it considers unacknowledged, so a slow send made a retry likely, and a retry landing while the first was still `PROCESSING` re-ran the handlers — sending a tenant the same reply twice.
+- **Decision:**
+  - **One implementation, two mounts.** The handler moved to `lib/services/notifications/whatsapp-webhook-handler.ts`; `app/api/webhooks/whatsapp/route.ts` (canonical) and `app/api/webhooks/notifications/whatsapp/route.ts` (legacy) are both four-line delegations. No logic is duplicated, and an app subscription still pointing at the old path keeps working.
+  - **Acknowledge, then process.** Once the signature verifies and the event is durably recorded, the route answers `200` and runs the business logic afterwards (registered with the host's `waitUntil` when one is present, so it survives on Vercel as well as on the long-lived Render process). A handler failure marks the row `FAILED` instead of turning into a 500.
+  - **Idempotency is a claim, not a status read.** `claimForProcessing()` is a conditional `UPDATE … RETURNING` that only one delivery can win. A row stuck `PROCESSING` by a crashed process becomes claimable again after 10 minutes; `FAILED` rows are immediately claimable, which is what makes a Meta retry a recovery mechanism rather than a duplicate.
+  - **Env names follow Meta's vocabulary, old ones still read.** `WHATSAPP_WEBHOOK_VERIFY_TOKEN` and `META_APP_SECRET` are preferred, falling back to the deployed `WHATSAPP_VERIFY_TOKEN` / `WHATSAPP_APP_SECRET`.
+- **Alternatives considered:**
+  - **Move the route and let the old path 404** (rejected — whatever is configured in the Meta app today would start failing on deploy, with no signal until messages went missing).
+  - **A Next.js rewrite from the canonical path to the old one** (rejected — a rewrite is invisible in the route tree; a reader looking for the webhook Meta calls should find a file at that path).
+  - **Keep processing synchronous and rely on Meta's retries** (rejected — retries are the thing that caused double sends; the fix is to stop provoking them).
+  - **A durable queue for the deferred work** (rejected as premature — the event row *is* the queue: it persists before the 200, and its status records the outcome).
+- **Consequences:** a webhook response no longer depends on how slow the Graph API is. The cost is that a 200 now means "accepted", not "processed" — the outcome lives in `whatsapp_webhook_events.processing_status`, which is where failures must be looked for. Signature failures still answer 401 (and 429 once per-IP abuse limiting trips) and are recorded for audit; a body that cannot even be persisted still answers 500, because Meta's retry is then the only recovery.
+- **Related:** [[APIs#Notifications|APIs]], [[Backend]], [[Features]], [[Bugs]], [[Changelog]], [[Database]]
+
+---
+
 ## ADR-036: Remove future rent credit — every payment settles a real installment
 
 - **Date:** 2026-07-31

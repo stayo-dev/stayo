@@ -1,4 +1,4 @@
--- Owner KYC documents (ADR-037). Separate from identification_documents, which
+-- Owner KYC documents (ADR-038). Separate from identification_documents, which
 -- is FK'd to tenants and cannot represent an owner. Idempotent — safe to re-run.
 
 CREATE TABLE IF NOT EXISTS "owner_documents" (

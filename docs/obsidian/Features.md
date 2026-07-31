@@ -215,7 +215,8 @@ The StayO redesign is being built in place inside the same `apps/frontend` tree,
 - Move-out room release (`/api/cron/move-out-releases`)
 - Payment reconciliation sweep (`/api/cron/reconcile-payments`)
 - Admissions reservation expiry (`/api/cron/admissions`)
-- Payment webhooks: PhonePe/Razorpay (`/api/webhooks/payments/razorpay`), WhatsApp Cloud API (`/api/webhooks/notifications/whatsapp`)
+- Payment webhooks: PhonePe/Razorpay (`/api/webhooks/payments/razorpay`)
+- WhatsApp Cloud API webhook: `/api/webhooks/whatsapp` (canonical, `https://yourstayo.com/api/webhooks/whatsapp`) with `/api/webhooks/notifications/whatsapp` as a legacy mount of the same handler — signature-verified, acknowledged before processing, duplicate-safe ([[Decisions#ADR-037|ADR-037]], [[APIs#Notifications & WhatsApp|APIs]])
 - Admin finance-ops dashboards (`/api/admin/finance-ops/*`, `/api/admin/finance/reconciliation/*`) — ADMIN/OWNER-only, no confirmed dedicated frontend surface found in `apps/frontend`; **Unknown** whether these are consumed by a separate internal tool or only via direct API access.
 
 ## Decommissioned features (confirmed removed, not just undocumented)

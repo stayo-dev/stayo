@@ -90,6 +90,9 @@ Owner-acquisition funnel, phases 1–2. **`platform_leads.google_email`** (added
 
 See [[APIs]] (`/api/leads/*`, `/api/platform-admin/leads/[id]/approve`), [[Backend]], [[Decisions]] ADR-032.
 
+### `owner_documents` (added 2026-08-01, [[Decisions#ADR-038|ADR-038]])
+Owner KYC. Deliberately **not** `identification_documents`, which is `tenant_id NOT NULL` and FK'd to `tenants` and so cannot represent an owner. Columns: `profile_id` (FK → `profiles`, `ON DELETE CASCADE`), `doc_type` (`AADHAAR`|`PAN`|`PHOTO`, plain string), `file_url`/`file_id` (ImageKit — only metadata is stored here), `mime_type`, `file_size`, `status` (`PENDING` default; admin-review only), `is_active`, `uploaded_at`, `reviewed_at`/`reviewed_by`. A unique index on `(profile_id, doc_type, is_active)` enforces one active document per type while keeping superseded rows for history. Migration: `prisma/migrations/20260801000000_owner_kyc_documents/migration.sql` (idempotent).
+
 ### `platform_leads.phone_verified` / `phone_verification_otps` `SKIPPED` + `UNAVAILABLE` states
 Added 2026-07-31 for the signup phone-verification fallback ([[Decisions#ADR-034|ADR-034]]). **`platform_leads.phone_verified Boolean @default(false)`** records whether the lead's number was really OTP-verified, or accepted unverified because WhatsApp could not deliver. Existing rows default to `false` — not a claim they were unverified, just that the row itself no longer proves otherwise; the historical truth stays in `phone_verification_otps`. Migration: `prisma/migrations/20260731000000_platform_leads_phone_verified/migration.sql` (idempotent `ADD COLUMN IF NOT EXISTS`). The same value is written to `profiles.phone_verified`/`mobile_verified` by `authService.selfSignUpOwner()`.
 

@@ -12,7 +12,7 @@ const ALLOWED_MIME_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp"
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 
 /**
- * Owner KYC documents (ADR-037).
+ * Owner KYC documents (ADR-038).
  *
  * The onboarding KYC step used to be three toggles that uploaded nothing while
  * claiming documents were "auto-verified" — an owner could believe they were

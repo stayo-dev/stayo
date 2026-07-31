@@ -18,7 +18,7 @@ const ITEMS: {
 const ACCEPT = 'image/png,image/jpeg,image/webp,application/pdf';
 
 /**
- * Real KYC uploads (ADR-037). This step used to be three toggles that stored
+ * Real KYC uploads (ADR-038). This step used to be three toggles that stored
  * nothing while claiming documents were "auto-verified" — an owner could
  * believe they were verified when no file had ever left their device.
  *

@@ -9,7 +9,7 @@ export interface OwnerKycDocument {
 }
 
 /**
- * Owner KYC uploads (ADR-037). `status` is always PENDING on upload — only an
+ * Owner KYC uploads (ADR-038). `status` is always PENDING on upload — only an
  * admin review can change it, so nothing here can claim to be verified.
  */
 export const kycApi = {
