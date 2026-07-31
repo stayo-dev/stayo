@@ -28,6 +28,16 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### Landing nav's "About" pointed at a section that doesn't exist, and cross-route hash links never scrolled
+
+- **Status:** fixed
+- **Found:** 2026-07-31, while rebuilding `/contact` in the marketing theme — the new page copies the landing page's nav, which surfaced both problems.
+- **Area:** [[Frontend]]
+- **Symptom:** (1) Clicking "About" in the landing-page nav did nothing — it targeted `#vision`, but `LandingPage.tsx` only defines `top`, `whatis`, `why`, `journey` and `search`. (2) Any hash link arriving from another route (e.g. `/contact` → `/#search`) landed at the top of the landing page instead of the requested section.
+- **Root cause:** (1) a stale anchor left behind when the section was renamed/restructured — nothing validates that in-page anchors resolve. (2) React Router does not scroll to `#anchor` on navigation; the browser only does it for same-document anchor clicks, which is why in-page nav clicks always looked fine and the bug stayed invisible until a second page linked in.
+- **Fix:** repointed "About" to `#whatis` in both `LandingPage.tsx` and the new `ContactPage.tsx` nav; added a small mount effect in `LandingPage.tsx` that reads `window.location.hash` and `scrollIntoView`s the target on the next animation frame (after the section has rendered). In-page clicks are untouched.
+- **Related:** [[Features]], [[Changelog]]
+
 ### A half-configured WhatsApp environment hard-500'd every route importing the notification service, at module import
 
 - **Status:** fixed

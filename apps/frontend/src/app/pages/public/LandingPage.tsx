@@ -58,7 +58,9 @@ const NAV_LINKS = [
   { href: '#search', label: 'Hostels' },
   { href: '#journey', label: 'For Owners' },
   { href: '#why', label: 'Features' },
-  { href: '#vision', label: 'About' },
+  // `#whatis`, not `#vision` — there is no `vision` section on this page, so
+  // that anchor had never scrolled anywhere (fixed 2026-07-31).
+  { href: '#whatis', label: 'About' },
   { href: '#footer', label: 'Contact' },
 ];
 
@@ -87,6 +89,20 @@ export function LandingPage() {
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // React Router doesn't scroll to `#anchor` on navigation, so arriving from
+  // another route (e.g. /contact's nav, which links to `/#search`) would land
+  // at the top of the page instead of the section asked for. In-page clicks
+  // are unaffected — the browser already handles those natively.
+  useEffect(() => {
+    const id = window.location.hash.slice(1);
+    if (!id) return;
+    // One frame later, so the target section has rendered.
+    const raf = requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    return () => cancelAnimationFrame(raf);
   }, []);
 
   // Owner entry point (Get Started / Manage My Hostel / Book a demo — all one
