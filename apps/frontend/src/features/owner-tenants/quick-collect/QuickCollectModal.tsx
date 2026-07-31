@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, Check } from 'lucide-react';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { PAYMENT_MODES, type PaymentMode } from '@shared/mocks/payments';
 import type { TenantObligation } from '@shared/mocks/tenants';
@@ -115,7 +115,6 @@ export function QuickCollectModal({ open, onClose, initialTenant }: QuickCollect
   const [note, setNote] = useState('');
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState(false);
-  const [breakdownOpen, setBreakdownOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -130,7 +129,6 @@ export function QuickCollectModal({ open, onClose, initialTenant }: QuickCollect
     setNote('');
     setPassword('');
     setPasswordError(false);
-    setBreakdownOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialTenant?.id]);
 
@@ -191,6 +189,23 @@ export function QuickCollectModal({ open, onClose, initialTenant }: QuickCollect
   });
   const preview = previewQuery.data;
   const allocations = (preview?.allocations ?? []).filter((a) => a.allocated > 0);
+
+  /** Outstanding per obligation, so the review step can show before → after. */
+  const obligationOutstanding = useMemo(
+    () => new Map(payableObligations.map((o) => [o.id, o.amount])),
+    [payableObligations],
+  );
+
+  const { clearedCount, partialCount } = useMemo(() => {
+    let cleared = 0;
+    let partial = 0;
+    for (const a of allocations) {
+      const before = obligationOutstanding.get(a.obligation_id) ?? 0;
+      if (before - a.allocated <= 0) cleared += 1;
+      else partial += 1;
+    }
+    return { clearedCount: cleared, partialCount: partial };
+  }, [allocations, obligationOutstanding]);
 
   const confirmMutation = useMutation({
     mutationFn: async () => {
@@ -569,49 +584,86 @@ export function QuickCollectModal({ open, onClose, initialTenant }: QuickCollect
             <p className="py-8 text-center text-sm text-muted-foreground">Calculating settlement…</p>
           ) : preview ? (
             <>
-              <p className="text-[12.5px] leading-relaxed text-muted-foreground">Review exactly where this payment will go before confirming.</p>
               {preview.payment_accepted === false && preview.rejection_reason && (
-                <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-[12px] font-semibold text-destructive">{preview.rejection_reason}</div>
+                <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-[12px] font-semibold text-destructive">
+                  {preview.rejection_reason}
+                </div>
               )}
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-2xl border border-border bg-card p-3.5">
-                  <div className="text-[9.5px] font-bold uppercase tracking-wide text-muted-foreground">Received</div>
-                  <div className="font-display text-xl font-extrabold tabular-nums text-foreground">₹{Number(amount).toLocaleString('en-IN')}</div>
-                </div>
-                <div className="rounded-2xl border border-border bg-card p-3.5">
-                  <div className="text-[9.5px] font-bold uppercase tracking-wide text-muted-foreground">Allocated · {allocations.length}</div>
-                  <div className="font-display text-xl font-extrabold tabular-nums text-success">₹{preview.total_to_settle.toLocaleString('en-IN')}</div>
-                </div>
-                {(preview.unallocated ?? 0) > 0 && (
-                  <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-3.5">
-                    <div className="text-[9.5px] font-bold uppercase tracking-wide text-destructive">Unallocated</div>
-                    <div className="font-display text-xl font-extrabold tabular-nums text-destructive">₹{(preview.unallocated ?? 0).toLocaleString('en-IN')}</div>
-                  </div>
+
+              {/* One line of arithmetic, then the settlement itself. The old
+                  version led with three abstract stat tiles and hid the actual
+                  allocation behind a disclosure. */}
+              <p className="text-[12.5px] leading-relaxed text-muted-foreground">
+                <b className="text-foreground">₹{Number(amount).toLocaleString('en-IN')}</b> received
+                {allocations.length > 0 && (
+                  <>
+                    {' '}→ settles{' '}
+                    <b className="text-foreground">
+                      {allocations.length} installment{allocations.length > 1 ? 's' : ''}
+                    </b>
+                  </>
                 )}
-                <div className="rounded-2xl border border-border bg-card p-3.5">
-                  <div className="text-[9.5px] font-bold uppercase tracking-wide text-muted-foreground">Remaining Due</div>
-                  <div className="font-display text-xl font-extrabold tabular-nums text-destructive">₹{preview.remaining_outstanding.toLocaleString('en-IN')}</div>
-                </div>
-              </div>
-              <div className="overflow-hidden rounded-2xl border border-border bg-card">
-                <button type="button" onClick={() => setBreakdownOpen((v) => !v)} className="flex w-full items-center justify-between px-4 py-3.5">
-                  <span className="font-display text-[12.5px] font-bold text-foreground">View allocation breakdown</span>
-                  {breakdownOpen ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
-                </button>
-                {breakdownOpen && (
-                  <div className="flex flex-col gap-2 border-t border-border px-4 pb-4 pt-3">
-                    {allocations.length === 0 ? (
-                      <p className="text-[12px] text-muted-foreground">Nothing allocated — the full amount becomes future credit.</p>
-                    ) : (
-                      allocations.map((row) => (
-                        <div key={row.obligation_id} className="flex justify-between text-[12.5px] text-foreground">
-                          <span>{row.label}</span>
-                          <span className="font-bold tabular-nums">₹{row.allocated.toLocaleString('en-IN')}</span>
+              </p>
+
+              <div className="flex flex-col gap-2">
+                {allocations.length === 0 ? (
+                  <p className="rounded-xl border border-border bg-muted/40 p-3 text-[12.5px] text-muted-foreground">
+                    This amount settles nothing — go back and pick a different amount.
+                  </p>
+                ) : (
+                  allocations.map((row) => {
+                    const before = obligationOutstanding.get(row.obligation_id) ?? 0;
+                    const after = Math.max(before - row.allocated, 0);
+                    const cleared = after <= 0;
+                    return (
+                      <div key={row.obligation_id} className="rounded-xl border border-border bg-card p-3">
+                        <div className="flex items-baseline justify-between gap-3">
+                          <span className="min-w-0 truncate font-display text-[13.5px] font-bold text-foreground">{row.label}</span>
+                          <span className="flex-none font-display text-[13.5px] font-bold tabular-nums text-success">
+                            +₹{row.allocated.toLocaleString('en-IN')}
+                          </span>
                         </div>
-                      ))
-                    )}
-                  </div>
+                        <div className="mt-1 flex items-center gap-1.5 text-[11.5px]">
+                          <span className="text-muted-foreground line-through">₹{before.toLocaleString('en-IN')} due</span>
+                          <span className="text-muted-foreground">→</span>
+                          {cleared ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 font-bold text-success">
+                              <Check className="h-3 w-3" strokeWidth={3} />
+                              Cleared
+                            </span>
+                          ) : (
+                            <span className="font-bold text-destructive">₹{after.toLocaleString('en-IN')} still due</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
+              </div>
+
+              {/* What confirming actually changes. */}
+              <div className="rounded-xl border border-border bg-muted/40 p-3">
+                <div className="mb-1.5 font-display text-[10.5px] font-bold uppercase tracking-wider text-primary">
+                  After confirming
+                </div>
+                <ul className="flex flex-col gap-1 text-[12px] text-foreground">
+                  {clearedCount > 0 && (
+                    <li>
+                      {clearedCount} installment{clearedCount > 1 ? 's' : ''} marked fully paid
+                    </li>
+                  )}
+                  {partialCount > 0 && (
+                    <li>
+                      {partialCount} installment{partialCount > 1 ? 's' : ''} left part-paid
+                    </li>
+                  )}
+                  <li>
+                    {preview.remaining_outstanding > 0
+                      ? `₹${preview.remaining_outstanding.toLocaleString('en-IN')} still outstanding for this tenant`
+                      : 'This tenant has no dues left'}
+                  </li>
+                  <li className="text-muted-foreground">A receipt is generated and the tenant is notified</li>
+                </ul>
               </div>
             </>
           ) : (
