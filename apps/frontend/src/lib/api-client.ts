@@ -15,6 +15,13 @@ if (typeof configuredApiUrl !== 'string' || !configuredApiUrl.trim()) {
 
 const normalizeApiUrl = (value: string) => {
   const trimmed = value.trim().replace(/\/+$/, '');
+
+  // A same-origin path (e.g. "/api") is the preferred production setup: the
+  // Vercel rewrite in vercel.json proxies it to the backend, so requests stay
+  // first-party and the CSRF cookie (SameSite=Lax) is actually sent. `new URL`
+  // throws on a relative value, so it has to be handled before that.
+  if (trimmed.startsWith('/')) return trimmed || '/api';
+
   const parsed = new URL(trimmed);
   const pathname = parsed.pathname.replace(/\/+$/, '');
   if (!pathname || pathname === '/') return `${parsed.origin}/api`;
