@@ -130,7 +130,7 @@ describe("PaymentService FIFO rent settlement", () => {
     expect(mocks.creditIdempotentInTx).not.toHaveBeenCalled();
   });
 
-  it("allocates oldest first across due rows and credits overpayment remainder", async () => {
+  it("allocates oldest first when the amount fits the existing installments", async () => {
     const june = obligation("june", "2026-06-05", 8500, [], "OVERDUE");
     const july = obligation("july", "2026-07-05", 8500, [{ amount_paid: 3500, hostel_id: "hostel-1" }], "PARTIAL");
     const tx = createTx([july, june]);
@@ -138,7 +138,7 @@ describe("PaymentService FIFO rent settlement", () => {
     const result = await service._settleTenantRentPaymentInTx(tx, {
       hostelId: "hostel-1",
       tenantId: "tenant-1",
-      amountPaid: 15000,
+      amountPaid: 13500, // exactly June 8500 + July's remaining 5000
       paymentMethod: "CASH",
       userId: "owner-1",
     }, "group-2");
@@ -147,11 +147,28 @@ describe("PaymentService FIFO rent settlement", () => {
       ["june", 8500],
       ["july", 5000],
     ]);
-    expect(result.futureCredit).toBe(1500);
-    expect(mocks.creditIdempotentInTx).toHaveBeenCalledWith(tx, expect.objectContaining({
-      tenantId: "tenant-1",
-      amount: 1500,
-      reason: "FUTURE_RENT_CREDIT_TOPUP",
-    }));
+    // ADR-036: settlement never touches the ledger any more.
+    expect(mocks.creditIdempotentInTx).not.toHaveBeenCalled();
+  });
+
+  it("refuses an overpayment that no installment can absorb", async () => {
+    // ADR-036: the excess used to be credited as future rent. Now it must land
+    // on a real installment — and with no ACTIVE agreement to generate one
+    // from, the payment is rejected rather than parked anywhere.
+    const june = obligation("june", "2026-06-05", 8500, [], "OVERDUE");
+    const july = obligation("july", "2026-07-05", 8500, [{ amount_paid: 3500, hostel_id: "hostel-1" }], "PARTIAL");
+    const tx = createTx([july, june]);
+
+    await expect(
+      service._settleTenantRentPaymentInTx(tx, {
+        hostelId: "hostel-1",
+        tenantId: "tenant-1",
+        amountPaid: 15000, // 1500 more than the 13500 outstanding
+        paymentMethod: "CASH",
+        userId: "owner-1",
+      }, "group-3"),
+    ).rejects.toThrow(/BAD_REQUEST/);
+
+    expect(mocks.creditIdempotentInTx).not.toHaveBeenCalled();
   });
 });
