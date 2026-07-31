@@ -12,6 +12,14 @@
 # not meant to run) or tenant-analytics (dormant/manual-repair-only, POST),
 # and do NOT re-add onboarding-nudges / process-autopay-retries /
 # process-overflow / reconcile-addons (decommissioned, return 410).
+#
+# Cron jobs call BACKEND_URL=https://api.yourstayo.com directly (a plain
+# value, not Render's fromService linking) — this means cron runs will 401
+# with a connection error until api.yourstayo.com's DNS/custom-domain is
+# attached to the stayo-backend service. That's expected: none of these
+# schedules fire until the next scheduled time, giving room to finish
+# domain setup first. If you deploy under a different domain, update
+# BACKEND_URL in all 10 cron jobs below to match.
 
 services:
   - type: web
@@ -91,7 +99,7 @@ services:
     dockerCommand: 'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BACKEND_URL/api/cron/generate-rent"'
     envVars:
       - key: BACKEND_URL
-        fromService: { name: stayo-backend, type: web, property: hostPort }
+        value: https://api.yourstayo.com
       - key: CRON_SECRET
         sync: false
 
@@ -105,7 +113,7 @@ services:
     dockerCommand: 'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BACKEND_URL/api/cron/rent-reminders"'
     envVars:
       - key: BACKEND_URL
-        fromService: { name: stayo-backend, type: web, property: hostPort }
+        value: https://api.yourstayo.com
       - key: CRON_SECRET
         sync: false
 
@@ -119,7 +127,7 @@ services:
     dockerCommand: 'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BACKEND_URL/api/cron/reconcile-payments"'
     envVars:
       - key: BACKEND_URL
-        fromService: { name: stayo-backend, type: web, property: hostPort }
+        value: https://api.yourstayo.com
       - key: CRON_SECRET
         sync: false
 
@@ -133,7 +141,7 @@ services:
     dockerCommand: 'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BACKEND_URL/api/cron/hostel-invariants"'
     envVars:
       - key: BACKEND_URL
-        fromService: { name: stayo-backend, type: web, property: hostPort }
+        value: https://api.yourstayo.com
       - key: CRON_SECRET
         sync: false
 
@@ -147,7 +155,7 @@ services:
     dockerCommand: 'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BACKEND_URL/api/cron/migration-audit"'
     envVars:
       - key: BACKEND_URL
-        fromService: { name: stayo-backend, type: web, property: hostPort }
+        value: https://api.yourstayo.com
       - key: CRON_SECRET
         sync: false
 
@@ -161,7 +169,7 @@ services:
     dockerCommand: 'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BACKEND_URL/api/cron/move-out-releases"'
     envVars:
       - key: BACKEND_URL
-        fromService: { name: stayo-backend, type: web, property: hostPort }
+        value: https://api.yourstayo.com
       - key: CRON_SECRET
         sync: false
 
@@ -175,7 +183,7 @@ services:
     dockerCommand: 'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BACKEND_URL/api/cron/admissions"'
     envVars:
       - key: BACKEND_URL
-        fromService: { name: stayo-backend, type: web, property: hostPort }
+        value: https://api.yourstayo.com
       - key: CRON_SECRET
         sync: false
 
@@ -189,7 +197,7 @@ services:
     dockerCommand: 'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BACKEND_URL/api/cron/agreement-lifecycle"'
     envVars:
       - key: BACKEND_URL
-        fromService: { name: stayo-backend, type: web, property: hostPort }
+        value: https://api.yourstayo.com
       - key: CRON_SECRET
         sync: false
 
@@ -203,7 +211,7 @@ services:
     dockerCommand: 'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BACKEND_URL/api/cron/daily-briefings"'
     envVars:
       - key: BACKEND_URL
-        fromService: { name: stayo-backend, type: web, property: hostPort }
+        value: https://api.yourstayo.com
       - key: CRON_SECRET
         sync: false
 
@@ -217,6 +225,6 @@ services:
     dockerCommand: 'curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$BACKEND_URL/api/cron/food-carry-forward"'
     envVars:
       - key: BACKEND_URL
-        fromService: { name: stayo-backend, type: web, property: hostPort }
+        value: https://api.yourstayo.com
       - key: CRON_SECRET
         sync: false
