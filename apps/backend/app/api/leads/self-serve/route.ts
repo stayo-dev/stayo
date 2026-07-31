@@ -5,11 +5,11 @@ import { NextRequest } from "next/server";
 import { apiResponse, apiError } from "@/lib/auth";
 import { LeadSelfServeSchema } from "@/lib/validators";
 import { normalizeWhatsAppPhone } from "@/lib/services/notifications/providers/whatsapp";
+import { resolveSignupPhoneVerification } from "@/lib/services/auth/signup-phone-verification-gate";
 import { prisma } from "@/lib/db";
 import { eventLog } from "@/lib/services/event-log-service";
 
 const OTP_PURPOSE = "LEAD_CAPTURE";
-const OTP_FRESHNESS_MS = 30 * 60 * 1000;
 
 /**
  * Real Google-auth lead-capture flow (landing page "Manage My Hostel" →
@@ -28,13 +28,8 @@ export async function POST(req: NextRequest) {
     const { name, hostel_name, phone, google_email, city, bed_count } = validated.data;
 
     const normalizedPhone = normalizeWhatsAppPhone(phone);
-    const verifiedOtp = await (prisma as any).phoneVerificationOtp.findFirst({
-      where: { phone: normalizedPhone, purpose: OTP_PURPOSE, status: "VERIFIED" },
-      orderBy: { created_at: "desc" },
-    });
-    const verifiedRecently =
-      verifiedOtp?.verified_at && Date.now() - new Date(verifiedOtp.verified_at).getTime() < OTP_FRESHNESS_MS;
-    if (!verifiedRecently) {
+    const verification = await resolveSignupPhoneVerification(normalizedPhone, OTP_PURPOSE);
+    if (!verification.ok) {
       return apiError("Phone verification is required before submitting", "PHONE_NOT_VERIFIED", 400);
     }
 
@@ -44,6 +39,7 @@ export async function POST(req: NextRequest) {
         hostel_name,
         phone: normalizedPhone,
         google_email: google_email || null,
+        phone_verified: verification.phoneVerified,
         city: city || null,
         bed_count: bed_count ?? null,
         status: "NEW",
