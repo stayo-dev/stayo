@@ -62,6 +62,24 @@ function StatusChip({ status }: { status: string }) {
   );
 }
 
+/**
+ * Shown when a lead's number was never OTP-verified — WhatsApp was
+ * unavailable when the lead came in, so signup accepted the number as-is.
+ * Deliberately compares against `false`: leads captured before the column
+ * existed arrive as `undefined` and should carry no marker rather than a
+ * false accusation.
+ */
+function UnverifiedPhoneChip() {
+  return (
+    <span
+      title="This number was never OTP-verified — WhatsApp was unavailable when the lead came in."
+      className="flex-none rounded-full border border-[#E7DDD1] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#8A7F75]"
+    >
+      Unverified
+    </span>
+  );
+}
+
 export function AdminLeadsPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
@@ -163,8 +181,9 @@ export function AdminLeadsPage() {
                   </div>
                   <StatusChip status={l.status} />
                 </div>
-                <div className="mt-3 border-t border-[#F2ECE5] pt-3">
+                <div className="mt-3 flex items-center gap-1.5 border-t border-[#F2ECE5] pt-3">
                   <span className="text-[12.5px] font-semibold tabular-nums text-[#8A7F75]">{l.phone}</span>
+                  {l.phone_verified === false && <UnverifiedPhoneChip />}
                 </div>
                 <div className="mt-3 flex items-center justify-between">
                   {l.created_at ? <span className="text-[11.5px] text-[#9C9186]">{fmtSubmitted(l.created_at)}</span> : <span />}
@@ -266,7 +285,13 @@ export function AdminLeadsPage() {
               <div className="flex flex-col gap-3.5 rounded-[13px] border border-[#EFE6DA] bg-[#F7F3EF] p-4">
                 <div className="flex justify-between"><span className="text-[12.5px] text-[#8A7F75]">Owner Name</span><span className="text-[12.5px] font-bold text-foreground">{openLead.name}</span></div>
                 <div className="flex justify-between"><span className="text-[12.5px] text-[#8A7F75]">Hostel Name</span><span className="text-[12.5px] font-bold text-foreground">{openLead.hostel_name}</span></div>
-                <div className="flex justify-between"><span className="text-[12.5px] text-[#8A7F75]">Phone Number</span><span className="text-[12.5px] font-bold tabular-nums text-foreground">{openLead.phone}</span></div>
+                <div className="flex justify-between">
+                  <span className="text-[12.5px] text-[#8A7F75]">Phone Number</span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-[12.5px] font-bold tabular-nums text-foreground">{openLead.phone}</span>
+                    {openLead.phone_verified === false && <UnverifiedPhoneChip />}
+                  </span>
+                </div>
                 {openLead.google_email && <div className="flex justify-between"><span className="text-[12.5px] text-[#8A7F75]">Email</span><span className="text-[12.5px] font-bold text-foreground">{openLead.google_email}</span></div>}
                 {openLead.city && <div className="flex justify-between"><span className="text-[12.5px] text-[#8A7F75]">City</span><span className="text-[12.5px] font-bold text-foreground">{openLead.city}</span></div>}
                 {openLead.notes && <div className="flex justify-between gap-3"><span className="flex-none text-[12.5px] text-[#8A7F75]">Notes</span><span className="text-right text-[12.5px] text-foreground">{openLead.notes}</span></div>}
