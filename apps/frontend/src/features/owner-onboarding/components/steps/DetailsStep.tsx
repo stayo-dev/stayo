@@ -11,23 +11,8 @@ export function DetailsStep({ data, setD }: DetailsStepProps) {
     <div>
       <div className={eyebrow}>SHAPE THE STRUCTURE</div>
       <h1 className={h1}>A few property details.</h1>
-      <p className={sub}>Tap to adjust — the foundation rises as you decide.</p>
+      <p className={sub}>Capacity, meals and deposit. You&apos;ll lay out floors and rooms next.</p>
       <div className="flex max-w-[460px] flex-col gap-3.5">
-        <div className={tile}>
-          <div>
-            <div className={tileTitle}>How many floors?</div>
-            <div className={tileSub}>Including ground floor</div>
-          </div>
-          <div className="flex items-center gap-3.5">
-            <button type="button" onClick={() => setD({ floors: Math.max(1, data.floors - 1) })} className={stepBtn}>
-              −
-            </button>
-            <span className="min-w-[34px] text-center font-display text-xl font-extrabold">{data.floors}</span>
-            <button type="button" onClick={() => setD({ floors: Math.min(8, data.floors + 1) })} className={stepBtn}>
-              +
-            </button>
-          </div>
-        </div>
         <div className={tile}>
           <div>
             <div className={tileTitle}>Approx. capacity</div>

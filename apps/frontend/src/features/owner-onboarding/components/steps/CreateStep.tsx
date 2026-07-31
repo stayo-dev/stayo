@@ -33,7 +33,7 @@ export function CreateStep({ data, setD }: CreateStepProps) {
           {hostelNameOk && (
             <span className={okNote}>
               <Check className="h-3 w-3" strokeWidth={2.8} />
-              That name is available.
+              Looks good.
             </span>
           )}
         </label>

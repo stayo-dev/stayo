@@ -8,7 +8,7 @@ interface KycStepProps {
 }
 
 const ITEMS: { key: keyof OwnerOnboardingKyc; title: string; meta: string; icon: typeof IdCard }[] = [
-  { key: 'aadhaar', title: 'Aadhaar', meta: 'Required · auto-verified', icon: IdCard },
+  { key: 'aadhaar', title: 'Aadhaar', meta: 'Required before you go live', icon: IdCard },
   { key: 'pan', title: 'PAN', meta: 'Optional', icon: FileText },
   { key: 'photo', title: 'Profile photo', meta: 'Helps tenants trust you', icon: ImageIcon },
 ];
@@ -18,7 +18,10 @@ export function KycStep({ kyc, setKyc }: KycStepProps) {
     <div>
       <div className={eyebrow}>EARN YOUR BADGE</div>
       <h1 className={h1}>Let&apos;s verify it&apos;s really you.</h1>
-      <p className={sub}>Verified owners are trusted by every student. Documents check automatically.</p>
+      <p className={sub}>
+        Mark what you have ready. Our team collects and verifies these after you publish — nothing is
+        uploaded or checked on this screen yet.
+      </p>
       <div className="flex max-w-[440px] flex-col gap-3.5">
         {ITEMS.map(({ key, title, meta, icon: Icon }) => {
           const done = kyc[key];
