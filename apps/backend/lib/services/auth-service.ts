@@ -478,11 +478,18 @@ export class AuthService {
    * `registerOwner` above — that method's `ALLOW_OWNER_BOOTSTRAP` gate exists
    * to keep the legacy single-owner HMS from ever growing a second owner;
    * StayO is a real multi-tenant product where new owners signing up is the
-   * expected, ungated path. Requires the phone to already carry a VERIFIED
-   * `phone_verification_otps` row (checked by the route before calling this)
-   * since there is no existing profile yet for `verify-phone-otp` to flag.
+   * expected, ungated path. Requires a fresh `phone_verification_otps` row for
+   * the phone — VERIFIED when a code was really entered, SKIPPED when WhatsApp
+   * could not deliver (checked by the route via resolveSignupPhoneVerification).
+   * `phoneVerified` carries which of the two happened onto the profile.
    */
-  async selfSignUpOwner(data: { email: string; password: string; name: string; phone: string }) {
+  async selfSignUpOwner(data: {
+    email: string;
+    password: string;
+    name: string;
+    phone: string;
+    phoneVerified: boolean;
+  }) {
     const normalizedEmail = data.email.trim().toLowerCase();
 
     const existingEmail = await prisma.profile.findUnique({ where: { email: normalizedEmail } });
@@ -516,8 +523,8 @@ export class AuthService {
           role: "OWNER",
           is_active: true,
           owner_id: userId,
-          phone_verified: true,
-          mobile_verified: true,
+          phone_verified: data.phoneVerified,
+          mobile_verified: data.phoneVerified,
           auth_user_id: userId,
           auth_linked_at: new Date(),
         },

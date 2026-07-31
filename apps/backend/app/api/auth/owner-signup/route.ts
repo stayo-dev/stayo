@@ -10,11 +10,10 @@ import { getClientIp } from "@/lib/security/api-guard";
 import { ACCESS_TOKEN_MAX_AGE_SECONDS, getSessionCookieOptions, TENANT_REFRESH_DAYS } from "@/lib/services/session-lifecycle-service";
 import { setCsrfCookie } from "@/lib/security/csrf";
 import { normalizeWhatsAppPhone } from "@/lib/services/notifications/providers/whatsapp";
-import { prisma } from "@/lib/db";
+import { resolveSignupPhoneVerification } from "@/lib/services/auth/signup-phone-verification-gate";
 import { leadInvitationService } from "@/src/services/platform-leads/lead-invitation-service";
 
 const OTP_PURPOSE = "PHONE_VERIFICATION";
-const OTP_FRESHNESS_MS = 30 * 60 * 1000;
 
 /**
  * Real StayO owner self-signup. Public route — creates the owner profile
@@ -43,19 +42,20 @@ export async function POST(req: NextRequest) {
     }
 
     const normalizedPhone = normalizeWhatsAppPhone(phone);
-    const verifiedOtp = await (prisma as any).phoneVerificationOtp.findFirst({
-      where: { phone: normalizedPhone, purpose: OTP_PURPOSE, status: "VERIFIED" },
-      orderBy: { created_at: "desc" },
-    });
-    const verifiedRecently =
-      verifiedOtp?.verified_at && Date.now() - new Date(verifiedOtp.verified_at).getTime() < OTP_FRESHNESS_MS;
-    if (!verifiedRecently) {
+    const verification = await resolveSignupPhoneVerification(normalizedPhone, OTP_PURPOSE);
+    if (!verification.ok) {
       return apiError("Phone verification is required before signing up", "PHONE_NOT_VERIFIED", 400);
     }
 
     let profile;
     try {
-      profile = await authService.selfSignUpOwner({ email, password, name, phone: normalizedPhone });
+      profile = await authService.selfSignUpOwner({
+        email,
+        password,
+        name,
+        phone: normalizedPhone,
+        phoneVerified: verification.phoneVerified,
+      });
     } catch (signupErr: any) {
       await rateLimitService.recordAttempt(email, "REGULAR", false, ip, req.headers.get("user-agent") ?? undefined, signupErr?.message);
       throw signupErr;
