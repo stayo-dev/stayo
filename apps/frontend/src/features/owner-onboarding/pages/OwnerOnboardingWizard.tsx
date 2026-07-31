@@ -218,19 +218,28 @@ export function OwnerOnboardingWizard() {
               <button
                 type="button"
                 disabled={submission.sendingOtp || submission.publishing}
-                onClick={
-                  isSuccess
-                    ? () => navigate('/owner/home')
-                    : s.screenId === 'account'
-                    ? submission.submitAccount
-                    : s.screenId === 'publish'
-                    ? submission.submitPublish
-                    : s.next
-                }
+                onClick={() => {
+                  if (isSuccess) return navigate('/owner/home');
+
+                  // Every step must be complete and correctly formatted before
+                  // the wizard will move on — a half-filled hostel is far more
+                  // expensive to unpick after publish.
+                  const stepError = s.currentStepError();
+                  if (stepError) {
+                    stayoToast.error(stepError);
+                    return;
+                  }
+
+                  if (s.screenId === 'account') return submission.submitAccount();
+                  if (s.screenId === 'publish') return submission.submitPublish();
+                  return s.next();
+                }}
                 className="inline-flex items-center gap-2 rounded-[13px] bg-primary px-7.5 py-3.5 font-display text-base font-bold text-primary-foreground shadow-[0_12px_28px_-12px_rgba(164,93,68,0.65)] transition-transform hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-60"
               >
                 {s.screenId === 'account' && submission.sendingOtp
                   ? 'Creating account…'
+                  : s.screenId === 'account' && submission.accountReady
+                  ? 'Continue'
                   : s.screenId === 'publish' && submission.publishing
                   ? 'Publishing…'
                   : s.continueLabel}

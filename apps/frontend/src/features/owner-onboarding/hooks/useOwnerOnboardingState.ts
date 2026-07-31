@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { validateOnboardingStep } from './onboardingValidation';
 
 export const ONBOARDING_SCREENS = [
   'welcome',
@@ -86,6 +87,9 @@ export function useOwnerOnboardingState(initialData?: Partial<OwnerOnboardingDat
 
   const back = () => go(step - 1);
 
+  /** Why the current step can't be left yet, or null when it's complete. */
+  const currentStepError = () => validateOnboardingStep(screenId, data);
+
   const next = () => {
     if (screenId === 'account') {
       setOtpOpen(true);
@@ -124,6 +128,7 @@ export function useOwnerOnboardingState(initialData?: Partial<OwnerOnboardingDat
   return {
     step,
     screenId,
+    currentStepError,
     data,
     setD,
     kyc,

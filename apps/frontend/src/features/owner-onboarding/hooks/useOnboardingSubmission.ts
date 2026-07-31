@@ -31,9 +31,10 @@ const getErrorMessage = (error: unknown, fallback: string) => {
  * absent, so a normal signup is completely unaffected.
  */
 export function useOnboardingSubmission(s: OwnerOnboardingStateApi, leadToken?: string) {
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [accountReady, setAccountReady] = useState(false);
   const [otpCode, setOtpCode] = useState('');
   const [sendingOtp, setSendingOtp] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
@@ -57,6 +58,7 @@ export function useOnboardingSubmission(s: OwnerOnboardingStateApi, leadToken?: 
       if (!isAlreadyRegistered(error)) throw error;
       try {
         await login(email, password);
+        setAccountReady(true);
         s.setOtpOpen(false);
         s.go(s.step + 1);
         stayoToast.success('You already had an account — signed you in.');
@@ -68,11 +70,18 @@ export function useOnboardingSubmission(s: OwnerOnboardingStateApi, leadToken?: 
       }
     }
     await login(email, password);
+    setAccountReady(true);
     s.setOtpOpen(false);
     s.go(s.step + 1);
   };
 
   const submitAccount = async () => {
+    // Already created and signed in — stepping back and forward again must not
+    // try to register a second time (it would 409 and stall the wizard).
+    if (accountReady || user) {
+      s.go(s.step + 1);
+      return;
+    }
     if (!s.data.name.trim() || !s.data.mobile.trim() || !s.data.email.trim() || !password.trim()) {
       stayoToast.error('Fill in your name, mobile, email, and a password to continue.');
       return;
@@ -163,6 +172,7 @@ export function useOnboardingSubmission(s: OwnerOnboardingStateApi, leadToken?: 
   };
 
   return {
+    accountReady: accountReady || Boolean(user),
     password,
     setPassword,
     confirmPassword,
