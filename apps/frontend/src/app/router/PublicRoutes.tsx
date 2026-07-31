@@ -9,14 +9,8 @@ const LeadSignupCallbackPage = lazy(() => import('@/app/pages/public/LeadSignupC
 const OwnerLeadInvitePage = lazy(() => import('@/app/pages/public/OwnerLeadInvitePage').then((m) => ({ default: m.OwnerLeadInvitePage })));
 const AboutPage = lazy(() => import('@/app/pages/public/AboutPage').then((m) => ({ default: m.AboutPage })));
 const CompanyPage = lazy(() => import('@/app/pages/public/CompanyPage').then((m) => ({ default: m.CompanyPage })));
-const FacilitiesPage = lazy(() => import('@/app/pages/public/FacilitiesPage').then((m) => ({ default: m.FacilitiesPage })));
-const RoomsPage = lazy(() => import('@/app/pages/public/RoomsPage').then((m) => ({ default: m.RoomsPage })));
-const GalleryPage = lazy(() => import('@/app/pages/public/GalleryPage').then((m) => ({ default: m.GalleryPage })));
-const LocationPage = lazy(() => import('@/app/pages/public/LocationPage').then((m) => ({ default: m.LocationPage })));
 const ContactPage = lazy(() => import('@/app/pages/public/ContactPage').then((m) => ({ default: m.ContactPage })));
-const RulesPage = lazy(() => import('@/app/pages/public/RulesPage').then((m) => ({ default: m.RulesPage })));
 const LegalPage = lazy(() => import('@/app/pages/LegalPage').then((m) => ({ default: m.LegalPage })));
-const PricingPage = lazy(() => import('@/app/pages/PricingPage').then((m) => ({ default: m.PricingPage })));
 const VisitPage = lazy(() => import('@/app/pages/public/VisitPage').then((m) => ({ default: m.VisitPage })));
 const AuthCallbackPage = lazy(() => import('@/app/pages/AuthCallbackPage').then((m) => ({ default: m.AuthCallbackPage })));
 const ForgotPasswordPage = lazy(() => import('@/app/pages/ForgotPasswordPage').then((m) => ({ default: m.ForgotPasswordPage })));
@@ -69,12 +63,7 @@ export function PublicRoutes() {
         <Route path="/owner-invite/:token" element={<OwnerLeadInvitePage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/company" element={<CompanyPage />} />
-        <Route path="/facilities" element={<FacilitiesPage />} />
-        <Route path="/rooms" element={<RoomsPage />} />
-        <Route path="/gallery" element={<GalleryPage />} />
-        <Route path="/location" element={<LocationPage />} />
         <Route path="/contact" element={<ContactPage />} />
-        <Route path="/rules" element={<RulesPage />} />
         <Route path="/legal" element={<LegalPage />} />
         <Route path="/legal/terms" element={<LegalPage />} />
         <Route path="/legal/privacy" element={<LegalPage />} />
@@ -86,7 +75,6 @@ export function PublicRoutes() {
         <Route path="/privacy" element={<LegalPage />} />
         <Route path="/shipping-policy" element={<LegalPage />} />
         <Route path="/refund-policy" element={<LegalPage />} />
-        <Route path="/pricing" element={<PricingPage />} />
         <Route path="/visit/:hostelSlug" element={<VisitPage />} />
         <Route path="/verify/r/:token" element={<ReceiptVerificationPage />} />
       </Route>

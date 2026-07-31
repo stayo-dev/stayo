@@ -1,11 +1,11 @@
 import { Home, Phone, MessageCircle, Mail } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
+// Trimmed 2026-08-01: /facilities, /rooms and /gallery were single-hostel
+// leftovers from the previous project and have been deleted, so linking to
+// them here would 404.
 const NAV_LINKS = [
   { to: '/about', label: 'About' },
-  { to: '/facilities', label: 'Facilities' },
-  { to: '/rooms', label: 'Rooms' },
-  { to: '/gallery', label: 'Gallery' },
   { to: '/contact', label: 'Contact' },
   { to: '/company', label: 'Company' },
 ];
