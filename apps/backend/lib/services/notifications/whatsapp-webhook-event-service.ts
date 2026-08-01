@@ -5,7 +5,7 @@ import { incrementOtpDeliveryStatus } from "@/lib/metrics";
 import { formatDate, formatShortMonth, formatShortDate } from "@/lib/format";
 import { financialService } from "@/src/services/payments/financial-service";
 import { rateLimitService } from "@/lib/services/rate-limit-service";
-import { MetaWhatsAppProvider } from "./providers/whatsapp/meta-provider";
+import { MetaWhatsAppProvider, maskWhatsAppPhone } from "./providers/whatsapp/meta-provider";
 import { ownerWhatsAppAssistantService } from "./owner-whatsapp-assistant";
 import {
   setSelectionState,
@@ -1413,11 +1413,49 @@ export class WhatsAppWebhookEventService {
       WHERE meta_message_id = ${event.providerMessageId}
     `;
 
-    if (Number(count || 0) > 0) {
-      logger.info("whatsapp.webhook.otp_status_updated", {
+    if (Number(count || 0) === 0) return;
+
+    logger.info("whatsapp.webhook.otp_status_updated", {
+      provider_message_id: event.providerMessageId,
+      status: event.status,
+      updated_otps: Number(count || 0),
+    });
+
+    // Re-read so the delivery events carry the same correlation id (the OTP
+    // record id) as otp.generated / otp.send.* / otp.verified. Meta's callback
+    // only knows its own message id, so this is the join.
+    const rows = await prisma.$queryRaw<Array<{ id: string; phone: string; purpose: string }>>`
+      SELECT id::text, phone, purpose
+      FROM phone_verification_otps
+      WHERE meta_message_id = ${event.providerMessageId}
+      LIMIT 1
+    `;
+    const otp = rows[0];
+    if (!otp) return;
+
+    const lifecycleEvent =
+      event.status === "DELIVERED" ? "otp.delivered" : event.status === "READ" ? "otp.read" : null;
+
+    if (lifecycleEvent) {
+      logger.info(lifecycleEvent, {
+        correlation_id: otp.id,
+        phone: maskWhatsAppPhone(otp.phone),
+        purpose: otp.purpose,
         provider_message_id: event.providerMessageId,
-        status: event.status,
-        updated_otps: Number(count || 0),
+        provider_timestamp: event.providerTimestamp || null,
+      });
+      return;
+    }
+
+    if (event.status === "FAILED") {
+      logger.error("otp.send.failed", {
+        correlation_id: otp.id,
+        phone: maskWhatsAppPhone(otp.phone),
+        purpose: otp.purpose,
+        provider_message_id: event.providerMessageId,
+        source: "webhook",
+        error_code: event.errorCode || null,
+        error: event.errorMessage || null,
       });
     }
   }

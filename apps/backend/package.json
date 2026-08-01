@@ -25,7 +25,8 @@
     "seed": "tsx prisma/seed.ts",
     "reconcile:allocations": "tsx scripts/reconcile-allocations.ts",
     "reconcile:payments": "DOTENV_CONFIG_PATH=../../.env node -r dotenv/config ./node_modules/.bin/tsx scripts/reconcile-payments.ts",
-    "reconcile:supabase-identities": "DOTENV_CONFIG_PATH=../../.env node -r dotenv/config ./node_modules/.bin/tsx scripts/reconcile-supabase-identities.ts"
+    "reconcile:supabase-identities": "DOTENV_CONFIG_PATH=../../.env node -r dotenv/config ./node_modules/.bin/tsx scripts/reconcile-supabase-identities.ts",
+    "check:whatsapp-template": "tsx -r dotenv/config scripts/check-whatsapp-template.ts dotenv_config_path=../../.env"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

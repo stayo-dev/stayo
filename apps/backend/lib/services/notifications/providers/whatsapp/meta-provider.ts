@@ -4,6 +4,10 @@ import {
   WhatsAppProviderError,
   WhatsAppValidationError,
 } from "./errors";
+import {
+  OTP_TEMPLATE_CONTRACT,
+  verifyOtpTemplateContractOnce,
+} from "./otp-template-contract";
 import type {
   MetaWhatsAppErrorBody,
   WhatsAppProviderConfig,
@@ -169,15 +173,17 @@ export function otpPurposeLabel(purpose: string): string {
  * The shape is dictated by the template as approved — verified against the
  * Graph API (`GET /{WABA_ID}/message_templates?name=otp`), not assumed:
  *
- *   BODY:    "OTP Code: {{1}}. This is your OTP code for {{2}}. For your
- *             security, do not share this code."      → TWO parameters
- *   FOOTER:  "Expires in 5 minutes."                  → no parameters
- *   BUTTONS: URL "Copy code", url ...&code=otp{{1}}   → ONE parameter
+ *   BODY    {{1}} = otp_code, {{2}} = purpose_label   (OTP_TEMPLATE_CONTRACT)
+ *   BUTTON  Copy code URL, ...&code=otp{{1}} = otp_code
  *
- * Both counts are load-bearing. Passing one body parameter (or omitting the
- * button component) fails the whole send with Meta error #132000, "number of
- * parameters does not match". If the template is ever re-approved with a
- * different body, this function and its tests are what must change.
+ * Meta can tell us how many parameters a template takes but never what they
+ * mean, so the *meaning* is declared once in `OTP_TEMPLATE_CONTRACT` and the
+ * *counts* are checked against the live template by
+ * `checkOtpTemplateContract()` — run at deploy time via
+ * `npm run check:whatsapp-template`, once per process before the first send,
+ * and on demand from /api/debug/whatsapp-health. Editing the template in
+ * WhatsApp Manager therefore fails loudly here instead of as a run of Meta
+ * #132000 errors against real logins.
  */
 export function buildOtpTemplatePayload(input: {
   phone: string;
@@ -188,13 +194,18 @@ export function buildOtpTemplatePayload(input: {
   const code = String(input.otp);
   const includeButton = process.env.WHATSAPP_OTP_TEMPLATE_HAS_BUTTON !== "false";
 
+  const byRole: Record<(typeof OTP_TEMPLATE_CONTRACT.bodyParameters)[number], string> = {
+    otp_code: code,
+    purpose_label: otpPurposeLabel(input.purpose),
+  };
+
   const components: Array<Record<string, unknown>> = [
     {
       type: "body",
-      parameters: [
-        { type: "text", text: code },
-        { type: "text", text: otpPurposeLabel(input.purpose) },
-      ],
+      parameters: OTP_TEMPLATE_CONTRACT.bodyParameters.map((role) => ({
+        type: "text",
+        text: byRole[role],
+      })),
     },
   ];
 
@@ -203,7 +214,10 @@ export function buildOtpTemplatePayload(input: {
       type: "button",
       sub_type: "url",
       index: "0",
-      parameters: [{ type: "text", text: code }],
+      parameters: OTP_TEMPLATE_CONTRACT.buttonParameters.map((role) => ({
+        type: "text",
+        text: byRole[role],
+      })),
     });
   }
 
@@ -482,7 +496,13 @@ export class MetaWhatsAppProvider {
     }
   }
 
-  async sendOtp(input: { to: string; otp: string; purpose: string }): Promise<WhatsAppSendResult> {
+  async sendOtp(input: {
+    to: string;
+    otp: string;
+    purpose: string;
+    /** OTP record id, so send logs join the rest of the lifecycle. */
+    correlationId?: string;
+  }): Promise<WhatsAppSendResult> {
     const phone = normalizeWhatsAppPhone(input.to);
     const templateName = process.env.WHATSAPP_OTP_TEMPLATE;
     if (!templateName) {
@@ -502,8 +522,16 @@ export class MetaWhatsAppProvider {
         }
       : buildOtpTemplatePayload({ phone, otp: input.otp, purpose: input.purpose, templateName });
 
+    if (!isTextMessage) {
+      // Once per process. Template drift throws a descriptive config error;
+      // an unreachable Graph API resolves UNVERIFIED and does not block the
+      // send — a Meta outage must not also take OTP delivery down.
+      await verifyOtpTemplateContractOnce();
+    }
+
     const startedAt = Date.now();
     logger.info("otp.send.started", {
+      correlation_id: input.correlationId || null,
       phone: maskWhatsAppPhone(phone),
       template: templateName,
       language: OTP_TEMPLATE_LANGUAGE,
@@ -520,6 +548,7 @@ export class MetaWhatsAppProvider {
           : "";
 
         logger.info("otp.send.success", {
+          correlation_id: input.correlationId || null,
           phone: maskWhatsAppPhone(phone),
           template: templateName,
           providerMessageId: providerMessageId || null,
@@ -537,6 +566,7 @@ export class MetaWhatsAppProvider {
           lastError = error;
           if (!error.retryable || attempt > this.config.maxRetries) {
             logger.error("otp.send.failed", {
+          correlation_id: input.correlationId || null,
               phone: maskWhatsAppPhone(phone),
               template: templateName,
               attempts: attempt,
@@ -550,6 +580,7 @@ export class MetaWhatsAppProvider {
           continue;
         }
         logger.error("otp.send.failed", {
+          correlation_id: input.correlationId || null,
           phone: maskWhatsAppPhone(phone),
           template: templateName,
           attempts: attempt,

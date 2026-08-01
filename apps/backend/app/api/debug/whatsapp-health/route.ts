@@ -3,6 +3,7 @@ import {
   resolveAppSecret,
   resolveVerifyToken,
 } from "@/lib/services/notifications/whatsapp-webhook-handler";
+import { checkOtpTemplateContract } from "@/lib/services/notifications/providers/whatsapp/otp-template-contract";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,6 +20,15 @@ export async function GET(req: NextRequest) {
   const appSecretPresent = !!resolveAppSecret();
   const appIdPresent = !!process.env.META_APP_ID;
 
+  // Live template-contract check: OK / SKIPPED / UNVERIFIED, or the drift
+  // error message. Never throws — this endpoint is a diagnostic.
+  let template: Record<string, unknown>;
+  try {
+    template = { ...(await checkOtpTemplateContract()) };
+  } catch (error: any) {
+    template = { status: "DRIFT", error: error?.message || String(error) };
+  }
+
   return NextResponse.json({
     configured,
     tokenPresent,
@@ -32,5 +42,6 @@ export async function GET(req: NextRequest) {
       appIdPresent,
       ready: verifyTokenPresent && appSecretPresent,
     },
+    otpTemplate: template,
   });
 }

@@ -46,7 +46,13 @@ export class NotificationService {
     });
   }
 
-  async sendOtp(input: { phone: string; otp: string; purpose: string }) {
+  async sendOtp(input: {
+    phone: string;
+    otp: string;
+    purpose: string;
+    /** OTP record id, threaded through so delivery logs join the lifecycle. */
+    correlationId?: string;
+  }) {
     const provider = process.env.OTP_PROVIDER;
     if (provider === "whatsapp") {
       const whatsappProvider = new MetaWhatsAppProvider();
@@ -54,6 +60,7 @@ export class NotificationService {
         to: input.phone,
         otp: input.otp,
         purpose: input.purpose,
+        correlationId: input.correlationId,
       });
     }
 

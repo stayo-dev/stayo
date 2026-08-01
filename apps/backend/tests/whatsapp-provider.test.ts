@@ -7,6 +7,14 @@ import {
   validateWhatsAppConfiguration,
 } from "@/lib/services/notifications/providers/whatsapp/meta-provider";
 import { notificationService } from "@/lib/services/notification-service";
+
+// The template-drift check makes its own Graph API call before the first
+// template send. It has its own suite (whatsapp-otp-template-contract.test.ts);
+// here it is stubbed so these tests exercise only the send path.
+vi.mock("@/lib/services/notifications/providers/whatsapp/otp-template-contract", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/services/notifications/providers/whatsapp/otp-template-contract")>()),
+  verifyOtpTemplateContractOnce: vi.fn(async () => ({ status: "SKIPPED", reason: "stubbed in tests" })),
+}));
 import {
   WhatsAppConfigError,
   WhatsAppProviderError,

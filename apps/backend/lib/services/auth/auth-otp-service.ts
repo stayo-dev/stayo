@@ -104,8 +104,23 @@ export class AuthOtpService {
 
     incrementOtpMetric("requests_total");
 
+    // The OTP record id is the correlation id for this OTP's whole life:
+    // generated → sent → delivered/read (webhook) → verified/expired/failed.
+    logger.info("otp.generated", {
+      correlation_id: record.id,
+      phone: maskWhatsAppPhone(phone),
+      purpose,
+      expires_at: expiresAt.toISOString(),
+      max_attempts: MAX_ATTEMPTS,
+    });
+
     try {
-      const sendResult = await this.provider.sendOtp({ phone, otp, purpose });
+      const sendResult = await this.provider.sendOtp({
+        phone,
+        otp,
+        purpose,
+        correlationId: record.id,
+      });
       await (prisma as any).phoneVerificationOtp.update({
         where: { id: record.id },
         data: {
@@ -117,6 +132,7 @@ export class AuthOtpService {
       await recordOtpSendSuccess();
 
       logger.metrics("otp.request.sent", {
+        correlation_id: record.id,
         phone: maskWhatsAppPhone(phone),
         purpose,
         otp_id: record.id,
@@ -275,6 +291,13 @@ export class AuthOtpService {
           where: { id: record.id },
           data: { status: "EXPIRED", failure_reason: "expired before verification" },
         });
+        logger.info("otp.expired", {
+          correlation_id: record.id,
+          phone: maskWhatsAppPhone(phone),
+          purpose: input.purpose,
+          expired_at: record.expires_at.toISOString(),
+          age_ms: now.getTime() - new Date(record.created_at).getTime(),
+        });
         throw new OtpServiceError("OTP expired", "OTP_EXPIRED", 400);
       }
 
@@ -283,6 +306,14 @@ export class AuthOtpService {
         await (prisma as any).phoneVerificationOtp.update({
           where: { id: record.id },
           data: { status: "FAILED", failure_reason: "maximum attempts exceeded" },
+        });
+        logger.warn("otp.invalid_attempt", {
+          correlation_id: record.id,
+          phone: maskWhatsAppPhone(phone),
+          purpose: input.purpose,
+          reason: "MAX_ATTEMPTS_EXCEEDED",
+          attempts: record.attempts,
+          max_attempts: record.max_attempts,
         });
         throw new OtpServiceError("OTP attempts exceeded", "OTP_ATTEMPTS_EXCEEDED", 429);
       }
@@ -299,6 +330,15 @@ export class AuthOtpService {
               ? { status: "FAILED", failure_reason: "maximum attempts exceeded" }
               : {}),
           },
+        });
+        logger.warn("otp.invalid_attempt", {
+          correlation_id: record.id,
+          phone: maskWhatsAppPhone(phone),
+          purpose: input.purpose,
+          reason: "CODE_MISMATCH",
+          attempts: nextAttempts,
+          max_attempts: record.max_attempts,
+          locked: nextAttempts >= record.max_attempts,
         });
         throw new OtpServiceError("Invalid OTP", "OTP_INVALID", 400);
       }
@@ -330,7 +370,16 @@ export class AuthOtpService {
         return { profileUpdated: profileUpdate.count };
       });
 
+      logger.info("otp.verified", {
+        correlation_id: record.id,
+        phone: maskWhatsAppPhone(phone),
+        purpose: input.purpose,
+        attempts: record.attempts + 1,
+        time_to_verify_ms: now.getTime() - new Date(record.created_at).getTime(),
+      });
+
       logger.metrics("otp.verification.success", {
+        correlation_id: record.id,
         phone: maskWhatsAppPhone(phone),
         purpose: input.purpose,
         otp_id: record.id,
