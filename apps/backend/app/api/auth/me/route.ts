@@ -4,8 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@lib/auth";
 import { prisma } from "@lib/db";
-import { sessionLifecycleService, TENANT_REFRESH_DAYS } from "@/lib/services/session-lifecycle-service";
-import { setCsrfCookie } from "@/lib/security/csrf";
+import { sessionLifecycleService } from "@/lib/services/session-lifecycle-service";
 
 
 export async function GET(req: NextRequest) {
@@ -88,7 +87,14 @@ export async function GET(req: NextRequest) {
       is_tenant: profile.role === "TENANT",
       ...extra
     });
-    setCsrfCookie(response, 60 * 60 * 24 * TENANT_REFRESH_DAYS);
+    // Deliberately NOT rotating the CSRF token here. `/auth/me` is a GET that
+    // AuthContext calls on every Supabase auth-state change (mount, tab focus,
+    // token refresh), so minting a new token here made it a moving target for
+    // any unsafe request already in flight — an owner pressing "Send
+    // invitation" could be rejected with "Security check failed". Rotation now
+    // happens only at auth boundaries (login / logout / signup / activation /
+    // password reset), which is where it actually matters. The token is still
+    // issued on demand by GET /api/auth/csrf.
     return response;
   } catch (error) {
     return apiError("Internal server error");

@@ -42,12 +42,19 @@ function sharedCookieDomain() {
   return undefined;
 }
 
-export function getCsrfCookieOptions(maxAge: number) {
+/**
+ * `isSecureRequest` overrides the NODE_ENV guess. A `Secure` cookie sent over
+ * plain http is silently discarded by the browser, which leaves the client
+ * holding a CSRF header with no matching cookie and fails every unsafe request
+ * with no way to recover — the "Security check failed" an owner saw when
+ * sending an invitation from a production build served over http.
+ */
+export function getCsrfCookieOptions(maxAge: number, options: { isSecureRequest?: boolean } = {}) {
   const isProd = process.env.NODE_ENV === "production";
   const domain = sharedCookieDomain();
   return {
     httpOnly: false,
-    secure: isProd,
+    secure: options.isSecureRequest ?? isProd,
     sameSite: "lax" as const,
     maxAge,
     path: "/",
@@ -58,9 +65,10 @@ export function getCsrfCookieOptions(maxAge: number) {
 export function setCsrfCookie(
   response: { cookies: { set: Function }; headers?: { set: Function } },
   maxAge: number,
+  options: { isSecureRequest?: boolean } = {},
 ) {
   const token = generateCsrfToken();
-  response.cookies.set(CSRF_COOKIE_NAME, token, getCsrfCookieOptions(maxAge));
+  response.cookies.set(CSRF_COOKIE_NAME, token, getCsrfCookieOptions(maxAge, options));
   response.headers?.set(CSRF_HEADER_NAME, token);
 }
 
@@ -83,4 +91,37 @@ export function isValidCsrfPair(cookieToken?: string | null, headerToken?: strin
   const headerBuffer = Buffer.from(headerToken);
   if (cookieBuffer.length !== headerBuffer.length) return false;
   return crypto.timingSafeEqual(cookieBuffer, headerBuffer);
+}
+
+
+/**
+ * Every `hms_csrf` value in a Cookie header.
+ *
+ * A browser can legitimately hold more than one: a host-only cookie plus a
+ * `Domain=.example.com` one left behind by an earlier deploy configuration.
+ * Both are sent, and reading only the first meant comparing against a token the
+ * client had never seen — a permanent 403 for that browser until its cookies
+ * were cleared.
+ */
+export function csrfCookieValues(cookieHeader?: string | null): string[] {
+  if (!cookieHeader) return [];
+  return String(cookieHeader)
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => part.startsWith(`${CSRF_COOKIE_NAME}=`))
+    .map((part) => part.slice(CSRF_COOKIE_NAME.length + 1))
+    .filter(Boolean);
+}
+
+/**
+ * Double-submit check tolerant of duplicate cookies: the header must match one
+ * of the tokens this browser actually sent.
+ *
+ * This does not weaken the guarantee. Double-submit rests on a cross-site
+ * attacker being unable to *read* or *set* the header; which of our own cookies
+ * it matches is immaterial, and every candidate here was issued by us.
+ */
+export function matchesAnyCsrfCookie(cookieHeader: string | null | undefined, headerToken?: string | null): boolean {
+  if (!headerToken) return false;
+  return csrfCookieValues(cookieHeader).some((cookieToken) => isValidCsrfPair(cookieToken, headerToken));
 }

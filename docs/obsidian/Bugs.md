@@ -28,6 +28,16 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### "Security check failed" when an owner sent a tenant invitation
+
+- **Status:** fixed
+- **Found:** 2026-08-01, reported from the live app.
+- **Area:** [[Backend]] (middleware/CSRF) / [[Frontend]] (api-client)
+- **Symptom:** an owner completed the Invite Tenant wizard, pressed **Send invitation**, and got *"Security check failed. Refresh the page and try again."* The tenant was never invited. Refreshing sometimes helped and sometimes did not.
+- **Root cause:** not one bug — the double-submit mechanism itself was verified **correct** against production first (`POST` with no pair → 403, with a matching pair → 200, both direct and through the Vercel `/api` rewrite). Three separate fragilities around it produced the failure. (1) **`GET /api/auth/me` minted a brand-new CSRF token on every call.** `AuthContext` calls it on every Supabase auth-state change — mount, tab focus, token refresh — so the token was a moving target, and an unsafe request prepared moments earlier could arrive carrying one that had just been replaced. (2) **A browser can hold more than one `hms_csrf` cookie** — a host-only one plus a `Domain=.yourstayo.com` one left behind by an earlier deploy configuration (`sharedCookieDomain()` returns a domain only when both URL env vars are set, and the root `.env` sets neither). Both are sent; the server read exactly one via `req.cookies.get()` and compared it against a header derived from the other, giving that browser a **permanent** 403 until its cookies were cleared. (3) **`secure` was derived from `NODE_ENV`, not the request protocol**, so a production build served over plain http sets a `Secure` cookie the browser silently discards — leaving the client with a header and no cookie, unrecoverably.
+- **Fix:** `/auth/me` no longer rotates the token (rotation now happens only at auth boundaries — login, logout, signup, activation, password reset — where it means something); the CSRF check compares the header against **every** `hms_csrf` the browser sent rather than the first, which does not weaken double-submit since every candidate was issued by us and the guarantee rests on a cross-site attacker being unable to read or set the *header*; `getCsrfCookieOptions` takes the real protocol; and the client now treats a `CSRF_VALIDATION_FAILED` 403 as **recoverable** — it re-bootstraps a fresh pair and replays the request once, so a stale token heals invisibly instead of surfacing as a dead end on a deliberate, authenticated action. The Edge-runtime constraint is respected: middleware keeps its own copy of the cookie parsing rather than importing `lib/security/csrf.ts`, which pulls in `node:crypto`. 17 new tests.
+- **Related:** [[APIs]], [[Changelog]], [[Decisions#ADR-031|ADR-031]]
+
 ### Tenants could upload KYC documents that no owner had any way to approve
 
 - **Status:** fixed (frontend only — every endpoint already existed and was correct)

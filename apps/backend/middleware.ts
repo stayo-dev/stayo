@@ -62,6 +62,31 @@ function isValidCsrfPair(cookieToken?: string | null, headerToken?: string | nul
 }
 
 /**
+ * Every `hms_csrf` value the browser sent.
+ *
+ * A browser can hold more than one — a host-only cookie plus a `Domain=` one
+ * left behind by an earlier deploy configuration. Both are sent, and reading
+ * only the first meant comparing against a token the client had never seen: a
+ * permanent 403 for that browser until its cookies were cleared. Duplicated
+ * from lib/security/csrf.ts rather than imported, because middleware runs on
+ * the Edge runtime and that module pulls in node:crypto.
+ */
+function csrfCookieValues(cookieHeader?: string | null): string[] {
+  if (!cookieHeader) return [];
+  return cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => part.startsWith(`${CSRF_COOKIE_NAME}=`))
+    .map((part) => part.slice(CSRF_COOKIE_NAME.length + 1))
+    .filter(Boolean);
+}
+
+function matchesAnyCsrfCookie(cookieHeader?: string | null, headerToken?: string | null) {
+  if (!headerToken) return false;
+  return csrfCookieValues(cookieHeader).some((cookieToken) => isValidCsrfPair(cookieToken, headerToken));
+}
+
+/**
  * 🔐 PRODUCTION CORS & SECURITY AUDIT
  * Policy: No Wildcards Allowed + Strictly Credentialed Cookies.
  */
@@ -106,9 +131,8 @@ export async function middleware(req: NextRequest) {
   // require CSRF protection because browsers automatically attach cookies.
   if (PUBLIC_CSRF_ROUTES.some((route) => pathname.startsWith(route))) {
     if (UNSAFE_METHODS.has(req.method)) {
-      const csrfCookie = req.cookies.get(CSRF_COOKIE_NAME)?.value;
       const csrfHeader = req.headers.get(CSRF_HEADER_NAME);
-      if (!isLocalDev && !isValidCsrfPair(csrfCookie, csrfHeader)) {
+      if (!isLocalDev && !matchesAnyCsrfCookie(req.headers.get("cookie"), csrfHeader)) {
         return NextResponse.json(
           { error: { message: "Security check failed. Refresh the page and try again.", code: "CSRF_VALIDATION_FAILED" } },
           { status: 403, headers: corsHeaders }
@@ -217,9 +241,11 @@ export async function middleware(req: NextRequest) {
   }
 
   if (UNSAFE_METHODS.has(req.method)) {
-    const csrfCookie = req.cookies.get(CSRF_COOKIE_NAME)?.value;
     const csrfHeader = req.headers.get(CSRF_HEADER_NAME);
-    if (!isLocalDev && !isValidCsrfPair(csrfCookie, csrfHeader)) {
+    // Compare against every hms_csrf the browser sent, not just the first.
+    // A stale `Domain=` cookie alongside a host-only one otherwise produces a
+    // permanent 403 for that browser — see lib/security/csrf.ts.
+    if (!isLocalDev && !matchesAnyCsrfCookie(req.headers.get("cookie"), csrfHeader)) {
       return NextResponse.json(
         { error: { message: "Security check failed. Refresh the page and try again.", code: "CSRF_VALIDATION_FAILED" } },
         { status: 403, headers: corsHeaders }

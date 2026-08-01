@@ -84,6 +84,12 @@ const rememberCsrfToken = (headers?: any) => {
   return inMemoryCsrfToken;
 };
 
+const refreshCsrfToken = async () => {
+  inMemoryCsrfToken = null;
+  csrfBootstrapPromise = null;
+  return ensureCsrfToken();
+};
+
 const ensureCsrfToken = async () => {
   const existing = getCookieValue(CSRF_COOKIE_NAME) || inMemoryCsrfToken;
   if (existing) return existing;
@@ -188,6 +194,24 @@ api.interceptors.response.use(
     // both cases Supabase itself can't know about, so sign out and let the
     // UI react to the same event it always has.
     const code = String(error.response?.data?.error?.code || '').toUpperCase();
+
+    // A rejected CSRF token is recoverable, so recover instead of showing the
+    // user "Security check failed". The token can legitimately go stale — it
+    // is rotated at every auth boundary, and a browser may hold more than one
+    // hms_csrf cookie — and the request itself was authenticated and
+    // deliberate. Fetch a fresh pair and replay once; a second failure is a
+    // real one and surfaces as before.
+    const original = error.config as (typeof error.config & { _csrfRetried?: boolean }) | undefined;
+    if (error.response?.status === 403 && code === 'CSRF_VALIDATION_FAILED' && original && !original._csrfRetried) {
+      original._csrfRetried = true;
+      const fresh = await refreshCsrfToken();
+      if (fresh) {
+        original.headers = original.headers || {};
+        (original.headers as any)[CSRF_HEADER_NAME] = fresh;
+        return api.request(original);
+      }
+    }
+
     if (error.response?.status === 401 && (code === 'SESSION_INACTIVE' || code === 'SESSION_REVOKED')) {
       await supabase.auth.signOut();
       notifySessionExpired(getSessionExpiryNotice(error.response?.data));
