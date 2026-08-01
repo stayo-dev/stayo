@@ -27,7 +27,6 @@ const HostelTenantsPage = lazy(() =>
 const MoneyPage = lazy(() => import('@features/owner-money/pages/MoneyPage').then((m) => ({ default: m.MoneyPage })));
 const FoodPage = lazy(() => import('@features/owner-food/pages/FoodPage').then((m) => ({ default: m.FoodPage })));
 const AlertsPage = lazy(() => import('@features/owner-alerts/pages/AlertsPage').then((m) => ({ default: m.AlertsPage })));
-const MorePage = lazy(() => import('@features/owner-more/pages/MorePage').then((m) => ({ default: m.MorePage })));
 const MoreSettingsPage = lazy(() => import('@features/owner-more/pages/MoreSettingsPage').then((m) => ({ default: m.MoreSettingsPage })));
 const MoreBillingPage = lazy(() => import('@features/owner-more/pages/MoreBillingPage').then((m) => ({ default: m.MoreBillingPage })));
 const MoreProfilePage = lazy(() => import('@features/owner-more/pages/MoreProfilePage').then((m) => ({ default: m.MoreProfilePage })));
@@ -115,7 +114,7 @@ export function OwnerRoutes() {
         <Route path="/owner/food" element={<FoodPage />} />
         <Route path="/owner/alerts" element={<AlertsPage />} />
 
-        <Route path="/owner/more" element={<MorePage />} />
+        <Route path="/owner/more" element={<MoreConfigurationHubPage />} />
         <Route path="/owner/more/workspace-configuration" element={<MoreWorkspaceConfigPage />} />
         <Route path="/owner/more/settings" element={<MoreSettingsPage />} />
         <Route path="/owner/more/billing" element={<MoreBillingPage />} />

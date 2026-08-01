@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, ChevronDown } from 'lucide-react';
+import { Search, ChevronDown, Settings2, HelpCircle, Info, LogOut } from 'lucide-react';
 import { ListRow } from '@shared/ui-patterns/ListRow';
 import { mockOwnerProfile } from '@shared/mocks/more';
 import { useConfigurationHub } from '../hooks/useConfigurationHub';
+import { useMoreNav } from '../hooks/useMoreNav';
 import { ConfigProgressRing } from '../components/ConfigProgressRing';
 import { ConfigAttentionRow } from '../components/ConfigAttentionRow';
 import { ConfigModuleCard } from '../components/ConfigModuleCard';
@@ -24,6 +25,7 @@ const ADVANCED_ITEMS = ['Import data', 'Export', 'Backups', 'Activity logs', 'AP
 export function MoreConfigurationHubPage() {
   const navigate = useNavigate();
   const { modules, attention, percentComplete, doneCount, totalCount, isLoading } = useConfigurationHub();
+  const { signOut } = useMoreNav();
   const [searchOpen, setSearchOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
@@ -149,6 +151,55 @@ export function MoreConfigurationHubPage() {
           </div>
         )}
       </div>
+
+      <div className={card}>
+        <ListRow
+          leading={
+            <span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-[#F5E9E3] text-primary">
+              <Settings2 className="h-4 w-4" strokeWidth={1.8} />
+            </span>
+          }
+          title="Account settings"
+          meta="Profile, notices, service requests"
+          showChevron
+          onClick={() => navigate('/owner/more/settings')}
+          className="px-4"
+        />
+        <ListRow
+          leading={
+            <span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-[#F5E9E3] text-primary">
+              <HelpCircle className="h-4 w-4" strokeWidth={1.8} />
+            </span>
+          }
+          title="Help & Support"
+          showChevron
+          onClick={() => navigate('/owner/more/help')}
+          className="px-4 border-t border-border/60"
+        />
+        <ListRow
+          leading={
+            <span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-[#F5E9E3] text-primary">
+              <Info className="h-4 w-4" strokeWidth={1.8} />
+            </span>
+          }
+          title="About StayO"
+          showChevron
+          onClick={() => navigate('/owner/more/about')}
+          className="px-4 border-t border-border/60"
+        />
+        <ListRow
+          leading={
+            <span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-destructive/10 text-destructive">
+              <LogOut className="h-4 w-4" strokeWidth={1.8} />
+            </span>
+          }
+          title={<span className="text-destructive">Sign out</span>}
+          onClick={signOut}
+          className="px-4 border-t border-border/60"
+        />
+      </div>
+
+      <p className="pt-1 text-center text-[11px] text-muted-foreground/70">Stayo v2.0 · Manage. Automate. Grow.</p>
     </div>
   );
 }
