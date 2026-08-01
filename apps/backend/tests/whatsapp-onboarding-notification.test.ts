@@ -95,8 +95,11 @@ describe("buildTenantOnboardingTemplatePayload (pure mapper)", () => {
 });
 
 describe("ONBOARDING_COMPLETED_TEMPLATE_NAME", () => {
-  it("should be tenant_onboarding_completed_v1", () => {
-    expect(ONBOARDING_COMPLETED_TEMPLATE_NAME).toBe("tenant_onboarding_completed_v1");
+  // Was `tenant_onboarding_completed_v1` — a template that does not exist in
+  // this WABA, so every post-activation message failed at Meta. The approved
+  // one was read from the live Graph API.
+  it("points at the approved stayo_tenant_onboarding_complete template", () => {
+    expect(ONBOARDING_COMPLETED_TEMPLATE_NAME).toBe("stayo_tenant_onboarding_complete");
   });
 });
 
@@ -192,12 +195,12 @@ describe("sendTenantOnboardingNotification", () => {
 
     expect(mockDeliverySend).toHaveBeenCalledWith(
       expect.objectContaining({
-        templateName: "tenant_onboarding_completed_v1",
+        templateName: "stayo_tenant_onboarding_complete",
         idempotencyKey: "tenant_onboarding_completed:t1",
         tenantId: "t1",
         hostelId: "h1",
         bodyParameters: expect.arrayContaining(["Rahul Kumar", "Sri Adithya Hostel", "G1"]),
-        languageCode: "en_IN",
+        languageCode: "en",
       })
     );
 
@@ -373,7 +376,7 @@ describe("sendTenantOnboardingNotification", () => {
 
     expect(mockDeliverySend).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        templateName: "tenant_onboarding_completed_v1",
+        templateName: "stayo_tenant_onboarding_complete",
         idempotencyKey: "tenant_onboarding_completed:t1",
       })
     );
@@ -409,7 +412,7 @@ describe("sendTenantOnboardingNotification", () => {
 
     expect(mockDeliverySend).toHaveBeenCalledWith(
       expect.objectContaining({
-        templateName: "tenant_onboarding_completed_v1",
+        templateName: "stayo_tenant_onboarding_complete",
         idempotencyKey: "tenant_onboarding_completed:t1",
       })
     );

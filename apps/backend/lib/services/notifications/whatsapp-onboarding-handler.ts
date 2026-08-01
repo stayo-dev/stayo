@@ -5,6 +5,7 @@ import { normalizeWhatsAppPhone } from "./providers/whatsapp/meta-provider";
 import {
   buildTenantOnboardingTemplatePayload,
   ONBOARDING_COMPLETED_TEMPLATE_NAME,
+  onboardingTemplateLanguage,
   PAYMENT_PENDING_TEMPLATE_NAME,
   buildTenantPaymentPendingTemplatePayload,
 } from "./providers/whatsapp/templates";
@@ -165,7 +166,9 @@ export async function sendTenantOnboardingNotification(tenantId: string): Promis
       tenantId,
       hostelId: hostel.id,
       ownerId: tenant.owner_id || undefined,
-      languageCode: "en_IN",
+      // The approved template is published as `en`; `en_IN` is a different
+      // template to Meta and fails with #132001.
+      languageCode: onboardingTemplateLanguage(),
     });
 
     if (result.skipped) {

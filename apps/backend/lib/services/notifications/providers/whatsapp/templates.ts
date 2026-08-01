@@ -1,3 +1,4 @@
+import { onboardingTemplateName as onboardingTemplateNameValue } from "./onboarding-template-contract";
 import { formatDate, formatMonthYear, formatShortDate } from "@/lib/format";
 import type { HostelPreferences } from "@/lib/preferences";
 
@@ -115,7 +116,13 @@ export function buildRentReminderBodyParameters(data: RentReminderTemplateVariab
 
 // ─── Tenant Onboarding Completed Template ────────────────────
 
-export const ONBOARDING_COMPLETED_TEMPLATE_NAME = "tenant_onboarding_completed_v1";
+/**
+ * Re-exported from the contract module, which owns the name (and ignores the
+ * retired `tenant_onboarding_completed_v1`, a template that never existed in
+ * this WABA and failed every send).
+ */
+export { onboardingTemplateName, onboardingTemplateLanguage } from "./onboarding-template-contract";
+export const ONBOARDING_COMPLETED_TEMPLATE_NAME = onboardingTemplateNameValue();
 
 export type TenantOnboardingTemplateInput = {
   tenantName: string;

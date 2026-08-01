@@ -1,7 +1,6 @@
 # WhatsApp template mapping — decided 2026-08-01
 
-**Status: the invitation half is IMPLEMENTED and verified with a real send.**
-The onboarding-complete half is still open — see the bottom of this file.
+**Status: BOTH templates are implemented and verified with real sends.**
 
 ## Decided mapping
 
@@ -145,13 +144,39 @@ Retired names (`hms_tenant_invite_v2`, `tenant_account_activation_v1/v2`) are
 now actively ignored if still set in a deployed environment, rather than passed
 through to Meta as a template that does not exist.
 
-## Still open: onboarding-complete
+## Implementation record — onboarding-complete (done)
 
-`ONBOARDING_COMPLETED_TEMPLATE_NAME` (`providers/whatsapp/templates.ts:118`) is
-still `"tenant_onboarding_completed_v1"` — **a template that does not exist in
-this WABA**, so the post-activation message currently fails every time.
+Live contract:
 
-The approved replacement is `stayo_tenant_onboarding_complete` (`en`, **6 body
-parameters**, no button). Wiring it needs the six parameters identified in order
-from the live BODY text and reconciled with what `whatsapp-onboarding-handler.ts`
-supplies. Not done here — out of scope for the invitation fix.
+```
+stayo_tenant_onboarding_complete | en | APPROVED | body=6
+BODY: Hello {{1}}, your admission at {{2}} is complete. Room: {{3}}.
+      Joining Date: {{4}}. Monthly Rent: {{5}}.
+      Rent is due on the {{6}} of every month. Type BAL anytime…
+BUTTON (URL): https://yourstayo.com/   <- STATIC, no placeholder
+```
+
+The body mapper (`buildTenantOnboardingTemplatePayload`) was **already correct** —
+six parameters in exactly template order — so it was reused unchanged. Only two
+values were actually wrong:
+
+- `ONBOARDING_COMPLETED_TEMPLATE_NAME` was `tenant_onboarding_completed_v1`,
+  absent from this WABA
+- the handler hardcoded `languageCode: "en_IN"` against an `en` template
+
+The static button matters: Meta rejects a button component supplied for a URL
+with no variable, so `ONBOARDING_TEMPLATE_CONTRACT.buttonParameters` is `[]` and
+the drift check treats a button that *gains* a placeholder as the error case —
+the opposite of the invitation template, where a missing button is the error.
+
+**Real send confirmed** to +91 8008046952:
+`wamid.HBgMOTE4MDA4MDQ2OTUyFQIAERgSRTY0NEVGRTZFMTQyRUM3RDg2AA==`
+with params `['Shiva','Delux Hostel','G4','21/06/2025','8,500','7']`.
+
+`npm run check:whatsapp-template` now gates all three templates:
+
+```
+OK  WhatsApp OTP template "otp" (body: 2, button: 1)
+OK  WhatsApp invitation template "stayo_tenant_invitation" (body: 2, button: 1)
+OK  WhatsApp onboarding-complete template "stayo_tenant_onboarding_complete" (body: 6, button: 0)
+```
