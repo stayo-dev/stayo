@@ -121,7 +121,8 @@ export function assertTemplateMatchesContract(template: MetaTemplateDefinition):
   return shape;
 }
 
-async function fetchTemplate(input: {
+/** Exported so the invitation contract can reuse it rather than duplicating the Graph call. */
+export async function fetchTemplate(input: {
   templateName: string;
   wabaId: string;
   accessToken: string;

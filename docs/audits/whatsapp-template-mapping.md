@@ -1,7 +1,7 @@
 # WhatsApp template mapping — decided 2026-08-01
 
-Owner decision, to be implemented as **Priority 1** of the integration sprint.
-Nothing below is implemented yet; this is the spec.
+**Status: the invitation half is IMPLEMENTED and verified with a real send.**
+The onboarding-complete half is still open — see the bottom of this file.
 
 ## Decided mapping
 
@@ -11,7 +11,7 @@ Nothing below is implemented yet; this is the spec.
 | Tenant onboarding complete ("admission confirmed") | `ONBOARDING_COMPLETED_TEMPLATE_NAME` (`providers/whatsapp/templates.ts:118`, currently `"tenant_onboarding_completed_v1"`) | **`stayo_tenant_onboarding_complete"`** | Active · Quality pending |
 | ~~Account activated~~ | — | **Not needed** — do not create `stayo_tenant_account_activated` | n/a |
 
-## Known mismatches to fix (audited, not yet fixed)
+## Mismatches — invitation: FIXED · onboarding-complete: still open
 
 ### 1. Invitation body parameter count — **will fail with Meta #132000**
 
@@ -112,3 +112,46 @@ this is what makes real WhatsApp delivery work end to end.
 - Onboarding-complete message delivered on real activation
 - Template drift fails a deploy check rather than a send
 - No silent failures
+
+
+---
+
+## Implementation record — invitation (done)
+
+Live Graph API inventory taken 2026-08-01 (all APPROVED):
+
+```
+stayo_tenant_invitation             en     body=2 btn=1   <- invitation
+stayo_tenant_onboarding_complete    en     body=6 btn=0   <- still to wire
+stayo_tenant_account_activated      en_IN  body=2 btn=0   <- not needed
+otp                                 en_US  body=2 btn=1   <- already wired
+```
+
+New `lib/services/notifications/providers/whatsapp/invitation-template-contract.ts`
+declares the parameter meanings once, builds the payload, and asserts the live
+template still matches. `npm run check:whatsapp-template` now gates **both**
+templates. Verified live:
+
+```
+OK  WhatsApp OTP template "otp" matches the payload contract (body: 2, button: 1)
+OK  WhatsApp invitation template "stayo_tenant_invitation" matches the payload contract (body: 2, button: 1)
+```
+
+**Real send confirmed** to +91 8008046952 through `MetaWhatsAppProvider.sendInvitation`
+(not a raw curl), first attempt, no retries:
+`wamid.HBgMOTE4MDA4MDQ2OTUyFQIAERgSNzlGNUYyODg4QkJCOTQ3Q0YyAA==`
+
+Retired names (`hms_tenant_invite_v2`, `tenant_account_activation_v1/v2`) are
+now actively ignored if still set in a deployed environment, rather than passed
+through to Meta as a template that does not exist.
+
+## Still open: onboarding-complete
+
+`ONBOARDING_COMPLETED_TEMPLATE_NAME` (`providers/whatsapp/templates.ts:118`) is
+still `"tenant_onboarding_completed_v1"` — **a template that does not exist in
+this WABA**, so the post-activation message currently fails every time.
+
+The approved replacement is `stayo_tenant_onboarding_complete` (`en`, **6 body
+parameters**, no button). Wiring it needs the six parameters identified in order
+from the live BODY text and reconciled with what `whatsapp-onboarding-handler.ts`
+supplies. Not done here — out of scope for the invitation fix.

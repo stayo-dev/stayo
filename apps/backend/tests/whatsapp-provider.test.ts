@@ -376,13 +376,16 @@ describe("MetaWhatsAppProvider sendInvitation", () => {
     const body = JSON.parse(init?.body as string);
     expect(body.to).toBe("917901070333");
     expect(body.type).toBe("template");
-    expect(body.template.name).toBe("tenant_account_activation_v2");
-    expect(body.template.language.code).toBe("en_IN");
+    // Verified against the live Graph API: stayo_tenant_invitation | en |
+    // APPROVED | body=2 button=1. The previous expectation here pinned
+    // `tenant_account_activation_v2` in `en_IN` with four body parameters —
+    // a template that does not exist in this WABA, with a parameter count the
+    // real one would reject (#132000). See invitation-template-contract.ts.
+    expect(body.template.name).toBe("stayo_tenant_invitation");
+    expect(body.template.language.code).toBe("en");
     expect(body.template.components[0].parameters).toEqual([
       { type: "text", text: "John Doe" },
-      { type: "text", text: "Owner Name" },
-      { type: "text", text: "101" },
-      { type: "text", text: "5000" },
+      { type: "text", text: "Hostel Name" },
     ]);
     expect(body.template.components[1]).toEqual({
       type: "button",

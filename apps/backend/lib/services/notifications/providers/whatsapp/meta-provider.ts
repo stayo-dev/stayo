@@ -8,6 +8,11 @@ import {
   OTP_TEMPLATE_CONTRACT,
   verifyOtpTemplateContractOnce,
 } from "./otp-template-contract";
+import {
+  buildInvitationTemplatePayload,
+  invitationTemplateLanguage,
+  invitationTemplateName,
+} from "./invitation-template-contract";
 import type {
   MetaWhatsAppErrorBody,
   WhatsAppProviderConfig,
@@ -22,8 +27,6 @@ const logger = getLogger("whatsapp.meta-provider");
 const DEFAULT_BASE_URL = "https://graph.facebook.com/v19.0";
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_RETRIES = 2;
-const DEFAULT_INVITATION_TEMPLATE = "tenant_account_activation_v2";
-const LEGACY_MISSING_INVITATION_TEMPLATE = "hms_tenant_invite_v2";
 const DEFAULT_OWNER_ACTIVATION_TEMPLATE = "owner_lead_activation_v1";
 
 function configFromEnv(): WhatsAppProviderConfig {
@@ -113,20 +116,6 @@ function extractActivationToken(activationLink: string): string {
     const token = String(activationLink || "").split("/").filter(Boolean).pop();
     return token || activationLink;
   }
-}
-
-function invitationTemplateName(): string {
-  const configured = String(process.env.WHATSAPP_INVITATION_TEMPLATE || "").trim();
-  if (!configured || configured === LEGACY_MISSING_INVITATION_TEMPLATE) {
-    return DEFAULT_INVITATION_TEMPLATE;
-  }
-  return configured;
-}
-
-function invitationTemplateLanguage(templateName: string): string {
-  const configured = String(process.env.WHATSAPP_INVITATION_LANGUAGE || "").trim();
-  if (configured) return configured;
-  return "en_IN";
 }
 
 function ownerActivationTemplateName(): string {
@@ -611,8 +600,7 @@ export class MetaWhatsAppProvider {
   }): Promise<WhatsAppSendResult> {
     const phone = normalizeWhatsAppPhone(input.to);
     const templateName = invitationTemplateName();
-    const languageCode = invitationTemplateLanguage(templateName);
-    const activationToken = extractActivationToken(input.activationLink);
+    const languageCode = invitationTemplateLanguage();
     const url = `${this.config.baseUrl}/${this.config.phoneNumberId}/messages`;
     const useText = templateName.toLowerCase() === "text";
     const body = useText
@@ -621,7 +609,7 @@ export class MetaWhatsAppProvider {
           to: phone,
           type: "text",
           text: {
-            body: `Hello ${input.tenantName}, you have been invited by ${input.ownerName} to join ${input.hostelName}, Room ${input.roomNumber}. Rent: ₹${input.roomRent}. Complete your onboarding here: ${input.activationLink}`
+            body: `Hello ${input.tenantName}, you have been invited to join ${input.hostelName}, Room ${input.roomNumber}. Rent: \u20b9${input.roomRent}. Complete your onboarding here: ${input.activationLink}`
           }
         }
       : {
@@ -631,31 +619,17 @@ export class MetaWhatsAppProvider {
           template: {
             name: templateName,
             language: { code: languageCode },
-            components: [
-              {
-                type: "body",
-                parameters: templateName === "tenant_account_activation_v1"
-                  ? [
-                      { type: "text", text: String(input.tenantName) },
-                      { type: "text", text: String(input.roomNumber) },
-                      { type: "text", text: String(input.roomRent) }
-                    ]
-                  : [
-                      { type: "text", text: String(input.tenantName) },
-                      { type: "text", text: String(input.ownerName || "Srinivasa Rao") },
-                      { type: "text", text: String(input.roomNumber) },
-                      { type: "text", text: String(input.roomRent) }
-                    ],
-              },
-              {
-                type: "button",
-                sub_type: "url",
-                index: "0",
-                parameters: [
-                  { type: "text", text: activationToken },
-                ],
-              },
-            ]
+            // Built from INVITATION_TEMPLATE_CONTRACT rather than inline, so the
+            // parameter count is declared in one place and checked against the
+            // live template by `npm run check:whatsapp-template`. The previous
+            // inline version branched on the template *name* and sent four body
+            // parameters to a two-variable template — Meta #132000 on every
+            // invitation.
+            ...buildInvitationTemplatePayload({
+              tenantName: input.tenantName,
+              hostelName: input.hostelName,
+              activationLink: input.activationLink,
+            }),
           }
         };
 
