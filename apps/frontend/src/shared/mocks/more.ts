@@ -14,14 +14,6 @@ export const mockOwnerProfile = {
   email: 'support@yourstayo.com',
 };
 
-export const mockWorkspaceConfig = {
-  percentComplete: 82,
-  caption: 'Finance, agreements & automation · 3 to finish',
-};
-
-export const mockAgreementsSummary = '40 need review · 15 renewals due';
-export const mockPropertiesSummary = '3 hostels · 137 beds';
-
 export const mockHostelIdentity = { name: 'StayO', hostelCount: 3 };
 export const mockTenantDefaults = 'Deposit 1 mo refundable · 3-month agreements';
 
