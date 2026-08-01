@@ -13,7 +13,7 @@ export function TenantStep({ data, setD }: TenantStepProps) {
   return (
     <div className="flex flex-col gap-4.5">
       <p className="text-[12.5px] leading-relaxed text-muted-foreground">
-        Who&apos;s moving in? We&apos;ll text them an invite to complete KYC.
+        Who&apos;s moving in? We&apos;ll WhatsApp them an invite to complete KYC.
       </p>
       <label className="block">
         <span className={labelStyle}>Full name</span>
@@ -31,6 +31,24 @@ export function TenantStep({ data, setD }: TenantStepProps) {
             className="min-w-0 flex-1 bg-transparent px-2 py-3 text-sm font-semibold text-foreground focus:outline-none"
           />
         </div>
+      </label>
+      <label className="block">
+        <span className={labelStyle}>
+          Email <span className="font-normal normal-case tracking-normal text-muted-foreground/70">— optional</span>
+        </span>
+        <input
+          value={data.tenantEmail}
+          onChange={(e) => setD({ tenantEmail: e.target.value })}
+          placeholder="tenant@example.com"
+          type="email"
+          inputMode="email"
+          autoCapitalize="none"
+          autoCorrect="off"
+          className={inputStyle}
+        />
+        <span className="mt-1.5 block text-[11.5px] leading-relaxed text-muted-foreground">
+          Used only if WhatsApp can&apos;t deliver. Without it, a failed WhatsApp send has no fallback.
+        </span>
       </label>
     </div>
   );

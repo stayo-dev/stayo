@@ -28,6 +28,16 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### The invite wizard reported "Invitation sent!" on every 2xx, including the 202 that means nothing was delivered
+
+- **Status:** fixed (frontend only — the backend was already correct)
+- **Found:** 2026-08-01, by the owner product integration audit (P0-1).
+- **Area:** [[Frontend]]
+- **Symptom:** an owner could send twenty tenant invitations, see twenty green "Invitation sent! {name} will get a text to complete KYC." screens, and have **zero** of them reach anyone — with no indication anywhere in the UI that delivery had failed, and no way to recover short of guessing.
+- **Root cause:** three compounding gaps. (1) `useInviteWizard.onSuccess` was `() => { setSubmitted(true); … }` — it discarded the response entirely, while the backend had been carefully reporting `whatsapp_sent`, `whatsapp_error`, `email_sent`, `needs_email` and returning the `activation_link` needed to recover. (2) The wizard collected **no email address** (`TenantStep` had name + phone only), so `dispatchInvitationNotification`'s email fallback could never fire — `needs_email` was true by construction for every invite. (3) The structural trap that made (1) easy to write and easy to repeat: **both invitation endpoints report delivery failure with a 2xx status.** `POST /api/owners/invitations` returns `202` when neither channel sent, and `POST /api/tenants/resend-invitation` returns `202` with an *error-shaped* body. Axios resolves on 2xx, so neither ever rejects — a `try`/`catch` around either call sees only success. Given the WhatsApp template drift this repo had been fighting the same week (`bd3d1e9`, `3b0fb6b`), the failing path was the *likely* one, not the edge case.
+- **Fix:** new pure `features/owner-tenants/invite/inviteDelivery.ts` reads delivery state from the body and treats anything unrecognised as **undelivered** rather than delivered (`whatsapp_sent: "false"` as a string does not count as sent). `InviteDeliveryResult.tsx` renders three honest states, and in the failure state always shows the activation link with Copy / Share so the workflow is never stranded. `needs_email` prompts for an address inline and re-dispatches through the existing resend route rather than making the owner start over; the resend's error body has no `activation_link`, so the original is carried forward. An optional Email field was added to step 1 and is echoed on the review step as "None — no fallback" when blank, making the risk visible *before* sending. 30 tests, on the first test suite `apps/frontend` has ever had.
+- **Related:** [[Features]], [[Changelog]], [[APIs]]
+
 ### The WhatsApp bot answered only messages that were *exactly* a command, and stayed silent for everything else
 
 - **Status:** fixed

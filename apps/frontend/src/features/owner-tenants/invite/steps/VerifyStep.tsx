@@ -33,6 +33,12 @@ export function VerifyStep({ data, agreed, setAgreed, hostels }: VerifyStepProps
             <span className="text-sm font-bold tabular-nums text-foreground">+91 {data.tenantPhone || '—'}</span>
           </div>
           <div className={row}>
+            <span className="text-[13.5px] text-muted-foreground">Email</span>
+            <span className={`text-sm font-bold ${data.tenantEmail.trim() ? 'text-foreground' : 'text-warning'}`}>
+              {data.tenantEmail.trim() || 'None — no fallback'}
+            </span>
+          </div>
+          <div className={row}>
             <span className="text-[13.5px] text-muted-foreground">Hostel</span>
             <span className="text-sm font-bold text-foreground">{hostelName}</span>
           </div>

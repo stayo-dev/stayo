@@ -7,7 +7,9 @@
     "build": "node scripts/check-architecture.mjs && vite build && node ../../scripts/check-production-branding.mjs dist",
     "check:branding": "node ../../scripts/check-production-branding.mjs dist",
     "check:architecture": "node scripts/check-architecture.mjs",
-    "dev": "vite"
+    "dev": "vite",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -77,7 +79,8 @@
     "@tailwindcss/vite": "4.1.12",
     "@vitejs/plugin-react": "4.7.0",
     "tailwindcss": "4.1.12",
-    "vite": "6.3.5"
+    "vite": "6.3.5",
+    "vitest": "^3.2.7"
   },
   "peerDependencies": {
     "react": "18.3.1",

@@ -11,6 +11,12 @@ export type TenantDetailTab = 'charges' | 'activity' | 'documents' | 'stay';
 export interface InviteWizardData {
   tenantName: string;
   tenantPhone: string;
+  /**
+   * Optional. Phone stays the mandatory channel, but the backend only falls
+   * back to email when it has one — without this the fallback could never fire
+   * and a failed WhatsApp send had no second chance.
+   */
+  tenantEmail: string;
   hostelId: string;
   roomId: string;
   roomLabel: string;
@@ -25,6 +31,7 @@ export interface InviteWizardData {
 export const EMPTY_INVITE_WIZARD_DATA: InviteWizardData = {
   tenantName: '',
   tenantPhone: '',
+  tenantEmail: '',
   hostelId: '',
   roomId: '',
   roomLabel: '',

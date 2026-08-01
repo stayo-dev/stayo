@@ -332,12 +332,24 @@ export class InvitationService {
     };
   }
 
+  /**
+   * `identifier` is an email, a phone, an invitation id or a tenant id —
+   * `resendInvitationByEmail` resolves all four. The parameter name is
+   * historical.
+   */
   async resendInvitation(
     email: string,
     actor?: { id: string; role: string },
     overrides?: {
       name?: string;
       phone?: string;
+      /**
+       * Adds (or corrects) the address the email fallback uses. This is what
+       * lets the owner rescue a `needs_email` invitation from the invite
+       * wizard's result screen without starting over — the lifecycle service
+       * writes it onto the invitation and re-dispatches.
+       */
+      email?: string;
       room_id?: string;
       monthly_rent?: number;
     }

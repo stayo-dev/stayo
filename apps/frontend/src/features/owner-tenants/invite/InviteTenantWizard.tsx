@@ -3,6 +3,7 @@ import { Check, ChevronLeft } from 'lucide-react';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useInviteWizard } from '../hooks/useInviteWizard';
+import { InviteDeliveryResult } from './InviteDeliveryResult';
 import { TenantStep } from './steps/TenantStep';
 import { StayStep } from './steps/StayStep';
 import { MoneyStep } from './steps/MoneyStep';
@@ -27,23 +28,29 @@ export function InviteTenantWizard({ open, onClose }: InviteTenantWizardProps) {
     onClose();
   };
 
-  if (wizard.submitted) {
+  // The invitation was created; whether it was *delivered* is a separate
+  // question, answered by `wizard.delivery`. This screen used to claim success
+  // unconditionally — see InviteDeliveryResult.
+  if (wizard.submitted && wizard.delivery) {
+    const delivered = wizard.delivery.channel !== 'none';
     return (
-      <BottomSheet open={open} onOpenChange={(v) => !v && handleClose()} title="Invitation sent">
-        <div className="flex flex-col items-center gap-3.5 py-6 text-center">
-          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-success/15">
-            <Check className="h-7 w-7 text-success" strokeWidth={3} />
-          </span>
-          <p className="font-display text-lg font-extrabold text-foreground">Invitation sent!</p>
-          <p className="text-[12.5px] text-muted-foreground">{wizard.data.tenantName || 'The tenant'} will get a text to complete KYC.</p>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="mt-2 rounded-xl bg-primary px-6 py-3 font-display text-sm font-bold text-primary-foreground"
-          >
-            Done
-          </button>
-        </div>
+      <BottomSheet
+        open={open}
+        onOpenChange={(v) => !v && handleClose()}
+        title={delivered ? 'Invitation sent' : 'Invitation not delivered'}
+      >
+        <InviteDeliveryResult
+          delivery={wizard.delivery}
+          tenantName={wizard.data.tenantName}
+          tenantPhone={wizard.data.tenantPhone}
+          onDone={handleClose}
+          fallbackEmail={wizard.fallbackEmail}
+          setFallbackEmail={wizard.setFallbackEmail}
+          sendFallbackEmail={wizard.sendFallbackEmail}
+          isSendingFallback={wizard.isSendingFallback}
+          fallbackError={wizard.fallbackError}
+          canSendFallback={wizard.canSendFallback}
+        />
       </BottomSheet>
     );
   }
@@ -74,7 +81,11 @@ export function InviteTenantWizard({ open, onClose }: InviteTenantWizardProps) {
           <button
             type="button"
             onClick={isLast ? wizard.submit : wizard.next}
-            disabled={(isLast && (!wizard.agreed || !wizard.data.roomId)) || wizard.isSubmitting}
+            disabled={
+              (isLast && (!wizard.agreed || !wizard.data.roomId)) ||
+              wizard.emailInvalid ||
+              wizard.isSubmitting
+            }
             className="flex-1 rounded-xl bg-primary py-3.5 text-center font-display text-sm font-bold text-primary-foreground disabled:opacity-50"
           >
             {isLast ? (wizard.isSubmitting ? 'Sending…' : 'Send invitation') : `Continue to ${wizard.stepLabels[wizard.step + 1]?.toLowerCase()}`}
@@ -99,6 +110,12 @@ export function InviteTenantWizard({ open, onClose }: InviteTenantWizardProps) {
           </div>
         ))}
       </div>
+
+      {wizard.emailInvalid && (
+        <p className="mb-4 rounded-xl border border-destructive/25 bg-destructive/10 px-3.5 py-2.5 text-[12.5px] font-semibold text-destructive">
+          That email address doesn&apos;t look right. Fix it, or clear it to send by WhatsApp only.
+        </p>
+      )}
 
       {wizard.submitError && (
         <p className="mb-4 rounded-xl border border-destructive/25 bg-destructive/10 px-3.5 py-2.5 text-[12.5px] font-semibold text-destructive">
