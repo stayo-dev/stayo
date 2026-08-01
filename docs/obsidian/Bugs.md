@@ -669,6 +669,14 @@ Copy this block for each new entry:
 - **Verification:** backend `check:invariants` + real `tsc` clean; frontend `check:architecture` + `vite build` + real `tsc` clean, after every phase.
 - **Related:** [[Features]] (StayO Platform Admin Console), [[APIs]], [[Changelog]]
 
+### Admin Dashboard's "Approve" lead button silently always failed — reused a stale pre-ADR-032 enum value
+
+- **Status:** fixed, 2026-08-01
+- **Symptom:** clicking "Approve" on a lead card in the Dashboard's Owner Leads preview widget (`AdminDashboardPage.tsx`) never did anything visible — the standalone Leads page's own "Approve Lead" button worked fine (modulo WhatsApp/email delivery actually succeeding — see [[Business-Rules]] on the WhatsApp-unavailable fallback).
+- **Cause:** the Dashboard's Approve button called `platformAdminService.updateLeadStatus(id, 'CONTACTED')` — `'CONTACTED'` was a value from the *original* `PlatformLeadStatus` enum, replaced outright by ADR-032's lifecycle rewrite (`NEW/UNDER_REVIEW/APPROVED/INVITE_SENT/OWNER_ACTIVATED/HOSTEL_CREATED/LIVE/LOST`). `PATCH /api/platform-admin/leads/[id]` only ever accepted `NEW`/`UNDER_REVIEW`/`LOST` (`MANUALLY_SETTABLE_STATUSES`) — every other value 400s with `VALIDATION_ERROR`, by design: the real "approve" action is `POST .../approve`, not a status PATCH. The Dashboard's Approve button was added reusing "the same status-mutation pattern as the standalone Leads page" (see the deep-audit entry above), but in fact reused the *older, generic* status-PATCH mutation with a stale enum value rather than the *dedicated* approve mutation the standalone page actually uses.
+- **Fix:** `AdminDashboardPage.tsx` now has its own `leadApproveMutation` calling `platformAdminService.approveLead(id)` → `POST /api/platform-admin/leads/[id]/approve` — the same real accept flow (generates activation token, sends via WhatsApp/email, only advances to `INVITE_SENT` on a successful send) already used by `AdminLeadsPage.tsx`. The Reject button (`status: 'LOST'`) was unaffected — `LOST` is in `MANUALLY_SETTABLE_STATUSES`, so it worked correctly all along.
+- **Related:** [[APIs]], [[Frontend]]
+
 ## Open / known issues
 
 > See also `docs/known-issues.md` for the maintained list of known drift/gaps in `docs/`.

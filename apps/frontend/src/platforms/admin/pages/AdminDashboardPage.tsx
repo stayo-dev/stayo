@@ -30,6 +30,18 @@ export function AdminDashboardPage() {
     onError: () => stayoToast.error('Could not update lead'),
   });
 
+  const leadApproveMutation = useMutation({
+    mutationFn: (id: string) => platformAdminService.approveLead(id),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'leads'] });
+      if (result.whatsapp_sent) stayoToast.success('Activation link sent via WhatsApp');
+      else if (result.email_sent) stayoToast.success('Activation link sent via email');
+      else stayoToast.error(result.email_error || result.whatsapp_error || 'Approved, but the activation link could not be sent');
+    },
+    onError: (error: any) => stayoToast.error(error?.response?.data?.error?.message || 'Could not approve lead'),
+  });
+
   if (dashboardQuery.isLoading || !d) {
     return (
       <div className="mx-auto max-w-[1360px] px-7 py-7">
@@ -80,11 +92,11 @@ export function AdminDashboardPage() {
                     <div className="mt-3 flex gap-2">
                       <button
                         type="button"
-                        onClick={() => leadStatusMutation.mutate({ id: l.id, status: 'CONTACTED' })}
-                        disabled={leadStatusMutation.isPending}
+                        onClick={() => leadApproveMutation.mutate(l.id)}
+                        disabled={leadApproveMutation.isPending}
                         className="h-8 flex-1 rounded-lg bg-success text-[12px] font-bold text-white"
                       >
-                        Approve
+                        {leadApproveMutation.isPending ? 'Sending…' : 'Approve'}
                       </button>
                       <button
                         type="button"
