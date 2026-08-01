@@ -135,6 +135,90 @@ function ownerActivationTemplateLanguage(): string {
   return configured || "en_IN";
 }
 
+/** Meta requires the locale of the approved template; ours is English (US). */
+export const OTP_TEMPLATE_LANGUAGE = "en_US";
+
+/**
+ * `{{2}}` is rendered to the user: "This is your OTP code for {{2}}."
+ * Callers pass internal purpose codes (LEAD_CAPTURE, ParentVerify, …), so map
+ * them to something a person should read. Unknown values are humanised rather
+ * than rejected — a new purpose must never break OTP delivery.
+ */
+export function otpPurposeLabel(purpose: string): string {
+  const raw = String(purpose || "").trim();
+  if (!raw) return "verification";
+
+  const known: Record<string, string> = {
+    LEAD_CAPTURE: "sign up",
+    PHONE_VERIFICATION: "phone verification",
+    PARENTVERIFY: "parent verification",
+    LOGIN: "login",
+    SIGNUP: "sign up",
+    PASSWORD_RESET: "password reset",
+  };
+
+  const mapped = known[raw.toUpperCase().replace(/[\s-]+/g, "_")];
+  if (mapped) return mapped;
+
+  return raw.replace(/[_-]+/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+}
+
+/**
+ * Build the Cloud API payload for the approved `otp` Authentication template.
+ *
+ * The shape is dictated by the template as approved — verified against the
+ * Graph API (`GET /{WABA_ID}/message_templates?name=otp`), not assumed:
+ *
+ *   BODY:    "OTP Code: {{1}}. This is your OTP code for {{2}}. For your
+ *             security, do not share this code."      → TWO parameters
+ *   FOOTER:  "Expires in 5 minutes."                  → no parameters
+ *   BUTTONS: URL "Copy code", url ...&code=otp{{1}}   → ONE parameter
+ *
+ * Both counts are load-bearing. Passing one body parameter (or omitting the
+ * button component) fails the whole send with Meta error #132000, "number of
+ * parameters does not match". If the template is ever re-approved with a
+ * different body, this function and its tests are what must change.
+ */
+export function buildOtpTemplatePayload(input: {
+  phone: string;
+  otp: string;
+  purpose: string;
+  templateName: string;
+}) {
+  const code = String(input.otp);
+  const includeButton = process.env.WHATSAPP_OTP_TEMPLATE_HAS_BUTTON !== "false";
+
+  const components: Array<Record<string, unknown>> = [
+    {
+      type: "body",
+      parameters: [
+        { type: "text", text: code },
+        { type: "text", text: otpPurposeLabel(input.purpose) },
+      ],
+    },
+  ];
+
+  if (includeButton) {
+    components.push({
+      type: "button",
+      sub_type: "url",
+      index: "0",
+      parameters: [{ type: "text", text: code }],
+    });
+  }
+
+  return {
+    messaging_product: "whatsapp",
+    to: input.phone,
+    type: "template",
+    template: {
+      name: input.templateName,
+      language: { code: OTP_TEMPLATE_LANGUAGE },
+      components,
+    },
+  };
+}
+
 export class MetaWhatsAppProvider {
   private readonly config: WhatsAppProviderConfig;
 
@@ -416,36 +500,13 @@ export class MetaWhatsAppProvider {
             body: `Your HMS verification code is: ${input.otp}. This code is for ${input.purpose}. Valid for 5 minutes.`
           }
         }
-      : {
-          messaging_product: "whatsapp",
-          to: phone,
-          type: "template",
-          template: {
-            name: templateName,
-            language: { code: "en_US" },
-            components: [
-              {
-                type: "body",
-                parameters: [
-                  { type: "text", text: String(input.otp) },
-                  { type: "text", text: String(input.purpose) },
-                ],
-              },
-              {
-                type: "button",
-                sub_type: "url",
-                index: "0",
-                parameters: [
-                  { type: "text", text: String(input.otp) },
-                ],
-              },
-            ],
-          },
-        };
+      : buildOtpTemplatePayload({ phone, otp: input.otp, purpose: input.purpose, templateName });
 
-    logger.info("whatsapp.otp.send_started", {
+    const startedAt = Date.now();
+    logger.info("otp.send.started", {
       phone: maskWhatsAppPhone(phone),
-      templateName,
+      template: templateName,
+      language: OTP_TEMPLATE_LANGUAGE,
       purpose: input.purpose,
       isTextMessage,
     });
@@ -458,10 +519,12 @@ export class MetaWhatsAppProvider {
           ? String((result as any).messages[0]?.id || "")
           : "";
 
-        logger.info("whatsapp.otp.send_success", {
+        logger.info("otp.send.success", {
           phone: maskWhatsAppPhone(phone),
+          template: templateName,
+          providerMessageId: providerMessageId || null,
           attempts: attempt,
-          providerMessageId,
+          duration_ms: Date.now() - startedAt,
         });
 
         return {
@@ -473,9 +536,11 @@ export class MetaWhatsAppProvider {
         if (error instanceof WhatsAppProviderError) {
           lastError = error;
           if (!error.retryable || attempt > this.config.maxRetries) {
-            logger.error("whatsapp.otp.send_failed", {
+            logger.error("otp.send.failed", {
               phone: maskWhatsAppPhone(phone),
+              template: templateName,
               attempts: attempt,
+              duration_ms: Date.now() - startedAt,
               error_code: error.providerCode || error.code || "WHATSAPP_SEND_FAILED",
               error: error.message,
             });
@@ -484,9 +549,12 @@ export class MetaWhatsAppProvider {
           await sleep(Math.min(1000 * 2 ** (attempt - 1), 5000));
           continue;
         }
-        logger.error("whatsapp.otp.send_failed", {
+        logger.error("otp.send.failed", {
           phone: maskWhatsAppPhone(phone),
+          template: templateName,
           attempts: attempt,
+          duration_ms: Date.now() - startedAt,
+          error_code: "WHATSAPP_UNEXPECTED_ERROR",
           error: String(error?.message || error),
         });
         throw error;

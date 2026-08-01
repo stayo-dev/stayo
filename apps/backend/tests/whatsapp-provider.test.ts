@@ -1,11 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   MetaWhatsAppProvider,
+  buildOtpTemplatePayload,
+  otpPurposeLabel,
   normalizeWhatsAppPhone,
   validateWhatsAppConfiguration,
 } from "@/lib/services/notifications/providers/whatsapp/meta-provider";
 import { notificationService } from "@/lib/services/notification-service";
-import { WhatsAppProviderError, WhatsAppValidationError } from "@/lib/services/notifications/providers/whatsapp/errors";
+import {
+  WhatsAppConfigError,
+  WhatsAppProviderError,
+  WhatsAppValidationError,
+} from "@/lib/services/notifications/providers/whatsapp/errors";
 
 describe("WhatsApp Phone Normalization", () => {
   it("converts 10-digit number into Indian international format", () => {
@@ -185,15 +191,19 @@ describe("MetaWhatsAppProvider OTP Send & HTTP Mocking", () => {
     expect(init?.method).toBe("POST");
 
     const body = JSON.parse(init?.body as string);
+    expect(body.messaging_product).toBe("whatsapp");
     expect(body.to).toBe("917901070333");
     expect(body.type).toBe("template");
     expect(body.template.name).toBe("otp_phone");
+    expect(body.template.language).toEqual({ code: "en_US" });
     expect(body.template.components).toHaveLength(2);
+    // Two body parameters, matching the approved template's {{1}} code and
+    // {{2}} purpose. Verified against GET /{WABA_ID}/message_templates.
     expect(body.template.components[0]).toEqual({
       type: "body",
       parameters: [
         { type: "text", text: "123456" },
-        { type: "text", text: "Login" },
+        { type: "text", text: "login" },
       ],
     });
     expect(body.template.components[1]).toEqual({
@@ -372,5 +382,180 @@ describe("MetaWhatsAppProvider sendInvitation", () => {
       index: "0",
       parameters: [{ type: "text", text: "invite-token-123" }],
     });
+  });
+});
+
+// ── Authentication template delivery (the approved `otp` template) ─────────
+
+describe("OTP authentication-template payload", () => {
+  const provider = () =>
+    new MetaWhatsAppProvider({
+      accessToken: "mock_token",
+      phoneNumberId: "mock_phone_id",
+      baseUrl: "https://graph.facebook.com/v19.0",
+      timeoutMs: 1000,
+      maxRetries: 0,
+    });
+
+  const okResponse = () =>
+    ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ messages: [{ id: "wamid.TEST" }] }),
+    } as Response);
+
+  let fetchSpy: any;
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    fetchSpy = vi.spyOn(global, "fetch");
+    process.env.WHATSAPP_OTP_TEMPLATE = "otp";
+    delete process.env.WHATSAPP_OTP_TEMPLATE_HAS_BUTTON;
+  });
+
+  it("builds the exact payload Meta expects for the approved `otp` template", async () => {
+    const payload = buildOtpTemplatePayload({
+      phone: "917901070333",
+      otp: "123456",
+      purpose: "Login",
+      templateName: "otp",
+    });
+
+    expect(payload).toEqual({
+      messaging_product: "whatsapp",
+      to: "917901070333",
+      type: "template",
+      template: {
+        name: "otp",
+        language: { code: "en_US" },
+        components: [
+          {
+            type: "body",
+            parameters: [
+              { type: "text", text: "123456" },
+              { type: "text", text: "login" },
+            ],
+          },
+          { type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: "123456" }] },
+        ],
+      },
+    });
+  });
+
+  it("repeats the code in the copy-code button component", () => {
+    const payload = buildOtpTemplatePayload({
+      phone: "917901070333",
+      otp: "998877",
+      purpose: "Login",
+      templateName: "otp",
+    });
+    const [bodyComponent, buttonComponent] = payload.template.components as any[];
+
+    expect(bodyComponent.parameters[0].text).toBe("998877");
+    expect(bodyComponent.parameters).toHaveLength(2);
+    expect(buttonComponent.parameters[0].text).toBe("998877");
+  });
+
+  it("omits the button component when the template is declared without one", () => {
+    process.env.WHATSAPP_OTP_TEMPLATE_HAS_BUTTON = "false";
+
+    const payload = buildOtpTemplatePayload({
+      phone: "917901070333",
+      otp: "123456",
+      purpose: "Login",
+      templateName: "otp",
+    });
+
+    expect(payload.template.components).toHaveLength(1);
+    expect((payload.template.components as any[])[0].type).toBe("body");
+  });
+
+  it("coerces a numeric OTP to a string — Meta rejects non-string parameters", () => {
+    const payload = buildOtpTemplatePayload({
+      phone: "917901070333",
+      otp: 123456 as unknown as string,
+      purpose: "Login",
+      templateName: "otp",
+    });
+
+    expect((payload.template.components as any[])[0].parameters[0].text).toBe("123456");
+  });
+
+  it("sends successfully and returns Meta's message id", async () => {
+    fetchSpy.mockResolvedValueOnce(okResponse());
+
+    const result = await provider().sendOtp({ to: "7901070333", otp: "123456", purpose: "Login" });
+
+    expect(result.providerMessageId).toBe("wamid.TEST");
+    expect(result.attempts).toBe(1);
+    const body = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string);
+    expect(body.template.name).toBe("otp");
+  });
+
+  it("posts to /{PHONE_NUMBER_ID}/messages with the bearer token", async () => {
+    fetchSpy.mockResolvedValueOnce(okResponse());
+
+    await provider().sendOtp({ to: "7901070333", otp: "123456", purpose: "Login" });
+
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("https://graph.facebook.com/v19.0/mock_phone_id/messages");
+    expect((init?.headers as any).Authorization).toBe("Bearer mock_token");
+  });
+
+  it("surfaces a Meta API failure as a provider error carrying the Meta code", async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      text: async () =>
+        JSON.stringify({
+          error: { message: "(#132000) Number of parameters does not match", code: 132000, error_subcode: 2494008 },
+        }),
+    } as Response);
+
+    await expect(
+      provider().sendOtp({ to: "7901070333", otp: "123456", purpose: "Login" })
+    ).rejects.toMatchObject({
+      name: "WhatsAppProviderError",
+      providerCode: "132000:2494008",
+      retryable: false,
+    });
+  });
+
+  it("rejects an invalid phone number before calling Meta", async () => {
+    await expect(
+      provider().sendOtp({ to: "123", otp: "123456", purpose: "Login" })
+    ).rejects.toBeInstanceOf(WhatsAppValidationError);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("fails loudly when the template name is not configured", async () => {
+    delete process.env.WHATSAPP_OTP_TEMPLATE;
+
+    await expect(
+      provider().sendOtp({ to: "7901070333", otp: "123456", purpose: "Login" })
+    ).rejects.toBeInstanceOf(WhatsAppConfigError);
+  });
+
+  it("wraps a transport exception rather than leaking it", async () => {
+    fetchSpy.mockRejectedValueOnce(new Error("socket hang up"));
+
+    await expect(
+      provider().sendOtp({ to: "7901070333", otp: "123456", purpose: "Login" })
+    ).rejects.toMatchObject({ code: "WHATSAPP_NETWORK_ERROR", retryable: true });
+  });
+});
+
+describe("otpPurposeLabel", () => {
+  it("turns internal purpose codes into text a person should read", () => {
+    expect(otpPurposeLabel("LEAD_CAPTURE")).toBe("sign up");
+    expect(otpPurposeLabel("PHONE_VERIFICATION")).toBe("phone verification");
+    expect(otpPurposeLabel("ParentVerify")).toBe("parent verification");
+    expect(otpPurposeLabel("Login")).toBe("login");
+  });
+
+  it("humanises an unmapped purpose rather than breaking delivery", () => {
+    expect(otpPurposeLabel("SOME_NEW_FLOW")).toBe("some new flow");
+    expect(otpPurposeLabel("")).toBe("verification");
   });
 });

@@ -73,6 +73,12 @@ services:
         sync: false
       - key: WHATSAPP_BUSINESS_ACCOUNT_ID
         sync: false
+      # OTP delivery via the approved `otp` Authentication template. All four
+      # together also re-enable mandatory signup phone verification (ADR-034).
+      - key: OTP_PROVIDER
+        value: whatsapp
+      - key: WHATSAPP_OTP_TEMPLATE
+        value: otp
       # Webhook (https://yourstayo.com/api/webhooks/whatsapp). The WHATSAPP_*
       # spellings are the older names and are still read as a fallback; set the
       # META_* / *_WEBHOOK_* ones on new deployments.
