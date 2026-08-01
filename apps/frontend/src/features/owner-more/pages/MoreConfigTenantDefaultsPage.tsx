@@ -58,7 +58,7 @@ export function MoreConfigTenantDefaultsPage() {
             <div className="text-[13.5px] font-semibold text-foreground">Months of rent</div>
             <div className="text-[11px] text-muted-foreground">Default deposit collected at move-in</div>
           </div>
-          <Stepper value={depositMonths} onChange={setDepositMonths} min={0} max={12} />
+          <Stepper value={depositMonths} onChange={setDepositMonths} min={1} max={12} />
         </div>
       </div>
 
