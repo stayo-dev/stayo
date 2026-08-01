@@ -1,14 +1,20 @@
 import { IndianRupee, FileText, Check, CircleDot, Pencil, RotateCcw } from 'lucide-react';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { stayoToast } from '@shared/ui-patterns/Toast';
-import { mockActionCenter } from '@shared/mocks/dashboard';
+import type { mockActionCenter } from '@shared/mocks/dashboard';
 
 interface AllActionsSheetProps {
   open: boolean;
   onClose: () => void;
   onCollectRent: () => void;
   onActivateTenants: () => void;
-  actionCenter?: typeof mockActionCenter;
+  onVerifyKyc: () => void;
+  /**
+   * Required, not defaulted to `mockActionCenter`: these are counts an owner
+   * acts on, and a fallback that silently renders invented numbers is worse
+   * than a compile error. The import below is now type-only.
+   */
+  actionCenter: typeof mockActionCenter;
 }
 
 const rowCls = 'flex items-center gap-3 rounded-[18px] border border-border bg-card p-3.5 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]';
@@ -18,7 +24,7 @@ const secondaryBtn = 'flex-none rounded-[9px] border border-border bg-card px-3.
 const soon = () => stayoToast.info('Coming soon');
 
 /** Home's "View all" Action Center sheet, per Stayo App.dc.html. Collect Rent / Activate Tenants reuse the real QuickCollect/Invite flows; the rest are toast placeholders — matching the design's own reference, which doesn't wire these buttons either. */
-export function AllActionsSheet({ open, onClose, onCollectRent, onActivateTenants, actionCenter = mockActionCenter }: AllActionsSheetProps) {
+export function AllActionsSheet({ open, onClose, onCollectRent, onActivateTenants, onVerifyKyc, actionCenter = mockActionCenter }: AllActionsSheetProps) {
   return (
     <BottomSheet open={open} onOpenChange={(v) => !v && onClose()} title={<span className="flex flex-col gap-0.5"><span>All actions</span><span className="text-xs font-normal text-muted-foreground">Ranked by priority</span></span>}>
       <div className="flex flex-col gap-2">
@@ -64,7 +70,7 @@ export function AllActionsSheet({ open, onClose, onCollectRent, onActivateTenant
             <div className="font-display text-[13px] font-bold text-foreground">Verify Pending KYC</div>
             <div className="text-[11.5px] text-muted-foreground">{actionCenter.verifyKyc.value} {actionCenter.verifyKyc.caption.toLowerCase()}</div>
           </div>
-          <button type="button" onClick={soon} className={secondaryBtn}>Review</button>
+          <button type="button" onClick={onVerifyKyc} className={primaryBtn}>Review</button>
         </div>
 
         <div className={rowCls}>

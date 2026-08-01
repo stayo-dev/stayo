@@ -3,13 +3,17 @@ import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { tenantService } from '@features/tenants/api';
 import { getInitials } from '@features/tenants/utils/normalize';
 import type { TenantObligation, TenantActivityItem, MockGuardian } from '@shared/mocks/tenants';
+import { documentTypeLabel, toReviewDocument, type ReviewDocument } from '../documents/kycDocuments';
 
-export interface RealTenantDocument {
-  id: string;
+/**
+ * A tenant document in a shape the review UI can act on — not just display.
+ * `download_url` and the rejection thread used to be dropped here, which is
+ * why the Documents tab could only render a status pill.
+ */
+export type RealTenantDocument = ReviewDocument & {
   title: string;
   sub: string;
-  status: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'MISSING';
-}
+};
 
 export interface RealTenantDetail {
   id: string;
@@ -57,13 +61,6 @@ const TREND_LABEL: Record<string, string> = {
   IMPROVING: 'Improving',
   STABLE: 'Stable',
   DECLINING: 'Declining',
-};
-
-const REQUIRED_DOC_LABEL: Record<string, string> = {
-  AADHAAR: 'Aadhaar Card',
-  COLLEGE_ID: 'College ID',
-  WORK_ID: 'Work ID',
-  RENTAL_AGREEMENT: 'Rental Agreement',
 };
 
 function activityTone(type: string): TenantActivityItem['tone'] {
@@ -149,15 +146,28 @@ export function useTenantDetail(tenantId: string | undefined) {
     const requiredTypes: string[] = Array.isArray(documentsResult?.required_documents) ? documentsResult.required_documents : [];
     const presentTypes = new Set(presentDocs.map((d: any) => String(d.doc_type)));
     const documents: RealTenantDocument[] = [
-      ...presentDocs.map((d: any) => ({
-        id: String(d.id),
-        title: REQUIRED_DOC_LABEL[d.doc_type] ?? String(d.doc_type),
-        sub: d.document_status === 'REJECTED' ? String(d.rejection_reason || 'Rejected') : formatDate(d.created_at),
-        status: (d.document_status === 'APPROVED' ? 'VERIFIED' : d.document_status === 'REJECTED' ? 'REJECTED' : 'PENDING') as RealTenantDocument['status'],
-      })),
+      ...presentDocs.map((d: any) => {
+        const reviewed = toReviewDocument(d);
+        return {
+          ...reviewed,
+          title: documentTypeLabel(reviewed.docType),
+          sub: reviewed.latestRejectionReason ?? formatDate(d.created_at),
+        };
+      }),
       ...requiredTypes
         .filter((t) => !presentTypes.has(t))
-        .map((t) => ({ id: `missing-${t}`, title: `${REQUIRED_DOC_LABEL[t] ?? t} (required)`, sub: 'Not uploaded yet', status: 'MISSING' as const })),
+        .map((t) => ({
+          id: `missing-${t}`,
+          docType: t,
+          status: 'MISSING' as const,
+          isActive: false,
+          downloadUrl: null,
+          latestRejectionReason: null,
+          thread: [],
+          uploadedAt: null,
+          title: `${documentTypeLabel(t)} (required)`,
+          sub: 'Not uploaded yet',
+        })),
     ];
 
     const obligations: TenantObligation[] = Array.isArray(full?.rent_obligations)
