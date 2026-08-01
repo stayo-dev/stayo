@@ -28,6 +28,17 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### Any `/api/…` URL with a trailing slash was silently served the SPA's `index.html` instead of reaching the backend
+
+- **Status:** fixed in config (`apps/frontend/vercel.json`); **needs a frontend redeploy to take effect**
+- **Found:** 2026-08-01, auditing the request path after a WhatsApp webhook verification failure.
+- **Area:** [[Frontend]] (deploy config) / [[Backend]]
+- **Symptom:** `https://yourstayo.com/api/webhooks/whatsapp?hub.…` → 200 with the challenge echoed (correct), but `https://yourstayo.com/api/webhooks/whatsapp/` (one trailing slash) → **200 `text/html`, the SPA shell**. Confirmed generic, not webhook-specific: `/api/health` → `application/json`, `/api/health/` → `text/html`. A caller pasting a URL with a trailing slash gets a `200 OK` full of HTML — Meta reads that as a failed verification, and nothing appears in the backend logs because the request never reaches the backend.
+- **Root cause:** the Vercel rewrite `"/api/:path*"` does not match a trailing slash, so the request fell through to the SPA catch-all `"/((?!.*\\.[a-zA-Z0-9]{1,5}$).*)" → "/index.html"`, which matched *everything* without an extension — including API paths. The `200` is what made it invisible: a 404 would have been noticed immediately.
+- **Fix:** added a `"/api/:path*/"` rewrite alongside the existing one, and excluded `api/` from the SPA catch-all (`"/((?!api/)(?!.*\\.…$).*)"`) so any future unmatched `/api/…` request fails loudly with a 404 instead of impersonating a page. The exclusion is the important half — it holds even if the trailing-slash rewrite pattern doesn't match on Vercel's router.
+- **Note:** on `api.yourstayo.com` the same URL behaves differently — Next.js answers a trailing slash with a `308` to the canonical path (query string preserved). Safe for browsers, not something a webhook sender should be relied on to follow.
+- **Related:** [[APIs#Notifications & WhatsApp|APIs]], [[Decisions#ADR-037|ADR-037]], [[Changelog]]
+
 ### A Meta webhook retry could re-run inbound-command handlers and send a tenant the same reply twice
 
 - **Status:** fixed

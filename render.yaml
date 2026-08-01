@@ -73,9 +73,18 @@ services:
         sync: false
       - key: WHATSAPP_BUSINESS_ACCOUNT_ID
         sync: false
+      # Webhook (https://yourstayo.com/api/webhooks/whatsapp). The WHATSAPP_*
+      # spellings are the older names and are still read as a fallback; set the
+      # META_* / *_WEBHOOK_* ones on new deployments.
+      - key: WHATSAPP_WEBHOOK_VERIFY_TOKEN
+        sync: false
       - key: WHATSAPP_VERIFY_TOKEN
         sync: false
+      - key: META_APP_SECRET
+        sync: false
       - key: WHATSAPP_APP_SECRET
+        sync: false
+      - key: META_APP_ID
         sync: false
       - key: IMAGEKIT_PRIVATE_KEY
         sync: false

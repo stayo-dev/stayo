@@ -8,6 +8,10 @@
       "destination": "https://stayo-backend-stayo-devs-projects.vercel.app/api/:path*"
     },
     {
+      "source": "/api/:path*/",
+      "destination": "https://stayo-backend-stayo-devs-projects.vercel.app/api/:path*"
+    },
+    {
       "source": "/pay/tenant/%7B%7B1%7D%7D:token",
       "destination": "https://stayo-backend-stayo-devs-projects.vercel.app/api/payments/pay/:token"
     },
@@ -32,7 +36,7 @@
       "destination": "https://stayo-backend-stayo-devs-projects.vercel.app/api/payments/pay/:token"
     },
     {
-      "source": "/((?!.*\\.[a-zA-Z0-9]{1,5}$).*)",
+      "source": "/((?!api/)(?!.*\\.[a-zA-Z0-9]{1,5}$).*)",
       "destination": "/index.html"
     }
   ],

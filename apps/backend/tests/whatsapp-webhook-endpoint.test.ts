@@ -23,14 +23,16 @@ vi.mock("@/lib/services/rate-limit-service", () => ({
   },
 }));
 
-vi.mock("@/lib/logger", () => ({
-  getLogger: () => ({
+// One shared logger instance, so a test can assert on what the handler logged.
+vi.mock("@/lib/logger", () => {
+  const logger = {
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
     metrics: vi.fn(),
-  }),
-}));
+  };
+  return { getLogger: () => logger };
+});
 
 const APP_SECRET = "test-app-secret";
 const VERIFY_TOKEN = "test-verify-token";
@@ -142,6 +144,95 @@ describe("WhatsApp webhook endpoint", () => {
       const res = await handleWhatsAppWebhookVerification(req);
 
       expect(res.status).toBe(403);
+    });
+
+    it("prefers WHATSAPP_WEBHOOK_VERIFY_TOKEN when both names are set", async () => {
+      process.env.WHATSAPP_VERIFY_TOKEN = "the-other-one";
+
+      const req = new NextRequest(
+        `https://api.yourstayo.com/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=${VERIFY_TOKEN}&hub.challenge=42`
+      );
+
+      const res = await handleWhatsAppWebhookVerification(req);
+
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("42");
+    });
+
+    it("tolerates a verify token pasted with surrounding whitespace or quotes", async () => {
+      for (const stored of [`  ${VERIFY_TOKEN}\n`, `"${VERIFY_TOKEN}"`, `'${VERIFY_TOKEN}'`]) {
+        process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN = stored;
+
+        const req = new NextRequest(
+          `https://api.yourstayo.com/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=${VERIFY_TOKEN}&hub.challenge=42`
+        );
+
+        const res = await handleWhatsAppWebhookVerification(req);
+
+        expect(res.status, `stored as ${JSON.stringify(stored)}`).toBe(200);
+      }
+    });
+
+    it("matches when Meta echoes the token back with padding", async () => {
+      const req = new NextRequest(
+        `https://api.yourstayo.com/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=${encodeURIComponent(
+          ` ${VERIFY_TOKEN} `
+        )}&hub.challenge=42`
+      );
+
+      const res = await handleWhatsAppWebhookVerification(req);
+
+      expect(res.status).toBe(200);
+    });
+
+    it("treats a whitespace-only token as unconfigured rather than matching an empty token", async () => {
+      process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN = "   ";
+
+      const req = new NextRequest(
+        "https://api.yourstayo.com/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=&hub.challenge=42"
+      );
+
+      const res = await handleWhatsAppWebhookVerification(req);
+
+      expect(res.status).toBe(500);
+    });
+
+    it("returns 403 with a diagnosable reason for a bare GET, without logging the token", async () => {
+      const { getLogger } = await import("@/lib/logger");
+      const warn = vi.mocked(getLogger("x").warn);
+
+      const res = await handleWhatsAppWebhookVerification(
+        new NextRequest("https://api.yourstayo.com/api/webhooks/whatsapp")
+      );
+
+      expect(res.status).toBe(403);
+      const logged = warn.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+      expect(logged).toMatchObject({
+        reason: "missing hub.verify_token",
+        token_source: "WHATSAPP_WEBHOOK_VERIFY_TOKEN",
+        received_token_fingerprint: null,
+      });
+      expect(JSON.stringify(logged)).not.toContain(VERIFY_TOKEN);
+    });
+
+    it("reports a token mismatch with comparable fingerprints, not the values", async () => {
+      const { getLogger } = await import("@/lib/logger");
+      const warn = vi.mocked(getLogger("x").warn);
+
+      const res = await handleWhatsAppWebhookVerification(
+        new NextRequest(
+          "https://api.yourstayo.com/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=wrong-token&hub.challenge=42"
+        )
+      );
+
+      expect(res.status).toBe(403);
+      const logged = warn.mock.calls.at(-1)?.[1] as Record<string, any>;
+      expect(logged.reason).toBe("token mismatch");
+      expect(logged.received_token_length).toBe("wrong-token".length);
+      expect(logged.expected_token_length).toBe(VERIFY_TOKEN.length);
+      expect(logged.received_token_fingerprint).not.toBe(logged.expected_token_fingerprint);
+      expect(JSON.stringify(logged)).not.toContain(VERIFY_TOKEN);
+      expect(JSON.stringify(logged)).not.toContain("wrong-token");
     });
 
     it("returns 500 when no verify token is configured", async () => {

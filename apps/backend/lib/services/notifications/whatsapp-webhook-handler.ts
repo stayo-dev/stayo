@@ -17,18 +17,43 @@ const logger = getLogger("webhook.whatsapp");
  * Both routes delegate here; there is exactly one implementation.
  */
 
+/**
+ * Dashboard-pasted secrets routinely arrive wrapped in quotes or with a
+ * trailing newline; neither is part of the value the operator intended.
+ */
+function normalizeSecret(value: string) {
+  return value.trim().replace(/^(["'])([\s\S]*)\1$/, "$2").trim();
+}
+
+/** Short, non-reversible identifier — safe to put in logs, enough to compare two values. */
+function fingerprint(value: string) {
+  return crypto.createHash("sha256").update(value, "utf8").digest("hex").slice(0, 10);
+}
+
+function resolveFromEnv(names: string[]): { value: string; source: string } | null {
+  for (const name of names) {
+    const normalized = normalizeSecret(process.env[name] || "");
+    if (normalized) return { value: normalized, source: name };
+  }
+  return null;
+}
+
 /** Meta's callback verification token, configured in the app's webhook settings. */
+export function resolveVerifyTokenConfig() {
+  return resolveFromEnv(["WHATSAPP_WEBHOOK_VERIFY_TOKEN", "WHATSAPP_VERIFY_TOKEN"]);
+}
+
 export function resolveVerifyToken(): string | null {
-  return (
-    process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN ||
-    process.env.WHATSAPP_VERIFY_TOKEN ||
-    null
-  );
+  return resolveVerifyTokenConfig()?.value ?? null;
 }
 
 /** The Meta app secret used to sign every webhook body (X-Hub-Signature-256). */
+export function resolveAppSecretConfig() {
+  return resolveFromEnv(["META_APP_SECRET", "WHATSAPP_APP_SECRET"]);
+}
+
 export function resolveAppSecret(): string | null {
-  return process.env.META_APP_SECRET || process.env.WHATSAPP_APP_SECRET || null;
+  return resolveAppSecretConfig()?.value ?? null;
 }
 
 function timingSafeStringEqual(a: string, b: string) {
@@ -43,7 +68,7 @@ export function verifyMetaSignature(rawBody: string, signatureHeader: string | n
   if (!appSecret) {
     return {
       verified: false,
-      failureReason: "META_APP_SECRET not configured",
+      failureReason: "neither META_APP_SECRET nor WHATSAPP_APP_SECRET is set",
     };
   }
 
@@ -111,31 +136,78 @@ function keepAlive(promise: Promise<unknown>) {
  * 403 otherwise.
  */
 export async function handleWhatsAppWebhookVerification(req: NextRequest) {
-  const verifyToken = resolveVerifyToken();
+  const configured = resolveVerifyTokenConfig();
   const { searchParams } = new URL(req.url);
   const mode = searchParams.get("hub.mode");
-  const token = searchParams.get("hub.verify_token");
+  const rawToken = searchParams.get("hub.verify_token");
   const challenge = searchParams.get("hub.challenge");
+  const token = rawToken === null ? null : normalizeSecret(rawToken);
 
-  if (!verifyToken) {
+  // ─────────────────────────────────────────────────────────────────────────
+  // TEMP DIAGNOSTIC — remove once Meta's "Verify and Save" succeeds.
+  // Dumps the request exactly as it arrives, before any validation, to settle
+  // whether the hub.* params survive the Vercel → middleware → handler path.
+  // This logs the verify token in the clear on purpose (requested); rotate it
+  // once this block comes out.
+  // ─────────────────────────────────────────────────────────────────────────
+  const SECRET_HEADER = /^(authorization|cookie|set-cookie|x-hub-signature.*|.*-(token|secret|key|signature))$/i;
+  const headerDump: Record<string, string> = {};
+  req.headers.forEach((value, key) => {
+    headerDump[key] = SECRET_HEADER.test(key) ? "[REDACTED]" : value;
+  });
+  logger.info("webhook.whatsapp.verify_request_dump", {
+    method: req.method,
+    url: req.url,
+    next_url_href: req.nextUrl.href,
+    next_url_pathname: req.nextUrl.pathname,
+    next_url_search: req.nextUrl.search,
+    query_param_count: Array.from(searchParams.keys()).length,
+    all_query_params: Object.fromEntries(searchParams.entries()),
+    hub_mode: mode,
+    hub_verify_token: rawToken,
+    hub_challenge: challenge,
+    headers: headerDump,
+  });
+  // ───────────────────────────── END TEMP DIAGNOSTIC ───────────────────────
+
+  if (!configured) {
     logger.error("webhook.whatsapp.verify_misconfigured", {
-      reason: "WHATSAPP_WEBHOOK_VERIFY_TOKEN not configured",
+      reason: "neither WHATSAPP_WEBHOOK_VERIFY_TOKEN nor WHATSAPP_VERIFY_TOKEN is set",
     });
     return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
   }
 
-  if (mode === "subscribe" && token && challenge && timingSafeStringEqual(token, verifyToken)) {
-    logger.info("webhook.whatsapp.verify_success");
+  if (mode === "subscribe" && token && challenge && timingSafeStringEqual(token, configured.value)) {
+    logger.info("webhook.whatsapp.verify_success", { token_source: configured.source });
     return new Response(challenge, {
       status: 200,
       headers: { "content-type": "text/plain; charset=utf-8" },
     });
   }
 
+  // Enough to diagnose a 403 without putting the shared secret in a log:
+  // equal fingerprints mean equal tokens, and the length/trim fields catch the
+  // usual culprits (stray whitespace, quotes, a truncated paste). A plain GET
+  // with no hub.* params lands here too — that is the expected answer to a
+  // browser visit, not a fault.
+  const reason = !token
+    ? "missing hub.verify_token"
+    : mode !== "subscribe"
+      ? `hub.mode is ${JSON.stringify(mode)}, expected "subscribe"`
+      : !challenge
+        ? "missing hub.challenge"
+        : "token mismatch";
+
   logger.warn("webhook.whatsapp.verify_failed", {
+    reason,
     mode: mode || null,
-    has_token: Boolean(token),
     has_challenge: Boolean(challenge),
+    token_source: configured.source,
+    received_token_fingerprint: token ? fingerprint(token) : null,
+    received_token_length: token?.length ?? 0,
+    received_token_was_padded: rawToken !== null && rawToken !== token,
+    expected_token_fingerprint: fingerprint(configured.value),
+    expected_token_length: configured.value.length,
   });
   return new Response("Forbidden", { status: 403 });
 }
