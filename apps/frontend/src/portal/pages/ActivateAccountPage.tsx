@@ -25,6 +25,8 @@ import {
   X,
 } from 'lucide-react';
 import { tenantService } from '@features/tenants/api';
+import { ActivationLayout } from '@/platforms/tenant/onboarding/ActivationLayout';
+import type { ActivationVisualStep } from '@/platforms/tenant/onboarding/ActivationProgress';
 import { useAuth } from '@context/AuthContext';
 import { SignaturePad } from '@shared/ui/inputs';
 
@@ -1233,68 +1235,25 @@ export function ActivateAccountPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background px-4 py-5 sm:py-8">
-      {error && (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="fixed left-1/2 top-4 z-[80] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 shadow-2xl shadow-amber-900/10"
-        >
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-            <p className="min-w-0 flex-1 text-sm font-semibold leading-5 text-amber-900">{error}</p>
-            <button
-              type="button"
-              onClick={() => setError('')}
-              className="rounded-lg p-1 text-amber-700 transition-colors hover:bg-amber-100"
-              aria-label="Dismiss notification"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+    <ActivationLayout
+      hostelName={ctx.hostel.name}
+      hostelLogoUrl={ctx.hostel.logo_url}
+      activeStep={(activeStep || ctx.activation_state?.current_step || 'ACCOUNT') as ActivationVisualStep}
+      currentStep={(currentStep || 'ACCOUNT') as ActivationVisualStep}
+      completedSteps={new Set(ctx.activation_state?.completed_steps || [])}
+      onStepClick={(step) => goToStep(step as ActivationStep)}
+      error={error}
+      onDismissError={() => setError('')}
+      aside={
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-border bg-muted/50 px-4 py-2.5">
+          <span className="font-display text-[13px] font-bold text-foreground">
+            {String(ctx.room_summary.room_number || 'Room')} · {currency(ctx.room_summary.monthly_rent)}/month
+          </span>
+          <span className="text-[11.5px] text-muted-foreground">Starts {fmtDate(ctx.room_summary.billing_start_date)}</span>
         </div>
-      )}
-      <main className="mx-auto grid w-full max-w-6xl gap-5 lg:grid-cols-[360px_1fr]">
-        <aside className="h-fit rounded-2xl overflow-hidden border border-border shadow-sm">
-          <div
-            className="px-5 py-4 relative overflow-hidden"
-            style={{ background: 'linear-gradient(135deg, #1B2D5B 0%, #243A72 100%)' }}
-          >
-            <div
-              className="absolute inset-0 opacity-10"
-              style={{ backgroundImage: 'radial-gradient(circle at 80% 20%, #F07B1D 0%, transparent 60%)' }}
-            />
-            <div className="relative flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-white/15 ring-1 ring-white/20 flex items-center justify-center overflow-hidden shrink-0">
-                {ctx.hostel.logo_url ? (
-                  <img src={ctx.hostel.logo_url} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <Building2 className="w-6 h-6 text-white/80" />
-                )}
-              </div>
-              <div className="min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-white/60">Tenant admission</p>
-                <h1
-                  className="text-lg font-bold text-white truncate leading-tight"
-                  style={{ fontFamily: 'var(--font-display)' }}
-                >
-                  {ctx.hostel.name}
-                </h1>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-card p-5">
-            <Progress ctx={ctx} activeStep={activeStep || ctx.activation_state?.current_step} onStepClick={goToStep} />
-
-          <div className="mt-4 rounded-xl border border-border bg-secondary/40 px-4 py-2.5 text-sm flex items-center justify-between gap-3 flex-wrap">
-            <span className="font-bold text-foreground">{String(ctx.room_summary.room_number || 'Room')} • {currency(ctx.room_summary.monthly_rent)}/month</span>
-            <span className="text-xs text-muted-foreground">Starts {fmtDate(ctx.room_summary.billing_start_date)}</span>
-          </div>
-          </div>
-        </aside>
-
-        <section className="rounded-2xl border border-border bg-card p-5 pb-24 sm:p-6 sm:pb-6 shadow-sm">
+      }
+    >
+        <div className="rounded-[20px] border border-border bg-card p-5 pb-24 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)] sm:p-6 sm:pb-6">
           {activeStep === 'ACCOUNT' && !ctx.activation_state?.account_setup_completed && (
             <div className="space-y-6">
               <div>
@@ -2311,8 +2270,7 @@ export function ActivateAccountPage() {
               </div>
             </div>
           )}
-        </section>
-      </main>
+        </div>
 
       {showAgreementPreview && ctx?.agreement && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
@@ -2371,7 +2329,7 @@ export function ActivateAccountPage() {
           </div>
         </div>
       )}
-    </div>
+    </ActivationLayout>
   );
 }
 
