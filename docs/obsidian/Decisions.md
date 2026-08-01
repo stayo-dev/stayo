@@ -23,6 +23,31 @@ Architecture Decision Records — each entry below was **inferred from code evid
 
 ---
 
+## ADR-039: WhatsApp inbound routing is identity → intent → permission, not owner-assistant-first
+
+- **Date:** 2026-08-01
+- **Status:** accepted
+- **Context:** every inbound message was handed to `ownerWhatsAppAssistantService.processInboundMessage()` first, whatever it said and whoever sent it. The assistant parsed it as an owner command, found the sender's phone absent from `owner_whatsapp_identities`, logged `unauthorized_owner` and returned `null` — an authorization decision taken *before* anyone had established what was being asked. It happened to be harmless (the message continued to the tenant handlers), but it put the most privileged surface at the front of the pipeline, made the logs read as though ordinary tenant traffic was being rejected, and left no seam where a new role or a model-based classifier could be introduced without editing the routing code itself.
+- **Decision:** the pipeline is now **identity → intent(s) → permission → handler → fallback**, in `lib/services/notifications/routing/`.
+  - **Identity resolver** (`identity-resolver.ts`) classifies the sender once per message into `OWNER | TENANT | STAFF | ADMIN | UNKNOWN`, returning *all* roles the phone holds (an owner who also rents resolves to both) plus `ownerId`/`tenantIds`. UNKNOWN is a first-class identity, not an error — LINK has to work from a number nobody has seen yet.
+  - **Intent resolvers** (`intent-resolvers.ts`) implement one interface and return *ranked candidates*: tapped buttons, then a pending prompt, then LINK, then the owner assistant (for verified owners), then keywords. Order is data, not control flow.
+  - **Permission** is checked per intent, from the `allowedRoles` on its registry entry, and only *after* the intent is known.
+  - **Handlers may decline.** Returning `null`/`{handled: false}` sends the router to the next candidate, which is how an owner's message that the assistant doesn't recognise still reaches the tenant commands.
+  - **Every path replies**: handler result, denial message, error notice, or fallback.
+- **Alternatives considered:**
+  - **Keep the assistant first and just move the `unauthorized_owner` check inward** (rejected — it fixes the log line, not the shape: authorization still precedes understanding, and there is still no place to add a role or a classifier).
+  - **One resolver returning a single intent** (rejected — an owner-tenant sending `DUES` needs two candidates tried in order; single-intent resolution forces a precedence guess at classification time, before any handler has looked at the message).
+  - **Permissions inside each handler** (rejected — that is the status quo dispersed across 7000+ lines, and it is why "who may do this" was previously unanswerable without reading every handler).
+  - **Bring in an LLM classifier now** (rejected as premature — the seam is what matters. `IntentResolver` is async and returns ranked intents with a `slots` bag, and each registry entry carries a `description` that doubles as a tool description, so a model-backed resolver is appended to the chain without touching the router).
+- **Consequences:** `unauthorized_owner` effectively disappears — the assistant is now only consulted for verified owners or an explicit LINK, so it is no longer *asked* about traffic it was always going to refuse. Adding a role is a union member plus `allowedRoles` entries; adding an intent is a registry row. Costs, stated plainly: identity resolution adds up to three queries per inbound message (owner identity, tenants, admin profile) that the old path did not run, and an unrecognised number sending `DUES` now gets an explicit "this number isn't linked" reply where it previously got the balance handler's "no active tenant found" — better copy, but a different message. **STAFF is declared in the union and permission tables but is never produced**: this schema's `Role` enum is `OWNER | TENANT | ADMIN` and there is no staff table to resolve against, so the role is ready but inert.
+- **Enrichment (same decision, extended 2026-08-01):** `SenderIdentity` now carries the entity context handlers would otherwise re-query — `ownerId`, `tenantIds`/`hostelIds`, and a `residents[]` of `{tenantId, hostelId, name, status, matchedVia}` — plus derived `permissions` and a `confidence` score. Two deliberate constraints:
+  - **`tenantId` and `hostelId` are set only when unambiguous.** A guardian paying for two siblings gets `tenantId: null` and two entries in `residents`. Collapsing that to the first match would be the "first hostel" bug in another costume, which `architectural-invariants-check.ts` exists to prevent.
+  - **`confidence` reflects the evidence**: a verified owner link is `1`, a tenant matched on their own handset `0.95`, one matched only through a *guardian's* phone `0.6` — the person holding that phone is probably not the resident. UNKNOWN is `0`.
+  Permissions (`billing.read`, `payment.initiate`, `resident.switch`, `owner.console`, `self.service`) are derived from roles and enforced by the router alongside roles, so a capability distinction like "STAFF may read a balance but not start a payment" needs no new branch. `Intent` gained `metadata` (resolver provenance, model, latency, alternatives) and intents may declare `minConfidence` — a model that is 40% sure someone wants to pay now falls through to the fallback instead of sending a payment link. Handlers see none of this unless they ask for it, which is what keeps a resolver swap from touching them.
+- **Related:** [[Backend]], [[Business-Rules]], [[Architecture]], [[Bugs]], [[Changelog]], [[Decisions#ADR-037|ADR-037]]
+
+---
+
 ## ADR-038: Owner KYC is a real upload with an admin-only verified state, in its own table
 
 - **Date:** 2026-08-01

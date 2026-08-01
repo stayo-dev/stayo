@@ -53,7 +53,18 @@ Two structurally separate WhatsApp systems:
 - **`owner-whatsapp-assistant.ts`** (7180 lines — the largest file in the entire services tree) — owner-facing conversational assistant, ID-based interactive menus rather than flat keyword commands.
 - **`whatsapp-webhook-event-service.ts`** — tenant-facing entry point. Flat text-command router (`BAL`/`BALANCE`, `SWITCH`, `DUES`, `PAY`, `STATUS`, `HELP`) plus interactive button-reply handling. See [[Business-Rules]] for the exact command table. Also owns webhook persistence/idempotency: `recordReceived()` (hash of the raw body, `ON CONFLICT DO NOTHING`) and `claimForProcessing()` (atomic claim — one delivery wins, stale `PROCESSING` reclaimable after 10 min).
 
-Both are reached through **one** webhook handler, `whatsapp-webhook-handler.ts` — signature verification, the GET challenge, and acknowledge-then-process live there, and the two route files (`/api/webhooks/whatsapp` canonical, `/api/webhooks/notifications/whatsapp` legacy) only delegate to it. Don't add a third entry point; see [[Decisions#ADR-037|ADR-037]] and [[APIs#Notifications & WhatsApp|APIs]].
+**Neither is the entry point.** Since [[Decisions#ADR-039|ADR-039]] inbound messages go through `lib/services/notifications/routing/`, a four-part pipeline:
+
+| File | Role |
+|---|---|
+| `routing/types.ts` | `SenderRole`, `SenderIdentity` (roles + `permissions` + `confidence` + resolved `residents`/`tenantId`/`hostelId`), `Intent` (+ `slots`, `metadata`), the `IntentResolver` interface, `IntentDefinition` (description + `allowedRoles` + `requiredPermissions` + `minConfidence` + handler) |
+| `routing/identity-resolver.ts` | phone → `OWNER \| TENANT \| STAFF \| ADMIN \| UNKNOWN` (all roles held, not just one); UNKNOWN is a valid identity |
+| `routing/intent-resolvers.ts` | ranked intent candidates — interactive → pending selection → LINK → owner assistant → keywords; `createCompositeIntentResolver` chains them |
+| `routing/message-router.ts` | identity → candidates → permission → handler, with decline-and-continue, and a reply on every path |
+
+Authorization lives **only** in the registry's `allowedRoles` (built in `whatsapp-webhook-event-service.buildIntentRegistry()`) and is checked *after* the intent is known. A handler returning `null`/`{handled:false}` means "not mine" and the router tries the next candidate. To add a role: extend the union, add it to the relevant `allowedRoles`. To add an LLM classifier: implement `IntentResolver` and append it to the chain — the router does not change.
+
+Both mounts are reached through **one** webhook handler, `whatsapp-webhook-handler.ts` — signature verification, the GET challenge, and acknowledge-then-process live there, and the two route files (`/api/webhooks/whatsapp` canonical, `/api/webhooks/notifications/whatsapp` legacy) only delegate to it. Don't add a third entry point; see [[Decisions#ADR-037|ADR-037]] and [[APIs#Notifications & WhatsApp|APIs]].
 
 Plus: `briefing-engine.ts` (owner daily briefing cards), `whatsapp-reminder-delivery.ts`, `whatsapp-billing-intelligence.ts`, `whatsapp-selection-state.ts` (conversational state machine, Redis-backed), `whatsapp-resident-context.ts` (tracks which tenant a phone number is "acting as" in a shared household), `providers/whatsapp/meta-provider.ts` (the actual Meta Cloud API client).
 

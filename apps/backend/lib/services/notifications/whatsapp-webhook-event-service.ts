@@ -8,7 +8,6 @@ import { rateLimitService } from "@/lib/services/rate-limit-service";
 import { MetaWhatsAppProvider } from "./providers/whatsapp/meta-provider";
 import { ownerWhatsAppAssistantService } from "./owner-whatsapp-assistant";
 import {
-  getSelectionState,
   setSelectionState,
   deleteSelectionState,
   BalanceSelectionState,
@@ -27,6 +26,17 @@ import {
 } from "./whatsapp-billing-intelligence";
 import { formatBalanceResponse } from "./whatsapp-balance-formatter";
 import { getFrontendUrl } from "@/lib/config/domains";
+import { routeInboundMessage } from "./routing/message-router";
+import { resolveSenderIdentity } from "./routing/identity-resolver";
+import { INTENTS, defaultIntentResolver } from "./routing/intent-resolvers";
+import {
+  ANY_ROLE,
+  Intent,
+  IntentDefinition,
+  KNOWN_ROLES,
+  PERMISSIONS,
+  SenderIdentity,
+} from "./routing/types";
 
 const logger = getLogger("whatsapp.webhook-event");
 
@@ -256,6 +266,59 @@ export function extractMessageEvents(payload: unknown): ExtractedMessageEvent[] 
   return events;
 }
 
+/**
+ * Message types the extractor above deliberately does not handle (media,
+ * stickers, reactions, location, template quick-reply `button`, system…).
+ * Returned so the caller can say so out loud — a payload that arrives, matches
+ * nothing, and is marked PROCESSED with zero events is otherwise invisible.
+ */
+export function findUnhandledMessageTypes(payload: unknown, extracted: ExtractedMessageEvent[]) {
+  const handledIds = new Set(extracted.map((event) => event.messageId));
+  const unhandled: Array<{ id: string; type: string }> = [];
+
+  for (const entry of (payload as any)?.entry || []) {
+    for (const change of entry.changes || []) {
+      for (const item of change.value?.messages || []) {
+        if (!handledIds.has(item.id)) {
+          unhandled.push({ id: item.id, type: item.type || "unknown" });
+        }
+      }
+    }
+  }
+
+  return unhandled;
+}
+
+// Command-keyword matching now lives with the intent resolvers; re-exported so
+// existing callers/tests keep one import site.
+export { resolveCommandKey } from "./routing/intent-resolvers";
+
+/** Shared by HELP and by the unrecognised-message fallback, so they can't drift. */
+export function buildHelpText(resident: { residentName: string; residentRoom: string } | null) {
+  if (resident) {
+    return [
+      `Active Resident: ${resident.residentName} (Room ${resident.residentRoom})`,
+      "",
+      "Available commands:",
+      "BAL — Balance summary",
+      "DUES — View pending dues",
+      "PAY — Pay now",
+      "STATUS — Agreement status",
+      "SWITCH — Change resident",
+      "HELP — Show this menu",
+    ].join("\n");
+  }
+
+  return [
+    "Welcome to Stayo",
+    "",
+    "Send BAL to view your balance and select a resident.",
+    "",
+    "After selecting a resident, you can use:",
+    "BAL, DUES, PAY, STATUS, SWITCH, HELP",
+  ].join("\n");
+}
+
 export class WhatsAppWebhookEventService {
   private static readonly COMMAND_HANDLERS: Record<
     string,
@@ -377,8 +440,22 @@ export class WhatsAppWebhookEventService {
 
     // 1. Check for inbound messages (commands)
     const messages = extractMessageEvents(payload);
+
+    const unhandled = findUnhandledMessageTypes(payload, messages);
+    if (unhandled.length > 0) {
+      logger.warn("whatsapp.webhook.unhandled_message_types", {
+        webhook_event_id: eventId,
+        count: unhandled.length,
+        types: unhandled.map((item) => item.type),
+        message_ids: unhandled.map((item) => item.id),
+      });
+    }
+
     if (messages.length > 0) {
       let processedCommands = 0;
+      let fallbackReplies = 0;
+      let deniedMessages = 0;
+      let failedMessages = 0;
       const commandResults: any[] = [];
 
       for (const msg of messages) {
@@ -391,48 +468,58 @@ export class WhatsAppWebhookEventService {
           body_preview: msg.body.slice(0, 80),
         });
 
-        const ownerResult = await ownerWhatsAppAssistantService.processInboundMessage(msg.from, msg.body);
-        if (ownerResult?.handled) {
-          commandResults.push({
-            channel: "OWNER_ASSISTANT",
-            ...ownerResult,
+        // One bad message must not abandon the rest of the batch, and must not
+        // leave the sender staring at silence.
+        try {
+          const outcome = await routeInboundMessage(msg, {
+            resolveIdentity: resolveSenderIdentity,
+            intentResolver: defaultIntentResolver,
+            registry: this.buildIntentRegistry(),
+            onFallback: ({ message }) => this.sendUnrecognizedFallback(eventId, message),
+            onDenied: ({ message, identity, intent }) =>
+              this.sendPermissionDenied(eventId, message, identity, intent),
+            onError: ({ message }) => this.sendErrorNotice(message),
+            correlationId: eventId,
           });
-          processedCommands++;
-          continue;
-        }
 
-        const cleanBody = msg.body.trim().toUpperCase();
+          commandResults.push({
+            phone: msg.from,
+            role: outcome.identity.role,
+            intent: outcome.intent?.name || null,
+            status: outcome.status,
+            result: outcome.result,
+          });
 
-        // V2: Handle interactive button/list replies first
-        if (msg.messageType === "interactive") {
-          const interactiveResult = await this.handleInteractiveReply(msg);
-          if (interactiveResult) {
-            commandResults.push(interactiveResult);
-            processedCommands++;
-            continue;
-          }
-        }
-
-        const handler = WhatsAppWebhookEventService.COMMAND_HANDLERS[cleanBody];
-        if (handler) {
-          const res = await handler(this, msg);
-          commandResults.push(res);
-          processedCommands++;
-        } else {
-          // Check if there is an active selection state for this sender
-          const selectionState = await getSelectionState(msg.from);
-          if (selectionState && selectionState.action === "BALANCE_SELECTION") {
-            const res = await this.handleSelectionReply(msg, selectionState);
-            commandResults.push(res);
-            processedCommands++;
-          }
+          if (outcome.status === "HANDLED") processedCommands++;
+          else if (outcome.status === "FALLBACK") fallbackReplies++;
+          else if (outcome.status === "DENIED") deniedMessages++;
+          else failedMessages++;
+        } catch (error: any) {
+          failedMessages++;
+          logger.error("whatsapp.webhook.message_failed", {
+            webhook_event_id: eventId,
+            from: msg.from,
+            message_id: msg.messageId,
+            body_preview: msg.body.slice(0, 80),
+            error: error?.message || String(error),
+          });
+          commandResults.push({
+            phone: msg.from,
+            success: false,
+            reason: "HANDLER_ERROR",
+            error: error?.message || String(error),
+          });
+          await this.sendErrorNotice(msg).catch(() => {});
         }
       }
 
-      if (processedCommands > 0) {
+      if (processedCommands > 0 || fallbackReplies > 0 || deniedMessages > 0 || failedMessages > 0) {
         const result = {
           inbound_messages: messages.length,
           processed_commands: processedCommands,
+          fallback_replies: fallbackReplies,
+          denied_messages: deniedMessages,
+          failed_messages: failedMessages,
           command_results: commandResults,
         };
         await this.markProcessed(eventId, result);
@@ -1741,32 +1828,189 @@ export class WhatsAppWebhookEventService {
     const provider = new MetaWhatsAppProvider();
     const cached = await resolveActiveResident(phone);
 
-    let text: string;
-    if (cached) {
-      text = [
-        `Active Resident: ${cached.residentName} (Room ${cached.residentRoom})`,
-        "",
-        "Available commands:",
-        "BAL — Balance summary",
-        "DUES — View pending dues",
-        "PAY — Pay now",
-        "STATUS — Agreement status",
-        "SWITCH — Change resident",
-        "HELP — Show this menu",
-      ].join("\n");
-    } else {
-      text = [
-        "Welcome to Sri Adithya Hostels",
-        "",
-        "Send BAL to view your balance and select a resident.",
-        "",
-        "After selecting a resident, you can use:",
-        "BAL, DUES, PAY, STATUS, SWITCH, HELP",
-      ].join("\n");
+    await provider.sendTextMessage(phone, buildHelpText(cached));
+    return { phone, command: "HELP", success: true };
+  }
+
+  /**
+   * The intent table: what each intent is for, and who may invoke it.
+   *
+   * This is the only place authorization is expressed. Adding a role means
+   * adding it to `allowedRoles` here; adding an LLM-resolved intent means
+   * adding a row. Neither touches the router.
+   */
+  private buildIntentRegistry(): Record<string, IntentDefinition> {
+    const balanceRoles = KNOWN_ROLES; // anyone we can actually match to records
+    return {
+      [INTENTS.HELP]: {
+        name: INTENTS.HELP,
+        description: "Show the list of available commands.",
+        allowedRoles: ANY_ROLE,
+        handler: ({ message }) => this.handleHelpCommand(message),
+      },
+      [INTENTS.BALANCE]: {
+        name: INTENTS.BALANCE,
+        description: "Summarise the resident's balance, prompting for a resident when ambiguous.",
+        allowedRoles: balanceRoles,
+        requiredPermissions: [PERMISSIONS.BILLING_READ],
+        handler: ({ message }) => this.handleBalanceCommand(message),
+      },
+      [INTENTS.DUES]: {
+        name: INTENTS.DUES,
+        description: "List the resident's pending dues.",
+        allowedRoles: balanceRoles,
+        requiredPermissions: [PERMISSIONS.BILLING_READ],
+        handler: ({ message }) => this.handleDuesCommand(message),
+      },
+      [INTENTS.PAY]: {
+        name: INTENTS.PAY,
+        description: "Send a payment link for the resident's outstanding dues.",
+        allowedRoles: balanceRoles,
+        requiredPermissions: [PERMISSIONS.PAYMENT_INITIATE],
+        handler: ({ message }) => this.handlePayCommand(message),
+      },
+      [INTENTS.STATUS]: {
+        name: INTENTS.STATUS,
+        description: "Report the resident's agreement status.",
+        allowedRoles: balanceRoles,
+        requiredPermissions: [PERMISSIONS.BILLING_READ],
+        handler: ({ message }) => this.handleStatusCommand(message),
+      },
+      [INTENTS.SWITCH]: {
+        name: INTENTS.SWITCH,
+        description: "Change which resident this phone number is acting for.",
+        allowedRoles: balanceRoles,
+        requiredPermissions: [PERMISSIONS.RESIDENT_SWITCH],
+        handler: ({ message }) => this.handleSwitchCommand(message),
+      },
+      [INTENTS.INTERACTIVE_REPLY]: {
+        name: INTENTS.INTERACTIVE_REPLY,
+        description: "Handle a tapped button or list selection.",
+        // The payload was minted by a message we sent to this number, so the
+        // authorization already happened when we sent it.
+        allowedRoles: ANY_ROLE,
+        handler: ({ message }) => this.handleInteractiveReply(message),
+      },
+      [INTENTS.CONTINUE_SELECTION]: {
+        name: INTENTS.CONTINUE_SELECTION,
+        description: "Continue a pending resident-selection prompt.",
+        allowedRoles: ANY_ROLE,
+        handler: ({ message, intent }) =>
+          this.handleSelectionReply(message, (intent.slots as any)?.state),
+      },
+      [INTENTS.OWNER_ASSISTANT]: {
+        name: INTENTS.OWNER_ASSISTANT,
+        description:
+          "Owner-side assistant: briefings, collections, invites, interactive menus, and LINK.",
+        // Deliberately open: LINK must work from a number we do not yet know —
+        // that is how an owner links their phone. The assistant authorizes each
+        // command itself and returns `handled: false` when it declines, which
+        // sends the router on to the next candidate instead of ending here.
+        allowedRoles: ANY_ROLE,
+        handler: ({ message }) =>
+          ownerWhatsAppAssistantService.processInboundMessage(message.from, message.body),
+      },
+    };
+  }
+
+  /** Understood the request, but this sender may not make it. Say so plainly. */
+  private async sendPermissionDenied(
+    eventId: string,
+    msg: ExtractedMessageEvent,
+    identity: SenderIdentity,
+    intent: Intent
+  ) {
+    logger.info("whatsapp.webhook.permission_denied", {
+      webhook_event_id: eventId,
+      from: msg.from,
+      role: identity.role,
+      intent: intent.name,
+      body_preview: msg.body.slice(0, 80),
+    });
+
+    const limit = await rateLimitService.checkStatelessLimit({
+      scope: "whatsapp_denied",
+      identifier: msg.from,
+      maxAttempts: 3,
+      windowSeconds: 10 * 60,
+    });
+    if (!limit.allowed) {
+      return { phone: msg.from, channel: "DENIED", success: false, reason: "RATE_LIMITED" };
     }
 
+    const provider = new MetaWhatsAppProvider();
+    await provider.sendTextMessage(
+      msg.from,
+      [
+        "This number isn't linked to a Stayo account yet, so we can't look that up.",
+        "",
+        "If you're a resident, ask your hostel owner to add this number to your profile.",
+        "If you're an owner, send LINK followed by the code from your dashboard.",
+      ].join("\n")
+    );
+
+    return { phone: msg.from, channel: "DENIED", success: true, intent: intent.name };
+  }
+
+  /**
+   * Nothing matched — answer anyway. An inbound message that produces no reply
+   * reads as a broken number to the sender, so the only thing that may stay
+   * silent is a sender who has already been answered several times (below),
+   * which stops a chatty stranger from turning into a reply loop.
+   */
+  private async sendUnrecognizedFallback(eventId: string, msg: ExtractedMessageEvent) {
+    const phone = msg.from;
+
+    const limit = await rateLimitService.checkStatelessLimit({
+      scope: "whatsapp_fallback",
+      identifier: phone,
+      maxAttempts: 3,
+      windowSeconds: 10 * 60,
+    });
+
+    if (!limit.allowed) {
+      logger.info("whatsapp.webhook.fallback_rate_limited", {
+        webhook_event_id: eventId,
+        from: phone,
+        body_preview: msg.body.slice(0, 80),
+      });
+      return { phone, channel: "FALLBACK", success: false, reason: "RATE_LIMITED" };
+    }
+
+    logger.info("whatsapp.webhook.unrecognized_message", {
+      webhook_event_id: eventId,
+      from: phone,
+      message_type: msg.messageType,
+      body_preview: msg.body.slice(0, 80),
+    });
+
+    const provider = new MetaWhatsAppProvider();
+    const cached = await resolveActiveResident(phone);
+    const text = [
+      "Sorry — I didn't understand that.",
+      "",
+      buildHelpText(cached),
+    ].join("\n");
+
     await provider.sendTextMessage(phone, text);
-    return { phone, command: "HELP", success: true };
+    return { phone, channel: "FALLBACK", success: true };
+  }
+
+  /** A handler blew up. Say so rather than leaving the sender hanging. */
+  private async sendErrorNotice(msg: ExtractedMessageEvent) {
+    const limit = await rateLimitService.checkStatelessLimit({
+      scope: "whatsapp_error_notice",
+      identifier: msg.from,
+      maxAttempts: 2,
+      windowSeconds: 10 * 60,
+    });
+    if (!limit.allowed) return;
+
+    const provider = new MetaWhatsAppProvider();
+    await provider.sendTextMessage(
+      msg.from,
+      "Something went wrong on our side and we couldn't complete that request. Please try again in a few minutes."
+    );
   }
 
   // ─── V2 Quick Actions ───

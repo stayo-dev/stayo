@@ -28,6 +28,16 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### The WhatsApp bot answered only messages that were *exactly* a command, and stayed silent for everything else
+
+- **Status:** fixed
+- **Found:** 2026-08-01, first real inbound message after webhook delivery started working: "test help" produced `unauthorized_owner` and `processed_commands: 0`, and the sender got no reply at all.
+- **Area:** [[Backend]]
+- **Symptom:** a real tenant message reached the handler, was logged, and then vanished — no command ran, no reply was sent, and the event was recorded as `{status_events: 0, updated_logs: 0}` as if nothing had arrived.
+- **Root cause:** two independent gaps that only combine into silence. (1) Command lookup was `COMMAND_HANDLERS[msg.body.trim().toUpperCase()]` — an exact match on the **entire** message, so "test help" looked up the key `"TEST HELP"` and missed; only a bare "help" ever matched. (2) The `else` branch checked for a pending selection state and, finding none, did nothing — there was no default reply, and because `processedCommands` stayed `0` the code fell through to the *status* branch and reported a status-event result for what was actually an inbound message. `unauthorized_owner` was a red herring: it returns `null` and correctly lets the message continue to the tenant handlers.
+- **Fix:** `resolveCommandKey()` (whole message → first word → single unambiguous command token, punctuation stripped) replaces the exact lookup; an unrecognised message now gets "Sorry — I didn't understand that." plus the help text, rate-limited 3 / 10 min per sender; each message is wrapped in its own `try/catch` so a throwing handler neither abandons the rest of the batch nor leaves the sender hanging; and the result shape gained `fallback_replies` / `failed_messages` so a delivery that produced no *command* is no longer indistinguishable from one that produced nothing. Fixed in passing: the no-resident help text still said "Welcome to Sri Adithya Hostels", a retired identity ([[Decisions#ADR-033|ADR-033]]).
+- **Related:** [[Business-Rules]], [[Features]], [[Changelog]]
+
 ### Any `/api/…` URL with a trailing slash was silently served the SPA's `index.html` instead of reaching the backend
 
 - **Status:** fixed in config (`apps/frontend/vercel.json`); **needs a frontend redeploy to take effect**

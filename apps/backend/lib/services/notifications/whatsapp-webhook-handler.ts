@@ -143,33 +143,6 @@ export async function handleWhatsAppWebhookVerification(req: NextRequest) {
   const challenge = searchParams.get("hub.challenge");
   const token = rawToken === null ? null : normalizeSecret(rawToken);
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // TEMP DIAGNOSTIC — remove once Meta's "Verify and Save" succeeds.
-  // Dumps the request exactly as it arrives, before any validation, to settle
-  // whether the hub.* params survive the Vercel → middleware → handler path.
-  // This logs the verify token in the clear on purpose (requested); rotate it
-  // once this block comes out.
-  // ─────────────────────────────────────────────────────────────────────────
-  const SECRET_HEADER = /^(authorization|cookie|set-cookie|x-hub-signature.*|.*-(token|secret|key|signature))$/i;
-  const headerDump: Record<string, string> = {};
-  req.headers.forEach((value, key) => {
-    headerDump[key] = SECRET_HEADER.test(key) ? "[REDACTED]" : value;
-  });
-  logger.info("webhook.whatsapp.verify_request_dump", {
-    method: req.method,
-    url: req.url,
-    next_url_href: req.nextUrl.href,
-    next_url_pathname: req.nextUrl.pathname,
-    next_url_search: req.nextUrl.search,
-    query_param_count: Array.from(searchParams.keys()).length,
-    all_query_params: Object.fromEntries(searchParams.entries()),
-    hub_mode: mode,
-    hub_verify_token: rawToken,
-    hub_challenge: challenge,
-    headers: headerDump,
-  });
-  // ───────────────────────────── END TEMP DIAGNOSTIC ───────────────────────
-
   if (!configured) {
     logger.error("webhook.whatsapp.verify_misconfigured", {
       reason: "neither WHATSAPP_WEBHOOK_VERIFY_TOKEN nor WHATSAPP_VERIFY_TOKEN is set",

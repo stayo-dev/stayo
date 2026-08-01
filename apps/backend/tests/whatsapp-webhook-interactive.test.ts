@@ -112,3 +112,40 @@ describe("WhatsApp webhook interactive extraction", () => {
     expect(events).toEqual([]);
   });
 });
+
+describe("Unhandled inbound message types", () => {
+  const payload = (messages: any[]) => ({ entry: [{ changes: [{ field: "messages", value: { messages } }] }] });
+
+  it("reports media/sticker/reaction/button messages the extractor drops", async () => {
+    const { extractMessageEvents, findUnhandledMessageTypes } = await import(
+      "@/lib/services/notifications/whatsapp-webhook-event-service"
+    );
+    const body = payload([
+      { type: "text", from: "91790", id: "wamid.ok", timestamp: "1", text: { body: "DUES" } },
+      { type: "image", from: "91790", id: "wamid.img", timestamp: "2", image: { id: "media-1" } },
+      { type: "button", from: "91790", id: "wamid.btn", timestamp: "3", button: { text: "Pay now" } },
+      { type: "reaction", from: "91790", id: "wamid.rct", timestamp: "4", reaction: { emoji: "👍" } },
+    ]);
+
+    const extracted = extractMessageEvents(body);
+    const unhandled = findUnhandledMessageTypes(body, extracted);
+
+    expect(extracted.map((e) => e.messageId)).toEqual(["wamid.ok"]);
+    expect(unhandled).toEqual([
+      { id: "wamid.img", type: "image" },
+      { id: "wamid.btn", type: "button" },
+      { id: "wamid.rct", type: "reaction" },
+    ]);
+  });
+
+  it("reports nothing when every message was handled", async () => {
+    const { extractMessageEvents, findUnhandledMessageTypes } = await import(
+      "@/lib/services/notifications/whatsapp-webhook-event-service"
+    );
+    const body = payload([
+      { type: "text", from: "91790", id: "wamid.a", timestamp: "1", text: { body: "HELP" } },
+    ]);
+
+    expect(findUnhandledMessageTypes(body, extractMessageEvents(body))).toEqual([]);
+  });
+});
