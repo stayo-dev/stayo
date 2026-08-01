@@ -30,7 +30,7 @@ export function MorePage() {
 
       <button
         type="button"
-        onClick={() => navigate('/owner/more/workspace-configuration')}
+        onClick={() => navigate('/owner/more/configuration')}
         className="flex items-center gap-3.5 rounded-[20px] bg-foreground px-[18px] py-4 text-left shadow-[0_12px_30px_rgba(34,30,26,0.22)]"
       >
         <span className="flex h-11 w-11 flex-none items-center justify-center rounded-[13px] bg-[rgba(217,144,111,0.18)]">
