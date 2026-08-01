@@ -240,6 +240,16 @@ model hostels {
   public_slug         String?                  @unique
   admissions_enabled  Boolean                  @default(true)
   house_rules         Json?
+  /// BOYS | GIRLS | CO_LIVING | WORKING_PROS. Plain string rather than a Prisma
+  /// enum, matching this schema's existing convention for descriptive statuses;
+  /// the allowed set is enforced by HostelProvisionSchema at the API boundary.
+  hostel_type         String?
+  food_included       Boolean                  @default(false)
+  /// The owner's intent to list publicly, captured at onboarding's Publish step.
+  /// Deliberately NOT `listing_status` — that is admin-controlled and paired with
+  /// `verification_status` by the Platform Admin console, so an owner writing it
+  /// directly would self-approve past platform verification. See ADR-040.
+  publish_requested   Boolean                  @default(false)
   verification_status HostelVerificationStatus @default(PENDING)
   listing_status      HostelListingStatus      @default(DRAFT)
   admission_photos    Json?

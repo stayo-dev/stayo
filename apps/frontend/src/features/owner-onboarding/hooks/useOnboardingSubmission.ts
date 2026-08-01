@@ -1,11 +1,23 @@
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { stayoToast } from '@shared/ui-patterns/Toast';
-import { onboardingApi } from '../api/onboardingApi';
+import { onboardingApi, type HostelTypeCode } from '../api/onboardingApi';
 import { hostelLeadsApi } from '@features/hostel-leads/api';
-import type { OwnerOnboardingStateApi } from './useOwnerOnboardingState';
+import type { OwnerOnboardingData, OwnerOnboardingStateApi } from './useOwnerOnboardingState';
 
-/** The backend's 409 for a taken email (see /api/auth/owner-signup). */
+/** The wizard's display labels → the codes the backend stores. */
+const HOSTEL_TYPE_CODES: Record<OwnerOnboardingData['type'], HostelTypeCode> = {
+  Boys: 'BOYS',
+  Girls: 'GIRLS',
+  'Co-Living': 'CO_LIVING',
+  'Working Pros': 'WORKING_PROS',
+};
+
+/**
+ * The backend's 409 "this already exists" — a taken email on
+ * /api/auth/owner-signup, or a duplicate hostel name on
+ * /api/owner/hostels/provision.
+ */
 const isAlreadyRegistered = (error: unknown) => {
   const err = (error as { response?: { status?: number; data?: { error?: { code?: string } } } })?.response;
   return err?.status === 409 || err?.data?.error?.code === 'ALREADY_EXISTS';
@@ -130,30 +142,33 @@ export function useOnboardingSubmission(s: OwnerOnboardingStateApi, leadToken?: 
     }
   };
 
+  /**
+   * Publishes the hostel in a single request.
+   *
+   * This used to be `1 + floors + (floors × roomsPerFloor)` sequential calls —
+   * 45 for the default 4-floor, 10-room property — with no transaction and no
+   * rollback. A failure at floor 3 committed a half-built hostel, and pressing
+   * Publish again hit the owner-scoped duplicate-name guard and 400'd forever,
+   * leaving the owner permanently stuck on this step. The backend now does the
+   * whole thing inside one transaction, so a failure leaves nothing behind and
+   * retrying just works.
+   */
   const submitPublish = async () => {
     setPublishing(true);
     try {
-      const hostel = await onboardingApi.createHostel({
+      await onboardingApi.provisionHostel({
         name: s.data.hostelName.trim() || 'My Hostel',
+        type: HOSTEL_TYPE_CODES[s.data.type],
         address: s.data.address.trim(),
         city: s.data.city.trim() || undefined,
+        food_included: s.data.food === 'Yes',
+        security_deposit: Number(s.data.deposit) || 0,
+        floors: s.data.floors,
+        rooms_per_floor: s.data.roomsPerFloor,
+        beds_per_room: s.data.bedsPerRoom,
+        base_rent: Number(s.data.monthlyRent),
+        publish: s.publishChoice,
       });
-
-      for (let floorNum = 1; floorNum <= s.data.floors; floorNum++) {
-        const floor = await onboardingApi.createFloor({
-          hostelId: hostel.id,
-          name: `Floor ${floorNum}`,
-          sort_order: floorNum,
-        });
-        for (let roomNum = 1; roomNum <= s.data.roomsPerFloor; roomNum++) {
-          await onboardingApi.createRoom({
-            hostelId: hostel.id,
-            room_no: `${floorNum}${String(roomNum).padStart(2, '0')}`,
-            capacity: s.data.bedsPerRoom,
-            floor_id: floor.id,
-          });
-        }
-      }
 
       if (leadToken) {
         try {
@@ -165,7 +180,16 @@ export function useOnboardingSubmission(s: OwnerOnboardingStateApi, leadToken?: 
 
       s.go(s.step + 1);
     } catch (error) {
-      stayoToast.error(getErrorMessage(error, 'Could not publish your hostel. Please try again.'));
+      // A 409 means this owner already has a hostel by that name — most often
+      // a shell left behind by the pre-transaction publish flow. Say so
+      // plainly instead of asking them to retry something that cannot succeed.
+      if (isAlreadyRegistered(error)) {
+        stayoToast.error(
+          getErrorMessage(error, 'You already have a hostel with this name. Rename it here, or open it from your dashboard.'),
+        );
+      } else {
+        stayoToast.error(getErrorMessage(error, 'Could not publish your hostel. Please try again.'));
+      }
     } finally {
       setPublishing(false);
     }

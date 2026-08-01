@@ -11,7 +11,7 @@ export function DetailsStep({ data, setD }: DetailsStepProps) {
     <div>
       <div className={eyebrow}>SHAPE THE STRUCTURE</div>
       <h1 className={h1}>A few property details.</h1>
-      <p className={sub}>Capacity, meals and deposit. You&apos;ll lay out floors and rooms next.</p>
+      <p className={sub}>Capacity, meals and money. You&apos;ll lay out floors and rooms next.</p>
       <div className="flex max-w-[460px] flex-col gap-3.5">
         <div className={tile}>
           <div>
@@ -54,6 +54,22 @@ export function DetailsStep({ data, setD }: DetailsStepProps) {
               onChange={(e) => setD({ deposit: e.target.value.replace(/[^0-9]/g, '') })}
               inputMode="numeric"
               className="w-24 border-0 border-b-2 border-border bg-transparent px-0.5 py-1 text-right font-display text-lg font-bold text-foreground focus:border-primary focus:outline-none"
+            />
+          </div>
+        </div>
+        <div className={tile}>
+          <div>
+            <div className={tileTitle}>Starting monthly rent</div>
+            <div className={tileSub}>Applied to every room — change any room later</div>
+          </div>
+          <div className="flex items-center gap-1 font-display text-lg font-bold text-foreground">
+            ₹
+            <input
+              value={data.monthlyRent}
+              onChange={(e) => setD({ monthlyRent: e.target.value.replace(/[^0-9]/g, '') })}
+              inputMode="numeric"
+              placeholder="6500"
+              className="w-24 border-0 border-b-2 border-border bg-transparent px-0.5 py-1 text-right font-display text-lg font-bold text-foreground placeholder:font-normal placeholder:text-muted-foreground focus:border-primary focus:outline-none"
             />
           </div>
         </div>

@@ -75,6 +75,13 @@ Added 2026-07-26 for the tenant Room tab's 6 request types — maintenance, room
 ### `hostel_utility_status`
 Added 2026-07-26 for the tenant Room tab's "Living status" grid (water/wifi/electricity/cleaning). One row per `(hostel_id, utility)` (`@@unique`), owner-editable (`PATCH /api/utility-status`), tenant-read via `/api/tenants/me/room`. Defaults to `OK` when no row exists yet for a utility (the frontend, not the DB, supplies this default — no row is auto-created).
 
+### `hostels.hostel_type` / `hostels.food_included` / `hostels.publish_requested`
+Added 2026-08-01 ([[Decisions#ADR-040|ADR-040]], migration `20260801100000_hostel_provisioning_fields`, idempotent `ADD COLUMN IF NOT EXISTS`) so `POST /api/owner/hostels/provision` has somewhere to put three fields the onboarding wizard had been collecting and discarding. `hostel_type` is a plain `String?` (`BOYS | GIRLS | CO_LIVING | WORKING_PROS`), not a Prisma enum — matching this schema's existing convention for descriptive statuses; the allowed set is enforced by `HostelProvisionSchema` at the API boundary. `food_included` is `Boolean @default(false)`.
+
+**`publish_requested` is deliberately not `listing_status`.** `listing_status = LIVE` is written only by the Platform Admin console and always paired with `verification_status = VERIFIED` (`POST /api/platform-admin/hostels/:id/approve-listing`); if onboarding wrote it, any owner could self-approve their own public listing past platform verification. `publish_requested` records the owner's *intent* from the wizard's Publish step and leaves that gate alone. **It has no consumer yet** — the admin console neither surfaces nor acts on it; wiring it into the approval queue is open work.
+
+The fourth onboarding field, the security deposit, needed no column — it goes into the existing `hostels.preferences_config` JSON under `billing_defaults`, via the same `sanitizeBillingDefaultsPayload` the preferences API uses. `rooms.base_rent` (pre-existing, `Int?`) is now always populated for newly provisioned rooms; rooms created before this change keep `null` and nothing backfills them.
+
 ### `hostels.house_rules`
 Added 2026-07-26 (`Json?` column on the existing `hostels` table, not a new table) for the tenant Room tab's House Rules accordion — an array of `{title, items: string[]}` sections. Deliberately kept out of the deep-merged hostel preferences policy blob (`hostelPolicyService`) — house rules are static reference content, not a policy setting, and folding it into that already-complex deep-merge schema risked corrupting real owner config for no benefit. New dedicated endpoint: `GET/PATCH /api/hostels/:id/house-rules`.
 

@@ -23,6 +23,30 @@ Architecture Decision Records — each entry below was **inferred from code evid
 
 ---
 
+## ADR-040: A hostel is provisioned in one transaction, and an owner's publish choice is an intent — not a listing status
+
+- **Date:** 2026-08-01
+- **Status:** accepted
+- **Context:** the onboarding wizard's Publish step created a hostel with `1 + F + (F × R)` sequential HTTP calls — 45 for the default 4-floor/10-room property — against `/api/owner/hostels`, `/api/floors` and `/api/rooms`, with no transaction and no rollback. A failure at floor 3 of 4 committed a partially built hostel; pressing Publish again then hit the owner-scoped duplicate-name guard on `POST /api/owner/hostels` and returned `400 A hostel with this name already exists` forever. The owner was permanently stuck on step 11 of 12, with no path forward inside the wizard. Separately, four fields the wizard collected were never sent anywhere: hostel type, "food available?", the security deposit, and the publish-vs-draft choice; rooms were created with no `base_rent`. Surfaced by the 2026-08-01 owner product integration audit (P0-3).
+- **Decision:** two decisions, taken together.
+  1. **One endpoint, one transaction.** `POST /api/owner/hostels/provision` → `hostelProvisioningService.provision()`, which does the owner-scoped duplicate check *before* opening a transaction (a conflict is a user-facing 409, not a database failure, and shouldn't hold a connection), then creates the hostel, its floors and one batched `createMany` of rooms per floor inside a single `prisma.$transaction` with a 20s timeout. Either every row lands or none does. The 409 carries the existing `hostel_id` so a client can offer to open it rather than dead-ending — which also unsticks owners left holding a shell hostel by the old flow.
+  2. **`publish: "now"` sets `hostels.publish_requested`, not `hostels.listing_status`.** `listing_status = LIVE` is written only by the Platform Admin console, always paired with `verification_status = VERIFIED` (`approve-listing`). Letting onboarding write it would let any owner self-approve their own public listing past platform verification — a real authorization hole, not a modelling preference. The owner's *intent* is recorded separately; the gate stays where it is.
+- **Alternatives considered:**
+  - *Keep the loop, add client-side retry/resume.* Rejected: it makes the client responsible for database consistency, and cannot clean up rows a failed run already committed.
+  - *Make the loop idempotent by upserting on `(hostel_id, room_no)`.* Rejected: it fixes rooms but not the hostel row, so the duplicate-name deadlock survives; and it still leaves a half-built hostel visible between attempts.
+  - *Let onboarding set `listing_status = LIVE` and have the admin console demote.* Rejected — fail-open on a verification gate.
+  - *`base_rent` optional.* Rejected on explicit product direction: room rent is required business information. A room with no rent shows ₹0 on the room grid and prefills nothing in the invite wizard, so the wizard now asks for a **Starting monthly rent** on the Details step and the schema rejects null. (`z.coerce.number()` is deliberately *not* used for it — that silently turns `null` into `0`, i.e. a free room.)
+- **Consequences:**
+  - Publish is 1 request instead of ~45, and a failed publish is always safely retryable because it leaves nothing behind.
+  - Three new columns on `hostels` (`hostel_type`, `food_included`, `publish_requested`) — see [[Database]].
+  - Onboarding gains one required field. Owners who published before this change keep `base_rent: null` on their rooms; nothing backfills them, and per-room rent editing is still unbuilt (audit P2).
+  - `publish_requested` has **no consumer yet** — the Platform Admin console does not surface or act on it. It is recorded now so the signal isn't lost a second time; wiring it into the admin approval queue is follow-up work.
+  - `POST /api/owner/hostels` is unchanged and still used for non-onboarding creation paths.
+  - Provisioning reproduces `POST /api/owner/hostels`'s lead side effect (`leadInvitationService.markHostelCreated`) as a **post-commit** step. Caught by test rather than review: `markLive` — the wizard's trailing `/leads/invitation/:token/complete` — only promotes a lead already at `HOSTEL_CREATED`, so omitting it would have silently stalled every lead-originated owner at `OWNER_ACTIVATED`.
+- **Related:** [[APIs]], [[Database]], [[Features]], [[Changelog]], [[Decisions#ADR-032|ADR-032]] (the `OWNER_ACTIVATED → HOSTEL_CREATED → LIVE` lead lifecycle this endpoint must keep driving)
+
+---
+
 ## ADR-039: WhatsApp inbound routing is identity → intent → permission, not owner-assistant-first
 
 - **Date:** 2026-08-01

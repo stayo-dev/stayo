@@ -117,7 +117,13 @@ export function normalizeBillingDefaults(rawConfig: unknown): BillingDefaults {
   };
 }
 
-function sanitizeBillingDefaultsPayload(payload: Partial<BillingDefaults>) {
+/**
+ * Exported so callers that must write inside an existing transaction (see
+ * `hostel-provisioning-service.ts`) can reuse these normalisation rules rather
+ * than re-deriving them — the deposit/advance coupling below in particular is
+ * easy to get wrong twice.
+ */
+export function sanitizeBillingDefaultsPayload(payload: Partial<BillingDefaults>) {
   const next: Partial<BillingDefaults> = {};
   const advanceSource = payload.security_deposit ?? payload.advance_deposit;
   if (advanceSource !== undefined) {

@@ -30,6 +30,8 @@ export interface OwnerOnboardingData {
   capacity: number;
   food: 'Yes' | 'No';
   deposit: string;
+  /** Starting monthly rent, applied to every room publish creates. */
+  monthlyRent: string;
   roomsPerFloor: number;
   bedsPerRoom: number;
 }
@@ -52,6 +54,7 @@ const INITIAL_DATA: OwnerOnboardingData = {
   capacity: 168,
   food: 'Yes',
   deposit: '10000',
+  monthlyRent: '',
   roomsPerFloor: 10,
   bedsPerRoom: 4,
 };

@@ -49,6 +49,13 @@ export function validateOnboardingStep(
       if (!data.deposit || Number.isNaN(deposit) || deposit < 0) {
         return 'Enter the security deposit (0 if you don’t take one).';
       }
+      // Required, not optional: every room publish creates inherits this as its
+      // base rent, and a room with no rent shows ₹0 on the room grid and
+      // prefills nothing when inviting a tenant into it.
+      const rent = Number(String(data.monthlyRent).replace(/[^0-9.]/g, ''));
+      if (!data.monthlyRent || Number.isNaN(rent) || rent <= 0) {
+        return 'Enter the starting monthly rent for a room.';
+      }
       return null;
     }
 

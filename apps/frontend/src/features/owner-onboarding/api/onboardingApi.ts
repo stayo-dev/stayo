@@ -1,19 +1,30 @@
 import api from '@lib/api-client';
-import { ownerService } from '@features/owners/api';
 
 export interface CreatedHostel {
   id: string;
   name: string;
 }
 
-export interface CreatedFloor {
-  id: string;
+export type HostelTypeCode = 'BOYS' | 'GIRLS' | 'CO_LIVING' | 'WORKING_PROS';
+
+export interface ProvisionHostelInput {
   name: string;
+  type?: HostelTypeCode;
+  address: string;
+  city?: string;
+  food_included: boolean;
+  security_deposit: number;
+  floors: number;
+  rooms_per_floor: number;
+  beds_per_room: number;
+  base_rent: number;
+  publish: 'now' | 'draft';
 }
 
-export interface CreatedRoom {
-  id: string;
-  room_no: string;
+export interface ProvisionHostelResult {
+  hostel: CreatedHostel;
+  floors_created: number;
+  rooms_created: number;
 }
 
 export const onboardingApi = {
@@ -37,16 +48,18 @@ export const onboardingApi = {
     const response = await api.post('/auth/owner-signup', data);
     return response.data;
   },
-  createHostel: async (data: { name: string; address: string; city?: string; state?: string; pincode?: string; phone?: string }): Promise<CreatedHostel> => {
-    const result = await ownerService.createHostel(data);
-    return result.hostel;
-  },
-  createFloor: async (data: { hostelId: string; name: string; sort_order?: number }): Promise<CreatedFloor> => {
-    const response = await api.post('/floors', data);
-    return response.data.data;
-  },
-  createRoom: async (data: { hostelId: string; room_no: string; capacity: number; floor_id?: string; room_type?: string; base_rent?: number }): Promise<CreatedRoom> => {
-    const response = await api.post('/rooms', data);
-    return response.data.data;
+  /**
+   * Creates the hostel, its floors and all of its rooms in ONE request, which
+   * the backend runs inside a single transaction.
+   *
+   * This replaces the old publish sequence — `createHostel` then one
+   * `createFloor` per floor then one `createRoom` per room, i.e. 45 sequential
+   * requests for a 4×10 property. A failure partway through that sequence left
+   * a half-built hostel committed and every retry blocked by the duplicate-name
+   * guard, stranding the owner on the wizard's last step.
+   */
+  provisionHostel: async (data: ProvisionHostelInput): Promise<ProvisionHostelResult> => {
+    const response = await api.post('/owner/hostels/provision', data);
+    return response.data as ProvisionHostelResult;
   },
 };
