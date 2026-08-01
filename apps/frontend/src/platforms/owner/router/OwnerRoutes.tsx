@@ -14,6 +14,12 @@ const TenantsPage = lazy(() => import('@features/owner-tenants/pages/TenantsPage
 const TenantDetailPage = lazy(() =>
   import('@features/owner-tenants/pages/TenantDetailPage').then((m) => ({ default: m.TenantDetailPage })),
 );
+const PendingActivationsPage = lazy(() =>
+  import('@features/owner-tenants/pages/PendingActivationsPage').then((m) => ({ default: m.PendingActivationsPage })),
+);
+const PendingVerificationsPage = lazy(() =>
+  import('@features/owner-tenants/pages/PendingVerificationsPage').then((m) => ({ default: m.PendingVerificationsPage })),
+);
 const HostelDrilldownLayout = lazy(() =>
   import('@features/hostel-drilldown/layout/HostelDrilldownLayout').then((m) => ({ default: m.HostelDrilldownLayout })),
 );
@@ -134,6 +140,10 @@ export function OwnerRoutes() {
         <Route path="/owner/more/configuration/finance/receipt-footer" element={<MoreConfigReceiptFooterPage />} />
       </Route>
 
+      {/* Declared before the :tenantId route so "verifications" is not
+          swallowed as a tenant id. */}
+      <Route path="/owner/tenants/verifications" element={<PendingVerificationsPage />} />
+      <Route path="/owner/tenants/activations" element={<PendingActivationsPage />} />
       <Route path="/owner/tenants/:tenantId" element={<TenantDetailPage />} />
 
       <Route path="/owner/hostels/:hostelId" element={<HostelDrilldownLayout />}>

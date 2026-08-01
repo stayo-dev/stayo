@@ -331,6 +331,49 @@ export class ActivationWorkflowService {
     ].filter(Boolean);
   }
 
+  /**
+   * The owner's read-only view of where an invited tenant is stuck.
+   *
+   * Reuses `computeState()` — the activation state machine itself — rather
+   * than re-deriving any of it, so the owner's screen and the tenant's wizard
+   * can never disagree about which step is current.
+   *
+   * Deliberately NOT built on `getContext(token)`, for two reasons:
+   *
+   *  1. `getContext` is keyed by the tenant's activation token, which is the
+   *     tenant's secret; an owner does not have it and must not need it.
+   *  2. `getContext` mutates. It resolves with `markOpened: true` (marking the
+   *     invitation OPENED) and **auto-accepts the hostel rules** on the
+   *     tenant's behalf when they haven't been accepted yet. An owner opening
+   *     a progress screen would silently complete a step for the tenant and
+   *     corrupt the very state they were trying to look at.
+   *
+   * This method therefore loads the same records, owner-scoped, and calls the
+   * same state machine — with no writes on any path.
+   *
+   * KYC is intentionally absent from the step logic: `document_verified` is a
+   * separate state machine and never gates activation. `documents_uploaded` is
+   * reported for display only.
+   */
+  async getOwnerActivationState(tenantId: string, ownerId: string) {
+    const tenant = await prisma.tenants.findFirst({
+      where: { id: tenantId, owner_id: ownerId },
+      include: {
+        profiles: true,
+        hostels: true,
+        rule_acceptances: { orderBy: { accepted_at: "desc" }, take: 5 },
+        agreements: { orderBy: { generated_at: "desc" }, take: 5 },
+        identification_documents: { where: { is_active: true }, orderBy: { created_at: "desc" } },
+      },
+    });
+    if (!tenant) throw new Error("NOT_FOUND: Tenant not found");
+    if (!tenant.hostel_id) throw new Error("INTERNAL_ERROR: Tenant hostel context unavailable");
+
+    const ruleVersion = await this.getActiveRuleVersion(tenant.hostel_id);
+
+    return this.computeState((tenant as any).profiles, tenant, ruleVersion);
+  }
+
   async getContext(token: string) {
     const { profile, tenant, invitation } = await this.resolveInvitation(token, { markOpened: true });
     const hostel = tenant.hostels;

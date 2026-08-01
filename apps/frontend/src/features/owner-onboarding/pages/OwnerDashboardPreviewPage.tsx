@@ -6,6 +6,8 @@ import { QuickActionsSheet } from '@features/owner-dashboard/quick-actions/Quick
 import { AllActionsSheet } from '@features/owner-dashboard/quick-actions/AllActionsSheet';
 import { QuickCollectModal } from '@features/owner-tenants/quick-collect/QuickCollectModal';
 import { InviteTenantWizard } from '@features/owner-tenants/invite/InviteTenantWizard';
+import { pendingVerificationsRoute } from '@features/owner-tenants/documents/kycDocuments';
+import { PENDING_ACTIVATIONS_PATH } from '@features/owner-tenants/activation/activationProgress';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 
 function DashboardLoadingSkeleton() {
@@ -67,7 +69,14 @@ export function OwnerDashboardPreviewPage() {
         open={qa.allActionsOpen}
         onClose={qa.closeAllActions}
         onCollectRent={qa.collectPayment}
-        onActivateTenants={qa.inviteTenant}
+        onActivateTenants={() => {
+          qa.closeAllActions();
+          navigate(PENDING_ACTIVATIONS_PATH);
+        }}
+        onVerifyKyc={() => {
+          qa.closeAllActions();
+          navigate(pendingVerificationsRoute());
+        }}
         actionCenter={dash.actionCenter}
       />
       <QuickCollectModal open={qa.collectOpen} onClose={qa.closeCollect} />

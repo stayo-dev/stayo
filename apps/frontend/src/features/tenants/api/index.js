@@ -134,6 +134,16 @@ export const tenantService = {
         const response = await api.get('/tenants/me/score');
         return response.data.success !== undefined ? (response.data.data !== undefined ? response.data.data : response.data) : response.data;
     },
+    /**
+     * Where an invited tenant is stuck, for the owner. Read-only — the
+     * backend reuses the same `computeState()` the tenant's own activation
+     * wizard runs on, without `getContext()`'s side effects.
+     */
+    getActivationState: async (tenantId) => {
+        const response = await api.get(`/tenants/${tenantId}/activation-state`);
+        const data = response.data.success !== undefined ? (response.data.data !== undefined ? response.data.data : response.data) : response.data;
+        return data?.activation_state ?? data;
+    },
     getTenantScore: async (tenantId) => {
         const response = await api.get(`/tenants/${tenantId}/score`);
         return response.data.success !== undefined ? (response.data.data !== undefined ? response.data.data : response.data) : response.data;

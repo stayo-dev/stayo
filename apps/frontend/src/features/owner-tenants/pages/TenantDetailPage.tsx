@@ -3,7 +3,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Phone, MessageSquare, FileText, History, ShieldCheck, StickyNote, Plus, Clock, ArrowRight } from 'lucide-react';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { StatusPill } from '@shared/ui-patterns/StatusPill';
-import { useTenantDetail } from '../hooks/useTenantDetail';
+import { EmptyState } from '@shared/ui-patterns/EmptyState';
+import { useTenantDetail, type RealTenantDocument } from '../hooks/useTenantDetail';
+import { useDocumentVerification } from '../hooks/useDocumentVerification';
+import { DocumentReviewCard } from '../documents/DocumentReviewCard';
+import { ActivationStepTracker } from '../activation/ActivationStepTracker';
+import { useActivationState } from '../hooks/useActivationState';
+import { RejectDocumentSheet } from '../documents/RejectDocumentSheet';
 import type { TenantDetailTab } from '../types';
 import { TenantActionsSheet } from '../actions/TenantActionsSheet';
 import { ChangeRentModal } from '../actions/ChangeRentModal';
@@ -24,14 +30,6 @@ const OBLIGATION_TONE: Record<string, 'destructive' | 'warning' | 'success' | 'n
   PAID: 'success',
 };
 
-const DOC_TONE: Record<string, 'warning' | 'success' | 'destructive'> = {
-  PENDING: 'warning',
-  SIGNED: 'success',
-  VERIFIED: 'success',
-  MISSING: 'destructive',
-  REJECTED: 'destructive',
-};
-
 /**
  * Tenant Detail — a real route (`/owner/tenants/:tenantId`), not a modal.
  * Full-screen takeover with its own back button, no OwnerAppShell bottom
@@ -48,6 +46,11 @@ export function TenantDetailPage() {
   const [changeRentOpen, setChangeRentOpen] = useState(false);
   const [moveOutOpen, setMoveOutOpen] = useState(false);
   const [note, setNote] = useState('');
+  const [rejectingDoc, setRejectingDoc] = useState<RealTenantDocument | null>(null);
+
+  const verification = useDocumentVerification(tenantId);
+  const activation = useActivationState(tenantId, tenant?.status === 'invited');
+  const pendingDocCount = (tenant?.documents ?? []).filter((d) => d.status === 'PENDING').length;
 
   if (isLoading) {
     return (
@@ -114,6 +117,10 @@ export function TenantDetailPage() {
               </div>
             </div>
           </div>
+
+          {tenant.status === 'invited' && (
+            <ActivationStepTracker state={activation.state} documentVerified={tenant.kycStatus === 'Verified'} />
+          )}
 
           <button
             type="button"
@@ -307,25 +314,32 @@ export function TenantDetailPage() {
           )}
 
           {activeTab === 'documents' && (
-            <div className="rounded-[18px] border border-border bg-card p-4 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]">
-              <div className="mb-3 flex items-center gap-2.5">
-                <span className="flex-1 font-display text-[15px] font-bold text-foreground">Documents</span>
-                <button type="button" className="flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-1.5 font-display text-[11.5px] font-bold text-primary">
-                  <FileText className="h-3 w-3" strokeWidth={2} />
-                  Upload
-                </button>
+            <div className="flex flex-col gap-2.5">
+              <div className="flex items-baseline justify-between px-0.5">
+                <span className="font-display text-[15px] font-bold text-foreground">Documents</span>
+                {pendingDocCount > 0 && (
+                  <span className="text-[11.5px] font-semibold text-warning">
+                    {pendingDocCount} awaiting your review
+                  </span>
+                )}
               </div>
-              <div className="flex flex-col gap-2.5">
-                {tenant.documents.map((doc) => (
-                  <div key={doc.id} className="flex items-center gap-3 rounded-[18px] border border-border bg-muted/50 p-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[13px] font-bold text-foreground">{doc.title}</div>
-                      <div className="mt-0.5 text-[11px] text-muted-foreground">{doc.sub}</div>
-                    </div>
-                    <StatusPill tone={DOC_TONE[doc.status]}>{doc.status}</StatusPill>
-                  </div>
-                ))}
-              </div>
+              {tenant.documents.length === 0 ? (
+                <EmptyState
+                  icon={<FileText className="h-5 w-5" />}
+                  title="No documents yet"
+                  description={`${tenant.name} hasn't uploaded any KYC documents.`}
+                />
+              ) : (
+                tenant.documents.map((doc) => (
+                  <DocumentReviewCard
+                    key={doc.id}
+                    doc={doc}
+                    isBusy={verification.isApproving || verification.isRejecting}
+                    onApprove={(documentId) => verification.approve({ documentId })}
+                    onReject={(d) => setRejectingDoc(d)}
+                  />
+                ))
+              )}
             </div>
           )}
 
@@ -391,6 +405,18 @@ export function TenantDetailPage() {
         tenantId={tenant.id}
         hostelId={tenant.hostelId}
         tenantName={tenant.name}
+      />
+      <RejectDocumentSheet
+        open={rejectingDoc != null}
+        docType={rejectingDoc?.docType ?? ''}
+        tenantName={tenant.name}
+        isSubmitting={verification.isRejecting}
+        onClose={() => setRejectingDoc(null)}
+        onConfirm={async (reason) => {
+          if (!rejectingDoc) return;
+          await verification.rejectAsync({ documentId: rejectingDoc.id, reason });
+          setRejectingDoc(null);
+        }}
       />
     </ThemeProvider>
   );

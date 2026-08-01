@@ -28,6 +28,16 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### Tenants could upload KYC documents that no owner had any way to approve
+
+- **Status:** fixed (frontend only — every endpoint already existed and was correct)
+- **Found:** 2026-08-01, by the owner product integration audit (P0-4).
+- **Area:** [[Frontend]]
+- **Symptom:** a tenant completed activation, uploaded their Aadhaar and College ID, and then waited forever. The owner could see the documents listed as "PENDING" on Tenant Detail → Documents and had no control of any kind to act on them — no approve, no reject, no way to open the file. `tenants.document_verified` could therefore never become true through the product, so the tenant stayed permanently "Docs Pending" in the list, the Home "Verify KYC" count only ever went up, and onboarding had no end state.
+- **Root cause:** **not** a missing backend, which is what made it easy to mis-diagnose. `PATCH /api/tenants/:id/documents/:docId/verify`, `…/reject` (reason-required), `GET …/download` and `GET /api/tenants/pending-documents` all existed, were owner-scoped, and were already wrapped correctly by `tenantService`. The frontend components that used them — `VerificationPanel.tsx`, `DocumentsTab.tsx` — were left **orphaned** by the 2026-07-26 salvage pass that moved 8 flows into `/owner/*` and deleted the old tree's routes. The new `TenantDetailPage`'s Documents tab was written as a display-only list, so the capability existed on both sides of the wire with nothing joining them. A second contributor: Home's "Verify Pending KYC" card computed a **real** count and had `onClick={soon}`, so the one signpost pointing at the problem was itself a dead end.
+- **Fix:** a real review surface on Tenant Detail (View · Download · Approve · Reject) plus a new `/owner/tenants/verifications` queue grouped by tenant and ordered oldest-wait-first, wired to Home's card. Decision logic extracted to a pure, tested `kycDocuments.ts` that mirrors the route guards rather than restating them loosely, so the UI can't offer a button that returns 409/400. Rejection requires a reason, matching both the route's 400 and the fact that the reason is the only thing the tenant is shown. Approval invalidates all four surfaces that derive from `document_verified` at once. The routes themselves gained their first tests (17, characterisation) since they were about to carry real traffic.
+- **Related:** [[Features]], [[Changelog]], [[APIs]]
+
 ### The invite wizard reported "Invitation sent!" on every 2xx, including the 202 that means nothing was delivered
 
 - **Status:** fixed (frontend only — the backend was already correct)
