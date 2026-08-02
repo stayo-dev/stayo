@@ -128,6 +128,12 @@ export function useHostelRooms(hostelId: string) {
     onSuccess: invalidate,
   });
 
+  const updateRoomMutation = useMutation({
+    mutationFn: ({ roomId, data }: { roomId: string; data: { room_no?: string; capacity?: number; base_rent?: number } }) =>
+      roomService.update(roomId, data),
+    onSuccess: invalidate,
+  });
+
   return {
     floors,
     roomsByFloor,
@@ -145,5 +151,7 @@ export function useHostelRooms(hostelId: string) {
     isCreatingFloor: createFloorMutation.isPending,
     createRoom: createRoomMutation.mutateAsync,
     isCreatingRoom: createRoomMutation.isPending,
+    updateRoom: updateRoomMutation.mutateAsync,
+    isUpdatingRoom: updateRoomMutation.isPending,
   };
 }

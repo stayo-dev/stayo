@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ownerService } from '@features/owners/api';
+import { queryKeys } from '@lib/queryKeys';
 
 const policyKey = (hostelId: string) => ['hostel', hostelId, 'settings-policy'];
 
@@ -60,6 +61,19 @@ export function useRemoveHostelLogo(hostelId: string) {
     mutationFn: () => ownerService.removeLogo(hostelId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: policyKey(hostelId) });
+      qc.invalidateQueries({ queryKey: ['owner', 'hostels'] });
+    },
+  });
+}
+
+/** Archives a hostel (`DELETE /hostels/:id`) — blocked server-side while it has active room allocations. */
+export function useArchiveHostel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ hostelId, reason }: { hostelId: string; reason?: string }) =>
+      ownerService.archiveHostel(hostelId, reason),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.portfolio.summary() });
       qc.invalidateQueries({ queryKey: ['owner', 'hostels'] });
     },
   });

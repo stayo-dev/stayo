@@ -126,6 +126,7 @@ export function OwnerRoutes() {
         <Route path="/owner/more/billing" element={<MoreBillingPage />} />
         <Route path="/owner/more/profile" element={<MoreProfilePage />} />
         <Route path="/owner/more/hostel" element={<MoreHostelIdentityPage />} />
+        <Route path="/owner/more/hostel/:hostelId" element={<MoreHostelIdentityPage />} />
         <Route path="/owner/more/notices" element={<MoreNoticesPage />} />
         <Route path="/owner/more/service-requests" element={<MoreServiceRequestsPage />} />
         <Route path="/owner/more/help" element={<MoreHelpPage />} />

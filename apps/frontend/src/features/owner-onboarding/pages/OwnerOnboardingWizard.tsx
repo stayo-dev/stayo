@@ -4,7 +4,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Save, Check, ArrowLeft, ArrowRight } from 'lucide-react';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { stayoToast } from '@shared/ui-patterns/Toast';
-import { useOwnerOnboardingState, type OwnerOnboardingData } from '../hooks/useOwnerOnboardingState';
+import { useAuth } from '@context/AuthContext';
+import { ONBOARDING_SCREENS, useOwnerOnboardingState, type OwnerOnboardingData } from '../hooks/useOwnerOnboardingState';
 import { useOnboardingSubmission } from '../hooks/useOnboardingSubmission';
 import { OnboardingScene } from '../components/OnboardingScene';
 import { WelcomeStep } from '../components/steps/WelcomeStep';
@@ -66,6 +67,7 @@ function buildConfetti() {
 export function OwnerOnboardingWizard() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const leadState = location.state as { prefill?: { name?: string; hostel_name?: string; phone?: string; google_email?: string; city?: string }; token?: string } | null;
   const leadToken = leadState?.token;
   const initialData = useMemo((): Partial<OwnerOnboardingData> | undefined => {
@@ -80,7 +82,14 @@ export function OwnerOnboardingWizard() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const s = useOwnerOnboardingState(initialData);
+  // An owner who is already signed in (reached via the dashboard's "+ Add
+  // hostel", not a fresh signup) already has an account — skip Welcome/
+  // Account/KYC straight to naming the new hostel. `user` is read once at
+  // mount via useState's lazy initializer further down, so logging out
+  // mid-wizard can't retroactively change which step this landed on.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const initialStep = useMemo(() => (user ? ONBOARDING_SCREENS.indexOf('create') : undefined), []);
+  const s = useOwnerOnboardingState(initialData, initialStep);
   const submission = useOnboardingSubmission(s, leadToken);
 
   const isWelcome = s.screenId === 'welcome';

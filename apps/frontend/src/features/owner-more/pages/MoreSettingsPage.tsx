@@ -1,7 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { ListRow } from '@shared/ui-patterns/ListRow';
-import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { mockTenantDefaults } from '@shared/mocks/more';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
@@ -10,7 +9,7 @@ import { useMoreNav } from '../hooks/useMoreNav';
 const card = 'overflow-hidden rounded-[20px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]';
 const sectionLabel = 'pl-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground';
 
-/** More → Settings, per Stayo App.dc.html. Hostel identity, rent & billing, and my profile are real; tenant defaults is still a "coming soon" placeholder (deferred — see the Phase 1 plan). */
+/** More → Settings, per Stayo App.dc.html. Hostel identity, rent & billing, tenant defaults, and my profile are all real. */
 export function MoreSettingsPage() {
   const navigate = useNavigate();
   const { signOut } = useMoreNav();
@@ -45,7 +44,7 @@ export function MoreSettingsPage() {
             title="Tenant defaults"
             meta={mockTenantDefaults}
             showChevron
-            onClick={() => stayoToast.info('Coming soon')}
+            onClick={() => navigate('/owner/more/configuration/hostel/tenant-defaults')}
             className="px-4"
           />
           <ListRow

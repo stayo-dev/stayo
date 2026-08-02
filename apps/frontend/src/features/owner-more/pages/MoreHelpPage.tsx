@@ -59,7 +59,7 @@ export function MoreHelpPage() {
           title="Email us"
           meta="support@yourstayo.com"
           showChevron
-          onClick={() => stayoToast.info('Coming soon')}
+          onClick={() => { window.location.href = 'mailto:support@yourstayo.com'; }}
           className="px-4"
         />
       </div>

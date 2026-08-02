@@ -28,6 +28,16 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### Owner couldn't add a hostel, and a swathe of owner-app buttons were dead ends
+
+- **Status:** fixed (frontend only, no backend changes needed — every backend route these now call already existed and worked)
+- **Found:** 2026-08-02, reported directly by the user: "I can't add a hostel", "I couldn't click the card option on the owner side", and "so many things open the Coming Soon section."
+- **Area:** [[Frontend]] (owner app)
+- **Symptom:** the dashboard's **"+ Add hostel"** button did nothing but show a toast — a brand-new owner with zero hostels (real: `/owner/*` never required an owner to have one to reach the dashboard) had no way to create one at all. The property card's **kebab "⋮" menu** was the same dead stub — the card body itself navigated fine, but its one discrete "options" affordance did not, which is plausibly what read as "can't click the card." Beyond those two, roughly a dozen more owner-facing rows/buttons (`TenantActionsSheet`'s Share Payment Link/Create Charge/View Receipts/Request Change/Change Billing Frequency, the Room Sheet's "Edit room details", Settings' Tenant Defaults row, About's Privacy/Terms/Licenses, Help's Email us, the dashboard's "View Leads") all showed `stayoToast.info('Coming soon')` even though the backend route or an equivalent working UI already existed elsewhere in the app — they had simply never been wired to it.
+- **Root cause:** not a backend gap anywhere — an owner-app "dead button" pattern accumulated across several earlier sessions (see the 2026-07-27 UI-fidelity pass and the Tenants-tab entry in [[Features]]), each individually flagged honestly as `stayoToast.info('Coming soon')` at the time rather than silently no-op'd, but never circled back to once the real backend/UI it stood in for shipped elsewhere.
+- **Fix:** "+ Add hostel" now navigates to the real `/onboarding` wizard; for an already-authenticated owner it skips straight to the hostel-naming step instead of re-asking for account credentials (`useOwnerOnboardingState`/`OwnerOnboardingWizard` gained an `initialStep` floor). The kebab menu opens a new `HostelOptionsSheet` with a real "Edit hostel details" (routes to `MoreHostelIdentityPage`, now also mountable at `/owner/more/hostel/:hostelId` so it edits the specific card's hostel, not always the primary one) and a real "Archive hostel" (`useArchiveHostel` → `DELETE /hostels/:id`, blocked server-side if the hostel still has active allocations). `TenantActionsSheet` now calls `ChangeFrequencyModal`, `CreateObligationModal`, `useTenantActions().sharePaymentLink`, the tenant's own Activity tab, and `ChangeRequestDrawer` — all pre-existing components/hooks used elsewhere in the app, cloned or reused rather than rebuilt. Room details editing reuses the existing `roomService.update` (`PATCH /rooms/:id`), deliberately excluding bed-count changes since capacity can't safely drop below occupied beds. Left as honest `stayoToast.info('Coming soon')`, not force-fixed: Alerts tab's Leads/Renewals/Requests actions (that tab's own list is still mock data, a bigger fix), Contact Support/Report a Bug (no ticketing backend exists), and Food Polls (no persistence layer exists).
+- **Related:** [[Features]], [[Changelog]]
+
 ### "Security check failed" when an owner sent a tenant invitation
 
 - **Status:** fixed

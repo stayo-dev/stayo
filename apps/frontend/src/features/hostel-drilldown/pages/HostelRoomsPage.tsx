@@ -118,6 +118,11 @@ export function HostelRoomsPage() {
           setRoomSheetRoom(null);
           setInviteOpen(true);
         }}
+        isSaving={layout.isUpdatingRoom}
+        onSaveDetails={async (data) => {
+          if (!roomSheetRoom) return;
+          await layout.updateRoom({ roomId: roomSheetRoom.id, data });
+        }}
       />
       <AddRoomModal
         open={addRoomOpen}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useHostelPolicy, useUpdateHostelIdentity, useUploadHostelLogo, useRemoveHostelLogo } from '@features/settings/settingsHooks';
@@ -14,14 +14,18 @@ const inputStyle = 'w-full rounded-xl border border-border bg-card px-3.5 py-3 t
  * More → Settings → Hostel Identity. Real data via `useHostelPolicy`
  * (`GET /hostels/:id/preferences`, `.hostel` field) and `useUpdateHostel
  * Identity`/`useUploadHostelLogo`/`useRemoveHostelLogo` (`PATCH /hostels/
- * :id`, `POST`/`DELETE /hostels/:id/logo`). Scoped to the owner's primary
- * hostel — same single-hostel limitation as the Billing screen, since the
- * original design has no hostel picker here either.
+ * :id`, `POST`/`DELETE /hostels/:id/logo`). Mounted at both
+ * `/owner/more/hostel` (Settings' own entry point — edits the owner's
+ * primary hostel, same single-hostel limitation as the Billing screen since
+ * the original design has no hostel picker there) and
+ * `/owner/more/hostel/:hostelId` (the per-card "Edit hostel details" option
+ * on the dashboard, which knows exactly which hostel it means).
  */
 export function MoreHostelIdentityPage() {
   const navigate = useNavigate();
+  const { hostelId: hostelIdParam } = useParams<{ hostelId?: string }>();
   const session = useOwnerSession();
-  const hostelId = session.primaryHostelId;
+  const hostelId = hostelIdParam ?? session.primaryHostelId;
   const policyQuery = useHostelPolicy(hostelId);
   const updateMutation = useUpdateHostelIdentity(hostelId ?? '');
   const uploadLogoMutation = useUploadHostelLogo(hostelId ?? '');

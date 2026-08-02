@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { OwnerHomeDashboard } from '@features/owner-dashboard/components/OwnerHomeDashboard';
+import { HostelOptionsSheet } from '@features/owner-dashboard/components/HostelOptionsSheet';
 import { useOwnerDashboard } from '@features/owner-dashboard/hooks/useOwnerDashboard';
 import { useHomeQuickActions } from '@features/owner-dashboard/quick-actions/useHomeQuickActions';
 import { QuickActionsSheet } from '@features/owner-dashboard/quick-actions/QuickActionsSheet';
@@ -8,7 +10,6 @@ import { QuickCollectModal } from '@features/owner-tenants/quick-collect/QuickCo
 import { InviteTenantWizard } from '@features/owner-tenants/invite/InviteTenantWizard';
 import { pendingVerificationsRoute } from '@features/owner-tenants/documents/kycDocuments';
 import { PENDING_ACTIVATIONS_PATH } from '@features/owner-tenants/activation/activationProgress';
-import { stayoToast } from '@shared/ui-patterns/Toast';
 
 function DashboardLoadingSkeleton() {
   return (
@@ -37,8 +38,11 @@ export function OwnerDashboardPreviewPage() {
   const navigate = useNavigate();
   const qa = useHomeQuickActions();
   const dash = useOwnerDashboard();
+  const [hostelMenuFor, setHostelMenuFor] = useState<string | null>(null);
 
   if (dash.isLoading) return <DashboardLoadingSkeleton />;
+
+  const menuHostel = dash.properties.find((p) => p.id === hostelMenuFor);
 
   return (
     <>
@@ -53,8 +57,8 @@ export function OwnerDashboardPreviewPage() {
         onOpenAlerts={() => navigate('/owner/alerts')}
         onOpenQuickActions={qa.openSheet}
         onViewAllActions={qa.openAllActions}
-        onPropertyMenu={() => stayoToast.info('Coming soon')}
-        onAddHostel={() => stayoToast.info('Coming soon')}
+        onPropertyMenu={(hostelId) => setHostelMenuFor(hostelId)}
+        onAddHostel={() => navigate('/onboarding')}
       />
 
       <QuickActionsSheet
@@ -77,10 +81,17 @@ export function OwnerDashboardPreviewPage() {
           qa.closeAllActions();
           navigate(pendingVerificationsRoute());
         }}
+        onInviteTenant={qa.inviteTenant}
         actionCenter={dash.actionCenter}
       />
       <QuickCollectModal open={qa.collectOpen} onClose={qa.closeCollect} />
       <InviteTenantWizard open={qa.inviteOpen} onClose={qa.closeInvite} />
+      <HostelOptionsSheet
+        open={Boolean(hostelMenuFor)}
+        onClose={() => setHostelMenuFor(null)}
+        hostelId={hostelMenuFor}
+        hostelName={menuHostel?.name ?? 'Hostel'}
+      />
     </>
   );
 }

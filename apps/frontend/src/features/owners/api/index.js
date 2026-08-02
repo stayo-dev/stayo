@@ -63,6 +63,10 @@ export const ownerService = {
         const response = await api.delete(endpoint);
         return response.data;
     },
+    archiveHostel: async (hostelId, reason) => {
+        const response = await api.delete(`/hostels/${hostelId}`, { data: { reason } });
+        return response.data;
+    },
     searchTenants: async (query, limit = 10, signal) => {
         const response = await api.get('/owner/search', {
             params: { q: query, limit },

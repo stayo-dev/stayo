@@ -1,9 +1,15 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Phone, MessageSquare, FileText, History, ShieldCheck, StickyNote, Plus, Clock, ArrowRight } from 'lucide-react';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { StatusPill } from '@shared/ui-patterns/StatusPill';
 import { EmptyState } from '@shared/ui-patterns/EmptyState';
+import { queryKeys } from '@lib/queryKeys';
+import { useTenantActions } from '@features/tenants/hooks/useTenantActions';
+import { CreateObligationModal } from '@features/tenants/components/financial/CreateObligationModal';
+import { ChangeFrequencyModal } from '@/app/components/modals/ChangeFrequencyModal';
+import { ChangeRequestDrawer } from '@features/change-management';
 import { useTenantDetail, type RealTenantDocument } from '../hooks/useTenantDetail';
 import { useDocumentVerification } from '../hooks/useDocumentVerification';
 import { DocumentReviewCard } from '../documents/DocumentReviewCard';
@@ -38,6 +44,7 @@ const OBLIGATION_TONE: Record<string, 'destructive' | 'warning' | 'success' | 'n
 export function TenantDetailPage() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { tenant, isLoading, isError } = useTenantDetail(tenantId);
 
   const [activeTab, setActiveTab] = useState<TenantDetailTab>('charges');
@@ -45,9 +52,13 @@ export function TenantDetailPage() {
   const [quickCollectOpen, setQuickCollectOpen] = useState(false);
   const [changeRentOpen, setChangeRentOpen] = useState(false);
   const [moveOutOpen, setMoveOutOpen] = useState(false);
+  const [createChargeOpen, setCreateChargeOpen] = useState(false);
+  const [changeBillingOpen, setChangeBillingOpen] = useState(false);
+  const [requestChangeOpen, setRequestChangeOpen] = useState(false);
   const [note, setNote] = useState('');
   const [rejectingDoc, setRejectingDoc] = useState<RealTenantDocument | null>(null);
 
+  const tenantActions = useTenantActions(tenant?.hostelId ?? '');
   const verification = useDocumentVerification(tenantId);
   const activation = useActivationState(tenantId, tenant?.status === 'invited');
   const pendingDocCount = (tenant?.documents ?? []).filter((d) => d.status === 'PENDING').length;
@@ -374,6 +385,11 @@ export function TenantDetailPage() {
         onCollectPayment={() => setQuickCollectOpen(true)}
         onChangeRent={() => setChangeRentOpen(true)}
         onCheckout={() => setMoveOutOpen(true)}
+        onShareLink={() => tenantActions.sharePaymentLink(tenant.id, tenant.phone, tenant.outstanding || undefined)}
+        onCreateCharge={() => setCreateChargeOpen(true)}
+        onViewReceipts={() => setActiveTab('activity')}
+        onRequestChange={() => setRequestChangeOpen(true)}
+        onChangeBilling={() => setChangeBillingOpen(true)}
       />
       <QuickCollectModal
         open={quickCollectOpen}
@@ -405,6 +421,43 @@ export function TenantDetailPage() {
         tenantId={tenant.id}
         hostelId={tenant.hostelId}
         tenantName={tenant.name}
+      />
+      {createChargeOpen && (
+        <CreateObligationModal
+          isOpen={createChargeOpen}
+          onClose={() => setCreateChargeOpen(false)}
+          tenantId={tenant.id}
+          hostelId={tenant.hostelId}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['owner', 'tenant', tenant.id, 'detail'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.payments.all(tenant.hostelId) });
+            queryClient.invalidateQueries({ queryKey: queryKeys.portfolio.all() });
+          }}
+        />
+      )}
+      {changeBillingOpen && (
+        <ChangeFrequencyModal
+          tenantId={tenant.id}
+          currentFrequency={tenant.stay.billingFrequency}
+          onClose={() => setChangeBillingOpen(false)}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['owner', 'tenant', tenant.id, 'detail'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.payments.all(tenant.hostelId) });
+          }}
+        />
+      )}
+      <ChangeRequestDrawer
+        open={requestChangeOpen}
+        onClose={() => setRequestChangeOpen(false)}
+        tenantId={tenant.id}
+        hostelId={tenant.hostelId}
+        tenantData={{
+          name: tenant.name,
+          phone_1: tenant.phone,
+          monthly_rent: tenant.stay.monthlyRent,
+          security_deposit: tenant.stay.deposit,
+        }}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['owner', 'tenant', tenant.id, 'detail'] })}
       />
       <RejectDocumentSheet
         open={rejectingDoc != null}

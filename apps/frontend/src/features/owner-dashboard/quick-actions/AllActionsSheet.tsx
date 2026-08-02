@@ -9,6 +9,7 @@ interface AllActionsSheetProps {
   onCollectRent: () => void;
   onActivateTenants: () => void;
   onVerifyKyc: () => void;
+  onInviteTenant: () => void;
   /**
    * Required, not defaulted to `mockActionCenter`: these are counts an owner
    * acts on, and a fallback that silently renders invented numbers is worse
@@ -23,8 +24,16 @@ const secondaryBtn = 'flex-none rounded-[9px] border border-border bg-card px-3.
 
 const soon = () => stayoToast.info('Coming soon');
 
-/** Home's "View all" Action Center sheet, per Stayo App.dc.html. Collect Rent / Activate Tenants reuse the real QuickCollect/Invite flows; the rest are toast placeholders — matching the design's own reference, which doesn't wire these buttons either. */
-export function AllActionsSheet({ open, onClose, onCollectRent, onActivateTenants, onVerifyKyc, actionCenter = mockActionCenter }: AllActionsSheetProps) {
+/**
+ * Home's "View all" Action Center sheet, per Stayo App.dc.html. Collect Rent
+ * / Activate Tenants / Verify KYC reuse real flows; Fill Vacant Beds opens
+ * the real Invite Tenant wizard (there's no real "leads" pipeline for an
+ * owner to browse — inviting a tenant into a vacant bed is the actual real
+ * action this stat represents). Review Agreements and Send Rent Reminders
+ * stay honest "coming soon" toasts — there's no real renewal-review page or
+ * bulk-reminder trigger for an owner to land on yet, only aggregate counts.
+ */
+export function AllActionsSheet({ open, onClose, onCollectRent, onActivateTenants, onVerifyKyc, onInviteTenant, actionCenter = mockActionCenter }: AllActionsSheetProps) {
   return (
     <BottomSheet open={open} onOpenChange={(v) => !v && onClose()} title={<span className="flex flex-col gap-0.5"><span>All actions</span><span className="text-xs font-normal text-muted-foreground">Ranked by priority</span></span>}>
       <div className="flex flex-col gap-2">
@@ -61,7 +70,7 @@ export function AllActionsSheet({ open, onClose, onCollectRent, onActivateTenant
             <div className="font-display text-[13px] font-bold text-foreground">Fill Vacant Beds</div>
             <div className="text-[11.5px] text-muted-foreground">{actionCenter.fillVacantBeds.value} {actionCenter.fillVacantBeds.caption.toLowerCase()}</div>
           </div>
-          <button type="button" onClick={soon} className={primaryBtn}>View Leads</button>
+          <button type="button" onClick={onInviteTenant} className={primaryBtn}>Invite Tenant</button>
         </div>
 
         <div className={rowCls}>

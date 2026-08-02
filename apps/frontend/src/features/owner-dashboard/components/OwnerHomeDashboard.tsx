@@ -28,7 +28,7 @@ interface OwnerHomeDashboardProps {
   onOpenAlerts?: () => void;
   onOpenQuickActions?: () => void;
   onViewAllActions?: () => void;
-  onPropertyMenu?: () => void;
+  onPropertyMenu?: (hostelId: string) => void;
   onAddHostel?: () => void;
 }
 
@@ -161,7 +161,7 @@ export function OwnerHomeDashboard({
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onPropertyMenu?.();
+                      onPropertyMenu?.(p.id);
                     }}
                     className="flex h-6 w-6 flex-none items-center justify-center text-lg text-muted-foreground"
                   >

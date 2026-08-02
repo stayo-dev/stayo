@@ -9,7 +9,6 @@ import {
   LogOut,
 } from 'lucide-react';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
-import { stayoToast } from '@shared/ui-patterns/Toast';
 
 interface TenantActionsSheetProps {
   open: boolean;
@@ -17,6 +16,11 @@ interface TenantActionsSheetProps {
   onCollectPayment: () => void;
   onChangeRent: () => void;
   onCheckout: () => void;
+  onShareLink: () => void;
+  onCreateCharge: () => void;
+  onViewReceipts: () => void;
+  onRequestChange: () => void;
+  onChangeBilling: () => void;
 }
 
 const GROUPS: {
@@ -45,26 +49,33 @@ const GROUPS: {
   },
 ];
 
-/** Tenant Actions bottom sheet, grouped per Stayo App.dc.html. "Receive Payment", "Change Rent", and "Check-out / Exit" are real; the rest are honest "coming soon" placeholders, not silent no-ops. */
-export function TenantActionsSheet({ open, onClose, onCollectPayment, onChangeRent, onCheckout }: TenantActionsSheetProps) {
+/** Tenant Actions bottom sheet, grouped per Stayo App.dc.html. Every row is real — wired to the same backend flows used elsewhere in the app (Change Rent's identity-confirmed pattern, the tenant's own Activity tab, etc), none are silent no-ops. */
+export function TenantActionsSheet({
+  open,
+  onClose,
+  onCollectPayment,
+  onChangeRent,
+  onCheckout,
+  onShareLink,
+  onCreateCharge,
+  onViewReceipts,
+  onRequestChange,
+  onChangeBilling,
+}: TenantActionsSheetProps) {
+  const ROW_HANDLERS: Record<string, () => void> = {
+    collect: onCollectPayment,
+    'change-rent': onChangeRent,
+    checkout: onCheckout,
+    'share-link': onShareLink,
+    'create-charge': onCreateCharge,
+    'view-receipts': onViewReceipts,
+    'request-change': onRequestChange,
+    'change-billing': onChangeBilling,
+  };
+
   const handleRow = (key: string) => {
-    if (key === 'collect') {
-      onClose();
-      onCollectPayment();
-      return;
-    }
-    if (key === 'change-rent') {
-      onClose();
-      onChangeRent();
-      return;
-    }
-    if (key === 'checkout') {
-      onClose();
-      onCheckout();
-      return;
-    }
     onClose();
-    stayoToast.info('Coming soon');
+    ROW_HANDLERS[key]?.();
   };
 
   return (
