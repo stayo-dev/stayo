@@ -84,13 +84,29 @@ export function OwnerHomeDashboard({
         <span className="text-[13px] text-muted-foreground">Search tenant, room..</span>
       </div>
 
-      <PropertyList
-        properties={properties}
-        onSelectProperty={onSelectProperty}
-        onPropertyMenu={onPropertyMenu}
-        onAddHostel={onAddHostel}
-        onReorder={onReorderProperties}
-      />
+      <section className="flex flex-col gap-3">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Action Center</h2>
+          <button type="button" onClick={onViewAllActions} className="text-[12.5px] font-semibold text-primary">
+            View all
+          </button>
+        </div>
+        <DarkHeroCard className="rounded-[20px] px-5 py-[18px] shadow-[0_10px_28px_rgba(34,30,26,0.22)]">
+          <div className="flex items-center justify-between">
+            <span className="text-[12.5px] font-semibold text-background/70">Collect Rent</span>
+            <span className="text-background/55">›</span>
+          </div>
+          <div className="mt-1 font-display text-3xl font-extrabold tabular-nums tracking-tight">
+            {actionCenter.collectRent.amount}
+          </div>
+          <div className="mt-1 text-xs font-medium text-background/65">{actionCenter.collectRent.caption}</div>
+        </DarkHeroCard>
+        <div className="grid grid-cols-3 gap-2">
+          <StatCard variant="action" label="Review Agreements" value={actionCenter.reviewAgreements.value} caption={actionCenter.reviewAgreements.caption} />
+          <StatCard variant="action" label="Activate Tenants" value={actionCenter.activateTenants.value} caption={actionCenter.activateTenants.caption} />
+          <StatCard variant="action" label="Fill Vacant Beds" value={actionCenter.fillVacantBeds.value} caption={actionCenter.fillVacantBeds.caption} />
+        </div>
+      </section>
 
       <section className="flex flex-col gap-3">
         <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Snapshot</h2>
@@ -124,57 +140,13 @@ export function OwnerHomeDashboard({
         </div>
       </section>
 
-      <section className="flex flex-col gap-3">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Property</h2>
-          <button type="button" onClick={onAddHostel} className="text-[12.5px] font-semibold text-primary">
-            + Add hostel
-          </button>
-        </div>
-        <div className="flex flex-col gap-3">
-          {properties.map((p) => (
-            <div key={p.id} className="rounded-2xl border border-border bg-card">
-              <div
-                onClick={() => onSelectProperty?.(p.id)}
-                className={`flex flex-col gap-2.5 p-3.5 ${onSelectProperty ? 'cursor-pointer' : ''}`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <DragHandle />
-                  <div className="min-w-0 flex-1 font-display text-[14.5px] font-bold text-foreground">{p.name}</div>
-                  <StatusPill tone="success" variant="filter">
-                    {p.occupancyLabel}
-                  </StatusPill>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onPropertyMenu?.(p.id);
-                    }}
-                    className="flex h-6 w-6 flex-none items-center justify-center text-lg text-muted-foreground"
-                  >
-                    ⋮
-                  </button>
-                </div>
-                <div className="ml-8 text-[11.5px] text-muted-foreground">{p.location}</div>
-                <div className="ml-8 grid grid-cols-3 gap-1.5 border-t border-border pt-2.5">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[9.5px] font-medium text-muted-foreground">Revenue</span>
-                    <span className="font-display text-xs font-bold tabular-nums text-foreground">{p.revenue}</span>
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[9.5px] font-medium text-muted-foreground">Dues</span>
-                    <span className="font-display text-xs font-bold tabular-nums text-destructive">{p.outstanding}</span>
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[9.5px] font-medium text-muted-foreground">Vacant</span>
-                    <span className="font-display text-xs font-bold tabular-nums text-foreground">{p.vacant}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+      <PropertyList
+        properties={properties}
+        onSelectProperty={onSelectProperty}
+        onPropertyMenu={onPropertyMenu}
+        onAddHostel={onAddHostel}
+        onReorder={onReorderProperties}
+      />
 
       <button
         type="button"
