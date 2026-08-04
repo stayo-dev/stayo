@@ -39,7 +39,15 @@ export type HostelPolicy = {
     };
     partial_payments: {
       enabled: boolean;
+      /** Absolute floor in rupees. 0 = no absolute floor. */
       minimum_amount: number;
+      /**
+       * Floor as a percentage (0-100) of the tenant's total outstanding.
+       * 0 = no percentage floor. When both this and `minimum_amount` are set,
+       * the effective minimum is the **larger** of the two — each is a floor,
+       * so the stricter one wins. See ADR-043.
+       */
+      minimum_percentage: number;
     };
     advance_adjustments: {
       enabled: boolean;
@@ -340,6 +348,7 @@ export function normalizeHostelPolicy(hostel: any): HostelPolicy {
       partial_payments: {
         enabled: bool(partialPayments.enabled ?? config.allow_partial_payments, false),
         minimum_amount: nonNegative(partialPayments.minimum_amount ?? config.min_payment_amount, 0, "Minimum payment amount", 1000000),
+        minimum_percentage: nonNegative(partialPayments.minimum_percentage ?? config.min_payment_percentage, 0, "Minimum payment percentage", 100),
       },
       advance_adjustments: {
         enabled: bool(asObject(billing.advance_adjustments).enabled, false),
@@ -507,6 +516,7 @@ export function toCompatibilityPreferences(policy: HostelPolicy): Record<string,
     },
     allow_partial_payments: policy.billing.partial_payments.enabled,
     min_payment_amount: policy.billing.partial_payments.minimum_amount,
+    min_payment_percentage: policy.billing.partial_payments.minimum_percentage,
     allowed_frequencies: policy.billing.payment_frequency.allowed_frequencies,
     academic_year_start_month: policy.billing.payment_frequency.academic_year_start_month,
     academic_year_start_day: policy.billing.payment_frequency.academic_year_start_day,
@@ -585,10 +595,13 @@ export function compatibilityPreferencesToPolicyPatch(data: Record<string, any>)
           agreement_duration_months: data.billing_defaults.agreement_duration_months,
         },
       }),
-      ...((data.allow_partial_payments !== undefined || data.min_payment_amount !== undefined) && {
+      ...((data.allow_partial_payments !== undefined
+        || data.min_payment_amount !== undefined
+        || data.min_payment_percentage !== undefined) && {
         partial_payments: {
           ...(data.allow_partial_payments !== undefined && { enabled: data.allow_partial_payments }),
           ...(data.min_payment_amount !== undefined && { minimum_amount: data.min_payment_amount }),
+          ...(data.min_payment_percentage !== undefined && { minimum_percentage: data.min_payment_percentage }),
         },
       }),
       ...((data.allowed_frequencies !== undefined
@@ -743,6 +756,7 @@ export function validateHostelPolicyForWrite(policy: HostelPolicy) {
   nonNegative(policy.billing.deposit.minimum_reservation_deposit ?? 0, 0, "Minimum reservation deposit", 1000000);
   nonNegative(policy.billing.maintenance.amount, 0, "Maintenance amount", 50000);
   nonNegative(policy.billing.partial_payments.minimum_amount, 0, "Minimum payment amount", 1000000);
+  nonNegative(policy.billing.partial_payments.minimum_percentage, 0, "Minimum payment percentage", 100);
   boundedNumber(policy.billing.payment_frequency.academic_year_start_month, 6, 1, 12, "Academic year start month");
   boundedNumber(policy.billing.payment_frequency.academic_year_start_day, 1, 1, 31, "Academic year start day");
   boundedNumber(policy.billing.payment_frequency.frequency_change_cooldown_days, 90, 0, 3650, "Frequency change cooldown");

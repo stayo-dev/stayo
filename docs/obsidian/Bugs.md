@@ -28,6 +28,21 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### Partial payments were enforced but unconfigurable, and three screens fought over the same billing settings
+
+- **Status:** fixed (full-stack) — see [[Decisions#ADR-043|ADR-043]]
+- **Found:** 2026-08-05, reported directly by the user: "when marking a payment it shows partial payments are not allowed and if i check settings i dont find any option to toggle it or manage it".
+- **Area:** [[Frontend]] (owner Configure + collect flow), [[Backend]] (settlement planner, hostel policy)
+- **Symptom:** collecting ₹100 against ₹8,000 of rent was refused with *"Full payment required. Minimum: ₹8,000 (Rent)"*, and no screen anywhere offered a way to change that.
+- **Root cause — four separate defects behind one symptom:**
+  1. **A shipped enforcement with no control.** `partial_payments.enabled` existed in the hostel policy, was read by `settlement-planner.ts`, was writable through `PATCH /hostels/:id/preferences` — and defaulted to `false`. `allow_partial_payments` appeared **nowhere** in `apps/frontend/src`. The rule was enforced; the switch was never built.
+  2. **The review sheet contradicted itself.** The "After confirming" block rendered unconditionally from the allocation preview, so a refused payment still displayed "1 installment left part-paid", "₹7,900 still outstanding" and "a receipt is generated and the tenant is notified" — an outcome that could not occur — while Confirm sat disabled.
+  3. **Silent data loss between duplicate screens.** `MoreBillingPage` (Settings → "Rent and billing") and `MoreConfigLateFeesPage` (Configure → Finance) both wrote `billing.late_fee`. The former always wrote `type: 'FLAT'` and **omitted `max_amount`**, so configuring a PERCENTAGE fee with a cap and then pressing Save on the older screen rewrote it to FLAT and dropped the cap, with no warning. [[Changelog]] had claimed the old screen was "kept, unlinked" — it was still linked from `MoreSettingsPage`.
+  4. **Save buttons under the bottom nav.** `MoreConfigTenantDefaultsPage`, `MoreConfigLateFeesPage` and `MoreConfigReceiptFooterPage` used `fixed bottom-0` with no nav offset, z-index or max-width, unlike the older screens which used `bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20`. Every save action in the new Configure hub was partly obscured.
+- **Fix:** one canonical Billing policy screen owning all five billing concepts; the three duplicates deleted and their routes redirected; a new `minimum_percentage` floor; the collect flow states the policy up front and, at review, explains the block *or* the outcome but never both. Full reasoning in ADR-043.
+- **Also uncovered:** the backend test suite is entirely unrunnable without `DATABASE_URL_TEST` — *including tests of pure functions*, because the shared setup file imports `lib/db`. A `test:pure` runner was added so the financially sensitive allocation logic could actually be verified (56 tests). Provisioning a real test database is still open work.
+- **Related:** [[Decisions#ADR-043|ADR-043]], [[Business-Rules]], [[Features]], [[Changelog]]
+
 ### The hostel cards' drag handle was decoration — reordering had never been implemented at all
 
 - **Status:** fixed (full-stack: new column, new endpoint, real drag)

@@ -9,6 +9,16 @@ import { identityService } from '@features/auth/api';
 import { getInitials } from '@features/tenants/utils/normalize';
 import { queryKeys } from '@lib/queryKeys';
 import type { QuickCollectStep, QuickCollectTenant } from '../types';
+import { useNavigate } from 'react-router-dom';
+import { useHostelPolicy } from '@features/settings/settingsHooks';
+import {
+  readPartialPolicy,
+  policyHeadline,
+  policyDetail,
+  outcomeStatements,
+  blockedExplanation,
+  BILLING_POLICY_PATH,
+} from '@features/owner-more/billing-policy/billingPolicy';
 
 interface QuickCollectModalProps {
   open: boolean;
@@ -52,6 +62,8 @@ interface SettlementPreviewResponse {
   remaining_outstanding: number;
   payment_accepted: boolean;
   rejection_reason: string | null;
+  /** ADR-043 — lets the review step explain the floor rather than just report it. */
+  minimum_allowed?: number;
 }
 
 const labelStyle = 'text-[11px] font-bold uppercase tracking-wide text-muted-foreground';
@@ -104,6 +116,7 @@ function getErrorMessage(error: unknown, fallback: string) {
  */
 export function QuickCollectModal({ open, onClose, initialTenant }: QuickCollectModalProps) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [step, setStep] = useState<QuickCollectStep>('select');
   const [search, setSearch] = useState('');
   const [selectedTenant, setSelectedTenant] = useState<QuickCollectTenant | undefined>(initialTenant);
@@ -173,6 +186,13 @@ export function QuickCollectModal({ open, onClose, initialTenant }: QuickCollect
     if (entered === outstanding) return 'Clears all dues.';
     return `Clears all dues. ₹${(entered - outstanding).toLocaleString('en-IN')} goes to the next installment, which is created if it doesn't exist yet.`;
   }, [amount, selectedTenant?.outstanding]);
+
+  // The hostel's billing policy, so the owner is told the rule *before* they
+  // type an amount rather than being refused after (ADR-043). Reuses the
+  // existing preferences endpoint — the settlement preview can't serve this
+  // because it requires an amount > 0.
+  const hostelPolicyQuery = useHostelPolicy(selectedTenant?.hostelId ?? null);
+  const partialPolicy = readPartialPolicy(hostelPolicyQuery.data?.policy);
 
   const previewQuery = useQuery({
     queryKey: ['owner', 'settlement-preview', selectedTenant?.id, amount, mode, [...selectedObligationIds].sort()],
@@ -359,6 +379,33 @@ export function QuickCollectModal({ open, onClose, initialTenant }: QuickCollect
 
       {step === 'amount' && selectedTenant && (
         <div className="flex flex-col gap-4">
+          {/* The policy, stated up front. Previously the owner learned about it
+              only at the review step, as a refusal (ADR-043). */}
+          <div
+            className={`rounded-xl border px-3.5 py-2.5 ${
+              partialPolicy.enabled ? 'border-border bg-muted/40' : 'border-warning/30 bg-warning/10'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-display text-[12px] font-bold text-foreground">
+                {policyHeadline(partialPolicy)}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  navigate(BILLING_POLICY_PATH);
+                }}
+                className="flex-none text-[11.5px] font-semibold text-primary"
+              >
+                Change
+              </button>
+            </div>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+              {policyDetail(partialPolicy)}
+            </p>
+          </div>
+
           <div className="rounded-2xl border border-border bg-card p-4">
             <div className="flex items-start justify-between">
               <div className="flex gap-2.5">
@@ -584,12 +631,45 @@ export function QuickCollectModal({ open, onClose, initialTenant }: QuickCollect
             <p className="py-8 text-center text-sm text-muted-foreground">Calculating settlement…</p>
           ) : preview ? (
             <>
-              {preview.payment_accepted === false && preview.rejection_reason && (
-                <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-[12px] font-semibold text-destructive">
-                  {preview.rejection_reason}
-                </div>
-              )}
-
+              {preview.payment_accepted === false ? (
+                (() => {
+                  const blocked = blockedExplanation({
+                    policy: partialPolicy,
+                    minimumAllowed: preview.minimum_allowed ?? 0,
+                    entered: Number(amount) || 0,
+                  });
+                  return (
+                    <div className="flex flex-col gap-3">
+                      <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3.5">
+                        <div className="font-display text-[13px] font-bold text-destructive">{blocked.title}</div>
+                        <p className="mt-1 text-[12px] leading-relaxed text-destructive/90">{blocked.body}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setStep('amount')}
+                          className="flex-1 rounded-xl border border-border bg-card py-3 text-center font-display text-[13px] font-bold text-foreground"
+                        >
+                          Change amount
+                        </button>
+                        {blocked.canFixInSettings && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onClose();
+                              navigate(BILLING_POLICY_PATH);
+                            }}
+                            className="flex-1 rounded-xl border border-border bg-card py-3 text-center font-display text-[13px] font-bold text-primary"
+                          >
+                            Billing policy
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()
+              ) : (
+              <>
               {/* One line of arithmetic, then the settlement itself. The old
                   version led with three abstract stat tiles and hid the actual
                   allocation behind a disclosure. */}
@@ -647,24 +727,20 @@ export function QuickCollectModal({ open, onClose, initialTenant }: QuickCollect
                   After confirming
                 </div>
                 <ul className="flex flex-col gap-1 text-[12px] text-foreground">
-                  {clearedCount > 0 && (
-                    <li>
-                      {clearedCount} installment{clearedCount > 1 ? 's' : ''} marked fully paid
+                  {outcomeStatements({
+                    collected: preview.total_to_settle,
+                    remaining: preview.remaining_outstanding,
+                    clearedCount,
+                    partialCount,
+                  }).map((line, i, arr) => (
+                    <li key={line} className={i === arr.length - 1 ? 'text-muted-foreground' : undefined}>
+                      {line}
                     </li>
-                  )}
-                  {partialCount > 0 && (
-                    <li>
-                      {partialCount} installment{partialCount > 1 ? 's' : ''} left part-paid
-                    </li>
-                  )}
-                  <li>
-                    {preview.remaining_outstanding > 0
-                      ? `₹${preview.remaining_outstanding.toLocaleString('en-IN')} still outstanding for this tenant`
-                      : 'This tenant has no dues left'}
-                  </li>
-                  <li className="text-muted-foreground">A receipt is generated and the tenant is notified</li>
+                  ))}
                 </ul>
               </div>
+              </>
+              )}
             </>
           ) : (
             <p className="py-8 text-center text-sm text-destructive">Could not calculate settlement. Please go back and try again.</p>

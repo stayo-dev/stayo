@@ -113,7 +113,8 @@ describe("SettlementPlanner - buildSettlementPlan", () => {
   it("applies policy minimum check when partial payments are allowed", () => {
     const lowPaymentPlan = buildSettlementPlan(sampleObligations, 400, policyPartialAllowed);
     expect(lowPaymentPlan.payment_accepted).toBe(false);
-    expect(lowPaymentPlan.rejection_reason).toBe("Minimum payment is ₹500");
+    // Owner-language wording (ADR-043) — states the policy, not the flag.
+    expect(lowPaymentPlan.rejection_reason).toContain("accepts part payments of ₹500 or more");
 
     const validPaymentPlan = buildSettlementPlan(sampleObligations, 500, policyPartialAllowed);
     expect(validPaymentPlan.payment_accepted).toBe(true);
@@ -125,7 +126,8 @@ describe("SettlementPlanner - buildSettlementPlan", () => {
     const planRejected = buildSettlementPlan(sampleObligations, 15000, policyPartialDisabled);
     expect(planRejected.payment_accepted).toBe(false);
     expect(planRejected.minimum_allowed).toBe(16000);
-    expect(planRejected.rejection_reason).toContain("Full payment required. Minimum: ₹16,000 (Onboarding Dues)");
+    // Owner-language wording (ADR-043).
+    expect(planRejected.rejection_reason).toContain("Onboarding Dues must be cleared in full — ₹16,000");
 
     // If tenant pays 16000, it is accepted
     const planAccepted = buildSettlementPlan(sampleObligations, 16000, policyPartialDisabled);
@@ -168,7 +170,7 @@ describe("SettlementPlanner - buildSettlementPlan", () => {
     const plan = buildSettlementPlan(partiallyPaidObligations, 7000, policyPartialDisabled);
     expect(plan.payment_accepted).toBe(false);
     expect(plan.minimum_allowed).toBe(8000);
-    expect(plan.rejection_reason).toContain("Full payment required. Minimum: ₹8,000 (Rent)");
+    expect(plan.rejection_reason).toContain("Rent must be cleared in full — ₹8,000");
   });
 
   it("handles the case with no outstanding obligations (all paid)", () => {

@@ -2,7 +2,6 @@ import { useNavigate } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { ListRow } from '@shared/ui-patterns/ListRow';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
-import { mockTenantDefaults } from '@shared/mocks/more';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
 import { useMoreNav } from '../hooks/useMoreNav';
 
@@ -32,19 +31,11 @@ export function MoreSettingsPage() {
             className="px-4"
           />
           <ListRow
-            leading={<span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-secondary font-display text-xs font-bold text-primary">RB</span>}
-            title="Rent and billing"
-            meta="Schedule, due dates & late fees"
+            leading={<span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-secondary font-display text-xs font-bold text-primary">BP</span>}
+            title="Billing policy"
+            meta="Part payments, schedule, deposit & late fees"
             showChevron
-            onClick={() => navigate('/owner/more/billing')}
-            className="px-4"
-          />
-          <ListRow
-            leading={<span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-secondary font-display text-xs font-bold text-primary">TD</span>}
-            title="Tenant defaults"
-            meta={mockTenantDefaults}
-            showChevron
-            onClick={() => navigate('/owner/more/configuration/hostel/tenant-defaults')}
+            onClick={() => navigate('/owner/more/configuration/finance/billing-policy')}
             className="px-4"
           />
           <ListRow

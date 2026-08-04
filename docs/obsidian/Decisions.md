@@ -587,6 +587,33 @@ That reading was wrong, and measurement is what showed it. Two production endpoi
 
 **Related:** [[Features]], [[Database]], [[APIs]], [[Bugs]], [[Changelog]], [[Frontend]].
 
+## ADR-043: One business concept, one screen — billing behaviour is configured in exactly one place, and the collect flow states the policy instead of refusing at the end
+
+**Date:** 2026-08-05 · **Status:** Accepted · Direction set explicitly by the user. See [[Business-Rules]], [[Features]], [[Bugs]].
+
+**Context.** An owner collecting ₹100 against ₹8,000 of rent was told *"Full payment required. Minimum: ₹8,000 (Rent)"* at the confirmation step — and could find nowhere to change it. Investigation found four distinct problems behind that one symptom:
+
+1. `partial_payments.enabled` was fully implemented and **enforced** in `settlement-planner.ts`, defaulted to `false`, and was **exposed in no UI whatsoever**. The enforcement shipped; the control never did.
+2. The review sheet rendered the refusal **and** a full success preview at once — "1 installment left part-paid", "₹7,900 still outstanding", "a receipt is generated" — describing an outcome that could not happen, while Confirm sat disabled.
+3. **Three screens** each owned a slice of billing: `MoreBillingPage` (Settings → "Rent and billing"), `MoreConfigLateFeesPage` (Configure → Finance) and `MoreConfigTenantDefaultsPage` (Configure → Hostel). The first wrote `type: 'FLAT'` unconditionally and omitted `max_amount`, so opening it after configuring a PERCENTAGE fee with a cap **silently destroyed both**.
+4. Three Configure screens pinned their save bar at `bottom-0` with no nav offset or z-index, putting the save button **underneath the bottom nav**.
+
+**Decision.**
+
+- **One canonical screen**, `MoreConfigBillingPolicyPage`, owns all billing behaviour: rent collection (full vs part, with minimum amount *and* minimum percentage), security deposit default, agreement duration default, rent schedule (generation/due/grace), and late fee (flat/percentage/per-day + cap). The three previous screens are **deleted**, and their routes **redirect** so existing links and back-stack entries still land somewhere real.
+- **A second floor type, `minimum_percentage`** (0-100 of total outstanding), added alongside `minimum_amount`. Both are floors, so the **larger wins**; the result is clamped to the outstanding balance so a large absolute floor can't strand a small final balance.
+- **The collect flow states the policy before the owner types an amount** ("Full payment only" / "Part payments allowed", with the floor spelled out and a Change link), and the review step **either** explains the block with a route to fix it **or** shows the outcome — never both.
+- **Owner language everywhere.** No screen or message names `allow_partial_payments`, `minimum_amount` or `payment_policy`. Enforced by tests that assert those strings never appear in generated copy.
+
+**Consequences.**
+- Wording changes to `rejection_reason` broke 3 existing assertions that pinned the old sentences. They were updated to assert the new wording — the change was deliberate, not a regression.
+- `PaymentPolicy.minimum_percentage` is **optional** so the many callers that hand-build a policy keep compiling and behave as 0.
+- Deposit/agreement defaults moved out of Configure → Hostel; that row now points at Billing policy rather than 404ing.
+- **A `test:pure` runner was added** (`vitest.pure.config.ts`, no `setupFiles`). The main config loads `tests/setup.ts`, which imports `lib/db` and TRUNCATEs the `test` schema, so with no `DATABASE_URL_TEST` provisioned the *entire* suite is unrunnable — including tests of genuinely pure functions like `buildSettlementPlan`. That meant financially sensitive allocation logic could not be verified locally at all. `test:pure` runs 56 such tests with no database reachable. **This is a stopgap** — provisioning a real test database remains open work, and every DB-touching test is still unrun.
+- `npm run check:financial-safety` and `check:payment-production` both still exit 1. **Pre-existing and unrelated**: the first points at `backend-next/prisma/migrations`, a directory that does not exist in this repo layout, and reports payment-ledger triggers that were never applied; the second warns about env keys expecting `sriadithyahostels.in`, the pre-Stayo domain. Neither inspects anything this change touches.
+
+**Related:** [[Business-Rules]], [[Features]], [[Bugs]], [[Changelog]], [[Frontend]], [[Backend]].
+
 ## See also
 - [[Changelog]] for the chronological record of what shipped
 - [[Architecture]] for the system these decisions govern

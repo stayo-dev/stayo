@@ -210,7 +210,14 @@ export interface ObligationSnapshot {
 
 export interface PaymentPolicy {
   allow_partial: boolean;
-  minimum_amount: number;  // hostel-configured floor (rupees)
+  minimum_amount: number;  // hostel-configured absolute floor (rupees)
+  /**
+   * Hostel-configured floor as a percentage (0-100) of total outstanding.
+   * 0 = no percentage floor. Optional so existing callers that build a
+   * PaymentPolicy by hand keep compiling; treated as 0 when absent.
+   * See ADR-043.
+   */
+  minimum_percentage?: number;
 }
 
 // ── Output types ──────────────────────────────────────────────────────────────
@@ -262,6 +269,14 @@ export interface SettlementPlan {
   payment_accepted: boolean;
   rejection_reason: string | null;
   payment_policy: "FULL_PAYMENT" | "PARTIAL_ALLOWED";
+  /**
+   * The hostel's configured floors, echoed back so a UI can explain *why*
+   * `minimum_allowed` is what it is ("your policy requires at least 25% of the
+   * outstanding balance") rather than presenting a bare number. Both 0 when
+   * unset. See ADR-043.
+   */
+  policy_minimum_amount: number;
+  policy_minimum_percentage: number;
   warnings: string[];
   summary: string;
 
@@ -365,6 +380,8 @@ export function buildSettlementPlan(
         payment_accepted: false,
         rejection_reason: chronoCheck.reason || "Chronological rent rule violation",
         payment_policy: "PARTIAL_ALLOWED",
+        policy_minimum_amount: policy.minimum_amount ?? 0,
+        policy_minimum_percentage: policy.minimum_percentage ?? 0,
         warnings: [],
         summary: "",
         explanation: [{
@@ -437,8 +454,16 @@ export function buildSettlementPlan(
     minimumAllowed = 1;
     firstTierLabel = "Future Rent Credit";
   } else if (policy.allow_partial) {
-    // Partial payments allowed — use hostel-configured minimum or ₹1
-    minimumAllowed = Math.max(policy.minimum_amount, 1);
+    // Partial payments allowed — the floor is the strictest of:
+    //   ₹1, the absolute minimum, and the percentage of total outstanding.
+    // Both configured floors are *floors*, so the larger wins; a hostel that
+    // sets neither still requires a positive amount.
+    const pct = policy.minimum_percentage ?? 0;
+    const percentageFloor = pct > 0 ? Math.ceil((totalOutstanding * pct) / 100) : 0;
+    minimumAllowed = Math.max(policy.minimum_amount, percentageFloor, 1);
+    // Never demand more than is actually owed — a 50% floor on a ₹100 balance
+    // must not make the last ₹100 unpayable.
+    minimumAllowed = Math.min(minimumAllowed, totalOutstanding);
     // Find the label for the first outstanding obligation for UI context
     const firstOutstanding = allocations.find(a => a.outstanding > 0);
     firstTierLabel = firstOutstanding?.label || "";
@@ -473,9 +498,17 @@ export function buildSettlementPlan(
   const paymentAccepted = amountRupees >= minimumAllowed;
   let rejectionReason: string | null = null;
   if (!paymentAccepted) {
-    rejectionReason = policy.allow_partial
-      ? `Minimum payment is ₹${minimumAllowed.toLocaleString("en-IN")}`
-      : `Full payment required. Minimum: ₹${minimumAllowed.toLocaleString("en-IN")} (${firstTierLabel})`;
+    // Owner-facing wording: say what the policy requires, not which flag is
+    // set. The percentage case names the rule so the number isn't arbitrary.
+    if (policy.allow_partial) {
+      const pct = policy.minimum_percentage ?? 0;
+      const percentageDrivesIt = pct > 0 && Math.ceil((totalOutstanding * pct) / 100) >= policy.minimum_amount;
+      rejectionReason = percentageDrivesIt
+        ? `This hostel accepts part payments of at least ${pct}% of what's owed — that's ₹${minimumAllowed.toLocaleString("en-IN")} right now`
+        : `This hostel accepts part payments of ₹${minimumAllowed.toLocaleString("en-IN")} or more`;
+    } else {
+      rejectionReason = `This hostel doesn't accept part payments. ${firstTierLabel} must be cleared in full — ₹${minimumAllowed.toLocaleString("en-IN")}`;
+    }
   }
 
   // ── 4. Warnings ─────────────────────────────────────────────────────────────
@@ -572,6 +605,8 @@ export function buildSettlementPlan(
     payment_accepted: paymentAccepted,
     rejection_reason: rejectionReason,
     payment_policy: policy.allow_partial ? "PARTIAL_ALLOWED" : "FULL_PAYMENT",
+    policy_minimum_amount: policy.minimum_amount ?? 0,
+    policy_minimum_percentage: policy.minimum_percentage ?? 0,
     warnings,
     summary,
     explanation,

@@ -26,6 +26,8 @@ export interface FinancialPolicy {
   partial_payments: {
     enabled: boolean;
     minimum_amount: number;
+    /** Percentage (0-100) of total outstanding. 0 = no percentage floor. */
+    minimum_percentage: number;
   };
 
   /** How excess payments are handled */
@@ -77,6 +79,7 @@ export function extractFinancialPolicy(hostelPolicy: HostelPolicy): FinancialPol
     partial_payments: {
       enabled: hostelPolicy.billing.partial_payments.enabled,
       minimum_amount: hostelPolicy.billing.partial_payments.minimum_amount,
+      minimum_percentage: hostelPolicy.billing.partial_payments.minimum_percentage,
     },
     overflow: {
       enabled: hostelPolicy.billing.overflow.enabled,
@@ -111,9 +114,11 @@ export function extractFinancialPolicy(hostelPolicy: HostelPolicy): FinancialPol
 export function toPaymentPolicy(fp: FinancialPolicy): {
   allow_partial: boolean;
   minimum_amount: number;
+  minimum_percentage: number;
 } {
   return {
     allow_partial: fp.partial_payments.enabled,
     minimum_amount: fp.partial_payments.minimum_amount,
+    minimum_percentage: fp.partial_payments.minimum_percentage,
   };
 }

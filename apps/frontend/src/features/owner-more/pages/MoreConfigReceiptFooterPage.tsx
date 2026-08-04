@@ -54,7 +54,7 @@ export function MoreConfigReceiptFooterPage() {
         </div>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 border-t border-border bg-background px-5 pb-8 pt-3">
+      <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] z-20 border-t border-border bg-background px-5 pb-[30px] pt-3 sm:mx-auto sm:max-w-[480px] sm:px-6">
         <button
           type="button"
           onClick={save}
