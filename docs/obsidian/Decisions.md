@@ -541,6 +541,28 @@ Architecture Decision Records — each entry below was **inferred from code evid
 - **Consequences:** One accepted exception remains in source — `AuthContext.tsx` still calls `localStorage.removeItem('sri_adithya_onboarding_complete')`; the old key name is required to actually purge legacy state from returning browsers, it is internal-only, and it does not match the build guard's `/Sri\s*Adithya/` pattern (underscore), so `dist` stays clean. Real social `sameAs` profiles are still to be supplied. See [[Changelog]], [[Features]], [[Business-Rules]].
 - **Update (2026-07-30, same day):** the two placeholders were filled with the real registered values (phone `+91 76750 80090`; the office address was supplied but see below), and `public/og-cover.png` (1200×630) was added. Per explicit follow-up direction, exposed business detail was then **minimised** in three steps: (1) JSON-LD reduced to an `Organization` carrying only name/url/logo/email/telephone + `brand: Stayo` (removed `SoftwareApplication`, `PostalAddress`, `contactPoint`, description, legalName); (2) the Udyam registration number kept out of all public surfaces (JSON-LD, footer, legal, `company.ts`); (3) **the office address removed from every public surface** — Contact, footer, PublicLayout top-bar/footer, legal Terms/contact block, and `company.ts` — with the `/location` "Location & Directions" page repurposed to an online-first "Reach Us" note (no address/map) and dropped from the nav. Public contact is now phone + email/WhatsApp only. Rationale: the user wants a minimal public footprint; the registered address/registration exist on the Udyam certificate for any provider that privately requires them, and can be re-added to legal pages if a payment/Meta reviewer explicitly demands it.
 
+## ADR-041: Backend latency is addressed by fixing placement and query strategy first, before any service-code optimisation
+
+**Date:** 2026-08-04 · **Status:** Accepted (phases 1–2 shipped; phase 3 not decided) · See [[Performance]] for all measured values.
+
+**Context.** The owner Tenants screen was taking ~10.9s to load. The obvious reading of the network waterfall was "the queries are too slow", which points straight at `tenantService.getAllTenants` and its 10-relation `include`.
+
+That reading was wrong, and measurement is what showed it. Two production endpoints were compared: `GET /api/tenants` unauthenticated (401 from middleware, no database access) ran in **117ms**, while `GET /api/health` (the same path plus a single `SELECT 1`) ran in **1388ms**. Function invocation was never the problem — **one trivial database query cost ~1271ms**. `x-vercel-id: bom1::iad1::…` explained why: `apps/backend/vercel.json` declared no `regions`, so functions defaulted to `iad1` (Washington DC) while Postgres runs in `ap-south-1` (Mumbai). Every query crossed the planet twice.
+
+**Decision.** Fix causes in order of measured impact, deploying and re-measuring between each, rather than bundling changes:
+
+1. **Pin functions to `bom1`** (`"regions": ["bom1"]`). Config only. Cost of a DB round-trip fell **~1271ms → ~28ms**.
+2. **Enable Prisma `relationJoins`** (`previewFeatures = ["relationJoins"]`). Schema flag only — no service code touched, because `join` becomes the default relation load strategy on PostgreSQL once the feature is enabled (verified: an unspecified strategy emits the same query count as an explicit `join`). The `getAllTenants` `findMany` went from **14 SQL queries to 4**.
+3. **Service-code optimisation is deliberately deferred** and may not be justified at all. It will be decided from measurements, not assumed.
+
+**Consequences.**
+- Region pinning is a single region; multi-region deploys require a Vercel plan above Hobby.
+- `relationJoins` is a *preview* feature. Before deploying it, `query` and `join` were verified to return identical rows for the tenants `include` across every hostel — a silent semantic change here would be worse than a slow query. Re-verify if the `include` shape changes materially.
+- Ordering the work this way meant the expensive refactor was never needed to get the large win. Had `tenant-service.ts` been optimised first, it would have been credited with an improvement that actually came from a one-line config change, and the real cause would have remained in place.
+- The known remaining cost centres (unbounded `PAID` obligation fetch, per-`INVITED`-tenant `getReservationStatus`, the sequential ownership check) are recorded in [[Performance]] as *unmeasured* and were left in place.
+
+**Related:** [[Performance]], [[Backend]], [[Database]], [[Bugs]], [[Changelog]].
+
 ## See also
 - [[Changelog]] for the chronological record of what shipped
 - [[Architecture]] for the system these decisions govern
