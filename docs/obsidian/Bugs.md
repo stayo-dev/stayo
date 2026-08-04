@@ -28,6 +28,17 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### The hostel cards' drag handle was decoration — reordering had never been implemented at all
+
+- **Status:** fixed (full-stack: new column, new endpoint, real drag)
+- **Found:** 2026-08-04, reported directly by the user: "i am not able to drag hostels card".
+- **Area:** [[Frontend]] (owner Home), [[Database]], [[APIs]]
+- **Symptom:** every Property card on owner Home rendered a `⠿` drag handle. Dragging did nothing, on desktop or on a phone.
+- **Root cause:** the feature had **never been built** — this was not a regression. `react-dnd` and `react-dnd-html5-backend` were listed in `apps/frontend/package.json` but **imported nowhere** in `src/`; no `DndProvider` was mounted anywhere in the app; and `DragHandle` was a decorative `<span aria-hidden="true">` rendering six dots with no event handlers of any kind. `hostels` also had no ordering column, so no order could have been persisted even if the drag had worked. The handle was a visual affordance carried over from the Figma design source — its own doc comment says the glyph was "confirmed reused across every drag-and-drop list in the design source", which is what it was copied from. Three other call sites (floor groups, room layout, food-poll options) have the same decorative handle and the same non-existent reorder behaviour. **A second latent cause sat behind the first:** even fully wired, `react-dnd-html5-backend` uses the HTML5 drag-and-drop API, which does not fire on touch devices — so the mobile-first owner app could never have dragged anything with that backend.
+- **Fix:** see [[Decisions#ADR-042|ADR-042]]. Real handle-only drag via `motion`'s `Reorder`/`useDragControls` (already a dependency — no new package; `react-dnd` and `react-dnd-html5-backend` removed), persisted to a new nullable `hostels.display_order` through `PATCH /api/owner/hostels/reorder`. Drag is deliberately scoped to a "My order" sort mode and the handle is **hidden** in the four metric sort modes, so a handle that can't be dragged never appears again. `DragHandle` is now dual-mode and stays decorative at the three call sites whose reorder behaviour still doesn't exist — making those interactive would have recreated this exact bug elsewhere.
+- **Caveat:** the backend tests for this are written but were **never executed** — `DATABASE_URL_TEST` is defined nowhere and `.env.test` doesn't exist, so the backend suite can't run in this environment at all (pre-existing; an untouched existing test fails identically). Verified live against the real API instead.
+- **Related:** [[Decisions#ADR-042|ADR-042]], [[Features]], [[Database]], [[APIs]], [[Changelog]]
+
 ### Owner couldn't add a hostel, and a swathe of owner-app buttons were dead ends
 
 - **Status:** fixed (frontend only, no backend changes needed — every backend route these now call already existed and worked)

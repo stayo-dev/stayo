@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { OwnerHomeDashboard } from '@features/owner-dashboard/components/OwnerHomeDashboard';
 import { HostelOptionsSheet } from '@features/owner-dashboard/components/HostelOptionsSheet';
 import { useOwnerDashboard } from '@features/owner-dashboard/hooks/useOwnerDashboard';
+import { useHostelOrder } from '@features/owner-dashboard/property-order/useHostelOrder';
+import { moveItem } from '@features/owner-dashboard/property-order/hostelSort';
 import { useHomeQuickActions } from '@features/owner-dashboard/quick-actions/useHomeQuickActions';
 import { QuickActionsSheet } from '@features/owner-dashboard/quick-actions/QuickActionsSheet';
 import { AllActionsSheet } from '@features/owner-dashboard/quick-actions/AllActionsSheet';
@@ -38,11 +40,35 @@ export function OwnerDashboardPreviewPage() {
   const navigate = useNavigate();
   const qa = useHomeQuickActions();
   const dash = useOwnerDashboard();
+  const reorder = useHostelOrder();
   const [hostelMenuFor, setHostelMenuFor] = useState<string | null>(null);
 
   if (dash.isLoading) return <DashboardLoadingSkeleton />;
 
   const menuHostel = dash.properties.find((p) => p.id === hostelMenuFor);
+
+  /**
+   * Keyboard/screen-reader path for reordering — dragging is pointer-only, so
+   * without this the feature would be unusable without a mouse or touch.
+   * Operates on the server's canonical order, not the currently displayed
+   * sort, so "Move up" means the same thing regardless of view. See ADR-042.
+   */
+  const moveHostel = (hostelId: string, direction: -1 | 1) => {
+    const ids = [...dash.properties]
+      .sort((a, b) => (a.displayOrder ?? Infinity) - (b.displayOrder ?? Infinity))
+      .map((p) => p.id);
+    const from = ids.indexOf(hostelId);
+    if (from === -1) return;
+    const next = moveItem(ids, from, from + direction);
+    if (next !== ids) reorder.mutate(next);
+    setHostelMenuFor(null);
+  };
+
+  const menuIndex = menuHostel
+    ? [...dash.properties]
+        .sort((a, b) => (a.displayOrder ?? Infinity) - (b.displayOrder ?? Infinity))
+        .findIndex((p) => p.id === menuHostel.id)
+    : -1;
 
   return (
     <>
@@ -59,6 +85,7 @@ export function OwnerDashboardPreviewPage() {
         onViewAllActions={qa.openAllActions}
         onPropertyMenu={(hostelId) => setHostelMenuFor(hostelId)}
         onAddHostel={() => navigate('/onboarding')}
+        onReorderProperties={(orderedIds) => reorder.mutate(orderedIds)}
       />
 
       <QuickActionsSheet
@@ -91,6 +118,9 @@ export function OwnerDashboardPreviewPage() {
         onClose={() => setHostelMenuFor(null)}
         hostelId={hostelMenuFor}
         hostelName={menuHostel?.name ?? 'Hostel'}
+        index={menuIndex}
+        total={dash.properties.length}
+        onMove={moveHostel}
       />
     </>
   );

@@ -250,6 +250,11 @@ model hostels {
   /// `verification_status` by the Platform Admin console, so an owner writing it
   /// directly would self-approve past platform verification. See ADR-040.
   publish_requested   Boolean                  @default(false)
+  /// Owner-controlled position in the Home "Property" list, written only by
+  /// PATCH /api/owner/hostels/reorder. Nullable on purpose: NULL means "never
+  /// reordered" and sorts last (then by name), so existing hostels keep their
+  /// previous name-ascending order with no backfill. See ADR-042.
+  display_order       Int?
   verification_status HostelVerificationStatus @default(PENDING)
   listing_status      HostelListingStatus      @default(DRAFT)
   admission_photos    Json?

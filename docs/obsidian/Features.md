@@ -108,6 +108,18 @@ The StayO redesign is being built in place inside the same `apps/frontend` tree,
 - **Depends on:** [[Frontend]] (StayO foundation: `ThemeProvider`, `OwnerAppShell`, `shared/ui-patterns/*`), `docs/migration/frontend-foundation-tracker.md` (routing-approach note)
 - **Notes:** End-to-end click-through of the owner side of `Stayo Homepage.dc.html` → `AuthModal.dc.html` → `Owner Onboarding.dc.html` (12 steps, full animated SVG scene) → `Stayo App.dc.html`'s Home tab, faithfully ported. Two screens (Lead Submitted, Activation Link) don't exist in the design source and are now orphaned (see above). The dashboard screen this journey ends on (`OwnerDashboardPreviewPage`, at `/get-started/home`) renders `OwnerHomeDashboard`, a pure presentational component — still mock-data-driven as of this entry (real Dashboard wiring is the next phase after the signup/onboarding work below).
 
+### Owner Home property ordering — manual drag plus metric sorting
+- **Status:** shipped 2026-08-04 — see [[Decisions#ADR-042|ADR-042]]
+- **Owner-facing?** yes · **Tenant-facing?** no
+- **Key files:** Backend — `lib/services/hostel-order-service.ts` (new), `app/api/owner/hostels/reorder/route.ts` (new), `lib/services/portfolio-service.ts`, `prisma/migrations/20260804120000_hostel_display_order/` (new), `tests/hostel-order-service.test.ts` (new, 8 cases — **written but never executed**, see below). Frontend — `features/owner-dashboard/property-order/{hostelSort.ts,hostelSort.test.ts,PropertyList.tsx,PropertySortControl.tsx,useHostelOrder.ts}` (all new; 22 tests), `shared/ui-patterns/DragHandle.tsx`, `features/owner-dashboard/components/{OwnerHomeDashboard,HostelOptionsSheet}.tsx`, `features/owner-dashboard/hooks/useOwnerDashboard.ts`, `features/owners/api/index.js`, `shared/mocks/dashboard.ts`.
+- **Depends on:** [[APIs]] (`PATCH /api/owner/hostels/reorder`), [[Database]] (`hostels.display_order`), `motion` (already a dependency).
+- **What's real:** five sort modes — **My order** (default) · Most dues · Most vacant · Top revenue · Name. Manual drag works in "My order" only, from the handle only, and persists server-side so the arrangement follows the owner across devices. Move up / Move down in the ⋮ sheet do the same thing without a pointer.
+- **Notes:** This replaced a handle that had never worked — see [[Bugs]] for why (`react-dnd` present but imported nowhere, no `DndProvider`, decorative `aria-hidden` span, no ordering column). Sort labels are deliberately directional ("Most vacant", not "Occupancy") because occupancy sorts *ascending* and a bare metric name wouldn't say which end of the list you get.
+
+  **The handle is hidden in the four metric modes.** Hand-ordering a metric-sorted list is incoherent, and hiding the affordance explains why it can't be dragged rather than leaving a dead control — precisely the failure being fixed. `DragHandle`'s three other call sites (floor groups, room layout, food-poll options) intentionally stay decorative, because those reorder behaviours also don't exist yet.
+
+  **Not verified by automated backend tests.** `DATABASE_URL_TEST` is defined nowhere and `.env.test` doesn't exist, so the backend suite is unrunnable in this environment — pre-existing, confirmed by an untouched existing test failing identically. The endpoint was verified live against the real API instead. Provisioning a test database is open work.
+
 ### Owner activation visibility — the owner can see where every invited tenant is stuck
 - **Status:** shipped 2026-08-01 — **activation business logic unchanged**
 - **Owner-facing?** yes · **Tenant-facing?** no

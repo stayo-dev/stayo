@@ -41,6 +41,16 @@ export const ownerService = {
         const response = await api.post('/owner/hostels', data);
         return response.data;
     },
+    /**
+     * Persist the owner's manual Home ordering. `orderedIds` must be the full
+     * ordered list of the owner's ACTIVE/INACTIVE hostels — the backend
+     * rejects a partial list with 409 STALE_ORDER rather than best-effort
+     * applying it. See ADR-042.
+     */
+    reorderHostels: async (orderedIds) => {
+        const response = await api.patch('/owner/hostels/reorder', { order: orderedIds });
+        return response.data;
+    },
     getHostelBillingDefaults: async (hostelId) => {
         const response = await api.get(`/hostels/${hostelId}/billing-defaults`);
         return response.data;

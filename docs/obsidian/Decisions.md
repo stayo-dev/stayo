@@ -563,6 +563,30 @@ That reading was wrong, and measurement is what showed it. Two production endpoi
 
 **Related:** [[Performance]], [[Backend]], [[Database]], [[Bugs]], [[Changelog]].
 
+## ADR-042: Hostel ordering is server-persisted and manual drag is one mode among sorts, not the only way to order
+
+**Date:** 2026-08-04 · **Status:** Accepted · See [[Features]], [[Database]], [[APIs]].
+
+**Context.** The Home "Property" cards rendered a `⠿` drag handle that did nothing. The feature had never been built, not regressed: `react-dnd` and `react-dnd-html5-backend` were in `package.json` but **imported nowhere**, no `DndProvider` was mounted anywhere in `src/`, and `DragHandle` was a decorative `<span aria-hidden="true">` with no handlers. `hostels` had no ordering column either, so nothing could have been stored. Even fully wired, `react-dnd-html5-backend` would not have worked on the owner's phone — the HTML5 drag-and-drop API doesn't fire on touch.
+
+**Decision.**
+
+1. **Manual order persists server-side** in `hostels.display_order`, not `localStorage`. The owner's stated reason for wanting it — deliberately promoting a hostel they're watching — is a decision about their business, not a per-browser view preference; an order that silently differs between their phone and their desktop would read as broken.
+2. **Drag is one mode among five sorts** (My order · Most dues · Most vacant · Top revenue · Name), not the only ordering mechanism. At two or three properties, hand-ordering earns little; sorting by dues answers a question the owner actually has daily. Manual order earns its keep as the portfolio grows.
+3. **The handle appears only in "My order" mode.** Hand-ordering a metric-sorted list is incoherent, and hiding the handle explains *why* it can't be dragged rather than leaving a dead affordance — the exact failure this ADR exists to fix.
+4. **Drag starts from the handle only** (`dragListener={false}` + `useDragControls`, plus `touch-none` on the handle). This is what makes it work on touch: the card keeps tap-to-drill and the page keeps vertical scroll everywhere except the handle itself.
+5. **`motion` rather than a new drag library.** It was already a dependency and already used in `TenantCard.tsx`; `motion/react` exports `Reorder` and `useDragControls`. `react-dnd` and `react-dnd-html5-backend` were removed as dead weight.
+6. **Move up / Move down in the ⋮ sheet** is the keyboard and screen-reader path. Dragging is inherently pointer-only, so drag alone would make the feature unreachable without a mouse or touch.
+
+**Consequences.**
+- Sort mode is view state and stays in `localStorage`; only the *order* is owner data and goes to the server. Splitting them keeps the server contract to the thing that genuinely needs to follow the owner across devices.
+- `MockProperty` gained optional numeric fields (`occupancyPercent`, `revenueValue`, `outstandingValue`, `displayOrder`) because sorting cannot use the formatted display strings — `'₹1,32,600'` doesn't compare numerically.
+- `DragHandle` is dual-mode: interactive only when given an `onDragStart`. Its three other call sites (floor groups, room layout, food-poll options) stay decorative **on purpose** — those reorder behaviours also don't exist, and making them look interactive would recreate this same bug elsewhere.
+- The occupancy pill now tones by threshold. It had been hardcoded `success`, so 75% and 88% rendered identically green — a status-shaped decoration carrying no status.
+- **Not verified by automated backend tests.** `tests/hostel-order-service.test.ts` was written (8 cases: ordering, NULL default, cross-owner rejection, partial-list rejection, duplicates, idempotency, owner isolation, portfolio read-through) but **never executed** — `DATABASE_URL_TEST` is defined nowhere and `.env.test` does not exist, so the entire backend suite is unrunnable in this environment, a pre-existing gap confirmed by an untouched existing test failing identically. Verified live against the real API instead. Running the suite needs a test database provisioned first.
+
+**Related:** [[Features]], [[Database]], [[APIs]], [[Bugs]], [[Changelog]], [[Frontend]].
+
 ## See also
 - [[Changelog]] for the chronological record of what shipped
 - [[Architecture]] for the system these decisions govern

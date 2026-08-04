@@ -2,7 +2,7 @@ import { Bell, Search, Plus } from 'lucide-react';
 import { StatCard } from '@shared/ui-patterns/StatCard';
 import { DarkHeroCard } from '@shared/ui-patterns/DarkHeroCard';
 import { StatusPill } from '@shared/ui-patterns/StatusPill';
-import { DragHandle } from '@shared/ui-patterns/DragHandle';
+import { PropertyList } from '../property-order/PropertyList';
 import {
   mockOwnerName,
   mockActionCenter,
@@ -30,6 +30,8 @@ interface OwnerHomeDashboardProps {
   onViewAllActions?: () => void;
   onPropertyMenu?: (hostelId: string) => void;
   onAddHostel?: () => void;
+  /** Full ordered list of hostel ids after a manual reorder. See ADR-042. */
+  onReorderProperties?: (orderedIds: string[]) => void;
 }
 
 /**
@@ -52,6 +54,7 @@ export function OwnerHomeDashboard({
   onViewAllActions,
   onPropertyMenu,
   onAddHostel,
+  onReorderProperties,
 }: OwnerHomeDashboardProps) {
   return (
     <div className="flex flex-col gap-7 px-4 pb-8 pt-6 sm:px-6">
@@ -81,29 +84,13 @@ export function OwnerHomeDashboard({
         <span className="text-[13px] text-muted-foreground">Search tenant, room..</span>
       </div>
 
-      <section className="flex flex-col gap-3">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Action Center</h2>
-          <button type="button" onClick={onViewAllActions} className="text-[12.5px] font-semibold text-primary">
-            View all
-          </button>
-        </div>
-        <DarkHeroCard className="rounded-[20px] px-5 py-[18px] shadow-[0_10px_28px_rgba(34,30,26,0.22)]">
-          <div className="flex items-center justify-between">
-            <span className="text-[12.5px] font-semibold text-background/70">Collect Rent</span>
-            <span className="text-background/55">›</span>
-          </div>
-          <div className="mt-1 font-display text-3xl font-extrabold tabular-nums tracking-tight">
-            {actionCenter.collectRent.amount}
-          </div>
-          <div className="mt-1 text-xs font-medium text-background/65">{actionCenter.collectRent.caption}</div>
-        </DarkHeroCard>
-        <div className="grid grid-cols-3 gap-2">
-          <StatCard variant="action" label="Review Agreements" value={actionCenter.reviewAgreements.value} caption={actionCenter.reviewAgreements.caption} />
-          <StatCard variant="action" label="Activate Tenants" value={actionCenter.activateTenants.value} caption={actionCenter.activateTenants.caption} />
-          <StatCard variant="action" label="Fill Vacant Beds" value={actionCenter.fillVacantBeds.value} caption={actionCenter.fillVacantBeds.caption} />
-        </div>
-      </section>
+      <PropertyList
+        properties={properties}
+        onSelectProperty={onSelectProperty}
+        onPropertyMenu={onPropertyMenu}
+        onAddHostel={onAddHostel}
+        onReorder={onReorderProperties}
+      />
 
       <section className="flex flex-col gap-3">
         <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Snapshot</h2>
