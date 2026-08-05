@@ -883,49 +883,6 @@ export class ExpenseService {
     return { entries, dueNow: entries.filter((e) => e.dueAroundNow) };
   }
 
-  async getFrequentExpenses(ownerId: string) {
-    const results: any[] = await prisma.$queryRaw`
-      SELECT
-        LOWER(TRIM(title)) AS normalized_title,
-        (array_agg(title ORDER BY date DESC))[1] AS title,
-        (array_agg(category ORDER BY date DESC))[1] AS category,
-        (array_agg(vendor_name ORDER BY date DESC))[1] AS vendor_name,
-        (array_agg(payment_method ORDER BY date DESC))[1] AS payment_method,
-        COUNT(*)::int AS occurrence_count,
-        (array_agg(amount ORDER BY date DESC))[1]::float AS last_amount,
-        MAX(date) AS last_date
-      FROM expenses
-      WHERE owner_id = ${ownerId}::uuid
-      GROUP BY LOWER(TRIM(title))
-      HAVING COUNT(*) >= 2
-      ORDER BY COUNT(*) DESC, MAX(date) DESC
-      LIMIT 10
-    `;
-
-    return results.map((r) => ({
-      title: r.title,
-      category: r.category,
-      vendor_name: r.vendor_name,
-      payment_method: r.payment_method,
-      occurrence_count: r.occurrence_count,
-      last_amount: Number(r.last_amount || 0),
-      last_date: r.last_date,
-    }));
-  }
-
-  /**
-   * What the owner actually wants to know when they search a thing they buy:
-   * how much, how often, typical size, biggest, most recent, and who supplies
-   * it — before any transaction list.
-   *
-   * Extended 2026-08-05 per the module audit: `average_purchase`,
-   * `last_purchase_date`, `top_vendor` and a previous-period comparison, plus
-   * an optional date range so the summary can respect the screen's active
-   * filter instead of silently reporting all time.
-   *
-   * All arithmetic stays here. The client renders these numbers and computes
-   * none of its own.
-   */
   async getExpenseTitleSummary(
     ownerId: string,
     titleSearch: string,

@@ -68,10 +68,6 @@ export async function GET(req: NextRequest) {
 
     // Mode-based routing for intelligence features
     const mode = req.nextUrl.searchParams.get("mode");
-    if (mode === "suggestions") {
-      const suggestions = await expenseService.getFrequentExpenses(scope.owner_id);
-      return apiResponse({ frequent_expenses: suggestions });
-    }
     // Expense memory (ADR-047) — the owner's own history, shaped into defaults
     // for their next entry. Deliberately another `mode` on this route rather
     // than a new endpoint, matching how suggestions/title_summary already work.

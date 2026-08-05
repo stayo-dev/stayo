@@ -7,11 +7,6 @@ export const expenseService = {
         const response = await api.get('/expenses', { params: requestParams });
         return response.data.success !== undefined ? (response.data.data !== undefined ? response.data.data : response.data) : response.data;
     },
-    getSuggestions: async () => {
-        const response = await api.get('/expenses', { params: { mode: 'suggestions' } });
-        const data = response.data.success !== undefined ? (response.data.data !== undefined ? response.data.data : response.data) : response.data;
-        return data?.frequent_expenses || [];
-    },
     /**
      * Expense memory — the owner's own history shaped into defaults for their
      * next entry (ADR-047). Omit `q` to browse what they record most often.

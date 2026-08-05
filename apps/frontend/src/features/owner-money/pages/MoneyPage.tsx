@@ -15,15 +15,11 @@ import { ActionQueueCard } from '../components/pulse/ActionQueueCard';
 import { CashflowForecastCard } from '../components/pulse/CashflowForecastCard';
 import { CollectionsFilters, type CollectionsSort } from '../components/collections/CollectionsFilters';
 import { TenantDueRow } from '../components/collections/TenantDueRow';
-import { BusinessHealthStrip } from '../components/expenses/BusinessHealthStrip';
-import { InsightTilesGrid } from '../components/expenses/InsightTilesGrid';
-import { MonthlyTrendCard } from '../components/expenses/MonthlyTrendCard';
 import { ExpenseSearchBar } from '../components/expenses/ExpenseSearchBar';
 import { ExpenseSearchSummary } from '../components/expenses/ExpenseSearchSummary';
+import { WhereItWentSection } from '../components/expenses/WhereItWentSection';
 import { CategoryChipsRow } from '../components/expenses/CategoryChipsRow';
 import { ExpenseRow } from '../components/expenses/ExpenseRow';
-import { ExpenseBreakdownCard } from '../components/expenses/ExpenseBreakdownCard';
-import { TopVendorsCard } from '../components/expenses/TopVendorsCard';
 import { AddExpenseModal } from '../add-expense/AddExpenseModal';
 import { ExpenseFiltersModal } from '../filters/ExpenseFiltersModal';
 import { ExportExpensesModal } from '../export/ExportExpensesModal';
@@ -120,6 +116,12 @@ export function MoneyPage() {
     return list;
   }, [real.overdueTenants, hostelFilter, collectionsSort]);
 
+  /**
+   * The headline figure must describe what is actually on screen. The old
+   * tiles read whole-portfolio totals while the list below them was filtered,
+   * so searching "Rice" changed the rows and left the numbers untouched
+   * (module audit, finding #4).
+   */
   const rangeBounds = useMemo(() => {
     if (dateRange === 'all') return null;
     const now = new Date();
@@ -166,6 +168,12 @@ export function MoneyPage() {
     if (expenseFilters.sort === 'Amount: Low to high') sorted.sort((a, b) => a.amount - b.amount);
     return sorted;
   }, [real.expenses, expenseSearch, expenseFilters]);
+
+  /** Total of exactly the rows on screen — never the unfiltered portfolio. */
+  const filteredTotal = useMemo(
+    () => filteredExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0),
+    [filteredExpenses],
+  );
 
   if (real.isLoading) return <MoneyLoadingSkeleton />;
 
@@ -249,21 +257,11 @@ export function MoneyPage() {
 
       {money.tab === 'expenses' && (
         <div className="flex flex-col gap-3">
-          <BusinessHealthStrip netProfit={real.netProfit} revenue={real.revenue} />
-          <MoneyStatTiles
-            tiles={[
-              { key: 'revenue', label: 'Revenue', value: `₹${(real.revenue / 100000).toFixed(2)}L`, info: 'Rent collected across all hostels this month.' },
-              { key: 'expenses', label: 'Expenses', value: `₹${real.totalExpenses.toLocaleString('en-IN')}`, valueClassName: 'text-destructive', info: 'Everything logged in the Expenses tab this month.' },
-              { key: 'net', label: 'Net profit', value: `₹${(real.netProfit / 100000).toFixed(2)}L`, valueClassName: 'text-success', info: 'Revenue minus expenses this month.' },
-            ]}
-          />
-          <InsightTilesGrid
-            topCategory={real.categoryBreakdown[0]}
-            topVendor={real.vendorTotals[0]}
-            largestExpense={real.largestExpense}
-            anomaly={real.anomalyCategory}
-          />
-          <MonthlyTrendCard trend={real.monthlyTrend} />
+          {/* Ten blocks used to render before the expense list, four of them
+              restating each other (net profit twice, top category twice, top
+              vendor twice). Revenue and profit now live on Overview only;
+              everything analytical moved into one collapsed section below the
+              list. See docs/audits/expenses-module-audit.md §5. */}
           <ExpenseSearchBar
             search={expenseSearch}
             onSearchChange={setExpenseSearch}
@@ -294,6 +292,15 @@ export function MoneyPage() {
           {/* Understand the story, then inspect the transactions. This
               searches the whole history, not just the month the list has
               loaded — see docs/audits/expenses-module-audit.md. */}
+          <div className="flex items-baseline justify-between gap-3 px-0.5">
+            <span className="font-display text-[15px] font-extrabold tabular-nums text-foreground">
+              ₹{filteredTotal.toLocaleString('en-IN')}
+            </span>
+            <span className="text-[11.5px] text-muted-foreground">
+              {filteredExpenses.length} expense{filteredExpenses.length === 1 ? '' : 's'}
+              {dateRange === 'all' ? '' : dateRange === 'today' ? ' today' : dateRange === 'week' ? ' this week' : ' this month'}
+            </span>
+          </div>
           <ExpenseSearchSummary
             search={expenseSearch}
             from={rangeBounds?.from.toISOString().slice(0, 10)}
@@ -317,8 +324,14 @@ export function MoneyPage() {
               filteredExpenses.map((e) => <ExpenseRow key={e.id} expense={e} onOpenDetail={() => money.openExpenseDetail(e)} />)
             )}
           </div>
-          <ExpenseBreakdownCard categoryBreakdown={real.categoryBreakdown} totalExpenses={real.totalExpenses} />
-          <TopVendorsCard vendorTotals={real.vendorTotals} />
+          <WhereItWentSection
+            totalExpenses={real.totalExpenses}
+            categoryBreakdown={real.categoryBreakdown}
+            vendorTotals={real.vendorTotals}
+            largestExpense={real.largestExpense}
+            anomalyCategory={real.anomalyCategory}
+            monthlyTrend={real.monthlyTrend}
+          />
         </div>
       )}
 
