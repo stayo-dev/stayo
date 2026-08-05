@@ -113,7 +113,7 @@ When adding code to areas these scripts cover, run the relevant check script rat
 
 ### External providers
 
-PhonePe (checkout + webhooks, `src/services/payments/providers/phonepe.ts`), Resend (email), ImageKit (photos/documents), WhatsApp Cloud API (OTP + reminders + a bot with DUES/PAY commands — see `lib/services/notifications/whatsapp-webhook-event-service.ts`), Upstash Redis (optional read acceleration/rate limiting/queue primitives — Postgres via Prisma remains the source of truth; Redis failures fall back to direct DB reads, never block correctness).
+Razorpay (checkout + webhooks, `src/services/payments/providers/razorpay.ts` — the only payment provider actually implemented; treat any "PhonePe" reference elsewhere in this repo's docs as stale), Resend (email), ImageKit (photos/documents), WhatsApp Cloud API (OTP + reminders + a bot with DUES/PAY commands — see `lib/services/notifications/whatsapp-webhook-event-service.ts`), Upstash Redis (optional read acceleration/rate limiting/queue primitives — Postgres via Prisma remains the source of truth; Redis failures fall back to direct DB reads, never block correctness).
 
 ## Where to look before making changes
 

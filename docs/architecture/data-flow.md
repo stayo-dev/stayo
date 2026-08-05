@@ -265,10 +265,10 @@ Why this exists: after backend caching, mobile paint delay comes mostly from Rea
 | Step | Source | Purpose |
 |---|---|---|
 | Read dues | `paymentService.getAllDues` | Shows outstanding obligations. |
-| Create intent | `paymentService.createIntent` | Starts a PhonePe payment attempt. |
-| Provider redirect | PhonePe | Sends tenant to hosted checkout. |
+| Create intent | `paymentService.createIntent` | Starts a Razorpay payment attempt. |
+| Provider redirect | Razorpay | Sends tenant to hosted checkout. |
 | Return page | `TenantPaymentReturnPage` | Polls or verifies the attempt. |
-| Webhook | `/api/webhooks/payments/phonepe` | Records provider status. |
+| Webhook | `/api/webhooks/payments/razorpay` | Records provider status. |
 | Receipt | `/payments/:id/receipt` | Downloads generated PDF. |
 
 **How this works:**

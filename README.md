@@ -1,7 +1,7 @@
 # StayO
 
 Multi-tenant SaaS for hostel owners — tenant lifecycle, rooms & allocations,
-rent generation, online payments (PhonePe), receipts, expenses, and a WhatsApp
+rent generation, online payments (Razorpay), receipts, expenses, and a WhatsApp
 bot for tenants — plus a Platform Admin console for the marketplace layer
 (owner leads, listings, subscriptions, revenue).
 
@@ -76,7 +76,7 @@ working with an AI coding agent on this repo.
 - A Supabase project (URL, anon key, service-role key, direct + pooled connection strings) with Supabase Auth's Google provider configured
 - A Resend account for transactional email (degrades to a console-logged simulation without `RESEND_API_KEY`)
 - WhatsApp Cloud API credentials (optional — OTP/notifications fall back to a demo mode that logs the code instead of sending it when unset)
-- PhonePe sandbox/production credentials (optional — only required for the hosted checkout provider)
+- Razorpay test-mode/live credentials (optional — only required for the hosted checkout provider)
 
 ### Environment
 

@@ -42,7 +42,7 @@ The database source of truth is Prisma over Postgres.
 |---|---|---|
 | Supabase Postgres | Primary database | `DATABASE_URL`, `DIRECT_URL` |
 | Supabase client | Storage and service access | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` |
-| PhonePe | Hosted checkout and payment webhooks | `src/services/payments` |
+| Razorpay | Hosted checkout and payment webhooks | `src/services/payments/providers/razorpay.ts` |
 | Resend | Email delivery | `lib/services/email-service.ts` |
 | ImageKit | Logos, tenant photos, documents | `lib/imagekit.ts` |
 | WhatsApp Cloud API | OTPs and reminders | WhatsApp provider services |
