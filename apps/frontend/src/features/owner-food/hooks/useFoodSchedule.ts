@@ -53,7 +53,8 @@ export function useFoodSchedule(hostelId: string | undefined, month: string) {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: scheduleKey(hostelId, month) });
 
   const generateMutation = useMutation({
-    mutationFn: (votingPeriodId: string | undefined) => foodService.generateSchedule(hostelId!, month, votingPeriodId),
+    mutationFn: ({ votingPeriodId, mode }: { votingPeriodId?: string; mode: 'BUILD' | 'FILL_GAPS' | 'START_OVER' }) =>
+      foodService.generateSchedule(hostelId!, month, votingPeriodId, mode),
     onSuccess: invalidate,
   });
 
@@ -86,7 +87,8 @@ export function useFoodSchedule(hostelId: string | undefined, month: string) {
     schedule,
     grid,
     weekGrid,
-    generate: (votingPeriodId?: string) => generateMutation.mutate(votingPeriodId),
+    generate: (mode: 'BUILD' | 'FILL_GAPS' | 'START_OVER' = 'BUILD', votingPeriodId?: string) =>
+      generateMutation.mutate({ votingPeriodId, mode }),
     isGenerating: generateMutation.isPending,
     pickerTarget,
     openPicker: (target: ScheduleCellTarget) => setPickerTarget(target),

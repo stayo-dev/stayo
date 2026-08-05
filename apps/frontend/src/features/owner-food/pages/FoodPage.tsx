@@ -56,7 +56,13 @@ export function FoodPage() {
         </div>
 
         <VotingPanel voting={voting} monthLabel={currentMonthLabel} />
-        <WeeklyScheduleGrid schedule={schedule} canGenerate={canGenerate} />
+        <WeeklyScheduleGrid
+          schedule={schedule}
+          canGenerate={canGenerate}
+          voterCount={voting.results?.totalVotes ?? 0}
+          votesConsidered={Boolean(voting.period)}
+          tenantCount={null}
+        />
         <MonthHistoryList history={history} />
       </div>
 
