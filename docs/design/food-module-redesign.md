@@ -397,6 +397,14 @@ Reuse `useUniversalSearch`. Add a source; do not build a food search.
 
 One row per menu item, with the same two facts the library shows and actions that use the existing quick-action pattern in `searchActions.ts`.
 
+> **Verified 2026-08-05, before Phase 2a was planned — two corrections to this document.** Both were assumptions written before the integration points were read, and both are wrong as originally stated.
+>
+> **1. Universal Search is server-backed, not a client-side index.** `useUniversalSearch` debounces into `ownerService.universalSearch()` → `GET /api/owner/search` → `lib/services/search/search-service.ts`. That service already has exactly the right shape: a `SearchProvider` interface (`type`, `label`, `order`, `search({ownerId, query, limit})`) and a `SEARCH_PROVIDERS` array holding `tenantProvider`, `hostelProvider`, `roomProvider`, run in parallel and individually fault-isolated. **Adding food is one new `providers/food-provider.ts` plus one array entry** — better than assumed, but a *backend* change. Use `room-provider.ts` as the template; note its contract comment: *"Must be owner-scoped. Must never throw for a bad query — return [] so one failing source cannot blank the whole search."*
+>
+> **2. Action Center cards are NOT `owner-action-registry.ts`.** §7 below originally said to reuse it. That registry is a *per-entity action* registry — `listForEntity(entity, ctx)`, for things like "send reminder on this tenant" — and has nothing to do with the Home cards. The Action Center cards (Collect Rent, Review Agreements, Activate Tenants, Fill Vacant Beds) are composed **client-side in `useOwnerDashboard.ts`** from existing queries. Food cards belong there, following the `collectRent` / `activateTenants` / `fillVacantBeds` shape.
+>
+> The third seam checked out as described: `Food & Groceries` exists in `expense-service.ts`, and `active_tenants` comes from `dashboard-snapshot-service.ts`, so food spend per head per day is composable with no new capture.
+
 ---
 
 ## 4. UX improvements — small change, large impact
@@ -591,7 +599,7 @@ Confirmed as Phase 2, fed by `food-memory-service` rather than its own queries. 
 
 > **Binding rule:** add a **source** to the existing search index. Do not add a food search endpoint.
 
-*To confirm during planning:* whether `useUniversalSearch` is client-side over already-loaded data or server-backed — that determines where the food source attaches.
+**Confirmed 2026-08-05:** search is **server-backed**. The source attaches as `apps/backend/lib/services/search/providers/food-provider.ts` registered in `SEARCH_PROVIDERS`. See the verification note at the end of §3.
 
 ### 8.4 Food ↔ Expenses ↔ Vendors ↔ Inventory — the seam, and the trap
 
