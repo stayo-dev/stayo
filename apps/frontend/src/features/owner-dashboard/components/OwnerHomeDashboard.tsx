@@ -1,7 +1,13 @@
-import { Bell, Search, Plus } from 'lucide-react';
+import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Bell, Search, Plus, UtensilsCrossed, ChevronRight } from 'lucide-react';
 import { StatCard } from '@shared/ui-patterns/StatCard';
 import { DarkHeroCard } from '@shared/ui-patterns/DarkHeroCard';
 import { StatusPill } from '@shared/ui-patterns/StatusPill';
+import { MEAL_CATEGORY_META } from '@shared/mocks/food';
+import { useOwnerSession } from '@features/owner-session/useOwnerSession';
+import { useFoodSchedule } from '@features/owner-food/hooks/useFoodSchedule';
+import { cellAt, dayKeyFor, isFilled, mealSlotAt } from '@features/owner-food/weekGrid';
 import { PropertyList } from '../property-order/PropertyList';
 import {
   mockOwnerName,
@@ -45,9 +51,15 @@ interface OwnerHomeDashboardProps {
 /**
  * Home-tab dashboard content, per Stayo App.dc.html — greeting, Action
  * Center, Snapshot, monthly collection progress, and the draggable property
- * list. Pure presentational: takes data via props (defaulting to
+ * list. Mostly presentational: takes data via props (defaulting to
  * mockDashboardData) so it's a straight swap-in — see
  * `hooks/useOwnerDashboard.ts` for the real data source now used at `/owner/home`.
+ *
+ * One exception: the "current meal" row below self-fetches via
+ * `useFoodSchedule`/`useOwnerSession` and self-navigates, rather than taking
+ * props — Home is a portfolio-level screen and per-hostel food is ambiguous
+ * there, so it deliberately reads `session.primaryHostelId` directly instead
+ * of threading a hostel selection through this component's props.
  */
 export function OwnerHomeDashboard({
   ownerName = mockOwnerName,
@@ -69,6 +81,15 @@ export function OwnerHomeDashboard({
   onOpenActivations,
   onOpenVacancies,
 }: OwnerHomeDashboardProps) {
+  const navigate = useNavigate();
+  const session = useOwnerSession();
+  const foodSchedule = useFoodSchedule(session.primaryHostelId, new Date().toISOString().slice(0, 7));
+  const foodToday = useMemo(() => {
+    const { current } = mealSlotAt(new Date());
+    const cell = cellAt(foodSchedule.weekGrid, dayKeyFor(new Date()), current);
+    return isFilled(cell) ? { slot: current, name: cell!.item_name } : null;
+  }, [foodSchedule.weekGrid]);
+
   return (
     <div className="flex flex-col gap-7 px-4 pb-8 pt-6 sm:px-6">
       <div className="flex items-center justify-between gap-3">
@@ -152,6 +173,25 @@ export function OwnerHomeDashboard({
           />
         </div>
       </section>
+
+      {/* Current meal, one line — only when there's something to say. A food
+          gap belongs in the Action Center (Phase 2), not as an empty card
+          here, so this renders nothing when today's slot is unset. */}
+      {foodToday && (
+        <button
+          type="button"
+          onClick={() => navigate('/owner/food')}
+          className="flex min-h-[44px] items-center gap-2.5 rounded-[18px] border border-border bg-card px-4 py-3 text-left"
+        >
+          <UtensilsCrossed className="h-4 w-4 flex-none text-muted-foreground" strokeWidth={1.75} />
+          <span className="flex-1 text-[13px] text-foreground">
+            <span className="font-semibold">{MEAL_CATEGORY_META[foodToday.slot].label}</span>
+            {' · '}
+            {foodToday.name}
+          </span>
+          <ChevronRight className="h-4 w-4 flex-none text-muted-foreground" />
+        </button>
+      )}
 
       <section className="rounded-2xl border border-border bg-card p-4.5 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]">
         <div className="mb-3 flex items-center justify-between">
