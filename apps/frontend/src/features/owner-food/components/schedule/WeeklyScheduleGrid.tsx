@@ -22,13 +22,13 @@ const SLOT_ORDER: MealSlotKey[] = ['breakfast', 'lunch', 'snacks', 'dinner'];
 interface WeeklyScheduleGridProps {
   schedule: ReturnType<typeof useFoodSchedule>;
   canGenerate: boolean;
-  voterCount: number;
+  voteCount: number;
   votesConsidered: boolean;
   tenantCount: number | null;
 }
 
 /** The weekly (Mon-Sun x 4 meals) review/edit grid — one real week, replacing the old Week1-4 model. Tap a cell to swap its item. */
-export function WeeklyScheduleGrid({ schedule, canGenerate, voterCount, votesConsidered, tenantCount }: WeeklyScheduleGridProps) {
+export function WeeklyScheduleGrid({ schedule, canGenerate, voteCount, votesConsidered, tenantCount }: WeeklyScheduleGridProps) {
   if (schedule.isLoading) {
     return <div className="h-64 animate-pulse rounded-2xl bg-muted" />;
   }
@@ -56,7 +56,7 @@ export function WeeklyScheduleGrid({ schedule, canGenerate, voterCount, votesCon
   const checks = buildPublishChecks({
     grid: toWeekGrid(schedule.schedule.food_schedule_meals),
     votesConsidered,
-    voterCount,
+    voteCount,
   });
 
   return (

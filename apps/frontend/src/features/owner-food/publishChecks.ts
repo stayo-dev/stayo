@@ -10,7 +10,25 @@ export interface PublishCheck {
 export interface PublishCheckInput {
   grid: WeekGrid;
   votesConsidered: boolean;
-  voterCount: number;
+  /**
+   * Vote *rows*, not students — one tenant may hold several rows per meal
+   * type, so this is deliberately not called a voter count.
+   */
+  voteCount: number;
+}
+
+/**
+ * Was this schedule actually built from a voting period?
+ *
+ * "A voting period exists for this month" is a different question, and
+ * answering it here claimed votes were used for a week assembled from none
+ * (carry-forward while voting was still open). `generated_from_voting_period_id`
+ * is the field the generator writes when it really did rank by votes.
+ */
+export function hasVotesApplied(
+  schedule: { generated_from_voting_period_id?: string | null } | null | undefined,
+): boolean {
+  return Boolean(schedule?.generated_from_voting_period_id);
 }
 
 const TOTAL_CELLS = DAY_ORDER.length * SLOT_ORDER.length;
@@ -28,7 +46,7 @@ const DOMINANCE_LIMIT = 3;
  * This exists because a menu of Dosa x7, Sambar Rice x7 and empty snacks was
  * published to real tenants with nothing anywhere pointing it out.
  */
-export function buildPublishChecks({ grid, votesConsidered, voterCount }: PublishCheckInput): PublishCheck[] {
+export function buildPublishChecks({ grid, votesConsidered, voteCount }: PublishCheckInput): PublishCheck[] {
   const filledCells = DAY_ORDER.flatMap((day) => SLOT_ORDER.map((slot) => cellAt(grid, day, slot))).filter(isFilled);
   const filled = filledCells.length;
 
@@ -47,32 +65,43 @@ export function buildPublishChecks({ grid, votesConsidered, voterCount }: Publis
             : `${filled} of ${TOTAL_CELLS} meals filled`,
         };
 
-  let worst: { slot: MealSlotKey; name: string; count: number } | null = null;
+  // Every meal type that is dominated, not just the worst one. The menu that
+  // motivated this check was Dosa x7 breakfast AND Sambar Rice x7 lunch —
+  // reporting only the worst silently endorsed the other. Above the limit
+  // (>3 of 7) at most one item per meal type can qualify, so this is one line
+  // per meal type at most.
+  const dominant: { slot: MealSlotKey; name: string; count: number }[] = [];
   for (const slot of SLOT_ORDER) {
     const counts = new Map<string, number>();
     for (const day of DAY_ORDER) {
       const cell = cellAt(grid, day, slot);
       if (isFilled(cell)) counts.set(cell!.item_name, (counts.get(cell!.item_name) ?? 0) + 1);
     }
+    let worst: { slot: MealSlotKey; name: string; count: number } | null = null;
     for (const [name, count] of counts) {
       if (!worst || count > worst.count) worst = { slot, name, count };
     }
+    if (worst && worst.count > DOMINANCE_LIMIT) dominant.push(worst);
   }
 
   const variety: PublishCheck =
-    worst && worst.count > DOMINANCE_LIMIT
+    dominant.length > 0
       ? {
           id: 'variety',
           status: 'WARN',
-          label: `${MEAL_CATEGORY_META[worst.slot].label} is ${worst.name} ${worst.count} of ${DAY_ORDER.length} days`,
+          label: dominant
+            .map((d) => `${MEAL_CATEGORY_META[d.slot].label} is ${d.name} ${d.count} of ${DAY_ORDER.length} days`)
+            .join(' · '),
         }
       : { id: 'variety', status: 'PASS', label: 'Good variety across the week' };
 
+  // Wraps Sunday->Monday: one row per (day, meal) means the week repeats all
+  // month, so Sunday's dinner really is followed by Monday's, four times over.
   let hasRun = false;
   for (const slot of SLOT_ORDER) {
-    for (let i = 1; i < DAY_ORDER.length; i++) {
-      const prev = cellAt(grid, DAY_ORDER[i - 1], slot);
-      const curr = cellAt(grid, DAY_ORDER[i], slot);
+    for (let i = 0; i < DAY_ORDER.length; i++) {
+      const prev = cellAt(grid, DAY_ORDER[i], slot);
+      const curr = cellAt(grid, DAY_ORDER[(i + 1) % DAY_ORDER.length], slot);
       if (isFilled(prev) && isFilled(curr) && prev!.item_name === curr!.item_name) hasRun = true;
     }
   }
@@ -82,8 +111,8 @@ export function buildPublishChecks({ grid, votesConsidered, voterCount }: Publis
     : { id: 'runs', status: 'PASS', label: 'Nothing repeats two days running' };
 
   const votes: PublishCheck =
-    votesConsidered && voterCount > 0
-      ? { id: 'votes', status: 'PASS', label: `${voterCount} student ${voterCount === 1 ? 'vote' : 'votes'} used` }
+    votesConsidered && voteCount > 0
+      ? { id: 'votes', status: 'PASS', label: `${voteCount} student ${voteCount === 1 ? 'vote' : 'votes'} used` }
       : { id: 'votes', status: 'WARN', label: 'Built without student votes' };
 
   return [complete, variety, runs, votes];

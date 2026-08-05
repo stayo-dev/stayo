@@ -15,6 +15,7 @@ import { MonthHistoryList } from '../components/schedule/MonthHistoryList';
 import { TodayCard } from '../components/today/TodayCard';
 import { HostelSwitcher } from '../components/HostelSwitcher';
 import { dayKeyFor, cellAt } from '../weekGrid';
+import { hasVotesApplied } from '../publishChecks';
 
 /** Food tab. Thin orchestrator: each section's real work lives in its own hooks/components. */
 export function FoodPage() {
@@ -68,8 +69,8 @@ export function FoodPage() {
         <WeeklyScheduleGrid
           schedule={schedule}
           canGenerate={canGenerate}
-          voterCount={voting.results?.totalVotes ?? 0}
-          votesConsidered={Boolean(voting.period)}
+          voteCount={voting.results?.totalVotes ?? 0}
+          votesConsidered={hasVotesApplied(schedule.schedule)}
           tenantCount={null}
         />
         <MonthHistoryList history={history} />
