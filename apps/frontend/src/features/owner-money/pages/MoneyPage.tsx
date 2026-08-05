@@ -87,6 +87,14 @@ function MoneyLoadingSkeleton() {
 export function MoneyPage() {
   const money = useMoneyPage();
   const real = useRealMoney();
+  /**
+   * Date range for the Expenses tab. These chips were static <span>s with
+   * "This month" hardcoded active — they looked like a control and did
+   * nothing (module audit, finding #5). "Custom" was replaced by "All time":
+   * a custom range needs a date picker, and shipping a second dead chip to
+   * stand in for it would repeat the original mistake.
+   */
+  const [dateRange, setDateRange] = useState<'today' | 'week' | 'month' | 'all'>('month');
   const location = useLocation();
   const [expenseSearch, setExpenseSearch] = useState('');
   const [expenseFilters, setExpenseFilters] = useState(EMPTY_EXPENSE_FILTERS);
@@ -112,8 +120,28 @@ export function MoneyPage() {
     return list;
   }, [real.overdueTenants, hostelFilter, collectionsSort]);
 
+  const rangeBounds = useMemo(() => {
+    if (dateRange === 'all') return null;
+    const now = new Date();
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    if (dateRange === 'today') {
+      return { from: new Date(now.getFullYear(), now.getMonth(), now.getDate()), to: end };
+    }
+    if (dateRange === 'week') {
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
+      return { from: start, to: end };
+    }
+    return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: end };
+  }, [dateRange]);
+
   const filteredExpenses = useMemo(() => {
     let list: MockExpense[] = real.expenses;
+    if (rangeBounds) {
+      list = list.filter((e) => {
+        const d = new Date(e.date);
+        return !Number.isNaN(d.getTime()) && d >= rangeBounds.from && d <= rangeBounds.to;
+      });
+    }
     if (expenseFilters.status !== 'All Status') list = list.filter((e) => e.status === expenseFilters.status);
     if (expenseFilters.paymentMethod) list = list.filter((e) => e.paymentMethod === expenseFilters.paymentMethod);
     if (expenseFilters.recurring === 'recurring') list = list.filter((e) => e.recurring);
@@ -243,26 +271,47 @@ export function MoneyPage() {
             onOpenExport={() => money.openModal('export')}
           />
           <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-            {['Today', 'This week', 'This month', 'Custom'].map((r) => (
-              <span key={r} className={`flex-none rounded-full px-3.5 py-1.5 text-xs font-semibold ${r === 'This month' ? 'bg-foreground text-background' : 'border border-border bg-card text-muted-foreground'}`}>
-                {r}
-              </span>
+            {([
+              { id: 'today', label: 'Today' },
+              { id: 'week', label: 'This week' },
+              { id: 'month', label: 'This month' },
+              { id: 'all', label: 'All time' },
+            ] as const).map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => setDateRange(r.id)}
+                className={`flex-none rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                  dateRange === r.id
+                    ? 'bg-foreground text-background'
+                    : 'border border-border bg-card text-muted-foreground'
+                }`}
+              >
+                {r.label}
+              </button>
             ))}
           </div>
           {/* Understand the story, then inspect the transactions. This
               searches the whole history, not just the month the list has
               loaded — see docs/audits/expenses-module-audit.md. */}
-          <ExpenseSearchSummary search={expenseSearch} />
+          <ExpenseSearchSummary
+            search={expenseSearch}
+            from={rangeBounds?.from.toISOString().slice(0, 10)}
+            to={rangeBounds?.to.toISOString().slice(0, 10)}
+          />
           <CategoryChipsRow categoryBreakdown={real.categoryBreakdown} />
           <div className="flex flex-col gap-2">
             <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-              {expenseSearch.trim() ? 'Matching this month' : 'Recent expenses'} · {filteredExpenses.length}
+              {expenseSearch.trim() ? 'Matching' : 'Expenses'}
+              {dateRange === 'all' ? '' : dateRange === 'today' ? ' today' : dateRange === 'week' ? ' this week' : ' this month'}
+              {' · '}
+              {filteredExpenses.length}
             </span>
             {filteredExpenses.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
                 {expenseSearch.trim() || expenseFilters.status !== 'All Status' || expenseFilters.paymentMethod
-                  ? 'No expenses this month match the current search or filters.'
-                  : 'No expenses logged this month yet.'}
+                  ? 'No expenses in this range match the current search or filters.'
+                  : 'No expenses logged in this range yet.'}
               </p>
             ) : (
               filteredExpenses.map((e) => <ExpenseRow key={e.id} expense={e} onOpenDetail={() => money.openExpenseDetail(e)} />)
