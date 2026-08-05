@@ -46,6 +46,13 @@ export interface ExpenseFilterState {
   status: 'All Status' | 'Paid' | 'Pending' | 'Partially Paid';
   sort: 'Recent' | 'Oldest' | 'Amount: High to low' | 'Amount: Low to high';
   paymentMethod: string | null;
+  /**
+   * Vendor filter. The sheet previously listed vendors as non-interactive
+   * spans populated from mock fixtures, for a field that did not exist here —
+   * so it showed suppliers the owner had never used and did nothing when
+   * tapped.
+   */
+  vendor: string | null;
   recurring: 'all' | 'recurring' | 'one-time';
   amountMin: string;
   amountMax: string;
@@ -55,6 +62,7 @@ export const EMPTY_EXPENSE_FILTERS: ExpenseFilterState = {
   status: 'All Status',
   sort: 'Recent',
   paymentMethod: null,
+  vendor: null,
   recurring: 'all',
   amountMin: '',
   amountMax: '',

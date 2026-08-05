@@ -21,7 +21,7 @@ import { WhereItWentSection } from '../components/expenses/WhereItWentSection';
 import { CategoryChipsRow } from '../components/expenses/CategoryChipsRow';
 import { ExpenseRow } from '../components/expenses/ExpenseRow';
 import { AddExpenseModal } from '../add-expense/AddExpenseModal';
-import { ExpenseFiltersModal } from '../filters/ExpenseFiltersModal';
+import { ExpenseFiltersModal, activeFilterCount } from '../filters/ExpenseFiltersModal';
 import { ExportExpensesModal } from '../export/ExportExpensesModal';
 import { ExpenseDetailModal } from '../expense-detail/ExpenseDetailModal';
 
@@ -146,6 +146,7 @@ export function MoneyPage() {
     }
     if (expenseFilters.status !== 'All Status') list = list.filter((e) => e.status === expenseFilters.status);
     if (expenseFilters.paymentMethod) list = list.filter((e) => e.paymentMethod === expenseFilters.paymentMethod);
+    if (expenseFilters.vendor) list = list.filter((e) => e.vendor === expenseFilters.vendor);
     if (expenseFilters.recurring === 'recurring') list = list.filter((e) => e.recurring);
     if (expenseFilters.recurring === 'one-time') list = list.filter((e) => !e.recurring);
     const min = Number(expenseFilters.amountMin) || 0;
@@ -168,6 +169,15 @@ export function MoneyPage() {
     if (expenseFilters.sort === 'Amount: Low to high') sorted.sort((a, b) => a.amount - b.amount);
     return sorted;
   }, [real.expenses, expenseSearch, expenseFilters]);
+
+  /**
+   * The owner's actual vendors, highest spend first. The filter sheet used to
+   * list mock fixtures, so it offered suppliers nobody had ever used.
+   */
+  const vendorOptions = useMemo(
+    () => (real.vendorTotals ?? []).map((v: { vendor: string }) => v.vendor).filter(Boolean).slice(0, 12),
+    [real.vendorTotals],
+  );
 
   /** Total of exactly the rows on screen — never the unfiltered portfolio. */
   const filteredTotal = useMemo(
@@ -267,6 +277,7 @@ export function MoneyPage() {
             onSearchChange={setExpenseSearch}
             onOpenFilters={() => money.openModal('filters')}
             onOpenExport={() => money.openModal('export')}
+            activeFilterCount={activeFilterCount(expenseFilters)}
           />
           <div className="flex gap-1.5 overflow-x-auto pb-0.5">
             {([
@@ -347,6 +358,10 @@ export function MoneyPage() {
         onChange={(patch) => setExpenseFilters((f) => ({ ...f, ...patch }))}
         onApply={money.closeModal}
         onClose={money.closeModal}
+        vendors={vendorOptions}
+        // Filters apply as they are tapped, so the button can honestly
+        // preview the result rather than pretending to commit anything.
+        resultCount={filteredExpenses.length}
       />
       <ExportExpensesModal open={money.modal === 'export'} onClose={money.closeModal} filters={expenseFilters} search={expenseSearch} />
       <ExpenseDetailModal
