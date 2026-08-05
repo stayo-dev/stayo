@@ -72,6 +72,18 @@ export async function GET(req: NextRequest) {
       const suggestions = await expenseService.getFrequentExpenses(scope.owner_id);
       return apiResponse({ frequent_expenses: suggestions });
     }
+    // Expense memory (ADR-047) — the owner's own history, shaped into defaults
+    // for their next entry. Deliberately another `mode` on this route rather
+    // than a new endpoint, matching how suggestions/title_summary already work.
+    if (mode === "memory") {
+      const search = req.nextUrl.searchParams.get("q") || undefined;
+      const limitParam = Number(req.nextUrl.searchParams.get("limit"));
+      const memory = await expenseService.getExpenseMemory(scope.owner_id, {
+        search,
+        limit: Number.isFinite(limitParam) && limitParam > 0 ? limitParam : undefined,
+      });
+      return apiResponse(memory);
+    }
     if (mode === "title_summary") {
       const title = req.nextUrl.searchParams.get("title");
       if (!title) return apiError("Title parameter is required for title_summary mode", "VALIDATION_ERROR", 400);

@@ -28,6 +28,16 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### Expense suggestions were built end-to-end, wrappers and all, and never called
+
+- **Status:** fixed — see [[Decisions#ADR-047|ADR-047]]
+- **Found:** 2026-08-05, during the Expenses Phase 1 audit.
+- **Area:** [[Frontend]] (Add Expense), [[Backend]] (expense service)
+- **Symptom:** the Add Expense form said *"Suggestions come from your past entries."* and never showed any.
+- **Root cause:** `expenseService.getFrequentExpenses` and `getExpenseTitleSummary` were fully implemented, routed (`mode=suggestions`, `mode=title_summary`) **and** wrapped on the frontend (`getSuggestions`, `getTitleSummary`) — with **zero callers** in `src/`. A complete vertical slice connected to nothing. The **tenth** instance of this pattern found in this codebase, and the most misleading: the UI explicitly advertised the missing behaviour.
+- **Fix:** the first wizard step now consumes expense memory (an extension of the same service, on the same route), so the promise the copy made is kept.
+- **Related:** [[Decisions#ADR-047|ADR-047]], [[Features]], [[Changelog]]
+
 ### The other three Action Center tiles could not be tapped at all
 
 - **Status:** fixed — see [[Decisions#ADR-046|ADR-046]]

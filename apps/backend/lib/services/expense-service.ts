@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { prisma } from "../db";
+import { buildMemoryEntry, sortMemory, type MemoryFacts, type MemoryEntry } from "./expenses/expense-memory";
 import { eventSystem } from "../events";
 
 const EXPENSE_CATEGORIES = [
@@ -713,6 +714,173 @@ export class ExpenseService {
       amount: Number(expense.amount || 0),
     });
     return expense;
+  }
+
+
+  /**
+   * Expense memory (ADR-047) — an owner's own history, shaped into the
+   * defaults for their next entry.
+   *
+   * Extends the existing `getFrequentExpenses` idea rather than adding a
+   * parallel service: same table, same grouping instinct, more of the fields
+   * the entry form actually needs (average, notes, recurrence, receipt
+   * pattern, day-of-month history), plus a **vendor-keyed** view so typing a
+   * supplier name works as well as typing what was bought.
+   *
+   * Two aggregate queries total, whatever the history size. All ranking,
+   * pattern-detection and phrasing lives in the pure `expense-memory` module.
+   *
+   * `HAVING COUNT(*) >= 1` for search, `>= 2` when browsing: a one-off is
+   * worth surfacing when the owner has typed something matching it, and is
+   * noise in a "recent things you buy" list.
+   */
+  async getExpenseMemory(
+    ownerId: string,
+    options: { search?: string; limit?: number; today?: Date } = {},
+  ): Promise<{ entries: MemoryEntry[]; dueNow: MemoryEntry[] }> {
+    const search = (options.search ?? "").trim();
+    const limit = Math.min(Math.max(options.limit ?? 8, 1), 25);
+    const today = options.today ?? new Date();
+    const like = `%${search}%`;
+    const minOccurrences = search ? 1 : 2;
+
+    // Grouped by normalised title. `array_agg(... ORDER BY date DESC)[1]`
+    // takes the most recent non-null value — the owner's latest intent for
+    // that field, which is what they'd expect to be reused.
+    const titleRows: any[] = search
+      ? await prisma.$queryRaw`
+          SELECT LOWER(TRIM(title)) AS group_key,
+                 (array_agg(title ORDER BY date DESC))[1] AS label,
+                 COUNT(*)::int AS occurrences,
+                 SUM(amount)::float AS total_spent,
+                 AVG(amount)::float AS average_amount,
+                 MAX(amount)::float AS highest_amount,
+                 (array_agg(amount ORDER BY date DESC))[1]::float AS last_amount,
+                 MAX(date) AS last_date,
+                 array_agg(EXTRACT(DAY FROM date)::int) AS days_of_month,
+                 (array_agg(category ORDER BY date DESC) FILTER (WHERE category IS NOT NULL))[1] AS category,
+                 (array_agg(vendor_name ORDER BY date DESC) FILTER (WHERE vendor_name IS NOT NULL))[1] AS vendor_name,
+                 (array_agg(payment_method ORDER BY date DESC) FILTER (WHERE payment_method IS NOT NULL))[1] AS payment_method,
+                 (array_agg(notes ORDER BY date DESC) FILTER (WHERE notes IS NOT NULL AND notes <> ''))[1] AS notes,
+                 bool_or(is_recurring) AS is_recurring,
+                 (array_agg(recurring_frequency ORDER BY date DESC) FILTER (WHERE recurring_frequency IS NOT NULL))[1] AS recurring_frequency,
+                 COUNT(receipt_url)::int AS receipt_count,
+                 COUNT(DISTINCT hostel_id)::int AS hostel_count
+          FROM expenses
+          WHERE owner_id = ${ownerId}::uuid
+            AND (title ILIKE ${like} OR vendor_name ILIKE ${like})
+          GROUP BY LOWER(TRIM(title))
+          HAVING COUNT(*) >= ${minOccurrences}
+          ORDER BY COUNT(*) DESC, MAX(date) DESC
+          LIMIT ${limit}
+        `
+      : await prisma.$queryRaw`
+          SELECT LOWER(TRIM(title)) AS group_key,
+                 (array_agg(title ORDER BY date DESC))[1] AS label,
+                 COUNT(*)::int AS occurrences,
+                 SUM(amount)::float AS total_spent,
+                 AVG(amount)::float AS average_amount,
+                 MAX(amount)::float AS highest_amount,
+                 (array_agg(amount ORDER BY date DESC))[1]::float AS last_amount,
+                 MAX(date) AS last_date,
+                 array_agg(EXTRACT(DAY FROM date)::int) AS days_of_month,
+                 (array_agg(category ORDER BY date DESC) FILTER (WHERE category IS NOT NULL))[1] AS category,
+                 (array_agg(vendor_name ORDER BY date DESC) FILTER (WHERE vendor_name IS NOT NULL))[1] AS vendor_name,
+                 (array_agg(payment_method ORDER BY date DESC) FILTER (WHERE payment_method IS NOT NULL))[1] AS payment_method,
+                 (array_agg(notes ORDER BY date DESC) FILTER (WHERE notes IS NOT NULL AND notes <> ''))[1] AS notes,
+                 bool_or(is_recurring) AS is_recurring,
+                 (array_agg(recurring_frequency ORDER BY date DESC) FILTER (WHERE recurring_frequency IS NOT NULL))[1] AS recurring_frequency,
+                 COUNT(receipt_url)::int AS receipt_count,
+                 COUNT(DISTINCT hostel_id)::int AS hostel_count
+          FROM expenses
+          WHERE owner_id = ${ownerId}::uuid
+          GROUP BY LOWER(TRIM(title))
+          HAVING COUNT(*) >= ${minOccurrences}
+          ORDER BY COUNT(*) DESC, MAX(date) DESC
+          LIMIT ${limit}
+        `;
+
+    const vendorRows: any[] = search
+      ? await prisma.$queryRaw`
+          SELECT LOWER(TRIM(vendor_name)) AS group_key,
+                 (array_agg(vendor_name ORDER BY date DESC))[1] AS label,
+                 COUNT(*)::int AS occurrences,
+                 SUM(amount)::float AS total_spent,
+                 AVG(amount)::float AS average_amount,
+                 MAX(amount)::float AS highest_amount,
+                 (array_agg(amount ORDER BY date DESC))[1]::float AS last_amount,
+                 MAX(date) AS last_date,
+                 array_agg(EXTRACT(DAY FROM date)::int) AS days_of_month,
+                 (array_agg(category ORDER BY date DESC) FILTER (WHERE category IS NOT NULL))[1] AS category,
+                 (array_agg(title ORDER BY date DESC))[1] AS last_title,
+                 (array_agg(payment_method ORDER BY date DESC) FILTER (WHERE payment_method IS NOT NULL))[1] AS payment_method,
+                 (array_agg(notes ORDER BY date DESC) FILTER (WHERE notes IS NOT NULL AND notes <> ''))[1] AS notes,
+                 bool_or(is_recurring) AS is_recurring,
+                 (array_agg(recurring_frequency ORDER BY date DESC) FILTER (WHERE recurring_frequency IS NOT NULL))[1] AS recurring_frequency,
+                 COUNT(receipt_url)::int AS receipt_count,
+                 COUNT(DISTINCT hostel_id)::int AS hostel_count
+          FROM expenses
+          WHERE owner_id = ${ownerId}::uuid
+            AND vendor_name IS NOT NULL AND vendor_name <> ''
+            AND vendor_name ILIKE ${like}
+          GROUP BY LOWER(TRIM(vendor_name))
+          HAVING COUNT(*) >= ${minOccurrences}
+          ORDER BY COUNT(*) DESC, MAX(date) DESC
+          LIMIT ${limit}
+        `
+      : await prisma.$queryRaw`
+          SELECT LOWER(TRIM(vendor_name)) AS group_key,
+                 (array_agg(vendor_name ORDER BY date DESC))[1] AS label,
+                 COUNT(*)::int AS occurrences,
+                 SUM(amount)::float AS total_spent,
+                 AVG(amount)::float AS average_amount,
+                 MAX(amount)::float AS highest_amount,
+                 (array_agg(amount ORDER BY date DESC))[1]::float AS last_amount,
+                 MAX(date) AS last_date,
+                 array_agg(EXTRACT(DAY FROM date)::int) AS days_of_month,
+                 (array_agg(category ORDER BY date DESC) FILTER (WHERE category IS NOT NULL))[1] AS category,
+                 (array_agg(title ORDER BY date DESC))[1] AS last_title,
+                 (array_agg(payment_method ORDER BY date DESC) FILTER (WHERE payment_method IS NOT NULL))[1] AS payment_method,
+                 (array_agg(notes ORDER BY date DESC) FILTER (WHERE notes IS NOT NULL AND notes <> ''))[1] AS notes,
+                 bool_or(is_recurring) AS is_recurring,
+                 (array_agg(recurring_frequency ORDER BY date DESC) FILTER (WHERE recurring_frequency IS NOT NULL))[1] AS recurring_frequency,
+                 COUNT(receipt_url)::int AS receipt_count,
+                 COUNT(DISTINCT hostel_id)::int AS hostel_count
+          FROM expenses
+          WHERE owner_id = ${ownerId}::uuid
+            AND vendor_name IS NOT NULL AND vendor_name <> ''
+          GROUP BY LOWER(TRIM(vendor_name))
+          HAVING COUNT(*) >= ${minOccurrences}
+          ORDER BY COUNT(*) DESC, MAX(date) DESC
+          LIMIT ${limit}
+        `;
+
+    const toFacts = (r: any, kind: "TITLE" | "VENDOR"): MemoryFacts => ({
+      kind,
+      key: r.label ?? r.group_key ?? "",
+      occurrences: Number(r.occurrences ?? 0),
+      totalSpent: round(Number(r.total_spent ?? 0)),
+      lastAmount: round(Number(r.last_amount ?? 0)),
+      averageAmount: round(Number(r.average_amount ?? 0)),
+      highestAmount: round(Number(r.highest_amount ?? 0)),
+      lastDate: r.last_date ? new Date(r.last_date).toISOString() : new Date(0).toISOString(),
+      daysOfMonth: Array.isArray(r.days_of_month) ? r.days_of_month.map((d: any) => Number(d)) : [],
+      category: r.category ?? null,
+      vendorName: kind === "VENDOR" ? (r.label ?? null) : (r.vendor_name ?? null),
+      paymentMethod: r.payment_method ?? null,
+      notes: r.notes ?? null,
+      isRecurring: Boolean(r.is_recurring),
+      recurringFrequency: r.recurring_frequency ?? null,
+      receiptCount: Number(r.receipt_count ?? 0),
+      hostelCount: Number(r.hostel_count ?? 0),
+    });
+
+    const entries = sortMemory([
+      ...titleRows.map((r) => buildMemoryEntry(toFacts(r, "TITLE"), today)),
+      ...vendorRows.map((r) => buildMemoryEntry(toFacts(r, "VENDOR"), today)),
+    ]);
+
+    return { entries, dueNow: entries.filter((e) => e.dueAroundNow) };
   }
 
   async getFrequentExpenses(ownerId: string) {

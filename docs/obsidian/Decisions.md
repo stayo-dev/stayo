@@ -688,6 +688,31 @@ That reading was wrong, and measurement is what showed it. Two production endpoi
 
 **Related:** [[Features]], [[Bugs]], [[Changelog]], [[Frontend]].
 
+## ADR-047: Expense entry is backed by the owner's own history, and never invents a value
+
+**Date:** 2026-08-05 · **Status:** Accepted (Phase 1 of 4) · Direction set by the user: *"Do not build an expense tracker. Build an expense memory system."* See [[Features]], [[APIs]].
+
+**Context.** The Add Expense wizard opened on an empty form whose helper text read *"Suggestions come from your past entries."* — a promise nothing kept.
+
+**Audit first, and it changed the work entirely.** The `expenses` table already carried `vendor_name`, `payment_method`, `receipt_url`, `is_recurring`, `recurring_frequency`, `notes` and `metadata`. `expenseService.getFrequentExpenses` already grouped expenses by normalised title and returned vendor, category, payment method, occurrence count, last amount and last date. `getExpenseTitleSummary` already produced spend summaries. Both were exposed via `mode=suggestions` / `mode=title_summary`, and **both had frontend wrappers** (`getSuggestions`, `getTitleSummary`). Neither had a single caller anywhere in the app. **The tenth built-but-never-wired feature found in this codebase**, and the most misleading, because the UI explicitly advertised it.
+
+**Decision.**
+
+1. **Extend, don't parallel.** `getExpenseMemory` was added to the existing `expense-service`, and exposed as another `mode` on the existing `/api/expenses` route — no new service, no new endpoint. It adds what the entry form actually needs on top of the existing grouping: average and highest amount, notes, recurrence, receipt-attachment rate, hostel spread, and the day-of-month history that drives prediction. A **vendor-keyed** view sits alongside the title-keyed one, so typing a supplier works as well as typing what was bought.
+2. **Nothing is invented.** Where the owner never supplied a value, the field stays `null` and the form stays empty. Reuse prefills the **last** amount rather than the average, because the average is a number that never actually occurred and the owner is about to correct it anyway.
+3. **Prediction is historical, not clever.** `typicalDayOfMonth` uses the **median** so one mistimed entry can't drag it, and returns `null` when there are fewer than three occurrences or when they're genuinely scattered — a wrong nudge is worse than none. `dueAroundNow` also requires that nothing has been recorded this calendar month.
+4. **Ranking is frequency-first, recency-second, with due-now dominant.** A recency-only order would bury a weekly rice delivery under a one-off repair. Caught by test: the due-now bonus was initially +100, which quietly lost to a frequent recent expense (max 230) — it is now larger than any achievable frequency+recency total, so "due around now" genuinely jumps the queue as the comment claimed.
+5. **The wizard is preserved.** Per the "do not redesign everything" rule, the three-step flow is untouched; the empty first step simply became a list of the owner's own history. Reusing an entry advances straight to the amount, making the target **reuse → edit → save**.
+
+**Consequences.**
+- All ranking, pattern detection and phrasing live in the pure `lib/services/expenses/expense-memory.ts`, so they run under `npm run test:pure` while the backend suite still has no test database.
+- Two aggregate queries regardless of history size; no per-expense fan-out.
+- `getFrequentExpenses` is left in place and still serves `mode=suggestions` — it has no callers, but removing it is a separate decision from wiring its successor.
+- **Verified live**: with 11 real expenses, browsing returns the two genuinely repeated items, and typing "rice" returns three entries including the vendor *Sri Rice traders* with category, payment method, average and last purchase — the spec's own example. `typicalDayOfMonth` correctly returned `null` for both, refusing to claim a monthly pattern from two occurrences.
+- **Phases 2–4 (search summaries, dashboard simplification, branded exports) are not built.** `getExpenseTitleSummary` already exists and is the natural backbone for Phase 2.
+
+**Related:** [[Features]], [[APIs]], [[Bugs]], [[Changelog]].
+
 ## See also
 - [[Changelog]] for the chronological record of what shipped
 - [[Architecture]] for the system these decisions govern
