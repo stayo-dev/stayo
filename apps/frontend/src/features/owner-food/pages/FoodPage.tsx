@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ChefHat } from 'lucide-react';
 import { FOOD_SLOTS, type MealSlotKey } from '@shared/mocks/food';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useFoodMenuItems } from '../hooks/useFoodMenuItems';
@@ -71,6 +73,13 @@ export function FoodPage() {
           tenantCount={null}
         />
         <MonthHistoryList history={history} />
+
+        <Link
+          to="/owner/food/kitchen"
+          className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-center font-display text-[13.5px] font-bold text-primary-foreground shadow-[0_8px_20px_rgba(180,106,85,0.32)]"
+        >
+          <ChefHat className="h-4 w-4" /> Send to kitchen
+        </Link>
       </div>
 
       <ScheduleMealPickerSheet
