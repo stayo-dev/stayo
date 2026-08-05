@@ -2,10 +2,16 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { foodService } from '@features/food/api';
 import type { MealSlotKey } from '@shared/mocks/food';
+import { stayoToast } from '@shared/ui-patterns/Toast';
 import { toWeekGrid, type WeekGrid } from '../weekGrid';
 
 export const DAY_ORDER = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'] as const;
 export type DayKey = (typeof DAY_ORDER)[number];
+
+const DAY_LABEL_SHORT: Record<DayKey, string> = {
+  MONDAY: 'Monday', TUESDAY: 'Tuesday', WEDNESDAY: 'Wednesday', THURSDAY: 'Thursday',
+  FRIDAY: 'Friday', SATURDAY: 'Saturday', SUNDAY: 'Sunday',
+};
 
 export interface ScheduleMealCell {
   id: string;
@@ -95,7 +101,22 @@ export function useFoodSchedule(hostelId: string | undefined, month: string) {
     closePicker: () => setPickerTarget(null),
     pickItem: (menuItemId: string) => {
       if (!pickerTarget) return;
-      updateMealMutation.mutate({ mealId: pickerTarget.mealId, menuItemId });
+      const before = schedule?.food_schedule_meals.find((m) => m.id === pickerTarget.mealId);
+      const previousItemId = before?.menu_item_id ?? null;
+      const wasPublished = schedule?.status === 'PUBLISHED';
+
+      updateMealMutation.mutate(
+        { mealId: pickerTarget.mealId, menuItemId },
+        {
+          onSuccess: () => {
+            if (!wasPublished || !previousItemId) return;
+            const dayLabel = before ? DAY_LABEL_SHORT[before.day_of_week] : 'that day';
+            stayoToast.undo(`Changed for every ${dayLabel} this month · students see it now`, () => {
+              updateMealMutation.mutate({ mealId: pickerTarget.mealId, menuItemId: previousItemId });
+            });
+          },
+        },
+      );
     },
     isUpdatingMeal: updateMealMutation.isPending,
     publish: () => publishMutation.mutate(),

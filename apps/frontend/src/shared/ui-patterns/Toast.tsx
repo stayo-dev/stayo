@@ -1,5 +1,5 @@
 import { toast as sonnerToast } from 'sonner';
-import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Info, Undo2 } from 'lucide-react';
 
 /**
  * StayO's dark-pill toast (bottom-anchored, 2.4s auto-dismiss per the design
@@ -22,4 +22,12 @@ export const stayoToast = {
     sonnerToast(message, { icon: <AlertCircle className="h-4 w-4" />, classNames: TOAST_CLASSNAMES, duration: 2400 }),
   info: (message: string) =>
     sonnerToast(message, { icon: <Info className="h-4 w-4" />, classNames: TOAST_CLASSNAMES, duration: 2400 }),
+  /** Dark pill with a single inline Undo. Longer-lived than the others — an undo the user can't reach is not an undo. */
+  undo: (message: string, onUndo: () => void) =>
+    sonnerToast(message, {
+      icon: <Undo2 className="h-4 w-4" />,
+      classNames: TOAST_CLASSNAMES,
+      duration: 6000,
+      action: { label: 'Undo', onClick: onUndo },
+    }),
 };
