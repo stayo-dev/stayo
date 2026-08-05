@@ -10,8 +10,14 @@ import { prisma } from "@/lib/db";
  * PATCH /api/food/schedules/[id]/meals/[mealId]
  * Owner edits one cell — swaps the item for that day+meal type.
  * Body: { menuItemId }
- * If the schedule is already PUBLISHED, this same row is what tenants read —
- * there is no separate "republish" step, per the product spec.
+ *
+ * Note the blast radius: a cell is keyed by (schedule, day_of_week, meal_type),
+ * so this changes that weekday for the **whole month**, not one date. Per-date
+ * overrides need `serve_date`, which does not exist yet.
+ *
+ * If the schedule is already PUBLISHED this row is what tenants read, so the
+ * edit is live immediately — the client surfaces that with an undo affordance
+ * rather than a staging step.
  */
 export async function PATCH(
   req: NextRequest,

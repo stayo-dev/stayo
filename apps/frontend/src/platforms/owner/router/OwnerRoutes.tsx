@@ -32,6 +32,7 @@ const HostelTenantsPage = lazy(() =>
 );
 const MoneyPage = lazy(() => import('@features/owner-money/pages/MoneyPage').then((m) => ({ default: m.MoneyPage })));
 const FoodPage = lazy(() => import('@features/owner-food/pages/FoodPage').then((m) => ({ default: m.FoodPage })));
+const KitchenSheetPage = lazy(() => import('@features/owner-food/pages/KitchenSheetPage').then((m) => ({ default: m.KitchenSheetPage })));
 const AlertsPage = lazy(() => import('@features/owner-alerts/pages/AlertsPage').then((m) => ({ default: m.AlertsPage })));
 const MoreSettingsPage = lazy(() => import('@features/owner-more/pages/MoreSettingsPage').then((m) => ({ default: m.MoreSettingsPage })));
 const MoreProfilePage = lazy(() => import('@features/owner-more/pages/MoreProfilePage').then((m) => ({ default: m.MoreProfilePage })));
@@ -129,6 +130,7 @@ export function OwnerRoutes() {
 
         <Route path="/owner/money" element={<MoneyPage />} />
         <Route path="/owner/food" element={<FoodPage />} />
+        <Route path="/owner/food/kitchen" element={<KitchenSheetPage />} />
         <Route path="/owner/alerts" element={<AlertsPage />} />
 
         <Route path="/owner/more" element={<MoreConfigurationHubPage />} />

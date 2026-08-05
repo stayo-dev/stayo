@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { shouldAutoClose } from "@/lib/services/food/voting-expiry";
 
 /**
  * 🕐 CRON — Food Schedule Carry-Forward
@@ -19,6 +20,10 @@ import { prisma } from "@/lib/db";
  * published schedule last month are left alone — nothing to carry forward,
  * not treated as an error. Protected by CRON_SECRET, same as the other
  * cron routes.
+ *
+ * Also closes any voting period whose `voting_ends_at` has passed but whose
+ * status is still OPEN — voting had no other way to close itself, and the
+ * owner's Generate button is gated on a CLOSED period.
  */
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
@@ -39,8 +44,25 @@ export async function GET(req: NextRequest) {
   let created = 0;
   let alreadyExists = 0;
   let noPublishedLastMonth = 0;
+  let votingClosed = 0;
 
   try {
+    // Expiry is a SQL predicate, not a scan — this runs daily against every
+    // OPEN period in the system. `shouldAutoClose` still gates the update as
+    // the single tested statement of the rule.
+    const openPeriods = await prisma.food_voting_periods.findMany({
+      where: { status: "OPEN", voting_ends_at: { lte: now } },
+      select: { id: true, status: true, voting_ends_at: true },
+    });
+    const expired = openPeriods.filter((p: any) => shouldAutoClose(p, now)).map((p: any) => p.id);
+    if (expired.length > 0) {
+      const result = await prisma.food_voting_periods.updateMany({
+        where: { id: { in: expired } },
+        data: { status: "CLOSED", updated_at: new Date() },
+      });
+      votingClosed = result.count;
+    }
+
     const hostels = await prisma.hostels.findMany({
       where: { status: "ACTIVE" },
       select: { id: true, owner_id: true },
@@ -87,7 +109,7 @@ export async function GET(req: NextRequest) {
       created += 1;
     }
 
-    return NextResponse.json({ success: true, totalHostels: hostels.length, created, alreadyExists, noPublishedLastMonth });
+    return NextResponse.json({ success: true, totalHostels: hostels.length, created, alreadyExists, noPublishedLastMonth, votingClosed });
   } catch (error: any) {
     console.error("[CRON food-carry-forward] failed:", error);
     return NextResponse.json({ success: false, error: error?.message || "Carry-forward failed" }, { status: 500 });

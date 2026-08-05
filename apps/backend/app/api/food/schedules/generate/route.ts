@@ -8,8 +8,12 @@ import { requireHostelBelongsToOwner } from "@/lib/security/scoped-query";
 import { prisma } from "@/lib/db";
 import { FoodMealType } from "@prisma/client";
 import { assignWeekForMealType, type RankedFoodItem } from "@/lib/services/food-schedule-generator";
+import { decideRebuild, type RebuildMode } from "@/lib/services/food/schedule-rebuild-policy";
 
 const MEAL_TYPES: FoodMealType[] = [FoodMealType.BREAKFAST, FoodMealType.LUNCH, FoodMealType.SNACKS, FoodMealType.DINNER];
+
+/** Thrown inside the transaction when the month was published mid-request — rolls it back, answers 409 like the early check. */
+const PUBLISHED_RACE = "SCHEDULE_PUBLISHED";
 
 function firstOfMonth(value: unknown): Date | null {
   if (!value || typeof value !== "string") return null;
@@ -19,12 +23,16 @@ function firstOfMonth(value: unknown): Date | null {
 
 /**
  * POST /api/food/schedules/generate
- * Body: { hostelId, month: "YYYY-MM", votingPeriodId? }
- * Ranks each meal type's library items by real vote count (falling back to
- * all active library items, alphabetically, if no votes exist yet), assigns
- * one item per weekday via `assignWeekForMealType`, and upserts the DRAFT
- * schedule + its 28 meal rows. Re-running overwrites the previous generation
- * — always safe since nothing is published until the owner explicitly publishes.
+ * Body: { hostelId, month: "YYYY-MM", votingPeriodId?, mode?: "BUILD" | "FILL_GAPS" | "START_OVER" }
+ *
+ * Ranks each meal type's library items by real vote count (falling back to all
+ * active library items, alphabetically, if no votes exist yet) and assigns one
+ * item per weekday via `assignWeekForMealType`.
+ *
+ * What it is permitted to overwrite is decided by `decideRebuild` — a PUBLISHED
+ * month is never demoted to DRAFT and never wholesale deleted, because tenants
+ * read published rows directly. `FILL_GAPS` is the only mode allowed against a
+ * published month; it writes unassigned cells only.
  */
 export async function POST(req: NextRequest) {
   const session = await getSession(req);
@@ -36,12 +44,22 @@ export async function POST(req: NextRequest) {
     const scope = resolveOwnerScope(session);
     const body = await req.json().catch(() => ({}));
     const { hostelId, month: monthStr } = body;
+    const mode: RebuildMode = ["BUILD", "FILL_GAPS", "START_OVER"].includes(body.mode) ? body.mode : "BUILD";
     let { votingPeriodId } = body;
 
     await requireHostelBelongsToOwner(scope.owner_id, hostelId);
 
     const month = firstOfMonth(monthStr);
     if (!month) return apiError("month is required (YYYY-MM)", "VALIDATION_ERROR", 400);
+
+    const existing = await prisma.food_schedules.findUnique({
+      where: { hostel_id_month: { hostel_id: hostelId, month } },
+      select: { status: true },
+    });
+    const decision = decideRebuild({ mode, currentStatus: existing?.status ?? null });
+    if (!decision.allowed) {
+      return apiError(decision.reason, "SCHEDULE_PUBLISHED", 409);
+    }
 
     if (!votingPeriodId) {
       const period = await prisma.food_voting_periods.findUnique({
@@ -86,6 +104,17 @@ export async function POST(req: NextRequest) {
     }
 
     const schedule = await prisma.$transaction(async (tx) => {
+      // Re-assert the decision inside the transaction. The status read above is
+      // separated from this write by 5-9 generator round-trips, so a second
+      // device can publish the month in between — and acting on the stale
+      // decision would delete a published week out from under every tenant.
+      const current = await tx.food_schedules.findUnique({
+        where: { hostel_id_month: { hostel_id: hostelId, month } },
+        select: { status: true },
+      });
+      const settled = decideRebuild({ mode, currentStatus: current?.status ?? null });
+      if (!settled.allowed) throw new Error(`${PUBLISHED_RACE}: ${settled.reason}`);
+
       const upserted = await tx.food_schedules.upsert({
         where: { hostel_id_month: { hostel_id: hostelId, month } },
         create: {
@@ -97,14 +126,15 @@ export async function POST(req: NextRequest) {
           generated_from_voting_period_id: votingPeriodId ?? null,
         },
         update: {
-          status: "DRAFT",
-          source: "GENERATED",
-          generated_from_voting_period_id: votingPeriodId ?? null,
+          ...(settled.nextStatus ? { status: settled.nextStatus } : {}),
+          // Provenance belongs to whoever authored the week. A FILL_GAPS run
+          // adds cells and claims nothing (see `rewritesProvenance`).
+          ...(settled.rewritesProvenance
+            ? { source: "GENERATED" as const, generated_from_voting_period_id: votingPeriodId ?? null }
+            : {}),
           updated_at: new Date(),
         },
       });
-
-      await tx.food_schedule_meals.deleteMany({ where: { schedule_id: upserted.id } });
 
       const rows = MEAL_TYPES.flatMap((mealType) =>
         assignmentsByMealType[mealType].map((a) => ({
@@ -115,7 +145,23 @@ export async function POST(req: NextRequest) {
           item_name: a.item_name,
         })),
       );
-      await tx.food_schedule_meals.createMany({ data: rows });
+
+      if (settled.replace === "ALL") {
+        await tx.food_schedule_meals.deleteMany({ where: { schedule_id: upserted.id } });
+        await tx.food_schedule_meals.createMany({ data: rows });
+      } else {
+        // EMPTY_ONLY — replace only cells that were never assigned an item.
+        await tx.food_schedule_meals.deleteMany({
+          where: { schedule_id: upserted.id, menu_item_id: null },
+        });
+        const kept = await tx.food_schedule_meals.findMany({
+          where: { schedule_id: upserted.id },
+          select: { day_of_week: true, meal_type: true },
+        });
+        const taken = new Set(kept.map((k) => `${k.day_of_week}|${k.meal_type}`));
+        const gapRows = rows.filter((r) => !taken.has(`${r.day_of_week}|${r.meal_type}`));
+        if (gapRows.length > 0) await tx.food_schedule_meals.createMany({ data: gapRows });
+      }
 
       return tx.food_schedules.findUnique({
         where: { id: upserted.id },
@@ -126,6 +172,7 @@ export async function POST(req: NextRequest) {
     return apiResponse(schedule, 201);
   } catch (error: any) {
     const msg = String(error?.message || "Failed to generate schedule");
+    if (msg.startsWith(PUBLISHED_RACE)) return apiError(msg.split(": ")[1] ?? msg, "SCHEDULE_PUBLISHED", 409);
     if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
     if (msg.startsWith("HOSTEL_CONTEXT_REQUIRED")) return apiError(msg.split(": ")[1] ?? msg, "HOSTEL_CONTEXT_REQUIRED", 400);
     return apiError(msg);

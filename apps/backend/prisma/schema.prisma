@@ -2665,8 +2665,10 @@ model food_voting_periods {
   @@unique([hostel_id, month])
 }
 
-/// One row per tenant per meal type per voting period (single-choice —
-/// changing a vote updates this row via the unique constraint, not a new insert).
+/// One row per tenant per meal type per *item* — tenants may select multiple
+/// items per meal type, and `POST /api/food/tenant/vote` toggles each one on
+/// or off. The unique constraint includes `menu_item_id` precisely so a second
+/// pick is a second row rather than an overwrite.
 model food_votes {
   id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   voting_period_id    String               @db.Uuid
