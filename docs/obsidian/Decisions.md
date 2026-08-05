@@ -558,6 +558,178 @@ Architecture Decision Records — each entry below was **inferred from code evid
 - **Consequences:** One accepted exception remains in source — `AuthContext.tsx` still calls `localStorage.removeItem('sri_adithya_onboarding_complete')`; the old key name is required to actually purge legacy state from returning browsers, it is internal-only, and it does not match the build guard's `/Sri\s*Adithya/` pattern (underscore), so `dist` stays clean. Real social `sameAs` profiles are still to be supplied. See [[Changelog]], [[Features]], [[Business-Rules]].
 - **Update (2026-07-30, same day):** the two placeholders were filled with the real registered values (phone `+91 76750 80090`; the office address was supplied but see below), and `public/og-cover.png` (1200×630) was added. Per explicit follow-up direction, exposed business detail was then **minimised** in three steps: (1) JSON-LD reduced to an `Organization` carrying only name/url/logo/email/telephone + `brand: Stayo` (removed `SoftwareApplication`, `PostalAddress`, `contactPoint`, description, legalName); (2) the Udyam registration number kept out of all public surfaces (JSON-LD, footer, legal, `company.ts`); (3) **the office address removed from every public surface** — Contact, footer, PublicLayout top-bar/footer, legal Terms/contact block, and `company.ts` — with the `/location` "Location & Directions" page repurposed to an online-first "Reach Us" note (no address/map) and dropped from the nav. Public contact is now phone + email/WhatsApp only. Rationale: the user wants a minimal public footprint; the registered address/registration exist on the Udyam certificate for any provider that privately requires them, and can be re-added to legal pages if a payment/Meta reviewer explicitly demands it.
 
+## ADR-041: Backend latency is addressed by fixing placement and query strategy first, before any service-code optimisation
+
+**Date:** 2026-08-04 · **Status:** Accepted (phases 1–2 shipped; phase 3 not decided) · See [[Performance]] for all measured values.
+
+**Context.** The owner Tenants screen was taking ~10.9s to load. The obvious reading of the network waterfall was "the queries are too slow", which points straight at `tenantService.getAllTenants` and its 10-relation `include`.
+
+That reading was wrong, and measurement is what showed it. Two production endpoints were compared: `GET /api/tenants` unauthenticated (401 from middleware, no database access) ran in **117ms**, while `GET /api/health` (the same path plus a single `SELECT 1`) ran in **1388ms**. Function invocation was never the problem — **one trivial database query cost ~1271ms**. `x-vercel-id: bom1::iad1::…` explained why: `apps/backend/vercel.json` declared no `regions`, so functions defaulted to `iad1` (Washington DC) while Postgres runs in `ap-south-1` (Mumbai). Every query crossed the planet twice.
+
+**Decision.** Fix causes in order of measured impact, deploying and re-measuring between each, rather than bundling changes:
+
+1. **Pin functions to `bom1`** (`"regions": ["bom1"]`). Config only. Cost of a DB round-trip fell **~1271ms → ~28ms**.
+2. **Enable Prisma `relationJoins`** (`previewFeatures = ["relationJoins"]`). Schema flag only — no service code touched, because `join` becomes the default relation load strategy on PostgreSQL once the feature is enabled (verified: an unspecified strategy emits the same query count as an explicit `join`). The `getAllTenants` `findMany` went from **14 SQL queries to 4**.
+3. **Service-code optimisation is deliberately deferred** and may not be justified at all. It will be decided from measurements, not assumed.
+
+**Consequences.**
+- Region pinning is a single region; multi-region deploys require a Vercel plan above Hobby.
+- `relationJoins` is a *preview* feature. Before deploying it, `query` and `join` were verified to return identical rows for the tenants `include` across every hostel — a silent semantic change here would be worse than a slow query. Re-verify if the `include` shape changes materially.
+- Ordering the work this way meant the expensive refactor was never needed to get the large win. Had `tenant-service.ts` been optimised first, it would have been credited with an improvement that actually came from a one-line config change, and the real cause would have remained in place.
+- The known remaining cost centres (unbounded `PAID` obligation fetch, per-`INVITED`-tenant `getReservationStatus`, the sequential ownership check) are recorded in [[Performance]] as *unmeasured* and were left in place.
+
+**Related:** [[Performance]], [[Backend]], [[Database]], [[Bugs]], [[Changelog]].
+
+## ADR-042: Hostel ordering is server-persisted and manual drag is one mode among sorts, not the only way to order
+
+**Date:** 2026-08-04 · **Status:** Accepted · See [[Features]], [[Database]], [[APIs]].
+
+**Context.** The Home "Property" cards rendered a `⠿` drag handle that did nothing. The feature had never been built, not regressed: `react-dnd` and `react-dnd-html5-backend` were in `package.json` but **imported nowhere**, no `DndProvider` was mounted anywhere in `src/`, and `DragHandle` was a decorative `<span aria-hidden="true">` with no handlers. `hostels` had no ordering column either, so nothing could have been stored. Even fully wired, `react-dnd-html5-backend` would not have worked on the owner's phone — the HTML5 drag-and-drop API doesn't fire on touch.
+
+**Decision.**
+
+1. **Manual order persists server-side** in `hostels.display_order`, not `localStorage`. The owner's stated reason for wanting it — deliberately promoting a hostel they're watching — is a decision about their business, not a per-browser view preference; an order that silently differs between their phone and their desktop would read as broken.
+2. **Drag is one mode among five sorts** (My order · Most dues · Most vacant · Top revenue · Name), not the only ordering mechanism. At two or three properties, hand-ordering earns little; sorting by dues answers a question the owner actually has daily. Manual order earns its keep as the portfolio grows.
+3. **The handle appears only in "My order" mode.** Hand-ordering a metric-sorted list is incoherent, and hiding the handle explains *why* it can't be dragged rather than leaving a dead affordance — the exact failure this ADR exists to fix.
+4. **Drag starts from the handle only** (`dragListener={false}` + `useDragControls`, plus `touch-none` on the handle). This is what makes it work on touch: the card keeps tap-to-drill and the page keeps vertical scroll everywhere except the handle itself.
+5. **`motion` rather than a new drag library.** It was already a dependency and already used in `TenantCard.tsx`; `motion/react` exports `Reorder` and `useDragControls`. `react-dnd` and `react-dnd-html5-backend` were removed as dead weight.
+6. **Move up / Move down in the ⋮ sheet** is the keyboard and screen-reader path. Dragging is inherently pointer-only, so drag alone would make the feature unreachable without a mouse or touch.
+
+**Consequences.**
+- Sort mode is view state and stays in `localStorage`; only the *order* is owner data and goes to the server. Splitting them keeps the server contract to the thing that genuinely needs to follow the owner across devices.
+- `MockProperty` gained optional numeric fields (`occupancyPercent`, `revenueValue`, `outstandingValue`, `displayOrder`) because sorting cannot use the formatted display strings — `'₹1,32,600'` doesn't compare numerically.
+- `DragHandle` is dual-mode: interactive only when given an `onDragStart`. Its three other call sites (floor groups, room layout, food-poll options) stay decorative **on purpose** — those reorder behaviours also don't exist, and making them look interactive would recreate this same bug elsewhere.
+- The occupancy pill now tones by threshold. It had been hardcoded `success`, so 75% and 88% rendered identically green — a status-shaped decoration carrying no status.
+- **Not verified by automated backend tests.** `tests/hostel-order-service.test.ts` was written (8 cases: ordering, NULL default, cross-owner rejection, partial-list rejection, duplicates, idempotency, owner isolation, portfolio read-through) but **never executed** — `DATABASE_URL_TEST` is defined nowhere and `.env.test` does not exist, so the entire backend suite is unrunnable in this environment, a pre-existing gap confirmed by an untouched existing test failing identically. Verified live against the real API instead. Running the suite needs a test database provisioned first.
+
+**Related:** [[Features]], [[Database]], [[APIs]], [[Bugs]], [[Changelog]], [[Frontend]].
+
+## ADR-043: One business concept, one screen — billing behaviour is configured in exactly one place, and the collect flow states the policy instead of refusing at the end
+
+**Date:** 2026-08-05 · **Status:** Accepted · Direction set explicitly by the user. See [[Business-Rules]], [[Features]], [[Bugs]].
+
+**Context.** An owner collecting ₹100 against ₹8,000 of rent was told *"Full payment required. Minimum: ₹8,000 (Rent)"* at the confirmation step — and could find nowhere to change it. Investigation found four distinct problems behind that one symptom:
+
+1. `partial_payments.enabled` was fully implemented and **enforced** in `settlement-planner.ts`, defaulted to `false`, and was **exposed in no UI whatsoever**. The enforcement shipped; the control never did.
+2. The review sheet rendered the refusal **and** a full success preview at once — "1 installment left part-paid", "₹7,900 still outstanding", "a receipt is generated" — describing an outcome that could not happen, while Confirm sat disabled.
+3. **Three screens** each owned a slice of billing: `MoreBillingPage` (Settings → "Rent and billing"), `MoreConfigLateFeesPage` (Configure → Finance) and `MoreConfigTenantDefaultsPage` (Configure → Hostel). The first wrote `type: 'FLAT'` unconditionally and omitted `max_amount`, so opening it after configuring a PERCENTAGE fee with a cap **silently destroyed both**.
+4. Three Configure screens pinned their save bar at `bottom-0` with no nav offset or z-index, putting the save button **underneath the bottom nav**.
+
+**Decision.**
+
+- **One canonical screen**, `MoreConfigBillingPolicyPage`, owns all billing behaviour: rent collection (full vs part, with minimum amount *and* minimum percentage), security deposit default, agreement duration default, rent schedule (generation/due/grace), and late fee (flat/percentage/per-day + cap). The three previous screens are **deleted**, and their routes **redirect** so existing links and back-stack entries still land somewhere real.
+- **A second floor type, `minimum_percentage`** (0-100 of total outstanding), added alongside `minimum_amount`. Both are floors, so the **larger wins**; the result is clamped to the outstanding balance so a large absolute floor can't strand a small final balance.
+- **The collect flow states the policy before the owner types an amount** ("Full payment only" / "Part payments allowed", with the floor spelled out and a Change link), and the review step **either** explains the block with a route to fix it **or** shows the outcome — never both.
+- **Owner language everywhere.** No screen or message names `allow_partial_payments`, `minimum_amount` or `payment_policy`. Enforced by tests that assert those strings never appear in generated copy.
+
+**Consequences.**
+- Wording changes to `rejection_reason` broke 3 existing assertions that pinned the old sentences. They were updated to assert the new wording — the change was deliberate, not a regression.
+- `PaymentPolicy.minimum_percentage` is **optional** so the many callers that hand-build a policy keep compiling and behave as 0.
+- Deposit/agreement defaults moved out of Configure → Hostel; that row now points at Billing policy rather than 404ing.
+- **A `test:pure` runner was added** (`vitest.pure.config.ts`, no `setupFiles`). The main config loads `tests/setup.ts`, which imports `lib/db` and TRUNCATEs the `test` schema, so with no `DATABASE_URL_TEST` provisioned the *entire* suite is unrunnable — including tests of genuinely pure functions like `buildSettlementPlan`. That meant financially sensitive allocation logic could not be verified locally at all. `test:pure` runs 56 such tests with no database reachable. **This is a stopgap** — provisioning a real test database remains open work, and every DB-touching test is still unrun.
+- `npm run check:financial-safety` and `check:payment-production` both still exit 1. **Pre-existing and unrelated**: the first points at `backend-next/prisma/migrations`, a directory that does not exist in this repo layout, and reports payment-ledger triggers that were never applied; the second warns about env keys expecting `sriadithyahostels.in`, the pre-Stayo domain. Neither inspects anything this change touches.
+
+**Related:** [[Business-Rules]], [[Features]], [[Bugs]], [[Changelog]], [[Frontend]], [[Backend]].
+
+## ADR-044: Universal search is a provider registry, and a search result is a place work gets done
+
+**Date:** 2026-08-05 · **Status:** Accepted (Phase 1 of 4) · Direction set by the user: *"Do not build pages. Build workflows."* See [[Features]], [[APIs]].
+
+**Context.** The owner Home had a search bar that was a `<div>` containing a `<span>` — not an input, no handler. Behind it sat **two overlapping tenant-search implementations**: `/api/owner/search` (documented as "for the global navbar", tenants only, no ranking, bare-array response outside the standard envelope, and **orphaned** — its client wrapper `ownerService.searchTenants` existed but nothing in the app called it) and `/api/payments/quick-collect/search` (genuinely good ranking, but ACTIVE-tenants-only and issuing a per-tenant obligations query *plus* a ledger query for every hit — 40 round-trips for 20 results).
+
+**Decision.**
+
+1. **One universal endpoint, rebuilt on the orphaned path.** `/api/owner/search` becomes the single entry point. It had the right name, was already owner-scoped, and had zero consumers to break.
+2. **A provider registry, not a search function.** Sources implement `SearchProvider` and are listed in one array. **The route never names a result type**, and neither does the client: each result carries its own `href` and display fields, so adding payments, complaints, expenses, receipts or staff means writing a provider and registering it — no route change, no response-shape change, no UI change. The moment anything outside a provider branches on a type, that property is gone.
+3. **Ranking is a pure, tested module**, shared by all providers so a tenant result and a hostel result stay comparable on one scale. Priority per product direction: exact name → phone → room → hostel → prefix → contains → fuzzy. Scores are spread (100/95/90…) so a future provider can slot between two without renumbering.
+4. **Providers are fault-isolated.** `Promise.allSettled` — one failing source degrades its own group and never blanks the search mid-keystroke.
+5. **A result is a workspace, not a link.** Tenant rows carry inline Call / WhatsApp / Copy number / Collect / Profile. Collect deep-links into the *existing* QuickCollect flow with the tenant preselected. Actions appear only when they can work — no Call without a number, no Collect for an invited tenant or a zero balance.
+
+**Consequences.**
+- **Reuse over reimplementation:** the hostel provider composes `portfolioService.getPortfolioSummary`, so search occupancy/dues are the same numbers the Home cards show rather than a second calculation that could drift. The tenant provider composes `financialService.getTenantPaymentSummary` — sync, pre-fetched rows, one query for all matched tenants — so outstanding is never independently derived (CLAUDE.md).
+- `/api/payments/quick-collect/search` is deliberately **left alone**: its per-tenant ledger fetch is appropriate for a considered payment flow and wrong for a typeahead. Two callers, two cost profiles, one shared ranking idea.
+- `whatsAppNumber()` returns `null` rather than guessing a country code it can't infer — a WhatsApp button that opens the wrong chat is worse than no button.
+- Phone matching compares the **national 10-digit tail**, so `9845013001`, `+91 98765 43210` and `919845013001` are one person. A unit test caught this before it shipped: the first implementation scored a bare-10-digit query against a `+91`-stored number as a weak *contains*.
+- `viewState()` makes `loading` beat `empty`, so "No matches" can never flash at an owner who is still typing.
+- Room results deep-link `?room=<id>`, consumed and then cleared from the URL so a back navigation doesn't silently reopen the sheet.
+- **Phases 2–4 (Collect Rent queue, agreement/activation/vacancy queues, unified daily task list) are not built.** The Action Center still shows counts only.
+
+**Related:** [[Features]], [[APIs]], [[Bugs]], [[Changelog]], [[Frontend]], [[Backend]].
+
+## ADR-045: The collection queue is a work list with an explainable score, not a filtered tenant list
+
+**Date:** 2026-08-05 · **Status:** Accepted (Phase 2 of 4) · See [[Business-Rules]], [[Features]], [[APIs]].
+
+**Context.** The Action Center's "Collect Rent" card showed a total and a `›` chevron — and had **no `onClick`**. The fifth dead affordance found in this codebase. Owners could see ₹1,08,600 was owed and had nowhere to go with it.
+
+**Audit first, per the standing rule.** `/api/owner/finance/collections` is a 410 tombstone. `paymentService.getDuesReport` is per-*obligation* and hostel-scoped, while a queue is per-*tenant* and portfolio-wide. `financialService.getTenantDues` is per-tenant and async — N+1 for a list. The right primitive already existed: **`financialService.getTenantPaymentSummary`**, which is sync and documented as taking pre-fetched rows specifically for batch/list views, plus **`isOverdue()`** from the settlement planner and the **`reminder_logs`** table.
+
+**Decision.**
+
+1. **Never compute money twice.** `outstanding` and `last payment` come from `getTenantPaymentSummary`; overdue-ness from `isOverdue()`. The queue service assembles existing answers and orders them — it derives no financial figure of its own.
+2. **Fixed query budget of 4**, whatever the tenant count: tenants, open obligations (+payments), reminders (grouped), historically-late obligations. A per-tenant fan-out would be 2N.
+3. **Every point is attributed.** A score is never a bare number: `factors[]` carries `{id, label, points}` in owner language, the UI shows the top two on the card and all of them in a bottom sheet, and a test asserts `score === sum(factors)`. Ordering can always be explained without reading code.
+4. **Buckets order sections; score orders within a section.** One global score would let a large not-yet-due balance outrank a small long-overdue one — the opposite of how an owner works.
+5. **A recent reminder defers a tenant, but only up to a point.** Chasing someone the day after you chased them is noise. **Caught against live data:** without a severity cap this rule put 7 of 10 tenants into "waiting" and demoted an 11-day-overdue tenant below a 12-day one, reporting almost no work while ₹59,000 sat uncollected. `reminderCooldownMaxOverdueDays` (7) now stops the deferral once reminders have visibly failed.
+6. **`recommendation: null` ships on the contract from day one.** The recommendation engine is explicitly out of scope, but reserving the field means adding it later is a value change, not a redesign of the page.
+
+**Consequences.**
+- The service takes `hostelFilter: string | null`, **not** an optional hostel id. The architectural invariant caught the optional form and was right to: explicit `null` makes "whole portfolio" a stated decision rather than a forgotten argument. (Amusing side-note: the check is a plain regex over source, so quoting the banned signature *in a comment explaining the avoidance* also tripped it.)
+- Prioritisation is pure and clock-injected (`today` is a parameter), so ordering is reproducible and runs under `npm run test:pure` — which matters, because the backend suite still cannot run without a test database.
+- Buckets are returned only when non-empty; an empty section is a decision the owner has to make for no benefit.
+- **Verified end-to-end against live data, before and after the fix.** Pre-fix: 3 in "needs attention", 7 in "waiting", with an 11-day-overdue tenant demoted below a 12-day one. Post-fix: **4 in "needs attention"** (12d, 12d, 12d, 11d) and **6 in "waiting"** (all 5d) — the 11-day tenant correctly promoted. Same 10 tenants, same ₹84,500 total, so the fix changed placement without disturbing any figure.
+
+**Related:** [[Business-Rules]], [[Features]], [[APIs]], [[Bugs]], [[Changelog]].
+
+## ADR-046: One work-queue implementation, not four — every Action Center card leads to the same workflow
+
+**Date:** 2026-08-05 · **Status:** Accepted (Phase 3 of 4) · Direction set by the user: *"Do not invent different interaction models for different cards. The owner should learn one workflow and use it everywhere."* See [[Features]].
+
+**Context.** After Phase 2 only the Collect Rent card led anywhere. The other three Action Center tiles — Review Agreements, Activate Tenants, Fill Vacant Beds — were **structurally incapable** of being tapped: `StatCard` had no `onClick` prop at all. They sat beside a hero card that did navigate, looking identical and doing nothing. Dead affordances six, seven and eight.
+
+**Decision.**
+
+1. **The model is enforced by a single component, not by discipline.** `features/owner-workqueue/WorkQueue.tsx` owns the header, the four view states, sections, numbered rows, the reason line and the action bar. A queue supplies data and actions; it does not get to invent layout, ordering semantics or empty states. Four similar screens would drift; one cannot.
+2. **The Collect Rent screen was refactored onto it**, not left as the odd one out — that would have been the exact inconsistency this ADR exists to prevent. It shrank from 9.08 kB to 4.94 kB in the process.
+3. **No progress bar and no daily target**, per explicit product direction. Completion is the row leaving the list and the section count dropping.
+4. **`StatCard` renders as a `<button>` only when given an `onClick`**, so a purely informational tile never advertises an interaction it lacks — the failure mode being fixed.
+5. **No new backend for any of the three.** Agreements reuse `renewalDecisionService.getOwnerRenewalQueue`, which *already* ranks by decision state and days overdue and returns per-category counts. Activations reuse `usePendingActivations`, which already reads the backend activation state machine. Vacancy composes the existing hostel-scoped `GET /api/rooms` fanned out across hostels — the same pattern `useRealTenantList` uses, and for the same reason: that endpoint requires a hostel and the queue must never assume one.
+
+**Consequences.**
+- `PendingActivationsPage` was rebuilt on the shared component. It previously had a bespoke card layout, no prioritisation and no inline actions — it could show who was stuck but not let the owner do anything without opening each profile. It now sorts longest-waiting-first and carries Call/WhatsApp.
+- Section assignment for agreements is **first-match-wins**, because the backend legitimately tags one agreement with several states at once; without that a row would appear in two sections.
+- The renewal payload exposes `hostel_id` but **no hostel name** — caught during implementation, since the subtitle would have silently rendered empty. Resolved from the session's already-loaded hostel list rather than a new request.
+- Vacancy priority is emptiest-room-first: a fully empty room is the largest single revenue gap and the easiest to fill as a unit.
+- **Cross-checked against live data:** the vacancy queue independently computes 2 rooms / 2 free beds, matching the Home card's "Fill Vacant Beds: 2" exactly — the card and the queue it opens cannot disagree. Agreements returns 0, matching its card, so the empty state is what an owner sees today.
+- **Phase 4 (one merged daily task list) is not built.** The four queues now share a component, which is the precondition for merging them later.
+
+**Related:** [[Features]], [[Bugs]], [[Changelog]], [[Frontend]].
+
+## ADR-047: Expense entry is backed by the owner's own history, and never invents a value
+
+**Date:** 2026-08-05 · **Status:** Accepted (Phase 1 of 4) · Direction set by the user: *"Do not build an expense tracker. Build an expense memory system."* See [[Features]], [[APIs]].
+
+**Context.** The Add Expense wizard opened on an empty form whose helper text read *"Suggestions come from your past entries."* — a promise nothing kept.
+
+**Audit first, and it changed the work entirely.** The `expenses` table already carried `vendor_name`, `payment_method`, `receipt_url`, `is_recurring`, `recurring_frequency`, `notes` and `metadata`. `expenseService.getFrequentExpenses` already grouped expenses by normalised title and returned vendor, category, payment method, occurrence count, last amount and last date. `getExpenseTitleSummary` already produced spend summaries. Both were exposed via `mode=suggestions` / `mode=title_summary`, and **both had frontend wrappers** (`getSuggestions`, `getTitleSummary`). Neither had a single caller anywhere in the app. **The tenth built-but-never-wired feature found in this codebase**, and the most misleading, because the UI explicitly advertised it.
+
+**Decision.**
+
+1. **Extend, don't parallel.** `getExpenseMemory` was added to the existing `expense-service`, and exposed as another `mode` on the existing `/api/expenses` route — no new service, no new endpoint. It adds what the entry form actually needs on top of the existing grouping: average and highest amount, notes, recurrence, receipt-attachment rate, hostel spread, and the day-of-month history that drives prediction. A **vendor-keyed** view sits alongside the title-keyed one, so typing a supplier works as well as typing what was bought.
+2. **Nothing is invented.** Where the owner never supplied a value, the field stays `null` and the form stays empty. Reuse prefills the **last** amount rather than the average, because the average is a number that never actually occurred and the owner is about to correct it anyway.
+3. **Prediction is historical, not clever.** `typicalDayOfMonth` uses the **median** so one mistimed entry can't drag it, and returns `null` when there are fewer than three occurrences or when they're genuinely scattered — a wrong nudge is worse than none. `dueAroundNow` also requires that nothing has been recorded this calendar month.
+4. **Ranking is frequency-first, recency-second, with due-now dominant.** A recency-only order would bury a weekly rice delivery under a one-off repair. Caught by test: the due-now bonus was initially +100, which quietly lost to a frequent recent expense (max 230) — it is now larger than any achievable frequency+recency total, so "due around now" genuinely jumps the queue as the comment claimed.
+5. **The wizard is preserved.** Per the "do not redesign everything" rule, the three-step flow is untouched; the empty first step simply became a list of the owner's own history. Reusing an entry advances straight to the amount, making the target **reuse → edit → save**.
+
+**Consequences.**
+- All ranking, pattern detection and phrasing live in the pure `lib/services/expenses/expense-memory.ts`, so they run under `npm run test:pure` while the backend suite still has no test database.
+- Two aggregate queries regardless of history size; no per-expense fan-out.
+- `getFrequentExpenses` is left in place and still serves `mode=suggestions` — it has no callers, but removing it is a separate decision from wiring its successor.
+- **Verified live**: with 11 real expenses, browsing returns the two genuinely repeated items, and typing "rice" returns three entries including the vendor *Sri Rice traders* with category, payment method, average and last purchase — the spec's own example. `typicalDayOfMonth` correctly returned `null` for both, refusing to claim a monthly pattern from two occurrences.
+- **Phases 2–4 (search summaries, dashboard simplification, branded exports) are not built.** `getExpenseTitleSummary` already exists and is the natural backbone for Phase 2.
+
+**Related:** [[Features]], [[APIs]], [[Bugs]], [[Changelog]].
+
 ## See also
 - [[Changelog]] for the chronological record of what shipped
 - [[Architecture]] for the system these decisions govern

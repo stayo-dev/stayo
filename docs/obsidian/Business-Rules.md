@@ -72,8 +72,30 @@ Everything below was extracted by reading the actual implementation (not types, 
 - **Partial payments**: each allocation gets `PAID` if fully covered, else `PARTIAL`.
 - **Overpayment** (changed 2026-07-31, [[Decisions#ADR-036|ADR-036]]): there is **no future-rent-credit balance any more**. Every rupee must land on a real installment. Before planning, a payment larger than what is currently due generates the tenant's next installment(s) from their ACTIVE agreement (`rentGenerationService.ensureInstallmentsForTenant`), and the planner then allocates across them. If the agreement cannot yield further installments — it has ended, or there is none — the payment is **rejected** (`BAD_REQUEST`) rather than parked anywhere. The planner reports any residue as `unallocated`, which the engine treats as an error, never a balance. Settlement invariant is now `Paid = ΣAllocations` exactly, with no credit term.
 - **Full-tier policy**: if `policy.allow_partial` is false, the minimum acceptable payment equals the entire first incomplete tier (ONBOARDING → RECURRING → PENALTIES → ADHOC), not an arbitrary amount.
+- **Minimum part payment** (extended 2026-08-05, [[Decisions#ADR-043|ADR-043]]): when partial payments *are* allowed, the floor is the **strictest** of three values — ₹1, `partial_payments.minimum_amount` (absolute, rupees), and `partial_payments.minimum_percentage` (0-100, applied to the tenant's **total outstanding**, rounded **up**). Both configured values are floors, so the larger wins. The result is then **clamped to the total outstanding**, so a ₹5,000 absolute floor can never make a remaining ₹500 balance unpayable. `minimum_percentage` is new; it is ignored entirely when partial payments are off, and absent/0 means "no percentage floor". Verified by 17 pure tests in `tests/settlement-planner-minimum-percentage.test.ts`.
+- **Rejection wording is owner-facing** (2026-08-05, ADR-043): `rejection_reason` states the *policy* ("This hostel doesn't accept part payments. Rent must be cleared in full — ₹8,000"), never a flag name. The plan also echoes `policy_minimum_amount` / `policy_minimum_percentage` so a UI can explain *why* the floor is what it is instead of presenting a bare number.
 - **Chronology guard**: when a caller selects specific obligations to pay, the code enforces that no earlier unpaid RENT obligation can be skipped while a later one is selected.
 - **Execution**: locks obligations `FOR UPDATE` in the same priority order via a **hand-duplicated SQL `CASE` clause** in `settlement-engine.ts` — explicitly commented as needing manual sync with the planner's priority constant (a real maintenance risk if one is changed without the other).
+
+## Collection queue prioritisation
+
+Added 2026-08-05 ([[Decisions#ADR-045|ADR-045]]). Decides **who the owner contacts first**. It reads money from the existing read models and never derives its own figure — `outstanding` and `last payment` from `financialService.getTenantPaymentSummary`, overdue-ness from `isOverdue()`.
+
+**Buckets** (section order): `NEEDS_ATTENTION` → `DUE_TODAY` → `AWAITING_REMINDER` → `DUE_SOON`. A tenant owing nothing, or whose next due date is beyond the 7-day window, is not in today's queue at all.
+
+**The reminder rule.** A tenant reminded within `reminderCooldownDays` (2) drops to `AWAITING_REMINDER` — chasing again immediately is noise. **But** once they pass `reminderCooldownMaxOverdueDays` (7) the deferral stops: a reminder that old has visibly not worked. Without that cap, live data put 7 of 10 tenants in "waiting" and ranked an 11-day-overdue tenant below a 12-day one.
+
+**Score** (orders rows *within* a bucket; every point is attributed and shown to the owner):
+
+| Factor | Points | Cap |
+|---|---|---|
+| Days overdue | `days × 2` | 60 days (120) |
+| Outstanding | `₹1,000 = 1` | 50 |
+| Previously paid late | `count × 10` | 30 |
+| Has never paid | 15 | — |
+| 3+ reminders, still unpaid | 20 | — |
+
+Caps exist so one very large balance cannot bury every genuinely overdue tenant, and so extreme lateness stops being the only differentiator. `score` always equals the sum of its factors — asserted by test. Ties break by name so the queue does not reshuffle between refreshes.
 
 ## Flexible payment links
 

@@ -12,16 +12,15 @@ export type MealSlotKey = 'breakfast' | 'lunch' | 'snacks' | 'dinner';
 export interface FoodSlotMeta {
   key: MealSlotKey;
   label: string;
-  emoji: string;
   color: string;
   tint: string;
 }
 
 export const FOOD_SLOTS: FoodSlotMeta[] = [
-  { key: 'breakfast', label: 'Breakfast', emoji: '🍳', color: '#B46A55', tint: '#F6ECE6' },
-  { key: 'lunch', label: 'Lunch', emoji: '🍛', color: '#1F7A52', tint: '#E9F3EE' },
-  { key: 'snacks', label: 'Snacks', emoji: '☕', color: '#B07E28', tint: '#F6EFE0' },
-  { key: 'dinner', label: 'Dinner', emoji: '🍽️', color: '#5B6E8C', tint: '#EBEEF4' },
+  { key: 'breakfast', label: 'Breakfast', color: '#B46A55', tint: '#F6ECE6' },
+  { key: 'lunch', label: 'Lunch', color: '#1F7A52', tint: '#E9F3EE' },
+  { key: 'snacks', label: 'Snacks', color: '#B07E28', tint: '#F6EFE0' },
+  { key: 'dinner', label: 'Dinner', color: '#5B6E8C', tint: '#EBEEF4' },
 ];
 
 export type FoodLibrary = Record<MealSlotKey, string[]>;
@@ -33,11 +32,11 @@ export const FOOD_LIBRARY_SEED: FoodLibrary = {
   dinner: ['Chapati', 'Fried Rice', 'Parotta', 'Noodles', 'Khichdi'],
 };
 
-export const MEAL_CATEGORY_META: Record<MealSlotKey, { label: string; emoji: string }> = {
-  breakfast: { label: 'Breakfast', emoji: '🍳' },
-  lunch: { label: 'Lunch', emoji: '🍛' },
-  snacks: { label: 'Snacks', emoji: '🍟' },
-  dinner: { label: 'Dinner', emoji: '🍲' },
+export const MEAL_CATEGORY_META: Record<MealSlotKey, { label: string }> = {
+  breakfast: { label: 'Breakfast' },
+  lunch: { label: 'Lunch' },
+  snacks: { label: 'Snacks' },
+  dinner: { label: 'Dinner' },
 };
 
 export type PollType = 'single' | 'multi' | 'rating' | 'yesno';

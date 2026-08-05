@@ -1,15 +1,20 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Pencil, Archive } from 'lucide-react';
+import { Pencil, Archive, ArrowUp, ArrowDown } from 'lucide-react';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useArchiveHostel } from '@features/settings/settingsHooks';
+import { canMoveUp, canMoveDown } from '../property-order/hostelSort';
 
 interface HostelOptionsSheetProps {
   open: boolean;
   onClose: () => void;
   hostelId: string | null;
   hostelName: string;
+  /** Position in the owner's manual order; -1 when unknown. */
+  index?: number;
+  total?: number;
+  onMove?: (hostelId: string, direction: -1 | 1) => void;
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -24,8 +29,21 @@ function getErrorMessage(error: unknown, fallback: string) {
  * specific hostel (`/owner/more/hostel/:hostelId`); "Archive hostel" calls
  * the real `DELETE /hostels/:id`, which the backend itself blocks (with a
  * clear error) if the hostel still has active room allocations.
+ *
+ * Move up / Move down are the **keyboard and screen-reader path** for
+ * reordering. Dragging the card handle is pointer-only, so without these the
+ * feature would be unreachable without a mouse or touch. They're hidden
+ * entirely when there's nothing to reorder. See ADR-042.
  */
-export function HostelOptionsSheet({ open, onClose, hostelId, hostelName }: HostelOptionsSheetProps) {
+export function HostelOptionsSheet({
+  open,
+  onClose,
+  hostelId,
+  hostelName,
+  index = -1,
+  total = 0,
+  onMove,
+}: HostelOptionsSheetProps) {
   const navigate = useNavigate();
   const [confirming, setConfirming] = useState(false);
   const archiveMutation = useArchiveHostel();
@@ -81,6 +99,32 @@ export function HostelOptionsSheet({ open, onClose, hostelId, hostelName }: Host
         </div>
       ) : (
         <div className="flex flex-col gap-2">
+          {onMove && index >= 0 && total > 1 && (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={!canMoveUp(index)}
+                onClick={() => onMove(hostelId, -1)}
+                className="flex flex-1 items-center gap-2.5 rounded-2xl bg-muted p-3.5 text-left disabled:opacity-40"
+              >
+                <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[11px] bg-card">
+                  <ArrowUp className="h-4.5 w-4.5 text-muted-foreground" strokeWidth={1.9} />
+                </span>
+                <div className="text-[13.5px] font-bold text-foreground">Move up</div>
+              </button>
+              <button
+                type="button"
+                disabled={!canMoveDown(index, total)}
+                onClick={() => onMove(hostelId, 1)}
+                className="flex flex-1 items-center gap-2.5 rounded-2xl bg-muted p-3.5 text-left disabled:opacity-40"
+              >
+                <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[11px] bg-card">
+                  <ArrowDown className="h-4.5 w-4.5 text-muted-foreground" strokeWidth={1.9} />
+                </span>
+                <div className="text-[13.5px] font-bold text-foreground">Move down</div>
+              </button>
+            </div>
+          )}
           <button
             type="button"
             onClick={() => {

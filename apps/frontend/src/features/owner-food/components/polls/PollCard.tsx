@@ -1,5 +1,6 @@
 import { Clock3, Trophy } from 'lucide-react';
 import { MEAL_CATEGORY_META, POLL_TYPE_META, getPollWinner, type MockFoodPoll } from '@shared/mocks/food';
+import { mealIcon } from '../../mealIcons';
 
 const BADGE_TONE: Record<MockFoodPoll['status'], { label: string; className: string }> = {
   active: { label: 'Live', className: 'bg-success/10 text-success' },
@@ -27,7 +28,7 @@ export function PollCard({ poll, onViewResults, onEdit, onClose }: PollCardProps
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-1.5">
             <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
-              {mealMeta.emoji} {mealMeta.label}
+              {(() => { const I = mealIcon(poll.mealCat); return <I className="mr-1 inline h-3.5 w-3.5 align-[-2px]" strokeWidth={1.75} />; })()}{mealMeta.label}
             </span>
             <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${badge.className}`}>{badge.label}</span>
           </div>

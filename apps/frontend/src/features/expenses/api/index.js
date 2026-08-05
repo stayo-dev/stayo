@@ -7,22 +7,43 @@ export const expenseService = {
         const response = await api.get('/expenses', { params: requestParams });
         return response.data.success !== undefined ? (response.data.data !== undefined ? response.data.data : response.data) : response.data;
     },
-    getSuggestions: async () => {
-        const response = await api.get('/expenses', { params: { mode: 'suggestions' } });
+    /**
+     * Expense memory — the owner's own history shaped into defaults for their
+     * next entry (ADR-047). Omit `q` to browse what they record most often.
+     */
+    getMemory: async (q, limit = 8, signal) => {
+        const response = await api.get('/expenses', {
+            params: { mode: 'memory', ...(q ? { q } : {}), limit },
+            signal,
+        });
         const data = response.data.success !== undefined ? (response.data.data !== undefined ? response.data.data : response.data) : response.data;
-        return data?.frequent_expenses || [];
+        return { entries: data?.entries ?? [], dueNow: data?.dueNow ?? [] };
     },
-    getTitleSummary: async (title) => {
-        const response = await api.get('/expenses', { params: { mode: 'title_summary', title } });
+    getTitleSummary: async (title, from, to) => {
+        const response = await api.get('/expenses', {
+            params: { mode: 'title_summary', title, ...(from ? { from } : {}), ...(to ? { to } : {}) },
+        });
         return response.data.success !== undefined ? (response.data.data !== undefined ? response.data.data : response.data) : response.data;
     },
-    create: async (_hostelId, data) => {
-        let payload = {
+    /**
+     * An expense belongs to a hostel unless the owner says otherwise.
+     *
+     * This previously deleted `hostelId` and forced `expense_scope:
+     * 'BUSINESS'` on every create, which made per-property cost comparison
+     * impossible — even though the schema defaults to HOSTEL, three
+     * composite indexes exist for per-hostel querying, the export service
+     * accepts a hostel filter, and most existing rows already carried a
+     * hostel. See docs/audits/expenses-module-audit.md.
+     */
+    create: async (hostelId, data) => {
+        const resolvedHostelId = data?.hostelId ?? hostelId ?? undefined;
+        const payload0 = {
             ...data,
-            expense_scope: 'BUSINESS',
+            ...(resolvedHostelId ? { hostelId: resolvedHostelId } : {}),
+            expense_scope: data?.expense_scope ?? (resolvedHostelId ? 'HOSTEL' : 'BUSINESS'),
         };
-        // Remove hostelId from payload — expenses are portfolio-level
-        delete payload.hostelId;
+        let payload = payload0;
+        if (!resolvedHostelId) delete payload.hostelId;
 
         if (data?.receipt_image instanceof File) {
             const { receipt_image, ...expenseData } = payload;

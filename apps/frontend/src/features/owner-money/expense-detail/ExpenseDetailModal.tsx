@@ -4,6 +4,7 @@ import { stayoToast } from '@shared/ui-patterns/Toast';
 import type { MockExpense } from '@shared/mocks/expenses';
 import { expenseService } from '@features/expenses/api';
 import { queryKeys } from '@lib/queryKeys';
+import { Eye, Download, ImageOff } from 'lucide-react';
 
 type ExpenseWithMeta = MockExpense & { addedBy?: string | null };
 
@@ -63,6 +64,52 @@ export function ExpenseDetailModal({ open, expense, onClose, onEdit, onDuplicate
       }
     >
       <div className="flex flex-col gap-4">
+        {/* Receipts are first-class for an audit-focused owner: until now the
+            image could not be attached at all, and even once stored it was
+            never shown back. Preview inline, open full size, or download for
+            an accountant. */}
+        {expense.receiptUrl ? (
+          <div className="overflow-hidden rounded-2xl border border-border bg-card">
+            <img
+              src={expense.receiptUrl}
+              alt={`Receipt for ${expense.title}`}
+              className="max-h-56 w-full bg-muted object-contain"
+              loading="lazy"
+            />
+            <div className="flex items-stretch gap-1.5 border-t border-border/60 p-2">
+              <a
+                href={expense.receiptUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex min-h-[38px] flex-1 items-center justify-center gap-1.5 rounded-lg bg-muted text-[11.5px] font-semibold text-foreground"
+              >
+                <Eye className="h-3.5 w-3.5" strokeWidth={2} />
+                View full size
+              </a>
+              <a
+                href={expense.receiptUrl}
+                download
+                className="flex min-h-[38px] flex-1 items-center justify-center gap-1.5 rounded-lg bg-muted text-[11.5px] font-semibold text-foreground"
+              >
+                <Download className="h-3.5 w-3.5" strokeWidth={2} />
+                Download
+              </a>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 rounded-2xl border border-dashed border-border bg-muted/40 px-4 py-3">
+            <ImageOff className="h-4 w-4 flex-none text-muted-foreground" strokeWidth={1.9} />
+            <span className="flex-1 text-[11.5px] text-muted-foreground">No receipt attached</span>
+            <button
+              type="button"
+              onClick={() => onEdit(expense)}
+              className="flex-none text-[11.5px] font-semibold text-primary"
+            >
+              Add one
+            </button>
+          </div>
+        )}
+
         <div className="overflow-hidden rounded-2xl border border-border bg-card">
           <div className={row}>
             <span className="text-[12.5px] text-muted-foreground">Category</span>

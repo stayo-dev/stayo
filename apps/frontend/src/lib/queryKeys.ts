@@ -10,6 +10,8 @@ export const queryKeys = {
   owner: {
     hostels: () => ownerKey('hostels'),
     profile: () => ownerKey('profile'),
+    /** Today's collection queue; hostel-scoped when a hostel is chosen. See ADR-045. */
+    collectionQueue: (hostelId?: string) => ownerKey('collection-queue', hostelId ?? 'all'),
     pendingDocuments: () => ownerKey('pending-documents'),
     renewalQueue: () => ownerKey('renewal-queue'),
     invitedCounts: (hostelIds: string[]) => ownerKey('invited-counts', [...hostelIds].sort()),

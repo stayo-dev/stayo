@@ -108,6 +108,66 @@ The StayO redesign is being built in place inside the same `apps/frontend` tree,
 - **Depends on:** [[Frontend]] (StayO foundation: `ThemeProvider`, `OwnerAppShell`, `shared/ui-patterns/*`), `docs/migration/frontend-foundation-tracker.md` (routing-approach note)
 - **Notes:** End-to-end click-through of the owner side of `Stayo Homepage.dc.html` → `AuthModal.dc.html` → `Owner Onboarding.dc.html` (12 steps, full animated SVG scene) → `Stayo App.dc.html`'s Home tab, faithfully ported. Two screens (Lead Submitted, Activation Link) don't exist in the design source and are now orphaned (see above). The dashboard screen this journey ends on (`OwnerDashboardPreviewPage`, at `/get-started/home`) renders `OwnerHomeDashboard`, a pure presentational component — still mock-data-driven as of this entry (real Dashboard wiring is the next phase after the signup/onboarding work below).
 
+### Action Center work queues — one interaction model across all four cards
+- **Status:** shipped 2026-08-05 — **Phase 3 of 4** · see [[Decisions#ADR-046|ADR-046]]
+- **Owner-facing?** yes · **Tenant-facing?** no
+- **Key files:** `features/owner-workqueue/{WorkQueue.tsx,AgreementQueuePage.tsx,VacancyQueuePage.tsx}` (new), `features/owner-tenants/pages/PendingActivationsPage.tsx` (rebuilt on the shared component), `features/owner-collection/CollectionQueuePage.tsx` (refactored onto it), `shared/ui-patterns/StatCard.tsx` (gained `onClick`), `platforms/owner/router/OwnerRoutes.tsx`, `features/owner-dashboard/components/OwnerHomeDashboard.tsx`.
+- **Routes:** `/owner/money/collect` · `/owner/agreements/review` · `/owner/tenants/activations` · `/owner/rooms/vacant`.
+- **The model:** card → prioritised queue → one-tap actions → the row leaves the list. Every card obeys it because there is **one** `WorkQueue` implementation; a queue supplies data and actions and cannot invent layout, ordering or empty states.
+- **No new backend.** Agreements reuse `getOwnerRenewalQueue` (already ranked and counted server-side), activations reuse the activation state machine via `usePendingActivations`, vacancy composes the existing `GET /api/rooms` across hostels.
+- **Notes:** No progress bar or daily target by explicit product direction — completion is the row disappearing. `StatCard` renders as a button only when interactive, so an informational tile never advertises an action it lacks. The vacancy queue's bed count was cross-checked live against the Home card's own figure and matches exactly. **Phase 4 (one merged daily task list) is not built** — the shared component is the precondition for it.
+
+### Intelligent Collection Queue — the owner's "where do I start" entry point
+- **Status:** shipped 2026-08-05 — **Phase 2 of 4** · see [[Decisions#ADR-045|ADR-045]]
+- **Owner-facing?** yes · **Tenant-facing?** no
+- **Route:** `/owner/money/collect`, reached from the Action Center's Collect Rent card and from All Actions.
+- **Key files:** Backend — `lib/services/collection-queue/{prioritisation.ts,collection-queue-service.ts}` (new), `app/api/owner/collection-queue/route.ts` (new), `tests/collection-queue-prioritisation.test.ts` (new, 37 pure tests). Frontend — `features/owner-collection/{collectionQueue.ts,collectionQueue.test.ts,useCollectionQueue.ts,CollectionQueuePage.tsx}` (new; 27 tests), `features/owner-dashboard/components/OwnerHomeDashboard.tsx`, `platforms/owner/router/OwnerRoutes.tsx`, `lib/queryKeys.ts`, `features/owners/api/index.js`.
+- **What's real:** every tenant who owes money is bucketed into **Needs immediate attention · Due today · Waiting after reminder · Due soon** and ranked within the bucket. Each card shows outstanding, days overdue, last payment, last reminder, room and hostel, with Collect / Call / WhatsApp inline and the tenant profile a tap away.
+- **Explainability:** the top two scoring reasons sit on the card; tapping them opens a sheet listing every factor with its points and the total. The ordering is never a black box.
+- **Depends on:** `financialService.getTenantPaymentSummary`, `isOverdue()`, `reminder_logs` — **no new financial calculation**.
+- **Notes:** Prioritisation is pure and takes `today` as a parameter, so it runs under `npm run test:pure` — which matters while the backend suite still has no test database. `recommendation: null` is on the contract from day one so the (unbuilt) recommendation engine won't require redesigning the page.
+
+  Live data caught a flaw in the reminder-cooldown rule before ship, and confirmed the fix afterwards — see [[Decisions#ADR-045|ADR-045]]. Post-fix the queue reads 4 / 6 across "needs attention" / "waiting" (was 3 / 7), with the 11-day-overdue tenant correctly promoted, and the ₹84,500 total unchanged.
+
+### Universal Search — the owner's "I know who I need" entry point
+- **Status:** shipped 2026-08-05 — **Phase 1 of 4** · see [[Decisions#ADR-044|ADR-044]]
+- **Owner-facing?** yes · **Tenant-facing?** no
+- **Key files:** Backend — `lib/services/search/{types.ts,ranking.ts,search-service.ts}` + `providers/{tenant,hostel,room}-provider.ts` (all new), `app/api/owner/search/route.ts` (rebuilt), `tests/search-ranking.test.ts` (new, 22 pure tests). Frontend — `features/owner-search/{searchActions.ts,searchActions.test.ts,useUniversalSearch.ts,UniversalSearchOverlay.tsx}` (all new; 23 tests), `features/owner-dashboard/components/OwnerHomeDashboard.tsx`, `features/owner-dashboard/quick-actions/useHomeQuickActions.ts`, `features/hostel-drilldown/pages/HostelRoomsPage.tsx`, `features/owners/api/index.js`.
+- **What's real:** searches tenants (name, phone ×4 fields, room, hostel, roll number, email, plus the word "invited"), hostels (name, city) and rooms (number) in one grouped, ranked response. Tapping a result goes straight to the tenant profile / hostel overview / that room's sheet.
+- **Quick actions, inline:** Call · WhatsApp · Copy number · Collect · Profile — without opening the profile first. Collect drops into the existing QuickCollect flow with the tenant already selected.
+- **Notes:** The Home search bar was previously a `<div>` wrapping a `<span>` — it looked like a field and did nothing. Two overlapping tenant-search endpoints already existed; one was orphaned and became this, the other (`/api/payments/quick-collect/search`) was deliberately left alone because its per-tenant ledger fetch suits a payment flow and not a typeahead.
+
+  **Extensibility is the design constraint, not a bonus.** Sources are providers registered in one array; the route and the client never branch on a result type, and each result carries its own `href`. Payments, complaints, expenses, receipts and staff can be added by writing a provider alone.
+
+  Actions are offered only when they can work — no Call without a number, no WhatsApp for a number whose country code can't be inferred, no Collect for an invited tenant or a zero balance. Verified live: `9845013001` finds a tenant stored as `+919845013001` as an exact match; `B-101` returns both its occupants and the room itself, grouped separately.
+
+  **Phases 2–4 are not built** — the Action Center still shows counts, not work queues.
+
+### Billing policy — the single screen that configures billing behaviour
+- **Status:** shipped 2026-08-05 — see [[Decisions#ADR-043|ADR-043]]
+- **Owner-facing?** yes · **Tenant-facing?** no (the policy governs what the owner may collect; tenants see only the resulting dues)
+- **Key files:** Frontend — `features/owner-more/billing-policy/{MoreConfigBillingPolicyPage.tsx,billingPolicy.ts,billingPolicy.test.ts}` (new; 21 tests), `features/owner-tenants/quick-collect/QuickCollectModal.tsx`, `features/owner-more/pages/{MoreSettingsPage,MoreConfigFinancePage,MoreConfigHostelPage,MoreConfigReceiptFooterPage}.tsx`, `platforms/owner/router/OwnerRoutes.tsx`. **Deleted:** `MoreBillingPage.tsx`, `MoreConfigLateFeesPage.tsx`, `MoreConfigTenantDefaultsPage.tsx`. Backend — `lib/services/hostel-policy-service.ts`, `lib/preferences.ts`, `src/services/payments/{financial-policy,settlement-planner}.ts`, `tests/settlement-planner-minimum-percentage.test.ts` (new, 17 tests), `vitest.pure.config.ts` (new).
+- **Route:** `/owner/more/configuration/finance/billing-policy`. Three old routes redirect to it.
+- **Sections:** Rent collection (full vs part payments, minimum amount, minimum percentage) · Security deposit default · Agreement duration default · Rent schedule (generation/due/grace) · Late fee (flat/percentage/per-day + cap).
+- **Depends on:** the existing `GET`/`PATCH /hostels/:id/preferences` — **no new endpoint was needed**.
+- **Notes:** Replaces three screens that each owned a slice of billing and could overwrite one another; the old "Rent and billing" screen silently rewrote a PERCENTAGE late fee to FLAT and dropped its cap (see [[Bugs]]). The page always writes the **full** late-fee shape for exactly that reason.
+
+  **The collect flow was redesigned around it.** The policy is stated before the owner types an amount ("Full payment only" / "Part payments allowed", with the floor spelled out and a Change link), and at review the sheet **either** explains why the payment can't proceed — with buttons to change the amount or open Billing policy — **or** describes the outcome in plain language ("₹100 will be collected", "₹7,900 will remain outstanding"). Previously it showed both at once. All copy is generated by pure functions in `billingPolicy.ts`, with tests asserting that no backend flag name (`allow_partial_payments`, `minimum_amount`, `payment_policy`) can leak into owner-visible text.
+
+  Scoped to the owner's primary hostel, like the screens it replaces — a hostel picker here is still **open work** for multi-hostel owners.
+
+### Owner Home property ordering — manual drag plus metric sorting
+- **Status:** shipped 2026-08-04 — see [[Decisions#ADR-042|ADR-042]]
+- **Owner-facing?** yes · **Tenant-facing?** no
+- **Key files:** Backend — `lib/services/hostel-order-service.ts` (new), `app/api/owner/hostels/reorder/route.ts` (new), `lib/services/portfolio-service.ts`, `prisma/migrations/20260804120000_hostel_display_order/` (new), `tests/hostel-order-service.test.ts` (new, 8 cases — **written but never executed**, see below). Frontend — `features/owner-dashboard/property-order/{hostelSort.ts,hostelSort.test.ts,PropertyList.tsx,PropertySortControl.tsx,useHostelOrder.ts}` (all new; 22 tests), `shared/ui-patterns/DragHandle.tsx`, `features/owner-dashboard/components/{OwnerHomeDashboard,HostelOptionsSheet}.tsx`, `features/owner-dashboard/hooks/useOwnerDashboard.ts`, `features/owners/api/index.js`, `shared/mocks/dashboard.ts`.
+- **Depends on:** [[APIs]] (`PATCH /api/owner/hostels/reorder`), [[Database]] (`hostels.display_order`), `motion` (already a dependency).
+- **What's real:** five sort modes — **My order** (default) · Most dues · Most vacant · Top revenue · Name. Manual drag works in "My order" only, from the handle only, and persists server-side so the arrangement follows the owner across devices. Move up / Move down in the ⋮ sheet do the same thing without a pointer.
+- **Notes:** This replaced a handle that had never worked — see [[Bugs]] for why (`react-dnd` present but imported nowhere, no `DndProvider`, decorative `aria-hidden` span, no ordering column). Sort labels are deliberately directional ("Most vacant", not "Occupancy") because occupancy sorts *ascending* and a bare metric name wouldn't say which end of the list you get.
+
+  **The handle is hidden in the four metric modes.** Hand-ordering a metric-sorted list is incoherent, and hiding the affordance explains why it can't be dragged rather than leaving a dead control — precisely the failure being fixed. `DragHandle`'s three other call sites (floor groups, room layout, food-poll options) intentionally stay decorative, because those reorder behaviours also don't exist yet.
+
+  **Not verified by automated backend tests.** `DATABASE_URL_TEST` is defined nowhere and `.env.test` doesn't exist, so the backend suite is unrunnable in this environment — pre-existing, confirmed by an untouched existing test failing identically. The endpoint was verified live against the real API instead. Provisioning a test database is open work.
+
 ### Owner activation visibility — the owner can see where every invited tenant is stuck
 - **Status:** shipped 2026-08-01 — **activation business logic unchanged**
 - **Owner-facing?** yes · **Tenant-facing?** no

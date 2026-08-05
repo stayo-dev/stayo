@@ -33,6 +33,8 @@ export interface HostelPreferences {
   // Payments
   allow_partial_payments: boolean;
   min_payment_amount: number;
+  /** Percentage (0-100) floor on a partial payment. 0 = no percentage floor. */
+  min_payment_percentage: number;
 
   // Advance / Deposit
   advance_enabled: boolean;
@@ -104,6 +106,7 @@ const DEFAULTS: HostelPreferences = {
 
   allow_partial_payments: false,
   min_payment_amount: 0,
+  min_payment_percentage: 0,
 
   advance_enabled: false,
   advance_amount_default: 0,

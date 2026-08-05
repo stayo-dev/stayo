@@ -17,6 +17,8 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
+    "//ignoreDeprecations": "TS5101 (baseUrl deprecated) is a FATAL config diagnostic: tsc reported it and aborted before checking any of the 446 files in src/, so `tsc --noEmit` passed while an undefined component sat in the bundle. Silence it until baseUrl is actually removed.",
+    "ignoreDeprecations": "6.0",
     "paths": {
       "@/*": ["./src/*"],
       "@lib/*": ["./src/lib/*"],
@@ -29,6 +31,7 @@
       "@services/*": ["./src/services/*"]
     }
   },
-  "include": ["src", "vite.config.ts"],
+  "//": "vite.config.ts belongs to tsconfig.node.json (composite). Listing it here too made tsc raise TS6305 for an unbuilt reference output and bail BEFORE checking src/ — so `tsc --noEmit` silently checked nothing, and an undefined component reached production. Keep this include limited to src.",
+  "include": ["src"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

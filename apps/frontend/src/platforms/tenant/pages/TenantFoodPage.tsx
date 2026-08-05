@@ -2,6 +2,7 @@ import { Check, UtensilsCrossed, Vote } from 'lucide-react';
 import { MEAL_CATEGORY_META, type MealSlotKey } from '@shared/mocks/food';
 import { useTenantFoodVoting } from '@features/food/hooks/useTenantFoodVoting';
 import { useTenantFoodSchedule, DAY_ORDER, type DayKey } from '@features/food/hooks/useTenantFoodSchedule';
+import { mealIcon } from '@features/owner-food/mealIcons';
 
 const SLOT_ORDER: MealSlotKey[] = ['breakfast', 'lunch', 'snacks', 'dinner'];
 const DAY_LABEL: Record<DayKey, string> = {
@@ -61,7 +62,7 @@ export function TenantFoodPage() {
                         const cell = m.grid[day][slot];
                         return (
                           <div key={slot} className="flex flex-col gap-0.5">
-                            <span className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground">{MEAL_CATEGORY_META[slot].emoji} {MEAL_CATEGORY_META[slot].label}</span>
+                            <span className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground">{(() => { const I = mealIcon(slot); return <I className="mr-1 inline h-3 w-3 align-[-1px]" strokeWidth={1.75} />; })()}{MEAL_CATEGORY_META[slot].label}</span>
                             <span className={`truncate text-[11.5px] font-semibold ${cell?.item_name ? 'text-foreground' : 'text-muted-foreground/60 italic'}`}>{cell?.item_name ?? 'Not set'}</span>
                           </div>
                         );
@@ -104,7 +105,7 @@ export function TenantFoodPage() {
             return (
               <div key={slot} className="rounded-[18px] border border-border bg-card p-4 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]">
                 <div className="mb-2.5 flex items-center gap-2">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-secondary text-[15px]">{MEAL_CATEGORY_META[slot].emoji}</span>
+                  <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-secondary">{(() => { const I = mealIcon(slot); return <I className="h-4 w-4 text-muted-foreground" strokeWidth={1.75} />; })()}</span>
                   <span className="font-display text-sm font-bold text-foreground">{MEAL_CATEGORY_META[slot].label}</span>
                 </div>
                 <div className="flex flex-col gap-2">

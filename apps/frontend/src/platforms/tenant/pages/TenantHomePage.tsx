@@ -3,6 +3,7 @@ import { Bell, CreditCard, UtensilsCrossed, DoorOpen, MessageSquareWarning, Mega
 import { MEAL_CATEGORY_META } from '@shared/mocks/food';
 import { useTenantHome } from '@features/tenant-home/hooks/useTenantHome';
 import { PaySheet } from '@features/tenant-financials/components/PaySheet';
+import { mealIcon } from '@features/owner-food/mealIcons';
 
 const card = 'rounded-[16px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_4px_14px_rgba(40,30,20,0.05)]';
 const sectionLabel = 'text-[13px] font-bold uppercase tracking-wide text-muted-foreground';
@@ -111,7 +112,7 @@ export function TenantHomePage() {
             {home.todaysMeals.map(({ slot, cell }) => (
               <div key={slot} className="flex items-center gap-3 py-3">
                 <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] bg-secondary text-[16px]">
-                  {MEAL_CATEGORY_META[slot].emoji}
+                  {(() => { const I = mealIcon(slot); return <I className="h-4 w-4" strokeWidth={1.75} />; })()}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="font-display text-[14.5px] font-bold text-foreground">{cell!.item_name}</div>

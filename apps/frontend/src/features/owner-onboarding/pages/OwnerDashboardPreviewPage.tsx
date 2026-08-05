@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { OwnerHomeDashboard } from '@features/owner-dashboard/components/OwnerHomeDashboard';
 import { HostelOptionsSheet } from '@features/owner-dashboard/components/HostelOptionsSheet';
 import { useOwnerDashboard } from '@features/owner-dashboard/hooks/useOwnerDashboard';
+import { useHostelOrder } from '@features/owner-dashboard/property-order/useHostelOrder';
+import { moveItem } from '@features/owner-dashboard/property-order/hostelSort';
+import { UniversalSearchOverlay } from '@features/owner-search/UniversalSearchOverlay';
+import { getInitials } from '@features/tenants/utils/normalize';
 import { useHomeQuickActions } from '@features/owner-dashboard/quick-actions/useHomeQuickActions';
 import { QuickActionsSheet } from '@features/owner-dashboard/quick-actions/QuickActionsSheet';
 import { AllActionsSheet } from '@features/owner-dashboard/quick-actions/AllActionsSheet';
@@ -38,11 +42,36 @@ export function OwnerDashboardPreviewPage() {
   const navigate = useNavigate();
   const qa = useHomeQuickActions();
   const dash = useOwnerDashboard();
+  const reorder = useHostelOrder();
   const [hostelMenuFor, setHostelMenuFor] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   if (dash.isLoading) return <DashboardLoadingSkeleton />;
 
   const menuHostel = dash.properties.find((p) => p.id === hostelMenuFor);
+
+  /**
+   * Keyboard/screen-reader path for reordering — dragging is pointer-only, so
+   * without this the feature would be unusable without a mouse or touch.
+   * Operates on the server's canonical order, not the currently displayed
+   * sort, so "Move up" means the same thing regardless of view. See ADR-042.
+   */
+  const moveHostel = (hostelId: string, direction: -1 | 1) => {
+    const ids = [...dash.properties]
+      .sort((a, b) => (a.displayOrder ?? Infinity) - (b.displayOrder ?? Infinity))
+      .map((p) => p.id);
+    const from = ids.indexOf(hostelId);
+    if (from === -1) return;
+    const next = moveItem(ids, from, from + direction);
+    if (next !== ids) reorder.mutate(next);
+    setHostelMenuFor(null);
+  };
+
+  const menuIndex = menuHostel
+    ? [...dash.properties]
+        .sort((a, b) => (a.displayOrder ?? Infinity) - (b.displayOrder ?? Infinity))
+        .findIndex((p) => p.id === menuHostel.id)
+    : -1;
 
   return (
     <>
@@ -59,6 +88,33 @@ export function OwnerDashboardPreviewPage() {
         onViewAllActions={qa.openAllActions}
         onPropertyMenu={(hostelId) => setHostelMenuFor(hostelId)}
         onAddHostel={() => navigate('/onboarding')}
+        onReorderProperties={(orderedIds) => reorder.mutate(orderedIds)}
+        onOpenSearch={() => setSearchOpen(true)}
+        onOpenCollectionQueue={() => navigate('/owner/money/collect')}
+        onOpenAgreements={() => navigate('/owner/agreements/review')}
+        onOpenActivations={() => navigate(PENDING_ACTIVATIONS_PATH)}
+        onOpenVacancies={() => navigate('/owner/rooms/vacant')}
+      />
+
+      <UniversalSearchOverlay
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        // "Collect" on a search result drops straight into the existing
+        // QuickCollect flow with the tenant preselected — find and act in two
+        // taps, without a detour through the profile.
+        onCollect={(result) =>
+          qa.collectPaymentFor({
+            id: result.id,
+            name: result.title,
+            initials: getInitials(result.title),
+            phone: String(result.data?.phone ?? ''),
+            hostelId: String(result.data?.hostelId ?? ''),
+            hostelName: '',
+            room: String(result.data?.room ?? '') || 'N/A',
+            outstanding: Number(result.data?.outstanding ?? 0),
+            deposit: 0,
+          })
+        }
       />
 
       <QuickActionsSheet
@@ -72,7 +128,10 @@ export function OwnerDashboardPreviewPage() {
       <AllActionsSheet
         open={qa.allActionsOpen}
         onClose={qa.closeAllActions}
-        onCollectRent={qa.collectPayment}
+        onCollectRent={() => {
+          qa.closeAllActions();
+          navigate('/owner/money/collect');
+        }}
         onActivateTenants={() => {
           qa.closeAllActions();
           navigate(PENDING_ACTIVATIONS_PATH);
@@ -84,13 +143,16 @@ export function OwnerDashboardPreviewPage() {
         onInviteTenant={qa.inviteTenant}
         actionCenter={dash.actionCenter}
       />
-      <QuickCollectModal open={qa.collectOpen} onClose={qa.closeCollect} />
+      <QuickCollectModal open={qa.collectOpen} onClose={qa.closeCollect} initialTenant={qa.collectTenant} />
       <InviteTenantWizard open={qa.inviteOpen} onClose={qa.closeInvite} />
       <HostelOptionsSheet
         open={Boolean(hostelMenuFor)}
         onClose={() => setHostelMenuFor(null)}
         hostelId={hostelMenuFor}
         hostelName={menuHostel?.name ?? 'Hostel'}
+        index={menuIndex}
+        total={dash.properties.length}
+        onMove={moveHostel}
       />
     </>
   );

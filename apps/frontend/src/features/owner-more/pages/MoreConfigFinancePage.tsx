@@ -3,6 +3,7 @@ import { ListRow } from '@shared/ui-patterns/ListRow';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useHostelPolicy } from '@features/settings/settingsHooks';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
+import { readPartialPolicy, policyHeadline, BILLING_POLICY_PATH } from '../billing-policy/billingPolicy';
 
 const card = 'overflow-hidden rounded-[16px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]';
 const sectionLabel = 'pl-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground';
@@ -20,6 +21,7 @@ export function MoreConfigFinancePage() {
   const billing = policy?.billing;
   const lateFee = billing?.late_fee;
   const lateFeeRule = lateFee?.rules?.[0];
+  const partialLabel = policyHeadline(readPartialPolicy(policy));
 
   const row = (i: number) => (i === 0 ? '' : 'border-t border-border/60');
 
@@ -33,6 +35,8 @@ export function MoreConfigFinancePage() {
           <ListRow
             title="Rent rules"
             meta={billing ? `Generated ${billing.auto_rent_day}st · Due on ${billing.due_day}th · ${billing.grace_days}-day grace` : 'Loading…'}
+            showChevron
+            onClick={() => navigate(BILLING_POLICY_PATH)}
             className={`px-4 ${row(0)}`}
           />
           <ListRow
@@ -42,19 +46,25 @@ export function MoreConfigFinancePage() {
                 ? `${billing.deposit.deposit_months ?? 1} month${(billing.deposit.deposit_months ?? 1) === 1 ? '' : 's'} · ${billing.deposit.refundable ? 'Refundable' : 'Non-refundable'}`
                 : 'Loading…'
             }
+            showChevron
+            onClick={() => navigate(BILLING_POLICY_PATH)}
             className={`px-4 ${row(1)}`}
           />
         </div>
       </div>
 
       <div className="flex flex-col gap-2">
-        <span className={sectionLabel}>Penalties</span>
+        <span className={sectionLabel}>Billing</span>
         <div className={card}>
           <ListRow
-            title="Late fees"
-            meta={lateFee?.enabled && lateFeeRule?.amount ? `₹${lateFeeRule.amount}${LATE_FEE_TYPE_LABEL[lateFeeRule.type] ?? ''} after ${lateFeeRule.starts_after_days}d` : 'Off'}
+            title="Billing policy"
+            meta={
+              lateFee?.enabled && lateFeeRule?.amount
+                ? `${partialLabel} · late fee ₹${lateFeeRule.amount}${LATE_FEE_TYPE_LABEL[lateFeeRule.type] ?? ''}`
+                : `${partialLabel} · no late fee`
+            }
             showChevron
-            onClick={() => navigate('/owner/more/configuration/finance/late-fees')}
+            onClick={() => navigate(BILLING_POLICY_PATH)}
             className={`px-4 ${row(0)}`}
           />
         </div>

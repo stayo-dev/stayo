@@ -1,6 +1,9 @@
+import { Check, RotateCcw } from 'lucide-react';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
-import { PAYMENT_METHOD_OPTIONS, getExpenseInsights } from '@shared/mocks/expenses';
+import { PAYMENT_METHOD_OPTIONS } from '@shared/mocks/expenses';
+import { cn } from '@shared/lib/cn';
 import type { ExpenseFilterState } from '../types';
+import { EMPTY_EXPENSE_FILTERS } from '../types';
 
 interface ExpenseFiltersModalProps {
   open: boolean;
@@ -8,124 +11,238 @@ interface ExpenseFiltersModalProps {
   onChange: (patch: Partial<ExpenseFilterState>) => void;
   onApply: () => void;
   onClose: () => void;
+  /** The owner's real vendors, most-used first. */
+  vendors?: string[];
+  /** How many expenses the current selection matches, live. */
+  resultCount?: number;
 }
 
-const labelStyle = 'mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground';
+const sectionLabel = 'mb-2 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground';
+
+const STATUS_OPTIONS: ExpenseFilterState['status'][] = ['All Status', 'Paid', 'Pending', 'Partially Paid'];
+const SORT_OPTIONS: { value: ExpenseFilterState['sort']; label: string }[] = [
+  { value: 'Recent', label: 'Newest' },
+  { value: 'Oldest', label: 'Oldest' },
+  { value: 'Amount: High to low', label: 'Largest' },
+  { value: 'Amount: Low to high', label: 'Smallest' },
+];
 const RECURRING_OPTIONS: { value: ExpenseFilterState['recurring']; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'recurring', label: 'Recurring' },
   { value: 'one-time', label: 'One-time' },
 ];
 
-/** Expense Filters bottom sheet, per Stayo App.dc.html. */
-export function ExpenseFiltersModal({ open, filters, onChange, onApply, onClose }: ExpenseFiltersModalProps) {
-  const { vendorTotals } = getExpenseInsights();
+/** Count of filters actually narrowing the list — sort is not a filter. */
+export function activeFilterCount(f: ExpenseFilterState): number {
+  let n = 0;
+  if (f.status !== 'All Status') n += 1;
+  if (f.paymentMethod) n += 1;
+  if (f.vendor) n += 1;
+  if (f.recurring !== 'all') n += 1;
+  if (f.amountMin || f.amountMax) n += 1;
+  return n;
+}
+
+function Chip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      // 38px min height keeps every option a comfortable thumb target.
+      className={cn(
+        'flex min-h-[38px] items-center gap-1.5 rounded-full px-3.5 text-xs font-semibold transition-colors',
+        active
+          ? 'bg-primary text-primary-foreground'
+          : 'border border-border bg-card text-muted-foreground active:bg-muted',
+      )}
+    >
+      {active && <Check className="h-3 w-3 flex-none" strokeWidth={3} />}
+      {children}
+    </button>
+  );
+}
+
+/**
+ * Expense filters.
+ *
+ * Refined after the module audit. Four things were wrong:
+ *
+ * 1. **Vendor was theatre** — non-interactive `<span>`s populated from mock
+ *    fixtures, for a field that didn't exist in `ExpenseFilterState`. It
+ *    listed suppliers the owner had never used and did nothing when tapped.
+ *    Now real vendors, ordered by how much the owner actually spends with
+ *    them, and it filters.
+ * 2. **Two interaction models in one sheet** — native `<select>` for status
+ *    and sort (which opens an OS picker) beside one-tap chips for everything
+ *    else. All chips now.
+ * 3. **No way to see or clear what's applied.** There is now a count in the
+ *    header and a Clear all.
+ * 4. **"Apply filters" was a lie** — filters apply as you tap them; the
+ *    button only closed the sheet. It now says what it does and previews the
+ *    result, so the owner knows what they're getting before committing.
+ *
+ * Sort is visually separated from the filters, because ordering a list and
+ * narrowing it are different acts.
+ */
+export function ExpenseFiltersModal({
+  open,
+  filters,
+  onChange,
+  onApply,
+  onClose,
+  vendors = [],
+  resultCount,
+}: ExpenseFiltersModalProps) {
+  const activeCount = activeFilterCount(filters);
+
+  const clearAll = () =>
+    onChange({
+      status: EMPTY_EXPENSE_FILTERS.status,
+      paymentMethod: null,
+      vendor: null,
+      recurring: 'all',
+      amountMin: '',
+      amountMax: '',
+    });
 
   return (
     <BottomSheet
       open={open}
       onOpenChange={(v) => !v && onClose()}
-      title="Filters"
+      title={
+        <span className="flex items-center gap-2">
+          Filters
+          {activeCount > 0 && (
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">
+              {activeCount}
+            </span>
+          )}
+        </span>
+      }
       footer={
-        <button type="button" onClick={onApply} className="w-full rounded-xl bg-primary py-3.5 text-center font-display text-sm font-bold text-primary-foreground">
-          Apply filters
+        <button
+          type="button"
+          onClick={onApply}
+          className="w-full rounded-xl bg-primary py-3.5 text-center font-display text-sm font-bold text-primary-foreground"
+        >
+          {typeof resultCount === 'number'
+            ? `Show ${resultCount} expense${resultCount === 1 ? '' : 's'}`
+            : 'Done'}
         </button>
       }
     >
       <div className="flex flex-col gap-5">
-        <label className="block">
-          <span className={labelStyle}>Status</span>
-          <select
-            value={filters.status}
-            onChange={(e) => onChange({ status: e.target.value as ExpenseFilterState['status'] })}
-            className="w-full rounded-xl border-[1.5px] border-primary bg-card px-3.5 py-3 text-[13px] font-semibold text-foreground focus:outline-none"
+        {activeCount > 0 && (
+          <button
+            type="button"
+            onClick={clearAll}
+            className="flex items-center gap-1.5 self-start text-[12px] font-semibold text-primary"
           >
-            <option value="All Status">All Status</option>
-            <option value="Paid">Paid</option>
-            <option value="Pending">Pending</option>
-            <option value="Partially Paid">Partially Paid</option>
-          </select>
-        </label>
-
-        <label className="block">
-          <span className={labelStyle}>Sort</span>
-          <select
-            value={filters.sort}
-            onChange={(e) => onChange({ sort: e.target.value as ExpenseFilterState['sort'] })}
-            className="w-full rounded-xl border border-border bg-card px-3.5 py-3 text-[13px] font-semibold text-foreground focus:outline-none"
-          >
-            <option value="Recent">Recent</option>
-            <option value="Oldest">Oldest</option>
-            <option value="Amount: High to low">Amount: High to low</option>
-            <option value="Amount: Low to high">Amount: Low to high</option>
-          </select>
-        </label>
+            <RotateCcw className="h-3.5 w-3.5" strokeWidth={2.2} />
+            Clear all filters
+          </button>
+        )}
 
         <div>
-          <span className={labelStyle}>Vendor</span>
+          <span className={sectionLabel}>Status</span>
           <div className="flex flex-wrap gap-2">
-            {vendorTotals.map((v) => (
-              <span key={v.vendor} className="rounded-full bg-muted px-3.5 py-1.5 text-xs font-semibold text-foreground/80">
-                {v.vendor}
-              </span>
+            {STATUS_OPTIONS.map((s) => (
+              <Chip key={s} active={filters.status === s} onClick={() => onChange({ status: s })}>
+                {s === 'All Status' ? 'All' : s}
+              </Chip>
+            ))}
+          </div>
+        </div>
+
+        {vendors.length > 0 && (
+          <div>
+            <span className={sectionLabel}>Vendor</span>
+            <div className="flex flex-wrap gap-2">
+              {vendors.map((v) => {
+                const active = filters.vendor === v;
+                return (
+                  <Chip key={v} active={active} onClick={() => onChange({ vendor: active ? null : v })}>
+                    {v}
+                  </Chip>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div>
+          <span className={sectionLabel}>Payment method</span>
+          <div className="flex flex-wrap gap-2">
+            {PAYMENT_METHOD_OPTIONS.map((m) => {
+              const active = filters.paymentMethod === m;
+              return (
+                <Chip key={m} active={active} onClick={() => onChange({ paymentMethod: active ? null : m })}>
+                  {m}
+                </Chip>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <span className={sectionLabel}>Recurring</span>
+          <div className="flex flex-wrap gap-2">
+            {RECURRING_OPTIONS.map((r) => (
+              <Chip key={r.value} active={filters.recurring === r.value} onClick={() => onChange({ recurring: r.value })}>
+                {r.label}
+              </Chip>
             ))}
           </div>
         </div>
 
         <div>
-          <span className={labelStyle}>Payment method</span>
-          <div className="flex flex-wrap gap-2">
-            {PAYMENT_METHOD_OPTIONS.map((m) => {
-              const active = filters.paymentMethod === m;
-              return (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => onChange({ paymentMethod: active ? null : m })}
-                  className={`rounded-full px-3.5 py-1.5 text-xs font-semibold ${active ? 'bg-primary text-primary-foreground' : 'border border-border bg-card text-muted-foreground'}`}
-                >
-                  {m}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div>
-          <span className={labelStyle}>Recurring</span>
-          <div className="flex gap-2">
-            {RECURRING_OPTIONS.map((r) => {
-              const active = filters.recurring === r.value;
-              return (
-                <button
-                  key={r.value}
-                  type="button"
-                  onClick={() => onChange({ recurring: r.value })}
-                  className={`rounded-full px-3.5 py-1.5 text-xs font-semibold ${active ? 'bg-primary text-primary-foreground' : 'border border-border bg-card text-muted-foreground'}`}
-                >
-                  {r.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div>
-          <span className={labelStyle}>Amount range</span>
+          <span className={sectionLabel}>Amount range</span>
           <div className="flex items-center gap-2.5">
-            <input
-              value={filters.amountMin}
-              onChange={(e) => onChange({ amountMin: e.target.value.replace(/[^0-9]/g, '') })}
-              placeholder="Min"
-              className="min-w-0 flex-1 rounded-xl border border-border bg-card px-3.5 py-3 text-[13px] text-foreground focus:outline-none"
-            />
-            <span className="text-xs text-muted-foreground">to</span>
-            <input
-              value={filters.amountMax}
-              onChange={(e) => onChange({ amountMax: e.target.value.replace(/[^0-9]/g, '') })}
-              placeholder="Max"
-              className="min-w-0 flex-1 rounded-xl border border-border bg-card px-3.5 py-3 text-[13px] text-foreground focus:outline-none"
-            />
+            <div className="flex min-w-0 flex-1 items-center gap-1 rounded-xl border border-border bg-card px-3 py-3">
+              <span className="flex-none text-[13px] font-semibold text-muted-foreground">₹</span>
+              <input
+                value={filters.amountMin}
+                onChange={(e) => onChange({ amountMin: e.target.value.replace(/[^0-9]/g, '') })}
+                placeholder="Min"
+                inputMode="numeric"
+                aria-label="Minimum amount"
+                className="w-full min-w-0 bg-transparent text-[13px] text-foreground outline-none"
+              />
+            </div>
+            <span className="flex-none text-xs text-muted-foreground">to</span>
+            <div className="flex min-w-0 flex-1 items-center gap-1 rounded-xl border border-border bg-card px-3 py-3">
+              <span className="flex-none text-[13px] font-semibold text-muted-foreground">₹</span>
+              <input
+                value={filters.amountMax}
+                onChange={(e) => onChange({ amountMax: e.target.value.replace(/[^0-9]/g, '') })}
+                placeholder="Max"
+                inputMode="numeric"
+                aria-label="Maximum amount"
+                className="w-full min-w-0 bg-transparent text-[13px] text-foreground outline-none"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Ordering a list and narrowing it are different acts, so sort sits
+            below a divider rather than among the filters. */}
+        <div className="border-t border-border/60 pt-5">
+          <span className={sectionLabel}>Sort by</span>
+          <div className="flex flex-wrap gap-2">
+            {SORT_OPTIONS.map((s) => (
+              <Chip key={s.value} active={filters.sort === s.value} onClick={() => onChange({ sort: s.value })}>
+                {s.label}
+              </Chip>
+            ))}
           </div>
         </div>
       </div>

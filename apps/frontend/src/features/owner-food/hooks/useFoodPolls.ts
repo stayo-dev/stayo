@@ -12,7 +12,7 @@ export function useFoodPolls() {
   const publishPoll = (poll: MockFoodPoll, notify: boolean) => {
     setPolls((p) => [poll, ...p]);
     setPollTab('active');
-    stayoToast.success(notify ? '🍽️ Poll published · tenants notified' : 'Poll published ✓');
+    stayoToast.success(notify ? 'Poll published · tenants notified' : 'Poll published');
   };
 
   const closePoll = (id: string) => {

@@ -2,7 +2,7 @@ import { Bell, Search, Plus } from 'lucide-react';
 import { StatCard } from '@shared/ui-patterns/StatCard';
 import { DarkHeroCard } from '@shared/ui-patterns/DarkHeroCard';
 import { StatusPill } from '@shared/ui-patterns/StatusPill';
-import { DragHandle } from '@shared/ui-patterns/DragHandle';
+import { PropertyList } from '../property-order/PropertyList';
 import {
   mockOwnerName,
   mockActionCenter,
@@ -30,6 +30,16 @@ interface OwnerHomeDashboardProps {
   onViewAllActions?: () => void;
   onPropertyMenu?: (hostelId: string) => void;
   onAddHostel?: () => void;
+  /** Full ordered list of hostel ids after a manual reorder. See ADR-042. */
+  onReorderProperties?: (orderedIds: string[]) => void;
+  /** Opens Universal Search. See ADR-044. */
+  onOpenSearch?: () => void;
+  /** Opens today's prioritised collection queue. See ADR-045. */
+  onOpenCollectionQueue?: () => void;
+  /** The remaining three Action Center queues. See ADR-046. */
+  onOpenAgreements?: () => void;
+  onOpenActivations?: () => void;
+  onOpenVacancies?: () => void;
 }
 
 /**
@@ -52,6 +62,12 @@ export function OwnerHomeDashboard({
   onViewAllActions,
   onPropertyMenu,
   onAddHostel,
+  onReorderProperties,
+  onOpenSearch,
+  onOpenCollectionQueue,
+  onOpenAgreements,
+  onOpenActivations,
+  onOpenVacancies,
 }: OwnerHomeDashboardProps) {
   return (
     <div className="flex flex-col gap-7 px-4 pb-8 pt-6 sm:px-6">
@@ -76,10 +92,17 @@ export function OwnerHomeDashboard({
         </button>
       </div>
 
-      <div className="flex items-center gap-2 rounded-xl border border-[#EAE1D8] bg-card px-3.5 py-[11px]">
-        <Search className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={1.6} />
-        <span className="text-[13px] text-muted-foreground">Search tenant, room..</span>
-      </div>
+      {/* Was a non-interactive <div>+<span> — looked like a search field,
+          did nothing. Now opens Universal Search (ADR-044). */}
+      <button
+        type="button"
+        onClick={onOpenSearch}
+        aria-label="Search tenants, rooms and hostels"
+        className="flex items-center gap-2 rounded-xl border border-[#EAE1D8] bg-card px-3.5 py-[11px] text-left transition-colors active:bg-muted"
+      >
+        <Search className="h-3.5 w-3.5 flex-none text-muted-foreground" strokeWidth={1.6} />
+        <span className="text-[13px] text-muted-foreground">Search tenant, room, phone…</span>
+      </button>
 
       <section className="flex flex-col gap-3">
         <div className="flex items-baseline justify-between">
@@ -88,20 +111,28 @@ export function OwnerHomeDashboard({
             View all
           </button>
         </div>
-        <DarkHeroCard className="rounded-[20px] px-5 py-[18px] shadow-[0_10px_28px_rgba(34,30,26,0.22)]">
-          <div className="flex items-center justify-between">
-            <span className="text-[12.5px] font-semibold text-background/70">Collect Rent</span>
-            <span className="text-background/55">›</span>
-          </div>
-          <div className="mt-1 font-display text-3xl font-extrabold tabular-nums tracking-tight">
-            {actionCenter.collectRent.amount}
-          </div>
-          <div className="mt-1 text-xs font-medium text-background/65">{actionCenter.collectRent.caption}</div>
-        </DarkHeroCard>
+        {/* The card showed a "›" chevron but had no handler — it went nowhere.
+            It now opens today's prioritised collection queue (ADR-045). */}
+        <button type="button" onClick={onOpenCollectionQueue} className="text-left">
+          <DarkHeroCard className="rounded-[20px] px-5 py-[18px] shadow-[0_10px_28px_rgba(34,30,26,0.22)]">
+            <div className="flex items-center justify-between">
+              <span className="text-[12.5px] font-semibold text-background/70">Collect Rent</span>
+              <span className="text-background/55">›</span>
+            </div>
+            <div className="mt-1 font-display text-3xl font-extrabold tabular-nums tracking-tight">
+              {actionCenter.collectRent.amount}
+            </div>
+            <div className="mt-1 text-xs font-medium text-background/65">{actionCenter.collectRent.caption}</div>
+          </DarkHeroCard>
+        </button>
         <div className="grid grid-cols-3 gap-2">
-          <StatCard variant="action" label="Review Agreements" value={actionCenter.reviewAgreements.value} caption={actionCenter.reviewAgreements.caption} />
-          <StatCard variant="action" label="Activate Tenants" value={actionCenter.activateTenants.value} caption={actionCenter.activateTenants.caption} />
-          <StatCard variant="action" label="Fill Vacant Beds" value={actionCenter.fillVacantBeds.value} caption={actionCenter.fillVacantBeds.caption} />
+          {/* All three were non-interactive: StatCard had no onClick prop at
+              all, so they sat beside a tappable hero card doing nothing. Each
+              now opens its own work queue, same model as Collect Rent
+              (ADR-046). */}
+          <StatCard variant="action" label="Review Agreements" value={actionCenter.reviewAgreements.value} caption={actionCenter.reviewAgreements.caption} onClick={onOpenAgreements} ariaLabel="Review agreements" />
+          <StatCard variant="action" label="Activate Tenants" value={actionCenter.activateTenants.value} caption={actionCenter.activateTenants.caption} onClick={onOpenActivations} ariaLabel="Activate tenants" />
+          <StatCard variant="action" label="Fill Vacant Beds" value={actionCenter.fillVacantBeds.value} caption={actionCenter.fillVacantBeds.caption} onClick={onOpenVacancies} ariaLabel="Fill vacant beds" />
         </div>
       </section>
 
@@ -137,57 +168,13 @@ export function OwnerHomeDashboard({
         </div>
       </section>
 
-      <section className="flex flex-col gap-3">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Property</h2>
-          <button type="button" onClick={onAddHostel} className="text-[12.5px] font-semibold text-primary">
-            + Add hostel
-          </button>
-        </div>
-        <div className="flex flex-col gap-3">
-          {properties.map((p) => (
-            <div key={p.id} className="rounded-2xl border border-border bg-card">
-              <div
-                onClick={() => onSelectProperty?.(p.id)}
-                className={`flex flex-col gap-2.5 p-3.5 ${onSelectProperty ? 'cursor-pointer' : ''}`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <DragHandle />
-                  <div className="min-w-0 flex-1 font-display text-[14.5px] font-bold text-foreground">{p.name}</div>
-                  <StatusPill tone="success" variant="filter">
-                    {p.occupancyLabel}
-                  </StatusPill>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onPropertyMenu?.(p.id);
-                    }}
-                    className="flex h-6 w-6 flex-none items-center justify-center text-lg text-muted-foreground"
-                  >
-                    ⋮
-                  </button>
-                </div>
-                <div className="ml-8 text-[11.5px] text-muted-foreground">{p.location}</div>
-                <div className="ml-8 grid grid-cols-3 gap-1.5 border-t border-border pt-2.5">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[9.5px] font-medium text-muted-foreground">Revenue</span>
-                    <span className="font-display text-xs font-bold tabular-nums text-foreground">{p.revenue}</span>
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[9.5px] font-medium text-muted-foreground">Dues</span>
-                    <span className="font-display text-xs font-bold tabular-nums text-destructive">{p.outstanding}</span>
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[9.5px] font-medium text-muted-foreground">Vacant</span>
-                    <span className="font-display text-xs font-bold tabular-nums text-foreground">{p.vacant}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+      <PropertyList
+        properties={properties}
+        onSelectProperty={onSelectProperty}
+        onPropertyMenu={onPropertyMenu}
+        onAddHostel={onAddHostel}
+        onReorder={onReorderProperties}
+      />
 
       <button
         type="button"

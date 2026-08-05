@@ -94,6 +94,8 @@ function toMockExpense(e: ExpensesResponse['expenses'][number]): RealExpense {
     notes: e.notes || undefined,
     recurring: Boolean(e.is_recurring),
     addedBy: e.added_by,
+    receiptUrl: (e as { receipt_url?: string | null }).receipt_url ?? null,
+    hostelId: (e as { hostel_id?: string | null }).hostel_id ?? null,
   };
 }
 

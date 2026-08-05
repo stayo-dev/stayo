@@ -5,10 +5,22 @@ interface ExpenseSearchBarProps {
   onSearchChange: (v: string) => void;
   onOpenFilters: () => void;
   onOpenExport: () => void;
+  /**
+   * How many filters are narrowing the list. Shown as a badge so the owner
+   * can tell *why* they're seeing three rows without opening the sheet —
+   * previously applied filters were completely invisible from here.
+   */
+  activeFilterCount?: number;
 }
 
 /** Search + filter + export bar for the Expenses list, per Stayo App.dc.html. */
-export function ExpenseSearchBar({ search, onSearchChange, onOpenFilters, onOpenExport }: ExpenseSearchBarProps) {
+export function ExpenseSearchBar({
+  search,
+  onSearchChange,
+  onOpenFilters,
+  onOpenExport,
+  activeFilterCount = 0,
+}: ExpenseSearchBarProps) {
   return (
     <div className="flex items-center gap-2">
       <div className="flex min-w-0 flex-1 items-center gap-2 rounded-[14px] border border-border bg-card px-3.5 py-2.5 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]">
@@ -23,10 +35,20 @@ export function ExpenseSearchBar({ search, onSearchChange, onOpenFilters, onOpen
       <button
         type="button"
         onClick={onOpenFilters}
-        aria-label="Filters"
-        className="flex h-10.5 w-10.5 flex-none items-center justify-center rounded-[14px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]"
+        aria-label={activeFilterCount > 0 ? `Filters, ${activeFilterCount} active` : 'Filters'}
+        className={`relative flex h-10.5 w-10.5 flex-none items-center justify-center rounded-[14px] border shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)] ${
+          activeFilterCount > 0 ? 'border-primary bg-secondary/50' : 'border-border bg-card'
+        }`}
       >
-        <SlidersHorizontal className="h-4 w-4 text-foreground/80" strokeWidth={1.8} />
+        <SlidersHorizontal
+          className={`h-4 w-4 ${activeFilterCount > 0 ? 'text-primary' : 'text-foreground/80'}`}
+          strokeWidth={1.8}
+        />
+        {activeFilterCount > 0 && (
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-background bg-primary px-1 font-display text-[9px] font-bold text-primary-foreground">
+            {activeFilterCount}
+          </span>
+        )}
       </button>
       <button
         type="button"

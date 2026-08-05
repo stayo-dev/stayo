@@ -3,6 +3,7 @@ import type { FoodSlotMeta } from '@shared/mocks/food';
 import { MealChip } from './MealChip';
 import type { FoodMenuItemRow } from '../../hooks/useFoodMenuItems';
 import type { useFoodMenuItems } from '../../hooks/useFoodMenuItems';
+import { mealIcon } from '../../mealIcons';
 
 interface FoodLibraryCardProps {
   slotMeta: FoodSlotMeta;
@@ -23,7 +24,7 @@ export function FoodLibraryCard({ slotMeta, items, library }: FoodLibraryCardPro
         className="flex w-full items-center gap-2.5 px-3.5 py-3"
       >
         <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[11px] text-[17px]" style={{ background: slotMeta.tint }}>
-          {slotMeta.emoji}
+          {(() => { const I = mealIcon(slotMeta.key); return <I className="h-4 w-4" strokeWidth={1.75} />; })()}
         </span>
         <span className="flex-1 text-left font-display text-sm font-bold tracking-tight text-foreground">{slotMeta.label}</span>
         <span className="rounded-full bg-[#F4EDE4] px-2.5 py-0.5 text-[11px] font-semibold tabular-nums text-[#A89C90]">{items.length}</span>

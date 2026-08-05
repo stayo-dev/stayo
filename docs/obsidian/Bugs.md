@@ -28,6 +28,72 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### Expense suggestions were built end-to-end, wrappers and all, and never called
+
+- **Status:** fixed — see [[Decisions#ADR-047|ADR-047]]
+- **Found:** 2026-08-05, during the Expenses Phase 1 audit.
+- **Area:** [[Frontend]] (Add Expense), [[Backend]] (expense service)
+- **Symptom:** the Add Expense form said *"Suggestions come from your past entries."* and never showed any.
+- **Root cause:** `expenseService.getFrequentExpenses` and `getExpenseTitleSummary` were fully implemented, routed (`mode=suggestions`, `mode=title_summary`) **and** wrapped on the frontend (`getSuggestions`, `getTitleSummary`) — with **zero callers** in `src/`. A complete vertical slice connected to nothing. The **tenth** instance of this pattern found in this codebase, and the most misleading: the UI explicitly advertised the missing behaviour.
+- **Fix:** the first wizard step now consumes expense memory (an extension of the same service, on the same route), so the promise the copy made is kept.
+- **Related:** [[Decisions#ADR-047|ADR-047]], [[Features]], [[Changelog]]
+
+### The other three Action Center tiles could not be tapped at all
+
+- **Status:** fixed — see [[Decisions#ADR-046|ADR-046]]
+- **Found:** 2026-08-05, while establishing the shared interaction model.
+- **Area:** [[Frontend]] (owner Home)
+- **Symptom:** Review Agreements, Activate Tenants and Fill Vacant Beds showed real counts and captions but did nothing when tapped.
+- **Root cause:** `StatCard` exposed no `onClick` prop — the tiles were not "unwired", they were **structurally incapable** of interaction. Affordances six, seven and eight of this class, and the most misleading yet: all three sat in a row beside the Collect Rent hero card, which by then did navigate.
+- **Fix:** `StatCard` now renders as a `<button>` when given an `onClick` and stays a `<div>` otherwise, so an informational tile never advertises an interaction it lacks. Each card opens its own work queue built on the shared `WorkQueue` component.
+- **Related:** [[Decisions#ADR-046|ADR-046]], [[Features]], [[Changelog]]
+
+### "Collect Rent" showed a chevron and went nowhere
+
+- **Status:** fixed — see [[Decisions#ADR-045|ADR-045]]
+- **Found:** 2026-08-05, during the Phase 2 audit.
+- **Area:** [[Frontend]] (owner Home)
+- **Symptom:** the Action Center's Collect Rent hero card displayed the total owed and a `›`, but tapping it did nothing.
+- **Root cause:** `DarkHeroCard` was rendered with no `onClick` and no wrapping control — the `›` was decoration. The **fifth** affordance of this class in this codebase, after the property drag handle, the partial-payments toggle, three dead rows on the old billing screen, and the Home search bar.
+- **Fix:** the card is now a real button opening today's prioritised collection queue. "Collect Rent" in the All Actions sheet routes to the same place, so both entry points lead to one workflow.
+- **Related:** [[Decisions#ADR-045|ADR-045]], [[Features]], [[Changelog]]
+
+### The Home search bar was not a search bar, and the endpoint behind it had no callers
+
+- **Status:** fixed — see [[Decisions#ADR-044|ADR-044]]
+- **Found:** 2026-08-05, during the Universal Search audit.
+- **Area:** [[Frontend]] (owner Home), [[APIs]]
+- **Symptom:** the "Search tenant, room.." field on Home could not be typed into.
+- **Root cause:** it was a `<div>` containing a `<span>` — no `<input>`, no `onClick`, no handler of any kind. The **fourth** affordance of this class found in this codebase, after the property drag handle, the partial-payments toggle that never existed, and three dead rows on the old billing screen. Separately, `/api/owner/search` existed and was documented as powering "the global navbar", and `ownerService.searchTenants` wrapped it — but **nothing in `src/` called either**. A working endpoint and a working client wrapper, connected to nothing.
+- **Fix:** the bar is now a real button opening Universal Search; the orphaned endpoint was rebuilt as the universal, provider-based one behind it.
+- **Related:** [[Decisions#ADR-044|ADR-044]], [[Features]], [[Changelog]]
+
+### Partial payments were enforced but unconfigurable, and three screens fought over the same billing settings
+
+- **Status:** fixed (full-stack) — see [[Decisions#ADR-043|ADR-043]]
+- **Found:** 2026-08-05, reported directly by the user: "when marking a payment it shows partial payments are not allowed and if i check settings i dont find any option to toggle it or manage it".
+- **Area:** [[Frontend]] (owner Configure + collect flow), [[Backend]] (settlement planner, hostel policy)
+- **Symptom:** collecting ₹100 against ₹8,000 of rent was refused with *"Full payment required. Minimum: ₹8,000 (Rent)"*, and no screen anywhere offered a way to change that.
+- **Root cause — four separate defects behind one symptom:**
+  1. **A shipped enforcement with no control.** `partial_payments.enabled` existed in the hostel policy, was read by `settlement-planner.ts`, was writable through `PATCH /hostels/:id/preferences` — and defaulted to `false`. `allow_partial_payments` appeared **nowhere** in `apps/frontend/src`. The rule was enforced; the switch was never built.
+  2. **The review sheet contradicted itself.** The "After confirming" block rendered unconditionally from the allocation preview, so a refused payment still displayed "1 installment left part-paid", "₹7,900 still outstanding" and "a receipt is generated and the tenant is notified" — an outcome that could not occur — while Confirm sat disabled.
+  3. **Silent data loss between duplicate screens.** `MoreBillingPage` (Settings → "Rent and billing") and `MoreConfigLateFeesPage` (Configure → Finance) both wrote `billing.late_fee`. The former always wrote `type: 'FLAT'` and **omitted `max_amount`**, so configuring a PERCENTAGE fee with a cap and then pressing Save on the older screen rewrote it to FLAT and dropped the cap, with no warning. [[Changelog]] had claimed the old screen was "kept, unlinked" — it was still linked from `MoreSettingsPage`.
+  4. **Save buttons under the bottom nav.** `MoreConfigTenantDefaultsPage`, `MoreConfigLateFeesPage` and `MoreConfigReceiptFooterPage` used `fixed bottom-0` with no nav offset, z-index or max-width, unlike the older screens which used `bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20`. Every save action in the new Configure hub was partly obscured.
+- **Fix:** one canonical Billing policy screen owning all five billing concepts; the three duplicates deleted and their routes redirected; a new `minimum_percentage` floor; the collect flow states the policy up front and, at review, explains the block *or* the outcome but never both. Full reasoning in ADR-043.
+- **Also uncovered:** the backend test suite is entirely unrunnable without `DATABASE_URL_TEST` — *including tests of pure functions*, because the shared setup file imports `lib/db`. A `test:pure` runner was added so the financially sensitive allocation logic could actually be verified (56 tests). Provisioning a real test database is still open work.
+- **Related:** [[Decisions#ADR-043|ADR-043]], [[Business-Rules]], [[Features]], [[Changelog]]
+
+### The hostel cards' drag handle was decoration — reordering had never been implemented at all
+
+- **Status:** fixed (full-stack: new column, new endpoint, real drag)
+- **Found:** 2026-08-04, reported directly by the user: "i am not able to drag hostels card".
+- **Area:** [[Frontend]] (owner Home), [[Database]], [[APIs]]
+- **Symptom:** every Property card on owner Home rendered a `⠿` drag handle. Dragging did nothing, on desktop or on a phone.
+- **Root cause:** the feature had **never been built** — this was not a regression. `react-dnd` and `react-dnd-html5-backend` were listed in `apps/frontend/package.json` but **imported nowhere** in `src/`; no `DndProvider` was mounted anywhere in the app; and `DragHandle` was a decorative `<span aria-hidden="true">` rendering six dots with no event handlers of any kind. `hostels` also had no ordering column, so no order could have been persisted even if the drag had worked. The handle was a visual affordance carried over from the Figma design source — its own doc comment says the glyph was "confirmed reused across every drag-and-drop list in the design source", which is what it was copied from. Three other call sites (floor groups, room layout, food-poll options) have the same decorative handle and the same non-existent reorder behaviour. **A second latent cause sat behind the first:** even fully wired, `react-dnd-html5-backend` uses the HTML5 drag-and-drop API, which does not fire on touch devices — so the mobile-first owner app could never have dragged anything with that backend.
+- **Fix:** see [[Decisions#ADR-042|ADR-042]]. Real handle-only drag via `motion`'s `Reorder`/`useDragControls` (already a dependency — no new package; `react-dnd` and `react-dnd-html5-backend` removed), persisted to a new nullable `hostels.display_order` through `PATCH /api/owner/hostels/reorder`. Drag is deliberately scoped to a "My order" sort mode and the handle is **hidden** in the four metric sort modes, so a handle that can't be dragged never appears again. `DragHandle` is now dual-mode and stays decorative at the three call sites whose reorder behaviour still doesn't exist — making those interactive would have recreated this exact bug elsewhere.
+- **Caveat:** the backend tests for this are written but were **never executed** — `DATABASE_URL_TEST` is defined nowhere and `.env.test` doesn't exist, so the backend suite can't run in this environment at all (pre-existing; an untouched existing test fails identically). Verified live against the real API instead.
+- **Related:** [[Decisions#ADR-042|ADR-042]], [[Features]], [[Database]], [[APIs]], [[Changelog]]
+
 ### Owner couldn't add a hostel, and a swathe of owner-app buttons were dead ends
 
 - **Status:** fixed (frontend only, no backend changes needed — every backend route these now call already existed and worked)

@@ -25,6 +25,7 @@ This is the living documentation workspace for the Hostel Management System (HMS
 - [[Bugs]] — bug reports, open and fixed
 - [[TODO]] — running backlog, including this audit's flagged unknowns
 - [[Changelog]] — Keep a Changelog-format history
+- [[Performance]] — measured backend latency baselines (region pin, Prisma relation load strategy) and what remains unmeasured
 
 ## Quick reference — what to read before touching what
 
@@ -41,6 +42,7 @@ Read the relevant row **before** writing code, not after — these pages exist t
 | Touch WhatsApp, email, or reminders | [[Business-Rules]] (Notification triggers) + [[Backend]] (Notification services section) |
 | About to make a call with long-term architectural consequences | [[Decisions]] first, to check whether a prior ADR already covers this; add a new one when you decide |
 | Just fixed something that revealed a real design gap | [[Bugs]] |
+| Investigate or change backend latency / query performance | [[Performance]] — read the measured baselines and the "not yet measured" list before optimising anything, so you're not guessing at where the time goes |
 | Not sure where something lives at all | [[Architecture]] first — it links onward to the right specific page |
 
 ## How this vault is meant to be used

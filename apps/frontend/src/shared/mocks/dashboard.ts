@@ -39,6 +39,16 @@ export interface MockProperty {
   revenue: string;
   outstanding: string;
   vacant: number;
+  /**
+   * Raw numeric values behind the formatted strings above, plus the
+   * owner's manual position. Sorting can't use the display strings —
+   * '₹1,32,600' doesn't compare numerically. Optional so the mock fixtures
+   * and any older caller still type-check. See ADR-042.
+   */
+  occupancyPercent?: number;
+  revenueValue?: number;
+  outstandingValue?: number;
+  displayOrder?: number | null;
 }
 
 export const mockProperties: MockProperty[] = [

@@ -1,87 +1,54 @@
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
-import { prisma } from "@/lib/db";
-import { getLogger } from "@/lib/logger";
-
-const logger = getLogger("search-api");
+import { NextRequest } from "next/server";
+import { getSession, apiResponse, apiError } from "@/lib/auth";
+import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { searchService, MIN_QUERY_LENGTH } from "@/lib/services/search/search-service";
 
 /**
- * GET /api/owner/search?q=ram&limit=10
- * Optimized multi-tenant search endpoint used for the global navbar.
+ * 🔎 GET /api/owner/search?q=...&limit=8
+ *
+ * Universal owner search — tenants, hostels and rooms in one grouped
+ * response. See ADR-044.
+ *
+ * This route is deliberately thin and **type-agnostic**: it never mentions
+ * tenants, hostels or rooms. Sources are registered in
+ * `lib/services/search/search-service.ts`; adding payments, complaints or
+ * staff later must not require editing this file.
+ *
+ * Replaces a previous implementation of the same path that searched only
+ * tenant profiles, had no ranking, returned a bare array outside the standard
+ * envelope, and was **orphaned** — its client wrapper
+ * (`ownerService.searchTenants`) existed but nothing in the app called it.
+ *
+ * Access: Owner/Admin only, owner-scoped by every provider.
  */
 export async function GET(req: NextRequest) {
+  const session = await getSession(req);
+  if (!session || !["OWNER", "ADMIN"].includes(session.role)) {
+    return apiError("Forbidden", "FORBIDDEN", 403);
+  }
+
   try {
-    const session = await getSession(req);
-    // Explicitly enforce OWNER/ADMIN roles for global search
-    if (!session || !["OWNER", "ADMIN"].includes(session.role)) {
-      return NextResponse.json(
-        { error: { message: "Unauthorized", code: "UNAUTHORIZED" } },
-        { status: 401 }
-      );
-    }
-
+    const scope = resolveOwnerScope(session);
     const { searchParams } = new URL(req.url);
-    const q = searchParams.get("q")?.trim() || "";
-    const limitParams = searchParams.get("limit");
-    const limit = limitParams ? Math.min(parseInt(limitParams, 10), 20) : 10;
+    const q = (searchParams.get("q") || "").trim();
 
-    // 1. Prevent expensive empty/short queries
-    if (q.length < 2) {
-      return NextResponse.json([]);
+    const rawLimit = Number(searchParams.get("limit"));
+    const limitPerGroup = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 20) : 8;
+
+    // A short query is answered, not rejected — the client shows its "keep
+    // typing" state from an empty result rather than having to special-case
+    // an error response.
+    if (q.length < MIN_QUERY_LENGTH) {
+      return apiResponse({ query: q, groups: [], total: 0 });
     }
 
-    // 2. Perform highly indexed lookup across active tenants
-    // We search the Profile model (which acts as the user details table) connected to tenants 
-    // owned by this owner.
-    const profiles = await prisma.profile.findMany({
-      where: {
-        owner_id: session.sub, // MUST restrict by owner!
-        // We only want tenant profiles
-        role: "TENANT", 
-        OR: [
-          { name: { contains: q, mode: "insensitive" } },
-          { phone: { contains: q } },
-          { email: { contains: q, mode: "insensitive" } },
-        ]
-      },
-      select: {
-        id: true,
-        name: true,
-        phone: true,
-        email: true,
-        tenants: {
-          select: {
-            id: true,
-            status: true,
-            photo_url: true,
-          }
-        }
-      },
-      take: limit, // NEVER return full tables
-      orderBy: { created_at: "desc" }
-    });
-
-    // 3. Format response for frontend 
-    // Usually the frontend expects an array of tenant objects.
-    const results = profiles.map(p => ({
-      id: p.tenants?.id, // Tenant ID
-      profile_id: p.id,
-      name: p.name,
-      phone: p.phone,
-      email: p.email,
-      status: p.tenants?.status,
-      photo_url: p.tenants?.photo_url,
-    })).filter(p => p.id); // Valid tenants only
-
-    return NextResponse.json(results);
-  } catch (error) {
-    logger.error("Search API Error", { error: error instanceof Error ? error.message : String(error) });
-    return NextResponse.json(
-      { error: { message: "Search failed", code: "INTERNAL_ERROR" } },
-      { status: 500 }
-    );
+    const result = await searchService.search({ ownerId: scope.owner_id, query: q, limitPerGroup });
+    return apiResponse(result);
+  } catch (error: any) {
+    console.error("Detailed API Error [owner.search.GET]:", error);
+    return apiError(error.message || "Search failed");
   }
 }

@@ -83,7 +83,16 @@ export function AddExpenseModal({ open, onClose, seed, editingId }: AddExpenseMo
           {wizard.submitError}
         </p>
       )}
-      {wizard.step === 0 && <DetailsStep data={wizard.data} setD={wizard.setD} />}
+      {wizard.step === 0 && (
+        <DetailsStep
+          data={wizard.data}
+          setD={wizard.setD}
+          // Reusing a remembered expense fills everything the owner supplied
+          // last time, so the only thing left to check is the amount — go
+          // straight there. That is the three-tap target: reuse, edit, save.
+          onReused={wizard.next}
+        />
+      )}
       {wizard.step === 1 && <FinancialStep data={wizard.data} setD={wizard.setD} />}
       {wizard.step === 2 && <ReviewStep data={wizard.data} setD={wizard.setD} />}
     </BottomSheet>

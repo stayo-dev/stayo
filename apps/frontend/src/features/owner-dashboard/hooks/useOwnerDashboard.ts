@@ -36,6 +36,8 @@ interface PortfolioHostelCard {
   pending_dues: number;
   total_capacity: number;
   active_tenants: number;
+  /** Owner's manual Home position; null = never reordered. See ADR-042. */
+  display_order: number | null;
 }
 
 interface PortfolioSummaryResponse {
@@ -111,6 +113,12 @@ export function useOwnerDashboard() {
         revenue: formatINR(h.collected_revenue),
         outstanding: formatINR(h.pending_dues),
         vacant: Math.max(0, h.total_capacity - h.active_tenants),
+        // Raw values for sorting — the formatted strings above can't be
+        // compared numerically. See ADR-042.
+        occupancyPercent: h.occupancy_rate,
+        revenueValue: h.collected_revenue,
+        outstandingValue: h.pending_dues,
+        displayOrder: h.display_order ?? null,
       })),
     [portfolioQuery.data],
   );

@@ -106,7 +106,8 @@ export interface HostelPolicy {
     };
     maintenance: { type: string; amount: number };
     invite_defaults: { auto_fill_room_rent: boolean; allow_override: boolean; agreement_duration_months?: number };
-    partial_payments: { enabled: boolean; minimum_amount: number };
+    /** `minimum_percentage` (0-100 of total outstanding) added 2026-08-05, ADR-043. */
+    partial_payments: { enabled: boolean; minimum_amount: number; minimum_percentage: number };
     payment_frequency: {
       allowed_frequencies: string[];
       academic_year_start_month: number;

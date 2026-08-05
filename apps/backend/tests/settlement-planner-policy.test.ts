@@ -47,7 +47,8 @@ describe('Settlement Planner — Payment Policy Validation', () => {
       const plan = buildSettlementPlan(obs, 5000, MANDATORY);
 
       expect(plan.payment_accepted).toBe(false);
-      expect(plan.rejection_reason).toContain('Full payment required');
+      // Owner-language wording (ADR-043) — states the policy, not the flag.
+      expect(plan.rejection_reason).toContain("doesn't accept part payments");
       expect(plan.minimum_allowed).toBe(10000);
     });
 
@@ -126,7 +127,8 @@ describe('Settlement Planner — Payment Policy Validation', () => {
       const plan = buildSettlementPlan(obs, 500, PARTIAL_1K);
 
       expect(plan.payment_accepted).toBe(false);
-      expect(plan.rejection_reason).toContain('Minimum payment');
+      // Owner-language wording (ADR-043).
+      expect(plan.rejection_reason).toContain('accepts part payments of \u20b91,000 or more');
       expect(plan.minimum_allowed).toBe(1000);
     });
 

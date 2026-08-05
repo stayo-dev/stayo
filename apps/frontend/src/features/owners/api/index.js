@@ -41,6 +41,16 @@ export const ownerService = {
         const response = await api.post('/owner/hostels', data);
         return response.data;
     },
+    /**
+     * Persist the owner's manual Home ordering. `orderedIds` must be the full
+     * ordered list of the owner's ACTIVE/INACTIVE hostels — the backend
+     * rejects a partial list with 409 STALE_ORDER rather than best-effort
+     * applying it. See ADR-042.
+     */
+    reorderHostels: async (orderedIds) => {
+        const response = await api.patch('/owner/hostels/reorder', { order: orderedIds });
+        return response.data;
+    },
     getHostelBillingDefaults: async (hostelId) => {
         const response = await api.get(`/hostels/${hostelId}/billing-defaults`);
         return response.data;
@@ -67,9 +77,26 @@ export const ownerService = {
         const response = await api.delete(`/hostels/${hostelId}`, { data: { reason } });
         return response.data;
     },
-    searchTenants: async (query, limit = 10, signal) => {
+    /**
+     * Universal owner search — tenants, hostels and rooms, grouped and ranked
+     * server-side. Replaces the old tenants-only `searchTenants`, which was
+     * wired to this same path but never called from anywhere. See ADR-044.
+     */
+    universalSearch: async (query, limit = 8, signal) => {
         const response = await api.get('/owner/search', {
             params: { q: query, limit },
+            signal
+        });
+        return response.data;
+    },
+    /**
+     * Today's rent-collection work queue — grouped, prioritised and
+     * explainable, built server-side. `hostelId` optional (portfolio-wide by
+     * default). See ADR-045.
+     */
+    collectionQueue: async (hostelId, signal) => {
+        const response = await api.get('/owner/collection-queue', {
+            params: hostelId ? { hostelId } : {},
             signal
         });
         return response.data;

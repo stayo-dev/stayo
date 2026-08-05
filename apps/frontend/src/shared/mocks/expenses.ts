@@ -23,18 +23,30 @@ export interface MockExpense {
   paymentMethod: string;
   notes?: string;
   recurring?: boolean;
+  /** Receipt image, when one was attached. Enables preview/download. */
+  receiptUrl?: string | null;
+  /** Which property this cost belongs to; absent for business-wide costs. */
+  hostelId?: string | null;
 }
 
+/**
+ * Plain data only — the icon for each category lives in
+ * `features/owner-money/components/expenses/categoryIcons.ts`, keyed by `id`.
+ * The emoji that shipped with the mockup were removed: they render
+ * differently on every platform, can't inherit colour or stroke weight, and
+ * never align in a grid. Keeping the icon out of here also keeps `shared/`
+ * free of a React dependency.
+ */
 export const EXPENSE_CATEGORIES = [
-  { id: 'food', name: 'Food & Groceries', icon: '🍚', chip: 'FG' },
-  { id: 'staff', name: 'Staff Salary', icon: '👥', chip: 'SS' },
-  { id: 'electricity', name: 'Electricity', icon: '⚡', chip: 'EL' },
-  { id: 'gas', name: 'Gas Cylinders', icon: '🔥', chip: 'GC' },
-  { id: 'furniture', name: 'Furniture & Equipment', icon: '🪑', chip: 'FE' },
-  { id: 'water', name: 'Water', icon: '💧', chip: 'WT' },
-  { id: 'maintenance', name: 'Maintenance', icon: '🛠️', chip: 'MT' },
-  { id: 'internet', name: 'Internet', icon: '📶', chip: 'IN' },
-  { id: 'other', name: 'Other', icon: '📦', chip: 'OT' },
+  { id: 'food', name: 'Food & Groceries', chip: 'FG' },
+  { id: 'staff', name: 'Staff Salary', chip: 'SS' },
+  { id: 'electricity', name: 'Electricity', chip: 'EL' },
+  { id: 'gas', name: 'Gas Cylinders', chip: 'GC' },
+  { id: 'furniture', name: 'Furniture & Equipment', chip: 'FE' },
+  { id: 'water', name: 'Water', chip: 'WT' },
+  { id: 'maintenance', name: 'Maintenance', chip: 'MT' },
+  { id: 'internet', name: 'Internet', chip: 'IN' },
+  { id: 'other', name: 'Other', chip: 'OT' },
 ] as const;
 
 export const PAYMENT_METHOD_OPTIONS = ['Cash', 'UPI', 'Bank Transfer', 'Card', 'Cheque', 'Other'] as const;

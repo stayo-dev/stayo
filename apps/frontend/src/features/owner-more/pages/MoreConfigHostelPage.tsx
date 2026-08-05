@@ -66,9 +66,9 @@ export function MoreConfigHostelPage() {
           <ListRow
             leading={<span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-secondary font-display text-xs font-bold text-primary">TD</span>}
             title="Tenant defaults"
-            meta="Deposit months & agreement duration"
+            meta="Deposit months & agreement duration — in Billing policy"
             showChevron
-            onClick={() => navigate('/owner/more/configuration/hostel/tenant-defaults')}
+            onClick={() => navigate('/owner/more/configuration/finance/billing-policy')}
             className="px-4"
           />
         </div>

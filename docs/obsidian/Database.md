@@ -82,6 +82,15 @@ Added 2026-08-01 ([[Decisions#ADR-040|ADR-040]], migration `20260801100000_hoste
 
 The fourth onboarding field, the security deposit, needed no column — it goes into the existing `hostels.preferences_config` JSON under `billing_defaults`, via the same `sanitizeBillingDefaultsPayload` the preferences API uses. `rooms.base_rent` (pre-existing, `Int?`) is now always populated for newly provisioned rooms; rooms created before this change keep `null` and nothing backfills them.
 
+### `hostels.display_order`
+Added 2026-08-04 ([[Decisions#ADR-042|ADR-042]], migration `20260804120000_hostel_display_order`, idempotent `ADD COLUMN IF NOT EXISTS` + `hostels_owner_id_display_order_idx` on `(owner_id, display_order)`). `Int?` — the owner's manual position for their hostel in the Home "Property" list.
+
+**Nullable and deliberately never backfilled.** `NULL` means "the owner has never reordered this hostel". The read path (`PortfolioService.getPortfolioSummary`) orders by `display_order ASC NULLS LAST, name ASC` — which is exactly the `name ASC` order the list had before the column existed. So existing owners see no reshuffle until they actually drag something, and a newly created hostel appends to the end rather than jumping to the top.
+
+Written **only** by `PATCH /api/owner/hostels/reorder`, which rewrites every position for that owner inside one `prisma.$transaction`. There is no single-row "set position" write: patching one row can't express "move to position 2" without renumbering neighbours anyway, and two concurrent single-row patches can interleave into an order the owner never asked for. A partial list is rejected (`409 STALE_ORDER`) rather than best-effort applied.
+
+See [[APIs]] for the endpoint and [[Features]] for the UI.
+
 ### `hostels.house_rules`
 Added 2026-07-26 (`Json?` column on the existing `hostels` table, not a new table) for the tenant Room tab's House Rules accordion — an array of `{title, items: string[]}` sections. Deliberately kept out of the deep-merged hostel preferences policy blob (`hostelPolicyService`) — house rules are static reference content, not a policy setting, and folding it into that already-complex deep-merge schema risked corrupting real owner config for no benefit. New dedicated endpoint: `GET/PATCH /api/hostels/:id/house-rules`.
 
