@@ -165,7 +165,7 @@ The route was correct, transactional and idempotent from the day it was written 
 | Suite | Food files | Food tests |
 |---|---|---|
 | `apps/backend` `npm run test:pure` | `food-schedule-generator`, `food-schedule-rebuild-policy`, `food-voting-expiry` | 9 + 11 + 5 = **25** |
-| `apps/frontend` `npm test` | `weekGrid`, `publishChecks`, `kitchenSheet` | 22 + 20 + 8 = **50** |
+| `apps/frontend` `npm test` | `weekGrid`, `publishChecks`, `kitchenSheet` | 22 + 17 + 8 = **47** |
 
 Totals after this branch: backend **176 pure tests / 10 files**, frontend **225 tests / 10 files**. Before it there were **zero** food tests of any kind.
 
