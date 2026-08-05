@@ -1,9 +1,13 @@
+import { UtensilsCrossed } from 'lucide-react';
 import { MEAL_CATEGORY_META, type MealSlotKey } from '@shared/mocks/food';
 import { mealIcon } from '../../mealIcons';
 import { cellAt, dayKeyFor, EMPTY_CELL_LABEL, isFilled, mealSlotAt, MEAL_TIMES, SLOT_ORDER, type WeekGrid } from '../../weekGrid';
 
 interface TodayCardProps {
   grid: WeekGrid;
+  isLoading: boolean;
+  /** False when this hostel has no `food_schedules` row for the month at all. */
+  hasSchedule: boolean;
   onFix: (slot: MealSlotKey) => void;
 }
 
@@ -13,11 +17,46 @@ interface TodayCardProps {
  * The current meal is the hero and the next is its subtitle, because meals have
  * a time — at 7:40am the owner is asking about breakfast, not about a grid of
  * four equal cards they have to scan.
+ *
+ * With no schedule row — a new hostel, or the 1st before the carry-forward cron
+ * runs — this says so instead of rendering four confident "Not set" rows with
+ * Fix buttons that have no cell to open. The remedy for a whole missing month
+ * is Generate, which the grid below already owns.
  */
-export function TodayCard({ grid, onFix }: TodayCardProps) {
+export function TodayCard({ grid, isLoading, hasSchedule, onFix }: TodayCardProps) {
   const now = new Date();
   const day = dayKeyFor(now);
   const { current, next } = mealSlotAt(now);
+
+  const dateLabel = now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-3">
+        <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{dateLabel}</span>
+        <div className="h-[124px] animate-pulse rounded-[20px] bg-muted" />
+        <div className="h-[92px] animate-pulse rounded-xl bg-muted" />
+      </div>
+    );
+  }
+
+  if (!hasSchedule) {
+    return (
+      <div className="flex flex-col gap-3">
+        <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{dateLabel}</span>
+        <div className="rounded-[20px] border border-border bg-card p-4 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]">
+          <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+            <UtensilsCrossed className="h-3.5 w-3.5" strokeWidth={1.75} />
+            No menu yet
+          </span>
+          <span className="mt-1 block font-display text-[24px] font-extrabold leading-tight tracking-tight text-muted-foreground/70">
+            Nothing planned for {now.toLocaleDateString('en-IN', { month: 'long' })}
+          </span>
+          <p className="mt-2 text-[12.5px] text-muted-foreground">Generate this month's schedule below and today fills itself in.</p>
+        </div>
+      </div>
+    );
+  }
 
   const currentCell = cellAt(grid, day, current);
   const nextCell = next ? cellAt(grid, day, next) : null;
@@ -27,9 +66,7 @@ export function TodayCard({ grid, onFix }: TodayCardProps) {
 
   return (
     <div className="flex flex-col gap-3">
-      <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-        {now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
-      </span>
+      <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{dateLabel}</span>
 
       <div className="rounded-[20px] border border-border bg-card p-4 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]">
         <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">

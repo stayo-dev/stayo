@@ -89,6 +89,7 @@ export function OwnerHomeDashboard({
     const cell = cellAt(foodSchedule.weekGrid, dayKeyFor(new Date()), current);
     return isFilled(cell) ? { slot: current, name: cell!.item_name } : null;
   }, [foodSchedule.weekGrid]);
+  const foodHostelName = session.hostels.find((h) => h.id === session.primaryHostelId)?.name ?? '';
 
   return (
     <div className="flex flex-col gap-7 px-4 pb-8 pt-6 sm:px-6">
@@ -188,6 +189,11 @@ export function OwnerHomeDashboard({
             <span className="font-semibold">{MEAL_CATEGORY_META[foodToday.slot].label}</span>
             {' · '}
             {foodToday.name}
+            {/* Home is portfolio-level and this row is one hostel's meal, so
+                say whose it is the moment there is more than one. */}
+            {session.hostels.length > 1 && (
+              <span className="text-muted-foreground"> · {foodHostelName}</span>
+            )}
           </span>
           <ChevronRight className="h-4 w-4 flex-none text-muted-foreground" />
         </button>

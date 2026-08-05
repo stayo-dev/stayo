@@ -51,7 +51,12 @@ export function FoodPage() {
       </div>
 
       <div className="flex flex-col gap-6.5">
-        <TodayCard grid={schedule.weekGrid} onFix={fixToday} />
+        <TodayCard
+          grid={schedule.weekGrid}
+          isLoading={schedule.isLoading}
+          hasSchedule={Boolean(schedule.schedule)}
+          onFix={fixToday}
+        />
 
         <div className="flex flex-col gap-3">
           <div className="flex items-baseline justify-between">
@@ -75,8 +80,11 @@ export function FoodPage() {
         />
         <MonthHistoryList history={history} />
 
+        {/* The hostel rides on the URL — the kitchen sheet has no switcher
+            state of its own to inherit, and sending the wrong property's menu
+            to a WhatsApp group is not a recoverable mistake. */}
         <Link
-          to="/owner/food/kitchen"
+          to={hostelId ? `/owner/food/kitchen?hostelId=${encodeURIComponent(hostelId)}` : '/owner/food/kitchen'}
           className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-center font-display text-[13.5px] font-bold text-primary-foreground shadow-[0_8px_20px_rgba(180,106,85,0.32)]"
         >
           <ChefHat className="h-4 w-4" /> Send to kitchen

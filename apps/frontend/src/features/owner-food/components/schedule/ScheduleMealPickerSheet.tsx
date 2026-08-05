@@ -41,8 +41,13 @@ export function ScheduleMealPickerSheet({ target, library, onPick, onAddItem, on
     setIsAdding(true);
     const id = await onAddItem(target.slot, name);
     setIsAdding(false);
-    setNewName('');
-    if (id) onPick(id);
+    // Only clear on success. A rejected name (duplicate, network) is the one
+    // the owner most needs back in the field to correct — `onAddItem` has
+    // already said why it failed.
+    if (id) {
+      setNewName('');
+      onPick(id);
+    }
   };
 
   return (

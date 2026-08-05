@@ -1,25 +1,31 @@
 import { useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Printer, Share2 } from 'lucide-react';
 import { MEAL_CATEGORY_META } from '@shared/mocks/food';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
+import { HostelSwitcher } from '../components/HostelSwitcher';
 import { useFoodSchedule } from '../hooks/useFoodSchedule';
 import { buildKitchenMessage, whatsappShareUrl } from '../kitchenSheet';
 import { cellAt, dayKeyFor, DAY_ORDER, EMPTY_CELL_LABEL, isFilled, SLOT_ORDER } from '../weekGrid';
 
 /**
  * The cook's and kitchen staff's only surface. Deliberately the dumbest screen
- * in the product: no navigation, no state, nothing tappable except print and
- * share. Large type, high contrast, survives a kitchen wall.
+ * in the product: no navigation, large type, high contrast, survives a kitchen
+ * wall.
  *
- * Single-hostel for now — uses `session.primaryHostelId` directly. A hostel
- * picker (following the Food tab's `HostelSwitcher` pattern) can be added
- * here when a kitchen-sheet-per-hostel need actually shows up.
+ * The hostel comes from `?hostelId=`, carried over by the Food tab's link, and
+ * falls back to the primary hostel only when the screen is reached directly.
+ * It never picks "the first hostel": a multi-property owner reading Sri
+ * Lakshmi's week and tapping Send to kitchen must not get Sri Adithya's menu
+ * pre-filled into a WhatsApp share. The switcher is here too, so this screen is
+ * not a dead end for the other properties.
  */
 export function KitchenSheetPage() {
   const session = useOwnerSession();
-  const hostelId = session.primaryHostelId;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const hostelId = searchParams.get('hostelId') ?? session.primaryHostelId;
   const currentMonth = useMemo(() => new Date().toISOString().slice(0, 7), []);
-  const schedule = useFoodSchedule(hostelId, currentMonth);
+  const schedule = useFoodSchedule(hostelId ?? undefined, currentMonth);
 
   const now = new Date();
   const today = dayKeyFor(now);
@@ -30,11 +36,20 @@ export function KitchenSheetPage() {
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 px-5 py-8 print:px-0 print:py-0">
-      <div>
-        <h1 className="font-display text-[26px] font-extrabold tracking-tight text-foreground">
-          {now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
-        </h1>
-        <p className="text-[13px] font-medium text-muted-foreground">{hostelName}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="font-display text-[26px] font-extrabold tracking-tight text-foreground">
+            {now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </h1>
+          <p className="text-[13px] font-medium text-muted-foreground">{hostelName}</p>
+        </div>
+        <div className="print:hidden">
+          <HostelSwitcher
+            hostels={session.hostels}
+            selectedId={hostelId}
+            onSelect={(id) => setSearchParams({ hostelId: id }, { replace: true })}
+          />
+        </div>
       </div>
 
       <div className="flex flex-col divide-y divide-border border-y border-border">

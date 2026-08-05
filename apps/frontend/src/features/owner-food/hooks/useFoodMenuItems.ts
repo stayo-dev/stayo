@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { foodService } from '@features/food/api';
 import type { MealSlotKey } from '@shared/mocks/food';
+import { stayoToast } from '@shared/ui-patterns/Toast';
 
 export interface FoodMenuItemRow {
   id: string;
@@ -136,14 +137,23 @@ export function useFoodMenuItems(hostelId: string | undefined) {
     startEdit,
     confirmEdit,
 
-    /** Creates an item and resolves its id, so a caller can immediately place it in a schedule cell. */
+    /**
+     * Creates an item and resolves its id, so a caller can immediately place it
+     * in a schedule cell — `null` means it failed and nothing was placed.
+     *
+     * The failure is spoken, not swallowed: the API answers 409 with "An item
+     * with this name already exists for this meal type", which is exactly what
+     * the owner needs to hear. A silent null left them staring at an unchanged
+     * sheet with their typed name gone.
+     */
     createAndReturn: async (slot: MealSlotKey, name: string): Promise<string | null> => {
       const trimmed = name.trim();
       if (!trimmed) return null;
       try {
         const created = await createMutation.mutateAsync({ slot, name: trimmed });
         return (created as { id?: string })?.id ?? null;
-      } catch {
+      } catch (error: any) {
+        stayoToast.error(error?.response?.data?.error?.message || `Could not add "${trimmed}"`);
         return null;
       }
     },

@@ -106,10 +106,17 @@ export function useFoodSchedule(hostelId: string | undefined, month: string) {
         { mealId: pickerTarget.mealId, menuItemId },
         {
           onSuccess: () => {
-            if (!wasPublished || !previousItemId) return;
+            // Nothing to announce and nothing to undo when the owner re-picked
+            // the item that was already in the cell.
+            if (!wasPublished || !previousItemId || previousItemId === menuItemId) return;
             const dayLabel = before ? DAY_LABEL_SHORT[before.day_of_week] : 'that day';
             stayoToast.undo(`Changed for every ${dayLabel} this month · students see it now`, () => {
-              updateMealMutation.mutate({ mealId: pickerTarget.mealId, menuItemId: previousItemId });
+              updateMealMutation.mutate(
+                { mealId: pickerTarget.mealId, menuItemId: previousItemId },
+                // A failed revert must not look like a successful one — the
+                // toast is already gone by the time this lands.
+                { onError: () => stayoToast.error("Couldn't undo that — the change is still live") },
+              );
             });
           },
         },
