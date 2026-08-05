@@ -64,6 +64,7 @@ export function FoodPage() {
         target={schedule.pickerTarget}
         library={library.library}
         onPick={schedule.pickItem}
+        onAddItem={library.createAndReturn}
         onClose={schedule.closePicker}
         isSaving={schedule.isUpdatingMeal}
       />

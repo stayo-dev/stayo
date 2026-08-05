@@ -135,5 +135,17 @@ export function useFoodMenuItems(hostelId: string | undefined) {
     setEditText,
     startEdit,
     confirmEdit,
+
+    /** Creates an item and resolves its id, so a caller can immediately place it in a schedule cell. */
+    createAndReturn: async (slot: MealSlotKey, name: string): Promise<string | null> => {
+      const trimmed = name.trim();
+      if (!trimmed) return null;
+      try {
+        const created = await createMutation.mutateAsync({ slot, name: trimmed });
+        return (created as { id?: string })?.id ?? null;
+      } catch {
+        return null;
+      }
+    },
   };
 }
