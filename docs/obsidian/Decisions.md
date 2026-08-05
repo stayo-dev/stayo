@@ -664,6 +664,30 @@ That reading was wrong, and measurement is what showed it. Two production endpoi
 
 **Related:** [[Business-Rules]], [[Features]], [[APIs]], [[Bugs]], [[Changelog]].
 
+## ADR-046: One work-queue implementation, not four — every Action Center card leads to the same workflow
+
+**Date:** 2026-08-05 · **Status:** Accepted (Phase 3 of 4) · Direction set by the user: *"Do not invent different interaction models for different cards. The owner should learn one workflow and use it everywhere."* See [[Features]].
+
+**Context.** After Phase 2 only the Collect Rent card led anywhere. The other three Action Center tiles — Review Agreements, Activate Tenants, Fill Vacant Beds — were **structurally incapable** of being tapped: `StatCard` had no `onClick` prop at all. They sat beside a hero card that did navigate, looking identical and doing nothing. Dead affordances six, seven and eight.
+
+**Decision.**
+
+1. **The model is enforced by a single component, not by discipline.** `features/owner-workqueue/WorkQueue.tsx` owns the header, the four view states, sections, numbered rows, the reason line and the action bar. A queue supplies data and actions; it does not get to invent layout, ordering semantics or empty states. Four similar screens would drift; one cannot.
+2. **The Collect Rent screen was refactored onto it**, not left as the odd one out — that would have been the exact inconsistency this ADR exists to prevent. It shrank from 9.08 kB to 4.94 kB in the process.
+3. **No progress bar and no daily target**, per explicit product direction. Completion is the row leaving the list and the section count dropping.
+4. **`StatCard` renders as a `<button>` only when given an `onClick`**, so a purely informational tile never advertises an interaction it lacks — the failure mode being fixed.
+5. **No new backend for any of the three.** Agreements reuse `renewalDecisionService.getOwnerRenewalQueue`, which *already* ranks by decision state and days overdue and returns per-category counts. Activations reuse `usePendingActivations`, which already reads the backend activation state machine. Vacancy composes the existing hostel-scoped `GET /api/rooms` fanned out across hostels — the same pattern `useRealTenantList` uses, and for the same reason: that endpoint requires a hostel and the queue must never assume one.
+
+**Consequences.**
+- `PendingActivationsPage` was rebuilt on the shared component. It previously had a bespoke card layout, no prioritisation and no inline actions — it could show who was stuck but not let the owner do anything without opening each profile. It now sorts longest-waiting-first and carries Call/WhatsApp.
+- Section assignment for agreements is **first-match-wins**, because the backend legitimately tags one agreement with several states at once; without that a row would appear in two sections.
+- The renewal payload exposes `hostel_id` but **no hostel name** — caught during implementation, since the subtitle would have silently rendered empty. Resolved from the session's already-loaded hostel list rather than a new request.
+- Vacancy priority is emptiest-room-first: a fully empty room is the largest single revenue gap and the easiest to fill as a unit.
+- **Cross-checked against live data:** the vacancy queue independently computes 2 rooms / 2 free beds, matching the Home card's "Fill Vacant Beds: 2" exactly — the card and the queue it opens cannot disagree. Agreements returns 0, matching its card, so the empty state is what an owner sees today.
+- **Phase 4 (one merged daily task list) is not built.** The four queues now share a component, which is the precondition for merging them later.
+
+**Related:** [[Features]], [[Bugs]], [[Changelog]], [[Frontend]].
+
 ## See also
 - [[Changelog]] for the chronological record of what shipped
 - [[Architecture]] for the system these decisions govern

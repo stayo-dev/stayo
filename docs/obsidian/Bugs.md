@@ -28,6 +28,16 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### The other three Action Center tiles could not be tapped at all
+
+- **Status:** fixed — see [[Decisions#ADR-046|ADR-046]]
+- **Found:** 2026-08-05, while establishing the shared interaction model.
+- **Area:** [[Frontend]] (owner Home)
+- **Symptom:** Review Agreements, Activate Tenants and Fill Vacant Beds showed real counts and captions but did nothing when tapped.
+- **Root cause:** `StatCard` exposed no `onClick` prop — the tiles were not "unwired", they were **structurally incapable** of interaction. Affordances six, seven and eight of this class, and the most misleading yet: all three sat in a row beside the Collect Rent hero card, which by then did navigate.
+- **Fix:** `StatCard` now renders as a `<button>` when given an `onClick` and stays a `<div>` otherwise, so an informational tile never advertises an interaction it lacks. Each card opens its own work queue built on the shared `WorkQueue` component.
+- **Related:** [[Decisions#ADR-046|ADR-046]], [[Features]], [[Changelog]]
+
 ### "Collect Rent" showed a chevron and went nowhere
 
 - **Status:** fixed — see [[Decisions#ADR-045|ADR-045]]

@@ -108,6 +108,15 @@ The StayO redesign is being built in place inside the same `apps/frontend` tree,
 - **Depends on:** [[Frontend]] (StayO foundation: `ThemeProvider`, `OwnerAppShell`, `shared/ui-patterns/*`), `docs/migration/frontend-foundation-tracker.md` (routing-approach note)
 - **Notes:** End-to-end click-through of the owner side of `Stayo Homepage.dc.html` → `AuthModal.dc.html` → `Owner Onboarding.dc.html` (12 steps, full animated SVG scene) → `Stayo App.dc.html`'s Home tab, faithfully ported. Two screens (Lead Submitted, Activation Link) don't exist in the design source and are now orphaned (see above). The dashboard screen this journey ends on (`OwnerDashboardPreviewPage`, at `/get-started/home`) renders `OwnerHomeDashboard`, a pure presentational component — still mock-data-driven as of this entry (real Dashboard wiring is the next phase after the signup/onboarding work below).
 
+### Action Center work queues — one interaction model across all four cards
+- **Status:** shipped 2026-08-05 — **Phase 3 of 4** · see [[Decisions#ADR-046|ADR-046]]
+- **Owner-facing?** yes · **Tenant-facing?** no
+- **Key files:** `features/owner-workqueue/{WorkQueue.tsx,AgreementQueuePage.tsx,VacancyQueuePage.tsx}` (new), `features/owner-tenants/pages/PendingActivationsPage.tsx` (rebuilt on the shared component), `features/owner-collection/CollectionQueuePage.tsx` (refactored onto it), `shared/ui-patterns/StatCard.tsx` (gained `onClick`), `platforms/owner/router/OwnerRoutes.tsx`, `features/owner-dashboard/components/OwnerHomeDashboard.tsx`.
+- **Routes:** `/owner/money/collect` · `/owner/agreements/review` · `/owner/tenants/activations` · `/owner/rooms/vacant`.
+- **The model:** card → prioritised queue → one-tap actions → the row leaves the list. Every card obeys it because there is **one** `WorkQueue` implementation; a queue supplies data and actions and cannot invent layout, ordering or empty states.
+- **No new backend.** Agreements reuse `getOwnerRenewalQueue` (already ranked and counted server-side), activations reuse the activation state machine via `usePendingActivations`, vacancy composes the existing `GET /api/rooms` across hostels.
+- **Notes:** No progress bar or daily target by explicit product direction — completion is the row disappearing. `StatCard` renders as a button only when interactive, so an informational tile never advertises an action it lacks. The vacancy queue's bed count was cross-checked live against the Home card's own figure and matches exactly. **Phase 4 (one merged daily task list) is not built** — the shared component is the precondition for it.
+
 ### Intelligent Collection Queue — the owner's "where do I start" entry point
 - **Status:** shipped 2026-08-05 — **Phase 2 of 4** · see [[Decisions#ADR-045|ADR-045]]
 - **Owner-facing?** yes · **Tenant-facing?** no

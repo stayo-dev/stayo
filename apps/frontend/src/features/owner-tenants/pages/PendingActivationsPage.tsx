@@ -1,130 +1,102 @@
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, CheckCircle2, X } from 'lucide-react';
-import { ThemeProvider } from '@/app/providers/ThemeProvider';
-import { EmptyState } from '@shared/ui-patterns/EmptyState';
-import { StatusPill } from '@shared/ui-patterns/StatusPill';
+import { UserCheck, ShieldAlert, Phone, MessageCircle, ChevronRight } from 'lucide-react';
 import { usePendingActivations } from '../hooks/usePendingActivations';
-import { kycBadge } from '../activation/activationProgress';
+import { WorkQueue, type WorkQueueSection, type WorkQueueItem } from '@features/owner-workqueue/WorkQueue';
+import { whatsAppNumber, phoneDigits } from '@features/owner-collection/collectionQueue';
 
-const card =
-  'flex flex-col gap-3 rounded-[18px] border border-border bg-card p-3.5 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]';
+export const PENDING_ACTIVATIONS_ROUTE = '/owner/tenants/activations';
 
 /**
- * Pending Activations — every invited tenant and the step they are stuck on.
+ * Activate Tenants queue (ADR-046).
  *
- * Home's "Activate Tenants" card used to open the *Invite* wizard: it said
- * "N awaiting activation" and then asked the owner to invite somebody else.
- * This is where it goes now.
+ * Rebuilt onto the shared `WorkQueue` so it behaves exactly like the
+ * collection, agreement and vacancy queues — the owner learns one workflow.
+ * Previously this screen had its own bespoke card layout, no prioritisation
+ * and no inline actions: it could tell you who was stuck but not let you do
+ * anything about it without opening each profile.
  *
- * Steps come from the backend's activation state machine; KYC is shown as a
- * separate badge and never affects the step.
+ * The activation step itself still comes from the backend state machine via
+ * `usePendingActivations` — nothing here re-derives a step. See ADR of the
+ * original activation-visibility work for that contract.
  */
 export function PendingActivationsPage() {
   const navigate = useNavigate();
   const { rows, count, isLoading, isError, refetch } = usePendingActivations();
 
+  const sections: WorkQueueSection[] = useMemo(() => {
+    const toItem = (row: any): WorkQueueItem => {
+      const digits = phoneDigits(row.phone);
+      const wa = whatsAppNumber(row.phone);
+      return {
+        id: row.tenantId,
+        title: row.name,
+        subtitle: [row.room ? `Room ${row.room}` : 'No room yet', row.hostelName].filter(Boolean).join(' · '),
+        headline: row.currentLabel,
+        headlineTone: 'default',
+        urgency: row.waitingLabel ?? undefined,
+        meta: [row.documentVerified ? 'KYC verified' : 'KYC pending'],
+        onOpen: () => navigate(`/owner/tenants/${row.tenantId}`),
+        actions: [
+          {
+            id: 'open',
+            label: 'Open',
+            Icon: ChevronRight,
+            primary: true,
+            onClick: () => navigate(`/owner/tenants/${row.tenantId}`),
+          },
+          ...(digits ? [{ id: 'call', label: 'Call', Icon: Phone, href: `tel:+${wa ?? digits}` }] : []),
+          ...(wa ? [{ id: 'wa', label: 'WhatsApp', Icon: MessageCircle, href: `https://wa.me/${wa}` }] : []),
+        ],
+      };
+    };
+
+    // Longest wait first — the tenant who has been stuck longest is the one
+    // whose move-in is most at risk.
+    const byWait = (a: any, b: any) => {
+      const at = a.waitingSince ? new Date(a.waitingSince).getTime() : Infinity;
+      const bt = b.waitingSince ? new Date(b.waitingSince).getTime() : Infinity;
+      return at - bt || String(a.name).localeCompare(String(b.name));
+    };
+
+    const blockedOnKyc = rows.filter((r: any) => !r.documentVerified);
+    const rest = rows.filter((r: any) => r.documentVerified);
+
+    const out: WorkQueueSection[] = [];
+    if (blockedOnKyc.length) {
+      out.push({
+        id: 'KYC',
+        label: 'Waiting on documents',
+        Icon: ShieldAlert,
+        tone: 'text-warning',
+        summary: `${blockedOnKyc.length}`,
+        items: [...blockedOnKyc].sort(byWait).map(toItem),
+      });
+    }
+    if (rest.length) {
+      out.push({
+        id: 'READY',
+        label: 'Documents done, still not activated',
+        Icon: UserCheck,
+        tone: 'text-info',
+        summary: `${rest.length}`,
+        items: [...rest].sort(byWait).map(toItem),
+      });
+    }
+    return out;
+  }, [rows, navigate]);
+
+  const state = isLoading ? 'loading' : isError ? 'error' : count === 0 ? 'empty' : 'ready';
+
   return (
-    <ThemeProvider theme="product">
-      <div className="min-h-screen bg-background [background-image:linear-gradient(#EBDCCF_1px,transparent_1px),linear-gradient(90deg,#EBDCCF_1px,transparent_1px)] [background-size:52px_52px] sm:mx-auto sm:max-w-[480px] sm:border-x sm:border-border">
-        <div className="flex items-center gap-2.5 px-4 pb-1.5 pt-6 sm:px-6">
-          <button
-            type="button"
-            onClick={() => navigate('/owner/home')}
-            aria-label="Back"
-            className="flex h-8.5 w-8.5 flex-none items-center justify-center rounded-full border border-border bg-card"
-          >
-            <ArrowLeft className="h-4 w-4 text-muted-foreground" strokeWidth={1.9} />
-          </button>
-          <span className="text-[13px] font-medium text-muted-foreground">Home</span>
-        </div>
-
-        <div className="px-4 pb-3 pt-1 sm:px-6">
-          <h1 className="font-display text-[21px] font-extrabold tracking-tight text-foreground">Pending activations</h1>
-          <p className="mt-1 text-[12.5px] text-muted-foreground">
-            {isLoading ? 'Loading…' : count === 0 ? 'Everyone is activated' : `${count} tenant${count === 1 ? '' : 's'} still onboarding`}
-          </p>
-        </div>
-
-        <div className="flex flex-col gap-3 px-4 pb-10 sm:px-6">
-          {isLoading && (
-            <>
-              <div className="h-28 animate-pulse rounded-[18px] bg-muted" />
-              <div className="h-28 animate-pulse rounded-[18px] bg-muted" />
-            </>
-          )}
-
-          {isError && !isLoading && (
-            <EmptyState
-              icon={<X className="h-5 w-5" />}
-              title="Couldn't load pending activations"
-              action={
-                <button
-                  type="button"
-                  onClick={() => refetch()}
-                  className="rounded-xl bg-primary px-5 py-2.5 font-display text-sm font-bold text-primary-foreground"
-                >
-                  Try again
-                </button>
-              }
-            />
-          )}
-
-          {!isLoading && !isError && rows.length === 0 && (
-            <EmptyState
-              icon={<CheckCircle2 className="h-5 w-5 text-success" />}
-              title="All caught up"
-              description="Every invited tenant has finished activating. New invitations will appear here."
-              action={
-                <button
-                  type="button"
-                  onClick={() => navigate('/owner/tenants')}
-                  className="rounded-xl border border-border bg-card px-5 py-2.5 font-display text-sm font-bold text-foreground"
-                >
-                  View tenants
-                </button>
-              }
-            />
-          )}
-
-          {rows.map((row) => {
-            const kyc = kycBadge(row.documentVerified);
-            return (
-              <button
-                key={row.tenantId}
-                type="button"
-                onClick={() => navigate(`/owner/tenants/${row.tenantId}`)}
-                className={`${card} text-left`}
-              >
-                <div className="flex items-start gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="font-display text-[14.5px] font-bold text-foreground">{row.name}</div>
-                    <div className="mt-0.5 text-[11.5px] text-muted-foreground">
-                      Room {row.room}
-                      {row.hostelName ? ` · ${row.hostelName}` : ''}
-                    </div>
-                  </div>
-                  {row.waitingLabel && (
-                    <span className="flex-none rounded-full bg-warning/10 px-2.5 py-1 font-display text-[11px] font-bold text-warning">
-                      {row.waitingLabel}
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2 border-t border-border/60 pt-2.5">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">Current step</div>
-                    <div className="mt-0.5 text-[12.5px] font-semibold text-foreground">{row.currentLabel}</div>
-                  </div>
-                  <StatusPill tone={kyc.tone} variant="filter">
-                    {kyc.label}
-                  </StatusPill>
-                  <ArrowRight className="h-3.5 w-3.5 flex-none text-muted-foreground" strokeWidth={2} />
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </ThemeProvider>
+    <WorkQueue
+      title="Tenants to activate"
+      subtitle={`${count} tenant${count === 1 ? '' : 's'} still finishing activation`}
+      state={state}
+      sections={sections}
+      emptyTitle="Everyone is activated"
+      emptyBody="No invited tenant is waiting to complete activation."
+      onRetry={() => refetch()}
+    />
   );
 }

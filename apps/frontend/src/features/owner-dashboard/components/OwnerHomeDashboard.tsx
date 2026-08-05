@@ -36,6 +36,10 @@ interface OwnerHomeDashboardProps {
   onOpenSearch?: () => void;
   /** Opens today's prioritised collection queue. See ADR-045. */
   onOpenCollectionQueue?: () => void;
+  /** The remaining three Action Center queues. See ADR-046. */
+  onOpenAgreements?: () => void;
+  onOpenActivations?: () => void;
+  onOpenVacancies?: () => void;
 }
 
 /**
@@ -61,6 +65,9 @@ export function OwnerHomeDashboard({
   onReorderProperties,
   onOpenSearch,
   onOpenCollectionQueue,
+  onOpenAgreements,
+  onOpenActivations,
+  onOpenVacancies,
 }: OwnerHomeDashboardProps) {
   return (
     <div className="flex flex-col gap-7 px-4 pb-8 pt-6 sm:px-6">
@@ -119,9 +126,13 @@ export function OwnerHomeDashboard({
           </DarkHeroCard>
         </button>
         <div className="grid grid-cols-3 gap-2">
-          <StatCard variant="action" label="Review Agreements" value={actionCenter.reviewAgreements.value} caption={actionCenter.reviewAgreements.caption} />
-          <StatCard variant="action" label="Activate Tenants" value={actionCenter.activateTenants.value} caption={actionCenter.activateTenants.caption} />
-          <StatCard variant="action" label="Fill Vacant Beds" value={actionCenter.fillVacantBeds.value} caption={actionCenter.fillVacantBeds.caption} />
+          {/* All three were non-interactive: StatCard had no onClick prop at
+              all, so they sat beside a tappable hero card doing nothing. Each
+              now opens its own work queue, same model as Collect Rent
+              (ADR-046). */}
+          <StatCard variant="action" label="Review Agreements" value={actionCenter.reviewAgreements.value} caption={actionCenter.reviewAgreements.caption} onClick={onOpenAgreements} ariaLabel="Review agreements" />
+          <StatCard variant="action" label="Activate Tenants" value={actionCenter.activateTenants.value} caption={actionCenter.activateTenants.caption} onClick={onOpenActivations} ariaLabel="Activate tenants" />
+          <StatCard variant="action" label="Fill Vacant Beds" value={actionCenter.fillVacantBeds.value} caption={actionCenter.fillVacantBeds.caption} onClick={onOpenVacancies} ariaLabel="Fill vacant beds" />
         </div>
       </section>
 

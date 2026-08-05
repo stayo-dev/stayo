@@ -91,6 +91,9 @@ export function OwnerDashboardPreviewPage() {
         onReorderProperties={(orderedIds) => reorder.mutate(orderedIds)}
         onOpenSearch={() => setSearchOpen(true)}
         onOpenCollectionQueue={() => navigate('/owner/money/collect')}
+        onOpenAgreements={() => navigate('/owner/agreements/review')}
+        onOpenActivations={() => navigate(PENDING_ACTIVATIONS_PATH)}
+        onOpenVacancies={() => navigate('/owner/rooms/vacant')}
       />
 
       <UniversalSearchOverlay
