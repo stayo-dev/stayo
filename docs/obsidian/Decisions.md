@@ -660,7 +660,7 @@ That reading was wrong, and measurement is what showed it. Two production endpoi
 - The service takes `hostelFilter: string | null`, **not** an optional hostel id. The architectural invariant caught the optional form and was right to: explicit `null` makes "whole portfolio" a stated decision rather than a forgotten argument. (Amusing side-note: the check is a plain regex over source, so quoting the banned signature *in a comment explaining the avoidance* also tripped it.)
 - Prioritisation is pure and clock-injected (`today` is a parameter), so ordering is reproducible and runs under `npm run test:pure` — which matters, because the backend suite still cannot run without a test database.
 - Buckets are returned only when non-empty; an empty section is a decision the owner has to make for no benefit.
-- **Not verified end-to-end against live data after the severity fix.** The pre-fix run is what exposed the flaw, but local egress to the database was blocked before a post-fix re-run (the deployed `/api/health` proved the database itself was healthy). The fix is covered by unit tests reproducing the exact scenario.
+- **Verified end-to-end against live data, before and after the fix.** Pre-fix: 3 in "needs attention", 7 in "waiting", with an 11-day-overdue tenant demoted below a 12-day one. Post-fix: **4 in "needs attention"** (12d, 12d, 12d, 11d) and **6 in "waiting"** (all 5d) — the 11-day tenant correctly promoted. Same 10 tenants, same ₹84,500 total, so the fix changed placement without disturbing any figure.
 
 **Related:** [[Business-Rules]], [[Features]], [[APIs]], [[Bugs]], [[Changelog]].
 

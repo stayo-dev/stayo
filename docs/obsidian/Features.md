@@ -118,7 +118,7 @@ The StayO redesign is being built in place inside the same `apps/frontend` tree,
 - **Depends on:** `financialService.getTenantPaymentSummary`, `isOverdue()`, `reminder_logs` — **no new financial calculation**.
 - **Notes:** Prioritisation is pure and takes `today` as a parameter, so it runs under `npm run test:pure` — which matters while the backend suite still has no test database. `recommendation: null` is on the contract from day one so the (unbuilt) recommendation engine won't require redesigning the page.
 
-  Live data caught a flaw in the reminder-cooldown rule before ship — see [[Decisions#ADR-045|ADR-045]]. **The post-fix run against live data did not happen** (local database egress was blocked); the fix is covered by unit tests reproducing the scenario exactly.
+  Live data caught a flaw in the reminder-cooldown rule before ship, and confirmed the fix afterwards — see [[Decisions#ADR-045|ADR-045]]. Post-fix the queue reads 4 / 6 across "needs attention" / "waiting" (was 3 / 7), with the 11-day-overdue tenant correctly promoted, and the ₹84,500 total unchanged.
 
 ### Universal Search — the owner's "I know who I need" entry point
 - **Status:** shipped 2026-08-05 — **Phase 1 of 4** · see [[Decisions#ADR-044|ADR-044]]
