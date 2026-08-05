@@ -43,7 +43,7 @@ export function FoodPage() {
   return (
     <div className="flex flex-col gap-3.5 px-4 pb-8 pt-6 sm:px-6">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <h1 className="font-display text-[22px] font-extrabold tracking-tight text-foreground">Meal Planner</h1>
           <p className="mt-0.5 text-[12.5px] font-medium text-muted-foreground">What you're serving, and what's next</p>
         </div>

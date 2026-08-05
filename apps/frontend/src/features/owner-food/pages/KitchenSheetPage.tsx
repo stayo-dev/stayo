@@ -37,7 +37,7 @@ export function KitchenSheetPage() {
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 px-5 py-8 print:px-0 print:py-0">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <h1 className="font-display text-[26px] font-extrabold tracking-tight text-foreground">
             {now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
           </h1>
