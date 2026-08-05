@@ -410,7 +410,7 @@ Explicitly excluding anything requiring AI or data not already captured.
 | 5 | **Stale schema comment** | `food_votes` doc-comment says single-choice; implementation is multi-select toggle. |
 | 6 | **Wrong doc comment on `generate`** | Asserts regeneration is "always safe." It is not (§0.2). |
 | 7 | **Unregistered cron** | §3.1. Broader than food — 16 cron routes exist, 2 are scheduled. Worth a separate sweep. |
-| 8 | **`docs/obsidian/` has no Food coverage** | `grep -rn "food" docs/obsidian/*.md` returns only incidental hits (`food_included` in the provisioning ADR, expense categories). No Features/APIs/Database/Business-Rules entry for the entire module. |
+| 8 | ~~**`docs/obsidian/` has no Food coverage**~~ — **CORRECTED 2026-08-05, this finding was wrong** | The original claim was based on a truncated grep and is **false**. At the time of the audit `APIs.md` already documented every `/api/food/*` endpoint, `Database.md` documented all five `food_*` models, and `Features.md` carried 20 Food references. What genuinely did not exist: a **dedicated `Food.md` module page** (the vault has one per major module) and any **`Business-Rules.md`** entry (0 mentions). The real debt was narrower than stated. |
 | 9 | **Tenant label contradicts backend** | "Vote for next month" vs. `firstOfMonth(new Date())`. |
 
 ---
