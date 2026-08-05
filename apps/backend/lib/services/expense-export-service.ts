@@ -317,7 +317,7 @@ export type ExpenseExportSummary = {
   totalCount: number;
   totalAmount: number;
   categoryBreakdown: { category: string; amount: number; count: number; percentage: number }[];
-  vendorBreakdown: { vendor: string; amount: number; count: number }[];
+  vendorBreakdown: { vendor: string; amount: number; count: number; average?: number; lastPayment?: string | null }[];
   statusBreakdown: { status: string; amount: number; count: number }[];
   financials: ExpenseExportFinancials;
   largestExpense: ExpenseExportLargestExpense;
@@ -397,6 +397,8 @@ export async function getExportSummary(req: ExpenseExportRequest): Promise<Expen
       where: { ...where, vendor_name: { not: null } },
       _sum: { amount: true },
       _count: { _all: true },
+      // Last payment date per vendor — same query, no extra round trip.
+      _max: { date: true },
     }),
     prisma.expenses.groupBy({ by: ["status"], where, _sum: { amount: true }, _count: { _all: true } }),
     prisma.expenses.findFirst({ where, orderBy: { amount: "desc" } }),
@@ -430,7 +432,19 @@ export async function getExportSummary(req: ExpenseExportRequest): Promise<Expen
   );
   const vendorBreakdown = (byVendor as any[])
     .filter((r) => r.vendor_name)
-    .map((r) => ({ vendor: r.vendor_name, amount: Number(r._sum.amount || 0), count: r._count._all }))
+    .map((r) => {
+      const amount = Number(r._sum.amount || 0);
+      const count = r._count._all || 0;
+      return {
+        vendor: r.vendor_name,
+        amount,
+        count,
+        // An accountant reading a vendor line wants the relationship, not just
+        // the total: typical payment size and when it last happened.
+        average: count > 0 ? Math.round((amount / count) * 100) / 100 : 0,
+        lastPayment: r._max?.date ? new Date(r._max.date).toISOString().slice(0, 10) : null,
+      };
+    })
     .sort((a, b) => b.amount - a.amount);
   const statusBreakdown = (byStatus as any[])
     .map((r) => ({ status: (r.status || "paid").toUpperCase(), amount: Number(r._sum.amount || 0), count: r._count._all }))
@@ -460,7 +474,10 @@ export async function getExportSummary(req: ExpenseExportRequest): Promise<Expen
       end: inclusiveEnd.toISOString().slice(0, 10),
       durationDays: spanDays,
     },
-    exportScopeLabel: SCOPE_LABELS[req.scope],
+    // Fallback to match its SORT_LABELS sibling. Without it an unexpected
+    // scope prints literal "undefined" — now on the cover page of a document
+    // an owner may hand to an accountant or file with a return.
+    exportScopeLabel: SCOPE_LABELS[req.scope] || "All Matching Records",
     sortOrderLabel: SORT_LABELS[req.filters.sort || "recent"] || "Newest First",
     filterSnapshot: buildFilterSnapshot(req),
   };
@@ -548,6 +565,54 @@ export async function generateExpensesPdf(req: ExpenseExportRequest): Promise<Ui
 
   const { metadata, financials, largestExpense } = summary;
 
+  // ── Cover page ───────────────────────────────────────────────────────────
+  // A report an owner hands to an accountant or files with a return should
+  // open on a cover, not a header line. Kept deliberately plain: identity,
+  // scope, period. Anything decorative here costs credibility.
+  const centre = (str: string, opts: { size?: number; f?: PDFFont; color?: [number, number, number]; gap?: number } = {}) => {
+    const size = opts.size ?? 12;
+    const f = opts.f ?? font;
+    const width = f.widthOfTextAtSize(str, size);
+    page.drawText(str, {
+      x: (pageSize[0] - width) / 2,
+      y,
+      size,
+      font: f,
+      color: rgb(...(opts.color ?? [0.1, 0.1, 0.1])),
+    });
+    y -= size + (opts.gap ?? 8);
+  };
+
+  y = pageSize[1] - 210;
+  centre(metadata.hostelLabel, { size: 22, f: bold, gap: 6 });
+  centre("Expense Report", { size: 14, color: [0.35, 0.35, 0.35], gap: 26 });
+
+  page.drawLine({
+    start: { x: margin + 120, y: y + 10 },
+    end: { x: pageSize[0] - margin - 120, y: y + 10 },
+    thickness: 0.7,
+    color: rgb(0.8, 0.8, 0.8),
+  });
+  y -= 18;
+
+  centre(`${metadata.reportingPeriod.start}  to  ${metadata.reportingPeriod.end}`, { size: 12, f: bold, gap: 6 });
+  centre(`${metadata.reportingPeriod.durationDays} days · ${metadata.exportScopeLabel}`, {
+    size: 9,
+    color: [0.5, 0.5, 0.5],
+    gap: 22,
+  });
+  centre(`Prepared for ${metadata.generatedByName}`, { size: 10, color: [0.4, 0.4, 0.4], gap: 4 });
+  centre(`Generated ${formatIST(metadata.generatedAt)} IST`, { size: 9, color: [0.55, 0.55, 0.55], gap: 4 });
+  centre(`Report version ${metadata.reportVersion}`, { size: 8.5, color: [0.6, 0.6, 0.6], gap: 4 });
+
+  y = margin + 60;
+  centre("Stayo", { size: 11, f: bold, color: [0.45, 0.35, 0.3], gap: 2 });
+  centre("Hostel business management", { size: 8, color: [0.6, 0.6, 0.6], gap: 2 });
+
+  // Everything after the cover starts on a fresh page.
+  page = doc.addPage(pageSize);
+  y = pageSize[1] - margin;
+
   text(metadata.reportTitle, { size: 20, f: bold });
   text(`Report Version: ${metadata.reportVersion}`, { size: 8.5, color: [0.55, 0.55, 0.55] });
   y -= 8;
@@ -620,7 +685,9 @@ export async function generateExpensesPdf(req: ExpenseExportRequest): Promise<Ui
     text("No vendor data recorded.", { size: 9.5, color: [0.5, 0.5, 0.5] });
   }
   for (const v of summary.vendorBreakdown.slice(0, 20)) {
-    text(`${v.vendor}: ${INR(v.amount)} (${v.count} payments)`, { size: 9.5 });
+    const avg = (v as any).average ? `, avg ${INR((v as any).average)}` : "";
+    const last = (v as any).lastPayment ? `, last ${(v as any).lastPayment}` : "";
+    text(`${v.vendor}: ${INR(v.amount)} (${v.count} payments${avg}${last})`, { size: 9.5 });
   }
   y -= 12;
 
@@ -632,10 +699,12 @@ export async function generateExpensesPdf(req: ExpenseExportRequest): Promise<Ui
     });
   }
 
-  const colX = [margin, margin + 65, margin + 260, margin + 350, margin + 420];
+  // Payment method and a receipt marker are what make this a register rather
+  // than a list — an auditor checks how it was paid and whether proof exists.
+  const colX = [margin, margin + 58, margin + 205, margin + 290, margin + 360, margin + 400, margin + 455];
   const drawTableHeader = () => {
     ensureSpace(16);
-    const headers = ["Date", "Title", "Category", "Status", "Amount"];
+    const headers = ["Date", "Title", "Category", "Method", "Rcpt", "Status", "Amount"];
     headers.forEach((h, i) => page.drawText(h, { x: colX[i], y, size: 9, font: bold }));
     y -= 14;
     page.drawLine({ start: { x: margin, y: y + 4 }, end: { x: pageSize[0] - margin, y: y + 4 }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) });
@@ -648,13 +717,30 @@ export async function generateExpensesPdf(req: ExpenseExportRequest): Promise<Ui
     const record = rowToRecord(row);
     const cells = [
       String(record.date),
-      String(record.title).slice(0, 34),
-      String(record.category).slice(0, 18),
-      String(record.status),
+      String(record.title).slice(0, 26),
+      String(record.category).slice(0, 15),
+      String((record as any).payment_method ?? "-").slice(0, 12),
+      (row as any).receipt_url ? "Y" : "-",
+      String(record.status).slice(0, 7),
       INR(Number(record.amount)),
     ];
-    cells.forEach((cellText, i) => page.drawText(cellText, { x: colX[i], y, size: 8.5, font }));
-    y -= 13;
+    cells.forEach((cellText, i) => page.drawText(cellText, { x: colX[i], y, size: 8, font }));
+    y -= 12;
+
+    // Notes belong in an audit register, but only when present — a blank line
+    // per row would double the page count for nothing.
+    const note = String((record as any).notes ?? "").trim();
+    if (note) {
+      ensureSpace(11);
+      page.drawText(`   ${note.slice(0, 95)}`, {
+        x: colX[0],
+        y,
+        size: 7,
+        font,
+        color: rgb(0.45, 0.45, 0.45),
+      });
+      y -= 10;
+    }
   }
 
   // Footer pass — done last, over every page at once, since total page count isn't known
@@ -662,7 +748,7 @@ export async function generateExpensesPdf(req: ExpenseExportRequest): Promise<Ui
   const generatedOn = formatIST(metadata.generatedAt, { year: "numeric", month: "2-digit", day: "2-digit" });
   const pages = doc.getPages();
   pages.forEach((p, i) => {
-    const footerText = `Generated by HMS · Generated on ${generatedOn} · Page ${i + 1} of ${pages.length}`;
+    const footerText = `${metadata.hostelLabel} · Expense Report · Generated ${generatedOn} · Page ${i + 1} of ${pages.length} · Stayo`;
     p.drawText(footerText, { x: margin, y: 18, size: 7.5, font, color: rgb(0.55, 0.55, 0.55) });
   });
 
