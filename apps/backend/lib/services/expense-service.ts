@@ -913,14 +913,34 @@ export class ExpenseService {
     }));
   }
 
-  async getExpenseTitleSummary(ownerId: string, titleSearch: string) {
+  /**
+   * What the owner actually wants to know when they search a thing they buy:
+   * how much, how often, typical size, biggest, most recent, and who supplies
+   * it — before any transaction list.
+   *
+   * Extended 2026-08-05 per the module audit: `average_purchase`,
+   * `last_purchase_date`, `top_vendor` and a previous-period comparison, plus
+   * an optional date range so the summary can respect the screen's active
+   * filter instead of silently reporting all time.
+   *
+   * All arithmetic stays here. The client renders these numbers and computes
+   * none of its own.
+   */
+  async getExpenseTitleSummary(
+    ownerId: string,
+    titleSearch: string,
+    options: { from?: Date; to?: Date } = {},
+  ) {
     const normalized = titleSearch.trim().toLowerCase();
     if (!normalized) throw new Error("VALIDATION: Title search term is required");
+
+    const range = options.from && options.to ? { gte: options.from, lte: options.to } : undefined;
 
     const expenses = await prisma.expenses.findMany({
       where: {
         owner_id: ownerId,
         title: { contains: titleSearch.trim(), mode: "insensitive" },
+        ...(range ? { date: range } : {}),
       },
       orderBy: { date: "desc" },
       select: {
@@ -941,6 +961,43 @@ export class ExpenseService {
       return { title: titleSearch, transactions: [], summary: null };
     }
 
+    // Same-length window immediately before the selected one, so "trend" means
+    // like-for-like. Skipped entirely when the owner hasn't chosen a range —
+    // comparing all-time against nothing would be meaningless.
+    let previousTotal: number | null = null;
+    if (options.from && options.to) {
+      const span = options.to.getTime() - options.from.getTime();
+      const prevTo = new Date(options.from.getTime() - 1);
+      const prevFrom = new Date(prevTo.getTime() - span);
+      const prev = await prisma.expenses.aggregate({
+        where: {
+          owner_id: ownerId,
+          title: { contains: titleSearch.trim(), mode: "insensitive" },
+          date: { gte: prevFrom, lte: prevTo },
+        },
+        _sum: { amount: true },
+      });
+      previousTotal = round(Number(prev._sum.amount ?? 0));
+    }
+
+    // Who supplies this, by number of purchases — from the rows already
+    // fetched, so no extra query.
+    const vendorCounts = new Map<string, { count: number; total: number }>();
+    for (const e of expenses as any[]) {
+      const name = (e.vendor_name || "").trim();
+      if (!name) continue;
+      const cur = vendorCounts.get(name) ?? { count: 0, total: 0 };
+      cur.count += 1;
+      cur.total += Number(e.amount || 0);
+      vendorCounts.set(name, cur);
+    }
+    // Array.from rather than spread — this tsconfig targets below es2015 for
+    // downlevelIteration, so `[...map.entries()]` doesn't compile.
+    const topVendorEntry = Array.from(vendorCounts.entries()).sort((a, b) => b[1].count - a[1].count)[0];
+    const topVendor = topVendorEntry
+      ? { name: topVendorEntry[0], purchases: topVendorEntry[1].count, total: round(topVendorEntry[1].total) }
+      : null;
+
     const amounts = expenses.map((e: any) => Number(e.amount || 0));
     const totalSpent = round(amounts.reduce((s: number, a: number) => s + a, 0));
     const highest = Math.max(...amounts);
@@ -960,9 +1017,22 @@ export class ExpenseService {
         total_transactions: expenses.length,
         total_spent: totalSpent,
         average_monthly: avgMonthly,
+        // Average *per purchase*, which is what an owner means by "average" —
+        // average_monthly answers a different question and both are useful.
+        average_purchase: round(totalSpent / expenses.length),
         highest,
         lowest,
         months_tracked: monthSet.size,
+        last_purchase_date: expenses[0]?.date ?? null,
+        last_purchase_amount: Number(expenses[0]?.amount ?? 0),
+        top_vendor: topVendor,
+        previous_period_total: previousTotal,
+        // Null when there is no comparable previous window, or when the
+        // previous window was zero — a percentage against zero is not a trend.
+        change_percent:
+          previousTotal && previousTotal > 0
+            ? round(((totalSpent - previousTotal) / previousTotal) * 100)
+            : null,
       },
     };
   }

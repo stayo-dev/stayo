@@ -87,7 +87,16 @@ export async function GET(req: NextRequest) {
     if (mode === "title_summary") {
       const title = req.nextUrl.searchParams.get("title");
       if (!title) return apiError("Title parameter is required for title_summary mode", "VALIDATION_ERROR", 400);
-      const summary = await expenseService.getExpenseTitleSummary(scope.owner_id, title);
+      // Optional range so the summary respects the screen's active filter
+      // instead of silently reporting all time (module audit, finding #4).
+      const fromParam = req.nextUrl.searchParams.get("from");
+      const toParam = req.nextUrl.searchParams.get("to");
+      const from = fromParam ? new Date(fromParam) : undefined;
+      const to = toParam ? new Date(toParam) : undefined;
+      const summary = await expenseService.getExpenseTitleSummary(scope.owner_id, title, {
+        from: from && !Number.isNaN(from.getTime()) ? from : undefined,
+        to: to && !Number.isNaN(to.getTime()) ? to : undefined,
+      });
       return apiResponse(summary);
     }
 

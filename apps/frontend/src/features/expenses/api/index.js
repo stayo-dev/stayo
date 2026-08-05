@@ -24,8 +24,10 @@ export const expenseService = {
         const data = response.data.success !== undefined ? (response.data.data !== undefined ? response.data.data : response.data) : response.data;
         return { entries: data?.entries ?? [], dueNow: data?.dueNow ?? [] };
     },
-    getTitleSummary: async (title) => {
-        const response = await api.get('/expenses', { params: { mode: 'title_summary', title } });
+    getTitleSummary: async (title, from, to) => {
+        const response = await api.get('/expenses', {
+            params: { mode: 'title_summary', title, ...(from ? { from } : {}), ...(to ? { to } : {}) },
+        });
         return response.data.success !== undefined ? (response.data.data !== undefined ? response.data.data : response.data) : response.data;
     },
     /**

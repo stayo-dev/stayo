@@ -19,6 +19,7 @@ import { BusinessHealthStrip } from '../components/expenses/BusinessHealthStrip'
 import { InsightTilesGrid } from '../components/expenses/InsightTilesGrid';
 import { MonthlyTrendCard } from '../components/expenses/MonthlyTrendCard';
 import { ExpenseSearchBar } from '../components/expenses/ExpenseSearchBar';
+import { ExpenseSearchSummary } from '../components/expenses/ExpenseSearchSummary';
 import { CategoryChipsRow } from '../components/expenses/CategoryChipsRow';
 import { ExpenseRow } from '../components/expenses/ExpenseRow';
 import { ExpenseBreakdownCard } from '../components/expenses/ExpenseBreakdownCard';
@@ -248,11 +249,21 @@ export function MoneyPage() {
               </span>
             ))}
           </div>
+          {/* Understand the story, then inspect the transactions. This
+              searches the whole history, not just the month the list has
+              loaded — see docs/audits/expenses-module-audit.md. */}
+          <ExpenseSearchSummary search={expenseSearch} />
           <CategoryChipsRow categoryBreakdown={real.categoryBreakdown} />
           <div className="flex flex-col gap-2">
-            <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Recent expenses · {filteredExpenses.length}</span>
+            <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+              {expenseSearch.trim() ? 'Matching this month' : 'Recent expenses'} · {filteredExpenses.length}
+            </span>
             {filteredExpenses.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">No expenses logged this month yet.</p>
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                {expenseSearch.trim() || expenseFilters.status !== 'All Status' || expenseFilters.paymentMethod
+                  ? 'No expenses this month match the current search or filters.'
+                  : 'No expenses logged this month yet.'}
+              </p>
             ) : (
               filteredExpenses.map((e) => <ExpenseRow key={e.id} expense={e} onOpenDetail={() => money.openExpenseDetail(e)} />)
             )}
