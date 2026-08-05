@@ -78,7 +78,11 @@ Owner routes all follow `getSession` → `resolveOwnerScope` → `requireHostelB
 | `START_OVER` | replaces all 28 cells, status → `DRAFT` | **refused** — `409 SCHEDULE_PUBLISHED` |
 | `FILL_GAPS` | writes only cells with `menu_item_id: null`, status untouched | **allowed** — the only mode that is |
 
-The invariant, stated once: **a `PUBLISHED` schedule is never demoted to `DRAFT` and never has its cells wholesale deleted.** A test enumerates every `(mode × currentStatus)` pair and asserts no combination can ever write `status: "PUBLISHED"`.
+The decision also carries **`rewritesProvenance`** — true only when `replace === "ALL"`. `source` and `generated_from_voting_period_id` belong to whoever authored the week, so a `FILL_GAPS` run adds cells and claims nothing: a month carried forward from last month keeps saying `CARRIED_FORWARD` after its snacks are filled in, instead of flipping to `GENERATED` and pointing at whatever voting period happened to exist. That matters twice over, because `source` is the sole basis for *"carried forward from July"* vs *"built from student votes"*, and `generated_from_voting_period_id` is the honest input to the votes publish check (§8).
+
+The invariant, stated once: **a `PUBLISHED` schedule is never demoted to `DRAFT` and never has its cells wholesale deleted.** A test enumerates every `(mode × currentStatus)` pair and asserts no combination can ever write `status: "PUBLISHED"`, and another asserts `rewritesProvenance` tracks `replace === "ALL"` exactly.
+
+The status check runs **twice**: once early, for a cheap rejection, and once **inside the `$transaction`** that acts on it. The early read is separated from the write by 5–9 generator round-trips, so a second device publishing in that window could otherwise have its month deleted by the first device's already-made decision. The in-transaction re-assert aborts with the same `409 SCHEDULE_PUBLISHED` shape.
 
 The owner-side control reflects this: the button reads **Rebuild** on a draft (sends `BUILD`) and **Fill gaps** on a published month (sends `FILL_GAPS`). `START_OVER` is accepted by the route and plumbed through `foodService.generateSchedule` and `useFoodSchedule.generate`, but **no UI control currently sends it** — see §12.
 
@@ -98,7 +102,9 @@ The module supplies alongside the type:
 - `MEAL_TIMES` — four default meal times (8am / 1pm / 5pm / 8pm), **not stored anywhere**; if they ever need to be per-hostel, `preferences_config` already exists for it and no new table is required.
 - `mealSlotAt(now)` — which meal the owner is most likely asking about, and what follows. Before the day's first meal, breakfast is still "current": at 2am the useful answer is what's coming, not yesterday's dinner.
 
-Every Phase 1 grid reader consumes `WeekGrid`: the Today card, the Kitchen sheet, the publish checks, and the owner Home line. `WeeklyScheduleGrid` still renders from the hook's older nested `grid` map but computes its checks via `toWeekGrid` — a remaining inconsistency, noted rather than hidden.
+- `EMPTY_CELL_LABEL` (`"Not set"`) — the one word every surface renders for an empty cell, and the literal `isFilled` recognises. Three spellings of the same state ("Empty", "Not set", "not set") were in use across the surfaces until they were collapsed onto this.
+
+**Every** week reader now consumes `WeekGrid`: the Today card, the Kitchen sheet, the publish checks, the owner Home line, and `WeeklyScheduleGrid`. The editor originally rendered from a second, raw-row `grid` map built beside `weekGrid` in the same hook and open-coded its own filled-ness test; that projection is deleted, so the seam's operative claim — a fourth producer (templates) arrives without any consumer changing — now actually holds. The tenant hook (`useTenantFoodSchedule`) keeps its own separate `grid` and is out of scope for this contract.
 
 `is_manual` (the cell lock — "automation never overwrites a human") is part of the design's `WeekGrid` shape but **the column does not exist yet**, so it is not on the type. That is Phase 2.
 
@@ -106,12 +112,12 @@ Every Phase 1 grid reader consumes `WeekGrid`: the Today card, the Kitchen sheet
 
 | Surface | Where | Notes |
 |---|---|---|
-| **Today card** | top of `/owner/food` | Current meal is the hero, next is the subtitle, chosen by `mealSlotAt()`. An unset current meal renders a **Fix** button that opens the picker on that exact cell rather than an empty state. |
-| **Current meal on Home** | `OwnerHomeDashboard` | One line, tapping it goes to `/owner/food`. **Renders nothing when today's slot is unset** — a food *gap* belongs in the Action Center (Phase 2, not built), not as an empty card on Home. Deliberately self-fetches via `session.primaryHostelId` rather than taking props, because Home is portfolio-level and per-hostel food is ambiguous there. |
+| **Today card** | top of `/owner/food` | Current meal is the hero, next is the subtitle, chosen by `mealSlotAt()`. An unset current meal renders a **Fix** button that opens the picker on that exact cell rather than an empty state. With **no schedule row at all** (new hostel, or the 1st before the cron runs) it says so instead — the Fix buttons would have had no cell to open — and while loading it renders a skeleton. |
+| **Current meal on Home** | `OwnerHomeDashboard` | One line, tapping it goes to `/owner/food`. **Renders nothing when today's slot is unset** — a food *gap* belongs in the Action Center (Phase 2, not built), not as an empty card on Home. Deliberately self-fetches via `session.primaryHostelId` rather than taking props, because Home is portfolio-level and per-hostel food is ambiguous there — and for that reason the row **names the hostel** whenever the owner has more than one, so a single property's meal is not presented as a portfolio fact. |
 | **Hostel picker** | `HostelSwitcher`, Food tab header | Renders nothing for a single-hostel owner. Closes an `hostels[0]` invariant violation — see [[Bugs]]. |
-| **Inline add-item** | picker sheet | `useFoodMenuItems.createAndReturn` creates the library item and resolves its id so the caller can place it in the cell immediately. Filling one blank went from seven interactions to two. |
+| **Inline add-item** | picker sheet | `useFoodMenuItems.createAndReturn` creates the library item and resolves its id so the caller can place it in the cell immediately. Filling one blank went from seven interactions to two. A failure is **spoken** (the API's own 409 message when the name is a duplicate) and the typed name stays in the field — it is cleared only on success. |
 | **Publish pre-flight checks** | above Publish, draft only | See §8. |
-| **Undo on live edits** | `stayoToast.undo`, 6s | Fires only when the schedule was already `PUBLISHED` *and* the cell previously held a real item. The message names the blast radius — *"Changed for every Thursday this month · students see it now"* — and Undo re-PATCHes the previous `menu_item_id`. |
+| **Undo on live edits** | `stayoToast.undo`, 6s | Fires only when the schedule was already `PUBLISHED`, the cell previously held a real item, **and the newly picked item differs from it** — re-picking what was already there is not a change. The message names the blast radius — *"Changed for every Thursday this month · students see it now"* — and Undo re-PATCHes the previous `menu_item_id`, reporting its own failure rather than passing for a success. |
 | **Kitchen sheet** | `/owner/food/kitchen` | §9. |
 
 ## 8. Publish pre-flight checks
@@ -119,9 +125,9 @@ Every Phase 1 grid reader consumes `WeekGrid`: the Today card, the Kitchen sheet
 `apps/frontend/src/features/owner-food/publishChecks.ts` — four checks, all arithmetic over the `WeekGrid` already in hand. No endpoint, no service, no model.
 
 1. **Complete** — all 28 cells filled; names any meal type that is empty *all week*.
-2. **Variety** — WARN when one item occupies more than 3 of a slot's 7 days.
-3. **Runs** — WARN when any item repeats on back-to-back days.
-4. **Votes** — PASS when a voting period existed and votes were counted; WARN when the week was built without student votes.
+2. **Variety** — WARN when one item occupies more than 3 of a slot's 7 days. Reports **every** dominated meal type, not just the worst one: the motivating live menu was Dosa ×7 breakfast *and* Sambar Rice ×7 lunch, and naming only the worst silently endorsed the other.
+3. **Runs** — WARN when any item repeats on back-to-back days, **including across the Sunday→Monday wrap**. One row per `(day, meal)` means the week repeats all month, so Sunday's lunch really is followed by Monday's, four times over.
+4. **Votes** — PASS when **this schedule** was built from a voting period, read from `generated_from_voting_period_id` via the pure `hasVotesApplied(schedule)`. The predicate used to be "does a voting period exist for this month", which reported *"5 student votes used"* for a carried-forward week assembled from none. The count is `voteCount` — **vote rows, not students**; one tenant may hold several rows per meal type.
 
 > **They inform, they never block.** `PublishCheck.status` is `'PASS' | 'WARN'` and there is no third value — a test asserts it, so no future check can acquire the power to disable the Publish button. The owner is the one who knows whether Dosa every day is fine.
 
@@ -135,7 +141,7 @@ This exists because a live menu of Dosa ×7, Sambar Rice ×7 and empty snacks wa
 - **Print** (`window.print()`, with `print:` utility classes hiding the controls) and **Send on WhatsApp** via a `wa.me` share link.
 - **No backend, no Meta template, no new notification service.** The owner sends from their own WhatsApp — the same `wa.me` pattern the tenant quick-actions already use. A broadcast template is Phase 3 and was explicitly not allowed to block this.
 - `whatsappShareUrl` encodes `*` explicitly: `encodeURIComponent` leaves it unescaped, and WhatsApp's `*bold*` markers would otherwise be mangled round-tripping through a URL bar or clipboard.
-- Single-hostel for now — it reads `session.primaryHostelId` directly. A picker following the Food tab's `HostelSwitcher` pattern can be added when the need appears.
+- The hostel comes from **`?hostelId=`**, carried over by the Food tab's link, falling back to `session.primaryHostelId` only when the screen is reached directly — and `HostelSwitcher` renders here too, updating the search param. It never picks "the first hostel": a two-property owner reading Sri Lakshmi's week and tapping *Send to kitchen* used to get Sri Adithya's menu pre-filled into the `wa.me` share, with no route to the other property's sheet at all.
 
 ## 10. Voting
 
@@ -158,10 +164,10 @@ The route was correct, transactional and idempotent from the day it was written 
 
 | Suite | Food files | Food tests |
 |---|---|---|
-| `apps/backend` `npm run test:pure` | `food-schedule-generator`, `food-schedule-rebuild-policy`, `food-voting-expiry` | 9 + 8 + 5 = **22** |
-| `apps/frontend` `npm test` | `weekGrid`, `publishChecks`, `kitchenSheet` | 21 + 12 + 8 = **41** |
+| `apps/backend` `npm run test:pure` | `food-schedule-generator`, `food-schedule-rebuild-policy`, `food-voting-expiry` | 9 + 11 + 5 = **25** |
+| `apps/frontend` `npm test` | `weekGrid`, `publishChecks`, `kitchenSheet` | 22 + 20 + 8 = **50** |
 
-Totals after this branch: backend **173 pure tests / 10 files**, frontend **219 tests / 10 files**. Before it there were **zero** food tests of any kind.
+Totals after this branch: backend **176 pure tests / 10 files**, frontend **225 tests / 10 files**. Before it there were **zero** food tests of any kind.
 
 All food logic worth testing was deliberately written as pure functions, because the backend suite still has no `DATABASE_URL_TEST` and `vitest.pure.config.ts` is the only runnable path. **That config uses an explicit file list, not a glob** — a new test file left out of it is silently skipped while the run still reports success. Every food test file was added to it.
 
