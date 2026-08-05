@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { PAYMENT_METHOD_OPTIONS } from '@shared/mocks/expenses';
 import type { AddExpenseData } from '../../types';
+import { Check } from 'lucide-react';
+import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 
 interface FinancialStepProps {
   data: AddExpenseData;
@@ -13,9 +15,57 @@ const labelStyle = 'mb-1.5 block text-[11px] font-bold uppercase tracking-wide t
 /** Step 2/3 of Add Expense — amount, date, collapsible Financial Details, per Stayo App.dc.html. */
 export function FinancialStep({ data, setD }: FinancialStepProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const session = useOwnerSession();
+  const hostels = session.hostels ?? [];
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Which property this cost belongs to. The client used to discard
+          this and force every expense to business-wide scope, so
+          multi-property owners could not compare properties — see
+          docs/audits/expenses-module-audit.md. Only shown when there is an
+          actual choice to make. */}
+      {hostels.length > 1 && (
+        <div>
+          <span className={labelStyle}>Which property?</span>
+          <div className="mt-2 flex flex-col gap-2">
+            {hostels.map((h: { id: string; name: string }) => {
+              const active = data.hostelId === h.id;
+              return (
+                <button
+                  key={h.id}
+                  type="button"
+                  onClick={() => setD({ hostelId: h.id })}
+                  className={`flex items-center justify-between rounded-xl border-[1.5px] px-4 py-3 text-left text-[13.5px] font-semibold ${
+                    active ? 'border-primary bg-secondary/50 text-foreground' : 'border-border bg-card text-foreground/80'
+                  }`}
+                >
+                  {h.name}
+                  {active && <Check className="h-4 w-4 flex-none text-primary" strokeWidth={2.5} />}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => setD({ hostelId: '' })}
+              className={`flex items-center justify-between rounded-xl border-[1.5px] px-4 py-3 text-left text-[13.5px] font-semibold ${
+                data.hostelId === ''
+                  ? 'border-primary bg-secondary/50 text-foreground'
+                  : 'border-border bg-card text-foreground/80'
+              }`}
+            >
+              <span className="flex flex-col">
+                Whole business
+                <span className="text-[10.5px] font-normal text-muted-foreground">
+                  Shared cost, not tied to one property
+                </span>
+              </span>
+              {data.hostelId === '' && <Check className="h-4 w-4 flex-none text-primary" strokeWidth={2.5} />}
+            </button>
+          </div>
+        </div>
+      )}
+
       <label className="block">
         <span className={labelStyle}>Amount</span>
         <div className="flex items-center rounded-2xl border-[1.5px] border-border bg-card px-4 py-4">

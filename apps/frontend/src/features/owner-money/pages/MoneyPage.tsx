@@ -53,6 +53,10 @@ function toAddExpenseData(e: MockExpense): AddExpenseData {
     paymentMethod: e.paymentMethod,
     notes: e.notes ?? '',
     recurring: Boolean(e.recurring),
+    // Duplicating an expense keeps its property attribution; the receipt is
+    // deliberately not carried over, since it belongs to the original.
+    hostelId: (e as { hostelId?: string }).hostelId ?? '',
+    receiptFile: null,
   };
 }
 

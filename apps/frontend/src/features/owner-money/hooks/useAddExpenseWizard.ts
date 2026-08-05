@@ -40,8 +40,15 @@ export function useAddExpenseWizard(editingId?: string) {
         payment_method: data.paymentMethod || undefined,
         notes: data.notes.trim() || undefined,
         is_recurring: data.recurring,
+        // Attribute the cost to a property when the owner picked one.
+        // `expense_scope` already models exactly this distinction, and the
+        // schema defaults to HOSTEL — the client was overriding both.
+        hostelId: data.hostelId || undefined,
+        expense_scope: data.hostelId ? 'HOSTEL' : 'BUSINESS',
+        // The API wrapper switches to multipart when this is a File.
+        ...(data.receiptFile ? { receipt_image: data.receiptFile } : {}),
       };
-      return editingId ? expenseService.update(editingId, body) : expenseService.create(undefined, body);
+      return editingId ? expenseService.update(editingId, body) : expenseService.create(data.hostelId || undefined, body);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['owner', 'expenses'] });

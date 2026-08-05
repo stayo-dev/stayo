@@ -12,6 +12,20 @@ export interface AddExpenseData {
   paymentMethod: string;
   notes: string;
   recurring: boolean;
+  /**
+   * Which hostel this cost belongs to, or '' for a genuinely
+   * business-wide cost. Previously the client deleted this and forced
+   * every expense to BUSINESS scope, so multi-property owners could not
+   * compare properties — while 8 of 11 existing rows already carried a
+   * hostel. See the expenses module audit.
+   */
+  hostelId: string;
+  /**
+   * The receipt image, held until submit. The upload path
+   * (`POST /expenses` multipart -> `uploadReceiptImage`) already existed
+   * end to end; the UI simply had no way to pick a file.
+   */
+  receiptFile: File | null;
 }
 
 export const EMPTY_ADD_EXPENSE_DATA: AddExpenseData = {
@@ -24,6 +38,8 @@ export const EMPTY_ADD_EXPENSE_DATA: AddExpenseData = {
   paymentMethod: '',
   notes: '',
   recurring: false,
+  hostelId: '',
+  receiptFile: null,
 };
 
 export interface ExpenseFilterState {
