@@ -29,12 +29,8 @@ const DOMINANCE_LIMIT = 3;
  * published to real tenants with nothing anywhere pointing it out.
  */
 export function buildPublishChecks({ grid, votesConsidered, voterCount }: PublishCheckInput): PublishCheck[] {
-  // Count against cells actually present in the grid, not every one of the 28
-  // day/slot combinations: a day/slot with no row at all (never generated)
-  // reads the same as complete here, while a row present but named "Not set"
-  // is the real gap this check exists to surface.
-  const presentUnfilled = grid.filter((c) => !isFilled(c)).length;
-  const filled = TOTAL_CELLS - presentUnfilled;
+  const filledCells = DAY_ORDER.flatMap((day) => SLOT_ORDER.map((slot) => cellAt(grid, day, slot))).filter(isFilled);
+  const filled = filledCells.length;
 
   const emptySlots = SLOT_ORDER.filter(
     (slot) => DAY_ORDER.every((day) => !isFilled(cellAt(grid, day, slot))),

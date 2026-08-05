@@ -23,10 +23,21 @@ describe('buildPublishChecks', () => {
   });
 
   it('warns with a count when meals are missing', () => {
-    const grid = toWeekGrid(DAY_ORDER.map((d) => cell(d, 'SNACKS', 'Not set', null)));
+    const grid = toWeekGrid(
+      DAY_ORDER.flatMap((d) => [
+        cell(d, 'BREAKFAST', 'Dosa'), cell(d, 'LUNCH', 'Rice'),
+        cell(d, 'DINNER', 'Chapati'), cell(d, 'SNACKS', 'Not set', null),
+      ]),
+    );
     const checks = buildPublishChecks({ grid, votesConsidered: false, voterCount: 0 });
     expect(check(checks, 'complete').status).toBe('WARN');
     expect(check(checks, 'complete').label).toMatch(/21 of 28/);
+  });
+
+  it('does not call an empty schedule complete', () => {
+    const c = check(buildPublishChecks({ grid: [], votesConsidered: false, voterCount: 0 }), 'complete');
+    expect(c.status).toBe('WARN');
+    expect(c.label).toMatch(/0 of 28/);
   });
 
   it('names the empty meal type so the owner knows where to look', () => {
