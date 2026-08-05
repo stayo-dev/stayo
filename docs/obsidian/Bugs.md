@@ -28,6 +28,47 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### "Regenerate" silently unpublished the live menu and destroyed every manual edit
+
+- **Status:** fixed — see [[Decisions#ADR-048|ADR-048]]
+- **Found:** 2026-08-05, during the Food module audit (`docs/audits/food-module-audit.md` §0.2).
+- **Area:** [[Backend]] (`app/api/food/schedules/generate`), [[Frontend]] (owner Food tab)
+- **Symptom:** tapping **Regenerate** — a plain text button sitting directly beside the green **PUBLISHED** badge — emptied every tenant's Food tab instantly, with no warning to the owner that it had happened.
+- **Root cause:** the generate route's upsert `update` branch set `status: "DRAFT"` unconditionally and then `deleteMany`'d all 28 `food_schedule_meals` rows. Since `GET /api/food/tenant/schedule` filters on `status: "PUBLISHED"`, the tenant read went empty; every manual correction the owner had made was also gone, and `published_at` stayed populated so the row claimed a publish timestamp it no longer honoured. Unlike first-time Generate, the button was **not** gated by `canGenerate`, had no confirmation and no undo. The route's own doc comment asserted the opposite — *"Re-running overwrites the previous generation — always safe since nothing is published until the owner explicitly publishes"* — which is true only for a schedule that has never been published, i.e. false in exactly the case the button is most likely to be pressed.
+- **Fix:** the decision moved into a pure, testable function rather than a dialog — a dialog is a plea, not an invariant. `decideRebuild` (`lib/services/food/schedule-rebuild-policy.ts`) gates the route: `BUILD`/`START_OVER` are draft-only and answer **`409 SCHEDULE_PUBLISHED`** against a published month; `FILL_GAPS` is additive (writes only `menu_item_id: null` cells), leaves `status` untouched, and is the only mode allowed there. A test enumerates every `(mode × currentStatus)` pair and asserts no combination can write `status: "PUBLISHED"`. The owner control now reads **Rebuild** on a draft and **Fill gaps** on a published month.
+- **Related:** [[Food]], [[Decisions#ADR-048|ADR-048]], [[APIs]], [[Changelog]]
+
+### A correct, transactional, idempotent cron had never once run — `vercel.json` never scheduled it
+
+- **Status:** fixed — see [[Decisions#ADR-048|ADR-048]]
+- **Found:** 2026-08-05, during the Food module audit (§3.1). **Only visible from live data.**
+- **Area:** [[Backend]] (`app/api/cron/food-carry-forward`, `apps/backend/vercel.json`)
+- **Symptom:** on the 1st of every month a hostel had no schedule, so the owner regenerated and republished from scratch, and tenants meanwhile saw the *previous* month's pattern labelled "Current".
+- **Root cause:** `vercel.json` registered exactly two crons (`generate-rent`, `rent-reminders`). `food-carry-forward` — 95 lines of correct, transactional, idempotent, `CRON_SECRET`-protected code that clones last month's published 28 cells into a new `DRAFT`/`CARRIED_FORWARD` row — was not among them. Reading the code alone would not have caught this: it looked complete and behaved correctly. **The live `FoodScheduleSource.CARRIED_FORWARD` count was 0 across all 3 schedules**, which is what proved it had never executed. [[Changelog]]'s 2026-07-26 entry had explicitly claimed it was registered at `0 4 * * *`; that claim was simply wrong, and the same page's cron inventory repeated it.
+- **Fix:** one line — registered at `"0 1 * * *"`. The same daily loop was also given a second, closely-related responsibility: closing any `food_voting_periods` row still `OPEN` past its `voting_ends_at` (`shouldAutoClose`, pure, tested). Nothing could close a period before, which **dead-ended the owner permanently** — the Generate button is gated on `!period || period.status === 'CLOSED'`, while the Close button only rendered while `isOpen`.
+- **Broader finding, not fixed here:** 16 cron routes exist in this backend and only a handful are scheduled. Worth its own sweep — a route being written is not evidence it runs. Logged in [[TODO]].
+- **Related:** [[Food]], [[Decisions#ADR-048|ADR-048]], [[APIs]], [[Changelog]]
+
+### The Food tab's most discoverable feature was a mock that wrote nothing
+
+- **Status:** fixed by deletion — see [[Decisions#ADR-048|ADR-048]]
+- **Found:** 2026-08-05, during the Food module audit (§0.3).
+- **Area:** [[Frontend]] (`features/owner-food`, owner Home Quick Actions)
+- **Symptom:** an owner could create a "Food Poll", watch it appear, close it, see a winner announced and a toast reading *"…added to menu · edit before publishing"* — and nothing was ever written anywhere. Everything evaporated on refresh.
+- **Root cause:** `useFoodPolls` was `useState(mockFoodPolls)` and never touched the network. `totalTenants: 180` was hardcoded in the mock *and* in `useCreatePollDraft.buildPoll()`; the Date and Closing-time fields were rendered as `<div>`s rather than inputs, so they were unchangeable; "Edit" was `stayoToast.info('Opening poll editor…')` for an editor that did not exist; four hardcoded strings were presented as "Smart Insights" analytics. **And `useHomeQuickActions` routed the Home FAB straight into it**, so the most discoverable food feature in the product was the one that did nothing — while the real, working voting system (`VotingPanel` + `useFoodVoting` against `/api/food/voting-periods`) sat on the other tab under a different name.
+- **Fix:** deleted, ~842 lines net, with the Home Quick Action repointed at `/owner/food` and relabelled *"Food menu"* rather than left advertising a removed feature. **No capability was lost, because there was none.** `FOOD_SLOTS`, `MEAL_CATEGORY_META`, `MealSlotKey` and `mealIcons.ts` were kept — real design tokens used by ~20 files that merely happened to live under `shared/mocks/`. This reverses [[Decisions#ADR-029|ADR-029]] point (3)'s "keep both", per explicit user direction.
+- **Related:** [[Food]], [[Decisions#ADR-048|ADR-048]], [[Features]], [[Changelog]]
+
+### The Food tab silently served `hostels[0]`, with no route to any other property's food
+
+- **Status:** fixed — see [[Decisions#ADR-048|ADR-048]]
+- **Found:** 2026-08-05, during the Food module audit (§2.7).
+- **Area:** [[Frontend]] (owner Food tab)
+- **Symptom:** a two-property owner saw property #1's library, votes and menu, with nothing on screen naming the hostel, and **no way at all** to reach property #2's food.
+- **Root cause:** `FoodPage.tsx` passed `session.primaryHostelId` to every hook and had no picker. That value is `hostels[0]?.id ?? null`, and `legacyAuthAdapter.ts`'s own comment names this as the thing not to do, citing the `CLAUDE.md` "must not fall back to first hostel" invariant ([[Decisions#ADR-003|ADR-003]]). `architectural-invariants-check.ts` enforces that rule — but **it scans the backend only**, so a frontend violation of a backend-enforced invariant went uncaught. Live data confirmed it bit: 2 active hostels, both with libraries and published schedules, one reachable.
+- **Fix:** `HostelSwitcher` in the Food tab header, rendering nothing for a single-hostel owner (zero friction where there is no choice) and mandatory for everyone else. Note the Kitchen sheet at `/owner/food/kitchen` still reads `primaryHostelId` directly — deliberate for now and flagged in [[Food]], not silently inherited.
+- **Related:** [[Food]], [[Decisions#ADR-048|ADR-048]], [[Decisions#ADR-003|ADR-003]], [[Changelog]]
+
 ### Expense suggestions were built end-to-end, wrappers and all, and never called
 
 - **Status:** fixed — see [[Decisions#ADR-047|ADR-047]]

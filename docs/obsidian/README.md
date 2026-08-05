@@ -20,6 +20,7 @@ This is the living documentation workspace for the Hostel Management System (HMS
 - [[Database]] — full model/enum/relation inventory, schema-vs-docs discrepancies
 - [[APIs]] — all 294 routes, grouped by module, including the 37 decommissioned (410) routes
 - [[Business-Rules]] — late-fee math, obligation lifecycle, payment allocation, settlement, notification triggers — all traced to source
+- [[Food]] — the Food module end to end: the weekly-pattern grain and its ceiling, the `WeekGrid` contract, publish/rebuild semantics, the daily cron, and what is deliberately not built. The vault's first module-level page
 - [[Features]] — confirmed-implemented features, owner/tenant/public-facing, cross-referenced to routes and screens
 - [[Decisions]] — ADRs inferred from migration names, invariant checks, and in-code comments
 - [[Bugs]] — bug reports, open and fixed
@@ -38,6 +39,7 @@ Read the relevant row **before** writing code, not after — these pages exist t
 | Change `prisma/schema.prisma` or write a migration | [[Database]] in full, including the "known schema quirks" section so you don't recreate an existing near-duplicate table |
 | Work on `apps/frontend` owner screens | [[Frontend]] (routing tree, `features/` vs `domains/` split) + [[Features]] |
 | Work on the tenant portal | [[Frontend]] — **read the frozen `src/portal/` allowlist section before adding any file there** — + [[Features]] |
+| Touch anything under `/owner/food`, `/tenant/food`, `app/api/food/*` or the food schema | [[Food]] **first, in full** — it is the module page, and §2 (a schedule is one repeating week, not calendar dates) and §6 (every week-reader consumes `WeekGrid`, never raw schedule rows) are both binding constraints that are easy to violate by accident. Then [[APIs]] and [[Database]] for endpoint/schema detail |
 | Touch move-out / exit / settlement | [[Business-Rules]] (Settlement section) + [[Database]] (`move_out_requests` + satellite tables) |
 | Touch WhatsApp, email, or reminders | [[Business-Rules]] (Notification triggers) + [[Backend]] (Notification services section) |
 | About to make a call with long-term architectural consequences | [[Decisions]] first, to check whether a prior ADR already covers this; add a new one when you decide |
