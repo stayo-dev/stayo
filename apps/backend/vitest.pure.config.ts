@@ -32,6 +32,7 @@ export default defineConfig({
       'tests/search-ranking.test.ts',
       'tests/collection-queue-prioritisation.test.ts',
       'tests/expense-memory.test.ts',
+      'tests/food-schedule-rebuild-policy.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),
