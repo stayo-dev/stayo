@@ -1,5 +1,6 @@
 import { CalendarClock, History, Store, Repeat2 } from 'lucide-react';
 import { EXPENSE_CATEGORIES } from '@shared/mocks/expenses';
+import { categoryIcon } from '../../components/expenses/categoryIcons';
 import { cn } from '@shared/lib/cn';
 import type { AddExpenseData } from '../../types';
 import { useExpenseMemory, applyMemory, type MemoryEntry } from '../useExpenseMemory';
@@ -110,17 +111,31 @@ export function DetailsStep({ data, setD, onReused }: DetailsStepProps) {
         <div className="grid grid-cols-3 gap-2.5">
           {EXPENSE_CATEGORIES.map((c) => {
             const active = data.category === c.name;
+            const Icon = categoryIcon(c.id);
             return (
               <button
                 key={c.id}
                 type="button"
                 onClick={() => setD({ category: c.name })}
-                className={`flex flex-col items-center gap-1.5 rounded-2xl border-[1.5px] p-3 text-center ${
-                  active ? 'border-primary bg-secondary/50' : 'border-border bg-card'
-                }`}
+                className={cn(
+                  'flex flex-col items-center gap-2 rounded-2xl border-[1.5px] p-3 text-center transition-colors',
+                  active ? 'border-primary bg-secondary/50' : 'border-border bg-card',
+                )}
               >
-                <span className="text-xl">{c.icon}</span>
-                <span className="text-[11px] font-semibold leading-tight text-foreground">{c.name}</span>
+                {/* One stroke weight, colour carried by selection rather than
+                    by nine competing hues — calm and consistent. */}
+                <Icon
+                  className={cn('h-5 w-5', active ? 'text-primary' : 'text-muted-foreground')}
+                  strokeWidth={1.75}
+                />
+                <span
+                  className={cn(
+                    'text-[11px] font-semibold leading-tight',
+                    active ? 'text-foreground' : 'text-foreground/80',
+                  )}
+                >
+                  {c.name}
+                </span>
               </button>
             );
           })}
