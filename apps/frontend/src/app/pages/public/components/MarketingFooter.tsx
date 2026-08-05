@@ -39,7 +39,7 @@ export function MarketingFooter() {
           <div className="mb-3 font-display text-xl font-extrabold text-background">Stayo</div>
           <p className="mb-2 text-sm font-semibold text-[#D2986C]">Manage. Automate. Grow.</p>
           <p className="mb-6 max-w-[300px] text-[13.5px] leading-relaxed text-background/50">
-            The Stay Operations Platform — a verified hostel marketplace and complete management system in one.
+            The Stay Operations Platform — complete hostel management, from onboarding to rent collection.
           </p>
 
           {/* Subtle company lockup */}
