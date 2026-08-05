@@ -4,7 +4,7 @@ import { MEAL_CATEGORY_META } from '@shared/mocks/food';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useFoodSchedule } from '../hooks/useFoodSchedule';
 import { buildKitchenMessage, whatsappShareUrl } from '../kitchenSheet';
-import { cellAt, dayKeyFor, DAY_ORDER, isFilled, SLOT_ORDER } from '../weekGrid';
+import { cellAt, dayKeyFor, DAY_ORDER, EMPTY_CELL_LABEL, isFilled, SLOT_ORDER } from '../weekGrid';
 
 /**
  * The cook's and kitchen staff's only surface. Deliberately the dumbest screen
@@ -46,7 +46,7 @@ export function KitchenSheetPage() {
                 {MEAL_CATEGORY_META[slot].label}
               </span>
               <span className={`font-display text-[24px] font-extrabold tracking-tight ${isFilled(cell) ? 'text-foreground' : 'italic text-muted-foreground/60'}`}>
-                {isFilled(cell) ? cell!.item_name : 'not set'}
+                {isFilled(cell) ? cell!.item_name : EMPTY_CELL_LABEL}
               </span>
             </div>
           );
@@ -58,7 +58,7 @@ export function KitchenSheetPage() {
         <p className="mt-1 text-[14px] font-semibold text-foreground">
           {SLOT_ORDER.map((slot) => {
             const cell = cellAt(schedule.weekGrid, tomorrow, slot);
-            return isFilled(cell) ? cell!.item_name : 'not set';
+            return isFilled(cell) ? cell!.item_name : EMPTY_CELL_LABEL;
           }).join(' · ')}
         </p>
       </div>

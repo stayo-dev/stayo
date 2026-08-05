@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildKitchenMessage, whatsappShareUrl } from './kitchenSheet';
-import { toWeekGrid } from './weekGrid';
+import { toWeekGrid, EMPTY_CELL_LABEL } from './weekGrid';
 
 const cell = (day: string, meal: string, name: string, id: string | null = 'i1') => ({
   id: `${day}-${meal}`, day_of_week: day, meal_type: meal, menu_item_id: id, item_name: name,
@@ -30,8 +30,8 @@ describe('buildKitchenMessage', () => {
     expect(msg.indexOf('Sambar Rice')).toBeLessThan(msg.indexOf('Chapati'));
   });
 
-  it('says "not set" rather than silently omitting an empty meal', () => {
-    expect(buildKitchenMessage({ grid, now: THURSDAY, hostelName: 'H' })).toMatch(/Snacks\s+not set/i);
+  it('names an empty meal rather than silently omitting it', () => {
+    expect(buildKitchenMessage({ grid, now: THURSDAY, hostelName: 'H' })).toMatch(new RegExp(`Snacks\\s+${EMPTY_CELL_LABEL}`));
   });
 
   it('includes tomorrow, because prep starts the night before', () => {
@@ -49,7 +49,7 @@ describe('buildKitchenMessage', () => {
 
   it('handles an entirely empty grid without throwing', () => {
     const msg = buildKitchenMessage({ grid: [], now: THURSDAY, hostelName: 'H' });
-    expect(msg).toContain('not set');
+    expect(msg).toContain(EMPTY_CELL_LABEL);
   });
 });
 

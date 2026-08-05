@@ -3,10 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { foodService } from '@features/food/api';
 import type { MealSlotKey } from '@shared/mocks/food';
 import { stayoToast } from '@shared/ui-patterns/Toast';
-import { toWeekGrid, type WeekGrid } from '../weekGrid';
+import { toWeekGrid, DAY_ORDER, type DayKey, type WeekGrid } from '../weekGrid';
 
-export const DAY_ORDER = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'] as const;
-export type DayKey = (typeof DAY_ORDER)[number];
+// Day order has one definition, in `weekGrid`. Re-exported here only so the
+// components that already import it from this hook keep working.
+export { DAY_ORDER };
+export type { DayKey };
 
 const DAY_LABEL_SHORT: Record<DayKey, string> = {
   MONDAY: 'Monday', TUESDAY: 'Tuesday', WEDNESDAY: 'Wednesday', THURSDAY: 'Thursday',
@@ -79,21 +81,14 @@ export function useFoodSchedule(hostelId: string | undefined, month: string) {
     onSuccess: invalidate,
   });
 
-  const grid: Record<DayKey, Partial<Record<MealSlotKey, ScheduleMealCell>>> = useMemo(() => {
-    const map = Object.fromEntries(DAY_ORDER.map((d) => [d, {}])) as Record<DayKey, Partial<Record<MealSlotKey, ScheduleMealCell>>>;
-    for (const meal of schedule?.food_schedule_meals ?? []) {
-      const slot = meal.meal_type.toLowerCase() as MealSlotKey;
-      map[meal.day_of_week][slot] = meal;
-    }
-    return map;
-  }, [schedule]);
-
+  // The single week projection. There used to be a second, raw-row `grid`
+  // beside it, which is how the editor came to bypass the `WeekGrid` contract
+  // without anything at the call site looking like a violation.
   const weekGrid: WeekGrid = useMemo(() => toWeekGrid(schedule?.food_schedule_meals), [schedule]);
 
   return {
     isLoading: scheduleQuery.isLoading,
     schedule,
-    grid,
     weekGrid,
     generate: (mode: 'BUILD' | 'FILL_GAPS' | 'START_OVER' = 'BUILD', votingPeriodId?: string) =>
       generateMutation.mutate({ votingPeriodId, mode }),

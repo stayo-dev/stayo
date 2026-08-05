@@ -1,6 +1,6 @@
 import { MEAL_CATEGORY_META, type MealSlotKey } from '@shared/mocks/food';
 import { mealIcon } from '../../mealIcons';
-import { cellAt, dayKeyFor, isFilled, mealSlotAt, MEAL_TIMES, SLOT_ORDER, type WeekGrid } from '../../weekGrid';
+import { cellAt, dayKeyFor, EMPTY_CELL_LABEL, isFilled, mealSlotAt, MEAL_TIMES, SLOT_ORDER, type WeekGrid } from '../../weekGrid';
 
 interface TodayCardProps {
   grid: WeekGrid;
@@ -47,7 +47,7 @@ export function TodayCard({ grid, onFix }: TodayCardProps) {
             onClick={() => onFix(current)}
             className="mt-1 flex min-h-[44px] items-center gap-2 text-left font-display text-[24px] font-extrabold leading-tight tracking-tight text-muted-foreground/70"
           >
-            Not set
+            {EMPTY_CELL_LABEL}
             <span className="rounded-lg bg-primary px-2.5 py-1 text-[12px] font-bold text-primary-foreground">Fix</span>
           </button>
         )}
@@ -56,7 +56,7 @@ export function TodayCard({ grid, onFix }: TodayCardProps) {
           <span className="mt-2 block text-[12.5px] text-muted-foreground">
             Next · {MEAL_CATEGORY_META[next].label} {MEAL_TIMES[next].label} —{' '}
             <span className={isFilled(nextCell) ? 'font-semibold text-foreground' : 'italic'}>
-              {isFilled(nextCell) ? nextCell!.item_name : 'not set'}
+              {isFilled(nextCell) ? nextCell!.item_name : EMPTY_CELL_LABEL}
             </span>
           </span>
         )}
@@ -81,7 +81,7 @@ export function TodayCard({ grid, onFix }: TodayCardProps) {
               </span>
               <span className="text-[11px] text-muted-foreground/70">{MEAL_TIMES[slot].label}</span>
               <span className={`ml-auto text-[13px] ${filled ? 'font-semibold text-foreground' : 'italic text-muted-foreground/60'}`}>
-                {filled ? cell!.item_name : 'not set'}
+                {filled ? cell!.item_name : EMPTY_CELL_LABEL}
               </span>
               {!filled && (
                 <span className="flex-none rounded-lg bg-secondary px-2 py-1 text-[11px] font-bold text-primary">Fix</span>

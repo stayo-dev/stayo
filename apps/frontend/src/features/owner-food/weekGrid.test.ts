@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  toWeekGrid, dayKeyFor, cellAt, isFilled, dayCompleteness, mealSlotAt, MEAL_TIMES,
+  toWeekGrid, dayKeyFor, cellAt, isFilled, dayCompleteness, mealSlotAt, MEAL_TIMES, EMPTY_CELL_LABEL,
   type WeekGrid,
 } from './weekGrid';
 
@@ -61,6 +61,9 @@ describe('cellAt / isFilled', () => {
   });
   it('treats null as unfilled', () => {
     expect(isFilled(null)).toBe(false);
+  });
+  it('recognises the shared empty label, so every surface can render the same word', () => {
+    expect(isFilled({ id: 'x', day_of_week: 'MONDAY', meal_type: 'snacks', menu_item_id: 'i1', item_name: EMPTY_CELL_LABEL })).toBe(false);
   });
 });
 

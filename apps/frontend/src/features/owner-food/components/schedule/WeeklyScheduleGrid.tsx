@@ -1,11 +1,11 @@
 import { Sparkles } from 'lucide-react';
-import { MEAL_CATEGORY_META, type MealSlotKey } from '@shared/mocks/food';
-import { DAY_ORDER, type DayKey, type useFoodSchedule } from '../../hooks/useFoodSchedule';
+import { MEAL_CATEGORY_META } from '@shared/mocks/food';
+import type { useFoodSchedule } from '../../hooks/useFoodSchedule';
 import { UtensilsCrossed } from 'lucide-react';
 import { mealIcon } from '../../mealIcons';
 import { buildPublishChecks } from '../../publishChecks';
 import { PublishChecklist } from './PublishChecklist';
-import { toWeekGrid } from '../../weekGrid';
+import { cellAt, isFilled, DAY_ORDER, SLOT_ORDER, EMPTY_CELL_LABEL, type DayKey } from '../../weekGrid';
 
 const DAY_LABEL: Record<DayKey, string> = {
   MONDAY: 'Monday',
@@ -16,8 +16,6 @@ const DAY_LABEL: Record<DayKey, string> = {
   SATURDAY: 'Saturday',
   SUNDAY: 'Sunday',
 };
-
-const SLOT_ORDER: MealSlotKey[] = ['breakfast', 'lunch', 'snacks', 'dinner'];
 
 interface WeeklyScheduleGridProps {
   schedule: ReturnType<typeof useFoodSchedule>;
@@ -53,11 +51,7 @@ export function WeeklyScheduleGrid({ schedule, canGenerate, voteCount, votesCons
     );
   }
 
-  const checks = buildPublishChecks({
-    grid: toWeekGrid(schedule.schedule.food_schedule_meals),
-    votesConsidered,
-    voteCount,
-  });
+  const checks = buildPublishChecks({ grid: schedule.weekGrid, votesConsidered, voteCount });
 
   return (
     <div className="flex flex-col gap-3">
@@ -84,20 +78,21 @@ export function WeeklyScheduleGrid({ schedule, canGenerate, voteCount, votesCons
             <span className="pl-0.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{DAY_LABEL[day]}</span>
             <div className="grid grid-cols-2 gap-2">
               {SLOT_ORDER.map((slot) => {
-                const cell = schedule.grid[day][slot];
+                const cell = cellAt(schedule.weekGrid, day, slot);
+                const filled = isFilled(cell);
                 const meta = MEAL_CATEGORY_META[slot];
                 return (
                   <button
                     key={slot}
                     type="button"
-                    onClick={() => cell && schedule.openPicker({ mealId: cell.id, slot })}
+                    onClick={() => cell?.id && schedule.openPicker({ mealId: cell.id, slot })}
                     className="flex flex-col gap-1 rounded-xl border border-border bg-card px-2.5 py-2 text-left"
                   >
                     <span className="text-[9.5px] font-bold uppercase tracking-wide text-muted-foreground">
                       {(() => { const I = mealIcon(slot); return <I className="mr-1 inline h-3.5 w-3.5 align-[-2px]" strokeWidth={1.75} />; })()}{meta.label}
                     </span>
-                    <span className={`truncate text-[12px] font-semibold ${cell?.item_name && cell.item_name !== 'Not set' ? 'text-foreground' : 'text-muted-foreground/60 italic'}`}>
-                      {cell?.item_name ?? 'Empty'}
+                    <span className={`truncate text-[12px] font-semibold ${filled ? 'text-foreground' : 'text-muted-foreground/60 italic'}`}>
+                      {filled ? cell!.item_name : EMPTY_CELL_LABEL}
                     </span>
                   </button>
                 );

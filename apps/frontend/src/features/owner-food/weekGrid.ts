@@ -48,6 +48,14 @@ export const MEAL_TIMES: Record<MealSlotKey, { hour: number; label: string }> = 
   dinner: { hour: 20, label: '8:00pm' },
 };
 
+/**
+ * The one word every surface uses for a cell with no meal in it — and the
+ * literal string the generator writes when a meal type's library is empty,
+ * which is why `isFilled` has to recognise it. Surfaces used to spell this
+ * three different ways ("Empty", "Not set", "not set") for the same state.
+ */
+export const EMPTY_CELL_LABEL = 'Not set';
+
 const DAY_SET = new Set<string>(DAY_ORDER);
 const SLOT_SET = new Set<string>(SLOT_ORDER);
 
@@ -63,7 +71,7 @@ export function toWeekGrid(meals: RawMeal[] | null | undefined): WeekGrid {
       day_of_week: day as DayKey,
       meal_type: slot as MealSlotKey,
       menu_item_id: meal.menu_item_id ?? null,
-      item_name: meal.item_name ?? 'Not set',
+      item_name: meal.item_name ?? EMPTY_CELL_LABEL,
     });
   }
   return out;
@@ -79,9 +87,9 @@ export function cellAt(grid: WeekGrid, day: DayKey, slot: MealSlotKey): WeekGrid
   return grid.find((c) => c.day_of_week === day && c.meal_type === slot) ?? null;
 }
 
-/** A cell counts as filled only when it names a real item — the generator writes "Not set" for an empty library. */
+/** A cell counts as filled only when it names a real item — the generator writes `EMPTY_CELL_LABEL` for an empty library. */
 export function isFilled(cell: WeekGridCell | null | undefined): boolean {
-  return Boolean(cell && cell.menu_item_id && cell.item_name && cell.item_name !== 'Not set');
+  return Boolean(cell && cell.menu_item_id && cell.item_name && cell.item_name !== EMPTY_CELL_LABEL);
 }
 
 export function dayCompleteness(grid: WeekGrid, day: DayKey): 'COMPLETE' | 'PARTIAL' | 'EMPTY' {

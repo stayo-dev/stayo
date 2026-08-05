@@ -1,5 +1,5 @@
 import { MEAL_CATEGORY_META } from '@shared/mocks/food';
-import { cellAt, dayKeyFor, DAY_ORDER, isFilled, SLOT_ORDER, type DayKey, type WeekGrid } from './weekGrid';
+import { cellAt, dayKeyFor, DAY_ORDER, EMPTY_CELL_LABEL, isFilled, SLOT_ORDER, type DayKey, type WeekGrid } from './weekGrid';
 
 export interface KitchenSheetInput {
   grid: WeekGrid;
@@ -13,7 +13,7 @@ function nextDay(day: DayKey): DayKey {
 
 function nameFor(grid: WeekGrid, day: DayKey, slot: (typeof SLOT_ORDER)[number]): string {
   const cell = cellAt(grid, day, slot);
-  return isFilled(cell) ? cell!.item_name : 'not set';
+  return isFilled(cell) ? cell!.item_name : EMPTY_CELL_LABEL;
 }
 
 /**
