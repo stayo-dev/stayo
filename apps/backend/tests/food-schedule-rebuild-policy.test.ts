@@ -8,6 +8,7 @@ describe("decideRebuild", () => {
       allowed: true,
       replace: "ALL",
       nextStatus: "DRAFT",
+      rewritesProvenance: true,
       reason: "New schedule",
     });
   });
@@ -32,7 +33,7 @@ describe("decideRebuild", () => {
 
   it("allows START_OVER on a draft", () => {
     const d = decideRebuild({ mode: "START_OVER", currentStatus: "DRAFT" });
-    expect(d).toEqual({ allowed: true, replace: "ALL", nextStatus: "DRAFT", reason: "Started over" });
+    expect(d).toEqual({ allowed: true, replace: "ALL", nextStatus: "DRAFT", rewritesProvenance: true, reason: "Started over" });
   });
 
   it("allows FILL_GAPS on a published schedule WITHOUT demoting it", () => {
@@ -47,6 +48,29 @@ describe("decideRebuild", () => {
     expect(d.allowed).toBe(true);
     expect(d.replace).toBe("EMPTY_ONLY");
     expect(d.nextStatus).toBeNull();
+  });
+
+  it("does NOT let FILL_GAPS rewrite provenance — an additive fill did not author the month", () => {
+    for (const currentStatus of ["DRAFT", "PUBLISHED", null] as const) {
+      expect(decideRebuild({ mode: "FILL_GAPS", currentStatus }).rewritesProvenance).toBe(false);
+    }
+  });
+
+  it("lets a full replace claim provenance — that run really did author the week", () => {
+    expect(decideRebuild({ mode: "BUILD", currentStatus: null }).rewritesProvenance).toBe(true);
+    expect(decideRebuild({ mode: "BUILD", currentStatus: "DRAFT" }).rewritesProvenance).toBe(true);
+    expect(decideRebuild({ mode: "START_OVER", currentStatus: "DRAFT" }).rewritesProvenance).toBe(true);
+  });
+
+  it("only ever rewrites provenance when it replaces the whole week", () => {
+    const modes: Array<"BUILD" | "FILL_GAPS" | "START_OVER"> = ["BUILD", "FILL_GAPS", "START_OVER"];
+    const statuses: Array<"DRAFT" | "PUBLISHED" | null> = ["DRAFT", "PUBLISHED", null];
+    for (const mode of modes) {
+      for (const currentStatus of statuses) {
+        const d = decideRebuild({ mode, currentStatus });
+        expect(d.rewritesProvenance).toBe(d.replace === "ALL");
+      }
+    }
   });
 
   it("never returns nextStatus PUBLISHED — publishing is a separate action", () => {

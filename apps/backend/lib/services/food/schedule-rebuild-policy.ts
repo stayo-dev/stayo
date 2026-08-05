@@ -9,6 +9,16 @@ export interface RebuildDecision {
   allowed: boolean;
   replace: "ALL" | "EMPTY_ONLY";
   nextStatus: "DRAFT" | null;
+  /**
+   * Whether this run may rewrite `source` / `generated_from_voting_period_id`.
+   *
+   * Only a run that replaces the whole week authored it. A `FILL_GAPS` run is
+   * purely additive, so a month carried forward from last month must keep
+   * saying `CARRIED_FORWARD` — that field is the sole basis for "carried
+   * forward" vs "built from student votes", and the votes publish check reads
+   * `generated_from_voting_period_id` as its honest input.
+   */
+  rewritesProvenance: boolean;
   reason: string;
 }
 
@@ -25,7 +35,7 @@ export interface RebuildDecision {
  */
 export function decideRebuild({ mode, currentStatus }: RebuildInput): RebuildDecision {
   if (mode === "FILL_GAPS") {
-    return { allowed: true, replace: "EMPTY_ONLY", nextStatus: null, reason: "Filled empty meals only" };
+    return { allowed: true, replace: "EMPTY_ONLY", nextStatus: null, rewritesProvenance: false, reason: "Filled empty meals only" };
   }
 
   if (currentStatus === "PUBLISHED") {
@@ -33,18 +43,20 @@ export function decideRebuild({ mode, currentStatus }: RebuildInput): RebuildDec
       allowed: false,
       replace: "EMPTY_ONLY",
       nextStatus: null,
+      rewritesProvenance: false,
       reason: "This month is already published. Fill gaps instead, or edit individual meals.",
     };
   }
 
   if (mode === "START_OVER") {
-    return { allowed: true, replace: "ALL", nextStatus: "DRAFT", reason: "Started over" };
+    return { allowed: true, replace: "ALL", nextStatus: "DRAFT", rewritesProvenance: true, reason: "Started over" };
   }
 
   return {
     allowed: true,
     replace: "ALL",
     nextStatus: "DRAFT",
+    rewritesProvenance: true,
     reason: currentStatus === null ? "New schedule" : "Rebuilt draft",
   };
 }

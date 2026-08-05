@@ -12,6 +12,9 @@ import { decideRebuild, type RebuildMode } from "@/lib/services/food/schedule-re
 
 const MEAL_TYPES: FoodMealType[] = [FoodMealType.BREAKFAST, FoodMealType.LUNCH, FoodMealType.SNACKS, FoodMealType.DINNER];
 
+/** Thrown inside the transaction when the month was published mid-request — rolls it back, answers 409 like the early check. */
+const PUBLISHED_RACE = "SCHEDULE_PUBLISHED";
+
 function firstOfMonth(value: unknown): Date | null {
   if (!value || typeof value !== "string") return null;
   const d = new Date(`${value.slice(0, 7)}-01T00:00:00.000Z`);
@@ -101,6 +104,17 @@ export async function POST(req: NextRequest) {
     }
 
     const schedule = await prisma.$transaction(async (tx) => {
+      // Re-assert the decision inside the transaction. The status read above is
+      // separated from this write by 5-9 generator round-trips, so a second
+      // device can publish the month in between — and acting on the stale
+      // decision would delete a published week out from under every tenant.
+      const current = await tx.food_schedules.findUnique({
+        where: { hostel_id_month: { hostel_id: hostelId, month } },
+        select: { status: true },
+      });
+      const settled = decideRebuild({ mode, currentStatus: current?.status ?? null });
+      if (!settled.allowed) throw new Error(`${PUBLISHED_RACE}: ${settled.reason}`);
+
       const upserted = await tx.food_schedules.upsert({
         where: { hostel_id_month: { hostel_id: hostelId, month } },
         create: {
@@ -112,9 +126,12 @@ export async function POST(req: NextRequest) {
           generated_from_voting_period_id: votingPeriodId ?? null,
         },
         update: {
-          ...(decision.nextStatus ? { status: decision.nextStatus } : {}),
-          source: "GENERATED",
-          generated_from_voting_period_id: votingPeriodId ?? null,
+          ...(settled.nextStatus ? { status: settled.nextStatus } : {}),
+          // Provenance belongs to whoever authored the week. A FILL_GAPS run
+          // adds cells and claims nothing (see `rewritesProvenance`).
+          ...(settled.rewritesProvenance
+            ? { source: "GENERATED" as const, generated_from_voting_period_id: votingPeriodId ?? null }
+            : {}),
           updated_at: new Date(),
         },
       });
@@ -129,7 +146,7 @@ export async function POST(req: NextRequest) {
         })),
       );
 
-      if (decision.replace === "ALL") {
+      if (settled.replace === "ALL") {
         await tx.food_schedule_meals.deleteMany({ where: { schedule_id: upserted.id } });
         await tx.food_schedule_meals.createMany({ data: rows });
       } else {
@@ -155,6 +172,7 @@ export async function POST(req: NextRequest) {
     return apiResponse(schedule, 201);
   } catch (error: any) {
     const msg = String(error?.message || "Failed to generate schedule");
+    if (msg.startsWith(PUBLISHED_RACE)) return apiError(msg.split(": ")[1] ?? msg, "SCHEDULE_PUBLISHED", 409);
     if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
     if (msg.startsWith("HOSTEL_CONTEXT_REQUIRED")) return apiError(msg.split(": ")[1] ?? msg, "HOSTEL_CONTEXT_REQUIRED", 400);
     return apiError(msg);

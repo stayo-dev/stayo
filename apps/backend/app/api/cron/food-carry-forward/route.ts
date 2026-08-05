@@ -47,8 +47,11 @@ export async function GET(req: NextRequest) {
   let votingClosed = 0;
 
   try {
+    // Expiry is a SQL predicate, not a scan — this runs daily against every
+    // OPEN period in the system. `shouldAutoClose` still gates the update as
+    // the single tested statement of the rule.
     const openPeriods = await prisma.food_voting_periods.findMany({
-      where: { status: "OPEN" },
+      where: { status: "OPEN", voting_ends_at: { lte: now } },
       select: { id: true, status: true, voting_ends_at: true },
     });
     const expired = openPeriods.filter((p: any) => shouldAutoClose(p, now)).map((p: any) => p.id);
