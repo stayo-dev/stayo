@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CheckCircle2, Vote } from 'lucide-react';
 import { MEAL_CATEGORY_META, type MealSlotKey } from '@shared/mocks/food';
 import type { useFoodVoting } from '../../hooks/useFoodVoting';
+import { mealIcon } from '../../mealIcons';
 
 interface VotingPanelProps {
   voting: ReturnType<typeof useFoodVoting>;
@@ -106,7 +107,7 @@ export function VotingPanel({ voting, monthLabel }: VotingPanelProps) {
             return (
               <div key={slot} className="flex flex-col gap-1.5">
                 <span className="text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">
-                  {MEAL_CATEGORY_META[slot].emoji} {MEAL_CATEGORY_META[slot].label}
+                  {(() => { const I = mealIcon(slot); return <I className="mr-1 inline h-3.5 w-3.5 align-[-2px]" strokeWidth={1.75} />; })()}{MEAL_CATEGORY_META[slot].label}
                 </span>
                 {rows.map((row) => (
                   <div key={row.menu_item_id} className="flex items-center gap-2">

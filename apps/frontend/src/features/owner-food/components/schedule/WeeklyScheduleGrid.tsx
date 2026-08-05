@@ -1,6 +1,8 @@
 import { Sparkles } from 'lucide-react';
 import { MEAL_CATEGORY_META, type MealSlotKey } from '@shared/mocks/food';
 import { DAY_ORDER, type DayKey, type useFoodSchedule } from '../../hooks/useFoodSchedule';
+import { UtensilsCrossed } from 'lucide-react';
+import { mealIcon } from '../../mealIcons';
 
 const DAY_LABEL: Record<DayKey, string> = {
   MONDAY: 'Monday',
@@ -28,7 +30,7 @@ export function WeeklyScheduleGrid({ schedule, canGenerate }: WeeklyScheduleGrid
   if (!schedule.schedule) {
     return (
       <div className="flex flex-col items-center gap-2.5 rounded-[20px] border border-border bg-card px-6 py-8 text-center shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]">
-        <span className="flex h-[60px] w-[60px] items-center justify-center rounded-[18px] bg-secondary text-[27px]">🍽️</span>
+        <span className="flex h-[60px] w-[60px] items-center justify-center rounded-[18px] bg-secondary"><UtensilsCrossed className="h-7 w-7 text-muted-foreground" strokeWidth={1.5} /></span>
         <span className="font-display text-[15px] font-bold text-foreground">No schedule yet</span>
         <p className="max-w-[250px] text-[12.5px] leading-relaxed text-muted-foreground">
           {canGenerate ? "Generate a week's schedule from this month's votes." : 'Close voting first, then generate the schedule from the results.'}
@@ -80,7 +82,7 @@ export function WeeklyScheduleGrid({ schedule, canGenerate }: WeeklyScheduleGrid
                     className="flex flex-col gap-1 rounded-xl border border-border bg-card px-2.5 py-2 text-left"
                   >
                     <span className="text-[9.5px] font-bold uppercase tracking-wide text-muted-foreground">
-                      {meta.emoji} {meta.label}
+                      {(() => { const I = mealIcon(slot); return <I className="mr-1 inline h-3.5 w-3.5 align-[-2px]" strokeWidth={1.75} />; })()}{meta.label}
                     </span>
                     <span className={`truncate text-[12px] font-semibold ${cell?.item_name && cell.item_name !== 'Not set' ? 'text-foreground' : 'text-muted-foreground/60 italic'}`}>
                       {cell?.item_name ?? 'Empty'}

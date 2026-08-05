@@ -2,6 +2,7 @@ import { ChevronDown, ChevronUp, History } from 'lucide-react';
 import { MEAL_CATEGORY_META, type MealSlotKey } from '@shared/mocks/food';
 import { DAY_ORDER, type DayKey } from '../../hooks/useFoodSchedule';
 import type { useFoodScheduleHistory } from '../../hooks/useFoodScheduleHistory';
+import { mealIcon } from '../../mealIcons';
 
 const DAY_LABEL: Record<DayKey, string> = {
   MONDAY: 'Mon', TUESDAY: 'Tue', WEDNESDAY: 'Wed', THURSDAY: 'Thu', FRIDAY: 'Fri', SATURDAY: 'Sat', SUNDAY: 'Sun',
@@ -46,8 +47,14 @@ export function MonthHistoryList({ history }: MonthHistoryListProps) {
                           <span className="flex-1 text-foreground">
                             {SLOT_ORDER.map((slot) => {
                               const cell = cells.find((c) => c.meal_type.toLowerCase() === slot);
-                              return `${MEAL_CATEGORY_META[slot].emoji} ${cell?.item_name ?? '—'}`;
-                            }).join('   ')}
+                              const I = mealIcon(slot);
+                              return (
+                                <span key={slot} className="mr-3 inline-flex items-center gap-1">
+                                  <I className="h-3 w-3 flex-none" strokeWidth={1.75} />
+                                  {cell?.item_name ?? '—'}
+                                </span>
+                              );
+                            })}
                           </span>
                         </div>
                       );

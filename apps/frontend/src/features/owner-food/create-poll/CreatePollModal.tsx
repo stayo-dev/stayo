@@ -6,6 +6,7 @@ import { MEAL_CATEGORY_META, POLL_TYPE_META, type MealSlotKey, type MockFoodPoll
 import { useCreatePollDraft } from '../hooks/useCreatePollDraft';
 import { TITLE_SUGGESTIONS } from '../types';
 import { Toggle } from '../components/Toggle';
+import { mealIcon } from '../mealIcons';
 
 interface CreatePollModalProps {
   open: boolean;
@@ -152,7 +153,7 @@ export function CreatePollModal({ open, onClose, onPublish }: CreatePollModalPro
                   onClick={() => draft.setMealCat(k)}
                   className={`flex-1 rounded-xl border py-2.5 text-center text-[11.5px] font-semibold ${on ? 'border-[1.5px] border-foreground bg-foreground text-background' : 'border-border bg-card text-foreground'}`}
                 >
-                  <span className="block">{meta.emoji}</span>
+                  <span className="flex justify-center">{(() => { const I = mealIcon(k); return <I className="h-4 w-4" strokeWidth={1.75} />; })()}</span>
                   <span className="mt-0.5 block">{meta.label}</span>
                 </button>
               );

@@ -1,6 +1,7 @@
 import { Trophy } from 'lucide-react';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { MEAL_CATEGORY_META, getPollWinner, type MockFoodPoll } from '@shared/mocks/food';
+import { mealIcon } from '../mealIcons';
 
 interface PollResultsSheetProps {
   poll: MockFoodPoll | null;
@@ -23,7 +24,7 @@ export function PollResultsSheet({ poll, onClose, onUseWinner }: PollResultsShee
         <span className="flex flex-col gap-0.5">
           <span className="truncate">{poll.title}</span>
           <span className="text-[11.5px] font-normal text-muted-foreground">
-            {meta.emoji} {meta.label} · {poll.date}
+            {(() => { const I = mealIcon(poll.mealCat); return <I className="mr-1 inline h-3 w-3 align-[-1px]" strokeWidth={1.75} />; })()}{meta.label} · {poll.date}
           </span>
         </span>
       }
