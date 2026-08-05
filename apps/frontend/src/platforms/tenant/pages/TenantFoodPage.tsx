@@ -34,7 +34,7 @@ export function TenantFoodPage() {
     <div className="flex flex-col gap-3.5 px-4 pb-8 pt-6 sm:px-6">
       <div>
         <h1 className="font-display text-[22px] font-extrabold tracking-tight text-foreground">Food</h1>
-        <p className="mt-0.5 text-[12.5px] font-medium text-muted-foreground">This week's menu, and voting for next month</p>
+        <p className="mt-0.5 text-[12.5px] font-medium text-muted-foreground">This week's menu, and what you'd like to eat</p>
       </div>
 
       {schedule.months.length === 0 ? (
@@ -77,7 +77,7 @@ export function TenantFoodPage() {
       )}
 
       <div className="mt-2 border-t border-border pt-3.5">
-        <h2 className="font-display text-[15px] font-bold text-foreground">Vote for next month</h2>
+        <h2 className="font-display text-[15px] font-bold text-foreground">Vote on this month's menu</h2>
       </div>
 
       {!voting.period && (
