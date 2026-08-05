@@ -34,6 +34,7 @@ export default defineConfig({
       'tests/expense-memory.test.ts',
       'tests/food-schedule-rebuild-policy.test.ts',
       'tests/food-voting-expiry.test.ts',
+      'tests/food-schedule-generator.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),
