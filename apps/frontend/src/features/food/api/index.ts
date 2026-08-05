@@ -66,6 +66,10 @@ export const foodService = {
     const response = await api.patch(`/food/schedules/${scheduleId}/meals/${mealId}`, { menuItemId });
     return unwrap(response);
   },
+  swapScheduleMeals: async (scheduleId: string, aMealId: string, bMealId: string) => {
+    const response = await api.post(`/food/schedules/${scheduleId}/meals/swap`, { aMealId, bMealId });
+    return unwrap(response);
+  },
   publishSchedule: async (scheduleId: string) => {
     const response = await api.post(`/food/schedules/${scheduleId}/publish`);
     return unwrap(response);

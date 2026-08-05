@@ -81,6 +81,16 @@ export function useFoodSchedule(hostelId: string | undefined, month: string) {
     onSuccess: invalidate,
   });
 
+  const swapMealsMutation = useMutation({
+    mutationFn: ({ aMealId, bMealId }: { aMealId: string; bMealId: string }) =>
+      foodService.swapScheduleMeals(schedule!.id, aMealId, bMealId),
+    onSuccess: invalidate,
+    onError: () => {
+      invalidate();
+      stayoToast.error("Could not move that meal");
+    },
+  });
+
   // The single week projection. There used to be a second, raw-row `grid`
   // beside it, which is how the editor came to bypass the `WeekGrid` contract
   // without anything at the call site looking like a violation.
@@ -125,5 +135,7 @@ export function useFoodSchedule(hostelId: string | undefined, month: string) {
     isUpdatingMeal: updateMealMutation.isPending,
     publish: () => publishMutation.mutate(),
     isPublishing: publishMutation.isPending,
+    swapMeals: (aMealId: string, bMealId: string) => swapMealsMutation.mutate({ aMealId, bMealId }),
+    isSwapping: swapMealsMutation.isPending,
   };
 }
