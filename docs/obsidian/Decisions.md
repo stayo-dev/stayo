@@ -614,6 +614,31 @@ That reading was wrong, and measurement is what showed it. Two production endpoi
 
 **Related:** [[Business-Rules]], [[Features]], [[Bugs]], [[Changelog]], [[Frontend]], [[Backend]].
 
+## ADR-044: Universal search is a provider registry, and a search result is a place work gets done
+
+**Date:** 2026-08-05 · **Status:** Accepted (Phase 1 of 4) · Direction set by the user: *"Do not build pages. Build workflows."* See [[Features]], [[APIs]].
+
+**Context.** The owner Home had a search bar that was a `<div>` containing a `<span>` — not an input, no handler. Behind it sat **two overlapping tenant-search implementations**: `/api/owner/search` (documented as "for the global navbar", tenants only, no ranking, bare-array response outside the standard envelope, and **orphaned** — its client wrapper `ownerService.searchTenants` existed but nothing in the app called it) and `/api/payments/quick-collect/search` (genuinely good ranking, but ACTIVE-tenants-only and issuing a per-tenant obligations query *plus* a ledger query for every hit — 40 round-trips for 20 results).
+
+**Decision.**
+
+1. **One universal endpoint, rebuilt on the orphaned path.** `/api/owner/search` becomes the single entry point. It had the right name, was already owner-scoped, and had zero consumers to break.
+2. **A provider registry, not a search function.** Sources implement `SearchProvider` and are listed in one array. **The route never names a result type**, and neither does the client: each result carries its own `href` and display fields, so adding payments, complaints, expenses, receipts or staff means writing a provider and registering it — no route change, no response-shape change, no UI change. The moment anything outside a provider branches on a type, that property is gone.
+3. **Ranking is a pure, tested module**, shared by all providers so a tenant result and a hostel result stay comparable on one scale. Priority per product direction: exact name → phone → room → hostel → prefix → contains → fuzzy. Scores are spread (100/95/90…) so a future provider can slot between two without renumbering.
+4. **Providers are fault-isolated.** `Promise.allSettled` — one failing source degrades its own group and never blanks the search mid-keystroke.
+5. **A result is a workspace, not a link.** Tenant rows carry inline Call / WhatsApp / Copy number / Collect / Profile. Collect deep-links into the *existing* QuickCollect flow with the tenant preselected. Actions appear only when they can work — no Call without a number, no Collect for an invited tenant or a zero balance.
+
+**Consequences.**
+- **Reuse over reimplementation:** the hostel provider composes `portfolioService.getPortfolioSummary`, so search occupancy/dues are the same numbers the Home cards show rather than a second calculation that could drift. The tenant provider composes `financialService.getTenantPaymentSummary` — sync, pre-fetched rows, one query for all matched tenants — so outstanding is never independently derived (CLAUDE.md).
+- `/api/payments/quick-collect/search` is deliberately **left alone**: its per-tenant ledger fetch is appropriate for a considered payment flow and wrong for a typeahead. Two callers, two cost profiles, one shared ranking idea.
+- `whatsAppNumber()` returns `null` rather than guessing a country code it can't infer — a WhatsApp button that opens the wrong chat is worse than no button.
+- Phone matching compares the **national 10-digit tail**, so `9845013001`, `+91 98765 43210` and `919845013001` are one person. A unit test caught this before it shipped: the first implementation scored a bare-10-digit query against a `+91`-stored number as a weak *contains*.
+- `viewState()` makes `loading` beat `empty`, so "No matches" can never flash at an owner who is still typing.
+- Room results deep-link `?room=<id>`, consumed and then cleared from the URL so a back navigation doesn't silently reopen the sheet.
+- **Phases 2–4 (Collect Rent queue, agreement/activation/vacancy queues, unified daily task list) are not built.** The Action Center still shows counts only.
+
+**Related:** [[Features]], [[APIs]], [[Bugs]], [[Changelog]], [[Frontend]], [[Backend]].
+
 ## See also
 - [[Changelog]] for the chronological record of what shipped
 - [[Architecture]] for the system these decisions govern

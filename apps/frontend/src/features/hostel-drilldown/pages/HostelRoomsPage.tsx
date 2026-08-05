@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { InviteTenantWizard } from '@features/owner-tenants/invite/InviteTenantWizard';
 import { useHostelRooms } from '../hooks/useHostelRooms';
@@ -18,6 +18,30 @@ export function HostelRoomsPage() {
   const [addRoomOpen, setAddRoomOpen] = useState(false);
   const [addFloorOpen, setAddFloorOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  /**
+   * Deep link from Universal Search: `?room=<id>` opens that room's sheet
+   * directly, so a room result lands on the room instead of a list to hunt
+   * through (ADR-044). The param is cleared once consumed, so a later back
+   * navigation doesn't silently reopen the sheet.
+   */
+  const deepLinkRoomId = searchParams.get('room');
+  useEffect(() => {
+    if (!deepLinkRoomId || layout.isLoading) return;
+    const target = Object.values(layout.roomsByFloor)
+      .flat()
+      .find((r: any) => r.id === deepLinkRoomId);
+    if (target) setRoomSheetRoom(target);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('room');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [deepLinkRoomId, layout.isLoading, layout.roomsByFloor, setSearchParams]);
 
   if (!hostelId) return null;
   const stats = layout.stats;

@@ -32,6 +32,8 @@ interface OwnerHomeDashboardProps {
   onAddHostel?: () => void;
   /** Full ordered list of hostel ids after a manual reorder. See ADR-042. */
   onReorderProperties?: (orderedIds: string[]) => void;
+  /** Opens Universal Search. See ADR-044. */
+  onOpenSearch?: () => void;
 }
 
 /**
@@ -55,6 +57,7 @@ export function OwnerHomeDashboard({
   onPropertyMenu,
   onAddHostel,
   onReorderProperties,
+  onOpenSearch,
 }: OwnerHomeDashboardProps) {
   return (
     <div className="flex flex-col gap-7 px-4 pb-8 pt-6 sm:px-6">
@@ -79,10 +82,17 @@ export function OwnerHomeDashboard({
         </button>
       </div>
 
-      <div className="flex items-center gap-2 rounded-xl border border-[#EAE1D8] bg-card px-3.5 py-[11px]">
-        <Search className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={1.6} />
-        <span className="text-[13px] text-muted-foreground">Search tenant, room..</span>
-      </div>
+      {/* Was a non-interactive <div>+<span> — looked like a search field,
+          did nothing. Now opens Universal Search (ADR-044). */}
+      <button
+        type="button"
+        onClick={onOpenSearch}
+        aria-label="Search tenants, rooms and hostels"
+        className="flex items-center gap-2 rounded-xl border border-[#EAE1D8] bg-card px-3.5 py-[11px] text-left transition-colors active:bg-muted"
+      >
+        <Search className="h-3.5 w-3.5 flex-none text-muted-foreground" strokeWidth={1.6} />
+        <span className="text-[13px] text-muted-foreground">Search tenant, room, phone…</span>
+      </button>
 
       <section className="flex flex-col gap-3">
         <div className="flex items-baseline justify-between">

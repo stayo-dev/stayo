@@ -29,6 +29,7 @@ export default defineConfig({
       'tests/settlement-planner-policy.test.ts',
       'tests/settlement-planner-overdue.test.ts',
       'tests/settlement-planner-minimum-percentage.test.ts',
+      'tests/search-ranking.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),

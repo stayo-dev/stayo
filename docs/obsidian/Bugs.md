@@ -28,6 +28,16 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### The Home search bar was not a search bar, and the endpoint behind it had no callers
+
+- **Status:** fixed — see [[Decisions#ADR-044|ADR-044]]
+- **Found:** 2026-08-05, during the Universal Search audit.
+- **Area:** [[Frontend]] (owner Home), [[APIs]]
+- **Symptom:** the "Search tenant, room.." field on Home could not be typed into.
+- **Root cause:** it was a `<div>` containing a `<span>` — no `<input>`, no `onClick`, no handler of any kind. The **fourth** affordance of this class found in this codebase, after the property drag handle, the partial-payments toggle that never existed, and three dead rows on the old billing screen. Separately, `/api/owner/search` existed and was documented as powering "the global navbar", and `ownerService.searchTenants` wrapped it — but **nothing in `src/` called either**. A working endpoint and a working client wrapper, connected to nothing.
+- **Fix:** the bar is now a real button opening Universal Search; the orphaned endpoint was rebuilt as the universal, provider-based one behind it.
+- **Related:** [[Decisions#ADR-044|ADR-044]], [[Features]], [[Changelog]]
+
 ### Partial payments were enforced but unconfigurable, and three screens fought over the same billing settings
 
 - **Status:** fixed (full-stack) — see [[Decisions#ADR-043|ADR-043]]

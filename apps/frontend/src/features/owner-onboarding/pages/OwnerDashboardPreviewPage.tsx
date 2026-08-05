@@ -5,6 +5,8 @@ import { HostelOptionsSheet } from '@features/owner-dashboard/components/HostelO
 import { useOwnerDashboard } from '@features/owner-dashboard/hooks/useOwnerDashboard';
 import { useHostelOrder } from '@features/owner-dashboard/property-order/useHostelOrder';
 import { moveItem } from '@features/owner-dashboard/property-order/hostelSort';
+import { UniversalSearchOverlay } from '@features/owner-search/UniversalSearchOverlay';
+import { getInitials } from '@features/tenants/utils/normalize';
 import { useHomeQuickActions } from '@features/owner-dashboard/quick-actions/useHomeQuickActions';
 import { QuickActionsSheet } from '@features/owner-dashboard/quick-actions/QuickActionsSheet';
 import { AllActionsSheet } from '@features/owner-dashboard/quick-actions/AllActionsSheet';
@@ -42,6 +44,7 @@ export function OwnerDashboardPreviewPage() {
   const dash = useOwnerDashboard();
   const reorder = useHostelOrder();
   const [hostelMenuFor, setHostelMenuFor] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   if (dash.isLoading) return <DashboardLoadingSkeleton />;
 
@@ -86,6 +89,28 @@ export function OwnerDashboardPreviewPage() {
         onPropertyMenu={(hostelId) => setHostelMenuFor(hostelId)}
         onAddHostel={() => navigate('/onboarding')}
         onReorderProperties={(orderedIds) => reorder.mutate(orderedIds)}
+        onOpenSearch={() => setSearchOpen(true)}
+      />
+
+      <UniversalSearchOverlay
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        // "Collect" on a search result drops straight into the existing
+        // QuickCollect flow with the tenant preselected — find and act in two
+        // taps, without a detour through the profile.
+        onCollect={(result) =>
+          qa.collectPaymentFor({
+            id: result.id,
+            name: result.title,
+            initials: getInitials(result.title),
+            phone: String(result.data?.phone ?? ''),
+            hostelId: String(result.data?.hostelId ?? ''),
+            hostelName: '',
+            room: String(result.data?.room ?? '') || 'N/A',
+            outstanding: Number(result.data?.outstanding ?? 0),
+            deposit: 0,
+          })
+        }
       />
 
       <QuickActionsSheet
@@ -111,7 +136,7 @@ export function OwnerDashboardPreviewPage() {
         onInviteTenant={qa.inviteTenant}
         actionCenter={dash.actionCenter}
       />
-      <QuickCollectModal open={qa.collectOpen} onClose={qa.closeCollect} />
+      <QuickCollectModal open={qa.collectOpen} onClose={qa.closeCollect} initialTenant={qa.collectTenant} />
       <InviteTenantWizard open={qa.inviteOpen} onClose={qa.closeInvite} />
       <HostelOptionsSheet
         open={Boolean(hostelMenuFor)}

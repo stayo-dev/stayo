@@ -77,7 +77,12 @@ export const ownerService = {
         const response = await api.delete(`/hostels/${hostelId}`, { data: { reason } });
         return response.data;
     },
-    searchTenants: async (query, limit = 10, signal) => {
+    /**
+     * Universal owner search — tenants, hostels and rooms, grouped and ranked
+     * server-side. Replaces the old tenants-only `searchTenants`, which was
+     * wired to this same path but never called from anywhere. See ADR-044.
+     */
+    universalSearch: async (query, limit = 8, signal) => {
         const response = await api.get('/owner/search', {
             params: { q: query, limit },
             signal

@@ -108,6 +108,20 @@ The StayO redesign is being built in place inside the same `apps/frontend` tree,
 - **Depends on:** [[Frontend]] (StayO foundation: `ThemeProvider`, `OwnerAppShell`, `shared/ui-patterns/*`), `docs/migration/frontend-foundation-tracker.md` (routing-approach note)
 - **Notes:** End-to-end click-through of the owner side of `Stayo Homepage.dc.html` → `AuthModal.dc.html` → `Owner Onboarding.dc.html` (12 steps, full animated SVG scene) → `Stayo App.dc.html`'s Home tab, faithfully ported. Two screens (Lead Submitted, Activation Link) don't exist in the design source and are now orphaned (see above). The dashboard screen this journey ends on (`OwnerDashboardPreviewPage`, at `/get-started/home`) renders `OwnerHomeDashboard`, a pure presentational component — still mock-data-driven as of this entry (real Dashboard wiring is the next phase after the signup/onboarding work below).
 
+### Universal Search — the owner's "I know who I need" entry point
+- **Status:** shipped 2026-08-05 — **Phase 1 of 4** · see [[Decisions#ADR-044|ADR-044]]
+- **Owner-facing?** yes · **Tenant-facing?** no
+- **Key files:** Backend — `lib/services/search/{types.ts,ranking.ts,search-service.ts}` + `providers/{tenant,hostel,room}-provider.ts` (all new), `app/api/owner/search/route.ts` (rebuilt), `tests/search-ranking.test.ts` (new, 22 pure tests). Frontend — `features/owner-search/{searchActions.ts,searchActions.test.ts,useUniversalSearch.ts,UniversalSearchOverlay.tsx}` (all new; 23 tests), `features/owner-dashboard/components/OwnerHomeDashboard.tsx`, `features/owner-dashboard/quick-actions/useHomeQuickActions.ts`, `features/hostel-drilldown/pages/HostelRoomsPage.tsx`, `features/owners/api/index.js`.
+- **What's real:** searches tenants (name, phone ×4 fields, room, hostel, roll number, email, plus the word "invited"), hostels (name, city) and rooms (number) in one grouped, ranked response. Tapping a result goes straight to the tenant profile / hostel overview / that room's sheet.
+- **Quick actions, inline:** Call · WhatsApp · Copy number · Collect · Profile — without opening the profile first. Collect drops into the existing QuickCollect flow with the tenant already selected.
+- **Notes:** The Home search bar was previously a `<div>` wrapping a `<span>` — it looked like a field and did nothing. Two overlapping tenant-search endpoints already existed; one was orphaned and became this, the other (`/api/payments/quick-collect/search`) was deliberately left alone because its per-tenant ledger fetch suits a payment flow and not a typeahead.
+
+  **Extensibility is the design constraint, not a bonus.** Sources are providers registered in one array; the route and the client never branch on a result type, and each result carries its own `href`. Payments, complaints, expenses, receipts and staff can be added by writing a provider alone.
+
+  Actions are offered only when they can work — no Call without a number, no WhatsApp for a number whose country code can't be inferred, no Collect for an invited tenant or a zero balance. Verified live: `9845013001` finds a tenant stored as `+919845013001` as an exact match; `B-101` returns both its occupants and the room itself, grouped separately.
+
+  **Phases 2–4 are not built** — the Action Center still shows counts, not work queues.
+
 ### Billing policy — the single screen that configures billing behaviour
 - **Status:** shipped 2026-08-05 — see [[Decisions#ADR-043|ADR-043]]
 - **Owner-facing?** yes · **Tenant-facing?** no (the policy governs what the owner may collect; tenants see only the resulting dues)
