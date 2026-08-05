@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { FOOD_SLOTS } from '@shared/mocks/food';
+import { FOOD_SLOTS, type MealSlotKey } from '@shared/mocks/food';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useFoodMenuItems } from '../hooks/useFoodMenuItems';
 import { useFoodVoting } from '../hooks/useFoodVoting';
@@ -10,6 +10,8 @@ import { VotingPanel } from '../components/voting/VotingPanel';
 import { WeeklyScheduleGrid } from '../components/schedule/WeeklyScheduleGrid';
 import { ScheduleMealPickerSheet } from '../components/schedule/ScheduleMealPickerSheet';
 import { MonthHistoryList } from '../components/schedule/MonthHistoryList';
+import { TodayCard } from '../components/today/TodayCard';
+import { dayKeyFor, cellAt } from '../weekGrid';
 
 /** Food tab. Thin orchestrator: each section's real work lives in its own hooks/components. */
 export function FoodPage() {
@@ -26,14 +28,21 @@ export function FoodPage() {
 
   const canGenerate = !voting.period || voting.period.status === 'CLOSED';
 
+  const fixToday = (slot: MealSlotKey) => {
+    const cell = cellAt(schedule.weekGrid, dayKeyFor(new Date()), slot);
+    if (cell?.id) schedule.openPicker({ mealId: cell.id, slot });
+  };
+
   return (
     <div className="flex flex-col gap-3.5 px-4 pb-8 pt-6 sm:px-6">
       <div>
         <h1 className="font-display text-[22px] font-extrabold tracking-tight text-foreground">Meal Planner</h1>
-        <p className="mt-0.5 text-[12.5px] font-medium text-muted-foreground">Create and manage your hostel's monthly menu</p>
+        <p className="mt-0.5 text-[12.5px] font-medium text-muted-foreground">What you're serving, and what's next</p>
       </div>
 
       <div className="flex flex-col gap-6.5">
+        <TodayCard grid={schedule.weekGrid} onFix={fixToday} />
+
         <div className="flex flex-col gap-3">
           <div className="flex items-baseline justify-between">
             <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Food Library</span>

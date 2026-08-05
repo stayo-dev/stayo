@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { foodService } from '@features/food/api';
 import type { MealSlotKey } from '@shared/mocks/food';
+import { toWeekGrid, type WeekGrid } from '../weekGrid';
 
 export const DAY_ORDER = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'] as const;
 export type DayKey = (typeof DAY_ORDER)[number];
@@ -78,10 +79,13 @@ export function useFoodSchedule(hostelId: string | undefined, month: string) {
     return map;
   }, [schedule]);
 
+  const weekGrid: WeekGrid = useMemo(() => toWeekGrid(schedule?.food_schedule_meals), [schedule]);
+
   return {
     isLoading: scheduleQuery.isLoading,
     schedule,
     grid,
+    weekGrid,
     generate: (votingPeriodId?: string) => generateMutation.mutate(votingPeriodId),
     isGenerating: generateMutation.isPending,
     pickerTarget,
