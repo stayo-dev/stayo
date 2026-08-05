@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { FOOD_SLOTS, type MealSlotKey } from '@shared/mocks/food';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useFoodMenuItems } from '../hooks/useFoodMenuItems';
@@ -11,20 +11,24 @@ import { WeeklyScheduleGrid } from '../components/schedule/WeeklyScheduleGrid';
 import { ScheduleMealPickerSheet } from '../components/schedule/ScheduleMealPickerSheet';
 import { MonthHistoryList } from '../components/schedule/MonthHistoryList';
 import { TodayCard } from '../components/today/TodayCard';
+import { HostelSwitcher } from '../components/HostelSwitcher';
 import { dayKeyFor, cellAt } from '../weekGrid';
 
 /** Food tab. Thin orchestrator: each section's real work lives in its own hooks/components. */
 export function FoodPage() {
   const session = useOwnerSession();
-  const library = useFoodMenuItems(session.primaryHostelId);
+  const [selectedHostelId, setSelectedHostelId] = useState<string | null>(null);
+  const hostelId = selectedHostelId ?? session.primaryHostelId;
+
+  const library = useFoodMenuItems(hostelId);
   const currentMonth = useMemo(() => new Date().toISOString().slice(0, 7), []);
   const currentMonthLabel = useMemo(
     () => new Date(`${currentMonth}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }),
     [currentMonth],
   );
-  const voting = useFoodVoting(session.primaryHostelId, currentMonth);
-  const schedule = useFoodSchedule(session.primaryHostelId, currentMonth);
-  const history = useFoodScheduleHistory(session.primaryHostelId);
+  const voting = useFoodVoting(hostelId, currentMonth);
+  const schedule = useFoodSchedule(hostelId, currentMonth);
+  const history = useFoodScheduleHistory(hostelId);
 
   const canGenerate = !voting.period || voting.period.status === 'CLOSED';
 
@@ -35,9 +39,12 @@ export function FoodPage() {
 
   return (
     <div className="flex flex-col gap-3.5 px-4 pb-8 pt-6 sm:px-6">
-      <div>
-        <h1 className="font-display text-[22px] font-extrabold tracking-tight text-foreground">Meal Planner</h1>
-        <p className="mt-0.5 text-[12.5px] font-medium text-muted-foreground">What you're serving, and what's next</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="font-display text-[22px] font-extrabold tracking-tight text-foreground">Meal Planner</h1>
+          <p className="mt-0.5 text-[12.5px] font-medium text-muted-foreground">What you're serving, and what's next</p>
+        </div>
+        <HostelSwitcher hostels={session.hostels} selectedId={hostelId} onSelect={setSelectedHostelId} />
       </div>
 
       <div className="flex flex-col gap-6.5">
