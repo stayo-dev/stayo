@@ -23,6 +23,10 @@ export interface MockExpense {
   paymentMethod: string;
   notes?: string;
   recurring?: boolean;
+  /** Receipt image, when one was attached. Enables preview/download. */
+  receiptUrl?: string | null;
+  /** Which property this cost belongs to; absent for business-wide costs. */
+  hostelId?: string | null;
 }
 
 /**
