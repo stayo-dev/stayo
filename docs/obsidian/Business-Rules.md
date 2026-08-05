@@ -77,6 +77,26 @@ Everything below was extracted by reading the actual implementation (not types, 
 - **Chronology guard**: when a caller selects specific obligations to pay, the code enforces that no earlier unpaid RENT obligation can be skipped while a later one is selected.
 - **Execution**: locks obligations `FOR UPDATE` in the same priority order via a **hand-duplicated SQL `CASE` clause** in `settlement-engine.ts` — explicitly commented as needing manual sync with the planner's priority constant (a real maintenance risk if one is changed without the other).
 
+## Collection queue prioritisation
+
+Added 2026-08-05 ([[Decisions#ADR-045|ADR-045]]). Decides **who the owner contacts first**. It reads money from the existing read models and never derives its own figure — `outstanding` and `last payment` from `financialService.getTenantPaymentSummary`, overdue-ness from `isOverdue()`.
+
+**Buckets** (section order): `NEEDS_ATTENTION` → `DUE_TODAY` → `AWAITING_REMINDER` → `DUE_SOON`. A tenant owing nothing, or whose next due date is beyond the 7-day window, is not in today's queue at all.
+
+**The reminder rule.** A tenant reminded within `reminderCooldownDays` (2) drops to `AWAITING_REMINDER` — chasing again immediately is noise. **But** once they pass `reminderCooldownMaxOverdueDays` (7) the deferral stops: a reminder that old has visibly not worked. Without that cap, live data put 7 of 10 tenants in "waiting" and ranked an 11-day-overdue tenant below a 12-day one.
+
+**Score** (orders rows *within* a bucket; every point is attributed and shown to the owner):
+
+| Factor | Points | Cap |
+|---|---|---|
+| Days overdue | `days × 2` | 60 days (120) |
+| Outstanding | `₹1,000 = 1` | 50 |
+| Previously paid late | `count × 10` | 30 |
+| Has never paid | 15 | — |
+| 3+ reminders, still unpaid | 20 | — |
+
+Caps exist so one very large balance cannot bury every genuinely overdue tenant, and so extreme lateness stops being the only differentiator. `score` always equals the sum of its factors — asserted by test. Ties break by name so the queue does not reshuffle between refreshes.
+
 ## Flexible payment links
 
 **Files:** `src/services/payments/payment-link-service.ts` (`PaymentLinkService.getOrCreateToken`), `app/api/payments/pay-link/route.ts`, `app/api/payments/pay/[token]/route.ts`, reusing the same `buildSettlementPlan` FIFO engine as offline "Receive Payment" (see [[Database]] `payment_link_tokens`, [[Decisions]] ADR-017).

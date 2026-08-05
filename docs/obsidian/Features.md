@@ -108,6 +108,18 @@ The StayO redesign is being built in place inside the same `apps/frontend` tree,
 - **Depends on:** [[Frontend]] (StayO foundation: `ThemeProvider`, `OwnerAppShell`, `shared/ui-patterns/*`), `docs/migration/frontend-foundation-tracker.md` (routing-approach note)
 - **Notes:** End-to-end click-through of the owner side of `Stayo Homepage.dc.html` → `AuthModal.dc.html` → `Owner Onboarding.dc.html` (12 steps, full animated SVG scene) → `Stayo App.dc.html`'s Home tab, faithfully ported. Two screens (Lead Submitted, Activation Link) don't exist in the design source and are now orphaned (see above). The dashboard screen this journey ends on (`OwnerDashboardPreviewPage`, at `/get-started/home`) renders `OwnerHomeDashboard`, a pure presentational component — still mock-data-driven as of this entry (real Dashboard wiring is the next phase after the signup/onboarding work below).
 
+### Intelligent Collection Queue — the owner's "where do I start" entry point
+- **Status:** shipped 2026-08-05 — **Phase 2 of 4** · see [[Decisions#ADR-045|ADR-045]]
+- **Owner-facing?** yes · **Tenant-facing?** no
+- **Route:** `/owner/money/collect`, reached from the Action Center's Collect Rent card and from All Actions.
+- **Key files:** Backend — `lib/services/collection-queue/{prioritisation.ts,collection-queue-service.ts}` (new), `app/api/owner/collection-queue/route.ts` (new), `tests/collection-queue-prioritisation.test.ts` (new, 37 pure tests). Frontend — `features/owner-collection/{collectionQueue.ts,collectionQueue.test.ts,useCollectionQueue.ts,CollectionQueuePage.tsx}` (new; 27 tests), `features/owner-dashboard/components/OwnerHomeDashboard.tsx`, `platforms/owner/router/OwnerRoutes.tsx`, `lib/queryKeys.ts`, `features/owners/api/index.js`.
+- **What's real:** every tenant who owes money is bucketed into **Needs immediate attention · Due today · Waiting after reminder · Due soon** and ranked within the bucket. Each card shows outstanding, days overdue, last payment, last reminder, room and hostel, with Collect / Call / WhatsApp inline and the tenant profile a tap away.
+- **Explainability:** the top two scoring reasons sit on the card; tapping them opens a sheet listing every factor with its points and the total. The ordering is never a black box.
+- **Depends on:** `financialService.getTenantPaymentSummary`, `isOverdue()`, `reminder_logs` — **no new financial calculation**.
+- **Notes:** Prioritisation is pure and takes `today` as a parameter, so it runs under `npm run test:pure` — which matters while the backend suite still has no test database. `recommendation: null` is on the contract from day one so the (unbuilt) recommendation engine won't require redesigning the page.
+
+  Live data caught a flaw in the reminder-cooldown rule before ship — see [[Decisions#ADR-045|ADR-045]]. **The post-fix run against live data did not happen** (local database egress was blocked); the fix is covered by unit tests reproducing the scenario exactly.
+
 ### Universal Search — the owner's "I know who I need" entry point
 - **Status:** shipped 2026-08-05 — **Phase 1 of 4** · see [[Decisions#ADR-044|ADR-044]]
 - **Owner-facing?** yes · **Tenant-facing?** no

@@ -34,6 +34,8 @@ interface OwnerHomeDashboardProps {
   onReorderProperties?: (orderedIds: string[]) => void;
   /** Opens Universal Search. See ADR-044. */
   onOpenSearch?: () => void;
+  /** Opens today's prioritised collection queue. See ADR-045. */
+  onOpenCollectionQueue?: () => void;
 }
 
 /**
@@ -58,6 +60,7 @@ export function OwnerHomeDashboard({
   onAddHostel,
   onReorderProperties,
   onOpenSearch,
+  onOpenCollectionQueue,
 }: OwnerHomeDashboardProps) {
   return (
     <div className="flex flex-col gap-7 px-4 pb-8 pt-6 sm:px-6">
@@ -101,16 +104,20 @@ export function OwnerHomeDashboard({
             View all
           </button>
         </div>
-        <DarkHeroCard className="rounded-[20px] px-5 py-[18px] shadow-[0_10px_28px_rgba(34,30,26,0.22)]">
-          <div className="flex items-center justify-between">
-            <span className="text-[12.5px] font-semibold text-background/70">Collect Rent</span>
-            <span className="text-background/55">›</span>
-          </div>
-          <div className="mt-1 font-display text-3xl font-extrabold tabular-nums tracking-tight">
-            {actionCenter.collectRent.amount}
-          </div>
-          <div className="mt-1 text-xs font-medium text-background/65">{actionCenter.collectRent.caption}</div>
-        </DarkHeroCard>
+        {/* The card showed a "›" chevron but had no handler — it went nowhere.
+            It now opens today's prioritised collection queue (ADR-045). */}
+        <button type="button" onClick={onOpenCollectionQueue} className="text-left">
+          <DarkHeroCard className="rounded-[20px] px-5 py-[18px] shadow-[0_10px_28px_rgba(34,30,26,0.22)]">
+            <div className="flex items-center justify-between">
+              <span className="text-[12.5px] font-semibold text-background/70">Collect Rent</span>
+              <span className="text-background/55">›</span>
+            </div>
+            <div className="mt-1 font-display text-3xl font-extrabold tabular-nums tracking-tight">
+              {actionCenter.collectRent.amount}
+            </div>
+            <div className="mt-1 text-xs font-medium text-background/65">{actionCenter.collectRent.caption}</div>
+          </DarkHeroCard>
+        </button>
         <div className="grid grid-cols-3 gap-2">
           <StatCard variant="action" label="Review Agreements" value={actionCenter.reviewAgreements.value} caption={actionCenter.reviewAgreements.caption} />
           <StatCard variant="action" label="Activate Tenants" value={actionCenter.activateTenants.value} caption={actionCenter.activateTenants.caption} />

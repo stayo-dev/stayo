@@ -28,6 +28,16 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### "Collect Rent" showed a chevron and went nowhere
+
+- **Status:** fixed — see [[Decisions#ADR-045|ADR-045]]
+- **Found:** 2026-08-05, during the Phase 2 audit.
+- **Area:** [[Frontend]] (owner Home)
+- **Symptom:** the Action Center's Collect Rent hero card displayed the total owed and a `›`, but tapping it did nothing.
+- **Root cause:** `DarkHeroCard` was rendered with no `onClick` and no wrapping control — the `›` was decoration. The **fifth** affordance of this class in this codebase, after the property drag handle, the partial-payments toggle, three dead rows on the old billing screen, and the Home search bar.
+- **Fix:** the card is now a real button opening today's prioritised collection queue. "Collect Rent" in the All Actions sheet routes to the same place, so both entry points lead to one workflow.
+- **Related:** [[Decisions#ADR-045|ADR-045]], [[Features]], [[Changelog]]
+
 ### The Home search bar was not a search bar, and the endpoint behind it had no callers
 
 - **Status:** fixed — see [[Decisions#ADR-044|ADR-044]]

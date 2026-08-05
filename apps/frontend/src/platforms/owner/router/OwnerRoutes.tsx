@@ -54,6 +54,9 @@ const MoreConfigHostelPage = lazy(() =>
 const MoreConfigFinancePage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigFinancePage').then((m) => ({ default: m.MoreConfigFinancePage })),
 );
+const CollectionQueuePage = lazy(() =>
+  import('@features/owner-collection/CollectionQueuePage').then((m) => ({ default: m.CollectionQueuePage })),
+);
 const MoreConfigBillingPolicyPage = lazy(() =>
   import('@features/owner-more/billing-policy/MoreConfigBillingPolicyPage').then((m) => ({
     default: m.MoreConfigBillingPolicyPage,
@@ -112,6 +115,8 @@ export function OwnerRoutes() {
         <Route path="/owner" element={<Navigate to="/owner/home" replace />} />
         <Route path="/owner/home" element={<OwnerDashboardPreviewPage />} />
 
+        {/* Today's rent-collection work queue (ADR-045). */}
+        <Route path="/owner/money/collect" element={<CollectionQueuePage />} />
         <Route path="/owner/tenants" element={<TenantsPage />} />
 
         <Route path="/owner/money" element={<MoneyPage />} />

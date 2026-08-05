@@ -89,6 +89,18 @@ export const ownerService = {
         });
         return response.data;
     },
+    /**
+     * Today's rent-collection work queue — grouped, prioritised and
+     * explainable, built server-side. `hostelId` optional (portfolio-wide by
+     * default). See ADR-045.
+     */
+    collectionQueue: async (hostelId, signal) => {
+        const response = await api.get('/owner/collection-queue', {
+            params: hostelId ? { hostelId } : {},
+            signal
+        });
+        return response.data;
+    },
     sendTestReminder: async (type = 'DUE_SOON', hostelId) => {
         const response = await api.post('/notifications/test-reminder', { type, hostel_id: hostelId });
         return response.data;

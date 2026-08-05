@@ -90,6 +90,7 @@ export function OwnerDashboardPreviewPage() {
         onAddHostel={() => navigate('/onboarding')}
         onReorderProperties={(orderedIds) => reorder.mutate(orderedIds)}
         onOpenSearch={() => setSearchOpen(true)}
+        onOpenCollectionQueue={() => navigate('/owner/money/collect')}
       />
 
       <UniversalSearchOverlay
@@ -124,7 +125,10 @@ export function OwnerDashboardPreviewPage() {
       <AllActionsSheet
         open={qa.allActionsOpen}
         onClose={qa.closeAllActions}
-        onCollectRent={qa.collectPayment}
+        onCollectRent={() => {
+          qa.closeAllActions();
+          navigate('/owner/money/collect');
+        }}
         onActivateTenants={() => {
           qa.closeAllActions();
           navigate(PENDING_ACTIVATIONS_PATH);

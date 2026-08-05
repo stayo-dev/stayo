@@ -639,6 +639,31 @@ That reading was wrong, and measurement is what showed it. Two production endpoi
 
 **Related:** [[Features]], [[APIs]], [[Bugs]], [[Changelog]], [[Frontend]], [[Backend]].
 
+## ADR-045: The collection queue is a work list with an explainable score, not a filtered tenant list
+
+**Date:** 2026-08-05 · **Status:** Accepted (Phase 2 of 4) · See [[Business-Rules]], [[Features]], [[APIs]].
+
+**Context.** The Action Center's "Collect Rent" card showed a total and a `›` chevron — and had **no `onClick`**. The fifth dead affordance found in this codebase. Owners could see ₹1,08,600 was owed and had nowhere to go with it.
+
+**Audit first, per the standing rule.** `/api/owner/finance/collections` is a 410 tombstone. `paymentService.getDuesReport` is per-*obligation* and hostel-scoped, while a queue is per-*tenant* and portfolio-wide. `financialService.getTenantDues` is per-tenant and async — N+1 for a list. The right primitive already existed: **`financialService.getTenantPaymentSummary`**, which is sync and documented as taking pre-fetched rows specifically for batch/list views, plus **`isOverdue()`** from the settlement planner and the **`reminder_logs`** table.
+
+**Decision.**
+
+1. **Never compute money twice.** `outstanding` and `last payment` come from `getTenantPaymentSummary`; overdue-ness from `isOverdue()`. The queue service assembles existing answers and orders them — it derives no financial figure of its own.
+2. **Fixed query budget of 4**, whatever the tenant count: tenants, open obligations (+payments), reminders (grouped), historically-late obligations. A per-tenant fan-out would be 2N.
+3. **Every point is attributed.** A score is never a bare number: `factors[]` carries `{id, label, points}` in owner language, the UI shows the top two on the card and all of them in a bottom sheet, and a test asserts `score === sum(factors)`. Ordering can always be explained without reading code.
+4. **Buckets order sections; score orders within a section.** One global score would let a large not-yet-due balance outrank a small long-overdue one — the opposite of how an owner works.
+5. **A recent reminder defers a tenant, but only up to a point.** Chasing someone the day after you chased them is noise. **Caught against live data:** without a severity cap this rule put 7 of 10 tenants into "waiting" and demoted an 11-day-overdue tenant below a 12-day one, reporting almost no work while ₹59,000 sat uncollected. `reminderCooldownMaxOverdueDays` (7) now stops the deferral once reminders have visibly failed.
+6. **`recommendation: null` ships on the contract from day one.** The recommendation engine is explicitly out of scope, but reserving the field means adding it later is a value change, not a redesign of the page.
+
+**Consequences.**
+- The service takes `hostelFilter: string | null`, **not** an optional hostel id. The architectural invariant caught the optional form and was right to: explicit `null` makes "whole portfolio" a stated decision rather than a forgotten argument. (Amusing side-note: the check is a plain regex over source, so quoting the banned signature *in a comment explaining the avoidance* also tripped it.)
+- Prioritisation is pure and clock-injected (`today` is a parameter), so ordering is reproducible and runs under `npm run test:pure` — which matters, because the backend suite still cannot run without a test database.
+- Buckets are returned only when non-empty; an empty section is a decision the owner has to make for no benefit.
+- **Not verified end-to-end against live data after the severity fix.** The pre-fix run is what exposed the flaw, but local egress to the database was blocked before a post-fix re-run (the deployed `/api/health` proved the database itself was healthy). The fix is covered by unit tests reproducing the exact scenario.
+
+**Related:** [[Business-Rules]], [[Features]], [[APIs]], [[Bugs]], [[Changelog]].
+
 ## See also
 - [[Changelog]] for the chronological record of what shipped
 - [[Architecture]] for the system these decisions govern
