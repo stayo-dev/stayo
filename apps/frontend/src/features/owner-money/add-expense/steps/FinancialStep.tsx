@@ -4,6 +4,9 @@ import { PAYMENT_METHOD_OPTIONS } from '@shared/mocks/expenses';
 import type { AddExpenseData } from '../../types';
 import { Check } from 'lucide-react';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
+import { TrendingUp, TrendingDown } from 'lucide-react';
+import { useExpenseMemory } from '../useExpenseMemory';
+import { priceChange } from '../priceChange';
 
 interface FinancialStepProps {
   data: AddExpenseData;
@@ -17,6 +20,18 @@ export function FinancialStep({ data, setD }: FinancialStepProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const session = useOwnerSession();
   const hostels = session.hostels ?? [];
+
+  // Compare what they're typing against what they've actually paid before for
+  // this exact thing. Historical only — no prediction, no AI. Silent unless
+  // there is real history and a real difference (ADR-047).
+  const { entries } = useExpenseMemory(data.title);
+  const match = entries.find(
+    (e) => e.key.trim().toLowerCase() === data.title.trim().toLowerCase(),
+  );
+  const priceNote =
+    match && Number(data.amount) > 0
+      ? priceChange(Number(data.amount), match.occurrences, match.averageAmount)
+      : null;
 
   return (
     <div className="flex flex-col gap-5">
@@ -63,6 +78,23 @@ export function FinancialStep({ data, setD }: FinancialStepProps) {
               {data.hostelId === '' && <Check className="h-4 w-4 flex-none text-primary" strokeWidth={2.5} />}
             </button>
           </div>
+        </div>
+      )}
+
+      {priceNote && (
+        <div
+          className={`flex items-start gap-2 rounded-xl border px-3.5 py-2.5 ${
+            priceNote.direction === 'up'
+              ? 'border-warning/30 bg-warning/10'
+              : 'border-success/30 bg-success/10'
+          }`}
+        >
+          {priceNote.direction === 'up' ? (
+            <TrendingUp className="mt-0.5 h-3.5 w-3.5 flex-none text-warning" strokeWidth={2.2} />
+          ) : (
+            <TrendingDown className="mt-0.5 h-3.5 w-3.5 flex-none text-success" strokeWidth={2.2} />
+          )}
+          <span className="text-[11.5px] leading-relaxed text-foreground">{priceNote.message}</span>
         </div>
       )}
 

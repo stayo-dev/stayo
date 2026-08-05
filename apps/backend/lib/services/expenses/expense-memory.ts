@@ -206,3 +206,42 @@ export function reusePayload(entry: MemoryEntry): {
     notes: entry.notes,
   };
 }
+
+/**
+ * Is this amount unusual for this vendor/expense?
+ *
+ * Historical only — compares against what the owner has actually paid before.
+ * Returns null when there isn't enough history to make the claim, because
+ * telling someone their second-ever purchase is "unusual" is noise.
+ *
+ * The threshold is deliberately generous: groceries move a few percent
+ * constantly, and an alert that fires every time is one the owner learns to
+ * ignore.
+ */
+export function priceChangeNote(
+  amount: number,
+  facts: Pick<MemoryFacts, 'occurrences' | 'averageAmount' | 'key'>,
+  options: { minOccurrences?: number; thresholdPercent?: number } = {},
+): { direction: 'up' | 'down'; percent: number; message: string } | null {
+  const minOccurrences = options.minOccurrences ?? 2;
+  const threshold = options.thresholdPercent ?? 15;
+
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  if (facts.occurrences < minOccurrences) return null;
+  if (!facts.averageAmount || facts.averageAmount <= 0) return null;
+
+  const diff = ((amount - facts.averageAmount) / facts.averageAmount) * 100;
+  const percent = Math.round(Math.abs(diff));
+  if (percent < threshold) return null;
+
+  const direction = diff > 0 ? 'up' : 'down';
+  const usual = formatINR(facts.averageAmount);
+  return {
+    direction,
+    percent,
+    message:
+      direction === 'up'
+        ? `${percent}% above your usual ${usual}`
+        : `${percent}% below your usual ${usual}`,
+  };
+}

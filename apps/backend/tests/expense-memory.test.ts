@@ -9,6 +9,7 @@ import {
   buildMemoryEntry,
   sortMemory,
   reusePayload,
+  priceChangeNote,
   DEFAULT_MEMORY_CONFIG,
   type MemoryFacts,
 } from '@/lib/services/expenses/expense-memory';
@@ -222,5 +223,44 @@ describe('reusePayload — never invents a value', () => {
     const payload = reusePayload(entry);
     expect(payload.title).toBe('Sri Rice Traders');
     expect(payload.vendorName).toBe('Sri Rice Traders');
+  });
+});
+
+describe('priceChangeNote — historical, never speculative', () => {
+  const base = { occurrences: 6, averageAmount: 8000, key: 'Rice purchase' };
+
+  it('flags a meaningful increase in owner language', () => {
+    const note = priceChangeNote(9500, base);
+    expect(note?.direction).toBe('up');
+    expect(note?.percent).toBe(19);
+    expect(note?.message).toBe('19% above your usual ₹8,000');
+  });
+
+  it('flags a meaningful decrease too — a price drop is worth noticing', () => {
+    expect(priceChangeNote(6000, base)?.direction).toBe('down');
+  });
+
+  it('stays silent on normal fluctuation', () => {
+    // Groceries move a few percent constantly; an alert that always fires
+    // is one the owner learns to ignore.
+    expect(priceChangeNote(8400, base)).toBeNull();
+    expect(priceChangeNote(7600, base)).toBeNull();
+  });
+
+  it('stays silent without enough history to make the claim', () => {
+    expect(priceChangeNote(20000, { ...base, occurrences: 1 })).toBeNull();
+  });
+
+  it('stays silent when there is no usual amount to compare against', () => {
+    expect(priceChangeNote(9500, { ...base, averageAmount: 0 })).toBeNull();
+  });
+
+  it('ignores a missing or nonsensical amount', () => {
+    expect(priceChangeNote(0, base)).toBeNull();
+    expect(priceChangeNote(NaN, base)).toBeNull();
+  });
+
+  it('respects a custom threshold', () => {
+    expect(priceChangeNote(8400, base, { thresholdPercent: 4 })?.percent).toBe(5);
   });
 });

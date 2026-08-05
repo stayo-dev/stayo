@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { prisma } from "../db";
-import { buildMemoryEntry, sortMemory, type MemoryFacts, type MemoryEntry } from "./expenses/expense-memory";
+import { buildMemoryEntry, sortMemory, priceChangeNote, type MemoryFacts, type MemoryEntry } from "./expenses/expense-memory";
 import { eventSystem } from "../events";
 
 const EXPENSE_CATEGORIES = [
