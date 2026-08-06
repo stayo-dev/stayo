@@ -7,6 +7,7 @@ import { HeroShowcase } from './components/HeroShowcase';
 import { MarketingFooter } from './components/MarketingFooter';
 import { TrishulMark } from '@shared/ui-patterns/TrishulMark';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
+import { OwnerEnquiryPrompt } from '@features/owner-onboarding/components/OwnerEnquiryPrompt';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 
 const OWNER_STEPS = [
@@ -149,6 +150,10 @@ export function LandingPage() {
         onSuccess={handleAuthSuccess}
       />
       <GoogleSignInModal open={googleAuthOpen} onClose={() => setGoogleAuthOpen(false)} />
+      <OwnerEnquiryPrompt
+        isOwnerWithHostel={session.isAuthenticated && session.hostels.length > 0}
+        onAccept={openOwnerAuth}
+      />
 
       {/* ============ NAV ============ */}
       <nav
