@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+import crypto from "crypto";
 import { NextRequest } from "next/server";
 import { apiResponse, apiError } from "@/lib/auth";
 import { LeadSelfServeSchema } from "@/lib/validators";
@@ -8,6 +9,7 @@ import { normalizeWhatsAppPhone } from "@/lib/services/notifications/providers/w
 import { resolveSignupPhoneVerification } from "@/lib/services/auth/signup-phone-verification-gate";
 import { prisma } from "@/lib/db";
 import { eventLog } from "@/lib/services/event-log-service";
+import { platformLeadNotificationService } from "@/src/services/platform-leads/platform-lead-notification-service";
 
 const OTP_PURPOSE = "LEAD_CAPTURE";
 
@@ -43,12 +45,20 @@ export async function POST(req: NextRequest) {
         city: city || null,
         bed_count: bed_count ?? null,
         status: "NEW",
+        tracking_token: crypto.randomBytes(32).toString("hex"),
       },
     });
 
     await eventLog.log("LEAD_CREATED", null, { lead_id: lead.id, hostel_name: lead.hostel_name });
 
-    return apiResponse({ id: lead.id, status: lead.status }, 201);
+    // Fire-and-forget: a WhatsApp outage must never cost us a captured lead.
+    // The tracking link is also shown on the submission success screen, so
+    // the applicant is not dependent on this message arriving.
+    void platformLeadNotificationService
+      .sendLeadReceived({ id: lead.id, name: lead.name, phone: lead.phone, tracking_token: lead.tracking_token })
+      .catch((err) => console.error("[leads.self-serve] lead-received notify failed", err));
+
+    return apiResponse({ id: lead.id, status: lead.status, tracking_token: lead.tracking_token }, 201);
   } catch (error: any) {
     console.error("Detailed API Error [leads.self-serve]:", error);
     return apiError("Could not submit your details. Please try again.", "INTERNAL_ERROR", 500);
