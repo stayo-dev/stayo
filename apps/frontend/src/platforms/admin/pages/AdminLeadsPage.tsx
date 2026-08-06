@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, X, Phone, MessageCircle, ChevronRight } from 'lucide-react';
 import { stayoToast } from '@shared/ui-patterns/Toast';
@@ -24,6 +24,11 @@ const MANUALLY_SETTABLE_STATUSES = ['NEW', 'UNDER_REVIEW', 'LOST'];
 // lead-invitation-service.ts) — the button stays available so the admin
 // can retry, rather than the lead getting silently stuck.
 const APPROVABLE_STATUSES = ['NEW', 'UNDER_REVIEW', 'APPROVED'];
+// Mirrors canRejectLead() in lead-transition-guards.ts. Once an activation
+// link has been issued, declining is a cancellation of that invitation, not
+// a status write — so the button must not be offered for APPROVED onward,
+// which the old silent `status: LOST` button wrongly allowed.
+const REJECTABLE_STATUSES = ['NEW', 'UNDER_REVIEW'];
 
 const TIMELINE_LABEL: Record<string, string> = {
   LEAD_CREATED: 'Lead created',
@@ -85,6 +90,9 @@ export function AdminLeadsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [applicantMessage, setApplicantMessage] = useState('');
 
   const listQuery = useQuery({
     queryKey: ['admin', 'leads', search, statusFilter],
@@ -118,11 +126,42 @@ export function AdminLeadsPage() {
     onError: (error: any) => stayoToast.error(error?.response?.data?.error?.message || 'Could not approve lead'),
   });
 
+  const rejectMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => platformAdminService.rejectLead(id, reason),
+    onSuccess: (_result, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'leads'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'lead-detail', variables.id] });
+      stayoToast.success('Lead rejected — the applicant has been notified');
+      setRejectOpen(false);
+      setRejectReason('');
+      setOpenId(null);
+    },
+    onError: (error: any) =>
+      stayoToast.error(error?.response?.data?.error?.message || 'Could not reject lead'),
+  });
+
+  const applicantMessageMutation = useMutation({
+    mutationFn: ({ id, message }: { id: string; message: string }) =>
+      platformAdminService.updateLeadApplicantMessage(id, message),
+    onSuccess: (_result, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'leads'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'lead-detail', variables.id] });
+      stayoToast.success('Message saved — the applicant can see it now');
+    },
+    onError: () => stayoToast.error('Could not save the message'),
+  });
+
   const leadDetailQuery = useQuery({
     queryKey: ['admin', 'lead-detail', openId],
     queryFn: () => platformAdminService.getLead(openId as string),
     enabled: Boolean(openId),
   });
+
+  useEffect(() => {
+    setApplicantMessage(leadDetailQuery.data?.applicant_message ?? '');
+    setRejectOpen(false);
+    setRejectReason('');
+  }, [leadDetailQuery.data?.applicant_message, openId]);
 
   const openLead = leadDetailQuery.data ?? listQuery.data?.find((l) => l.id === openId);
   const timeline: Array<{ id: string; event_type: string; created_at: string }> = leadDetailQuery.data?.timeline ?? [];
@@ -294,7 +333,31 @@ export function AdminLeadsPage() {
                 </div>
                 {openLead.google_email && <div className="flex justify-between"><span className="text-[12.5px] text-[#8A7F75]">Email</span><span className="text-[12.5px] font-bold text-foreground">{openLead.google_email}</span></div>}
                 {openLead.city && <div className="flex justify-between"><span className="text-[12.5px] text-[#8A7F75]">City</span><span className="text-[12.5px] font-bold text-foreground">{openLead.city}</span></div>}
-                {openLead.notes && <div className="flex justify-between gap-3"><span className="flex-none text-[12.5px] text-[#8A7F75]">Notes</span><span className="text-right text-[12.5px] text-foreground">{openLead.notes}</span></div>}
+                {openLead.notes && <div className="flex justify-between gap-3"><span className="flex-none text-[12.5px] text-[#8A7F75]">Internal notes</span><span className="text-right text-[12.5px] text-foreground">{openLead.notes}</span></div>}
+              </div>
+
+              <div className="mb-3 mt-6 text-[11px] font-bold uppercase tracking-[0.05em] text-[#9C9186]">
+                Message to applicant
+              </div>
+              <div className="rounded-[13px] border border-[#EFE6DA] bg-white p-4">
+                <p className="mb-2 text-[11.5px] leading-relaxed text-[#8A7F75]">
+                  Shown to them on their enquiry status page. Internal notes above are never shown.
+                </p>
+                <textarea
+                  value={applicantMessage}
+                  onChange={(e) => setApplicantMessage(e.target.value)}
+                  rows={3}
+                  placeholder="e.g. Thanks — we're verifying your property details and will be back by Friday."
+                  className="w-full resize-none rounded-[10px] border border-[#E7DDD1] bg-[#F7F3EF] px-3 py-2.5 text-[12.5px] text-foreground outline-none focus:border-primary"
+                />
+                <button
+                  type="button"
+                  disabled={applicantMessageMutation.isPending}
+                  onClick={() => applicantMessageMutation.mutate({ id: openLead.id, message: applicantMessage })}
+                  className="mt-2 h-9 w-full rounded-[10px] border border-[#E7DDD1] bg-white text-[12px] font-bold text-[#8A7F75] hover:border-primary hover:text-primary disabled:opacity-60"
+                >
+                  {applicantMessageMutation.isPending ? 'Saving…' : 'Save message'}
+                </button>
               </div>
 
               <div className="mb-3 mt-6 text-[11px] font-bold uppercase tracking-[0.05em] text-[#9C9186]">Timeline</div>
@@ -315,28 +378,65 @@ export function AdminLeadsPage() {
               )}
             </div>
 
-            {APPROVABLE_STATUSES.includes(openLead.status) && (
+            {(APPROVABLE_STATUSES.includes(openLead.status) || REJECTABLE_STATUSES.includes(openLead.status)) && (
               <div className="flex-none border-t border-[#EFE6DA] bg-white px-[22px] py-4">
-                <div className="flex gap-2.5">
-                  <button
-                    type="button"
-                    disabled={approveMutation.isPending}
-                    onClick={() => approveMutation.mutate(openLead.id)}
-                    className="h-10 flex-1 rounded-[10px] bg-success text-[12.5px] font-bold text-white disabled:opacity-60"
-                  >
-                    {approveMutation.isPending ? 'Sending…' : openLead.status === 'APPROVED' ? 'Retry Send' : 'Approve Lead'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      statusMutation.mutate({ id: openLead.id, status: 'LOST' });
-                      setOpenId(null);
-                    }}
-                    className="h-10 flex-1 rounded-[10px] border border-[#EAD0C9] bg-white text-[12.5px] font-bold text-[#C0503A]"
-                  >
-                    Reject
-                  </button>
-                </div>
+                {rejectOpen ? (
+                  <div>
+                    <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.05em] text-[#9C9186]">
+                      Reason for rejection
+                    </label>
+                    <p className="mb-2 text-[11.5px] leading-relaxed text-[#8A7F75]">
+                      This is sent to the applicant on WhatsApp, so write it for them to read.
+                    </p>
+                    <textarea
+                      value={rejectReason}
+                      onChange={(e) => setRejectReason(e.target.value)}
+                      rows={2}
+                      autoFocus
+                      placeholder="e.g. We're not onboarding properties in this city yet."
+                      className="w-full resize-none rounded-[10px] border border-[#E7DDD1] bg-[#F7F3EF] px-3 py-2.5 text-[12.5px] text-foreground outline-none focus:border-primary"
+                    />
+                    <div className="mt-2.5 flex gap-2.5">
+                      <button
+                        type="button"
+                        disabled={!rejectReason.trim() || rejectMutation.isPending}
+                        onClick={() => rejectMutation.mutate({ id: openLead.id, reason: rejectReason.trim() })}
+                        className="h-10 flex-1 rounded-[10px] bg-[#C0503A] text-[12.5px] font-bold text-white disabled:opacity-50"
+                      >
+                        {rejectMutation.isPending ? 'Rejecting…' : 'Confirm rejection'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setRejectOpen(false); setRejectReason(''); }}
+                        className="h-10 flex-1 rounded-[10px] border border-[#E7DDD1] bg-white text-[12.5px] font-bold text-[#8A7F75]"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-2.5">
+                    {APPROVABLE_STATUSES.includes(openLead.status) && (
+                      <button
+                        type="button"
+                        disabled={approveMutation.isPending}
+                        onClick={() => approveMutation.mutate(openLead.id)}
+                        className="h-10 flex-1 rounded-[10px] bg-success text-[12.5px] font-bold text-white disabled:opacity-60"
+                      >
+                        {approveMutation.isPending ? 'Sending…' : openLead.status === 'APPROVED' ? 'Retry Send' : 'Approve Lead'}
+                      </button>
+                    )}
+                    {REJECTABLE_STATUSES.includes(openLead.status) && (
+                      <button
+                        type="button"
+                        onClick={() => setRejectOpen(true)}
+                        className="h-10 flex-1 rounded-[10px] border border-[#EAD0C9] bg-white text-[12.5px] font-bold text-[#C0503A]"
+                      >
+                        Reject
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>

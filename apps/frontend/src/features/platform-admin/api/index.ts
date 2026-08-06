@@ -45,6 +45,14 @@ export const platformAdminService = {
     const response = await api.post(`/platform-admin/leads/${id}/approve`);
     return unwrap(response) as { lead: any; whatsapp_sent: boolean; whatsapp_error?: string; email_sent: boolean; email_error?: string };
   },
+  rejectLead: async (id: string, reason: string) => {
+    const response = await api.post(`/platform-admin/leads/${id}/reject`, { reason });
+    return unwrap(response);
+  },
+  updateLeadApplicantMessage: async (id: string, applicant_message: string) => {
+    const response = await api.patch(`/platform-admin/leads/${id}`, { applicant_message });
+    return unwrap(response);
+  },
 
   getPlans: async () => {
     const response = await api.get('/platform-admin/plans');
