@@ -28,6 +28,16 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### The frontend's CSP `connect-src` hardcoded a single backend origin, silently blocking any dev-environment frontend from reaching its own backend
+
+- **Status:** fixed
+- **Found:** 2026-08-07, while standing up a separate dev/testing Vercel deployment (`dev` branch → `stayo-testing.vercel.app` backend project) alongside the existing production one.
+- **Area:** [[Frontend]] (`apps/frontend/vercel.json`)
+- **Symptom:** the frontend's own `axios` client already builds its API base URL correctly and exclusively from `VITE_API_URL` (`apps/frontend/src/lib/api-client.ts` — no hardcoded host, no silent fallback, by design), so pointing a new dev frontend deployment's `VITE_API_URL` at the dev backend (`https://stayo-testing.vercel.app/api`) should have been sufficient. But `apps/frontend/vercel.json`'s CSP `connect-src` directive only allowlisted the production backend origin (`https://stayo-backend-stayo-devs-projects.vercel.app`) — the browser would block every XHR/fetch to any other origin regardless of what `VITE_API_URL` said, with no indication in application code that this was the cause.
+- **Root cause:** `vercel.json` is static JSON parsed by the Vercel platform before/independent of the app build — it cannot read `process.env` or be templated per-environment the way Vite's `import.meta.env.VITE_*` substitution can. The CSP header (and the `/pay/:token` WhatsApp-payment-link rewrites, same file) were written assuming a single backend ever existed, which was true until a second (dev) backend project was introduced.
+- **Fix:** added the dev backend origin (`https://stayo-testing.vercel.app`) alongside the existing prod origin in `connect-src`, as a static multi-origin allowlist — both environments' frontends can build against the same `vercel.json` and reach either backend, since the actual routing decision is already made correctly at build time via `VITE_API_URL`. The `/pay/:token` rewrites were deliberately left pointed at prod only, since WhatsApp payment deep links aren't part of dev/testing flows; a true per-environment dynamic config (Vercel's Build Output API generating `.vercel/output/config.json`) was considered and rejected for now as disproportionate to the actual need.
+- **Related:** [[Frontend]], [[Changelog]]
+
 ### A round trip through a `datetime-local` input walked the voting window backwards, and a live drag had no way back
 
 - **Status:** fixed
