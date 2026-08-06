@@ -32,7 +32,11 @@ export function HostelSwitcher({ hostels, selectedId, onSelect }: HostelSwitcher
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Choose hostel"
-        className="flex min-h-[44px] max-w-[46vw] flex-none items-center gap-1.5 rounded-xl border border-border bg-card py-2.5 pl-3.5 pr-2.5 text-left"
+        // A px cap, not `46vw`: the shell is capped at `sm:max-w-[480px]`, so
+        // on a desktop `46vw` is wider than the whole app and stops binding —
+        // which is the overflow this control was rewritten to fix. 180px is
+        // what 46vw already resolved to on the phone it was tuned for.
+        className="flex min-h-[44px] max-w-[180px] flex-none items-center gap-1.5 rounded-xl border border-border bg-card py-2.5 pl-3.5 pr-2.5 text-left"
       >
         <span className="truncate text-[12.5px] font-semibold text-foreground">
           {selected?.name ?? 'Choose hostel'}
