@@ -14,6 +14,13 @@ export type WhatsAppTemplateDeliveryInput = {
   phone: string;
   templateName: string;
   bodyParameters: string[];
+  /**
+   * Dynamic URL-button suffixes, in button order. `MetaWhatsAppProvider
+   * .sendTemplate` has always supported these; this service simply never
+   * passed them through, which blocked any template with a dynamic button
+   * from using the idempotent delivery path.
+   */
+  buttonParameters?: string[];
   idempotencyKey: string;
   tenantId?: string;
   hostelId?: string;
@@ -78,6 +85,7 @@ export class WhatsAppTemplateDeliveryService {
         to: normalizedPhone,
         templateName: input.templateName,
         bodyParameters: input.bodyParameters,
+        buttonParameters: input.buttonParameters,
         language: input.languageCode ? { code: input.languageCode } : undefined,
       });
 
