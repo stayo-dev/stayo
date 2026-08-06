@@ -61,7 +61,18 @@ export async function GET(
       byMealType[mealType].sort((a, b) => b.votes - a.votes || a.name.localeCompare(b.name));
     }
 
-    return apiResponse({ votingPeriod: period, totalVotes, byMealType });
+    // totalVotes counts vote rows (a tenant can pick several items per meal
+    // type); turnout needs distinct tenants instead.
+    const voters = await prisma.food_votes.findMany({
+      where: { voting_period_id: id },
+      select: { tenant_id: true },
+      distinct: ["tenant_id"],
+    });
+    const eligible = await prisma.tenants.count({
+      where: { hostel_id: period.hostel_id, status: "ACTIVE", profile_id: { not: null } },
+    });
+
+    return apiResponse({ votingPeriod: period, totalVotes, voterCount: voters.length, eligibleCount: eligible, byMealType });
   } catch (error: any) {
     return apiError(error?.message || "Failed to fetch voting results");
   }

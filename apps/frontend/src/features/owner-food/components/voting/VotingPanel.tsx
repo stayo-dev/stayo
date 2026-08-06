@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle2, Vote } from 'lucide-react';
+import { CheckCircle2, Pencil, Vote } from 'lucide-react';
 import { MEAL_CATEGORY_META, type MealSlotKey } from '@shared/mocks/food';
 import type { useFoodVoting } from '../../hooks/useFoodVoting';
 import { mealIcon } from '../../mealIcons';
@@ -28,6 +28,11 @@ function defaultEnd() {
 export function VotingPanel({ voting, monthLabel }: VotingPanelProps) {
   const [startsAt, setStartsAt] = useState(defaultStart);
   const [endsAt, setEndsAt] = useState(defaultEnd);
+  // Collapsed edit-window control for an already-open period — reuses the
+  // same upsert endpoint as opening a new round, so no new API call.
+  const [isEditingWindow, setIsEditingWindow] = useState(false);
+  const [editStartsAt, setEditStartsAt] = useState('');
+  const [editEndsAt, setEditEndsAt] = useState('');
 
   if (voting.isLoading) {
     return <div className="h-32 animate-pulse rounded-2xl bg-muted" />;
@@ -70,6 +75,20 @@ export function VotingPanel({ voting, monthLabel }: VotingPanelProps) {
   const isOpen = voting.period.status === 'OPEN';
   const tallyBySlot = voting.results?.byMealType ?? {};
 
+  function openEditWindow() {
+    // Pre-fill from the current window, matching defaultStart/defaultEnd's
+    // own UTC-via-toISOString approach rather than introducing a timezone
+    // conversion the rest of this file doesn't do.
+    setEditStartsAt(new Date(voting.period.voting_starts_at).toISOString().slice(0, 16));
+    setEditEndsAt(new Date(voting.period.voting_ends_at).toISOString().slice(0, 16));
+    setIsEditingWindow(true);
+  }
+
+  function saveEditWindow() {
+    voting.openVoting(new Date(editStartsAt).toISOString(), new Date(editEndsAt).toISOString());
+    setIsEditingWindow(false);
+  }
+
   return (
     <div className="flex flex-col gap-3 rounded-[18px] border border-border bg-card p-4 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]">
       <div className="flex items-center justify-between gap-2">
@@ -85,15 +104,64 @@ export function VotingPanel({ voting, monthLabel }: VotingPanelProps) {
           </div>
         </div>
         {isOpen && (
-          <button
-            type="button"
-            disabled={voting.isClosing}
-            onClick={voting.closeVoting}
-            className="flex-none rounded-lg border border-border px-3 py-2 font-display text-[11.5px] font-bold text-foreground disabled:opacity-50"
-          >
-            {voting.isClosing ? 'Closing…' : 'Close Voting'}
-          </button>
+          <div className="flex flex-none items-center gap-2">
+            <button
+              type="button"
+              onClick={openEditWindow}
+              className="flex min-h-11 items-center gap-1 rounded-lg border border-border px-3 py-2 font-display text-[11.5px] font-bold text-foreground"
+            >
+              <Pencil className="h-3.5 w-3.5" strokeWidth={1.8} />
+              Edit window
+            </button>
+            <button
+              type="button"
+              disabled={voting.isClosing}
+              onClick={voting.closeVoting}
+              className="min-h-11 rounded-lg border border-border px-3 py-2 font-display text-[11.5px] font-bold text-foreground disabled:opacity-50"
+            >
+              {voting.isClosing ? 'Closing…' : 'Close Voting'}
+            </button>
+          </div>
         )}
+      </div>
+
+      {isOpen && isEditingWindow && (
+        <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/40 p-3">
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className={labelStyle}>Starts</span>
+              <input type="datetime-local" value={editStartsAt} onChange={(e) => setEditStartsAt(e.target.value)} className={inputStyle} />
+            </label>
+            <label className="block">
+              <span className={labelStyle}>Ends</span>
+              <input type="datetime-local" value={editEndsAt} onChange={(e) => setEditEndsAt(e.target.value)} className={inputStyle} />
+            </label>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={voting.isOpening}
+              onClick={saveEditWindow}
+              className="min-h-11 flex-1 rounded-xl bg-primary py-3 text-center font-display text-[13px] font-bold text-primary-foreground disabled:opacity-50"
+            >
+              {voting.isOpening ? 'Saving…' : 'Save'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsEditingWindow(false)}
+              className="min-h-11 flex-none rounded-xl border border-border px-4 font-display text-[13px] font-bold text-foreground"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-baseline gap-1.5 text-[12px] text-muted-foreground">
+        <span className="font-display text-[15px] font-bold tabular-nums text-foreground">
+          {voting.results?.voterCount ?? 0}
+        </span>
+        of {voting.results?.eligibleCount ?? 0} students voted
       </div>
 
       {(voting.results?.totalVotes ?? 0) === 0 ? (

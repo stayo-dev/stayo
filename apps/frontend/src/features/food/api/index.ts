@@ -40,7 +40,7 @@ export const foodService = {
   },
   getVotingResults: async (votingPeriodId: string) => {
     const response = await api.get(`/food/voting-periods/${votingPeriodId}/results`);
-    return unwrap(response) as { votingPeriod: any; totalVotes: number; byMealType: Record<string, { menu_item_id: string; name: string; votes: number }[]> };
+    return unwrap(response) as { votingPeriod: any; totalVotes: number; voterCount: number; eligibleCount: number; byMealType: Record<string, { menu_item_id: string; name: string; votes: number }[]> };
   },
 
   // Voting (tenant)
