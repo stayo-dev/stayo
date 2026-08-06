@@ -9,7 +9,6 @@
 import { checkOtpTemplateContract } from "../lib/services/notifications/providers/whatsapp/otp-template-contract";
 import { checkInvitationTemplateContract } from "../lib/services/notifications/providers/whatsapp/invitation-template-contract";
 import { checkOnboardingTemplateContract } from "../lib/services/notifications/providers/whatsapp/onboarding-template-contract";
-import { checkOwnerWelcomeTemplateContract } from "../lib/services/notifications/providers/whatsapp/owner-welcome-template-contract";
 
 async function checkOne(
   label: string,
@@ -43,7 +42,6 @@ async function main() {
     await checkOne("OTP", checkOtpTemplateContract),
     await checkOne("invitation", checkInvitationTemplateContract),
     await checkOne("onboarding-complete", checkOnboardingTemplateContract),
-    await checkOne("owner-welcome", checkOwnerWelcomeTemplateContract),
   ];
   return codes.some((c) => c !== 0) ? 1 : 0;
 }

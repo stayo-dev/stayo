@@ -164,12 +164,7 @@ export function AdminHostelsPage() {
                   <span className="truncate text-[14px] font-bold text-foreground">{hostel.name}</span>
                   <Chip status={hostel.listing_status} map={LISTING_CHIP} />
                 </div>
-                <div className="mt-1 text-[12px] text-[#8A7F75]">
-                  {hostel.owner} · {hostel.city ?? '—'}
-                  {hostel.owner_hostel_count > 1 && (
-                    <span className="ml-1.5 rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-bold text-primary">{hostel.owner_hostel_count} hostels</span>
-                  )}
-                </div>
+                <div className="mt-1 text-[12px] text-[#8A7F75]">{hostel.owner} · {hostel.city ?? '—'}</div>
                 <div className="mt-2.5 grid grid-cols-4 gap-2 border-t border-[#F2ECE5] pt-2.5">
                   <div><div className="text-[10px] font-semibold text-[#9C9186]">Tenants</div><div className="text-[13px] font-bold text-foreground">{hostel.tenants}</div></div>
                   <div><div className="text-[10px] font-semibold text-[#9C9186]">Occ.</div><div className="text-[13px] font-bold text-foreground">{hostel.occupancy}%</div></div>
@@ -232,15 +227,7 @@ export function AdminHostelsPage() {
 
                   <div className="mt-5 rounded-[13px] border border-[#EFE6DA] bg-[#F7F3EF] p-4">
                     <div className="flex flex-col gap-3.5">
-                      <div>
-                        <div className="text-[11px] font-bold uppercase tracking-[0.04em] text-[#9C9186]">Owner</div>
-                        <div className="mt-0.5 flex items-center gap-1.5 text-[13.5px] font-semibold text-foreground">
-                          {h.owner?.name ?? '—'}
-                          {h.owner_hostel_count > 1 && (
-                            <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-bold text-primary">{h.owner_hostel_count} hostels</span>
-                          )}
-                        </div>
-                      </div>
+                      <div><div className="text-[11px] font-bold uppercase tracking-[0.04em] text-[#9C9186]">Owner</div><div className="mt-0.5 text-[13.5px] font-semibold text-foreground">{h.owner?.name ?? '—'}</div></div>
                       <div><div className="text-[11px] font-bold uppercase tracking-[0.04em] text-[#9C9186]">Contact Number</div><div className="mt-0.5 text-[13.5px] font-semibold tabular-nums text-foreground">{h.phone}</div></div>
                       <div><div className="text-[11px] font-bold uppercase tracking-[0.04em] text-[#9C9186]">Address</div><div className="mt-0.5 text-[13.5px] leading-snug text-[#8A7F75]">{[h.address, h.city, h.state, h.pincode].filter(Boolean).join(', ')}</div></div>
                       <div className="h-px bg-[#EFE6DA]" />
@@ -257,28 +244,6 @@ export function AdminHostelsPage() {
                       </div>
                     </div>
                   </div>
-
-                  {h.sibling_hostels && h.sibling_hostels.length > 0 && (
-                    <div className="mt-4 rounded-[13px] border border-[#EFE6DA] p-4">
-                      <div className="mb-3 text-[13px] font-bold text-foreground">Other hostels by this owner ({h.sibling_hostels.length})</div>
-                      <div className="flex flex-col gap-1.5">
-                        {h.sibling_hostels.map((sib: { id: string; name: string; city: string | null; listing_status: string }) => (
-                          <button
-                            key={sib.id}
-                            type="button"
-                            onClick={() => setSelectedId(sib.id)}
-                            className="flex items-center justify-between gap-2 rounded-[10px] border border-[#EFE6DA] bg-[#F7F3EF] px-3 py-2.5 text-left hover:border-primary"
-                          >
-                            <span className="min-w-0 truncate text-[12.5px] font-semibold text-foreground">{sib.name}</span>
-                            <span className="flex flex-none items-center gap-2">
-                              <span className="text-[11px] text-[#9C9186]">{sib.city ?? '—'}</span>
-                              <Chip status={sib.listing_status} map={LISTING_CHIP} />
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
 
                   <div className="mt-4 rounded-[13px] border border-[#EFE6DA] p-4">
                     <div className="mb-3 text-[13px] font-bold text-foreground">Assign / change plan</div>
