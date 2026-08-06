@@ -125,7 +125,7 @@ export class PlatformLeadNotificationService {
       ownerId: profileId,
     });
     await eventLog
-      .log(result.sent ? "owner_account_activated_notified" : "owner_account_activated_notify_failed", profileId, {
+      .log(result.sent ? "OWNER_ACCOUNT_ACTIVATED_NOTIFIED" : "OWNER_ACCOUNT_ACTIVATED_NOTIFY_FAILED", profileId, {
         error: result.error?.slice(0, 500),
       })
       .catch(() => {});

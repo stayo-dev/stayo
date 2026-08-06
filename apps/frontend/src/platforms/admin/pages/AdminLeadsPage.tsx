@@ -38,6 +38,13 @@ const TIMELINE_LABEL: Record<string, string> = {
   LEAD_OWNER_ACTIVATED: 'Owner activated',
   LEAD_HOSTEL_CREATED: 'Hostel created',
   LEAD_LIVE: 'Live',
+  LEAD_RECEIVED_NOTIFIED: 'Applicant notified — enquiry received',
+  LEAD_RECEIVED_NOTIFY_FAILED: 'Applicant notify failed — enquiry received',
+  LEAD_REJECTED: 'Rejected',
+  LEAD_REJECTED_NOTIFIED: 'Applicant notified — rejected',
+  LEAD_REJECTED_NOTIFY_FAILED: 'Applicant notify failed — rejected',
+  LEAD_LIVE_NOTIFIED: 'Applicant notified — hostel live',
+  LEAD_LIVE_NOTIFY_FAILED: 'Applicant notify failed — hostel live',
 };
 
 const AVATAR_PALETTE = [
@@ -93,6 +100,11 @@ export function AdminLeadsPage() {
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [applicantMessage, setApplicantMessage] = useState('');
+  // Only set when an approve attempt fails on both channels — the admin's
+  // sole recovery path today, since stayo_owner_invitation is unapproved in
+  // Meta and most sends fail. Keyed by lead id since it's only known for the
+  // lead just approved, not persisted on the lead row itself.
+  const [failedActivationLink, setFailedActivationLink] = useState<{ leadId: string; link: string } | null>(null);
 
   const listQuery = useQuery({
     queryKey: ['admin', 'leads', search, statusFilter],
@@ -119,9 +131,16 @@ export function AdminLeadsPage() {
     onSuccess: (result, id) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'leads'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'lead-detail', id] });
-      if (result.whatsapp_sent) stayoToast.success('Activation link sent via WhatsApp');
-      else if (result.email_sent) stayoToast.success('Activation link sent via email');
-      else stayoToast.error(result.email_error || result.whatsapp_error || 'Approved, but the activation link could not be sent');
+      if (result.whatsapp_sent) {
+        stayoToast.success('Activation link sent via WhatsApp');
+        setFailedActivationLink(null);
+      } else if (result.email_sent) {
+        stayoToast.success('Activation link sent via email');
+        setFailedActivationLink(null);
+      } else {
+        stayoToast.error(result.email_error || result.whatsapp_error || 'Approved, but the activation link could not be sent');
+        if (result.activationLink) setFailedActivationLink({ leadId: id, link: result.activationLink });
+      }
     },
     onError: (error: any) => stayoToast.error(error?.response?.data?.error?.message || 'Could not approve lead'),
   });
@@ -157,13 +176,18 @@ export function AdminLeadsPage() {
     enabled: Boolean(openId),
   });
 
+  const openLead = leadDetailQuery.data ?? listQuery.data?.find((l) => l.id === openId);
+
   useEffect(() => {
-    setApplicantMessage(leadDetailQuery.data?.applicant_message ?? '');
+    // Seed from `openLead`, not `leadDetailQuery.data` — the drawer renders
+    // immediately from the list-row fallback while the detail query is still
+    // in flight, and seeding from the (momentarily undefined) detail data
+    // alone shows an empty box that a same-window "Save message" click would
+    // then persist as `''`, wiping the applicant's existing message.
+    setApplicantMessage(openLead?.applicant_message ?? '');
     setRejectOpen(false);
     setRejectReason('');
-  }, [leadDetailQuery.data?.applicant_message, openId]);
-
-  const openLead = leadDetailQuery.data ?? listQuery.data?.find((l) => l.id === openId);
+  }, [openLead?.applicant_message, openId]);
   const timeline: Array<{ id: string; event_type: string; created_at: string }> = leadDetailQuery.data?.timeline ?? [];
   const waLink = (phone: string) => `https://wa.me/91${phone.replace(/\D/g, '').slice(-10)}`;
 
@@ -352,13 +376,34 @@ export function AdminLeadsPage() {
                 />
                 <button
                   type="button"
-                  disabled={applicantMessageMutation.isPending}
+                  disabled={applicantMessageMutation.isPending || leadDetailQuery.isLoading}
                   onClick={() => applicantMessageMutation.mutate({ id: openLead.id, message: applicantMessage })}
                   className="mt-2 h-9 w-full rounded-[10px] border border-[#E7DDD1] bg-white text-[12px] font-bold text-[#8A7F75] hover:border-primary hover:text-primary disabled:opacity-60"
                 >
-                  {applicantMessageMutation.isPending ? 'Saving…' : 'Save message'}
+                  {applicantMessageMutation.isPending ? 'Saving…' : leadDetailQuery.isLoading ? 'Loading…' : 'Save message'}
                 </button>
               </div>
+
+              {failedActivationLink && failedActivationLink.leadId === openLead.id && (
+                <div className="mt-6">
+                  <div className="mb-1.5 text-[11px] font-bold uppercase tracking-[0.05em] text-[#C0503A]">
+                    Delivery failed — share this link manually
+                  </div>
+                  <div className="rounded-[13px] border border-[#EAD0C9] bg-[#FBF1EC] p-4">
+                    <p className="mb-2 text-[11.5px] leading-relaxed text-[#8A7F75]">
+                      WhatsApp and email both failed to send the activation link. Copy it and share it with the
+                      applicant directly (e.g. by phone or a manual message).
+                    </p>
+                    <input
+                      type="text"
+                      readOnly
+                      value={failedActivationLink.link}
+                      onFocus={(e) => e.currentTarget.select()}
+                      className="w-full rounded-[10px] border border-[#E7DDD1] bg-white px-3 py-2.5 text-[12px] font-medium text-foreground outline-none focus:border-primary"
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="mb-3 mt-6 text-[11px] font-bold uppercase tracking-[0.05em] text-[#9C9186]">Timeline</div>
               {timeline.length > 0 ? (

@@ -1,6 +1,8 @@
 -- Three-step add: the table has existing rows, so a straight
 -- "ADD COLUMN NOT NULL UNIQUE" would fail. Add nullable, backfill, constrain.
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 ALTER TABLE "platform_leads" ADD COLUMN "tracking_token" TEXT;
 ALTER TABLE "platform_leads" ADD COLUMN "applicant_message" TEXT;
 ALTER TABLE "platform_leads" ADD COLUMN "rejection_reason" TEXT;

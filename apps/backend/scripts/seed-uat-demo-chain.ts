@@ -75,6 +75,7 @@ async function main() {
         status: "ACTIVE",
         notes: "Demo'd Growth plan, onboarded same week. Converted to owner account.",
         converted_owner_id: owner.id,
+        tracking_token: crypto.randomBytes(32).toString("hex"),
       },
     });
   } else {

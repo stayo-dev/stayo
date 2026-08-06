@@ -43,7 +43,7 @@ export const platformAdminService = {
   },
   approveLead: async (id: string) => {
     const response = await api.post(`/platform-admin/leads/${id}/approve`);
-    return unwrap(response) as { lead: any; whatsapp_sent: boolean; whatsapp_error?: string; email_sent: boolean; email_error?: string };
+    return unwrap(response) as { lead: any; activationLink?: string; whatsapp_sent: boolean; whatsapp_error?: string; email_sent: boolean; email_error?: string };
   },
   rejectLead: async (id: string, reason: string) => {
     const response = await api.post(`/platform-admin/leads/${id}/reject`, { reason });

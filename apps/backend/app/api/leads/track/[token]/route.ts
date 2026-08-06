@@ -29,6 +29,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
         status: true,
         created_at: true,
         applicant_message: true,
+        rejection_reason: true,
       },
     });
 
@@ -45,6 +46,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
       is_terminal: stage.isTerminal,
       timeline: buildLeadTimeline(lead.status),
       applicant_message: lead.applicant_message,
+      rejection_reason: lead.status === "LOST" ? lead.rejection_reason : null,
     });
   } catch (error: any) {
     console.error("Detailed API Error [leads.track]:", error);

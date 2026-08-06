@@ -11,12 +11,13 @@ import { hostelLeadsApi } from '@features/hostel-leads/api';
 export function EnquiryStatusPage() {
   const { token = '' } = useParams<{ token: string }>();
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['enquiry-status', token],
     queryFn: () => hostelLeadsApi.getEnquiryStatus(token),
     enabled: Boolean(token),
     retry: false,
   });
+  const isNotFound = (error as { response?: { status?: number } } | null)?.response?.status === 404;
 
   if (isLoading) {
     return (
@@ -29,7 +30,7 @@ export function EnquiryStatusPage() {
     );
   }
 
-  if (isError || !data) {
+  if ((isError && isNotFound) || (!isError && !data)) {
     return (
       <main className="min-h-screen bg-[#FDF8F3] px-5 py-16">
         <div className="mx-auto max-w-md rounded-2xl border border-black/10 bg-white p-6 text-center">
@@ -37,6 +38,22 @@ export function EnquiryStatusPage() {
           <p className="mt-2 text-sm text-[#6B5B52]">
             This link may be mistyped or no longer valid. If you submitted an enquiry recently,
             check the most recent message we sent you on WhatsApp.
+          </p>
+          <Link to="/" className="mt-5 inline-block text-sm font-medium text-[#B45309] underline">
+            Back to Stayo
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
+  if (isError || !data) {
+    return (
+      <main className="min-h-screen bg-[#FDF8F3] px-5 py-16">
+        <div className="mx-auto max-w-md rounded-2xl border border-black/10 bg-white p-6 text-center">
+          <h1 className="text-lg font-semibold text-[#2B1B12]">Something went wrong</h1>
+          <p className="mt-2 text-sm text-[#6B5B52]">
+            We couldn't load your enquiry status right now. Please try again in a moment.
           </p>
           <Link to="/" className="mt-5 inline-block text-sm font-medium text-[#B45309] underline">
             Back to Stayo
@@ -93,6 +110,15 @@ export function EnquiryStatusPage() {
               Message from our team
             </h2>
             <p className="mt-2 whitespace-pre-line text-sm text-[#2B1B12]">{data.applicant_message}</p>
+          </section>
+        ) : null}
+
+        {data.rejection_reason ? (
+          <section className="rounded-2xl border border-black/10 bg-white p-5">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-[#6B5B52]">
+              Why we're not proceeding
+            </h2>
+            <p className="mt-2 whitespace-pre-line text-sm text-[#2B1B12]">{data.rejection_reason}</p>
           </section>
         ) : null}
 

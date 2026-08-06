@@ -69,7 +69,7 @@ export class LeadInvitationService {
     }
 
     const updated = await prisma.platform_leads.findUnique({ where: { id: leadId } });
-    return { lead: updated, ...delivery };
+    return { lead: updated, activationLink, ...delivery };
   }
 
   private async dispatchActivationNotification(

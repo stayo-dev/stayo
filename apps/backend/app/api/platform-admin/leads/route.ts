@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+import crypto from "crypto";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -73,6 +74,7 @@ export async function POST(req: NextRequest) {
         city: city?.trim() || null,
         bed_count: bedCount ? Number(bedCount) : null,
         notes: notes?.trim() || null,
+        tracking_token: crypto.randomBytes(32).toString("hex"),
       },
     });
 

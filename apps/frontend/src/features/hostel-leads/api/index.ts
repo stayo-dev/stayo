@@ -32,6 +32,7 @@ export const hostelLeadsApi = {
       is_terminal: boolean;
       timeline: Array<{ key: string; label: string; state: 'done' | 'current' | 'pending' }>;
       applicant_message: string | null;
+      rejection_reason: string | null;
     };
   },
   getInvitationContext: async (token: string) => {
