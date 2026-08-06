@@ -3,6 +3,7 @@ import { CheckCircle2, Pencil, Vote } from 'lucide-react';
 import { MEAL_CATEGORY_META, type MealSlotKey } from '@shared/mocks/food';
 import type { useFoodVoting } from '../../hooks/useFoodVoting';
 import { mealIcon } from '../../mealIcons';
+import { fromLocalInputValue, toLocalInputValue } from '../../votingWindow';
 
 interface VotingPanelProps {
   voting: ReturnType<typeof useFoodVoting>;
@@ -15,13 +16,13 @@ const inputStyle = 'w-full rounded-xl border border-border bg-card px-3.5 py-3 t
 function defaultStart() {
   const d = new Date();
   d.setMinutes(0, 0, 0);
-  return d.toISOString().slice(0, 16);
+  return toLocalInputValue(d);
 }
 function defaultEnd() {
   const d = new Date();
   d.setDate(d.getDate() + 3);
   d.setMinutes(0, 0, 0);
-  return d.toISOString().slice(0, 16);
+  return toLocalInputValue(d);
 }
 
 /** Owner "Voting" section — open a monthly vote, watch a live per-meal-type tally, close it when ready to generate. */
@@ -63,7 +64,7 @@ export function VotingPanel({ voting, monthLabel }: VotingPanelProps) {
         <button
           type="button"
           disabled={voting.isOpening}
-          onClick={() => voting.openVoting(new Date(startsAt).toISOString(), new Date(endsAt).toISOString())}
+          onClick={() => voting.openVoting(fromLocalInputValue(startsAt).toISOString(), fromLocalInputValue(endsAt).toISOString())}
           className="rounded-xl bg-primary py-3 text-center font-display text-[13px] font-bold text-primary-foreground disabled:opacity-50"
         >
           {voting.isOpening ? 'Opening…' : 'Open Voting'}
@@ -76,16 +77,16 @@ export function VotingPanel({ voting, monthLabel }: VotingPanelProps) {
   const tallyBySlot = voting.results?.byMealType ?? {};
 
   function openEditWindow() {
-    // Pre-fill from the current window, matching defaultStart/defaultEnd's
-    // own UTC-via-toISOString approach rather than introducing a timezone
-    // conversion the rest of this file doesn't do.
-    setEditStartsAt(new Date(voting.period.voting_starts_at).toISOString().slice(0, 16));
-    setEditEndsAt(new Date(voting.period.voting_ends_at).toISOString().slice(0, 16));
+    // Both halves of the round trip go through `votingWindow` — the field is
+    // read back as local time, so it has to be written as local time too, or
+    // an open-and-save that changes nothing walks the window backwards.
+    setEditStartsAt(toLocalInputValue(new Date(voting.period.voting_starts_at)));
+    setEditEndsAt(toLocalInputValue(new Date(voting.period.voting_ends_at)));
     setIsEditingWindow(true);
   }
 
   function saveEditWindow() {
-    voting.openVoting(new Date(editStartsAt).toISOString(), new Date(editEndsAt).toISOString());
+    voting.openVoting(fromLocalInputValue(editStartsAt).toISOString(), fromLocalInputValue(editEndsAt).toISOString());
     setIsEditingWindow(false);
   }
 
@@ -157,12 +158,19 @@ export function VotingPanel({ voting, monthLabel }: VotingPanelProps) {
         </div>
       )}
 
-      <div className="flex items-baseline gap-1.5 text-[12px] text-muted-foreground">
-        <span className="font-display text-[15px] font-bold tabular-nums text-foreground">
-          {voting.results?.voterCount ?? 0}
-        </span>
-        of {voting.results?.eligibleCount ?? 0} students voted
-      </div>
+      {/* "0 of 0 students voted" while the tally is still in flight is a
+          confident wrong answer, on a hostel that may have plenty of both —
+          same reason `TodayCard` waits for its own load. */}
+      {voting.isLoadingResults ? (
+        <div className="h-4 w-32 animate-pulse rounded bg-muted" />
+      ) : (
+        <div className="flex items-baseline gap-1.5 text-[12px] text-muted-foreground">
+          <span className="font-display text-[15px] font-bold tabular-nums text-foreground">
+            {voting.results?.voterCount ?? 0}
+          </span>
+          of {voting.results?.eligibleCount ?? 0} students voted
+        </div>
+      )}
 
       {(voting.results?.totalVotes ?? 0) === 0 ? (
         <p className="text-[12px] text-muted-foreground">No votes yet.</p>
