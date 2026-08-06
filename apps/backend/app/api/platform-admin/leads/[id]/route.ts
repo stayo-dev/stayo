@@ -57,7 +57,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!existing) return apiError("Lead not found", "NOT_FOUND", 404);
 
     const body = await req.json().catch(() => ({}));
-    const { status, notes } = body;
+    const { status, notes, applicant_message } = body;
     if (status && !MANUALLY_SETTABLE_STATUSES.includes(status)) {
       return apiError(
         `status must be one of: ${MANUALLY_SETTABLE_STATUSES.join(", ")} (use POST .../approve to advance further)`,
@@ -71,6 +71,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data: {
         ...(status ? { status } : {}),
         ...(notes !== undefined ? { notes: notes || null } : {}),
+        // Owner-visible on /enquiry/:token. Distinct from `notes`, which is
+        // an internal scratchpad and is never returned by a public route.
+        ...(applicant_message !== undefined ? { applicant_message: applicant_message || null } : {}),
         updated_at: new Date(),
       },
     });
