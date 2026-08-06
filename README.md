@@ -1,4 +1,5 @@
 # StayO
+<!-- dev deploy test -->
 
 Multi-tenant SaaS for hostel owners — tenant lifecycle, rooms & allocations,
 rent generation, online payments (Razorpay), receipts, expenses, and a WhatsApp
