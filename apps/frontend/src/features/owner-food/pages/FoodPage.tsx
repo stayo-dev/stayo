@@ -98,6 +98,9 @@ export function FoodPage() {
         onAddItem={library.createAndReturn}
         onClose={schedule.closePicker}
         isSaving={schedule.isUpdatingMeal}
+        moveTargets={schedule.moveTargets}
+        onMove={schedule.moveMeal}
+        isMoving={schedule.isSwapping}
       />
     </div>
   );

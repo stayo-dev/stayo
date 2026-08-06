@@ -85,11 +85,65 @@ export function useFoodSchedule(hostelId: string | undefined, month: string) {
     mutationFn: ({ aMealId, bMealId }: { aMealId: string; bMealId: string }) =>
       foodService.swapScheduleMeals(schedule!.id, aMealId, bMealId),
     onSuccess: invalidate,
-    onError: () => {
-      invalidate();
-      stayoToast.error("Could not move that meal");
-    },
+    // The grid is authoritative, so a refused swap has to re-read rather than
+    // leave two chips looking exchanged. What to *say* is decided per call:
+    // a failed undo is a different sentence from a failed swap.
+    onError: invalidate,
   });
+
+  const dayLabelOf = (mealId: string) => {
+    const cell = schedule?.food_schedule_meals.find((m) => m.id === mealId);
+    return cell ? DAY_LABEL_SHORT[cell.day_of_week] : 'that day';
+  };
+
+  const swapMeals = (aMealId: string, bMealId: string) => {
+    const wasPublished = schedule?.status === 'PUBLISHED';
+    const dayA = dayLabelOf(aMealId);
+    const dayB = dayLabelOf(bMealId);
+
+    swapMealsMutation.mutate(
+      { aMealId, bMealId },
+      {
+        onSuccess: () => {
+          // Nothing is live on a draft, so there is nothing to announce and
+          // nothing the owner needs a way back from.
+          if (!wasPublished) return;
+          // Twice the blast radius of a single-cell edit — two weekdays, every
+          // occurrence of each this month — so it gets at least the same undo.
+          // A swap is its own inverse, which is why undo is the same call.
+          stayoToast.undo(`Swapped every ${dayA} and ${dayB} this month · students see it now`, () => {
+            swapMealsMutation.mutate(
+              { aMealId, bMealId },
+              { onError: () => stayoToast.error("Couldn't undo that — the swap is still live") },
+            );
+          });
+        },
+        onError: () => stayoToast.error('Could not move that meal'),
+      },
+    );
+  };
+
+  /**
+   * The other days this meal could move to — the same swap the drag performs,
+   * reachable by tapping. Dragging alone would leave the capability behind a
+   * pointer (and behind co-visibility: the week is taller than a phone), which
+   * is exactly what ADR-042 point 6 says a drag must not do.
+   */
+  const moveTargets = useMemo(() => {
+    if (!pickerTarget || !schedule) return [];
+    const source = schedule.food_schedule_meals.find((m) => m.id === pickerTarget.mealId);
+    // An empty cell has nothing to move.
+    if (!source?.menu_item_id) return [];
+    return schedule.food_schedule_meals
+      .filter((m) => m.meal_type === source.meal_type && m.id !== source.id)
+      .map((m) => ({
+        mealId: m.id,
+        day: m.day_of_week,
+        dayLabel: DAY_LABEL_SHORT[m.day_of_week],
+        itemName: m.item_name,
+      }))
+      .sort((a, b) => DAY_ORDER.indexOf(a.day) - DAY_ORDER.indexOf(b.day));
+  }, [pickerTarget, schedule]);
 
   // The single week projection. There used to be a second, raw-row `grid`
   // beside it, which is how the editor came to bypass the `WeekGrid` contract
@@ -135,7 +189,14 @@ export function useFoodSchedule(hostelId: string | undefined, month: string) {
     isUpdatingMeal: updateMealMutation.isPending,
     publish: () => publishMutation.mutate(),
     isPublishing: publishMutation.isPending,
-    swapMeals: (aMealId: string, bMealId: string) => swapMealsMutation.mutate({ aMealId, bMealId }),
+    swapMeals,
     isSwapping: swapMealsMutation.isPending,
+    moveTargets,
+    /** Same swap as a drag, from the picker sheet. Closing is the confirmation the sheet is done. */
+    moveMeal: (targetMealId: string) => {
+      if (!pickerTarget) return;
+      swapMeals(pickerTarget.mealId, targetMealId);
+      setPickerTarget(null);
+    },
   };
 }

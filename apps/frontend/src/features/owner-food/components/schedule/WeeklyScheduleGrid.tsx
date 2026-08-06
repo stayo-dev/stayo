@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { GripVertical, Sparkles } from 'lucide-react';
 import type { useFoodSchedule } from '../../hooks/useFoodSchedule';
 import { UtensilsCrossed } from 'lucide-react';
+import { stayoToast } from '@shared/ui-patterns/Toast';
 import { buildPublishChecks } from '../../publishChecks';
 import { findDropTarget, isValidDrop, type DropCandidate } from '../../dragSwap';
 import { PublishChecklist } from './PublishChecklist';
@@ -61,9 +62,20 @@ export function WeeklyScheduleGrid({ schedule, canGenerate, voteCount, votesCons
   const handleChipDragEnd = (mealId: string, mealType: string, point: { x: number; y: number }) => {
     const targetId = findDropTarget(point, candidatesRef.current);
     const target = candidatesRef.current.find((c) => c.mealId === targetId) ?? null;
-    // A drag that lands on nothing, on itself, or on another meal type dies
-    // here — silently, rather than as a 400 from the swap endpoint.
-    if (!target || !isValidDrop({ mealId, mealType }, target)) return;
+
+    if (!target) {
+      // Releasing over nothing — the bottom nav, the gap between rows, a day
+      // that was never on screen — is the common miss, because the week is
+      // taller than a phone and motion will not scroll the page mid-drag.
+      // Saying nothing here is indistinguishable from the feature being broken.
+      stayoToast.info('Drop a meal onto the same meal type on another day, or tap it to move it');
+      return;
+    }
+    if (!isValidDrop({ mealId, mealType }, target)) {
+      // Dropping a chip back on itself is a change of mind, not a mistake.
+      if (target.mealId !== mealId) stayoToast.info('Meals can only swap with the same meal type');
+      return;
+    }
     schedule.swapMeals(mealId, target.mealId);
   };
 
@@ -140,7 +152,7 @@ export function WeeklyScheduleGrid({ schedule, canGenerate, voteCount, votesCons
 
       {canSwapAnything && (
         <p className="px-1.5 text-[11px] text-muted-foreground">
-          Drag <GripVertical className="inline h-3 w-3 align-[-2px]" /> to move a meal to another day. Tap to change it.
+          Tap a meal to change it or move it to another day. Drag <GripVertical className="inline h-3 w-3 align-[-2px]" /> for a nearby day.
         </p>
       )}
 

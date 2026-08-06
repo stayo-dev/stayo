@@ -64,7 +64,9 @@ function MealChip({ dayLabel, slot, cell, dragDisabled, onPick, registerChip, on
       // The grid is authoritative and re-renders from the server response, so
       // the chip must not keep a stray offset after release.
       dragSnapToOrigin
-      whileDrag={{ scale: 1.06, zIndex: 30, boxShadow: '0 12px 28px rgba(0,0,0,0.18)' }}
+      // Above the shell's `fixed` bottom nav (`z-40`) — a chip dragged low
+      // used to vanish behind it, at exactly the moment placement matters.
+      whileDrag={{ scale: 1.06, zIndex: 50, boxShadow: '0 12px 28px rgba(0,0,0,0.18)' }}
       onDragStart={onChipDragStart}
       onDragEnd={(_, info) => {
         if (mealId) onChipDragEnd(mealId, slot, info.point);
