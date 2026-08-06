@@ -18,6 +18,7 @@ import { resolvePreferences } from "@/lib/preferences";
 import { generateReceiptPdf, type ReceiptRenderData } from "@/lib/pdf/receipt-template-pdf-lib";
 import { timed } from "@/lib/perf";
 import { imagekit } from "@/lib/imagekit";
+import { frontendUrl } from "@/lib/config/domains";
 import { incrementPdfCache } from "@/lib/metrics";
 import { acquireSystemLock, releaseSystemLock, sleep } from "@/lib/lock";
 import { financialService } from "./financial-service";
@@ -362,7 +363,7 @@ export class ReceiptService {
 
       // 3. Build render data
       const verificationToken = generateVerificationToken(receipt.id, receipt.issued_at);
-      const verification_url = `https://sriadithyahostels.in/verify/r/${verificationToken}`;
+      const verification_url = frontendUrl(`/verify/r/${verificationToken}`);
 
       const renderData: ReceiptRenderData = {
         // Hostel
@@ -516,7 +517,7 @@ export class ReceiptService {
     }];
 
     const verificationToken = generateVerificationToken(ledgerEntry.id, ledgerEntry.created_at);
-    const verification_url = `https://sriadithyahostels.in/verify/r/${verificationToken}`;
+    const verification_url = frontendUrl(`/verify/r/${verificationToken}`);
 
     const renderData: ReceiptRenderData = {
       // Hostel
@@ -615,7 +616,7 @@ export class ReceiptService {
 
     // Minimal fallback with limited data
     const verificationToken = generateVerificationToken(receipt.payment_id || receipt.receipt_number || "minimal", receipt.issued_at);
-    const verification_url = `https://sriadithyahostels.in/verify/r/${verificationToken}`;
+    const verification_url = frontendUrl(`/verify/r/${verificationToken}`);
 
     const renderData: ReceiptRenderData = {
       hostel_name: receipt.hostel_name || "HMS Hostel",

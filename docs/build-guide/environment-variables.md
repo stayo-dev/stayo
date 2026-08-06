@@ -3,6 +3,12 @@
 Do not commit real secrets.
 Use the examples as shapes only.
 
+> The canonical, current list of every variable the app actually reads
+> (cross-referenced against the code, grouped by shared vs. per-environment
+> and required vs. optional) lives in `.env.example` (repo root) and
+> `apps/frontend/.env.example`. This page is kept as narrative context; if
+> the two disagree, trust the `.env.example` files.
+
 ## Backend variables
 
 | Key | Required | Example shape | Used for |
@@ -27,16 +33,11 @@ Use the examples as shapes only.
 | `EMAIL_FROM` | no | `Client <noreply@example.com>` | Email sender. |
 | `IMAGEKIT_PRIVATE_KEY` | no | `private_...` | Image uploads. |
 | `IMAGEKIT_URL_ENDPOINT` | no | `https://ik.imagekit.io/account` | Image URLs. |
-| `PHONEPE_CLIENT_ID` | payment | `client-id` | PhonePe auth. |
-| `PHONEPE_CLIENT_SECRET` | payment | `client-secret` | PhonePe auth. |
-| `PHONEPE_CLIENT_VERSION` | payment | `1` | PhonePe version. |
-| `PHONEPE_MERCHANT_ID` | payment | `merchant-id` | Merchant identity. |
-| `PHONEPE_SALT_KEY` | payment | `salt-key` | Legacy signing support. |
-| `PHONEPE_SALT_INDEX` | payment | `1` | Legacy signing support. |
-| `PHONEPE_ENV` | payment | `SANDBOX` or `PRODUCTION` | Provider environment. |
-| `PHONEPE_REDIRECT_URL` | payment | `https://client.example.com/payment-return` | Payment return URL. |
-| `PHONEPE_WEBHOOK_USERNAME` | payment | `username` | Webhook basic auth. |
-| `PHONEPE_WEBHOOK_PASSWORD` | payment | `password` | Webhook basic auth. |
+| `RAZORPAY_KEY_ID` | payment | `rzp_test_...` / `rzp_live_...` | Razorpay auth — the only payment provider actually implemented. |
+| `RAZORPAY_KEY_SECRET` | payment | `secret` | Razorpay auth. |
+| `RAZORPAY_WEBHOOK_SECRET` | payment | `secret` | Verifies `X-Razorpay-Signature` on `/api/webhooks/payments/razorpay`. |
+| `RAZORPAY_BASE_URL` | no | `https://api.razorpay.com` | Override only if not using Razorpay's standard host. |
+| `PAYMENT_PROVIDER` | payment | `RAZORPAY` | The only currently valid value. |
 | `HMS_FINANCIAL_OWNER_ID` | payment | `uuid` | Platform financial owner. |
 | `CRON_SECRET` | production | `long-random-string` | Cron route authorization. |
 | `RENT_CRON_BATCH_SIZE` | no | `100` | Rent cron batch size. |
@@ -44,11 +45,12 @@ Use the examples as shapes only.
 | `REDIS_KEY_PREFIX` | no | `hms:prod` | Prefixes Redis keys per environment. |
 | `UPSTASH_REDIS_REST_URL` | redis | `https://...upstash.io` | Upstash Redis REST endpoint. |
 | `UPSTASH_REDIS_REST_TOKEN` | redis | `AX...` | Upstash Redis REST token. |
-| `WHATSAPP_TOKEN` | no | `EA...` | WhatsApp API. |
-| `PHONE_NUMBER_ID` | no | `123456` | WhatsApp sender number. |
-| `WHATSAPP_API` | no | `https://graph.facebook.com` | WhatsApp base URL. |
-| `WHATSAPP_VERIFY_TOKEN` | no | `verify-token` | Webhook verification. |
-| `WHATSAPP_APP_SECRET` | no | `app-secret` | Webhook signature. |
+| `WHATSAPP_ACCESS_TOKEN` | no | `EA...` | WhatsApp API (preferred name; `WHATSAPP_TOKEN` is a legacy fallback). |
+| `WHATSAPP_PHONE_NUMBER_ID` | no | `123456` | WhatsApp sender number (`PHONE_NUMBER_ID` is a legacy fallback). |
+| `WHATSAPP_BUSINESS_ACCOUNT_ID` | no | `123456` | WABA ID, required by every template-send call. |
+| `WHATSAPP_API` | no | `https://graph.facebook.com/v19.0` | WhatsApp base URL. |
+| `WHATSAPP_WEBHOOK_VERIFY_TOKEN` | no | `verify-token` | Webhook verification (`WHATSAPP_VERIFY_TOKEN` is a legacy fallback). |
+| `META_APP_SECRET` | no | `app-secret` | Webhook signature (`WHATSAPP_APP_SECRET` is a legacy fallback). |
 
 **How this works:**
 1. Backend routes read `process.env`.
@@ -60,11 +62,14 @@ Use the examples as shapes only.
 
 | Key | Required | Example shape | Used for |
 |---|---|---|---|
+| `VITE_API_URL` | yes | `https://api.client.example.com/api` | Backend base URL — `api-client.ts` throws at import time if unset, no fallback. |
+| `VITE_SUPABASE_URL` | yes | `https://project.supabase.co` | Must match this environment's backend `SUPABASE_URL`. |
+| `VITE_SUPABASE_ANON_KEY` | yes | `ey...` | Public by design — Supabase enforces access control server-side, not by hiding this key. |
 | `VITE_GOOGLE_CLIENT_ID` | no | `google-client-id` | Google login provider. |
 
 **How this works:**
 1. `apps/frontend` reads Vite variables at build time.
-2. API URL is hardcoded for non-local hosts.
-3. New clients must replace the hardcoded API URL or add env-based config.
+2. `VITE_API_URL` is required with no hardcoded fallback — see `src/lib/api-client.ts`.
+3. New clients set `VITE_API_URL`/`VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` per their own Vercel project; nothing needs code changes.
 
-> **Needs clarification:** `scripts/validate_env.sh` references Razorpay and SMTP variables, but current payment code uses PhonePe and Resend. Treat the script as stale until updated.
+**Resolved 2026-08-06** (previously flagged here as "Needs clarification"): `scripts/validate_env.sh` referenced `PHONEPE_*` variables — code has only ever had Razorpay actually implemented, not PhonePe. The script, this page, and `CLAUDE.md` are now corrected to match. See `docs/known-issues.md`.

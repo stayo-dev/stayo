@@ -36,7 +36,7 @@ Prisma schema and raw SQL migrations must be aligned before launch.
 
 - Confirm frontend and backend domains.
 - Confirm CORS origins.
-- Confirm PhonePe environment is production only when ready.
+- Confirm Razorpay is using live-mode keys (not test-mode) only when ready.
 - Confirm webhook URLs point to the production backend.
 - Confirm cron secret is configured.
 - Confirm hardcoded Sri Adithya strings are replaced.

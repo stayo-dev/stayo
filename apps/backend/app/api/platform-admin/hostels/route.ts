@@ -57,6 +57,17 @@ export async function GET(req: NextRequest) {
       take: 200,
     });
 
+    // How many hostels each owner runs, platform-wide — not scoped to the
+    // current search/filter, so the count stays correct even when a filter
+    // narrows which of an owner's hostels are visible in this result page.
+    const ownerIds = Array.from(new Set(hostels.map((h: any) => h.owner_id)));
+    const hostelCountsByOwner = await prisma.hostels.groupBy({
+      by: ["owner_id"],
+      where: { owner_id: { in: ownerIds } },
+      _count: { _all: true },
+    });
+    const hostelCountByOwner = new Map(hostelCountsByOwner.map((r: any) => [r.owner_id, r._count._all]));
+
     // Occupied-bed + revenue figures composed from real tables, one query
     // per figure (small N of hostels expected for a platform console) —
     // matches the "compose, don't reimplement" convention.
@@ -88,6 +99,8 @@ export async function GET(req: NextRequest) {
         name: h.name,
         city: h.city,
         owner: h.profiles?.name ?? "—",
+        owner_id: h.owner_id,
+        owner_hostel_count: Number(hostelCountByOwner.get(h.owner_id) ?? 1),
         verification_status: h.verification_status,
         listing_status: h.listing_status,
         subscription_status: h.hostel_subscriptions?.status ?? null,

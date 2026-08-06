@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
+import { frontendUrl } from "@/lib/config/domains";
 import { getLogger } from "@/lib/logger";
 import { dashboardService } from "@/lib/services/dashboard-service";
 import { expenseService } from "@/lib/services/expense-service";
@@ -339,12 +340,7 @@ function maskWhatsAppPhone(phone: string) {
 }
 
 function hmsUrl(path: string) {
-  const base = (
-    process.env.NEXT_PUBLIC_FRONTEND_URL ||
-    process.env.FRONTEND_URL ||
-    "https://sriadithyahostels.in"
-  ).replace(/\/$/, "");
-  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+  return frontendUrl(path);
 }
 
 function formatConnectionDate(value: string | Date | null | undefined) {

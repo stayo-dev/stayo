@@ -28,15 +28,17 @@ Sri Adithya names, domains, emails, legal text, and receipt text appear across f
 2. App screens repeat brand names in navigation and payment copy.
 3. Receipts and emails repeat brand trust text.
 
-## Stale environment validation
+## Stale environment validation — RESOLVED 2026-08-06
 
-`scripts/validate_env.sh` references Razorpay and SMTP variables.
-Current code uses PhonePe and Resend in key paths.
-
-**How this works:**
-1. The script may fail for a correctly configured current stack.
-2. It may pass variables no longer used.
-3. Update it before relying on it for production readiness.
+`scripts/validate_env.sh` previously referenced `PHONEPE_*` variables.
+The only payment provider actually implemented in code is **Razorpay**
+(`src/services/payments/providers/razorpay.ts`, `RAZORPAY_KEY_ID`/
+`RAZORPAY_KEY_SECRET`/`RAZORPAY_WEBHOOK_SECRET`) — no `phonepe.ts`
+provider file exists anywhere in the repo. This claim had the vendor
+names backwards (it previously said the opposite: that the script
+referenced Razorpay while code used PhonePe). The script, CLAUDE.md,
+and `docs/build-guide/environment-variables.md` have been corrected to
+match.
 
 ## String statuses
 

@@ -8,6 +8,7 @@ import { financialPaymentFacade } from "@/src/services/payments/financial-paymen
 import { financialService } from "@/src/services/payments/financial-service";
 import { getProviderContext } from "@/src/services/payments/merchant-context";
 import { getLogger } from "@/lib/logger";
+import { frontendUrl } from "@/lib/config/domains";
 
 const logger = getLogger("api.payments.pay");
 
@@ -260,7 +261,7 @@ function renderPage(content: {
                 name: '${hostelName.replace(/'/g, "\\'")}',
                 description: '${dueMonth} Rent Payment',
                 order_id: attempt ? attempt.gateway_txn_id : undefined,
-                image: logoUrl || 'https://sriadithyahostels.in/hostel_icon.png',
+                image: logoUrl || '${frontendUrl("/hostel_icon.png")}',
                 prefill: {
                   name: raw.notes?.tenant_name || '',
                   email: raw.notes?.tenant_email || '',
