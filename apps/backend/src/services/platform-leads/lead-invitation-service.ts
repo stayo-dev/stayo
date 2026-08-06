@@ -3,6 +3,7 @@ import { prisma } from "../../../lib/db";
 import { frontendUrl } from "../../../lib/config/domains";
 import { EmailService } from "../../../lib/services/email-service";
 import { eventLog } from "../../../lib/services/event-log-service";
+import { platformLeadNotificationService } from "./platform-lead-notification-service";
 
 /**
  * Owner-acquisition funnel, phase 2: admin-approve a `platform_leads` row →
@@ -56,7 +57,7 @@ export class LeadInvitationService {
     });
 
     const activationLink = frontendUrl(`/owner-invite/${token}`);
-    const delivery = await this.dispatchActivationNotification(lead, activationLink);
+    const delivery = await this.dispatchActivationNotification(leadId, lead, activationLink, token);
 
     if (delivery.whatsapp_sent || delivery.email_sent) {
       await prisma.platform_leads.update({ where: { id: leadId }, data: { status: "INVITE_SENT", updated_at: new Date() } });
@@ -68,27 +69,26 @@ export class LeadInvitationService {
     }
 
     const updated = await prisma.platform_leads.findUnique({ where: { id: leadId } });
-    return { lead: updated, ...delivery };
+    return { lead: updated, activationLink, ...delivery };
   }
 
-  private async dispatchActivationNotification(lead: { name: string; hostel_name: string; phone: string; google_email: string | null }, activationLink: string) {
+  private async dispatchActivationNotification(
+    leadId: string,
+    lead: { name: string; hostel_name: string; phone: string; google_email: string | null; tracking_token: string },
+    activationLink: string,
+    activationToken: string
+  ) {
     let whatsappSent = false;
     let whatsappError: string | undefined;
 
     if (lead.phone) {
-      try {
-        const { MetaWhatsAppProvider } = await import("../../../lib/services/notifications/providers/whatsapp/meta-provider");
-        const whatsappProvider = new MetaWhatsAppProvider();
-        await whatsappProvider.sendOwnerActivation({
-          to: lead.phone,
-          ownerName: lead.name,
-          hostelName: lead.hostel_name,
-          activationLink,
-        });
-        whatsappSent = true;
-      } catch (err: any) {
-        whatsappError = err?.message || String(err);
-      }
+      const result = await platformLeadNotificationService.sendInvitation(
+        { id: leadId, name: lead.name, phone: lead.phone, tracking_token: lead.tracking_token },
+        activationToken,
+        DEFAULT_INVITE_DAYS
+      );
+      whatsappSent = result.whatsapp_sent;
+      whatsappError = result.whatsapp_error;
     }
 
     let emailSent = false;
@@ -200,6 +200,15 @@ export class LeadInvitationService {
     if (!lead || lead.status !== "HOSTEL_CREATED") return;
     await prisma.platform_leads.update({ where: { id: lead.id }, data: { status: "LIVE", updated_at: new Date() } });
     await eventLog.log("LEAD_LIVE", lead.converted_owner_id, { lead_id: lead.id });
+
+    // Fire-and-forget — the hostel is already live; a WhatsApp failure must
+    // not make it look otherwise.
+    void platformLeadNotificationService
+      .sendOnboardingComplete(
+        { id: lead.id, name: lead.name, phone: lead.phone, tracking_token: lead.tracking_token },
+        lead.hostel_name
+      )
+      .catch((err) => console.error("[lead-invitation-service.markLive] notify failed", err));
   }
 }
 

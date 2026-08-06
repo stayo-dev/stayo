@@ -2924,6 +2924,16 @@ model platform_leads {
   bed_count          Int?
   status             PlatformLeadStatus  @default(NEW)
   notes              String?
+  /// Bearer secret for the public /enquiry/:token status page. Not the row
+  /// id — the id is used in admin URLs and must not become guessable-adjacent
+  /// to a public surface. Never expires (unlike platform_lead_invitations.token,
+  /// which is a 7-day single-use activation credential).
+  tracking_token     String              @unique
+  /// Admin-authored, deliberately owner-visible. Distinct from `notes`, which
+  /// is an internal scratchpad and is never returned by a public route.
+  applicant_message  String?
+  /// Set only by POST /api/platform-admin/leads/[id]/reject.
+  rejection_reason   String?
   converted_owner_id String?             @db.Uuid
   created_at         DateTime            @default(now()) @db.Timestamptz(6)
   updated_at         DateTime?           @db.Timestamptz(6)

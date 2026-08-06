@@ -222,6 +222,24 @@ Added 2026-07-31 ([[Decisions#ADR-034|ADR-034]]). **Phone verification is requir
 
 See [[APIs]], [[Database]], [[Features]].
 
+## Owner-acquisition funnel notifications
+
+Added 2026-08-06 ([[Decisions#ADR-050|ADR-050]], [[Decisions#ADR-051|ADR-051]]). **Files:** `src/services/platform-leads/platform-lead-notification-service.ts` (all five sends, one place), `lib/services/notifications/providers/whatsapp/platform-lead-template-contracts.ts` (payload builders + env-var overrides), `src/services/platform-leads/lead-stage-mapper.ts`, `lead-transition-guards.ts`.
+
+1. **Five templates, five triggers**, all WhatsApp, phone-number target `platform_leads.phone`:
+   - ① `stayo_owner_lead_received` — fires from `POST /api/leads/self-serve`, immediately after the lead row (and its `tracking_token`) is created.
+   - ② `stayo_owner_invitation` — fires from `approveLead()` (`POST /api/platform-admin/leads/[id]/approve`).
+   - ③ `stayo_owner_account_activated` — fires from `POST /api/auth/owner-signup` when the signup carries a `lead_token`. **Supersedes** the older `stayo_owner_welcome` send for this flow.
+   - ④ `stayo_owner_onboarding_complete` — fires from `markLive()`, when a lead's hostel actually goes live.
+   - ⑤ `stayo_owner_lead_rejected` — fires only from `POST /api/platform-admin/leads/[id]/reject`, never from a plain status PATCH (see rule below).
+2. **Four of five are fire-and-forget; the invitation send (②) is load-bearing.** ①③④⑤ are wrapped so a WhatsApp/provider failure is logged with the template name and swallowed — a delivery outage must never block lead creation, account activation, or a hostel going live. ② is the one deliberate exception, carried over unchanged from the pre-existing activation-link behaviour: if neither WhatsApp nor the email fallback succeeds, the lead is held at `APPROVED` rather than advancing to `INVITE_SENT`, so the admin sees the failure and can retry — nobody can activate an account they were never sent a working link to.
+3. **The reject-vs-cold-lead rule.** `PATCH /api/platform-admin/leads/[id]` with `{status: "LOST"}` stays silent — it notifies nobody. `LOST` is used for two different real-world outcomes ("we reviewed and declined" and "the applicant went cold and stopped replying"), and auto-notifying every `LOST` would send a rejection message to someone who simply stopped responding. Only `POST /api/platform-admin/leads/[id]/reject` — which requires a non-empty `reason` and is refused (400 `INVALID_TRANSITION`) once a lead is `APPROVED` or beyond — sets `rejection_reason` and fires ⑤. This is the deliberate, symmetric counterpart to the existing `POST .../approve` action. See [[Decisions#ADR-051|ADR-051]].
+4. **All template names/languages are env-var overridable** per template (`WHATSAPP_OWNER_LEAD_RECEIVED_TEMPLATE`, `WHATSAPP_OWNER_INVITATION_TEMPLATE`, `WHATSAPP_OWNER_ACCOUNT_ACTIVATED_TEMPLATE`, `WHATSAPP_OWNER_ONBOARDING_COMPLETE_TEMPLATE`, `WHATSAPP_OWNER_LEAD_REJECTED_TEMPLATE`, each with a matching `..._LANGUAGE` var), so a Meta-forced rename during template review is a config change, not a redeploy.
+5. **Owner-facing stage collapsing.** The public tracking endpoint never leaks internal status vocabulary: `NEW`→"Submitted", `UNDER_REVIEW`→"Under review", `APPROVED`/`INVITE_SENT`→"Approved — activation link sent", `OWNER_ACTIVATED`/`HOSTEL_CREATED`→"Setting up your hostel", `LIVE`→"Live on Stayo", `LOST`→"Not proceeding" (shown as a terminal stage, not a partially-climbed ladder with greyed-out future steps).
+6. **As of this writing, only ① `stayo_owner_lead_received` is approved in Meta.** Templates ②④⑤ (and ③, which is new relative to the superseded `stayo_owner_welcome`) are not yet approved — those sends fail until Meta approval completes. The code path is complete and correct for all five; the templates are the blocker. Contracts fail loudly with the template name in the log, not silently, so this is diagnosable in production. See [[Features]] for the honest per-template approval status and [[Decisions#ADR-050|ADR-050]] for why `stayo_owner_welcome` itself is now orphaned rather than reused.
+
+See [[Features]], [[Database]], [[APIs]], [[Decisions]].
+
 ## Explicit "Unknown / needs clarification" items
 
 - Whether/where rent is prorated for partial-month billing.

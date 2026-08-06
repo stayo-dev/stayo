@@ -20,6 +20,7 @@ const PUBLIC_ROUTES = [
   "/api/auth/onboarding-login",
   "/api/leads/self-serve",
   "/api/leads/invitation",
+  "/api/leads/track",
   "/api/auth/csrf",
   "/api/tenants/activate",
   "/api/visit",

@@ -37,6 +37,7 @@ export function HostelLeadModal({ open, onClose, prefillName, googleEmail }: Hos
   const [sendingOtp, setSendingOtp] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState('');
+  const [trackingToken, setTrackingToken] = useState('');
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
@@ -47,6 +48,7 @@ export function HostelLeadModal({ open, onClose, prefillName, googleEmail }: Hos
       setPhone('');
       setOtp(Array(6).fill(''));
       setError('');
+      setTrackingToken('');
     }
   }, [open, prefillName]);
 
@@ -54,13 +56,16 @@ export function HostelLeadModal({ open, onClose, prefillName, googleEmail }: Hos
     if (!next) onClose();
   };
 
-  const submitLead = async () =>
-    hostelLeadsApi.submitLead({
+  const submitLead = async () => {
+    const result = await hostelLeadsApi.submitLead({
       name: ownerName.trim(),
       hostel_name: hostelName.trim(),
       phone: phone.trim(),
       google_email: googleEmail,
     });
+    setTrackingToken(result.tracking_token);
+    return result;
+  };
 
   const submitDetails = async () => {
     if (!hostelName.trim() || !ownerName.trim() || !phone.trim()) {
@@ -251,6 +256,14 @@ export function HostelLeadModal({ open, onClose, prefillName, googleEmail }: Hos
               <p className="mb-7 text-sm leading-relaxed text-muted-foreground">
                 The Stayo team will get back to you soon on WhatsApp or a call to help you get set up.
               </p>
+              {trackingToken && (
+                <a
+                  href={`/enquiry/${trackingToken}`}
+                  className="mb-4 block text-sm font-bold text-primary underline"
+                >
+                  Track your enquiry
+                </a>
+              )}
               <button
                 type="button"
                 onClick={onClose}
