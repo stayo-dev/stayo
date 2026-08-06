@@ -4,9 +4,13 @@ import { MEAL_CATEGORY_META } from '@shared/mocks/food';
 import { useTenantHome } from '@features/tenant-home/hooks/useTenantHome';
 import { PaySheet } from '@features/tenant-financials/components/PaySheet';
 import { mealIcon } from '@features/owner-food/mealIcons';
+import { DarkHeroCard } from '@shared/ui-patterns/DarkHeroCard';
 
-const card = 'rounded-[16px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_4px_14px_rgba(40,30,20,0.05)]';
-const sectionLabel = 'text-[13px] font-bold uppercase tracking-wide text-muted-foreground';
+// Same card/label tokens as OwnerHomeDashboard.tsx (Action Center, Snapshot,
+// Collection card) — Home should read as one design system across roles,
+// not two. Keep these in sync if the owner side's tokens change.
+const card = 'rounded-2xl border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]';
+const sectionLabel = 'text-xs font-bold uppercase tracking-wider text-muted-foreground';
 
 function LoadingSkeleton() {
   return (
@@ -33,57 +37,48 @@ export function TenantHomePage() {
   ];
 
   return (
-    <div className="flex flex-col gap-6 pb-8">
-      <div className="relative overflow-hidden rounded-b-[24px] bg-[#221E1A] px-[22px] pb-[18px] pt-6">
-        <div
-          className="pointer-events-none absolute -right-10 -top-8 h-[150px] w-[150px] rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(217,144,111,0.2), transparent 70%)' }}
-        />
-        <div className="relative flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-[42px] w-[42px] flex-none items-center justify-center rounded-[12px] bg-primary font-display text-[15px] font-extrabold text-white shadow-[0_4px_12px_rgba(180,106,85,0.35)]">
-              {home.name?.[0]?.toUpperCase() ?? 'T'}
-            </span>
-            <div className="min-w-0">
-              <h1 className="truncate font-display text-[20px] font-extrabold tracking-[-0.02em] text-white">Hi, {home.name}</h1>
-              {home.roomNo && (
-                <span className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-white/[0.09] px-2.5 py-[3px] text-[11px] font-semibold text-white/80">
-                  <span className="h-1.5 w-1.5 rounded-full bg-success" /> Room {home.roomNo}
-                </span>
-              )}
-            </div>
-          </div>
-          <button type="button" className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-white/[0.08]">
-            <Bell className="h-[18px] w-[18px] text-white/80" strokeWidth={1.8} />
-          </button>
+    <div className="flex flex-col gap-7 px-4 pb-8 pt-6 sm:px-6">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="truncate font-display text-[22px] font-extrabold leading-tight tracking-tight text-foreground">
+            Hi, {home.name}
+          </h1>
+          {home.roomNo && (
+            <p className="mt-1.5 flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground">
+              <span className="h-1.5 w-1.5 flex-none rounded-full bg-success" />
+              Room {home.roomNo}
+            </p>
+          )}
         </div>
+        <button
+          type="button"
+          className="flex h-11 w-11 flex-none items-center justify-center rounded-full border border-[#EAE1D8] bg-card"
+        >
+          <Bell className="h-5 w-5 text-[#4A423B]" strokeWidth={1.7} />
+        </button>
       </div>
 
-      <div className="flex flex-col gap-6 px-4 sm:px-6">
       {home.financials.amountDue > 0 && (
-        <div className="rounded-2xl border border-border bg-card p-[18px] shadow-[0_1px_2px_rgba(40,30,20,0.04),0_8px_22px_rgba(40,30,20,0.07)]">
-          <div className="flex items-center gap-2">
-            <span className="h-1.5 w-1.5 rounded-full bg-warning" />
-            <span className="text-[11px] font-bold uppercase tracking-wide text-warning">Rent due</span>
+        <DarkHeroCard className="rounded-[20px] px-5 py-[18px] shadow-[0_10px_28px_rgba(34,30,26,0.22)]">
+          <div className="flex items-center justify-between">
+            <span className="text-[12.5px] font-semibold text-background/70">Rent due</span>
             {home.financials.isOverdue && (
-              <span className="ml-auto text-[11.5px] font-semibold text-muted-foreground">
+              <span className="text-[11px] font-semibold text-background/55">
                 {home.financials.overdueDays}d overdue
               </span>
             )}
           </div>
-          <div className="mt-2 flex items-end justify-between">
-            <span className="font-display text-[34px] font-extrabold tracking-[-0.03em] tabular-nums text-foreground">
-              ₹{home.financials.amountDue.toLocaleString('en-IN')}
-            </span>
+          <div className="mt-1 font-display text-3xl font-extrabold tabular-nums tracking-tight">
+            ₹{home.financials.amountDue.toLocaleString('en-IN')}
           </div>
           <button
             type="button"
             onClick={home.financials.openPay}
-            className="mt-3 w-full rounded-xl bg-[#A45D44] py-[15px] text-center font-display text-sm font-bold text-white shadow-[0_6px_16px_rgba(164,93,68,0.3)]"
+            className="mt-3.5 w-full rounded-xl bg-primary py-[13px] text-center font-display text-sm font-bold text-primary-foreground shadow-[0_6px_16px_rgba(164,93,68,0.35)]"
           >
             Pay ₹{home.financials.amountDue.toLocaleString('en-IN')}
           </button>
-        </div>
+        </DarkHeroCard>
       )}
 
       <div className="flex flex-col gap-2.5">
@@ -222,7 +217,6 @@ export function TenantHomePage() {
       )}
 
       <p className="pt-0.5 text-center text-[11px] font-medium text-[#B7AC9F]">Stayo</p>
-      </div>
 
       <PaySheet
         stage={home.financials.payStage}
