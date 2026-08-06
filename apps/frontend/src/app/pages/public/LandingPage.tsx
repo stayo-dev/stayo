@@ -35,11 +35,6 @@ const TRUST_ITEMS = [
   'Real-time Dashboards',
 ];
 
-const OWNER_TESTIMONIALS = [
-  { text: 'Rent collection used to eat my weekends. Now reminders go out automatically and I see every payment in one place.', name: 'Rahul Verma', role: 'Owner · Sunrise Hostels' },
-  { text: 'Enquiries doubled after I got verified, and onboarding tenants digitally cut my paperwork to zero.', name: 'Priya Nair', role: 'Owner · Nest Co-Living' },
-];
-
 const NAV_LINKS = [
   { href: '#why', label: 'Features' },
   { href: '#whatis', label: 'How it works' },
@@ -331,28 +326,6 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ============ TRUST STATS BAR ============ */}
-      <section className="px-4 py-6 sm:px-6">
-        <div className="mx-auto grid max-w-4xl grid-cols-2 gap-4 rounded-[20px] border border-border bg-card p-6 shadow-[0_20px_50px_-34px_rgba(47,47,47,0.3)] sm:grid-cols-4">
-          {[
-            ['12,000+', 'Beds managed'],
-            ['400+', 'Hostels onboarded'],
-            ['₹2Cr+', 'Rent collected monthly'],
-          ].map(([n, label], i) => (
-            <div key={label} className={`text-center ${i > 0 ? 'border-l border-border' : ''}`}>
-              <div className="font-display text-[clamp(26px,3vw,36px)] font-extrabold tabular-nums text-foreground">{n}</div>
-              <div className="mt-0.5 text-[13px] font-medium text-muted-foreground">{label}</div>
-            </div>
-          ))}
-          <div className="border-l border-border text-center">
-            <div className="font-display text-[clamp(26px,3vw,36px)] font-extrabold tabular-nums text-primary">
-              4.8<span className="text-[0.5em] font-normal text-muted-foreground">/5</span>
-            </div>
-            <div className="mt-0.5 text-[13px] font-medium text-muted-foreground">Owner rating</div>
-          </div>
-        </div>
-      </section>
-
       {/* ============ WHAT IS STAYO ============ */}
       <section id="whatis" className="px-4 py-16 sm:px-6">
         <div className="mx-auto mb-12 max-w-2xl text-center">
@@ -450,30 +423,6 @@ export function LandingPage() {
               </div>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* ============ TESTIMONIALS ============ */}
-      <section className="px-4 py-14 sm:px-6">
-        <div className="mx-auto mb-11 max-w-2xl text-center">
-          <div className="mb-3.5 font-display text-xs font-bold tracking-[0.14em] text-primary">LOVED BY OWNERS</div>
-          <h2 className="text-balance font-display text-[clamp(28px,4vw,44px)] font-extrabold leading-[1.08] tracking-tight">
-            Owners run smoother, from day one.
-          </h2>
-        </div>
-        <div className="mx-auto grid max-w-4xl gap-5.5 [grid-template-columns:repeat(auto-fit,minmax(300px,1fr))]">
-          {OWNER_TESTIMONIALS.map((q) => (
-            <div key={q.name} className="rounded-[20px] bg-foreground p-6.5 hover:shadow-[0_26px_54px_-28px_rgba(47,47,47,0.6)]">
-              <div className="mb-4.5 text-[15.5px] leading-relaxed text-background/92">&ldquo;{q.text}&rdquo;</div>
-              <div className="flex items-center gap-2.5">
-                <span className="h-9.5 w-9.5 rounded-full [background:repeating-linear-gradient(135deg,#B46A55_0_5px,#a55f4b_5px_10px)]" />
-                <div>
-                  <div className="font-display text-sm font-bold text-background">{q.name}</div>
-                  <div className="text-[12.5px] font-medium text-background/55">{q.role}</div>
-                </div>
-              </div>
-            </div>
-          ))}
         </div>
       </section>
 
