@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ENQUIRY_PROMPT_DISMISS_KEY,
+  computeScrollFraction,
   shouldShowEnquiryPrompt,
 } from '../enquiryPromptPolicy';
 
@@ -33,12 +34,18 @@ export function OwnerEnquiryPrompt({ isOwnerWithHostel, onAccept }: OwnerEnquiry
 
   useEffect(() => {
     const onScroll = () => {
-      const scrollable = document.documentElement.scrollHeight - window.innerHeight;
-      const scrollFraction = scrollable > 0 ? window.scrollY / scrollable : 0;
+      const doc = document.documentElement;
+      const body = document.body;
 
       if (
         shouldShowEnquiryPrompt({
-          scrollFraction,
+          scrollFraction: computeScrollFraction({
+            // Whichever of the three actually moves — see computeScrollFraction's
+            // note on why documentElement alone is not enough here.
+            scrollTop: window.scrollY || doc.scrollTop || body.scrollTop || 0,
+            contentHeight: Math.max(doc.scrollHeight, body.scrollHeight),
+            viewportHeight: window.innerHeight,
+          }),
           dismissedAt: readDismissedAt(),
           isOwnerWithHostel,
           alreadyShownThisSession: shownRef.current,
@@ -50,8 +57,21 @@ export function OwnerEnquiryPrompt({ isOwnerWithHostel, onAccept }: OwnerEnquiry
       }
     };
 
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    // `<body>` is this app's scroll container (theme.css sets overflow-x:hidden
+    // on html and body, which forces overflow-y to auto). Verified in a headless
+    // browser against the live page: with body scrolling, a 'scroll' listener on
+    // window fires 0 times and one on document fires 0 times — only the listener
+    // on body fires. Binding all three keeps this correct if the layout ever
+    // changes back to a document-scrolled page; the handler is idempotent, so
+    // duplicate events are harmless.
+    const targets: Array<EventTarget> = [window, document, document.body];
+    targets.forEach((t) => t.addEventListener('scroll', onScroll, { passive: true }));
+
+    // Fire once on mount: the visitor may already be part-way down the page on
+    // a back-navigation or a #hash landing, where no scroll event ever arrives.
+    onScroll();
+
+    return () => targets.forEach((t) => t.removeEventListener('scroll', onScroll));
   }, [isOwnerWithHostel]);
 
   const dismiss = () => {
