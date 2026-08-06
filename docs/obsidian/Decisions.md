@@ -715,6 +715,8 @@ That reading was wrong, and measurement is what showed it. Two production endpoi
 
 **Related:** [[Features]], [[APIs]], [[Bugs]], [[Changelog]].
 
+---
+
 ## ADR-048: Food Polls is deleted — the real voting system is the only voting system; and a published menu is never destroyed by a rebuild
 
 **Date:** 2026-08-05 · **Status:** Accepted (Phases 0–1 of 3) · **Supersedes [[Decisions#ADR-029|ADR-029]] point (3)** · Direction set by the user in a design session after the audit: *"delete it"* — an explicit reversal of the earlier *"keep both."* See [[Food]], [[Features]], [[APIs]], [[Bugs]].
@@ -745,6 +747,23 @@ That reading was wrong, and measurement is what showed it. Two production endpoi
 - The vault gained [[Food]], its first **module-level** page. Correcting the audit on its own finding #8: it claimed `docs/obsidian/` had *no* Food coverage, which is not accurate — [[APIs]] carries a full 14-endpoint table and [[Database]] a full five-model section, both current. What genuinely did not exist was a [[Features]] entry, any [[Business-Rules]] coverage, and any single page tying the grain, the publish semantics and the constraints together. That gap is what [[Food]] closes.
 
 **Related:** [[Food]], [[Features]], [[APIs]], [[Database]], [[Bugs]], [[Changelog]], [[Decisions#ADR-029|ADR-029]] (the decision this partly supersedes), [[Decisions#ADR-003|ADR-003]] (the `hostels[0]` invariant the hostel picker closes), [[Decisions#ADR-047|ADR-047]] (the compose-don't-recalculate read-model pattern `food-memory-service` will follow in Phase 2).
+
+---
+
+## ADR-049: V1 launches owner/staff-only — the tenant-facing marketplace is removed from the public landing page
+
+- **Date:** 2026-08-05
+- **Status:** accepted
+- **Context:** the landing page (`app/pages/public/LandingPage.tsx`) was built as a dual-audience page from the start — a "Find Your Stay" / "Manage Your Stay" hero tab, a live client-side hostel search/enquire demo (`HostelDiscoveryDemo.tsx`), student testimonials, and a "Tenant Journey" alongside the "Owner Journey" — per the design's earlier stated decision to ship the real Discover marketplace in V2 but keep tenant-facing CTAs visible as static placeholders in the meantime. Per explicit user direction, most visitors landing on the site are tenants/students looking for a place to stay, and V1 is not shipping a tenant-facing product at all — showing marketplace UI (even a static/demo one) advertises a capability that doesn't exist yet and misleads that majority of visitors.
+- **Decision:** the landing page is now owner/staff-only. Removed: the hero role tab switcher, the tenant listings branch of `HeroShowcase`, the entire hostel-search/enquire demo section and its two components (`HostelDiscoveryDemo.tsx`, `FilterSelect.tsx`, deleted outright — no longer referenced anywhere), the "Tenant Journey" steps card, the student testimonials column, and the "Tenant rating" trust stat. The nav's generic "Login" popup now renders in `mode="owner"` (login-only, no signup tab) instead of `mode="tenant"` — this only changes copy/signup-tab visibility, not which roles can authenticate (`handleAuthSuccess` already routed by the API's returned `role`, independent of modal mode); the tenant-branch fallback (`navigate('/tenant/home')` for a role-less marketplace account) was removed since that account type is no longer reachable from here. This does **not** touch the authenticated tenant app (`platforms/tenant`, `TenantRoutes.tsx`) or backend tenant-account/marketplace-account logic (ADR-035) — an existing tenant with valid credentials can still log in and reach `/tenant/home` directly; only the public marketing surface that showcased/advertised tenant-facing discovery is gone.
+- **Alternatives considered:**
+  - *Keep the tenant tab but mark it "Coming soon".* Rejected per explicit user direction — the ask was to remove it, not soften it.
+  - *Leave `HostelDiscoveryDemo`/`FilterSelect` in the tree, unlinked.* Rejected: unlike the 2026-08-01 Configuration-hub precedent (where an unlinked screen still had a live, reachable duplicate), these two files become fully dead code with zero importers once removed from the landing page — deleted rather than kept as inert weight.
+- **Consequences:**
+  - Landing page copy, stats, features and testimonials were reworded to be owner-only throughout (see [[Changelog]]); `MarketingFooter`'s tagline no longer mentions a marketplace.
+  - `apps/frontend/src/content/company.ts`'s company-level product description (used on `/company`) still describes Stayo as "a verified hostel & PG marketplace for students and a complete... platform for owners" — **intentionally left unchanged**, since the ask was scoped to the landing page; flagged here as a known inconsistency if the company page is revisited.
+  - Reversing course on this later (shipping the tenant marketplace) means re-adding a dedicated tenant discovery surface — the removed demo code is not preserved for reuse, since it was explicitly acknowledged as demo/mock data, not a real search backend.
+- **Related:** [[Changelog]], [[Frontend]], [[Decisions#ADR-035|ADR-035]] (marketplace account concept — backend/auth model unaffected)
 
 ## See also
 - [[Changelog]] for the chronological record of what shipped

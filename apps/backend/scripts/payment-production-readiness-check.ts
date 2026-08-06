@@ -7,8 +7,8 @@ type Finding = {
 };
 
 const findings: Finding[] = [];
-const EXPECTED_FRONTEND_URL = "https://sriadithyahostels.in";
-const EXPECTED_BACKEND_URL = "https://api.sriadithyahostels.in";
+const EXPECTED_FRONTEND_URL = "https://yourstayo.com";
+const EXPECTED_BACKEND_URL = "https://api.yourstayo.com";
 
 function required(key: string, message?: string) {
   if (!process.env[key]) {

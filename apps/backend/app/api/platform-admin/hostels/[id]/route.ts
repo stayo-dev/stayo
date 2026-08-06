@@ -43,6 +43,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
     if (!hostel) return apiError("Hostel not found", "NOT_FOUND", 404);
 
+    // Every other hostel this same owner runs — lets the admin see the full
+    // picture for one person/owner_id rather than one hostel in isolation.
+    const siblingHostels = await prisma.hostels.findMany({
+      where: { owner_id: hostel.owner_id, id: { not: id } },
+      select: { id: true, name: true, city: true, listing_status: true },
+      orderBy: { created_at: "desc" },
+    });
+
     const [activeTenants, revenue, dues, capacity] = await Promise.all([
       prisma.tenants.count({ where: { hostel_id: id, status: "ACTIVE" } }),
       prisma.payments.aggregate({
@@ -69,6 +77,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         listing_status: hostel.listing_status,
         created_at: hostel.created_at,
         owner: hostel.profiles,
+        owner_id: hostel.owner_id,
+        owner_hostel_count: siblingHostels.length + 1,
+        sibling_hostels: siblingHostels,
         tenants: activeTenants,
         rooms: hostel._count.rooms,
         capacity: Number(capacity._sum.capacity ?? 0),

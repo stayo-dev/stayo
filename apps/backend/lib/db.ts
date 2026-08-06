@@ -17,7 +17,12 @@ if (process.env.NODE_ENV === "test") {
   dbUrl = process.env.DATABASE_URL_TEST;
 }
 
-console.log("PRISMA INITIALIZING: NODE_ENV =", process.env.NODE_ENV, "dbUrl =", dbUrl);
+console.log(
+  "PRISMA INITIALIZING: NODE_ENV =",
+  process.env.NODE_ENV,
+  "dbHost =",
+  dbUrl ? dbUrl.replace(/^(postgres(?:ql)?:\/\/)[^@]*@/, "$1***:***@") : dbUrl
+);
 export const prisma: any =
   globalForPrisma.prisma ||
   new PrismaClient({

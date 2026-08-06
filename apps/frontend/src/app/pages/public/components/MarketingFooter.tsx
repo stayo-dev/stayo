@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { COMPANY } from '@/content/company';
 import { TrishulMark } from '@shared/ui-patterns/TrishulMark';
+import { scrollToTopSmooth } from '@/lib/scrollToTop';
 
 /**
  * The premium (marketing-theme) site footer, shared by the landing page and
@@ -28,6 +29,14 @@ const LEGAL_LINKS = [
   { label: 'Cookie Policy', to: '/legal/privacy' },
 ];
 
+// The router-level ScrollToTop only fires on an actual pathname change — a
+// footer link to the page you're already on (e.g. clicking "About" while
+// already on /company, since this same footer renders there too) is a
+// no-op navigation with nothing to hang a route-change effect on. Forcing
+// the jump directly on click closes that gap regardless of whether the
+// route actually changes.
+const scrollToTopNow = () => scrollToTopSmooth();
+
 export function MarketingFooter() {
   const year = new Date().getFullYear();
 
@@ -39,7 +48,7 @@ export function MarketingFooter() {
           <div className="mb-3 font-display text-xl font-extrabold text-background">Stayo</div>
           <p className="mb-2 text-sm font-semibold text-[#D2986C]">Manage. Automate. Grow.</p>
           <p className="mb-6 max-w-[300px] text-[13.5px] leading-relaxed text-background/50">
-            The Stay Operations Platform — a verified hostel marketplace and complete management system in one.
+            The Stay Operations Platform — complete hostel management, from onboarding to rent collection.
           </p>
 
           {/* Subtle company lockup */}
@@ -57,7 +66,7 @@ export function MarketingFooter() {
           <div className="mb-3.5 font-display text-[13px] font-bold text-background">Products</div>
           <div className="flex flex-col gap-2.5">
             {PRODUCT_LINKS.map((l) => (
-              <Link key={l.label} to={l.to} className="text-[13.5px] text-background/58 hover:text-background">
+              <Link key={l.label} to={l.to} onClick={scrollToTopNow} className="text-[13.5px] text-background/58 hover:text-background">
                 {l.label}
               </Link>
             ))}
@@ -69,7 +78,7 @@ export function MarketingFooter() {
           <div className="mb-3.5 font-display text-[13px] font-bold text-background">Company</div>
           <div className="flex flex-col gap-2.5">
             {COMPANY_LINKS.map((l) => (
-              <Link key={l.label} to={l.to} className="text-[13.5px] text-background/58 hover:text-background">
+              <Link key={l.label} to={l.to} onClick={scrollToTopNow} className="text-[13.5px] text-background/58 hover:text-background">
                 {l.label}
               </Link>
             ))}
@@ -87,7 +96,7 @@ export function MarketingFooter() {
           <div className="mb-3.5 font-display text-[13px] font-bold text-background">Legal</div>
           <div className="flex flex-col gap-2.5">
             {LEGAL_LINKS.map((l) => (
-              <Link key={l.label} to={l.to} className="text-[13.5px] text-background/58 hover:text-background">
+              <Link key={l.label} to={l.to} onClick={scrollToTopNow} className="text-[13.5px] text-background/58 hover:text-background">
                 {l.label}
               </Link>
             ))}

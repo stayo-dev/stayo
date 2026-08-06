@@ -21,7 +21,7 @@
 - Database URLs.
 - Frontend and backend public URLs.
 - CORS origins.
-- PhonePe credentials and webhook auth.
+- Razorpay credentials and webhook auth.
 - Resend key and sender email.
 - ImageKit credentials.
 - WhatsApp credentials.

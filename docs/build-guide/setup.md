@@ -5,7 +5,7 @@
 - Node.js 20 or newer.
 - npm.
 - A Postgres database.
-- Provider accounts for PhonePe, Resend, ImageKit, and WhatsApp if those features are enabled.
+- Provider accounts for Razorpay, Resend, ImageKit, and WhatsApp if those features are enabled.
 
 **How this works:**
 1. The frontend runs as a Vite app.

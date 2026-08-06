@@ -162,6 +162,21 @@ export function buildTenantOnboardingTemplatePayload(input: TenantOnboardingTemp
   return params;
 }
 
+// ─── Owner Post-Activation Welcome Template ────────────────────
+
+/**
+ * Re-exported from the contract module, which owns the name/language and
+ * the live-template shape check (1 body param, static button — no
+ * placeholder to fill).
+ */
+export {
+  ownerWelcomeTemplateName,
+  ownerWelcomeTemplateLanguage,
+  buildOwnerWelcomeTemplatePayload,
+} from "./owner-welcome-template-contract";
+import { ownerWelcomeTemplateName as ownerWelcomeTemplateNameValue } from "./owner-welcome-template-contract";
+export const OWNER_WELCOME_TEMPLATE_NAME = ownerWelcomeTemplateNameValue();
+
 // ─── Tenant Account Activated Payment Pending Template ────────
 
 export const PAYMENT_PENDING_TEMPLATE_NAME = "account_activated_payment_pending_v1";

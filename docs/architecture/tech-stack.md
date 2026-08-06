@@ -60,7 +60,7 @@
 
 | Provider | Why it exists |
 |---|---|
-| PhonePe | Creates payment attempts and receives payment webhooks. |
+| Razorpay | Creates payment attempts and receives payment webhooks. |
 | Resend | Sends email notifications and reminders. |
 | ImageKit | Stores tenant photos, identity documents, and logos. |
 | WhatsApp Cloud API | Sends OTPs and reminder messages. |
