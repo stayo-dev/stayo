@@ -8,6 +8,8 @@ Related: [[Features]] · [[APIs]] · [[Database]] · [[Business-Rules]] · [[Dec
 
 The module's home page. Written 2026-08-05 against the code as it stands after the Phase 0–1 pass on `feat/food-phase-0-1` — every claim below was read out of the implementation, and anything that could not be is marked **Unknown / needs clarification** at the bottom rather than asserted.
 
+**Updated 2026-08-06** for `feat/food-ux-pass` (seven commits, `d094fec..2502f9f`): the hostel picker's overflow, an atomic meal-swap endpoint, the weekly editor collapsed to one row per day with drag-to-swap, and three voting gaps closed. Same rule — read out of the implementation, not from the plan.
+
 Baseline documents: `docs/audits/food-module-audit.md` (the lifecycle audit this work came from) and `docs/design/food-module-redesign.md` (the approved redesign; **§8 is binding architecture, not a proposal**).
 
 One correction to the audit, since this page is meant to be trustworthy about its own sources: its finding #8 says the vault had *no* Food coverage. That overstates it — [[APIs]] has carried a full 14-endpoint table and [[Database]] a full five-model section since 2026-07-26, and both are current. What was genuinely missing was a [[Features]] entry, any [[Business-Rules]] coverage, and any page tying the grain, the semantics and the constraints together. This page is that, and it does not restate [[APIs]] or [[Database]].
@@ -49,11 +51,17 @@ The five models are inventoried in [[Database]] (`food_menu_items`, `food_voting
 
 ## 3. API surface
 
-**14 route files under `app/api/food/`, exposing 17 method handlers**, plus one cron. Every one has a live frontend caller through `features/food/api/index.ts` — the audit found **no orphaned food endpoint**, which is the opposite of the Expenses finding. The full per-endpoint table lives in [[APIs]].
+**15 route files under `app/api/food/`, exposing 18 method handlers**, plus one cron. Every one has a live frontend caller through `features/food/api/index.ts` — the audit found **no orphaned food endpoint**, which is the opposite of the Expenses finding. The full per-endpoint table lives in [[APIs]].
 
-Changed on this branch:
+Changed on `feat/food-phase-0-1` (2026-08-05):
 
 - `POST /api/food/schedules/generate` gained **`mode: "BUILD" | "FILL_GAPS" | "START_OVER"`** (defaults to `BUILD` when absent or unrecognised) and can now answer **`409 SCHEDULE_PUBLISHED`**. See §5.
+
+Changed on `feat/food-ux-pass` (2026-08-06):
+
+- **`POST /api/food/schedules/[id]/meals/swap` is new** — the module's 15th route and its first addition since 2026-07-26. Body `{ aMealId, bMealId }`; exchanges two cells' items in one `$transaction`. See §7.1.
+- `POST /api/food/voting-periods` now **notifies tenants** when a round genuinely opens, and returns `notified`. See §10.
+- `GET /api/food/voting-periods/[id]/results` gained **`voterCount`** (distinct tenants) and **`eligibleCount`**, alongside the unchanged `totalVotes`. See §10.
 
 Owner routes all follow `getSession` → `resolveOwnerScope` → `requireHostelBelongsToOwner`; `app/api/food` is one of `scripts/architectural-invariants-check.ts`'s scanned roots, so `hostelId` can never become optional and no route may fall back to `hostels[0]` ([[Decisions#ADR-003|ADR-003]]).
 
@@ -114,11 +122,43 @@ The module supplies alongside the type:
 |---|---|---|
 | **Today card** | top of `/owner/food` | Current meal is the hero, next is the subtitle, chosen by `mealSlotAt()`. An unset current meal renders a **Fix** button that opens the picker on that exact cell rather than an empty state. With **no schedule row at all** (new hostel, or the 1st before the cron runs) it says so instead — the Fix buttons would have had no cell to open — and while loading it renders a skeleton. |
 | **Current meal on Home** | `OwnerHomeDashboard` | One line, tapping it goes to `/owner/food`. **Renders nothing when today's slot is unset** — a food *gap* belongs in the Action Center (Phase 2, not built), not as an empty card on Home. Deliberately self-fetches via `session.primaryHostelId` rather than taking props, because Home is portfolio-level and per-hostel food is ambiguous there — and for that reason the row **names the hostel** whenever the owner has more than one, so a single property's meal is not presented as a portfolio fact. |
-| **Hostel picker** | `HostelSwitcher`, Food tab header | Renders nothing for a single-hostel owner. Closes an `hostels[0]` invariant violation — see [[Bugs]]. |
+| **Hostel picker** | `HostelSwitcher`, Food tab header | Renders nothing for a single-hostel owner. Closes an `hostels[0]` invariant violation — see [[Bugs]]. **Rebuilt 2026-08-06:** it was a native `<select>`, which sizes itself to its *longest option*, so one real hostel name pushed the control past the viewport and it rendered clipped. Now a `max-w-[46vw]` trigger plus the app's `BottomSheet` — the header is stable at any name length, and the sheet shows names in full rather than truncating the one thing the control exists to disambiguate. `FoodPage` and `KitchenSheetPage` gained `min-w-0` on the title block so the truncation actually engages. |
 | **Inline add-item** | picker sheet | `useFoodMenuItems.createAndReturn` creates the library item and resolves its id so the caller can place it in the cell immediately. Filling one blank went from seven interactions to two. A failure is **spoken** (the API's own 409 message when the name is a duplicate) and the typed name stays in the field — it is cleared only on success. |
 | **Publish pre-flight checks** | above Publish, draft only | See §8. |
 | **Undo on live edits** | `stayoToast.undo`, 6s | Fires only when the schedule was already `PUBLISHED`, the cell previously held a real item, **and the newly picked item differs from it** — re-picking what was already there is not a change. The message names the blast radius — *"Changed for every Thursday this month · students see it now"* — and Undo re-PATCHes the previous `menu_item_id`, reporting its own failure rather than passing for a success. |
 | **Kitchen sheet** | `/owner/food/kitchen` | §9. |
+
+### 7.1 The compact week, and drag-to-swap (2026-08-06)
+
+**The layout first, because it is what makes the gesture possible.** `WeeklyScheduleGrid` rendered a 2×2 card block per day — 28 cards over roughly seven screens of scrolling. It is now seven rows of four chips (`components/schedule/DayRow.tsx`, new), the same day-label-plus-inline-slots shape `MonthHistoryList` already uses for a published month, so this reuses a pattern the module owns rather than inventing one. Today's row is tinted. The whole week fits in about one screen, which is the difference between a short drag and a drag that fights the page scroll.
+
+One deliberate divergence: an **empty chip renders its own meal-type name** ("Snacks"), not the shared `EMPTY_CELL_LABEL` ("Not set") from §6. A chip that names the slot it is missing invites a fill; "Not set" four times in a row does not. `EMPTY_CELL_LABEL` is unchanged and still the single spelling used by `TodayCard`, `KitchenSheetPage` and `kitchenSheet.ts` — this is an editor-only exception, not a third spelling loose in the codebase.
+
+**The swap is one write, not two.** `POST /api/food/schedules/[id]/meals/swap` exchanges both cells' `menu_item_id` + `item_name` inside a single `$transaction` and flips `food_schedules.source` to `MANUAL`, exactly as a single-cell PATCH does. Two sequential PATCHes are not equivalent: a failure between them leaves one meal duplicated and the other lost, on a row tenants may already be reading. Ownership is checked on `food_schedules.owner_id` before the transaction opens.
+
+> **The rule: a swap is same-meal-type only, and it is enforced in three places.**
+> An item belongs to exactly one meal type, so a breakfast item can never legally occupy a dinner slot. That is not a new rule — it is the rule **every** cell write already applied:
+> 1. `PATCH /api/food/schedules/[id]/meals/[mealId]` — validates the item against the cell's meal type. The original enforcement point.
+> 2. `canSwap` (`apps/backend/lib/services/food/meal-swap.ts`) — pure, 7 tests. Also refuses a missing cell, a cell swapped with itself, and a cell belonging to another schedule. The route throws `SWAP_REFUSED: <reason>`, matched by prefix in the catch and returned as **`400 VALIDATION_ERROR`** before the generic 500.
+> 3. `isValidDrop` (`apps/frontend/src/features/owner-food/dragSwap.ts`) — mirrors `canSwap` client-side so an invalid drag dies silently at the drop, instead of surfacing as a 400 mid-gesture.
+>
+> Three enforcement points is duplication with a reason: (1) is the true guard, (2) exists so the *transaction* cannot be talked into an illegal write, (3) exists so the owner never sees an error for a gesture the UI could have declined. They are not independently derived — (2) and (3) both restate (1), and both say so in their own doc comments.
+
+**The gesture.** Drag starts from the grip handle only — `dragListener={false}` + `useDragControls` from `motion/react`, the combination `PropertyList.tsx` established and [[Decisions#ADR-042|ADR-042]] records. This reuses that rule rather than setting a new one: the page keeps its vertical scroll and the chip keeps its tap-to-open-the-picker everywhere except the handle. `dragSnapToOrigin` returns the chip home and the true position arrives from the refetch, since the grid is authoritative. A second drag is blocked while a swap is in flight (`dragDisabled={schedule.isSwapping}`) — it would hit-test against the pre-swap grid and write the wrong pair. The hint line appears only once some meal type is filled on two or more days, since there is nothing to swap with before that.
+
+`dragSwap.ts` is pure and holds the two decisions worth testing (8 tests):
+
+- **`findDropTarget` hit-tests measured rects, not `elementFromPoint`.** The dragged chip sits above the pointer for the whole gesture, so `elementFromPoint` would return the chip being dragged, every time.
+- **Rects are stored in page coordinates.** `getBoundingClientRect()` is viewport-relative, but motion's `PanInfo.point` is `pageX`/`pageY` — verified in `node_modules/framer-motion/dist/es/events/event-info.mjs`, since the documentation only says "relative to the device or page". `measure()` in `WeeklyScheduleGrid` adds `window.scrollX`/`scrollY` to put both in one space. Getting this wrong makes every drop on a scrolled page land on the wrong cell, and it fails silently. Page coordinates also survive a scroll mid-drag, which rects measured at drag start in viewport space would not. Chips are registered as *elements* and measured at drag start, not at mount, for the same reason.
+
+`useFoodSchedule` exposes `swapMeals`/`isSwapping`; its `onError` **re-invalidates** as well as speaking the failure, so a rejected swap cannot linger on screen looking applied.
+
+**Blast radius is unchanged, and it is large.** A swap is a cell edit, so it moves both meals for **every** such weekday in the month, not one date (§2). No second warning was added — the picker sheet already says this — which is a bet that the drag does not read as a single-day move. Untested with users.
+
+**Two gaps, recorded rather than papered over:**
+
+- **The gesture wiring has no automated test.** The frontend suite is node-only with no jsdom, so `findDropTarget` and `isValidDrop` are covered and the wiring between them, motion, and the mutation is not. The interaction has never been exercised in a browser.
+- **There is no keyboard or assistive-technology path to swap two meals.** The capability is not lost — tapping each cell and picking achieves the same result in two edits — but the *direct* swap is pointer-only. `PropertyList` pairs its drag with Move up / Move down in an overflow menu ([[Decisions#ADR-042|ADR-042]] point 6); chips have no equivalent.
 
 ## 8. Publish pre-flight checks
 
@@ -145,11 +185,16 @@ This exists because a live menu of Dosa ×7, Sambar Rice ×7 and empty snacks wa
 
 ## 10. Voting
 
-- One `food_voting_periods` row per `(hostel_id, month)`, `DRAFT | OPEN | CLOSED`, with a start/end window.
-- `POST /api/food/tenant/vote` **toggles** a `(meal_type, menu_item_id)` pair. Voting is **multi-select per meal type** — the `food_votes` unique constraint includes `menu_item_id` precisely so a second pick is a second row, not an overwrite. The schema doc-comment claimed single-choice until this branch corrected it; the constraint and the route had been multi-select since [[Decisions#ADR-029|ADR-029]]'s same-day revision.
+- One `food_voting_periods` row per `(hostel_id, month)`, `DRAFT | OPEN | CLOSED`, with a start/end window. `POST /api/food/voting-periods` is an **upsert** on that key, which is also how the owner edits an existing window.
+- **Opening voting notifies tenants** (2026-08-06). It previously notified *nobody* — there was no notification call in the route at all, while publishing a schedule fanned out to every active tenant. Live data showed **1 voting period and 2 votes in the product's lifetime** (§14); this is the most likely cause, though not proven. The fan-out mirrors publish's exactly: one in-app notification (`food_voting_opened`) per `ACTIVE` tenant of that hostel with a non-null `profile_id`, under `Promise.allSettled` so a failed notification cannot fail the write. The response gains **`notified`** — the count, or `0` when suppressed.
+  - **Guarded by `isNewRound`** (`!existing || existing.status !== "OPEN"`), mirroring publish's `wasAlreadyPublished`. Because the route is an upsert and *is* the edit-the-window path, an unguarded fan-out would notify on every date tweak, which trains tenants to ignore it.
+  - ⚠️ **The notification title says *"Vote on next month's menu."*** That is the copy this module deliberately corrected on the previous branch: `FoodPage` opens voting for `new Date().toISOString().slice(0,7)` — **the current month** — and the tenant-facing string was changed to *"Vote on this month's menu"* precisely because the old one was false. The new notification reintroduces it in a second place. Verified, unfixed, and small.
+- **Turnout is a distinct-tenant count** (2026-08-06). `GET .../results` gained **`voterCount`** — `food_votes` with `distinct: ["tenant_id"]` — and **`eligibleCount`**, the `ACTIVE`, profiled tenants of the period's hostel. `VotingPanel` reads *"N of M students voted."* `totalVotes` is **retained and unchanged**: it counts vote *rows*, and a tenant may pick several items per meal type, so the two numbers legitimately differ and mean different things. This is the same distinction the previous branch's `voterCount` → `voteCount` rename was making — the honest turnout number simply did not exist until now.
+- **The owner can edit an open voting window** (2026-08-06). Once voting opened, the only action on the panel was *Close Voting*; the dates could not be changed. The backend upsert already supported it — only the UI was missing — another built-but-unreachable capability, of which this module has had several. The Edit-window control pre-fills from the current window and re-posts through the same `openVoting` mutation. **No new endpoint.** Reopening a *closed* round, or running a second round in one month, is still not possible and was deliberately not built.
+- `POST /api/food/tenant/vote` **toggles** a `(meal_type, menu_item_id)` pair. Voting is **multi-select per meal type** — the `food_votes` unique constraint includes `menu_item_id` precisely so a second pick is a second row, not an overwrite. The schema doc-comment claimed single-choice until `feat/food-phase-0-1` corrected it; the constraint and the route had been multi-select since [[Decisions#ADR-029|ADR-029]]'s same-day revision.
 - Votes reach planning for real: `generate` tallies them per meal type via `groupBy`, ranks by count (ties by name), and falls back to *all active library items, alphabetically* when a meal type has zero votes, so no slot is left empty.
 - **Voting is for the month already running.** `tenant/vote` uses `firstOfMonth(new Date())` and the owner page opens voting for the current month. The tenant copy used to say *"Vote for next month"*, which was simply false; it now reads *"Vote on this month's menu"*. **Moving voting to the month being planned is Phase 2 and is not built** — the copy was made true rather than the behaviour changed.
-- `assignWeekForMealType` (`lib/services/food-schedule-generator.ts`) is the only real algorithm: largest-remainder proportional allocation of the 7 slots by vote share, then a round-robin deal pass so repeats spread across the week instead of clustering. It labels itself *"v1 heuristic, not claimed-optimal"* and was **explicitly kept, not rewritten** — this branch's contribution was its first tests.
+- `assignWeekForMealType` (`lib/services/food-schedule-generator.ts`) is the only real algorithm: largest-remainder proportional allocation of the 7 slots by vote share, then a round-robin deal pass so repeats spread across the week instead of clustering. It labels itself *"v1 heuristic, not claimed-optimal"* and was **explicitly kept, not rewritten** — `feat/food-phase-0-1`'s contribution was its first tests.
 
 ## 11. The daily cron
 
@@ -164,12 +209,14 @@ The route was correct, transactional and idempotent from the day it was written 
 
 | Suite | Food files | Food tests |
 |---|---|---|
-| `apps/backend` `npm run test:pure` | `food-schedule-generator`, `food-schedule-rebuild-policy`, `food-voting-expiry` | 9 + 11 + 5 = **25** |
-| `apps/frontend` `npm test` | `weekGrid`, `publishChecks`, `kitchenSheet` | 22 + 17 + 8 = **47** |
+| `apps/backend` `npm run test:pure` | `food-schedule-generator`, `food-schedule-rebuild-policy`, `food-voting-expiry`, `food-meal-swap` | 9 + 11 + 5 + 7 = **32** |
+| `apps/frontend` `npm test` | `weekGrid`, `publishChecks`, `kitchenSheet`, `dragSwap` | 22 + 17 + 8 + 8 = **55** |
 
-Totals after this branch: backend **176 pure tests / 10 files**, frontend **225 tests / 10 files**. Before it there were **zero** food tests of any kind.
+Totals after `feat/food-ux-pass`: backend **183 pure tests / 11 files**, frontend **233 tests / 11 files**, 9/9 architectural invariants passing. (After `feat/food-phase-0-1` it was 176/10 and 225/10; before that there were **zero** food tests of any kind.)
 
-All food logic worth testing was deliberately written as pure functions, because the backend suite still has no `DATABASE_URL_TEST` and `vitest.pure.config.ts` is the only runnable path. **That config uses an explicit file list, not a glob** — a new test file left out of it is silently skipped while the run still reports success. Every food test file was added to it.
+All food logic worth testing was deliberately written as pure functions, because the backend suite still has no `DATABASE_URL_TEST` and `vitest.pure.config.ts` is the only runnable path. **That config uses an explicit file list, not a glob** — a new test file left out of it is silently skipped while the run still reports success. Every food test file was added to it, `food-meal-swap` included.
+
+What that shape cannot reach, stated plainly: **the drag gesture.** The frontend suite runs in `environment: 'node'` with no jsdom, so `findDropTarget` and `isValidDrop` are covered as arithmetic and predicates, while the wiring that feeds them — motion's `PanInfo`, the rect registry, the mutation — is not. See §7.1.
 
 ## 13. Explicitly NOT built
 
@@ -186,6 +233,8 @@ Stated so this page cannot be read as overstating the module. All of these are P
 - Immutable published snapshots — history is still editable at the API level
 - A `food-service.ts` extraction; `firstOfMonth` is still copy-pasted into 4 route files in two different implementations
 - WhatsApp broadcast via an approved Meta template (the `wa.me` share is the Phase 1 answer)
+- **A keyboard or assistive-technology path to swap two meals** — the direct swap is pointer-only (§7.1). The capability is reachable the long way, by editing each cell.
+- **Reopening a closed voting round, or a second round in one month** — deliberately out of scope for the 2026-08-06 voting work; only editing an *open* window was added
 
 ## 14. Live data at audit time (production, 2026-08-05)
 
@@ -200,12 +249,13 @@ Recorded because several conclusions changed once the database was queried rathe
 
 ## 15. Unknown / needs clarification
 
-- **The carry-forward cron has not been observed running.** `vercel.json` now schedules it, but that is deploy-gated and no post-deploy execution or `CARRIED_FORWARD` row has been verified. The clone-from-previous-month branch has *still* never been exercised against a real prior published month — a gap [[Decisions#ADR-029|ADR-029]] first flagged in July and this branch does not close.
+- **The carry-forward cron has not been observed running.** `vercel.json` now schedules it, but that is deploy-gated and no post-deploy execution or `CARRIED_FORWARD` row has been verified. The clone-from-previous-month branch has *still* never been exercised against a real prior published month — a gap [[Decisions#ADR-029|ADR-029]] first flagged in July and neither branch closes.
 - **`START_OVER` has no caller.** The route accepts it and both frontend layers pass it through, but no control sends it. Whether it is reserved for the Phase 2 "Plan `<Month>`" flow or is dead surface that should be removed is undecided.
 - **`hostels.food_included` still has zero readers.** It is written by onboarding and `hostel-provisioning-service`, validated in `src/validators/hostels`, and read by nothing in the food module. At audit time it was `false` on both hostels *despite both running published menus* — so the flag is unused **and** wrong. Whether it should gate the Food tab or be dropped is an open product question.
-- **The tenant "current month" can still be stale.** `useTenantFoodSchedule` labels the *latest published* month "Current", not the actual calendar month. If September is unpublished, a tenant sees August's Monday presented as today's meals with no staleness cue. Unchanged by this branch.
+- **The tenant "current month" can still be stale.** `useTenantFoodSchedule` labels the *latest published* month "Current", not the actual calendar month. If September is unpublished, a tenant sees August's Monday presented as today's meals with no staleness cue. Unchanged by either branch.
 - **Owner-facing meal times are not configurable and not stored.** `MEAL_TIMES` is a frontend constant; whether real hostels serve at those hours has not been checked with anyone.
-- **Publish notifications are in-app only.** Whether tenants actually read them (vs. needing WhatsApp) is unverified — there is no read-tracking on `notifications`.
+- **Food notifications are in-app only** — both `food_schedule_published` and, since 2026-08-06, `food_voting_opened`. Whether tenants actually read them (vs. needing WhatsApp) is unverified: there is no read-tracking on `notifications`. Which means the voting-notification fix's *effect* is also unverified — that the missing notification is why the product has seen 1 voting period and 2 votes (§14) is the most plausible reading of the live data, not a proven cause.
+- **Drag-to-swap has never been exercised in a browser.** Its two pure decisions are tested; the gesture itself has no automated coverage (§7.1, §12) and no manual device run is recorded. In particular the page-vs-viewport coordinate handling — the part that fails silently and only on a scrolled page — is unverified end to end.
 
 ---
 

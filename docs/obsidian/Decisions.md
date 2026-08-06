@@ -584,9 +584,10 @@ That reading was wrong, and measurement is what showed it. Two production endpoi
 - `MockProperty` gained optional numeric fields (`occupancyPercent`, `revenueValue`, `outstandingValue`, `displayOrder`) because sorting cannot use the formatted display strings — `'₹1,32,600'` doesn't compare numerically.
 - `DragHandle` is dual-mode: interactive only when given an `onDragStart`. Its three other call sites (floor groups, room layout, food-poll options) stay decorative **on purpose** — those reorder behaviours also don't exist, and making them look interactive would recreate this same bug elsewhere.
 - The occupancy pill now tones by threshold. It had been hardcoded `success`, so 75% and 88% rendered identically green — a status-shaped decoration carrying no status.
+- **Second adopter, 2026-08-06:** the Food module's weekly editor uses point 4's handle-only rule verbatim for drag-to-swap on its meal chips (`DayRow.tsx`, see [[Food]] §7.1) — **this ADR was reused, not extended**; no new drag policy was set, and no new ADR was written for it. The adoption does expose the limit of point 6, though: chips have **no** Move up / Move down equivalent, so unlike the Property cards their direct swap is pointer-only. The capability is reachable the long way (edit each cell), so nothing is unreachable without a pointer — but the parity this ADR set for hostels does not yet hold there.
 - **Not verified by automated backend tests.** `tests/hostel-order-service.test.ts` was written (8 cases: ordering, NULL default, cross-owner rejection, partial-list rejection, duplicates, idempotency, owner isolation, portfolio read-through) but **never executed** — `DATABASE_URL_TEST` is defined nowhere and `.env.test` does not exist, so the entire backend suite is unrunnable in this environment, a pre-existing gap confirmed by an untouched existing test failing identically. Verified live against the real API instead. Running the suite needs a test database provisioned first.
 
-**Related:** [[Features]], [[Database]], [[APIs]], [[Bugs]], [[Changelog]], [[Frontend]].
+**Related:** [[Features]], [[Database]], [[APIs]], [[Bugs]], [[Changelog]], [[Frontend]], [[Food]].
 
 ## ADR-043: One business concept, one screen — billing behaviour is configured in exactly one place, and the collect flow states the policy instead of refusing at the end
 
