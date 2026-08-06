@@ -119,6 +119,16 @@ export function LandingPage() {
       navigate('/owner/home', { replace: true });
       return;
     }
+    // The login modal is owner-focused (ADR-049) but never actually gated
+    // who can authenticate through it — a real, already-active tenant
+    // account (e.g. one activated before this change) still gets a valid
+    // session back from the same API. Without this branch that login
+    // silently went nowhere: modal closes, no redirect, tenant looks
+    // logged out. Existing tenants can still reach their portal directly.
+    if (authUser.tenantId) {
+      navigate('/tenant/home', { replace: true });
+      return;
+    }
 
     if (isLoginRoute) navigate('/', { replace: true });
   };
