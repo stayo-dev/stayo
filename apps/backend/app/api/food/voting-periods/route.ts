@@ -115,7 +115,11 @@ export async function POST(req: NextRequest) {
           .map((t: { profile_id: string }) =>
             notificationService.createNotification(
               t.profile_id,
-              "Vote on next month's menu",
+              // "this month", not "next": the owner opens voting for the month
+              // currently being planned, which `FoodPage` passes as the current
+              // month. The tenant Food tab was corrected to the same wording on
+              // 2026-08-05 for the same reason — see the meals-PATCH note in [[Food]].
+              "Vote on this month's menu",
               "Your hostel owner opened food voting — pick what you'd like to eat.",
               "food_voting_opened",
             ),
