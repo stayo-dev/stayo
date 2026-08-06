@@ -12,7 +12,7 @@ import { setCsrfCookie } from "@/lib/security/csrf";
 import { normalizeWhatsAppPhone } from "@/lib/services/notifications/providers/whatsapp";
 import { resolveSignupPhoneVerification } from "@/lib/services/auth/signup-phone-verification-gate";
 import { leadInvitationService } from "@/src/services/platform-leads/lead-invitation-service";
-import { sendOwnerWelcomeNotification } from "@/lib/services/notifications/whatsapp-owner-welcome-handler";
+import { platformLeadNotificationService } from "@/src/services/platform-leads/platform-lead-notification-service";
 
 const OTP_PURPOSE = "PHONE_VERIFICATION";
 
@@ -74,9 +74,20 @@ export async function POST(req: NextRequest) {
         console.error("[auth.owner-signup] lead activation side effect failed (non-fatal)", err);
       }
 
-      sendOwnerWelcomeNotification(profile.id).catch((err) => {
-        console.error("[auth.owner-signup] owner welcome WhatsApp send failed (non-fatal)", err);
-      });
+      // stayo_owner_welcome is superseded by stayo_owner_account_activated
+      // (design doc D4). The old handler and its approved template are left
+      // in place but no longer called — see Changelog.
+      if (profile.phone) {
+        void platformLeadNotificationService
+          .sendAccountActivated(profile.id, profile.name, profile.phone)
+          .catch((err) => {
+            console.error("[owner-signup] account-activated notify failed", err);
+          });
+      } else {
+        console.warn("[auth.owner-signup] skipping account-activated notify: profile has no phone", {
+          profileId: profile.id,
+        });
+      }
     }
 
     const sessionResult = await authService.createSessionAndTokens(profile, null, null, {
