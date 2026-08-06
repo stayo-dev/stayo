@@ -2934,6 +2934,13 @@ model platform_leads {
   applicant_message  String?
   /// Set only by POST /api/platform-admin/leads/[id]/reject.
   rejection_reason   String?
+  /// Qualification answers from the conversational capture flow. Deliberately
+  /// free-form strings rather than enums — the option lists are marketing copy
+  /// and will be reworded without wanting a migration each time. The tradeoff
+  /// is that a reworded option produces a new distinct value, so these are not
+  /// safe to aggregate without normalising first.
+  pain_point         String?
+  current_tooling    String?
   converted_owner_id String?             @db.Uuid
   created_at         DateTime            @default(now()) @db.Timestamptz(6)
   updated_at         DateTime?           @db.Timestamptz(6)

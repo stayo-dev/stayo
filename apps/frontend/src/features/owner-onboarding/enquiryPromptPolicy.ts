@@ -4,15 +4,17 @@
  * Pure and separated from the component so the rules — which are the part
  * that is easy to get wrong and annoying when wrong — are testable in the
  * node-only test environment (`apps/frontend` has no jsdom).
+ *
+ * There is deliberately **no persistent dismissal**. An earlier version stored
+ * a 7-day cooldown in localStorage; it was removed because on a pre-launch
+ * marketing page the cost of re-asking a visitor is far lower than the cost of
+ * silently never asking again — and because an invisible stored timestamp made
+ * the feature look broken to everyone testing it. Dismissing now hides the
+ * prompt for the current page view only.
  */
 
 /** Fires once the visitor is past the hero, which is genuine interest rather than a bounce. */
 export const ENQUIRY_PROMPT_SCROLL_THRESHOLD = 0.4;
-
-/** A dismissal is respected for 7 days. */
-export const ENQUIRY_PROMPT_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
-
-export const ENQUIRY_PROMPT_DISMISS_KEY = 'stayo.enquiryPrompt.dismissedAt';
 
 export type ScrollGeometry = {
   /** Scroll offset of whichever element actually scrolls. */
@@ -47,26 +49,33 @@ export function computeScrollFraction(geometry: ScrollGeometry): number {
 
 export type EnquiryPromptInput = {
   scrollFraction: number;
-  /** Epoch ms from localStorage, or null if never dismissed. May be NaN if the stored value was corrupt. */
-  dismissedAt: number | null;
   /** An authenticated owner who already has a hostel is not a lead. */
   isOwnerWithHostel: boolean;
   alreadyShownThisSession: boolean;
-  now: number;
 };
 
-export function shouldShowEnquiryPrompt(input: EnquiryPromptInput): boolean {
-  if (input.isOwnerWithHostel) return false;
-  if (input.alreadyShownThisSession) return false;
-  if (input.scrollFraction < ENQUIRY_PROMPT_SCROLL_THRESHOLD) return false;
-
-  const dismissedAt = input.dismissedAt;
-  if (dismissedAt !== null && Number.isFinite(dismissedAt)) {
-    const elapsed = input.now - dismissedAt;
-    // A future timestamp means a corrupt or clock-skewed value — treat it as
-    // no dismissal rather than suppressing the prompt indefinitely.
-    if (elapsed >= 0 && elapsed <= ENQUIRY_PROMPT_COOLDOWN_MS) return false;
+/**
+ * Why the prompt is not showing, or `null` if it should show.
+ *
+ * Exists because the remaining suppression rules are invisible from the
+ * outside — a signed-in owner looks identical to "the feature is broken".
+ * The component logs this in development.
+ */
+export function explainEnquiryPromptSuppression(input: EnquiryPromptInput): string | null {
+  if (input.isOwnerWithHostel) {
+    return 'suppressed: signed in as an owner who already has a hostel — sign out to see it';
   }
+  if (input.alreadyShownThisSession) {
+    return 'suppressed: already shown once on this page view — reload to see it again';
+  }
+  if (input.scrollFraction < ENQUIRY_PROMPT_SCROLL_THRESHOLD) {
+    return `waiting: scrolled ${(input.scrollFraction * 100).toFixed(0)}% of ${(
+      ENQUIRY_PROMPT_SCROLL_THRESHOLD * 100
+    ).toFixed(0)}% needed`;
+  }
+  return null;
+}
 
-  return true;
+export function shouldShowEnquiryPrompt(input: EnquiryPromptInput): boolean {
+  return explainEnquiryPromptSuppression(input) === null;
 }

@@ -2,9 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { BadgeCheck, X } from 'lucide-react';
 import { readScrollGeometry, subscribeToScroll } from '@shared/lib/scroll';
 import {
-  ENQUIRY_PROMPT_DISMISS_KEY,
   computeScrollFraction,
-  shouldShowEnquiryPrompt,
+  explainEnquiryPromptSuppression,
 } from '../enquiryPromptPolicy';
 
 type OwnerEnquiryPromptProps = {
@@ -12,79 +11,60 @@ type OwnerEnquiryPromptProps = {
   onAccept: () => void;
 };
 
-function readDismissedAt(): number | null {
-  try {
-    const raw = window.localStorage.getItem(ENQUIRY_PROMPT_DISMISS_KEY);
-    return raw === null ? null : Number(raw);
-  } catch {
-    // Private-mode or blocked storage — treat as never dismissed rather than crashing.
-    return null;
-  }
-}
-
-function rememberDismissal() {
-  try {
-    window.localStorage.setItem(ENQUIRY_PROMPT_DISMISS_KEY, String(Date.now()));
-  } catch {
-    // Storage unavailable — the session-level guard still stops it reappearing on this page view.
-  }
-}
-
 /**
  * "Are you a hostel owner?" — slides in once the visitor scrolls past the hero.
  *
  * Accepting calls straight into the landing page's existing owner entry point,
- * so there is exactly one lead-capture flow (Google → details → phone OTP),
- * not a second one duplicated here. All show/hide rules live in the tested
- * `enquiryPromptPolicy` module; scroll measurement lives in `@shared/lib/scroll`
- * because `<body>` — not the document — is this app's scroll container.
+ * so there is exactly one lead-capture flow, not a second one duplicated here.
+ * All show/hide rules live in the tested `enquiryPromptPolicy` module; scroll
+ * measurement lives in `@shared/lib/scroll` because `<body>` — not the
+ * document — is this app's scroll container.
+ *
+ * Dismissing hides it for this page view only. There is no persistent
+ * suppression by design — see the note in `enquiryPromptPolicy`.
  */
 export function OwnerEnquiryPrompt({ isOwnerWithHostel, onAccept }: OwnerEnquiryPromptProps) {
   const [visible, setVisible] = useState(false);
   const shownRef = useRef(false);
+  const loggedRef = useRef('');
 
   useEffect(() => {
     const evaluate = () => {
-      if (
-        shouldShowEnquiryPrompt({
-          scrollFraction: computeScrollFraction(readScrollGeometry()),
-          dismissedAt: readDismissedAt(),
-          isOwnerWithHostel,
-          alreadyShownThisSession: shownRef.current,
-          now: Date.now(),
-        })
-      ) {
+      const reason = explainEnquiryPromptSuppression({
+        scrollFraction: computeScrollFraction(readScrollGeometry()),
+        isOwnerWithHostel,
+        alreadyShownThisSession: shownRef.current,
+      });
+
+      if (reason === null) {
         shownRef.current = true;
         setVisible(true);
+        return;
+      }
+
+      // Every remaining suppression rule is invisible from the outside, so say
+      // which one is in effect rather than leaving it looking broken. Dev only,
+      // and only when the reason changes, so scrolling doesn't flood the console.
+      if (import.meta.env.DEV && loggedRef.current !== reason) {
+        loggedRef.current = reason;
+        console.info('[OwnerEnquiryPrompt]', reason);
       }
     };
 
     return subscribeToScroll(evaluate);
   }, [isOwnerWithHostel]);
 
-  // Escape closes it, like any other dismissible overlay.
   useEffect(() => {
     if (!visible) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') decline();
+      if (e.key === 'Escape') setVisible(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  /** Explicit "no" — suppressed for the full cooldown. */
-  const decline = () => {
-    setVisible(false);
-    rememberDismissal();
-  };
+  const decline = () => setVisible(false);
 
-  /**
-   * Interested. Deliberately does NOT write the cooldown: someone who clicks
-   * through and then abandons the Google step should still be re-prompted on a
-   * later visit, rather than being locked out for a week. `shownRef` still
-   * stops it reappearing during this page view.
-   */
   const accept = () => {
     setVisible(false);
     onAccept();
@@ -97,7 +77,7 @@ export function OwnerEnquiryPrompt({ isOwnerWithHostel, onAccept }: OwnerEnquiry
       role="dialog"
       aria-modal="false"
       aria-labelledby="owner-enquiry-prompt-title"
-      className="stayo-enquiry-prompt fixed inset-x-3 bottom-3 z-[400] mx-auto max-w-[420px] sm:inset-x-auto sm:right-6 sm:bottom-6 sm:mx-0"
+      className="stayo-enquiry-prompt fixed inset-x-3 bottom-3 z-[400] mx-auto max-w-[420px] sm:inset-x-auto sm:bottom-6 sm:right-6 sm:mx-0"
     >
       <div className="relative overflow-hidden rounded-[20px] border border-border bg-card p-5 shadow-[0_28px_60px_-20px_rgba(47,47,47,0.45)]">
         {/* Warm accent wash so the card reads as Stayo, not a generic toast. */}
@@ -127,7 +107,7 @@ export function OwnerEnquiryPrompt({ isOwnerWithHostel, onAccept }: OwnerEnquiry
               Are you a hostel owner?
             </h2>
             <p className="mt-1.5 text-[13.5px] leading-relaxed text-muted-foreground">
-              Get verified and start managing rent, rooms and tenants on Stayo — setup takes under a day.
+              Answer a few quick questions and we'll get you set up on Stayo — takes under a minute.
             </p>
           </div>
         </div>
