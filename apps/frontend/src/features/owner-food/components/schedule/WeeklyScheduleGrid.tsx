@@ -1,10 +1,31 @@
-import { Sparkles } from 'lucide-react';
+import { useRef } from 'react';
+import { GripVertical, Sparkles } from 'lucide-react';
 import type { useFoodSchedule } from '../../hooks/useFoodSchedule';
 import { UtensilsCrossed } from 'lucide-react';
 import { buildPublishChecks } from '../../publishChecks';
+import { findDropTarget, isValidDrop, type DropCandidate } from '../../dragSwap';
 import { PublishChecklist } from './PublishChecklist';
 import { DayRow } from './DayRow';
-import { DAY_ORDER, dayKeyFor } from '../../weekGrid';
+import { DAY_ORDER, SLOT_ORDER, dayKeyFor, isFilled } from '../../weekGrid';
+
+/**
+ * A chip's on-screen box in **page** coordinates.
+ *
+ * `getBoundingClientRect()` is viewport-relative but motion's `PanInfo.point`
+ * is `pageX`/`pageY` (verified in `framer-motion/dist/es/events/event-info.mjs`
+ * — the docs only say "relative to the device or page"), so the scroll offset
+ * is added here to put both in one space. Page coordinates also survive a
+ * scroll mid-drag, which viewport rects measured at drag start would not.
+ */
+function measure(el: HTMLElement): DropCandidate['rect'] {
+  const r = el.getBoundingClientRect();
+  return {
+    left: r.left + window.scrollX,
+    top: r.top + window.scrollY,
+    right: r.right + window.scrollX,
+    bottom: r.bottom + window.scrollY,
+  };
+}
 
 interface WeeklyScheduleGridProps {
   schedule: ReturnType<typeof useFoodSchedule>;
@@ -16,6 +37,36 @@ interface WeeklyScheduleGridProps {
 
 /** The weekly (Mon-Sun x 4 meals) review/edit grid — one real week, replacing the old Week1-4 model. Tap a cell to swap its item. */
 export function WeeklyScheduleGrid({ schedule, canGenerate, voteCount, votesConsidered, tenantCount }: WeeklyScheduleGridProps) {
+  // Every mounted chip's element, keyed by meal id. Elements rather than rects
+  // because a rect measured at mount is stale the moment the page scrolls or
+  // the grid re-renders; measuring is deferred to drag start.
+  const chipsRef = useRef(new Map<string, { mealType: string; el: HTMLElement }>());
+  // Snapshot taken at drag start and hit-tested at drag end. The dragged chip
+  // is in it too, but `isValidDrop` rejects a drop onto itself.
+  const candidatesRef = useRef<DropCandidate[]>([]);
+
+  const registerChip = (mealId: string, mealType: string, el: HTMLElement | null) => {
+    if (el) chipsRef.current.set(mealId, { mealType, el });
+    else chipsRef.current.delete(mealId);
+  };
+
+  const measureChips = () => {
+    candidatesRef.current = [...chipsRef.current.entries()].map(([mealId, { mealType, el }]) => ({
+      mealId,
+      mealType,
+      rect: measure(el),
+    }));
+  };
+
+  const handleChipDragEnd = (mealId: string, mealType: string, point: { x: number; y: number }) => {
+    const targetId = findDropTarget(point, candidatesRef.current);
+    const target = candidatesRef.current.find((c) => c.mealId === targetId) ?? null;
+    // A drag that lands on nothing, on itself, or on another meal type dies
+    // here — silently, rather than as a 400 from the swap endpoint.
+    if (!target || !isValidDrop({ mealId, mealType }, target)) return;
+    schedule.swapMeals(mealId, target.mealId);
+  };
+
   if (schedule.isLoading) {
     return <div className="h-64 animate-pulse rounded-2xl bg-muted" />;
   }
@@ -42,6 +93,11 @@ export function WeeklyScheduleGrid({ schedule, canGenerate, voteCount, votesCons
 
   const checks = buildPublishChecks({ grid: schedule.weekGrid, votesConsidered, voteCount });
   const today = dayKeyFor(new Date());
+  // Nothing to swap with until some meal type appears on two days, so the hint
+  // stays out of the way of a half-built week.
+  const canSwapAnything = SLOT_ORDER.some(
+    (slot) => schedule.weekGrid.filter((c) => c.meal_type === slot && isFilled(c)).length >= 2,
+  );
 
   return (
     <div className="flex flex-col gap-3">
@@ -72,9 +128,21 @@ export function WeeklyScheduleGrid({ schedule, canGenerate, voteCount, votesCons
             onPick={(cell) => {
               if (cell.id) schedule.openPicker({ mealId: cell.id, slot: cell.meal_type });
             }}
+            registerChip={registerChip}
+            onChipDragStart={measureChips}
+            onChipDragEnd={handleChipDragEnd}
+            // A second drag while a swap is in flight would hit-test against
+            // the pre-swap grid and write the wrong pair.
+            dragDisabled={schedule.isSwapping}
           />
         ))}
       </div>
+
+      {canSwapAnything && (
+        <p className="px-1.5 text-[11px] text-muted-foreground">
+          Drag <GripVertical className="inline h-3 w-3 align-[-2px]" /> to move a meal to another day. Tap to change it.
+        </p>
+      )}
 
       {schedule.schedule.status === 'DRAFT' ? (
         <div className="flex flex-col gap-3">
