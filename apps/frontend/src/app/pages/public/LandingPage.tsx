@@ -8,6 +8,7 @@ import { MarketingFooter } from './components/MarketingFooter';
 import { TrishulMark } from '@shared/ui-patterns/TrishulMark';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { OwnerEnquiryPrompt } from '@features/owner-onboarding/components/OwnerEnquiryPrompt';
+import { readScrollTop, subscribeToScroll } from '@shared/lib/scroll';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 
 const OWNER_STEPS = [
@@ -64,12 +65,12 @@ export function LandingPage() {
   const [loginOpen, setLoginOpen] = useState(location.pathname === '/login');
   const [googleAuthOpen, setGoogleAuthOpen] = useState(false);
 
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 24);
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
+  // `window.scrollY` is always 0 on this app and a scroll listener on `window`
+  // never fires — `<body>` is the scroll container, because theme.css sets
+  // `overflow-x: hidden` on html and body, which forces overflow-y to auto.
+  // This nav's scrolled treatment had therefore never once fired. See
+  // `@shared/lib/scroll` for the measured evidence.
+  useEffect(() => subscribeToScroll(() => setScrolled(readScrollTop() > 24)), []);
 
   // React Router doesn't scroll to `#anchor` on navigation, so arriving from
   // another route (e.g. /contact's nav, which links to `/#why`) would land

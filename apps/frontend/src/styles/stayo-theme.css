@@ -148,3 +148,28 @@
   0%, 100% { box-shadow: 0 0 0 0 rgba(164,93,68,.34); }
   50% { box-shadow: 0 0 0 7px rgba(164,93,68,0); }
 }
+
+/*
+ * Owner enquiry prompt (features/owner-onboarding/components/OwnerEnquiryPrompt).
+ * Slides up with a slight settle so it reads as arriving, not as having always
+ * been there — it appears mid-scroll, where a static card is easy to miss.
+ * The badge gives one attention pulse, then stops; a looping pulse on a
+ * marketing page reads as an ad.
+ */
+@keyframes stayoEnquiryPromptIn {
+  0% { opacity: 0; transform: translateY(26px) scale(0.97); }
+  70% { opacity: 1; transform: translateY(-3px) scale(1.005); }
+  100% { opacity: 1; transform: none; }
+}
+.stayo-enquiry-prompt {
+  animation: stayoEnquiryPromptIn 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.stayo-enquiry-prompt-badge {
+  animation: stayoNodePulse 1.6s ease-out 420ms 2;
+}
+@media (prefers-reduced-motion: reduce) {
+  .stayo-enquiry-prompt,
+  .stayo-enquiry-prompt-badge {
+    animation: none;
+  }
+}
