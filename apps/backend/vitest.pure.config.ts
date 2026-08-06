@@ -37,6 +37,7 @@ export default defineConfig({
       'tests/food-schedule-generator.test.ts',
       'tests/food-meal-swap.test.ts',
       'tests/platform-lead-templates.test.ts',
+      'tests/platform-lead-stage-mapper.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),
