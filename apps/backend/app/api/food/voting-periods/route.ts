@@ -6,6 +6,7 @@ import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
 import { requireHostelBelongsToOwner } from "@/lib/security/scoped-query";
 import { prisma } from "@/lib/db";
+import { notificationService } from "@/lib/services/notification-service";
 
 function firstOfMonth(value: unknown): Date | null {
   if (!value || typeof value !== "string") return null;
@@ -74,6 +75,11 @@ export async function POST(req: NextRequest) {
       return apiError("votingEndsAt must be after votingStartsAt", "VALIDATION_ERROR", 400);
     }
 
+    const existing = await prisma.food_voting_periods.findUnique({
+      where: { hostel_id_month: { hostel_id: hostelId, month } },
+      select: { status: true },
+    });
+
     const period = await prisma.food_voting_periods.upsert({
       where: { hostel_id_month: { hostel_id: hostelId, month } },
       create: {
@@ -92,7 +98,32 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return apiResponse(period, 201);
+    // Only announce a genuinely new round. This route is an upsert, so it is
+    // also how the owner edits an open window — re-notifying on every date
+    // tweak would train tenants to ignore it.
+    const isNewRound = !existing || existing.status !== "OPEN";
+    let notifiedCount = 0;
+    if (isNewRound) {
+      const tenants = await prisma.tenants.findMany({
+        where: { owner_id: scope.owner_id, hostel_id: hostelId, status: "ACTIVE", profile_id: { not: null } },
+        select: { profile_id: true },
+      });
+      notifiedCount = tenants.length;
+      await Promise.allSettled(
+        tenants
+          .filter((t: { profile_id: string | null }): t is { profile_id: string } => Boolean(t.profile_id))
+          .map((t: { profile_id: string }) =>
+            notificationService.createNotification(
+              t.profile_id,
+              "Vote on next month's menu",
+              "Your hostel owner opened food voting — pick what you'd like to eat.",
+              "food_voting_opened",
+            ),
+          ),
+      );
+    }
+
+    return apiResponse({ ...period, notified: isNewRound ? notifiedCount : 0 }, 201);
   } catch (error: any) {
     const msg = String(error?.message || "Failed to open voting");
     if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
