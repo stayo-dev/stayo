@@ -36,17 +36,25 @@ export class PlatformLeadNotificationService {
   private async dispatch(options: {
     key: PlatformLeadTemplateKey;
     phone: string;
-    payload: TemplatePayload;
+    // Thunk, not a value: building the payload can throw (e.g. a blank
+    // token fails `requireToken` in platform-lead-template-contracts.ts).
+    // Evaluating it inside this try block — rather than in the caller's
+    // object literal, which JS evaluates before dispatch() is even entered
+    // — is what lets that throw land in the catch below like any other
+    // send failure, instead of escaping methods documented as never
+    // throwing into the caller's critical path.
+    payload: () => TemplatePayload;
     idempotencyKey: string;
     ownerId?: string;
   }): Promise<{ sent: boolean; error?: string }> {
     const templateName = platformLeadTemplateName(options.key);
     try {
+      const payload = options.payload();
       const result = await whatsAppTemplateDeliveryService.send({
         phone: options.phone,
         templateName,
-        bodyParameters: options.payload.bodyParameters,
-        buttonParameters: options.payload.buttonParameters,
+        bodyParameters: payload.bodyParameters,
+        buttonParameters: payload.buttonParameters,
         idempotencyKey: options.idempotencyKey,
         ownerId: options.ownerId,
         languageCode: platformLeadTemplateLanguage(options.key),
@@ -75,7 +83,7 @@ export class PlatformLeadNotificationService {
     const result = await this.dispatch({
       key: "LEAD_RECEIVED",
       phone: lead.phone,
-      payload: buildLeadReceivedPayload({ ownerName: lead.name, trackingToken: lead.tracking_token }),
+      payload: () => buildLeadReceivedPayload({ ownerName: lead.name, trackingToken: lead.tracking_token }),
       idempotencyKey: `lead_received:${lead.id}`,
     });
     await eventLog
@@ -99,7 +107,7 @@ export class PlatformLeadNotificationService {
     const result = await this.dispatch({
       key: "INVITATION",
       phone: lead.phone,
-      payload: buildInvitationPayload({ ownerName: lead.name, expiryDays, activationToken }),
+      payload: () => buildInvitationPayload({ ownerName: lead.name, expiryDays, activationToken }),
       // Keyed on the token, not the lead — a re-approval issues a new token
       // and must be allowed to send again.
       idempotencyKey: `lead_invitation:${activationToken}`,
@@ -112,7 +120,7 @@ export class PlatformLeadNotificationService {
     const result = await this.dispatch({
       key: "ACCOUNT_ACTIVATED",
       phone,
-      payload: buildAccountActivatedPayload({ ownerName }),
+      payload: () => buildAccountActivatedPayload({ ownerName }),
       idempotencyKey: `owner_account_activated:${profileId}`,
       ownerId: profileId,
     });
@@ -128,7 +136,7 @@ export class PlatformLeadNotificationService {
     const result = await this.dispatch({
       key: "ONBOARDING_COMPLETE",
       phone: lead.phone,
-      payload: buildOnboardingCompletePayload({ ownerName: lead.name, hostelName }),
+      payload: () => buildOnboardingCompletePayload({ ownerName: lead.name, hostelName }),
       idempotencyKey: `lead_onboarding_complete:${lead.id}`,
     });
     await eventLog
@@ -144,7 +152,7 @@ export class PlatformLeadNotificationService {
     const result = await this.dispatch({
       key: "LEAD_REJECTED",
       phone: lead.phone,
-      payload: buildLeadRejectedPayload({ ownerName: lead.name, reason }),
+      payload: () => buildLeadRejectedPayload({ ownerName: lead.name, reason }),
       idempotencyKey: `lead_rejected:${lead.id}`,
     });
     await eventLog
