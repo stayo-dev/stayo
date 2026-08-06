@@ -21,7 +21,18 @@ export const hostelLeadsApi = {
   },
   submitLead: async (data: { name: string; hostel_name: string; phone: string; google_email?: string }) => {
     const response = await api.post('/leads/self-serve', data);
-    return response.data as { success: boolean; id: string; status: string };
+    return response.data as { success: boolean; id: string; status: string; tracking_token: string };
+  },
+  getEnquiryStatus: async (token: string) => {
+    const response = await api.get(`/leads/track/${token}`);
+    return response.data as {
+      hostel_name: string;
+      submitted_at: string;
+      stage: string;
+      is_terminal: boolean;
+      timeline: Array<{ key: string; label: string; state: 'done' | 'current' | 'pending' }>;
+      applicant_message: string | null;
+    };
   },
   getInvitationContext: async (token: string) => {
     const response = await api.get(`/leads/invitation/${token}`);
