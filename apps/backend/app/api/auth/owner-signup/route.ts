@@ -12,6 +12,7 @@ import { setCsrfCookie } from "@/lib/security/csrf";
 import { normalizeWhatsAppPhone } from "@/lib/services/notifications/providers/whatsapp";
 import { resolveSignupPhoneVerification } from "@/lib/services/auth/signup-phone-verification-gate";
 import { leadInvitationService } from "@/src/services/platform-leads/lead-invitation-service";
+import { sendOwnerWelcomeNotification } from "@/lib/services/notifications/whatsapp-owner-welcome-handler";
 
 const OTP_PURPOSE = "PHONE_VERIFICATION";
 
@@ -72,6 +73,10 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         console.error("[auth.owner-signup] lead activation side effect failed (non-fatal)", err);
       }
+
+      sendOwnerWelcomeNotification(profile.id).catch((err) => {
+        console.error("[auth.owner-signup] owner welcome WhatsApp send failed (non-fatal)", err);
+      });
     }
 
     const sessionResult = await authService.createSessionAndTokens(profile, null, null, {

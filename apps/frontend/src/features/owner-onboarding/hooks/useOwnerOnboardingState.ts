@@ -68,15 +68,9 @@ const INITIAL_DATA: OwnerOnboardingData = {
  * `initialData` (owner-acquisition funnel phase 2): optional prefill from a
  * lead-activation link (OwnerLeadInvitePage → router state). Absent for a
  * normal, non-lead-originated visit — behavior is unchanged in that case.
- *
- * `initialStep`: lets an already-authenticated owner adding a second/third
- * hostel (from the dashboard's "+ Add hostel") skip the Account/KYC steps —
- * those only make sense for someone who doesn't have a Stayo account yet.
- * Absent for a normal visit, which still starts at 'welcome' (step 0).
  */
-export function useOwnerOnboardingState(initialData?: Partial<OwnerOnboardingData>, initialStep?: number) {
-  const minStep = initialStep ?? 0;
-  const [step, setStep] = useState(minStep);
+export function useOwnerOnboardingState(initialData?: Partial<OwnerOnboardingData>) {
+  const [step, setStep] = useState(0);
   const [data, setData] = useState<OwnerOnboardingData>(() => ({ ...INITIAL_DATA, ...initialData }));
   const [kyc, setKyc] = useState<OwnerOnboardingKyc>({ aadhaar: false, pan: false, photo: false });
   const [floorsGen, setFloorsGen] = useState(false);
@@ -90,7 +84,7 @@ export function useOwnerOnboardingState(initialData?: Partial<OwnerOnboardingDat
   const setD = (patch: Partial<OwnerOnboardingData>) => setData((d) => ({ ...d, ...patch }));
 
   const go = (n: number) => {
-    setStep(Math.max(minStep, Math.min(ONBOARDING_SCREENS.length - 1, n)));
+    setStep(Math.max(0, Math.min(ONBOARDING_SCREENS.length - 1, n)));
     if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
   };
 
@@ -160,7 +154,7 @@ export function useOwnerOnboardingState(initialData?: Partial<OwnerOnboardingDat
     totalBeds,
     hostelDisplay,
     continueLabel,
-    canBack: step > minStep && screenId !== 'success',
+    canBack: step > 0 && screenId !== 'success',
   };
 }
 
