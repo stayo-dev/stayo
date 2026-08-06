@@ -5,7 +5,7 @@ import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
 import { prisma } from "@/lib/db";
-import { canSwap } from "@/lib/services/food/meal-swap";
+import { canSwap, swapWritesLanded } from "@/lib/services/food/meal-swap";
 
 /**
  * POST /api/food/schedules/[id]/meals/swap
@@ -54,15 +54,23 @@ export async function POST(
       const verdict = canSwap(a, b, scheduleId);
       if (!verdict.ok) throw new Error(`SWAP_REFUSED: ${verdict.reason}`);
 
+      // Each write is conditional on the cell still holding the item this
+      // transaction read. Atomicity alone does not order two overlapping
+      // swaps: under READ COMMITTED, A(c1<->c2) and B(c2<->c3) can both read
+      // before either commits, and B's stale write to c2 then duplicates one
+      // item and loses another. Re-checking the item id inside the write means
+      // the loser's predicate no longer matches, so it refuses instead.
       const now = new Date();
-      await tx.food_schedule_meals.update({
-        where: { id: a!.id },
+      const aWrite = await tx.food_schedule_meals.updateMany({
+        where: { id: a!.id, menu_item_id: a!.menu_item_id },
         data: { menu_item_id: b!.menu_item_id, item_name: b!.item_name, updated_at: now },
       });
-      await tx.food_schedule_meals.update({
-        where: { id: b!.id },
+      const bWrite = await tx.food_schedule_meals.updateMany({
+        where: { id: b!.id, menu_item_id: b!.menu_item_id },
         data: { menu_item_id: a!.menu_item_id, item_name: a!.item_name, updated_at: now },
       });
+      const landed = swapWritesLanded(aWrite.count, bWrite.count);
+      if (!landed.ok) throw new Error(`SWAP_REFUSED: ${landed.reason}`);
 
       await tx.food_schedules.update({
         where: { id: scheduleId },
@@ -78,6 +86,11 @@ export async function POST(
   } catch (error: any) {
     const msg = String(error?.message || "Failed to swap meals");
     if (msg.startsWith("SWAP_REFUSED")) return apiError(msg.split(": ")[1] ?? msg, "VALIDATION_ERROR", 400);
+    // `resolveOwnerScope` throws this for any role that is not OWNER, and the
+    // role gate above admits ADMIN — without the mapping an admin's drag came
+    // back as a 500 quoting an internal string. Same shape as the sibling
+    // voting-periods route.
+    if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
     return apiError(msg);
   }
 }

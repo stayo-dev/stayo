@@ -28,3 +28,20 @@ export function canSwap(a: SwapCell | null, b: SwapCell | null, scheduleId: stri
   }
   return { ok: true, reason: "" };
 }
+
+/**
+ * Whether both halves of the swap actually wrote.
+ *
+ * The route writes each cell conditionally on it still holding the item the
+ * transaction read, because atomicity does not order two overlapping swaps:
+ * under READ COMMITTED, A(c1<->c2) and B(c2<->c3) can both read before either
+ * commits, and B's stale write to c2 would duplicate one item and lose the
+ * other. A zero count is the loser discovering that, and the swap is refused
+ * rather than applied on top of a state it never saw.
+ */
+export function swapWritesLanded(aCount: number, bCount: number): SwapVerdict {
+  if (aCount === 0 || bCount === 0) {
+    return { ok: false, reason: "Those meals changed while you were moving them" };
+  }
+  return { ok: true, reason: "" };
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canSwap, type SwapCell } from "@/lib/services/food/meal-swap";
+import { canSwap, swapWritesLanded, type SwapCell } from "@/lib/services/food/meal-swap";
 
 /** Pure — no database. Runs under `npm run test:pure`. */
 const SCHEDULE = "sched-1";
@@ -40,5 +40,25 @@ describe("canSwap", () => {
 
   it("refuses when the first cell belongs to a different schedule", () => {
     expect(canSwap(cell("a", "BREAKFAST", "other"), cell("b", "BREAKFAST"), SCHEDULE).ok).toBe(false);
+  });
+});
+
+describe("swapWritesLanded", () => {
+  it("accepts when both conditional writes matched a row", () => {
+    expect(swapWritesLanded(1, 1)).toEqual({ ok: true, reason: "" });
+  });
+
+  it("refuses when the first cell was changed by a concurrent swap", () => {
+    const v = swapWritesLanded(0, 1);
+    expect(v.ok).toBe(false);
+    expect(v.reason).toMatch(/changed while/i);
+  });
+
+  it("refuses when the second cell was changed by a concurrent swap", () => {
+    expect(swapWritesLanded(1, 0).ok).toBe(false);
+  });
+
+  it("refuses when neither write matched", () => {
+    expect(swapWritesLanded(0, 0).ok).toBe(false);
   });
 });

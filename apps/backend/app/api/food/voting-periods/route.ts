@@ -75,56 +75,83 @@ export async function POST(req: NextRequest) {
       return apiError("votingEndsAt must be after votingStartsAt", "VALIDATION_ERROR", 400);
     }
 
-    const existing = await prisma.food_voting_periods.findUnique({
-      where: { hostel_id_month: { hostel_id: hostelId, month } },
-      select: { status: true },
+    // Whether this is a genuinely new round decides whether every tenant is
+    // notified, so it must not be a read taken before the write: two truly
+    // concurrent first-opens would both see no OPEN row and both fan out,
+    // notifying everyone twice. The round is *claimed* instead — a conditional
+    // update only one of them can win, because row locking makes the loser
+    // re-evaluate `status` after the winner commits.
+    const reopened = await prisma.food_voting_periods.updateMany({
+      where: { hostel_id: hostelId, month, status: { not: "OPEN" } },
+      data: { voting_starts_at: startsAt, voting_ends_at: endsAt, status: "OPEN", updated_at: new Date() },
     });
 
-    const period = await prisma.food_voting_periods.upsert({
+    let created = false;
+    let period = await prisma.food_voting_periods.findUnique({
       where: { hostel_id_month: { hostel_id: hostelId, month } },
-      create: {
-        hostel_id: hostelId,
-        owner_id: scope.owner_id,
-        month,
-        voting_starts_at: startsAt,
-        voting_ends_at: endsAt,
-        status: "OPEN",
-      },
-      update: {
-        voting_starts_at: startsAt,
-        voting_ends_at: endsAt,
-        status: "OPEN",
-        updated_at: new Date(),
-      },
     });
 
-    // Only announce a genuinely new round. This route is an upsert, so it is
-    // also how the owner edits an open window — re-notifying on every date
-    // tweak would train tenants to ignore it.
-    const isNewRound = !existing || existing.status !== "OPEN";
+    if (!period) {
+      try {
+        period = await prisma.food_voting_periods.create({
+          data: {
+            hostel_id: hostelId,
+            owner_id: scope.owner_id,
+            month,
+            voting_starts_at: startsAt,
+            voting_ends_at: endsAt,
+            status: "OPEN",
+          },
+        });
+        created = true;
+      } catch (error: any) {
+        // Lost the create race on the (hostel_id, month) unique key. The
+        // winner owns the round and its notification; this request is left
+        // holding an edit of the window.
+        if (error?.code !== "P2002") throw error;
+        period = await prisma.food_voting_periods.update({
+          where: { hostel_id_month: { hostel_id: hostelId, month } },
+          data: { voting_starts_at: startsAt, voting_ends_at: endsAt, updated_at: new Date() },
+        });
+      }
+    } else if (reopened.count === 0) {
+      // The row was already OPEN, so this is the owner editing an open
+      // window — re-notifying on every date tweak would train tenants to
+      // ignore the notification.
+      period = await prisma.food_voting_periods.update({
+        where: { hostel_id_month: { hostel_id: hostelId, month } },
+        data: { voting_starts_at: startsAt, voting_ends_at: endsAt, updated_at: new Date() },
+      });
+    }
+
+    const isNewRound = created || reopened.count > 0;
     let notifiedCount = 0;
     if (isNewRound) {
       const tenants = await prisma.tenants.findMany({
         where: { owner_id: scope.owner_id, hostel_id: hostelId, status: "ACTIVE", profile_id: { not: null } },
         select: { profile_id: true },
       });
-      notifiedCount = tenants.length;
-      await Promise.allSettled(
-        tenants
-          .filter((t: { profile_id: string | null }): t is { profile_id: string } => Boolean(t.profile_id))
-          .map((t: { profile_id: string }) =>
-            notificationService.createNotification(
-              t.profile_id,
-              // "this month", not "next": the owner opens voting for the month
-              // currently being planned, which `FoodPage` passes as the current
-              // month. The tenant Food tab was corrected to the same wording on
-              // 2026-08-05 for the same reason — see the meals-PATCH note in [[Food]].
-              "Vote on this month's menu",
-              "Your hostel owner opened food voting — pick what you'd like to eat.",
-              "food_voting_opened",
-            ),
+      const recipients = tenants
+        .filter((t: { profile_id: string | null }): t is { profile_id: string } => Boolean(t.profile_id))
+        .map((t: { profile_id: string }) => t.profile_id);
+      const results = await Promise.allSettled(
+        recipients.map((profileId: string) =>
+          notificationService.createNotification(
+            profileId,
+            // "this month", not "next": the owner opens voting for the month
+            // currently being planned, which `FoodPage` passes as the current
+            // month. The tenant Food tab was corrected to the same wording on
+            // 2026-08-05 for the same reason — see the meals-PATCH note in [[Food]].
+            "Vote on this month's menu",
+            "Your hostel owner opened food voting — pick what you'd like to eat.",
+            "food_voting_opened",
           ),
+        ),
       );
+      // What landed, not what was attempted. `notified` used to be assigned
+      // before the fan-out ran, so a wholly failed fan-out still reported
+      // full delivery.
+      notifiedCount = results.filter((r) => r.status === "fulfilled").length;
     }
 
     return apiResponse({ ...period, notified: isNewRound ? notifiedCount : 0 }, 201);
