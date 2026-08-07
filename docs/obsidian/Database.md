@@ -238,3 +238,9 @@ The existing `docs/` reference pages are **out of date** relative to the live sc
 ### `platform_leads` — qualification columns (2026-08-07)
 
 `pain_point TEXT NULL` and `current_tooling TEXT NULL` were added by migration `20260807000000_platform_leads_qualification` for a longer qualification conversation that was then cut back to three questions before shipping. **Nothing currently writes them** — they are live, nullable and unpopulated, kept rather than dropped from a production table so a future qualification pass needs no new migration. This is the same state `city` and `bed_count` were already in. Deliberately free-form TEXT rather than enums: the option lists are marketing copy and get reworded, so these are not safe to aggregate without normalising first. See [[Features]] and [[APIs]].
+
+### `owner_documents.review_note` (2026-08-07)
+
+`TEXT NULL`, added by `20260807100000_owner_document_review_note`. Why an admin rejected a KYC document, returned to the owner by `GET /api/owner/kyc-documents` and rendered on the onboarding KYC step. A rejection with no reason just makes the owner upload the same file again.
+
+Applied to the live database on 2026-08-07. See [[APIs]] and [[Features]].

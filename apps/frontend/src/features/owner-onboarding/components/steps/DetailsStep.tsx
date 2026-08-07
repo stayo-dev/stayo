@@ -98,7 +98,7 @@ export function DetailsStep({ data, setD }: DetailsStepProps) {
             old single field forced an amount on owners who take none, and
             could not express "two months' rent", which is the common norm. */}
         <div className="rounded-[16px] border-[1.5px] border-border bg-card/95 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
             <div className={tileTitle}>Do you take a security deposit?</div>
             <div className="flex gap-2">
               <button
@@ -134,7 +134,7 @@ export function DetailsStep({ data, setD }: DetailsStepProps) {
               </div>
 
               {data.depositMode === 'MONTHS' ? (
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                   <span className={tileSub}>How many months?</span>
                   <div className="flex items-center gap-3.5">
                     <button
@@ -161,7 +161,7 @@ export function DetailsStep({ data, setD }: DetailsStepProps) {
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                   <span className={tileSub}>Deposit amount</span>
                   <div className="flex items-center gap-1 font-display text-lg font-bold text-foreground">
                     ₹
