@@ -279,7 +279,6 @@ export function TenantProfilePortalPage() {
   const verification = data.verification ?? {};
   const moveOut = data.move_out;
   const isStudent = String(t?.profile_type ?? 'STUDENT').toUpperCase() === 'STUDENT';
-  const resStatus = data?.reservation_status?.status ?? data?.tenant?.reservation_status?.status ?? 'PAYMENT_PENDING';
 
   const profileFields = [
     { label: 'Full name', value: p.name },
@@ -416,16 +415,7 @@ export function TenantProfilePortalPage() {
                 {String(p.name ?? t.name ?? 'Your Profile')}
               </h1>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {t.status === 'ACTIVE' ? (
-                  <>
-                    <span className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 uppercase tracking-wide">
-                      Account Active
-                    </span>
-                    <TenantStatusBadge status={resStatus} size="sm" />
-                  </>
-                ) : (
-                  <TenantStatusBadge status={String(t.status)} size="sm" />
-                )}
+                <TenantStatusBadge status={String(t.status)} size="sm" />
               </div>
             </div>
           </div>
@@ -908,49 +898,26 @@ export function TenantProfilePortalPage() {
 
       {/* SECTION A: Admission Status */}
       <ProfileSection title="Admission Status" readOnly>
-        <ProfileRow label="Account Status" value={t.status === 'ACTIVE' ? 'Active' : t.status ?? 'Active'} />
-        <ProfileRow 
-          label="Reservation Status" 
-          value={
-            resStatus === 'PAYMENT_PENDING' ? (
-              <span className="text-amber-600 dark:text-amber-400 font-semibold">Payment Pending</span>
-            ) : resStatus === 'RESERVED' ? (
-              <span className="text-blue-600 dark:text-blue-400 font-semibold">Reserved</span>
-            ) : (
-              <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Move-in Ready</span>
-            )
-          } 
-        />
+        <ProfileRow label="Account Status" value={t.status === 'ACTIVE' ? 'Joined' : t.status ?? 'Joined'} />
         <ProfileRow label="Admission Date" value={fmtDate(t.joined_on)} />
       </ProfileSection>
 
-      {/* SECTION B: Room Offer */}
-      <ProfileSection title="Room Offer" readOnly>
+      {/* SECTION B: Assigned Room */}
+      <ProfileSection title="Your Room" readOnly>
         {hostel ? (
           <>
             <ProfileRow label="Assigned Room" value={room?.room_no ?? 'Assignment pending'} />
             <ProfileRow label="Floor" value={room ? (room.floor ?? 'G') : 'Assignment pending'} />
-            <ProfileRow 
-              label="Reservation Status" 
-              value={
-                resStatus === 'PAYMENT_PENDING' ? (
-                  <span className="text-amber-600 dark:text-amber-400 font-semibold">Payment Pending</span>
-                ) : resStatus === 'RESERVED' ? (
-                  <span className="text-blue-600 dark:text-blue-400 font-semibold">Reserved</span>
-                ) : (
-                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Move-in Ready</span>
-                )
-              }
-            />
           </>
         ) : (
           <p className="text-sm text-muted-foreground">Room details will appear once assigned.</p>
         )}
       </ProfileSection>
 
-      {/* SECTION C: Residency Information (Visible ONLY after RESERVED or MOVE_IN_READY) */}
-      {(resStatus === 'RESERVED' || resStatus === 'MOVE_IN_READY') && (
-        <>
+      {/* SECTION C: Residency Information — shown from the moment the tenant joins.
+          This used to be hidden until the deposit cleared, which left a tenant who had
+          already moved in looking at a profile with no hostel, rent or billing dates. */}
+      <>
           <ProfileSection title="Residency Information" readOnly>
             {hostel ? (
               <>
@@ -1245,9 +1212,7 @@ export function TenantProfilePortalPage() {
         )}
       </ProfileSection>
 
-      {/* Move-out section is now rendered inside SECTION C */}
-      {(resStatus === 'RESERVED' || resStatus === 'MOVE_IN_READY') && (
-        <ProfileSection title="Move-out status" readOnly>
+      <ProfileSection title="Move-out status" readOnly>
           {moveOut ? (
             <>
               <ProfileRow label="Status" value={String(moveOut.status).replace(/_/g, ' ')} />
@@ -1268,7 +1233,6 @@ export function TenantProfilePortalPage() {
             </>
           )}
         </ProfileSection>
-      )}
 
       {/* 11 — Logout */}
       <button

@@ -1,492 +1,595 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, X, Phone, MessageCircle, ChevronRight } from 'lucide-react';
+import {
+  AlertCircle,
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  Clock,
+  MessageCircle,
+  Phone,
+  Search,
+  Send,
+  X,
+} from 'lucide-react';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { platformAdminService } from '@features/platform-admin/api';
+import {
+  ageLabel,
+  canApprove,
+  canReject,
+  isStale,
+  partitionForBulkReject,
+  sortForQueue,
+  stepIndex,
+  STATUS_LABEL,
+  STATUS_TONE,
+  type AdminLead,
+} from '../leads/leadQueue';
 
-const STATUS_CHIP: Record<string, { chip: string; dot: string }> = {
-  NEW: { chip: 'bg-info/10 text-info', dot: 'bg-info' },
-  UNDER_REVIEW: { chip: 'bg-warning/10 text-warning', dot: 'bg-warning' },
-  APPROVED: { chip: 'bg-warning/10 text-warning', dot: 'bg-warning' },
-  INVITE_SENT: { chip: 'bg-warning/10 text-warning', dot: 'bg-warning' },
-  OWNER_ACTIVATED: { chip: 'bg-success/10 text-success', dot: 'bg-success' },
-  HOSTEL_CREATED: { chip: 'bg-success/10 text-success', dot: 'bg-success' },
-  LIVE: { chip: 'bg-success/10 text-success', dot: 'bg-success' },
-  LOST: { chip: 'bg-destructive/10 text-destructive', dot: 'bg-destructive' },
-};
-// All 8 — used for the filter row (any status is a useful filter).
-const STATUSES = ['NEW', 'UNDER_REVIEW', 'APPROVED', 'INVITE_SENT', 'OWNER_ACTIVATED', 'HOSTEL_CREATED', 'LIVE', 'LOST'];
-// Only these are manually editable from the drawer's dropdown — APPROVED
-// onward is system-managed by the real approve/signup/hostel-creation flow
-// (see PATCH /api/platform-admin/leads/[id], which rejects anything else).
-const MANUALLY_SETTABLE_STATUSES = ['NEW', 'UNDER_REVIEW', 'LOST'];
-// APPROVED means "approved, but the link failed to send" (see
-// lead-invitation-service.ts) — the button stays available so the admin
-// can retry, rather than the lead getting silently stuck.
-const APPROVABLE_STATUSES = ['NEW', 'UNDER_REVIEW', 'APPROVED'];
-// Mirrors canRejectLead() in lead-transition-guards.ts. Once an activation
-// link has been issued, declining is a cancellation of that invitation, not
-// a status write — so the button must not be offered for APPROVED onward,
-// which the old silent `status: LOST` button wrongly allowed.
-const REJECTABLE_STATUSES = ['NEW', 'UNDER_REVIEW'];
+const PAGE_SIZE = 50;
 
-const TIMELINE_LABEL: Record<string, string> = {
-  LEAD_CREATED: 'Lead created',
-  LEAD_APPROVED: 'Approved',
-  LEAD_INVITE_SENT: 'Invitation sent',
-  LEAD_INVITE_OPENED: 'Invitation opened',
-  LEAD_OWNER_ACTIVATED: 'Owner activated',
-  LEAD_HOSTEL_CREATED: 'Hostel created',
-  LEAD_LIVE: 'Live',
-  LEAD_RECEIVED_NOTIFIED: 'Applicant notified — enquiry received',
-  LEAD_RECEIVED_NOTIFY_FAILED: 'Applicant notify failed — enquiry received',
-  LEAD_REJECTED: 'Rejected',
-  LEAD_REJECTED_NOTIFIED: 'Applicant notified — rejected',
-  LEAD_REJECTED_NOTIFY_FAILED: 'Applicant notify failed — rejected',
-  LEAD_LIVE_NOTIFIED: 'Applicant notified — hostel live',
-  LEAD_LIVE_NOTIFY_FAILED: 'Applicant notify failed — hostel live',
+const FILTERS: { key: string; label: string }[] = [
+  { key: 'ACTIONABLE', label: 'Needs you' },
+  { key: 'ALL', label: 'All' },
+  { key: 'NEW', label: 'New' },
+  { key: 'UNDER_REVIEW', label: 'Under review' },
+  { key: 'APPROVED', label: 'Send failed' },
+  { key: 'INVITE_SENT', label: 'Invite sent' },
+  { key: 'LIVE', label: 'Live' },
+  { key: 'LOST', label: 'Not proceeding' },
+];
+
+const TONE_CHIP: Record<string, string> = {
+  action: 'bg-primary/12 text-primary',
+  progress: 'bg-info/12 text-info',
+  done: 'bg-success/12 text-success',
+  dead: 'bg-[#C0503A]/10 text-[#C0503A]',
 };
 
-const AVATAR_PALETTE = [
-  { bg: 'bg-primary/10', fg: 'text-primary' },
-  { bg: 'bg-success/10', fg: 'text-success' },
-  { bg: 'bg-warning/10', fg: 'text-warning' },
-  { bg: 'bg-info/10', fg: 'text-info' },
-  { bg: 'bg-destructive/10', fg: 'text-destructive' },
-  { bg: 'bg-secondary', fg: 'text-foreground' },
+const QUICK_REJECT_REASONS = [
+  'Not a hostel owner.',
+  'Outside the cities we currently serve.',
+  'Duplicate enquiry.',
+  'Could not reach you after repeated attempts.',
 ];
 
 const initials = (name: string) => name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
-const avatarStyle = (name: string) => {
-  const hash = name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
-};
-const fmtSubmitted = (iso: string) =>
-  `${new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} · ${new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}`;
 
-function StatusChip({ status }: { status: string }) {
-  const s = STATUS_CHIP[status] ?? STATUS_CHIP.NEW;
-  return (
-    <span className={`flex flex-none items-center gap-1.5 rounded-full px-2.5 py-1 text-[10.5px] font-bold ${s.chip}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
-      {status.replace('_', ' ')}
-    </span>
-  );
-}
+const waLink = (phone: string) => `https://wa.me/91${phone.replace(/\D/g, '').slice(-10)}`;
 
 /**
- * Shown when a lead's number was never OTP-verified — WhatsApp was
- * unavailable when the lead came in, so signup accepted the number as-is.
- * Deliberately compares against `false`: leads captured before the column
- * existed arrive as `undefined` and should carry no marker rather than a
- * false accusation.
+ * Admin lead queue, sized for ~100 leads a day.
+ *
+ * Rebuilt from a grid of large cards plus a drawer. At this volume the screen
+ * stops being something you browse and becomes something you work, which
+ * drives every choice here: dense rows so a screenful is fifteen leads rather
+ * than three, a detail pane beside the list instead of a drawer that covers
+ * it, keyboard movement, and bulk reject — the alternative is opening and
+ * closing a drawer a hundred times a day.
+ *
+ * It also fixes two real defects: the list was capped at `take: 200` with no
+ * total and no next page (silently truncating after two days), and actions
+ * were offered on leads whose status makes them impossible — Approve on an
+ * `INVITE_SENT` lead throws `INVALID_TRANSITION` on the server.
+ *
+ * Ordering, actionability and bulk partitioning are pure and tested in
+ * `../leads/leadQueue`.
  */
-function UnverifiedPhoneChip() {
-  return (
-    <span
-      title="This number was never OTP-verified — WhatsApp was unavailable when the lead came in."
-      className="flex-none rounded-full border border-[#E7DDD1] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#8A7F75]"
-    >
-      Unverified
-    </span>
-  );
-}
-
 export function AdminLeadsPage() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+  const [filter, setFilter] = useState('ACTIONABLE');
   const [openId, setOpenId] = useState<string | null>(null);
-  const [rejectOpen, setRejectOpen] = useState(false);
-  const [rejectReason, setRejectReason] = useState('');
-  const [applicantMessage, setApplicantMessage] = useState('');
-  // Only set when an approve attempt fails on both channels — the admin's
-  // sole recovery path today, since stayo_owner_invitation is unapproved in
-  // Meta and most sends fail. Keyed by lead id since it's only known for the
-  // lead just approved, not persisted on the lead row itself.
-  const [failedActivationLink, setFailedActivationLink] = useState<{ leadId: string; link: string } | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [pages, setPages] = useState(1);
+  const [rejectMode, setRejectMode] = useState<'single' | 'bulk' | null>(null);
+  const [reason, setReason] = useState('');
+
+  // "Needs you" is a view over statuses, not a status the server knows, so it
+  // fetches unfiltered and narrows below.
+  const statusParam = filter === 'ALL' || filter === 'ACTIONABLE' ? undefined : filter;
 
   const listQuery = useQuery({
-    queryKey: ['admin', 'leads', search, statusFilter],
-    queryFn: () => platformAdminService.getLeads({ search: search || undefined, status: statusFilter }),
-    staleTime: 15_000,
+    queryKey: ['admin', 'leads', search, statusParam, pages],
+    queryFn: () =>
+      platformAdminService.getLeads({
+        search: search || undefined,
+        status: statusParam,
+        limit: PAGE_SIZE * pages,
+        offset: 0,
+      }),
+    staleTime: 10_000,
   });
 
-  const statusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) => platformAdminService.updateLeadStatus(id, status),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'leads'] });
-      // The list query above is a *different* React Query key from the
-      // drawer's own detail query ('lead-detail', not 'leads') — without
-      // this, the open drawer kept showing the pre-mutation status/Approve
-      // button until manually reopened, letting a second click hit the
-      // now-stale button and 409 with "already approved/updated".
-      queryClient.invalidateQueries({ queryKey: ['admin', 'lead-detail', variables.id] });
-    },
-    onError: () => stayoToast.error('Could not update lead'),
-  });
+  const counts = listQuery.data?.counts ?? {};
+  const actionableCount = (counts.NEW ?? 0) + (counts.UNDER_REVIEW ?? 0) + (counts.APPROVED ?? 0);
 
-  const approveMutation = useMutation({
-    mutationFn: (id: string) => platformAdminService.approveLead(id),
-    onSuccess: (result, id) => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'leads'] });
-      queryClient.invalidateQueries({ queryKey: ['admin', 'lead-detail', id] });
-      if (result.whatsapp_sent) {
-        stayoToast.success('Activation link sent via WhatsApp');
-        setFailedActivationLink(null);
-      } else if (result.email_sent) {
-        stayoToast.success('Activation link sent via email');
-        setFailedActivationLink(null);
-      } else {
-        stayoToast.error(result.email_error || result.whatsapp_error || 'Approved, but the activation link could not be sent');
-        if (result.activationLink) setFailedActivationLink({ leadId: id, link: result.activationLink });
-      }
-    },
-    onError: (error: any) => stayoToast.error(error?.response?.data?.error?.message || 'Could not approve lead'),
-  });
+  const leads = useMemo(() => {
+    const raw = (listQuery.data?.leads ?? []) as AdminLead[];
+    const scoped = filter === 'ACTIONABLE' ? raw.filter((l) => canApprove(l.status)) : raw;
+    return sortForQueue(scoped);
+  }, [listQuery.data, filter]);
 
-  const rejectMutation = useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) => platformAdminService.rejectLead(id, reason),
-    onSuccess: (_result, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'leads'] });
-      queryClient.invalidateQueries({ queryKey: ['admin', 'lead-detail', variables.id] });
-      stayoToast.success('Lead rejected — the applicant has been notified');
-      setRejectOpen(false);
-      setRejectReason('');
-      setOpenId(null);
-    },
-    onError: (error: any) =>
-      stayoToast.error(error?.response?.data?.error?.message || 'Could not reject lead'),
-  });
+  const openIndex = Math.max(0, leads.findIndex((l) => l.id === openId));
+  const open = leads.find((l) => l.id === openId) ?? null;
 
-  const applicantMessageMutation = useMutation({
-    mutationFn: ({ id, message }: { id: string; message: string }) =>
-      platformAdminService.updateLeadApplicantMessage(id, message),
-    onSuccess: (_result, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'leads'] });
-      queryClient.invalidateQueries({ queryKey: ['admin', 'lead-detail', variables.id] });
-      stayoToast.success('Message saved — the applicant can see it now');
-    },
-    onError: () => stayoToast.error('Could not save the message'),
-  });
-
-  const leadDetailQuery = useQuery({
+  const detailQuery = useQuery({
     queryKey: ['admin', 'lead-detail', openId],
     queryFn: () => platformAdminService.getLead(openId as string),
     enabled: Boolean(openId),
   });
 
-  const openLead = leadDetailQuery.data ?? listQuery.data?.find((l) => l.id === openId);
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['admin', 'leads'] });
+    if (openId) queryClient.invalidateQueries({ queryKey: ['admin', 'lead-detail', openId] });
+  };
 
+  const approveMutation = useMutation({
+    mutationFn: (id: string) => platformAdminService.approveLead(id),
+    onSuccess: (result: any) => {
+      invalidate();
+      if (result.whatsapp_sent) stayoToast.success('Activation link sent on WhatsApp');
+      else if (result.email_sent) stayoToast.success('Activation link sent by email');
+      else stayoToast.error(result.email_error || result.whatsapp_error || 'Approved, but the link could not be sent');
+    },
+    onError: (e: any) => stayoToast.error(e?.response?.data?.error?.message || 'Could not approve'),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: ({ ids, why }: { ids: string[]; why: string }) =>
+      Promise.all(ids.map((id) => platformAdminService.rejectLead(id, why))),
+    onSuccess: (_r, variables) => {
+      invalidate();
+      stayoToast.success(
+        variables.ids.length === 1 ? 'Rejected — the applicant is told why' : `${variables.ids.length} leads rejected`,
+      );
+      setRejectMode(null);
+      setReason('');
+      setSelected(new Set());
+    },
+    onError: (e: any) => stayoToast.error(e?.response?.data?.error?.message || 'Could not reject'),
+  });
+
+  // Keyboard movement. At a hundred a day, reaching for the mouse on every row
+  // is most of the work.
   useEffect(() => {
-    // Seed from `openLead`, not `leadDetailQuery.data` — the drawer renders
-    // immediately from the list-row fallback while the detail query is still
-    // in flight, and seeding from the (momentarily undefined) detail data
-    // alone shows an empty box that a same-window "Save message" click would
-    // then persist as `''`, wiping the applicant's existing message.
-    setApplicantMessage(openLead?.applicant_message ?? '');
-    setRejectOpen(false);
-    setRejectReason('');
-  }, [openLead?.applicant_message, openId]);
-  const timeline: Array<{ id: string; event_type: string; created_at: string }> = leadDetailQuery.data?.timeline ?? [];
-  const waLink = (phone: string) => `https://wa.me/91${phone.replace(/\D/g, '').slice(-10)}`;
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && /input|textarea|select/i.test(el.tagName)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (e.key === 'j' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        setOpenId(leads[stepIndex(leads.length, openIndex, 1)]?.id ?? null);
+      } else if (e.key === 'k' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        setOpenId(leads[stepIndex(leads.length, openIndex, -1)]?.id ?? null);
+      } else if (e.key === 'a' && open && canApprove(open.status)) {
+        e.preventDefault();
+        approveMutation.mutate(open.id);
+      } else if (e.key === 'r' && open && canReject(open.status)) {
+        e.preventDefault();
+        setRejectMode('single');
+        setReason('');
+      } else if (e.key === 'Escape') {
+        setRejectMode(null);
+        setSelected(new Set());
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [leads, openIndex, open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleSelected = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  // Deep link from the dashboard's Reject button, which no longer decides
+  // anything itself — it hands over to here, where a reason is captured.
+  useEffect(() => {
+    const rejectId = searchParams.get('reject');
+    if (!rejectId) return;
+    setFilter('ALL');
+    setOpenId(rejectId);
+    setRejectMode('single');
+    setReason('');
+    searchParams.delete('reject');
+    setSearchParams(searchParams, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const bulk = partitionForBulkReject(leads, selected);
+  const timeline: Array<{ id: string; event_type: string; created_at: string }> = detailQuery.data?.timeline ?? [];
 
   return (
-    <div className="mx-auto max-w-[1360px] px-7 py-6">
-      <div className="mb-[18px] flex flex-wrap items-center gap-3">
-        <div className="flex h-10 w-[300px] items-center gap-2 rounded-[11px] border border-[#E7DDD1] bg-white px-3">
-          <Search className="h-4 w-4 text-[#9C9186]" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search owners, hostels, cities…" className="w-full bg-transparent text-[13px] text-foreground outline-none" />
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          <button
-            type="button"
-            onClick={() => setStatusFilter(undefined)}
-            className={`rounded-full px-3 py-1.5 text-[12px] font-semibold ${!statusFilter ? 'bg-foreground text-background' : 'border border-[#E7DDD1] bg-white text-[#8A7F75]'}`}
-          >
-            All
-          </button>
-          {STATUSES.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setStatusFilter(s)}
-              className={`rounded-full px-3 py-1.5 text-[12px] font-semibold ${statusFilter === s ? 'bg-foreground text-background' : 'border border-[#E7DDD1] bg-white text-[#8A7F75]'}`}
-            >
-              {s.replace('_', ' ')}
+    <div className="mx-auto max-w-[1360px] px-4 py-5 sm:px-7">
+      <div className="mb-3 flex flex-wrap items-center gap-2.5">
+        <div className="flex h-10 min-w-[220px] flex-1 items-center gap-2 rounded-[11px] border border-[#E7DDD1] bg-white px-3 sm:max-w-[340px]">
+          <Search className="h-4 w-4 flex-none text-[#9C9186]" />
+          <input
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPages(1);
+            }}
+            placeholder="Name, hostel, city or phone…"
+            className="w-full min-w-0 bg-transparent text-[13px] text-foreground outline-none"
+          />
+          {search && (
+            <button type="button" onClick={() => setSearch('')} aria-label="Clear search">
+              <X className="h-3.5 w-3.5 text-[#9C9186]" />
             </button>
-          ))}
+          )}
         </div>
+        <span className="hidden text-[12px] text-[#9C9186] lg:inline">J / K to move · A approve · R reject</span>
+      </div>
+
+      <div className="mb-4 flex flex-wrap gap-1.5">
+        {FILTERS.map((f) => {
+          const count = f.key === 'ACTIONABLE' ? actionableCount : counts[f.key === 'ALL' ? 'ALL' : f.key];
+          return (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => {
+                setFilter(f.key);
+                setPages(1);
+                setOpenId(null);
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors ${
+                filter === f.key ? 'bg-foreground text-background' : 'border border-[#E7DDD1] bg-white text-[#8A7F75]'
+              }`}
+            >
+              {f.label}
+              {typeof count === 'number' && count > 0 && (
+                <span
+                  className={`rounded-full px-1.5 text-[10.5px] font-bold tabular-nums ${
+                    filter === f.key ? 'bg-background/25' : 'bg-[#F2ECE5] text-[#8A7F75]'
+                  }`}
+                >
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {listQuery.isLoading ? (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {[0, 1, 2, 3].map((i) => <div key={i} className="h-32 animate-pulse rounded-2xl bg-muted" />)}
+        <div className="space-y-1.5">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-[58px] animate-pulse rounded-[11px] bg-muted" />
+          ))}
         </div>
-      ) : listQuery.data && listQuery.data.length > 0 ? (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {listQuery.data.map((l) => {
-            const av = avatarStyle(l.name);
-            return (
-              <div
-                key={l.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => setOpenId(l.id)}
-                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setOpenId(l.id)}
-                className="cursor-pointer rounded-[14px] border border-[#EFE6DA] bg-white p-4 text-left shadow-[0_1px_2px_rgba(40,30,20,0.03),0_12px_30px_-22px_rgba(40,30,20,0.14)]"
-              >
-                <div className="flex items-center gap-2.5">
-                  <span className={`flex h-9 w-9 flex-none items-center justify-center rounded-[10px] text-[13px] font-bold ${av.bg} ${av.fg}`}>{initials(l.name)}</span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[14px] font-bold text-foreground">{l.name}</div>
-                    <div className="truncate text-[12.5px] text-[#8A7F75]">{l.hostel_name}</div>
-                  </div>
-                  <StatusChip status={l.status} />
-                </div>
-                <div className="mt-3 flex items-center gap-1.5 border-t border-[#F2ECE5] pt-3">
-                  <span className="text-[12.5px] font-semibold tabular-nums text-[#8A7F75]">{l.phone}</span>
-                  {l.phone_verified === false && <UnverifiedPhoneChip />}
-                </div>
-                <div className="mt-3 flex items-center justify-between">
-                  {l.created_at ? <span className="text-[11.5px] text-[#9C9186]">{fmtSubmitted(l.created_at)}</span> : <span />}
-                  <div className="flex gap-2">
-                    <a
-                      href={`tel:${l.phone}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-[#E7DDD1] bg-white text-[#8A7F75]"
-                    >
-                      <Phone className="h-3.5 w-3.5" />
-                    </a>
-                    <a
-                      href={waLink(l.phone)}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-[#E7DDD1] bg-white text-[#8A7F75]"
-                    >
-                      <MessageCircle className="h-3.5 w-3.5" />
-                    </a>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setOpenId(l.id);
-                      }}
-                      className="flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-[#E7DDD1] bg-white text-[#8A7F75]"
-                    >
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+      ) : leads.length === 0 ? (
+        <div className="rounded-[14px] border border-[#EFE6DA] bg-white py-16 text-center">
+          <Check className="mx-auto mb-3 h-9 w-9 text-[#C9BDB1]" strokeWidth={1.6} />
+          <p className="text-[14px] font-bold text-foreground">
+            {filter === 'ACTIONABLE' ? 'Nothing needs you right now' : 'No leads match'}
+          </p>
+          <p className="mt-1 text-[12.5px] text-[#8A7F75]">
+            {filter === 'ACTIONABLE' ? 'Every lead has been decided.' : 'Try a different filter or search.'}
+          </p>
         </div>
       ) : (
-        <div className="py-16 text-center text-[13.5px] text-[#9C9186]">No leads match your search.</div>
-      )}
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
+          <div className={open ? 'hidden xl:block' : ''}>
+            <div className="overflow-hidden rounded-[14px] border border-[#EFE6DA] bg-white">
+              {leads.map((lead) => {
+                const active = lead.id === openId;
+                const stale = isStale(lead);
+                const tone = STATUS_TONE[lead.status] ?? 'progress';
 
-      {openLead && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-[rgba(40,30,20,0.32)]" onClick={() => setOpenId(null)} />
-          <div className="relative z-10 flex h-full w-[440px] max-w-[92vw] flex-col bg-white shadow-[-24px_0_60px_-24px_rgba(40,30,20,0.28)]">
-            <div className="flex flex-none items-center justify-between border-b border-[#EFE6DA] px-[22px] py-[18px]">
-              <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-[#9C9186]">Lead Details</span>
-              <button
-                type="button"
-                onClick={() => setOpenId(null)}
-                className="flex h-8 w-8 items-center justify-center rounded-[9px] border border-[#E7DDD1] bg-white text-[#8A7F75] hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
+                return (
+                  <div
+                    key={lead.id}
+                    className={`flex items-center gap-2.5 border-b border-[#F2ECE5] px-3 py-2.5 last:border-b-0 ${
+                      active ? 'bg-[#FBF6F1]' : 'hover:bg-[#FCFAF8]'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected.has(lead.id)}
+                      onChange={() => toggleSelected(lead.id)}
+                      aria-label={`Select ${lead.name}`}
+                      className="h-3.5 w-3.5 flex-none accent-[#A45D44]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setOpenId(lead.id)}
+                      className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                    >
+                      <span className="flex h-7 w-7 flex-none items-center justify-center rounded-lg bg-[#F2ECE5] text-[10.5px] font-bold text-[#8A7F75]">
+                        {initials(lead.name)}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13.5px] font-bold text-foreground">{lead.name}</span>
+                        <span className="block truncate text-[11.5px] text-[#8A7F75]">
+                          {lead.hostel_name}
+                          {lead.city ? ` · ${lead.city}` : ''}
+                        </span>
+                      </span>
+                      <span
+                        className={`hidden flex-none rounded-full px-2 py-0.5 text-[10.5px] font-bold sm:inline ${TONE_CHIP[tone]}`}
+                      >
+                        {STATUS_LABEL[lead.status] ?? lead.status}
+                      </span>
+                      <span
+                        className={`flex w-[52px] flex-none items-center justify-end gap-1 text-[11px] font-semibold tabular-nums ${
+                          stale ? 'text-[#C0503A]' : 'text-[#9C9186]'
+                        }`}
+                      >
+                        {stale && <AlertCircle className="h-3 w-3" strokeWidth={2.8} />}
+                        {ageLabel(lead.created_at)}
+                      </span>
+                    </button>
+                  </div>
+                );
+              })}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-[22px]">
-              <div className="flex items-center gap-3.5">
-                {(() => {
-                  const av = avatarStyle(openLead.name);
-                  return (
-                    <span className={`flex h-13 w-13 flex-none items-center justify-center rounded-[14px] text-[17px] font-bold ${av.bg} ${av.fg}`}>
-                      {initials(openLead.name)}
-                    </span>
-                  );
-                })()}
-                <div className="min-w-0">
-                  <div className="font-display text-[18px] font-extrabold text-foreground">{openLead.name}</div>
-                  <div className="mt-1.5"><StatusChip status={openLead.status} /></div>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <span className="text-[12px] text-[#9C9186]">
+                Showing {leads.length} of {listQuery.data?.total ?? leads.length}
+              </span>
+              {listQuery.data?.hasMore && (
+                <button
+                  type="button"
+                  onClick={() => setPages((p) => p + 1)}
+                  className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#E7DDD1] bg-white px-3.5 py-2 text-[12.5px] font-bold text-foreground hover:border-primary"
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                  Load {PAGE_SIZE} more
+                </button>
+              )}
+            </div>
+          </div>
+
+          {open && (
+            <div className="rounded-[14px] border border-[#EFE6DA] bg-white xl:sticky xl:top-4 xl:max-h-[calc(100vh-140px)] xl:overflow-y-auto">
+              <div className="flex items-start gap-2.5 border-b border-[#F2ECE5] p-4">
+                <button
+                  type="button"
+                  onClick={() => setOpenId(null)}
+                  aria-label="Back to list"
+                  className="flex h-8 w-8 flex-none items-center justify-center rounded-lg border border-[#E7DDD1] text-[#8A7F75] xl:hidden"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-display text-[17px] font-extrabold text-foreground">{open.name}</div>
+                  <div className="truncate text-[12.5px] text-[#8A7F75]">{open.hostel_name}</div>
+                  <span
+                    className={`mt-1.5 inline-block rounded-full px-2 py-0.5 text-[10.5px] font-bold ${
+                      TONE_CHIP[STATUS_TONE[open.status] ?? 'progress']
+                    }`}
+                  >
+                    {STATUS_LABEL[open.status] ?? open.status}
+                  </span>
                 </div>
               </div>
 
-              <div className="mt-4">
-                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.05em] text-[#9C9186]">Status</label>
-                {MANUALLY_SETTABLE_STATUSES.includes(openLead.status) ? (
-                  <select
-                    value={openLead.status}
-                    onChange={(e) => statusMutation.mutate({ id: openLead.id, status: e.target.value })}
-                    className="h-10 w-full rounded-[10px] border border-[#E7DDD1] bg-[#F7F3EF] px-3.5 text-[13px] font-semibold text-foreground"
-                  >
-                    {MANUALLY_SETTABLE_STATUSES.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-                  </select>
-                ) : (
-                  <div className="flex h-10 w-full items-center rounded-[10px] border border-[#E7DDD1] bg-[#F7F3EF] px-3.5 text-[13px] font-semibold text-[#8A7F75]">
-                    {openLead.status.replace('_', ' ')} — advances automatically
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-4.5 flex gap-2.5">
-                <a href={`tel:${openLead.phone}`} className="flex h-[38px] flex-1 items-center justify-center gap-1.5 rounded-[10px] border border-[#E7DDD1] bg-white text-[12.5px] font-bold text-[#8A7F75] hover:border-primary hover:text-primary">
+              <div className="flex gap-2 border-b border-[#F2ECE5] p-4">
+                <a
+                  href={`tel:${open.phone}`}
+                  className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-[10px] border border-[#E7DDD1] text-[12.5px] font-bold text-[#8A7F75] hover:border-primary hover:text-primary"
+                >
                   <Phone className="h-3.5 w-3.5" /> Call
                 </a>
-                <a href={waLink(openLead.phone)} target="_blank" rel="noreferrer" className="flex h-[38px] flex-1 items-center justify-center gap-1.5 rounded-[10px] border border-[#E7DDD1] bg-white text-[12.5px] font-bold text-[#8A7F75] hover:border-success hover:text-success">
+                <a
+                  href={waLink(open.phone)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-[10px] border border-[#E7DDD1] text-[12.5px] font-bold text-[#8A7F75] hover:border-success hover:text-success"
+                >
                   <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
                 </a>
               </div>
 
-              <div className="mb-3 mt-6 text-[11px] font-bold uppercase tracking-[0.05em] text-[#9C9186]">Details</div>
-              <div className="flex flex-col gap-3.5 rounded-[13px] border border-[#EFE6DA] bg-[#F7F3EF] p-4">
-                <div className="flex justify-between"><span className="text-[12.5px] text-[#8A7F75]">Owner Name</span><span className="text-[12.5px] font-bold text-foreground">{openLead.name}</span></div>
-                <div className="flex justify-between"><span className="text-[12.5px] text-[#8A7F75]">Hostel Name</span><span className="text-[12.5px] font-bold text-foreground">{openLead.hostel_name}</span></div>
-                <div className="flex justify-between">
-                  <span className="text-[12.5px] text-[#8A7F75]">Phone Number</span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="text-[12.5px] font-bold tabular-nums text-foreground">{openLead.phone}</span>
-                    {openLead.phone_verified === false && <UnverifiedPhoneChip />}
-                  </span>
+              <dl className="space-y-2 border-b border-[#F2ECE5] p-4 text-[12.5px]">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-[#8A7F75]">Phone</dt>
+                  <dd className="font-bold tabular-nums text-foreground">{open.phone}</dd>
                 </div>
-                {openLead.google_email && <div className="flex justify-between"><span className="text-[12.5px] text-[#8A7F75]">Email</span><span className="text-[12.5px] font-bold text-foreground">{openLead.google_email}</span></div>}
-                {openLead.city && <div className="flex justify-between"><span className="text-[12.5px] text-[#8A7F75]">City</span><span className="text-[12.5px] font-bold text-foreground">{openLead.city}</span></div>}
-                {openLead.notes && <div className="flex justify-between gap-3"><span className="flex-none text-[12.5px] text-[#8A7F75]">Internal notes</span><span className="text-right text-[12.5px] text-foreground">{openLead.notes}</span></div>}
-              </div>
-
-              <div className="mb-3 mt-6 text-[11px] font-bold uppercase tracking-[0.05em] text-[#9C9186]">
-                Message to applicant
-              </div>
-              <div className="rounded-[13px] border border-[#EFE6DA] bg-white p-4">
-                <p className="mb-2 text-[11.5px] leading-relaxed text-[#8A7F75]">
-                  Shown to them on their enquiry status page. Internal notes above are never shown.
-                </p>
-                <textarea
-                  value={applicantMessage}
-                  onChange={(e) => setApplicantMessage(e.target.value)}
-                  rows={3}
-                  placeholder="e.g. Thanks — we're verifying your property details and will be back by Friday."
-                  className="w-full resize-none rounded-[10px] border border-[#E7DDD1] bg-[#F7F3EF] px-3 py-2.5 text-[12.5px] text-foreground outline-none focus:border-primary"
-                />
-                <button
-                  type="button"
-                  disabled={applicantMessageMutation.isPending || leadDetailQuery.isLoading}
-                  onClick={() => applicantMessageMutation.mutate({ id: openLead.id, message: applicantMessage })}
-                  className="mt-2 h-9 w-full rounded-[10px] border border-[#E7DDD1] bg-white text-[12px] font-bold text-[#8A7F75] hover:border-primary hover:text-primary disabled:opacity-60"
-                >
-                  {applicantMessageMutation.isPending ? 'Saving…' : leadDetailQuery.isLoading ? 'Loading…' : 'Save message'}
-                </button>
-              </div>
-
-              {failedActivationLink && failedActivationLink.leadId === openLead.id && (
-                <div className="mt-6">
-                  <div className="mb-1.5 text-[11px] font-bold uppercase tracking-[0.05em] text-[#C0503A]">
-                    Delivery failed — share this link manually
+                {open.city && (
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-[#8A7F75]">City</dt>
+                    <dd className="font-bold text-foreground">{open.city}</dd>
                   </div>
-                  <div className="rounded-[13px] border border-[#EAD0C9] bg-[#FBF1EC] p-4">
-                    <p className="mb-2 text-[11.5px] leading-relaxed text-[#8A7F75]">
-                      WhatsApp and email both failed to send the activation link. Copy it and share it with the
-                      applicant directly (e.g. by phone or a manual message).
-                    </p>
-                    <input
-                      type="text"
-                      readOnly
-                      value={failedActivationLink.link}
-                      onFocus={(e) => e.currentTarget.select()}
-                      className="w-full rounded-[10px] border border-[#E7DDD1] bg-white px-3 py-2.5 text-[12px] font-medium text-foreground outline-none focus:border-primary"
-                    />
-                  </div>
+                )}
+                <div className="flex justify-between gap-3">
+                  <dt className="text-[#8A7F75]">Waiting</dt>
+                  <dd className="font-bold text-foreground">{ageLabel(open.created_at)}</dd>
                 </div>
-              )}
+              </dl>
 
-              <div className="mb-3 mt-6 text-[11px] font-bold uppercase tracking-[0.05em] text-[#9C9186]">Timeline</div>
-              {timeline.length > 0 ? (
-                <div className="flex flex-col gap-3">
-                  {timeline.map((event) => (
-                    <div key={event.id} className="flex items-start gap-2.5">
-                      <span className="mt-1.5 h-1.5 w-1.5 flex-none rounded-full bg-primary" />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[12.5px] font-semibold text-foreground">{TIMELINE_LABEL[event.event_type] || event.event_type}</div>
-                        <div className="text-[11px] text-[#9C9186]">{fmtSubmitted(event.created_at)}</div>
+              {timeline.length > 0 && (
+                <div className="border-b border-[#F2ECE5] p-4">
+                  <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-[#9C9186]">Timeline</div>
+                  <div className="space-y-2">
+                    {timeline.slice(0, 6).map((e) => (
+                      <div key={e.id} className="flex items-start gap-2">
+                        <Clock className="mt-0.5 h-3 w-3 flex-none text-[#C9BDB1]" />
+                        <div className="min-w-0">
+                          <div className="truncate text-[12px] font-semibold capitalize text-foreground">
+                            {e.event_type.replace(/_/g, ' ').toLowerCase()}
+                          </div>
+                          <div className="text-[10.5px] text-[#9C9186]">
+                            {new Date(e.created_at).toLocaleString('en-IN', {
+                              day: '2-digit',
+                              month: 'short',
+                              hour: 'numeric',
+                              minute: '2-digit',
+                            })}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-[12.5px] text-[#9C9186]">No activity yet.</div>
-              )}
-            </div>
-
-            {(APPROVABLE_STATUSES.includes(openLead.status) || REJECTABLE_STATUSES.includes(openLead.status)) && (
-              <div className="flex-none border-t border-[#EFE6DA] bg-white px-[22px] py-4">
-                {rejectOpen ? (
-                  <div>
-                    <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.05em] text-[#9C9186]">
-                      Reason for rejection
-                    </label>
-                    <p className="mb-2 text-[11.5px] leading-relaxed text-[#8A7F75]">
-                      This is sent to the applicant on WhatsApp, so write it for them to read.
-                    </p>
-                    <textarea
-                      value={rejectReason}
-                      onChange={(e) => setRejectReason(e.target.value)}
-                      rows={2}
-                      autoFocus
-                      placeholder="e.g. We're not onboarding properties in this city yet."
-                      className="w-full resize-none rounded-[10px] border border-[#E7DDD1] bg-[#F7F3EF] px-3 py-2.5 text-[12.5px] text-foreground outline-none focus:border-primary"
-                    />
-                    <div className="mt-2.5 flex gap-2.5">
-                      <button
-                        type="button"
-                        disabled={!rejectReason.trim() || rejectMutation.isPending}
-                        onClick={() => rejectMutation.mutate({ id: openLead.id, reason: rejectReason.trim() })}
-                        className="h-10 flex-1 rounded-[10px] bg-[#C0503A] text-[12.5px] font-bold text-white disabled:opacity-50"
-                      >
-                        {rejectMutation.isPending ? 'Rejecting…' : 'Confirm rejection'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setRejectOpen(false); setRejectReason(''); }}
-                        className="h-10 flex-1 rounded-[10px] border border-[#E7DDD1] bg-white text-[12.5px] font-bold text-[#8A7F75]"
-                      >
-                        Cancel
-                      </button>
-                    </div>
+                    ))}
                   </div>
+                </div>
+              )}
+
+              {/* Only actions that can actually succeed are offered — the old
+                  screen showed Approve on leads where the server refuses it. */}
+              <div className="p-4">
+                {rejectMode === 'single' ? (
+                  <RejectForm
+                    reason={reason}
+                    setReason={setReason}
+                    pending={rejectMutation.isPending}
+                    onCancel={() => setRejectMode(null)}
+                    onConfirm={() => rejectMutation.mutate({ ids: [open.id], why: reason.trim() })}
+                  />
                 ) : (
-                  <div className="flex gap-2.5">
-                    {APPROVABLE_STATUSES.includes(openLead.status) && (
+                  <div className="flex gap-2">
+                    {canApprove(open.status) && (
                       <button
                         type="button"
                         disabled={approveMutation.isPending}
-                        onClick={() => approveMutation.mutate(openLead.id)}
-                        className="h-10 flex-1 rounded-[10px] bg-success text-[12.5px] font-bold text-white disabled:opacity-60"
+                        onClick={() => approveMutation.mutate(open.id)}
+                        className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-[10px] bg-success text-[13px] font-bold text-white disabled:opacity-60"
                       >
-                        {approveMutation.isPending ? 'Sending…' : openLead.status === 'APPROVED' ? 'Retry Send' : 'Approve Lead'}
+                        <Send className="h-3.5 w-3.5" />
+                        {open.status === 'APPROVED' ? 'Retry send' : 'Approve'}
                       </button>
                     )}
-                    {REJECTABLE_STATUSES.includes(openLead.status) && (
+                    {canReject(open.status) && (
                       <button
                         type="button"
-                        onClick={() => setRejectOpen(true)}
-                        className="h-10 flex-1 rounded-[10px] border border-[#EAD0C9] bg-white text-[12.5px] font-bold text-[#C0503A]"
+                        onClick={() => {
+                          setRejectMode('single');
+                          setReason('');
+                        }}
+                        className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-[10px] border border-[#EAD0C9] text-[13px] font-bold text-[#C0503A]"
                       >
-                        Reject
+                        <X className="h-3.5 w-3.5" /> Reject
                       </button>
+                    )}
+                    {!canApprove(open.status) && !canReject(open.status) && (
+                      <p className="text-[12.5px] leading-relaxed text-[#8A7F75]">
+                        This lead has moved past the point where an admin decides — it now progresses on its own.
+                      </p>
                     )}
                   </div>
                 )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
+
+      {selected.size > 0 && (
+        <div className="fixed inset-x-3 bottom-[86px] z-40 mx-auto max-w-[560px] rounded-2xl border border-[#EFE6DA] bg-white p-3.5 shadow-[0_18px_44px_-16px_rgba(40,30,20,0.35)] min-[900px]:bottom-5">
+          {rejectMode === 'bulk' ? (
+            <RejectForm
+              reason={reason}
+              setReason={setReason}
+              pending={rejectMutation.isPending}
+              label={`Rejecting ${bulk.eligible.length} lead${bulk.eligible.length === 1 ? '' : 's'}`}
+              onCancel={() => setRejectMode(null)}
+              onConfirm={() => rejectMutation.mutate({ ids: bulk.eligible.map((l) => l.id), why: reason.trim() })}
+            />
+          ) : (
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="text-[13px] font-bold text-foreground">{selected.size} selected</span>
+              {/* Say what will be skipped rather than silently dropping it. */}
+              {bulk.skipped.length > 0 && (
+                <span className="text-[11.5px] text-[#8A7F75]">
+                  {bulk.skipped.length} can&apos;t be rejected — a link is already out
+                </span>
+              )}
+              <div className="ml-auto flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelected(new Set())}
+                  className="rounded-[10px] px-3 py-2 text-[12.5px] font-bold text-[#8A7F75]"
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  disabled={bulk.eligible.length === 0}
+                  onClick={() => {
+                    setRejectMode('bulk');
+                    setReason('');
+                  }}
+                  className="rounded-[10px] bg-[#C0503A] px-3.5 py-2 text-[12.5px] font-bold text-white disabled:opacity-40"
+                >
+                  Reject {bulk.eligible.length}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RejectForm({
+  reason,
+  setReason,
+  pending,
+  onCancel,
+  onConfirm,
+  label,
+}: {
+  reason: string;
+  setReason: (v: string) => void;
+  pending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+  label?: string;
+}) {
+  return (
+    <div>
+      <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-[#9C9186]">
+        {label ?? 'Why are they not proceeding?'}
+      </div>
+      <p className="mb-2 text-[11.5px] text-[#8A7F75]">The applicant is shown this, so write it for them.</p>
+      <div className="mb-2 flex flex-wrap gap-1.5">
+        {QUICK_REJECT_REASONS.map((r) => (
+          <button
+            key={r}
+            type="button"
+            onClick={() => setReason(r)}
+            className="rounded-full border border-[#E7DDD1] px-2.5 py-1 text-[11.5px] font-semibold text-[#8A7F75] hover:border-primary hover:text-primary"
+          >
+            {r.replace(/\.$/, '')}
+          </button>
+        ))}
+      </div>
+      <textarea
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        rows={2}
+        autoFocus
+        placeholder="Add or edit the reason…"
+        className="w-full resize-none rounded-[10px] border border-[#E7DDD1] bg-[#F7F3EF] px-3 py-2 text-[12.5px] outline-none focus:border-primary"
+      />
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          disabled={!reason.trim() || pending}
+          onClick={onConfirm}
+          className="h-9 flex-1 rounded-[10px] bg-[#C0503A] text-[12.5px] font-bold text-white disabled:opacity-50"
+        >
+          {pending ? 'Rejecting…' : 'Confirm rejection'}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="h-9 flex-1 rounded-[10px] border border-[#E7DDD1] text-[12.5px] font-bold text-[#8A7F75]"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }

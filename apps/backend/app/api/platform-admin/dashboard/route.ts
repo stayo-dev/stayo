@@ -51,7 +51,15 @@ export async function GET(req: NextRequest) {
       // dues (a different revenue stream: what tenants owe their hostel).
       prisma.platform_invoices.aggregate({ where: { status: { in: ["PENDING", "FAILED"] } }, _sum: { amount: true } }),
       prisma.platform_invoices.aggregate({ where: { status: "PAID" }, _sum: { amount: true } }),
-      prisma.platform_leads.findMany({ orderBy: { created_at: "desc" }, take: 3 }),
+      // Only leads an admin can actually act on. This previously took the 3
+      // most recent regardless of status, so the dashboard rendered Approve
+      // and Reject on leads already at INVITE_SENT or LOST — buttons that
+      // throw INVALID_TRANSITION by construction.
+      prisma.platform_leads.findMany({
+        where: { status: { in: ["NEW", "UNDER_REVIEW", "APPROVED"] } },
+        orderBy: { created_at: "asc" },
+        take: 5,
+      }),
       prisma.hostels.findMany({
         orderBy: { created_at: "desc" },
         take: 3,
@@ -86,7 +94,7 @@ export async function GET(req: NextRequest) {
     return apiResponse({
       kpis: {
         new_leads: newLeads,
-        pending_approvals: pendingApprovals,
+        pending_approvals: pendingApprovals, // hostels awaiting verification, not leads
         active_hostels: activeHostels,
         total_tenants: totalTenants,
         active_tenants: activeTenants,
