@@ -29,9 +29,21 @@ export const platformAdminService = {
     return unwrap(response);
   },
 
-  getLeads: async (params: { search?: string; status?: string } = {}) => {
+  /**
+   * Paginated. The endpoint also returns per-status counts computed under the
+   * same search, so the filter chips can show the shape of the backlog
+   * without one request per status.
+   */
+  getLeads: async (params: { search?: string; status?: string; limit?: number; offset?: number } = {}) => {
     const response = await api.get('/platform-admin/leads', { params });
-    return unwrap(response).leads as any[];
+    const data = unwrap(response);
+    return {
+      leads: (data.leads ?? []) as any[],
+      total: Number(data.total ?? 0),
+      hasMore: Boolean(data.has_more),
+      offset: Number(data.offset ?? 0),
+      counts: (data.counts ?? {}) as Record<string, number>,
+    };
   },
   getLead: async (id: string) => {
     const response = await api.get(`/platform-admin/leads/${id}`);
