@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Users, Building2, ShieldAlert, Home, UserCheck, IndianRupee, Wallet, AlertTriangle } from 'lucide-react';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { platformAdminService } from '@features/platform-admin/api';
+import { canApprove, canReject, STATUS_LABEL, STATUS_TONE } from '../leads/leadQueue';
 
 // Exact card treatment from Stayo Admin.dc.html: #fff bg, 1px #EFE6DA border,
 // 16px radius, two-layer shadow (a tight 1px hairline + a soft 30px lift).
@@ -11,6 +12,13 @@ const LISTING_CHIP: Record<string, { chip: string; dot: string }> = {
   DRAFT: { chip: 'bg-muted text-muted-foreground', dot: 'bg-muted-foreground/50' },
   LIVE: { chip: 'bg-success/10 text-success', dot: 'bg-success' },
   SUSPENDED: { chip: 'bg-destructive/10 text-destructive', dot: 'bg-destructive' },
+};
+// Same tone→class mapping as AdminLeadsPage's TONE_CHIP, kept local since it's presentational.
+const LEAD_TONE_CHIP: Record<string, string> = {
+  action: 'bg-primary/12 text-primary',
+  progress: 'bg-info/12 text-info',
+  done: 'bg-success/12 text-success',
+  dead: 'bg-[#C0503A]/10 text-[#C0503A]',
 };
 const fmtINR = (n: number) => `₹${Number(n ?? 0).toLocaleString('en-IN')}`;
 const fmtTime = (d: string) => new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -76,42 +84,59 @@ export function AdminDashboardPage() {
               <p className="text-[12.5px] text-muted-foreground">No leads yet.</p>
             ) : (
               <div className="flex flex-col gap-2.5">
-                {d.leads_preview.map((l: any) => (
-                  <div key={l.id} className="rounded-[13px] border border-[#EFE6DA] px-4 py-3.5">
-                    <div className="flex items-start justify-between gap-2.5">
-                      <div className="min-w-0">
-                        <div className="text-[13.5px] font-bold text-foreground">{l.name}</div>
-                        <div className="mt-0.5 text-[12px] text-[#8A7F75]">{l.hostel_name}</div>
-                        <div className="mt-1.5 text-[12px] tabular-nums text-[#8A7F75]">{l.phone}</div>
+                {d.leads_preview.map((l: any) => {
+                  // Scoped to this lead's id — mutation.isPending alone is
+                  // shared across every row, so without this every card's
+                  // button lit up "Sending…" whenever any one lead was
+                  // approved. See docs/obsidian/Bugs.md.
+                  const isApproving = leadApproveMutation.isPending && leadApproveMutation.variables === l.id;
+                  const tone = STATUS_TONE[l.status] ?? 'action';
+                  return (
+                    <div key={l.id} className="rounded-[13px] border border-[#EFE6DA] px-4 py-3.5">
+                      <div className="flex items-start justify-between gap-2.5">
+                        <div className="min-w-0">
+                          <div className="text-[13.5px] font-bold text-foreground">{l.name}</div>
+                          <div className="mt-0.5 text-[12px] text-[#8A7F75]">{l.hostel_name}</div>
+                          <div className="mt-1.5 text-[12px] tabular-nums text-[#8A7F75]">{l.phone}</div>
+                        </div>
+                        <div className="flex flex-none flex-col items-end gap-1.5">
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${LEAD_TONE_CHIP[tone]}`}>
+                            {STATUS_LABEL[l.status] ?? l.status}
+                          </span>
+                          {l.created_at && <span className="whitespace-nowrap text-[11px] text-[#9C9186]">{fmtTime(l.created_at)}</span>}
+                        </div>
                       </div>
-                      {l.created_at && <span className="flex-none whitespace-nowrap text-[11px] text-[#9C9186]">{fmtTime(l.created_at)}</span>}
+                      <div className="mt-3 flex gap-2">
+                        {canApprove(l.status) && (
+                          <button
+                            type="button"
+                            onClick={() => leadApproveMutation.mutate(l.id)}
+                            disabled={isApproving}
+                            className="h-8 flex-1 rounded-lg bg-success text-[12px] font-bold text-white disabled:opacity-60"
+                          >
+                            {isApproving ? 'Sending…' : l.status === 'APPROVED' ? 'Retry Send' : 'Approve'}
+                          </button>
+                        )}
+                        {canReject(l.status) && (
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/admin/leads?reject=${l.id}`)}
+                            className="h-8 flex-1 rounded-lg border border-[#EAD0C9] bg-white text-[12px] font-bold text-[#C0503A]"
+                          >
+                            Reject
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => navigate('/admin/leads')}
+                          className="h-8 flex-1 rounded-lg border border-[#E7DDD1] bg-white text-[12px] font-bold text-[#8A7F75]"
+                        >
+                          Details
+                        </button>
+                      </div>
                     </div>
-                    <div className="mt-3 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => leadApproveMutation.mutate(l.id)}
-                        disabled={leadApproveMutation.isPending}
-                        className="h-8 flex-1 rounded-lg bg-success text-[12px] font-bold text-white"
-                      >
-                        {leadApproveMutation.isPending ? 'Sending…' : 'Approve'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/admin/leads?reject=${l.id}`)}
-                        className="h-8 flex-1 rounded-lg border border-[#EAD0C9] bg-white text-[12px] font-bold text-[#C0503A]"
-                      >
-                        Reject
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => navigate('/admin/leads')}
-                        className="h-8 flex-1 rounded-lg border border-[#E7DDD1] bg-white text-[12px] font-bold text-[#8A7F75]"
-                      >
-                        Details
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

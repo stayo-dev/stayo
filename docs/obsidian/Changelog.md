@@ -10,6 +10,11 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-07 — Admin dashboard: Recent Activity accuracy, Owner Leads card bug fixes
+- **Recent Activity feed.** `composeRecentActivity()` labeled every hostel-row creation "Onboarded" unconditionally; now reads `verification_status`/`listing_status` and reports `Onboarded`/`Suspended`/`Verified — pending listing`/`Pending verification` accordingly, matching the vocabulary already used by `AdminHostelsPage.tsx`'s chips. See [[Bugs]].
+- **Owner Leads dashboard card.** A single shared `useMutation` instance was disabling every lead's Approve button whenever any one lead's mutation was in flight — scoped per-row via `mutation.variables`, and the card now shows a status badge, reusing `canApprove`/`canReject`/`STATUS_LABEL`/`STATUS_TONE` from the `leadQueue.ts` module introduced in `8f77ff9` (which independently fixed the companion bug: `leads_preview` no longer includes already-actioned leads). See [[Bugs]].
+- **Dev DB cleanup.** Purged ~700 stray test-fixture rows (135 `Test Hostel *` hostels and everything hanging off them, plus a leftover test lead) that had accumulated because `apps/backend/.env.test` and the dev root `.env` resolve to the same Supabase project — flagged as an open item, not fixed. See [[Bugs]].
+
 ### 2026-08-07 — Owner onboarding: persistence, guidance, verification, location
 - **Draft persistence.** The wizard held every answer in `useState`, so closing the tab across eight steps threw it all away. It now auto-saves to localStorage and restores with a banner and a Start over escape. Passwords are excluded by an explicit field allowlist, asserted by a test. See [[Features]].
 - **Password guidance.** Replaces a single length check with a live criteria checklist and strength meter. A 20+ character passphrase counts as strong on length alone.
