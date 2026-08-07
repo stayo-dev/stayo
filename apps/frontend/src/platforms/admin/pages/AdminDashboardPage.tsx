@@ -1,7 +1,6 @@
 import { useNavigate } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Users, Building2, ShieldAlert, Home, UserCheck, IndianRupee, Wallet, AlertTriangle } from 'lucide-react';
-import { stayoToast } from '@shared/ui-patterns/Toast';
 import { platformAdminService } from '@features/platform-admin/api';
 
 // Exact card treatment from Stayo Admin.dc.html: #fff bg, 1px #EFE6DA border,
@@ -13,31 +12,11 @@ const LISTING_CHIP: Record<string, { chip: string; dot: string }> = {
   SUSPENDED: { chip: 'bg-destructive/10 text-destructive', dot: 'bg-destructive' },
 };
 const fmtINR = (n: number) => `₹${Number(n ?? 0).toLocaleString('en-IN')}`;
-const fmtTime = (d: string) => new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 export function AdminDashboardPage() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const dashboardQuery = useQuery({ queryKey: ['admin', 'dashboard'], queryFn: () => platformAdminService.getDashboard(), staleTime: 15_000 });
   const d = dashboardQuery.data;
-
-  // Rejecting is deliberately NOT done from here. It used to call
-  // updateLeadStatus(id,'LOST') — the silent path — while the Leads page
-  // required a reason and told the applicant: two behaviours for one action in
-  // the same console. The button now hands over to the Leads queue, which
-  // captures the reason.
-
-  const leadApproveMutation = useMutation({
-    mutationFn: (id: string) => platformAdminService.approveLead(id),
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['admin', 'leads'] });
-      if (result.whatsapp_sent) stayoToast.success('Activation link sent via WhatsApp');
-      else if (result.email_sent) stayoToast.success('Activation link sent via email');
-      else stayoToast.error(result.email_error || result.whatsapp_error || 'Approved, but the activation link could not be sent');
-    },
-    onError: (error: any) => stayoToast.error(error?.response?.data?.error?.message || 'Could not approve lead'),
-  });
 
   if (dashboardQuery.isLoading || !d) {
     return (
@@ -64,87 +43,9 @@ export function AdminDashboardPage() {
 
   return (
     <div className="mx-auto max-w-[1360px] px-7 py-7">
-      <div className="grid grid-cols-1 gap-[18px] lg:grid-cols-[1fr_380px]">
-        {/* Left column — Leads preview, Recent Activity */}
+      <div className="grid grid-cols-1 gap-[18px] lg:grid-cols-[380px_1fr]">
+        {/* Left column — KPI overview */}
         <div className="flex flex-col gap-[18px] lg:order-1">
-          <div className={`${card} p-5`}>
-            <div className="mb-3.5 flex items-center justify-between">
-              <span className="font-display text-[14.5px] font-bold text-foreground">Owner Leads</span>
-              <button type="button" onClick={() => navigate('/admin/leads')} className="text-[12.5px] font-bold text-primary">View all →</button>
-            </div>
-            {d.leads_preview.length === 0 ? (
-              <p className="text-[12.5px] text-muted-foreground">No leads yet.</p>
-            ) : (
-              <div className="flex flex-col gap-2.5">
-                {d.leads_preview.map((l: any) => (
-                  <div key={l.id} className="rounded-[13px] border border-[#EFE6DA] px-4 py-3.5">
-                    <div className="flex items-start justify-between gap-2.5">
-                      <div className="min-w-0">
-                        <div className="text-[13.5px] font-bold text-foreground">{l.name}</div>
-                        <div className="mt-0.5 text-[12px] text-[#8A7F75]">{l.hostel_name}</div>
-                        <div className="mt-1.5 text-[12px] tabular-nums text-[#8A7F75]">{l.phone}</div>
-                      </div>
-                      {l.created_at && <span className="flex-none whitespace-nowrap text-[11px] text-[#9C9186]">{fmtTime(l.created_at)}</span>}
-                    </div>
-                    <div className="mt-3 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => leadApproveMutation.mutate(l.id)}
-                        disabled={leadApproveMutation.isPending}
-                        className="h-8 flex-1 rounded-lg bg-success text-[12px] font-bold text-white"
-                      >
-                        {leadApproveMutation.isPending ? 'Sending…' : 'Approve'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/admin/leads?reject=${l.id}`)}
-                        className="h-8 flex-1 rounded-lg border border-[#EAD0C9] bg-white text-[12px] font-bold text-[#C0503A]"
-                      >
-                        Reject
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => navigate('/admin/leads')}
-                        className="h-8 flex-1 rounded-lg border border-[#E7DDD1] bg-white text-[12px] font-bold text-[#8A7F75]"
-                      >
-                        Details
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className={`${card} p-5`}>
-            <div className="mb-3.5 font-display text-[14.5px] font-bold text-foreground">Recent Activity</div>
-            {d.activity.length === 0 ? (
-              <p className="text-[12.5px] text-muted-foreground">No recent activity.</p>
-            ) : (
-              <div className="flex flex-col">
-                {d.activity.map((a: any, i: number) => (
-                  <div key={a.id} className="flex gap-3.5 pb-4">
-                    <div className="flex flex-none flex-col items-center">
-                      <span
-                        className="mt-0.5 h-2.5 w-2.5 flex-none rounded-full"
-                        style={{ background: a.color ?? 'var(--primary)', boxShadow: `0 0 0 4px color-mix(in srgb, ${a.color ?? 'var(--primary)'} 16%, transparent)` }}
-                      />
-                      {i < d.activity.length - 1 && <span className="mt-1 w-[2px] flex-1 bg-[#EDE7DF]" />}
-                    </div>
-                    <div className="min-w-0 pb-0.5">
-                      <div className="text-[11px] font-bold tracking-wide text-[#9C9186]">{fmtTime(a.time)}</div>
-                      <div className="mt-0.5 text-[13px] font-bold text-foreground">{a.title}</div>
-                      <div className="mt-0.5 text-[12.5px] text-[#8A7F75]">{a.sub}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Right column — KPI overview, Revenue Summary, Hostel Health */}
-        <div className="flex flex-col gap-[18px] lg:order-2">
           <div className={`${card} p-1.5`}>
             <div className="px-3.5 pb-1.5 pt-3 text-[12.5px] font-bold uppercase tracking-[0.04em] text-[#9C9186]">Overview</div>
             <div className="flex flex-col">
@@ -157,7 +58,10 @@ export function AdminDashboardPage() {
               ))}
             </div>
           </div>
+        </div>
 
+        {/* Right column — Revenue Summary, Hostel Health */}
+        <div className="flex flex-col gap-[18px] lg:order-2">
           <div className={`${card} p-5`}>
             <div className="mb-3.5 flex items-center justify-between">
               <span className="font-display text-[14.5px] font-bold text-foreground">Revenue Summary</span>
