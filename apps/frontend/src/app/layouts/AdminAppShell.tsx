@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutGrid, Building2, UserPlus, FileCheck, IndianRupee, MoreHorizontal, Search, Bell } from 'lucide-react';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
 import { useAdminSession } from '@features/admin-session/useAdminSession';
 import { platformAdminService } from '@features/platform-admin/api';
+import { ACTIONABLE_STATUSES } from '@/platforms/admin/leads/leadQueue';
 
 /**
  * Admin console shell — sidebar chrome per Stayo Admin.dc.html. Desktop
@@ -51,6 +52,7 @@ function timeAgo(iso: string) {
 export function AdminAppShell() {
   const session = useAdminSession();
   const location = useLocation();
+  const navigate = useNavigate();
   const [notifOpen, setNotifOpen] = useState(false);
   const header = PAGE_HEADERS[location.pathname] ?? { title: 'Stayo Admin', subtitle: '' };
   const notifications = useQuery({
@@ -59,6 +61,21 @@ export function AdminAppShell() {
     staleTime: 30_000,
     refetchInterval: 60_000,
   });
+  // Leads get their own badge rather than folding into the bell — clicking
+  // it goes straight to the Leads queue, not a dropdown, since leads already
+  // have one dedicated place to work them. limit: 1 keeps the payload light;
+  // `counts` is a groupBy that's computed regardless of how many rows are
+  // returned. See docs/obsidian/Bugs.md, 2026-08-07.
+  const leadCounts = useQuery({
+    queryKey: ['admin', 'leads', 'counts'],
+    queryFn: () => platformAdminService.getLeads({ limit: 1 }),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+  const actionableLeadCount = ACTIONABLE_STATUSES.reduce(
+    (sum, status) => sum + (leadCounts.data?.counts?.[status] ?? 0),
+    0,
+  );
 
   return (
     <ThemeProvider theme="product">
@@ -114,6 +131,19 @@ export function AdminAppShell() {
               <Search className="h-4 w-4 flex-none text-[#9C9186]" />
               <input placeholder="Search leads, hostels…" className="w-full border-none bg-transparent text-[13px] text-foreground outline-none" />
             </div>
+            <button
+              type="button"
+              onClick={() => navigate('/admin/leads')}
+              className="relative flex h-9.5 w-9.5 flex-none items-center justify-center rounded-[10px] border border-[#E7DDD1] bg-white text-[#8A7F75] hover:text-foreground"
+              aria-label={`${actionableLeadCount} leads need you`}
+            >
+              <UserPlus className="h-[18px] w-[18px]" strokeWidth={1.9} />
+              {actionableLeadCount > 0 && (
+                <span className="absolute -right-1 -top-1.5 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold tabular-nums text-white">
+                  +{actionableLeadCount}
+                </span>
+              )}
+            </button>
             <div className="relative flex-none">
               <button
                 type="button"
