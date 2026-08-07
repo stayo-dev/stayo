@@ -16,6 +16,7 @@ import * as dotenv from "dotenv";
 import path from "path";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
+import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
 const envPath = path.resolve(__dirname, "../../../.env");
 dotenv.config({ path: envPath });
@@ -48,8 +49,8 @@ async function main() {
   const hostelA = await prisma.hostels.findFirstOrThrow({ where: { owner_id: owner.id } });
   const arjunProfile = await prisma.profile.findUniqueOrThrow({ where: { email: "arjun.mehta.dev-verify@stayo.dev" } });
   const karthikProfile = await prisma.profile.findUniqueOrThrow({ where: { email: "karthik.rao.dev-verify@stayo.dev" } });
-  const arjunTenant = await prisma.tenants.findUniqueOrThrow({ where: { profile_id: arjunProfile.id } });
-  const karthikTenant = await prisma.tenants.findUniqueOrThrow({ where: { profile_id: karthikProfile.id } });
+  const arjunTenant = await prisma.tenants.findFirstOrThrow({ where: liveTenancyWhere(arjunProfile.id) });
+  const karthikTenant = await prisma.tenants.findFirstOrThrow({ where: liveTenancyWhere(karthikProfile.id) });
   const roomA101 = await prisma.rooms.findFirstOrThrow({ where: { hostel_id: hostelA.id, room_no: "101" } });
   const floorA1 = await prisma.floors.findFirstOrThrow({ where: { hostel_id: hostelA.id } });
   console.log(`[0] Anchored on owner ${owner.email} / hostel "${hostelA.name}" / tenants Arjun+Karthik in room ${roomA101.room_no}`);
@@ -174,7 +175,7 @@ async function main() {
         },
       });
     }
-    let tenant = await prisma.tenants.findUnique({ where: { profile_id: profile.id } });
+    let tenant = await prisma.tenants.findFirst({ where: liveTenancyWhere(profile.id) });
     const joinedOn = addDays(today, -spec.joinedDaysAgo);
     if (!tenant) {
       tenant = await prisma.tenants.create({
@@ -192,8 +193,6 @@ async function main() {
           mobile_verified: true,
           document_verified: true,
           phone_1: `+91${spec.phone}`,
-          reservation_policy: "FULL_DEPOSIT",
-          minimum_reservation_deposit: spec.deposit,
         },
       });
     }

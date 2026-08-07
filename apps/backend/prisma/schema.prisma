@@ -3072,6 +3072,9 @@ model owner_documents {
   uploaded_at     DateTime  @default(now()) @db.Timestamptz(6)
   reviewed_at     DateTime? @db.Timestamptz(6)
   reviewed_by     String?   @db.Uuid
+  /// Why an admin rejected it, shown to the owner so they know what to fix.
+  /// A rejection with no reason just makes them upload the same file again.
+  review_note     String?
 
   profile         profile   @relation(fields: [profile_id], references: [id], onDelete: Cascade)
 

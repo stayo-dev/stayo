@@ -1,5 +1,6 @@
 import { prisma } from "../../../lib/db";
 import { tenantAnalyticsService } from "../../../lib/services/tenant-analytics-service";
+import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
 type TenantTrend = "IMPROVING" | "STABLE" | "DECLINING";
 
@@ -69,8 +70,8 @@ export class TenantScoreService {
   private readonly scoreStaleMs = 12 * 60 * 60 * 1000;
 
   async getTenantScoreSummary(profileId: string) {
-    const tenant = await prisma.tenants.findUnique({
-      where: { profile_id: profileId },
+    const tenant = await prisma.tenants.findFirst({
+      where: liveTenancyWhere(profileId),
       select: {
         id: true,
         status: true,

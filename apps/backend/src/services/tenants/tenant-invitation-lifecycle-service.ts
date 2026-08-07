@@ -8,10 +8,20 @@ import { eventLog } from "../../../lib/services/event-log-service";
 import { hostelBillingPreferencesService, type MaintenanceType } from "../../../lib/services/hostel-billing-preferences-service";
 import { roomCapacityService } from "../../../lib/services/room-capacity-service";
 import { onboardingFinancialsService } from "../payments/onboarding-financials-service";
-import { reservationStatusService } from "./reservation-status-service";
+import { selectCurrentTenancy } from "@/lib/tenancy/active-tenancy";
+import {
+  TenancyEligibilityError,
+  tenancyEligibilityService,
+} from "./tenancy-eligibility-service";
 
 type InvitationStatus = "PENDING" | "OPENED" | "ACTIVATION_STARTED" | "ACTIVATED" | "EXPIRED" | "CANCELLED";
-type ReservationReleaseReason = "ACTIVATED" | "EXPIRED" | "CANCELLED" | "TRANSFERRED";
+type ReservationReleaseReason =
+  | "ACTIVATED"
+  | "EXPIRED"
+  | "CANCELLED"
+  | "TRANSFERRED"
+  /** The invitee accepted a different hostel's invitation, so this bed is free again. */
+  | "JOINED_ELSEWHERE";
 
 const ACTIVE_INVITE_STATUSES: InvitationStatus[] = ["PENDING", "OPENED", "ACTIVATION_STARTED"];
 const DEFAULT_INVITE_DAYS = 7;
@@ -111,66 +121,47 @@ export class TenantInvitationLifecycleService {
     };
   }
 
-  async checkTenantPhoneUniqueness(phone: string): Promise<{ isUnique: boolean; reason?: string; tenantName?: string }> {
+  /**
+   * Can this phone number be invited by this owner?
+   *
+   * Delegates the rule to `tenancyEligibilityService`, so "one live tenancy per
+   * person, and no new stay until the last one is settled" has exactly one
+   * implementation.
+   *
+   * Two deliberate behaviours:
+   *
+   * - **A pending invitation from another owner does not block.** Several owners
+   *   may court the same person; whichever invitation is accepted first voids the
+   *   rest (`voidCompetingInvitations`). Blocking here would let any owner reserve
+   *   a person by sending an invite they never accept.
+   * - **The refusal reveals the hostel only when it is the asking owner's own.**
+   *   This used to name another owner's hostel and tenant unconditionally, which
+   *   leaks one owner's roster — and a person's address — to a competitor.
+   */
+  async checkTenantPhoneUniqueness(
+    phone: string,
+    invitingOwnerId: string | null = null
+  ): Promise<{ isUnique: boolean; reason?: string; tenantName?: string; code?: string; disclosure?: unknown }> {
     const normalizedPhone = normalizeIndianPhone(phone);
     if (!normalizedPhone) {
       return { isUnique: true };
     }
 
-    // 1. Check if there is an active tenant in the database with this phone number across all hostels
-    const existingTenant = await prisma.tenants.findFirst({
-      where: {
-        status: { in: ["ACTIVE", "INVITED"] },
-        OR: [
-          { phone_1: normalizedPhone },
-          { phone_2: normalizedPhone },
-          { phone_3: normalizedPhone },
-          { profiles: { phone: normalizedPhone } }
-        ]
-      },
-      include: {
-        hostels: true,
-        profiles: true,
-        tenant_invitations: {
-          orderBy: { created_at: "desc" },
-          take: 1,
-          include: {
-            hostel: true
-          }
-        }
-      }
-    });
+    const eligibility = await tenancyEligibilityService.checkEligibilityByContact(
+      { phone: normalizedPhone },
+      invitingOwnerId
+    );
+    if (eligibility.eligible) return { isUnique: true };
 
-    if (existingTenant) {
-      const tenantName = existingTenant.profiles?.name || existingTenant.tenant_invitations[0]?.name || "Existing Tenant";
-      const hostelName = existingTenant.hostels?.name || existingTenant.tenant_invitations[0]?.hostel?.name || "another hostel";
-      return {
-        isUnique: false,
-        reason: `Tenant '${tenantName}' with this phone number is already active in ${hostelName}.`,
-        tenantName
-      };
-    }
+    const { scope, hostelName } = eligibility.disclosure;
+    const where =
+      scope === "OWN" && hostelName ? `your hostel ${hostelName}` : "another property on Stayo";
+    const reason =
+      eligibility.code === "TENANT_HAS_ACTIVE_TENANCY"
+        ? `This person is already a tenant at ${where}.`
+        : `This person's previous stay at ${where} has not been settled yet.`;
 
-    // 2. Check if there is an active invitation with this phone number in any hostel
-    const existingInvite = await prisma.tenant_invitations.findFirst({
-      where: {
-        phone: normalizedPhone,
-        status: { in: ["PENDING", "OPENED", "ACTIVATION_STARTED"] },
-      },
-      include: {
-        hostel: true
-      }
-    });
-
-    if (existingInvite) {
-      return {
-        isUnique: false,
-        reason: `An active invitation already exists for this phone number (for '${existingInvite.name}') in ${existingInvite.hostel?.name || "another hostel"}.`,
-        tenantName: existingInvite.name
-      };
-    }
-
-    return { isUnique: true };
+    return { isUnique: false, reason, code: eligibility.code, disclosure: eligibility.disclosure };
   }
 
   async createInvitation(data: any, ownerId: string) {
@@ -216,23 +207,9 @@ export class TenantInvitationLifecycleService {
     const owner = await prisma.profile.findUnique({ where: { id: ownerId } });
     if (!owner || owner.role !== "OWNER") throw new Error("NOT_FOUND: Owner profile not found");
 
-    if (normalizedPhone) {
-      const uniqueness = await this.checkTenantPhoneUniqueness(normalizedPhone);
-      if (!uniqueness.isUnique) {
-        // If active invitation under the SAME owner exists, we can still resend/update it.
-        const activeExisting = await prisma.tenant_invitations.findFirst({
-          where: {
-            owner_id: ownerId,
-            status: { in: ACTIVE_INVITE_STATUSES },
-            phone: normalizedPhone,
-          },
-        });
-        if (!activeExisting) {
-          throw new Error(`ALREADY_EXISTS: ${uniqueness.reason}`);
-        }
-      }
-    }
-
+    // Resending your own live invitation is an update, not a new invitation, so it
+    // is resolved before the eligibility check — that invitation is the reason the
+    // person may already look "taken".
     const activeExisting = await prisma.tenant_invitations.findFirst({
       where: {
         owner_id: ownerId,
@@ -248,15 +225,15 @@ export class TenantInvitationLifecycleService {
       return this.resendInvitation(activeExisting.id, { id: ownerId, role: "OWNER" }, data);
     }
 
-    if (normalizedEmail) {
-      const existingProfile = await prisma.profile.findUnique({
-        where: { email: normalizedEmail },
-        include: { tenants: true },
-      });
-      if (existingProfile?.tenants && existingProfile.tenants.status !== "EXPIRED" && existingProfile.tenants.status !== "CANCELLED") {
-        throw new Error("ALREADY_EXISTS: User with this email already exists");
-      }
-    }
+    // One live tenancy per person, and no new stay until the previous one is
+    // settled. Throws a 409 carrying an ownership-scoped disclosure, which the
+    // owner's invite form renders as "already a tenant at …" — replacing the old
+    // `ALREADY_EXISTS: User with this email already exists`, which told the owner
+    // nothing about why their invite was refused.
+    await tenancyEligibilityService.assertCanStartNewTenancyByContact(
+      { email: normalizedEmail, phone: normalizedPhone },
+      ownerId
+    );
 
     const inviteDefaults = await hostelBillingPreferencesService.resolveTenantInviteDefaults(roomId, ownerId);
     const resolved = inviteDefaults.resolved_values;
@@ -278,15 +255,6 @@ export class TenantInvitationLifecycleService {
     }
     if (advanceDeposit < 0) throw new Error("VALIDATION_ERROR: Deposit cannot be negative");
     if (maintenanceCharge < 0) throw new Error("VALIDATION_ERROR: Maintenance charge cannot be negative");
-    const minimumDepositThreshold = data.minimum_deposit_threshold !== undefined && data.minimum_deposit_threshold !== null
-      ? moneyNumber(data.minimum_deposit_threshold)
-      : advanceDeposit;
-    if (minimumDepositThreshold < 0) throw new Error("VALIDATION_ERROR: minimum_deposit_threshold cannot be negative");
-    if (minimumDepositThreshold > advanceDeposit) {
-      throw new Error("VALIDATION_ERROR: minimum_deposit_threshold cannot exceed security deposit");
-    }
-    const reservationPolicy = minimumDepositThreshold < advanceDeposit ? "PARTIAL_DEPOSIT" : "FULL_DEPOSIT";
-
     const created = await prisma.$transaction(async (tx: any) => {
       await tx.$executeRaw`SELECT id FROM rooms WHERE id = ${roomId}::uuid FOR UPDATE`;
       const capacity = await this.getRoomCapacitySnapshot(tx, roomId);
@@ -319,8 +287,6 @@ export class TenantInvitationLifecycleService {
           phone_1: normalizedPhone,
           personal_email: normalizedEmail,
           payment_frequency: data.payment_frequency || capacity.room.hostels.rent_cycle || "MONTHLY",
-          reservation_policy: reservationPolicy,
-          minimum_reservation_deposit: minimumDepositThreshold,
         },
       });
 
@@ -583,22 +549,6 @@ export class TenantInvitationLifecycleService {
         }
       }
 
-      const nextSecurityDeposit = typeof securityDeposit !== "undefined"
-        ? securityDeposit
-        : Number(invitation.tenant.security_deposit || 0);
-      const nextMinimumDepositThreshold = typeof overrides?.minimum_deposit_threshold !== "undefined"
-        ? Number(overrides.minimum_deposit_threshold)
-        : (typeof securityDeposit !== "undefined"
-          ? nextSecurityDeposit
-          : Number(invitation.tenant.minimum_reservation_deposit || nextSecurityDeposit));
-      if (!Number.isFinite(nextMinimumDepositThreshold) || nextMinimumDepositThreshold < 0) {
-        throw new Error("VALIDATION_ERROR: minimum_deposit_threshold cannot be negative");
-      }
-      if (nextMinimumDepositThreshold > nextSecurityDeposit) {
-        throw new Error("VALIDATION_ERROR: minimum_deposit_threshold cannot exceed security deposit");
-      }
-      const nextReservationPolicy = nextMinimumDepositThreshold < nextSecurityDeposit ? "PARTIAL_DEPOSIT" : "FULL_DEPOSIT";
-
       // 4. Update profiles if profile_id exists
       if (invitation.tenant.profile_id) {
         await tx.profile.update({
@@ -625,8 +575,6 @@ export class TenantInvitationLifecycleService {
           profile_completed: false,
           ...(typeof monthlyRent !== "undefined" ? { monthly_rent: monthlyRent } : {}),
           ...(typeof securityDeposit !== "undefined" ? { security_deposit: securityDeposit } : {}),
-          reservation_policy: nextReservationPolicy,
-          minimum_reservation_deposit: nextMinimumDepositThreshold,
           ...(typeof maintenanceCharge !== "undefined" ? { maintenance_charge: maintenanceCharge } : {}),
           ...(maintenanceType ? { maintenance_type: maintenanceType } : {}),
           ...(phone ? { phone_1: normalizeIndianPhone(phone) } : {}),
@@ -956,6 +904,16 @@ export class TenantInvitationLifecycleService {
         });
       }
 
+      // Binding the profile to this tenancy is the moment the person becomes
+      // "taken". `tenants_one_live_tenancy_per_profile` would reject a second one
+      // anyway, but as a raw Prisma constraint error — check first so the invitee
+      // clicking a rival hostel's link gets an explanation instead.
+      await tenancyEligibilityService.assertCanStartNewTenancy(
+        profileRecord.id,
+        invitation.owner_id,
+        tx
+      );
+
       await tx.tenants.update({
         where: { id: tenant.id },
         data: {
@@ -988,8 +946,83 @@ export class TenantInvitationLifecycleService {
     return profile;
   }
 
+  /**
+   * Accepting one hostel's invitation withdraws the person from every other
+   * hostel's, and hands those beds back.
+   *
+   * Several owners may invite the same person; only one can win. Without this the
+   * losing rooms stay reserved until their invitations expire — beds the owner
+   * cannot fill and cannot see a reason for — and the invitee is left holding
+   * links that fail with a raw constraint error when clicked.
+   *
+   * Runs inside the activation transaction so a person is never simultaneously
+   * joined here and pending elsewhere.
+   */
+  private async voidCompetingInvitations(
+    tx: any,
+    params: {
+      profileId: string;
+      acceptedInvitationId: string;
+      acceptedTenantId: string;
+      email: string | null;
+      phone: string | null;
+      at: Date;
+    }
+  ) {
+    // Matched by contact, not by profile: a competing invitation's placeholder
+    // `tenants` row has `profile_id: null` until that invitation's own activation
+    // begins, so a profile-only match would miss every invitation not yet opened —
+    // which is most of them.
+    const identifiers = [
+      ...(params.email ? [{ email: params.email }] : []),
+      ...(params.phone ? [{ phone: params.phone }] : []),
+      { tenant: { profile_id: params.profileId } },
+    ];
+
+    const competing = await tx.tenant_invitations.findMany({
+      where: {
+        id: { not: params.acceptedInvitationId },
+        tenant_id: { not: params.acceptedTenantId },
+        status: { in: ACTIVE_INVITE_STATUSES },
+        OR: identifiers,
+      },
+      select: { id: true, owner_id: true, tenant_id: true, hostel_id: true, room_id: true },
+    });
+    if (competing.length === 0) return [];
+
+    const invitationIds = competing.map((invite: any) => invite.id);
+    const tenantIds = competing.map((invite: any) => invite.tenant_id);
+
+    await tx.tenant_invitations.updateMany({
+      where: { id: { in: invitationIds } },
+      data: { status: "CANCELLED", updated_at: params.at },
+    });
+
+    // Free the beds. Without this the rooms stay at reduced capacity for nothing.
+    await tx.tenant_invitation_reservations.updateMany({
+      where: { invitation_id: { in: invitationIds }, status: "ACTIVE" },
+      data: {
+        status: "RELEASED",
+        released_at: params.at,
+        release_reason: "JOINED_ELSEWHERE" satisfies ReservationReleaseReason,
+        updated_at: params.at,
+      },
+    });
+
+    // The placeholder tenancy rows those invitations created must end too —
+    // `tenants_one_live_tenancy_per_profile` allows only one live row per person,
+    // and these never had a tenant in them.
+    await tx.tenants.updateMany({
+      where: { id: { in: tenantIds }, status: "INVITED" },
+      data: { status: "CANCELLED", updated_at: params.at },
+    });
+
+    return competing;
+  }
+
   async completeActivation(invitation: any, tenant: any, profile: any, paymentFrequency?: string, password?: string) {
     const completedAt = new Date();
+    let voidedInvitations: any[] = [];
 
     await prisma.$transaction(async (tx: any) => {
       // 1. Proactive row lock on the tenant row
@@ -1043,30 +1076,31 @@ export class TenantInvitationLifecycleService {
         WHERE id = ${reservation.id}::uuid FOR UPDATE
       `;
 
-      const resStatus = await reservationStatusService.getReservationStatus(tenant.id, tx);
-      if (resStatus.status !== "PAYMENT_PENDING") {
-        await tx.$executeRaw`SELECT id FROM rooms WHERE id = ${reservation.room_id}::uuid FOR UPDATE`;
-        const capacity = await this.getRoomCapacitySnapshot(tx, reservation.room_id);
-        if (capacity.occupied >= Number(capacity.room.capacity || 0)) {
-          throw new Error("CAPACITY_EXCEEDED: Reserved room no longer has available capacity");
-        }
+      // The room is assigned on joining, unconditionally. Deposit and maintenance
+      // are ordinary dues payable after move-in, not a gate on getting a bed —
+      // owners on the platform collect them on their own terms. The capacity check
+      // below stays, because that is overbooking protection, not a payment gate.
+      await tx.$executeRaw`SELECT id FROM rooms WHERE id = ${reservation.room_id}::uuid FOR UPDATE`;
+      const capacity = await this.getRoomCapacitySnapshot(tx, reservation.room_id);
+      if (capacity.occupied >= Number(capacity.room.capacity || 0)) {
+        throw new Error("CAPACITY_EXCEEDED: Reserved room no longer has available capacity");
+      }
 
-        // Check if there is already an active room allocation
-        const existingAllocation = await tx.roomAllocation.findFirst({
-          where: { tenant_id: tenant.id, is_active: true, end_date: null }
+      // Check if there is already an active room allocation
+      const existingAllocation = await tx.roomAllocation.findFirst({
+        where: { tenant_id: tenant.id, is_active: true, end_date: null }
+      });
+      if (!existingAllocation) {
+        await tx.roomAllocation.create({
+          data: {
+            id: crypto.randomUUID(),
+            tenant_id: tenant.id,
+            room_id: reservation.room_id,
+            hostel_id: reservation.hostel_id,
+            start_date: tenantRow[0].joined_on || startOfToday(),
+            is_active: true,
+          },
         });
-        if (!existingAllocation) {
-          await tx.roomAllocation.create({
-            data: {
-              id: crypto.randomUUID(),
-              tenant_id: tenant.id,
-              room_id: reservation.room_id,
-              hostel_id: reservation.hostel_id,
-              start_date: tenantRow[0].joined_on || startOfToday(),
-              is_active: true,
-            },
-          });
-        }
       }
 
       await tx.tenant_invitation_reservations.update({
@@ -1105,7 +1139,29 @@ export class TenantInvitationLifecycleService {
           ...(paymentFrequency ? { payment_frequency: paymentFrequency } : {}),
         },
       });
+
+      voidedInvitations = await this.voidCompetingInvitations(tx, {
+        profileId: profile.id,
+        acceptedInvitationId: invitation.id,
+        acceptedTenantId: tenant.id,
+        email: invitation.email ? normalizeEmail(invitation.email) : null,
+        phone: invitation.phone || null,
+        at: completedAt,
+      });
     }, { timeout: 30000 });
+
+    // Outside the transaction: the joiner is committed either way, and telling the
+    // losing owners is not worth rolling that back.
+    for (const voided of voidedInvitations) {
+      await eventLog.log("invitation_voided_joined_elsewhere", voided.owner_id, {
+        invitation_id: voided.id,
+        tenant_id: voided.tenant_id,
+        hostel_id: voided.hostel_id,
+        room_id: voided.room_id,
+        voided_at: completedAt.toISOString(),
+      }, voided.tenant_id).catch(() => undefined);
+    }
+
     await eventLog.log("activation_completed", invitation.owner_id, {
       tenant_id: tenant.id,
       invitation_id: invitation.id,
@@ -1166,76 +1222,27 @@ export class TenantInvitationLifecycleService {
         },
       },
     });
-    if (!profile || !profile.tenants) throw new Error("INVALID: Activation link expired or already used");
-    if (profile.tenants.hostels?.status === "ARCHIVED") {
+    // `selectCurrentTenancy`, not `selectLiveTenancy`: the CANCELLED/EXPIRED
+    // branches below exist to explain a dead link, and a live-only filter would
+    // hide exactly the rows they describe.
+    const currentTenancy: any = selectCurrentTenancy(profile?.tenants);
+    if (!profile || !currentTenancy) throw new Error("INVALID: Activation link expired or already used");
+    if (currentTenancy.hostels?.status === "ARCHIVED") {
       throw new Error("FORBIDDEN: Cannot activate tenant in an archived hostel");
     }
-    if (profile.tenants.hostels?.status === "INACTIVE") {
+    if (currentTenancy.hostels?.status === "INACTIVE") {
       throw new Error("FORBIDDEN: Cannot activate tenant in an inactive hostel");
     }
-    if (profile.tenants.status === "ACTIVE") throw new Error("ALREADY_ACTIVE: Account already active");
-    if (profile.tenants.status === "CANCELLED") throw new Error("CANCELLED: Invitation was cancelled");
-    if (profile.tenants.status === "EXPIRED") throw new Error("EXPIRED: Invitation expired");
+    if (currentTenancy.status === "ACTIVE") throw new Error("ALREADY_ACTIVE: Account already active");
+    if (currentTenancy.status === "CANCELLED") throw new Error("CANCELLED: Invitation was cancelled");
+    if (currentTenancy.status === "EXPIRED") throw new Error("EXPIRED: Invitation expired");
     return {
       source: "legacy_profile",
       invitation: null,
       profile,
-      tenant: profile.tenants,
+      tenant: currentTenancy,
       token,
     };
-  }
-
-  async allocateOnboardingTenantIfFinanciallyReady(tenantId: string) {
-    await prisma.$transaction(async (tx: any) => {
-      // 1. SELECT FOR UPDATE on tenants table
-      const tenantRow = await tx.$queryRaw`
-        SELECT id, status, joined_on, owner_id FROM tenants 
-        WHERE id = ${tenantId}::uuid FOR UPDATE
-      `;
-      if (!tenantRow || tenantRow.length === 0) return;
-      const status = tenantRow[0].status;
-      if (status !== "ACTIVE") return;
-
-      // 2. Check if already allocated
-      const existing = await tx.roomAllocation.findFirst({
-        where: { tenant_id: tenantId, is_active: true, end_date: null },
-      });
-      if (existing) return;
-
-      // 3. Check if financially ready (status !== "PAYMENT_PENDING") under the transaction
-      const resStatus = await reservationStatusService.getReservationStatus(tenantId, tx);
-      if (resStatus.status === "PAYMENT_PENDING") return;
-
-      // 4. Find the latest invitation (to know which room and hostel they were invited to)
-      const invitation = await tx.tenant_invitations.findFirst({
-        where: { tenant_id: tenantId },
-        orderBy: { created_at: "desc" },
-      });
-      if (!invitation || !invitation.room_id) return;
-
-      // 5. Enforce proactive row lock on room row
-      await tx.$executeRaw`SELECT id FROM rooms WHERE id = ${invitation.room_id}::uuid FOR UPDATE`;
-
-      // 6. Check room capacity
-      const capacity = await this.getRoomCapacitySnapshot(tx, invitation.room_id);
-      if (capacity.occupied >= Number(capacity.room.capacity || 0)) {
-        throw new Error("CAPACITY_EXCEEDED: Reserved room no longer has available capacity");
-      }
-
-      // 7. Allocate using single centralized room allocation logic
-      await tx.roomAllocation.create({
-        data: {
-          id: crypto.randomUUID(),
-          tenant_id: tenantId,
-          room_id: invitation.room_id,
-          hostel_id: invitation.hostel_id,
-          start_date: tenantRow[0].joined_on || startOfToday(),
-          is_active: true,
-        },
-      });
-
-      console.log(`[Lifecycle] Automatically allocated tenant ${tenantId} to room ${invitation.room_id} after transition to ${resStatus.status}`);
-    }, { timeout: 30000 });
   }
 }
 

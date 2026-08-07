@@ -14,6 +14,7 @@
 import { prisma } from "../db";
 import type { AuthPayload } from "../auth-edge";
 import { eventLog } from "../services/event-log-service";
+import { liveTenancyInclude, selectLiveTenancy } from "@/lib/tenancy/active-tenancy";
 
 export interface SupabaseSessionContext {
   authUserId: string;
@@ -38,7 +39,7 @@ const REJECT_DISABLED = "Account is disabled";
 export async function resolveSupabaseSession(ctx: SupabaseSessionContext): Promise<ResolveResult> {
   let profile = await prisma.profile.findUnique({
     where: { auth_user_id: ctx.authUserId },
-    include: { tenants: true },
+    include: { tenants: liveTenancyInclude },
   });
 
   if (!profile) {
@@ -49,7 +50,7 @@ export async function resolveSupabaseSession(ctx: SupabaseSessionContext): Promi
     // account — see tests/auth-hardening-security.test.ts.
     const byEmail = await prisma.profile.findUnique({
       where: { email: ctx.email.toLowerCase() },
-      include: { tenants: true },
+      include: { tenants: liveTenancyInclude },
     });
 
     if (!byEmail) {
@@ -126,7 +127,7 @@ export async function resolveSupabaseSession(ctx: SupabaseSessionContext): Promi
     role: profile.role,
     email: profile.email,
     owner_id: effectiveOwnerId || null,
-    tenant_id: profile.tenants?.id || null,
+    tenant_id: selectLiveTenancy(profile.tenants)?.id || null,
     sid: ctx.sessionId,
   };
 

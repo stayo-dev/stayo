@@ -5,7 +5,6 @@ import { getLogger } from "../logger";
 import { financialService } from "../../src/services/payments/financial-service";
 import { tenantFinancialLedgerService } from "../../src/services/payments/tenant-financial-ledger-service";
 import { obligationEngine } from "../../src/services/payments/obligation-engine";
-import { reservationStatusService } from "../../src/services/tenants/reservation-status-service";
 import { assertTransition, assertCapability, checkCapability, getTenantSteps } from "./move-out-state-machine";
 import {
   notifyMoveOutDisputeRaised,
@@ -13,6 +12,7 @@ import {
   notifyMoveOutTransition,
 } from "./move-out-notifications";
 import { randomUUID } from "crypto";
+import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
 // Re-export capability guards for use by other services
 export { assertCapability, checkCapability } from "./move-out-state-machine";
@@ -220,11 +220,6 @@ export class MoveOutService {
       }
     } else {
       this.forbidden("create this move-out request");
-    }
-
-    const resStatusInfo = await reservationStatusService.getReservationStatus(tenantId);
-    if (resStatusInfo.status === "PAYMENT_PENDING") {
-      throw new Error("FORBIDDEN: Move-out requests are not allowed for tenants with PAYMENT_PENDING reservation status.");
     }
 
     if (tenant.status !== "ACTIVE") throw new Error(`VALIDATION: Only ACTIVE tenants can request move-out. Current: ${tenant.status}`);
@@ -754,7 +749,7 @@ export class MoveOutService {
   }
 
   async getRequestForTenant(profileId: string) {
-    const tenant = await prisma.tenants.findUnique({ where: { profile_id: profileId }, select: { id: true } });
+    const tenant = await prisma.tenants.findFirst({ where: liveTenancyWhere(profileId), select: { id: true } });
     if (!tenant) throw new Error("NOT_FOUND");
     return prisma.move_out_requests.findFirst({
       where: {
