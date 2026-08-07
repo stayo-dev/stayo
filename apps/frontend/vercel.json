@@ -5,35 +5,35 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://stayo-backend-stayo-devs-projects.vercel.app/api/:path*"
+      "destination": "https://stayo-testing.vercel.app/api/:path*"
     },
     {
       "source": "/api/:path*/",
-      "destination": "https://stayo-backend-stayo-devs-projects.vercel.app/api/:path*"
+      "destination": "https://stayo-testing.vercel.app/api/:path*"
     },
     {
       "source": "/pay/tenant/%7B%7B1%7D%7D:token",
-      "destination": "https://stayo-backend-stayo-devs-projects.vercel.app/api/payments/pay/:token"
+      "destination": "https://stayo-testing.vercel.app/api/payments/pay/:token"
     },
     {
       "source": "/pay/tenant/\\{\\{1\\}\\}:token",
-      "destination": "https://stayo-backend-stayo-devs-projects.vercel.app/api/payments/pay/:token"
+      "destination": "https://stayo-testing.vercel.app/api/payments/pay/:token"
     },
     {
       "source": "/pay/tenant/:token",
-      "destination": "https://stayo-backend-stayo-devs-projects.vercel.app/api/payments/pay/:token"
+      "destination": "https://stayo-testing.vercel.app/api/payments/pay/:token"
     },
     {
       "source": "/pay/%7B%7B1%7D%7D:token",
-      "destination": "https://stayo-backend-stayo-devs-projects.vercel.app/api/payments/pay/:token"
+      "destination": "https://stayo-testing.vercel.app/api/payments/pay/:token"
     },
     {
       "source": "/pay/\\{\\{1\\}\\}:token",
-      "destination": "https://stayo-backend-stayo-devs-projects.vercel.app/api/payments/pay/:token"
+      "destination": "https://stayo-testing.vercel.app/api/payments/pay/:token"
     },
     {
       "source": "/pay/:token",
-      "destination": "https://stayo-backend-stayo-devs-projects.vercel.app/api/payments/pay/:token"
+      "destination": "https://stayo-testing.vercel.app/api/payments/pay/:token"
     },
     {
       "source": "/((?!api/)(?!.*\\.[a-zA-Z0-9]{1,5}$).*)",
