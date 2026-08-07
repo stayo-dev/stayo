@@ -1,7 +1,8 @@
 import type { CSSProperties } from 'react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Save, Check, ArrowLeft, ArrowRight } from 'lucide-react';
+import { generationPromptFor, type GenerationPrompt } from '../generationGate';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useOwnerOnboardingState, type OwnerOnboardingData } from '../hooks/useOwnerOnboardingState';
@@ -82,6 +83,8 @@ export function OwnerOnboardingWizard() {
   }, []);
   const s = useOwnerOnboardingState(initialData);
   const submission = useOnboardingSubmission(s, leadToken);
+
+  const [pendingSkip, setPendingSkip] = useState<GenerationPrompt | null>(null);
 
   const isWelcome = s.screenId === 'welcome';
   const isSuccess = s.screenId === 'success';
@@ -262,6 +265,19 @@ export function OwnerOnboardingWizard() {
                     return;
                   }
 
+                  // Generating floors/rooms/beds is optional, but walking past
+                  // it silently is how an owner finishes onboarding having
+                  // laid out nothing. Ask once, then respect the answer.
+                  const prompt = generationPromptFor(s.screenId, {
+                    floorsGen: s.floorsGen,
+                    roomsGen: s.roomsGen,
+                    bedsGen: s.bedsGen,
+                  });
+                  if (prompt) {
+                    setPendingSkip(prompt);
+                    return;
+                  }
+
                   if (s.screenId === 'account') return submission.submitAccount();
                   if (s.screenId === 'publish') return submission.submitPublish();
                   return s.next();
@@ -283,6 +299,40 @@ export function OwnerOnboardingWizard() {
       </div>
 
       {/* OTP SHEET */}
+      {/* Generation confirm — floors/rooms/beds only. Generating stays
+          optional, so this asks rather than blocks, and says the work can be
+          done later so the dialog is guidance and not an obstacle. */}
+      <BottomSheet
+        open={pendingSkip !== null}
+        onOpenChange={(next) => !next && setPendingSkip(null)}
+        title={pendingSkip?.title ?? ''}
+      >
+        {pendingSkip && (
+          <div className="px-5 pb-6">
+            <p className="text-[14px] leading-relaxed text-muted-foreground">{pendingSkip.body}</p>
+            <div className="mt-5 flex flex-col gap-2.5">
+              <button
+                type="button"
+                onClick={() => setPendingSkip(null)}
+                className="rounded-xl bg-primary px-5 py-3 font-display text-[15px] font-bold text-primary-foreground"
+              >
+                {pendingSkip.confirmLabel}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingSkip(null);
+                  s.next();
+                }}
+                className="rounded-xl border-[1.5px] border-border px-5 py-3 font-display text-[15px] font-bold text-foreground/80"
+              >
+                {pendingSkip.skipLabel}
+              </button>
+            </div>
+          </div>
+        )}
+      </BottomSheet>
+
       <BottomSheet
         open={s.otpOpen}
         onOpenChange={s.setOtpOpen}
