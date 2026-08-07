@@ -28,6 +28,28 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### Owner Leads dashboard card: one mutation shared across the whole list, and no status gating — clicking Approve disabled every card, and approved leads never visibly changed
+
+- **Status:** fixed
+- **Found:** 2026-08-07, reported by the user testing the admin dashboard directly ("when I click Approve, it's loading for all... if I approve, it should show Pending or Not Pending, but it's showing the same again").
+- **Area:** [[Frontend]] (`platforms/admin/pages/AdminDashboardPage.tsx`)
+- **Symptom:** two compounding bugs on the "Owner Leads" preview widget on `/admin` (distinct from the earlier stale-enum Approve bug below, which this widget also had history with):
+  1. Clicking Approve on one lead card put *every* lead card's Approve/Reject buttons into the disabled "Sending…" state, not just the clicked one.
+  2. After a successful approve, the same lead reappeared in the preview looking identical and still fully actionable — no visible status change at all.
+- **Root cause:** `leadApproveMutation` is a single `useMutation()` instance created once per page render but reused across `d.leads_preview.map(...)` — `mutation.isPending` is global to the mutation object, not per-invocation, so it was read directly as each card's `disabled`/label state. Separately, the card never rendered `l.status` at all and unconditionally rendered Approve/Reject regardless of it, and `GET /api/platform-admin/dashboard`'s `leads_preview` query took the 3 most recent leads with no status filter, so an already-approved lead stayed in the preview by recency alone.
+- **Fix:** landed in two independent, parallel changes that turned out to fully cover both symptoms once merged: this fix scoped the per-lead pending check via `mutation.variables === l.id` and added a status badge, reusing `canApprove`/`canReject`/`STATUS_LABEL`/`STATUS_TONE` from `platforms/admin/leads/leadQueue.ts`; commit `8f77ff9` ("rebuild the lead queue for volume, fix four dashboard inconsistencies", landed on `dev` first) independently introduced `leadQueue.ts` itself, rebuilt `AdminLeadsPage.tsx` around it, moved the dashboard's Reject to deep-link into the full Leads page (capturing a reason instead of a silent `status: LOST`), and filtered `leads_preview` server-side to `NEW`/`UNDER_REVIEW`/`APPROVED` only — so an approved lead now actually leaves the preview. Resolved by rebasing this branch onto `8f77ff9` and reworking the per-row-loading-state fix against the new `leadQueue.ts` exports instead of the now-superseded `leadStatus.tsx` this entry originally introduced (deleted).
+- **Related:** [[Frontend]], [[Changelog]], the entry below (same widget, different bug, 2026-08-01)
+
+### Recent Activity feed labeled every hostel row "Onboarded" regardless of actual status, and test-suite writes were indistinguishable from real onboarding events
+
+- **Status:** fixed
+- **Found:** 2026-08-07, user noticed the admin dashboard's Recent Activity panel flooded with `Test Hostel <hex>` entries all labeled "Onboarded" within the same minute.
+- **Area:** [[Backend]] (`lib/services/platform-admin-activity-service.ts`)
+- **Symptom:** every `hostels` row creation was rendered as `"New hostel: <name>" / "Onboarded"`, with no distinction between a draft/unverified hostel and a fully live one — and no way to tell real onboarding from noise.
+- **Root cause:** `composeRecentActivity()`'s hostel branch only ever selected `id, name, created_at` and hardcoded `sub: "Onboarded"`, never reading the `verification_status`/`listing_status` columns that already exist and are used elsewhere on the same dashboard route (`pending_approvals` KPI). Separately (data hygiene, not a code bug): `apps/backend/.env.test` and the dev root `.env` point at the **same** Supabase project, so every `npm test` run's `createTestHostel()` factory calls (`Test Hostel ${uuid.slice(0,5)}`) wrote directly into the dev DB the admin dashboard reads from.
+- **Fix:** `composeRecentActivity` now selects `verification_status`/`listing_status` and labels each hostel entry accordingly (`Onboarded` only for `listing_status: LIVE`; `Suspended`; `Verified — pending listing`; or `Pending verification`), reusing the same status vocabulary as `AdminHostelsPage.tsx`'s chips. Separately purged ~700 stray test-data rows (134 `Test Hostel *` hostels and everything hanging off them — tenants, rent_obligations, payments, agreements, etc. — plus 1 orphaned non-pattern-matching test hostel) from the dev DB via a dependency-graph-driven cleanup script (introspected `information_schema` FK constraints, deleted children-first). The `.env.test`/dev-DB collision itself was **not** fixed — flagged as a follow-up, since it will keep recurring on every test run until the environments are actually separated.
+- **Related:** [[Backend]], [[Database]], [[Changelog]]
+
 ### The frontend's CSP `connect-src` hardcoded a single backend origin, silently blocking any dev-environment frontend from reaching its own backend
 
 - **Status:** fixed
@@ -865,6 +887,8 @@ Copy this block for each new entry:
 ## Open / known issues
 
 > See also `docs/known-issues.md` for the maintained list of known drift/gaps in `docs/`.
+
+- **`apps/backend/.env.test` points at the same Supabase project as the dev root `.env`.** Confirmed 2026-08-07 while tracing the Recent Activity test-data-pollution bug above: both resolve to project ref `qsjrazcbtpmubclkevwi`, so every `npm test` run writes real rows (test hostels, tenants, obligations, payments, etc.) directly into the dev DB the admin dashboard reads from. Cleaned up the resulting rows once as a one-off; the underlying collision is unfixed and will recur on the next test run. See [[Database]].
 
 - **The 90-day frequency-change cooldown and minimum-commitment checks are currently disabled for the owner-direct path.** `ownerInitiateChange` no longer calls `validateCooldown()` or `validateCommitment()`; `ownerSetCustomSchedule` no longer calls `validateCooldown()` — all commented out per explicit request during testing (see ADR-025). An owner can currently thrash a tenant's billing frequency with no throttling or minimum-commitment enforcement at all. Re-enable (uncomment, one line each) once done testing, and reconsider whether the current defaults / global constants are still the right shape.
 - **The pre-existing tenant-request→owner-`approve()` billing frequency flow still has no real effect on obligation generation for agreement-based tenants.** Fixed for the owner-*direct* path (`ownerInitiateChange`, ADR-024) and for Custom Dates (ADR-022, which never had this gap) — both now correctly supersede and regroup an agreement tenant's future rent. `BillingTransitionService.approve()` (the older flow: tenant submits a request, owner approves it) still only calls `writeBillingPlanTransition` — it updates `tenant_billing_plans`/`tenants.payment_frequency` but never touches `rent_obligations`, so a tenant with a signed agreement approved through *that specific flow* still keeps getting unchanged monthly obligations. Given `ownerInitiateChange` supersedes the entire need to wait for a tenant request, this legacy path may see little real use going forward, but it hasn't been fixed or removed — worth revisiting if it's still reachable from the UI.
