@@ -18,7 +18,9 @@ const data = {
   floors: 4,
   capacity: 100,
   food: 'Yes' as const,
-  deposit: '8000',
+  deposit: '16000',
+  depositMode: 'MONTHS' as const,
+  depositMonths: '2',
   monthlyRent: '8000',
   roomsPerFloor: 10,
   bedsPerRoom: 4,
@@ -38,6 +40,16 @@ describe('serializeDraft', () => {
     expect(parsed.data.hostelName).toBe('Green Nest');
     expect(parsed.data.city).toBe('Hyderabad');
     expect(parsed.step).toBe(3);
+  });
+
+  // The deposit answer is three fields, not one — persisting only the
+  // resolved amount would restore "₹16,000 flat" for someone who said
+  // "2 months of rent".
+  it('persists how the deposit was expressed, not just the resolved amount', () => {
+    const parsed = JSON.parse(serializeDraft({ step: 5, data }));
+    expect(parsed.data.depositMode).toBe('MONTHS');
+    expect(parsed.data.depositMonths).toBe('2');
+    expect(parsed.data.deposit).toBe('16000');
   });
 
   it('stamps a schema version so a future shape change can be discarded safely', () => {

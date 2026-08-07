@@ -168,6 +168,38 @@ export function OwnerOnboardingWizard() {
         {/* BODY */}
         <div className="mx-auto flex w-full max-w-6xl flex-1 items-center px-4 py-9 sm:px-7.5">
           <div key={s.screenId} className="w-full max-w-[540px]" style={{ animation: 'stayoScreenIn .45s cubic-bezier(.2,.8,.2,1) both' }}>
+            {/* Nothing here is lost on reload — say so, and offer the way out.
+                A silent restore is disorienting: the owner sees answers they
+                do not remember giving on this visit. */}
+            {s.draftRestored && !isSuccess && (
+              <div className="mb-5 flex items-start gap-3 rounded-[14px] border border-border bg-card/80 p-3.5">
+                <span className="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full bg-success/10 text-success">
+                  <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-bold text-foreground">Picking up where you left off</p>
+                  <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
+                    We kept everything you had already filled in.
+                  </p>
+                </div>
+                <div className="flex flex-none flex-col items-end gap-1">
+                  <button
+                    type="button"
+                    onClick={s.dismissDraftBanner}
+                    className="text-[12px] font-bold text-muted-foreground hover:text-foreground"
+                  >
+                    Got it
+                  </button>
+                  <button
+                    type="button"
+                    onClick={s.startOver}
+                    className="text-[12px] font-semibold text-muted-foreground underline hover:text-destructive"
+                  >
+                    Start over
+                  </button>
+                </div>
+              </div>
+            )}
             {s.screenId === 'welcome' && <WelcomeStep />}
             {s.screenId === 'account' && (
               <AccountStep

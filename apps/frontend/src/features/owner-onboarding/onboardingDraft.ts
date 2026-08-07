@@ -63,6 +63,8 @@ export function serializeDraft(input: DraftInput): string {
       capacity: d.capacity,
       food: d.food,
       deposit: d.deposit,
+      depositMode: d.depositMode,
+      depositMonths: d.depositMonths,
       monthlyRent: d.monthlyRent,
       roomsPerFloor: d.roomsPerFloor,
       bedsPerRoom: d.bedsPerRoom,
@@ -114,4 +116,33 @@ export function isDraftResumable(draft: OnboardingDraft | null): boolean {
       String(d?.city || '').trim() ||
       String(d?.address || '').trim(),
   );
+}
+
+/**
+ * Storage wrappers. Every localStorage access is guarded: Safari private mode
+ * and blocked third-party storage both throw on access, and losing a draft is
+ * strictly better than crashing the wizard someone is halfway through.
+ */
+export function readStoredDraft(): OnboardingDraft | null {
+  try {
+    return parseDraft(window.localStorage.getItem(ONBOARDING_DRAFT_KEY));
+  } catch {
+    return null;
+  }
+}
+
+export function writeStoredDraft(input: DraftInput): void {
+  try {
+    window.localStorage.setItem(ONBOARDING_DRAFT_KEY, serializeDraft(input));
+  } catch {
+    // Storage full or blocked — the wizard still works, it just won't resume.
+  }
+}
+
+export function clearStoredDraft(): void {
+  try {
+    window.localStorage.removeItem(ONBOARDING_DRAFT_KEY);
+  } catch {
+    // Nothing to do; a stale draft is discarded by version or by isDraftResumable.
+  }
 }

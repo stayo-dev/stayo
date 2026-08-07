@@ -1,4 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  clearStoredDraft,
+  isDraftResumable,
+  readStoredDraft,
+  writeStoredDraft,
+  type OnboardingDraft,
+} from '../onboardingDraft';
 import { validateOnboardingStep } from './onboardingValidation';
 
 export const ONBOARDING_SCREENS = [
@@ -29,7 +36,16 @@ export interface OwnerOnboardingData {
   floors: number;
   capacity: number;
   food: 'Yes' | 'No';
+  /**
+   * Resolved security deposit in rupees — the single figure the backend
+   * stores. Derived from the three fields below by `resolveDepositAmount`;
+   * "0" is a real answer meaning no deposit is taken.
+   */
   deposit: string;
+  /** How the owner expresses the deposit. NONE means they take none at all. */
+  depositMode: 'NONE' | 'MONTHS' | 'FLAT';
+  /** Months of rent, when depositMode is MONTHS. */
+  depositMonths: string;
   /** Starting monthly rent, applied to every room publish creates. */
   monthlyRent: string;
   roomsPerFloor: number;
@@ -53,7 +69,9 @@ const INITIAL_DATA: OwnerOnboardingData = {
   floors: 4,
   capacity: 168,
   food: 'Yes',
-  deposit: '10000',
+  deposit: '',
+  depositMode: 'MONTHS',
+  depositMonths: '2',
   monthlyRent: '',
   roomsPerFloor: 10,
   bedsPerRoom: 4,
@@ -70,8 +88,22 @@ const INITIAL_DATA: OwnerOnboardingData = {
  * normal, non-lead-originated visit — behavior is unchanged in that case.
  */
 export function useOwnerOnboardingState(initialData?: Partial<OwnerOnboardingData>) {
-  const [step, setStep] = useState(0);
-  const [data, setData] = useState<OwnerOnboardingData>(() => ({ ...INITIAL_DATA, ...initialData }));
+  // Restore synchronously on first render so the wizard never flashes empty
+  // fields before filling them in.
+  const restoredRef = useRef<OnboardingDraft | null>(
+    typeof window === 'undefined' ? null : readStoredDraft(),
+  );
+  const restored = restoredRef.current;
+
+  // A lead-activation prefill is fresher intent than an old local draft, so it
+  // wins on the fields it actually provides.
+  const [step, setStep] = useState(() => (isDraftResumable(restored) ? restored!.step : 0));
+  const [data, setData] = useState<OwnerOnboardingData>(() => ({
+    ...INITIAL_DATA,
+    ...(isDraftResumable(restored) ? restored!.data : {}),
+    ...initialData,
+  }));
+  const [draftRestored, setDraftRestored] = useState(() => isDraftResumable(restored));
   const [kyc, setKyc] = useState<OwnerOnboardingKyc>({ aadhaar: false, pan: false, photo: false });
   const [floorsGen, setFloorsGen] = useState(false);
   const [roomsGen, setRoomsGen] = useState(false);
@@ -80,6 +112,28 @@ export function useOwnerOnboardingState(initialData?: Partial<OwnerOnboardingDat
   const [otpOpen, setOtpOpen] = useState(false);
 
   const screenId = ONBOARDING_SCREENS[step];
+
+  // Auto-save on every change. Cheap (a few hundred bytes) and it is the whole
+  // point — an owner who closes the tab must not lose eight steps of answers.
+  // Never runs on the success screen: the hostel exists by then and a stale
+  // draft would offer to "resume" an onboarding that already finished.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (screenId === 'success') return;
+    writeStoredDraft({ step, data });
+  }, [step, data, screenId]);
+
+  /** Discard the saved draft and start from an empty wizard. */
+  const startOver = () => {
+    clearStoredDraft();
+    setDraftRestored(false);
+    setData({ ...INITIAL_DATA, ...initialData });
+    setStep(0);
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
+  };
+
+  /** Keep the restored answers but stop showing the resume banner. */
+  const dismissDraftBanner = () => setDraftRestored(false);
 
   const setD = (patch: Partial<OwnerOnboardingData>) => setData((d) => ({ ...d, ...patch }));
 
@@ -155,6 +209,9 @@ export function useOwnerOnboardingState(initialData?: Partial<OwnerOnboardingDat
     hostelDisplay,
     continueLabel,
     canBack: step > 0 && screenId !== 'success',
+    draftRestored,
+    startOver,
+    dismissDraftBanner,
   };
 }
 
