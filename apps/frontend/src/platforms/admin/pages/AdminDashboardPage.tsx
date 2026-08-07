@@ -140,32 +140,6 @@ export function AdminDashboardPage() {
               </div>
             )}
           </div>
-
-          <div className={`${card} p-5`}>
-            <div className="mb-3.5 font-display text-[14.5px] font-bold text-foreground">Recent Activity</div>
-            {d.activity.length === 0 ? (
-              <p className="text-[12.5px] text-muted-foreground">No recent activity.</p>
-            ) : (
-              <div className="flex flex-col">
-                {d.activity.map((a: any, i: number) => (
-                  <div key={a.id} className="flex gap-3.5 pb-4">
-                    <div className="flex flex-none flex-col items-center">
-                      <span
-                        className="mt-0.5 h-2.5 w-2.5 flex-none rounded-full"
-                        style={{ background: a.color ?? 'var(--primary)', boxShadow: `0 0 0 4px color-mix(in srgb, ${a.color ?? 'var(--primary)'} 16%, transparent)` }}
-                      />
-                      {i < d.activity.length - 1 && <span className="mt-1 w-[2px] flex-1 bg-[#EDE7DF]" />}
-                    </div>
-                    <div className="min-w-0 pb-0.5">
-                      <div className="text-[11px] font-bold tracking-wide text-[#9C9186]">{fmtTime(a.time)}</div>
-                      <div className="mt-0.5 text-[13px] font-bold text-foreground">{a.title}</div>
-                      <div className="mt-0.5 text-[12.5px] text-[#8A7F75]">{a.sub}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Right column — KPI overview, Revenue Summary, Hostel Health */}

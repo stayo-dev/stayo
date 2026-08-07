@@ -115,7 +115,7 @@ export const platformAdminService = {
 
   getDashboard: async () => {
     const response = await api.get('/platform-admin/dashboard');
-    return unwrap(response) as { kpis: any; leads_preview: any[]; hostels_preview: any[]; revenue_summary: any; activity: any[] };
+    return unwrap(response) as { kpis: any; leads_preview: any[]; hostels_preview: any[]; revenue_summary: any };
   },
 
   getNotifications: async () => {

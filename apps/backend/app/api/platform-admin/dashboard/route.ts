@@ -4,7 +4,6 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { composeRecentActivity } from "@/lib/services/platform-admin-activity-service";
 
 function requireAdmin(session: any) {
   if (!session || session.role !== "ADMIN") throw new Error("FORBIDDEN: Admin access only");
@@ -12,10 +11,11 @@ function requireAdmin(session: any) {
 
 /**
  * GET /api/platform-admin/dashboard
- * Composes the KPI overview, Leads/Hostels/Revenue previews, and a Recent
- * Activity feed — the activity feed is a derived union of recent rows
- * across leads/hostels/subscriptions/invoices (queried live), not a
- * dedicated log table — keeps this slice small; see docs/obsidian/Decisions.md ADR-030.
+ * Composes the KPI overview and the Leads/Hostels/Revenue previews. Recent
+ * activity moved to the notification bell (GET /api/platform-admin/
+ * notifications, composeRecentActivity) — it used to also render inline
+ * here as a "Recent Activity" card, which duplicated the bell with a
+ * different interaction model; see docs/obsidian/Bugs.md, 2026-08-07.
  */
 export async function GET(req: NextRequest) {
   const session = await getSession(req);
@@ -36,7 +36,6 @@ export async function GET(req: NextRequest) {
       lifetimePlatformRevenue,
       leadsPreview,
       hostelsPreview,
-      activity,
     ] = await Promise.all([
       prisma.platform_leads.count({ where: { status: "NEW" } }),
       prisma.hostels.count({ where: { verification_status: "PENDING" } }),
@@ -65,7 +64,6 @@ export async function GET(req: NextRequest) {
         take: 3,
         select: { id: true, name: true, city: true, listing_status: true, _count: { select: { tenants: true } } },
       }),
-      composeRecentActivity(8),
     ]);
 
     // MRR composed the same way as /api/platform-admin/revenue — one
@@ -123,7 +121,6 @@ export async function GET(req: NextRequest) {
         pending_collections: Number(pendingPlatformInvoices._sum.amount ?? 0),
         this_month: Number(collectedThisMonth._sum.amount ?? 0),
       },
-      activity,
     });
   } catch (error: any) {
     const msg = String(error?.message || "Failed to fetch dashboard");
