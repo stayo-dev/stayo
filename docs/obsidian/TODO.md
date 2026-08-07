@@ -52,3 +52,16 @@ Phases 0 and 1 shipped and the module is **MVP production-ready**; work moved ba
 ## See also
 - [[Bugs]] for the open issues these tasks often trace back to
 - [[Changelog]] for what's already been done
+
+
+## Post-launch — recategorise two WhatsApp templates from MARKETING to UTILITY
+
+**Deferred deliberately on 2026-08-07 — do this after launch, not before.**
+
+`stayo_owner_onboarding_complete` ("your hostel is live") and `stayo_owner_account_activated` were submitted to Meta under the **MARKETING** category, but both are transactional in intent. Marketing templates are subject to per-user marketing opt-out and Meta's marketing frequency caps, so an owner who has opted out of marketing may **never receive them** — and nothing in our logs would distinguish that from a successful send.
+
+The other three funnel templates (`lead_received`, `invitation`, `lead_rejected`) are correctly UTILITY.
+
+Changing the category requires resubmitting the template for Meta review, which is why it is deferred: the risk is silent non-delivery to a subset of owners, not a broken flow, and re-review would stall launch.
+
+When picked up: edit the category in WhatsApp Manager, wait for approval, then run `npm run check:whatsapp-template` to confirm shape and language still match. See [[Business-Rules]] for the full verified template table.
