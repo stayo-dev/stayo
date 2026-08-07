@@ -18,6 +18,20 @@ describe("platform lead template registry", () => {
     expect(PLATFORM_LEAD_TEMPLATES.LEAD_REJECTED.defaultName).toBe("stayo_owner_lead_rejected");
   });
 
+  // Verified against the Graph API on 2026-08-07. A template is addressed by
+  // (name, language) — sending `en_IN` to a template approved as `en` fails
+  // with Meta error 132001 "template name does not exist in the translation",
+  // so a wrong default here silently breaks a template that is otherwise fine.
+  // Only lead_received was submitted as English (IND); the other four are
+  // plain English.
+  it("matches the language each template was actually approved under", () => {
+    expect(PLATFORM_LEAD_TEMPLATES.LEAD_RECEIVED.defaultLanguage).toBe("en_IN");
+    expect(PLATFORM_LEAD_TEMPLATES.INVITATION.defaultLanguage).toBe("en");
+    expect(PLATFORM_LEAD_TEMPLATES.ACCOUNT_ACTIVATED.defaultLanguage).toBe("en");
+    expect(PLATFORM_LEAD_TEMPLATES.ONBOARDING_COMPLETE.defaultLanguage).toBe("en");
+    expect(PLATFORM_LEAD_TEMPLATES.LEAD_REJECTED.defaultLanguage).toBe("en");
+  });
+
   it("lets an env var override a template name without a redeploy", () => {
     const previous = process.env.WHATSAPP_OWNER_INVITATION_TEMPLATE;
     process.env.WHATSAPP_OWNER_INVITATION_TEMPLATE = "stayo_owner_invitation_v2";

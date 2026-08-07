@@ -233,3 +233,8 @@ The existing `docs/` reference pages are **out of date** relative to the live sc
 - [[Business-Rules]] for what the schema encodes (obligation lifecycle, settlement math, ledger semantics)
 - [[Backend]] for the service layer reading/writing these models
 - [[APIs]] for the routes exposing this data
+
+
+### `platform_leads` — qualification columns (2026-08-07)
+
+`pain_point TEXT NULL` and `current_tooling TEXT NULL` were added by migration `20260807000000_platform_leads_qualification` for a longer qualification conversation that was then cut back to three questions before shipping. **Nothing currently writes them** — they are live, nullable and unpopulated, kept rather than dropped from a production table so a future qualification pass needs no new migration. This is the same state `city` and `bed_count` were already in. Deliberately free-form TEXT rather than enums: the option lists are marketing copy and get reworded, so these are not safe to aggregate without normalising first. See [[Features]] and [[APIs]].

@@ -253,3 +253,21 @@ See [[Features]], [[Database]], [[APIs]], [[Decisions]].
 - [[APIs]] for the endpoints that enforce them
 - [[Decisions]] for the architectural decisions behind the "compose, don't reimplement" pattern and the obligation-immutability model
 - [[Features]] for the user-facing surfaces built on top
+
+
+### Owner-funnel WhatsApp template languages (verified 2026-08-07)
+
+A Meta template is addressed by **(name, language)**. Sending the wrong language code fails with error 132001 ("template name does not exist in the translation") even when the template itself is approved and healthy. Confirmed against the Graph API:
+
+| Template | Language | Status | Category |
+|---|---|---|---|
+| `stayo_owner_lead_received` | `en_IN` | APPROVED | UTILITY |
+| `stayo_owner_invitation` | `en` | APPROVED | UTILITY |
+| `stayo_owner_lead_rejected` | `en` | APPROVED | UTILITY |
+| `stayo_owner_onboarding_complete` | `en` | APPROVED | **MARKETING** |
+| `stayo_owner_account_activated` | `en` | PENDING | **MARKETING** |
+| `stayo_owner_welcome` | `en_IN` | APPROVED | UTILITY (orphaned, no caller) |
+
+Only `lead_received` was submitted as English (IND); everything else is plain English. The defaults in `platform-lead-template-contracts.ts` now match, and a test pins them.
+
+**Open question — the two MARKETING templates.** `onboarding_complete` ("your hostel is live") and `account_activated` are transactional in intent but were submitted under MARKETING. Marketing templates are subject to per-user marketing opt-out and Meta's marketing frequency caps, so an owner who has opted out of marketing may never receive them. Recategorising to UTILITY in WhatsApp Manager would need re-approval. See [[Features]] and [[APIs]].

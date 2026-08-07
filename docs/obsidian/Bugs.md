@@ -878,3 +878,16 @@ Copy this block for each new entry:
 ## See also
 - [[Features]] for which feature each bug affected
 - [[Changelog]] for when fixes shipped
+
+
+## 2026-08-07 — `window.scrollY` is always 0: `<body>` is the scroll container, not the document
+
+**Symptom:** the new scroll-depth enquiry prompt never appeared at any scroll position, and — found while investigating — the landing nav's `scrolled` styling had *never once fired in production*.
+
+**Root cause:** `theme.css` sets `overflow-x: hidden` on **both** `html` and `body`. Per CSS spec a non-`visible` value on one axis forces the other axis from `visible` to `auto`, which makes `<body>` the scroll container instead of the document. Measured in a headless browser against the live page: `documentElement.scrollHeight` was 437 (exactly the viewport) while `body.scrollHeight` was 5101. Two independent consequences, either fatal on its own:
+1. `documentElement.scrollHeight - innerHeight` is `0`, so any scroll *fraction* is pinned at 0.
+2. A `scroll` listener on `window` fires **0** times and one on `document` fires **0** times — only `body` fires.
+
+**Fix:** `@shared/lib/scroll` now reads whichever element actually scrolls and binds the listener to all three targets; both the prompt and the nav use it. The arithmetic is a pure, tested `computeScrollFraction`.
+
+**Lesson:** the unit tests passed throughout. They fed `scrollFraction` in as an argument and never asked where that number came from — only driving the real page caught it. See [[Frontend]], [[Changelog]].

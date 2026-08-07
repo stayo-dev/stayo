@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   shouldShowEnquiryPrompt,
+  explainEnquiryPromptSuppression,
   computeScrollFraction,
-  ENQUIRY_PROMPT_COOLDOWN_MS,
   ENQUIRY_PROMPT_SCROLL_THRESHOLD,
 } from './enquiryPromptPolicy';
 
@@ -45,14 +45,10 @@ describe('computeScrollFraction', () => {
   });
 });
 
-const NOW = new Date('2026-08-06T12:00:00Z').getTime();
-
 const base = {
   scrollFraction: 0.5,
-  dismissedAt: null as number | null,
   isOwnerWithHostel: false,
   alreadyShownThisSession: false,
-  now: NOW,
 };
 
 describe('shouldShowEnquiryPrompt', () => {
@@ -70,24 +66,33 @@ describe('shouldShowEnquiryPrompt', () => {
     expect(shouldShowEnquiryPrompt({ ...base, isOwnerWithHostel: true })).toBe(false);
   });
 
-  it('respects a recent dismissal', () => {
-    expect(shouldShowEnquiryPrompt({ ...base, dismissedAt: NOW - 1000 })).toBe(false);
-  });
-
-  it('shows again once the cooldown has elapsed', () => {
-    expect(shouldShowEnquiryPrompt({ ...base, dismissedAt: NOW - ENQUIRY_PROMPT_COOLDOWN_MS - 1 })).toBe(true);
-  });
-
-  it('does not reappear after being shown once in the same session', () => {
+  it('does not reappear after being shown once in the same page view', () => {
     expect(shouldShowEnquiryPrompt({ ...base, alreadyShownThisSession: true })).toBe(false);
   });
 
-  // A corrupt localStorage value must not wedge the prompt permanently off.
-  it('ignores an unparseable dismissal timestamp', () => {
-    expect(shouldShowEnquiryPrompt({ ...base, dismissedAt: Number.NaN })).toBe(true);
+  // The persistent 7-day cooldown was deliberately removed: on a pre-launch
+  // marketing page, re-asking costs less than silently never asking again, and
+  // an invisible stored timestamp made the feature look broken. A reload must
+  // always be able to bring the prompt back.
+  it('shows again on a fresh page view, with no persistent suppression', () => {
+    expect(shouldShowEnquiryPrompt({ ...base, alreadyShownThisSession: false })).toBe(true);
+  });
+});
+
+describe('explainEnquiryPromptSuppression', () => {
+  it('returns null when the prompt should show', () => {
+    expect(explainEnquiryPromptSuppression(base)).toBeNull();
   });
 
-  it('ignores a dismissal timestamp from the future', () => {
-    expect(shouldShowEnquiryPrompt({ ...base, dismissedAt: NOW + 60_000 })).toBe(true);
+  it('names the signed-in-owner case, which is otherwise indistinguishable from a bug', () => {
+    expect(explainEnquiryPromptSuppression({ ...base, isOwnerWithHostel: true })).toMatch(/owner/i);
+  });
+
+  it('reports how far the visitor still has to scroll', () => {
+    expect(explainEnquiryPromptSuppression({ ...base, scrollFraction: 0.1 })).toMatch(/40%/);
+  });
+
+  it('explains the once-per-page-view rule', () => {
+    expect(explainEnquiryPromptSuppression({ ...base, alreadyShownThisSession: true })).toMatch(/reload/i);
   });
 });

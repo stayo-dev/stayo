@@ -19,7 +19,16 @@ export const hostelLeadsApi = {
     const response = await api.post('/auth/verify-phone-otp', { phone, otp, purpose: LEAD_OTP_PURPOSE });
     return response.data as { success: boolean; phone_verified: boolean };
   },
-  submitLead: async (data: { name: string; hostel_name: string; phone: string; google_email?: string }) => {
+  submitLead: async (data: {
+    name: string;
+    hostel_name: string;
+    phone: string;
+    city?: string;
+    bed_count?: number;
+    pain_point?: string;
+    current_tooling?: string;
+    google_email?: string;
+  }) => {
     const response = await api.post('/leads/self-serve', data);
     return response.data as { success: boolean; id: string; status: string; tracking_token: string };
   },
@@ -34,6 +43,17 @@ export const hostelLeadsApi = {
       applicant_message: string | null;
       rejection_reason: string | null;
     };
+  },
+  /**
+   * Attaches a Google email to a lead that already exists. Used after the
+   * OAuth round-trip, since the lead is saved at the phone step — before
+   * Google is ever offered.
+   */
+  linkLeadEmail: async (trackingToken: string, googleEmail: string) => {
+    const response = await api.post(`/leads/track/${trackingToken}/link-email`, {
+      google_email: googleEmail,
+    });
+    return response.data as { success: boolean; linked: boolean; reason?: string };
   },
   getInvitationContext: async (token: string) => {
     const response = await api.get(`/leads/invitation/${token}`);

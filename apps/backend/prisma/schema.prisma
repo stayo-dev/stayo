@@ -820,7 +820,12 @@ model profile {
   profiles                                                          profile?              @relation("profilesToprofiles", fields: [owner_id], references: [id])
   other_profiles                                                    profile[]             @relation("profilesToprofiles")
   refresh_tokens                                                    refresh_tokens[]
-  tenants                                                           tenants?
+  // One row per tenancy, not per person. A profile accumulates one row per
+  // hostel they have ever stayed in; at most one of them may be live
+  // (INVITED/ACTIVE) at a time, enforced by the partial unique index
+  // `tenants_one_live_tenancy_per_profile`. Read the live one through
+  // `lib/tenancy/active-tenancy.ts`, never by taking [0].
+  tenants                                                           tenants[]
   visitor_leads                                                     visitor_leads[]
   lead_notes                                                        lead_notes[]
   room_reservations                                                 room_reservations[]
@@ -1327,7 +1332,7 @@ model tenant_transfer_logs {
 
 model tenants {
   id                       String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  profile_id               String?                  @unique @db.Uuid
+  profile_id               String?                  @db.Uuid
   profile_type             String                   @default("STUDENT")
   version                  Int                      @default(1)
   monthly_rent             Decimal?                 @db.Decimal(10, 2)
@@ -1368,8 +1373,6 @@ model tenants {
   activation_started_at    DateTime?                @db.Timestamptz(6)
   activation_completed_at  DateTime?                @db.Timestamptz(6)
   onboarding_last_activity_at DateTime?             @db.Timestamptz(6)
-  reservation_policy       String                   @default("FULL_DEPOSIT")
-  minimum_reservation_deposit Decimal                @default(0) @db.Decimal(10, 2)
   exit_date                DateTime?                @db.Date
   exit_notes               String?
   exit_reason              String?
@@ -1410,6 +1413,7 @@ model tenants {
 
   @@index([hostel_id])
   @@index([owner_id])
+  @@index([profile_id])
 }
 
 model tenant_notes {
@@ -2934,6 +2938,13 @@ model platform_leads {
   applicant_message  String?
   /// Set only by POST /api/platform-admin/leads/[id]/reject.
   rejection_reason   String?
+  /// Qualification answers from the conversational capture flow. Deliberately
+  /// free-form strings rather than enums — the option lists are marketing copy
+  /// and will be reworded without wanting a migration each time. The tradeoff
+  /// is that a reworded option produces a new distinct value, so these are not
+  /// safe to aggregate without normalising first.
+  pain_point         String?
+  current_tooling    String?
   converted_owner_id String?             @db.Uuid
   created_at         DateTime            @default(now()) @db.Timestamptz(6)
   updated_at         DateTime?           @db.Timestamptz(6)

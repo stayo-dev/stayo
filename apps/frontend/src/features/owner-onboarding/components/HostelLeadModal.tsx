@@ -1,8 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { X, Check, ArrowRight } from 'lucide-react';
+import { X, Check, ArrowRight, ArrowLeft } from 'lucide-react';
 import { cn } from '@shared/lib/cn';
 import { hostelLeadsApi } from '@features/hostel-leads/api';
+import { supabase } from '@lib/supabaseClient';
+import {
+  LEAD_QUESTIONS,
+  EMPTY_ANSWERS,
+  validateAnswer,
+  isLastQuestion,
+  conversationProgress,
+  buildLeadPayload,
+  type LeadAnswers,
+} from '../leadConversation';
 
 interface HostelLeadModalProps {
   open: boolean;
@@ -13,130 +23,170 @@ interface HostelLeadModalProps {
 
 const inputStyle =
   'w-full rounded-[11px] border-[1.5px] border-border bg-muted px-3.5 py-2.5 text-[14.5px] font-medium text-foreground transition-colors focus:border-primary focus:outline-none';
-const labelStyle = 'mb-1.5 block font-display text-[10.5px] font-bold tracking-wider text-primary';
 
-type Step = 'details' | 'otp' | 'done';
+/** Survives the Google OAuth full-page redirect. */
+export const PENDING_LEAD_TOKEN_KEY = 'stayo.pendingLeadToken';
+
+type Stage = 'questions' | 'otp' | 'done';
 
 /**
- * Real lead-capture popup — Hostel Details → Phone OTP → "we'll be in
- * touch" confirmation — rendered on LeadSignupCallbackPage after a real
- * Google sign-in (ADR-031's Supabase Auth, `signInWithOAuth`). Ends with a
- * human-follow-up promise ("StayO will reach out"), not instant self-serve
- * activation: submitting a verified lead here creates a `platform_leads`
- * row (`POST /leads/self-serve`) for an admin to review and accept — it
- * never creates a real StayO account. The already-built Onboarding
- * wizard/Dashboard preview are reached separately, via an activation link
- * sent after admin approval, not auto-chained from here.
+ * Lead capture — three questions, then Google last and optional.
+ *
+ * The ordering is the point. We ask the easy question first, take the phone
+ * number last, and **save the lead at the phone step** — so someone who
+ * abandons at the optional Google step is still a lead an admin can call.
+ * Google only ever enriches a row that already exists (`linkLeadEmail`); it
+ * never gates creation, which is what it used to do.
+ *
+ * All step/validation logic lives in the pure, tested `leadConversation`
+ * module; this component is the renderer.
  */
 export function HostelLeadModal({ open, onClose, prefillName, googleEmail }: HostelLeadModalProps) {
-  const [step, setStep] = useState<Step>('details');
-  const [hostelName, setHostelName] = useState('');
-  const [ownerName, setOwnerName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [stage, setStage] = useState<Stage>('questions');
+  const [index, setIndex] = useState(0);
+  const [answers, setAnswers] = useState<LeadAnswers>(EMPTY_ANSWERS);
   const [otp, setOtp] = useState<string[]>(Array(6).fill(''));
-  const [sendingOtp, setSendingOtp] = useState(false);
-  const [verifying, setVerifying] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [touched, setTouched] = useState(false);
   const [trackingToken, setTrackingToken] = useState('');
+  const [linkingGoogle, setLinkingGoogle] = useState(false);
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    if (open) {
-      setStep('details');
-      setOwnerName(prefillName ?? '');
-      setHostelName('');
-      setPhone('');
-      setOtp(Array(6).fill(''));
-      setError('');
-      setTrackingToken('');
-    }
+    if (!open) return;
+    setStage('questions');
+    setIndex(0);
+    setAnswers({ ...EMPTY_ANSWERS, name: prefillName ?? '' });
+    setOtp(Array(6).fill(''));
+    setError('');
+    setTouched(false);
+    setTrackingToken('');
+    setLinkingGoogle(false);
   }, [open, prefillName]);
 
-  const handleOpenChange = (next: boolean) => {
-    if (!next) onClose();
-  };
+  // Focus the field on every question change, so the whole flow is keyboard-only.
+  useEffect(() => {
+    if (stage === 'questions') inputRef.current?.focus();
+  }, [stage, index]);
 
-  const submitLead = async () => {
-    const result = await hostelLeadsApi.submitLead({
-      name: ownerName.trim(),
-      hostel_name: hostelName.trim(),
-      phone: phone.trim(),
-      google_email: googleEmail,
-    });
+  const question = LEAD_QUESTIONS[index];
+  const validationError = validateAnswer(index, answers);
+
+  const saveLead = async () => {
+    const result = await hostelLeadsApi.submitLead(buildLeadPayload(answers, googleEmail));
     setTrackingToken(result.tracking_token);
-    return result;
   };
 
-  const submitDetails = async () => {
-    if (!hostelName.trim() || !ownerName.trim() || !phone.trim()) {
-      setError('Please fill in all fields.');
+  const goNext = async () => {
+    if (validationError) {
+      setTouched(true);
       return;
     }
     setError('');
-    setSendingOtp(true);
-    try {
-      const result = await hostelLeadsApi.sendLeadOtp(phone.trim());
 
-      // WhatsApp could not deliver a code (not configured yet, or the
-      // provider is failing). The backend has already recorded the number as
-      // unverified — go straight to the confirmation rather than showing an
-      // OTP screen for a code that will never arrive.
+    if (!isLastQuestion(index)) {
+      setIndex((i) => i + 1);
+      setTouched(false);
+      return;
+    }
+
+    // Last question is the phone number: send the code, then save.
+    setBusy(true);
+    try {
+      const result = await hostelLeadsApi.sendLeadOtp(answers.phone.trim());
+
+      // WhatsApp could not deliver a code (not configured, or the provider is
+      // failing). The backend has already recorded the number as unverified —
+      // save the lead rather than stranding it behind a code that will never
+      // arrive.
       if (result.verification_required === false) {
-        await submitLead();
-        setStep('done');
+        await saveLead();
+        setStage('done');
         return;
       }
 
       setOtp(Array(6).fill(''));
-      setStep('otp');
+      setStage('otp');
     } catch (err: any) {
-      setError(err?.response?.data?.error?.message || 'Could not submit your details. Please try again.');
+      setError(err?.response?.data?.error?.message || 'Something went wrong. Please try again.');
     } finally {
-      setSendingOtp(false);
+      setBusy(false);
     }
   };
 
-  const setOtpDigit = (index: number, value: string) => {
+  const goBack = () => {
+    setError('');
+    setTouched(false);
+    if (stage === 'otp') {
+      setStage('questions');
+      return;
+    }
+    if (index > 0) setIndex((i) => i - 1);
+  };
+
+  const setOtpDigit = (i: number, value: string) => {
     const digit = value.replace(/[^0-9]/g, '').slice(-1);
     setOtp((prev) => {
       const next = [...prev];
-      next[index] = digit;
+      next[i] = digit;
       return next;
     });
-    if (digit && index < 5) otpRefs.current[index + 1]?.focus();
-  };
-
-  const onOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !otp[index] && index > 0) otpRefs.current[index - 1]?.focus();
+    if (digit && i < 5) otpRefs.current[i + 1]?.focus();
   };
 
   const otpComplete = otp.every((d) => d !== '');
 
   const verifyOtp = async () => {
     if (!otpComplete) return;
-    setVerifying(true);
+    setBusy(true);
     setError('');
     try {
-      await hostelLeadsApi.verifyLeadOtp(phone.trim(), otp.join(''));
-      await submitLead();
-      setStep('done');
+      await hostelLeadsApi.verifyLeadOtp(answers.phone.trim(), otp.join(''));
+      await saveLead();
+      setStage('done');
     } catch (err: any) {
-      setError(err?.response?.data?.error?.message || 'Verification failed. Check the code and try again.');
+      setError(err?.response?.data?.error?.message || 'That code did not work. Check it and try again.');
     } finally {
-      setVerifying(false);
+      setBusy(false);
     }
   };
 
+  /**
+   * Optional enrichment. The lead is already saved, so this is allowed to fail
+   * or be abandoned without costing us anything — hence the token is parked in
+   * sessionStorage for the callback page to pick up after the redirect.
+   */
+  const connectGoogle = async () => {
+    setLinkingGoogle(true);
+    setError('');
+    try {
+      if (trackingToken) window.sessionStorage.setItem(PENDING_LEAD_TOKEN_KEY, trackingToken);
+    } catch {
+      // Storage blocked — the OAuth round-trip simply won't link the email.
+    }
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${window.location.origin}/lead-signup/callback` },
+    });
+    if (oauthError) {
+      setLinkingGoogle(false);
+      setError('Could not open Google sign-in. Your enquiry is saved either way.');
+    }
+  };
+
+  const progress = conversationProgress(stage === 'questions' ? index : LEAD_QUESTIONS.length);
+
   return (
-    <Dialog.Root open={open} onOpenChange={handleOpenChange}>
+    <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[500] bg-[rgba(47,40,35,0.5)] backdrop-blur-[3px] data-[state=open]:animate-in data-[state=open]:fade-in data-[state=open]:duration-200" />
+        <Dialog.Overlay className="fixed inset-0 z-[500] bg-[rgba(47,40,35,0.5)] backdrop-blur-[3px]" />
         <Dialog.Content
           className={cn(
             'fixed z-[500] flex flex-col bg-card p-7 shadow-[0_40px_90px_-30px_rgba(47,47,47,0.5)]',
             'inset-x-0 bottom-0 max-h-[88vh] overflow-y-auto rounded-t-[22px] pb-[calc(1.75rem+env(safe-area-inset-bottom,0px))]',
-            'data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=open]:duration-300',
-            'sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-[420px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-[22px]',
+            'sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-[440px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-[22px]',
           )}
         >
           <Dialog.Close
@@ -146,69 +196,82 @@ export function HostelLeadModal({ open, onClose, prefillName, googleEmail }: Hos
             <X className="h-4 w-4 text-foreground" />
           </Dialog.Close>
 
-          {step === 'details' && (
-            <>
-              <Dialog.Title className="mb-1 mt-1 font-display text-[22px] font-extrabold text-foreground">
-                Tell us about your hostel
-              </Dialog.Title>
-              <Dialog.Description className="mb-6 text-sm leading-normal text-muted-foreground">
-                A few details so our team can reach out to you.
-              </Dialog.Description>
-              <div className="flex flex-col gap-4">
-                <label className="block">
-                  <span className={labelStyle}>HOSTEL OWNER NAME</span>
-                  <input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="Your name" className={inputStyle} />
-                </label>
-                <label className="block">
-                  <span className={labelStyle}>HOSTEL NAME</span>
-                  <input
-                    value={hostelName}
-                    onChange={(e) => setHostelName(e.target.value)}
-                    placeholder="e.g. Green Nest Hostel"
-                    className={inputStyle}
-                  />
-                </label>
-                <label className="block">
-                  <span className={labelStyle}>HOSTEL OWNER&apos;S PHONE NUMBER</span>
-                  <input
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+91 90000 00000"
-                    inputMode="tel"
-                    className={inputStyle}
-                  />
-                </label>
-                {error && (
-                  <div className="rounded-[9px] bg-destructive/10 px-3 py-2.5 text-[12.5px] font-semibold text-destructive">{error}</div>
-                )}
+          {stage !== 'done' && (
+            <div className="mb-5 mt-1 flex items-center gap-3 pr-10">
+              {(index > 0 || stage === 'otp') && (
                 <button
                   type="button"
-                  onClick={submitDetails}
-                  disabled={sendingOtp}
-                  className="mt-1 inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3.5 font-display text-[15px] font-bold text-primary-foreground shadow-[0_12px_26px_-12px_rgba(164,93,68,0.6)] disabled:opacity-60"
+                  onClick={goBack}
+                  aria-label="Back"
+                  className="flex h-7 w-7 flex-none items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:text-foreground"
                 >
-                  {sendingOtp ? (
-                    <span className="h-[15px] w-[15px] animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                  ) : (
-                    <>
-                      Continue
-                      <ArrowRight className="h-4 w-4" strokeWidth={2.4} />
-                    </>
-                  )}
+                  <ArrowLeft className="h-3.5 w-3.5" />
                 </button>
+              )}
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary transition-[width] duration-300"
+                  style={{ width: `${Math.round(progress * 100)}%` }}
+                />
               </div>
+            </div>
+          )}
+
+          {stage === 'questions' && (
+            <>
+              <Dialog.Title className="mb-1 font-display text-[21px] font-extrabold leading-tight text-foreground">
+                {question.prompt}
+              </Dialog.Title>
+              <Dialog.Description className="mb-5 text-sm leading-normal text-muted-foreground">
+                {question.hint ?? `Question ${index + 1} of ${LEAD_QUESTIONS.length} — that's all we'll ask.`}
+              </Dialog.Description>
+
+              <input
+                ref={inputRef}
+                value={answers[question.key]}
+                onChange={(e) => {
+                  setAnswers((prev) => ({ ...prev, [question.key]: e.target.value }));
+                  setTouched(false);
+                  setError('');
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && goNext()}
+                placeholder={question.placeholder}
+                inputMode={question.kind === 'phone' ? 'tel' : 'text'}
+                className={inputStyle}
+              />
+
+              {touched && validationError && (
+                <div className="mt-3 rounded-[9px] bg-destructive/10 px-3 py-2.5 text-[12.5px] font-semibold text-destructive">
+                  {validationError}
+                </div>
+              )}
+              {error && (
+                <div className="mt-3 rounded-[9px] bg-destructive/10 px-3 py-2.5 text-[12.5px] font-semibold text-destructive">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={goNext}
+                disabled={busy}
+                className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 font-display text-[15px] font-bold text-primary-foreground shadow-[0_12px_26px_-12px_rgba(164,93,68,0.6)] disabled:opacity-60"
+              >
+                {busy ? 'Just a moment…' : isLastQuestion(index) ? 'Send me a code' : 'Continue'}
+                {!busy && <ArrowRight className="h-4 w-4" />}
+              </button>
             </>
           )}
 
-          {step === 'otp' && (
+          {stage === 'otp' && (
             <>
-              <Dialog.Title className="mb-1 mt-1 text-center font-display text-[22px] font-extrabold text-foreground">
-                Enter verification code
+              <Dialog.Title className="mb-1 font-display text-[21px] font-extrabold text-foreground">
+                Enter the code
               </Dialog.Title>
-              <Dialog.Description className="mb-6 text-center text-sm leading-normal text-muted-foreground">
-                Sent to {phone}
+              <Dialog.Description className="mb-5 text-sm leading-normal text-muted-foreground">
+                We sent a 6-digit code to {answers.phone.trim()} on WhatsApp.
               </Dialog.Description>
-              <div className="mb-5 flex justify-center gap-2.5">
+              <div className="flex justify-between gap-2">
                 {otp.map((digit, i) => (
                   <input
                     key={i}
@@ -217,60 +280,76 @@ export function HostelLeadModal({ open, onClose, prefillName, googleEmail }: Hos
                     }}
                     value={digit}
                     onChange={(e) => setOtpDigit(i, e.target.value)}
-                    onKeyDown={(e) => onOtpKeyDown(i, e)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Backspace' && !otp[i] && i > 0) otpRefs.current[i - 1]?.focus();
+                      if (e.key === 'Enter') verifyOtp();
+                    }}
                     inputMode="numeric"
                     maxLength={1}
-                    className={cn(
-                      'h-13 w-11 rounded-xl border-[1.5px] text-center font-display text-xl font-bold text-primary focus:outline-none',
-                      digit ? 'border-primary bg-primary/5' : 'border-border bg-card',
-                    )}
+                    aria-label={`Digit ${i + 1}`}
+                    className="h-12 w-full rounded-[11px] border-[1.5px] border-border bg-muted text-center text-lg font-bold text-foreground focus:border-primary focus:outline-none"
                   />
                 ))}
               </div>
-              <div className="mb-5 text-center text-[13px] font-medium text-muted-foreground">
-                Didn&apos;t receive? <span className="font-bold text-primary">Resend in 28s</span>
-              </div>
               {error && (
-                <div className="mb-5 rounded-[9px] bg-destructive/10 px-3 py-2.5 text-center text-[12.5px] font-semibold text-destructive">
+                <div className="mt-3 rounded-[9px] bg-destructive/10 px-3 py-2.5 text-[12.5px] font-semibold text-destructive">
                   {error}
                 </div>
               )}
               <button
                 type="button"
                 onClick={verifyOtp}
-                disabled={!otpComplete || verifying}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 font-display text-[15px] font-bold text-primary-foreground shadow-[0_12px_26px_-12px_rgba(164,93,68,0.6)] disabled:opacity-60"
+                disabled={!otpComplete || busy}
+                className="mt-5 rounded-xl bg-primary py-3 font-display text-[15px] font-bold text-primary-foreground disabled:opacity-60"
               >
-                {verifying && <span className="h-[15px] w-[15px] animate-spin rounded-full border-2 border-white/40 border-t-white" />}
-                {verifying ? 'Verifying…' : 'Verify & Continue'}
+                {busy ? 'Checking…' : 'Confirm'}
               </button>
             </>
           )}
 
-          {step === 'done' && (
+          {stage === 'done' && (
             <div className="py-2 text-center">
               <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-success/10">
                 <Check className="h-6 w-6 text-success" strokeWidth={2.8} />
               </div>
-              <h2 className="mb-2 font-display text-xl font-extrabold text-foreground">Thanks — we&apos;ve got your details</h2>
-              <p className="mb-7 text-sm leading-relaxed text-muted-foreground">
-                The Stayo team will get back to you soon on WhatsApp or a call to help you get set up.
-              </p>
-              {trackingToken && (
-                <a
-                  href={`/enquiry/${trackingToken}`}
-                  className="mb-4 block text-sm font-bold text-primary underline"
-                >
-                  Track your enquiry
-                </a>
+              <Dialog.Title className="mb-2 font-display text-xl font-extrabold text-foreground">
+                You&apos;re on the list
+              </Dialog.Title>
+              <Dialog.Description className="mb-6 text-sm leading-relaxed text-muted-foreground">
+                Our team will reach out on WhatsApp shortly. Add your email too and we&apos;ll keep you posted there
+                as well — entirely optional.
+              </Dialog.Description>
+
+              {error && (
+                <div className="mb-4 rounded-[9px] bg-destructive/10 px-3 py-2.5 text-[12.5px] font-semibold text-destructive">
+                  {error}
+                </div>
               )}
-              <button
-                type="button"
-                onClick={onClose}
-                className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 font-display text-sm font-bold text-primary-foreground shadow-[0_12px_26px_-12px_rgba(164,93,68,0.6)]"
-              >
-                Got it
-              </button>
+
+              <div className="flex flex-col gap-2.5">
+                {!googleEmail && (
+                  <button
+                    type="button"
+                    onClick={connectGoogle}
+                    disabled={linkingGoogle}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border-[1.5px] border-border bg-card px-5 py-3 font-display text-[15px] font-bold text-foreground transition-colors hover:border-primary disabled:opacity-60"
+                  >
+                    {linkingGoogle ? 'Opening Google…' : 'Add my email with Google'}
+                  </button>
+                )}
+                {trackingToken && (
+                  <a href={`/enquiry/${trackingToken}`} className="text-[13px] font-bold text-primary underline">
+                    Track your enquiry
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-xl px-5 py-2.5 text-[13px] font-semibold text-muted-foreground hover:text-foreground"
+                >
+                  {googleEmail ? 'Done' : "No thanks, I'm done"}
+                </button>
+              </div>
             </div>
           )}
         </Dialog.Content>
