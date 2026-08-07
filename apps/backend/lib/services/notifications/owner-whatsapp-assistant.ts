@@ -6306,7 +6306,7 @@ export class OwnerWhatsAppAssistantService {
         }
 
         // Check global phone uniqueness
-        const uniqueness = await tenantInvitationLifecycleService.checkTenantPhoneUniqueness(normalized);
+        const uniqueness = await tenantInvitationLifecycleService.checkTenantPhoneUniqueness(normalized, ownerId);
         if (!uniqueness.isUnique) {
           const activeExisting = await prisma.tenant_invitations.findFirst({
             where: {
@@ -6838,7 +6838,7 @@ export class OwnerWhatsAppAssistantService {
       const normalized = normalizeIndianPhone(parsed.phone);
       if (normalized) {
         // Check global phone uniqueness
-        const uniqueness = await tenantInvitationLifecycleService.checkTenantPhoneUniqueness(normalized);
+        const uniqueness = await tenantInvitationLifecycleService.checkTenantPhoneUniqueness(normalized, ownerId);
         if (!uniqueness.isUnique) {
           const activeExisting = await prisma.tenant_invitations.findFirst({
             where: {

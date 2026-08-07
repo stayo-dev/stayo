@@ -371,3 +371,15 @@ Multi-hostel SaaS billing/subscription/add-on/usage-plan system — 37 route fil
 - [[APIs]] for the endpoints backing each feature
 - [[Bugs]] for known issues per feature
 - [[TODO]] for planned/unverified items surfaced during this audit
+
+### Platform Admin — owner document review queue
+
+- **Status:** shipped 2026-08-07 (branch `feat/owner-onboarding-ux`)
+- **Owner-facing?** indirectly (the outcome is shown on the onboarding KYC step) · **Admin-facing?** yes
+- **Key files:** Frontend — `platforms/admin/pages/AdminDocumentsPage.tsx`, `platforms/admin/documents/{documentQueue.ts,documentQueue.test.ts,DocumentViewer.tsx}`, `features/platform-admin/api/index.ts`. Backend — `app/api/platform-admin/owner-documents/route.ts`, `.../[id]/review/route.ts`, `src/services/owner-documents/document-review-guards.ts`.
+- **Route:** `/admin/documents` (sixth tab in `AdminAppShell`'s `ADMIN_TABS`).
+- **Why it exists:** owner KYC uploads had been landing in `owner_documents` since ADR-038 with **no admin endpoint and no admin UI**. The uploader deliberately cannot set `status`, so `VERIFIED` was unreachable in practice and every owner's documents sat in `PENDING` forever.
+- **Shape:** a two-pane queue, not a card grid — reviewing is a loop (oldest → look → decide → next), and an "open in new tab" link breaks that loop on every item. The document renders inline with zoom and rotate, because what arrives is phone photos of Aadhaar cards, frequently sideways. Documents are grouped **by owner** so Aadhaar and PAN can be name-checked against each other.
+- **Ordering:** oldest waiting first, with an Overdue flag past 24h. Newest-first would push whoever has waited longest further down each time someone new uploads — and an owner cannot go live until this is done.
+- **Business rule:** rejection requires a reason (stored in `owner_documents.review_note`, shown to the owner). Re-reviewing a decided document is refused; reversing means the owner re-uploads. A profile photo never gates verification — it is not an identity document. See [[Business-Rules]], [[APIs]], [[Database]].
+- **Not verified:** the rendered screen has not been checked in a browser — doing so needs a real ADMIN session. Verified by type-check, build and 16 pure tests over the queue logic only.

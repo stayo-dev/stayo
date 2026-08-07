@@ -6,11 +6,8 @@ import {
   buildTenantOnboardingTemplatePayload,
   ONBOARDING_COMPLETED_TEMPLATE_NAME,
   onboardingTemplateLanguage,
-  PAYMENT_PENDING_TEMPLATE_NAME,
-  buildTenantPaymentPendingTemplatePayload,
 } from "./providers/whatsapp/templates";
 import { whatsAppTemplateDeliveryService } from "./whatsapp-template-delivery";
-import { reservationStatusService } from "@/src/services/tenants/reservation-status-service";
 
 const logger = getLogger("whatsapp.onboarding");
 
@@ -20,12 +17,12 @@ const logger = getLogger("whatsapp.onboarding");
  * Architecture:
  *   Load tenant context from DB
  *     ↓
- *   Check ReservationStatusService to branch
- *     ↓
- *   If PAYMENT_PENDING:
- *     Send account_activated_payment_pending_v1 (idempotency key: tenant_activation_pending:{tenantId})
- *   If RESERVED / MOVE_IN_READY:
- *     Send tenant_onboarding_completed_v1 (idempotency key: tenant_onboarding_completed:{tenantId})
+ *   Send tenant_onboarding_completed_v1 (idempotency key: tenant_onboarding_completed:{tenantId})
+ *
+ * There used to be a second branch here: a tenant who had not yet cleared their
+ * deposit got `account_activated_payment_pending_v1` instead, because they had no
+ * room yet. Rooms are no longer gated on payment, so every activated tenant has
+ * one and there is nothing to route between.
  *
  * Rule 5: WhatsApp failure must never break onboarding.
  * Rule 6: All data loaded from database, never from request.
@@ -90,58 +87,8 @@ export async function sendTenantOnboardingNotification(tenantId: string): Promis
     return;
   }
 
-  // 3. Gate & Route based on Reservation Status
-  const resStatus = await reservationStatusService.getReservationStatus(tenantId);
-
-  if (resStatus.status === "PAYMENT_PENDING") {
-    const bodyParameters = buildTenantPaymentPendingTemplatePayload({
-      tenantName: tenant.profiles?.name || "Resident",
-    });
-
-    const idempotencyKey = `tenant_activation_pending:${tenantId}`;
-
-    try {
-      const result = await whatsAppTemplateDeliveryService.send({
-        phone: normalizedPhone,
-        templateName: PAYMENT_PENDING_TEMPLATE_NAME,
-        bodyParameters,
-        idempotencyKey,
-        tenantId,
-        hostelId: hostel.id,
-        ownerId: tenant.owner_id || undefined,
-        languageCode: "en",
-      });
-
-      if (result.skipped) {
-        logger.info("whatsapp.onboarding.pending.skipped", {
-          tenant_id: tenantId,
-          reason: "duplicate_or_invalid_phone",
-        });
-        return;
-      }
-
-      await eventLog.log("tenant_activation_pending_whatsapp_sent", tenant.owner_id, {
-        tenant_id: tenantId,
-        hostel_id: hostel.id,
-        provider_message_id: result.providerMessageId,
-        log_id: result.logId,
-      }, tenantId);
-    } catch (error: any) {
-      logger.error("whatsapp.onboarding.pending.send_failed", {
-        tenant_id: tenantId,
-        error: String(error?.message || error),
-      });
-
-      await eventLog.log("tenant_activation_pending_whatsapp_failed", tenant.owner_id, {
-        tenant_id: tenantId,
-        hostel_id: hostel.id,
-        error: String(error?.message || error).slice(0, 500),
-      }, tenantId).catch(() => {});
-    }
-    return;
-  }
-
-  // If status is RESERVED or MOVE_IN_READY:
+  // Joining is unconditional now — a tenant has their room from activation, so
+  // there is one outcome to announce rather than a payment-pending branch.
   const allocation = tenant.room_allocations?.[0];
   const room = allocation?.room;
 

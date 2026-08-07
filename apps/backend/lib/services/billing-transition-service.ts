@@ -4,6 +4,7 @@ import { settlementPreviewService } from "@/lib/services/settlement-preview-serv
 import { hostelPolicyService } from "@/lib/services/hostel-policy-service";
 import { fromLegacyStatus } from "@/src/services/payments/financial-obligation.types";
 import { consumeIdentityTokenInTx } from "@/src/services/payments/identity-confirmation-guard";
+import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
 function dayBefore(date: Date) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - 1));
@@ -49,7 +50,7 @@ export class BillingTransitionService {
     }
 
     const tenant = await prisma.tenants.findFirst({
-      where: { profile_id: profileId },
+      where: liveTenancyWhere(profileId),
       include: {
         payment_frequency_change_requests: { where: { status: "PENDING" }, take: 1 },
         rent_obligations: { include: { payments: true } },
@@ -98,7 +99,7 @@ export class BillingTransitionService {
   }
 
   async listForTenant(profileId: string) {
-    const tenant = await prisma.tenants.findFirst({ where: { profile_id: profileId }, select: { id: true } });
+    const tenant = await prisma.tenants.findFirst({ where: liveTenancyWhere(profileId), select: { id: true } });
     if (!tenant) throw new Error("TENANT_NOT_FOUND");
     return prisma.payment_frequency_change_requests.findMany({
       where: { tenant_id: tenant.id },

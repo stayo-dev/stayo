@@ -3,6 +3,7 @@ import { getLogger } from "../../../lib/logger";
 
 import { getActiveTemplateAndSyncRuleVersion } from "../../utils/default-rules";
 import { assertGuardianPhoneNotTenant } from "../../../lib/utils/phone-utils";
+import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
 const logger = getLogger("tenant-onboarding-service");
 
@@ -10,8 +11,8 @@ export class TenantOnboardingService {
   async completeOnboarding(profileId: string, payload: any, context: { ip_address: string; user_agent: string }) {
     logger.info(`Starting onboarding completion for profile: ${profileId}`);
 
-    const tenant = await prisma.tenants.findUnique({
-      where: { profile_id: profileId },
+    const tenant = await prisma.tenants.findFirst({
+      where: liveTenancyWhere(profileId),
       include: { hostel: true }
     });
 

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { LIVE_TENANCY_STATUSES, selectLiveTenancy } from "./live-tenancy";
 
 /**
  * A `tenants` row is one *tenancy* — one person's stay in one hostel — not one
@@ -14,34 +15,25 @@ import { prisma } from "@/lib/db";
  * picking a row when several are possible.
  */
 
-/** Statuses that make a tenancy "live". Kept in sync with migration 062's index. */
-export const LIVE_TENANCY_STATUSES = ["INVITED", "ACTIVE"] as const;
-
-export type LiveTenancyStatus = (typeof LIVE_TENANCY_STATUSES)[number];
+export {
+  LIVE_TENANCY_STATUSES,
+  selectLiveTenancy,
+  selectCurrentTenancy,
+  isLiveTenancyStatus,
+  liveTenancyInclude,
+} from "./live-tenancy";
+export type { LiveTenancyStatus } from "./live-tenancy";
 
 /**
- * Pure: given every tenancy row belonging to a profile, return the live one.
+ * Prisma `where` fragment selecting a profile's live tenancy.
  *
- * Separated from the query so the rule is unit-testable without a database, and
- * so callers that already hold the rows (a Prisma `include`) don't re-query.
- *
- * Throws if more than one row is live — that means the unique index is missing or
- * was bypassed, and continuing would silently attach money to the wrong hostel.
+ * Use this anywhere a query used to say `where: { profile_id }` and relied on the
+ * old global unique constraint to return "the" tenancy. Without the status filter
+ * a returning tenant resolves to whichever row Postgres happens to return first —
+ * quite possibly the hostel they left.
  */
-export function selectLiveTenancy<T extends { id: string; status: string }>(
-  tenancies: readonly T[] | null | undefined
-): T | null {
-  const live = (tenancies || []).filter((tenancy) =>
-    (LIVE_TENANCY_STATUSES as readonly string[]).includes(String(tenancy.status))
-  );
-  if (live.length > 1) {
-    throw new Error(
-      `INVARIANT_VIOLATION: profile has ${live.length} live tenancies (${live
-        .map((tenancy) => tenancy.id)
-        .join(", ")}) — tenants_one_live_tenancy_per_profile is not enforced`
-    );
-  }
-  return live[0] || null;
+export function liveTenancyWhere(profileId: string) {
+  return { profile_id: profileId, status: { in: [...LIVE_TENANCY_STATUSES] } };
 }
 
 /** The profile's live tenancy, or null if they are not currently a tenant anywhere. */

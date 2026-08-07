@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
 
   const documents = await (prisma as any).owner_documents.findMany({
     where: { profile_id: session.sub, is_active: true },
-    select: { id: true, doc_type: true, file_url: true, status: true, uploaded_at: true },
+    select: { id: true, doc_type: true, file_url: true, status: true, uploaded_at: true, review_note: true },
     orderBy: { uploaded_at: "desc" },
   });
 
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
           file_size: file.size,
           status: "PENDING",
         },
-        select: { id: true, doc_type: true, file_url: true, status: true, uploaded_at: true },
+        select: { id: true, doc_type: true, file_url: true, status: true, uploaded_at: true, review_note: true },
       });
     });
 

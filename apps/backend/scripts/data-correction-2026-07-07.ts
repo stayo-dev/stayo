@@ -223,7 +223,6 @@ async function correctDeepak(isApply: boolean) {
       where: { id: DEEPAK_TENANT_ID },
       data: {
         security_deposit: 0,
-        minimum_reservation_deposit: 0,
       },
     });
 

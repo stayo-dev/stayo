@@ -22,6 +22,7 @@ import { prisma } from "@/lib/db";
 import { financialService, derivePaymentStatus, type PaymentStatus } from "./financial-service";
 import { tenantFinancialLedgerService } from "./tenant-financial-ledger-service";
 import { isOverdue } from "./settlement-planner";
+import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
 export interface FinancialReadModelItem {
   obligation_id: string;
@@ -124,8 +125,8 @@ class FinancialReadModelService {
 
   /** Tenant self-service context — resolves tenant/owner from the session's profileId. */
   async getFinancialReadModelForTenant(profileId: string): Promise<FinancialReadModel> {
-    const tenant = await prisma.tenants.findUniqueOrThrow({
-      where: { profile_id: profileId },
+    const tenant = await prisma.tenants.findFirstOrThrow({
+      where: liveTenancyWhere(profileId),
       select: { id: true, owner_id: true, hostel_id: true },
     });
     const [dues, balance] = await Promise.all([

@@ -9,7 +9,16 @@ export const fieldLabel = 'font-display text-xs font-bold tracking-wide text-pri
 export const textInput =
   'mt-2 w-full border-0 border-b-2 border-border bg-transparent px-0.5 py-2.5 text-xl font-semibold text-foreground transition-colors focus:border-primary focus:outline-none';
 export const okNote = 'mt-1.5 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-success';
-export const tile = 'flex items-center justify-between rounded-2xl border border-border bg-card/90 px-4.5 py-4';
+/**
+ * A labelled row with a control on the right.
+ *
+ * Stacks below `sm`: at 390px a long label ("Applied to every room — change
+ * any room later") wrapped to two lines and collided with the ₹ input beside
+ * it. `gap` rather than `justify-between` alone so the two halves never touch
+ * once they sit on one line again.
+ */
+export const tile =
+  'flex flex-col gap-2.5 rounded-2xl border border-border bg-card/90 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-4.5';
 export const tileTitle = 'font-display text-[15px] font-bold text-foreground';
 export const tileSub = 'text-[12.5px] font-medium text-muted-foreground';
 export const statCard = 'rounded-2xl border border-border bg-card/92 p-4.5';

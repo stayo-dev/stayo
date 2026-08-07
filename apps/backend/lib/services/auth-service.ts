@@ -8,6 +8,7 @@ import { eventLog } from "./event-log-service";
 import { setOneTimeLock } from "@/lib/redis/rate-limit";
 import { redisKeys } from "@/lib/redis/keys";
 import { ensureSupabaseIdentity, signInWithSupabasePassword } from "../auth/supabase-identity";
+import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
 type AuthSessionMeta = {
   ipAddress?: string | null;
@@ -93,8 +94,8 @@ export class AuthService {
     let tenantProfileCompleted = null;
 
     if (profile.role === "TENANT") {
-      const tenant = await prisma.tenants.findUnique({
-        where: { profile_id: profile.id },
+      const tenant = await prisma.tenants.findFirst({
+        where: liveTenancyWhere(profile.id),
         select: {
           id: true,
           profile_completed: true,
@@ -191,8 +192,8 @@ export class AuthService {
       throw new Error("PASSWORD_RESET_REQUIRED: You must reset your password on first login");
     }
 
-    const tenant = await prisma.tenants.findUnique({
-      where: { profile_id: profile.id },
+    const tenant = await prisma.tenants.findFirst({
+      where: liveTenancyWhere(profile.id),
       select: {
         id: true,
         profile_completed: true,

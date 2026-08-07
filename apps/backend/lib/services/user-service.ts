@@ -1,4 +1,5 @@
 import { prisma } from "../db";
+import { liveTenancyInclude } from "@/lib/tenancy/active-tenancy";
 
 export class BaseService {
   protected db = prisma;
@@ -11,7 +12,7 @@ export class UserService extends BaseService {
   async getProfile(userId: string) {
     return this.db.profile.findUnique({
       where: { id: userId },
-      include: { tenants: true },
+      include: { tenants: liveTenancyInclude },
     });
   }
 

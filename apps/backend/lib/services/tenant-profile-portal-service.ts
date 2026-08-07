@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { normalizeIndianPhone } from "@/lib/utils/phone-utils";
 import { backendUrl } from "@/lib/config/domains";
 import { currentAgreementWhere } from "@/src/services/tenants/agreement-status";
-import { reservationStatusService } from "@/src/services/tenants/reservation-status-service";
+import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
 const DOC_TYPE_LABELS: Record<string, string> = {
   AADHAAR: "Aadhaar",
@@ -17,8 +17,8 @@ function requiredDocumentTypes(profileType?: string | null) {
 }
 
 export async function getTenantPortalProfile(profileId: string) {
-  const tenant = await prisma.tenants.findUnique({
-    where: { profile_id: profileId },
+  const tenant = await prisma.tenants.findFirst({
+    where: liveTenancyWhere(profileId),
     include: {
       profiles: {
         select: {
@@ -255,7 +255,6 @@ export async function getTenantPortalProfile(profileId: string) {
     documents,
     required_documents: requiredTypes,
     verification,
-    reservation_status: await reservationStatusService.getReservationStatus(tenant.id),
     move_out: moveOut
       ? {
           id: moveOut.id,

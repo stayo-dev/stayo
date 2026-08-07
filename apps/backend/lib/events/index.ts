@@ -123,17 +123,10 @@ eventSystem.on("payment_recorded", async (data) => {
     metadata: { amount: data.amount, method: data.method, hostel_id: data.hostel_id }
   });
 
-  // Check if this payment transitions the tenant to RESERVED or MOVE_IN_READY
+  // A payment no longer moves a tenant towards a room: the room is assigned when
+  // they join, and deposit/maintenance are ordinary dues paid afterwards. There is
+  // nothing to retroactively allocate.
   if (data.tenant_id) {
-    try {
-      const { tenantInvitationLifecycleService } = await import(
-        "../../src/services/tenants/tenant-invitation-lifecycle-service"
-      );
-      await tenantInvitationLifecycleService.allocateOnboardingTenantIfFinanciallyReady(data.tenant_id);
-    } catch (error) {
-      console.error("[Event] payment_recorded automatic allocation failed:", error);
-    }
-
     try {
       const { sendTenantOnboardingNotification } = await import(
         "../services/notifications/whatsapp-onboarding-handler"
@@ -151,15 +144,6 @@ eventSystem.on("payment_recorded", async (data) => {
 // with payment-service finalization paths that still fire it.
 const handleLedgerCredited = async (data: any) => {
   if (data.tenant_id) {
-    try {
-      const { tenantInvitationLifecycleService } = await import(
-        "../../src/services/tenants/tenant-invitation-lifecycle-service"
-      );
-      await tenantInvitationLifecycleService.allocateOnboardingTenantIfFinanciallyReady(data.tenant_id);
-    } catch (error) {
-      console.error("[Event] financial_ledger_credited automatic allocation failed:", error);
-    }
-
     try {
       const { sendTenantOnboardingNotification } = await import(
         "../services/notifications/whatsapp-onboarding-handler"

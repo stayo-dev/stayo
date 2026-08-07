@@ -7,12 +7,13 @@ import { ApiError } from "@/src/lib/api-error";
 import { authService } from "@/lib/services/auth-service";
 import { prisma } from "@/lib/db";
 import { billingTimelineService } from "@/lib/services/billing-timeline-service";
+import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
 export async function GET(req: NextRequest) {
   try {
     const user = await authService.getCurrentUser(req);
     if (!user || user.role !== "TENANT") return ApiResponse.error(ApiError.unauthorized("Unauthorized"));
-    const tenant = await prisma.tenants.findUnique({ where: { profile_id: user.id }, select: { id: true } });
+    const tenant = await prisma.tenants.findFirst({ where: liveTenancyWhere(user.id), select: { id: true } });
     if (!tenant) return ApiResponse.error(ApiError.notFound("Tenant not found"));
     const timeline = await billingTimelineService.getTenantTimeline(tenant.id);
     return ApiResponse.success(timeline);

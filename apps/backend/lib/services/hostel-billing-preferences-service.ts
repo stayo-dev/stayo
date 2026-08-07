@@ -10,8 +10,6 @@ export type BillingDefaults = {
   maintenance_type: MaintenanceType;
   auto_fill_room_rent: boolean;
   allow_override: boolean;
-  reservation_policy?: string;
-  minimum_reservation_deposit?: number;
   deposit_calculation_mode: "FLAT" | "MONTHS_OF_RENT";
   deposit_months: number;
   agreement_duration_months: number;
@@ -31,8 +29,6 @@ export type TenantInviteDefaults = {
     security_deposit: number;
     maintenance_charge: number;
     maintenance_type: MaintenanceType;
-    reservation_policy?: string;
-    minimum_reservation_deposit?: number;
     deposit_calculation_mode: "FLAT" | "MONTHS_OF_RENT";
     deposit_months: number;
     agreement_duration_months: number;
@@ -48,8 +44,6 @@ export const DEFAULT_BILLING_DEFAULTS: BillingDefaults = {
   maintenance_type: "MONTHLY",
   auto_fill_room_rent: true,
   allow_override: true,
-  reservation_policy: "FULL_DEPOSIT",
-  minimum_reservation_deposit: 0,
   deposit_calculation_mode: "FLAT",
   deposit_months: 1,
   agreement_duration_months: 12,
@@ -109,8 +103,6 @@ export function normalizeBillingDefaults(rawConfig: unknown): BillingDefaults {
     allow_override: nested.allow_override !== undefined
       ? Boolean(nested.allow_override)
       : DEFAULT_BILLING_DEFAULTS.allow_override,
-    reservation_policy: nested.reservation_policy ?? config.reservation_policy ?? "FULL_DEPOSIT",
-    minimum_reservation_deposit: nonNegativeNumber(nested.minimum_reservation_deposit ?? config.minimum_reservation_deposit, 0),
     deposit_calculation_mode: calculationMode(calculationModeSource, DEFAULT_BILLING_DEFAULTS.deposit_calculation_mode),
     deposit_months: Math.max(1, Math.min(12, Math.floor(nonNegativeNumber(depositMonthsSource, DEFAULT_BILLING_DEFAULTS.deposit_months)))),
     agreement_duration_months: Math.max(1, Math.min(120, Math.floor(nonNegativeNumber(nested.agreement_duration_months ?? config.agreement_duration_months, DEFAULT_BILLING_DEFAULTS.agreement_duration_months)))),
@@ -142,12 +134,6 @@ export function sanitizeBillingDefaultsPayload(payload: Partial<BillingDefaults>
   }
   if (payload.allow_override !== undefined) {
     next.allow_override = Boolean(payload.allow_override);
-  }
-  if (payload.reservation_policy !== undefined) {
-    next.reservation_policy = String(payload.reservation_policy);
-  }
-  if (payload.minimum_reservation_deposit !== undefined) {
-    next.minimum_reservation_deposit = nonNegativeNumber(payload.minimum_reservation_deposit, 0);
   }
   if (payload.deposit_calculation_mode !== undefined) {
     next.deposit_calculation_mode = calculationMode(payload.deposit_calculation_mode, DEFAULT_BILLING_DEFAULTS.deposit_calculation_mode);
@@ -277,8 +263,6 @@ export class HostelBillingPreferencesService {
         security_deposit: resolvedSecurityDeposit,
         maintenance_charge: maintenanceCharge,
         maintenance_type: billingDefaults.maintenance_type,
-        reservation_policy: billingDefaults.reservation_policy ?? "FULL_DEPOSIT",
-        minimum_reservation_deposit: billingDefaults.minimum_reservation_deposit ?? 0,
         deposit_calculation_mode: billingDefaults.deposit_calculation_mode,
         deposit_months: billingDefaults.deposit_months,
         agreement_duration_months: billingDefaults.agreement_duration_months,

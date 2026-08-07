@@ -4,6 +4,7 @@ import { getLogger } from "@/lib/logger";
 import { randomUUID } from "crypto";
 import { currentAgreementWhere } from "./agreement-status";
 import { renewalTimelineService } from "./renewal-timeline-service";
+import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
 const logger = getLogger("renewal-offer");
 
@@ -904,7 +905,7 @@ export class RenewalOfferService {
 
   /** Get the active renewal offer for a tenant (portal view). */
   async getActiveOfferForTenant(profileId: string) {
-    const tenant = await this.db.tenants.findUnique({ where: { profile_id: profileId }, select: { id: true } });
+    const tenant = await this.db.tenants.findFirst({ where: liveTenancyWhere(profileId), select: { id: true } });
     if (!tenant) throw new Error("NOT_FOUND: Tenant not found");
 
     const offer = await this.db.renewalOffer.findFirst({

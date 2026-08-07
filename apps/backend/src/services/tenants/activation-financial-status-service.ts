@@ -1,16 +1,24 @@
 import { prisma } from "@/lib/db";
 
+/**
+ * How much of a tenant's deposit and maintenance is still owed.
+ *
+ * This is a *statement of dues*, not a gate: nothing is withheld from a tenant
+ * who owes it. It survived the removal of the onboarding payment gate because
+ * deposit payment intents (`payment-service.recordDepositPayment`) and the tenant
+ * CSV export both need to know the outstanding figure.
+ *
+ * The partial-deposit threshold fields it used to carry are gone with the gate —
+ * there is no longer a "minimum to reserve a bed", only an amount owed.
+ */
 export type ActivationFinancialStatus = {
   requiredDeposit: number;
   paidDeposit: number;
   depositOutstanding: number;
-  depositActivationThreshold: number;
-  depositThresholdOutstanding: number;
   isDepositFullyPaid: boolean;
   requiredMaintenance: number;
   paidMaintenance: number;
   maintenanceOutstanding: number;
-  isDepositCleared: boolean;
   isMaintenanceCleared: boolean;
   isFinanciallyReady: boolean;
 };
@@ -35,8 +43,6 @@ export class ActivationFinancialStatusService {
       select: {
         id: true,
         security_deposit: true,
-        reservation_policy: true,
-        minimum_reservation_deposit: true,
         maintenance_charge: true,
         maintenance_type: true,
       },
@@ -95,13 +101,6 @@ export class ActivationFinancialStatusService {
 
     const paidDeposit = money(Number(depositCredits._sum.amount || 0) + paidAdvanceObligationSumOutsideLedger);
     const depositOutstanding = outstanding(requiredDeposit, paidDeposit);
-    const reservationPolicy = String((tenant as any).reservation_policy || "FULL_DEPOSIT");
-    const minimumReservationDeposit = money((tenant as any).minimum_reservation_deposit);
-    const depositActivationThreshold = reservationPolicy === "PARTIAL_DEPOSIT"
-      ? money(Math.min(requiredDeposit, Math.max(0, minimumReservationDeposit)))
-      : requiredDeposit;
-    const depositThresholdOutstanding = outstanding(depositActivationThreshold, paidDeposit);
-
     const maintenanceType = String(tenant.maintenance_type || "MONTHLY").toUpperCase();
     const requiredMaintenance = maintenanceType === "NONE" ? 0 : money(tenant.maintenance_charge);
     const paidMaintenance = money(
@@ -112,7 +111,6 @@ export class ActivationFinancialStatusService {
     );
     const maintenanceOutstanding = outstanding(requiredMaintenance, paidMaintenance);
 
-    const isDepositCleared = depositThresholdOutstanding <= 0;
     const isDepositFullyPaid = depositOutstanding <= 0;
     const isMaintenanceCleared = maintenanceOutstanding <= 0;
 
@@ -120,8 +118,6 @@ export class ActivationFinancialStatusService {
       requiredDeposit,
       paidDeposit,
       depositOutstanding,
-      depositActivationThreshold,
-      depositThresholdOutstanding,
       requiredMaintenance,
       paidMaintenance,
       maintenanceOutstanding,

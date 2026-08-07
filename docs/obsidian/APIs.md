@@ -254,3 +254,11 @@ Public (no session — added to `middleware.ts`'s `PUBLIC_ROUTES`), backing the 
 - [[Business-Rules]] for the domain logic these endpoints enforce
 - [[Features]] for which UI features call which endpoint groups
 - [[Decisions]] for the "single-business migration" that produced the 410 tombstones
+
+### Owner document review (2026-08-07)
+
+| Route | Method | Notes |
+|---|---|---|
+| `/api/platform-admin/owner-documents` | GET | **Added 2026-08-07.** Admin-only. Owner KYC review queue, `?status=PENDING\|VERIFIED\|REJECTED` (defaults PENDING), oldest first so nobody waits longest. Returns the document plus the owning profile. Exists because uploads had been landing in `owner_documents` since ADR-038 with **no admin surface at all** — the uploader deliberately cannot set status, so `VERIFIED` was unreachable in practice. |
+| `/api/platform-admin/owner-documents/[id]/review` | POST | **Added 2026-08-07.** Admin-only. `{ decision: VERIFIED\|REJECTED, note? }`. The only thing that can move a document out of PENDING. A rejection **requires** a reason (stored in `review_note`, shown to the owner) — rejecting without one just produces the same upload again. Re-reviewing an already-decided document is refused rather than silently overwriting an earlier admin's call; reversing means the owner re-uploads. Guards are pure and tested in `tests/owner-document-review.test.ts`. |
+| `/api/owner/kyc-documents` | GET | **2026-08-07:** now also returns `review_note`, so a rejected document can tell the owner what to fix. |

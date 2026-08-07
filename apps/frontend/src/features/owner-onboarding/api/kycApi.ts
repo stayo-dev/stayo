@@ -6,6 +6,8 @@ export interface OwnerKycDocument {
   file_url: string;
   status: 'PENDING' | 'VERIFIED' | 'REJECTED';
   uploaded_at: string;
+  /** Why an admin rejected it — shown back to the owner so they know what to fix. */
+  review_note?: string | null;
 }
 
 /**
