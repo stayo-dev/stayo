@@ -21,18 +21,11 @@ export function AdminDashboardPage() {
   const dashboardQuery = useQuery({ queryKey: ['admin', 'dashboard'], queryFn: () => platformAdminService.getDashboard(), staleTime: 15_000 });
   const d = dashboardQuery.data;
 
-  // Rejecting from here used to call updateLeadStatus(id,'LOST') — the silent
-  // path — while the Leads page required a reason and notified the applicant.
-  // Two behaviours for the same action in one console. The dashboard now sends
-  // people to the Leads queue, where the reason is captured properly.
-  const leadStatusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) => platformAdminService.updateLeadStatus(id, status),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['admin', 'leads'] });
-    },
-    onError: () => stayoToast.error('Could not update lead'),
-  });
+  // Rejecting is deliberately NOT done from here. It used to call
+  // updateLeadStatus(id,'LOST') — the silent path — while the Leads page
+  // required a reason and told the applicant: two behaviours for one action in
+  // the same console. The button now hands over to the Leads queue, which
+  // captures the reason.
 
   const leadApproveMutation = useMutation({
     mutationFn: (id: string) => platformAdminService.approveLead(id),
@@ -105,7 +98,6 @@ export function AdminDashboardPage() {
                       <button
                         type="button"
                         onClick={() => navigate(`/admin/leads?reject=${l.id}`)}
-                        disabled={leadStatusMutation.isPending}
                         className="h-8 flex-1 rounded-lg border border-[#EAD0C9] bg-white text-[12px] font-bold text-[#C0503A]"
                       >
                         Reject
