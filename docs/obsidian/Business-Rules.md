@@ -203,10 +203,35 @@ Added 2026-07-31 ([[Decisions#ADR-035|ADR-035]]).
 
 1. **Owners** self-sign-up via `/api/auth/owner-signup`, normally reached through the lead → admin approval → activation-link funnel. `profiles.role = OWNER`, `owner_id = own id`.
 2. **Tenants** self-sign-up via `/api/auth/tenant-signup`, creating a **marketplace account**: `role: TENANT`, `owner_id` null, **no `tenants` row**. This account can browse and enquire; it is not a tenant of any hostel.
-3. **A tenant *of a hostel*** is only ever created by an owner's invitation + activation. That flow reuses an existing marketplace profile rather than creating a second one — it rejects an existing profile only when that profile already has an *active* `tenants` row.
+3. **A tenant *of a hostel*** is only ever created by an owner's invitation + activation. That flow reuses an existing marketplace profile rather than creating a second one; whether it may do so is decided by the tenancy-eligibility rule below.
 4. **Admins** are never self-serve — first via `scripts/bootstrap-platform-admin.ts`, later by invitation.
 
 Consequences that surfaces must respect: a TENANT session can legitimately have `tenant_id: null`, so anything reading dues/agreements/room must tolerate its absence (`/api/auth/me` already does), and post-login routing sends such a user to hostel search rather than the tenant portal.
+
+## One live tenancy per person (2026-08-07)
+
+Changed by [[Decisions#ADR-053|ADR-053]]. A person may hold exactly one live tenancy — `INVITED` or `ACTIVE` — enforced by the partial unique index `tenants_one_live_tenancy_per_profile`, not by convention. The decision itself lives in `src/services/tenants/tenancy-eligibility-rules.ts` as pure functions; `tenancy-eligibility-service.ts` gathers the data.
+
+Someone may start a new tenancy when **both** hold:
+
+1. They hold no live tenancy.
+2. Every tenancy they **actually moved into** has a `move_out_requests` row in `COMPLETED`.
+
+Rule 2 keys on settlement, not on status: `FORMER_TENANT` is set at the exit date, which can precede the settlement money moving. It also keys on *having activated* — an invitation that expired or was cancelled before the tenant ever arrived owes no settlement, and must not trap them on the platform forever.
+
+Refusals: `TENANT_HAS_ACTIVE_TENANCY` and `PREVIOUS_TENANCY_NOT_SETTLED`, both HTTP 409.
+
+**Disclosure is scoped to ownership.** The refusal names the hostel and room **only when that hostel belongs to the owner asking**. For any other owner's property it says only "currently a tenant at another property on Stayo" — no hostel name, no room, no tenant id. Otherwise any owner could enumerate a competitor's roster, and a person's home address, by guessing emails. Enforced on both sides: the backend blanks the fields, and the frontend's `parseTenancyConflict` ignores a hostel name that arrives without an `OWN` scope.
+
+**Accepting one invitation voids the others.** Several owners may invite the same person; the first acceptance cancels every other live invitation for them, releases those room reservations back to capacity with `release_reason: 'JOINED_ELSEWHERE'`, and logs `invitation_voided_joined_elsewhere` for the losing owners. A pending invitation from another owner therefore **does not** block a new invite — blocking there would let any owner reserve a person with an invite they never send follow-up on.
+
+## Joining a hostel does not require payment (2026-08-07)
+
+Changed by [[Decisions#ADR-052|ADR-052]]. The room is assigned at activation, unconditionally. Security deposit and maintenance are ordinary dues — created at invite time, `PENDING`, payable after move-in, chased like rent. Nothing in the product is withheld from a tenant who owes them: not the room, not the dashboard, not move-out.
+
+The `PAYMENT_PENDING` / `RESERVED` / `MOVE_IN_READY` vocabulary is **deleted**. The tenant lifecycle is `INVITED` → `ACTIVE` (shown to owners as "Joined") → vacating → `FORMER_TENANT`.
+
+Occupancy is a question about beds, not money: a room is occupied by every active allocation held by an `ACTIVE` tenant. It previously excluded anyone still `PAYMENT_PENDING`, which left a moved-in tenant's bed looking vacant and invitable.
 
 ## Signup phone verification
 

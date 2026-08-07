@@ -121,10 +121,9 @@ export class ActivationFinancialStatusService {
       requiredMaintenance,
       paidMaintenance,
       maintenanceOutstanding,
-      isDepositCleared,
       isDepositFullyPaid,
       isMaintenanceCleared,
-      isFinanciallyReady: isDepositCleared && isMaintenanceCleared,
+      isFinanciallyReady: isDepositFullyPaid && isMaintenanceCleared,
     };
   }
 }

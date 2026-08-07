@@ -41,6 +41,8 @@ export default defineConfig({
       'tests/owner-document-review.test.ts',
       'tests/tenancy-eligibility-rules.test.ts',
       'tests/active-tenancy-selection.test.ts',
+      'tests/activation-enforcement-coverage.test.ts',
+      'tests/tenancy-eligibility-service.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),

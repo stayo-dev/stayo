@@ -139,27 +139,6 @@ export function TenantMoveOutPage() {
     );
   }
 
-  const resStatus = profile?.reservation_status?.status ?? 'PAYMENT_PENDING';
-
-  if (resStatus === 'PAYMENT_PENDING') {
-    return (
-      <div className="space-y-6 max-w-md mx-auto py-12 px-4 text-center">
-        <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-amber-600 mb-2">
-          <AlertTriangle className="h-8 w-8" />
-        </div>
-        <h1 className="text-2xl font-bold text-foreground">Move-out Unavailable</h1>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          Your bed reservation has not been secured. You must complete your reservation payment before you can initiate a move-out request.
-        </p>
-        <Link
-          to="/tenant"
-          className="inline-flex items-center justify-center gap-2 w-full py-3.5 rounded-xl bg-[#243A72] text-white font-semibold hover:bg-[#1B2D5B] transition-colors"
-        >
-          Back to Dashboard
-        </Link>
-      </div>
-    );
-  }
 
   const isTenantActive = tenant && String(tenant.status).toUpperCase() === 'ACTIVE';
 

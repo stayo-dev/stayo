@@ -10,6 +10,14 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-07 — Tenants join without paying, and can move between hostels
+- **The onboarding payment gate is gone.** A tenant's room is assigned when they join, not when their deposit clears. `reservation-status-service.ts` and `activation-financial-enforcement-service.ts` are deleted, along with the `PAYMENT_PENDING`/`RESERVED`/`MOVE_IN_READY` vocabulary; deposit and maintenance are ordinary dues payable after move-in. See [[Decisions]] ADR-052.
+- **Occupancy stopped depending on money.** `room-capacity-service` counted an unpaid-but-moved-in tenant as *not* occupying their bed, leaving it invitable to someone else. It now counts active allocations of `ACTIVE` tenants — which also removes a per-tenant query inside a loop and a duplicated inline copy of the deposit arithmetic.
+- **A `tenants` row is now one tenancy, not one person.** `profile_id` loses its global unique; a partial unique index (`tenants_one_live_tenancy_per_profile`) allows exactly one live tenancy per profile while preserving every past stay as its own row. A settled former tenant can finally join a different hostel — previously impossible at the database level. See [[Decisions]] ADR-053, [[Database]].
+- **Inviting someone who already lives somewhere now explains itself.** Replaces `ALREADY_EXISTS: User with this email already exists` with a 409 carrying an ownership-scoped disclosure: the asking owner sees their *own* hostel and room named, but never another owner's. Rendered as a dialog in the invite modal.
+- **Accepting one invitation withdraws the others.** Competing invitations are voided, their room reservations released back to capacity (`release_reason: 'JOINED_ELSEWHERE'`), and the losing owners notified — previously those rooms stayed reserved until expiry and the invitee's other links died on a raw constraint error.
+- **Removed:** partial/token-deposit reservations (`reservation_policy`, `minimum_reservation_deposit`, `minimum_deposit_threshold`), migration 062. The admissions funnel's `reserved`/`payment_pending` stages. Two dead tenant-portal components (`TenantReservationCard`, `OnboardingProgressTracker`) that had zero importers.
+
 ### 2026-08-07 — Owner onboarding: persistence, guidance, verification, location
 - **Draft persistence.** The wizard held every answer in `useState`, so closing the tab across eight steps threw it all away. It now auto-saves to localStorage and restores with a banner and a Start over escape. Passwords are excluded by an explicit field allowlist, asserted by a test. See [[Features]].
 - **Password guidance.** Replaces a single length check with a live criteria checklist and strength meter. A 20+ character passphrase counts as strong on length alone.

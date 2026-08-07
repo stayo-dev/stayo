@@ -37,8 +37,6 @@ describe("ActivationFinancialStatusService", () => {
     vi.mocked(prisma.tenants.findUnique).mockResolvedValue({
       id: "tenant-1",
       security_deposit: 10000,
-      reservation_policy: "FULL_DEPOSIT",
-      minimum_reservation_deposit: 10000,
       maintenance_charge: 1500,
       maintenance_type: "ONE_TIME",
     } as any);
@@ -57,24 +55,21 @@ describe("ActivationFinancialStatusService", () => {
       requiredDeposit: 10000,
       paidDeposit: 7000,
       depositOutstanding: 3000,
-      depositActivationThreshold: 10000,
-      depositThresholdOutstanding: 3000,
       requiredMaintenance: 1500,
       paidMaintenance: 1500,
       maintenanceOutstanding: 0,
-      isDepositCleared: false,
       isDepositFullyPaid: false,
       isMaintenanceCleared: true,
       isFinanciallyReady: false,
     });
   });
 
-  it("allows activation readiness at custom deposit threshold while preserving full deposit due", async () => {
+  it("treats a part-paid deposit as still outstanding", async () => {
+    // There is no longer a "minimum to reserve a bed": partial deposits used to
+    // make a tenant activation-ready at a threshold below the full amount.
     vi.mocked(prisma.tenants.findUnique).mockResolvedValue({
       id: "tenant-1",
       security_deposit: 10000,
-      reservation_policy: "PARTIAL_DEPOSIT",
-      minimum_reservation_deposit: 4000,
       maintenance_charge: 1500,
       maintenance_type: "ONE_TIME",
     } as any);
@@ -88,19 +83,14 @@ describe("ActivationFinancialStatusService", () => {
     expect(status.requiredDeposit).toBe(10000);
     expect(status.paidDeposit).toBe(4000);
     expect(status.depositOutstanding).toBe(6000);
-    expect(status.depositActivationThreshold).toBe(4000);
-    expect(status.depositThresholdOutstanding).toBe(0);
-    expect(status.isDepositCleared).toBe(true);
     expect(status.isDepositFullyPaid).toBe(false);
-    expect(status.isFinanciallyReady).toBe(true);
+    expect(status.isFinanciallyReady).toBe(false);
   });
 
   it("does not count TOPUP/future rent credit toward deposit readiness", async () => {
     vi.mocked(prisma.tenants.findUnique).mockResolvedValue({
       id: "tenant-1",
       security_deposit: 10000,
-      reservation_policy: "FULL_DEPOSIT",
-      minimum_reservation_deposit: 10000,
       maintenance_charge: 0,
       maintenance_type: "NONE",
     } as any);
@@ -118,8 +108,6 @@ describe("ActivationFinancialStatusService", () => {
     vi.mocked(prisma.tenants.findUnique).mockResolvedValue({
       id: "tenant-1",
       security_deposit: 0,
-      reservation_policy: "FULL_DEPOSIT",
-      minimum_reservation_deposit: 0,
       maintenance_charge: 2500,
       maintenance_type: "MONTHLY",
     } as any);
@@ -144,8 +132,6 @@ describe("ActivationFinancialStatusService", () => {
     vi.mocked(prisma.tenants.findUnique).mockResolvedValue({
       id: "tenant-1",
       security_deposit: 0,
-      reservation_policy: "FULL_DEPOSIT",
-      minimum_reservation_deposit: 0,
       maintenance_charge: 1200,
       maintenance_type: "ONE_TIME",
     } as any);
@@ -164,8 +150,6 @@ describe("ActivationFinancialStatusService", () => {
     vi.mocked(prisma.tenants.findUnique).mockResolvedValue({
       id: "tenant-1",
       security_deposit: 10000,
-      reservation_policy: "FULL_DEPOSIT",
-      minimum_reservation_deposit: 10000,
       maintenance_charge: 1500,
       maintenance_type: "ONE_TIME",
     } as any);

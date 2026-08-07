@@ -244,7 +244,19 @@ Public (no session — added to `middleware.ts`'s `PUBLIC_ROUTES`), backing the 
 
 - **No auth guard found**: `GET /api/owner/integrity`, `GET /api/metrics`, `GET /api/debug/whatsapp-health` (low-risk — booleans only, no secrets).
 - **Alias/re-export routes** (thin pass-throughs, not independent logic): `/api/admissions/leads(/analytics)` → `/api/leads(/analytics)`; `/api/allocations/my-room` → `/api/tenants/me/room`; `/api/payments/offline` and `/api/owner/payments/offline` → `/api/payments/record-offline`.
-- **Apparent duplicate**: `/api/owners/invitations` vs `/api/tenants/invite` — same underlying `invitationService.inviteTenant` call.
+- **Apparent duplicate**: `/api/owners/invitations` vs `/api/tenants/invite` — same underlying `invitationService.inviteTenant` call. The owner invite modal uses `/api/owners/invitations`; `/api/tenants/invite` differs only in also accepting ADMIN.
+
+**Both invite endpoints (2026-08-07):** a person who already holds a live tenancy, or whose previous stay is unsettled, is refused with **409 `TENANT_HAS_ACTIVE_TENANCY`** or **409 `PREVIOUS_TENANCY_NOT_SETTLED`**. This replaces the old `409 ALREADY_EXISTS: User with this email already exists`, which also (wrongly) refused every former tenant forever. The response carries an ownership-scoped `error.details`:
+
+```json
+{ "scope": "OWN" | "OTHER", "hostelName": string|null, "roomNumber": string|null, "tenantId": string|null }
+```
+
+`scope: "OWN"` (the person lives in one of *this* owner's hostels) populates the fields; `scope: "OTHER"` blanks all three by construction — one owner is never told another owner's hostel name, room or tenant id. See [[Business-Rules]], [[Decisions#ADR-053|ADR-053]].
+
+**Removed from the invite payload (2026-08-07):** `minimum_deposit_threshold`. Partial/token deposits no longer exist — see [[Decisions#ADR-052|ADR-052]].
+
+**Removed from tenant responses (2026-08-07):** `reservation_status` on `/api/tenants` list rows and on the tenant portal profile. The `PAYMENT_PENDING`/`RESERVED`/`MOVE_IN_READY` vocabulary is gone; tenant status is `INVITED`/`ACTIVE`/`FORMER_TENANT`/`EXPIRED`/`CANCELLED`. `GET /api/admissions/analytics`'s `funnel` no longer returns `reserved` or `payment_pending`, and `activated`/`joined`/`moved_in` are now equal by construction.
 - **Naming trap**: `/api/auth/register` is not self-serve registration despite the path name — requires an existing OWNER session.
 - **Role-scope inconsistency**: `/api/admin/finance-ops/*` requires ADMIN; sibling `/api/admin/finance/reconciliation/*` requires OWNER.
 - **Three dashboard routes return the identical payload**: `stats`, `stats-shell`, `summary`.

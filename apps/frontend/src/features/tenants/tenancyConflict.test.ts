@@ -1,0 +1,84 @@
+import { describe, expect, it } from 'vitest';
+import { parseTenancyConflict } from './tenancyConflict';
+
+function axiosError(code: string, details?: unknown) {
+  return { response: { data: { error: { code, message: 'nope', details } } } };
+}
+
+describe('parseTenancyConflict', () => {
+  it('ignores errors that are not tenancy conflicts', () => {
+    expect(parseTenancyConflict(axiosError('VALIDATION_ERROR'))).toBeNull();
+    expect(parseTenancyConflict(new Error('network down'))).toBeNull();
+    expect(parseTenancyConflict(undefined)).toBeNull();
+  });
+
+  it('names the hostel and room when the tenant is the asking owner’s own', () => {
+    const conflict = parseTenancyConflict(
+      axiosError('TENANT_HAS_ACTIVE_TENANCY', {
+        scope: 'OWN',
+        hostelName: 'Sunrise Residency',
+        roomNumber: '204',
+        tenantId: 'tenant-1',
+      })
+    );
+    expect(conflict?.body).toContain('Sunrise Residency, room 204');
+    expect(conflict?.tenantId).toBe('tenant-1');
+  });
+
+  it('names the hostel without a room when no room is known', () => {
+    const conflict = parseTenancyConflict(
+      axiosError('TENANT_HAS_ACTIVE_TENANCY', {
+        scope: 'OWN',
+        hostelName: 'Sunrise Residency',
+        roomNumber: null,
+        tenantId: 'tenant-1',
+      })
+    );
+    expect(conflict?.body).toContain('Sunrise Residency');
+    expect(conflict?.body).not.toContain('room');
+  });
+
+  it('never names another owner’s hostel', () => {
+    const conflict = parseTenancyConflict(
+      axiosError('TENANT_HAS_ACTIVE_TENANCY', {
+        scope: 'OTHER',
+        hostelName: 'Rival Residency',
+        roomNumber: '101',
+        tenantId: 'tenant-9',
+      })
+    );
+    expect(conflict?.body).not.toContain('Rival Residency');
+    expect(conflict?.body).not.toContain('101');
+    expect(conflict?.body).toContain('another property on Stayo');
+    expect(conflict?.tenantId).toBeNull();
+  });
+
+  it('does not leak a hostel name that arrives without an OWN scope', () => {
+    // Defence in depth: the backend already blanks these, but a client that
+    // trusted the name over the scope would leak on any backend regression.
+    const conflict = parseTenancyConflict(
+      axiosError('TENANT_HAS_ACTIVE_TENANCY', {
+        hostelName: 'Leaky Residency',
+        roomNumber: '7',
+        tenantId: 'tenant-9',
+      })
+    );
+    expect(conflict?.body).not.toContain('Leaky Residency');
+    expect(conflict?.tenantId).toBeNull();
+  });
+
+  it('explains an unsettled previous stay differently from an active one', () => {
+    const conflict = parseTenancyConflict(
+      axiosError('PREVIOUS_TENANCY_NOT_SETTLED', { scope: 'OTHER' })
+    );
+    expect(conflict?.code).toBe('PREVIOUS_TENANCY_NOT_SETTLED');
+    expect(conflict?.title).toBe('Previous stay not settled');
+    expect(conflict?.body).toContain('not settled');
+  });
+
+  it('tolerates a conflict with no details payload', () => {
+    const conflict = parseTenancyConflict(axiosError('TENANT_HAS_ACTIVE_TENANCY'));
+    expect(conflict?.title).toBe('Already a tenant');
+    expect(conflict?.tenantId).toBeNull();
+  });
+});
