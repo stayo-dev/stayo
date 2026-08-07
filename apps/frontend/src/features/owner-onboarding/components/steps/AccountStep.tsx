@@ -2,6 +2,11 @@ import { useState } from 'react';
 import { AlertCircle, Check, Eye, EyeOff } from 'lucide-react';
 import type { OwnerOnboardingData } from '../../hooks/useOwnerOnboardingState';
 import { eyebrow, h1, sub, fieldLabel, textInput, okNote } from '../stepStyles';
+import {
+  PASSWORD_CRITERIA,
+  PASSWORD_STRENGTH_LABEL,
+  evaluatePassword,
+} from '../../passwordPolicy';
 
 interface AccountStepProps {
   data: OwnerOnboardingData;
@@ -11,8 +16,6 @@ interface AccountStepProps {
   confirmPassword: string;
   setConfirmPassword: (value: string) => void;
 }
-
-const MIN_PASSWORD = 8;
 
 /** Loose check — the real validation is the server's; this only catches typos early. */
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -32,7 +35,8 @@ export function AccountStep({
   const emailOk = EMAIL_RE.test(data.email.trim());
   const mobileDigits = data.mobile.replace(/\D/g, '');
   const mobileOk = mobileDigits.length >= 10;
-  const passwordOk = password.length >= MIN_PASSWORD;
+  const passwordEval = evaluatePassword(password);
+  const passwordOk = passwordEval.allMet;
   const matchOk = confirmPassword.length > 0 && confirmPassword === password;
 
   const markTouched = (key: string) => setTouched((t) => ({ ...t, [key]: true }));
@@ -107,7 +111,7 @@ export function AccountStep({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               onBlur={() => markTouched('password')}
-              placeholder={`At least ${MIN_PASSWORD} characters`}
+              placeholder="Pick something only you would know"
               type={showPassword ? 'text' : 'password'}
               autoComplete="new-password"
               className={`${textInput} pr-11`}
@@ -122,18 +126,59 @@ export function AccountStep({
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
-          {/* Live strength hint — nudges without blocking. */}
+          {/* Every rule is stated up front and ticks live. The previous version
+              checked only length and showed one hint, so the rest of the
+              requirements were discovered by being refused. */}
           {password.length > 0 && (
-            <span
-              className={`mt-1.5 flex items-center gap-1.5 text-[12px] font-semibold ${
-                passwordOk ? 'text-success' : 'text-muted-foreground'
-              }`}
-            >
-              {passwordOk && <Check className="h-3 w-3" strokeWidth={2.8} />}
-              {passwordOk
-                ? 'Strong enough.'
-                : `${MIN_PASSWORD - password.length} more character${MIN_PASSWORD - password.length === 1 ? '' : 's'} to go.`}
-            </span>
+            <div className="mt-2.5">
+              <div className="flex items-center gap-2">
+                <div className="flex flex-1 gap-1" aria-hidden>
+                  {[0, 1, 2, 3].map((i) => (
+                    <span
+                      key={i}
+                      className={`h-1 flex-1 rounded-full transition-colors ${
+                        i < passwordEval.met.length
+                          ? passwordOk
+                            ? 'bg-success'
+                            : 'bg-primary'
+                          : 'bg-border'
+                      }`}
+                    />
+                  ))}
+                </div>
+                <span
+                  className={`text-[11.5px] font-bold ${passwordOk ? 'text-success' : 'text-muted-foreground'}`}
+                >
+                  {PASSWORD_STRENGTH_LABEL[passwordEval.strength]}
+                </span>
+              </div>
+              <ul className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 sm:grid-cols-2">
+                {PASSWORD_CRITERIA.map((criterion) => {
+                  const met = passwordEval.met.includes(criterion.id);
+                  return (
+                    <li
+                      key={criterion.id}
+                      className={`flex items-center gap-1.5 text-[12px] font-semibold ${
+                        met ? 'text-success' : 'text-muted-foreground'
+                      }`}
+                    >
+                      <span
+                        className={`flex h-3.5 w-3.5 flex-none items-center justify-center rounded-full ${
+                          met ? 'bg-success/15' : 'bg-border/60'
+                        }`}
+                      >
+                        {met ? (
+                          <Check className="h-2.5 w-2.5" strokeWidth={3.4} />
+                        ) : (
+                          <span className="h-1 w-1 rounded-full bg-muted-foreground/50" />
+                        )}
+                      </span>
+                      {criterion.label}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           )}
         </label>
 

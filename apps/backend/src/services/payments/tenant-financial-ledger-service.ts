@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { getLogger } from "@/lib/logger";
 
 import { randomUUID } from "crypto";
+import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
 const logger = getLogger("tenant.financial-ledger");
 
@@ -26,8 +27,8 @@ export class TenantFinancialLedgerService {
    * Used by GET /api/tenants/me/advance.
    */
   async getBalanceForTenant(profileId: string) {
-    const tenant = await prisma.tenants.findUnique({
-      where: { profile_id: profileId },
+    const tenant = await prisma.tenants.findFirst({
+      where: liveTenancyWhere(profileId),
       select: { id: true, owner_id: true },
     });
     if (!tenant) throw new Error("NOT_FOUND: Tenant not found");

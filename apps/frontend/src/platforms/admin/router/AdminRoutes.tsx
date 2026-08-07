@@ -7,6 +7,7 @@ const AdminProviderShell = lazy(() =>
 );
 const AdminHostelsPage = lazy(() => import('../pages/AdminHostelsPage').then((m) => ({ default: m.AdminHostelsPage })));
 const AdminLeadsPage = lazy(() => import('../pages/AdminLeadsPage').then((m) => ({ default: m.AdminLeadsPage })));
+const AdminDocumentsPage = lazy(() => import('../pages/AdminDocumentsPage').then((m) => ({ default: m.AdminDocumentsPage })));
 const AdminRevenuePage = lazy(() => import('../pages/AdminRevenuePage').then((m) => ({ default: m.AdminRevenuePage })));
 const AdminDashboardPage = lazy(() => import('../pages/AdminDashboardPage').then((m) => ({ default: m.AdminDashboardPage })));
 const AdminMorePage = lazy(() => import('../pages/AdminMorePage').then((m) => ({ default: m.AdminMorePage })));
@@ -26,6 +27,7 @@ export function AdminRoutes() {
         <Route path="/admin" element={<AdminDashboardPage />} />
         <Route path="/admin/hostels" element={<AdminHostelsPage />} />
         <Route path="/admin/leads" element={<AdminLeadsPage />} />
+        <Route path="/admin/documents" element={<AdminDocumentsPage />} />
         <Route path="/admin/revenue" element={<AdminRevenuePage />} />
         <Route path="/admin/more" element={<AdminMorePage />} />
         <Route path="/admin/settings" element={<AdminSettingsPage />} />

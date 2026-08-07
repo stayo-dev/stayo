@@ -10,6 +10,7 @@ import { eventLog } from "../../../lib/services/event-log-service";
 import { frontendUrl } from "../../../lib/config/domains";
 import { roomCapacityService } from "../../../lib/services/room-capacity-service";
 import { tenantInvitationLifecycleService } from "./tenant-invitation-lifecycle-service";
+import { selectCurrentTenancy } from "@/lib/tenancy/active-tenancy";
 
 const logger = getLogger("invitation-service");
 
@@ -54,7 +55,7 @@ export class InvitationService {
       if (
         existingProfile.role === "TENANT" &&
         existingProfile.owner_id === ownerId &&
-        existingProfile.tenants?.status === "INVITED"
+        selectCurrentTenancy(existingProfile.tenants)?.status === "INVITED"
       ) {
         logger.info(`Existing INVITED tenant found for ${normalizedEmail}; converting invite to resend.`);
         return this.resendInvitation(normalizedEmail, { id: ownerId, role: "OWNER" }, {
@@ -316,12 +317,12 @@ export class InvitationService {
         email: true,
         name: true,
         tenants: {
-          select: { status: true },
+          select: { id: true, status: true, created_at: true },
         },
       },
     });
 
-    if (!profile || profile.tenants?.status !== "INVITED") {
+    if (!profile || selectCurrentTenancy(profile.tenants)?.status !== "INVITED") {
       throw new Error("INVALID: Activation link expired or already used");
     }
 
@@ -374,18 +375,19 @@ export class InvitationService {
       where: { email: normalizedEmail },
       include: { tenants: true },
     });
-    if (!profile || !profile.tenants) {
+    const currentTenancy: any = selectCurrentTenancy(profile?.tenants);
+    if (!profile || !currentTenancy) {
       logger.warn(`Resend failed: User not found for email ${normalizedEmail}`);
       throw new Error("NOT_FOUND: User not found");
     }
-    const tenantDetails = profile.tenants;
+    const tenantDetails = currentTenancy;
 
     if (actor?.role === "OWNER" && profile.owner_id !== actor.id) {
       logger.warn(`Owner ${actor.id} attempted resend for foreign tenant ${normalizedEmail}`);
       throw new Error("FORBIDDEN: You can only resend invitations for your own tenants");
     }
 
-    if (profile.tenants.status !== "INVITED") {
+    if (currentTenancy.status !== "INVITED") {
       logger.warn(`Resend failed: Tenant ${normalizedEmail} is not in INVITED state.`);
       throw new Error("BAD_REQUEST: Tenant is already active or left");
     }

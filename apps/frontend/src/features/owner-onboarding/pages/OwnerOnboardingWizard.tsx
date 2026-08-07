@@ -1,7 +1,8 @@
 import type { CSSProperties } from 'react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Save, Check, ArrowLeft, ArrowRight } from 'lucide-react';
+import { generationPromptFor, type GenerationPrompt } from '../generationGate';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useOwnerOnboardingState, type OwnerOnboardingData } from '../hooks/useOwnerOnboardingState';
@@ -82,6 +83,8 @@ export function OwnerOnboardingWizard() {
   }, []);
   const s = useOwnerOnboardingState(initialData);
   const submission = useOnboardingSubmission(s, leadToken);
+
+  const [pendingSkip, setPendingSkip] = useState<GenerationPrompt | null>(null);
 
   const isWelcome = s.screenId === 'welcome';
   const isSuccess = s.screenId === 'success';
@@ -168,6 +171,38 @@ export function OwnerOnboardingWizard() {
         {/* BODY */}
         <div className="mx-auto flex w-full max-w-6xl flex-1 items-center px-4 py-9 sm:px-7.5">
           <div key={s.screenId} className="w-full max-w-[540px]" style={{ animation: 'stayoScreenIn .45s cubic-bezier(.2,.8,.2,1) both' }}>
+            {/* Nothing here is lost on reload — say so, and offer the way out.
+                A silent restore is disorienting: the owner sees answers they
+                do not remember giving on this visit. */}
+            {s.draftRestored && !isSuccess && (
+              <div className="mb-5 flex items-start gap-3 rounded-[14px] border border-border bg-card/80 p-3.5">
+                <span className="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full bg-success/10 text-success">
+                  <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-bold text-foreground">Picking up where you left off</p>
+                  <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
+                    We kept everything you had already filled in.
+                  </p>
+                </div>
+                <div className="flex flex-none flex-col items-end gap-1">
+                  <button
+                    type="button"
+                    onClick={s.dismissDraftBanner}
+                    className="text-[12px] font-bold text-muted-foreground hover:text-foreground"
+                  >
+                    Got it
+                  </button>
+                  <button
+                    type="button"
+                    onClick={s.startOver}
+                    className="text-[12px] font-semibold text-muted-foreground underline hover:text-destructive"
+                  >
+                    Start over
+                  </button>
+                </div>
+              </div>
+            )}
             {s.screenId === 'welcome' && <WelcomeStep />}
             {s.screenId === 'account' && (
               <AccountStep
@@ -179,7 +214,7 @@ export function OwnerOnboardingWizard() {
                 setConfirmPassword={submission.setConfirmPassword}
               />
             )}
-            {s.screenId === 'kyc' && <KycStep />}
+            {s.screenId === 'kyc' && <KycStep kyc={s.kyc} setKyc={s.setKyc} />}
             {s.screenId === 'create' && <CreateStep data={s.data} setD={s.setD} />}
             {s.screenId === 'location' && <LocationStep data={s.data} setD={s.setD} />}
             {s.screenId === 'details' && <DetailsStep data={s.data} setD={s.setD} />}
@@ -230,6 +265,19 @@ export function OwnerOnboardingWizard() {
                     return;
                   }
 
+                  // Generating floors/rooms/beds is optional, but walking past
+                  // it silently is how an owner finishes onboarding having
+                  // laid out nothing. Ask once, then respect the answer.
+                  const prompt = generationPromptFor(s.screenId, {
+                    floorsGen: s.floorsGen,
+                    roomsGen: s.roomsGen,
+                    bedsGen: s.bedsGen,
+                  });
+                  if (prompt) {
+                    setPendingSkip(prompt);
+                    return;
+                  }
+
                   if (s.screenId === 'account') return submission.submitAccount();
                   if (s.screenId === 'publish') return submission.submitPublish();
                   return s.next();
@@ -251,6 +299,40 @@ export function OwnerOnboardingWizard() {
       </div>
 
       {/* OTP SHEET */}
+      {/* Generation confirm — floors/rooms/beds only. Generating stays
+          optional, so this asks rather than blocks, and says the work can be
+          done later so the dialog is guidance and not an obstacle. */}
+      <BottomSheet
+        open={pendingSkip !== null}
+        onOpenChange={(next) => !next && setPendingSkip(null)}
+        title={pendingSkip?.title ?? ''}
+      >
+        {pendingSkip && (
+          <div className="px-5 pb-6">
+            <p className="text-[14px] leading-relaxed text-muted-foreground">{pendingSkip.body}</p>
+            <div className="mt-5 flex flex-col gap-2.5">
+              <button
+                type="button"
+                onClick={() => setPendingSkip(null)}
+                className="rounded-xl bg-primary px-5 py-3 font-display text-[15px] font-bold text-primary-foreground"
+              >
+                {pendingSkip.confirmLabel}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingSkip(null);
+                  s.next();
+                }}
+                className="rounded-xl border-[1.5px] border-border px-5 py-3 font-display text-[15px] font-bold text-foreground/80"
+              >
+                {pendingSkip.skipLabel}
+              </button>
+            </div>
+          </div>
+        )}
+      </BottomSheet>
+
       <BottomSheet
         open={s.otpOpen}
         onOpenChange={s.setOtpOpen}

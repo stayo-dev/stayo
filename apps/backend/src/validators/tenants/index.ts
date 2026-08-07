@@ -92,7 +92,6 @@ export const InvitationSchema = z.object({
   room_id: z.string().uuid(),
   monthly_rent: optionalNumber(),
   advance_amount: optionalNumber(),
-  minimum_deposit_threshold: optionalNumber(),
   maintenance_amount: optionalNumber(),
   joining_date: z.string().optional(),            // ISO date string, defaults to today
   maintenance_type: z.enum(["MONTHLY", "ONE_TIME", "NONE"]).optional(), // defaults to hostel billing policy
@@ -108,7 +107,6 @@ export const InvitationUpdateSchema = z.object({
   room_id: z.string().uuid(),
   monthly_rent: optionalNumber(),
   advance_amount: optionalNumber(),
-  minimum_deposit_threshold: optionalNumber(),
   maintenance_amount: optionalNumber(),
   joining_date: z.string().optional(),
   maintenance_type: z.enum(["MONTHLY", "ONE_TIME", "NONE"]).optional(),

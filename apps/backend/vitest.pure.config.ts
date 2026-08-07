@@ -38,6 +38,9 @@ export default defineConfig({
       'tests/food-meal-swap.test.ts',
       'tests/platform-lead-templates.test.ts',
       'tests/platform-lead-stage-mapper.test.ts',
+      'tests/owner-document-review.test.ts',
+      'tests/tenancy-eligibility-rules.test.ts',
+      'tests/active-tenancy-selection.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),

@@ -1185,7 +1185,7 @@ export class AdmissionsService {
         prisma.visitorLead.count({ where: { ...where, status: { in: ["INTERESTED", "ROOM_VISITED", "DECISION_PENDING", "READY_TO_JOIN", "INVITED", "JOINED"] } } }),
       ]);
 
-      // Compute the new unified onboarding funnel metrics from the single source of truth (tenants table + reservation computed states)
+      // Onboarding funnel counts, straight from the tenants table.
       const funnelTenants = await prisma.tenants.findMany({
         where: {
           owner_id: ownerId,
@@ -1195,96 +1195,21 @@ export class AdmissionsService {
         select: {
           id: true,
           status: true,
-          security_deposit: true,
-          maintenance_charge: true,
-          maintenance_type: true,
-          reservation_policy: true,
-          minimum_reservation_deposit: true,
         },
       });
 
-      const funnelTenantIds = funnelTenants.map((t) => t.id);
-
-      const [funnelDepositCredits, funnelMaintenanceObligations] = await Promise.all([
-        prisma.tenant_financial_ledger.groupBy({
-          by: ["tenant_id"],
-          where: {
-            tenant_id: { in: funnelTenantIds },
-            type: "CREDIT",
-            reason: "SECURITY_DEPOSIT_COLLECTED",
-          },
-          _sum: { amount: true },
-        }),
-        prisma.rent_obligations.findMany({
-          where: {
-            tenant_id: { in: funnelTenantIds },
-            obligation_type: "MAINTENANCE",
-            is_superseded: false,
-          },
-          select: {
-            tenant_id: true,
-            payments: {
-              select: { amount_paid: true },
-            },
-          },
-        }),
-      ]);
-
-      const funnelDepositCreditsMap = new Map<string, number>();
-      for (const row of funnelDepositCredits) {
-        funnelDepositCreditsMap.set(row.tenant_id, Number(row._sum.amount || 0));
-      }
-
-      const funnelMaintenancePaidMap = new Map<string, number>();
-      for (const row of funnelMaintenanceObligations) {
-        const payments = row.payments || [];
-        const paid = payments.reduce((sum: number, p: any) => sum + Number(p.amount_paid || 0), 0);
-        funnelMaintenancePaidMap.set(row.tenant_id, (funnelMaintenancePaidMap.get(row.tenant_id) || 0) + paid);
-      }
-
+      // Activating *is* joining now — a tenant gets their room on activation and
+      // pays deposit/maintenance afterwards. The old split of activated tenants
+      // into payment-pending / reserved / moved-in described a gate that no longer
+      // exists, so the funnel ends at "joined".
       let funnelInvited = 0;
-      let funnelActivated = 0;
-      let funnelPaymentPending = 0;
-      let funnelReserved = 0;
-      let funnelMovedIn = 0;
+      let funnelJoined = 0;
 
       for (const t of funnelTenants) {
         if (t.status === "INVITED") {
           funnelInvited++;
         } else if (t.status === "ACTIVE") {
-          funnelActivated++;
-
-          const requiredDeposit = Number(t.security_deposit || 0);
-          const paidDeposit = funnelDepositCreditsMap.get(t.id) || 0;
-          const depositOutstanding = Math.max(0, requiredDeposit - paidDeposit);
-
-          const maintenanceType = String(t.maintenance_type || "MONTHLY").toUpperCase();
-          const requiredMaintenance = maintenanceType === "NONE" ? 0 : Number(t.maintenance_charge || 0);
-          const paidMaintenance = funnelMaintenancePaidMap.get(t.id) || 0;
-          const maintenanceOutstanding = Math.max(0, requiredMaintenance - paidMaintenance);
-
-          const isDepositCleared = depositOutstanding <= 0;
-          const isMaintenanceCleared = maintenanceOutstanding <= 0;
-          const isFinanciallyReady = isDepositCleared && isMaintenanceCleared;
-
-          const reservationPolicy = t.reservation_policy || "FULL_DEPOSIT";
-          const minimumReservationDeposit = Number(t.minimum_reservation_deposit || 0);
-
-          const threshold =
-            reservationPolicy === "PARTIAL_DEPOSIT"
-              ? Math.min(requiredDeposit, minimumReservationDeposit)
-              : requiredDeposit;
-
-          if (isFinanciallyReady) {
-            funnelMovedIn++;
-          } else if (
-            paidDeposit >= threshold &&
-            paidMaintenance >= requiredMaintenance
-          ) {
-            funnelReserved++;
-          } else {
-            funnelPaymentPending++;
-          }
+          funnelJoined++;
         }
       }
 
@@ -1294,17 +1219,15 @@ export class AdmissionsService {
           visitors,
           viewed_rooms: viewedRooms,
           interested,
-          reserved: funnelReserved,
           invited: funnelInvited,
-          joined: funnelMovedIn,
-          activated: funnelActivated,
-          payment_pending: funnelPaymentPending,
-          moved_in: funnelMovedIn,
+          joined: funnelJoined,
+          activated: funnelJoined,
+          moved_in: funnelJoined,
           expectedRevenue,
           realizedRevenue: qrRevenue,
           hasEstimatedRent,
         },
-        conversion_rate: visitors > 0 ? Math.round((funnelMovedIn / visitors) * 1000) / 10 : 0,
+        conversion_rate: visitors > 0 ? Math.round((funnelJoined / visitors) * 1000) / 10 : 0,
 
         // Snapshot (No Real Opportunity, replaced by Potential Revenue)
         snapshot: {

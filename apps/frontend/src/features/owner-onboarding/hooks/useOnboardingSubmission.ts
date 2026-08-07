@@ -4,6 +4,7 @@ import { stayoToast } from '@shared/ui-patterns/Toast';
 import { onboardingApi, type HostelTypeCode } from '../api/onboardingApi';
 import { hostelLeadsApi } from '@features/hostel-leads/api';
 import type { OwnerOnboardingData, OwnerOnboardingStateApi } from './useOwnerOnboardingState';
+import { clearStoredDraft } from '../onboardingDraft';
 
 /** The wizard's display labels → the codes the backend stores. */
 const HOSTEL_TYPE_CODES: Record<OwnerOnboardingData['type'], HostelTypeCode> = {
@@ -177,6 +178,10 @@ export function useOnboardingSubmission(s: OwnerOnboardingStateApi, leadToken?: 
           console.error('[useOnboardingSubmission] lead-complete side effect failed (non-fatal)', err);
         }
       }
+
+      // The hostel exists now, so the saved draft is spent. Leaving it would
+      // offer to "resume" an onboarding that already finished.
+      clearStoredDraft();
 
       s.go(s.step + 1);
     } catch (error) {

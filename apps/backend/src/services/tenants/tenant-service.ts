@@ -25,6 +25,7 @@ import {
   changeManagementFacade,
 } from "../change-management";
 import { ChangeCategory, ChangeApprovalLevel } from "@prisma/client";
+import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
 const logger = getLogger("tenant-service");
 
@@ -120,8 +121,8 @@ export class TenantService {
   }
 
   async getTenantByProfile(profileId: string, requestingUser: { sub: string; role: string }) {
-    const tenant = await tenantRepository.findUnique({
-      where: { profile_id: profileId },
+    const tenant = await tenantRepository.findFirst({
+      where: liveTenancyWhere(profileId),
       select: {
         id: true,
         profile_id: true,
@@ -293,23 +294,11 @@ export class TenantService {
       tenantRepository.count({ where }),
     ]);
 
-    const { reservationStatusService } = await import("./reservation-status-service");
-
     const mappedTenants = await Promise.all(tenants.map(async (s: any) => {
       const tenant = this.withLegacyTenantRelations(s);
       const summary = financialService.getTenantPaymentSummary(tenant.id, tenant.obligations ?? []);
       const firstAllocation = tenant.room_allocations?.[0];
       const firstObligation = (tenant.obligations ?? [])[0];
-
-      // Compute reservation status for INVITED tenants
-      let reservation_status: { status: string; label: string } | null = null;
-      if (tenant.status === "INVITED") {
-        try {
-          reservation_status = await reservationStatusService.getReservationStatus(tenant.id);
-        } catch {
-          reservation_status = { status: "PAYMENT_PENDING", label: "Payment Pending" };
-        }
-      }
 
       // Compute last payment date
       let last_payment_date: string | null = null;
@@ -363,7 +352,6 @@ export class TenantService {
       return {
         ...tenant,
         payment_summary: summary,
-        reservation_status,
         // Denormalized top-level fields consumed by the frontend
         name: tenant.profiles?.name ?? null,
         email: tenant.profiles?.email ?? null,
@@ -387,8 +375,8 @@ export class TenantService {
   }
 
   async updateTenantSelfProfile(profileId: string, data: any, updatedBy: string) {
-    const tenantCheck = await tenantRepository.findUnique({
-      where: { profile_id: profileId },
+    const tenantCheck = await tenantRepository.findFirst({
+      where: liveTenancyWhere(profileId),
       select: { id: true, owner_id: true, hostel_id: true },
     });
 
@@ -612,8 +600,8 @@ export class TenantService {
 
       if (Object.keys(tenantUpdate).length > 0) {
         try {
-          await tx.tenants.update({
-            where: { profile_id: profileId },
+          await tx.tenants.updateMany({
+            where: liveTenancyWhere(profileId),
             data: tenantUpdate,
           });
         } catch (error: any) {
@@ -624,8 +612,8 @@ export class TenantService {
           }
           if (msg.includes("tenants.gender") && Object.prototype.hasOwnProperty.call(tenantUpdate, "gender")) {
             delete tenantUpdate.gender;
-            await tx.tenants.update({
-              where: { profile_id: profileId },
+            await tx.tenants.updateMany({
+              where: liveTenancyWhere(profileId),
               data: tenantUpdate,
             });
           } else {
@@ -634,8 +622,8 @@ export class TenantService {
         }
       }
 
-      const current = await tx.tenants.findUnique({
-        where: { profile_id: profileId },
+      const current = await tx.tenants.findFirst({
+        where: liveTenancyWhere(profileId),
         select: {
           id: true,
           profile_completed: true,
@@ -707,8 +695,13 @@ export class TenantService {
   }
 
   async requestReactivation(profileId: string, requestedBy: string) {
-    const tenant = await tenantRepository.findUnique({
+    // Deliberately NOT `liveTenancyWhere`: reactivation is asked for *by* someone
+    // whose tenancy is no longer live (the ACTIVE check below rejects live ones),
+    // so scoping to live rows would make this permanently unreachable. Most recent
+    // tenancy wins.
+    const tenant = await tenantRepository.findFirst({
       where: { profile_id: profileId },
+      orderBy: { created_at: "desc" },
       include: { profiles: true },
     });
     const legacyTenant = this.withLegacyTenantRelations(tenant);

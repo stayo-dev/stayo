@@ -23,8 +23,6 @@ export type HostelPolicy = {
       enabled: boolean;
       default_amount: number;
       refundable: boolean;
-      reservation_policy?: string;
-      minimum_reservation_deposit?: number;
       calculation_mode: 'FLAT' | 'MONTHS_OF_RENT';
       deposit_months: number;
     };
@@ -331,8 +329,6 @@ export function normalizeHostelPolicy(hostel: any): HostelPolicy {
         enabled: bool(deposit.enabled ?? config.advance_enabled, false),
         default_amount: nonNegative(deposit.default_amount ?? billingDefaults.advance_deposit ?? config.advance_amount_default, 0, "Default advance deposit", 1000000),
         refundable: bool(deposit.refundable ?? config.advance_refundable, true),
-        reservation_policy: String(deposit.reservation_policy ?? config.reservation_policy ?? "FULL_DEPOSIT"),
-        minimum_reservation_deposit: nonNegative(deposit.minimum_reservation_deposit ?? config.minimum_reservation_deposit, 0, "Minimum reservation deposit", 1000000),
         calculation_mode: depositCalculationMode(deposit.calculation_mode ?? config.deposit_calculation_mode),
         deposit_months: nonNegative(deposit.deposit_months ?? config.deposit_months ?? 1, 1, "Default deposit months", 12),
       },
@@ -494,8 +490,6 @@ export function toCompatibilityPreferences(policy: HostelPolicy): Record<string,
     advance_enabled: policy.billing.deposit.enabled,
     advance_amount_default: policy.billing.deposit.default_amount,
     advance_refundable: policy.billing.deposit.refundable,
-    reservation_policy: policy.billing.deposit.reservation_policy ?? "FULL_DEPOSIT",
-    minimum_reservation_deposit: policy.billing.deposit.minimum_reservation_deposit ?? 0,
     deposit_calculation_mode: policy.billing.deposit.calculation_mode,
     deposit_months: policy.billing.deposit.deposit_months,
     maintenance_enabled: policy.billing.maintenance.type !== "NONE",
@@ -511,8 +505,6 @@ export function toCompatibilityPreferences(policy: HostelPolicy): Record<string,
       auto_fill_room_rent: policy.billing.invite_defaults.auto_fill_room_rent,
       allow_override: policy.billing.invite_defaults.allow_override,
       agreement_duration_months: policy.billing.invite_defaults.agreement_duration_months,
-      reservation_policy: policy.billing.deposit.reservation_policy ?? "FULL_DEPOSIT",
-      minimum_reservation_deposit: policy.billing.deposit.minimum_reservation_deposit ?? 0,
     },
     allow_partial_payments: policy.billing.partial_payments.enabled,
     min_payment_amount: policy.billing.partial_payments.minimum_amount,
@@ -556,8 +548,6 @@ export function compatibilityPreferencesToPolicyPatch(data: Record<string, any>)
   if (data.advance_enabled !== undefined) depositPatch.enabled = data.advance_enabled;
   if (data.advance_amount_default !== undefined) depositPatch.default_amount = data.advance_amount_default;
   if (data.advance_refundable !== undefined) depositPatch.refundable = data.advance_refundable;
-  if (data.reservation_policy !== undefined) depositPatch.reservation_policy = data.reservation_policy;
-  if (data.minimum_reservation_deposit !== undefined) depositPatch.minimum_reservation_deposit = data.minimum_reservation_deposit;
   if (data.deposit_calculation_mode !== undefined) depositPatch.calculation_mode = data.deposit_calculation_mode;
   if (data.deposit_months !== undefined) depositPatch.deposit_months = data.deposit_months;
 
@@ -749,11 +739,6 @@ export function validateHostelPolicyForWrite(policy: HostelPolicy) {
     throw new Error("VALIDATION: calculation_mode must be FLAT or MONTHS_OF_RENT");
   }
   boundedNumber(policy.billing.deposit.deposit_months, 1, 1, 12, "Default deposit months");
-  const rp = policy.billing.deposit.reservation_policy;
-  if (rp && rp !== "FULL_DEPOSIT" && rp !== "PARTIAL_DEPOSIT") {
-    throw new Error("VALIDATION: reservation_policy must be FULL_DEPOSIT or PARTIAL_DEPOSIT");
-  }
-  nonNegative(policy.billing.deposit.minimum_reservation_deposit ?? 0, 0, "Minimum reservation deposit", 1000000);
   nonNegative(policy.billing.maintenance.amount, 0, "Maintenance amount", 50000);
   nonNegative(policy.billing.partial_payments.minimum_amount, 0, "Minimum payment amount", 1000000);
   nonNegative(policy.billing.partial_payments.minimum_percentage, 0, "Minimum payment percentage", 100);

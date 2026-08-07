@@ -10,6 +10,16 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-07 — Owner onboarding: persistence, guidance, verification, location
+- **Draft persistence.** The wizard held every answer in `useState`, so closing the tab across eight steps threw it all away. It now auto-saves to localStorage and restores with a banner and a Start over escape. Passwords are excluded by an explicit field allowlist, asserted by a test. See [[Features]].
+- **Password guidance.** Replaces a single length check with a live criteria checklist and strength meter. A 20+ character passphrase counts as strong on length alone.
+- **Deposit.** Asks whether one is taken, then months-of-rent or a flat amount, echoing the resolved rupee figure. Monthly rent moved above it, since months has nothing to multiply otherwise.
+- **Room generation.** Floors/rooms/beds now confirm before advancing without generating — previously Continue walked straight past, so an owner could finish having laid out nothing.
+- **Location.** Address autocomplete behind a swappable `PlacesProvider`, stubbed until a Google Maps key exists. The stub reports `isReal:false` and returns no coordinates. See [[Decisions]].
+- **Owner documents.** Aadhaar and PAN are both required to upload; approval gates going live, not wizard progress. Adds the admin review queue at `/admin/documents` and `owner_documents.review_note` — uploads had been landing since ADR-038 with no surface to review them, so nothing could ever leave PENDING. See [[APIs]], [[Database]].
+- **Mobile.** Onboarding tiles stack below `sm`; at 390px a long label collided with its input.
+
+
 ### 2026-08-07 — Lead capture: qualify first, Google last
 - Landing-page owner CTA no longer opens Google. It opens a three-question flow (hostel name, owner name, phone + OTP) that **saves the lead at the phone step**, then offers Google purely as optional email enrichment via the new `POST /api/leads/track/[token]/link-email`. Previously Google gated everything, so anyone unwilling to hand over an identity on a first visit was lost entirely. See [[Features]], [[APIs]].
 - Scroll-depth enquiry prompt: removed the 7-day localStorage cooldown outright (an invisible stored timestamp made the feature look broken to everyone testing it), restyled to the marketing theme, and fixed two bugs that meant it **could never appear at all** — see [[Bugs]].
