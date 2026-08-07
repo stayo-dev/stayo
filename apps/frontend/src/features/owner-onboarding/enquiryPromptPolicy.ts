@@ -69,9 +69,10 @@ export function explainEnquiryPromptSuppression(input: EnquiryPromptInput): stri
     return 'suppressed: already shown once on this page view — reload to see it again';
   }
   if (input.scrollFraction < ENQUIRY_PROMPT_SCROLL_THRESHOLD) {
-    return `waiting: scrolled ${(input.scrollFraction * 100).toFixed(0)}% of ${(
-      ENQUIRY_PROMPT_SCROLL_THRESHOLD * 100
-    ).toFixed(0)}% needed`;
+    // No percentage in the text: the caller de-duplicates log lines by this
+    // string, and a live figure made every scroll tick a distinct message —
+    // which flooded the console instead of explaining anything.
+    return `waiting: not scrolled past ${(ENQUIRY_PROMPT_SCROLL_THRESHOLD * 100).toFixed(0)}% of the page yet`;
   }
   return null;
 }

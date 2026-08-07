@@ -35,7 +35,7 @@ key finding: the goal is reachable without weakening anything.
 | # | Decision | Rationale |
 |---|---|---|
 | D1 | The lead row is written **at the phone step**, before Google | Preserves the existing anti-spam gate. A lead with no phone is not actionable — the admin's whole workflow (call, WhatsApp, approve → send activation link) needs one, so a phone-less "lead" would be noise in the console. |
-| D2 | Ask hostel name, city, bed count, **pain point**, and **current tooling** | The first three fill `hostel_name`/`city`/`bed_count`, which already exist and are never collected today. The last two are new qualification signal. |
+| D2 | Ask **three** questions only — hostel name, owner name, phone | Reversed mid-implementation. The first draft also asked city, bed count, pain point and current tooling: useful to sales, but seven screens is a wall, and every extra screen is another place to abandon. Only the fields an admin cannot act without were kept. The `pain_point`/`current_tooling` columns were already created and applied, and are left in place, nullable and unpopulated, rather than dropped from a production table — the same state `city`/`bed_count` were already in. |
 | D3 | Google is offered **after** the lead is saved, as enrichment, and is skippable | The screen must make clear the enquiry is already in — skipping must not read as failure. |
 | D4 | Google enrichment attaches to the lead via its **`tracking_token`** | The token is already a bearer secret delivered to this same person, and it avoids inventing a second identifier. Survives the OAuth redirect via `sessionStorage`. |
 | D5 | `google_email` stays **client-asserted**, as today | Consistent with the existing flow; it is a contact detail, not a credential. Tightening it is a separate decision, not a regression introduced here. |
@@ -44,22 +44,19 @@ key finding: the goal is reachable without weakening anything.
 
 ```
 Landing CTA / scroll prompt
-  └─► Conversation (one question per screen, back button, progress dots)
-        1. What's your hostel called?        → hostel_name
-        2. Which city?                       → city
-        3. Roughly how many beds?            → bed_count      (tap choice)
-        4. Biggest headache right now?       → pain_point     (tap choice, NEW)
-        5. How do you manage it today?       → current_tooling(tap choice, NEW)
-        6. Your name                         → name
-        7. Phone + OTP  ──────────────────►  LEAD SAVED (google_email = null)
-        8. "Connect Google so we can email you too"  ── skip ──► done, still a lead
+  └─► Conversation (one question per screen, back button, progress bar)
+        1. What's your hostel called?       → hostel_name
+        2. And your name?                   → name
+        3. Best number to reach you on?     → phone
+             └─ OTP  ─────────────────────► LEAD SAVED (google_email = null)
+        4. "Add my email with Google"  ── skip ──► done, still a lead
              └─ Supabase OAuth → /lead-signup/callback
                   → reads pending tracking_token from sessionStorage
                   → POST /api/leads/track/:token/link-email  { google_email }
 ```
 
-Steps 3-5 are tap-to-choose, not free text — they keep the flow conversational and
-give the admin comparable values rather than prose.
+The hostel comes first because it is the easiest, most flattering thing to answer;
+the phone comes last so an early exit costs the visitor nothing.
 
 ## 5. Schema
 
@@ -81,7 +78,7 @@ backfill needed.
 
 | Route | Change |
 |---|---|
-| `POST /api/leads/self-serve` | Accepts `pain_point`, `current_tooling`. Validator widened. Unchanged gate. |
+| `POST /api/leads/self-serve` | Validator widened to accept `pain_point`/`current_tooling`, though the shipped 3-question flow sends neither. Gate unchanged. |
 | `POST /api/leads/track/[token]/link-email` | **NEW**, public, token-gated. Sets `google_email` on that lead only if it is currently null, so a leaked link cannot overwrite a captured address. |
 
 ## 7. Frontend
@@ -100,6 +97,12 @@ backfill needed.
 - A prospect who abandons **before** the phone step is not captured. Accepted under
   D1: such a row would be unreachable by every admin action.
 - `google_email` remains client-asserted (D5).
-- The two new columns are free-form strings, so a reworded option produces a new
-  distinct value — acceptable for qualification copy, not suitable for aggregation
-  without normalising first.
+- `pain_point` and `current_tooling` exist as columns but nothing writes them, since
+  the flow was cut to three questions (D2). They are left in place rather than
+  dropped from a production table; a future qualification pass can populate them
+  without another migration.
+- Verified end to end against the live database on 2026-08-07: three questions →
+  OTP → `POST /leads/self-serve` returned 201 with a tracking token, and
+  `GET /leads/track/:token` returned the correct stage. The test row was deleted
+  afterwards. The Google-enrichment round-trip was **not** exercised — it needs a
+  real Google account.

@@ -27,7 +27,8 @@ export async function POST(req: NextRequest) {
     if (!validated.success) {
       return apiError("Validation error", "VALIDATION_ERROR", 400);
     }
-    const { name, hostel_name, phone, google_email, city, bed_count } = validated.data;
+    const { name, hostel_name, phone, google_email, city, bed_count, pain_point, current_tooling } =
+      validated.data;
 
     const normalizedPhone = normalizeWhatsAppPhone(phone);
     const verification = await resolveSignupPhoneVerification(normalizedPhone, OTP_PURPOSE);
@@ -44,6 +45,8 @@ export async function POST(req: NextRequest) {
         phone_verified: verification.phoneVerified,
         city: city || null,
         bed_count: bed_count ?? null,
+        pain_point: pain_point || null,
+        current_tooling: current_tooling || null,
         status: "NEW",
         tracking_token: crypto.randomBytes(32).toString("hex"),
       },

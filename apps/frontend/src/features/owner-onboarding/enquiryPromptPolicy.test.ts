@@ -89,7 +89,7 @@ describe('explainEnquiryPromptSuppression', () => {
   });
 
   it('reports how far the visitor still has to scroll', () => {
-    expect(explainEnquiryPromptSuppression({ ...base, scrollFraction: 0.1 })).toMatch(/10% of 40%/);
+    expect(explainEnquiryPromptSuppression({ ...base, scrollFraction: 0.1 })).toMatch(/40%/);
   });
 
   it('explains the once-per-page-view rule', () => {

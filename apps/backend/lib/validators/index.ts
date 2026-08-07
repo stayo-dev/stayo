@@ -56,6 +56,15 @@ export const LeadSelfServeSchema = z.object({
   google_email: z.string().trim().email().optional(),
   city: z.string().trim().optional(),
   bed_count: z.number().int().positive().optional(),
+  // Qualification answers from the conversational capture flow. Capped rather
+  // than enumerated: the option lists are marketing copy and get reworded, but
+  // the column should never absorb an essay from a crafted request.
+  pain_point: z.string().trim().max(120).optional(),
+  current_tooling: z.string().trim().max(120).optional(),
+});
+
+export const LeadLinkEmailSchema = z.object({
+  google_email: z.string().trim().email().max(255),
 });
 
 export const ForgotPasswordSchema = z.object({

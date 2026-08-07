@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Check, LayoutGrid, Menu, X } from 'lucide-react';
 import { LoginModal, type LoginModalUser } from '@shared/ui-patterns/LoginModal';
-import { GoogleSignInModal } from '@shared/ui-patterns/GoogleSignInModal';
 import { HeroShowcase } from './components/HeroShowcase';
 import { MarketingFooter } from './components/MarketingFooter';
 import { TrishulMark } from '@shared/ui-patterns/TrishulMark';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { OwnerEnquiryPrompt } from '@features/owner-onboarding/components/OwnerEnquiryPrompt';
+import { HostelLeadModal } from '@features/owner-onboarding/components/HostelLeadModal';
 import { readScrollTop, subscribeToScroll } from '@shared/lib/scroll';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 
@@ -63,7 +63,7 @@ export function LandingPage() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(location.pathname === '/login');
-  const [googleAuthOpen, setGoogleAuthOpen] = useState(false);
+  const [leadModalOpen, setLeadModalOpen] = useState(false);
 
   // `window.scrollY` is always 0 on this app and a scroll listener on `window`
   // never fires — `<body>` is the scroll container, because theme.css sets
@@ -86,23 +86,26 @@ export function LandingPage() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Owner entry point (Get Started / Manage My Hostel / Book a demo — all one
-  // flow now): real Google sign-in (Supabase, ADR-031), then — on the
-  // dedicated `/lead-signup/callback` page it redirects to — a real popup
-  // collects hostel/owner/phone + a phone OTP, ending in a "we'll be in
-  // touch" message — a human reviews the lead before any real account
-  // exists. The real onboarding wizard (real signup/OTP/hostel creation) is
-  // reached separately, via an activation link sent after admin approval
-  // (see ActivationLinkPage) — NOT directly from this landing-page CTA.
+  // Owner entry point (Get Started / Manage My Hostel / Book a demo / the
+  // scroll prompt — all one flow). Opens a short qualification conversation
+  // (hostel, city, beds, pain point, tooling, name, phone + OTP) which saves
+  // the lead at the phone step, then offers Google purely as optional email
+  // enrichment. Google used to come FIRST and gated everything behind it —
+  // anyone unwilling to hand over an identity on a first visit was lost
+  // entirely. A human still reviews the lead before any real account exists;
+  // the onboarding wizard is reached later via an admin-sent activation link,
+  // never directly from this CTA.
   // A returning owner who already has a real, fully-onboarded account (real
-  // session + a real hostel) skips straight to the dashboard instead of
-  // being shown the lead popup again.
+  // session + a real hostel) skips straight to the dashboard.
   const openOwnerAuth = () => {
     if (session.isAuthenticated && session.hostels.length > 0) {
       navigate('/owner/home');
       return;
     }
-    setGoogleAuthOpen(true);
+    // Opens the qualification conversation, NOT Google. Google is offered at
+    // the end, after the lead row already exists, so abandoning it still
+    // leaves us a lead we can act on.
+    setLeadModalOpen(true);
   };
 
   const openLogin = () => setLoginOpen(true);
@@ -150,7 +153,7 @@ export function LandingPage() {
         }}
         onSuccess={handleAuthSuccess}
       />
-      <GoogleSignInModal open={googleAuthOpen} onClose={() => setGoogleAuthOpen(false)} />
+      <HostelLeadModal open={leadModalOpen} onClose={() => setLeadModalOpen(false)} />
       <OwnerEnquiryPrompt
         isOwnerWithHostel={session.isAuthenticated && session.hostels.length > 0}
         onAccept={openOwnerAuth}
