@@ -54,6 +54,25 @@ export const platformAdminService = {
     return unwrap(response);
   },
 
+  getOwnerDocuments: async (status: 'PENDING' | 'VERIFIED' | 'REJECTED' = 'PENDING') => {
+    const response = await api.get('/platform-admin/owner-documents', { params: { status } });
+    return unwrap(response).documents as Array<{
+      id: string;
+      doc_type: 'AADHAAR' | 'PAN' | 'PHOTO';
+      file_url: string;
+      mime_type: string;
+      status: string;
+      uploaded_at: string;
+      reviewed_at: string | null;
+      review_note: string | null;
+      profile: { id: string; name: string; phone: string | null; email: string | null };
+    }>;
+  },
+  reviewOwnerDocument: async (id: string, decision: 'VERIFIED' | 'REJECTED', note?: string) => {
+    const response = await api.post(`/platform-admin/owner-documents/${id}/review`, { decision, note });
+    return unwrap(response);
+  },
+
   getPlans: async () => {
     const response = await api.get('/platform-admin/plans');
     return unwrap(response).plans as any[];

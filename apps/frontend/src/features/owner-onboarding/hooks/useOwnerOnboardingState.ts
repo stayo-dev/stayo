@@ -145,7 +145,7 @@ export function useOwnerOnboardingState(initialData?: Partial<OwnerOnboardingDat
   const back = () => go(step - 1);
 
   /** Why the current step can't be left yet, or null when it's complete. */
-  const currentStepError = () => validateOnboardingStep(screenId, data);
+  const currentStepError = () => validateOnboardingStep(screenId, data, kyc);
 
   const next = () => {
     if (screenId === 'account') {

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { LayoutGrid, Building2, UserPlus, IndianRupee, MoreHorizontal, Search, Bell } from 'lucide-react';
+import { LayoutGrid, Building2, UserPlus, FileCheck, IndianRupee, MoreHorizontal, Search, Bell } from 'lucide-react';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
 import { useAdminSession } from '@features/admin-session/useAdminSession';
@@ -13,13 +13,14 @@ import { platformAdminService } from '@features/platform-admin/api';
  * sidebar + a top bar (page title/subtitle, search, notifications, avatar —
  * `.sc-topbar`, added 2026-07-27, was missing entirely before). Below 900px
  * the mockup switches to a floating bottom-nav pill (`.sc-bottom-nav`) driven
- * off the same 5 tabs as the sidebar — both built from `ADMIN_TABS` below so
+ * off the same tabs as the sidebar — both built from `ADMIN_TABS` below so
  * there's one source of truth for the tab list.
  */
 const ADMIN_TABS = [
   { to: '/admin', label: 'Dashboard', icon: LayoutGrid, end: true },
   { to: '/admin/hostels', label: 'Hostels', icon: Building2 },
   { to: '/admin/leads', label: 'Leads', icon: UserPlus },
+  { to: '/admin/documents', label: 'Documents', icon: FileCheck },
   { to: '/admin/revenue', label: 'Revenue', icon: IndianRupee },
   { to: '/admin/more', label: 'More', icon: MoreHorizontal },
 ];
@@ -28,6 +29,7 @@ const PAGE_HEADERS: Record<string, { title: string; subtitle: string }> = {
   '/admin': { title: 'Dashboard', subtitle: 'How Stayo is doing today' },
   '/admin/hostels': { title: 'Hostels', subtitle: 'Every hostel on the platform' },
   '/admin/leads': { title: 'Leads', subtitle: 'Prospective hostel owners' },
+  '/admin/documents': { title: 'Owner documents', subtitle: 'Verify Aadhaar and PAN before a hostel goes live' },
   '/admin/revenue': { title: 'Revenue', subtitle: 'Subscriptions and platform billing' },
   '/admin/more': { title: 'More', subtitle: 'Settings, support & broadcast' },
   '/admin/settings': { title: 'Settings', subtitle: 'Configure the admin console' },
