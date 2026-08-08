@@ -57,7 +57,7 @@ describe("Supabase session resolution: no auto-provisioning", () => {
     expect(sessionModule).toMatch(/no\s+account\s+found/i);
   });
 
-  // ADR-047 opened Google sign-in to tenants, so the old blanket
+  // ADR-054 opened Google sign-in to tenants, so the old blanket
   // TENANT_GOOGLE_NOT_ALLOWED rejection is gone on purpose. What must NOT be
   // lost with it is the activation gate: an INVITED tenancy cannot reach a
   // session through Google any more than it can through /api/auth/login.

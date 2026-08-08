@@ -24,18 +24,28 @@ import { describeSupabaseAuthConfig } from "@/lib/config/supabase-auth-config";
  * frontend's `VITE_SUPABASE_URL` and the mismatch is immediate. The ref is
  * public (it ships in the bundle) and no key material is exposed.
  */
-async function checkJwksReachable(issuer: string | null): Promise<boolean | null> {
-  if (!issuer) return null;
+/**
+ * Reports a status rather than a boolean, because the failure modes need
+ * different actions and a single `false` conflates them: `no_keys` means the
+ * project is reachable but publishes no signing key (wrong project, or
+ * asymmetric keys never enabled), while `unreachable` means this runtime
+ * could not complete the request at all. Both break token verification, but
+ * only one of them is fixed by editing an environment variable.
+ */
+type JwksStatus = "ok" | "no_keys" | "unreachable" | "not_configured";
+
+async function checkJwks(issuer: string | null): Promise<JwksStatus> {
+  if (!issuer) return "not_configured";
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2500);
+    const timeout = setTimeout(() => controller.abort(), 3500);
     const response = await fetch(`${issuer}/.well-known/jwks.json`, { signal: controller.signal });
     clearTimeout(timeout);
-    if (!response.ok) return false;
+    if (!response.ok) return "no_keys";
     const body = (await response.json()) as { keys?: unknown[] };
-    return Array.isArray(body.keys) && body.keys.length > 0;
+    return Array.isArray(body.keys) && body.keys.length > 0 ? "ok" : "no_keys";
   } catch {
-    return false;
+    return "unreachable";
   }
 }
 
@@ -56,7 +66,7 @@ export async function GET() {
       auth: {
         supabase: {
           ...supabaseAuth,
-          jwks_reachable: await checkJwksReachable(supabaseAuth.expected_issuer),
+          jwks: await checkJwks(supabaseAuth.expected_issuer),
         },
       },
     });

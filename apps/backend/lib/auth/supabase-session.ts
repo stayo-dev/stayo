@@ -35,7 +35,7 @@ const REJECT_NO_ACCOUNT =
 const REJECT_DISABLED = "Account is disabled";
 /**
  * Mirrors the gate `authService.login()` applies to an INVITED tenancy. Google
- * sign-in must not become a way around it: ADR-047 opened Google to tenants,
+ * sign-in must not become a way around it: ADR-054 opened Google to tenants,
  * and an invited-but-not-activated tenant reaching a dashboard would skip
  * activation entirely.
  */
