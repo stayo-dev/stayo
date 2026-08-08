@@ -28,6 +28,21 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### Owner "Sign out" never ended the session — it reset mock onboarding state and redirected, leaving the account fully logged in
+
+- **Status:** fixed
+- **Found:** 2026-08-08, reported by the user: "i was logined then i loged out, so i thought of login again but i wanted to try the reset pass — when i clicked forgot pass and then back to login it directly opend the owner dashboard"
+- **Severity:** high — an owner who signed out on a shared or public computer remained authenticated, and the next person reaching `/login` was dropped into the dashboard.
+- **Area:** [[Frontend]] (`features/owner-more/hooks/useMoreNav.ts`)
+- **Symptom:** signing out *looked* correct — you land on the marketing page, exactly as a real sign-out does. Only returning to `/login` revealed it: the owner dashboard opened immediately, with no credentials.
+- **Root cause:** the owner's sign-out control (both `MoreSettingsPage` and `MoreConfigurationHubPage`) was wired to `useMoreNav().signOut`, which called `journey.reset()` — clearing **mock onboarding state** — and `navigate('/')`. Nothing else. No `POST /api/auth/logout`, so no Postgres revocation and no Redis deny-list entry; no `supabase.auth.signOut()`, so the Supabase session survived in storage. The hook's own doc comment asserted the opposite ("clears the session ... a real action, not a placeholder"), which is presumably why it went unquestioned. Tenant, admin and the legacy portal were never affected — they call `useAuth().logout()`.
+- **Why it then re-entered the dashboard:** the app mounts **four separate `AuthProvider` instances** (public shell, auth shell, protected shell, owner-journey routes), each with its own `user` state. Navigating to `/login` mounts the public shell's provider fresh; it hydrates from `GET /auth/me`, which still succeeded because the token was never revoked, and `AuthContext`'s redirect effect (`AuthContext.tsx:163-173`) sends an authenticated owner from `/login` to `/owner/home`.
+- **Fix:** `useMoreNav().signOut` now awaits `useAuth().logout()` — server revocation, Supabase sign-out, query-cache and storage teardown, redirect. `journey.reset()` is kept for the in-memory mock state; its persisted copy lives in `sessionStorage`, which `logout()` already wipes.
+- **Regression guard:** `apps/frontend/src/context/logoutIntegrity.test.ts` enumerates every file rendering a sign-out control and asserts each reaches `logout`, following the file's own imports one level (so a page delegating to a hook still counts). It failed on exactly the two owner pages before the fix and passes on all six after. Rendering isn't available in this suite (node environment, no jsdom), so it asserts on source text — the same style as `apps/backend/tests/auth-hardening-security.test.ts`.
+- **Note for future work:** `features/owner-session/useOwnerSession.ts` also delegates to a self-described "dev/integration-only" legacy adapter. It supplies `ownerId`/`hostels` to owner data hooks rather than gating routes, so it is not an auth bypass — but it is the same class of scaffolding-left-in-production and deserves its own review.
+- **Related:** [[Changelog]], [[Frontend]]
+
+
 ### Every Supabase session rejected with "Invalid session" — backend and frontend were on different Supabase projects, and nothing in the system could say so
 
 - **Status:** fixed in code (diagnosability + honest errors); **the production environment variable itself is an operator action** — see below
