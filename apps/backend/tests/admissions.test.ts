@@ -63,7 +63,7 @@ describe('AdmissionsService analytical boundaries', () => {
     expect(service.updateStatus).toBeDefined();
   });
 
-  it('computes unified onboarding funnel metrics based on computed reservation state', async () => {
+  it('counts the onboarding funnel as invited then joined', async () => {
     // 1. Setup mock data for active rooms, visitor leads, activities, etc. to prevent null pointer exceptions
     mockPrisma.rooms.findMany.mockResolvedValue([
       { id: 'room-1', room_no: '101', capacity: 2, base_rent: 8000, room_allocations: [], hostels: { name: 'Hostel A' } },
@@ -77,66 +77,14 @@ describe('AdmissionsService analytical boundaries', () => {
     mockPrisma.visitorLead.groupBy.mockResolvedValue([]);
     mockPrisma.visitorLead.findFirst.mockResolvedValue(null);
 
-    // 2. Setup mock tenants for onboarding funnel calculation:
-    // Tenant 1: status = INVITED
-    // Tenant 2: status = ACTIVE (PAST DEPOSIT cleared, maintenance cleared -> MOVED_IN)
-    // Tenant 3: status = ACTIVE (PARTIAL_DEPOSIT policy, deposit paid >= min threshold, maintenance paid -> RESERVED)
-    // Tenant 4: status = ACTIVE (deposit unpaid -> PAYMENT_PENDING)
+    // Deposits are deliberately absent from these fixtures: the funnel no longer
+    // splits activated tenants by what they have paid, because joining is not
+    // gated on payment. An ACTIVE tenant has joined, full stop.
     mockPrisma.tenants.findMany.mockResolvedValue([
-      {
-        id: 't-1',
-        status: 'INVITED',
-        security_deposit: 10000,
-        maintenance_charge: 1000,
-        maintenance_type: 'ONE_TIME',
-        reservation_policy: 'FULL_DEPOSIT',
-        minimum_reservation_deposit: 0,
-      },
-      {
-        id: 't-2',
-        status: 'ACTIVE',
-        security_deposit: 10000,
-        maintenance_charge: 1000,
-        maintenance_type: 'ONE_TIME',
-        reservation_policy: 'FULL_DEPOSIT',
-        minimum_reservation_deposit: 0,
-      },
-      {
-        id: 't-3',
-        status: 'ACTIVE',
-        security_deposit: 10000,
-        maintenance_charge: 1000,
-        maintenance_type: 'ONE_TIME',
-        reservation_policy: 'PARTIAL_DEPOSIT',
-        minimum_reservation_deposit: 5000,
-      },
-      {
-        id: 't-4',
-        status: 'ACTIVE',
-        security_deposit: 10000,
-        maintenance_charge: 1000,
-        maintenance_type: 'ONE_TIME',
-        reservation_policy: 'FULL_DEPOSIT',
-        minimum_reservation_deposit: 0,
-      },
-    ]);
-
-    // Setup ledger advance deposits group by:
-    // t-2: paid 10000
-    // t-3: paid 5000
-    // t-4: paid 0
-    mockPrisma.tenant_financial_ledger.groupBy.mockResolvedValue([
-      { tenant_id: 't-2', _sum: { amount: 10000 } },
-      { tenant_id: 't-3', _sum: { amount: 5000 } },
-    ]);
-
-    // Setup rent obligations/maintenance payments:
-    // t-2: maintenance paid 1000
-    // t-3: maintenance paid 1000
-    // t-4: maintenance paid 0
-    mockPrisma.rent_obligations.findMany.mockResolvedValue([
-      { tenant_id: 't-2', obligation_type: 'MAINTENANCE', payments: [{ amount_paid: 1000 }] },
-      { tenant_id: 't-3', obligation_type: 'MAINTENANCE', payments: [{ amount_paid: 1000 }] },
+      { id: 't-1', status: 'INVITED' },
+      { id: 't-2', status: 'ACTIVE' },
+      { id: 't-3', status: 'ACTIVE' },
+      { id: 't-4', status: 'ACTIVE' },
     ]);
 
     const service = new AdmissionsService();
@@ -144,10 +92,8 @@ describe('AdmissionsService analytical boundaries', () => {
 
     expect(result.funnel).toBeDefined();
     expect(result.funnel.invited).toBe(1); // t-1
-    expect(result.funnel.activated).toBe(3); // t-2, t-3, t-4 (status = ACTIVE)
-    expect(result.funnel.payment_pending).toBe(1); // t-4
-    expect(result.funnel.reserved).toBe(1); // t-3
-    expect(result.funnel.moved_in).toBe(1); // t-2
-    expect(result.funnel.joined).toBe(1); // alias for moved_in
+    expect(result.funnel.joined).toBe(3); // t-2, t-3, t-4
+    expect(result.funnel.activated).toBe(3); // activating is joining
+    expect(result.funnel.moved_in).toBe(3);
   });
 });

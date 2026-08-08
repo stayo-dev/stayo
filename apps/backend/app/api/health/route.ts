@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 
 import { apiError, apiResponse } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { describeSupabaseAuthConfig } from "@/lib/config/supabase-auth-config";
 
 
 /**
@@ -13,10 +14,46 @@ import { prisma } from "@/lib/db";
  * backend was silently running code from an untraceable source, and there
  * was no fast way to confirm what commit was actually live short of
  * inferring it from Postgres error messages one at a time.
+ *
+ * The `auth` block exists for the same reason, added 2026-08-08 after a
+ * production outage where the backend verified tokens against a different
+ * Supabase project than the frontend minted them with. Every login and
+ * every Google sign-in failed with a flat "Invalid session", and the only
+ * way to find it was downloading the deployed frontend bundle to read its
+ * project ref. Compare `auth.supabase.project_ref` here against the
+ * frontend's `VITE_SUPABASE_URL` and the mismatch is immediate. The ref is
+ * public (it ships in the bundle) and no key material is exposed.
  */
+/**
+ * Reports a status rather than a boolean, because the failure modes need
+ * different actions and a single `false` conflates them: `no_keys` means the
+ * project is reachable but publishes no signing key (wrong project, or
+ * asymmetric keys never enabled), while `unreachable` means this runtime
+ * could not complete the request at all. Both break token verification, but
+ * only one of them is fixed by editing an environment variable.
+ */
+type JwksStatus = "ok" | "no_keys" | "unreachable" | "not_configured";
+
+async function checkJwks(issuer: string | null): Promise<JwksStatus> {
+  if (!issuer) return "not_configured";
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+    const response = await fetch(`${issuer}/.well-known/jwks.json`, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!response.ok) return "no_keys";
+    const body = (await response.json()) as { keys?: unknown[] };
+    return Array.isArray(body.keys) && body.keys.length > 0 ? "ok" : "no_keys";
+  } catch {
+    return "unreachable";
+  }
+}
+
 export async function GET() {
   try {
     await prisma.$queryRaw`SELECT 1`;
+
+    const supabaseAuth = describeSupabaseAuthConfig(process.env.SUPABASE_URL);
 
     return apiResponse({
       status: "ok",
@@ -25,6 +62,12 @@ export async function GET() {
         commit: process.env.VERCEL_GIT_COMMIT_SHA || null,
         branch: process.env.VERCEL_GIT_COMMIT_REF || null,
         vercel_env: process.env.VERCEL_ENV || null,
+      },
+      auth: {
+        supabase: {
+          ...supabaseAuth,
+          jwks: await checkJwks(supabaseAuth.expected_issuer),
+        },
       },
     });
   } catch (error: any) {

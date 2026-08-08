@@ -11,11 +11,18 @@ import api from '@lib/api-client';
  *
  * Deliberately makes its own `GET /auth/me` call rather than only waiting
  * on AuthContext's `user`/`loading` — this is the one place that needs the
- * *specific* rejection reason (no account for this email / tenant accounts
- * can't use Google / account disabled) to show the right message, which is
- * the UI half of the "Google sign-in never auto-provisions an account"
- * invariant. AuthContext's own listener also fires in parallel and will
- * hydrate `user` normally for the rest of the app once this succeeds.
+ * *specific* rejection reason (no account for this email / account disabled
+ * / tenancy not activated) to show the right message, which is the UI half
+ * of the "Google sign-in never auto-provisions an account" invariant.
+ * AuthContext's own listener also fires in parallel and will hydrate `user`
+ * normally for the rest of the app once this succeeds.
+ *
+ * `/auth/me` answers 403 with a specific code for those cases and 401 for a
+ * token the server could not verify at all. The distinction matters to the
+ * person reading the screen: 403 is "your account can't sign in this way"
+ * and is actionable by them; 401 here means the deployment itself is
+ * misconfigured (it happened — see docs/obsidian/Bugs.md) and no amount of
+ * retrying will help, so this stops telling them to try again.
  */
 export function AuthCallbackPage() {
   const navigate = useNavigate();
@@ -40,7 +47,18 @@ export function AuthCallbackPage() {
       } catch (err: any) {
         if (cancelled) return;
         await supabase.auth.signOut();
-        setError(err?.response?.data?.error?.message || 'Google sign-in failed. Please try again.');
+        const status = err?.response?.status;
+        const serverMessage = err?.response?.data?.error?.message;
+        if (status === 403 && serverMessage) {
+          setError(serverMessage);
+        } else if (status === 401) {
+          setError(
+            'Google verified you, but this Stayo deployment could not accept the session. ' +
+              'That is a server configuration problem — please report it rather than retrying.',
+          );
+        } else {
+          setError(serverMessage || 'Google sign-in failed. Please try again.');
+        }
       }
     };
 

@@ -57,9 +57,17 @@ describe("Supabase session resolution: no auto-provisioning", () => {
     expect(sessionModule).toMatch(/no\s+account\s+found/i);
   });
 
-  it("resolveSupabaseSession rejects TENANT accounts from Google OAuth", () => {
-    expect(sessionModule).toContain("TENANT_GOOGLE_NOT_ALLOWED");
-    expect(sessionModule).toMatch(/Google sign-in is not available for tenant/i);
+  // ADR-054 opened Google sign-in to tenants, so the old blanket
+  // TENANT_GOOGLE_NOT_ALLOWED rejection is gone on purpose. What must NOT be
+  // lost with it is the activation gate: an INVITED tenancy cannot reach a
+  // session through Google any more than it can through /api/auth/login.
+  it("resolveSupabaseSession no longer blocks tenants outright", () => {
+    expect(sessionModule).not.toContain("TENANT_GOOGLE_NOT_ALLOWED");
+  });
+
+  it("resolveSupabaseSession still gates a tenancy that is not activated", () => {
+    expect(sessionModule).toContain("TENANCY_NOT_ACTIVATED");
+    expect(sessionModule).toContain('liveTenancy?.status === "INVITED"');
   });
 
   it("resolveSupabaseSession only links on a verified email for Google", () => {
@@ -72,7 +80,7 @@ describe("Supabase session resolution: no auto-provisioning", () => {
     expect(sessionModule).toContain("AUTH_GOOGLE_REJECTED");
     expect(sessionModule).toContain("NO_EXISTING_ACCOUNT");
     expect(sessionModule).toContain("ACCOUNT_DISABLED");
-    expect(sessionModule).toContain("TENANT_GOOGLE_NOT_ALLOWED");
+    expect(sessionModule).toContain("TENANCY_NOT_ACTIVATED");
   });
 
   it("resolveSupabaseSession logs successful identity links", () => {

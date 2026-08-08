@@ -18,6 +18,36 @@ export const SendPhoneOtpSchema = z.object({
   purpose: z.string().optional().default(PHONE_VERIFICATION_PURPOSE),
 });
 
+/** Phone leg of password reset — no `purpose` field: the route pins it to PASSWORD_RESET so a caller can never redirect a reset code at another purpose. */
+export const ForgotPasswordByPhoneSchema = z.object({
+  phone: z.string().min(8).max(20).transform((value, ctx) => {
+    try {
+      return normalizeWhatsAppPhone(value);
+    } catch {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Invalid phone number",
+      });
+      return z.NEVER;
+    }
+  }),
+});
+
+export const VerifyResetOtpSchema = z.object({
+  phone: z.string().min(8).max(20).transform((value, ctx) => {
+    try {
+      return normalizeWhatsAppPhone(value);
+    } catch {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Invalid phone number",
+      });
+      return z.NEVER;
+    }
+  }),
+  otp: z.string().regex(/^\d{6}$/, "OTP must be a 6 digit code"),
+});
+
 export const VerifyPhoneOtpSchema = z.object({
   phone: z.string().min(8).max(20).transform((value, ctx) => {
     try {

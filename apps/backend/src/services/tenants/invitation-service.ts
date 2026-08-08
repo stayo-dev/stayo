@@ -11,6 +11,7 @@ import { frontendUrl } from "../../../lib/config/domains";
 import { roomCapacityService } from "../../../lib/services/room-capacity-service";
 import { tenantInvitationLifecycleService } from "./tenant-invitation-lifecycle-service";
 import { selectCurrentTenancy } from "@/lib/tenancy/active-tenancy";
+import { tenancyEligibilityService } from "./tenancy-eligibility-service";
 
 const logger = getLogger("invitation-service");
 
@@ -62,8 +63,13 @@ export class InvitationService {
           name, phone, room_id, monthly_rent: data.monthly_rent,
         });
       }
-      logger.warn(`Attempted to invite existing email: ${normalizedEmail}`);
-      throw new Error("ALREADY_EXISTS: User with this email already exists");
+
+      // Having an account is not a reason to refuse — a marketplace signup, or
+      // anyone who has moved out and settled, is invitable. Only a live tenancy or
+      // an unsettled previous stay blocks. This used to throw a blanket
+      // "User with this email already exists", which told the owner nothing and
+      // permanently locked out every former tenant.
+      await tenancyEligibilityService.assertCanStartNewTenancy(existingProfile.id, ownerId);
     }
 
     // 2. Room and Owner check

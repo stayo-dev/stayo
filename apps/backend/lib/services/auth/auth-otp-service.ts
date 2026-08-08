@@ -572,7 +572,14 @@ export class AuthOtpService {
   }
 }
 
-function profilePhoneCandidates(normalizedPhone: string) {
+/**
+ * Every shape the same number may have been stored in on `profiles.phone`
+ * (bare, `+`-prefixed, 10-digit local, `+91`-prefixed). Exported so the
+ * password-reset lookup matches numbers exactly the way OTP verification
+ * does — two different notions of "same phone number" would mean a reset
+ * that sends a code but then cannot find the account.
+ */
+export function profilePhoneCandidates(normalizedPhone: string) {
   const local10 = normalizedPhone.startsWith("91") && normalizedPhone.length === 12
     ? normalizedPhone.slice(2)
     : normalizedPhone;
