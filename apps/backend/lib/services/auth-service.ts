@@ -29,7 +29,11 @@ type CompletePasswordResetInput = {
 
 const GENERIC_RESET_RESPONSE = {
   success: true,
-  message: "If an account exists for this email, Supabase will send password reset instructions.",
+  // Says "Stayo", not "Supabase": reset mail is sent by this service through
+  // Resend, not by Supabase's own recovery flow. The route overrides this
+  // string anyway, but a wrong one here invites the next reader to assume
+  // Supabase owns a flow it does not.
+  message: "If an account exists for this email, Stayo will send password reset instructions.",
 };
 
 /**
@@ -538,6 +542,10 @@ export class AuthService {
       profile_id: profile.id,
       role: profile.role,
       email: normalizedEmail,
+      // Which proof the holder actually presented — an emailed link or a
+      // verified WhatsApp code. Both are legitimate, but an audit trail that
+      // cannot tell them apart cannot answer "how was this account reset?".
+      channel: resetPayload.channel,
       ip_address: input.meta?.ipAddress || null,
       user_agent: input.meta?.userAgent || null,
     });

@@ -15,7 +15,7 @@ import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { authApi } from '@lib/authApi';
 
 /**
- * Password recovery, by email link or WhatsApp code (ADR-048).
+ * Password recovery, by email link or WhatsApp code (ADR-055).
  *
  * Two things worth knowing before editing:
  *
