@@ -7,9 +7,10 @@ import { useHostelBedSummary } from './useHostelBedSummary';
 import { tallyConfigRows } from '../config/configRows';
 import { deriveFinanceSections, deriveHostelSections, type ConfigSource } from '../config/deriveConfigSections';
 import { countWorkflows, deriveAutomationSections } from '../config/deriveAutomationSections';
+import { useAgreementTemplates } from './useAgreements';
 
 export interface ConfigModule {
-  key: 'hostel' | 'finance' | 'automation';
+  key: 'hostel' | 'finance' | 'automation' | 'agreements';
   glyph: string;
   title: string;
   desc: string;
@@ -78,6 +79,9 @@ export function useConfigurationHub() {
     channels: policyQuery.data?.policy?.reminders?.channels ?? null,
   }).flatMap((section) => section.rows);
   const automation = countWorkflows(automationWorkflows);
+  const { templates: agreementList } = useAgreementTemplates();
+  const agreementTemplates = agreementList.length;
+  const agreementDrafts = agreementList.filter((t) => t.status !== 'PUBLISHED').length;
   const hostelTally = tallyConfigRows(deriveHostelSections(source).flatMap((s) => s.rows));
   const financeTally = tallyConfigRows(deriveFinanceSections(source).flatMap((s) => s.rows));
 
@@ -108,6 +112,18 @@ export function useConfigurationHub() {
       tint: '#FBF1DE',
       iconColor: '#B8792B',
       route: '/owner/more/configuration/finance',
+    },
+    {
+      key: 'agreements',
+      glyph: '§',
+      title: 'Agreements',
+      desc: 'Templates, clauses & signing',
+      status: agreementDrafts > 0 ? 'warn' : 'ok',
+      statusLabel: agreementDrafts > 0 ? `${agreementDrafts} draft${agreementDrafts === 1 ? '' : 's'}` : 'Configured',
+      meta: `${agreementTemplates} template${agreementTemplates === 1 ? '' : 's'}`,
+      tint: '#F3E7DD',
+      iconColor: '#A45D44',
+      route: '/owner/more/configuration/agreements',
     },
     {
       key: 'automation',

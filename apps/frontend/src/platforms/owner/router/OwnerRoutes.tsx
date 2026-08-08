@@ -58,6 +58,18 @@ const MoreConfigFinancePage = lazy(() =>
 const MoreConfigAutomationPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigAutomationPage').then((m) => ({ default: m.MoreConfigAutomationPage })),
 );
+const MoreConfigAgreementsPage = lazy(() =>
+  import('@features/owner-more/pages/MoreConfigAgreementsPage').then((m) => ({ default: m.MoreConfigAgreementsPage })),
+);
+const MoreConfigAgreementTemplatesPage = lazy(() =>
+  import('@features/owner-more/pages/MoreConfigAgreementTemplatesPage').then((m) => ({ default: m.MoreConfigAgreementTemplatesPage })),
+);
+const MoreConfigAgreementTemplatePage = lazy(() =>
+  import('@features/owner-more/pages/MoreConfigAgreementTemplatePage').then((m) => ({ default: m.MoreConfigAgreementTemplatePage })),
+);
+const MoreConfigAgreementClausesPage = lazy(() =>
+  import('@features/owner-more/pages/MoreConfigAgreementClausesPage').then((m) => ({ default: m.MoreConfigAgreementClausesPage })),
+);
 const AgreementQueuePage = lazy(() =>
   import('@features/owner-workqueue/AgreementQueuePage').then((m) => ({ default: m.AgreementQueuePage })),
 );
@@ -157,6 +169,10 @@ export function OwnerRoutes() {
         <Route path="/owner/more/configuration/hostel/tenant-defaults" element={<Navigate to="/owner/more/configuration/finance/billing-policy" replace />} />
         <Route path="/owner/more/configuration/finance" element={<MoreConfigFinancePage />} />
         <Route path="/owner/more/configuration/automation" element={<MoreConfigAutomationPage />} />
+        <Route path="/owner/more/configuration/agreements" element={<MoreConfigAgreementsPage />} />
+        <Route path="/owner/more/configuration/agreements/templates" element={<MoreConfigAgreementTemplatesPage />} />
+        <Route path="/owner/more/configuration/agreements/template" element={<MoreConfigAgreementTemplatePage />} />
+        <Route path="/owner/more/configuration/agreements/clauses" element={<MoreConfigAgreementClausesPage />} />
         <Route path="/owner/more/configuration/finance/late-fees" element={<Navigate to="/owner/more/configuration/finance/billing-policy" replace />} />
         <Route path="/owner/more/configuration/finance/billing-policy" element={<MoreConfigBillingPolicyPage />} />
         <Route path="/owner/more/configuration/finance/payment-gateway" element={<MoreConfigPaymentGatewayPage />} />
