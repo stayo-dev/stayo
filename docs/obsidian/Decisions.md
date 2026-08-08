@@ -846,6 +846,32 @@ That reading was wrong, and measurement is what showed it. Two production endpoi
 - **Consequences:** `generateResetToken` gains `{ expiresIn, channel }` and `verifyResetToken` returns the channel; a token with no channel claim reads as `email`, because links minted before this change are still in real inboxes. `profilePhoneCandidates` is exported from `auth-otp-service` so reset lookups match phone-number variants the same way OTP verification does — two notions of "same number" would mean sending a code and then failing to find the account.
 - **Related:** [[APIs]], [[Features]], [[Business-Rules]], [[Bugs]], `docs/superpowers/specs/2026-08-08-auth-recovery-design.md`
 
+## ADR-057: A hostel can waive the tenant agreement ceremony, but never the `Agreement` record
+
+- **Date:** 2026-08-09
+- **Status:** accepted
+- **Context:** owners asked to run hostels without a signed tenant agreement — common for small PGs operating on trust. No flag existed: `activation-workflow-service.assertTransition` unconditionally required `rules_accepted` and `agreement_signed` before `PROFILE` and `ACTIVATE`, and a second, independent gate in the finalise path required `rules_accepted` again.
+- **The trap:** "turn off agreements" reads like "stop creating agreements", and that would break billing. The `Agreement` row is the **financial contract** — `contract_rent` is what `payments/rent-change-service.ts` mutates, what obligations are generated against, and what renewals and move-out settlement key to. Suppressing it would not skip paperwork, it would detach rent from its contract.
+- **Decision:** `tenant_rules.agreement_required` (default **true**) governs the **signing ceremony only** — the `RULES` and `AGREEMENT` onboarding steps and the guards enforcing them. `Agreement` rows are still created exactly as before. The distinction is stated in the owner-facing screen too ("Rent, dues, deposits and move-out settlement are unaffected"), because an owner reading "not required" could otherwise reasonably assume the opposite.
+- **Defaults to required, and an absent flag reads as required.** Every hostel predating this field keeps demanding a signature; a missing flag must never silently relax a legal step. `isAgreementRequired` treats `undefined` and `null` as `true`, and this is tested directly.
+- **Skipped steps are reported as skipped, not as complete.** `rules_accepted` / `agreement_signed` keep reporting what genuinely happened; progression and `progress_percent` are computed over `requiredActivationSteps()` instead. Marking them `true` would have been a one-line fix that falsified the audit trail and made a tenant who signed nothing indistinguishable from one who did. Progress becomes 2-of-3 rather than 2-of-5.
+- **`agreementRequired` is passed into `computeState`, not read from `tenant.hostels`.** Only one of the four call sites includes the hostel relation (`liveTenancyInclude` does not), so an implicit read would have fallen back to "required" on three paths — the setting would appear broken on some flows and work on others. A narrow `resolveAgreementRequired(hostelId)` select gives every call site the same answer.
+- **Both gates were updated.** The finalise path at the end of `activation-workflow-service` re-checks `rules_accepted` independently of `assertTransition`; changing only the state machine would have left agreement-free hostels unable to activate at all.
+- **Consequences:** the tenant activation UI needed no flow change — it is driven by `current_step`, which now skips the ceremony — but `ActivationProgress` had a hardcoded four-stage bar, so the "Agreement" pip is dropped when the requirement is off (defaulting to shown, so un-updated callers are unaffected). Attempting `RULES`/`AGREEMENT` on a hostel that does not require them is now itself an invalid transition rather than silently allowed.
+- **Related:** [[Features]], [[Business-Rules]], [[Database]], [[Frontend]], [[Changelog]]
+
+## ADR-058: The security deposit stores a calculation *mode*, and the owner sees the resulting rupees before saving
+
+- **Date:** 2026-08-09
+- **Status:** accepted
+- **Context:** `billing_defaults.deposit_calculation_mode` (`FLAT` | `MONTHS_OF_RENT`) has existed in the backend all along — `resolveTenantInviteDefaults` resolves `MONTHS_OF_RENT` as `deposit_months × rent`. No UI ever wrote it. The Deposit screen wrote `deposit_months` **alone**, so an owner setting "2 months" changed nothing: the stored mode stayed `FLAT` and invites kept using `default_amount`. A silently inert setting.
+- **Decision:** the Deposit screen owns the mode explicitly. `buildBillingPatch` writes `calculation_mode` together with whichever amount that mode uses, and only that one — so flipping modes preserves the other value via the backend's deep merge.
+- **"Off" is stored as a flat ₹0, because `resolveTenantInviteDefaults` never reads `deposit.enabled`.** It resolves the amount from the mode regardless. Leaving `MONTHS_OF_RENT` stored while switching the deposit off would keep collecting months × rent from every new tenant. Flat ₹0 is the one shape that resolves to nothing. This costs a saved flat amount when switching off from months mode — accepted, because "off" collecting money is not a trade worth making.
+- **The consequence is shown, not just the setting.** "2 months" means a different number per room, and the arithmetic only happens later at invite time. The screen states it up front from the hostel's real rents: an exact figure when every room charges the same, a range when they differ, and nothing invented when no room has a rent. The rents come from the grouped-rooms payload the Configuration hub already fetches, so the preview costs no extra request.
+- **It also surfaces a trap rather than hiding it:** `rent = auto_fill_room_rent ? room.base_rent : 0`, so `MONTHS_OF_RENT` with auto-fill off resolves to **₹0**. The preview says so explicitly instead of showing a confident ₹16,000 that will not be collected.
+- **Consequences:** the Finance row now describes the deposit by mode (`describeDeposit`), and a flat ₹0 deposit that is switched on reads as `attention` rather than the `configured` it previously claimed. `refundable` also becomes editable — it was stored, read by move-out settlement, and unreachable in the UI.
+- **Related:** [[Features]], [[Business-Rules]], [[Changelog]]
+
 ## See also
 - [[Changelog]] for the chronological record of what shipped
 - [[Architecture]] for the system these decisions govern

@@ -256,6 +256,30 @@ Refusals: `TENANT_HAS_ACTIVE_TENANCY` and `PREVIOUS_TENANCY_NOT_SETTLED`, both H
 
 Changed by [[Decisions#ADR-052|ADR-052]]. The room is assigned at activation, unconditionally. Security deposit and maintenance are ordinary dues — created at invite time, `PENDING`, payable after move-in, chased like rent. Nothing in the product is withheld from a tenant who owes them: not the room, not the dashboard, not move-out.
 
+## How the security deposit amount is decided
+
+Set by [[Decisions#ADR-058|ADR-058]]. `hostels.preferences_config.billing_defaults.deposit_calculation_mode` picks between two resolutions, applied by `hostel-billing-preferences-service.resolveTenantInviteDefaults` at **invite** time, per room:
+
+| Mode | Amount collected |
+|---|---|
+| `FLAT` (default) | `security_deposit` — the same figure for every tenant |
+| `MONTHS_OF_RENT` | `deposit_months × rent`, where `rent = auto_fill_room_rent ? room.base_rent : 0` |
+
+Three consequences that are easy to get wrong:
+
+- **`deposit.enabled` is not consulted by the resolver.** It affects display only. "No deposit" therefore has to be stored as `FLAT` with `default_amount: 0`; storing `MONTHS_OF_RENT` alongside `enabled: false` keeps collecting months × rent.
+- **`MONTHS_OF_RENT` with `auto_fill_room_rent` off resolves to ₹0**, because the rent term is zero. The owner-facing Deposit screen warns about exactly this combination.
+- **`deposit_months` is clamped 1–12**, `default_amount` to 0–1,000,000, and the nested `billing.deposit` and flat `billing_defaults` representations are kept in sync by `policyToStorage` spreading `toCompatibilityPreferences(policy)` — the nested policy is what the UI writes, the flat block is what the resolver reads.
+
+## Whether a tenant must sign an agreement
+
+Set by [[Decisions#ADR-057|ADR-057]]. `tenant_rules.agreement_required` (default **true**; an absent or null flag reads as **true**) decides whether the `RULES` and `AGREEMENT` onboarding steps apply.
+
+- **It governs the signing ceremony only.** `Agreement` rows are created either way, because `contract_rent` on that record is what rent changes, obligation generation, renewals and move-out settlement key to.
+- **When off**, onboarding is `ACCOUNT → PROFILE → ACTIVATE`; attempting `RULES` or `AGREEMENT` is itself an invalid transition; and both activation gates (`assertTransition` **and** the independent re-check in the finalise path) stop requiring `rules_accepted`/`agreement_signed`.
+- **Skipped steps report as not done, not as complete.** `progress_percent` is computed over the steps this hostel requires, so a skipped-agreement tenant reads 2-of-3 rather than being credited with signatures they never gave.
+- **Turning it off is not retroactive** — agreements already signed remain, and remain credited.
+
 The `PAYMENT_PENDING` / `RESERVED` / `MOVE_IN_READY` vocabulary is **deleted**. The tenant lifecycle is `INVITED` → `ACTIVE` (shown to owners as "Joined") → vacating → `FORMER_TENANT`.
 
 Occupancy is a question about beds, not money: a room is occupied by every active allocation held by an `ACTIVE` tenant. It previously excluded anyone still `PAYMENT_PENDING`, which left a moved-in tenant's bed looking vacant and invitable.

@@ -173,3 +173,22 @@
     animation: none;
   }
 }
+
+/*
+ * Configuration Save bar (features/owner-more/components/SaveBar).
+ * Only mounted once the form differs from what was loaded, so it has to read as
+ * arriving in response to the edit — a bar that fades in ambiguously looks like
+ * it was always there, which is the confusion this replaced.
+ */
+@keyframes stayoSaveBarIn {
+  0% { opacity: 0; transform: translateY(100%); }
+  100% { opacity: 1; transform: none; }
+}
+.stayo-save-bar {
+  animation: stayoSaveBarIn 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .stayo-save-bar {
+    animation: none;
+  }
+}

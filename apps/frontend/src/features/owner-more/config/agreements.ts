@@ -154,12 +154,17 @@ export interface AgreementsSource {
   rules: RulesContent | null;
   /** Whether the owner's signature stamp is set — agreements cannot be issued without it. */
   signatureConfigured: boolean;
+  /**
+   * `policy.tenant_rules.agreement_required`. Defaults to true, matching the
+   * backend: an absent flag means a hostel that predates the setting.
+   */
+  agreementRequired: boolean;
 }
 
 const AGREEMENTS_BASE = '/owner/more/configuration/agreements';
 
 export function deriveAgreementSections(source: AgreementsSource): ConfigSection[] {
-  const { templateCount, draftCount, rules, signatureConfigured } = source;
+  const { templateCount, draftCount, rules, signatureConfigured, agreementRequired } = source;
   const clauses = countClauses(rules);
   const variables = usedVariables(rules);
   const highlightCount = (rules?.categories ?? []).reduce(
@@ -180,6 +185,22 @@ export function deriveAgreementSections(source: AgreementsSource): ConfigSection
   };
 
   return [
+    {
+      label: 'Requirement',
+      rows: [
+        {
+          key: 'agreement-required',
+          title: 'Tenant agreement',
+          detail: agreementRequired
+            ? 'Tenants accept rules and sign before activation'
+            : 'Tenants are activated without signing',
+          // Not requiring one is a deliberate stance, not an unfinished setup —
+          // plenty of PGs run on trust and a phone call.
+          state: agreementRequired ? 'configured' : 'off',
+          route: `${AGREEMENTS_BASE}/requirement`,
+        },
+      ],
+    },
     {
       label: 'Documents',
       rows: [

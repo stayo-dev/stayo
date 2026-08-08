@@ -4,6 +4,30 @@ import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useHostelPolicy, useUpdateHostelIdentity, useUploadHostelLogo, useRemoveHostelLogo } from '@features/settings/settingsHooks';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
+import { SaveBar } from '../components/SaveBar';
+import { hasChanges } from '../config/dirtyState';
+
+interface IdentityFields {
+  name: string;
+  phone: string;
+  address: string;
+  city: string;
+  state: string;
+  pincode: string;
+  upiId: string;
+  gstNumber: string;
+}
+
+const EMPTY_IDENTITY: IdentityFields = {
+  name: '',
+  phone: '',
+  address: '',
+  city: '',
+  state: '',
+  pincode: '',
+  upiId: '',
+  gstNumber: '',
+};
 
 const card = 'overflow-hidden rounded-[20px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]';
 const sectionLabel = 'pl-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground';
@@ -32,29 +56,35 @@ export function MoreHostelIdentityPage() {
   const removeLogoMutation = useRemoveHostelLogo(hostelId ?? '');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
-  const [city, setCity] = useState('');
-  const [state, setState] = useState('');
-  const [pincode, setPincode] = useState('');
-  const [upiId, setUpiId] = useState('');
-  const [gstNumber, setGstNumber] = useState('');
+  /** One object rather than eight useStates, so the baseline comparison that
+   *  decides whether Save exists is a single exact check. */
+  const [fields, setFields] = useState<IdentityFields>(EMPTY_IDENTITY);
+  const [baseline, setBaseline] = useState<IdentityFields | null>(null);
 
   const hostel = policyQuery.data?.hostel;
 
   useEffect(() => {
     if (hostel) {
-      setName(hostel.name ?? '');
-      setPhone(hostel.phone ?? '');
-      setAddress(hostel.address ?? '');
-      setCity(hostel.city ?? '');
-      setState(hostel.state ?? '');
-      setPincode(hostel.pincode ?? '');
-      setUpiId(hostel.upi_id ?? '');
-      setGstNumber(hostel.gst_number ?? '');
+      const loaded: IdentityFields = {
+        name: hostel.name ?? '',
+        phone: hostel.phone ?? '',
+        address: hostel.address ?? '',
+        city: hostel.city ?? '',
+        state: hostel.state ?? '',
+        pincode: hostel.pincode ?? '',
+        upiId: hostel.upi_id ?? '',
+        gstNumber: hostel.gst_number ?? '',
+      };
+      setFields(loaded);
+      setBaseline(loaded);
     }
   }, [hostel]);
+
+  const set = <K extends keyof IdentityFields>(key: K, value: IdentityFields[K]) =>
+    setFields((prev) => ({ ...prev, [key]: value }));
+
+  const { name, phone, address, city, state, pincode, upiId, gstNumber } = fields;
+  const dirty = hasChanges(baseline, fields);
 
   const save = () => {
     if (!name.trim()) {
@@ -91,7 +121,7 @@ export function MoreHostelIdentityPage() {
   };
 
   return (
-    <div className="flex flex-col gap-5 px-4 pb-28 pt-6 sm:px-6">
+    <div className={`flex flex-col gap-5 px-4 pt-6 sm:px-6 ${dirty ? 'pb-40' : 'pb-24'}`}>
       <MoreScreenHeader backTo="/owner/more/settings" backLabel="Settings" title="Hostel identity" />
 
       {policyQuery.isLoading ? (
@@ -137,29 +167,29 @@ export function MoreHostelIdentityPage() {
             <div className={`${card} flex flex-col gap-3 p-4`}>
               <label className="block">
                 <span className={labelStyle}>Hostel Name *</span>
-                <input value={name} onChange={(e) => setName(e.target.value)} className={inputStyle} />
+                <input value={name} onChange={(e) => set('name', e.target.value)} className={inputStyle} />
               </label>
               <label className="block">
                 <span className={labelStyle}>Phone</span>
-                <input value={phone} onChange={(e) => setPhone(e.target.value)} className={inputStyle} />
+                <input value={phone} onChange={(e) => set('phone', e.target.value)} className={inputStyle} />
               </label>
               <label className="block">
                 <span className={labelStyle}>Address</span>
-                <input value={address} onChange={(e) => setAddress(e.target.value)} className={inputStyle} />
+                <input value={address} onChange={(e) => set('address', e.target.value)} className={inputStyle} />
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
                   <span className={labelStyle}>City</span>
-                  <input value={city} onChange={(e) => setCity(e.target.value)} className={inputStyle} />
+                  <input value={city} onChange={(e) => set('city', e.target.value)} className={inputStyle} />
                 </label>
                 <label className="block">
                   <span className={labelStyle}>State</span>
-                  <input value={state} onChange={(e) => setState(e.target.value)} className={inputStyle} />
+                  <input value={state} onChange={(e) => set('state', e.target.value)} className={inputStyle} />
                 </label>
               </div>
               <label className="block">
                 <span className={labelStyle}>Pincode</span>
-                <input value={pincode} onChange={(e) => setPincode(e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" className={inputStyle} />
+                <input value={pincode} onChange={(e) => set('pincode', e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" className={inputStyle} />
               </label>
             </div>
           </div>
@@ -169,27 +199,25 @@ export function MoreHostelIdentityPage() {
             <div className={`${card} flex flex-col gap-3 p-4`}>
               <label className="block">
                 <span className={labelStyle}>UPI ID</span>
-                <input value={upiId} onChange={(e) => setUpiId(e.target.value)} className={inputStyle} />
+                <input value={upiId} onChange={(e) => set('upiId', e.target.value)} className={inputStyle} />
               </label>
               <label className="block">
                 <span className={labelStyle}>GST Number</span>
-                <input value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} className={inputStyle} />
+                <input value={gstNumber} onChange={(e) => set('gstNumber', e.target.value)} className={inputStyle} />
               </label>
             </div>
           </div>
         </>
       )}
 
-      <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] z-20 border-t border-border bg-background px-4 py-3 sm:mx-auto sm:max-w-[480px] sm:px-6">
-        <button
-          type="button"
-          onClick={save}
-          disabled={updateMutation.isPending || policyQuery.isLoading}
-          className="w-full rounded-xl bg-primary py-3.5 text-center font-display text-sm font-bold text-primary-foreground disabled:opacity-50"
-        >
-          {updateMutation.isPending ? 'Saving…' : 'Save changes'}
-        </button>
-      </div>
+      <SaveBar
+        visible={dirty}
+        pending={updateMutation.isPending}
+        onSave={save}
+        onDiscard={() => baseline && setFields(baseline)}
+        label="Save changes"
+      />
+
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { UNAVAILABLE_LABEL, type ConfigRow } from './configRows';
+import { describeDeposit } from '../billing-policy/depositPolicy';
 
 /**
  * Turns the live hostel policy into the rows the Hostel and Finance screens
@@ -32,7 +33,14 @@ export interface ConfigSource {
        * "Advance payments" as separate rows: the flat legacy `advance_*`
        * preference fields are this object.
        */
-      deposit?: { enabled?: boolean; deposit_months?: number; refundable?: boolean; default_amount?: number };
+      deposit?: {
+        enabled?: boolean;
+        /** FLAT uses `default_amount`; MONTHS_OF_RENT multiplies rent by `deposit_months`. */
+        calculation_mode?: string;
+        deposit_months?: number;
+        refundable?: boolean;
+        default_amount?: number;
+      };
       partial_payments?: { enabled?: boolean; minimum_amount?: number; minimum_percentage?: number };
       invite_defaults?: { agreement_duration_months?: number };
     } | null;
@@ -189,7 +197,13 @@ export function deriveFinanceSections(source: ConfigSource): ConfigSection[] {
   const rentRulesConfigured = Boolean(billing?.auto_rent_day && billing?.due_day !== undefined);
   const deposit = billing?.deposit;
   const partialOn = Boolean(billing?.partial_payments?.enabled);
-  const depositOn = Boolean(deposit?.enabled && deposit?.deposit_months);
+  const depositMode = deposit?.calculation_mode === 'MONTHS_OF_RENT' ? 'MONTHS_OF_RENT' : 'FLAT';
+  // "Configured" depends on the mode: a flat deposit needs an amount, a
+  // months-of-rent deposit needs months. Checking `deposit_months` for both
+  // reported a flat ₹0 deposit as configured.
+  const depositOn = Boolean(
+    deposit?.enabled && (depositMode === 'MONTHS_OF_RENT' ? deposit?.deposit_months : deposit?.default_amount),
+  );
   const gstSet = Boolean(hostel?.gst_number);
 
   return [
@@ -208,10 +222,15 @@ export function deriveFinanceSections(source: ConfigSource): ConfigSection[] {
         {
           key: 'security-deposit',
           title: 'Security deposit',
-          detail: depositOn
-            ? `${plural(deposit!.deposit_months ?? 0, 'month')} · ${deposit!.refundable ? 'Refundable at move-out' : 'Non-refundable'}`
-            : 'Not required',
-          state: depositOn ? 'configured' : 'off',
+          detail: describeDeposit({
+            enabled: depositOn,
+            mode: depositMode,
+            flatAmount: deposit?.default_amount ?? 0,
+            months: deposit?.deposit_months ?? 0,
+            refundable: deposit?.refundable !== false,
+          }),
+          // Switched on but with nothing to collect is a gap, not a stance.
+          state: depositOn ? 'configured' : deposit?.enabled ? 'attention' : 'off',
           route: DEPOSIT_ROUTE,
         },
         {

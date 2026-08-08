@@ -117,6 +117,17 @@ export type HostelPolicy = {
     required_profile_fields: string[];
     invite_expiry_hours: number;
     tenant_segment: string;
+    /**
+     * Whether a tenant must accept and sign the residency agreement before
+     * their account is activated. Defaults to true — the pre-existing
+     * behaviour, and the one that leaves a signed record.
+     *
+     * Turning it off skips the RULES and AGREEMENT onboarding steps
+     * (`activation-workflow-service.assertTransition`). It does **not** stop
+     * `Agreement` rows being created: that record is the financial contract
+     * rent changes, obligations and renewals are keyed to. See ADR-057.
+     */
+    agreement_required: boolean;
   };
 
   room_rules: {
@@ -423,6 +434,10 @@ export function normalizeHostelPolicy(hostel: any): HostelPolicy {
       invite_expiry_hours: boundedNumber(tenantRules.invite_expiry_hours, 48, 1, 720, "Invite expiry hours"),
 
       tenant_segment: String(tenantRules.tenant_segment || "MIXED"),
+      // Defaults to true so every hostel that predates this field keeps
+      // requiring a signed agreement — an absent flag must never silently
+      // relax a legal step.
+      agreement_required: bool(tenantRules.agreement_required, true),
     },
 
     room_rules: {

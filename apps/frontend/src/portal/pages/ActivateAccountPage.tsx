@@ -37,6 +37,8 @@ type ActivationContext = {
     current_step: ActivationStep;
     completed_steps: ActivationStep[];
     blocked_steps: ActivationStep[];
+    /** False when this hostel does not require a signed agreement (ADR-057). */
+    agreement_required?: boolean;
     account_setup_completed: boolean;
     rules_accepted: boolean;
     agreement_signed: boolean;
@@ -1242,6 +1244,7 @@ export function ActivateAccountPage() {
       currentStep={(currentStep || 'ACCOUNT') as ActivationVisualStep}
       completedSteps={new Set(ctx.activation_state?.completed_steps || [])}
       onStepClick={(step) => goToStep(step as ActivationStep)}
+      agreementRequired={ctx.activation_state?.agreement_required !== false}
       error={error}
       onDismissError={() => setError('')}
       aside={

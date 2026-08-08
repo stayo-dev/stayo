@@ -17,6 +17,8 @@
  * Pure and I/O-free, so the isolation property is testable.
  */
 
+import type { DepositMode } from './depositPolicy';
+
 export type BillingSectionKey = 'collection' | 'deposit' | 'agreement' | 'schedule' | 'lateFee';
 
 export type ChargeType = 'FLAT' | 'PERCENTAGE' | 'PER_DAY';
@@ -25,6 +27,11 @@ export interface BillingFormValues {
   allowPartial: boolean;
   minAmount: number;
   minPercentage: number;
+  depositEnabled: boolean;
+  depositMode: DepositMode;
+  /** Rupees. Used when `depositMode` is FLAT. */
+  depositAmount: number;
+  depositRefundable: boolean;
   depositMonths: number;
   agreementMonths: number;
   generationDay: number;
@@ -81,6 +88,43 @@ export const BILLING_SECTIONS: BillingSectionMeta[] = [
   },
 ];
 
+/**
+ * The stored policy, read into form values.
+ *
+ * Shared by the form's initial state *and* the baseline the Save button's
+ * visibility is judged against (config/dirtyState.ts) — they have to be derived
+ * the same way, or a freshly loaded screen would look edited.
+ */
+export function policyToFormValues(billing: any): BillingFormValues {
+  const partial = billing?.partial_payments;
+  const deposit = billing?.deposit;
+  const lateFee = billing?.late_fee;
+  const rule = lateFee?.rules?.[0];
+
+  return {
+    allowPartial: Boolean(partial?.enabled),
+    minAmount: Number(partial?.minimum_amount ?? 0) || 0,
+    minPercentage: Number(partial?.minimum_percentage ?? 0) || 0,
+    depositEnabled: Boolean(deposit?.enabled),
+    // Anything other than the explicit MONTHS_OF_RENT is FLAT, matching
+    // `depositCalculationMode` on the backend.
+    depositMode: deposit?.calculation_mode === 'MONTHS_OF_RENT' ? 'MONTHS_OF_RENT' : 'FLAT',
+    depositAmount: Number(deposit?.default_amount ?? 0) || 0,
+    // Defaults to refundable: that is the backend default, and the safer reading
+    // of an absent flag for money held on a tenant's behalf.
+    depositRefundable: deposit?.refundable !== false,
+    depositMonths: Number(deposit?.deposit_months ?? 1) || 1,
+    agreementMonths: Number(billing?.invite_defaults?.agreement_duration_months ?? 12) || 12,
+    generationDay: Number(billing?.auto_rent_day ?? 1) || 1,
+    dueDay: Number(billing?.due_day ?? 5) || 5,
+    graceDays: Number(billing?.grace_days ?? 0) || 0,
+    lateFeeEnabled: Boolean(lateFee?.enabled),
+    chargeType: (rule?.type as ChargeType) ?? 'FLAT',
+    lateFeeAmount: Number(rule?.amount ?? 0) || 0,
+    maxLateFee: Number(lateFee?.max_amount ?? 0) || 0,
+  };
+}
+
 export function sectionMeta(key: BillingSectionKey): BillingSectionMeta {
   const found = BILLING_SECTIONS.find((section) => section.key === key);
   if (!found) throw new Error(`Unknown billing section: ${key}`);
@@ -110,7 +154,37 @@ export function buildBillingPatch(
   }
 
   if (shown.has('deposit')) {
-    billing.deposit = { deposit_months: values.depositMonths };
+    // Written whole, for the same reason as the late fee, plus one of its own:
+    // `resolveTenantInviteDefaults` never reads `deposit.enabled`. It resolves
+    // FLAT -> security_deposit and MONTHS_OF_RENT -> deposit_months × rent, so
+    // switching the deposit off while leaving MONTHS_OF_RENT stored would keep
+    // collecting months × rent. "Off" therefore has to be expressed as a flat
+    // ₹0 — the one shape that resolves to nothing.
+    //
+    // Only the active mode's amount is written, so flipping between modes
+    // preserves the other value (the backend deep-merges what is omitted).
+    if (!values.depositEnabled) {
+      billing.deposit = {
+        enabled: false,
+        calculation_mode: 'FLAT',
+        default_amount: 0,
+        refundable: values.depositRefundable,
+      };
+    } else if (values.depositMode === 'FLAT') {
+      billing.deposit = {
+        enabled: true,
+        calculation_mode: 'FLAT',
+        default_amount: values.depositAmount,
+        refundable: values.depositRefundable,
+      };
+    } else {
+      billing.deposit = {
+        enabled: true,
+        calculation_mode: 'MONTHS_OF_RENT',
+        deposit_months: values.depositMonths,
+        refundable: values.depositRefundable,
+      };
+    }
   }
 
   if (shown.has('agreement')) {

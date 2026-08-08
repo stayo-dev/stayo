@@ -153,8 +153,8 @@ describe('countClauses', () => {
 });
 
 describe('deriveAgreementSections', () => {
-  const sections = (t = 6, drafts = 3) =>
-    deriveAgreementSections({ templateCount: t, draftCount: drafts, rules, signatureConfigured: false });
+  const sections = (t = 6, drafts = 3, agreementRequired = true) =>
+    deriveAgreementSections({ templateCount: t, draftCount: drafts, rules, signatureConfigured: false, agreementRequired });
 
   const find = (key: string) =>
     sections().flatMap((s) => s.rows).find((r) => r.key === key)!;
@@ -173,9 +173,30 @@ describe('deriveAgreementSections', () => {
       draftCount: 0,
       rules,
       signatureConfigured: true,
+      agreementRequired: true,
     }).flatMap((s) => s.rows);
 
     expect(rows.find((r) => r.key === 'templates')!.state).toBe('configured');
+  });
+
+  it('leads with whether an agreement is required at all', () => {
+    // The first thing an owner decides: some PGs run without signed paperwork.
+    expect(sections()[0].label).toBe('Requirement');
+    expect(sections()[0].rows[0].key).toBe('agreement-required');
+  });
+
+  it('describes a required agreement as part of activation', () => {
+    const row = sections(6, 3, true).flatMap((s) => s.rows).find((r) => r.key === 'agreement-required')!;
+
+    expect(row.state).toBe('configured');
+    expect(row.detail).toContain('sign before activation');
+  });
+
+  it('treats "not required" as a stance rather than an unfinished setup', () => {
+    const row = sections(6, 3, false).flatMap((s) => s.rows).find((r) => r.key === 'agreement-required')!;
+
+    expect(row.state).toBe('off');
+    expect(row.detail).toContain('without signing');
   });
 
   it('reports the real variable count, not the mockup figure', () => {

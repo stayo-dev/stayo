@@ -133,11 +133,56 @@ describe('deriveFinanceSections', () => {
     expect(find(deriveFinanceSections(s), 'late-fees').state).toBe('off');
   });
 
-  it('describes the security deposit from the nested deposit policy', () => {
-    const row = find(deriveFinanceSections(source()), 'security-deposit');
+  it('describes a months-of-rent deposit without inventing an amount', () => {
+    // The row is hostel-wide, so it cannot show rupees here: the amount depends
+    // on each room's rent. The Deposit screen's preview is where the arithmetic
+    // is shown.
+    const s = source();
+    s.policy!.billing!.deposit = {
+      enabled: true,
+      calculation_mode: 'MONTHS_OF_RENT',
+      deposit_months: 2,
+      refundable: true,
+      default_amount: 0,
+    };
+    const row = find(deriveFinanceSections(s), 'security-deposit');
 
-    expect(row.detail).toBe('1 month · Refundable at move-out');
+    expect(row.detail).toBe('2 months of rent · Refundable at move-out');
     expect(row.state).toBe('configured');
+  });
+
+  it('describes a flat deposit with its amount', () => {
+    const s = source();
+    s.policy!.billing!.deposit = {
+      enabled: true,
+      calculation_mode: 'FLAT',
+      default_amount: 10000,
+      refundable: false,
+      deposit_months: 2,
+    };
+    const row = find(deriveFinanceSections(s), 'security-deposit');
+
+    expect(row.detail).toBe('₹10,000 · Non-refundable');
+    expect(row.state).toBe('configured');
+  });
+
+  it('flags a deposit switched on with nothing to collect', () => {
+    // A flat deposit of ₹0 used to read as configured, because the row checked
+    // deposit_months regardless of the mode.
+    const s = source();
+    s.policy!.billing!.deposit = { enabled: true, calculation_mode: 'FLAT', default_amount: 0, deposit_months: 2 };
+    const row = find(deriveFinanceSections(s), 'security-deposit');
+
+    expect(row.state).toBe('attention');
+  });
+
+  it('treats a deposit switched off as off, not as a gap', () => {
+    const s = source();
+    s.policy!.billing!.deposit = { enabled: false, calculation_mode: 'FLAT', default_amount: 0 };
+    const row = find(deriveFinanceSections(s), 'security-deposit');
+
+    expect(row.state).toBe('off');
+    expect(row.detail).toBe('Not required');
   });
 
   it('has no "advance payments" row, since that is the same stored field as the deposit', () => {
