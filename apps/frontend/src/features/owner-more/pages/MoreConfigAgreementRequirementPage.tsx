@@ -37,7 +37,7 @@ const CONSEQUENCES: Record<'on' | 'off', { title: string; points: string[] }> = 
  *
  * Writes `tenant_rules.agreement_required`, which the activation state machine
  * reads to decide whether the RULES and AGREEMENT onboarding steps apply
- * (ADR-057). Deliberately explicit that this governs the *signing ceremony*
+ * (ADR-059). Deliberately explicit that this governs the *signing ceremony*
  * only: the `Agreement` record itself is the financial contract that rent
  * changes, obligations and settlement are keyed to, so it is still created.
  */

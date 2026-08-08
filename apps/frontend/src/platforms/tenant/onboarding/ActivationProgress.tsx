@@ -19,7 +19,7 @@ const ALL_VISUAL_STEPS: VisualStep[] = [
 
 /**
  * Hostels that do not require a signed agreement
- * (`tenant_rules.agreement_required` = false, ADR-057) never reach RULES or
+ * (`tenant_rules.agreement_required` = false, ADR-059) never reach RULES or
  * AGREEMENT, so showing the stage would leave a pip that can never light up.
  */
 const visualSteps = (agreementRequired: boolean): VisualStep[] =>

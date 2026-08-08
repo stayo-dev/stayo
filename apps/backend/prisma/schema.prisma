@@ -296,6 +296,7 @@ model hostels {
   food_menu_items      food_menu_items[]
   food_voting_periods  food_voting_periods[]
   food_schedules       food_schedules[]
+  food_polls           food_polls[]
   hostel_announcements hostel_announcements[]
   hostel_events        hostel_events[]
   tenant_service_requests tenant_service_requests[]
@@ -1409,6 +1410,7 @@ model tenants {
   change_requests          change_requests[]
   renewal_timeline_events  RenewalTimelineEvent[]
   food_votes               food_votes[]
+  food_poll_votes          food_poll_votes[]
   tenant_service_requests  tenant_service_requests[]
 
   @@index([hostel_id])
@@ -2725,6 +2727,83 @@ model food_schedule_meals {
   food_menu_items food_menu_items? @relation(fields: [menu_item_id], references: [id], onDelete: SetNull)
 
   @@unique([schedule_id, day_of_week, meal_type])
+}
+
+// ============================================================
+// Food Polls (V1) — deliberately independent of the
+// food_voting_periods/food_votes system above, which is dormant
+// (decoupled from schedule generation, see ADR-056). An ad-hoc,
+// owner-created, single-instance poll — not a monthly recurring window.
+// See docs/obsidian/Food.md and ADR-057.
+// ============================================================
+
+enum FoodPollType {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  RATING
+  YES_NO
+}
+
+enum FoodPollStatus {
+  OPEN
+  CLOSED
+}
+
+/// One ad-hoc poll, created and published in a single owner action (no
+/// draft state). `RATING`/`YES_NO` polls still use `food_poll_options` —
+/// the frontend resolves their fixed option set ("Yes"/"No", "5 stars"..
+/// "1 star") at creation time, same as every other poll type, so one
+/// options+votes model covers all four types with no nullable branches.
+model food_polls {
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hostel_id        String              @db.Uuid
+  owner_id         String              @db.Uuid
+  title            String
+  poll_type        FoodPollType
+  meal_type        FoodMealType
+  poll_date        DateTime            @db.Date
+  closes_at        DateTime            @db.Timestamptz(6)
+  is_anonymous     Boolean             @default(true)
+  allow_multiple   Boolean             @default(false)
+  status           FoodPollStatus      @default(OPEN)
+  closed_at        DateTime?           @db.Timestamptz(6)
+  created_at       DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime?           @db.Timestamptz(6)
+  hostels          hostels             @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
+  food_poll_options food_poll_options[]
+  food_poll_votes   food_poll_votes[]
+
+  @@index([hostel_id, status])
+}
+
+model food_poll_options {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  poll_id         String            @db.Uuid
+  label           String
+  position        Int
+  created_at      DateTime          @default(now()) @db.Timestamptz(6)
+  food_polls      food_polls        @relation(fields: [poll_id], references: [id], onDelete: Cascade)
+  food_poll_votes food_poll_votes[]
+
+  @@unique([poll_id, position])
+}
+
+/// `allow_multiple = false` polls are enforced in application logic (a vote
+/// replaces any other row for the same poll+tenant), not by this constraint
+/// alone — the constraint's job is only to prevent a duplicate vote on the
+/// same option, same as `food_votes`.
+model food_poll_votes {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  poll_id           String            @db.Uuid
+  option_id         String            @db.Uuid
+  tenant_id         String            @db.Uuid
+  created_at        DateTime          @default(now()) @db.Timestamptz(6)
+  food_polls        food_polls        @relation(fields: [poll_id], references: [id], onDelete: Cascade)
+  food_poll_options food_poll_options @relation(fields: [option_id], references: [id], onDelete: Cascade)
+  tenants           tenants           @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  @@unique([poll_id, tenant_id, option_id])
+  @@index([poll_id])
 }
 
 // Tenant App: Home tab content (V1)

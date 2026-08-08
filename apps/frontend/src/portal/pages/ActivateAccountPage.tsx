@@ -37,7 +37,7 @@ type ActivationContext = {
     current_step: ActivationStep;
     completed_steps: ActivationStep[];
     blocked_steps: ActivationStep[];
-    /** False when this hostel does not require a signed agreement (ADR-057). */
+    /** False when this hostel does not require a signed agreement (ADR-059). */
     agreement_required?: boolean;
     account_setup_completed: boolean;
     rules_accepted: boolean;

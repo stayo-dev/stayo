@@ -125,7 +125,7 @@ export type HostelPolicy = {
      * Turning it off skips the RULES and AGREEMENT onboarding steps
      * (`activation-workflow-service.assertTransition`). It does **not** stop
      * `Agreement` rows being created: that record is the financial contract
-     * rent changes, obligations and renewals are keyed to. See ADR-057.
+     * rent changes, obligations and renewals are keyed to. See ADR-059.
      */
     agreement_required: boolean;
   };

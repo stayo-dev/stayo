@@ -2,7 +2,7 @@
  * Whether a hostel requires its tenants to accept rules and sign a residency
  * agreement before activation — and which onboarding steps follow from that.
  *
- * **Scope of "off" (ADR-057).** This governs the *signing ceremony* only: the
+ * **Scope of "off" (ADR-059).** This governs the *signing ceremony* only: the
  * RULES and AGREEMENT onboarding steps, and the transition guards that enforce
  * them. It deliberately does **not** stop `Agreement` rows being created. That
  * record is the financial contract — `contract_rent` is what rent changes,
