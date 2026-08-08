@@ -10,6 +10,14 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-08 — Configuration hub redesign (slice 1: Hub, Hostel, Finance)
+- **The hub and its Hostel and Finance screens now match the supplied mockups**, with every count derived from live policy rather than the design's example numbers. Rows whose subsystem does not exist render "Not available yet", are inert, and are excluded from every count — so the progress ring never reports on features nobody can use. See [[Features]].
+- **Recent Changes became real.** Nothing recorded configuration changes before this: `recordPolicyChanges()` now writes one `activity_logs` row per changed policy leaf through the existing `ActivityService` (no migration), hooked into the one `PATCH /api/hostels/:id/preferences` chokepoint every domain is written through, and `GET /api/owner/config-changes` reads it back. Labels come from a pure `describeConfigChange()` — "Late fee raised to ₹50", direction-aware, and never interpolating a value it has no phrasing for.
+- **Three bits of fiction removed from production:** the hub header rendered `mockOwnerProfile` from `@shared/mocks`; Advanced's six rows were tappable-looking and inert; and the Finance screen printed `${auto_rent_day}st`, rendering "2st" for rent generated on the 2nd.
+- **Deleted the duplicate `/owner/config/*` scaffold tree** — twelve placeholder routes registered in `AppRouter` but unlinked from navigation, the reconciliation [[Features]] had flagged.
+- **Audit corrections:** `AgreementTemplate` and `hostels.gst_number` both exist, contrary to the earlier note; and `billing.deposit` *is* the legacy `advance_*` preference, so "Advance payments" is not a separate setting.
+- **Not verified in a browser, and Recent Changes has never shown a real row** — no backfill is possible, so it fills as changes are made.
+
 ### 2026-08-08 — Owner sign-out actually signs you out
 - **Fixed a high-severity auth bypass:** the owner's "Sign out" control reset *mock onboarding state* and redirected to the landing page without touching authentication — no server revocation, no Supabase sign-out. The session survived, so returning to `/login` re-hydrated the user and dropped the "signed-out" owner back into `/owner/home`. Reported from a real session; tenant, admin and the legacy portal were unaffected. See [[Bugs]].
 - **Guarded against recurrence:** `logoutIntegrity.test.ts` asserts every sign-out control in the app reaches `AuthContext.logout()`, following each file's own imports, so a cosmetic sign-out cannot ship again. It failed on exactly the two affected owner pages before the fix.
