@@ -101,7 +101,7 @@ export function AddHostelModal({ open, onClose }: AddHostelModalProps) {
               <input
                 value={form.name}
                 onChange={(e) => setField({ name: e.target.value })}
-                placeholder="e.g. Sri Adithya Boys Hostel"
+                placeholder="e.g. Sunrise Boys Hostel"
                 className={inputStyle}
               />
             </label>
