@@ -1,7 +1,6 @@
 import { Route, Routes } from 'react-router-dom';
 import { AdminRoutes } from '@/platforms/admin/router/AdminRoutes';
 import { OwnerRoutes } from '@/platforms/owner/router/OwnerRoutes';
-import { ConfigRoutes } from '@/platforms/owner/router/ConfigRoutes';
 import { OwnerJourneyRoutes } from '@features/owner-onboarding/router/OwnerJourneyRoutes';
 import { MockOwnerJourneyProvider } from '@features/owner-onboarding/context/MockOwnerJourneyContext';
 import { TenantRoutes } from '@/platforms/tenant/router/TenantRoutes';
@@ -15,7 +14,6 @@ export function AppRouter() {
         {PublicRoutes()}
         {OwnerJourneyRoutes()}
         {OwnerRoutes()}
-        {ConfigRoutes()}
         {TenantRoutes()}
         {AdminRoutes()}
         {/* Unknown URLs get a real 404 instead of a silent redirect to "/",
