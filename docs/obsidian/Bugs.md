@@ -28,6 +28,20 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### Three security controls were silently inert because Redis was never configured — and the docs claimed they were protecting things
+
+- **Status:** fixed (Upstash provisioned 2026-08-08); Edge-side verification added, browser verification still outstanding
+- **Found:** 2026-08-08, while answering the user's question "what about the ratelimiting"
+- **Area:** [[Backend]] (`lib/redis/*`, `middleware.ts`)
+- **Symptom:** none visible. Everything appeared to work, which is what made it dangerous.
+- **Root cause:** every rate limiter routes through `checkFixedWindowLimit`, which is Redis-backed with **no database fallback**, and `checkStatelessLimit` is called with `failOpen: true`. With no `UPSTASH_REDIS_REST_URL`/`_TOKEN` set, each call returned `available: false, allowed: true`. Measured directly: a 6th request to a 5-per-15-min endpoint returned `200`. The same absence disabled `checkSessionRevocationEdge` (so **logout did not revoke an access token** — the Redis deny-list is the only way to kill a stateless Supabase JWT before `exp`), `checkIdleTimeoutEdge` (**no 30-minute idle timeout**), and `setOneTimeLock`, which falls back to `true` = "lock acquired", meaning a **password-reset token could be redeemed more than once** inside its validity window and OTP verification had no replay lock.
+- **Not affected:** login brute-force (`checkRateLimit` falls back to `checkDatabaseRateLimit` on `login_attempts`) and OTP code guessing (attempt counters live in Postgres).
+- **Fix:** Upstash Redis provisioned in Mumbai and wired to `stayo-testing`; verified by the rate-limit boundary flipping from `200` to `429` exactly at the configured `maxAttempts`. `GET /api/health/redis-edge` added because `/api/health` is `runtime = "nodejs"` and structurally cannot test the Edge client that enforces revocation and idle timeout.
+- **Documentation defect fixed alongside:** [[Decisions#ADR-055|ADR-055]] and [[Business-Rules]] asserted that rate limits meant the phone endpoint "cannot sweep a number range." That was wrong twice over — the per-identifier limit does nothing against enumeration (each probe uses a new identifier and gets a fresh budget), and the limits were inert anyway. Docs that overstate a protection are worse than silent ones, because someone relies on them.
+- **Latent hazard found while fixing:** `session-revocation-edge.ts` reimplements the Redis key format (its own `clean()`, `"v1"`, `"hms"`) since it cannot import Node-only code. Node writes those keys and Edge reads them, so a one-sided change to either file would break revocation **open and silent**. Now enforced by `tests/redis-key-parity.test.ts`.
+- **Related:** [[Decisions#ADR-055|ADR-055]], [[APIs]], [[Changelog]]
+
+
 ### Every Supabase session rejected with "Invalid session" — backend and frontend were on different Supabase projects, and nothing in the system could say so
 
 - **Status:** fixed in code (diagnosability + honest errors); **the production environment variable itself is an operator action** — see below
