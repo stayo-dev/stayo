@@ -132,6 +132,10 @@ export interface HostelPolicy {
   automation: {
     auto_generate_rent: boolean; auto_apply_late_fees: boolean;
     auto_send_reminders: boolean; auto_email_receipts: boolean;
+    /** 0 = escalation off. Backend validates 0–365. Surfaced by the Automation screen. */
+    auto_deactivate_days?: number;
+    nightly_reconciliation?: boolean;
+    snapshot_generation?: boolean;
   };
   operations: { currency: string; timezone: string; date_format: string; time_format: string; language: string };
 }

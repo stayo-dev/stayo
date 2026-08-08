@@ -23,10 +23,17 @@ export function useHostelBedSummary(hostelId: string | null) {
     staleTime: 30_000,
   });
 
-  const bedsTotal = useMemo(
-    () => (query.data ?? []).reduce((sum, floor) => sum + floor.rooms.reduce((s, r) => s + (r.capacity || 0), 0), 0),
-    [query.data],
-  );
+  // Rooms and floors come free from the same grouped response the bed count is
+  // already summing — the Configuration screens need all three, and refetching
+  // the same payload through another hook would be wasteful.
+  const totals = useMemo(() => {
+    const floors = query.data ?? [];
+    return {
+      bedsTotal: floors.reduce((sum, floor) => sum + floor.rooms.reduce((s, r) => s + (r.capacity || 0), 0), 0),
+      roomsTotal: floors.reduce((sum, floor) => sum + floor.rooms.length, 0),
+      floorsTotal: floors.length,
+    };
+  }, [query.data]);
 
-  return { bedsTotal, isLoading: query.isLoading };
+  return { ...totals, isLoading: query.isLoading };
 }
