@@ -45,6 +45,7 @@ export default defineConfig({
       'tests/activation-enforcement-coverage.test.ts',
       'tests/tenancy-eligibility-service.test.ts',
       'tests/reset-token-channel.test.ts',
+      'tests/config-change-labels.test.ts',
       'tests/email-delivery-classification.test.ts',
       'tests/auth-config-diagnostics.test.ts',
       'tests/password-reset-otp-purpose.test.ts',
