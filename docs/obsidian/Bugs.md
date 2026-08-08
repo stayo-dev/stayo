@@ -28,6 +28,16 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### "+ Add hostel" still opened the 12-step onboarding wizard — the purpose-built popup existed but was never actually wired in, and its password step-up was decorative
+
+- **Status:** fixed
+- **Found:** 2026-08-08, reported directly by the user with a screenshot of the wizard's location step opening instead of a popup.
+- **Area:** [[Frontend]] (`features/owner-onboarding/pages/OwnerDashboardPreviewPage.tsx`), [[Backend]] (`app/api/owner/hostels/route.ts`)
+- **Symptom:** clicking "+ Add hostel" on the owner dashboard navigated to `/onboarding`, the full account/KYC/location/floors/rooms/beds/review/publish wizard — the wrong flow for an owner who already has an account and just wants a 2nd/3rd hostel.
+- **Root cause:** the 2026-08-02 dead-button pass (see the entry below, and [[Changelog]]/[[Features]]) built exactly the right component for this — `AddHostelModal.tsx`, a bottom-sheet with Basic Info/Location/Contact fields — but `OwnerDashboardPreviewPage.tsx`'s `onAddHostel` callback was left calling `navigate('/onboarding')` (that file's own Bugs.md fix description at the time literally says so) rather than opening the new modal; the modal was built but its one call site was never updated, so it sat unimported and unreachable. Separately, `AddHostelModal` fetched a `CREATE_HOSTEL` identity token via `identityService.confirmIdentity(password, ...)` but never included it in the `ownerService.createHostel(...)` payload, and `POST /api/owner/hostels` never read or verified an `identity_token` at all — [[APIs]] had already flagged this exact gap ("its token is a local password gate only, never consumed against `POST /owner/hostels`"). Net effect: even once wired up, the password step would have been UI theater — any authenticated owner session could call the endpoint directly and skip it.
+- **Fix:** `OwnerDashboardPreviewPage.tsx` now opens `AddHostelModal` (local `addHostelOpen` state) instead of navigating. `AddHostelModal.tsx`'s mutation now sends `identity_token` in the create-hostel payload. `POST /api/owner/hostels` now calls `verifyIdentityConfirmation(identity_token, "CREATE_HOSTEL", "create_hostel", session.sub)` before creating the hostel, and wraps the duplicate-name check + `hostels.create` + `consumeIdentityTokenInTx` in one `prisma.$transaction` (same guard module `payments/record-offline` uses) so the token is atomically single-use with hostel creation and a failed create leaves it unconsumed for retry. Missing/expired/mismatched tokens now return `403 IDENTITY_REQUIRED`/`IDENTITY_EXPIRED`/`FORBIDDEN` instead of silently creating the hostel.
+- **Related:** [[Features]], [[Changelog]], [[APIs]], the entry below (original build of `AddHostelModal`, 2026-08-02)
+
 ### Owner "Sign out" never ended the session — it reset mock onboarding state and redirected, leaving the account fully logged in
 
 - **Status:** fixed

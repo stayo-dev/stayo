@@ -13,12 +13,30 @@ function edgeRedisKey(...parts: Array<string | number | null | undefined>) {
   return [prefix, "v1", ...parts.map(clean)].join(":");
 }
 
-const edgeSessionKeys = {
+/**
+ * Exported solely so `tests/redis-key-parity.test.ts` can assert these keys
+ * are byte-identical to `lib/redis/keys.ts`'s `redisKeys.session.*`. Node
+ * writes those keys and this Edge module reads them, and divergence fails
+ * open and silent — a logged-out token would keep working. Not for use by
+ * application code: everything outside the Edge runtime should go through
+ * `redisKeys` instead.
+ */
+export const edgeSessionKeys = {
   revoked: (sessionId: string) => edgeRedisKey("session", "revoked", sessionId),
   userRevokedAfter: (userId: string) => edgeRedisKey("session", "user-revoked-after", userId),
   activity: (sessionId: string) => edgeRedisKey("session", "activity", sessionId),
   activityThrottle: (sessionId: string) => edgeRedisKey("session", "activity-throttle", sessionId),
 };
+
+/**
+ * Exported for `app/api/health/redis-edge` only, so the diagnostic exercises
+ * the *same* client this module uses rather than an equivalent copy — that is
+ * the whole point of the check. Application code must not reach for a raw
+ * client; use the exported check functions below.
+ */
+export function getEdgeRedisClientForDiagnostics() {
+  return getEdgeRedisClient();
+}
 
 function getEdgeRedisClient() {
   if (process.env.REDIS_ENABLED === "false") return null;
