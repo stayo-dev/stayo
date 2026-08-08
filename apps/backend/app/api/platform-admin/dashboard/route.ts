@@ -4,7 +4,6 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { composeRecentActivity } from "@/lib/services/platform-admin-activity-service";
 
 function requireAdmin(session: any) {
   if (!session || session.role !== "ADMIN") throw new Error("FORBIDDEN: Admin access only");
@@ -12,10 +11,13 @@ function requireAdmin(session: any) {
 
 /**
  * GET /api/platform-admin/dashboard
- * Composes the KPI overview, Leads/Hostels/Revenue previews, and a Recent
- * Activity feed — the activity feed is a derived union of recent rows
- * across leads/hostels/subscriptions/invoices (queried live), not a
- * dedicated log table — keeps this slice small; see docs/obsidian/Decisions.md ADR-030.
+ * Composes the KPI overview, the Hostels preview, and the Revenue summary.
+ * Recent activity moved to the notification bell (GET /api/platform-admin/
+ * notifications, composeRecentActivity), and the Owner Leads preview card
+ * was removed outright in favor of the header's dedicated leads badge
+ * (GET /api/platform-admin/leads) — both used to render inline here with
+ * a different interaction model than their dedicated surface; see
+ * docs/obsidian/Bugs.md, 2026-08-07.
  */
 export async function GET(req: NextRequest) {
   const session = await getSession(req);
@@ -34,9 +36,7 @@ export async function GET(req: NextRequest) {
       collectedThisMonth,
       pendingPlatformInvoices,
       lifetimePlatformRevenue,
-      leadsPreview,
       hostelsPreview,
-      activity,
     ] = await Promise.all([
       prisma.platform_leads.count({ where: { status: "NEW" } }),
       prisma.hostels.count({ where: { verification_status: "PENDING" } }),
@@ -51,21 +51,11 @@ export async function GET(req: NextRequest) {
       // dues (a different revenue stream: what tenants owe their hostel).
       prisma.platform_invoices.aggregate({ where: { status: { in: ["PENDING", "FAILED"] } }, _sum: { amount: true } }),
       prisma.platform_invoices.aggregate({ where: { status: "PAID" }, _sum: { amount: true } }),
-      // Only leads an admin can actually act on. This previously took the 3
-      // most recent regardless of status, so the dashboard rendered Approve
-      // and Reject on leads already at INVITE_SENT or LOST — buttons that
-      // throw INVALID_TRANSITION by construction.
-      prisma.platform_leads.findMany({
-        where: { status: { in: ["NEW", "UNDER_REVIEW", "APPROVED"] } },
-        orderBy: { created_at: "asc" },
-        take: 5,
-      }),
       prisma.hostels.findMany({
         orderBy: { created_at: "desc" },
         take: 3,
         select: { id: true, name: true, city: true, listing_status: true, _count: { select: { tenants: true } } },
       }),
-      composeRecentActivity(8),
     ]);
 
     // MRR composed the same way as /api/platform-admin/revenue — one
@@ -102,7 +92,6 @@ export async function GET(req: NextRequest) {
         collections: Number(collectedThisMonth._sum.amount ?? 0),
         pending_dues: Number(pendingPlatformInvoices._sum.amount ?? 0),
       },
-      leads_preview: leadsPreview,
       hostels_preview: hostelsPreview.map((h: any) => {
         const capacity = Number(capacityByHostel.get(h.id) ?? 0);
         const active = Number(activeByHostel.get(h.id) ?? h._count.tenants);
@@ -123,7 +112,6 @@ export async function GET(req: NextRequest) {
         pending_collections: Number(pendingPlatformInvoices._sum.amount ?? 0),
         this_month: Number(collectedThisMonth._sum.amount ?? 0),
       },
-      activity,
     });
   } catch (error: any) {
     const msg = String(error?.message || "Failed to fetch dashboard");

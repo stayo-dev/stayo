@@ -5,35 +5,35 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://stayo-testing.vercel.app/api/:path*"
+      "destination": "https://api.yourstayo.com/api/:path*"
     },
     {
       "source": "/api/:path*/",
-      "destination": "https://stayo-testing.vercel.app/api/:path*"
+      "destination": "https://api.yourstayo.com/api/:path*"
     },
     {
       "source": "/pay/tenant/%7B%7B1%7D%7D:token",
-      "destination": "https://stayo-testing.vercel.app/api/payments/pay/:token"
+      "destination": "https://api.yourstayo.com/api/payments/pay/:token"
     },
     {
       "source": "/pay/tenant/\\{\\{1\\}\\}:token",
-      "destination": "https://stayo-testing.vercel.app/api/payments/pay/:token"
+      "destination": "https://api.yourstayo.com/api/payments/pay/:token"
     },
     {
       "source": "/pay/tenant/:token",
-      "destination": "https://stayo-testing.vercel.app/api/payments/pay/:token"
+      "destination": "https://api.yourstayo.com/api/payments/pay/:token"
     },
     {
       "source": "/pay/%7B%7B1%7D%7D:token",
-      "destination": "https://stayo-testing.vercel.app/api/payments/pay/:token"
+      "destination": "https://api.yourstayo.com/api/payments/pay/:token"
     },
     {
       "source": "/pay/\\{\\{1\\}\\}:token",
-      "destination": "https://stayo-testing.vercel.app/api/payments/pay/:token"
+      "destination": "https://api.yourstayo.com/api/payments/pay/:token"
     },
     {
       "source": "/pay/:token",
-      "destination": "https://stayo-testing.vercel.app/api/payments/pay/:token"
+      "destination": "https://api.yourstayo.com/api/payments/pay/:token"
     },
     {
       "source": "/((?!api/)(?!.*\\.[a-zA-Z0-9]{1,5}$).*)",
@@ -59,7 +59,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; media-src 'self' https://cdn.sanity.io https://media.w3.org https://www.w3schools.com; script-src 'self' 'unsafe-inline' https://accounts.google.com https://checkout.razorpay.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://stayo-backend-stayo-devs-projects.vercel.app https://stayo-testing.vercel.app https://*.supabase.co wss://*.supabase.co https://ik.imagekit.io https://upload.imagekit.io https://accounts.google.com https://*.api.sanity.io https://api.razorpay.com; frame-src https://accounts.google.com https://www.google.com https://api.razorpay.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+          "value": "default-src 'self'; media-src 'self' https://cdn.sanity.io https://media.w3.org https://www.w3schools.com; script-src 'self' 'unsafe-inline' https://accounts.google.com https://checkout.razorpay.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://stayo-backend-stayo-devs-projects.vercel.app https://api.yourstayo.com https://*.supabase.co wss://*.supabase.co https://ik.imagekit.io https://upload.imagekit.io https://accounts.google.com https://*.api.sanity.io https://api.razorpay.com; frame-src https://accounts.google.com https://www.google.com https://api.razorpay.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
         },
         {
           "key": "X-Frame-Options",
