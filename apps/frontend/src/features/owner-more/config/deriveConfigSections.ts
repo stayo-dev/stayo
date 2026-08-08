@@ -26,11 +26,14 @@ export interface ConfigSource {
       auto_rent_day?: number;
       due_day?: number;
       grace_days?: number;
-      deposit_months?: number;
-      agreement_months?: number;
       late_fee?: { enabled?: boolean; rules?: Array<{ type?: string; amount?: number }> };
-      advance_enabled?: boolean;
-      advance_amount_default?: number;
+      /**
+       * One deposit concept, despite the mockup showing "Security deposit" and
+       * "Advance payments" as separate rows: the flat legacy `advance_*`
+       * preference fields are this object.
+       */
+      deposit?: { enabled?: boolean; deposit_months?: number; refundable?: boolean; default_amount?: number };
+      invite_defaults?: { agreement_duration_months?: number };
     } | null;
     receipts?: { prefix?: string; format?: string; auto_email?: boolean; footer?: string } | null;
     branding?: { logo_url?: string | null; primary_color?: string | null; accent_color?: string | null } | null;
@@ -74,6 +77,8 @@ export function deriveHostelSections(source: ConfigSource): ConfigSection[] {
   const identityComplete = Boolean(hostel?.name && hostel?.phone && hostel?.address);
   const brandingSet = Boolean(branding?.logo_url || branding?.primary_color || branding?.accent_color);
   const footerSet = Boolean(receipts?.footer && receipts.footer.trim());
+  const depositMonths = policy?.billing?.deposit?.deposit_months ?? 0;
+  const agreementMonths = policy?.billing?.invite_defaults?.agreement_duration_months ?? 0;
 
   return [
     {
@@ -142,10 +147,10 @@ export function deriveHostelSections(source: ConfigSource): ConfigSection[] {
         {
           key: 'tenant-defaults',
           title: 'Tenant defaults',
-          detail: policy?.billing
-            ? `${plural(policy.billing.deposit_months ?? 0, 'mo')} deposit · ${plural(policy.billing.agreement_months ?? 0, 'mo')} agreement`
+          detail: depositMonths
+            ? `${depositMonths}-mo deposit · ${agreementMonths}-mo agreement`
             : 'Not set',
-          state: policy?.billing?.deposit_months ? 'configured' : 'attention',
+          state: depositMonths ? 'configured' : 'attention',
           route: '/owner/more/configuration/hostel/tenant-defaults',
         },
       ],
@@ -170,7 +175,8 @@ export function deriveFinanceSections(source: ConfigSource): ConfigSection[] {
   const lateFeeHasAmount = Boolean(lateFeeRule?.amount);
 
   const rentRulesConfigured = Boolean(billing?.auto_rent_day && billing?.due_day !== undefined);
-  const advanceOn = Boolean(billing?.advance_enabled);
+  const deposit = billing?.deposit;
+  const depositOn = Boolean(deposit?.enabled && deposit?.deposit_months);
   const gstSet = Boolean(hostel?.gst_number);
 
   return [
@@ -189,21 +195,13 @@ export function deriveFinanceSections(source: ConfigSource): ConfigSection[] {
         {
           key: 'security-deposit',
           title: 'Security deposit',
-          detail: billing?.deposit_months
-            ? `${plural(billing.deposit_months, 'month')} · Refundable at move-out`
+          detail: depositOn
+            ? `${plural(deposit!.deposit_months ?? 0, 'month')} · ${deposit!.refundable ? 'Refundable at move-out' : 'Non-refundable'}`
             : 'Not required',
-          state: billing?.deposit_months ? 'configured' : 'off',
+          state: depositOn ? 'configured' : 'off',
           route: BILLING_POLICY_ROUTE,
         },
-        {
-          key: 'advance-payments',
-          title: 'Advance payments',
-          detail: advanceOn
-            ? `Default ₹${billing?.advance_amount_default ?? 0}`
-            : 'Not required',
-          state: advanceOn ? 'configured' : 'off',
-          route: BILLING_POLICY_ROUTE,
-        },
+        unavailable('advance-payments', 'Advance payments'),
       ],
     },
     {

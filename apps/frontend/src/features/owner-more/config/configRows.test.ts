@@ -15,7 +15,7 @@ import { isRowInteractive, tallyConfigRows, type ConfigRow } from './configRows'
  *   nobody can use. That is the difference between a status dashboard and a
  *   decorative one.
  */
-const row = (state: ConfigRow['state'], key = state): ConfigRow => ({
+const row = (state: ConfigRow['state'], key: string = state): ConfigRow => ({
   key,
   title: key,
   detail: '',

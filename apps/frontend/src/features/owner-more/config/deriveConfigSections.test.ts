@@ -9,11 +9,9 @@ const source = (overrides: Partial<ConfigSource> = {}): ConfigSource => ({
       auto_rent_day: 1,
       due_day: 5,
       grace_days: 3,
-      deposit_months: 1,
-      agreement_months: 3,
       late_fee: { enabled: true, rules: [{ type: 'PER_DAY', amount: 50 }] },
-      advance_enabled: false,
-      advance_amount_default: 0,
+      deposit: { enabled: true, deposit_months: 1, refundable: true, default_amount: 0 },
+      invite_defaults: { agreement_duration_months: 3 },
     },
     receipts: { prefix: 'SRI', format: 'PREFIX-YEAR-SEQ', auto_email: true, footer: 'Thanks' },
     branding: { logo_url: null, primary_color: null, accent_color: null },
@@ -128,11 +126,22 @@ describe('deriveFinanceSections', () => {
     expect(find(deriveFinanceSections(s), 'late-fees').state).toBe('off');
   });
 
-  it('treats advance payments not being required as off, not as a gap', () => {
+  it('describes the security deposit from the nested deposit policy', () => {
+    const row = find(deriveFinanceSections(source()), 'security-deposit');
+
+    expect(row.detail).toBe('1 month · Refundable at move-out');
+    expect(row.state).toBe('configured');
+  });
+
+  it('renders advance payments as unavailable, because it is the same field as the deposit', () => {
+    // The mockup lists "Security deposit" and "Advance payments" as separate
+    // rows, but this data model has one deposit concept: the flat legacy
+    // `advance_enabled`/`advance_amount_default`/`advance_refundable` fields
+    // are the nested `billing.deposit` object. Showing both as editable would
+    // give an owner two controls over one value.
     const row = find(deriveFinanceSections(source()), 'advance-payments');
 
-    expect(row.state).toBe('off');
-    expect(row.detail).toBe('Not required');
+    expect(row.state).toBe('unavailable');
   });
 
   it('flags a missing GST number', () => {
