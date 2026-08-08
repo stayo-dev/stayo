@@ -27,7 +27,7 @@ export interface FoodScheduleRow {
   id: string;
   status: 'DRAFT' | 'PUBLISHED';
   source: 'GENERATED' | 'CARRIED_FORWARD' | 'MANUAL';
-  /** Set only when the generator really did rank this week by votes — see `hasVotesApplied`. */
+  /** Set only when the generator was explicitly told to rank this week by votes — no current caller does this; generation is library-driven. */
   generated_from_voting_period_id: string | null;
   published_at: string | null;
   food_schedule_meals: ScheduleMealCell[];

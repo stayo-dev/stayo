@@ -1,21 +1,18 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChefHat } from 'lucide-react';
+import { ChefHat, Vote } from 'lucide-react';
 import { FOOD_SLOTS, type MealSlotKey } from '@shared/mocks/food';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useFoodMenuItems } from '../hooks/useFoodMenuItems';
-import { useFoodVoting } from '../hooks/useFoodVoting';
 import { useFoodSchedule } from '../hooks/useFoodSchedule';
 import { useFoodScheduleHistory } from '../hooks/useFoodScheduleHistory';
 import { FoodLibraryCard } from '../components/menu/FoodLibraryCard';
-import { VotingPanel } from '../components/voting/VotingPanel';
 import { WeeklyScheduleGrid } from '../components/schedule/WeeklyScheduleGrid';
 import { ScheduleMealPickerSheet } from '../components/schedule/ScheduleMealPickerSheet';
 import { MonthHistoryList } from '../components/schedule/MonthHistoryList';
 import { TodayCard } from '../components/today/TodayCard';
 import { HostelSwitcher } from '../components/HostelSwitcher';
 import { dayKeyFor, cellAt } from '../weekGrid';
-import { hasVotesApplied } from '../publishChecks';
 
 /** Food tab. Thin orchestrator: each section's real work lives in its own hooks/components. */
 export function FoodPage() {
@@ -25,15 +22,8 @@ export function FoodPage() {
 
   const library = useFoodMenuItems(hostelId);
   const currentMonth = useMemo(() => new Date().toISOString().slice(0, 7), []);
-  const currentMonthLabel = useMemo(
-    () => new Date(`${currentMonth}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }),
-    [currentMonth],
-  );
-  const voting = useFoodVoting(hostelId, currentMonth);
   const schedule = useFoodSchedule(hostelId, currentMonth);
   const history = useFoodScheduleHistory(hostelId);
-
-  const canGenerate = !voting.period || voting.period.status === 'CLOSED';
 
   const fixToday = (slot: MealSlotKey) => {
     const cell = cellAt(schedule.weekGrid, dayKeyFor(new Date()), slot);
@@ -47,7 +37,16 @@ export function FoodPage() {
           <h1 className="font-display text-[22px] font-extrabold tracking-tight text-foreground">Meal Planner</h1>
           <p className="mt-0.5 text-[12.5px] font-medium text-muted-foreground">What you're serving, and what's next</p>
         </div>
-        <HostelSwitcher hostels={session.hostels} selectedId={hostelId} onSelect={setSelectedHostelId} />
+        <div className="flex flex-none items-center gap-1.5">
+          <Link
+            to={hostelId ? `/owner/food/polls?hostelId=${encodeURIComponent(hostelId)}` : '/owner/food/polls'}
+            aria-label="Food Polls"
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_6px_16px_rgba(180,106,85,0.32)]"
+          >
+            <Vote className="h-6 w-6" />
+          </Link>
+          <HostelSwitcher hostels={session.hostels} selectedId={hostelId} onSelect={setSelectedHostelId} />
+        </div>
       </div>
 
       <div className="flex flex-col gap-6.5">
@@ -70,14 +69,7 @@ export function FoodPage() {
           </div>
         </div>
 
-        <VotingPanel voting={voting} monthLabel={currentMonthLabel} />
-        <WeeklyScheduleGrid
-          schedule={schedule}
-          canGenerate={canGenerate}
-          voteCount={voting.results?.totalVotes ?? 0}
-          votesConsidered={hasVotesApplied(schedule.schedule)}
-          tenantCount={null}
-        />
+        <WeeklyScheduleGrid schedule={schedule} tenantCount={null} />
         <MonthHistoryList history={history} />
 
         {/* The hostel rides on the URL — the kitchen sheet has no switcher

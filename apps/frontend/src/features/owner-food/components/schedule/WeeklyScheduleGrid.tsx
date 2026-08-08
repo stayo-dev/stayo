@@ -30,14 +30,11 @@ function measure(el: HTMLElement): DropCandidate['rect'] {
 
 interface WeeklyScheduleGridProps {
   schedule: ReturnType<typeof useFoodSchedule>;
-  canGenerate: boolean;
-  voteCount: number;
-  votesConsidered: boolean;
   tenantCount: number | null;
 }
 
 /** The weekly (Mon-Sun x 4 meals) review/edit grid — one real week, replacing the old Week1-4 model. Tap a cell to swap its item. */
-export function WeeklyScheduleGrid({ schedule, canGenerate, voteCount, votesConsidered, tenantCount }: WeeklyScheduleGridProps) {
+export function WeeklyScheduleGrid({ schedule, tenantCount }: WeeklyScheduleGridProps) {
   // Every mounted chip's element, keyed by meal id. Elements rather than rects
   // because a rect measured at mount is stale the moment the page scrolls or
   // the grid re-renders; measuring is deferred to drag start.
@@ -89,11 +86,11 @@ export function WeeklyScheduleGrid({ schedule, canGenerate, voteCount, votesCons
         <span className="flex h-[60px] w-[60px] items-center justify-center rounded-[18px] bg-secondary"><UtensilsCrossed className="h-7 w-7 text-muted-foreground" strokeWidth={1.5} /></span>
         <span className="font-display text-[15px] font-bold text-foreground">No schedule yet</span>
         <p className="max-w-[250px] text-[12.5px] leading-relaxed text-muted-foreground">
-          {canGenerate ? "Generate a week's schedule from this month's votes." : 'Close voting first, then generate the schedule from the results.'}
+          Generate a week's schedule from your food library.
         </p>
         <button
           type="button"
-          disabled={!canGenerate || schedule.isGenerating}
+          disabled={schedule.isGenerating}
           onClick={() => schedule.generate('BUILD')}
           className="mt-1 flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 font-display text-[13px] font-bold text-primary-foreground disabled:opacity-50"
         >
@@ -103,7 +100,7 @@ export function WeeklyScheduleGrid({ schedule, canGenerate, voteCount, votesCons
     );
   }
 
-  const checks = buildPublishChecks({ grid: schedule.weekGrid, votesConsidered, voteCount });
+  const checks = buildPublishChecks({ grid: schedule.weekGrid });
   const today = dayKeyFor(new Date());
   // Nothing to swap with until some meal type appears on two days, so the hint
   // stays out of the way of a half-built week.
