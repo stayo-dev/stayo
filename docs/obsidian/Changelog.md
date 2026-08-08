@@ -10,6 +10,12 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-08 — Phone reset checks the account before sending a code
+- **`POST /api/auth/forgot-password/phone` now tells you when no account uses that number** (404 `NO_ACCOUNT_FOR_PHONE`) instead of a generic "if an account exists…" success. Reported by the user: a mistyped digit left you on the code-entry screen for five minutes waiting for a code that was never sent.
+- **This reverses the anti-enumeration stance in [[Decisions#ADR-055|ADR-055]], on purpose and with a reason:** `selfSignUpOwner`/`selfSignUpTenant` already reject a duplicate with `ALREADY_EXISTS: Phone number already registered` on public unauthenticated routes, so the fact was one signup form away. The generic reply was guarding a secret the product already gave away, at a real usability cost.
+- **What still holds:** per-phone and per-IP limits still run *before* the lookup, so the disclosure is per-probe rather than a bulk oracle; a deactivated account reports as absent, so account status stays undisclosed; and the **email** channel remains fully generic, since no equivalent signup-side leak exists for email addresses. Restoring non-disclosure here would be theatre unless the signup routes are fixed first.
+- **A failed send is no longer reported as success** — the OTP service's own error code (or `502 OTP_SEND_FAILED`) surfaces, so the UI keeps you on the number step. A failed *resend* stays on the code screen rather than discarding a code you may have already typed.
+
 ### 2026-08-08 — Auth recovery: why Google and login were dead, and password reset by WhatsApp
 - **Root-caused a production auth outage to a Supabase project mismatch.** Google sign-in died with `Invalid session` and password login with "Unable to connect", from one fault: the backend verified access tokens against a different Supabase project than the frontend minted them with. **Fixing it is an operator action** — set `SUPABASE_URL`/`SUPABASE_ANON_KEY` on the backend Vercel project to the canonical project (`xhoqkhwsnqfwhjsffybs`, the one `DATABASE_URL` already points at). See [[Bugs]].
 - **Made that class of fault visible.** `/api/health` now reports `auth.supabase.{project_ref, expected_issuer, jwks_reachable}` — one `curl` instead of downloading the deployed frontend bundle to compare refs. `SUPABASE_URL` is normalized, so a trailing slash can no longer reject every session in the system silently.

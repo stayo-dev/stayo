@@ -226,10 +226,14 @@ Changed by [[Decisions#ADR-054|ADR-054]] and [[Decisions#ADR-055|ADR-055]].
 
 The phone token is short because, unlike an emailed link, it is handed straight to the browser. Both channels submit to `POST /api/auth/reset-password`, so revocation of all other sessions, the one-time-use lock and Supabase identity sync happen once, in one place.
 
-Two rules that must not be relaxed:
+Rules that must not be relaxed:
 
 - **`PASSWORD_RESET` never degrades.** It is excluded from `SKIPPABLE_OTP_PURPOSES`; when WhatsApp is unavailable the reset fails rather than proceeding without a code.
-- **Neither channel reveals whether an account exists.** Identical responses for registered, unregistered and rate-limited identifiers; rate limits are applied *before* the account lookup; and `delivery_degraded` is a function of provider configuration only.
+- **The email channel never reveals whether an account exists.** Identical response for any address; `delivery_degraded` is a function of provider configuration only, never of the submitted address.
+- **Account *status* is never revealed on either channel.** A deactivated account reports exactly like a non-existent one.
+- **Rate limits are applied before the account lookup**, on both channels — per-identifier and per-IP — so no endpoint can be used to sweep a range.
+
+**The phone channel does reveal whether the number is registered** (amended 2026-08-08, [[Decisions#ADR-055|ADR-055]]). `POST /api/auth/forgot-password/phone` returns 404 `NO_ACCOUNT_FOR_PHONE` rather than a generic success, because the signup routes already disclose the same fact (`ALREADY_EXISTS: Phone number already registered`, public and unauthenticated), while the generic reply stranded anyone who mistyped a digit on a code screen for five minutes. **Consequence to respect:** restoring non-disclosure here is pointless unless the signup routes are fixed first.
 
 ## One live tenancy per person (2026-08-07)
 

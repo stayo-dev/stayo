@@ -132,10 +132,31 @@ describe("password reset by phone", () => {
     expect(profile!.password_reset_at).not.toBeNull();
   });
 
-  it("says nothing about whether an unknown number has an account", async () => {
-    const unknown = await authService.requestPasswordResetByPhone("+919000000099");
-    const known = await authService.requestPasswordResetByPhone(`+${PHONE}`);
+  // Amended 2026-08-08: this used to assert that a registered and an
+  // unregistered number produced identical responses. That anti-enumeration
+  // stance was abandoned deliberately — `owner-signup` and `tenant-signup`
+  // already reject a duplicate with "Phone number already registered" on
+  // public routes, so the same fact was one form away, while the generic
+  // reply left anyone who mistyped a digit waiting five minutes for a code
+  // that was never coming. Rate limits still throttle bulk probing.
+  it("reports that no account exists for an unregistered number", async () => {
+    const result = await authService.requestPasswordResetByPhone("+919000000099");
 
-    expect(unknown).toEqual(known);
+    expect(result.account_exists).toBe(false);
+  });
+
+  it("confirms the account and sends a code for a registered number", async () => {
+    const result = await authService.requestPasswordResetByPhone(`+${PHONE}`);
+
+    expect(result.account_exists).toBe(true);
+  });
+
+  it("treats a deactivated account as absent rather than leaking its status", async () => {
+    await prisma.profile.update({ where: { id: profileId }, data: { is_active: false } });
+
+    const result = await authService.requestPasswordResetByPhone(`+${PHONE}`);
+
+    await prisma.profile.update({ where: { id: profileId }, data: { is_active: true } });
+    expect(result.account_exists).toBe(false);
   });
 });
