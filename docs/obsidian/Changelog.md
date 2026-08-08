@@ -10,6 +10,10 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-08 — Owner sign-out actually signs you out
+- **Fixed a high-severity auth bypass:** the owner's "Sign out" control reset *mock onboarding state* and redirected to the landing page without touching authentication — no server revocation, no Supabase sign-out. The session survived, so returning to `/login` re-hydrated the user and dropped the "signed-out" owner back into `/owner/home`. Reported from a real session; tenant, admin and the legacy portal were unaffected. See [[Bugs]].
+- **Guarded against recurrence:** `logoutIntegrity.test.ts` asserts every sign-out control in the app reaches `AuthContext.logout()`, following each file's own imports, so a cosmetic sign-out cannot ship again. It failed on exactly the two affected owner pages before the fix.
+
 ### 2026-08-08 — Phone reset checks the account before sending a code
 - **`POST /api/auth/forgot-password/phone` now tells you when no account uses that number** (404 `NO_ACCOUNT_FOR_PHONE`) instead of a generic "if an account exists…" success. Reported by the user: a mistyped digit left you on the code-entry screen for five minutes waiting for a code that was never sent.
 - **This reverses the anti-enumeration stance in [[Decisions#ADR-055|ADR-055]], on purpose and with a reason:** `selfSignUpOwner`/`selfSignUpTenant` already reject a duplicate with `ALREADY_EXISTS: Phone number already registered` on public unauthenticated routes, so the fact was one signup form away. The generic reply was guarding a secret the product already gave away, at a real usability cost.
