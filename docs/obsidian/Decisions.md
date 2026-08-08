@@ -809,6 +809,18 @@ That reading was wrong, and measurement is what showed it. Two production endpoi
 - **Disclosure rule:** the invite refusal names the hostel **only when it belongs to the asking owner**. For any other owner's property it says only "currently a tenant at another property on Stayo" — no name, no room, no tenant id. Otherwise any owner could enumerate a competitor's roster, and a person's address, by typing the right email. Enforced on both sides: the backend blanks the fields, and `parseTenancyConflict` on the frontend ignores a hostel name that arrives without an `OWN` scope.
 - **Related:** [[Features]], [[Business-Rules]], [[Database]], [[APIs]], [[Decisions#ADR-052|ADR-052]] (shipped together)
 
+## ADR-056: The billing policy splits into focused per-section screens, with section-scoped writes
+
+- **Date:** 2026-08-08
+- **Status:** accepted (refines [[Decisions#ADR-043|ADR-043]], does not reverse it)
+- **Context:** ADR-043 consolidated three overlapping billing screens into one because each owned a slice of `billing` and they overwrote one another — the old `MoreBillingPage` silently rewrote a PERCENTAGE/PER_DAY late fee to FLAT and dropped its cap by writing a **partial** late-fee shape. That fixed the data hazard but produced a single 352-line form holding five sections, and every Finance row deep-linked to it. Tapping "Security deposit" landed the owner in a six-section wall with no indication which block was theirs — the module screen promised focus the destination did not deliver.
+- **Decision:** one form implementation, rendered with only the sections it is asked for, plus a thin screen per section (`rent-schedule`, `part-payments`, `deposit`, `late-fees`, and `agreement-duration` under Hostel). Each Finance row opens the screen that owns *its* fields.
+- **What keeps ADR-043's guarantee:** `buildBillingPatch(values, sections)` emits **only** the visible sections' fields, and `PATCH /hostels/:id/preferences` deep-merges — so a hidden section is left exactly as stored and a focused screen cannot clobber what it does not display. The late fee is always written **whole** (type + amount + cap together), which is the specific partial write ADR-043 existed to prevent. Both properties are unit-tested in `billingSections.test.ts`, including one test asserting a schedule patch never mentions `late_fee`, `deposit`, `partial_payments` or `invite_defaults`.
+- **One field, one owner:** the deposit lives under Finance and agreement duration under Hostel; neither screen shows the other's field. The old combined `tenant-defaults` row (which showed both) is gone, and its route redirects to `agreement-duration`. A test asserts the Hostel screen has no `security-deposit` row.
+- **Also gained:** "Part payments" becomes a real Finance row. `billing.partial_payments` was always stored and editable, but only reachable by scrolling the combined form, so it was effectively hidden. The all-sections screen survives as "All billing settings" for reviewing everything at once, but is no longer any row's deep-link target.
+- **Alternatives considered:** duplicating the form per screen — rejected, that is precisely how the three original screens diverged. Keeping the monolith and scrolling to an anchor — rejected as a cosmetic fix that still shows five sections' worth of controls when the owner asked about one.
+- **Related:** [[Features]], [[Frontend]], [[Decisions#ADR-043|ADR-043]]
+
 ## ADR-054: Google sign-in is available to tenants, gated by activation rather than by role
 
 - **Date:** 2026-08-08

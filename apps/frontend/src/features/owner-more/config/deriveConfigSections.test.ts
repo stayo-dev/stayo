@@ -90,6 +90,13 @@ describe('deriveHostelSections', () => {
     expect(find(sections, 'amenities').state).toBe('unavailable');
   });
 
+  it('owns agreement duration but not the deposit, so no field has two editors', () => {
+    const keys = deriveHostelSections(source()).flatMap((s) => s.rows).map((r) => r.key);
+
+    expect(keys).toContain('agreement-duration');
+    expect(keys).not.toContain('security-deposit');
+  });
+
   it('keeps unavailable rows out of the area tally', () => {
     const sections = deriveHostelSections(source());
     const tally = tallyConfigRows(sections.flatMap((s) => s.rows));
@@ -133,15 +140,39 @@ describe('deriveFinanceSections', () => {
     expect(row.state).toBe('configured');
   });
 
-  it('renders advance payments as unavailable, because it is the same field as the deposit', () => {
-    // The mockup lists "Security deposit" and "Advance payments" as separate
-    // rows, but this data model has one deposit concept: the flat legacy
-    // `advance_enabled`/`advance_amount_default`/`advance_refundable` fields
-    // are the nested `billing.deposit` object. Showing both as editable would
-    // give an owner two controls over one value.
-    const row = find(deriveFinanceSections(source()), 'advance-payments');
+  it('has no "advance payments" row, since that is the same stored field as the deposit', () => {
+    const keys = deriveFinanceSections(source()).flatMap((s) => s.rows).map((r) => r.key);
 
-    expect(row.state).toBe('unavailable');
+    expect(keys).not.toContain('advance-payments');
+  });
+
+  it('offers part payments as a real row — instalments, not the deposit', () => {
+    const row = find(deriveFinanceSections(source()), 'part-payments');
+
+    // Full-payment-only is a deliberate stance, so `off` rather than a gap.
+    expect(row.state).toBe('off');
+    expect(row.detail).toBe('Each due must be cleared in full');
+  });
+
+  it('reflects part payments being switched on', () => {
+    const s = source();
+    s.policy!.billing!.partial_payments = { enabled: true, minimum_amount: 500 };
+
+    expect(find(deriveFinanceSections(s), 'part-payments').state).toBe('configured');
+  });
+
+  it('sends every row to its own screen rather than all to one combined form', () => {
+    // The point of the split: tapping "Security deposit" must not land on the
+    // same page as "Rent rules". Distinct routes are what makes each screen
+    // focused — and buildBillingPatch is what keeps them from overwriting
+    // each other.
+    const routes = deriveFinanceSections(source())
+      .flatMap((s) => s.rows)
+      .filter((r) => r.state !== 'unavailable' && r.route)
+      .map((r) => r.route!);
+
+    expect(new Set(routes).size).toBe(routes.length);
+    expect(routes).not.toContain('/owner/more/configuration/finance/billing-policy');
   });
 
   it('flags a missing GST number', () => {
