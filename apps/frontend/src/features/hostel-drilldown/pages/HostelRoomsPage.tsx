@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { InviteTenantWizard } from '@features/owner-tenants/invite/InviteTenantWizard';
+import { ErrorCard } from '@shared/ui/error/ErrorCard';
 import { useHostelRooms } from '../hooks/useHostelRooms';
 import { FloorGroup } from '../components/FloorGroup';
 import { RoomSheetModal } from '../room-sheet/RoomSheetModal';
@@ -93,31 +94,35 @@ export function HostelRoomsPage() {
         </div>
       )}
 
-      <div className="flex flex-col gap-3">
-        {layout.floors.map((floor) => {
-          const rooms = (layout.roomsByFloor.get(floor.id) ?? []).filter(matchesSearch);
-          if (layout.mode === 'browse' && rooms.length === 0) return null;
-          return (
-            <FloorGroup
-              key={floor.id}
-              floor={floor}
-              rooms={rooms}
-              mode={layout.mode}
-              onOpenRoom={setRoomSheetRoom}
-              onAssignRoom={() => setInviteOpen(true)}
-              dragRoomId={layout.dragRoomId}
-              isDragOver={layout.dragOverFloorId === floor.id}
-              onDragStartRoom={layout.startDrag}
-              onDragEndRoom={layout.endDrag}
-              onDragOverFloor={() => layout.dragOverFloor(floor.id)}
-              onDropFloor={() => layout.dropOnFloor(floor.id)}
-            />
-          );
-        })}
-        {!layout.isLoading && layout.floors.length === 0 && (
-          <p className="px-1 py-6 text-center text-[13px] text-muted-foreground">No floors yet — add one to get started.</p>
-        )}
-      </div>
+      {layout.isError ? (
+        <ErrorCard compact error={layout.error} onRetry={() => layout.refetch()} />
+      ) : (
+        <div className="flex flex-col gap-3">
+          {layout.floors.map((floor) => {
+            const rooms = (layout.roomsByFloor.get(floor.id) ?? []).filter(matchesSearch);
+            if (layout.mode === 'browse' && rooms.length === 0) return null;
+            return (
+              <FloorGroup
+                key={floor.id}
+                floor={floor}
+                rooms={rooms}
+                mode={layout.mode}
+                onOpenRoom={setRoomSheetRoom}
+                onAssignRoom={() => setInviteOpen(true)}
+                dragRoomId={layout.dragRoomId}
+                isDragOver={layout.dragOverFloorId === floor.id}
+                onDragStartRoom={layout.startDrag}
+                onDragEndRoom={layout.endDrag}
+                onDragOverFloor={() => layout.dragOverFloor(floor.id)}
+                onDropFloor={() => layout.dropOnFloor(floor.id)}
+              />
+            );
+          })}
+          {!layout.isLoading && layout.floors.length === 0 && (
+            <p className="px-1 py-6 text-center text-[13px] text-muted-foreground">No floors yet — add one to get started.</p>
+          )}
+        </div>
+      )}
 
       {layout.mode === 'browse' && (
         <div className="flex items-center gap-4 px-1 py-1">

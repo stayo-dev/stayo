@@ -10,6 +10,10 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-09 — Hostel Drill-down: real header data, and fetch errors no longer masquerade as empty tabs
+- **The hostel drill-down header (`/owner/hostels/:hostelId/*`) now shows the real hostel name/city/status** instead of a hardcoded mock lookup that silently fell back to generic "Hostel" for any hostel not in the mock list — found while investigating a report of a tenant missing from a specific hostel's Tenants tab. Reuses the already-warm `portfolio/summary` query, no extra request.
+- **`useHostelTenants`/`useHostelRooms` now surface `isError`/`error`/`refetch`**, and their pages render the existing `ErrorCard` component with a retry action on a real fetch failure, instead of silently rendering the same empty state as a hostel that genuinely has none. See [[Bugs]] for the full investigation and the still-open question this was meant to help diagnose.
+
 ### 2026-08-08 — Fixed a Prisma `relationJoins` bug that 500'd every tenant's authenticated request post-login
 - **Every route a logged-in tenant hit after `/api/auth/login` was crashing** with `TypeError: (tenancies || []).filter is not a function` — found while building a test tenant end-to-end to check the Food feature, but reproduces for any tenant with exactly one live tenancy, so this affected the tenant portal generally, not just the test fixture. See [[Bugs]] for the full root-cause writeup.
 - **Root cause:** `resolveSupabaseSession()`, `user-service.ts#getProfile`, and the `ACTIVATE`-step auto-login in `activation-workflow-service.ts` all fetched a profile's live tenancy via a `where`-filtered to-many Prisma `include` (`liveTenancyInclude`); with the `relationJoins` preview feature enabled, Prisma generated SQL that returned a single JSON object instead of an array whenever exactly one tenancy matched.

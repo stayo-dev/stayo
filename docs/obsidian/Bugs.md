@@ -28,6 +28,17 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### Hostel Drill-down's Rooms/Tenants tabs silently rendered a genuinely-empty look-alike on any fetch error — plus the page header was reading from hardcoded mock data
+
+- **Status:** fixed (header + error visibility only — see the open item below for the still-unresolved question of whether STARLINK's empty tabs are a genuine data mismatch)
+- **Found:** 2026-08-09, reported by the user: a test tenant ("Sharan", `INVITED`, hostel "STARLINK") correctly appeared in the owner's global "All Tenants" dashboard tagged STARLINK, but STARLINK's own Rooms/Tenants tabs (`/owner/hostels/:hostelId/{rooms,tenants}`) showed empty states ("No tenants match" / 0 rooms), and the property header showed a generic "Hostel" title instead of "STARLINK".
+- **Area:** [[Frontend]] (`features/hostel-drilldown/layout/HostelDrilldownLayout.tsx`, `features/hostel-drilldown/hooks/{useHostelTenants,useHostelRooms}.ts`, `features/hostel-drilldown/pages/{HostelTenantsPage,HostelRoomsPage}.tsx`)
+- **Symptom / investigation:** three rounds of tracing confirmed the global "All Tenants" view and the per-hostel Tenants tab call the *identical* backend query (`GET /api/tenants?hostelId=X`, plain `WHERE hostel_id = X`, no join or status filter difference) — ruling out a filtering-logic bug. Two independent, confirmed bugs surfaced along the way instead:
+  1. `HostelDrilldownLayout.tsx` resolved the header's name/city/status from hardcoded `mockProperties` (`@shared/mocks/dashboard`) rather than the real hostel, so it fell back to generic "Hostel" for any hostel not in that mock list — meaning the header could not be trusted to confirm which hostel record was actually being viewed while debugging this exact issue.
+  2. `useHostelTenants`/`useHostelRooms` never surfaced `isError`/`error` from their `useQuery` calls — any request failure (a 403 `FORBIDDEN`/`HOSTEL_SCOPE_VIOLATION`, `HOSTEL_CONTEXT_REQUIRED`, or a transient 5xx) silently rendered `[]`, pixel-identical to a hostel that genuinely has no tenants/rooms. There was no way, from the UI, to distinguish a real data mismatch from a swallowed request error.
+- **Fix:** `HostelDrilldownLayout.tsx` now queries `portfolioService.getSummary()` (`queryKeys.portfolio.summary()` — the same warm query `HostelOverviewPage` already uses, so no extra network round-trip) and renders the real `name`/`city`/`status` for the matched hostel card instead of the mock lookup. `useHostelTenants`/`useHostelRooms` now return `isError`/`error`/`refetch`; `HostelTenantsPage`/`HostelRoomsPage` render `ErrorCard` (compact, `shared/ui/error/ErrorCard.tsx` — an existing shared component, not new) with a retry action instead of falling through to the empty-state UI when a fetch actually fails.
+- **Related:** [[Frontend]], [[Changelog]], the open item below
+
 ### Every tenant's very first authenticated request after login 500'd — Prisma's `relationJoins` preview feature flattened a filtered to-many `include` into a single object
 
 - **Status:** fixed
@@ -946,6 +957,8 @@ Copy this block for each new entry:
 ## Open / known issues
 
 > See also `docs/known-issues.md` for the maintained list of known drift/gaps in `docs/`.
+
+- **Whether the STARLINK Rooms/Tenants empty-tab report (see the Fixed entry above) has a real underlying data mismatch is still unconfirmed.** Both `session.hostels`/`ownerService.getHostels()` (`GET /api/owner/hostels`) and the Properties list/`portfolioService.getSummary()` (`GET /api/owner/portfolio/summary`) run the identical `prisma.hostels.findMany({ where: { owner_id, status: { in: ["ACTIVE","INACTIVE"] } } })` query, so under normal conditions they must return the same hostel id for "STARLINK" — but this wasn't verified against the live DB (no Supabase access in that session). With the header/error-visibility fixes above shipped, the next load of STARLINK's Rooms/Tenants tabs will either show a genuine error (pointing at an ownership/scope-check bug) or a correctly-labeled genuine empty state (pointing at a real `tenants.hostel_id` / hostel-id mismatch, worth checking directly: `SELECT id, hostel_id, status FROM tenants WHERE ...` for Sharan vs. the `hostels.id` the URL resolves to). Also noted in passing: `lib/security/scoped-query.ts`'s `requireHostelBelongsToOwner` allows `ARCHIVED` hostels in addition to `ACTIVE`/`INACTIVE`, while both list endpoints above exclude `ARCHIVED` — a minor inconsistency, not confirmed as the cause here, but worth aligning if it ever causes a hostel to be reachable by direct URL but absent from every list.
 
 - **`apps/backend/.env.test` points at the same Supabase project as the dev root `.env`.** Confirmed 2026-08-07 while tracing the Recent Activity test-data-pollution bug above: both resolve to project ref `qsjrazcbtpmubclkevwi`, so every `npm test` run writes real rows (test hostels, tenants, obligations, payments, etc.) directly into the dev DB the admin dashboard reads from. Cleaned up the resulting rows once as a one-off; the underlying collision is unfixed and will recur on the next test run. See [[Database]].
 

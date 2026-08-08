@@ -3,7 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { TenantList } from '@features/owner-tenants/components/TenantList';
 import { InviteTenantWizard } from '@features/owner-tenants/invite/InviteTenantWizard';
-import { mockTenants } from '@shared/mocks/tenants';
+import { ErrorCard } from '@shared/ui/error/ErrorCard';
+import { useHostelTenants } from '../hooks/useHostelTenants';
 
 /** Hostel Drill-down → Tenants sub-tab, per Stayo App.dc.html — reuses the main Tenants tab's list/row components, filtered to this hostel. */
 export function HostelTenantsPage() {
@@ -12,7 +13,7 @@ export function HostelTenantsPage() {
   const [search, setSearch] = useState('');
   const [inviteOpen, setInviteOpen] = useState(false);
 
-  const hostelTenants = useMemo(() => mockTenants.filter((t) => t.hostelId === hostelId), [hostelId]);
+  const { tenants: hostelTenants, isError, error, refetch } = useHostelTenants(hostelId);
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return hostelTenants;
@@ -45,7 +46,11 @@ export function HostelTenantsPage() {
         </button>
       </div>
 
-      <TenantList tenants={filtered} onSelect={(t) => navigate(`/owner/tenants/${t.id}`)} onInvite={() => setInviteOpen(true)} />
+      {isError ? (
+        <ErrorCard compact error={error} onRetry={() => refetch()} />
+      ) : (
+        <TenantList tenants={filtered} onSelect={(t) => navigate(`/owner/tenants/${t.id}`)} onInvite={() => setInviteOpen(true)} />
+      )}
 
       <InviteTenantWizard open={inviteOpen} onClose={() => setInviteOpen(false)} />
     </div>
