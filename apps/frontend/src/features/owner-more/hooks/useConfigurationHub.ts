@@ -6,9 +6,10 @@ import { queryKeys } from '@lib/queryKeys';
 import { useHostelBedSummary } from './useHostelBedSummary';
 import { tallyConfigRows } from '../config/configRows';
 import { deriveFinanceSections, deriveHostelSections, type ConfigSource } from '../config/deriveConfigSections';
+import { countWorkflows, deriveAutomationSections } from '../config/deriveAutomationSections';
 
 export interface ConfigModule {
-  key: 'hostel' | 'finance';
+  key: 'hostel' | 'finance' | 'automation';
   glyph: string;
   title: string;
   desc: string;
@@ -30,17 +31,15 @@ interface PortfolioSummary {
   hostels?: unknown[];
 }
 
-const LATE_FEE_TYPE_LABEL: Record<string, string> = {
-  PER_DAY: '/day',
-  FLAT: 'one-time',
-  PERCENTAGE: '% of rent',
-};
-
 /**
- * Phase 1 Configuration hub composition — only Hostel + Finance modules are
- * real; module status/attention items are computed from actual gaps, never
- * from a deliberately-off toggle. See the approved plan for the real/not-real
- * split this encodes.
+ * Configuration hub composition. Hostel, Finance and Automation are real;
+ * Agreements, Notifications and Account are deferred to later slices (see
+ * docs/superpowers/specs/2026-08-08-configuration-hub-redesign-design.md).
+ *
+ * Module cards derive their counts from the *same* pure functions the module
+ * screens render, so a card can never disagree with the screen it opens.
+ * Attention items come from genuine gaps only — a deliberately-off toggle is
+ * never flagged, and placeholder rows never move a count.
  */
 export function useConfigurationHub() {
   const session = useOwnerSession();
@@ -74,6 +73,11 @@ export function useConfigurationHub() {
     policy: policyQuery.data?.policy ?? null,
     counts: { properties: hostelsCount, floors: floorsTotal, rooms: roomsTotal, beds: bedsTotal },
   };
+  const automationWorkflows = deriveAutomationSections({
+    automation: policyQuery.data?.policy?.automation ?? null,
+    channels: policyQuery.data?.policy?.notifications?.channels ?? null,
+  }).flatMap((section) => section.rows);
+  const automation = countWorkflows(automationWorkflows);
   const hostelTally = tallyConfigRows(deriveHostelSections(source).flatMap((s) => s.rows));
   const financeTally = tallyConfigRows(deriveFinanceSections(source).flatMap((s) => s.rows));
 
@@ -104,6 +108,20 @@ export function useConfigurationHub() {
       tint: '#FBF1DE',
       iconColor: '#B8792B',
       route: '/owner/more/configuration/finance',
+    },
+    {
+      key: 'automation',
+      glyph: '↻',
+      title: 'Automation',
+      desc: 'Collection, reminders & workers',
+      // A paused workflow is a deliberate choice, never a gap — so this card is
+      // 'ok' whatever the mix, and reports how many are running instead.
+      status: 'ok',
+      statusLabel: automation.running > 0 ? 'Active' : 'All paused',
+      meta: `${automation.running} of ${automation.total} workflows running`,
+      tint: '#E4EFE7',
+      iconColor: '#1F7A52',
+      route: '/owner/more/configuration/automation',
     },
   ];
 

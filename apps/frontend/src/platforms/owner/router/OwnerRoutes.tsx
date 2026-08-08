@@ -55,6 +55,9 @@ const MoreConfigHostelPage = lazy(() =>
 const MoreConfigFinancePage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigFinancePage').then((m) => ({ default: m.MoreConfigFinancePage })),
 );
+const MoreConfigAutomationPage = lazy(() =>
+  import('@features/owner-more/pages/MoreConfigAutomationPage').then((m) => ({ default: m.MoreConfigAutomationPage })),
+);
 const AgreementQueuePage = lazy(() =>
   import('@features/owner-workqueue/AgreementQueuePage').then((m) => ({ default: m.AgreementQueuePage })),
 );
@@ -153,6 +156,7 @@ export function OwnerRoutes() {
         <Route path="/owner/more/configuration/hostel" element={<MoreConfigHostelPage />} />
         <Route path="/owner/more/configuration/hostel/tenant-defaults" element={<Navigate to="/owner/more/configuration/finance/billing-policy" replace />} />
         <Route path="/owner/more/configuration/finance" element={<MoreConfigFinancePage />} />
+        <Route path="/owner/more/configuration/automation" element={<MoreConfigAutomationPage />} />
         <Route path="/owner/more/configuration/finance/late-fees" element={<Navigate to="/owner/more/configuration/finance/billing-policy" replace />} />
         <Route path="/owner/more/configuration/finance/billing-policy" element={<MoreConfigBillingPolicyPage />} />
         <Route path="/owner/more/configuration/finance/payment-gateway" element={<MoreConfigPaymentGatewayPage />} />
