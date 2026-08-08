@@ -2,33 +2,13 @@ import { MEAL_CATEGORY_META, type MealSlotKey } from '@shared/mocks/food';
 import { cellAt, DAY_ORDER, isFilled, SLOT_ORDER, type WeekGrid } from './weekGrid';
 
 export interface PublishCheck {
-  id: 'complete' | 'variety' | 'runs' | 'votes';
+  id: 'complete' | 'variety' | 'runs';
   status: 'PASS' | 'WARN';
   label: string;
 }
 
 export interface PublishCheckInput {
   grid: WeekGrid;
-  votesConsidered: boolean;
-  /**
-   * Vote *rows*, not students — one tenant may hold several rows per meal
-   * type, so this is deliberately not called a voter count.
-   */
-  voteCount: number;
-}
-
-/**
- * Was this schedule actually built from a voting period?
- *
- * "A voting period exists for this month" is a different question, and
- * answering it here claimed votes were used for a week assembled from none
- * (carry-forward while voting was still open). `generated_from_voting_period_id`
- * is the field the generator writes when it really did rank by votes.
- */
-export function hasVotesApplied(
-  schedule: { generated_from_voting_period_id?: string | null } | null | undefined,
-): boolean {
-  return Boolean(schedule?.generated_from_voting_period_id);
 }
 
 const TOTAL_CELLS = DAY_ORDER.length * SLOT_ORDER.length;
@@ -46,7 +26,7 @@ const DOMINANCE_LIMIT = 3;
  * This exists because a menu of Dosa x7, Sambar Rice x7 and empty snacks was
  * published to real tenants with nothing anywhere pointing it out.
  */
-export function buildPublishChecks({ grid, votesConsidered, voteCount }: PublishCheckInput): PublishCheck[] {
+export function buildPublishChecks({ grid }: PublishCheckInput): PublishCheck[] {
   const filledCells = DAY_ORDER.flatMap((day) => SLOT_ORDER.map((slot) => cellAt(grid, day, slot))).filter(isFilled);
   const filled = filledCells.length;
 
@@ -110,10 +90,5 @@ export function buildPublishChecks({ grid, votesConsidered, voteCount }: Publish
     ? { id: 'runs', status: 'WARN', label: 'Some meals repeat on back-to-back days' }
     : { id: 'runs', status: 'PASS', label: 'Nothing repeats two days running' };
 
-  const votes: PublishCheck =
-    votesConsidered && voteCount > 0
-      ? { id: 'votes', status: 'PASS', label: `${voteCount} student ${voteCount === 1 ? 'vote' : 'votes'} used` }
-      : { id: 'votes', status: 'WARN', label: 'Built without student votes' };
-
-  return [complete, variety, runs, votes];
+  return [complete, variety, runs];
 }

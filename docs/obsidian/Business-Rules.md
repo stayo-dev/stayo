@@ -260,6 +260,28 @@ The `PAYMENT_PENDING` / `RESERVED` / `MOVE_IN_READY` vocabulary is **deleted**. 
 
 Occupancy is a question about beds, not money: a room is occupied by every active allocation held by an `ACTIVE` tenant. It previously excluded anyone still `PAYMENT_PENDING`, which left a moved-in tenant's bed looking vacant and invitable.
 
+## Food schedule generation is independent of voting (2026-08-08)
+
+Deliberate product decision, not a bugfix — see [[Decisions]]. The owner Food tab's weekly schedule is generated straight from the Food Library (all active items per meal type, alphabetically), never from tenant votes, and Generate is never gated on a voting period's status.
+
+- `POST /api/food/schedules/generate` only ranks by votes when a caller explicitly passes `votingPeriodId` — it no longer auto-detects an existing voting period for the hostel+month. No current caller passes one.
+- The owner-side Voting card and the tenant-side "Vote on this month's menu" section are both hidden.
+- Voting's schema (`food_voting_periods`, `food_votes`), API routes, and frontend hooks/components are all still present and functional, just unused by the current flow — reversible groundwork for a future, likely different, "polling" feature rather than the same voting model being wired back in as-is.
+
+See [[Food]] §10 for the full detail (what changed, what stayed, and what's still dormant infrastructure).
+
+## Food Polls — ad-hoc, independent of the monthly voting window above (2026-08-08)
+
+Real feature, `food_polls`/`food_poll_options`/`food_poll_votes` — deliberately a third, separate poll/vote concept in this module (see [[Decisions#ADR-057|ADR-057]]). Not to be confused with the dormant `food_voting_periods` window above, nor with the deleted mock "Food Polls" ([[Decisions#ADR-048|ADR-048]]).
+
+- One poll = one owner-created instance (title, poll type, options, meal category, date, closing time) — not a recurring monthly window. Created and published in a single action; there is no draft state.
+- `RATING`/`YES_NO` poll types still write to `food_poll_options` — the frontend resolves their fixed labels ("Yes"/"No", or "5 stars".."1 star") at creation time, so vote-counting logic never special-cases poll type.
+- `allow_multiple = true` polls toggle a tenant's vote per option (multi-select); `allow_multiple = false` polls replace — any other vote this tenant holds on the poll is removed first, and tapping the already-selected option unselects it.
+- `is_anonymous` is stored but has no current behavioral effect — no results view (owner or tenant) exposes a per-voter breakdown regardless of the flag, so there's nothing left to hide differently.
+- Auto-closes daily via the same cron that already closes the dormant voting window and carries schedules forward (`app/api/cron/food-carry-forward`), once `closes_at` passes.
+
+See [[Food]] §16 for full detail, including a documented minor inconsistency (the "Allow multiple selections" toggle is independent of the Poll Type selector, inherited unreconciled from the reference design).
+
 ## Signup phone verification
 
 Added 2026-07-31 ([[Decisions#ADR-034|ADR-034]]). **Phone verification is required for signup only when the provider can actually deliver it.**

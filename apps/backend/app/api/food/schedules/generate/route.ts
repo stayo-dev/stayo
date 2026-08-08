@@ -25,9 +25,11 @@ function firstOfMonth(value: unknown): Date | null {
  * POST /api/food/schedules/generate
  * Body: { hostelId, month: "YYYY-MM", votingPeriodId?, mode?: "BUILD" | "FILL_GAPS" | "START_OVER" }
  *
- * Ranks each meal type's library items by real vote count (falling back to all
- * active library items, alphabetically, if no votes exist yet) and assigns one
- * item per weekday via `assignWeekForMealType`.
+ * Builds each meal type's week from the Food Library (all active items,
+ * alphabetically) via `assignWeekForMealType`. Voting-based ranking is opt-in
+ * only — it runs solely when a caller explicitly passes `votingPeriodId`; no
+ * current caller does, since schedule generation is decoupled from voting
+ * (voting/polling is planned as a separate future feature).
  *
  * What it is permitted to overwrite is decided by `decideRebuild` — a PUBLISHED
  * month is never demoted to DRAFT and never wholesale deleted, because tenants
@@ -45,7 +47,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const { hostelId, month: monthStr } = body;
     const mode: RebuildMode = ["BUILD", "FILL_GAPS", "START_OVER"].includes(body.mode) ? body.mode : "BUILD";
-    let { votingPeriodId } = body;
+    const { votingPeriodId } = body;
 
     await requireHostelBelongsToOwner(scope.owner_id, hostelId);
 
@@ -59,13 +61,6 @@ export async function POST(req: NextRequest) {
     const decision = decideRebuild({ mode, currentStatus: existing?.status ?? null });
     if (!decision.allowed) {
       return apiError(decision.reason, "SCHEDULE_PUBLISHED", 409);
-    }
-
-    if (!votingPeriodId) {
-      const period = await prisma.food_voting_periods.findUnique({
-        where: { hostel_id_month: { hostel_id: hostelId, month } },
-      });
-      votingPeriodId = period?.id;
     }
 
     const assignmentsByMealType: Record<string, ReturnType<typeof assignWeekForMealType>> = {};
