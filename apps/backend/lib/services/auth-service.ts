@@ -37,15 +37,24 @@ const GENERIC_RESET_RESPONSE = {
 };
 
 /**
- * Deliberately says nothing about whether the number is registered. Same
- * response for a known number, an unknown one, and one whose OTP send was
- * rate-limited or failed — otherwise this becomes a way to enumerate which
- * phone numbers have Stayo accounts.
+ * The phone leg tells the caller whether the number is registered, unlike
+ * the email leg (amended 2026-08-08, see [[Decisions]] ADR-055).
+ *
+ * The anti-enumeration argument was abandoned on purpose, not overlooked:
+ * `selfSignUpOwner` and `selfSignUpTenant` below already reject a duplicate
+ * with "Phone number already registered" on public unauthenticated routes,
+ * so the same fact was always one signup form away. Paying a real usability
+ * cost — anyone who mistyped a digit waited five minutes for a code that was
+ * never coming — bought a secret the product was already giving away.
+ *
+ * What still protects it: the per-phone (5/15min) and per-IP (20/hr) limits
+ * in the route, applied before this lookup, so it cannot be used to sweep a
+ * number range. A deactivated account reports as absent, so account *status*
+ * is still never disclosed.
  */
-const GENERIC_PHONE_RESET_RESPONSE = {
-  success: true,
-  message: "If an account exists for this number, you will receive a verification code on WhatsApp.",
-};
+const PHONE_RESET_SENT_MESSAGE = "A verification code is on its way on WhatsApp.";
+const PHONE_RESET_NO_ACCOUNT_MESSAGE =
+  "We couldn't find a Stayo account with that number.";
 
 /**
  * Short by design: unlike the emailed link, this token is handed straight
@@ -393,13 +402,20 @@ export class AuthService {
    * Phone/OTP leg of password reset (see
    * docs/superpowers/specs/2026-08-08-auth-recovery-design.md).
    *
-   * Always resolves the same way whether or not the number belongs to an
-   * account — the caller must not be able to discover which phone numbers
-   * are registered. `PASSWORD_RESET` is deliberately absent from
-   * SKIPPABLE_OTP_PURPOSES, so if WhatsApp is unavailable this fails closed
-   * rather than waving the caller through without a code.
+   * Resolves the account **before** sending anything, and reports whether one
+   * was found — see PHONE_RESET_NO_ACCOUNT_MESSAGE above for why this
+   * discloses where the email leg does not. `PASSWORD_RESET` is deliberately
+   * absent from SKIPPABLE_OTP_PURPOSES, so if WhatsApp is unavailable this
+   * fails closed rather than waving the caller through without a code.
+   *
+   * A send failure is reported as such rather than as a delivered code: the
+   * caller would otherwise sit on a code-entry screen waiting for something
+   * that is not coming, which is the exact problem this change fixes.
    */
-  async requestPasswordResetByPhone(phone: string, meta: AuthSessionMeta = {}) {
+  async requestPasswordResetByPhone(
+    phone: string,
+    meta: AuthSessionMeta = {},
+  ): Promise<{ account_exists: boolean; sent: boolean; message: string }> {
     const normalizedPhone = normalizeWhatsAppPhone(phone);
 
     const profile = await prisma.profile.findFirst({
@@ -407,8 +423,10 @@ export class AuthService {
       select: { id: true, email: true, role: true, owner_id: true, is_active: true },
     });
 
+    // A deactivated profile reports as absent. Account *status* stays
+    // undisclosed even though existence no longer is.
     if (!profile || !profile.is_active) {
-      return GENERIC_PHONE_RESET_RESPONSE;
+      return { account_exists: false, sent: false, message: PHONE_RESET_NO_ACCOUNT_MESSAGE };
     }
 
     try {
@@ -417,24 +435,23 @@ export class AuthService {
         purpose: PASSWORD_RESET_OTP_PURPOSE,
         requestIp: meta.ipAddress || null,
       });
-
-      await eventLog.log("PASSWORD_RESET_REQUESTED", profile.owner_id || profile.id, {
-        profile_id: profile.id,
-        role: profile.role,
-        channel: "phone",
-        ip_address: meta.ipAddress || null,
-        user_agent: meta.userAgent || null,
-      });
     } catch (error) {
-      // Rate limits and provider outages must not become a way to probe
-      // which numbers exist, so the response shape never changes here.
       console.error("[auth.requestPasswordResetByPhone] OTP send failed", {
         profile_id: profile.id,
         error: error instanceof Error ? error.message : String(error),
       });
+      throw error;
     }
 
-    return GENERIC_PHONE_RESET_RESPONSE;
+    await eventLog.log("PASSWORD_RESET_REQUESTED", profile.owner_id || profile.id, {
+      profile_id: profile.id,
+      role: profile.role,
+      channel: "phone",
+      ip_address: meta.ipAddress || null,
+      user_agent: meta.userAgent || null,
+    });
+
+    return { account_exists: true, sent: true, message: PHONE_RESET_SENT_MESSAGE };
   }
 
   /**

@@ -79,6 +79,13 @@ export function ForgotPasswordPage() {
     }
   };
 
+  /**
+   * Only advances to the code screen once the backend confirms an account
+   * exists *and* a code was actually sent. A 404 (`NO_ACCOUNT_FOR_PHONE`)
+   * keeps the caller on this step with the number still editable — the whole
+   * point of checking before sending is that a mistyped digit should be
+   * correctable immediately, not discovered after five minutes of waiting.
+   */
   const sendCode = async (event?: React.FormEvent) => {
     event?.preventDefault();
     setBusy(true);
@@ -89,6 +96,9 @@ export function ForgotPasswordPage() {
       setResendIn(30);
     } catch (err) {
       setError(getMessage(err, 'Could not send a code to that number.'));
+      // A failed *resend* stays put — bouncing back to the number step would
+      // discard a code the user may have already typed.
+      setStep((current) => (current === 'phone-code' ? current : 'phone'));
     } finally {
       setBusy(false);
     }
@@ -254,7 +264,7 @@ export function ForgotPasswordPage() {
               <form onSubmit={submitNewPassword}>
                 <Heading
                   title="Enter your code"
-                  description={`If an account exists for ${phone.trim()}, a 6-digit code is on its way. Codes expire in 5 minutes.`}
+                  description={`We sent a 6-digit code to ${phone.trim()}. It expires in 5 minutes.`}
                 />
                 <Field label="Verification code">
                   <input

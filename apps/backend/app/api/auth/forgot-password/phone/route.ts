@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { apiError, apiResponse } from "@/lib/auth";
 import { authService } from "@/lib/services/auth-service";
+import { OtpServiceError } from "@/lib/services/auth/auth-otp-service";
 import { rateLimitService } from "@/lib/services/rate-limit-service";
 import { getClientIp } from "@/lib/security/api-guard";
 import { ForgotPasswordByPhoneSchema } from "@/lib/validators/otp";
@@ -13,14 +14,13 @@ import { ForgotPasswordByPhoneSchema } from "@/lib/validators/otp";
  * can't reach) the email on their account — tenants especially, who were
  * often onboarded with an owner-supplied email.
  *
- * Mirrors the email route's contract exactly: one generic 200 whether or not
- * the number is registered, so this cannot be used to discover which phone
- * numbers have Stayo accounts. Rate limits sit in front of the lookup for the
- * same reason — a limit applied only to real accounts would leak through
- * timing and status codes alike.
+ * Unlike the email route, this one **tells the caller whether the number is
+ * registered** (amended 2026-08-08, ADR-055). The signup routes already
+ * disclose the same fact with "Phone number already registered", so the
+ * generic reply protected nothing while stranding anyone who mistyped a digit
+ * on a code-entry screen for five minutes. Rate limits still sit in front of
+ * the lookup so this cannot sweep a number range.
  */
-const GENERIC_MESSAGE =
-  "If an account exists for this number, you will receive a verification code on WhatsApp.";
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req) ?? "unknown";
@@ -59,13 +59,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await authService.requestPasswordResetByPhone(phone, { ipAddress: ip, userAgent });
+    const result = await authService.requestPasswordResetByPhone(phone, { ipAddress: ip, userAgent });
 
-    return apiResponse({ success: true, message: GENERIC_MESSAGE }, 200);
+    if (!result.account_exists) {
+      return apiError(result.message, "NO_ACCOUNT_FOR_PHONE", 404);
+    }
+
+    return apiResponse({ success: true, message: result.message, account_exists: true }, 200);
   } catch (error) {
+    // An OtpServiceError here means the code could not be sent (provider
+    // unavailable, or this number/IP hit its limit). Surfaced with its own
+    // code so the UI keeps the caller on the phone step instead of advancing
+    // to a code screen for a code that will never arrive.
+    if (error instanceof OtpServiceError) {
+      return apiError(error.message, error.code, error.status);
+    }
     console.error("[auth.forgot-password.phone] request failed", {
       error: error instanceof Error ? error.message : String(error),
     });
-    return apiError("Could not process password reset right now", "PASSWORD_RESET_ERROR", 500);
+    return apiError("Could not send a code right now. Please try email instead.", "OTP_SEND_FAILED", 502);
   }
 }
