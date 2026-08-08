@@ -2,13 +2,16 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, ChevronDown, Settings2, HelpCircle, Info, LogOut } from 'lucide-react';
 import { ListRow } from '@shared/ui-patterns/ListRow';
-import { mockOwnerProfile } from '@shared/mocks/more';
 import { useConfigurationHub } from '../hooks/useConfigurationHub';
 import { useMoreNav } from '../hooks/useMoreNav';
 import { ConfigProgressRing } from '../components/ConfigProgressRing';
 import { ConfigAttentionRow } from '../components/ConfigAttentionRow';
 import { ConfigModuleCard } from '../components/ConfigModuleCard';
 import { ConfigSearchOverlay } from '../components/ConfigSearchOverlay';
+import { ConfigSettingRow } from '../components/ConfigSettingRow';
+import { ConfigRecentChanges } from '../components/ConfigRecentChanges';
+import { useConfigChanges } from '../hooks/useConfigChanges';
+import { UNAVAILABLE_LABEL, type ConfigRow } from '../config/configRows';
 
 const card = 'overflow-hidden rounded-[20px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]';
 const sectionLabel = 'pl-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground';
@@ -19,12 +22,35 @@ const QUICK_ACTIONS = [
   { label: 'Late fees', route: '/owner/more/configuration/finance/late-fees' },
 ];
 
-const ADVANCED_ITEMS = ['Import data', 'Export', 'Backups', 'Activity logs', 'API & webhooks', 'Danger zone'];
+/**
+ * None of these have an owner-facing route yet — verified, not assumed: there
+ * is no import or export screen under the owner router, and no backups, API or
+ * danger-zone feature at all. They previously rendered as ordinary rows with no
+ * `onClick`, which looks tappable and does nothing; they now say so explicitly.
+ */
+const ADVANCED_ROWS: ConfigRow[] = [
+  'Import data',
+  'Export',
+  'Backups',
+  'Activity logs',
+  'API & webhooks',
+  'Danger zone',
+].map((title) => ({ key: title, title, detail: UNAVAILABLE_LABEL, state: 'unavailable' as const }));
 
 /** Owner Configuration hub — Phase 1: real Hostel + Finance modules only. See the approved plan for what's deferred and why. */
 export function MoreConfigurationHubPage() {
   const navigate = useNavigate();
-  const { modules, attention, percentComplete, doneCount, totalCount, isLoading } = useConfigurationHub();
+  const {
+    modules,
+    attention,
+    percentComplete,
+    doneCount,
+    totalCount,
+    isLoading,
+    workspaceName,
+    workspaceInitials,
+  } = useConfigurationHub();
+  const { changes } = useConfigChanges();
   const { signOut } = useMoreNav();
   const [searchOpen, setSearchOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -46,10 +72,10 @@ export function MoreConfigurationHubPage() {
       <div className="flex items-center justify-between gap-3">
         <div className="flex flex-col gap-0.5">
           <h1 className="font-display text-[22px] font-extrabold tracking-tight text-foreground">Configuration</h1>
-          <p className="text-[12.5px] text-muted-foreground">{mockOwnerProfile.name.split(' ')[0]}&apos;s workspace</p>
+          <p className="text-[12.5px] text-muted-foreground">{workspaceName}</p>
         </div>
         <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-primary font-display text-[13px] font-bold text-primary-foreground shadow-[0_4px_10px_rgba(180,106,85,0.32)]">
-          {mockOwnerProfile.initials}
+          {workspaceInitials}
         </span>
       </div>
 
@@ -113,6 +139,8 @@ export function MoreConfigurationHubPage() {
         </div>
       </div>
 
+      <ConfigRecentChanges changes={changes} />
+
       <div className="flex flex-col gap-3">
         <div className={sectionLabel}>Quick actions</div>
         <div className="flex flex-wrap gap-2">
@@ -145,8 +173,13 @@ export function MoreConfigurationHubPage() {
         </button>
         {advancedOpen && (
           <div className={card}>
-            {ADVANCED_ITEMS.map((label, i) => (
-              <ListRow key={label} title={label} className={`px-4 ${i === 0 ? '' : 'border-t border-border/60'}`} />
+            {ADVANCED_ROWS.map((row, i) => (
+              <ConfigSettingRow
+                key={row.key}
+                row={row}
+                onNavigate={navigate}
+                className={i === 0 ? '' : 'border-t border-border/60'}
+              />
             ))}
           </div>
         )}

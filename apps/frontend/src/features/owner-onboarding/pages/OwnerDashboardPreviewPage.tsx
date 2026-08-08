@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { OwnerHomeDashboard } from '@features/owner-dashboard/components/OwnerHomeDashboard';
 import { HostelOptionsSheet } from '@features/owner-dashboard/components/HostelOptionsSheet';
+import { AddHostelModal } from '@features/owner-dashboard/components/AddHostelModal';
 import { useOwnerDashboard } from '@features/owner-dashboard/hooks/useOwnerDashboard';
 import { useHostelOrder } from '@features/owner-dashboard/property-order/useHostelOrder';
 import { moveItem } from '@features/owner-dashboard/property-order/hostelSort';
@@ -45,6 +46,7 @@ export function OwnerDashboardPreviewPage() {
   const reorder = useHostelOrder();
   const [hostelMenuFor, setHostelMenuFor] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [addHostelOpen, setAddHostelOpen] = useState(false);
 
   if (dash.isLoading) return <DashboardLoadingSkeleton />;
 
@@ -87,7 +89,7 @@ export function OwnerDashboardPreviewPage() {
         onOpenQuickActions={qa.openSheet}
         onViewAllActions={qa.openAllActions}
         onPropertyMenu={(hostelId) => setHostelMenuFor(hostelId)}
-        onAddHostel={() => navigate('/onboarding')}
+        onAddHostel={() => setAddHostelOpen(true)}
         onReorderProperties={(orderedIds) => reorder.mutate(orderedIds)}
         onOpenSearch={() => setSearchOpen(true)}
         onOpenCollectionQueue={() => navigate('/owner/money/collect')}
@@ -145,6 +147,7 @@ export function OwnerDashboardPreviewPage() {
       />
       <QuickCollectModal open={qa.collectOpen} onClose={qa.closeCollect} initialTenant={qa.collectTenant} />
       <InviteTenantWizard open={qa.inviteOpen} onClose={qa.closeInvite} />
+      <AddHostelModal open={addHostelOpen} onClose={() => setAddHostelOpen(false)} />
       <HostelOptionsSheet
         open={Boolean(hostelMenuFor)}
         onClose={() => setHostelMenuFor(null)}

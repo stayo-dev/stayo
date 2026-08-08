@@ -34,7 +34,7 @@ interface ThemeProviderProps extends PropsWithChildren {
 /**
  * Scopes the StayO design tokens to a subtree via `data-app-theme`, matching
  * the selectors defined in src/styles/tokens/*.css. Each top-level layout
- * (PublicLayout, OwnerAppShell, TenantAppShell, ConfigShell, AuthShellLayout)
+ * (PublicLayout, OwnerAppShell, TenantAppShell, AuthShellLayout)
  * wraps its content in one of these with the appropriate `theme` value — the
  * scope is tied to where it's needed, not injected once globally, since a
  * single app session can have both scopes active across different routes.
