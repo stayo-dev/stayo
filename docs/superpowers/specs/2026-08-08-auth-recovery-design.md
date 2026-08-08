@@ -92,7 +92,11 @@ The login symptom is the mirror image. `POST /api/auth/login` returned 401, and 
 
 ### Frontend
 
-7. **Three-step `/forgot-password`** — choose method → enter identifier → set password (OTP entry and the new password share the final screen, so a verified code is spent immediately). Replaces hardcoded `#FFFDF5`/`#1B2D5B`/`#F07B1D` with the semantic design tokens the rest of the app uses. One single-stroke icon per concept: envelope, chat bubble, key. The WhatsApp option hides itself when the API reports delivery is unavailable — no dead buttons.
+7. **Three-step `/forgot-password`** — choose method → enter identifier → set password (OTP entry and the new password share the final screen, so a verified code is spent immediately). Replaces hardcoded `#FFFDF5`/`#1B2D5B`/`#F07B1D` with the semantic design tokens the rest of the app uses. One single-stroke icon per concept: envelope, chat bubble, key.
+
+   **Implementation note (deviation from the original plan):** the plan said the WhatsApp option would hide itself when delivery is unavailable. Built differently, because there is no honest signal to hide it with: `PASSWORD_RESET` is a non-skippable OTP purpose, so the backend *fails* rather than returning the `verification_required: false` hint the signup flow uses, and adding a public capability-probe endpoint to answer a cosmetic question isn't worth the surface. Instead both options stay visible and each failure is surfaced truthfully — a degraded-email result offers WhatsApp inline, and a failed code send says so rather than pretending a code is coming.
+
+   Also discovered while building: the page renders **outside any `ThemeProvider`**, so it resolves theme.css's unscoped `:root` tokens (the legacy navy/orange palette whose hexes it was hardcoding) while the login popup it is reached from resolves marketing clay. Tokenizing alone would have kept it looking identical; it now wraps in `<ThemeProvider theme="marketing">` like LandingPage.
 
 8. **Honest session errors.** `AuthContext`'s login catch distinguishes "could not reach the server" from "the server answered but the session was rejected." `AuthCallbackPage` renders the specific Google rejection reason from item 2.
 

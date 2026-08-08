@@ -208,6 +208,29 @@ Added 2026-07-31 ([[Decisions#ADR-035|ADR-035]]).
 
 Consequences that surfaces must respect: a TENANT session can legitimately have `tenant_id: null`, so anything reading dues/agreements/room must tolerate its absence (`/api/auth/me` already does), and post-login routing sends such a user to hostel search rather than the tenant portal.
 
+## Who may sign in with Google, and how a password may be reset (2026-08-08)
+
+Changed by [[Decisions#ADR-054|ADR-054]] and [[Decisions#ADR-055|ADR-055]].
+
+**Google sign-in** is available to **every** role — owner, tenant, admin. Two rules survive that change and are load-bearing:
+
+1. **It never creates an account.** A Google identity must match an existing `profiles` row, by `auth_user_id` or by verified email. An unknown email is rejected with `NO_STAYO_ACCOUNT`, whatever the role. Tenancy remains an owner-initiated relationship.
+2. **It cannot skip activation.** A TENANT whose live tenancy is `INVITED` is rejected with `TENANCY_NOT_ACTIVATED` — the same gate `authService.login()` applies. Previously the blanket tenant block enforced this by accident; now it is explicit.
+
+**Password reset** has two channels, and both end at the same place:
+
+| Channel | Proof | Token life | Delivered by |
+|---|---|---|---|
+| Email | Possession of the account's inbox | 1 hour | Resend link to `/reset-password` |
+| Phone | A 6-digit WhatsApp OTP | **5 minutes** | Token returned in the API response |
+
+The phone token is short because, unlike an emailed link, it is handed straight to the browser. Both channels submit to `POST /api/auth/reset-password`, so revocation of all other sessions, the one-time-use lock and Supabase identity sync happen once, in one place.
+
+Two rules that must not be relaxed:
+
+- **`PASSWORD_RESET` never degrades.** It is excluded from `SKIPPABLE_OTP_PURPOSES`; when WhatsApp is unavailable the reset fails rather than proceeding without a code.
+- **Neither channel reveals whether an account exists.** Identical responses for registered, unregistered and rate-limited identifiers; rate limits are applied *before* the account lookup; and `delivery_degraded` is a function of provider configuration only.
+
 ## One live tenancy per person (2026-08-07)
 
 Changed by [[Decisions#ADR-053|ADR-053]]. A person may hold exactly one live tenancy — `INVITED` or `ACTIVE` — enforced by the partial unique index `tenants_one_live_tenancy_per_profile`, not by convention. The decision itself lives in `src/services/tenants/tenancy-eligibility-rules.ts` as pure functions; `tenancy-eligibility-service.ts` gathers the data.
