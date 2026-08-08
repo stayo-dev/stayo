@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { verifyIdentityConfirmation, consumeIdentityTokenInTx } from "@/src/services/payments/identity-confirmation-guard";
 
 /**
  * 🏨 GET /api/owner/hostels
@@ -127,37 +128,45 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { propertyService } = await import("@/lib/services/property-service");
-    
+
     const name = (body.name || body.hostel_name || "New Hostel").trim();
     const phone = body.phone || body.hostel_phone || "";
 
-    // Owner-scoped duplicate hostel check
-    const existing = await prisma.hostels.findFirst({
-      where: {
-        owner_id: session.sub,
-        status: { in: ["ACTIVE", "INACTIVE"] },
-        name: {
-          equals: name,
-          mode: "insensitive",
+    // Step-up confirmation required — adding a hostel is gated behind a
+    // fresh password re-entry, same as Change Rent/Change Frequency.
+    const identity = await verifyIdentityConfirmation(body.identity_token, "CREATE_HOSTEL", "create_hostel", session.sub);
+
+    const hostel = await prisma.$transaction(async (tx: any) => {
+      // Owner-scoped duplicate hostel check
+      const existing = await tx.hostels.findFirst({
+        where: {
+          owner_id: session.sub,
+          status: { in: ["ACTIVE", "INACTIVE"] },
+          name: {
+            equals: name,
+            mode: "insensitive",
+          },
         },
-      },
-    });
-    if (existing) {
-      return apiError("A hostel with this name already exists", "VALIDATION_ERROR", 400);
-    }
-    
-    const hostel = await prisma.hostels.create({
-      data: {
-        owner_id: session.sub,
-        name,
-        phone,
-        address: body.address || "",
-        city: body.city || null,
-        state: body.state || null,
-        pincode: body.pincode || null,
-        status: "ACTIVE",
-        is_active: true,
-      },
+      });
+      if (existing) {
+        throw new Error("VALIDATION_ERROR: A hostel with this name already exists");
+      }
+
+      await consumeIdentityTokenInTx(tx, identity.jti);
+
+      return tx.hostels.create({
+        data: {
+          owner_id: session.sub,
+          name,
+          phone,
+          address: body.address || "",
+          city: body.city || null,
+          state: body.state || null,
+          pincode: body.pincode || null,
+          status: "ACTIVE",
+          is_active: true,
+        },
+      });
     });
 
     // Owner-acquisition funnel phase 2: if this owner was born from a lead
@@ -179,6 +188,12 @@ export async function POST(req: NextRequest) {
       const code = msg.replace("PLAN_LIMIT:", "").trim();
       return apiError(code, code, 402);
     }
+    if (msg.startsWith("VALIDATION_ERROR:")) {
+      return apiError(msg.replace("VALIDATION_ERROR:", "").trim(), "VALIDATION_ERROR", 400);
+    }
+    if (msg.includes("IDENTITY_REQUIRED")) return apiError(msg.replace("IDENTITY_REQUIRED: ", ""), "IDENTITY_REQUIRED", 403);
+    if (msg.includes("IDENTITY_EXPIRED")) return apiError(msg.replace("IDENTITY_EXPIRED: ", ""), "IDENTITY_EXPIRED", 403);
+    if (msg.includes("FORBIDDEN")) return apiError(msg, "FORBIDDEN", 403);
     return apiError(msg || "Failed to create hostel");
   }
 }
