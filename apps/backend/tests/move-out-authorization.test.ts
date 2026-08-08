@@ -75,13 +75,6 @@ const prismaMock = {
   $transaction: vi.fn(async (fn: any) => fn(prismaMock)),
 };
 
-const mockGetReservationStatus = vi.fn(async (tenantId: string) => ({ status: "RESERVED" }));
-vi.mock("../src/services/tenants/reservation-status-service", () => ({
-  reservationStatusService: {
-    getReservationStatus: mockGetReservationStatus,
-  },
-}));
-
 vi.mock("../lib/db", () => ({ prisma: prismaMock }));
 vi.mock("../lib/services/move-out-notifications", () => ({ notifyMoveOutTransition: vi.fn() }));
 vi.mock("../src/services/payments/financial-service", () => ({ financialService: {} }));
@@ -162,10 +155,14 @@ describe("MoveOutService service-layer authorization", () => {
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
-  it("blocks Tenant A from creating a move-out request when reservation status is PAYMENT_PENDING", async () => {
-    mockGetReservationStatus.mockResolvedValueOnce({ status: "PAYMENT_PENDING" });
-
-    await expect(moveOutService.createRequest({
+  it("no longer refuses a move-out over unpaid onboarding dues", async () => {
+    // Deposit and maintenance are ordinary dues now, not a gate. Blocking move-out
+    // on them trapped a tenant in a hostel they had already left.
+    //
+    // This asserts the *absence* of the old refusal rather than a successful
+    // request: this suite's prisma mock deliberately stops short of the write
+    // path, so the call still fails — just no longer for that reason.
+    const error = await moveOutService.createRequest({
       tenantId: "tenant-a",
       hostelId: "hostel-a",
       ownerId: "owner-a",
@@ -174,8 +171,9 @@ describe("MoveOutService service-layer authorization", () => {
       actor: tenantA,
       reason: "OTHER" as any,
       plannedExitDate: "2026-07-01",
-    })).rejects.toThrow("FORBIDDEN: Move-out requests are not allowed");
+    }).catch((e) => e);
 
-    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(String(error?.message)).not.toContain("Move-out requests are not allowed");
+    expect(String(error?.message)).not.toContain("PAYMENT_PENDING");
   });
 });

@@ -8,10 +8,6 @@ const STATUS_STYLES: Record<string, string> = {
   EXPIRED: 'bg-muted text-muted-foreground border-border',
   CANCELLED: 'bg-muted text-muted-foreground border-border',
   FORMER_TENANT: 'bg-muted text-muted-foreground border-border',
-  // Onboarding reservation lifecycle statuses
-  PAYMENT_PENDING: 'bg-amber-500/15 text-amber-600 border-amber-500/30',
-  RESERVED: 'bg-blue-500/15 text-blue-600 border-blue-500/30',
-  MOVE_IN_READY: 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30',
   // Move-out request statuses
   REQUESTED: 'bg-blue-500/15 text-blue-600 border-blue-500/30',
   SETTLEMENT_PENDING: 'bg-amber-500/15 text-amber-600 border-amber-500/30',
@@ -25,17 +21,15 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 const LABELS: Record<string, string> = {
-  ACTIVE: 'Active',
+  // A tenant is ACTIVE from the moment they join — their room is assigned then,
+  // whether or not the deposit has been paid, so "Joined" is what owners see.
+  ACTIVE: 'Joined',
   INVITED: 'Invited',
   MOVE_OUT_REQUESTED: 'Vacating',
   LEFT: 'Left',
   EXPIRED: 'Expired',
   CANCELLED: 'Cancelled',
   FORMER_TENANT: 'Former Tenant',
-  // Onboarding reservation lifecycle statuses
-  PAYMENT_PENDING: 'Payment Pending',
-  RESERVED: 'Reserved',
-  MOVE_IN_READY: 'Move-in Ready',
   // Move-out request statuses
   REQUESTED: 'Requested',
   SETTLEMENT_PENDING: 'Settlement Pending',

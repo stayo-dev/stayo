@@ -2,7 +2,6 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
   buildTenantOnboardingTemplatePayload,
   ONBOARDING_COMPLETED_TEMPLATE_NAME,
-  PAYMENT_PENDING_TEMPLATE_NAME,
 } from "@/lib/services/notifications/providers/whatsapp/templates";
 import { eventLog } from "@/lib/services/event-log-service";
 
@@ -25,14 +24,6 @@ const mockDeliverySend = vi.fn();
 vi.mock("@/lib/services/notifications/whatsapp-template-delivery", () => ({
   whatsAppTemplateDeliveryService: { send: mockDeliverySend },
   WhatsAppTemplateDeliveryService: vi.fn(),
-}));
-
-// Mock reservationStatusService
-const mockGetReservationStatus = vi.fn();
-vi.mock("@/src/services/tenants/reservation-status-service", () => ({
-  reservationStatusService: {
-    getReservationStatus: mockGetReservationStatus,
-  },
 }));
 
 describe("buildTenantOnboardingTemplatePayload (pure mapper)", () => {
@@ -106,7 +97,6 @@ describe("ONBOARDING_COMPLETED_TEMPLATE_NAME", () => {
 describe("sendTenantOnboardingNotification", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetReservationStatus.mockResolvedValue({ status: "RESERVED" });
   });
 
   it("should skip if tenant not found", async () => {
@@ -272,186 +262,6 @@ describe("sendTenantOnboardingNotification", () => {
     // Should NOT audit success since it was skipped
     expect(eventLog.log).not.toHaveBeenCalledWith(
       "tenant_onboarding_whatsapp_sent",
-      expect.anything(),
-      expect.anything(),
-      expect.anything()
-    );
-  });
-
-  it("should send payment pending template if reservation status is PAYMENT_PENDING", async () => {
-    mockPrisma.tenants.findUnique.mockResolvedValue({
-      id: "t1",
-      status: "ACTIVE",
-      phone_1: "918008046952",
-      owner_id: "o1",
-      hostel_id: "h1",
-      monthly_rent: 8000,
-      joined_on: new Date("2026-06-01"),
-      profiles: { name: "Rahul Kumar" },
-      hostels: { id: "h1", name: "Sri Adithya Hostel", auto_rent_day: 5, owner_id: "o1" },
-      room_allocations: [{ room: { room_no: "G1" } }],
-    });
-
-    mockGetReservationStatus.mockResolvedValue({ status: "PAYMENT_PENDING" });
-
-    mockDeliverySend.mockResolvedValue({
-      sent: true,
-      skipped: false,
-      logId: "log-2",
-      providerMessageId: "wamid.456",
-      idempotencyKey: "tenant_activation_pending:t1",
-    });
-
-    const { sendTenantOnboardingNotification } = await import(
-      "@/lib/services/notifications/whatsapp-onboarding-handler"
-    );
-    await sendTenantOnboardingNotification("t1");
-
-    expect(mockDeliverySend).toHaveBeenCalledWith(
-      expect.objectContaining({
-        templateName: "account_activated_payment_pending_v1",
-        idempotencyKey: "tenant_activation_pending:t1",
-        tenantId: "t1",
-        hostelId: "h1",
-        bodyParameters: ["Rahul Kumar"],
-        languageCode: "en",
-      })
-    );
-
-    expect(eventLog.log).toHaveBeenCalledWith(
-      "tenant_activation_pending_whatsapp_sent",
-      "o1",
-      expect.objectContaining({ tenant_id: "t1", hostel_id: "h1" }),
-      "t1"
-    );
-  });
-
-  it("should send activation pending template first, then onboarding completed template after transitioning to RESERVED", async () => {
-    // Stage 1: Activation while PAYMENT_PENDING
-    mockPrisma.tenants.findUnique.mockResolvedValue({
-      id: "t1",
-      status: "ACTIVE",
-      phone_1: "918008046952",
-      owner_id: "o1",
-      hostel_id: "h1",
-      monthly_rent: 8000,
-      joined_on: new Date("2026-06-01"),
-      profiles: { name: "Rahul Kumar" },
-      hostels: { id: "h1", name: "Sri Adithya Hostel", auto_rent_day: 5, owner_id: "o1" },
-      room_allocations: [{ room: { room_no: "G1" } }],
-    });
-
-    mockGetReservationStatus.mockResolvedValue({ status: "PAYMENT_PENDING" });
-    mockDeliverySend.mockResolvedValue({
-      sent: true,
-      skipped: false,
-      logId: "log-2",
-      providerMessageId: "wamid.456",
-      idempotencyKey: "tenant_activation_pending:t1",
-    });
-
-    const { sendTenantOnboardingNotification } = await import(
-      "@/lib/services/notifications/whatsapp-onboarding-handler"
-    );
-    await sendTenantOnboardingNotification("t1");
-
-    expect(mockDeliverySend).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        templateName: "account_activated_payment_pending_v1",
-        idempotencyKey: "tenant_activation_pending:t1",
-      })
-    );
-
-    // Stage 2: Payment triggers state update to RESERVED
-    mockGetReservationStatus.mockResolvedValue({ status: "RESERVED" });
-    mockDeliverySend.mockResolvedValue({
-      sent: true,
-      skipped: false,
-      logId: "log-3",
-      providerMessageId: "wamid.789",
-      idempotencyKey: "tenant_onboarding_completed:t1",
-    });
-
-    await sendTenantOnboardingNotification("t1");
-
-    expect(mockDeliverySend).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        templateName: "stayo_tenant_onboarding_complete",
-        idempotencyKey: "tenant_onboarding_completed:t1",
-      })
-    );
-  });
-
-  it("should skip activation pending template and send onboarding completed template if status is MOVE_IN_READY upon activation", async () => {
-    mockPrisma.tenants.findUnique.mockResolvedValue({
-      id: "t1",
-      status: "ACTIVE",
-      phone_1: "918008046952",
-      owner_id: "o1",
-      hostel_id: "h1",
-      monthly_rent: 8000,
-      joined_on: new Date("2026-06-01"),
-      profiles: { name: "Rahul Kumar" },
-      hostels: { id: "h1", name: "Sri Adithya Hostel", auto_rent_day: 5, owner_id: "o1" },
-      room_allocations: [{ room: { room_no: "G1" } }],
-    });
-
-    mockGetReservationStatus.mockResolvedValue({ status: "MOVE_IN_READY" });
-    mockDeliverySend.mockResolvedValue({
-      sent: true,
-      skipped: false,
-      logId: "log-3",
-      providerMessageId: "wamid.789",
-      idempotencyKey: "tenant_onboarding_completed:t1",
-    });
-
-    const { sendTenantOnboardingNotification } = await import(
-      "@/lib/services/notifications/whatsapp-onboarding-handler"
-    );
-    await sendTenantOnboardingNotification("t1");
-
-    expect(mockDeliverySend).toHaveBeenCalledWith(
-      expect.objectContaining({
-        templateName: "stayo_tenant_onboarding_complete",
-        idempotencyKey: "tenant_onboarding_completed:t1",
-      })
-    );
-    expect(mockDeliverySend).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        templateName: "account_activated_payment_pending_v1",
-      })
-    );
-  });
-
-  it("should prevent duplicate sends for payment pending template", async () => {
-    mockPrisma.tenants.findUnique.mockResolvedValue({
-      id: "t1",
-      status: "ACTIVE",
-      phone_1: "918008046952",
-      owner_id: "o1",
-      hostel_id: "h1",
-      monthly_rent: 8000,
-      joined_on: new Date("2026-06-01"),
-      profiles: { name: "Rahul Kumar" },
-      hostels: { id: "h1", name: "Sri Adithya Hostel", auto_rent_day: 5, owner_id: "o1" },
-      room_allocations: [{ room: { room_no: "G1" } }],
-    });
-
-    mockGetReservationStatus.mockResolvedValue({ status: "PAYMENT_PENDING" });
-    mockDeliverySend.mockResolvedValue({
-      sent: false,
-      skipped: true,
-      idempotencyKey: "tenant_activation_pending:t1",
-    });
-
-    const { sendTenantOnboardingNotification } = await import(
-      "@/lib/services/notifications/whatsapp-onboarding-handler"
-    );
-    await sendTenantOnboardingNotification("t1");
-
-    expect(mockDeliverySend).toHaveBeenCalledTimes(1);
-    expect(eventLog.log).not.toHaveBeenCalledWith(
-      "tenant_activation_pending_whatsapp_sent",
       expect.anything(),
       expect.anything(),
       expect.anything()

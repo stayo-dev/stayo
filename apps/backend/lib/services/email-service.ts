@@ -12,6 +12,16 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 // domain is verified at resend.com/domains (see EMAIL_FROM in .env).
 const DEFAULT_FROM = "Stayo <onboarding@resend.dev>";
 
+/**
+ * The sender this deployment will actually use — exported so callers that
+ * need to report delivery health (see lib/services/email-delivery.ts) judge
+ * the same value that `sendEmail` uses, rather than re-reading EMAIL_FROM and
+ * missing the sandbox fallback below.
+ */
+export function getEffectiveEmailFrom() {
+  return resolveEmailFrom(process.env.EMAIL_FROM);
+}
+
 function resolveEmailFrom(value?: string | null) {
   const raw = String(value || "").trim();
   if (!raw) return DEFAULT_FROM;

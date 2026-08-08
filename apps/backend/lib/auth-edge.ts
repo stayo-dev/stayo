@@ -108,25 +108,46 @@ export async function verifyIdentityToken(
   }
 }
 
+/** How the holder of a reset token proved they own the account. */
+export type ResetChannel = "email" | "phone";
+
 /**
- * Generate a 1-hour single-use secure password reset token.
+ * Generate a single-use secure password reset token.
+ *
+ * Defaults reproduce the emailed-link behavior this has always had: a
+ * 1-hour token on the `email` channel. The phone/OTP reset path overrides
+ * both — its token is handed straight back in an API response rather than
+ * mailed to an inbox, so it gets minutes, not an hour.
  */
-export async function generateResetToken(email: string): Promise<string> {
-  return new SignJWT({ email, action: "password_reset" })
+export async function generateResetToken(
+  email: string,
+  options: { expiresIn?: string; channel?: ResetChannel } = {},
+): Promise<string> {
+  const { expiresIn = "1h", channel = "email" } = options;
+  return new SignJWT({ email, action: "password_reset", channel })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("1h")
+    .setExpirationTime(expiresIn)
     .sign(JWT_SECRET);
 }
 
 /**
  * Verify a password reset token.
+ *
+ * A token with no `channel` claim is an emailed link minted before the
+ * channel existed — those are still sitting in real inboxes, so they read
+ * as `email` rather than failing.
  */
-export async function verifyResetToken(token: string): Promise<{ email: string } | null> {
+export async function verifyResetToken(
+  token: string,
+): Promise<{ email: string; channel: ResetChannel } | null> {
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET);
     if (payload.action !== "password_reset" || !payload.email) return null;
-    return { email: payload.email as string };
+    return {
+      email: payload.email as string,
+      channel: payload.channel === "phone" ? "phone" : "email",
+    };
   } catch {
     return null;
   }

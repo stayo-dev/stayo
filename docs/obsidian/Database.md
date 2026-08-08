@@ -198,9 +198,32 @@ Since ADR-031, new sessions are minted by Supabase (`signInWithSupabasePassword(
 
 Note: many status-like columns across the schema (e.g. `rent_obligations.obligation_type`, most `*.status` fields on operational/audit tables) are **plain strings, not DB enums** — validated only in application code (see [[Business-Rules]]), consistent with the CLAUDE.md warning that "many database statuses are plain strings."
 
+## `tenants` is one tenancy, not one person (2026-08-07, migration 062)
+
+`tenants.profile_id` was `@unique`, so a person could hold at most one `tenants` row **ever** — a former tenant could never join a second hostel. That unique is dropped. In its place:
+
+```sql
+CREATE UNIQUE INDEX tenants_one_live_tenancy_per_profile
+  ON tenants (profile_id)
+  WHERE profile_id IS NOT NULL AND status IN ('INVITED', 'ACTIVE');
+```
+
+One **live** tenancy per person; every past stay survives as its own row with its own payments, obligations, agreements and allocations. Because activation is what sets `profile_id`, this index also prevents two owners driving the same person to activation.
+
+`profile.tenants` is therefore a **list** in Prisma. Never take `[0]`. Read it through `lib/tenancy/active-tenancy.ts`:
+
+| Helper | Use for |
+|---|---|
+| `liveTenancyWhere(profileId)` | a `where` clause that used to be `{ profile_id }` |
+| `liveTenancyInclude` | `include: { tenants: liveTenancyInclude }` |
+| `selectLiveTenancy(rows)` | authorisation and money decisions — **throws** if two rows are live |
+| `selectCurrentTenancy(rows)` | activation-link paths only: live, else most recent, so "cancelled"/"expired" can still be reported |
+
+Also dropped by migration 062: `tenants.reservation_policy` and `tenants.minimum_reservation_deposit`, which existed only to compute the deleted onboarding payment gate's threshold. See [[Decisions]] ADR-052, ADR-053.
+
 ## Key relations
 
-`hostels` is the root almost everything scopes to (`owner_id → profile`). `tenants` belongs to one `hostel_id` and is 1:1 with a `profile` (auth identity). `rent_obligations` belongs to a `tenant` + `hostel`, optionally an `allocation`, `agreement`, and `billing_plan`. `payments` belongs to one `obligation` and optionally a `payment_group`/`payment_attempt`, producing exactly one `receipts` row. `move_out_requests` fans out 1:1/1:N into `move_out_inspections`, `move_out_inspection_items`, `exit_settlement_transactions`, `exit_disputes`, `exit_feedbacks`. `Agreement` self-references forward/backward for renewal chains and links to `AgreementTemplate` and `RenewalOffer`. Full per-model relation table (100+ rows) lives in the research artifact this page was built from — not reproduced verbatim here to keep this page navigable; **ask for the full relation dump if you need it.**
+`hostels` is the root almost everything scopes to (`owner_id → profile`). `tenants` belongs to one `hostel_id` and is **many-to-one** with a `profile` — see the tenancy section below; it was 1:1 until 2026-08-07. `rent_obligations` belongs to a `tenant` + `hostel`, optionally an `allocation`, `agreement`, and `billing_plan`. `payments` belongs to one `obligation` and optionally a `payment_group`/`payment_attempt`, producing exactly one `receipts` row. `move_out_requests` fans out 1:1/1:N into `move_out_inspections`, `move_out_inspection_items`, `exit_settlement_transactions`, `exit_disputes`, `exit_feedbacks`. `Agreement` self-references forward/backward for renewal chains and links to `AgreementTemplate` and `RenewalOffer`. Full per-model relation table (100+ rows) lives in the research artifact this page was built from — not reproduced verbatim here to keep this page navigable; **ask for the full relation dump if you need it.**
 
 A large class of **operational/audit tables intentionally have no formal Prisma `@relation`** — only bare UUID columns (e.g. `payment_operational_anomalies`, `payment_webhook_events`, `financial_reconciliation_issues`, `tenant_transfer_logs`, all the WhatsApp/audit-log tables). This looks deliberate (avoiding FK overhead on high-volume append-only logs) but means an ER diagram built purely from `@relation` annotations will miss these implied links.
 

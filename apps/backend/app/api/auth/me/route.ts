@@ -5,11 +5,42 @@ import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@lib/auth";
 import { prisma } from "@lib/db";
 import { sessionLifecycleService } from "@/lib/services/session-lifecycle-service";
+import { resolveSupabaseSession } from "@/lib/auth/supabase-session";
 
+/**
+ * Why this route resolves the Supabase session itself instead of only calling
+ * `getSession()`: `getSession()` collapses every rejection reason to `null`,
+ * which is right for the ~200 other routes (they should say nothing) but
+ * useless here. `/auth/callback` is where a Google sign-in lands, and it needs
+ * the *specific* reason — no Stayo account for this email, account disabled,
+ * tenancy not activated — or the user is left with a flat "Unauthorized" and
+ * no idea what to do. lib/auth/supabase-session.ts always documented this
+ * split; it just was never wired up, so every Google rejection looked
+ * identical (see docs/obsidian/Bugs.md).
+ */
+async function supabaseRejection(req: NextRequest) {
+  if (req.headers.get("x-auth-mode") !== "supabase") return null;
+  const authUserId = req.headers.get("x-auth-user-id");
+  if (!authUserId) return null;
+
+  const result = await resolveSupabaseSession({
+    authUserId,
+    email: req.headers.get("x-auth-email") || "",
+    emailVerified: true,
+    sessionId: req.headers.get("x-auth-session-id"),
+    provider: req.headers.get("x-auth-provider"),
+  });
+
+  return result.ok ? null : result;
+}
 
 export async function GET(req: NextRequest) {
   const session = await getSession(req);
-  if (!session) return apiError("Unauthorized", "UNAUTHORIZED", 401);
+  if (!session) {
+    const rejection = await supabaseRejection(req);
+    if (rejection) return apiError(rejection.message, rejection.code, 403);
+    return apiError("Unauthorized", "UNAUTHORIZED", 401);
+  }
 
   try {
     // Legacy-mode only (ADR-031): this validates against `refresh_tokens`,

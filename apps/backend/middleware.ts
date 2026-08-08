@@ -40,8 +40,10 @@ const PUBLIC_ROUTES = [
 ];
 
 const PUBLIC_CSRF_ROUTES = [
+  // `/api/auth/forgot-password` prefix-matches its `/phone` child too.
   "/api/auth/forgot-password",
   "/api/auth/reset-password",
+  "/api/auth/verify-reset-otp",
 ];
 
 // Every identity-bearing header this middleware ever injects. Stripped from

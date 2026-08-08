@@ -47,12 +47,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await authService.requestPasswordReset(email, {
+    const result = await authService.requestPasswordReset(email, {
       ipAddress: ip,
       userAgent,
     });
 
-    return apiResponse({ success: true, message: GENERIC_MESSAGE }, 200);
+    // `delivery_degraded` is derived from provider configuration only — never
+    // from whether this address has an account — so passing it through keeps
+    // the response identical for every email and cannot enumerate accounts.
+    // It exists so the UI can offer the WhatsApp channel instead of claiming
+    // an email was sent that this deployment cannot actually send.
+    return apiResponse(
+      {
+        success: true,
+        message: GENERIC_MESSAGE,
+        delivery_degraded: Boolean((result as { delivery_degraded?: boolean }).delivery_degraded),
+      },
+      200,
+    );
   } catch (error) {
     console.error("[auth.forgot-password] request failed", {
       error: error instanceof Error ? error.message : String(error),

@@ -1,11 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/src/services/tenants/reservation-status-service", () => ({
-  reservationStatusService: {
-    getReservationStatus: vi.fn().mockResolvedValue({ status: "MOVE_IN_READY" }),
-  },
-}));
-
 import { RoomCapacityService } from "@/lib/services/room-capacity-service";
 
 function createDb(reservedCount: number) {
@@ -60,5 +54,27 @@ describe("RoomCapacityService", () => {
     expect(snapshot.used).toBe(3);
     expect(snapshot.available).toBe(1);
     expect(snapshot.state).toBe("partial");
+  });
+
+  it("counts a joined tenant who has paid nothing as occupying their bed", async () => {
+    // The occupancy count used to consult each tenant's deposit and skip anyone
+    // still `PAYMENT_PENDING`, so an unpaid tenant who had already moved in left
+    // their bed looking vacant — and invitable to somebody else. The db mock here
+    // supplies no ledger, payment or obligation data at all: if occupancy still
+    // depended on money, this call could not produce 3.
+    const db = createDb(0);
+    const snapshot = await service.getRoomCapacitySnapshot("room-1", { tx: db as any });
+
+    expect(snapshot.occupied).toBe(3);
+    expect(db.roomAllocation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          room_id: "room-1",
+          is_active: true,
+          end_date: null,
+          tenant: { status: "ACTIVE" },
+        }),
+      })
+    );
   });
 });

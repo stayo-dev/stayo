@@ -28,13 +28,19 @@ export interface SupabaseSessionContext {
 
 export type ResolveResult =
   | { ok: true; payload: AuthPayload }
-  | { ok: false; code: "NO_STAYO_ACCOUNT" | "ACCOUNT_DISABLED" | "TENANT_GOOGLE_NOT_ALLOWED"; message: string };
+  | { ok: false; code: "NO_STAYO_ACCOUNT" | "ACCOUNT_DISABLED" | "TENANCY_NOT_ACTIVATED"; message: string };
 
 const REJECT_NO_ACCOUNT =
   "No account found for this email. Please sign in with email and password, or contact your hostel administrator.";
-const REJECT_TENANT_GOOGLE =
-  "Google sign-in is not available for tenant accounts. Please sign in with your email and password.";
 const REJECT_DISABLED = "Account is disabled";
+/**
+ * Mirrors the gate `authService.login()` applies to an INVITED tenancy. Google
+ * sign-in must not become a way around it: ADR-054 opened Google to tenants,
+ * and an invited-but-not-activated tenant reaching a dashboard would skip
+ * activation entirely.
+ */
+const REJECT_NOT_ACTIVATED =
+  "Your account isn't activated yet. Please use the activation link sent to you, then sign in.";
 
 export async function resolveSupabaseSession(ctx: SupabaseSessionContext): Promise<ResolveResult> {
   let profile = await prisma.profile.findUnique({
@@ -61,17 +67,6 @@ export async function resolveSupabaseSession(ctx: SupabaseSessionContext): Promi
         user_agent: ctx.userAgent || null,
       });
       return { ok: false, code: "NO_STAYO_ACCOUNT", message: REJECT_NO_ACCOUNT };
-    }
-
-    if (byEmail.role === "TENANT" && ctx.provider === "google") {
-      await eventLog.log("AUTH_GOOGLE_REJECTED", byEmail.owner_id, {
-        email: ctx.email,
-        profile_id: byEmail.id,
-        reason: "TENANT_GOOGLE_NOT_ALLOWED",
-        ip_address: ctx.ipAddress || null,
-        user_agent: ctx.userAgent || null,
-      });
-      return { ok: false, code: "TENANT_GOOGLE_NOT_ALLOWED", message: REJECT_TENANT_GOOGLE };
     }
 
     if (!byEmail.is_active) {
@@ -107,8 +102,19 @@ export async function resolveSupabaseSession(ctx: SupabaseSessionContext): Promi
   if (!profile.is_active) {
     return { ok: false, code: "ACCOUNT_DISABLED", message: REJECT_DISABLED };
   }
-  if (profile.role === "TENANT" && ctx.provider === "google") {
-    return { ok: false, code: "TENANT_GOOGLE_NOT_ALLOWED", message: REJECT_TENANT_GOOGLE };
+
+  // Tenants may sign in with Google (ADR-047), but the activation gate that
+  // `authService.login()` enforces has to hold on this path too.
+  const liveTenancy = selectLiveTenancy(profile.tenants);
+  if (profile.role === "TENANT" && liveTenancy?.status === "INVITED") {
+    await eventLog.log("AUTH_GOOGLE_REJECTED", profile.owner_id, {
+      email: ctx.email,
+      profile_id: profile.id,
+      reason: "TENANCY_NOT_ACTIVATED",
+      ip_address: ctx.ipAddress || null,
+      user_agent: ctx.userAgent || null,
+    });
+    return { ok: false, code: "TENANCY_NOT_ACTIVATED", message: REJECT_NOT_ACTIVATED };
   }
 
   // Same owner_id self-heal createSessionAndTokens() has always done.
@@ -127,7 +133,7 @@ export async function resolveSupabaseSession(ctx: SupabaseSessionContext): Promi
     role: profile.role,
     email: profile.email,
     owner_id: effectiveOwnerId || null,
-    tenant_id: selectLiveTenancy(profile.tenants)?.id || null,
+    tenant_id: liveTenancy?.id || null,
     sid: ctx.sessionId,
   };
 

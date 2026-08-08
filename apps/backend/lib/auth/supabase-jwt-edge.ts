@@ -10,6 +10,7 @@
  * exactly like the legacy HS256 verification it replaces.
  */
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import { normalizeSupabaseUrl, supabaseIssuer } from "../config/supabase-auth-config";
 
 export interface SupabaseClaims {
   /** auth.users.id — NOT profiles.id. Callers must resolve the profile separately. */
@@ -33,14 +34,23 @@ function getJwks(supabaseUrl: string) {
   return jwks;
 }
 
-/** Verify a Supabase-issued access token. Returns null on any failure (expired, wrong issuer/audience, bad signature, SUPABASE_URL unset). */
+/**
+ * Verify a Supabase-issued access token. Returns null on any failure
+ * (expired, wrong issuer/audience, bad signature, SUPABASE_URL unset).
+ *
+ * The URL is normalized first: a trailing slash on SUPABASE_URL used to
+ * produce `…supabase.co//auth/v1` and reject every token in the system with
+ * an unexplained "Invalid session". `/api/health` reports the issuer this
+ * derives, so a project mismatch is visible instead of inferred.
+ */
 export async function verifySupabaseAccessToken(token: string): Promise<SupabaseClaims | null> {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  if (!supabaseUrl) return null;
+  const supabaseUrl = normalizeSupabaseUrl(process.env.SUPABASE_URL);
+  const issuer = supabaseIssuer(process.env.SUPABASE_URL);
+  if (!supabaseUrl || !issuer) return null;
 
   try {
     const { payload } = await jwtVerify(token, getJwks(supabaseUrl), {
-      issuer: `${supabaseUrl}/auth/v1`,
+      issuer,
       audience: "authenticated",
     });
     return payload as unknown as SupabaseClaims;

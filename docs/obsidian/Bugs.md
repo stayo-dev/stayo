@@ -28,6 +28,28 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### Every Supabase session rejected with "Invalid session" — backend and frontend were on different Supabase projects, and nothing in the system could say so
+
+- **Status:** fixed in code (diagnosability + honest errors); **the production environment variable itself is an operator action** — see below
+- **Found:** 2026-08-08, reported by the user ("I am not being able to use continue with Google at all")
+- **Area:** [[Backend]] (`middleware.ts`, `lib/auth/supabase-jwt-edge.ts`), [[Frontend]] (`context/AuthContext.tsx`)
+- **Symptom:** three failures that looked unrelated. Google sign-in reached Google's account chooser, returned to `/auth/callback`, and died showing `Invalid session` with repeated 401s on `/api/auth/me`. Email + password login showed `Unable to connect. Check your internet.` while the console showed `POST /api/auth/login → 401` *and* `GET https://<ref>.supabase.co/auth/v1/user → 403`. Password reset emails never arrived (separate root cause, below).
+- **Root cause:** the production backend verified access tokens against a different Supabase project than the one the frontend minted them with. `Invalid session` is reachable from exactly one line (`middleware.ts:194`), only when Supabase ES256 verification *and* the legacy HS256 fallback both reject the token — and `verifySupabaseAccessToken` verifies `issuer: ${SUPABASE_URL}/auth/v1`. The login symptom is the same fault mirrored: `createSessionAndTokens` always mints via `signInWithSupabasePassword` against the *backend's* project (there is no legacy-token fallback), so `setSession()` handed a foreign token to the frontend's project and got 403. A trailing slash on `SUPABASE_URL` produces the identical outcome (`…supabase.co//auth/v1`).
+- **Why it took hours to find:** nothing reported the issuer either side derived. Establishing the frontend's project ref required downloading the deployed JS bundle; the backend's was not observable at all. Compounding it, two error messages actively pointed the wrong way — `AuthContext.tsx` printed "check your internet" for any error lacking `.response`, which includes a `setSession` failure, and `/api/auth/me` collapsed every Supabase rejection reason to a flat `Unauthorized` even though `lib/auth/supabase-session.ts` computed specific codes and its own header comment claimed `/auth/me` consumed them. That wiring was never done, so "no Stayo account for this email" and "the deployment is misconfigured" were indistinguishable.
+- **Fix:** `/api/health` gained an `auth.supabase` block (`project_ref`, `expected_issuer`, `jwks_reachable`) so the mismatch is a single `curl`; `SUPABASE_URL` is normalized through `lib/config/supabase-auth-config.ts` so a trailing slash can no longer break every session silently; `/api/auth/me` returns the specific reason with 403; `AuthContext` distinguishes a session-establishment failure from a network failure; `AuthCallbackPage` distinguishes 403 (your account cannot sign in this way) from 401 (deployment misconfigured, retrying will not help). **The environment variable must still be corrected in Vercel** on the backend project: `SUPABASE_URL` = `https://xhoqkhwsnqfwhjsffybs.supabase.co` (no trailing slash) and `SUPABASE_ANON_KEY` = the key whose `ref` claim matches. That project is canonical — `DATABASE_URL`'s user is `postgres.xhoqkhwsnqfwhjsffybs`.
+- **Linkage integrity — checked, clean:** the worry was that `ensureSupabaseIdentity` had been writing foreign-project UUIDs into `profiles.auth_user_id` on every attempt. `npm run reconcile:supabase-identities` (dry run) reported 3 linked, 0 dangling, 0 ambiguous. It returns early for an already-linked profile, so the wrong-project path never reached a write. No data cleanup needed.
+- **Related:** [[Decisions#ADR-031|ADR-031]], [[APIs]], `docs/superpowers/specs/2026-08-08-auth-recovery-design.md`
+
+### Password reset emails silently never sent — provider failure reported as success
+
+- **Status:** fixed in code; **verifying the sending domain is an operator action**
+- **Found:** 2026-08-08
+- **Area:** [[Backend]] (`lib/services/auth-service.ts`, `lib/services/email-service.ts`)
+- **Symptom:** "Forgot password" always answered with its reassuring generic message and no email ever arrived. Indistinguishable from success for users *and* operators.
+- **Root cause:** two layers. `EmailService` falls back to Resend's sandbox sender (`onboarding@resend.dev`) when no verified domain exists, and Resend only delivers that to the account owner's own address — the code comment documented this, but nothing acted on it. Then `requestPasswordReset` wrapped the send in a `try/catch` that logged and returned the success message regardless, discarding `sendEmail`'s `{ sent: false, error }` result entirely.
+- **Fix:** send failures are now logged at error level and event-logged as `PASSWORD_RESET_EMAIL_FAILED`. The response carries `delivery_degraded`, derived from **provider configuration only** (`lib/services/email-delivery.ts`) — a recipient-dependent flag would have turned the deliberately generic response into an account-enumeration oracle. The reset UI offers the WhatsApp channel when delivery is degraded rather than claiming an email was sent. The email itself was also still branded **"Sri Adithya Boys Hostel"** and now uses the existing Stayo `emailShell`. **Operator action:** verify `yourstayo.com` at resend.com/domains.
+- **Related:** [[Decisions#ADR-055|ADR-055]], [[APIs]], [[Features]]
+
 ### Owner Leads dashboard card: one mutation shared across the whole list, and no status gating — clicking Approve disabled every card, and approved leads never visibly changed
 
 - **Status:** fixed

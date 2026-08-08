@@ -29,6 +29,13 @@ export async function POST(req: NextRequest) {
     
     return apiResponse(result, (result?.whatsapp_sent || result?.email_sent) ? 201 : 202);
   } catch (error: any) {
+    // The tenancy-eligibility refusal carries a structured payload the invite form
+    // renders as "already a tenant at …" — flattening it into a message string
+    // would throw away the disclosure scope that decides what the owner may see.
+    if (error?.name === "TenancyEligibilityError") {
+      return apiError(error.message, error.code, error.status ?? 409, error.disclosure);
+    }
+
     const rawMessage = String(error?.message || "Failed to send invitation");
     const [maybeCode, ...rest] = rawMessage.split(":");
     const normalizedCode = maybeCode?.trim();
