@@ -48,6 +48,20 @@ type SessionExpiryReason = 'inactive' | 'max_age' | 'reuse' | 'expired';
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/**
+ * The credentials were accepted but `supabase.auth.setSession()` refused the
+ * tokens — an environment/configuration fault (e.g. backend and frontend on
+ * different Supabase projects), not a network or password problem. Its own
+ * type exists so the login catch can say something true about it instead of
+ * falling through to the "no `.response`" branch and blaming the network.
+ */
+class SessionEstablishmentError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SessionEstablishmentError';
+  }
+}
+
 const normalizeRole = (role: unknown) => (role || '').toString().toLowerCase();
 
 const LOGIN_ERROR_MAP: Record<number, string> = {
@@ -210,7 +224,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const { access_token, refresh_token } = response.data;
       const { error: sessionError } = await supabase.auth.setSession({ access_token, refresh_token });
-      if (sessionError) throw new Error(sessionError.message);
+      // Marked so the catch below doesn't mislabel it. A setSession failure
+      // means Supabase itself rejected the token the backend just minted —
+      // in production that turned out to be the backend verifying against a
+      // different Supabase project — and reporting it as "check your
+      // internet" sent debugging in exactly the wrong direction for hours.
+      if (sessionError) throw new SessionEstablishmentError(sessionError.message);
 
       // Built directly from /auth/login's own response rather than waiting
       // on the auth-state listener's GET /auth/me round-trip, so the
@@ -221,6 +240,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(userData);
       return userData;
     } catch (error: unknown) {
+      if (error instanceof SessionEstablishmentError) {
+        throw new Error(
+          'Signed in, but this device could not start a secure session. ' +
+            'This is a server configuration problem, not your connection — please report it.',
+        );
+      }
       if (!(error as { response?: unknown })?.response) {
         throw new Error('Unable to connect. Check your internet.');
       }
