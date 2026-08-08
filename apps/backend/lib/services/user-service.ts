@@ -1,5 +1,5 @@
 import { prisma } from "../db";
-import { liveTenancyInclude } from "@/lib/tenancy/active-tenancy";
+import { getActiveTenancy } from "@/lib/tenancy/active-tenancy";
 
 export class BaseService {
   protected db = prisma;
@@ -10,10 +10,17 @@ export class BaseService {
  */
 export class UserService extends BaseService {
   async getProfile(userId: string) {
-    return this.db.profile.findUnique({
+    const profile = await this.db.profile.findUnique({
       where: { id: userId },
-      include: { tenants: liveTenancyInclude },
     });
+    if (!profile) return null;
+
+    // Fetched separately rather than via a filtered `include` — Prisma's
+    // relationJoins preview feature flattens a filtered to-many relation
+    // into a single JSON object instead of an array here, which crashes
+    // every consumer expecting `tenants` to be a list.
+    const liveTenancy = await getActiveTenancy(profile.id);
+    return { ...profile, tenants: liveTenancy ? [liveTenancy] : [] };
   }
 
   async updateProfile(userId: string, data: any) {
