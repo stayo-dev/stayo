@@ -88,4 +88,43 @@ export const foodService = {
     const response = await api.get('/food/tenant/schedule/history');
     return unwrap(response).schedules as any[];
   },
+
+  // Polls (owner) — independent of the food_voting_periods/food_votes system above.
+  getPolls: async (hostelId: string, status?: 'OPEN' | 'CLOSED') => {
+    const response = await api.get('/food/polls', { params: { hostelId, status } });
+    return unwrap(response).polls as any[];
+  },
+  createPoll: async (payload: {
+    hostelId: string;
+    title: string;
+    pollType: 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE' | 'RATING' | 'YES_NO';
+    mealType: string;
+    pollDate: string;
+    closesAt: string;
+    isAnonymous: boolean;
+    allowMultiple: boolean;
+    options: string[];
+    notifyNow: boolean;
+  }) => {
+    const response = await api.post('/food/polls', payload);
+    return unwrap(response);
+  },
+  closePoll: async (pollId: string) => {
+    const response = await api.post(`/food/polls/${pollId}/close`);
+    return unwrap(response);
+  },
+  getPollResults: async (pollId: string) => {
+    const response = await api.get(`/food/polls/${pollId}/results`);
+    return unwrap(response) as { poll: any; options: { id: string; label: string; position: number; votes: number }[]; totalVotes: number; voterCount: number; eligibleCount: number };
+  },
+
+  // Polls (tenant)
+  getTenantPolls: async () => {
+    const response = await api.get('/food/tenant/polls');
+    return unwrap(response).polls as any[];
+  },
+  castPollVote: async (pollId: string, optionId: string) => {
+    const response = await api.post(`/food/tenant/polls/${pollId}/vote`, { optionId });
+    return unwrap(response) as { option_id: string; voted: boolean };
+  },
 };
