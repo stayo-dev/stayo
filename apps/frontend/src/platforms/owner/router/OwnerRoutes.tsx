@@ -70,6 +70,12 @@ const MoreConfigAgreementTemplatePage = lazy(() =>
 const MoreConfigAgreementClausesPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigAgreementClausesPage').then((m) => ({ default: m.MoreConfigAgreementClausesPage })),
 );
+const MoreConfigNotificationsPage = lazy(() =>
+  import('@features/owner-more/pages/MoreConfigNotificationsPage').then((m) => ({ default: m.MoreConfigNotificationsPage })),
+);
+const MoreConfigAccountPage = lazy(() =>
+  import('@features/owner-more/pages/MoreConfigAccountPage').then((m) => ({ default: m.MoreConfigAccountPage })),
+);
 const AgreementQueuePage = lazy(() =>
   import('@features/owner-workqueue/AgreementQueuePage').then((m) => ({ default: m.AgreementQueuePage })),
 );
@@ -173,6 +179,8 @@ export function OwnerRoutes() {
         <Route path="/owner/more/configuration/agreements/templates" element={<MoreConfigAgreementTemplatesPage />} />
         <Route path="/owner/more/configuration/agreements/template" element={<MoreConfigAgreementTemplatePage />} />
         <Route path="/owner/more/configuration/agreements/clauses" element={<MoreConfigAgreementClausesPage />} />
+        <Route path="/owner/more/configuration/notifications" element={<MoreConfigNotificationsPage />} />
+        <Route path="/owner/more/configuration/account" element={<MoreConfigAccountPage />} />
         <Route path="/owner/more/configuration/finance/late-fees" element={<Navigate to="/owner/more/configuration/finance/billing-policy" replace />} />
         <Route path="/owner/more/configuration/finance/billing-policy" element={<MoreConfigBillingPolicyPage />} />
         <Route path="/owner/more/configuration/finance/payment-gateway" element={<MoreConfigPaymentGatewayPage />} />
