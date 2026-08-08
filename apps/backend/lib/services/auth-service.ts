@@ -1,6 +1,8 @@
 import { prisma, supabase } from "../db";
 import { verifyPassword, hashPassword, generateResetToken, verifyResetToken } from "../auth";
-import { EmailService } from "./email-service";
+import { EmailService, getEffectiveEmailFrom } from "./email-service";
+import { describeEmailDeliveryConfig } from "./email-delivery";
+import { emailButton, emailLinkFallback, emailNote, emailShell } from "./email-theme";
 import { createHash } from "crypto";
 import { frontendUrl } from "../config/domains";
 import { sessionLifecycleService } from "./session-lifecycle-service";
@@ -9,6 +11,9 @@ import { setOneTimeLock } from "@/lib/redis/rate-limit";
 import { redisKeys } from "@/lib/redis/keys";
 import { ensureSupabaseIdentity, signInWithSupabasePassword } from "../auth/supabase-identity";
 import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
+import { authOtpService, profilePhoneCandidates } from "./auth/auth-otp-service";
+import { normalizeWhatsAppPhone } from "./notifications/providers/whatsapp/meta-provider";
+import { PASSWORD_RESET_OTP_PURPOSE } from "./auth/password-reset-purpose";
 
 type AuthSessionMeta = {
   ipAddress?: string | null;
@@ -26,6 +31,24 @@ const GENERIC_RESET_RESPONSE = {
   success: true,
   message: "If an account exists for this email, Supabase will send password reset instructions.",
 };
+
+/**
+ * Deliberately says nothing about whether the number is registered. Same
+ * response for a known number, an unknown one, and one whose OTP send was
+ * rate-limited or failed — otherwise this becomes a way to enumerate which
+ * phone numbers have Stayo accounts.
+ */
+const GENERIC_PHONE_RESET_RESPONSE = {
+  success: true,
+  message: "If an account exists for this number, you will receive a verification code on WhatsApp.",
+};
+
+/**
+ * Short by design: unlike the emailed link, this token is handed straight
+ * back to the browser once a code is verified, so its window is minutes.
+ */
+const PHONE_RESET_TOKEN_TTL = "5m";
+const PHONE_RESET_TOKEN_TTL_SECONDS = 5 * 60;
 
 function tokenFingerprint(value: string) {
   return createHash("sha256").update(value).digest("hex");
@@ -280,39 +303,74 @@ export class AuthService {
       select: { id: true, email: true, role: true, owner_id: true, is_active: true, name: true },
     });
 
+    // Derived from configuration only, never from whether this address has
+    // an account — a recipient-dependent flag would turn the deliberately
+    // generic response below into an account-enumeration oracle. See
+    // lib/services/email-delivery.ts.
+    const delivery = describeEmailDeliveryConfig({
+      apiKey: process.env.RESEND_API_KEY,
+      from: getEffectiveEmailFrom(),
+    });
+    const genericResponse = {
+      ...GENERIC_RESET_RESPONSE,
+      delivery_degraded: delivery.degraded,
+      ...(delivery.reason ? { delivery_reason: delivery.reason } : {}),
+    };
+
     if (!profile || !profile.is_active) {
-      return GENERIC_RESET_RESPONSE;
+      return genericResponse;
     }
 
     try {
       const resetToken = await generateResetToken(normalizedEmail);
       const resetLink = frontendUrl(`/reset-password?access_token=${resetToken}`);
 
-      const html = `
-        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:0 auto;border:1px solid #eadfce;border-radius:16px;overflow:hidden;">
-          <div style="background:linear-gradient(135deg,#1B2D5B,#2a427e);padding:28px 24px;color:#ffffff;">
-            <h1 style="margin:0;font-size:22px;color:#ffffff;">Reset Your Password</h1>
-            <p style="margin:8px 0 0;opacity:0.9;font-size:14px;color:#eadfce;">Sri Adithya Boys Hostel Account Recovery</p>
-          </div>
-          <div style="padding:24px;color:#1e293b;line-height:1.6;background:#FFFDF5;">
-            <p>Hello <strong>${profile.name || "User"}</strong>,</p>
-            <p>We received a request to reset the password for your account. Click the button below to choose a new password. This link is valid for 1 hour.</p>
-            <div style="text-align:center;margin:28px 0;">
-              <a href="${resetLink}" target="_blank" style="display:inline-block;background:#F07B1D;color:#ffffff;padding:14px 32px;text-decoration:none;border-radius:10px;font-weight:700;font-size:16px;">
-                Reset Password
-              </a>
-            </div>
-            <p style="font-size:12px;color:#94a3b8;text-align:center;">If you did not request this, you can safely ignore this email.</p>
-          </div>
-        </div>
-      `;
+      const html = emailShell({
+        title: "Reset your password",
+        subtitle: "Account recovery",
+        preheader: "Choose a new Stayo password — this link is valid for 1 hour.",
+        body: `
+          <p style="margin:0 0 14px;">Hello <strong>${profile.name || "there"}</strong>,</p>
+          <p style="margin:0;">We received a request to reset your Stayo password. Choose a new one using the button below.</p>
+          ${emailButton("Reset password", resetLink)}
+          ${emailLinkFallback(resetLink)}
+          ${emailNote("This link is valid for 1 hour and can be used once. If you didn't request it, you can safely ignore this email.")}
+        `,
+      });
 
-      await EmailService.sendEmail(normalizedEmail, "Reset your Sri Adithya Boys Hostel password", html);
+      const sendResult = await EmailService.sendEmail(
+        normalizedEmail,
+        "Reset your Stayo password",
+        html,
+      );
+
+      // Previously this whole block swallowed failures and the caller still
+      // reported success, so a total delivery outage was invisible. The
+      // response stays generic (no enumeration), but the failure is now
+      // recorded where an operator will actually find it.
+      if (sendResult && sendResult.sent === false) {
+        console.error("[auth.requestPasswordReset] reset email was not delivered", {
+          profile_id: profile.id,
+          error: sendResult.error,
+          delivery_reason: delivery.reason,
+        });
+        await eventLog.log("PASSWORD_RESET_EMAIL_FAILED", profile.owner_id || profile.id, {
+          profile_id: profile.id,
+          role: profile.role,
+          email: normalizedEmail,
+          error: sendResult.error || null,
+          delivery_reason: delivery.reason,
+          ip_address: meta.ipAddress || null,
+          user_agent: meta.userAgent || null,
+        });
+        return genericResponse;
+      }
 
       await eventLog.log("PASSWORD_RESET_REQUESTED", profile.owner_id || profile.id, {
         profile_id: profile.id,
         role: profile.role,
         email: normalizedEmail,
+        channel: "email",
         ip_address: meta.ipAddress || null,
         user_agent: meta.userAgent || null,
       });
@@ -324,7 +382,99 @@ export class AuthService {
       });
     }
 
-    return GENERIC_RESET_RESPONSE;
+    return genericResponse;
+  }
+
+  /**
+   * Phone/OTP leg of password reset (see
+   * docs/superpowers/specs/2026-08-08-auth-recovery-design.md).
+   *
+   * Always resolves the same way whether or not the number belongs to an
+   * account — the caller must not be able to discover which phone numbers
+   * are registered. `PASSWORD_RESET` is deliberately absent from
+   * SKIPPABLE_OTP_PURPOSES, so if WhatsApp is unavailable this fails closed
+   * rather than waving the caller through without a code.
+   */
+  async requestPasswordResetByPhone(phone: string, meta: AuthSessionMeta = {}) {
+    const normalizedPhone = normalizeWhatsAppPhone(phone);
+
+    const profile = await prisma.profile.findFirst({
+      where: { phone: { in: profilePhoneCandidates(normalizedPhone) } },
+      select: { id: true, email: true, role: true, owner_id: true, is_active: true },
+    });
+
+    if (!profile || !profile.is_active) {
+      return GENERIC_PHONE_RESET_RESPONSE;
+    }
+
+    try {
+      await authOtpService.sendPhoneOtp({
+        phone: normalizedPhone,
+        purpose: PASSWORD_RESET_OTP_PURPOSE,
+        requestIp: meta.ipAddress || null,
+      });
+
+      await eventLog.log("PASSWORD_RESET_REQUESTED", profile.owner_id || profile.id, {
+        profile_id: profile.id,
+        role: profile.role,
+        channel: "phone",
+        ip_address: meta.ipAddress || null,
+        user_agent: meta.userAgent || null,
+      });
+    } catch (error) {
+      // Rate limits and provider outages must not become a way to probe
+      // which numbers exist, so the response shape never changes here.
+      console.error("[auth.requestPasswordResetByPhone] OTP send failed", {
+        profile_id: profile.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return GENERIC_PHONE_RESET_RESPONSE;
+  }
+
+  /**
+   * Exchange a verified OTP for a short-lived reset token, which the client
+   * then submits to the existing POST /api/auth/reset-password. Deliberately
+   * does not set the password itself: password-setting, the one-time-use
+   * lock, session revocation and Supabase identity sync stay in
+   * `completePasswordReset` as the single implementation.
+   */
+  async verifyPasswordResetOtp(input: { phone: string; otp: string; meta?: AuthSessionMeta }) {
+    const normalizedPhone = normalizeWhatsAppPhone(input.phone);
+
+    const profile = await prisma.profile.findFirst({
+      where: { phone: { in: profilePhoneCandidates(normalizedPhone) } },
+      select: { id: true, email: true, role: true, owner_id: true, is_active: true },
+    });
+
+    // Verify the code first regardless, so a wrong number and a wrong code
+    // are indistinguishable in both timing and response.
+    await authOtpService.verifyPhoneOtp({
+      phone: normalizedPhone,
+      otp: input.otp,
+      purpose: PASSWORD_RESET_OTP_PURPOSE,
+      requestIp: input.meta?.ipAddress || null,
+    });
+
+    if (!profile || !profile.is_active) {
+      throw new Error("VALIDATION_ERROR: Invalid or expired code");
+    }
+
+    const resetToken = await generateResetToken(profile.email.toLowerCase(), {
+      expiresIn: PHONE_RESET_TOKEN_TTL,
+      channel: "phone",
+    });
+
+    await eventLog.log("PASSWORD_RESET_OTP_VERIFIED", profile.owner_id || profile.id, {
+      profile_id: profile.id,
+      role: profile.role,
+      channel: "phone",
+      ip_address: input.meta?.ipAddress || null,
+      user_agent: input.meta?.userAgent || null,
+    });
+
+    return { reset_token: resetToken, expires_in: PHONE_RESET_TOKEN_TTL_SECONDS };
   }
 
   async completePasswordReset(input: CompletePasswordResetInput) {

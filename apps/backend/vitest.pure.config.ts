@@ -43,6 +43,10 @@ export default defineConfig({
       'tests/active-tenancy-selection.test.ts',
       'tests/activation-enforcement-coverage.test.ts',
       'tests/tenancy-eligibility-service.test.ts',
+      'tests/reset-token-channel.test.ts',
+      'tests/email-delivery-classification.test.ts',
+      'tests/auth-config-diagnostics.test.ts',
+      'tests/password-reset-otp-purpose.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),
