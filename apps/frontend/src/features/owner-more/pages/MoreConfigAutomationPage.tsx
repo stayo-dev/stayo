@@ -13,7 +13,7 @@ import {
 /**
  * Configuration › Automation — work that runs without the owner.
  *
- * Every toggle writes `policy.automation` or `policy.notifications.channels`,
+ * Every toggle writes `policy.automation` or `policy.reminders.channels`,
  * and those flags gate real cron jobs under `app/api/cron/`. Because the write
  * goes through `PATCH /api/hostels/:id/preferences`, each flip is also recorded
  * by the config change log and appears in the hub's Recent Changes — the
@@ -31,7 +31,7 @@ export function MoreConfigAutomationPage() {
 
   const sections = deriveAutomationSections({
     automation: policyQuery.data?.policy?.automation ?? null,
-    channels: policyQuery.data?.policy?.notifications?.channels ?? null,
+    channels: policyQuery.data?.policy?.reminders?.channels ?? null,
   });
   const { running, total } = countWorkflows(sections.flatMap((s) => s.rows));
 

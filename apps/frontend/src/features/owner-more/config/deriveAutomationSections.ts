@@ -4,7 +4,7 @@ import { UNAVAILABLE_LABEL, type ConfigRowState } from './configRows';
  * The Automation screen: work that runs without the owner.
  *
  * Unlike Hostel and Finance, these rows *write* — each is a live toggle over
- * `policy.automation` or `policy.notifications.channels`, and those flags gate
+ * `policy.automation` or `policy.reminders.channels`, and those flags gate
  * real cron jobs under `app/api/cron/`. So this module owns two decisions, both
  * tested: what a row shows, and the exact PATCH body a toggle produces.
  *
@@ -22,6 +22,13 @@ export interface AutomationSource {
     nightly_reconciliation?: boolean;
     snapshot_generation?: boolean;
   } | null;
+  /**
+   * From `policy.reminders.channels` — **not** `notifications.channels`. Both
+   * exist server-side, but only `reminders.channels` is mapped to the flat
+   * `reminder_email`/`reminder_whatsapp` preferences that
+   * `reminder-service.ts` actually gates sends on. Writing to
+   * `notifications.channels` would persist a value nothing reads.
+   */
   channels?: { email?: boolean; in_app?: boolean; whatsapp?: boolean; sms?: boolean } | null;
 }
 
@@ -120,26 +127,26 @@ export function deriveAutomationSections(source: AutomationSource): ConfigWorkfl
         toggleRow(
           'channel_whatsapp',
           'WhatsApp',
-          'notifications.channels.whatsapp',
+          'reminders.channels.whatsapp',
           Boolean(channels.whatsapp),
           Boolean(channels.whatsapp) ? 'Reminders & receipts sent on WhatsApp' : 'Off',
         ),
         toggleRow(
           'channel_email',
           'Email',
-          'notifications.channels.email',
+          'reminders.channels.email',
           Boolean(channels.email),
           Boolean(channels.email) ? 'Reminders & receipts sent by email' : 'Off',
         ),
         toggleRow(
           'channel_in_app',
           'In-app alerts',
-          'notifications.channels.in_app',
+          'reminders.channels.in_app',
           Boolean(channels.in_app),
           Boolean(channels.in_app) ? 'Shown in the tenant & owner apps' : 'Off',
         ),
-        // `notifications.channels.sms` is a real stored flag, but no SMS
-        // provider exists anywhere in the codebase — no sender, no send call.
+        // `reminders.channels.sms` is a real stored flag, but no SMS provider
+        // exists anywhere in the codebase — no sender, no send call.
         // A toggle persisting a preference that changes nothing observable
         // would be worse than saying so.
         unavailableRow('channel_sms', 'SMS'),

@@ -88,6 +88,14 @@ const PHRASES: Record<string, Phrase> = {
   "automation.auto_generate_rent": ({ to }) => `Rent generation turned ${to ? "on" : "off"}`,
   "automation.auto_apply_late_fees": ({ to }) => `Late fee processing turned ${to ? "on" : "off"}`,
   "automation.auto_send_reminders": ({ to }) => `Reminder engine turned ${to ? "on" : "off"}`,
+  "automation.auto_email_receipts": ({ to }) => `Auto receipts turned ${to ? "on" : "off"}`,
+  "automation.nightly_reconciliation": ({ to }) => `Nightly reconciliation turned ${to ? "on" : "off"}`,
+  "automation.snapshot_generation": ({ to }) => `Daily snapshots turned ${to ? "on" : "off"}`,
+  "automation.auto_deactivate_days": ({ to }) =>
+    Number(to) > 0 ? `Overdue escalation set to ${plural(Number(to), "day")}` : "Overdue escalation turned off",
+  "reminders.channels.whatsapp": ({ to }) => `WhatsApp reminders turned ${to ? "on" : "off"}`,
+  "reminders.channels.email": ({ to }) => `Email reminders turned ${to ? "on" : "off"}`,
+  "reminders.channels.in_app": ({ to }) => `In-app alerts turned ${to ? "on" : "off"}`,
 };
 
 export function describeConfigChange(change: ConfigChange): string {

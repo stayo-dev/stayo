@@ -8,7 +8,7 @@ import {
 
 /**
  * Automation is the one configuration screen whose rows *write*: each is a live
- * toggle over `policy.automation` or `policy.notifications.channels`, and those
+ * toggle over `policy.automation` or `policy.reminders.channels`, and those
  * flags gate real cron jobs. So both halves are tested here — what a row
  * displays, and the exact PATCH body a toggle sends.
  */
@@ -57,13 +57,13 @@ describe('deriveAutomationSections', () => {
     expect(find(s, 'auto_deactivate_days').enabled).toBe(false);
   });
 
-  it('reads communication channels from notification policy', () => {
+  it('reads communication channels from reminder policy', () => {
     expect(find(source(), 'channel_whatsapp').enabled).toBe(true);
     expect(find(source(), 'channel_email').enabled).toBe(true);
   });
 
   it('renders SMS as unavailable, because no SMS provider exists in the codebase', () => {
-    // `notifications.channels.sms` is a real stored flag, but nothing sends an
+    // `reminders.channels.sms` is a real stored flag, but nothing sends an
     // SMS — no provider, no sender. A toggle that persists a preference which
     // changes nothing observable is worse than an honest placeholder.
     const row = find(source(), 'channel_sms');
@@ -130,7 +130,9 @@ describe('buildWorkflowPatch', () => {
   it('nests a channel flag two levels deep', () => {
     const row = find(source(), 'channel_whatsapp');
 
-    expect(buildWorkflowPatch(row, false)).toEqual({ notifications: { channels: { whatsapp: false } } });
+    // reminders.channels, not notifications.channels: only the former reaches
+    // the flat prefs reminder-service.ts gates real sends on.
+    expect(buildWorkflowPatch(row, false)).toEqual({ reminders: { channels: { whatsapp: false } } });
   });
 
   it('writes a day count rather than a boolean for overdue escalation', () => {

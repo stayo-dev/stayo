@@ -75,7 +75,7 @@ export function useConfigurationHub() {
   };
   const automationWorkflows = deriveAutomationSections({
     automation: policyQuery.data?.policy?.automation ?? null,
-    channels: policyQuery.data?.policy?.notifications?.channels ?? null,
+    channels: policyQuery.data?.policy?.reminders?.channels ?? null,
   }).flatMap((section) => section.rows);
   const automation = countWorkflows(automationWorkflows);
   const hostelTally = tallyConfigRows(deriveHostelSections(source).flatMap((s) => s.rows));
