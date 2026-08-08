@@ -9,6 +9,8 @@ import { ConfigAttentionRow } from '../components/ConfigAttentionRow';
 import { ConfigModuleCard } from '../components/ConfigModuleCard';
 import { ConfigSearchOverlay } from '../components/ConfigSearchOverlay';
 import { ConfigSettingRow } from '../components/ConfigSettingRow';
+import { ConfigRecentChanges } from '../components/ConfigRecentChanges';
+import { useConfigChanges } from '../hooks/useConfigChanges';
 import { UNAVAILABLE_LABEL, type ConfigRow } from '../config/configRows';
 
 const card = 'overflow-hidden rounded-[20px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]';
@@ -48,6 +50,7 @@ export function MoreConfigurationHubPage() {
     workspaceName,
     workspaceInitials,
   } = useConfigurationHub();
+  const { changes } = useConfigChanges();
   const { signOut } = useMoreNav();
   const [searchOpen, setSearchOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -135,6 +138,8 @@ export function MoreConfigurationHubPage() {
           ))}
         </div>
       </div>
+
+      <ConfigRecentChanges changes={changes} />
 
       <div className="flex flex-col gap-3">
         <div className={sectionLabel}>Quick actions</div>
