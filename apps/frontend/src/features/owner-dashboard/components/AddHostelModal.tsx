@@ -66,6 +66,7 @@ export function AddHostelModal({ open, onClose }: AddHostelModalProps) {
         state: form.state.trim(),
         pincode: form.pincode.trim(),
         phone: form.phone.trim(),
+        identity_token: identityToken,
       });
     },
     onSuccess: () => {

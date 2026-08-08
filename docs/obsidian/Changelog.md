@@ -10,6 +10,10 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-08 — "+ Add hostel" actually opens the popup now, and its password step-up is actually enforced
+- **The dashboard's "+ Add hostel" now opens `AddHostelModal`** (Hostel Name/Address/City/State/Pincode/Contact Number bottom sheet) instead of navigating to the 12-step `/onboarding` wizard. The modal itself was built in the 2026-08-02 dead-button pass below but its one call site (`OwnerDashboardPreviewPage.tsx`'s `onAddHostel`) was never updated to use it — see [[Bugs]] for the full root-cause writeup.
+- **`POST /api/owner/hostels` now actually verifies the `CREATE_HOSTEL` step-up token.** Previously the frontend fetched an identity token via `confirmIdentity` but never sent it, and the backend never checked for one — the password prompt was cosmetic. The route now calls `verifyIdentityConfirmation` and atomically consumes the token inside the same `prisma.$transaction` as the hostel-name-uniqueness check and `hostels.create` (mirroring the guard `payments/record-offline` already uses). See [[APIs]].
+
 ### 2026-08-07 — Admin dashboard: Recent Activity accuracy, Owner Leads card bug fixes
 - **Owner Leads dashboard card removed.** Per explicit user direction, once the leads badge (below) existed, the Dashboard's own "Owner Leads" preview card (Approve/Reject/Details inline) became a second, redundant lead-facing surface. Removed it along with `leads_preview` from `GET /api/platform-admin/dashboard`'s response — no remaining consumer. The Dashboard's left column is now just Overview (KPIs), with Revenue Summary + Hostel Health as the right column. See [[Features]], [[APIs]].
 - **Leads get their own header badge.** New `UserPlus` icon in the admin top bar next to the bell, showing `+N` actionable leads (`NEW`/`UNDER_REVIEW`/`APPROVED`); clicking it navigates straight to `/admin/leads` rather than opening a dropdown, since leads already have one dedicated place to work them. See [[Features]].
