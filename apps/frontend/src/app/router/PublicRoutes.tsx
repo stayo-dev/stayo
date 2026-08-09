@@ -3,6 +3,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { Outlet, Route } from 'react-router-dom';
 import { queryClient } from '@lib/queryClient';
 import { AuthProvider } from '@context/AuthContext';
+import { StayoLoadingScreen } from '@shared/ui/brand';
 
 const LandingPage = lazy(() => import('@/app/pages/public/LandingPage').then((m) => ({ default: m.LandingPage })));
 const LeadSignupCallbackPage = lazy(() => import('@/app/pages/public/LeadSignupCallbackPage').then((m) => ({ default: m.LeadSignupCallbackPage })));
@@ -21,8 +22,16 @@ const CompleteProfilePage = lazy(() => import('@/portal/pages/CompleteProfilePag
 const AuthRouteShell = lazy(() => import('@/app/providers/AuthRouteShell').then((m) => ({ default: m.AuthRouteShell })));
 const ReceiptVerificationPage = lazy(() => import('@/app/pages/public/ReceiptVerificationPage').then((m) => ({ default: m.ReceiptVerificationPage })));
 
+/**
+ * Public pages are full-screen takeovers with no persistent chrome, so there is
+ * no layout to skeleton — and this is the boundary the very first paint of `/`
+ * lands on, straight after index.html's boot splash. Showing the same brand
+ * loading screen there makes the boot → landing hand-off one continuous
+ * surface. (It used to be a bare slate-50 rectangle, which was both blank and
+ * off-palette.)
+ */
 function PublicRouteFallback() {
-  return <div className="min-h-screen bg-slate-50" />;
+  return <StayoLoadingScreen />;
 }
 
 function PublicShell() {

@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ReactNode } from 'react';
 import { Navigate, Route, useNavigate } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
+import { StayoLoadingScreen } from '@shared/ui/brand';
 
 const TenantAppShell = lazy(() =>
   import('@/app/layouts/TenantAppShell').then((m) => ({ default: m.TenantAppShell })),
@@ -21,16 +22,13 @@ const TenantPaymentReturnPage = lazy(() =>
   import('@/portal/pages/TenantPaymentReturnPage').then((m) => ({ default: m.TenantPaymentReturnPage })),
 );
 
+/**
+ * Cold entry into the tenant app — nothing is mounted yet, so there is no
+ * layout to skeleton. Continues the boot splash's loading screen. Tab-to-tab
+ * transitions use the layout skeleton in TenantProviderShell instead.
+ */
 function TenantRouteFallback() {
-  return (
-    <div className="min-h-screen bg-background px-4 py-5">
-      <div className="space-y-4">
-        <div className="h-28 rounded-2xl bg-muted animate-pulse" />
-        <div className="h-16 rounded-xl bg-muted animate-pulse" />
-        <div className="h-36 rounded-xl bg-muted animate-pulse" />
-      </div>
-    </div>
-  );
+  return <StayoLoadingScreen />;
 }
 
 /**

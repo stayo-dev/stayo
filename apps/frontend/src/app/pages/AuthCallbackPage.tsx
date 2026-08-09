@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@lib/supabaseClient';
 import api from '@lib/api-client';
+import { StayoLoadingScreen } from '@shared/ui/brand';
 
 /**
  * Lands here after `supabase.auth.signInWithOAuth({provider:'google'})`'s
@@ -83,9 +84,5 @@ export function AuthCallbackPage() {
     );
   }
 
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-    </div>
-  );
+  return <StayoLoadingScreen message="Finishing sign-in…" />;
 }

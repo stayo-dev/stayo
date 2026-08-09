@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { X, XCircle, Loader2, KeyRound } from 'lucide-react';
+import { X, XCircle, KeyRound } from 'lucide-react';
 import { identityService } from '@features/auth/api';
 import { toast } from 'sonner';
 import { hmsToast } from '@lib/toast';
+import { StayoLoader } from '@shared/ui/brand';
 
 interface Obligation {
   id?: string;
@@ -162,7 +163,7 @@ export function CancelObligationModal({
               className="px-4 h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold active:scale-98 transition-transform flex items-center justify-center gap-1.5 disabled:opacity-50"
             >
               {isSubmitting ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <StayoLoader size="sm" label={null} />
               ) : (
                 <XCircle className="w-4 h-4" />
               )}

@@ -7,7 +7,6 @@ import {
   Copy,
   Download,
   FileText,
-  Loader2,
   LogOut,
   MessageCircle,
   Phone,
@@ -24,6 +23,7 @@ import { tenantService } from '@features/tenants/api';
 import { useAuth } from '@context/AuthContext';
 import { ProfileRow, ProfileSection } from '@/portal/components/profile/ProfileSection';
 import { TenantStatusBadge } from '@features/tenants/components/badges/TenantStatusBadge';
+import { StayoLoader } from '@shared/ui/brand';
 
 const fmt = (n: number) => `₹${Number(n ?? 0).toLocaleString('en-IN')}`;
 const fmtDate = (d?: string | null) =>
@@ -244,7 +244,7 @@ export function TenantProfilePortalPage() {
   if (isLoading) {
     return (
       <div className="flex justify-center py-24">
-        <Loader2 className="w-8 h-8 animate-spin text-accent" />
+        <StayoLoader size="lg" className="text-accent" />
       </div>
     );
   }

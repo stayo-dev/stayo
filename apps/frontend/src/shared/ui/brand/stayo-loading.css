@@ -1,0 +1,473 @@
+/*
+ * Stayo brand loading system — the single source of truth for "we are waiting".
+ *
+ * The metaphor is the Stayo mark's four windows lighting up one by one, like a
+ * hostel filling with people — never a rotating ring. Circular spinners are
+ * deliberately absent from the whole app; see docs/obsidian/Frontend.md.
+ *
+ * Palette is hard-coded rather than read from --primary/--accent on purpose:
+ * loading screens render BEFORE a ThemeProvider `data-app-theme` scope exists
+ * (route Suspense fallbacks, auth gates, the pre-React boot splash in
+ * index.html), so token lookups would resolve to the legacy theme or to
+ * nothing. Hard-coding keeps every loading surface identical everywhere.
+ *
+ * Keep these values in sync with the boot splash's inline <style> in
+ * index.html — that copy exists because it must run with zero JS/CSS loaded.
+ */
+
+.stayo-load {
+  --stayo-load-sky-top: #fbf7f1;
+  --stayo-load-sky-bot: #f1e4d2;
+  --stayo-load-terra: #c0552f;
+  --stayo-load-clay: #b46a55;
+  --stayo-load-dusty: #d2986c;
+  --stayo-load-amber: #f4a65a;
+  --stayo-load-amber-hi: #ffc98a;
+  --stayo-load-glow: rgba(244, 166, 90, 0.65);
+}
+
+/* ── Full-screen / inset stage ─────────────────────────────────────────── */
+
+.stayo-load__stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 40px 24px;
+  background:
+    radial-gradient(120% 90% at 50% 116%, rgba(180, 106, 85, 0.16), transparent 60%),
+    linear-gradient(180deg, var(--stayo-load-sky-top) 0%, var(--stayo-load-sky-bot) 100%);
+}
+
+.stayo-load__stage--screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+}
+
+/* Fills whatever positioned box it is dropped into (modals, sheets, cards). */
+.stayo-load__stage--inset {
+  height: 100%;
+  width: 100%;
+  min-height: 220px;
+}
+
+/* Lets a caller sit the stage over existing content without a layout shift. */
+.stayo-load__stage--overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+}
+
+.stayo-load__glow {
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  width: min(72vw, 560px);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    var(--stayo-load-glow) 0%,
+    rgba(244, 166, 90, 0.16) 34%,
+    transparent 66%
+  );
+  filter: blur(4px);
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.15;
+  animation: stayo-load-glow 7.2s ease-in-out infinite;
+}
+
+.stayo-load__logo {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(18px, 3vw, 30px);
+}
+
+.stayo-load__mark {
+  width: clamp(122px, 21vw, 186px);
+  height: auto;
+  overflow: visible;
+  opacity: 0;
+  transform: translateY(10px) scale(0.96);
+  animation: stayo-load-rise 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) 0.1s forwards;
+}
+
+.stayo-load__wordmark {
+  width: clamp(120px, 19vw, 170px);
+  height: auto;
+  opacity: 0;
+  transform: translateY(6px);
+  animation: stayo-load-rise 0.7s ease 0.55s forwards;
+}
+
+/*
+ * The four windows. Each pane runs the same 7.2s keyframe offset by 0.52s, so
+ * they light clockwise (TL → TR → BR → BL) and bloom together at the end of
+ * the cycle — the sequence the reference page drove from requestAnimationFrame,
+ * expressed declaratively so it costs no main-thread work.
+ */
+.stayo-load__pane {
+  fill: var(--stayo-load-terra);
+  animation: stayo-load-pane 7.2s linear infinite;
+}
+
+.stayo-load__pane:nth-of-type(1) { animation-delay: 0.75s; }
+.stayo-load__pane:nth-of-type(2) { animation-delay: 0.23s; }
+.stayo-load__pane:nth-of-type(3) { animation-delay: -0.29s; }
+.stayo-load__pane:nth-of-type(4) { animation-delay: -0.81s; }
+
+.stayo-load__status {
+  position: relative;
+  z-index: 2;
+  margin-top: clamp(30px, 5vw, 48px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.stayo-load__copy {
+  font-family: Manrope, system-ui, sans-serif;
+  font-weight: 600;
+  font-size: clamp(14px, 2.3vw, 17px);
+  line-height: 1.4;
+  color: var(--stayo-load-clay);
+  min-height: 1.4em;
+  text-align: center;
+  transition: opacity 0.28s ease;
+}
+
+.stayo-load__copy--out {
+  opacity: 0;
+}
+
+.stayo-load__track {
+  width: clamp(190px, 42vw, 244px);
+  height: 6px;
+  border-radius: 99px;
+  background: rgba(180, 106, 85, 0.16);
+  overflow: hidden;
+}
+
+.stayo-load__fill {
+  height: 100%;
+  width: 0;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--stayo-load-clay), var(--stayo-load-dusty));
+  animation: stayo-load-fill 7.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+/* Determinate mode: caller drives width, animation off. */
+.stayo-load__fill--determinate {
+  animation: none;
+  transition: width 0.4s ease;
+}
+
+.stayo-load__particles {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.stayo-load__particle {
+  position: absolute;
+  bottom: -12px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--stayo-load-amber-hi), rgba(244, 166, 90, 0));
+  opacity: 0;
+  animation: stayo-load-particle linear infinite;
+}
+
+/* ── Error state: the same stage, with the lights out ──────────────────────
+ * An error screen is the loading screen's other half, not a different design:
+ * same sky, same mark, same track geometry. The windows just stay dark, with
+ * one guttering — "nobody's home yet" rather than a red alarm. Severity is
+ * carried by the copy and the badge, so a recoverable hiccup doesn't get
+ * dressed up as a catastrophe. */
+
+.stayo-load__stage--muted .stayo-load__glow {
+  animation: none;
+  opacity: 0.1;
+}
+
+.stayo-load__pane--dark {
+  fill: rgba(192, 85, 47, 0.24);
+}
+
+.stayo-load__pane--dark.stayo-load__pane--flicker {
+  animation: stayo-load-flicker 3.6s ease-in-out infinite;
+}
+
+.stayo-load__badge {
+  position: absolute;
+  right: -6%;
+  bottom: 4%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #fffdfb;
+  color: var(--stayo-load-terra);
+  box-shadow: 0 10px 24px -10px rgba(47, 47, 47, 0.45);
+}
+
+.stayo-load__badge > svg {
+  width: 52%;
+  height: 52%;
+}
+
+.stayo-load__title {
+  font-family: Manrope, system-ui, sans-serif;
+  font-weight: 800;
+  font-size: clamp(19px, 3.2vw, 23px);
+  line-height: 1.25;
+  color: #2f2f2f;
+  text-align: center;
+}
+
+.stayo-load__body {
+  font-family: Manrope, system-ui, sans-serif;
+  font-weight: 500;
+  font-size: clamp(13.5px, 2.2vw, 15px);
+  line-height: 1.55;
+  color: #7a6e64;
+  text-align: center;
+  max-width: 34ch;
+}
+
+.stayo-load__hint {
+  font-family: Manrope, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: clamp(13px, 2.1vw, 14.5px);
+  color: var(--stayo-load-clay);
+  text-align: center;
+  max-width: 34ch;
+}
+
+.stayo-load__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border: 0;
+  border-radius: 14px;
+  font-family: Manrope, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 14.5px;
+  color: #fff;
+  background: var(--stayo-load-terra);
+  box-shadow: 0 14px 28px -14px rgba(192, 85, 47, 0.7);
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.stayo-load__button:hover {
+  background: #a8492a;
+}
+
+.stayo-load__button:active {
+  transform: scale(0.97);
+}
+
+.stayo-load__button--ghost {
+  color: var(--stayo-load-terra);
+  background: transparent;
+  box-shadow: none;
+  border: 1.5px solid rgba(192, 85, 47, 0.3);
+}
+
+.stayo-load__button--ghost:hover {
+  background: rgba(192, 85, 47, 0.07);
+}
+
+.stayo-load__detail {
+  max-width: min(560px, 90vw);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #8a7f75;
+  text-align: left;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.stayo-load__detail summary {
+  cursor: pointer;
+  font-family: Manrope, system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9a8f85;
+  text-align: center;
+  list-style: none;
+}
+
+.stayo-load__detail summary::-webkit-details-marker {
+  display: none;
+}
+
+.stayo-load__detail pre {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(47, 47, 47, 0.05);
+  overflow-x: auto;
+}
+
+@keyframes stayo-load-flicker {
+  0%, 44%, 52%, 100% { fill: rgba(192, 85, 47, 0.24); }
+  47% { fill: var(--stayo-load-amber); }
+  49% { fill: rgba(192, 85, 47, 0.24); }
+  50% { fill: var(--stayo-load-amber-hi); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stayo-load__pane--dark.stayo-load__pane--flicker {
+    animation: none;
+    fill: var(--stayo-load-amber);
+  }
+}
+
+/* ── Inline loader: the same four windows, small enough for a button ───── */
+
+.stayo-load__dots {
+  display: inline-grid;
+  grid-template-columns: repeat(2, 1fr);
+  flex: none;
+  vertical-align: middle;
+}
+
+.stayo-load__dot {
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.22;
+  animation: stayo-load-dot 1.5s ease-in-out infinite;
+}
+
+/* Grid order is TL, TR, BL, BR — delays reorder it into the clockwise sweep. */
+.stayo-load__dot:nth-child(1) { animation-delay: 0s; }
+.stayo-load__dot:nth-child(2) { animation-delay: 0.13s; }
+.stayo-load__dot:nth-child(3) { animation-delay: 0.39s; }
+.stayo-load__dot:nth-child(4) { animation-delay: 0.26s; }
+
+/* ── Keyframes ─────────────────────────────────────────────────────────── */
+
+@keyframes stayo-load-rise {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes stayo-load-pane {
+  /* dark → lit (10.4%≈0.75s) → held → bloom (72.9%≈5.25s) → back to dark */
+  0%,
+  10.3% {
+    fill: var(--stayo-load-terra);
+    filter: none;
+  }
+  10.4%,
+  72.8% {
+    fill: var(--stayo-load-amber);
+    filter: drop-shadow(0 0 4px var(--stayo-load-glow)) drop-shadow(0 0 12px var(--stayo-load-glow));
+  }
+  72.9%,
+  92.3% {
+    fill: var(--stayo-load-amber-hi);
+    filter: drop-shadow(0 0 7px var(--stayo-load-amber-hi)) drop-shadow(0 0 20px var(--stayo-load-glow));
+  }
+  100% {
+    fill: var(--stayo-load-terra);
+    filter: none;
+  }
+}
+
+@keyframes stayo-load-glow {
+  0% { opacity: 0.14; }
+  32% { opacity: 0.46; }
+  73% { opacity: 0.72; }
+  92% { opacity: 0.5; }
+  100% { opacity: 0.14; }
+}
+
+@keyframes stayo-load-fill {
+  0% { width: 0; }
+  73.6% { width: 100%; }
+  92.4% { width: 100%; }
+  100% { width: 100%; }
+}
+
+@keyframes stayo-load-particle {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.7);
+  }
+  12% { opacity: 0.9; }
+  80% { opacity: 0.55; }
+  100% {
+    opacity: 0;
+    transform: translateY(-64vh) scale(1);
+  }
+}
+
+@keyframes stayo-load-dot {
+  0%,
+  70%,
+  100% { opacity: 0.22; }
+  18%,
+  52% { opacity: 1; }
+}
+
+/* ── Reduced motion ───────────────────────────────────────────────────────
+ * Motion is decoration here, but "something is happening" is information, so
+ * the glow, the lit panes and the progress track stay — only the travelling
+ * animation stops. */
+@media (prefers-reduced-motion: reduce) {
+  .stayo-load__particles {
+    display: none;
+  }
+
+  .stayo-load__mark,
+  .stayo-load__wordmark {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .stayo-load__pane {
+    animation: none;
+    fill: var(--stayo-load-amber);
+  }
+
+  .stayo-load__glow {
+    animation: none;
+    opacity: 0.42;
+  }
+
+  .stayo-load__fill {
+    animation: stayo-load-fill-reduced 2.4s ease-in-out infinite;
+    width: 40%;
+  }
+
+  .stayo-load__dot {
+    animation: stayo-load-dot 2.4s ease-in-out infinite;
+  }
+}
+
+@keyframes stayo-load-fill-reduced {
+  0%,
+  100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}

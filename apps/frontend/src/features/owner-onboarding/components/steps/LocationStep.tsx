@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Search, MapPin, Loader2 } from 'lucide-react';
+import { Search, MapPin } from 'lucide-react';
 import type { OwnerOnboardingData } from '../../hooks/useOwnerOnboardingState';
 import { eyebrow, h1, sub, fieldLabel } from '../stepStyles';
 import { SEARCH_DEBOUNCE_MS, shouldSearch, type PlaceSuggestion } from '../../places/placesProvider';
 import { stubPlacesProvider } from '../../places/stubPlacesProvider';
+import { StayoLoader } from '@shared/ui/brand';
 
 interface LocationStepProps {
   data: OwnerOnboardingData;
@@ -82,7 +83,7 @@ export function LocationStep({ data, setD }: LocationStepProps) {
               autoComplete="off"
               className="min-w-0 flex-1 border-0 bg-transparent text-[15px] font-semibold text-foreground focus:outline-none"
             />
-            {searching && <Loader2 className="h-4 w-4 flex-none animate-spin text-muted-foreground" />}
+            {searching && <StayoLoader size="sm" className="flex-none text-muted-foreground" label={null} />}
           </div>
         </label>
 

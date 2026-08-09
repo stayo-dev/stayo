@@ -8,13 +8,13 @@ import {
   CalendarDays,
   CheckCircle2,
   FileCheck2,
-  Loader2,
   MessageSquare,
   ShieldAlert,
 } from 'lucide-react';
 import { tenantPortalApi } from '@features/tenant-portal/api';
 import { useTenantRenewal } from '@features/tenant-portal/hooks/useTenantRenewal';
 import { SignaturePad } from '@shared/ui/inputs';
+import { StayoLoader } from '@shared/ui/brand';
 
 const fmt = (n: unknown) => {
   const num = Number(n);
@@ -62,7 +62,7 @@ export function TenantRenewalPage() {
     return (
       <PageShell>
         <div className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card py-16 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin text-accent" />
+          <StayoLoader size="sm" className="text-accent" label={null} />
           Loading your renewal status...
         </div>
       </PageShell>
@@ -276,7 +276,7 @@ function OfferReviewSection({ offer, onDecided }: { offer: Record<string, any>; 
               onClick={() => acceptMutation.mutate(offer.id)}
               className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-accent px-4 text-xs font-bold text-accent-foreground shadow-sm transition-colors disabled:opacity-50"
             >
-              {acceptMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              {acceptMutation.isPending ? <StayoLoader size="sm" label={null} /> : <CheckCircle2 className="h-4 w-4" />}
               Accept Offer
             </button>
             <button
@@ -285,7 +285,7 @@ function OfferReviewSection({ offer, onDecided }: { offer: Record<string, any>; 
               onClick={() => discussMutation.mutate(offer.id)}
               className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-border bg-card px-4 text-xs font-bold text-foreground transition-colors disabled:opacity-50"
             >
-              {discussMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
+              {discussMutation.isPending ? <StayoLoader size="sm" label={null} /> : <MessageSquare className="h-4 w-4" />}
               Request Discussion
             </button>
             <Link
@@ -322,7 +322,7 @@ function OfferReviewSection({ offer, onDecided }: { offer: Record<string, any>; 
                 onClick={() => declineMutation.mutate({ offerId: offer.id, reason: declineReason })}
                 className="rounded-lg bg-destructive px-3 py-2 text-xs font-bold text-destructive-foreground transition-colors disabled:opacity-50"
               >
-                {declineMutation.isPending ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : null}
+                {declineMutation.isPending ? <StayoLoader size="xs" className="mr-1 inline" label={null} /> : null}
                 Confirm Decline
               </button>
             </div>
@@ -461,7 +461,7 @@ function SignAgreementSection({
           onClick={() => signMutation.mutate()}
           className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-bold text-accent-foreground shadow-sm transition-colors disabled:opacity-50"
         >
-          {signMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+          {signMutation.isPending ? <StayoLoader size="sm" label={null} /> : <CheckCircle2 className="h-4 w-4" />}
           Sign & Finalize Renewal
         </button>
       </div>

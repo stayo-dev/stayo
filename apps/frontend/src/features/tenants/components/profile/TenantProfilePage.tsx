@@ -43,6 +43,7 @@ import {
 import { RiskComplianceCard } from '@features/tenants/components/profile/RiskComplianceCard';
 import { PrivateNotes } from '@features/tenants/components/profile/PrivateNotes';
 import { CommunicationCenter } from '@features/tenants/components/profile/CommunicationCenter';
+import { StayoLoadingBlock } from '@shared/ui/brand';
 
 const date = (value: unknown) => (value ? new Date(String(value)).toLocaleDateString('en-IN') : '—');
 
@@ -262,9 +263,7 @@ export function TenantProfilePage({ hostelIdProp, tenantIdProp, onBack }: Tenant
 
   if (isLoading) {
     return (
-      <div className="flex justify-center py-24">
-        <div className="w-8 h-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-      </div>
+      <StayoLoadingBlock className="py-24 text-primary" size="lg" />
     );
   }
 

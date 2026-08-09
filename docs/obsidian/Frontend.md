@@ -141,6 +141,25 @@ npm run check:architecture   # scripts/check-architecture.mjs, standalone
 
 No test suite in `apps/frontend/` currently.
 
+## Loading & error surfaces — `shared/ui/brand/`
+
+**One gesture for every wait in the app: the Stayo mark's four windows lighting clockwise. There are no circular spinners anywhere in `apps/frontend` — `animate-spin` and lucide's `<Loader2 />` were removed from all 42 files that used them (2026-08-09, see [[Changelog]] and [[Decisions#ADR-061|ADR-061]]). Do not reintroduce either.**
+
+| Component | Use for |
+|---|---|
+| `<StayoLoader size="xs\|sm\|md\|lg" />` | inside a button, beside a label, in a table row. Inherits `currentColor`. |
+| `<StayoLoadingBlock message?=… />` | a card or section body waiting on its own data. |
+| `<StayoLoadingScreen />` | a whole surface: route fallback, auth gate, payment polling, a modal body that owns the dialog. |
+| `<StayoErrorScreen />` | the same surface when it failed — identical stage, windows unlit, one guttering. |
+| `<StayoMark panes="solid\|loading\|dark" />` / `<StayoWordmark />` | the brand vector itself; these files are the source of truth for its geometry. |
+
+Notes that matter when touching this:
+
+- **The palette in `stayo-loading.css` is hard-coded, not tokenized, on purpose.** These surfaces render *before* a `ThemeProvider` `data-app-theme` scope exists (route `Suspense` fallbacks, auth gates, the boot splash), so `--primary`/`--accent` would resolve to the legacy theme or to nothing.
+- **`index.html` carries a duplicate copy of that CSS and of the mark path**, as `#stayo-boot`. It is the only thing that can paint before the JS bundle arrives; `main.tsx` fades it out after React's first commit. Both draw the same screen, so the hand-off is invisible. **Edits to the loading screen's palette or timing must be made in both places.**
+- **Full brand screen vs. layout skeleton**: cold boundaries where nothing is mounted yet (platform entry, auth gates, public/auth/journey routes) get `StayoLoadingScreen`; page-to-page transitions *inside* an already-mounted shell (`OwnerProviderShell`, `TenantProviderShell`) keep their layout skeletons, which preserve perceived speed better.
+- `PageError` and `ErrorCard` (`shared/ui/error/`) kept their exact prop signatures through the redesign — only their surface changed, so every existing caller still works. `ErrorCard` is theme-tokenized (it always renders inside a themed shell); `PageError` is not, for the reason above.
+
 ## Enforced architectural boundaries
 
 `scripts/check-architecture.mjs` fails the build if: raw `fetch()`/`axios` is used outside `@lib/api-client` in `app/`, `platforms/`, `shared/ui`, `features/`, `portal/`, or `context/`; `src/portal` gains a file outside its allowlist (above); `src/shared` imports from `app|platforms|portal|features|domains|services`.

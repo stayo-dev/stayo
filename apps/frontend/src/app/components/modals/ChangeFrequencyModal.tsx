@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { X, CalendarRange, Loader2, CheckCircle2, Plus, Trash2 } from 'lucide-react';
+import { X, CalendarRange, CheckCircle2, Plus, Trash2 } from 'lucide-react';
 import { ErrorCard } from '@/shared/ui/error/ErrorCard';
 import { getHmsError } from '@lib/errors';
 import { identityService } from '@features/auth/api';
 import { ownerService } from '@features/owners/api';
+import { StayoLoader } from '@shared/ui/brand';
 
 type RecurringFrequency = 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY';
 
@@ -308,7 +309,7 @@ export function ChangeFrequencyModal({ tenantId, currentFrequency, onClose, onSu
                 type="button" onClick={handleConfirm} disabled={isSubmitting || !password}
                 className="px-4 h-10 rounded-xl bg-accent text-accent-foreground text-sm font-semibold flex items-center gap-1.5 disabled:opacity-50"
               >
-                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                {isSubmitting ? <StayoLoader size="sm" label={null} /> : null}
                 <span>Confirm Change</span>
               </button>
             </div>

@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tenantService } from '@features/tenants/api';
-import { Trash2, Plus, MessageSquare, Loader2, Sparkles } from 'lucide-react';
+import { Trash2, Plus, MessageSquare, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import { StayoLoader } from '@shared/ui/brand';
 
 interface PrivateNotesProps {
   tenantId: string;
@@ -92,7 +93,7 @@ export function PrivateNotes({ tenantId }: PrivateNotesProps) {
           className="p-2 rounded-xl bg-accent text-accent-foreground hover:bg-accent/90 disabled:opacity-50 active:scale-95 transition-transform shrink-0 flex items-center justify-center"
         >
           {addMutation.isPending ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <StayoLoader size="sm" label={null} />
           ) : (
             <Plus className="w-4 h-4" />
           )}
@@ -102,7 +103,7 @@ export function PrivateNotes({ tenantId }: PrivateNotesProps) {
       {/* Notes list */}
       {isLoading ? (
         <div className="flex justify-center py-4">
-          <Loader2 className="w-5 h-5 animate-spin text-accent" />
+          <StayoLoader size="md" className="text-accent" />
         </div>
       ) : (
         <div className="space-y-2.5 max-h-[220px] overflow-y-auto scrollbar-hide">

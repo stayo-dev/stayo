@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Navigate, Route } from 'react-router-dom';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
+import { StayoLoadingScreen } from '@shared/ui/brand';
 
 const OwnerAppShell = lazy(() =>
   import('@/app/layouts/OwnerAppShell').then((m) => ({ default: m.OwnerAppShell })),
@@ -118,20 +119,16 @@ const MoreConfigReceiptFooterPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigReceiptFooterPage').then((m) => ({ default: m.MoreConfigReceiptFooterPage })),
 );
 
+/**
+ * Entering the owner app from cold — the provider shell, the auth gate and the
+ * first page chunk are all still in flight, so there is no layout to skeleton
+ * yet. Show the brand loading screen; it is what index.html's boot splash is
+ * already showing, so this boundary continues that screen rather than replacing
+ * it. Page-to-page transitions *inside* the owner app use the layout skeleton
+ * in OwnerProviderShell instead.
+ */
 function OwnerRouteFallback() {
-  return (
-    <div className="min-h-screen bg-background px-4 py-5">
-      <div className="mx-auto max-w-5xl space-y-4">
-        <div className="h-10 w-48 rounded-lg bg-muted animate-pulse" />
-        <div className="grid grid-cols-3 gap-3">
-          <div className="h-20 rounded-xl bg-muted animate-pulse" />
-          <div className="h-20 rounded-xl bg-muted animate-pulse" />
-          <div className="h-20 rounded-xl bg-muted animate-pulse" />
-        </div>
-        <div className="h-40 rounded-xl bg-muted animate-pulse" />
-      </div>
-    </div>
-  );
+  return <StayoLoadingScreen />;
 }
 
 /** Exported so ConfigRoutes/OnboardingRoute can share the same owner auth-gate + fallback. */

@@ -8,12 +8,12 @@ import {
   Camera,
   CheckCircle2,
   GraduationCap,
-  Loader2,
   ShieldCheck,
   UserRound,
 } from 'lucide-react';
 import { tenantService } from '@features/tenants/api';
 import { useAuth } from '@context/AuthContext';
+import { StayoLoader } from '@shared/ui/brand';
 
 type ProfileType = '' | 'STUDENT' | 'WORKING_PROFESSIONAL';
 
@@ -379,7 +379,7 @@ export function CompleteProfilePage() {
   if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-accent" />
+        <StayoLoader size="lg" className="text-accent" />
       </div>
     );
   }
@@ -816,7 +816,7 @@ export function CompleteProfilePage() {
                 onClick={submit}
                 className="inline-flex min-w-36 items-center justify-center gap-2 rounded-2xl bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-60 active:scale-[0.98] transition-transform shadow-sm"
               >
-                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                {submitting ? <StayoLoader size="sm" label={null} /> : null}
                 {submitting ? 'Saving…' : 'Complete profile'}
               </button>
             )}

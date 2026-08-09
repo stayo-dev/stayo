@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Check, ArrowRight } from 'lucide-react';
 import { useMockOwnerJourney } from '../context/MockOwnerJourneyContext';
+import { StayoLoader } from '@shared/ui/brand';
 import { JourneyShell } from '../components/JourneyShell';
 
 /**
@@ -30,8 +31,8 @@ export function ActivationLinkPage() {
       <div className="rounded-2xl border border-border bg-card px-7 py-10 text-center">
         {verifying ? (
           <>
-            <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
-              <span className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+            <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-secondary text-primary">
+              <StayoLoader size="md" label={null} />
             </div>
             <h1 className="mb-2 font-display text-xl font-extrabold text-foreground">Opening your invitation…</h1>
             <p className="text-sm text-muted-foreground">This only takes a moment.</p>

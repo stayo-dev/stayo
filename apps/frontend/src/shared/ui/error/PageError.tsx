@@ -1,18 +1,28 @@
-import { RefreshCw, WifiOff, Lock, ServerCrash, AlertCircle } from 'lucide-react';
 import type { HmsError, ErrorCategory } from '@lib/errors';
 import { getHmsError } from '@lib/errors';
+import { StayoErrorScreen, type StayoErrorTone } from '@shared/ui/brand';
 
-const CATEGORY_CONFIG: Record<ErrorCategory, { icon: React.ElementType; iconBg: string; iconColor: string }> = {
-  auth:       { icon: Lock,        iconBg: 'bg-amber-100',  iconColor: 'text-amber-600' },
-  permission: { icon: Lock,        iconBg: 'bg-amber-100',  iconColor: 'text-amber-600' },
-  network:    { icon: WifiOff,     iconBg: 'bg-blue-100',   iconColor: 'text-blue-600' },
-  payment:    { icon: AlertCircle, iconBg: 'bg-red-100',    iconColor: 'text-red-600' },
-  validation: { icon: AlertCircle, iconBg: 'bg-orange-100', iconColor: 'text-orange-600' },
-  tenant:     { icon: AlertCircle, iconBg: 'bg-red-100',    iconColor: 'text-red-600' },
-  document:   { icon: AlertCircle, iconBg: 'bg-orange-100', iconColor: 'text-orange-600' },
-  not_found:  { icon: AlertCircle, iconBg: 'bg-gray-100',   iconColor: 'text-gray-500' },
-  server:     { icon: ServerCrash, iconBg: 'bg-red-100',    iconColor: 'text-red-600' },
-  generic:    { icon: AlertCircle, iconBg: 'bg-red-100',    iconColor: 'text-red-600' },
+/**
+ * Whole-surface error state — a route boundary, a page that failed to load, a
+ * section that has nothing to show. Renders the Stayo error screen (the loading
+ * screen with the lights out), so a failure looks like part of the product
+ * rather than a browser default.
+ *
+ * The props are unchanged from the previous red-alert version on purpose; every
+ * existing caller keeps working. Only the surface changed.
+ */
+
+const CATEGORY_TONE: Record<ErrorCategory, StayoErrorTone> = {
+  auth: 'auth',
+  permission: 'auth',
+  network: 'network',
+  payment: 'generic',
+  validation: 'generic',
+  tenant: 'generic',
+  document: 'generic',
+  not_found: 'notFound',
+  server: 'server',
+  generic: 'generic',
 };
 
 interface PageErrorProps {
@@ -51,38 +61,23 @@ export function PageError({
     };
   }
 
-  const finalTitle = title ?? resolved.title;
-  const finalDescription = description ?? resolved.description;
-  const finalAction = action ?? resolved.action;
-  const cfg = CATEGORY_CONFIG[resolved.category] ?? CATEGORY_CONFIG.generic;
-  const Icon = cfg.icon;
-
-  const wrapperClass = fullScreen
-    ? `min-h-screen flex items-center justify-center p-6 bg-background ${className}`
-    : `flex flex-col items-center justify-center py-20 px-6 text-center ${className}`;
+  // Only in dev: production users get the human copy and the button, nothing else.
+  const detail =
+    import.meta.env.DEV && error instanceof Error
+      ? [error.message, error.stack].filter(Boolean).join('\n\n')
+      : undefined;
 
   return (
-    <div className={wrapperClass} role="alert" aria-live="assertive">
-      <div className="max-w-sm w-full flex flex-col items-center text-center">
-        <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-5 ${cfg.iconBg}`}>
-          <Icon className={`w-7 h-7 ${cfg.iconColor}`} aria-hidden="true" />
-        </div>
-        <h2 className="text-xl font-bold text-foreground mb-2">{finalTitle}</h2>
-        <p className="text-sm text-muted-foreground leading-relaxed">{finalDescription}</p>
-        {finalAction && (
-          <p className="text-sm text-muted-foreground mt-2 font-medium">&rarr; {finalAction}</p>
-        )}
-        {onRetry && (
-          <button
-            type="button"
-            onClick={onRetry}
-            className="mt-7 flex items-center gap-2 px-6 py-3 rounded-xl bg-accent text-accent-foreground text-sm font-semibold active:scale-95 transition-transform"
-          >
-            <RefreshCw className="w-4 h-4" aria-hidden="true" />
-            {retryLabel}
-          </button>
-        )}
-      </div>
-    </div>
+    <StayoErrorScreen
+      tone={CATEGORY_TONE[resolved.category] ?? 'generic'}
+      title={title ?? resolved.title}
+      description={description ?? resolved.description}
+      hint={action ?? resolved.action}
+      onRetry={onRetry}
+      retryLabel={retryLabel}
+      detail={detail}
+      variant={fullScreen ? 'screen' : 'inset'}
+      className={className}
+    />
   );
 }

@@ -1,4 +1,5 @@
-import { ShieldCheck, ShieldAlert, Loader2, FileCheck2, UserCheck, AlertTriangle, TrendingDown, TrendingUp, AlertCircle, CheckCircle2, Info, Sparkles } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, FileCheck2, UserCheck, AlertTriangle, TrendingDown, TrendingUp, AlertCircle, CheckCircle2, Info, Sparkles } from 'lucide-react';
+import { StayoLoader } from '@shared/ui/brand';
 
 interface RiskComplianceCardProps {
   score?: number | null;
@@ -49,7 +50,7 @@ export function RiskComplianceCard({
   if (loading) {
     return (
       <div className="p-4 rounded-2xl border border-border bg-card shadow-sm flex items-center justify-center h-24">
-        <Loader2 className="w-5 h-5 animate-spin text-accent" />
+        <StayoLoader size="md" className="text-accent" />
       </div>
     );
   }

@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Download, FileText, FileStack, Link2, History as HistoryIcon, Loader2 } from 'lucide-react';
+import { Download, FileText, FileStack, Link2, History as HistoryIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/app/components/ui/tabs';
 import { paymentService } from '@features/payments/api';
 import { hmsToast } from '@lib/toast';
 import { ChangeStatusBadge } from '@/features/change-management';
+import { StayoLoader } from '@shared/ui/brand';
 
 const fmt = (n: number) => `₹${Number(n ?? 0).toLocaleString('en-IN')}`;
 
@@ -122,7 +123,7 @@ export function DocumentsHub({ tenantId, hasAgreement, agreementUrl, recentPayme
                     disabled={downloadingId === p.id}
                     className="shrink-0 p-2 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground disabled:opacity-50"
                   >
-                    {downloadingId === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                    {downloadingId === p.id ? <StayoLoader size="xs" label={null} /> : <Download className="w-3.5 h-3.5" />}
                   </button>
                 </div>
               ))}
@@ -138,7 +139,7 @@ export function DocumentsHub({ tenantId, hasAgreement, agreementUrl, recentPayme
             disabled={generatingLink}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-accent text-accent-foreground text-xs font-bold hover:bg-accent/90 active:scale-95 transition-transform disabled:opacity-50"
           >
-            {generatingLink ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Link2 className="w-3.5 h-3.5" />}
+            {generatingLink ? <StayoLoader size="xs" label={null} /> : <Link2 className="w-3.5 h-3.5" />}
             <span>Generate Payment Link</span>
           </button>
         </TabsContent>

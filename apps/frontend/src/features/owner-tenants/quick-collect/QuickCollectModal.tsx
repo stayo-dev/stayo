@@ -19,6 +19,7 @@ import {
   blockedExplanation,
   BILLING_POLICY_PATH,
 } from '@features/owner-more/billing-policy/billingPolicy';
+import { StayoLoader } from '@shared/ui/brand';
 
 interface QuickCollectModalProps {
   open: boolean;
@@ -500,7 +501,7 @@ export function QuickCollectModal({ open, onClose, initialTenant }: QuickCollect
                   {mode === 'suggested' ? 'Suggested settlement' : 'This selection settles'}
                 </span>
                 {previewQuery.isFetching && (
-                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+                  <StayoLoader size="xs" className="text-primary" label={null} />
                 )}
               </div>
 

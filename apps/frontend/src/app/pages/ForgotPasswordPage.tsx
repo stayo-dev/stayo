@@ -7,12 +7,12 @@ import {
   Eye,
   EyeOff,
   KeyRound,
-  Loader2,
   Mail,
   MessageCircle,
 } from 'lucide-react';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { authApi } from '@lib/authApi';
+import { StayoLoader } from '@shared/ui/brand';
 
 /**
  * Password recovery, by email link or WhatsApp code (ADR-055).
@@ -434,7 +434,7 @@ function SubmitButton({
       disabled={busy || disabled}
       className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-sm font-semibold text-primary-foreground transition active:scale-[0.98] disabled:opacity-60"
     >
-      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+      {busy ? <StayoLoader size="sm" label={null} /> : null}
       {children}
     </button>
   );

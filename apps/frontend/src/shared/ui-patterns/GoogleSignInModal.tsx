@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import { cn } from '@shared/lib/cn';
 import { supabase } from '@lib/supabaseClient';
 import { stayoToast } from '@shared/ui-patterns/Toast';
+import { StayoLoader } from '@shared/ui/brand';
 
 interface GoogleSignInModalProps {
   open: boolean;
@@ -79,7 +80,7 @@ export function GoogleSignInModal({ open, onClose }: GoogleSignInModalProps) {
             className="flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-card px-4 py-3.5 font-display text-[15px] font-bold text-foreground shadow-[0_1px_2px_rgba(40,30,20,0.06)] transition-colors hover:bg-muted disabled:opacity-70"
           >
             {submitting ? (
-              <span className="h-[18px] w-[18px] animate-spin rounded-full border-2 border-muted-foreground/30 border-t-foreground" />
+              <StayoLoader size="sm" label={null} />
             ) : (
               <GoogleMark />
             )}

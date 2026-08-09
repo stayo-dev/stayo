@@ -4,6 +4,7 @@ import { Eye, EyeOff, X } from 'lucide-react';
 import { cn } from '@shared/lib/cn';
 import { useAuth } from '@context/AuthContext';
 import { authApi } from '@lib/authApi';
+import { StayoLoader } from '@shared/ui/brand';
 
 export type LoginModalMode = 'owner' | 'tenant';
 
@@ -355,7 +356,7 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
               className="mt-1 flex w-full items-center justify-center gap-2.5 rounded-xl bg-primary px-4 py-3.5 font-display text-[15px] font-bold text-primary-foreground shadow-[0_14px_28px_-14px_rgba(164,93,68,0.6)] disabled:opacity-75"
             >
               {submitting && (
-                <span className="h-[15px] w-[15px] animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                <StayoLoader size="sm" label={null} />
               )}
               {submitting
                 ? 'Please wait…'

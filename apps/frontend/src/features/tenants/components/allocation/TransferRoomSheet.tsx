@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { X, Loader2 } from 'lucide-react';
+import { X } from 'lucide-react';
 import { allocationService, roomService } from '@features/rooms/api';
 import { queryKeys } from '@lib/queryKeys';
+import { StayoLoader } from '@shared/ui/brand';
 
 interface Props {
   hostelId: string;
@@ -65,7 +66,7 @@ export function TransferRoomSheet({ hostelId, tenantId, mode = 'transfer', onClo
           </button>
         </div>
         {isLoading ? (
-          <Loader2 className="w-6 h-6 animate-spin mx-auto text-accent" />
+          <StayoLoader size="md" className="mx-auto text-accent" />
         ) : (
           <>
             <select

@@ -5,13 +5,15 @@ import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
 import { AuthProvider } from '@context/AuthContext';
 import { RequireMockOwnerJourney } from './RequireMockOwnerJourney';
+import { StayoLoadingScreen } from '@shared/ui/brand';
 
 const LeadSubmittedPage = lazy(() => import('../pages/LeadSubmittedPage').then((m) => ({ default: m.LeadSubmittedPage })));
 const ActivationLinkPage = lazy(() => import('../pages/ActivationLinkPage').then((m) => ({ default: m.ActivationLinkPage })));
 const OwnerOnboardingWizard = lazy(() => import('../pages/OwnerOnboardingWizard').then((m) => ({ default: m.OwnerOnboardingWizard })));
 
+/** Journey screens are full-screen takeovers — nothing is mounted underneath. */
 function JourneyRouteFallback() {
-  return <div className="min-h-screen bg-background" />;
+  return <StayoLoadingScreen />;
 }
 
 /**

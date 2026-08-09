@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, Undo2, Loader2, CheckCircle2, ArrowRight } from 'lucide-react';
+import { X, Undo2, CheckCircle2, ArrowRight } from 'lucide-react';
 import { ErrorCard } from '@/shared/ui/error/ErrorCard';
 import { getHmsError } from '@lib/errors';
 import { recoveryService, type CorrectionCase } from '@features/recovery/api';
 import { paymentService } from '@features/payments/api';
+import { StayoLoader } from '@shared/ui/brand';
 
 interface CorrectPaymentModalProps {
   paymentId: string;
@@ -251,7 +252,7 @@ export function CorrectPaymentModal({ paymentId, hostelId, tenantId, onClose, on
                   disabled={isBusy}
                   className="w-full h-10 rounded-xl bg-secondary text-secondary-foreground text-sm font-semibold active:scale-98 transition-transform flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >
-                  {isPreviewing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+                  {isPreviewing ? <StayoLoader size="sm" label={null} /> : <ArrowRight className="w-4 h-4" />}
                   <span>Preview Impact</span>
                 </button>
               )}
@@ -338,7 +339,7 @@ export function CorrectPaymentModal({ paymentId, hostelId, tenantId, onClose, on
                 disabled={!kase || isBusy}
                 className="px-4 h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold active:scale-98 transition-transform flex items-center justify-center gap-1.5 disabled:opacity-50"
               >
-                {isConfirming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Undo2 className="w-4 h-4" />}
+                {isConfirming ? <StayoLoader size="sm" label={null} /> : <Undo2 className="w-4 h-4" />}
                 <span>{correctionType === 'TRANSFER' ? 'Confirm Transfer' : 'Confirm Reversal'}</span>
               </button>
             </div>

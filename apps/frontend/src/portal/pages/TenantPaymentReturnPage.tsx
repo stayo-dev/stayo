@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { AlertCircle, CheckCircle2, Clock, Loader2, RefreshCw, XCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Clock, RefreshCw, XCircle } from 'lucide-react';
 import { tenantPortalApi } from '@features/tenant-portal/api';
+import { StayoLoader } from '@shared/ui/brand';
 
 const TERMINAL_STATUSES = ['SUCCESS', 'FAILED', 'EXPIRED', 'CANCELLED', 'PENDING_MANUAL_CONFIRMATION'];
 const MAX_POLL_ATTEMPTS = 10;
@@ -130,7 +131,7 @@ export function TenantPaymentReturnPage() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="max-w-md w-full rounded-xl border border-border bg-card p-8 text-center">
-          <Loader2 className="w-10 h-10 animate-spin text-accent mx-auto" />
+          <StayoLoader size="lg" className="text-accent mx-auto" />
           <h1 className="mt-4 text-xl font-bold">Verifying payment</h1>
           <p className="mt-2 text-sm text-muted-foreground">Please wait — do not close this page.</p>
         </div>
@@ -251,7 +252,7 @@ function ActionButton({
       disabled={loading}
       className="mt-5 w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-accent text-accent-foreground font-semibold disabled:opacity-50"
     >
-      <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+      {loading ? <StayoLoader size="sm" label={null} /> : <RefreshCw className="w-4 h-4" />}
       {loading ? 'Checking…' : label}
     </button>
   );

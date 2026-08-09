@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { hostelLeadsApi } from '@features/hostel-leads/api';
+import { StayoLoadingScreen } from '@shared/ui/brand';
 
 /**
  * Owner-acquisition funnel, phase 2. Lands here from the activation link an
@@ -46,11 +47,7 @@ export function OwnerLeadInvitePage() {
   }, [token, navigate]);
 
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-accent" />
-      </div>
-    );
+    return <StayoLoadingScreen message="Opening your invitation…" />;
   }
 
   const title =

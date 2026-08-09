@@ -1,4 +1,5 @@
-import { TrendingUp, TrendingDown, Minus, ShieldCheck, ShieldAlert, Shield, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, ShieldCheck, ShieldAlert, Shield } from 'lucide-react';
+import { StayoLoader } from '@shared/ui/brand';
 
 const riskLabel: Record<string, string> = {
   EXCELLENT: 'Low Risk',
@@ -85,7 +86,7 @@ export function TenantScoreCard({ scoreData, loading = false }: Props) {
   if (loading) {
     return (
       <div className="p-4 rounded-xl border border-border bg-card shadow-sm flex items-center justify-center h-24">
-        <Loader2 className="w-5 h-5 animate-spin text-accent" />
+        <StayoLoader size="md" className="text-accent" />
       </div>
     );
   }
