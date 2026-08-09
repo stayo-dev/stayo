@@ -3,7 +3,6 @@ import { useParams, Link, useLocation } from 'react-router-dom';
 import { 
   ShieldCheck, 
   AlertTriangle, 
-  Loader2, 
   User, 
   Calendar, 
   DollarSign, 
@@ -17,6 +16,7 @@ import {
   FileX
 } from 'lucide-react';
 import { verifyReceipt, VerificationDetails } from '@/domains/payments/api';
+import { StayoLoader } from '@shared/ui/brand';
 import { PublicLayout } from './PublicLayout';
 
 export function ReceiptVerificationPage() {
@@ -117,8 +117,8 @@ export function ReceiptVerificationPage() {
       <div className="max-w-xl mx-auto px-4 py-16">
         {loading && (
           <div className="flex flex-col items-center justify-center py-12 px-6 bg-white/70 backdrop-blur-md rounded-2xl border border-slate-200/50 shadow-xl">
-            <Loader2 className="w-10 h-10 text-[#F07B1D] animate-spin mb-4" />
-            <p className="text-slate-600 font-medium animate-pulse">Cryptographically verifying receipt signature...</p>
+            <StayoLoader size="lg" className="mb-4 text-[#c0552f]" label={null} />
+            <p className="text-slate-600 font-medium">Cryptographically verifying receipt signature...</p>
           </div>
         )}
 

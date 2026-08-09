@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, User, BedDouble, Calendar, ChevronDown, ChevronRight, Copy, Check, Loader2, IndianRupee, RotateCcw, Building2, AlertTriangle, ArrowRight } from 'lucide-react';
+import { X, User, BedDouble, Calendar, ChevronDown, ChevronRight, Copy, Check, IndianRupee, RotateCcw, Building2, AlertTriangle, ArrowRight } from 'lucide-react';
 import { ownerService } from '@domains/hostels/api';
 import { roomService } from '@domains/rooms/api';
 import { tenantService } from '@domains/tenants/api';
 import { queryKeys } from '@lib/queryKeys';
+import { StayoLoader } from '@shared/ui/brand';
 
 interface EditInviteModalProps {
   onClose: () => void;
@@ -366,7 +367,7 @@ export function EditInviteModal({ onClose, tenantId, hostelId }: EditInviteModal
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
         <div className="bg-card rounded-2xl p-6 border border-border flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin text-accent" />
+          <StayoLoader size="lg" className="text-accent" />
           <p className="text-sm text-muted-foreground">Loading invitation details…</p>
         </div>
       </div>
@@ -462,7 +463,7 @@ export function EditInviteModal({ onClose, tenantId, hostelId }: EditInviteModal
                 className="flex-1 py-3 bg-accent text-accent-foreground rounded-xl text-sm font-semibold active:scale-[0.98] transition-all flex items-center justify-center gap-2"
               >
                 {editMutation.isPending ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Saving &amp; Resending…</>
+                  <><StayoLoader size="sm" label={null} /> Saving &amp; Resending…</>
                 ) : (
                   'Confirm &amp; Resend'
                 )}
@@ -524,7 +525,7 @@ export function EditInviteModal({ onClose, tenantId, hostelId }: EditInviteModal
                     className="flex-1 py-3 bg-accent text-accent-foreground rounded-xl text-sm font-semibold active:scale-[0.98] flex items-center justify-center gap-2"
                   >
                     {fallbackSubmitting ? (
-                      <><Loader2 className="w-4 h-4 animate-spin" /> Sending fallback…</>
+                      <><StayoLoader size="sm" label={null} /> Sending fallback…</>
                     ) : (
                       'Send via Email'
                     )}
@@ -874,7 +875,7 @@ export function EditInviteModal({ onClose, tenantId, hostelId }: EditInviteModal
               className="flex-1 py-3 bg-accent text-accent-foreground disabled:opacity-50 rounded-xl text-sm font-semibold active:scale-[0.98] transition-all flex items-center justify-center gap-2"
             >
               {editMutation.isPending ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Saving & Resending…</>
+                <><StayoLoader size="sm" label={null} /> Saving & Resending…</>
               ) : (
                 'Save & Resend Invitation'
               )}

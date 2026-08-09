@@ -8,21 +8,32 @@ import { Check } from 'lucide-react';
  */
 export type ActivationVisualStep = 'ACCOUNT' | 'RULES' | 'AGREEMENT' | 'PROFILE' | 'ACTIVATE';
 
-const VISUAL_STEPS: { id: Exclude<ActivationVisualStep, 'RULES'>; label: string }[] = [
+type VisualStep = { id: Exclude<ActivationVisualStep, 'RULES'>; label: string };
+
+const ALL_VISUAL_STEPS: VisualStep[] = [
   { id: 'ACCOUNT', label: 'Account' },
   { id: 'AGREEMENT', label: 'Agreement' },
   { id: 'PROFILE', label: 'Profile' },
   { id: 'ACTIVATE', label: 'Activate' },
 ];
 
+/**
+ * Hostels that do not require a signed agreement
+ * (`tenant_rules.agreement_required` = false, ADR-059) never reach RULES or
+ * AGREEMENT, so showing the stage would leave a pip that can never light up.
+ */
+const visualSteps = (agreementRequired: boolean): VisualStep[] =>
+  agreementRequired ? ALL_VISUAL_STEPS : ALL_VISUAL_STEPS.filter((step) => step.id !== 'AGREEMENT');
+
 const ORDER: ActivationVisualStep[] = ['ACCOUNT', 'RULES', 'AGREEMENT', 'PROFILE', 'ACTIVATE'];
 
 /** RULES and AGREEMENT share a visual index so the bar doesn't jump between them. */
-function visualIndex(step: ActivationVisualStep): number {
+function visualIndex(step: ActivationVisualStep, agreementRequired = true): number {
   if (step === 'ACCOUNT') return 0;
   if (step === 'RULES' || step === 'AGREEMENT') return 1;
-  if (step === 'PROFILE') return 2;
-  return 3;
+  // With the agreement stage removed, everything after it shifts down one.
+  if (step === 'PROFILE') return agreementRequired ? 2 : 1;
+  return agreementRequired ? 3 : 2;
 }
 
 interface ActivationProgressProps {
@@ -31,6 +42,11 @@ interface ActivationProgressProps {
   currentStep: ActivationVisualStep;
   completedSteps: Set<string>;
   onStepClick: (step: ActivationVisualStep) => void;
+  /**
+   * From `activation_state.agreement_required`. Defaults to true so any caller
+   * that has not been updated keeps the previous four-stage bar.
+   */
+  agreementRequired?: boolean;
 }
 
 /**
@@ -45,9 +61,11 @@ export function ActivationProgress({
   currentStep,
   completedSteps,
   onStepClick,
+  agreementRequired = true,
 }: ActivationProgressProps) {
-  const activeIdx = visualIndex(activeStep);
-  const reachedIdx = visualIndex(currentStep);
+  const VISUAL_STEPS = visualSteps(agreementRequired);
+  const activeIdx = visualIndex(activeStep, agreementRequired);
+  const reachedIdx = visualIndex(currentStep, agreementRequired);
 
   const isDone = (id: ActivationVisualStep) => completedSteps.has(id);
   const isActive = (id: ActivationVisualStep) =>
@@ -82,7 +100,7 @@ export function ActivationProgress({
           const done = isDone(step.id);
           const active = isActive(step.id);
           // Never let a tenant skip ahead of where the backend says they are.
-          const clickable = visualIndex(step.id) <= reachedIdx;
+          const clickable = visualIndex(step.id, agreementRequired) <= reachedIdx;
 
           return (
             <button

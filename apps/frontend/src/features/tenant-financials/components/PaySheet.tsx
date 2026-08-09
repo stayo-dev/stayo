@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Check, Loader2, CreditCard, Landmark, Smartphone } from 'lucide-react';
+import { Check, CreditCard, Landmark, Smartphone } from 'lucide-react';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import type { PayStage } from '../hooks/useTenantFinancials';
+import { StayoLoader } from '@shared/ui/brand';
 
 interface PaySheetProps {
   stage: PayStage;
@@ -91,7 +92,7 @@ export function PaySheet({ stage, amount, error, onClose, onConfirm }: PaySheetP
 
       {stage === 'paying' && (
         <div className="flex flex-col items-center gap-3 py-10">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <StayoLoader size="lg" className="text-primary" />
           <div className="font-display text-sm font-bold text-foreground">Processing payment…</div>
           <p className="text-center text-[12px] text-muted-foreground">Securely confirming with your bank</p>
         </div>

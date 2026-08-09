@@ -4,6 +4,8 @@ import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useHostelPolicy, useUpdateHostelPolicy } from '@features/settings/settingsHooks';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
+import { SaveBar } from '../components/SaveBar';
+import { hasChanges } from '../config/dirtyState';
 
 const card = 'overflow-hidden rounded-[16px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04)]';
 const sectionLabel = 'pl-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground';
@@ -17,11 +19,18 @@ export function MoreConfigReceiptFooterPage() {
   const updateMutation = useUpdateHostelPolicy(hostelId ?? '');
 
   const [footer, setFooter] = useState('');
+  /** What was loaded — Save appears only while the text differs from it. */
+  const [baseline, setBaseline] = useState<string | null>(null);
 
   useEffect(() => {
     const existing = policyQuery.data?.policy?.receipts?.footer;
-    if (existing !== undefined) setFooter(existing);
+    if (existing !== undefined) {
+      setFooter(existing);
+      setBaseline(existing);
+    }
   }, [policyQuery.data]);
+
+  const dirty = hasChanges(baseline, footer);
 
   const save = () => {
     if (!hostelId) return;
@@ -38,7 +47,7 @@ export function MoreConfigReceiptFooterPage() {
   };
 
   return (
-    <div className="flex flex-col gap-5 px-4 pb-28 pt-6 sm:px-6">
+    <div className={`flex flex-col gap-5 px-4 pt-6 sm:px-6 ${dirty ? 'pb-40' : 'pb-24'}`}>
       <MoreScreenHeader backTo="/owner/more/configuration/finance" backLabel="Finance" title="Receipt footer" subtitle="Shown at the bottom of every generated receipt" />
 
       <div className="flex flex-col gap-2">
@@ -54,16 +63,13 @@ export function MoreConfigReceiptFooterPage() {
         </div>
       </div>
 
-      <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] z-20 border-t border-border bg-background px-5 pb-[30px] pt-3 sm:mx-auto sm:max-w-[480px] sm:px-6">
-        <button
-          type="button"
-          onClick={save}
-          disabled={updateMutation.isPending}
-          className="w-full rounded-xl bg-[#A45D44] py-3.5 text-center font-display text-sm font-bold text-white shadow-[0_6px_16px_rgba(164,93,68,0.28)] disabled:opacity-60"
-        >
-          {updateMutation.isPending ? 'Saving…' : 'Save receipt footer'}
-        </button>
-      </div>
+      <SaveBar
+        visible={dirty}
+        pending={updateMutation.isPending}
+        onSave={save}
+        onDiscard={() => setFooter(baseline ?? '')}
+        label="Save receipt footer"
+      />
     </div>
   );
 }

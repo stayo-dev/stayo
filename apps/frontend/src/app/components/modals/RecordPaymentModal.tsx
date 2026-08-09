@@ -4,12 +4,13 @@ import { toast } from 'sonner';
 import { hmsToast } from '@lib/toast';
 import { ErrorCard } from '@/shared/ui/error/ErrorCard';
 import { getHmsError } from '@lib/errors';
-import { X, IndianRupee, Calendar, Loader2, CheckCircle2, Wallet, AlertCircle, KeyRound, Download, Receipt as ReceiptIcon } from 'lucide-react';
+import { X, IndianRupee, Calendar, CheckCircle2, Wallet, AlertCircle, KeyRound, Download, Receipt as ReceiptIcon } from 'lucide-react';
 import { paymentService } from '@features/payments/api';
 import { tenantService } from '@features/tenants/api';
 import { identityService } from '@features/auth/api';
 import { queryKeys } from '@lib/queryKeys';
 import { SettlementPreview } from '@features/tenants/components/financial/SettlementPreview';
+import { StayoLoader } from '@shared/ui/brand';
 
 export type PaymentContext = {
   tenantId?: string;
@@ -380,7 +381,7 @@ export function RecordPaymentModal({
 
         {isContextLoading ? (
           <div className="flex flex-col items-center justify-center py-12 space-y-3">
-            <Loader2 className="w-8 h-8 animate-spin text-accent" />
+            <StayoLoader size="lg" className="text-accent" />
             <p className="text-sm text-muted-foreground">Loading tenant payment context...</p>
           </div>
         ) : !tenantContextLoading && tenantContextError ? (
@@ -406,7 +407,7 @@ export function RecordPaymentModal({
               disabled={downloadingReceipt}
               className="w-full bg-accent text-accent-foreground py-3.5 rounded-xl font-medium active:scale-95 transition-transform disabled:opacity-60 flex items-center justify-center gap-2"
             >
-              {downloadingReceipt ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              {downloadingReceipt ? <StayoLoader size="sm" label={null} /> : <Download className="w-4 h-4" />}
               <span>Download Receipt</span>
             </button>
             <button type="button" onClick={onClose} className="w-full bg-secondary text-secondary-foreground py-3.5 rounded-xl font-medium active:scale-95 transition-transform">
@@ -480,7 +481,7 @@ export function RecordPaymentModal({
           <div className="p-4 space-y-4">
             {previewLoading && !previewData ? (
               <div className="flex flex-col items-center justify-center py-10 space-y-3">
-                <Loader2 className="w-6 h-6 animate-spin text-accent" />
+                <StayoLoader size="md" className="text-accent" />
                 <p className="text-xs text-muted-foreground">Calculating settlement plan...</p>
               </div>
             ) : previewData ? (
@@ -540,7 +541,7 @@ export function RecordPaymentModal({
               >
                 {mutation.isPending ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" /> Verifying...
+                    <StayoLoader size="sm" label={null} /> Verifying...
                   </>
                 ) : (
                   'Confirm & Record'
@@ -597,7 +598,7 @@ export function RecordPaymentModal({
                     ))}
                     {searchLoading && (
                       <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
-                        <Loader2 className="w-4 h-4 animate-spin animate-duration-1000" /> Searching tenants...
+                        <StayoLoader size="sm" label={null} /> Searching tenants...
                       </div>
                     )}
                     {!searchLoading && searchResults?.length === 0 && (
@@ -902,7 +903,7 @@ export function RecordPaymentModal({
               disabled={!canGoNext}
               className="w-full bg-accent text-accent-foreground py-4 rounded-xl font-medium active:scale-95 transition-transform disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              {previewFetching && previewEnabled ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              {previewFetching && previewEnabled ? <StayoLoader size="sm" label={null} /> : null}
               <span>Next →</span>
             </button>
           </div>

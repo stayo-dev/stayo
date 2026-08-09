@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { X, PlusCircle, Loader2, KeyRound, Calendar } from 'lucide-react';
+import { X, PlusCircle, KeyRound, Calendar } from 'lucide-react';
 import { identityService } from '@features/auth/api';
 import { paymentService } from '@features/payments/api';
 import { toast } from 'sonner';
 import { hmsToast } from '@lib/toast';
 import api from '@lib/api-client';
+import { StayoLoader } from '@shared/ui/brand';
 
 interface CreateObligationModalProps {
   isOpen: boolean;
@@ -266,7 +267,7 @@ export function CreateObligationModal({
               className="px-4 h-10 rounded-xl bg-accent text-accent-foreground text-sm font-semibold hover:bg-accent/90 active:scale-98 transition-transform flex items-center justify-center gap-1.5 disabled:opacity-50"
             >
               {isSubmitting ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <StayoLoader size="sm" label={null} />
               ) : (
                 <PlusCircle className="w-4 h-4" />
               )}

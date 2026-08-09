@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, CheckCircle2, Loader2, LockKeyhole } from 'lucide-react';
+import { AlertCircle, ArrowLeft, CheckCircle2, LockKeyhole } from 'lucide-react';
 import { authService } from '@/features/auth/api';
 import { supabase } from '@lib/supabaseClient';
+import { StayoLoader } from '@shared/ui/brand';
 
 function readResetToken(search: string, hash: string) {
   const queryParams = new URLSearchParams(search);
@@ -157,7 +158,7 @@ export function ResetPasswordPage() {
               className="flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold text-white transition active:scale-[0.98] disabled:opacity-60"
               style={{ backgroundColor: '#F07B1D' }}
             >
-              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {isLoading ? <StayoLoader size="sm" label={null} /> : null}
               Reset password
             </button>
           </form>

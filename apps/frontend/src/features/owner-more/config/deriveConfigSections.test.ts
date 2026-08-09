@@ -90,6 +90,13 @@ describe('deriveHostelSections', () => {
     expect(find(sections, 'amenities').state).toBe('unavailable');
   });
 
+  it('owns agreement duration but not the deposit, so no field has two editors', () => {
+    const keys = deriveHostelSections(source()).flatMap((s) => s.rows).map((r) => r.key);
+
+    expect(keys).toContain('agreement-duration');
+    expect(keys).not.toContain('security-deposit');
+  });
+
   it('keeps unavailable rows out of the area tally', () => {
     const sections = deriveHostelSections(source());
     const tally = tallyConfigRows(sections.flatMap((s) => s.rows));
@@ -126,22 +133,91 @@ describe('deriveFinanceSections', () => {
     expect(find(deriveFinanceSections(s), 'late-fees').state).toBe('off');
   });
 
-  it('describes the security deposit from the nested deposit policy', () => {
-    const row = find(deriveFinanceSections(source()), 'security-deposit');
+  it('describes a months-of-rent deposit without inventing an amount', () => {
+    // The row is hostel-wide, so it cannot show rupees here: the amount depends
+    // on each room's rent. The Deposit screen's preview is where the arithmetic
+    // is shown.
+    const s = source();
+    s.policy!.billing!.deposit = {
+      enabled: true,
+      calculation_mode: 'MONTHS_OF_RENT',
+      deposit_months: 2,
+      refundable: true,
+      default_amount: 0,
+    };
+    const row = find(deriveFinanceSections(s), 'security-deposit');
 
-    expect(row.detail).toBe('1 month · Refundable at move-out');
+    expect(row.detail).toBe('2 months of rent · Refundable at move-out');
     expect(row.state).toBe('configured');
   });
 
-  it('renders advance payments as unavailable, because it is the same field as the deposit', () => {
-    // The mockup lists "Security deposit" and "Advance payments" as separate
-    // rows, but this data model has one deposit concept: the flat legacy
-    // `advance_enabled`/`advance_amount_default`/`advance_refundable` fields
-    // are the nested `billing.deposit` object. Showing both as editable would
-    // give an owner two controls over one value.
-    const row = find(deriveFinanceSections(source()), 'advance-payments');
+  it('describes a flat deposit with its amount', () => {
+    const s = source();
+    s.policy!.billing!.deposit = {
+      enabled: true,
+      calculation_mode: 'FLAT',
+      default_amount: 10000,
+      refundable: false,
+      deposit_months: 2,
+    };
+    const row = find(deriveFinanceSections(s), 'security-deposit');
 
-    expect(row.state).toBe('unavailable');
+    expect(row.detail).toBe('₹10,000 · Non-refundable');
+    expect(row.state).toBe('configured');
+  });
+
+  it('flags a deposit switched on with nothing to collect', () => {
+    // A flat deposit of ₹0 used to read as configured, because the row checked
+    // deposit_months regardless of the mode.
+    const s = source();
+    s.policy!.billing!.deposit = { enabled: true, calculation_mode: 'FLAT', default_amount: 0, deposit_months: 2 };
+    const row = find(deriveFinanceSections(s), 'security-deposit');
+
+    expect(row.state).toBe('attention');
+  });
+
+  it('treats a deposit switched off as off, not as a gap', () => {
+    const s = source();
+    s.policy!.billing!.deposit = { enabled: false, calculation_mode: 'FLAT', default_amount: 0 };
+    const row = find(deriveFinanceSections(s), 'security-deposit');
+
+    expect(row.state).toBe('off');
+    expect(row.detail).toBe('Not required');
+  });
+
+  it('has no "advance payments" row, since that is the same stored field as the deposit', () => {
+    const keys = deriveFinanceSections(source()).flatMap((s) => s.rows).map((r) => r.key);
+
+    expect(keys).not.toContain('advance-payments');
+  });
+
+  it('offers part payments as a real row — instalments, not the deposit', () => {
+    const row = find(deriveFinanceSections(source()), 'part-payments');
+
+    // Full-payment-only is a deliberate stance, so `off` rather than a gap.
+    expect(row.state).toBe('off');
+    expect(row.detail).toBe('Each due must be cleared in full');
+  });
+
+  it('reflects part payments being switched on', () => {
+    const s = source();
+    s.policy!.billing!.partial_payments = { enabled: true, minimum_amount: 500 };
+
+    expect(find(deriveFinanceSections(s), 'part-payments').state).toBe('configured');
+  });
+
+  it('sends every row to its own screen rather than all to one combined form', () => {
+    // The point of the split: tapping "Security deposit" must not land on the
+    // same page as "Rent rules". Distinct routes are what makes each screen
+    // focused — and buildBillingPatch is what keeps them from overwriting
+    // each other.
+    const routes = deriveFinanceSections(source())
+      .flatMap((s) => s.rows)
+      .filter((r) => r.state !== 'unavailable' && r.route)
+      .map((r) => r.route!);
+
+    expect(new Set(routes).size).toBe(routes.length);
+    expect(routes).not.toContain('/owner/more/configuration/finance/billing-policy');
   });
 
   it('flags a missing GST number', () => {

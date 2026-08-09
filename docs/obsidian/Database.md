@@ -85,6 +85,10 @@ Added 2026-08-01 ([[Decisions#ADR-040|ADR-040]], migration `20260801100000_hoste
 
 The fourth onboarding field, the security deposit, needed no column — it goes into the existing `hostels.preferences_config` JSON under `billing_defaults`, via the same `sanitizeBillingDefaultsPayload` the preferences API uses. `rooms.base_rent` (pre-existing, `Int?`) is now always populated for newly provisioned rooms; rooms created before this change keep `null` and nothing backfills them.
 
+**`preferences_config` keys added 2026-08-09** (both JSON-only, no migration):
+- `tenant_rules.agreement_required` — boolean, default `true`. Whether tenants must accept rules and sign before activation ([[Decisions#ADR-059|ADR-059]]). Absent/null reads as `true`.
+- `billing.deposit.calculation_mode` — `FLAT` | `MONTHS_OF_RENT`. Newly *written* by the UI; the field and its flat mirror `billing_defaults.deposit_calculation_mode` already existed and were already read by `resolveTenantInviteDefaults` ([[Decisions#ADR-060|ADR-060]]). See [[Business-Rules]] for how the amount resolves.
+
 ### `hostels.display_order`
 Added 2026-08-04 ([[Decisions#ADR-042|ADR-042]], migration `20260804120000_hostel_display_order`, idempotent `ADD COLUMN IF NOT EXISTS` + `hostels_owner_id_display_order_idx` on `(owner_id, display_order)`). `Int?` — the owner's manual position for their hostel in the Home "Property" list.
 

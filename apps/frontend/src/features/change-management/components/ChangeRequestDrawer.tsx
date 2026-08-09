@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   User, FileText, IndianRupee, BedDouble, ArrowLeft,
-  CheckCircle2, Clock, Loader2, AlertCircle,
+  CheckCircle2, Clock, AlertCircle,
 } from 'lucide-react';
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
@@ -12,6 +12,7 @@ import { useIsMobile } from '@/app/components/ui/use-mobile';
 import { tenantService } from '@/features/tenants/api';
 import { ChangePreview, type ChangeField } from './ChangePreview';
 import { changeRequestKeys } from '../hooks/useChangeRequests';
+import { StayoLoader } from '@shared/ui/brand';
 
 // ─── Types ─────────────────────────────────────────────────────────
 
@@ -381,7 +382,7 @@ export function ChangeRequestDrawer({
         >
           {submitMutation.isPending ? (
             <>
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <StayoLoader size="sm" label={null} />
               Submitting...
             </>
           ) : (

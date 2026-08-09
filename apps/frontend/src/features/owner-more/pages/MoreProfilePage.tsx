@@ -6,6 +6,18 @@ import { ownerService } from '@features/owners/api';
 import { useUpdateOwnerProfile } from '@features/settings/settingsHooks';
 import { queryKeys } from '@lib/queryKeys';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
+import { SaveBar } from '../components/SaveBar';
+import { hasChanges } from '../config/dirtyState';
+
+interface ProfileFields {
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  pincode: string;
+}
+
+const EMPTY_PROFILE: ProfileFields = { name: '', address: '', city: '', state: '', pincode: '' };
 
 interface OwnerProfile {
   name: string;
@@ -39,22 +51,30 @@ export function MoreProfilePage() {
   });
   const updateMutation = useUpdateOwnerProfile();
 
-  const [name, setName] = useState('');
-  const [address, setAddress] = useState('');
-  const [city, setCity] = useState('');
-  const [state, setState] = useState('');
-  const [pincode, setPincode] = useState('');
+  /** One object so the baseline comparison behind Save is a single exact check. */
+  const [fields, setFields] = useState<ProfileFields>(EMPTY_PROFILE);
+  const [baseline, setBaseline] = useState<ProfileFields | null>(null);
 
   useEffect(() => {
     const p = profileQuery.data;
     if (p) {
-      setName(p.name ?? '');
-      setAddress(p.address ?? '');
-      setCity(p.city ?? '');
-      setState(p.state ?? '');
-      setPincode(p.pincode ?? '');
+      const loaded: ProfileFields = {
+        name: p.name ?? '',
+        address: p.address ?? '',
+        city: p.city ?? '',
+        state: p.state ?? '',
+        pincode: p.pincode ?? '',
+      };
+      setFields(loaded);
+      setBaseline(loaded);
     }
   }, [profileQuery.data]);
+
+  const set = <K extends keyof ProfileFields>(key: K, value: ProfileFields[K]) =>
+    setFields((prev) => ({ ...prev, [key]: value }));
+
+  const { name, address, city, state, pincode } = fields;
+  const dirty = hasChanges(baseline, fields);
 
   const save = () => {
     if (!name.trim()) {
@@ -74,7 +94,7 @@ export function MoreProfilePage() {
   };
 
   return (
-    <div className="flex flex-col gap-5 px-4 pb-28 pt-6 sm:px-6">
+    <div className={`flex flex-col gap-5 px-4 pt-6 sm:px-6 ${dirty ? 'pb-40' : 'pb-24'}`}>
       <MoreScreenHeader backTo="/owner/more/settings" backLabel="Settings" title="My profile" />
 
       {profileQuery.isLoading ? (
@@ -86,7 +106,7 @@ export function MoreProfilePage() {
             <div className={`${card} flex flex-col gap-3 p-4`}>
               <label className="block">
                 <span className={labelStyle}>Name *</span>
-                <input value={name} onChange={(e) => setName(e.target.value)} className={inputStyle} />
+                <input value={name} onChange={(e) => set('name', e.target.value)} className={inputStyle} />
               </label>
               <label className="block">
                 <span className={labelStyle}>Email</span>
@@ -105,37 +125,35 @@ export function MoreProfilePage() {
             <div className={`${card} flex flex-col gap-3 p-4`}>
               <label className="block">
                 <span className={labelStyle}>Address</span>
-                <input value={address} onChange={(e) => setAddress(e.target.value)} className={inputStyle} />
+                <input value={address} onChange={(e) => set('address', e.target.value)} className={inputStyle} />
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
                   <span className={labelStyle}>City</span>
-                  <input value={city} onChange={(e) => setCity(e.target.value)} className={inputStyle} />
+                  <input value={city} onChange={(e) => set('city', e.target.value)} className={inputStyle} />
                 </label>
                 <label className="block">
                   <span className={labelStyle}>State</span>
-                  <input value={state} onChange={(e) => setState(e.target.value)} className={inputStyle} />
+                  <input value={state} onChange={(e) => set('state', e.target.value)} className={inputStyle} />
                 </label>
               </div>
               <label className="block">
                 <span className={labelStyle}>Pincode</span>
-                <input value={pincode} onChange={(e) => setPincode(e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" className={inputStyle} />
+                <input value={pincode} onChange={(e) => set('pincode', e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" className={inputStyle} />
               </label>
             </div>
           </div>
         </>
       )}
 
-      <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] z-20 border-t border-border bg-background px-4 py-3 sm:mx-auto sm:max-w-[480px] sm:px-6">
-        <button
-          type="button"
-          onClick={save}
-          disabled={updateMutation.isPending || profileQuery.isLoading}
-          className="w-full rounded-xl bg-primary py-3.5 text-center font-display text-sm font-bold text-primary-foreground disabled:opacity-50"
-        >
-          {updateMutation.isPending ? 'Saving…' : 'Save changes'}
-        </button>
-      </div>
+      <SaveBar
+        visible={dirty}
+        pending={updateMutation.isPending}
+        onSave={save}
+        onDiscard={() => baseline && setFields(baseline)}
+        label="Save changes"
+      />
+
     </div>
   );
 }

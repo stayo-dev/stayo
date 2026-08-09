@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@context/AuthContext';
+import { StayoLoadingScreen } from '@shared/ui/brand';
 
 interface RequireAdminSessionProps {
   children?: ReactNode;
@@ -11,11 +12,7 @@ export function RequireAdminSession({ children }: RequireAdminSessionProps) {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-      </div>
-    );
+    return <StayoLoadingScreen message="Signing you in…" />;
   }
 
   if (!user || user.role?.toLowerCase() !== 'admin') {

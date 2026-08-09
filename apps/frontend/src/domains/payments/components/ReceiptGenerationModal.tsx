@@ -3,8 +3,9 @@ import {
   Dialog,
   DialogContent,
 } from '@/app/components/ui/dialog';
-import { Loader2, CheckCircle2, AlertTriangle, Download, FileText } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Download, FileText } from 'lucide-react';
 import { tenantPortalApi } from '@features/tenant-portal/api';
+import { StayoLoader } from '@shared/ui/brand';
 
 interface Props {
   open: boolean;
@@ -194,7 +195,7 @@ export function ReceiptGenerationModal({ open, onClose, paymentId, receiptNumber
         {stage === 'generating' && (
           <div className="flex flex-col items-center py-6 text-center space-y-6">
             <div className="relative flex items-center justify-center">
-              <Loader2 className="w-16 h-16 animate-spin text-[#FF7A00]" />
+              <StayoLoader size="lg" className="text-[#FF7A00]" />
               <FileText className="absolute w-6 h-6 text-[#1E1E1E]" />
             </div>
             

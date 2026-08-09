@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Loader2, ListFilter, Banknote, ReceiptText, Wallet, FileCheck2,
+  ListFilter, Banknote, ReceiptText, Wallet, FileCheck2,
   UserPlus, Bed, FileUp, FileCheck, LogOut, ShieldAlert, Send, Calendar,
   type LucideIcon,
 } from 'lucide-react';
@@ -11,6 +11,7 @@ import type { TimelineEvent } from '@features/tenants/utils/financialColors';
 import { FinancialActivityCard } from '@features/tenants/components/financial/FinancialActivityCard';
 import { activityListService } from '@features/activity/api';
 import { queryKeys } from '@lib/queryKeys';
+import { StayoLoader } from '@shared/ui/brand';
 
 interface LedgerEntry {
   id: string;
@@ -327,7 +328,7 @@ export function UnifiedActivityTimeline({
 
       {loading ? (
         <div className="flex justify-center py-10">
-          <Loader2 className="w-6 h-6 animate-spin text-accent" />
+          <StayoLoader size="md" className="text-accent" />
         </div>
       ) : visible.length === 0 ? (
         <div className="text-center py-10">

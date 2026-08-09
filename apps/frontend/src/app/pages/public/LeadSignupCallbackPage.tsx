@@ -5,6 +5,7 @@ import { supabase } from '@lib/supabaseClient';
 import { hostelLeadsApi } from '@features/hostel-leads/api';
 import { PENDING_LEAD_TOKEN_KEY } from '@features/owner-onboarding/components/HostelLeadModal';
 import { LandingPage } from './LandingPage';
+import { StayoLoader } from '@shared/ui/brand';
 
 type Outcome = 'working' | 'linked' | 'skipped';
 
@@ -80,7 +81,7 @@ export function LeadSignupCallbackPage() {
       <LandingPage />
       <div className="fixed inset-0 z-[500] flex items-center justify-center bg-[rgba(47,40,35,0.5)] px-5 backdrop-blur-[3px]">
         {outcome === 'working' ? (
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent" />
+          <StayoLoader size="lg" className="text-white" label="Finishing sign-up" />
         ) : (
           <div className="w-full max-w-[400px] rounded-[22px] bg-card p-7 text-center shadow-[0_40px_90px_-30px_rgba(47,47,47,0.5)]">
             <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-success/10">

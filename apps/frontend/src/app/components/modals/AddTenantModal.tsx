@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, User, UserCheck, BedDouble, Calendar, ChevronDown, ChevronRight, Copy, Check, Loader2, IndianRupee, RotateCcw, Building2 } from 'lucide-react';
+import { X, User, UserCheck, BedDouble, Calendar, ChevronDown, ChevronRight, Copy, Check, IndianRupee, RotateCcw, Building2 } from 'lucide-react';
 import { ownerService } from '@domains/hostels/api';
 import { roomService } from '@domains/rooms/api';
 import { tenantService } from '@domains/tenants/api';
 import { parseTenancyConflict, type TenancyConflict } from '@/features/tenants/tenancyConflict';
 import { queryKeys } from '@lib/queryKeys';
+import { StayoLoader } from '@shared/ui/brand';
 
 interface AddTenantModalProps {
   onClose: () => void;
@@ -344,7 +345,7 @@ export function AddTenantModal({ onClose, hostelId, preselectedRoomId }: AddTena
                     className="flex-1 py-3 bg-accent text-accent-foreground rounded-xl text-sm font-semibold active:scale-[0.98] flex items-center justify-center gap-2"
                   >
                     {fallbackSubmitting ? (
-                      <><Loader2 className="w-4 h-4 animate-spin" /> Sending fallback…</>
+                      <><StayoLoader size="sm" label={null} /> Sending fallback…</>
                     ) : (
                       'Send via Email'
                     )}
@@ -743,7 +744,7 @@ export function AddTenantModal({ onClose, hostelId, preselectedRoomId }: AddTena
             className="w-full py-3 bg-accent text-accent-foreground rounded-xl text-sm font-semibold active:scale-[0.98] transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {inviteMutation.isPending
-              ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending invite…</>
+              ? <><StayoLoader size="sm" label={null} /> Sending invite…</>
               : 'Send Invitation'}
           </button>
         </form>

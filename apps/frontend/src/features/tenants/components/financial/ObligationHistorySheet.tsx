@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { Loader2 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/app/components/ui/sheet';
 import { paymentService } from '@features/payments/api';
 import { getEventDisplay, TONE_DOT_CLASSES, TONE_ICON_CLASSES, type TimelineEvent } from '@features/tenants/utils/financialColors';
+import { StayoLoader } from '@shared/ui/brand';
 
 const fmt = (n: number) => `₹${Number(n ?? 0).toLocaleString('en-IN')}`;
 
@@ -31,7 +31,7 @@ export function ObligationHistorySheet({ obligationId, label, onClose }: Obligat
         <div className="px-4 pb-6 overflow-y-auto flex-1">
           {isLoading ? (
             <div className="flex justify-center py-10">
-              <Loader2 className="w-5 h-5 animate-spin text-accent" />
+              <StayoLoader size="md" className="text-accent" />
             </div>
           ) : events.length === 0 ? (
             <p className="text-xs text-muted-foreground text-center py-10">No history recorded for this charge.</p>

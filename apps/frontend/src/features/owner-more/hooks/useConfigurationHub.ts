@@ -7,10 +7,11 @@ import { useHostelBedSummary } from './useHostelBedSummary';
 import { tallyConfigRows } from '../config/configRows';
 import { deriveFinanceSections, deriveHostelSections, type ConfigSource } from '../config/deriveConfigSections';
 import { countWorkflows, deriveAutomationSections } from '../config/deriveAutomationSections';
+import { NOTIFICATION_CHANNELS } from '../config/deriveNotificationSections';
 import { useAgreementTemplates } from './useAgreements';
 
 export interface ConfigModule {
-  key: 'hostel' | 'finance' | 'automation' | 'agreements';
+  key: 'hostel' | 'finance' | 'automation' | 'agreements' | 'notifications' | 'account';
   glyph: string;
   title: string;
   desc: string;
@@ -79,6 +80,8 @@ export function useConfigurationHub() {
     channels: policyQuery.data?.policy?.reminders?.channels ?? null,
   }).flatMap((section) => section.rows);
   const automation = countWorkflows(automationWorkflows);
+  const reminderChannels = (policyQuery.data?.policy?.reminders?.channels ?? {}) as Record<string, boolean>;
+  const activeChannelCount = NOTIFICATION_CHANNELS.filter((c) => reminderChannels[c.key]).length;
   const { templates: agreementList } = useAgreementTemplates();
   const agreementTemplates = agreementList.length;
   const agreementDrafts = agreementList.filter((t) => t.status !== 'PUBLISHED').length;
@@ -138,6 +141,31 @@ export function useConfigurationHub() {
       tint: '#E4EFE7',
       iconColor: '#1F7A52',
       route: '/owner/more/configuration/automation',
+    },
+    {
+      key: 'notifications',
+      glyph: '◔',
+      title: 'Notifications',
+      desc: 'Tenant & owner event alerts',
+      // Zero channels means nothing can be delivered — a genuine gap.
+      status: activeChannelCount === 0 ? 'warn' : 'ok',
+      statusLabel: activeChannelCount === 0 ? 'No channels on' : 'Configured',
+      meta: `${activeChannelCount} of ${NOTIFICATION_CHANNELS.length} channels on`,
+      tint: '#E4EDF0',
+      iconColor: '#3B5FA8',
+      route: '/owner/more/configuration/notifications',
+    },
+    {
+      key: 'account',
+      glyph: '@',
+      title: 'Account & Security',
+      desc: 'Profile, password & sessions',
+      status: 'ok',
+      statusLabel: 'Configured',
+      meta: 'Profile, password, sessions',
+      tint: '#EFE6DA',
+      iconColor: '#8A7F75',
+      route: '/owner/more/configuration/account',
     },
   ];
 

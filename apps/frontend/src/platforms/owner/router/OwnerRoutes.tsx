@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Navigate, Route } from 'react-router-dom';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
+import { StayoLoadingScreen } from '@shared/ui/brand';
 
 const OwnerAppShell = lazy(() =>
   import('@/app/layouts/OwnerAppShell').then((m) => ({ default: m.OwnerAppShell })),
@@ -71,6 +72,17 @@ const MoreConfigAgreementTemplatePage = lazy(() =>
 const MoreConfigAgreementClausesPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigAgreementClausesPage').then((m) => ({ default: m.MoreConfigAgreementClausesPage })),
 );
+const MoreConfigAgreementRequirementPage = lazy(() =>
+  import('@features/owner-more/pages/MoreConfigAgreementRequirementPage').then((m) => ({
+    default: m.MoreConfigAgreementRequirementPage,
+  })),
+);
+const MoreConfigNotificationsPage = lazy(() =>
+  import('@features/owner-more/pages/MoreConfigNotificationsPage').then((m) => ({ default: m.MoreConfigNotificationsPage })),
+);
+const MoreConfigAccountPage = lazy(() =>
+  import('@features/owner-more/pages/MoreConfigAccountPage').then((m) => ({ default: m.MoreConfigAccountPage })),
+);
 const AgreementQueuePage = lazy(() =>
   import('@features/owner-workqueue/AgreementQueuePage').then((m) => ({ default: m.AgreementQueuePage })),
 );
@@ -79,6 +91,21 @@ const VacancyQueuePage = lazy(() =>
 );
 const CollectionQueuePage = lazy(() =>
   import('@features/owner-collection/CollectionQueuePage').then((m) => ({ default: m.CollectionQueuePage })),
+);
+const MoreConfigRentSchedulePage = lazy(() =>
+  import('@features/owner-more/billing-policy/MoreConfigRentSchedulePage').then((m) => ({ default: m.MoreConfigRentSchedulePage })),
+);
+const MoreConfigPartPaymentsPage = lazy(() =>
+  import('@features/owner-more/billing-policy/MoreConfigPartPaymentsPage').then((m) => ({ default: m.MoreConfigPartPaymentsPage })),
+);
+const MoreConfigDepositPage = lazy(() =>
+  import('@features/owner-more/billing-policy/MoreConfigDepositPage').then((m) => ({ default: m.MoreConfigDepositPage })),
+);
+const MoreConfigLateFeePage = lazy(() =>
+  import('@features/owner-more/billing-policy/MoreConfigLateFeePage').then((m) => ({ default: m.MoreConfigLateFeePage })),
+);
+const MoreConfigAgreementDurationPage = lazy(() =>
+  import('@features/owner-more/billing-policy/MoreConfigAgreementDurationPage').then((m) => ({ default: m.MoreConfigAgreementDurationPage })),
 );
 const MoreConfigBillingPolicyPage = lazy(() =>
   import('@features/owner-more/billing-policy/MoreConfigBillingPolicyPage').then((m) => ({
@@ -92,20 +119,16 @@ const MoreConfigReceiptFooterPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigReceiptFooterPage').then((m) => ({ default: m.MoreConfigReceiptFooterPage })),
 );
 
+/**
+ * Entering the owner app from cold — the provider shell, the auth gate and the
+ * first page chunk are all still in flight, so there is no layout to skeleton
+ * yet. Show the brand loading screen; it is what index.html's boot splash is
+ * already showing, so this boundary continues that screen rather than replacing
+ * it. Page-to-page transitions *inside* the owner app use the layout skeleton
+ * in OwnerProviderShell instead.
+ */
 function OwnerRouteFallback() {
-  return (
-    <div className="min-h-screen bg-background px-4 py-5">
-      <div className="mx-auto max-w-5xl space-y-4">
-        <div className="h-10 w-48 rounded-lg bg-muted animate-pulse" />
-        <div className="grid grid-cols-3 gap-3">
-          <div className="h-20 rounded-xl bg-muted animate-pulse" />
-          <div className="h-20 rounded-xl bg-muted animate-pulse" />
-          <div className="h-20 rounded-xl bg-muted animate-pulse" />
-        </div>
-        <div className="h-40 rounded-xl bg-muted animate-pulse" />
-      </div>
-    </div>
-  );
+  return <StayoLoadingScreen />;
 }
 
 /** Exported so ConfigRoutes/OnboardingRoute can share the same owner auth-gate + fallback. */
@@ -168,14 +191,21 @@ export function OwnerRoutes() {
 
         <Route path="/owner/more/configuration" element={<MoreConfigurationHubPage />} />
         <Route path="/owner/more/configuration/hostel" element={<MoreConfigHostelPage />} />
-        <Route path="/owner/more/configuration/hostel/tenant-defaults" element={<Navigate to="/owner/more/configuration/finance/billing-policy" replace />} />
+        <Route path="/owner/more/configuration/hostel/agreement-duration" element={<MoreConfigAgreementDurationPage />} />
+        <Route path="/owner/more/configuration/hostel/tenant-defaults" element={<Navigate to="/owner/more/configuration/hostel/agreement-duration" replace />} />
         <Route path="/owner/more/configuration/finance" element={<MoreConfigFinancePage />} />
         <Route path="/owner/more/configuration/automation" element={<MoreConfigAutomationPage />} />
         <Route path="/owner/more/configuration/agreements" element={<MoreConfigAgreementsPage />} />
         <Route path="/owner/more/configuration/agreements/templates" element={<MoreConfigAgreementTemplatesPage />} />
         <Route path="/owner/more/configuration/agreements/template" element={<MoreConfigAgreementTemplatePage />} />
+        <Route path="/owner/more/configuration/agreements/requirement" element={<MoreConfigAgreementRequirementPage />} />
         <Route path="/owner/more/configuration/agreements/clauses" element={<MoreConfigAgreementClausesPage />} />
-        <Route path="/owner/more/configuration/finance/late-fees" element={<Navigate to="/owner/more/configuration/finance/billing-policy" replace />} />
+        <Route path="/owner/more/configuration/notifications" element={<MoreConfigNotificationsPage />} />
+        <Route path="/owner/more/configuration/account" element={<MoreConfigAccountPage />} />
+        <Route path="/owner/more/configuration/finance/late-fees" element={<MoreConfigLateFeePage />} />
+        <Route path="/owner/more/configuration/finance/rent-schedule" element={<MoreConfigRentSchedulePage />} />
+        <Route path="/owner/more/configuration/finance/part-payments" element={<MoreConfigPartPaymentsPage />} />
+        <Route path="/owner/more/configuration/finance/deposit" element={<MoreConfigDepositPage />} />
         <Route path="/owner/more/configuration/finance/billing-policy" element={<MoreConfigBillingPolicyPage />} />
         <Route path="/owner/more/configuration/finance/payment-gateway" element={<MoreConfigPaymentGatewayPage />} />
         <Route path="/owner/more/configuration/finance/receipt-footer" element={<MoreConfigReceiptFooterPage />} />

@@ -14,7 +14,6 @@ import {
   Eye,
   EyeOff,
   FileText,
-  Loader2,
   Lock,
   Receipt,
   ShieldCheck,
@@ -29,6 +28,7 @@ import { ActivationLayout } from '@/platforms/tenant/onboarding/ActivationLayout
 import type { ActivationVisualStep } from '@/platforms/tenant/onboarding/ActivationProgress';
 import { useAuth } from '@context/AuthContext';
 import { SignaturePad } from '@shared/ui/inputs';
+import { StayoLoader } from '@shared/ui/brand';
 
 type ActivationStep = 'ACCOUNT' | 'RULES' | 'AGREEMENT' | 'PROFILE' | 'ACTIVATE';
 
@@ -37,6 +37,8 @@ type ActivationContext = {
     current_step: ActivationStep;
     completed_steps: ActivationStep[];
     blocked_steps: ActivationStep[];
+    /** False when this hostel does not require a signed agreement (ADR-059). */
+    agreement_required?: boolean;
     account_setup_completed: boolean;
     rules_accepted: boolean;
     agreement_signed: boolean;
@@ -1197,7 +1199,7 @@ export function ActivateAccountPage() {
             <div className="mt-3 h-24 rounded-xl bg-muted animate-pulse" />
           </div>
           <div className="rounded-2xl border border-border bg-card p-6">
-            <Loader2 className="w-8 h-8 animate-spin text-accent" />
+            <StayoLoader size="lg" className="text-accent" />
             <p className="mt-4 text-sm font-medium text-foreground">Loading your setup</p>
             <p className="mt-1 text-sm text-muted-foreground">Checking the latest activation state...</p>
           </div>
@@ -1242,6 +1244,7 @@ export function ActivateAccountPage() {
       currentStep={(currentStep || 'ACCOUNT') as ActivationVisualStep}
       completedSteps={new Set(ctx.activation_state?.completed_steps || [])}
       onStepClick={(step) => goToStep(step as ActivationStep)}
+      agreementRequired={ctx.activation_state?.agreement_required !== false}
       error={error}
       onDismissError={() => setError('')}
       aside={
@@ -1498,7 +1501,7 @@ export function ActivateAccountPage() {
                     onClick={() => submitStep('RULES', { acknowledgements: acks, typed_signature_name: ctx.profile.name })}
                     className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-accent px-5 py-3.5 text-sm font-semibold text-accent-foreground disabled:opacity-50 active:scale-[0.98] transition-transform shadow-sm"
                   >
-                    {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                    {submitting ? <StayoLoader size="sm" label={null} /> : <CheckCircle2 className="w-4 h-4" />}
                     Accept rules
                   </button>
                 )}
@@ -1744,7 +1747,7 @@ export function ActivateAccountPage() {
                   >
                     {submitting ? (
                       <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <StayoLoader size="sm" label={null} />
                         Uploading & signing agreement...
                       </>
                     ) : (
@@ -1766,7 +1769,7 @@ export function ActivateAccountPage() {
               <div className="flex items-center gap-2 rounded-2xl border border-border bg-secondary/40 px-4 py-3 text-xs font-semibold text-muted-foreground">
                 {profileDraftStatus === 'saving' ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin text-accent" />
+                    <StayoLoader size="sm" className="text-accent" label={null} />
                     Saving draft...
                   </>
                 ) : profileDraftStatus === 'restored' ? (
@@ -2061,7 +2064,7 @@ export function ActivateAccountPage() {
                   }}
                   className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-accent px-5 py-3.5 text-sm font-semibold text-accent-foreground disabled:opacity-50 active:scale-[0.98] transition-transform shadow-sm"
                 >
-                  {(submitting || photoUploading) ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+                  {(submitting || photoUploading) ? <StayoLoader size="sm" label={null} /> : <ArrowRight className="w-4 h-4" />}
                   {photoUploading ? 'Uploading photo...' : 'Verify identity'}
                 </button>
               )}
@@ -2233,7 +2236,7 @@ export function ActivateAccountPage() {
               {submitting && (
                 <div className="rounded-2xl border border-accent/30 bg-accent/5 p-4">
                   <div className="flex items-center gap-3">
-                    <Loader2 className="h-5 w-5 animate-spin text-accent" />
+                    <StayoLoader size="md" className="text-accent" />
                     <p className="text-sm font-bold text-foreground">{activationMessages[activationStageIndex]}</p>
                   </div>
                   <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
@@ -2264,7 +2267,7 @@ export function ActivateAccountPage() {
                   disabled={submitting || account.password.length < 8 || account.password !== account.confirm_password}
                   className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3.5 text-sm font-semibold text-primary-foreground disabled:opacity-50 active:scale-[0.98] transition-transform shadow-sm cursor-pointer"
                 >
-                  {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  {submitting ? <StayoLoader size="sm" label={null} /> : <CheckCircle2 className="w-4 h-4" />}
                   Activate Account
                 </button>
               </div>
@@ -2380,7 +2383,7 @@ function PrimaryButton({ loading, children }: { loading: boolean; children: Reac
       disabled={loading}
       className="inline-flex items-center gap-2 rounded-2xl bg-accent px-5 py-3.5 text-sm font-semibold text-accent-foreground disabled:opacity-50 active:scale-[0.98] transition-transform shadow-sm"
     >
-      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+      {loading ? <StayoLoader size="sm" label={null} /> : <ArrowRight className="w-4 h-4" />}
       {children}
     </button>
   );

@@ -55,6 +55,16 @@ export const authApi = {
     return response.data as { success: boolean; reset_token: string; expires_in: number };
   },
 
+  /**
+   * Ends every session for the current account. Server-side this revokes via
+   * the Redis deny-list `middleware.ts` checks on each request, so it takes
+   * effect immediately rather than at token expiry.
+   */
+  logoutAllDevices: async () => {
+    const response = await api.post('/auth/logout-all');
+    return response.data as { success: boolean };
+  },
+
   resetPassword: async (accessToken: string, newPassword: string) => {
     const response = await api.post('/auth/reset-password', {
       access_token: accessToken,

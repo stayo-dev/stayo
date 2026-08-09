@@ -1,4 +1,5 @@
 import { UNAVAILABLE_LABEL, type ConfigRow } from './configRows';
+import { describeDeposit } from '../billing-policy/depositPolicy';
 
 /**
  * Turns the live hostel policy into the rows the Hostel and Finance screens
@@ -32,7 +33,15 @@ export interface ConfigSource {
        * "Advance payments" as separate rows: the flat legacy `advance_*`
        * preference fields are this object.
        */
-      deposit?: { enabled?: boolean; deposit_months?: number; refundable?: boolean; default_amount?: number };
+      deposit?: {
+        enabled?: boolean;
+        /** FLAT uses `default_amount`; MONTHS_OF_RENT multiplies rent by `deposit_months`. */
+        calculation_mode?: string;
+        deposit_months?: number;
+        refundable?: boolean;
+        default_amount?: number;
+      };
+      partial_payments?: { enabled?: boolean; minimum_amount?: number; minimum_percentage?: number };
       invite_defaults?: { agreement_duration_months?: number };
     } | null;
     receipts?: { prefix?: string; format?: string; auto_email?: boolean; footer?: string } | null;
@@ -48,7 +57,18 @@ export interface ConfigSection {
 }
 
 const HOSTEL_IDENTITY_ROUTE = '/owner/more/hostel';
-const BILLING_POLICY_ROUTE = '/owner/more/configuration/finance/billing-policy';
+const FINANCE = '/owner/more/configuration/finance';
+/**
+ * Each row opens the screen that owns *its* fields, rather than all of them
+ * deep-linking to one combined form. `buildBillingPatch` keeps that safe: a
+ * focused screen writes only its own section, so they cannot overwrite each
+ * other (the hazard ADR-043 consolidated the screens to fix).
+ */
+const RENT_SCHEDULE_ROUTE = `${FINANCE}/rent-schedule`;
+const PART_PAYMENTS_ROUTE = `${FINANCE}/part-payments`;
+const DEPOSIT_ROUTE = `${FINANCE}/deposit`;
+const LATE_FEES_ROUTE = `${FINANCE}/late-fees`;
+const AGREEMENT_DURATION_ROUTE = '/owner/more/configuration/hostel/agreement-duration';
 
 /** `1st`, `2nd`, `3rd`, `11th`, `21st` — the screen this replaces printed "2st". */
 export function ordinalDay(day: number): string {
@@ -145,13 +165,13 @@ export function deriveHostelSections(source: ConfigSource): ConfigSection[] {
           route: '/owner/more/configuration/hostel/tenant-defaults',
         },
         {
-          key: 'tenant-defaults',
-          title: 'Tenant defaults',
-          detail: depositMonths
-            ? `${depositMonths}-mo deposit · ${agreementMonths}-mo agreement`
-            : 'Not set',
-          state: depositMonths ? 'configured' : 'attention',
-          route: '/owner/more/configuration/hostel/tenant-defaults',
+          key: 'agreement-duration',
+          title: 'Agreement duration',
+          // Deposit deliberately lives under Finance, so exactly one screen
+          // owns each stored field.
+          detail: agreementMonths ? `${agreementMonths}-month default lease` : 'Not set',
+          state: agreementMonths ? 'configured' : 'attention',
+          route: AGREEMENT_DURATION_ROUTE,
         },
       ],
     },
@@ -176,7 +196,14 @@ export function deriveFinanceSections(source: ConfigSource): ConfigSection[] {
 
   const rentRulesConfigured = Boolean(billing?.auto_rent_day && billing?.due_day !== undefined);
   const deposit = billing?.deposit;
-  const depositOn = Boolean(deposit?.enabled && deposit?.deposit_months);
+  const partialOn = Boolean(billing?.partial_payments?.enabled);
+  const depositMode = deposit?.calculation_mode === 'MONTHS_OF_RENT' ? 'MONTHS_OF_RENT' : 'FLAT';
+  // "Configured" depends on the mode: a flat deposit needs an amount, a
+  // months-of-rent deposit needs months. Checking `deposit_months` for both
+  // reported a flat ₹0 deposit as configured.
+  const depositOn = Boolean(
+    deposit?.enabled && (depositMode === 'MONTHS_OF_RENT' ? deposit?.deposit_months : deposit?.default_amount),
+  );
   const gstSet = Boolean(hostel?.gst_number);
 
   return [
@@ -190,18 +217,32 @@ export function deriveFinanceSections(source: ConfigSource): ConfigSection[] {
             ? `Generated ${ordinalDay(billing!.auto_rent_day!)} · Due on ${ordinalDay(billing!.due_day!)} · ${billing!.grace_days ?? 0}-day grace`
             : 'Not set',
           state: rentRulesConfigured ? 'configured' : 'attention',
-          route: BILLING_POLICY_ROUTE,
+          route: RENT_SCHEDULE_ROUTE,
         },
         {
           key: 'security-deposit',
           title: 'Security deposit',
-          detail: depositOn
-            ? `${plural(deposit!.deposit_months ?? 0, 'month')} · ${deposit!.refundable ? 'Refundable at move-out' : 'Non-refundable'}`
-            : 'Not required',
-          state: depositOn ? 'configured' : 'off',
-          route: BILLING_POLICY_ROUTE,
+          detail: describeDeposit({
+            enabled: depositOn,
+            mode: depositMode,
+            flatAmount: deposit?.default_amount ?? 0,
+            months: deposit?.deposit_months ?? 0,
+            refundable: deposit?.refundable !== false,
+          }),
+          // Switched on but with nothing to collect is a gap, not a stance.
+          state: depositOn ? 'configured' : deposit?.enabled ? 'attention' : 'off',
+          route: DEPOSIT_ROUTE,
         },
-        unavailable('advance-payments', 'Advance payments'),
+        {
+          key: 'part-payments',
+          title: 'Part payments',
+          detail: partialOn
+            ? 'A due can be cleared in instalments'
+            : 'Each due must be cleared in full',
+          // Full-payment-only is a deliberate stance, not a gap.
+          state: partialOn ? 'configured' : 'off',
+          route: PART_PAYMENTS_ROUTE,
+        },
       ],
     },
     {
@@ -216,7 +257,7 @@ export function deriveFinanceSections(source: ConfigSource): ConfigSection[] {
               ? `₹${lateFeeRule!.amount} ${LATE_FEE_CADENCE[lateFeeRule!.type ?? ''] ?? ''} after grace`.replace(/\s+/g, ' ')
               : 'Enabled but no amount set',
           state: !lateFeeOn ? 'off' : lateFeeHasAmount ? 'configured' : 'attention',
-          route: '/owner/more/configuration/finance/late-fees',
+          route: LATE_FEES_ROUTE,
         },
       ],
     },

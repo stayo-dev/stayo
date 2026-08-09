@@ -40,6 +40,12 @@ const REQUIRED_ACKNOWLEDGEMENTS = [
 
 import { getActiveTenancy, selectCurrentTenancy } from "@/lib/tenancy/active-tenancy";
 import {
+  completedApplicableSteps,
+  isAgreementRequired,
+  nextActivationStep,
+  requiredActivationSteps,
+} from "./agreement-requirement";
+import {
   DEFAULT_AGREEMENT_TEMPLATE,
   DEFAULT_TERMS_AND_CONDITIONS,
   getActiveTemplateAndSyncRuleVersion,
@@ -226,7 +232,13 @@ export class ActivationWorkflowService {
     };
   }
 
-  private computeState(profile: any, tenant: any, ruleVersion: any) {
+  /**
+   * `agreementRequired` is passed in rather than read off `tenant.hostels`,
+   * because not every caller's query includes the hostel relation — an implicit
+   * read would silently fall back to "required" and make the setting look broken
+   * on some paths but not others.
+   */
+  private computeState(profile: any, tenant: any, ruleVersion: any, agreementRequired: boolean) {
     const latestAcceptance = (tenant.rule_acceptances || []).find((a: any) => a.rule_version_id === ruleVersion.id);
     const accountSetupCompleted = Boolean(
       (profile?.mobile_verified || profile?.phone_verified || tenant?.mobile_verified) &&
@@ -254,18 +266,14 @@ export class ActivationWorkflowService {
       ? Math.max(0, Math.round((new Date(completedAt).getTime() - new Date(startedAt).getTime()) / 1000))
       : null;
 
-    const completedSteps: ActivationStep[] = [];
-    if (accountSetupCompleted) completedSteps.push("ACCOUNT");
-    if (rulesAccepted) completedSteps.push("RULES");
-    if (agreementSigned) completedSteps.push("AGREEMENT");
-    if (profileCompleted) completedSteps.push("PROFILE");
-    if (activationCompleted) completedSteps.push("ACTIVATE");
-
-    let currentStep: ActivationStep = "ACCOUNT";
-    if (accountSetupCompleted && !rulesAccepted) currentStep = "RULES";
-    else if (accountSetupCompleted && rulesAccepted && !agreementSigned) currentStep = "AGREEMENT";
-    else if (accountSetupCompleted && rulesAccepted && agreementSigned && !profileCompleted) currentStep = "PROFILE";
-    else if (accountSetupCompleted && rulesAccepted && agreementSigned && profileCompleted) currentStep = "ACTIVATE";
+    // Progression skips the steps this hostel does not ask for. The raw
+    // `rules_accepted` / `agreement_signed` booleans below stay truthful — a
+    // skipped ceremony is reported as not done, not faked as complete — while
+    // the sequence and progress only count applicable steps.
+    const completion = { accountSetupCompleted, rulesAccepted, agreementSigned, profileCompleted, activationCompleted };
+    const applicableSteps = requiredActivationSteps(agreementRequired);
+    const completedSteps = completedApplicableSteps(completion, agreementRequired);
+    const currentStep = nextActivationStep(completion, agreementRequired);
 
     return {
       account_setup_completed: accountSetupCompleted,
@@ -276,7 +284,8 @@ export class ActivationWorkflowService {
       activation_completed: activationCompleted,
       current_step: currentStep,
       completed_steps: completedSteps,
-      blocked_steps: this.blockedSteps({ accountSetupCompleted, rulesAccepted, agreementSigned, profileCompleted }),
+      agreement_required: agreementRequired,
+      blocked_steps: this.blockedSteps({ accountSetupCompleted, rulesAccepted, agreementSigned, profileCompleted }, agreementRequired),
       missing_fields: {
         tier_1_required: missingTier1,
         tier_2_recommended: this.recommendedMissingFields(tenant),
@@ -289,7 +298,9 @@ export class ActivationWorkflowService {
           rule_version_id: latestAcceptance.rule_version_id,
         }
         : null,
-      progress_percent: Math.round((completedSteps.length / 5) * 100),
+      // Out of the steps this hostel actually requires, not a fixed 5 — a
+      // skipped-agreement tenant would otherwise cap at 60%.
+      progress_percent: Math.round((completedSteps.length / applicableSteps.length) * 100),
       activation_started_at: startedAt,
       activation_completed_at: completedAt,
       onboarding_last_activity_at: tenant.onboarding_last_activity_at || null,
@@ -297,12 +308,18 @@ export class ActivationWorkflowService {
     };
   }
 
-  private blockedSteps(flags: { accountSetupCompleted: boolean; rulesAccepted: boolean; agreementSigned: boolean; profileCompleted: boolean }) {
+  private blockedSteps(
+    flags: { accountSetupCompleted: boolean; rulesAccepted: boolean; agreementSigned: boolean; profileCompleted: boolean },
+    agreementRequired: boolean,
+  ) {
     const blocked: ActivationStep[] = [];
     if (!flags.accountSetupCompleted) blocked.push("RULES", "AGREEMENT", "PROFILE", "ACTIVATE");
-    else if (!flags.rulesAccepted) blocked.push("AGREEMENT", "PROFILE", "ACTIVATE");
-    else if (!flags.agreementSigned) blocked.push("PROFILE", "ACTIVATE");
+    else if (agreementRequired && !flags.rulesAccepted) blocked.push("AGREEMENT", "PROFILE", "ACTIVATE");
+    else if (agreementRequired && !flags.agreementSigned) blocked.push("PROFILE", "ACTIVATE");
     else if (!flags.profileCompleted) blocked.push("ACTIVATE");
+    // The ceremony steps themselves are unreachable when not required, so they
+    // are reported blocked rather than presented as available.
+    if (!agreementRequired) blocked.push("RULES", "AGREEMENT");
     return Array.from(new Set(blocked));
   }
 
@@ -372,7 +389,12 @@ export class ActivationWorkflowService {
 
     const ruleVersion = await this.getActiveRuleVersion(tenant.hostel_id);
 
-    return this.computeState((tenant as any).profiles, tenant, ruleVersion);
+    return this.computeState(
+      (tenant as any).profiles,
+      tenant,
+      ruleVersion,
+      await this.resolveAgreementRequired(tenant.hostel_id),
+    );
   }
 
   async getContext(token: string) {
@@ -516,7 +538,7 @@ export class ActivationWorkflowService {
       tenant.agreements = [activeAgreement, ...(tenant.agreements || [])];
     }
 
-    const state = this.computeState(profile, tenant, ruleVersion);
+    const state = this.computeState(profile, tenant, ruleVersion, await this.resolveAgreementRequired(tenant.hostel_id));
     const activationFinancialStatus = await getActivationFinancialStatus(tenant.id);
     const requiredDocumentTypes = this.requiredDocumentTypes(tenant.profile_type);
     const requiredDocuments = (tenant.identification_documents || []).filter((doc: any) =>
@@ -691,7 +713,7 @@ export class ActivationWorkflowService {
       }
     }
 
-    const state = this.computeState(profile, tenant, ruleVersion);
+    const state = this.computeState(profile, tenant, ruleVersion, await this.resolveAgreementRequired(tenant.hostel_id));
     this.assertTransition(step, state);
 
     if (step === "ACCOUNT") {
@@ -750,6 +772,14 @@ export class ActivationWorkflowService {
   }
 
   private assertTransition(step: ActivationStep, state: any) {
+    // A hostel that does not require an agreement has no rules/agreement steps
+    // to gate on, and attempting them is itself invalid.
+    const agreementRequired = state.agreement_required !== false;
+
+    if (!agreementRequired && (step === "RULES" || step === "AGREEMENT")) {
+      throw new Error("INVALID_TRANSITION: This hostel does not require a tenant agreement");
+    }
+
     if (step === "RULES" && !state.account_setup_completed) {
       throw new Error("INVALID_TRANSITION: Complete account setup before accepting rules");
     }
@@ -759,18 +789,32 @@ export class ActivationWorkflowService {
     if (step === "PROFILE" && !state.account_setup_completed) {
       throw new Error("INVALID_TRANSITION: Complete account setup before profile completion");
     }
-    if (step === "PROFILE" && !state.rules_accepted) {
+    if (agreementRequired && step === "PROFILE" && !state.rules_accepted) {
       throw new Error("INVALID_TRANSITION: Accept hostel rules before profile completion");
     }
-    if (step === "PROFILE" && !state.agreement_signed) {
+    if (agreementRequired && step === "PROFILE" && !state.agreement_signed) {
       throw new Error("INVALID_TRANSITION: Sign agreement before profile completion");
     }
     if (step === "ACTIVATE") {
       if (!state.account_setup_completed) throw new Error("INVALID_TRANSITION: Account setup is incomplete");
-      if (!state.rules_accepted) throw new Error("INVALID_TRANSITION: Rules must be accepted before activation");
-      if (!state.agreement_signed) throw new Error("INVALID_TRANSITION: Agreement must be signed before activation");
+      if (agreementRequired && !state.rules_accepted) throw new Error("INVALID_TRANSITION: Rules must be accepted before activation");
+      if (agreementRequired && !state.agreement_signed) throw new Error("INVALID_TRANSITION: Agreement must be signed before activation");
       if (!state.profile_completed) throw new Error("INVALID_TRANSITION: Required profile fields are incomplete");
     }
+  }
+
+  /**
+   * Whether this hostel requires the agreement ceremony.
+   *
+   * Read by id with a narrow select rather than from an included relation, so
+   * every call site gets the same answer regardless of how it loaded the tenant.
+   */
+  private async resolveAgreementRequired(hostelId: string): Promise<boolean> {
+    const hostel = await prisma.hostels.findUnique({
+      where: { id: hostelId },
+      select: { preferences_config: true },
+    });
+    return isAgreementRequired(hostel?.preferences_config);
   }
 
   private async signAgreement(profile: any, tenant: any, data: any, context: { ip: string; userAgent: string }, invitation?: any) {
@@ -1217,8 +1261,16 @@ export class ActivationWorkflowService {
     if (tenantNow.status !== "INVITED") throw new Error("INVALID_TRANSITION: Tenant is not invited");
 
     // Recompute and check required onboarding steps
-    const state = this.computeState(current, tenantNow, ruleVersion);
-    if (!state.account_setup_completed || !state.rules_accepted || !state.profile_completed) {
+    const state = this.computeState(current, tenantNow, ruleVersion, await this.resolveAgreementRequired(tenantNow.hostel_id));
+    // `rules_accepted` is only a requirement where the hostel asks for the
+    // agreement ceremony — this is a second, independent gate to the one in
+    // assertTransition, and missing it here would block activation for
+    // agreement-free hostels.
+    if (
+      !state.account_setup_completed ||
+      (state.agreement_required !== false && !state.rules_accepted) ||
+      !state.profile_completed
+    ) {
       throw new Error("VALIDATION_ERROR: Required activation steps are incomplete");
     }
 

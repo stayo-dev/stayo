@@ -128,6 +128,8 @@ export interface HostelPolicy {
   branding: { logo_url: string | null; gst_number: string | null; legal_name: string | null };
   tenant_rules: {
     allow_profile_edits: boolean; profile_photo_required: boolean; invite_expiry_hours: number;
+    /** Whether tenants must accept rules and sign before activation (ADR-059). */
+    agreement_required?: boolean;
   };
   automation: {
     auto_generate_rent: boolean; auto_apply_late_fees: boolean;

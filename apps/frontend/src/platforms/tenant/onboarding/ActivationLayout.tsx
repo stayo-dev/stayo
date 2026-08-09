@@ -10,6 +10,8 @@ interface ActivationLayoutProps {
   currentStep: ActivationVisualStep;
   completedSteps: Set<string>;
   onStepClick: (step: ActivationVisualStep) => void;
+  /** From `activation_state.agreement_required` — hides the Agreement stage when false. */
+  agreementRequired?: boolean;
   /** Non-blocking banner; the caller owns dismissal. */
   error?: string;
   onDismissError?: () => void;
@@ -38,6 +40,7 @@ export function ActivationLayout({
   currentStep,
   completedSteps,
   onStepClick,
+  agreementRequired,
   error,
   onDismissError,
   aside,
@@ -94,6 +97,7 @@ export function ActivationLayout({
                 currentStep={currentStep}
                 completedSteps={completedSteps}
                 onStepClick={onStepClick}
+                agreementRequired={agreementRequired}
               />
               {aside}
             </div>

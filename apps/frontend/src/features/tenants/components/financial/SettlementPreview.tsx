@@ -1,4 +1,5 @@
-import { CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { CheckCircle, AlertCircle } from 'lucide-react';
+import { StayoLoader } from '@shared/ui/brand';
 
 const fmt = (n: number) => `₹${Number(n ?? 0).toLocaleString('en-IN')}`;
 
@@ -152,7 +153,7 @@ export function SettlementPreview({ plan, amount, onConfirm, onBack, isRecording
           disabled={!plan.payment_accepted || isRecording}
           className="flex-1 h-10 rounded-xl bg-accent text-accent-foreground text-sm font-semibold hover:bg-accent/90 active:scale-98 transition-transform flex items-center justify-center gap-1.5 disabled:opacity-50"
         >
-          {isRecording ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+          {isRecording ? <StayoLoader size="sm" label={null} /> : <CheckCircle className="w-4 h-4" />}
           <span>Confirm</span>
         </button>
       </div>

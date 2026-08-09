@@ -4,6 +4,8 @@ import { roomService } from '@features/rooms/api';
 
 interface BackendRoom {
   capacity: number;
+  /** Present on the same grouped response; used by the deposit preview. */
+  base_rent?: number | string | null;
 }
 
 interface BackendFloorGroup {
@@ -28,10 +30,15 @@ export function useHostelBedSummary(hostelId: string | null) {
   // the same payload through another hook would be wasteful.
   const totals = useMemo(() => {
     const floors = query.data ?? [];
+    const rooms = floors.flatMap((floor) => floor.rooms);
     return {
-      bedsTotal: floors.reduce((sum, floor) => sum + floor.rooms.reduce((s, r) => s + (r.capacity || 0), 0), 0),
-      roomsTotal: floors.reduce((sum, floor) => sum + floor.rooms.length, 0),
+      bedsTotal: rooms.reduce((sum, r) => sum + (r.capacity || 0), 0),
+      roomsTotal: rooms.length,
       floorsTotal: floors.length,
+      // Every room's rent, for the deposit preview: "2 months of rent" means a
+      // different number per room, so the screen shows an exact figure only when
+      // they all agree, and a range otherwise.
+      rents: rooms.map((r) => Number(r.base_rent ?? 0)).filter((rent) => Number.isFinite(rent) && rent > 0),
     };
   }, [query.data]);
 

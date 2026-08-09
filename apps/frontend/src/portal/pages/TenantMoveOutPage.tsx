@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CalendarDays, DoorOpen, Loader2, AlertTriangle, CheckCircle2, Clock, CreditCard, ChevronRight, MessageSquare, Star } from 'lucide-react';
+import { CalendarDays, DoorOpen, AlertTriangle, CheckCircle2, Clock, CreditCard, ChevronRight, MessageSquare, Star } from 'lucide-react';
 import { moveOutService } from '@features/move-out/api';
 import { useTenantDashboard } from '@features/tenant-portal/hooks/useTenantDashboard';
 import { MoveOutStepper } from '@features/tenants/components/moveout/MoveOutStepper';
 import { Link } from 'react-router-dom';
 import { canonicalMoveOutStatus } from '@/shared/types/moveout';
+import { StayoLoader } from '@shared/ui/brand';
 
 const fmt = (n: number) => `₹${Number(n ?? 0).toLocaleString('en-IN')}`;
 const GOOGLE_REVIEW_URL = 'https://search.google.com/local/writereview?placeid=ChIJW1hB1g13yzsRscG4r7mVPt4';
@@ -134,7 +135,7 @@ export function TenantMoveOutPage() {
   if (isLoading || isDashboardLoading) {
     return (
       <div className="flex justify-center py-20">
-        <Loader2 className="w-8 h-8 animate-spin text-[#243A72]" />
+        <StayoLoader size="lg" className="text-[#243A72]" />
       </div>
     );
   }
