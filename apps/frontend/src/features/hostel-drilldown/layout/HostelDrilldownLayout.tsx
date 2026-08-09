@@ -1,7 +1,9 @@
 import { NavLink, Outlet, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
-import { mockProperties } from '@shared/mocks/dashboard';
+import { portfolioService } from '@features/dashboard/api';
+import { queryKeys } from '@lib/queryKeys';
 
 const TABS = [
   { to: 'overview', label: 'Overview' },
@@ -18,8 +20,16 @@ const TABS = [
 export function HostelDrilldownLayout() {
   const { hostelId } = useParams<{ hostelId: string }>();
   const navigate = useNavigate();
-  const property = mockProperties.find((p) => p.id === hostelId);
-  const city = property?.location.split(',')[1]?.trim() ?? property?.location;
+
+  const portfolioQuery = useQuery({
+    queryKey: queryKeys.portfolio.summary(),
+    queryFn: () => portfolioService.getSummary(),
+    enabled: Boolean(hostelId),
+    staleTime: 60_000,
+  });
+
+  const card = (portfolioQuery.data?.hostels ?? []).find((h: any) => h.hostel_id === hostelId);
+  const isRunning = card ? card.status === 'ACTIVE' && card.is_active : undefined;
 
   return (
     <ThemeProvider theme="product">
@@ -32,10 +42,12 @@ export function HostelDrilldownLayout() {
         </div>
 
         <div className="px-4 pb-2.5 pt-1 sm:px-6">
-          <h1 className="font-display text-[21px] font-extrabold tracking-tight text-foreground">{property?.name ?? 'Hostel'}</h1>
+          <h1 className="font-display text-[21px] font-extrabold tracking-tight text-foreground">{card?.name ?? 'Hostel'}</h1>
           <div className="mt-1 flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-success" />
-            <span className="text-[12.5px] text-muted-foreground">{city ?? '—'} · Running</span>
+            <span className={`h-1.5 w-1.5 rounded-full ${isRunning === false ? 'bg-muted-foreground' : 'bg-success'}`} />
+            <span className="text-[12.5px] text-muted-foreground">
+              {card?.city ?? '—'} · {isRunning === false ? 'Inactive' : 'Running'}
+            </span>
           </div>
         </div>
 
