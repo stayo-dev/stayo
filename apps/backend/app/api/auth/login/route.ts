@@ -118,7 +118,40 @@ export async function POST(req: NextRequest) {
     if (message.startsWith("VALIDATION_ERROR")) {
       return apiError(message.split(": ")[1] || "Validation failed", "VALIDATION_ERROR", 400);
     }
-    
+
+    /**
+     * `INTERNAL:` — the credentials were already accepted and the failure is
+     * on the Supabase side (`ensureSupabaseIdentity` / `signInWithSupabasePassword`,
+     * see lib/auth/supabase-identity.ts). Until this branch existed, every one
+     * of those fell through to the generic 500 below and the UI said
+     * "Something went wrong. Please try again." — indistinguishable from a bug
+     * in our own code, and actively misleading, because the single most common
+     * cause is a transient `fetch failed`: the server simply could not reach
+     * Supabase. Observed live on 2026-08-09, where three attempts a minute
+     * apart alternated success / `fetch failed` / success.
+     *
+     * Reported as 503, not 500: the request was well-formed and the caller's
+     * password was right, so retrying is genuinely the correct advice rather
+     * than a platitude. The upstream message is deliberately not forwarded —
+     * it is Supabase-internal and means nothing to the person reading it.
+     */
+    if (message.startsWith("INTERNAL")) {
+      const unreachable =
+        message.includes("fetch failed") ||
+        message.includes("ETIMEDOUT") ||
+        message.includes("ECONNREFUSED") ||
+        message.includes("ENOTFOUND") ||
+        message.includes("EAI_AGAIN");
+      return apiError(
+        unreachable
+          ? "Couldn't reach the sign-in service. Check your connection and try again."
+          : "Sign-in is temporarily unavailable. Please try again in a moment.",
+        "AUTH_PROVIDER_UNAVAILABLE",
+        503,
+      );
+    }
+
+
     return Response.json(
       {
         success: false,

@@ -28,6 +28,17 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### Every Supabase-side login failure surfaced as an opaque 500 "Something went wrong", hiding the fact that the server simply couldn't reach Supabase
+
+- **Status:** fixed 2026-08-09
+- **Symptom:** `POST /api/auth/login` returned **500** and the login modal said "Something went wrong. Please try again." Intermittent — the same credentials succeeded a minute later. A wrong password correctly returned 401, which made it look like the *correct* password was what broke.
+- **Root cause, two layers.** The trigger was environmental: `login_attempts` recorded `INTERNAL: Supabase sign-in failed: fetch failed` — Node's network-level error, i.e. the backend could not reach `<project>.supabase.co` at all. Attempts one minute apart alternated `fetch failed` / success, and `/api/health` reported `jwks: ok` throughout, so connectivity was flapping rather than down. **The bug proper** was that `app/api/auth/login/route.ts`'s catch branched on `UNAUTHORIZED:`, `FORBIDDEN:`, `PASSWORD_RESET_REQUIRED:`, `ONBOARDING_EXPIRED:` and `VALIDATION_ERROR:` but had **no branch for `INTERNAL:`** — the prefix every failure in `lib/auth/supabase-identity.ts` uses. So all of them fell through to the generic 500.
+- **Why the message was useless too:** that fallback returned `{ success: false, error: "Internal Server Error" }` — `error` as a **string**. The frontend's `getApiErrorMessage` only reads `error.message` when `error` is an *object*, so it discarded the body entirely and printed its own generic fallback. Two independent generic-isations stacked.
+- **Fix:** an `INTERNAL:` branch returning **503 `AUTH_PROVIDER_UNAVAILABLE`** via `apiError` (object shape, so the message actually reaches the UI), with connection-level causes (`fetch failed`, `ETIMEDOUT`, `ECONNREFUSED`, `ENOTFOUND`, `EAI_AGAIN`) worded as "Couldn't reach the sign-in service. Check your connection and try again." 503 rather than 500 because the request was well-formed and the password was right — retrying is genuinely correct advice here.
+- **Design gap it revealed:** the route enumerates *expected* error prefixes and treats everything else as a bug in our own code. Any new prefix thrown by a service is silently degraded to an opaque 500. Worth auditing the other auth routes for the same shape.
+- **Note:** the underlying flaky connectivity is environmental and unfixed — this change makes it legible, not impossible.
+- **Related:** [[APIs]], [[Decisions#ADR-031|ADR-031]]
+
 ### "+ Add hostel" still opened the 12-step onboarding wizard — the purpose-built popup existed but was never actually wired in, and its password step-up was decorative
 
 - **Status:** fixed
