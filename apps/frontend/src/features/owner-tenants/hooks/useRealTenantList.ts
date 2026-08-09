@@ -6,7 +6,7 @@ import { normalizeTenants, getInitials, type NormalizedTenant } from '@features/
 import type { MockTenant } from '@shared/mocks/tenants';
 import type { TenantFilterChip } from '../types';
 
-function toTenantListItem(t: NormalizedTenant, hostelId: string, hostelName: string): MockTenant {
+export function toTenantListItem(t: NormalizedTenant, hostelId: string, hostelName: string): MockTenant {
   const isInvited = t.status === 'INVITED';
   const isOverdue = !isInvited && t.outstandingAmount > 0 && ['OVERDUE', 'PARTIAL', 'PENDING'].includes(t.paymentStatus.toUpperCase());
   let status: MockTenant['status'];

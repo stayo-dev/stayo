@@ -38,7 +38,7 @@ const REQUIRED_ACKNOWLEDGEMENTS = [
   "hostel_rules",
 ] as const;
 
-import { liveTenancyInclude, selectCurrentTenancy, selectLiveTenancy } from "@/lib/tenancy/active-tenancy";
+import { getActiveTenancy, selectCurrentTenancy } from "@/lib/tenancy/active-tenancy";
 import {
   DEFAULT_AGREEMENT_TEMPLATE,
   DEFAULT_TERMS_AND_CONDITIONS,
@@ -714,7 +714,6 @@ export class ActivationWorkflowService {
       const { authService } = await import("../../../lib/services/auth-service");
       const updatedProfile = await prisma.profile.findUnique({
         where: { id: profile.id },
-        include: { tenants: liveTenancyInclude },
       });
       // ADR-031: createSessionAndTokens now provisions/links the tenant's
       // Supabase identity, which needs the plaintext password they just
@@ -722,7 +721,7 @@ export class ActivationWorkflowService {
       // beyond this call. A newly activated tenant is therefore born
       // linked, same as owner self-signup.
       const activationPassword = typeof data.password === "string" ? data.password : undefined;
-      const activatedTenancy: any = selectLiveTenancy(updatedProfile?.tenants);
+      const activatedTenancy: any = updatedProfile ? await getActiveTenancy(updatedProfile.id) : null;
       const sessionResult = updatedProfile && activationPassword ? await authService.createSessionAndTokens(
         updatedProfile,
         activatedTenancy?.id || null,

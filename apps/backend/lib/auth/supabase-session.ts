@@ -14,7 +14,7 @@
 import { prisma } from "../db";
 import type { AuthPayload } from "../auth-edge";
 import { eventLog } from "../services/event-log-service";
-import { liveTenancyInclude, selectLiveTenancy } from "@/lib/tenancy/active-tenancy";
+import { getActiveTenancy } from "@/lib/tenancy/active-tenancy";
 
 export interface SupabaseSessionContext {
   authUserId: string;
@@ -45,7 +45,6 @@ const REJECT_NOT_ACTIVATED =
 export async function resolveSupabaseSession(ctx: SupabaseSessionContext): Promise<ResolveResult> {
   let profile = await prisma.profile.findUnique({
     where: { auth_user_id: ctx.authUserId },
-    include: { tenants: liveTenancyInclude },
   });
 
   if (!profile) {
@@ -56,7 +55,6 @@ export async function resolveSupabaseSession(ctx: SupabaseSessionContext): Promi
     // account — see tests/auth-hardening-security.test.ts.
     const byEmail = await prisma.profile.findUnique({
       where: { email: ctx.email.toLowerCase() },
-      include: { tenants: liveTenancyInclude },
     });
 
     if (!byEmail) {
@@ -105,7 +103,7 @@ export async function resolveSupabaseSession(ctx: SupabaseSessionContext): Promi
 
   // Tenants may sign in with Google (ADR-047), but the activation gate that
   // `authService.login()` enforces has to hold on this path too.
-  const liveTenancy = selectLiveTenancy(profile.tenants);
+  const liveTenancy = await getActiveTenancy(profile.id);
   if (profile.role === "TENANT" && liveTenancy?.status === "INVITED") {
     await eventLog.log("AUTH_GOOGLE_REJECTED", profile.owner_id, {
       email: ctx.email,
