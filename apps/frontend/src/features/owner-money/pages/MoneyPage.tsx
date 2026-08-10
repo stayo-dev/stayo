@@ -18,7 +18,6 @@ import { TenantDueRow } from '../components/collections/TenantDueRow';
 import { ExpenseSearchBar } from '../components/expenses/ExpenseSearchBar';
 import { ExpenseSearchSummary } from '../components/expenses/ExpenseSearchSummary';
 import { WhereItWentSection } from '../components/expenses/WhereItWentSection';
-import { CategoryChipsRow } from '../components/expenses/CategoryChipsRow';
 import { ExpenseRow } from '../components/expenses/ExpenseRow';
 import { AddExpenseModal } from '../add-expense/AddExpenseModal';
 import { ExpenseFiltersModal, activeFilterCount } from '../filters/ExpenseFiltersModal';
@@ -317,7 +316,6 @@ export function MoneyPage() {
             from={rangeBounds?.from.toISOString().slice(0, 10)}
             to={rangeBounds?.to.toISOString().slice(0, 10)}
           />
-          <CategoryChipsRow categoryBreakdown={real.categoryBreakdown} />
           <div className="flex flex-col gap-2">
             <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
               {expenseSearch.trim() ? 'Matching' : 'Expenses'}
