@@ -49,6 +49,8 @@ export interface MockProperty {
   revenueValue?: number;
   outstandingValue?: number;
   displayOrder?: number | null;
+  status?: string;
+  activeTenants?: number;
 }
 
 export const mockProperties: MockProperty[] = [

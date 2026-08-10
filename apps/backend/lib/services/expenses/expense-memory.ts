@@ -40,6 +40,12 @@ export interface MemoryFacts {
   receiptCount: number;
   /** Distinct hostels this has been recorded against. */
   hostelCount: number;
+  /** Most recent ownership scope. */
+  lastScope?: 'BUSINESS' | 'HOSTEL' | null;
+  /** Most recent hostel ID attribution if hostel-scoped. */
+  lastHostelId?: string | null;
+  businessCount?: number;
+  hostelScopedCount?: number;
 }
 
 export interface MemoryEntry extends MemoryFacts {

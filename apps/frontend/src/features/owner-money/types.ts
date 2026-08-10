@@ -13,11 +13,12 @@ export interface AddExpenseData {
   notes: string;
   recurring: boolean;
   /**
-   * Which hostel this cost belongs to, or '' for a genuinely
-   * business-wide cost. Previously the client deleted this and forced
-   * every expense to BUSINESS scope, so multi-property owners could not
-   * compare properties — while 8 of 11 existing rows already carried a
-   * hostel. See the expenses module audit.
+   * Data ownership scope: BUSINESS (null hostelId) or HOSTEL (valid hostelId).
+   */
+  expenseScope: 'BUSINESS' | 'HOSTEL';
+  /**
+   * Which hostel this cost belongs to when expenseScope is 'HOSTEL'.
+   * Must be empty string when expenseScope is 'BUSINESS'.
    */
   hostelId: string;
   /**
@@ -38,6 +39,7 @@ export const EMPTY_ADD_EXPENSE_DATA: AddExpenseData = {
   paymentMethod: '',
   notes: '',
   recurring: false,
+  expenseScope: 'HOSTEL',
   hostelId: '',
   receiptFile: null,
 };
@@ -56,6 +58,10 @@ export interface ExpenseFilterState {
   recurring: 'all' | 'recurring' | 'one-time';
   amountMin: string;
   amountMax: string;
+  /** Custom filter start date/datetime (ISO string, YYYY-MM-DD, or YYYY-MM-DDTHH:mm). */
+  startDate: string;
+  /** Custom filter end date/datetime (ISO string, YYYY-MM-DD, or YYYY-MM-DDTHH:mm). */
+  endDate: string;
 }
 
 export const EMPTY_EXPENSE_FILTERS: ExpenseFilterState = {
@@ -66,4 +72,6 @@ export const EMPTY_EXPENSE_FILTERS: ExpenseFilterState = {
   recurring: 'all',
   amountMin: '',
   amountMax: '',
+  startDate: '',
+  endDate: '',
 };

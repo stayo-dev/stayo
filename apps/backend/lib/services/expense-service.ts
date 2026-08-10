@@ -765,7 +765,11 @@ export class ExpenseService {
                  bool_or(is_recurring) AS is_recurring,
                  (array_agg(recurring_frequency ORDER BY date DESC) FILTER (WHERE recurring_frequency IS NOT NULL))[1] AS recurring_frequency,
                  COUNT(receipt_url)::int AS receipt_count,
-                 COUNT(DISTINCT hostel_id)::int AS hostel_count
+                 COUNT(DISTINCT hostel_id)::int AS hostel_count,
+                 (array_agg(expense_scope ORDER BY date DESC) FILTER (WHERE expense_scope IS NOT NULL))[1] AS last_scope,
+                 (array_agg(hostel_id ORDER BY date DESC) FILTER (WHERE hostel_id IS NOT NULL))[1] AS last_hostel_id,
+                 COUNT(CASE WHEN expense_scope = 'BUSINESS' THEN 1 END)::int AS business_count,
+                 COUNT(CASE WHEN expense_scope = 'HOSTEL' THEN 1 END)::int AS hostel_scoped_count
           FROM expenses
           WHERE owner_id = ${ownerId}::uuid
             AND (title ILIKE ${like} OR vendor_name ILIKE ${like})
@@ -791,7 +795,11 @@ export class ExpenseService {
                  bool_or(is_recurring) AS is_recurring,
                  (array_agg(recurring_frequency ORDER BY date DESC) FILTER (WHERE recurring_frequency IS NOT NULL))[1] AS recurring_frequency,
                  COUNT(receipt_url)::int AS receipt_count,
-                 COUNT(DISTINCT hostel_id)::int AS hostel_count
+                 COUNT(DISTINCT hostel_id)::int AS hostel_count,
+                 (array_agg(expense_scope ORDER BY date DESC) FILTER (WHERE expense_scope IS NOT NULL))[1] AS last_scope,
+                 (array_agg(hostel_id ORDER BY date DESC) FILTER (WHERE hostel_id IS NOT NULL))[1] AS last_hostel_id,
+                 COUNT(CASE WHEN expense_scope = 'BUSINESS' THEN 1 END)::int AS business_count,
+                 COUNT(CASE WHEN expense_scope = 'HOSTEL' THEN 1 END)::int AS hostel_scoped_count
           FROM expenses
           WHERE owner_id = ${ownerId}::uuid
           GROUP BY LOWER(TRIM(title))
@@ -818,7 +826,11 @@ export class ExpenseService {
                  bool_or(is_recurring) AS is_recurring,
                  (array_agg(recurring_frequency ORDER BY date DESC) FILTER (WHERE recurring_frequency IS NOT NULL))[1] AS recurring_frequency,
                  COUNT(receipt_url)::int AS receipt_count,
-                 COUNT(DISTINCT hostel_id)::int AS hostel_count
+                 COUNT(DISTINCT hostel_id)::int AS hostel_count,
+                 (array_agg(expense_scope ORDER BY date DESC) FILTER (WHERE expense_scope IS NOT NULL))[1] AS last_scope,
+                 (array_agg(hostel_id ORDER BY date DESC) FILTER (WHERE hostel_id IS NOT NULL))[1] AS last_hostel_id,
+                 COUNT(CASE WHEN expense_scope = 'BUSINESS' THEN 1 END)::int AS business_count,
+                 COUNT(CASE WHEN expense_scope = 'HOSTEL' THEN 1 END)::int AS hostel_scoped_count
           FROM expenses
           WHERE owner_id = ${ownerId}::uuid
             AND vendor_name IS NOT NULL AND vendor_name <> ''
@@ -845,7 +857,11 @@ export class ExpenseService {
                  bool_or(is_recurring) AS is_recurring,
                  (array_agg(recurring_frequency ORDER BY date DESC) FILTER (WHERE recurring_frequency IS NOT NULL))[1] AS recurring_frequency,
                  COUNT(receipt_url)::int AS receipt_count,
-                 COUNT(DISTINCT hostel_id)::int AS hostel_count
+                 COUNT(DISTINCT hostel_id)::int AS hostel_count,
+                 (array_agg(expense_scope ORDER BY date DESC) FILTER (WHERE expense_scope IS NOT NULL))[1] AS last_scope,
+                 (array_agg(hostel_id ORDER BY date DESC) FILTER (WHERE hostel_id IS NOT NULL))[1] AS last_hostel_id,
+                 COUNT(CASE WHEN expense_scope = 'BUSINESS' THEN 1 END)::int AS business_count,
+                 COUNT(CASE WHEN expense_scope = 'HOSTEL' THEN 1 END)::int AS hostel_scoped_count
           FROM expenses
           WHERE owner_id = ${ownerId}::uuid
             AND vendor_name IS NOT NULL AND vendor_name <> ''
@@ -874,7 +890,11 @@ export class ExpenseService {
                  (array_agg(payment_method ORDER BY date DESC)
                   FILTER (WHERE payment_method IS NOT NULL))[1] AS payment_method,
                  (array_agg(category ORDER BY date DESC)
-                  FILTER (WHERE category IS NOT NULL))[1] AS category
+                  FILTER (WHERE category IS NOT NULL))[1] AS category,
+                 (array_agg(expense_scope ORDER BY date DESC)
+                  FILTER (WHERE expense_scope IS NOT NULL))[1] AS last_scope,
+                 (array_agg(hostel_id ORDER BY date DESC)
+                  FILTER (WHERE hostel_id IS NOT NULL))[1] AS last_hostel_id
           FROM expenses
           WHERE owner_id = ${ownerId}::uuid
             AND vendor_name IS NOT NULL AND vendor_name <> ''
@@ -895,7 +915,11 @@ export class ExpenseService {
                  (array_agg(payment_method ORDER BY date DESC)
                   FILTER (WHERE payment_method IS NOT NULL))[1] AS payment_method,
                  (array_agg(category ORDER BY date DESC)
-                  FILTER (WHERE category IS NOT NULL))[1] AS category
+                  FILTER (WHERE category IS NOT NULL))[1] AS category,
+                 (array_agg(expense_scope ORDER BY date DESC)
+                  FILTER (WHERE expense_scope IS NOT NULL))[1] AS last_scope,
+                 (array_agg(hostel_id ORDER BY date DESC)
+                  FILTER (WHERE hostel_id IS NOT NULL))[1] AS last_hostel_id
           FROM expenses
           WHERE owner_id = ${ownerId}::uuid
             AND vendor_name IS NOT NULL AND vendor_name <> ''
@@ -916,6 +940,8 @@ export class ExpenseService {
       lastDate: r.last_date ? new Date(r.last_date).toISOString() : new Date(0).toISOString(),
       paymentMethod: r.payment_method ?? null,
       category: r.category ?? null,
+      lastScope: r.last_scope ?? null,
+      lastHostelId: r.last_hostel_id ?? null,
     }));
 
     const toFacts = (r: any, kind: "TITLE" | "VENDOR"): MemoryFacts => ({
@@ -936,6 +962,10 @@ export class ExpenseService {
       recurringFrequency: r.recurring_frequency ?? null,
       receiptCount: Number(r.receipt_count ?? 0),
       hostelCount: Number(r.hostel_count ?? 0),
+      lastScope: r.last_scope ?? null,
+      lastHostelId: r.last_hostel_id ?? null,
+      businessCount: Number(r.business_count ?? 0),
+      hostelScopedCount: Number(r.hostel_scoped_count ?? 0),
     });
 
     const entries = sortMemory([

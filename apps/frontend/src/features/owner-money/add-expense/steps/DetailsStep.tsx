@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Store, ChevronRight, ChevronDown, ChevronUp, Plus } from 'lucide-react';
+import { Store, ChevronRight, ChevronDown, ChevronUp, Plus, Building2, Building } from 'lucide-react';
 import { EXPENSE_CATEGORIES } from '@shared/mocks/expenses';
 import { categoryIcon } from '../../components/expenses/categoryIcons';
 import { cn } from '@shared/lib/cn';
+import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import type { AddExpenseData } from '../../types';
 import {
   useExpenseMemory,
@@ -263,6 +264,76 @@ function CategorySelector({
   );
 }
 
+/* ── Ownership Scope Selector ────────────────────────────────────── */
+
+function OwnershipScopeSelector({
+  data,
+  setD,
+}: {
+  data: AddExpenseData;
+  setD: (patch: Partial<AddExpenseData>) => void;
+}) {
+  const session = useOwnerSession();
+  const hostels = session.hostels ?? [];
+
+  return (
+    <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-3.5">
+      <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+        Expense Belongs To
+      </span>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => setD({ expenseScope: 'BUSINESS', hostelId: '' })}
+          className={cn(
+            'flex flex-col items-center gap-1 rounded-xl border p-2.5 text-center transition-all',
+            data.expenseScope === 'BUSINESS'
+              ? 'border-primary bg-primary/10 font-bold text-primary'
+              : 'border-border bg-background font-medium text-muted-foreground',
+          )}
+        >
+          <Building2 className="h-4 w-4" />
+          <span className="text-xs">Business Overall</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const defaultHostel = data.hostelId || session.primaryHostelId || hostels[0]?.id || '';
+            setD({ expenseScope: 'HOSTEL', hostelId: defaultHostel });
+          }}
+          className={cn(
+            'flex flex-col items-center gap-1 rounded-xl border p-2.5 text-center transition-all',
+            data.expenseScope === 'HOSTEL'
+              ? 'border-primary bg-primary/10 font-bold text-primary'
+              : 'border-border bg-background font-medium text-muted-foreground',
+          )}
+        >
+          <Building className="h-4 w-4" />
+          <span className="text-xs">Specific Hostel</span>
+        </button>
+      </div>
+
+      {data.expenseScope === 'HOSTEL' && (
+        <div className="mt-1 flex flex-col gap-1">
+          <span className="text-[10.5px] font-semibold text-muted-foreground">Select Property</span>
+          <select
+            value={data.hostelId}
+            onChange={(e) => setD({ hostelId: e.target.value })}
+            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground focus:border-primary focus:outline-none"
+          >
+            {!data.hostelId && <option value="">-- Choose Hostel --</option>}
+            {hostels.map((h) => (
+              <option key={h.id} value={h.id}>
+                {h.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Step 1: "What did you buy?" ─────────────────────────────────── */
 
 /**
@@ -318,6 +389,9 @@ export function DetailsStep({ data, setD, onReused }: DetailsStepProps) {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Ownership Scope Selector */}
+      <OwnershipScopeSelector data={data} setD={setD} />
+
       {/* Search input */}
       <label className="block">
         <span className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">

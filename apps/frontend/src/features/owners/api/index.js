@@ -33,8 +33,8 @@ export const ownerService = {
         const response = await api.get(`/hostels/${hostelId}/preferences`);
         return response.data;
     },
-    getHostels: async () => {
-        const response = await api.get('/owner/hostels');
+    getHostels: async (includeArchived = false) => {
+        const response = await api.get('/owner/hostels', { params: { include_archived: includeArchived } });
         return response.data;
     },
     createHostel: async (data) => {
@@ -75,6 +75,10 @@ export const ownerService = {
     },
     archiveHostel: async (hostelId, reason) => {
         const response = await api.delete(`/hostels/${hostelId}`, { data: { reason } });
+        return response.data;
+    },
+    reactivateHostel: async (hostelId) => {
+        const response = await api.patch(`/hostels/${hostelId}`, { status: 'ACTIVE' });
         return response.data;
     },
     /**

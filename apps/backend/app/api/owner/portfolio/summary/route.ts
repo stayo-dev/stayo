@@ -21,7 +21,9 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const summary = await portfolioService.getPortfolioSummary(session.sub);
+    const url = new URL(req.url);
+    const includeArchived = url.searchParams.get("include_archived") === "true";
+    const summary = await portfolioService.getPortfolioSummary(session.sub, includeArchived);
     return apiResponse(summary);
   } catch (error: any) {
     return apiError(error.message || "Failed to fetch portfolio summary");

@@ -79,6 +79,18 @@ export function useArchiveHostel() {
   });
 }
 
+/** Reactivates an archived hostel (`PATCH /hostels/:id` with `status: ACTIVE`). */
+export function useReactivateHostel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (hostelId: string) => ownerService.reactivateHostel(hostelId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.portfolio.summary() });
+      qc.invalidateQueries({ queryKey: ['owner', 'hostels'] });
+    },
+  });
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface HostelInfo {

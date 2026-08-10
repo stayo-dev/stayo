@@ -36,6 +36,10 @@ export interface MemoryEntry {
   dueAroundNow: boolean;
   summaryLine: string;
   score: number;
+  lastScope?: 'BUSINESS' | 'HOSTEL' | null;
+  lastHostelId?: string | null;
+  businessCount?: number;
+  hostelScopedCount?: number;
 }
 
 /**
@@ -59,6 +63,10 @@ export interface TitleVendorPair {
   lastDate: string;
   paymentMethod: string | null;
   category: string | null;
+  lastScope?: 'BUSINESS' | 'HOSTEL' | null;
+  lastHostelId?: string | null;
+  businessCount?: number;
+  hostelScopedCount?: number;
 }
 
 const DEBOUNCE_MS = 200;
@@ -99,11 +107,17 @@ export function useExpenseMemory(rawQuery: string) {
  * amount fresh.
  */
 export function applySetup(entry: MemoryEntry): Partial<AddExpenseData> {
+  const hasHostelHistory = Boolean(entry.lastHostelId) || (entry.hostelScopedCount ?? 0) > 0;
+  const isHostel = entry.lastScope === 'HOSTEL' || hasHostelHistory;
   return {
     title: entry.kind === 'TITLE' ? entry.key : (entry.vendorName ?? entry.key),
     category: entry.category ?? '',
     vendor: entry.vendorName ?? (entry.kind === 'VENDOR' ? entry.key : ''),
     paymentMethod: entry.paymentMethod ?? '',
+    ...(entry.lastScope ? {
+      expenseScope: isHostel ? 'HOSTEL' : 'BUSINESS',
+      hostelId: isHostel ? (entry.lastHostelId ?? '') : '',
+    } : {}),
   };
 }
 
@@ -112,10 +126,15 @@ export function applySetup(entry: MemoryEntry): Partial<AddExpenseData> {
  * Uses the deterministic (title, vendor) relationship from the backend.
  */
 export function applyTitleVendorSetup(pair: TitleVendorPair): Partial<AddExpenseData> {
+  const isHostel = pair.lastScope === 'HOSTEL';
   return {
     title: pair.title,
     vendor: pair.vendorName,
     category: pair.category ?? '',
     paymentMethod: pair.paymentMethod ?? '',
+    ...(pair.lastScope ? {
+      expenseScope: isHostel ? 'HOSTEL' : 'BUSINESS',
+      hostelId: isHostel ? (pair.lastHostelId ?? '') : '',
+    } : {}),
   };
 }

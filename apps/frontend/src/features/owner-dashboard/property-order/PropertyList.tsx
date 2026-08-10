@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Reorder, useDragControls } from 'motion/react';
+import { RefreshCw, Archive } from 'lucide-react';
 import { StatusPill } from '@shared/ui-patterns/StatusPill';
 import { DragHandle } from '@shared/ui-patterns/DragHandle';
 import { cn } from '@shared/lib/cn';
 import type { MockProperty } from '@shared/mocks/dashboard';
 import { PropertySortControl } from './PropertySortControl';
+import { ReactivateHostelModal } from '../components/ReactivateHostelModal';
 import {
   sortHostels,
   isReorderable,
@@ -27,41 +29,53 @@ function PropertyCard({
   draggable,
   onSelect,
   onMenu,
+  onReactivate,
 }: {
   property: MockProperty;
   draggable: boolean;
   onSelect?: () => void;
   onMenu?: () => void;
+  onReactivate?: () => void;
 }) {
   const controls = useDragControls();
+  const isArchived = p.status === 'ARCHIVED';
 
   const card = (
-    <div className="rounded-2xl border border-border bg-card">
+    <div className={cn('rounded-2xl border bg-card transition-colors', isArchived ? 'border-amber-200/80 bg-amber-50/20 dark:border-amber-900/40 dark:bg-amber-950/10' : 'border-border')}>
       <div
         onClick={onSelect}
         className={cn('flex flex-col gap-2.5 p-3.5', onSelect && 'cursor-pointer')}
       >
         <div className="flex items-center gap-2.5">
-          {draggable && (
+          {draggable && !isArchived && (
             <DragHandle onDragStart={(e) => controls.start(e)} label={`Reorder ${p.name}`} />
           )}
           <div className="min-w-0 flex-1 truncate font-display text-[14.5px] font-bold text-foreground">
             {p.name}
           </div>
-          <StatusPill tone={occupancyTone(p.occupancyPercent ?? 0)} variant="filter">
-            {p.occupancyLabel}
-          </StatusPill>
-          <button
-            type="button"
-            aria-label={`Options for ${p.name}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onMenu?.();
-            }}
-            className="flex h-6 w-6 flex-none items-center justify-center rounded-md text-lg text-muted-foreground transition-colors hover:bg-muted"
-          >
-            ⋮
-          </button>
+          {isArchived ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+              <Archive className="h-3 w-3" />
+              Archived
+            </span>
+          ) : (
+            <StatusPill tone={occupancyTone(p.occupancyPercent ?? 0)} variant="filter">
+              {p.occupancyLabel}
+            </StatusPill>
+          )}
+          {!isArchived && (
+            <button
+              type="button"
+              aria-label={`Options for ${p.name}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onMenu?.();
+              }}
+              className="flex h-6 w-6 flex-none items-center justify-center rounded-md text-lg text-muted-foreground transition-colors hover:bg-muted"
+            >
+              ⋮
+            </button>
+          )}
         </div>
 
         <div className="text-[11.5px] text-muted-foreground">{p.location}</div>
@@ -76,8 +90,6 @@ function PropertyCard({
             <span
               className={cn(
                 'font-display text-xs font-bold tabular-nums',
-                // Zero dues is good news; painting it red made every property
-                // look like it had a problem.
                 (p.outstandingValue ?? 0) > 0 ? 'text-destructive' : 'text-muted-foreground',
               )}
             >
@@ -85,15 +97,31 @@ function PropertyCard({
             </span>
           </div>
           <div className="flex flex-col gap-0.5">
-            <span className="text-[9.5px] font-medium text-muted-foreground">Vacant</span>
-            <span className="font-display text-xs font-bold tabular-nums text-foreground">{p.vacant}</span>
+            <span className="text-[9.5px] font-medium text-muted-foreground">{isArchived ? 'Status' : 'Vacant'}</span>
+            <span className="font-display text-xs font-bold tabular-nums text-foreground">
+              {isArchived ? 'Historical' : p.vacant}
+            </span>
           </div>
         </div>
+
+        {isArchived && onReactivate && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onReactivate();
+            }}
+            className="mt-1 flex items-center justify-center gap-1.5 rounded-xl border border-primary/30 bg-primary/10 py-2 text-[12px] font-bold text-primary transition-colors hover:bg-primary/20"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Reactivate Property
+          </button>
+        )}
       </div>
     </div>
   );
 
-  if (!draggable) return card;
+  if (!draggable || isArchived) return card;
 
   return (
     <Reorder.Item
@@ -108,14 +136,6 @@ function PropertyCard({
   );
 }
 
-/**
- * Home "Property" section — sort control plus the hostel cards.
- *
- * Drag is live only in "My order" mode and only from the handle
- * (`dragListener={false}` + `useDragControls`). That combination is what makes
- * this work on touch: the card keeps its tap-to-drill and the page keeps its
- * vertical scroll everywhere except the handle itself. See ADR-042.
- */
 export function PropertyList({
   properties,
   onSelectProperty,
@@ -123,13 +143,19 @@ export function PropertyList({
   onAddHostel,
   onReorder,
 }: PropertyListProps) {
+  const [activeTab, setActiveTab] = useState<'ACTIVE' | 'ARCHIVED'>('ACTIVE');
   const [mode, setMode] = useState<HostelSortMode>(() => loadSortMode());
-  const draggable = isReorderable(mode) && properties.length > 1 && Boolean(onReorder);
+  const [reactivateTarget, setReactivateTarget] = useState<{ id: string; name: string } | null>(null);
 
-  const sorted = useMemo(() => sortHostels(properties as any, mode) as MockProperty[], [properties, mode]);
+  const activeProperties = useMemo(() => properties.filter((p) => p.status !== 'ARCHIVED'), [properties]);
+  const archivedProperties = useMemo(() => properties.filter((p) => p.status === 'ARCHIVED'), [properties]);
 
-  // Local copy so the list follows the finger during a drag; resynced whenever
-  // the sorted result changes (mode switch, refetch, optimistic update).
+  const displayProperties = activeTab === 'ACTIVE' ? activeProperties : archivedProperties;
+
+  const draggable = activeTab === 'ACTIVE' && isReorderable(mode) && activeProperties.length > 1 && Boolean(onReorder);
+
+  const sorted = useMemo(() => sortHostels(displayProperties as any, mode) as MockProperty[], [displayProperties, mode]);
+
   const [items, setItems] = useState<MockProperty[]>(sorted);
   useEffect(() => setItems(sorted), [sorted]);
 
@@ -139,34 +165,61 @@ export function PropertyList({
   };
 
   const header = (
-    <div className="flex items-center justify-between gap-2">
-      <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Property</h2>
-      <div className="flex items-center gap-1">
-        <PropertySortControl mode={mode} onChange={changeMode} />
-        <button type="button" onClick={onAddHostel} className="text-[12.5px] font-semibold text-primary">
-          + Add hostel
-        </button>
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab('ACTIVE')}
+            className={cn(
+              'text-xs font-bold uppercase tracking-wider transition-colors',
+              activeTab === 'ACTIVE' ? 'text-foreground font-extrabold underline decoration-primary decoration-2 underline-offset-4' : 'text-muted-foreground/70 hover:text-muted-foreground',
+            )}
+          >
+            Active ({activeProperties.length})
+          </button>
+          <span className="text-muted-foreground/30">•</span>
+          <button
+            type="button"
+            onClick={() => setActiveTab('ARCHIVED')}
+            className={cn(
+              'text-xs font-bold uppercase tracking-wider transition-colors',
+              activeTab === 'ARCHIVED' ? 'text-foreground font-extrabold underline decoration-primary decoration-2 underline-offset-4' : 'text-muted-foreground/70 hover:text-muted-foreground',
+            )}
+          >
+            Archived ({archivedProperties.length})
+          </button>
+        </div>
+        <div className="flex items-center gap-1">
+          {activeTab === 'ACTIVE' && <PropertySortControl mode={mode} onChange={changeMode} />}
+          <button type="button" onClick={onAddHostel} className="text-[12.5px] font-semibold text-primary">
+            + Add hostel
+          </button>
+        </div>
       </div>
     </div>
   );
 
   const cardProps = (p: MockProperty) => ({
     property: p,
-    onSelect: onSelectProperty ? () => onSelectProperty(p.id) : undefined,
+    onSelect: p.status !== 'ARCHIVED' && onSelectProperty ? () => onSelectProperty(p.id) : undefined,
     onMenu: onPropertyMenu ? () => onPropertyMenu(p.id) : undefined,
+    onReactivate: () => setReactivateTarget({ id: p.id, name: p.name }),
   });
 
   return (
     <section className="flex flex-col gap-3">
       {header}
 
-      {draggable ? (
+      {items.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border bg-card/50 py-8 text-center text-[13px] text-muted-foreground">
+          {activeTab === 'ACTIVE' ? 'No active properties found.' : 'No archived properties in record.'}
+        </div>
+      ) : draggable ? (
         <Reorder.Group
           axis="y"
           values={items}
           onReorder={setItems}
-          // Commit on release, not on every crossover — otherwise a single
-          // drag past two cards would fire two writes.
           onPointerUp={() => {
             const ids = items.map((p) => p.id);
             if (ids.join() !== sorted.map((p) => p.id).join()) onReorder?.(ids);
@@ -184,6 +237,13 @@ export function PropertyList({
           ))}
         </div>
       )}
+
+      <ReactivateHostelModal
+        open={Boolean(reactivateTarget)}
+        onClose={() => setReactivateTarget(null)}
+        hostelId={reactivateTarget?.id ?? null}
+        hostelName={reactivateTarget?.name ?? ''}
+      />
     </section>
   );
 }

@@ -40,9 +40,9 @@ export interface PortfolioSummary {
  */
 export class PortfolioService {
 
-  async getPortfolioSummary(ownerId: string): Promise<PortfolioSummary> {
+  async getPortfolioSummary(ownerId: string, includeArchived = false): Promise<PortfolioSummary> {
     const hostels = await prisma.hostels.findMany({
-      where: { owner_id: ownerId, status: { in: ["ACTIVE", "INACTIVE"] } },
+      where: { owner_id: ownerId, ...(includeArchived ? {} : { status: { in: ["ACTIVE", "INACTIVE"] } }) },
       select: { id: true, name: true, city: true, is_active: true, status: true, display_order: true },
       // NULLs last, then name — so a hostel the owner has never reordered keeps
       // exactly the position it had before display_order existed, and a newly

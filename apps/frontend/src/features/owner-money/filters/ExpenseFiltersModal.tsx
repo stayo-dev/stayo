@@ -40,6 +40,7 @@ export function activeFilterCount(f: ExpenseFilterState): number {
   if (f.vendor) n += 1;
   if (f.recurring !== 'all') n += 1;
   if (f.amountMin || f.amountMax) n += 1;
+  if (f.startDate || f.endDate) n += 1;
   return n;
 }
 
@@ -112,6 +113,8 @@ export function ExpenseFiltersModal({
       recurring: 'all',
       amountMin: '',
       amountMax: '',
+      startDate: '',
+      endDate: '',
     });
 
   return (
@@ -228,6 +231,30 @@ export function ExpenseFiltersModal({
                 inputMode="numeric"
                 aria-label="Maximum amount"
                 className="w-full min-w-0 bg-transparent text-[13px] text-foreground outline-none"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <span className={sectionLabel}>Date / Time Range</span>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="flex flex-1 flex-col gap-1">
+              <span className="text-[11px] font-medium text-muted-foreground">Start date & time</span>
+              <input
+                type="datetime-local"
+                value={filters.startDate}
+                onChange={(e) => onChange({ startDate: e.target.value })}
+                className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-xs text-foreground outline-none focus:border-primary"
+              />
+            </div>
+            <div className="flex flex-1 flex-col gap-1">
+              <span className="text-[11px] font-medium text-muted-foreground">End date & time</span>
+              <input
+                type="datetime-local"
+                value={filters.endDate}
+                onChange={(e) => onChange({ endDate: e.target.value })}
+                className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-xs text-foreground outline-none focus:border-primary"
               />
             </div>
           </div>

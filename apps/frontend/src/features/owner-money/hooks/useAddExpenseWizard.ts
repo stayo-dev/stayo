@@ -37,8 +37,10 @@ export function useAddExpenseWizard(editingId?: string) {
    */
   const canAdvance = (s: number): boolean => {
     switch (s) {
-      case 0:
-        return Boolean(data.title.trim() && data.category);
+      case 0: {
+        const scopeValid = data.expenseScope === 'BUSINESS' ? true : Boolean(data.hostelId);
+        return Boolean(data.title.trim() && data.category && scopeValid);
+      }
       case 1:
         return Number(data.amount) > 0;
       default:
@@ -54,6 +56,7 @@ export function useAddExpenseWizard(editingId?: string) {
 
   const saveMutation = useMutation({
     mutationFn: () => {
+      const isHostel = data.expenseScope === 'HOSTEL';
       const body = {
         title: data.title.trim(),
         amount: Number(data.amount) || 0,
@@ -64,15 +67,12 @@ export function useAddExpenseWizard(editingId?: string) {
         payment_method: data.paymentMethod || undefined,
         notes: data.notes.trim() || undefined,
         is_recurring: data.recurring,
-        // Attribute the cost to a property when the owner picked one.
-        // `expense_scope` already models exactly this distinction, and the
-        // schema defaults to HOSTEL — the client was overriding both.
-        hostelId: data.hostelId || undefined,
-        expense_scope: data.hostelId ? 'HOSTEL' : 'BUSINESS',
+        hostelId: isHostel ? (data.hostelId || undefined) : undefined,
+        expense_scope: isHostel ? 'HOSTEL' : 'BUSINESS',
         // The API wrapper switches to multipart when this is a File.
         ...(data.receiptFile ? { receipt_image: data.receiptFile } : {}),
       };
-      return editingId ? expenseService.update(editingId, body) : expenseService.create(data.hostelId || undefined, body);
+      return editingId ? expenseService.update(editingId, body) : expenseService.create(isHostel ? data.hostelId : undefined, body);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['owner', 'expenses'] });
@@ -80,31 +80,31 @@ export function useAddExpenseWizard(editingId?: string) {
     },
   });
 
-  const isValid = Boolean(data.title.trim() && Number(data.amount) > 0 && data.category && data.date);
+  const scopeValid = data.expenseScope === 'BUSINESS' ? true : Boolean(data.hostelId);
+  const isValid = Boolean(data.title.trim() && Number(data.amount) > 0 && data.category && data.date && scopeValid);
 
   const submit = () => {
     if (!isValid) return;
     saveMutation.mutate();
   };
 
-  const reset = (seed: AddExpenseData = EMPTY_ADD_EXPENSE_DATA) => {
+  const reset = (seed?: Partial<AddExpenseData>) => {
     setStep(0);
-    setData(seed);
+    setData({ ...EMPTY_ADD_EXPENSE_DATA, ...seed });
     saveMutation.reset();
   };
 
   /**
-   * "Save & add another" — resets to step 0 with category + paymentMethod
-   * carried forward as editable context. Everything else (title, vendor,
-   * amount, date, notes, receipt, status) resets to defaults so the next
-   * expense starts fresh but in the same context.
+   * "Save & add another" — resets to step 0 with category + paymentMethod + scope
+   * carried forward as editable context. Everything else resets to defaults.
    */
   const addAnother = () => {
     const carry = {
       ...EMPTY_ADD_EXPENSE_DATA,
       category: data.category,
       paymentMethod: data.paymentMethod,
-      hostelId: data.hostelId,
+      expenseScope: data.expenseScope,
+      hostelId: data.expenseScope === 'HOSTEL' ? data.hostelId : '',
     };
     setStep(0);
     setData(carry);

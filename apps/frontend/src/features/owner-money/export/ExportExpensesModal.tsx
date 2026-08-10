@@ -5,8 +5,6 @@ import { stayoToast } from '@shared/ui-patterns/Toast';
 import { expenseService } from '@features/expenses/api';
 import type { ExpenseFilterState } from '../types';
 
-const FORMATS = ['CSV', 'Excel', 'PDF'] as const;
-const FORMAT_PARAM: Record<(typeof FORMATS)[number], string> = { CSV: 'csv', Excel: 'xlsx', PDF: 'pdf' };
 const SCOPES = [
   { id: 'current', label: 'Current view', sub: 'Just what matches your filters now' },
   { id: 'month', label: 'This month', sub: 'Every expense logged this month' },
@@ -20,22 +18,23 @@ interface ExportExpensesModalProps {
   search: string;
 }
 
-/** Export Expenses bottom sheet, per Stayo App.dc.html. Streams a real file from `GET /expenses/export` (`expenseService.export`) and triggers a browser download. */
+/** Export Expenses bottom sheet — Excel only. Streams a real file from `GET /expenses/export` (`expenseService.export`) and triggers a browser download. */
 export function ExportExpensesModal({ open, onClose, filters, search }: ExportExpensesModalProps) {
-  const [format, setFormat] = useState<(typeof FORMATS)[number]>('CSV');
   const [scope, setScope] = useState<(typeof SCOPES)[number]['id']>('month');
   const [isExporting, setIsExporting] = useState(false);
 
   const handleExport = async () => {
     setIsExporting(true);
     try {
-      const params: Record<string, unknown> = { format: FORMAT_PARAM[format] };
+      const params: Record<string, unknown> = { format: 'xlsx' };
       if (scope === 'current') {
         if (filters.status !== 'All Status') params.status = filters.status.toLowerCase().replace(' ', '_');
         if (filters.paymentMethod) params.payment_method = filters.paymentMethod;
         if (filters.recurring !== 'all') params.recurring = filters.recurring === 'recurring';
         if (filters.amountMin) params.amountMin = filters.amountMin;
         if (filters.amountMax) params.amountMax = filters.amountMax;
+        if (filters.startDate) params.startDate = filters.startDate;
+        if (filters.endDate) params.endDate = filters.endDate;
         if (search.trim()) params.search = search.trim();
       } else if (scope === 'all') {
         params.startDate = '2000-01-01';
@@ -50,7 +49,7 @@ export function ExportExpensesModal({ open, onClose, filters, search }: ExportEx
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-      stayoToast.success(`Exported as ${format}`);
+      stayoToast.success('Exported as Excel');
       onClose();
     } catch {
       stayoToast.error('Export failed. Please try again.');
@@ -71,29 +70,11 @@ export function ExportExpensesModal({ open, onClose, filters, search }: ExportEx
           disabled={isExporting}
           className="w-full rounded-xl bg-primary py-3.5 text-center font-display text-sm font-bold text-primary-foreground disabled:opacity-50"
         >
-          {isExporting ? 'Exporting…' : `Export ${format}`}
+          {isExporting ? 'Exporting…' : 'Export Excel'}
         </button>
       }
     >
       <div className="flex flex-col gap-5">
-        <div>
-          <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Format</span>
-          <div className="flex gap-2">
-            {FORMATS.map((f) => {
-              const active = format === f;
-              return (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => setFormat(f)}
-                  className={`flex-1 rounded-xl border-[1.5px] py-2.5 text-center font-display text-[12.5px] font-bold ${active ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-foreground'}`}
-                >
-                  {f}
-                </button>
-              );
-            })}
-          </div>
-        </div>
         <div>
           <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Scope</span>
           <div className="flex flex-col gap-2">

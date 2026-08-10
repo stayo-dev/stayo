@@ -11,7 +11,7 @@ import { ReviewStep } from './steps/ReviewStep';
 interface AddExpenseModalProps {
   open: boolean;
   onClose: () => void;
-  seed?: AddExpenseData;
+  seed?: Partial<AddExpenseData>;
   editingId?: string;
 }
 

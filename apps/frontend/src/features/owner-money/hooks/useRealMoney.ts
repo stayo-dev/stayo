@@ -104,9 +104,10 @@ const MONTH_SHORT: Record<string, string> = {
   '07': 'Jul', '08': 'Aug', '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec',
 };
 
-function last7Days() {
+/** Generate last N days as YYYY-MM-DD strings, oldest first. */
+function lastNDays(n: number) {
   const days: string[] = [];
-  for (let i = 6; i >= 0; i -= 1) {
+  for (let i = n - 1; i >= 0; i -= 1) {
     const d = new Date();
     d.setDate(d.getDate() - i);
     days.push(d.toISOString().slice(0, 10));
@@ -138,7 +139,7 @@ export function useRealMoney() {
     staleTime: 60_000,
   });
 
-  const days = useMemo(() => last7Days(), []);
+  const days = useMemo(() => lastNDays(28), []);
   const from = days[0];
   const to = days[days.length - 1];
 

@@ -4,7 +4,7 @@ import type { QuickCollectTenant } from '@features/owner-tenants/types';
 import type { AddExpenseData, MoneyModal, MoneyTab } from '../types';
 
 interface AddExpenseDraft {
-  seed?: AddExpenseData;
+  seed?: Partial<AddExpenseData>;
   editingId?: string;
 }
 

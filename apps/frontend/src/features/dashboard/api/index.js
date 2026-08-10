@@ -53,8 +53,8 @@ export const dashboardService = {
 };
 
 export const portfolioService = {
-    getSummary: async () => {
-        const response = await requestWithRetry(() => api.get('/owner/portfolio/summary'));
+    getSummary: async (includeArchived = false) => {
+        const response = await requestWithRetry(() => api.get('/owner/portfolio/summary', { params: { include_archived: includeArchived } }));
         return response.data?.data ?? response.data;
     },
     getShell: async (months = 6) => {

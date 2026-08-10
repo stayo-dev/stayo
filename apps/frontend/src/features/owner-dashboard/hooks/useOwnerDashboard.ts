@@ -38,6 +38,7 @@ interface PortfolioHostelCard {
   active_tenants: number;
   /** Owner's manual Home position; null = never reordered. See ADR-042. */
   display_order: number | null;
+  status?: string;
 }
 
 interface PortfolioSummaryResponse {
@@ -60,8 +61,8 @@ export function useOwnerDashboard() {
   const session = useOwnerSession();
 
   const portfolioQuery = useQuery({
-    queryKey: queryKeys.portfolio.summary(),
-    queryFn: () => portfolioService.getSummary() as Promise<PortfolioSummaryResponse>,
+    queryKey: [...queryKeys.portfolio.summary(), { includeArchived: true }],
+    queryFn: () => portfolioService.getSummary(true) as Promise<PortfolioSummaryResponse>,
     enabled: session.isAuthenticated,
     staleTime: 60_000,
   });
@@ -119,6 +120,8 @@ export function useOwnerDashboard() {
         revenueValue: h.collected_revenue,
         outstandingValue: h.pending_dues,
         displayOrder: h.display_order ?? null,
+        status: h.status,
+        activeTenants: h.active_tenants,
       })),
     [portfolioQuery.data],
   );

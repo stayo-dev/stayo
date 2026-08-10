@@ -39,6 +39,8 @@ function toQuickCollectTenant(t: MockTenant): QuickCollectTenant {
 }
 
 function toAddExpenseData(e: MockExpense): AddExpenseData {
+  const hostelId = (e as { hostelId?: string }).hostelId ?? '';
+  const expenseScope = (e as { expenseScope?: 'BUSINESS' | 'HOSTEL' }).expenseScope ?? (hostelId ? 'HOSTEL' : 'BUSINESS');
   return {
     title: e.title,
     category: e.category,
@@ -49,9 +51,10 @@ function toAddExpenseData(e: MockExpense): AddExpenseData {
     paymentMethod: e.paymentMethod,
     notes: e.notes ?? '',
     recurring: Boolean(e.recurring),
+    expenseScope,
     // Duplicating an expense keeps its property attribution; the receipt is
     // deliberately not carried over, since it belongs to the original.
-    hostelId: (e as { hostelId?: string }).hostelId ?? '',
+    hostelId: expenseScope === 'HOSTEL' ? hostelId : '',
     receiptFile: null,
   };
 }
@@ -89,7 +92,7 @@ export function MoneyPage() {
    * a custom range needs a date picker, and shipping a second dead chip to
    * stand in for it would repeat the original mistake.
    */
-  const [dateRange, setDateRange] = useState<'today' | 'week' | 'month' | 'all'>('month');
+  const [dateRange, setDateRange] = useState<'today' | 'week' | 'month' | 'all' | 'custom'>('month');
   const location = useLocation();
   const [expenseSearch, setExpenseSearch] = useState('');
   const [expenseFilters, setExpenseFilters] = useState(EMPTY_EXPENSE_FILTERS);
@@ -106,6 +109,13 @@ export function MoneyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Sync dateRange to 'custom' if user selects a startDate or endDate in filters modal
+  useEffect(() => {
+    if (expenseFilters.startDate || expenseFilters.endDate) {
+      setDateRange('custom');
+    }
+  }, [expenseFilters.startDate, expenseFilters.endDate]);
+
   const overdueTenants = useMemo(() => {
     let list = real.overdueTenants;
     if (hostelFilter !== 'all') list = list.filter((t) => t.hostelId === hostelFilter);
@@ -116,12 +126,21 @@ export function MoneyPage() {
   }, [real.overdueTenants, hostelFilter, collectionsSort]);
 
   /**
-   * The headline figure must describe what is actually on screen. The old
-   * tiles read whole-portfolio totals while the list below them was filtered,
-   * so searching "Rice" changed the rows and left the numbers untouched
-   * (module audit, finding #4).
+   * The headline figure must describe what is actually on screen.
    */
   const rangeBounds = useMemo(() => {
+    if (dateRange === 'custom') {
+      const from = expenseFilters.startDate ? new Date(expenseFilters.startDate) : null;
+      let to = expenseFilters.endDate ? new Date(expenseFilters.endDate) : null;
+      // If user typed a plain date (YYYY-MM-DD), default end to end-of-day
+      if (to && expenseFilters.endDate.length === 10) {
+        to.setHours(23, 59, 59, 999);
+      }
+      return {
+        from: from && !Number.isNaN(from.getTime()) ? from : null,
+        to: to && !Number.isNaN(to.getTime()) ? to : null,
+      };
+    }
     if (dateRange === 'all') return null;
     const now = new Date();
     const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
@@ -133,14 +152,22 @@ export function MoneyPage() {
       return { from: start, to: end };
     }
     return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: end };
-  }, [dateRange]);
+  }, [dateRange, expenseFilters.startDate, expenseFilters.endDate]);
 
   const filteredExpenses = useMemo(() => {
     let list: MockExpense[] = real.expenses;
+    if (hostelFilter === 'business') {
+      list = list.filter((e) => !e.hostelId || (e as { expenseScope?: string }).expenseScope === 'BUSINESS');
+    } else if (hostelFilter !== 'all') {
+      list = list.filter((e) => e.hostelId === hostelFilter);
+    }
     if (rangeBounds) {
       list = list.filter((e) => {
         const d = new Date(e.date);
-        return !Number.isNaN(d.getTime()) && d >= rangeBounds.from && d <= rangeBounds.to;
+        if (Number.isNaN(d.getTime())) return false;
+        if (rangeBounds.from && d < rangeBounds.from) return false;
+        if (rangeBounds.to && d > rangeBounds.to) return false;
+        return true;
       });
     }
     if (expenseFilters.status !== 'All Status') list = list.filter((e) => e.status === expenseFilters.status);
@@ -167,7 +194,7 @@ export function MoneyPage() {
     if (expenseFilters.sort === 'Amount: High to low') sorted.sort((a, b) => b.amount - a.amount);
     if (expenseFilters.sort === 'Amount: Low to high') sorted.sort((a, b) => a.amount - b.amount);
     return sorted;
-  }, [real.expenses, expenseSearch, expenseFilters]);
+  }, [real.expenses, hostelFilter, expenseSearch, expenseFilters, rangeBounds]);
 
   /**
    * The owner's actual vendors, highest spend first. The filter sheet used to
@@ -184,6 +211,16 @@ export function MoneyPage() {
     [filteredExpenses],
   );
 
+  const handleOpenAddExpense = () => {
+    if (hostelFilter === 'business') {
+      money.openAddExpense({ seed: { expenseScope: 'BUSINESS', hostelId: '' } });
+    } else if (hostelFilter !== 'all') {
+      money.openAddExpense({ seed: { expenseScope: 'HOSTEL', hostelId: hostelFilter } });
+    } else {
+      money.openAddExpense();
+    }
+  };
+
   if (real.isLoading) return <MoneyLoadingSkeleton />;
 
   return (
@@ -191,14 +228,25 @@ export function MoneyPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-[22px] font-extrabold tracking-tight text-foreground">Money</h1>
-          <button type="button" className="mt-0.5 flex items-center gap-1 text-[12.5px] text-muted-foreground">
-            All hostels · {real.overview.month}
-            <ChevronDown className="h-3 w-3" />
-          </button>
+          <div className="mt-0.5 flex items-center gap-1">
+            <select
+              value={hostelFilter}
+              onChange={(e) => setHostelFilter(e.target.value)}
+              className="cursor-pointer border-none bg-transparent text-[12.5px] font-semibold text-muted-foreground focus:outline-none"
+            >
+              <option value="all">All Expenses · {real.overview.month}</option>
+              <option value="business">Business Overall (HQ) · {real.overview.month}</option>
+              {real.hostelOptions.map((h: { id: string; name: string }) => (
+                <option key={h.id} value={h.id}>
+                  {h.name} · {real.overview.month}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         <button
           type="button"
-          onClick={() => (money.tab === 'expenses' ? money.openAddExpense() : money.openModal(null))}
+          onClick={() => (money.tab === 'expenses' ? handleOpenAddExpense() : money.openModal(null))}
           className="rounded-xl bg-primary px-4 py-2.5 font-display text-[13px] font-bold text-primary-foreground"
         >
           {money.tab === 'expenses' ? '+ Add expense' : 'Collect rent'}
@@ -284,6 +332,7 @@ export function MoneyPage() {
               { id: 'week', label: 'This week' },
               { id: 'month', label: 'This month' },
               { id: 'all', label: 'All time' },
+              { id: 'custom', label: 'Custom range' },
             ] as const).map((r) => (
               <button
                 key={r.id}
@@ -292,13 +341,46 @@ export function MoneyPage() {
                 className={`flex-none rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors ${
                   dateRange === r.id
                     ? 'bg-foreground text-background'
-                    : 'border border-border bg-card text-muted-foreground'
+                    : 'border border-border bg-card text-muted-foreground hover:bg-muted'
                 }`}
               >
                 {r.label}
               </button>
             ))}
           </div>
+
+          {dateRange === 'custom' && (
+            <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-3 shadow-xs sm:flex-row sm:items-center">
+              <div className="flex flex-1 flex-col gap-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Start date / time</span>
+                <input
+                  type="datetime-local"
+                  value={expenseFilters.startDate}
+                  onChange={(e) => setExpenseFilters((f) => ({ ...f, startDate: e.target.value }))}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
+                />
+              </div>
+              <div className="flex flex-1 flex-col gap-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">End date / time</span>
+                <input
+                  type="datetime-local"
+                  value={expenseFilters.endDate}
+                  onChange={(e) => setExpenseFilters((f) => ({ ...f, endDate: e.target.value }))}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
+                />
+              </div>
+              {(expenseFilters.startDate || expenseFilters.endDate) && (
+                <button
+                  type="button"
+                  onClick={() => setExpenseFilters((f) => ({ ...f, startDate: '', endDate: '' }))}
+                  className="self-end rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted"
+                >
+                  Clear dates
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Understand the story, then inspect the transactions. This
               searches the whole history, not just the month the list has
               loaded — see docs/audits/expenses-module-audit.md. */}
@@ -308,13 +390,13 @@ export function MoneyPage() {
             </span>
             <span className="text-[11.5px] text-muted-foreground">
               {filteredExpenses.length} expense{filteredExpenses.length === 1 ? '' : 's'}
-              {dateRange === 'all' ? '' : dateRange === 'today' ? ' today' : dateRange === 'week' ? ' this week' : ' this month'}
+              {dateRange === 'all' ? '' : dateRange === 'today' ? ' today' : dateRange === 'week' ? ' this week' : dateRange === 'month' ? ' this month' : ' in custom range'}
             </span>
           </div>
           <ExpenseSearchSummary
             search={expenseSearch}
-            from={rangeBounds?.from.toISOString().slice(0, 10)}
-            to={rangeBounds?.to.toISOString().slice(0, 10)}
+            from={rangeBounds?.from?.toISOString().slice(0, 10)}
+            to={rangeBounds?.to?.toISOString().slice(0, 10)}
           />
           <div className="flex flex-col gap-2">
             <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
