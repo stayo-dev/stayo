@@ -855,6 +855,69 @@ export class ExpenseService {
           LIMIT ${limit}
         `;
 
+    // Title–vendor pair query: deterministic mapping of which vendors supply
+    // which items, with per-pair statistics. The title and vendor queries above
+    // aggregate across all vendors / all titles respectively, so neither can
+    // reconstruct the "Rice was bought from Sri Rice Shop 3 times and from
+    // Rice Vendor 2 times" relationship the entry form needs. This third query
+    // groups by the (title, vendor) composite key.
+    const titleVendorRows: any[] = search
+      ? await prisma.$queryRaw`
+          SELECT LOWER(TRIM(title))       AS title_key,
+                 LOWER(TRIM(vendor_name)) AS vendor_key,
+                 (array_agg(title ORDER BY date DESC))[1]       AS title_label,
+                 (array_agg(vendor_name ORDER BY date DESC))[1] AS vendor_label,
+                 COUNT(*)::int             AS occurrences,
+                 AVG(amount)::float        AS average_amount,
+                 (array_agg(amount ORDER BY date DESC))[1]::float AS last_amount,
+                 MAX(date)                 AS last_date,
+                 (array_agg(payment_method ORDER BY date DESC)
+                  FILTER (WHERE payment_method IS NOT NULL))[1] AS payment_method,
+                 (array_agg(category ORDER BY date DESC)
+                  FILTER (WHERE category IS NOT NULL))[1] AS category
+          FROM expenses
+          WHERE owner_id = ${ownerId}::uuid
+            AND vendor_name IS NOT NULL AND vendor_name <> ''
+            AND (title ILIKE ${like} OR vendor_name ILIKE ${like})
+          GROUP BY LOWER(TRIM(title)), LOWER(TRIM(vendor_name))
+          ORDER BY COUNT(*) DESC, MAX(date) DESC
+          LIMIT 30
+        `
+      : await prisma.$queryRaw`
+          SELECT LOWER(TRIM(title))       AS title_key,
+                 LOWER(TRIM(vendor_name)) AS vendor_key,
+                 (array_agg(title ORDER BY date DESC))[1]       AS title_label,
+                 (array_agg(vendor_name ORDER BY date DESC))[1] AS vendor_label,
+                 COUNT(*)::int             AS occurrences,
+                 AVG(amount)::float        AS average_amount,
+                 (array_agg(amount ORDER BY date DESC))[1]::float AS last_amount,
+                 MAX(date)                 AS last_date,
+                 (array_agg(payment_method ORDER BY date DESC)
+                  FILTER (WHERE payment_method IS NOT NULL))[1] AS payment_method,
+                 (array_agg(category ORDER BY date DESC)
+                  FILTER (WHERE category IS NOT NULL))[1] AS category
+          FROM expenses
+          WHERE owner_id = ${ownerId}::uuid
+            AND vendor_name IS NOT NULL AND vendor_name <> ''
+          GROUP BY LOWER(TRIM(title)), LOWER(TRIM(vendor_name))
+          HAVING COUNT(*) >= 2
+          ORDER BY COUNT(*) DESC, MAX(date) DESC
+          LIMIT 30
+        `;
+
+    const titleVendors = titleVendorRows.map((r: any) => ({
+      titleKey: String(r.title_key ?? ""),
+      vendorKey: String(r.vendor_key ?? ""),
+      title: String(r.title_label ?? r.title_key ?? ""),
+      vendorName: String(r.vendor_label ?? r.vendor_key ?? ""),
+      occurrences: Number(r.occurrences ?? 0),
+      averageAmount: round(Number(r.average_amount ?? 0)),
+      lastAmount: round(Number(r.last_amount ?? 0)),
+      lastDate: r.last_date ? new Date(r.last_date).toISOString() : new Date(0).toISOString(),
+      paymentMethod: r.payment_method ?? null,
+      category: r.category ?? null,
+    }));
+
     const toFacts = (r: any, kind: "TITLE" | "VENDOR"): MemoryFacts => ({
       kind,
       key: r.label ?? r.group_key ?? "",
@@ -880,7 +943,7 @@ export class ExpenseService {
       ...vendorRows.map((r) => buildMemoryEntry(toFacts(r, "VENDOR"), today)),
     ]);
 
-    return { entries, dueNow: entries.filter((e) => e.dueAroundNow) };
+    return { entries, dueNow: entries.filter((e) => e.dueAroundNow), titleVendors };
   }
 
   async getExpenseTitleSummary(
