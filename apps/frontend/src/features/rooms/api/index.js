@@ -47,6 +47,10 @@ export const roomService = {
     delete: async (id) => {
         const response = await api.delete(`/rooms/${id}`);
         return response.data;
+    },
+    reorder: async ({ hostelId, floorId, order }) => {
+        const response = await api.patch('/rooms/reorder', { hostelId, floorId, order });
+        return response.data.success ? response.data.data : response.data;
     }
 };
 

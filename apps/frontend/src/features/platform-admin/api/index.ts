@@ -151,8 +151,8 @@ export const platformAdminService = {
     const response = await api.patch('/platform-admin/settings', data);
     return unwrap(response).settings;
   },
-  sendBroadcast: async (message: string) => {
-    const response = await api.post('/platform-admin/broadcast', { message });
+  sendBroadcast: async (message: string, hostelId?: string) => {
+    const response = await api.post('/platform-admin/broadcast', { message, hostel_id: hostelId });
     return unwrap(response) as { sent: number; total: number };
   },
 };

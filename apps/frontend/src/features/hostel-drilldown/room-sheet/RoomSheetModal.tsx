@@ -9,20 +9,23 @@ interface RoomSheetModalProps {
   open: boolean;
   room: RoomWithOccupants | null;
   floor: Floor | undefined;
+  /** All floors on this hostel, for the "move to floor" reassignment select. */
+  floors: Floor[];
   onClose: () => void;
   onAssign: () => void;
-  onSaveDetails: (data: { room_no: string; base_rent: number }) => Promise<void>;
+  onSaveDetails: (data: { room_no: string; base_rent: number; floor_id?: string }) => Promise<void>;
   isSaving?: boolean;
 }
 
 const labelStyle = 'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground';
 
-/** Tap an occupied/reserved room → rent/dues tiles + resident list + assign vacant beds, per Stayo App.dc.html. Real occupant data via `useHostelRooms`. "Edit room details" is a real `PATCH /rooms/:id` (number + rent) — bed count isn't editable here since it can't safely go below occupied beds. */
-export function RoomSheetModal({ open, room, floor, onClose, onAssign, onSaveDetails, isSaving }: RoomSheetModalProps) {
+/** Tap an occupied/reserved room → rent/dues tiles + resident list + assign vacant beds, per Stayo App.dc.html. Real occupant data via `useHostelRooms`. "Edit room details" is a real `PATCH /rooms/:id` (number + rent + floor) — bed count isn't editable here since it can't safely go below occupied beds. Moving a room to a different floor happens here rather than by drag, since floors collapse independently (Rooms tab accordion) and can't both be open as drag targets at once. */
+export function RoomSheetModal({ open, room, floor, floors, onClose, onAssign, onSaveDetails, isSaving }: RoomSheetModalProps) {
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
   const [number, setNumber] = useState('');
   const [rent, setRent] = useState('');
+  const [floorId, setFloorId] = useState('');
 
   useEffect(() => {
     if (open) setEditing(false);
@@ -32,6 +35,7 @@ export function RoomSheetModal({ open, room, floor, onClose, onAssign, onSaveDet
     if (room) {
       setNumber(room.number);
       setRent(String(room.rent));
+      setFloorId(room.floorId);
     }
   }, [room]);
 
@@ -43,7 +47,11 @@ export function RoomSheetModal({ open, room, floor, onClose, onAssign, onSaveDet
       return;
     }
     try {
-      await onSaveDetails({ room_no: number.trim(), base_rent: Number(rent) || 0 });
+      await onSaveDetails({
+        room_no: number.trim(),
+        base_rent: Number(rent) || 0,
+        ...(floorId && floorId !== room.floorId ? { floor_id: floorId } : {}),
+      });
       stayoToast.success('Room details updated');
       setEditing(false);
     } catch {
@@ -120,6 +128,22 @@ export function RoomSheetModal({ open, room, floor, onClose, onAssign, onSaveDet
               />
             </div>
           </label>
+          {floors.length > 1 && (
+            <label className="block">
+              <span className={labelStyle}>Floor</span>
+              <select
+                value={floorId}
+                onChange={(e) => setFloorId(e.target.value)}
+                className="w-full rounded-[11px] border border-border bg-card px-3.5 py-3 text-sm font-semibold text-foreground focus:outline-none"
+              >
+                {floors.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <p className="text-[11px] text-muted-foreground">Bed count can't be changed here — it can't safely go below the {occupied} bed{occupied === 1 ? '' : 's'} currently occupied.</p>
         </div>
       ) : (

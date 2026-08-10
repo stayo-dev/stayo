@@ -671,7 +671,9 @@ export class PropertyService {
             },
           },
         },
-        orderBy: { room_no: "asc" },
+        // NULLs last, then room_no — see 20260810120000_room_sort_order. A room
+        // the owner has never dragged keeps the position it always had.
+        orderBy: [{ sort_order: { sort: "asc", nulls: "last" } }, { room_no: "asc" }],
       }),
       roomCapacityService.getHostelCapacityMap(hostelId, { ownerId }),
     ]);
@@ -717,6 +719,7 @@ export class PropertyService {
         available: capacity?.available ?? Math.max(Number(room.capacity || 0) - tenants.length, 0),
         status: capacity?.state ?? (tenants.length === 0 ? "vacant" : tenants.length >= Number(room.capacity || 0) ? "full" : "partial"),
         floor_id: room.floor_id ?? null,
+        sort_order: room.sort_order ?? null,
         tenants: displayTenants,
         pending_dues: tenants.reduce((s: number, t: any) => s + t.pending_dues, 0),
       };

@@ -1134,6 +1134,7 @@ model rooms {
   capacity           Int
   room_type          String?
   is_active          Boolean              @default(true)
+  sort_order         Int?
   created_at         DateTime             @default(now()) @db.Timestamptz(6)
   updated_at         DateTime?            @db.Timestamptz(6)
   base_rent          Int?
@@ -1152,6 +1153,7 @@ model rooms {
   @@unique([hostel_id, room_no])
   @@index([hostel_id])
   @@index([floor_id])
+  @@index([floor_id, sort_order])
 }
 
 model floors {

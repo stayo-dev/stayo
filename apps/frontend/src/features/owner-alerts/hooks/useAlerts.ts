@@ -1,39 +1,80 @@
-import { useState } from 'react';
-import {
-  mockLeads,
-  mockAdminMessages,
-  mockRenewals,
-  mockRequests,
-  type AlertCategory,
-  type MockLead,
-  type MockAdminMessage,
-  type MockRenewal,
-  type MockRequest,
-} from '@shared/mocks/alerts';
+import { useState, useEffect } from 'react';
+import apiClient from '@lib/api-client';
 
-/** Category filter + local read/unread state for the Alerts tab — session-local only, resets on reload (matches the rest of this mock journey). */
+export type DynamicAlertCategory = 'admin' | 'renewals' | 'requests';
+
+export interface DynamicAdminMessage {
+  id: string;
+  title: string;
+  body: string;
+  time: string;
+  read: boolean;
+}
+
+export interface DynamicRenewal {
+  id: string;
+  name: string;
+  detail: string;
+  days: number;
+  read: boolean;
+}
+
+export interface DynamicRequest {
+  id: string;
+  name: string;
+  detail: string;
+  type: string;
+  read: boolean;
+}
+
 export function useAlerts() {
-  const [category, setCategory] = useState<AlertCategory>('leads');
-  const [leads, setLeads] = useState<MockLead[]>(mockLeads);
-  const [adminMessages, setAdminMessages] = useState<MockAdminMessage[]>(mockAdminMessages);
-  const [renewals, setRenewals] = useState<MockRenewal[]>(mockRenewals);
-  const [requests, setRequests] = useState<MockRequest[]>(mockRequests);
+  const [category, setCategory] = useState<DynamicAlertCategory>('admin');
+  const [adminMessages, setAdminMessages] = useState<DynamicAdminMessage[]>([]);
+  const [renewals, setRenewals] = useState<DynamicRenewal[]>([]);
+  const [requests, setRequests] = useState<DynamicRequest[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const markRead = (cat: AlertCategory, id: string) => {
-    if (cat === 'leads') setLeads((l) => l.map((x) => (x.id === id ? { ...x, read: true } : x)));
+  useEffect(() => {
+    async function fetchAlerts() {
+      try {
+        const response = await apiClient.get('/owner/alerts');
+        setAdminMessages(response.adminMessages || []);
+        setRenewals(response.renewals || []);
+        setRequests(response.requests || []);
+      } catch (err) {
+        console.error('Failed to fetch alerts', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchAlerts();
+  }, []);
+
+  const markRead = async (cat: DynamicAlertCategory, id: string) => {
+    // Optimistic UI update
     if (cat === 'admin') setAdminMessages((l) => l.map((x) => (x.id === id ? { ...x, read: true } : x)));
     if (cat === 'renewals') setRenewals((l) => l.map((x) => (x.id === id ? { ...x, read: true } : x)));
     if (cat === 'requests') setRequests((l) => l.map((x) => (x.id === id ? { ...x, read: true } : x)));
+
+    try {
+      await apiClient.post('/owner/alerts', { category: cat, id });
+    } catch (err) {
+      console.error('Failed to mark read', err);
+    }
   };
 
   return {
     category,
     setCategory,
-    leads,
     adminMessages,
     renewals,
     requests,
-    counts: { leads: leads.length, admin: adminMessages.length, renewals: renewals.length, requests: requests.length },
+    counts: { 
+      admin: adminMessages.length, 
+      renewals: renewals.length, 
+      requests: requests.length 
+    },
     markRead,
+    loading
   };
 }
