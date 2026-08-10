@@ -688,6 +688,7 @@ export class PropertyService {
     rooms.forEach((room: any) => {
 	      const tenants = room.room_allocations.map((a: any) => {
 	        const tenant = a.tenant;
+            if (!tenant) return null;
 	        const profile = tenant.profiles;
 	        const invitation = tenant.tenant_invitations?.[0];
 	        const summary = financialService.getTenantPaymentSummary(tenant.id, tenant.rent_obligations || []);
@@ -701,7 +702,7 @@ export class PropertyService {
 	          pending_dues: Number(summary.pending_amount || 0),
           status: tenant.status,
         };
-      });
+      }).filter(Boolean);
 
       const invitedTenants = invitedOccupantsFromReservations(room.tenant_invitation_reservations);
       const displayTenants = [...tenants, ...invitedTenants];
