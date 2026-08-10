@@ -79,6 +79,7 @@ export function FloorGroup({ floor, rooms, expanded, onToggle, onOpenRoom, onAss
             // two rows would otherwise fire two writes.
             onPointerUp={() => {
               const ids = items.map((r) => r.id);
+              console.log('DEBUG onPointerUp fired', ids, rooms.map((r) => r.id));
               if (ids.join() !== rooms.map((r) => r.id).join()) onReorder(ids);
             }}
             className="list-none divide-y divide-border border-t border-border"

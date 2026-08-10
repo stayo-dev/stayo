@@ -295,7 +295,9 @@ export class TenantService {
     ]);
 
     const mappedTenants = await Promise.all(tenants.map(async (s: any) => {
+      if (!s) return null;
       const tenant = this.withLegacyTenantRelations(s);
+      if (!tenant) return null;
       const summary = financialService.getTenantPaymentSummary(tenant.id, tenant.obligations ?? []);
       const firstAllocation = tenant.room_allocations?.[0];
       const firstObligation = (tenant.obligations ?? [])[0];
@@ -371,7 +373,7 @@ export class TenantService {
       };
     }));
 
-    return { tenants: mappedTenants, total, limit, offset };
+    return { tenants: mappedTenants.filter(Boolean), total, limit, offset };
   }
 
   async updateTenantSelfProfile(profileId: string, data: any, updatedBy: string) {

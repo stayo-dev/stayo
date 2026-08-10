@@ -771,6 +771,7 @@ export class PropertyService {
 
     const tenants = room.room_allocations.map((a: any) => {
 	      const tenant = a.tenant;
+        if (!tenant) return null;
 	      const profile = tenant.profiles;
 	      const invitation = tenant.tenant_invitations?.[0];
 	      const obligations = tenant.rent_obligations || [];

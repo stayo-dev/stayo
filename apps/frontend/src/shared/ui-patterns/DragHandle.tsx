@@ -9,15 +9,16 @@ import { cn } from '@shared/lib/cn';
  *
  * Two modes, deliberately:
  *
- * - **Decorative (default).** A non-interactive `aria-hidden` span. This is
- *   what every call site was using, and for three of them (floor groups, room
- *   layout, food-poll options) the reorder behaviour genuinely does not exist
- *   yet — rendering an interactive control there would promise something that
- *   doesn't work, which is the bug this component was at the centre of.
+ * - **Decorative (default).** A non-interactive `aria-hidden` span. Still
+ *   used at the one remaining call site where reorder genuinely doesn't
+ *   exist (food-poll options) — rendering an interactive control there would
+ *   promise something that doesn't work, which is the bug this component was
+ *   at the centre of.
  * - **Interactive (`onDragStart` supplied).** A real focusable button with an
- *   accessible label, used by the Home Property list. Reordering by keyboard
- *   is not done through this handle — it's in the card's ⋮ menu (Move up /
- *   Move down), because dragging is inherently pointer-only.
+ *   accessible label. Used by the Home Property list (ADR-042) and, since
+ *   ADR-062, the Rooms tab's room rows (drag-to-swap within a floor). By
+ *   keyboard, the Property list falls back to its card's ⋮ menu (Move up /
+ *   Move down); the Rooms tab has no such fallback yet — see ADR-062.
  */
 export function DragHandle({
   className,

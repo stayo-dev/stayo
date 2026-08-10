@@ -82,6 +82,7 @@ export class ApiResponse {
           code,
           message,
           ...(metadata ? { metadata } : {}),
+          ...(error instanceof Error ? { stack: error.stack, originalMessage: error.message } : {}),
         },
       },
       { status: statusCode }
