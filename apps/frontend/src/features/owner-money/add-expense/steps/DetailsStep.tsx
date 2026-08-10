@@ -1,9 +1,16 @@
-import { CalendarClock, History, Store, Repeat2 } from 'lucide-react';
+import { useState } from 'react';
+import { Store, ChevronRight, ChevronDown, ChevronUp, Plus } from 'lucide-react';
 import { EXPENSE_CATEGORIES } from '@shared/mocks/expenses';
 import { categoryIcon } from '../../components/expenses/categoryIcons';
 import { cn } from '@shared/lib/cn';
 import type { AddExpenseData } from '../../types';
-import { useExpenseMemory, applyMemory, type MemoryEntry } from '../useExpenseMemory';
+import {
+  useExpenseMemory,
+  applySetup,
+  applyTitleVendorSetup,
+  type MemoryEntry,
+  type TitleVendorPair,
+} from '../useExpenseMemory';
 
 interface DetailsStepProps {
   data: AddExpenseData;
@@ -12,8 +19,144 @@ interface DetailsStepProps {
   onReused?: () => void;
 }
 
-function MemoryRow({ entry, onUse }: { entry: MemoryEntry; onUse: () => void }) {
-  const Icon = entry.kind === 'VENDOR' ? Store : History;
+/* ── Confidence label ────────────────────────────────────────────── */
+
+function confidenceLabel(occurrences: number): string | null {
+  if (occurrences >= 3) return 'Usually purchased from';
+  if (occurrences >= 2) return 'Previously purchased from';
+  return null;
+}
+
+/* ── Vendor card (nested under a title) ──────────────────────────── */
+
+function VendorCard({
+  pair,
+  onSelect,
+}: {
+  pair: TitleVendorPair;
+  onSelect: () => void;
+}) {
+  const avg = `₹${Math.round(pair.averageAmount).toLocaleString('en-IN')}`;
+  const last = new Date(pair.lastDate);
+  const daysAgo = Math.max(0, Math.round((Date.now() - last.getTime()) / 86_400_000));
+  const recency =
+    daysAgo === 0 ? 'Today' : daysAgo === 1 ? 'Yesterday' : `${daysAgo}d ago`;
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="flex w-full items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-colors active:bg-muted"
+    >
+      <span className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-secondary">
+        <Store className="h-3.5 w-3.5 text-primary" strokeWidth={2} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13px] font-bold text-foreground">
+          {pair.vendorName}
+        </span>
+        <span className="block text-[10.5px] text-muted-foreground">
+          {avg} typical · {recency}
+        </span>
+      </span>
+      <ChevronRight className="h-3.5 w-3.5 flex-none text-muted-foreground" />
+    </button>
+  );
+}
+
+/* ── Consolidated title profile ──────────────────────────────────── */
+
+function TitleProfile({
+  entry,
+  vendors,
+  onSelectVendor,
+  onUseSetup,
+  onSelectNoVendor,
+}: {
+  entry: MemoryEntry;
+  vendors: TitleVendorPair[];
+  onSelectVendor: (pair: TitleVendorPair) => void;
+  onUseSetup: () => void;
+  onSelectNoVendor: () => void;
+}) {
+  const times = `${entry.occurrences} time${entry.occurrences === 1 ? '' : 's'}`;
+  const last = new Date(entry.lastDate);
+  const daysAgo = Math.max(0, Math.round((Date.now() - last.getTime()) / 86_400_000));
+  const recency =
+    daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : `${daysAgo} days ago`;
+  const confidence = vendors.length > 0 ? confidenceLabel(Math.max(...vendors.map((v) => v.occurrences))) : null;
+
+  return (
+    <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-3">
+      {/* Title header — tappable as "Use this setup" when there's a single
+          remembered vendor. Shows the item identity and aggregate stats. */}
+      <button
+        type="button"
+        onClick={vendors.length <= 1 ? onUseSetup : undefined}
+        className={cn(
+          'flex items-center gap-3 text-left',
+          vendors.length <= 1 && 'active:opacity-70',
+        )}
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block font-display text-[14px] font-bold text-foreground">
+            {entry.key}
+          </span>
+          <span className="mt-0.5 block text-[11px] text-muted-foreground">
+            {entry.category && <>{entry.category} · </>}
+            Bought {times} · last {recency}
+          </span>
+        </span>
+        {vendors.length <= 1 && (
+          <span className="flex flex-none items-center gap-1 rounded-lg bg-primary/10 px-2.5 py-1.5 text-[10.5px] font-bold text-primary">
+            Use this setup
+          </span>
+        )}
+      </button>
+
+      {/* Vendor cards — only when there are multiple known vendors */}
+      {vendors.length > 1 && (
+        <div className="flex flex-col gap-1.5 pt-1">
+          {confidence && (
+            <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+              {confidence}
+            </span>
+          )}
+          {vendors.map((v) => (
+            <VendorCard
+              key={v.vendorKey}
+              pair={v}
+              onSelect={() => onSelectVendor(v)}
+            />
+          ))}
+          <button
+            type="button"
+            onClick={onSelectNoVendor}
+            className="flex items-center gap-2 px-1 py-1.5 text-[11.5px] font-semibold text-primary"
+          >
+            <Plus className="h-3 w-3" strokeWidth={2.5} />
+            Different vendor
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Quick-pattern shortcut (empty state) ────────────────────────── */
+
+function PatternShortcut({
+  entry,
+  onUse,
+}: {
+  entry: MemoryEntry;
+  onUse: () => void;
+}) {
+  const last = new Date(entry.lastDate);
+  const daysAgo = Math.max(0, Math.round((Date.now() - last.getTime()) / 86_400_000));
+  const recency =
+    daysAgo === 0 ? 'Today' : daysAgo === 1 ? 'Yesterday' : `${daysAgo}d ago`;
+
   return (
     <button
       type="button"
@@ -23,63 +166,162 @@ function MemoryRow({ entry, onUse }: { entry: MemoryEntry; onUse: () => void }) 
         entry.dueAroundNow ? 'border-primary/40 bg-secondary/40' : 'border-border bg-card',
       )}
     >
-      <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[11px] bg-secondary">
-        <Icon className="h-4 w-4 text-primary" strokeWidth={2} />
-      </span>
       <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5">
-          <span className="truncate font-display text-[13.5px] font-bold text-foreground">{entry.key}</span>
-          {entry.dueAroundNow && (
-            <span className="flex flex-none items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9.5px] font-bold text-primary">
-              <CalendarClock className="h-2.5 w-2.5" strokeWidth={2.5} />
-              Usually now
-            </span>
-          )}
+        <span className="block font-display text-[13.5px] font-bold text-foreground">
+          {entry.key}
         </span>
-        <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{entry.summaryLine}</span>
-        {(entry.vendorName || entry.category) && (
-          <span className="mt-0.5 block truncate text-[10.5px] text-muted-foreground">
-            {[entry.vendorName, entry.category, entry.paymentMethod].filter(Boolean).join(' · ')}
-          </span>
-        )}
+        <span className="mt-0.5 block text-[11px] text-muted-foreground">
+          {[entry.vendorName, entry.paymentMethod].filter(Boolean).join(' · ')}
+          {entry.vendorName || entry.paymentMethod ? ' · ' : ''}
+          Last {recency.toLowerCase()}
+        </span>
       </span>
-      <span className="flex flex-none items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 text-[11px] font-bold text-primary-foreground">
-        <Repeat2 className="h-3 w-3" strokeWidth={2.5} />
-        Reuse
-      </span>
+      <ChevronRight className="h-4 w-4 flex-none text-muted-foreground" />
     </button>
   );
 }
 
+/* ── Category selector (progressive disclosure) ──────────────────── */
+
+function CategorySelector({
+  selected,
+  onChange,
+}: {
+  selected: string;
+  onChange: (name: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(!selected);
+
+  if (selected && !expanded) {
+    const cat = EXPENSE_CATEGORIES.find((c) => c.name === selected);
+    const Icon = cat ? categoryIcon(cat.id) : categoryIcon('other');
+    return (
+      <div className="flex items-center gap-2">
+        <Icon className="h-4 w-4 text-primary" strokeWidth={1.75} />
+        <span className="text-[12.5px] font-bold text-foreground">{selected}</span>
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="ml-1 text-[11px] font-semibold text-primary"
+        >
+          Change
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+          Category
+        </span>
+        {selected && (
+          <button
+            type="button"
+            onClick={() => setExpanded(false)}
+            className="text-muted-foreground"
+          >
+            <ChevronUp className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-3 gap-2.5">
+        {EXPENSE_CATEGORIES.map((c) => {
+          const active = selected === c.name;
+          const Icon = categoryIcon(c.id);
+          return (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => {
+                onChange(c.name);
+                setExpanded(false);
+              }}
+              className={cn(
+                'flex flex-col items-center gap-2 rounded-2xl border-[1.5px] p-3 text-center transition-colors',
+                active ? 'border-primary bg-secondary/50' : 'border-border bg-card',
+              )}
+            >
+              <Icon
+                className={cn('h-5 w-5', active ? 'text-primary' : 'text-muted-foreground')}
+                strokeWidth={1.75}
+              />
+              <span
+                className={cn(
+                  'text-[11px] font-semibold leading-tight',
+                  active ? 'text-foreground' : 'text-foreground/80',
+                )}
+              >
+                {c.name}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ── Step 1: "What did you buy?" ─────────────────────────────────── */
+
 /**
- * Step 1/3 of Add Expense — now backed by expense memory (ADR-047).
+ * Step 1/3 of Add Expense — redesigned around the purchase, not the
+ * database record.
  *
- * The wizard itself is unchanged; what changed is that this step no longer
- * starts from an empty form. The owner's most-recorded expenses appear before
- * they type anything, narrow as they type (matching both what was bought and
- * who supplied it), and one tap reuses everything they supplied last time —
- * leaving only the amount to check.
+ * Empty state: shows "Recent & Frequent" pattern shortcuts — the owner's
+ * most-repeated expenses as one-tap paths.
  *
- * The previous copy already promised "Suggestions come from your past
- * entries" and nothing delivered it: `getFrequentExpenses`/`getExpenseTitleSummary`
- * existed end-to-end on the backend *and* had frontend wrappers, with no
- * caller anywhere in the app.
+ * Typing state: shows consolidated title profiles with nested vendor cards
+ * built from the deterministic `titleVendors` API response. No heuristic
+ * matching — every vendor association is an observed (title, vendor) fact.
+ *
+ * "Use this setup" copies only title, vendor, category, and remembered
+ * payment method — never amount, date, notes, receipt, or status.
  */
 export function DetailsStep({ data, setD, onReused }: DetailsStepProps) {
-  const { entries, isLoading } = useExpenseMemory(data.title);
+  const { entries, titleVendors, isLoading } = useExpenseMemory(data.title);
 
-  const use = (entry: MemoryEntry) => {
-    setD(applyMemory(entry));
+  // Title entries only (patterns the owner buys)
+  const titleEntries = entries.filter((e) => e.kind === 'TITLE');
+
+  // Build the vendor lookup: for each normalized title, collect its vendors
+  const vendorsByTitle = new Map<string, TitleVendorPair[]>();
+  for (const pair of titleVendors) {
+    const list = vendorsByTitle.get(pair.titleKey) ?? [];
+    list.push(pair);
+    vendorsByTitle.set(pair.titleKey, list);
+  }
+
+  const isSearching = Boolean(data.title.trim());
+
+  // "Use this setup" from a quick-pattern or single-vendor title
+  const handleUseSetup = (entry: MemoryEntry) => {
+    setD(applySetup(entry));
     onReused?.();
   };
 
-  const heading = data.title.trim() ? 'From your history' : 'You record these often';
+  // "Select vendor" from a vendor card nested under a title
+  const handleSelectVendor = (pair: TitleVendorPair) => {
+    setD(applyTitleVendorSetup(pair));
+    onReused?.();
+  };
+
+  // "Different vendor" — fill the title and category but leave vendor empty
+  const handleNoVendor = (entry: MemoryEntry) => {
+    setD({
+      title: entry.key,
+      category: entry.category ?? '',
+      vendor: '',
+    });
+  };
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Search input */}
       <label className="block">
         <span className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-          What&apos;s this expense?
+          What did you buy?
         </span>
         <input
           value={data.title}
@@ -89,58 +331,81 @@ export function DetailsStep({ data, setD, onReused }: DetailsStepProps) {
         />
       </label>
 
-      {(entries.length > 0 || isLoading) && (
+      {/* ── Empty state: pattern shortcuts ───────────────────────── */}
+      {!isSearching && (entries.length > 0 || isLoading) && (
         <div className="flex flex-col gap-2">
-          <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{heading}</span>
+          <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+            Recent & Frequent
+          </span>
           {isLoading && entries.length === 0 ? (
             <div className="flex flex-col gap-2">
-              {[0, 1].map((i) => (
-                <div key={i} className="h-[70px] animate-pulse rounded-2xl bg-muted" />
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-[60px] animate-pulse rounded-2xl bg-muted" />
               ))}
             </div>
           ) : (
-            entries.map((entry) => (
-              <MemoryRow key={`${entry.kind}-${entry.key}`} entry={entry} onUse={() => use(entry)} />
+            titleEntries.slice(0, 4).map((entry) => (
+              <PatternShortcut
+                key={entry.key}
+                entry={entry}
+                onUse={() => handleUseSetup(entry)}
+              />
             ))
           )}
         </div>
       )}
 
-      <div>
-        <span className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Category</span>
-        <div className="grid grid-cols-3 gap-2.5">
-          {EXPENSE_CATEGORIES.map((c) => {
-            const active = data.category === c.name;
-            const Icon = categoryIcon(c.id);
-            return (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setD({ category: c.name })}
-                className={cn(
-                  'flex flex-col items-center gap-2 rounded-2xl border-[1.5px] p-3 text-center transition-colors',
-                  active ? 'border-primary bg-secondary/50' : 'border-border bg-card',
-                )}
-              >
-                {/* One stroke weight, colour carried by selection rather than
-                    by nine competing hues — calm and consistent. */}
-                <Icon
-                  className={cn('h-5 w-5', active ? 'text-primary' : 'text-muted-foreground')}
-                  strokeWidth={1.75}
+      {/* ── Typing state: consolidated title profiles ────────────── */}
+      {isSearching && (titleEntries.length > 0 || isLoading) && (
+        <div className="flex flex-col gap-2.5">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+            From your history
+          </span>
+          {isLoading && titleEntries.length === 0 ? (
+            <div className="flex flex-col gap-2">
+              {[0, 1].map((i) => (
+                <div key={i} className="h-[80px] animate-pulse rounded-2xl bg-muted" />
+              ))}
+            </div>
+          ) : (
+            titleEntries.map((entry) => {
+              const key = entry.key.trim().toLowerCase();
+              const vendors = vendorsByTitle.get(key) ?? [];
+              return (
+                <TitleProfile
+                  key={key}
+                  entry={entry}
+                  vendors={vendors}
+                  onSelectVendor={handleSelectVendor}
+                  onUseSetup={() => handleUseSetup(entry)}
+                  onSelectNoVendor={() => handleNoVendor(entry)}
                 />
-                <span
-                  className={cn(
-                    'text-[11px] font-semibold leading-tight',
-                    active ? 'text-foreground' : 'text-foreground/80',
-                  )}
-                >
-                  {c.name}
-                </span>
-              </button>
-            );
-          })}
+              );
+            })
+          )}
         </div>
-      </div>
+      )}
+
+      {/* ── Vendor input (manual, always available) ──────────────── */}
+      {data.title.trim() && (
+        <label className="block">
+          <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+            Vendor <span className="font-medium normal-case text-muted-foreground/70">(optional)</span>
+          </span>
+          <input
+            value={data.vendor}
+            onChange={(e) => setD({ vendor: e.target.value })}
+            placeholder="e.g. Sri Rice Shop, Local Market"
+            className="w-full rounded-xl border border-border bg-card px-3.5 py-3 text-[13px] font-medium text-foreground focus:border-primary focus:outline-none"
+          />
+        </label>
+      )}
+
+      {/* ── Category selector ───────────────────────────────────── */}
+      <CategorySelector
+        selected={data.category}
+        onChange={(name) => setD({ category: name })}
+      />
     </div>
   );
 }

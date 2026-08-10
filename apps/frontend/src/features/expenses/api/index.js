@@ -17,7 +17,7 @@ export const expenseService = {
             signal,
         });
         const data = response.data.success !== undefined ? (response.data.data !== undefined ? response.data.data : response.data) : response.data;
-        return { entries: data?.entries ?? [], dueNow: data?.dueNow ?? [] };
+        return { entries: data?.entries ?? [], dueNow: data?.dueNow ?? [], titleVendors: data?.titleVendors ?? [] };
     },
     getTitleSummary: async (title, from, to) => {
         const response = await api.get('/expenses', {

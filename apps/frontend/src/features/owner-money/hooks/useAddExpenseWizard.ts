@@ -4,7 +4,7 @@ import { expenseService } from '@features/expenses/api';
 import { queryKeys } from '@lib/queryKeys';
 import { EMPTY_ADD_EXPENSE_DATA, type AddExpenseData } from '../types';
 
-const STEP_LABELS = ['Details', 'Financial', 'Review'] as const;
+const STEP_LABELS = ['What', 'Amount', 'Confirm'] as const;
 
 function getErrorMessage(error: unknown, fallback: string) {
   const data = (error as { response?: { data?: { error?: { message?: string } } } })?.response?.data;
@@ -13,10 +13,15 @@ function getErrorMessage(error: unknown, fallback: string) {
 
 /**
  * Step index + form data + navigation for the 3-step Add Expense wizard.
- * Submits to the real `POST /expenses` (create) or, when `editingId` is set,
- * `PUT /expenses/:id` (edit an existing expense) — mirrors `useInviteWizard`'s
- * shape. Also used pre-filled by "Duplicate" in `ExpenseDetailModal`, so
- * `reset` accepts optional seed data.
+ *
+ * Redesigned step gates:
+ *   Step 0 ("What"):    needs title + category
+ *   Step 1 ("Amount"):  needs amount > 0
+ *   Step 2 ("Confirm"): needs all of the above (final isValid)
+ *
+ * `addAnother` resets to step 0 carrying forward category + paymentMethod
+ * as editable context (not a silent assumption) so the owner can change
+ * them if the next expense is different.
  */
 export function useAddExpenseWizard(editingId?: string) {
   const queryClient = useQueryClient();
@@ -25,7 +30,26 @@ export function useAddExpenseWizard(editingId?: string) {
 
   const setD = (patch: Partial<AddExpenseData>) => setData((d) => ({ ...d, ...patch }));
 
-  const next = () => setStep((s) => Math.min(STEP_LABELS.length - 1, s + 1));
+  /**
+   * Per-step minimum requirements. The "Continue" button disables until
+   * these are met, so an owner cannot advance with an empty title or
+   * zero amount.
+   */
+  const canAdvance = (s: number): boolean => {
+    switch (s) {
+      case 0:
+        return Boolean(data.title.trim() && data.category);
+      case 1:
+        return Number(data.amount) > 0;
+      default:
+        return true;
+    }
+  };
+
+  const next = () => {
+    if (!canAdvance(step)) return;
+    setStep((s) => Math.min(STEP_LABELS.length - 1, s + 1));
+  };
   const back = () => setStep((s) => Math.max(0, s - 1));
 
   const saveMutation = useMutation({
@@ -69,19 +93,45 @@ export function useAddExpenseWizard(editingId?: string) {
     saveMutation.reset();
   };
 
+  /**
+   * "Save & add another" — resets to step 0 with category + paymentMethod
+   * carried forward as editable context. Everything else (title, vendor,
+   * amount, date, notes, receipt, status) resets to defaults so the next
+   * expense starts fresh but in the same context.
+   */
+  const addAnother = () => {
+    const carry = {
+      ...EMPTY_ADD_EXPENSE_DATA,
+      category: data.category,
+      paymentMethod: data.paymentMethod,
+      hostelId: data.hostelId,
+    };
+    setStep(0);
+    setData(carry);
+    saveMutation.reset();
+  };
+
+  /** Summary of the last-saved expense for the success toast. */
+  const lastSavedSummary = saveMutation.isSuccess
+    ? `₹${data.amount} ${data.title}${data.vendor ? ` · ${data.vendor}` : ''}`
+    : null;
+
   return {
     step,
     stepLabels: STEP_LABELS,
     data,
     setD,
     isValid,
+    canAdvance,
     isEditing: Boolean(editingId),
     submitted: saveMutation.isSuccess,
     isSubmitting: saveMutation.isPending,
     submitError: saveMutation.isError ? getErrorMessage(saveMutation.error, 'Could not save the expense. Please try again.') : null,
+    lastSavedSummary,
     next,
     back,
     submit,
     reset,
+    addAnother,
   };
 }

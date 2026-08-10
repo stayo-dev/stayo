@@ -38,6 +38,29 @@ export interface MemoryEntry {
   score: number;
 }
 
+/**
+ * Deterministic (title, vendor) pair with per-pair statistics.
+ *
+ * This is the key data structure that the current title/vendor queries alone
+ * could NOT provide: each row is an observed fact — "this owner bought [title]
+ * from [vendor] N times" — with per-pair amount, recency, and payment method.
+ *
+ * The frontend uses these to nest vendor cards under consolidated title
+ * profiles without any heuristic matching.
+ */
+export interface TitleVendorPair {
+  titleKey: string;
+  vendorKey: string;
+  title: string;
+  vendorName: string;
+  occurrences: number;
+  averageAmount: number;
+  lastAmount: number;
+  lastDate: string;
+  paymentMethod: string | null;
+  category: string | null;
+}
+
 const DEBOUNCE_MS = 200;
 
 export function useExpenseMemory(rawQuery: string) {
@@ -60,26 +83,39 @@ export function useExpenseMemory(rawQuery: string) {
   return {
     entries: (query.data?.entries ?? []) as MemoryEntry[],
     dueNow: (query.data?.dueNow ?? []) as MemoryEntry[],
+    titleVendors: (query.data?.titleVendors ?? []) as TitleVendorPair[],
     isLoading: query.isLoading,
   };
 }
 
 /**
- * Turn a remembered expense into form values.
+ * "Use this setup" — copy only the purchasing pattern, never the transaction.
  *
- * Uses the **last** amount rather than the average: the owner is about to
- * correct it anyway, and the last real figure is a truer starting point than a
- * computed number that never actually occurred. Fields the owner has never
- * filled stay empty rather than being invented.
+ * Copies: title, vendor, category, remembered payment method.
+ * Never copies: amount, date, receipt, notes, transaction status.
+ *
+ * This is the distinction between "I'm using the same purchasing pattern" and
+ * "I'm duplicating that old transaction." The owner always enters today's
+ * amount fresh.
  */
-export function applyMemory(entry: MemoryEntry): Partial<AddExpenseData> {
+export function applySetup(entry: MemoryEntry): Partial<AddExpenseData> {
   return {
     title: entry.kind === 'TITLE' ? entry.key : (entry.vendorName ?? entry.key),
-    amount: entry.lastAmount ? String(entry.lastAmount) : '',
     category: entry.category ?? '',
     vendor: entry.vendorName ?? (entry.kind === 'VENDOR' ? entry.key : ''),
     paymentMethod: entry.paymentMethod ?? '',
-    notes: entry.notes ?? '',
-    recurring: entry.isRecurring,
+  };
+}
+
+/**
+ * Apply a specific title-vendor pair as the setup.
+ * Uses the deterministic (title, vendor) relationship from the backend.
+ */
+export function applyTitleVendorSetup(pair: TitleVendorPair): Partial<AddExpenseData> {
+  return {
+    title: pair.title,
+    vendor: pair.vendorName,
+    category: pair.category ?? '',
+    paymentMethod: pair.paymentMethod ?? '',
   };
 }

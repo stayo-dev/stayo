@@ -1,126 +1,144 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, Image as ImageIcon } from 'lucide-react';
+import { Upload, ChevronDown, ChevronUp, X, AlertCircle } from 'lucide-react';
 import type { AddExpenseData } from '../../types';
+import { cn } from '@shared/lib/cn';
 
 interface ReviewStepProps {
   data: AddExpenseData;
   setD: (patch: Partial<AddExpenseData>) => void;
 }
 
-/** Step 3/3 of Add Expense — review card, collapsible Receipt + Advanced options, per Stayo App.dc.html. */
+const labelStyle = 'text-[11px] font-bold uppercase tracking-wide text-muted-foreground';
+
+/**
+ * Step 3/3 — "Confirm & attach"
+ *
+ * Compact summary of the expense being recorded, with progressive disclosure
+ * for receipt attachment and advanced options (notes, recurring).
+ *
+ * Status and vendor are already confirmed in earlier steps and don't repeat
+ * here as separate controls — they appear in the review summary card only.
+ */
 export function ReviewStep({ data, setD }: ReviewStepProps) {
-  const [receiptOpen, setReceiptOpen] = useState(false);
-  const [sizeError, setSizeError] = useState<string | null>(null);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(Boolean(data.notes || data.recurring));
+  const amount = Number(data.amount) || 0;
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2.5 rounded-2xl border border-border bg-card p-4">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-            {data.category || 'No category'} · {data.date}
+      {/* Review card — compact summary */}
+      <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4">
+        <div className="flex items-center justify-between">
+          <span className="font-display text-[15px] font-bold text-foreground">{data.title || '—'}</span>
+          <span className="font-display text-lg font-extrabold text-foreground">
+            ₹{amount.toLocaleString('en-IN')}
           </span>
-          <span className="font-display text-base font-bold text-foreground">{data.title || 'Untitled expense'}</span>
-          <span className="font-display text-xl font-extrabold tabular-nums text-primary">₹{data.amount || '0'}</span>
         </div>
-        <div className="grid grid-cols-2 gap-2 border-t border-border pt-2.5">
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[10px] text-muted-foreground">Status</span>
-            <span className="text-[12.5px] font-bold text-foreground">{data.status}</span>
-          </div>
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[10px] text-muted-foreground">Vendor</span>
-            <span className="text-[12.5px] font-bold text-foreground">{data.vendor || '—'}</span>
-          </div>
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[10px] text-muted-foreground">Payment method</span>
-            <span className="text-[12.5px] font-bold text-foreground">{data.paymentMethod || '—'}</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="overflow-hidden rounded-2xl border border-border bg-card">
-        <button type="button" onClick={() => setReceiptOpen((v) => !v)} className="flex w-full items-center justify-between px-4 py-3.5">
-          <span className="font-display text-[13.5px] font-bold text-foreground">Receipt</span>
-          <span className="flex items-center gap-1 text-[11.5px] text-muted-foreground">
-            {data.receiptFile ? data.receiptFile.name : 'None attached'}
-            {receiptOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-          </span>
-        </button>
-        {receiptOpen && (
-          <div className="border-t border-border p-4">
-            {/* Was a <button> with no handler and no file input — which is
-                why 0 of every expense had a receipt, despite the multipart
-                upload path existing end to end. */}
-            <label className="flex w-full cursor-pointer items-center gap-3 rounded-xl border-[1.5px] border-dashed border-border bg-muted/50 p-4 text-left">
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                className="sr-only"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  // Mirrors the server's own limit, so the owner finds out
-                  // here rather than after a failed upload.
-                  if (file.size > 4 * 1024 * 1024) {
-                    setSizeError('That image is over 4MB. Please pick a smaller one.');
-                    return;
-                  }
-                  setSizeError(null);
-                  setD({ receiptFile: file });
-                }}
-              />
-              <span className="flex h-8.5 w-8.5 flex-none items-center justify-center rounded-lg bg-secondary text-primary">
-                <ImageIcon className="h-4 w-4" strokeWidth={1.9} />
-              </span>
-              <span className="flex flex-col gap-0.5">
-                <span className="text-[12.5px] font-semibold text-foreground">
-                  {data.receiptFile ? 'Replace receipt image' : 'Attach receipt image'}
-                </span>
-                <span className="text-[10.5px] text-muted-foreground">Optional · JPG, PNG or WEBP under 4MB</span>
-              </span>
-            </label>
-
-            {data.receiptFile && (
-              <button
-                type="button"
-                onClick={() => setD({ receiptFile: null })}
-                className="mt-2 text-[11.5px] font-semibold text-destructive"
-              >
-                Remove receipt
-              </button>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] text-muted-foreground">
+          {data.vendor && <span>{data.vendor}</span>}
+          {data.category && <span>{data.category}</span>}
+          <span>{data.date}</span>
+          {data.paymentMethod && <span>{data.paymentMethod}</span>}
+          <span
+            className={cn(
+              'font-semibold',
+              data.status === 'Paid' && 'text-success',
+              data.status === 'Pending' && 'text-warning',
             )}
-
-            {sizeError && <p className="mt-2 text-[11.5px] font-semibold text-destructive">{sizeError}</p>}
-          </div>
+          >
+            {data.status}
+          </span>
+        </div>
+        {data.hostelId && (
+          <span className="text-[11px] text-muted-foreground">Property-attributed</span>
         )}
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-border bg-card">
-        <button type="button" onClick={() => setAdvancedOpen((v) => !v)} className="flex w-full items-center justify-between px-4 py-3.5">
-          <span className="font-display text-[13.5px] font-bold text-foreground">Advanced options</span>
-          <span className="flex items-center gap-1 text-[11.5px] text-muted-foreground">
-            Optional
-            {advancedOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-          </span>
+      {/* Receipt attachment — progressive disclosure */}
+      {data.receiptFile ? (
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-secondary/30 px-4 py-3">
+          <div className="h-10 w-10 flex-none overflow-hidden rounded-lg bg-muted">
+            <img
+              src={URL.createObjectURL(data.receiptFile)}
+              alt="Receipt preview"
+              className="h-full w-full object-cover"
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            <span className="block truncate text-[12.5px] font-semibold text-foreground">
+              {data.receiptFile.name}
+            </span>
+            <span className="block text-[10.5px] text-muted-foreground">
+              {(data.receiptFile.size / 1024).toFixed(0)} KB
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setD({ receiptFile: null })}
+            className="flex h-7 w-7 flex-none items-center justify-center rounded-full border border-border text-muted-foreground"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      ) : (
+        <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border px-4 py-3.5 text-[12.5px] font-semibold text-muted-foreground transition-colors active:bg-muted">
+          <Upload className="h-3.5 w-3.5" strokeWidth={2} />
+          Attach receipt · Optional
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0] ?? null;
+              setD({ receiptFile: file });
+            }}
+          />
+        </label>
+      )}
+
+      {/* Advanced options — notes, recurring */}
+      <div className="rounded-xl border border-border">
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen(!advancedOpen)}
+          className="flex w-full items-center justify-between px-4 py-3 text-[12px] font-bold text-muted-foreground"
+        >
+          Advanced options
+          {advancedOpen ? (
+            <ChevronUp className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronDown className="h-3.5 w-3.5" />
+          )}
         </button>
         {advancedOpen && (
-          <div className="flex flex-col gap-3.5 border-t border-border p-4">
+          <div className="flex flex-col gap-4 border-t border-border px-4 py-4">
             <label className="block">
-              <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Notes</span>
+              <span className={labelStyle}>Notes</span>
               <textarea
                 value={data.notes}
                 onChange={(e) => setD({ notes: e.target.value })}
-                placeholder="e.g. Monthly grocery stock purchase, no receipt available"
-                className="min-h-[64px] w-full resize-none rounded-xl border border-border bg-card px-3.5 py-3 text-[13px] text-foreground focus:outline-none"
+                placeholder="Add a note about this expense..."
+                rows={2}
+                className="mt-1.5 w-full rounded-xl border border-border bg-card px-3.5 py-3 text-[13px] text-foreground focus:border-primary focus:outline-none"
               />
             </label>
-            <button type="button" onClick={() => setD({ recurring: !data.recurring })} className="flex items-center justify-between">
-              <span className="text-[13px] font-semibold text-foreground">Recurring expense</span>
-              <span className={`relative h-6 w-10.5 flex-none rounded-full transition-colors ${data.recurring ? 'bg-primary' : 'bg-muted'}`}>
-                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${data.recurring ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
-              </span>
-            </button>
+            <label className="flex items-center justify-between">
+              <span className="text-[12.5px] font-semibold text-foreground">Recurring expense?</span>
+              <button
+                type="button"
+                onClick={() => setD({ recurring: !data.recurring })}
+                className={cn(
+                  'relative h-6 w-11 rounded-full transition-colors',
+                  data.recurring ? 'bg-primary' : 'bg-muted',
+                )}
+              >
+                <span
+                  className={cn(
+                    'absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform',
+                    data.recurring ? 'translate-x-5' : 'translate-x-0.5',
+                  )}
+                />
+              </button>
+            </label>
           </div>
         )}
       </div>
