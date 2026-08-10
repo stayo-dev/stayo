@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Settings, User, Mail, Megaphone, LogOut, X, ChevronRight } from 'lucide-react';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useAuth } from '@context/AuthContext';
@@ -16,13 +16,20 @@ export function AdminMorePage() {
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [message, setMessage] = useState('');
+  const [selectedHostel, setSelectedHostel] = useState<string>('ALL');
+
+  const { data: hostels } = useQuery({
+    queryKey: ['admin', 'hostels-list'],
+    queryFn: () => platformAdminService.getHostels(),
+  });
 
   const broadcastMutation = useMutation({
-    mutationFn: () => platformAdminService.sendBroadcast(message),
+    mutationFn: () => platformAdminService.sendBroadcast(message, selectedHostel === 'ALL' ? undefined : selectedHostel),
     onSuccess: (res) => {
       stayoToast.success(`Sent to ${res.sent} of ${res.total} owners`);
       setBroadcastOpen(false);
       setMessage('');
+      setSelectedHostel('ALL');
     },
     onError: () => stayoToast.error('Could not send broadcast'),
   });
@@ -98,7 +105,24 @@ export function AdminMorePage() {
               <span className="font-display text-[15px] font-bold text-foreground">Broadcast Notice</span>
               <button type="button" onClick={() => setBroadcastOpen(false)}><X className="h-4 w-4 text-[#8A7F75]" /></button>
             </div>
-            <p className="mb-3 text-[11.5px] text-[#9C9186]">Sent to all active hostel owners.</p>
+            <p className="mb-3 text-[11.5px] text-[#9C9186]">Target your message to a specific hostel owner or broadcast to all.</p>
+            
+            <div className="mb-3 flex flex-col gap-1.5">
+              <label className="text-[12px] font-semibold text-foreground">Select Target</label>
+              <select
+                value={selectedHostel}
+                onChange={(e) => setSelectedHostel(e.target.value)}
+                className="w-full rounded-xl border border-[#E7DDD1] bg-[#F7F3EF] px-3 py-2.5 text-[13px] outline-none"
+              >
+                <option value="ALL">All Active Hostels (Broadcast)</option>
+                {hostels?.items?.map((hostel: any) => (
+                  <option key={hostel.id} value={hostel.id}>
+                    {hostel.name} ({hostel.owner_name})
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}

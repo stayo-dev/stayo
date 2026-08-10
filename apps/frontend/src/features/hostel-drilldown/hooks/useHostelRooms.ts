@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { floorService, roomService } from '@features/rooms/api';
-import type { RoomsViewMode, RoomWithOccupants, RoomOccupant } from '../types';
+import type { RoomWithOccupants, RoomOccupant } from '../types';
 
 interface BackendRoom {
   id: string;
@@ -56,9 +56,6 @@ function mapRoom(hostelId: string, floorId: string, room: BackendRoom): RoomWith
  */
 export function useHostelRooms(hostelId: string) {
   const queryClient = useQueryClient();
-  const [mode, setMode] = useState<RoomsViewMode>('browse');
-  const [dragRoomId, setDragRoomId] = useState<string | null>(null);
-  const [dragOverFloorId, setDragOverFloorId] = useState<string | null>(null);
 
   const queryKey = ['hostel', hostelId, 'rooms', 'grouped'];
 
@@ -100,23 +97,44 @@ export function useHostelRooms(hostelId: string) {
     return { bedsOccupied, bedsTotal, vacantRooms, reservedRooms };
   }, [allRooms]);
 
-  const startDrag = (roomId: string) => setDragRoomId(roomId);
-  const dragOverFloor = (floorId: string) => setDragOverFloorId(floorId);
-  const endDrag = () => {
-    setDragRoomId(null);
-    setDragOverFloorId(null);
-  };
+  /**
+   * Persists a floor's room order after a drag (Reorder.Group in FloorGroup).
+   * Optimistic: the list already shows the dragged arrangement, so this just
+   * needs to not snap back while the request is in flight. `floorId` is the
+   * frontend's `"__unassigned"` sentinel for rooms with no floor_id — mapped
+   * to `null` for the API, matched back against `f.id` for the cache write.
+   */
+  const reorderMutation = useMutation({
+    mutationFn: ({ floorId, order }: { floorId: string; order: string[] }) =>
+      roomService.reorder({ hostelId, floorId: floorId === '__unassigned' ? null : floorId, order }),
 
-  const moveRoomMutation = useMutation({
-    mutationFn: ({ roomId, floorId }: { roomId: string; floorId: string }) => roomService.update(roomId, { floor_id: floorId }),
-    onSuccess: invalidate,
+    onMutate: async ({ floorId, order }: { floorId: string; order: string[] }) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<BackendFloorGroup[]>(queryKey);
+
+      if (previous) {
+        const position = new Map(order.map((id, i) => [id, i]));
+        queryClient.setQueryData<BackendFloorGroup[]>(
+          queryKey,
+          previous.map((f) =>
+            f.id === floorId
+              ? { ...f, rooms: [...f.rooms].sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0)) }
+              : f,
+          ),
+        );
+      }
+
+      return { previous };
+    },
+
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(queryKey, context.previous);
+    },
+
+    onSettled: invalidate,
   });
 
-  const dropOnFloor = (floorId: string) => {
-    if (!dragRoomId) return;
-    moveRoomMutation.mutate({ roomId: dragRoomId, floorId });
-    endDrag();
-  };
+  const reorderRooms = (floorId: string, order: string[]) => reorderMutation.mutate({ floorId, order });
 
   const createFloorMutation = useMutation({
     mutationFn: (data: { name: string; sort_order?: number }) => floorService.create(hostelId, data),
@@ -129,7 +147,7 @@ export function useHostelRooms(hostelId: string) {
   });
 
   const updateRoomMutation = useMutation({
-    mutationFn: ({ roomId, data }: { roomId: string; data: { room_no?: string; capacity?: number; base_rent?: number } }) =>
+    mutationFn: ({ roomId, data }: { roomId: string; data: { room_no?: string; capacity?: number; base_rent?: number; floor_id?: string } }) =>
       roomService.update(roomId, data),
     onSuccess: invalidate,
   });
@@ -138,14 +156,8 @@ export function useHostelRooms(hostelId: string) {
     floors,
     roomsByFloor,
     stats,
-    mode,
-    setMode,
-    dragRoomId,
-    dragOverFloorId,
-    startDrag,
-    dragOverFloor,
-    dropOnFloor,
-    endDrag,
+    reorderRooms,
+    isReordering: reorderMutation.isPending,
     isLoading: roomsQuery.isLoading,
     isError: roomsQuery.isError,
     error: roomsQuery.error,
