@@ -737,7 +737,7 @@ export class ExpenseService {
   async getExpenseMemory(
     ownerId: string,
     options: { search?: string; limit?: number; today?: Date } = {},
-  ): Promise<{ entries: MemoryEntry[]; dueNow: MemoryEntry[] }> {
+  ): Promise<{ entries: MemoryEntry[]; dueNow: MemoryEntry[]; titleVendors: any[] }> {
     const search = (options.search ?? "").trim();
     const limit = Math.min(Math.max(options.limit ?? 8, 1), 25);
     const today = options.today ?? new Date();
