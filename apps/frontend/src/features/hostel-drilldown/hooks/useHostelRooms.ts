@@ -105,10 +105,15 @@ export function useHostelRooms(hostelId: string) {
    * to `null` for the API, matched back against `f.id` for the cache write.
    */
   const reorderMutation = useMutation({
-    mutationFn: ({ floorId, order }: { floorId: string; order: string[] }) =>
-      roomService.reorder({ hostelId, floorId: floorId === '__unassigned' ? null : floorId, order }),
+    mutationFn: ({ floorId, order }: { floorId: string; order: string[] }) => {
+      console.log('DEBUG mutationFn called', floorId, order);
+      return roomService.reorder({ hostelId, floorId: floorId === '__unassigned' ? null : floorId, order })
+        .then((r: unknown) => { console.log('DEBUG mutationFn success', r); return r; })
+        .catch((e: unknown) => { console.log('DEBUG mutationFn error', e); throw e; });
+    },
 
     onMutate: async ({ floorId, order }: { floorId: string; order: string[] }) => {
+      console.log('DEBUG onMutate start');
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData<BackendFloorGroup[]>(queryKey);
 
@@ -134,7 +139,10 @@ export function useHostelRooms(hostelId: string) {
     onSettled: invalidate,
   });
 
-  const reorderRooms = (floorId: string, order: string[]) => reorderMutation.mutate({ floorId, order });
+  const reorderRooms = (floorId: string, order: string[]) => {
+    console.log('DEBUG reorderRooms called', floorId, order);
+    reorderMutation.mutate({ floorId, order });
+  };
 
   const createFloorMutation = useMutation({
     mutationFn: (data: { name: string; sort_order?: number }) => floorService.create(hostelId, data),

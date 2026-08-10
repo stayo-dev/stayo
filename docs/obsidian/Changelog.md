@@ -10,6 +10,14 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-10 — Rooms tab: floors collapse to an accordion, rooms drag-reorder within a floor
+- **Floors on the owner Rooms tab now collapse, like the Food Library accordion** — previously every floor's rooms rendered flat, all at once. Tap a floor to reveal its rooms; collapsed, it shows a room/vacant-count summary. A search match force-expands the matching floor.
+- **Drag-to-reorder rooms within a floor now actually works** ([[Decisions#ADR-062|ADR-062]]) — it didn't exist before. The old "layout" mode only moved a room *between* floors, and did so via native HTML5 `draggable`, which `DragHandle`'s own doc comment already flagged as non-functional (doesn't fire on touch — the same class of bug [[Decisions#ADR-042|ADR-042]] fixed for the Home Property list). Replaced with `motion/react`'s `Reorder`, handle-only drag, same pattern as the Property list. Order persists to a new nullable `rooms.sort_order` column (`PATCH /api/rooms/reorder`, `RoomOrderService`) — same shape as `hostels.display_order`.
+- **Moving a room to a different floor** is now an explicit "Floor" select in the Room Sheet's edit form (the old floor-to-floor drag is removed — two floors can't usefully both be drop targets when only one is expanded at a time).
+- **Verified live**, not just by build/typecheck: ran both dev servers, logged in as the seeded test owner, and drove the real UI with Playwright — confirmed the collapse/expand, a real drag reorder round-tripping through the new endpoint, and the new order surviving a full page reload, with no console errors.
+- **Incidental fix:** the room deep-link effect (`?room=<id>` from Universal Search) called `Object.values()` on a `Map`, which always returns `[]` — the deep link had silently done nothing since it was written. Fixed while rewriting the page.
+- See [[Decisions#ADR-062|ADR-062]], [[Features]], [[APIs]], [[Database]].
+
 ### 2026-08-09 — One Stayo loading screen everywhere, no circular spinners left, and error screens redesigned onto the same stage
 - **The app now has a designed loading state** ([[Decisions#ADR-061|ADR-061]]): the Stayo mark's four windows lighting clockwise over a warm sky gradient, with drifting embers and a linear progress track. New `shared/ui/brand/` exports `StayoLoader` (buttons/rows), `StayoLoadingBlock` (section bodies), `StayoLoadingScreen` (whole surfaces), `StayoErrorScreen`, and `StayoMark`/`StayoWordmark` — which are now the source of truth for the brand vector's geometry.
 - **Every circular spinner is gone.** 67 `animate-spin` rings across 42 files, in four different colour treatments, replaced; `Loader2` removed from every import that had it. The only remaining rotation is none — the "Check again" button on the payment-return page now shows the window loader instead of a spinning refresh icon.

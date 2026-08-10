@@ -98,6 +98,11 @@ Written **only** by `PATCH /api/owner/hostels/reorder`, which rewrites every pos
 
 See [[APIs]] for the endpoint and [[Features]] for the UI.
 
+### `rooms.sort_order`
+Added 2026-08-10 ([[Decisions#ADR-062|ADR-062]], migration `20260810120000_room_sort_order`, idempotent `ADD COLUMN IF NOT EXISTS` + `rooms_floor_id_sort_order_idx` on `(floor_id, sort_order)`). `Int?` — the owner's manual position for a room within its floor on the Rooms tab. Same nullable/never-backfilled shape as `hostels.display_order` above: `NULL` means never reordered, read path (`PropertyService.getFloorsWithRooms`) orders by `sort_order ASC NULLS LAST, room_no ASC`, so an unreordered floor keeps the `room_no` order it always had.
+
+Written **only** by `PATCH /api/rooms/reorder` (`RoomOrderService.reorder`), which rewrites every room's position **within one floor** inside one `prisma.$transaction` — same all-or-nothing reasoning as `hostels.display_order`, scoped to a floor rather than a whole owner. See [[APIs]] for the endpoint and [[Features]] for the UI.
+
 ### `hostels.house_rules`
 Added 2026-07-26 (`Json?` column on the existing `hostels` table, not a new table) for the tenant Room tab's House Rules accordion — an array of `{title, items: string[]}` sections. Deliberately kept out of the deep-merged hostel preferences policy blob (`hostelPolicyService`) — house rules are static reference content, not a policy setting, and folding it into that already-complex deep-merge schema risked corrupting real owner config for no benefit. New dedicated endpoint: `GET/PATCH /api/hostels/:id/house-rules`.
 
