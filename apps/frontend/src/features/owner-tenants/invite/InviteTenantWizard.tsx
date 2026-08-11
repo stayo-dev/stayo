@@ -81,11 +81,7 @@ export function InviteTenantWizard({ open, onClose }: InviteTenantWizardProps) {
           <button
             type="button"
             onClick={isLast ? wizard.submit : wizard.next}
-            disabled={
-              (isLast && (!wizard.agreed || !wizard.data.roomId)) ||
-              wizard.emailInvalid ||
-              wizard.isSubmitting
-            }
+            disabled={!wizard.isCurrentStepValid || wizard.isSubmitting}
             className="flex-1 rounded-xl bg-primary py-3.5 text-center font-display text-sm font-bold text-primary-foreground disabled:opacity-50"
           >
             {isLast ? (wizard.isSubmitting ? 'Sending…' : 'Send invitation') : `Continue to ${wizard.stepLabels[wizard.step + 1]?.toLowerCase()}`}

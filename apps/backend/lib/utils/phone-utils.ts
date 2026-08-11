@@ -6,11 +6,24 @@ import { prisma } from "../db";
 export function normalizeIndianPhone(value: string | null | undefined): string | null {
   if (!value) return null;
   const cleaned = String(value).replace(/\D/g, "");
-  
-  if (cleaned.length === 10) return `+91${cleaned}`;
-  if (cleaned.length === 12 && cleaned.startsWith("91")) return `+${cleaned}`;
-  if (cleaned.length === 13 && cleaned.startsWith("091")) return `+${cleaned.substring(1)}`;
-  
+
+  let tenDigits = "";
+  if (cleaned.length === 10) {
+    tenDigits = cleaned;
+  } else if (cleaned.length === 12 && cleaned.startsWith("91")) {
+    tenDigits = cleaned.substring(2);
+  } else if (cleaned.length === 13 && cleaned.startsWith("091")) {
+    tenDigits = cleaned.substring(3);
+  } else if (cleaned.length === 11 && cleaned.startsWith("0")) {
+    tenDigits = cleaned.substring(1);
+  } else {
+    return null;
+  }
+
+  if (/^[6-9]\d{9}$/.test(tenDigits)) {
+    return `+91${tenDigits}`;
+  }
+
   return null;
 }
 

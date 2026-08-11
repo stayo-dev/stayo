@@ -5,6 +5,12 @@ import { ownerService } from '@domains/hostels/api';
 import { roomService } from '@domains/rooms/api';
 import { tenantService } from '@domains/tenants/api';
 import { parseTenancyConflict, type TenancyConflict } from '@/features/tenants/tenancyConflict';
+import {
+  sanitizeIndianPhone,
+  isValidIndianPhone,
+  isValidTenantEmail,
+  isValidTenantName,
+} from '@/features/owner-tenants/invite/validation';
 import { queryKeys } from '@lib/queryKeys';
 import { StayoLoader } from '@shared/ui/brand';
 
@@ -244,9 +250,23 @@ export function AddTenantModal({ onClose, hostelId, preselectedRoomId }: AddTena
     e.preventDefault();
     setError(null);
     setConflict(null);
+
+    if (!isValidTenantName(name)) {
+      setError("Full name must be at least 2 characters.");
+      return;
+    }
+    if (!isValidIndianPhone(phone)) {
+      setError("Please enter a valid 10-digit mobile number starting with 6-9.");
+      return;
+    }
+    if (!isValidTenantEmail(email)) {
+      setError("Please enter a valid email address or leave it empty.");
+      return;
+    }
+
     inviteMutation.mutate({
       name:               name.trim(),
-      phone:              phone.trim() || undefined,
+      phone:              sanitizeIndianPhone(phone),
       email:              email.trim().toLowerCase() || undefined,
       hostel_id:          selectedHostelId,
       room_id:            roomId,
@@ -474,8 +494,18 @@ export function AddTenantModal({ onClose, hostelId, preselectedRoomId }: AddTena
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Phone *</label>
-                  <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required
-                    placeholder="+91 98765…" className={inp} />
+                  <div className="flex items-center rounded-lg border border-border bg-background px-3 py-2.5">
+                    <span className="text-sm font-semibold text-muted-foreground mr-1.5">+91</span>
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(sanitizeIndianPhone(e.target.value))}
+                      required
+                      placeholder="90000 00000"
+                      maxLength={10}
+                      className="w-full bg-transparent text-foreground text-sm font-semibold focus:outline-none"
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Email (optional)</label>

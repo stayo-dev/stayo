@@ -17,6 +17,7 @@ import { ActivationStepTracker } from '../activation/ActivationStepTracker';
 import { useActivationState } from '../hooks/useActivationState';
 import { RejectDocumentSheet } from '../documents/RejectDocumentSheet';
 import type { TenantDetailTab } from '../types';
+import { InvitedTenantProfileView } from '../components/InvitedTenantProfileView';
 import { TenantActionsSheet } from '../actions/TenantActionsSheet';
 import { ChangeRentModal } from '../actions/ChangeRentModal';
 import { MoveOutSheet } from '../actions/MoveOutSheet';
@@ -84,6 +85,14 @@ export function TenantDetailPage() {
             Back to Tenants
           </button>
         </div>
+      </ThemeProvider>
+    );
+  }
+
+  if (tenant.status === 'invited') {
+    return (
+      <ThemeProvider theme="product">
+        <InvitedTenantProfileView tenant={tenant} />
       </ThemeProvider>
     );
   }

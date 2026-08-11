@@ -1,94 +1,37 @@
 import { z } from "zod";
+import { normalizeIndianPhone } from "../../../lib/utils/phone-utils";
 
 const MAX_AMOUNT_INR = 1_000_000;
 
-export const optionalNumber = (maxVal: number = MAX_AMOUNT_INR) =>
-  z.preprocess((val) => {
-    if (val === "" || val === null || val === undefined) return undefined;
-    const num = Number(val);
-    return isNaN(num) ? undefined : num;
-  }, z.number().nonnegative().max(maxVal).optional());
+function optionalNumber() {
+  return z
+    .union([z.number(), z.string()])
+    .optional()
+    .nullable()
+    .transform((val) => {
+      if (val === undefined || val === null || val === "") return undefined;
+      const num = Number(val);
+      return Number.isNaN(num) ? undefined : num;
+    });
+}
 
-export const requiredNumber = (maxVal: number = MAX_AMOUNT_INR) =>
-  z.preprocess((val) => {
-    if (val === "" || val === null || val === undefined) return undefined;
-    const num = Number(val);
-    return isNaN(num) ? undefined : num;
-  }, z.number().nonnegative().max(maxVal));
-
-export const optionalPositiveNumber = (maxVal: number = MAX_AMOUNT_INR) =>
-  z.preprocess((val) => {
-    if (val === "" || val === null || val === undefined) return undefined;
-    const num = Number(val);
-    return isNaN(num) || num <= 0 ? undefined : num;
-  }, z.number().positive().max(maxVal).optional());
-
-export const optionalInteger = (maxVal?: number) => {
-  let schema = z.number().int();
-  if (maxVal !== undefined) {
-    schema = schema.max(maxVal);
-  }
-  return z.preprocess((val) => {
-    if (val === "" || val === null || val === undefined) return undefined;
-    const num = Number(val);
-    return isNaN(num) || !Number.isInteger(num) ? undefined : num;
-  }, schema.optional());
-};
-
-export const optionalPositiveInteger = (maxVal?: number) => {
-  let schema = z.number().int().positive();
-  if (maxVal !== undefined) {
-    schema = schema.max(maxVal);
-  }
-  return z.preprocess((val) => {
-    if (val === "" || val === null || val === undefined) return undefined;
-    const num = Number(val);
-    return isNaN(num) || !Number.isInteger(num) || num <= 0 ? undefined : num;
-  }, schema.optional());
-};
-
-export const TenantProfileUpdateSchema = z.object({
-  name: z.string().optional(),
-  phone: z.string().optional(),
-  verification_token: z.string().optional(),
-  emergency_contact: z.string().optional(),
-  phone_1: z.string().optional(),
-  phone_2: z.string().optional(),
-  phone_3: z.string().optional(),
-  phone_1_otp: z.string().optional(),
-  phone_2_otp: z.string().optional(),
-  phone_3_otp: z.string().optional(),
-  // aadhaar_number removed - now stored in identification_documents table
-  personal_email: z.string().trim().email().optional().nullable(),
-  college_name: z.string().optional(),
-  roll_number: z.string().optional(),
-  course: z.string().optional().nullable(),
-  year_of_study: z.preprocess(
-    (val) => (val === "" || val === null || val === undefined ? null : val),
-    z.union([z.coerce.number().int().min(1).max(6), z.literal(0)]).optional().nullable()
-  ),
-  section: z.string().optional().nullable(),
-  branch: z.string().optional(),
-  address: z.string().optional(),
-  permanent_address: z.string().optional(),
-  temporary_address: z.string().optional(),
-  date_of_birth: z.string().optional().nullable(),
-  gender: z.enum(["Male", "Female", "Other", "Prefer not to say"]).optional().nullable(),
-  profile_type: z.enum(["STUDENT", "WORKING_PROFESSIONAL"]).optional(),
-  office_name: z.string().optional().nullable(),
-  office_location: z.string().optional().nullable(),
-  job_role: z.string().optional().nullable(),
-  photo_url: z.string().optional().nullable(),
-});
-
-export const ReactivationRequestSchema = z.object({
-  notes: z.string().max(500).optional(),
-});
-
+function optionalPositiveInteger(max = 120) {
+  return z
+    .union([z.number(), z.string()])
+    .optional()
+    .nullable()
+    .transform((val) => {
+      if (val === undefined || val === null || val === "") return undefined;
+      const num = Number(val);
+      return Number.isNaN(num) || num <= 0 || num > max ? undefined : Math.floor(num);
+    });
+}
 export const InvitationSchema = z.object({
   email: z.string().trim().email().optional().or(z.literal("")).nullable(),
-  name: z.string().min(2),
-  phone: z.string().min(1),
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  phone: z.string().refine((val) => normalizeIndianPhone(val) !== null, {
+    message: "Invalid phone number. Must be a valid 10-digit Indian mobile number.",
+  }),
   room_id: z.string().uuid(),
   monthly_rent: optionalNumber(),
   advance_amount: optionalNumber(),
@@ -102,8 +45,10 @@ export const InvitationSchema = z.object({
 
 export const InvitationUpdateSchema = z.object({
   email: z.string().trim().email().optional().or(z.literal("")).nullable(),
-  name: z.string().min(2),
-  phone: z.string().min(1),
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  phone: z.string().refine((val) => normalizeIndianPhone(val) !== null, {
+    message: "Invalid phone number. Must be a valid 10-digit Indian mobile number.",
+  }),
   room_id: z.string().uuid(),
   monthly_rent: optionalNumber(),
   advance_amount: optionalNumber(),

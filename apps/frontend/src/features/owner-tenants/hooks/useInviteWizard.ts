@@ -6,6 +6,13 @@ import {
   resolveResendDelivery,
   type InviteDeliveryOutcome,
 } from '../invite/inviteDelivery';
+import {
+  sanitizeIndianPhone,
+  isValidIndianPhone,
+  isValidTenantEmail,
+  isValidTenantName,
+  EMAIL_REGEX,
+} from '../invite/validation';
 import { EMPTY_INVITE_WIZARD_DATA, type InviteWizardData } from '../types';
 
 const STEP_LABELS = ['Tenant', 'Stay', 'Money', 'Verify'] as const;
@@ -16,8 +23,6 @@ const BILLING_TO_FREQUENCY: Record<string, string> = {
   'Half-Yearly': 'HALF_YEARLY',
   Yearly: 'ACADEMIC_YEARLY',
 };
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function getErrorMessage(error: unknown, fallback: string) {
   const data = (error as { response?: { data?: { error?: { message?: string } } } })?.response?.data;
@@ -45,17 +50,40 @@ export function useInviteWizard() {
 
   const setD = (patch: Partial<InviteWizardData>) => setData((d) => ({ ...d, ...patch }));
 
-  const next = () => setStep((s) => Math.min(STEP_LABELS.length - 1, s + 1));
+  const isStep0Valid = isValidTenantName(data.tenantName) && isValidIndianPhone(data.tenantPhone) && isValidTenantEmail(data.tenantEmail);
+  const isStep1Valid = Boolean(data.hostelId && data.roomId && data.joiningDate && Number(data.agreementMonths) > 0);
+  const isStep2Valid = Boolean(data.monthlyRent && Number(data.monthlyRent) >= 0);
+  const isStep3Valid = Boolean(agreed && data.roomId && isStep0Valid && isStep1Valid && isStep2Valid);
+
+  const isCurrentStepValid = (() => {
+    switch (step) {
+      case 0:
+        return isStep0Valid;
+      case 1:
+        return isStep1Valid;
+      case 2:
+        return isStep2Valid;
+      case 3:
+        return isStep3Valid;
+      default:
+        return false;
+    }
+  })();
+
+  const next = () => {
+    if (!isCurrentStepValid) return;
+    setStep((s) => Math.min(STEP_LABELS.length - 1, s + 1));
+  };
   const back = () => setStep((s) => Math.max(0, s - 1));
 
   const email = data.tenantEmail.trim();
-  const emailInvalid = email.length > 0 && !EMAIL_RE.test(email);
+  const emailInvalid = !isValidTenantEmail(email);
 
   const inviteMutation = useMutation({
     mutationFn: () =>
       tenantService.invite({
         name: data.tenantName.trim(),
-        phone: data.tenantPhone.trim(),
+        phone: sanitizeIndianPhone(data.tenantPhone),
         // Omitted rather than sent blank: the backend's InvitationSchema
         // accepts a missing email but validates a present one.
         ...(email ? { email } : {}),
@@ -99,13 +127,13 @@ export function useInviteWizard() {
   });
 
   const submit = () => {
-    if (!agreed || !data.roomId || emailInvalid) return;
+    if (!isStep3Valid) return;
     inviteMutation.mutate();
   };
 
   const sendFallbackEmail = () => {
     const address = fallbackEmail.trim();
-    if (!EMAIL_RE.test(address) || !tenantId) return;
+    if (!EMAIL_REGEX.test(address) || !tenantId) return;
     resendMutation.mutate(address);
   };
 
@@ -129,6 +157,7 @@ export function useInviteWizard() {
     agreed,
     setAgreed,
     emailInvalid,
+    isCurrentStepValid,
     submitted,
     delivery,
     next,
@@ -145,7 +174,7 @@ export function useInviteWizard() {
     fallbackError: resendMutation.isError
       ? getErrorMessage(resendMutation.error, 'Could not send the email invitation.')
       : null,
-    canSendFallback: EMAIL_RE.test(fallbackEmail.trim()) && Boolean(tenantId),
+    canSendFallback: EMAIL_REGEX.test(fallbackEmail.trim()) && Boolean(tenantId),
   };
 }
 
