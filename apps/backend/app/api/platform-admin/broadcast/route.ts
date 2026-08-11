@@ -21,10 +21,19 @@ export async function POST(req: NextRequest) {
   try {
     requireAdmin(session);
     const body = await req.json().catch(() => ({}));
-    const { message } = body;
+    const { message, hostel_id } = body;
     if (!message?.trim()) return apiError("message is required", "VALIDATION_ERROR", 400);
 
-    const owners = await prisma.profile.findMany({ where: { role: "OWNER", is_active: true }, select: { id: true } });
+    let owners;
+    if (hostel_id) {
+      // Find the specific owner of this hostel
+      const hostel = await prisma.hostels.findUnique({ where: { id: hostel_id }, select: { owner_id: true } });
+      if (!hostel || !hostel.owner_id) return apiError("Hostel or owner not found", "NOT_FOUND", 404);
+      owners = [{ id: hostel.owner_id }];
+    } else {
+      // Broadcast to all owners
+      owners = await prisma.profile.findMany({ where: { role: "OWNER", is_active: true }, select: { id: true } });
+    }
 
     const results = await Promise.allSettled(
       owners.map((o: any) => notificationService.createNotification(o.id, "Message from Stayo", message.trim(), "PLATFORM_BROADCAST")),

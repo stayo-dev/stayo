@@ -4,6 +4,7 @@ import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { portfolioService } from '@features/dashboard/api';
 import { tenantService } from '@features/tenants/api';
 import { agreementService } from '@features/agreements/api';
+import { useAlerts } from '@features/owner-alerts/hooks/useAlerts';
 import { queryKeys } from '@lib/queryKeys';
 import type { MockProperty } from '@shared/mocks/dashboard';
 
@@ -165,7 +166,11 @@ export function useOwnerDashboard() {
     target: formatINR(target),
   };
 
-  const alertCount = renewalsCount + pendingDocsCount + (aggregate?.overdue_count ?? 0);
+  const alerts = useAlerts();
+  const alertCount = 
+    alerts.adminMessages.filter(a => !a.read).length + 
+    alerts.renewals.filter(r => !r.read).length + 
+    alerts.requests.filter(r => !r.read).length;
 
   return {
     ownerName: session.ownerName?.split(' ')[0] || 'Owner',

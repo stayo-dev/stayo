@@ -58,6 +58,54 @@ export function TenantHelpPage() {
           </div>
         </div>
       )}
+
+      {/* COMPLAINTS / REQUESTS SECTION */}
+      <div className={`${card} p-4 mt-2`}>
+        <h2 className="font-display text-[15px] font-bold text-foreground mb-3">Raise a Request</h2>
+        <form 
+          className="flex flex-col gap-3"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const form = e.currentTarget;
+            const type = (form.elements.namedItem('type') as HTMLSelectElement).value;
+            const description = (form.elements.namedItem('description') as HTMLTextAreaElement).value;
+            
+            try {
+              const res = await fetch('/api/tenant/requests', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type, description })
+              });
+              if (!res.ok) throw new Error('Failed to submit request');
+              alert('Request submitted successfully!');
+              form.reset();
+            } catch (err) {
+              alert('Failed to submit request. Please try again.');
+            }
+          }}
+        >
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[12.5px] font-semibold text-foreground">Request Type</label>
+            <select name="type" required className="rounded-lg border border-border bg-transparent p-2.5 text-[13px] outline-none focus:border-foreground">
+              <option value="MAINTENANCE">Maintenance Issue</option>
+              <option value="CLEANING">Cleaning Request</option>
+              <option value="ROOM_CHANGE">Room Change Request</option>
+              <option value="LOST_KEY">Lost Key</option>
+              <option value="VISITOR_PASS">Visitor Pass</option>
+              <option value="EXTRA_MATTRESS">Extra Mattress</option>
+            </select>
+          </div>
+          
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[12.5px] font-semibold text-foreground">Details / Complaint</label>
+            <textarea name="description" required rows={3} placeholder="Please describe the issue..." className="resize-none rounded-lg border border-border bg-transparent p-2.5 text-[13px] outline-none focus:border-foreground" />
+          </div>
+          
+          <button type="submit" className="mt-1 w-full rounded-xl bg-foreground py-3 font-display text-[13.5px] font-bold text-background transition-transform active:scale-[0.98]">
+            Submit Request
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
