@@ -193,6 +193,14 @@ The StayO redesign is being built in place inside the same `apps/frontend` tree,
 
   **Not verified by automated backend tests.** `DATABASE_URL_TEST` is defined nowhere and `.env.test` doesn't exist, so the backend suite is unrunnable in this environment — pre-existing, confirmed by an untouched existing test failing identically. The endpoint was verified live against the real API instead. Provisioning a test database is open work.
 
+### Pre-activation workspace — the owner fixes an invitation before the tenant activates
+- **Status:** shipped 2026-08-11
+- **Owner-facing?** yes · **Tenant-facing?** indirectly (they receive the corrected invitation)
+- **Key files:** Frontend — `features/owner-tenants/invitation/invitationWorkspace.ts` + `.test.ts` (new, pure, 25 tests), `invitation/InvitationTimeline.tsx`, `invitation/TermEditSheet.tsx`, `invitation/RoomPickerSheet.tsx`, `invitation/ReviewChangesSheet.tsx` (all new), `components/InvitedTenantProfileView.tsx` (rewritten), `hooks/useTenantNotes.ts` (new), `hooks/useTenantDetail.ts`, `actions/CancelInvitationModal.tsx`. Deleted: `actions/InvitedTenantActionsSheet.tsx`, `actions/EditTenantModal.tsx`. Backend — `src/services/tenants/tenant-service.ts` (`getOwnerTenantOverview` now returns `hostel_id` + an `invitation` block), `tests/tenant-overview-invitation.test.ts` (new, 6 DB-backed tests).
+- **Depends on:** [[APIs]] (`GET /api/tenants/owner/tenants/[id]/overview`, `PUT /api/tenants/[id]` with `invitation_edit`, `/api/tenants/[id]/notes`), [[Decisions#ADR-063|ADR-063]].
+- **What it does:** answers the owner's two real questions about an invited tenant — *is the offer right?* and *have they acted on it?* A four-step timeline (sent → opened → creating account → active) reads the invitation's own `opened_at` / `activation_started_at` / `expires_at`. The offer is a list of tappable rows; each opens a sheet for that one field. Edits accumulate locally and go out in one `Review & send` step that names every before → after change, because saving rotates the invitation token and re-issues the tenant's link. A room change offers that room's pricing as an explicit, pre-ticked option.
+- **Notes:** replaces a screen that was largely non-functional — its edit form opened blank, it declared every invited tenant room-less, its notes were hardcoded examples, and its copy-link produced a dead URL (all five defects catalogued in [[Bugs]]). **The owner-side "Activate tenant" button is gone**: a tenant becomes ACTIVE only by finishing their own registration. See [[Decisions#ADR-063|ADR-063]] for the full reasoning and what was deliberately cut.
+
 ### Owner activation visibility — the owner can see where every invited tenant is stuck
 - **Status:** shipped 2026-08-01 — **activation business logic unchanged**
 - **Owner-facing?** yes · **Tenant-facing?** no

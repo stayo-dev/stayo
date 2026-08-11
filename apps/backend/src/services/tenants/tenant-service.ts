@@ -5,6 +5,7 @@ import { getTenantOperationalContext } from "../../../lib/hostel-context";
 import { authOtpService } from "../../../lib/services/auth/auth-otp-service";
 import { normalizeWhatsAppPhone } from "../../../lib/services/notifications/providers/whatsapp/meta-provider";
 import { assertGuardianPhoneNotTenant } from "../../../lib/utils/phone-utils";
+import { frontendUrl } from "../../../lib/config/domains";
 
 import { allocationReconciliationService } from "../../../lib/services/allocation-reconciliation-service";
 import { financialService } from "../../../src/services/payments/financial-service";
@@ -823,7 +824,18 @@ export class TenantService {
         profiles: true,
         tenant_invitations: {
           orderBy: { created_at: "desc" },
-          include: { room: true },
+          include: {
+            room: true,
+            // The bed is held by a reservation from the moment of invite —
+            // no room_allocation exists until activation. Owner-side screens
+            // that read the room from allocations therefore show INVITED
+            // tenants as room-less; the reservation is the real answer.
+            reservations: {
+              where: { status: "ACTIVE" },
+              orderBy: { reserved_at: "desc" },
+              take: 1,
+            },
+          },
         },
         move_out_requests: {
           where: { status: { notIn: ["COMPLETED", "REJECTED"] } },
@@ -983,6 +995,51 @@ export class TenantService {
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 15);
 
     const floor = currentRoom?.floor ?? null;
+
+    // ── Invitation summary ───────────────────────────────────────────────
+    // The raw `tenant_invitations` rows are still returned below for older
+    // callers, but they carry the activation `token` and force every consumer
+    // to re-derive the same things. This normalized block is the shape owner
+    // screens should read: no token, a ready-built activation link, the
+    // reserved room (not the not-yet-existent allocation), and the delivery
+    // funnel the invitation table already tracks (PENDING → OPENED →
+    // ACTIVATION_STARTED) which no surface was exposing.
+    const liveInvitation = (legacyTenant.tenant_invitations ?? []).find((inv: any) =>
+      ["PENDING", "OPENED", "ACTIVATION_STARTED"].includes(String(inv.status))
+    ) ?? legacyTenant.tenant_invitations?.[0] ?? null;
+
+    const invitationSummary = liveInvitation
+      ? {
+          id: liveInvitation.id,
+          status: liveInvitation.status,
+          hostel_id: liveInvitation.hostel_id,
+          activation_link: frontendUrl(`/activate/${liveInvitation.token}`),
+          sent_at: liveInvitation.created_at,
+          expires_at: liveInvitation.expires_at,
+          opened_at: liveInvitation.opened_at,
+          activation_started_at: liveInvitation.activation_started_at,
+          cancelled_at: liveInvitation.cancelled_at,
+          name: liveInvitation.name,
+          email: liveInvitation.email,
+          phone: liveInvitation.phone,
+          notes: liveInvitation.notes,
+          // How many times the owner has revised the terms — the invitation
+          // table models this as a parent/child version chain.
+          revision: (legacyTenant.tenant_invitations ?? []).length,
+          reserved_room: liveInvitation.room
+            ? {
+                id: liveInvitation.room.id,
+                room_no: liveInvitation.room.room_no,
+                floor: liveInvitation.room.floor,
+                capacity: liveInvitation.room.capacity,
+              }
+            : null,
+          reservation_expires_at: liveInvitation.reservations?.[0]?.expires_at ?? null,
+          agreement_duration_months: liveInvitation.agreement_duration_months,
+          agreement_start_date: liveInvitation.agreement_start_date,
+        }
+      : null;
+
     const latestRuleAcceptance = legacyTenant.rule_acceptances?.[0] ?? null;
     const requiredDocumentTypes = String(legacyTenant.profile_type || "STUDENT").toUpperCase() === "WORKING_PROFESSIONAL"
       ? ["AADHAAR", "WORK_ID"]
@@ -1040,6 +1097,11 @@ export class TenantService {
           }
         : null,
       tenant_invitations: legacyTenant.tenant_invitations || [],
+      invitation: invitationSummary,
+      // Owner screens need the tenant's hostel scope to open any hostel-scoped
+      // editor (room lists, pricing defaults). It was never on this response,
+      // so callers fell back to `undefined` and silently rendered empty forms.
+      hostel_id: legacyTenant.hostel_id,
       payment_frequency: legacyTenant.payment_frequency || "MONTHLY",
       has_active_agreement: Boolean(currentAgreement),
       agreement_duration_months: currentAgreement?.agreement_duration_months

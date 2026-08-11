@@ -48,8 +48,12 @@ export function CancelInvitationModal({ open, onClose, tenantName, onConfirm }: 
           <b className="font-semibold text-foreground">{tenantName}</b> will no longer be able to use this invitation link.
         </p>
 
+        {/* Says what `cancelInvitation` actually does — release the held bed,
+            waive the pending dues, mark the record cancelled. It previously
+            promised a 30-day retention window that no code implements. */}
         <div className="mt-3.5 rounded-xl bg-muted/60 p-3 text-[11.5px] leading-relaxed text-muted-foreground">
-          Their pending tenancy configuration will be retained for 30 days so you can re-invite them anytime.
+          The held bed goes back to the room and any pending dues are waived. The record stays in your tenant history,
+          and you can invite them again from scratch.
         </div>
 
         <div className="mt-5 flex gap-3">

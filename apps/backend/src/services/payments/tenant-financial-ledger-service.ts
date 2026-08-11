@@ -328,15 +328,30 @@ export class TenantFinancialLedgerService {
     const reason = mapLegacyReason(inputReason);
 
     if (amount <= 0) throw new Error("BAD_REQUEST: Amount must be positive");
-    await this._assertOwnership(tenantId, ownerId);
 
     const effectiveRefundStatus =
       reason === "SECURITY_DEPOSIT_REFUNDED" ? (refundStatus ?? "PENDING") : null;
 
-    const tenant = await tx.tenants.findUniqueOrThrow({
+    // Ownership is checked on `tx`, not on the global client.
+    //
+    // This method runs inside a caller's interactive transaction, which holds
+    // one pooled connection for its whole duration. Calling `_assertOwnership`
+    // here issued a query on the *global* client — a second connection — while
+    // that transaction was open. Under a saturated pool (Supabase's pooler)
+    // that read waits for a free connection, blows past the interactive
+    // transaction's 5s default timeout, and every subsequent `tx.*` call then
+    // fails with "Transaction not found. Transaction ID is invalid, refers to
+    // an old closed transaction" — which is how cancelling an invitation
+    // surfaced as a 500 on `tenant_financial_ledger.create()`.
+    //
+    // Reading owner_id alongside hostel_id also removes a round trip: the
+    // tenant row was being fetched twice.
+    const tenant = await tx.tenants.findUnique({
       where: { id: tenantId },
-      select: { id: true, hostel_id: true },
+      select: { id: true, hostel_id: true, owner_id: true },
     });
+    if (!tenant) throw new Error("NOT_FOUND: Tenant not found");
+    if (tenant.owner_id !== ownerId) throw new Error("FORBIDDEN: Tenant does not belong to this owner");
     await tx.$queryRaw`SELECT id FROM tenants WHERE id = ${tenantId}::uuid FOR UPDATE`;
     const currentBalance = await this._computeBalance(tx, tenantId);
 

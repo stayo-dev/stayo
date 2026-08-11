@@ -28,6 +28,77 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### Cancelling an invitation failed with "Transaction not found… old closed transaction" — a ledger write escaped its own transaction
+
+- **Status:** fixed 2026-08-11
+- **Found:** 2026-08-11 (owner-reported)
+- **Area:** [[Backend]]
+- **Symptom:** `POST /api/tenants/[id]/cancel-invitation` returned `{"success": false, "error": {"message": "Invalid prisma.tenant_financial_ledger.create() invocation: Transaction API error: Transaction not found. Transaction ID is invalid, refers to an old closed transaction Prisma doesn't have information about anymore, or was obtained before disconnecting."}}`. The invitation was not cancelled.
+- **Root cause:** `tenantFinancialLedgerService.debitInTx(tx, …)` — a method whose entire contract is "run inside the caller's transaction" — called `this._assertOwnership()`, which reads through the **global** Prisma client. That opened a *second* connection while the caller's interactive transaction was still holding one. The call chain reaching it is `cancelInvitation` → `$transaction` → `obligationEngine.bulkWaiveInTx` → `waiveObligationInTx` → `financialCorrectionGateway.applyCorrection` → `debitInTx`, i.e. cancelling waives the tenant's pending obligations, and waiving debits the ledger. Against a pooled/remote database (Supabase's pooler) the nested global read waits for a free connection, the interactive transaction blows past its **5 s default timeout** and closes, and the next `tx.*` call — `tenant_financial_ledger.create()` — fails with exactly this error. Only `debitInTx` had this escape; `credit()` and `debit()` assert ownership *before* opening their own transaction, which is fine.
+- **Fix:** the ownership check now runs on `tx`, reading `owner_id` alongside `hostel_id` in the tenant lookup `debitInTx` was already doing — same error strings (`NOT_FOUND:` / `FORBIDDEN:`), one fewer round trip, nothing leaving the transaction. `tests/ledger-debit-in-tx-scope.test.ts` (3 DB-backed tests) pins it: it debits a tenant **created inside the same uncommitted transaction**, which a global-client read cannot see — verified to fail with `NOT_FOUND: Tenant not found` against the old code, and pass against the fixed one.
+- **Note:** the pool stall itself is timing- and load-dependent, so the 500 will not necessarily reproduce on a fast local connection even with the defect present. The structural defect is fixed; **worth re-testing the cancel flow live** against the environment where it was seen.
+- **Related:** [[Backend]], [[Business-Rules]], [[Decisions#ADR-063|ADR-063]]
+
+### Phone numbers rendered with the country code twice — "+91 +918008046952"
+
+- **Status:** fixed 2026-08-11
+- **Found:** 2026-08-11 (owner-reported, on the invited-tenant workspace)
+- **Area:** [[Frontend]]
+- **Symptom:** the tenant's phone displayed as `+91 +918008046952`. Editing it and saving *without* the `+91` didn't help — it came back doubled again, which made it look like the save was broken.
+- **Root cause:** display only; the save was always correct. `normalizeIndianPhone` stores every phone in E.164 (`+91XXXXXXXXXX`), so the country code is already in the value — and the UI rendered it inside a `+91 {phone}` template. Whatever the owner typed was normalized back to E.164 on save and then re-prefixed on render, which is exactly why correcting it appeared to do nothing.
+- **Fix:** new `shared/lib/phone.ts` (`toLocalPhone` / `canonicalPhone` / `formatIndianPhone` / `isSamePhone`, 11 tests). Display goes through `formatIndianPhone` (`+91 80080 46952`) which is idempotent — formatting already-formatted output does not accumulate prefixes. The edit field shows the 10 local digits and stores back E.164, and `diffTerms` compares phones by digits, so re-typing the same number in a different notation is not reported as a change worth re-issuing the tenant's link for.
+- **Still present elsewhere — deliberately not fixed:** `portal/pages/ActivateAccountPage.tsx` (~lines 1380, 2094) renders a phone with the same `+91 {…}` template and is likely affected. It lives in the **frozen** `src/portal` tree, so it was left alone rather than swept into an unrelated change; whether those specific values are stored or user-typed is **unverified**. Call sites that render a *user-typed* form value (`AddTenantModal` / `EditInviteModal` success toasts, `invite/steps/VerifyStep.tsx`) are correct as they are — the owner types 10 digits there.
+- **Related:** [[Decisions#ADR-063|ADR-063]], [[Frontend]]
+
+### The invited-tenant "Configure" form opened completely blank, because the tenant overview never returned a hostel id
+
+- **Status:** fixed 2026-08-11
+- **Found:** 2026-08-11
+- **Area:** [[Backend]] / [[Frontend]]
+- **Symptom:** on an invited tenant's owner-side profile, every route into editing — the "Configure" link, all eight tappable rows, and all three items in the "Manage invitation" sheet — opened `EditInviteModal` with **no data**: empty name/phone, "Select a hostel…", "Select a hostel first…" for the room, placeholder amounts, and today's date instead of the real move-in date. The same screen showed the tenant's hostel as "—". The screen's entire purpose (fix a mistake before activation) was unreachable.
+- **Root cause:** `getOwnerTenantOverview` returned no `hostel_id` at any level. `useTenantDetail` read `o.tenant?.hostel_id ?? o.hostel_id`, got `undefined`, and set `hostelId: ''`. `EditInviteModal`'s prefill query is `enabled: Boolean(tenantId && hostelId)` — so it never ran, and since a *disabled* React Query is `pending` but not `isLoading`, the modal skipped its loading branch and rendered the empty form as if that were the loaded state. The same empty id made `hostelName` fail its `session.hostels.find()` lookup, producing the "—".
+- **Fix:** `hostel_id` is now returned by the overview endpoint, with the invitation's own `hostel_id` as a frontend fallback (`tenant-service.ts`, `useTenantDetail.ts`). The modal is no longer used on this screen at all (see [[Decisions#ADR-063|ADR-063]]). Regression test: `tests/tenant-overview-invitation.test.ts`.
+- **Related:** [[Decisions#ADR-063|ADR-063]], [[APIs]]
+
+### Every invited tenant showed "⚠ Assign room", permanently blocking the screen's primary action
+
+- **Status:** fixed 2026-08-11
+- **Found:** 2026-08-11
+- **Area:** [[Frontend]]
+- **Symptom:** an invited tenant's Room/Bed row read "⚠ Assign room" and the agreement summary showed "—", even though a room is **mandatory** at invite time. The primary button was therefore stuck on "Complete setup (1)" and its "Activate tenant" state could never be reached by any tenant, ever.
+- **Root cause:** the UI derived the room from `room_allocations`, but `tenant_invitation_lifecycle-service` only creates an allocation **at activation**. Before that the bed is held by an `ACTIVE` `tenant_invitation_reservations` row. So the readiness check `hasRoom = tenant.room !== '—'` was false for 100% of invited tenants by construction.
+- **Fix:** the overview's new `invitation.reserved_room` is used as the room for invited tenants, and `missingTerms()` (pure, tested) replaced the inline readiness check. The owner-side activate button was removed outright for unrelated and more important reasons — see [[Decisions#ADR-063|ADR-063]].
+- **Related:** [[Decisions#ADR-063|ADR-063]], [[Database]]
+
+### Owner-private notes were never saved — the notes API had no frontend caller at all
+
+- **Status:** fixed 2026-08-11
+- **Found:** 2026-08-11
+- **Area:** [[Frontend]]
+- **Symptom:** the Private Notes card on an invited tenant showed two notes — "Student requested lower-floor room." and "Parent will pay deposit on move-in." — for **every** tenant, and anything an owner typed vanished on refresh.
+- **Root cause:** the card was `useState` seeded with two hardcoded example strings. `tenant_notes` and `GET/POST/DELETE /api/tenants/[id]/notes` have existed the whole time, and `tenantService.getNotes/addNote/deleteNote` wrappers were already written — nothing had ever called them.
+- **Fix:** new `useTenantNotes` hook; the card now reads, adds and deletes real notes.
+- **Related:** [[APIs]], [[Decisions#ADR-063|ADR-063]]
+
+### "Copy link" copied a link that could never work, and two other actions on the same screen were stubs
+
+- **Status:** fixed 2026-08-11
+- **Found:** 2026-08-11
+- **Area:** [[Frontend]]
+- **Symptom:** "Copy invitation link" reported success and put `<origin>/activate?token=<tenant uuid>` on the clipboard. An owner sending that to a tenant sends a dead link: the tenant's id is not an invitation token, and the real route is `/activate/<token>`. Separately, "Preview agreement" was a `toast.info` and the Agreement card's "Send link" was a second, differently-labelled resend button.
+- **Root cause:** the link was string-built on the client from data the client had, because the real token was never exposed. Rather than ship the token to the browser, the backend now builds the link.
+- **Fix:** `invitation.activation_link` (server-built, token stays server-side) is what gets copied, and Copy is disabled with an explicit error when there is no live invitation. The two stub actions were deleted along with the Agreement card.
+- **Related:** [[Decisions#ADR-063|ADR-063]], [[APIs]]
+
+### The cancel-invitation dialog promised a 30-day retention that no code implements
+
+- **Status:** fixed 2026-08-11
+- **Found:** 2026-08-11
+- **Area:** [[Frontend]]
+- **Symptom:** the confirmation said "Their pending tenancy configuration will be retained for 30 days so you can re-invite them anytime." Nothing in `cancelInvitation` retains anything for 30 days — it sets the invitation `CANCELLED`, releases the reservation, ends the allocation, waives pending obligations through `ObligationEngine`, and sets the tenant `CANCELLED`, all permanently.
+- **Fix:** copy rewritten to describe what the code actually does. No behaviour change.
+- **Related:** [[Business-Rules]], [[Decisions#ADR-063|ADR-063]]
+
 ### Every Supabase-side login failure surfaced as an opaque 500 "Something went wrong", hiding the fact that the server simply couldn't reach Supabase
 
 - **Status:** fixed 2026-08-09
