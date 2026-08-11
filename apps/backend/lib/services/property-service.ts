@@ -634,6 +634,84 @@ export class PropertyService {
     await prisma.floors.delete({ where: { id: floorId } });
   }
 
+  /**
+   * Create a whole floor's rooms in one transaction.
+   *
+   * The hostel builder fills a floor at a time, and a floor is normally a
+   * mix — three 4-sharing rooms and one 2-sharing, each with its own rent —
+   * so every room arrives fully specified. This is the shape
+   * `HostelProvisioningService` could not express: it multiplies one
+   * `beds_per_room` and one `base_rent` across a uniform grid.
+   *
+   * All-or-nothing on purpose. A floor half-created after a duplicate room
+   * number would leave the owner re-entering the rooms that did land, which
+   * is exactly the dead-end the provisioning service was written to remove.
+   */
+  async createRoomsForFloor(
+    floorId: string,
+    ownerId: string,
+    rooms: Array<{ room_no: string; capacity: number; base_rent?: number; room_type?: string }>,
+  ) {
+    const floor = await prisma.floors.findUnique({
+      where: { id: floorId },
+      include: { hostel: { select: { id: true, owner_id: true, status: true } } },
+    });
+    if (!floor || floor.hostel.owner_id !== ownerId) throw new Error("NOT_FOUND: Floor not found");
+    if (floor.hostel.status === "ARCHIVED") throw new Error("HOSTEL_ARCHIVED: Cannot modify rooms/floors of an archived hostel");
+    if (floor.hostel.status === "INACTIVE") throw new Error("VALIDATION: Cannot modify rooms/floors of an inactive hostel");
+
+    const hostelId = floor.hostel.id;
+    const numbers = rooms.map((room) => room.room_no.trim());
+
+    // Caught here rather than left to the unique index, so the owner is told
+    // which number repeats instead of reading a Postgres constraint name.
+    const duplicatesInRequest = numbers.filter((no, i) => numbers.indexOf(no) !== i);
+    if (duplicatesInRequest.length > 0) {
+      throw new Error(`VALIDATION: Room ${duplicatesInRequest[0]} is listed twice`);
+    }
+
+    const clashing = await prisma.rooms.findFirst({
+      where: { hostel_id: hostelId, room_no: { in: numbers }, is_active: true },
+      select: { room_no: true },
+    });
+    if (clashing) {
+      throw new Error(`CONFLICT: Room ${clashing.room_no} already exists in this hostel`);
+    }
+
+    // `floor` (the legacy Int column) is kept in step with `floor_id` because
+    // parts of the read path still order and group by it.
+    const created = await prisma.$transaction(async (tx: any) => {
+      await tx.rooms.createMany({
+        data: rooms.map((room, index) => ({
+          id: crypto.randomUUID(),
+          hostel_id: hostelId,
+          floor_id: floor.id,
+          floor: floor.sort_order || null,
+          room_no: room.room_no.trim(),
+          capacity: room.capacity,
+          base_rent: room.base_rent ?? null,
+          room_type: room.room_type ?? null,
+          sort_order: index,
+        })),
+      });
+
+      return tx.rooms.findMany({
+        where: { floor_id: floor.id, room_no: { in: numbers } },
+        orderBy: { sort_order: "asc" },
+      });
+    });
+
+    await eventLog
+      .log("ROOMS_BULK_CREATED", ownerId, {
+        hostel_id: hostelId,
+        floor_id: floor.id,
+        rooms_created: created.length,
+      })
+      .catch(() => undefined);
+
+    return created;
+  }
+
   async getFloorsWithRooms(ownerId: string, hostelId: string) {
     // Load named floors ordered by sort_order; fall back to a synthetic record for rooms with no floor_id.
     const [floors, rooms, capacityMap] = await Promise.all([
