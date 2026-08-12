@@ -60,7 +60,11 @@ export function deriveAttention(kpis: AdminKpis, ownersNeedingAttention = 0): At
       code: 'HOSTEL_APPROVALS',
       label: plural(approvals, 'hostel awaiting approval', 'hostels awaiting approval'),
       count: approvals,
-      to: '/admin/hostels?verification=PENDING',
+      // Routed at the owner, not a hostel list. Approving is done from the
+      // owner's own profile, where the admin can see whose property it is and
+      // what else that account needs — and it avoids a cross-screen filter
+      // link that silently stops filtering if the query param goes unread.
+      to: '/admin/owners',
       severity: 'high',
     });
   }
@@ -119,7 +123,7 @@ export function deriveSnapshot(
 ): SnapshotFigure[] {
   return [
     { label: 'Owners', value: String(kpis.owners_total ?? 0), to: '/admin/owners' },
-    { label: 'Live hostels', value: String(kpis.active_hostels ?? 0), to: '/admin/hostels?listing=LIVE' },
+    { label: 'Live hostels', value: String(kpis.active_hostels ?? 0), to: '/admin/owners' },
     { label: 'MRR', value: formatMoney(Number(kpis.platform_revenue ?? 0)), to: '/admin/revenue' },
     { label: 'Collected', value: formatMoney(Number(kpis.collections ?? 0)), to: '/admin/revenue' },
   ];

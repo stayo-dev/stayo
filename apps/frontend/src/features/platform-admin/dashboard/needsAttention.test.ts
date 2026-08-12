@@ -15,12 +15,17 @@ describe('deriveAttention', () => {
     expect(items[0]).toMatchObject({ code: 'DOCUMENT_REVIEW', severity: 'high', to: '/admin/documents' });
   });
 
-  it('routes each queue to the screen that clears it, pre-filtered', () => {
+  it('routes hostel approvals at the owner, not a platform-wide hostel list', () => {
+    // Approving happens inside the owner profile, so the admin sees whose
+    // property it is. It also avoids a cross-screen filter link, which stops
+    // filtering silently the moment the query param goes unread.
     const items = deriveAttention({ pending_approvals: 4 });
-    expect(items[0]).toMatchObject({
-      code: 'HOSTEL_APPROVALS',
-      to: '/admin/hostels?verification=PENDING',
-    });
+    expect(items[0]).toMatchObject({ code: 'HOSTEL_APPROVALS', to: '/admin/owners' });
+  });
+
+  it('keeps every destination inside the owner-first surfaces', () => {
+    const items = deriveAttention({ documents_awaiting_review: 1, pending_approvals: 1, new_leads: 1 }, 2);
+    expect(items.every((i) => !i.to.includes('/admin/hostels'))).toBe(true);
   });
 
   it('orders high severity above medium above low', () => {

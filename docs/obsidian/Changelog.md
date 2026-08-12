@@ -10,6 +10,13 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-12 — Admin: hostels move *inside* the owner, and approval happens there
+- **Making Owners the primary list wasn't enough — the logic underneath was still hostel-first.** Hostels are now loaded as a child of the owner (`GET /api/platform-admin/owners/[id]`, returning that owner's hostels with full per-hostel figures, documents and recent activity) instead of being filtered out of a platform-wide roster. That matches the admin's actual model: a property only means something in the context of whose it is.
+- **Approval moved to where the property is.** A hostel awaiting verification is approved from inside the owner profile, so the admin sees whose it is and what else that account needs, instead of being sent to a separate list to find it again.
+- **Fixed two broken links introduced the same day.** The owner card and the approvals queue navigated to `/admin/hostels?owner=<id>` and `?verification=PENDING`, but neither the page nor its endpoint reads those params — both silently showed *every* hostel on the platform while looking correct. Serving hostels from the owner removes the need for either link rather than patching them, and a test now asserts no attention item routes into `/admin/hostels` at all.
+- **Progressive disclosure:** the admin meets the owner first; hostels are introduced underneath them.
+- See [[Features]], [[APIs]].
+
 ### 2026-08-12 — Admin becomes owner-first: Owners replaces Hostels, and the dashboard becomes a queue router
 - **The admin app was built around the wrong entity.** Stayo's hierarchy is Stayo → Owner → Hostels, but the admin listed *properties* — so an owner running three hostels appeared as three unrelated rows with no way to see the business behind them, and there was no owner screen at all.
 - **Owners is now the primary list** and the nav destination. Each row leads with the *reason* it needs attention rather than a wall of metrics, and the list is ordered worst-first, because with hundreds of owners the admin should never scroll to find the problem.

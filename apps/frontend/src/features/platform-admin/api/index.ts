@@ -24,6 +24,16 @@ export const platformAdminService = {
     };
   },
 
+  /**
+   * One owner, plus their hostels, documents and recent activity. Hostels
+   * are served from the owner rather than filtered out of a platform-wide
+   * list — a property only means something in the context of whose it is.
+   */
+  getOwner: async (id: string) => {
+    const response = await api.get(`/platform-admin/owners/${id}`);
+    return unwrap(response) as { owner: any; hostels: any[]; documents: any[]; activity: any[] };
+  },
+
   getHostels: async (params: { search?: string; verification?: string; listing?: string } = {}) => {
     const response = await api.get('/platform-admin/hostels', { params });
     return unwrap(response).hostels as any[];

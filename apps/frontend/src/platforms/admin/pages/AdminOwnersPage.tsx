@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, ArrowUpRight, Building2, Search, X } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { AlertTriangle, Building2, CheckCircle2, Search, X } from 'lucide-react';
+import { stayoToast } from '@shared/ui-patterns/Toast';
 import { platformAdminService } from '@features/platform-admin/api';
 import {
   compareByUrgency,
@@ -70,7 +70,6 @@ function toSignals(row: Record<string, any>): OwnerSignals {
 }
 
 export function AdminOwnersPage() {
-  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<OwnerFilter>('attention');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -203,48 +202,71 @@ export function AdminOwnersPage() {
       )}
 
       {selected && (
-        <OwnerDrawer
-          raw={selected.raw}
-          signals={selected.signals}
-          health={selected.health}
-          onClose={() => setSelectedId(null)}
-          onOpenHostels={() => navigate(`/admin/hostels?owner=${selected.signals.id}`)}
-          onOpenDocuments={() => navigate('/admin/documents')}
-        />
+        <OwnerDrawer ownerId={selected.signals.id} health={selected.health} onClose={() => setSelectedId(null)} />
       )}
     </div>
   );
 }
 
 /**
- * The owner profile.
+ * The owner profile — and the only place hostels appear.
  *
- * Deliberately observability and intervention only — it does not reproduce the
- * owner's own app. Anything operational (tenants, rent, food) is reached by
- * opening that owner's context, not rebuilt here.
+ * Properties are loaded as a child of the owner rather than by filtering a
+ * platform-wide hostel list. That is the admin's actual mental model (a hostel
+ * only means something in the context of whose it is), and it removes a class
+ * of bug: a cross-screen link like `/admin/hostels?owner=<id>` stops filtering
+ * silently the moment nobody reads that query param, showing every hostel on
+ * the platform while looking perfectly correct.
+ *
+ * Approval happens here too. Sending the admin to a different screen to
+ * approve a hostel they are already looking at is the kind of detour that
+ * makes a queue of hundreds unmanageable.
+ *
+ * Still observability and intervention only — it does not reproduce the
+ * owner's own app.
  */
 function OwnerDrawer({
-  raw,
-  signals,
+  ownerId,
   health,
   onClose,
-  onOpenHostels,
-  onOpenDocuments,
 }: {
-  raw: Record<string, any>;
-  signals: OwnerSignals;
+  ownerId: string;
   health: OwnerHealth;
   onClose: () => void;
-  onOpenHostels: () => void;
-  onOpenDocuments: () => void;
 }) {
-  const dimensions = healthDimensions(signals);
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: ['platform-admin', 'owner', ownerId],
+    queryFn: () => platformAdminService.getOwner(ownerId),
+    staleTime: 15_000,
+  });
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['platform-admin', 'owner', ownerId] });
+    queryClient.invalidateQueries({ queryKey: ['platform-admin', 'owners'] });
+    queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
+  };
+
+  const approve = useMutation({
+    mutationFn: (hostelId: string) => platformAdminService.approveListing(hostelId),
+    onSuccess: () => {
+      stayoToast.success('Hostel approved and listed');
+      refresh();
+    },
+    onError: () => stayoToast.error('Could not approve that hostel'),
+  });
+
+  const owner = query.data?.owner;
+  const hostels = query.data?.hostels ?? [];
   const chip = LEVEL_CHIP[health.level];
+
+  const signals: OwnerSignals | null = owner ? toSignals(owner) : null;
+  const dimensions = signals ? healthDimensions(signals) : [];
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-[rgba(40,30,20,0.32)]" onClick={onClose} />
-      <div className="relative z-10 flex h-full w-[440px] max-w-[92vw] flex-col bg-white shadow-[-24px_0_60px_-24px_rgba(40,30,20,0.28)]">
+      <div className="relative z-10 flex h-full w-[460px] max-w-[92vw] flex-col bg-white shadow-[-24px_0_60px_-24px_rgba(40,30,20,0.28)]">
         <div className="flex flex-none items-center justify-between border-b border-[#EFE6DA] px-[22px] py-[18px]">
           <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-[#9C9186]">Owner</span>
           <button
@@ -256,123 +278,146 @@ function OwnerDrawer({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-[22px]">
-          <div className="flex items-center gap-3.5">
-            <span className="flex h-13 w-13 flex-none items-center justify-center rounded-[14px] bg-foreground font-display text-[17px] font-bold text-background">
-              {signals.name?.[0]?.toUpperCase() ?? 'O'}
-            </span>
-            <div className="min-w-0">
-              <div className="font-display text-[18px] font-extrabold text-foreground">{signals.name}</div>
-              <div className="mt-1 truncate text-[12px] text-[#8A7F75]">{raw.email ?? '—'}</div>
-              <span className={`mt-1.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${chip.className}`}>
-                {chip.label}
+        {query.isLoading || !owner || !signals ? (
+          <div className="flex-1 p-[22px]"><div className="h-64 animate-pulse rounded-2xl bg-muted" /></div>
+        ) : (
+          <div className="flex-1 overflow-y-auto p-[22px]">
+            <div className="flex items-center gap-3.5">
+              <span className="flex h-13 w-13 flex-none items-center justify-center rounded-[14px] bg-foreground font-display text-[17px] font-bold text-background">
+                {String(owner.name ?? 'O')[0]?.toUpperCase()}
               </span>
+              <div className="min-w-0">
+                <div className="font-display text-[18px] font-extrabold text-foreground">{owner.name}</div>
+                <div className="mt-1 truncate text-[12px] text-[#8A7F75]">{owner.email ?? '—'}</div>
+                <span className={`mt-1.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${chip.className}`}>
+                  {chip.label}
+                </span>
+              </div>
             </div>
-          </div>
 
-          {health.reasons.length > 0 && (
-            <section className="mt-5">
-              <h3 className="text-[11px] font-bold uppercase tracking-[0.06em] text-[#9C9186]">Needs you</h3>
-              <ul className="mt-2 flex flex-col gap-2">
-                {health.reasons.map((reason) => (
-                  <li key={reason.code} className="rounded-xl border border-[#EFE6DA] bg-[#FBF6F0] p-3">
-                    <div className="flex items-start gap-2">
-                      <AlertTriangle
-                        className={`mt-0.5 h-3.5 w-3.5 flex-none ${
-                          reason.severity === 'high' ? 'text-destructive' : 'text-warning'
-                        }`}
-                        strokeWidth={2.2}
-                      />
-                      <div className="min-w-0">
-                        <div className="text-[12.5px] font-bold text-foreground">{reason.label}</div>
-                        <div className="mt-0.5 text-[11.5px] leading-relaxed text-[#8A7F75]">{reason.detail}</div>
-                        {reason.action === 'review-documents' && (
-                          <button
-                            type="button"
-                            onClick={onOpenDocuments}
-                            className="mt-2 inline-flex h-[30px] items-center gap-1 rounded-lg border border-[#E7DDD1] bg-white px-3 text-[11.5px] font-bold text-foreground hover:border-primary hover:text-primary"
-                          >
-                            Review documents <ArrowUpRight className="h-3 w-3" />
-                          </button>
-                        )}
-                        {reason.action === 'approve-hostel' && (
-                          <button
-                            type="button"
-                            onClick={onOpenHostels}
-                            className="mt-2 inline-flex h-[30px] items-center gap-1 rounded-lg border border-[#E7DDD1] bg-white px-3 text-[11.5px] font-bold text-foreground hover:border-primary hover:text-primary"
-                          >
-                            Review hostels <ArrowUpRight className="h-3 w-3" />
-                          </button>
-                        )}
+            {health.reasons.length > 0 && (
+              <section className="mt-5">
+                <h3 className="text-[11px] font-bold uppercase tracking-[0.06em] text-[#9C9186]">Needs you</h3>
+                <ul className="mt-2 flex flex-col gap-2">
+                  {health.reasons.map((reason) => (
+                    <li key={reason.code} className="rounded-xl border border-[#EFE6DA] bg-[#FBF6F0] p-3">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle
+                          className={`mt-0.5 h-3.5 w-3.5 flex-none ${
+                            reason.severity === 'high' ? 'text-destructive' : 'text-warning'
+                          }`}
+                          strokeWidth={2.2}
+                        />
+                        <div className="min-w-0">
+                          <div className="text-[12.5px] font-bold text-foreground">{reason.label}</div>
+                          <div className="mt-0.5 text-[11.5px] leading-relaxed text-[#8A7F75]">{reason.detail}</div>
+                        </div>
                       </div>
-                    </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            <section className="mt-5">
+              <h3 className="text-[11px] font-bold uppercase tracking-[0.06em] text-[#9C9186]">Business</h3>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <Stat label="Hostels" value={`${owner.hostels}`} sub={`${owner.hostels_live} live`} />
+                <Stat label="Tenants" value={`${owner.tenants}`} sub={`${owner.active_tenants} active`} />
+                <Stat label="Occupancy" value={`${owner.occupancy}%`} sub={`${owner.capacity} beds`} />
+                <Stat
+                  label="Collected"
+                  value={fmtINR(owner.collected_this_month)}
+                  sub={owner.outstanding > 0 ? `${fmtINR(owner.outstanding)} due` : 'this month'}
+                />
+              </div>
+            </section>
+
+            {/* Properties, as a child of the owner — with the approval the
+                admin would otherwise have gone to another screen for. */}
+            <section className="mt-5">
+              <h3 className="text-[11px] font-bold uppercase tracking-[0.06em] text-[#9C9186]">
+                Hostels {hostels.length > 0 ? `· ${hostels.length}` : ''}
+              </h3>
+              {hostels.length === 0 ? (
+                <p className="mt-2 text-[12.5px] text-[#9C9186]">No hostel created yet.</p>
+              ) : (
+                <ul className="mt-2 flex flex-col gap-2">
+                  {hostels.map((hostel: any) => (
+                    <li key={hostel.id} className="rounded-xl border border-[#EFE6DA] p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <Building2 className="h-3.5 w-3.5 flex-none text-[#9C9186]" strokeWidth={1.9} />
+                          <span className="truncate text-[13px] font-bold text-foreground">{hostel.name}</span>
+                        </span>
+                        <span
+                          className={`flex-none rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                            hostel.listing_status === 'LIVE'
+                              ? 'bg-success/10 text-success'
+                              : hostel.listing_status === 'SUSPENDED'
+                                ? 'bg-destructive/10 text-destructive'
+                                : 'bg-muted text-muted-foreground'
+                          }`}
+                        >
+                          {hostel.listing_status}
+                        </span>
+                      </div>
+
+                      <div className="mt-2 grid grid-cols-3 gap-2 border-t border-[#F2ECE5] pt-2">
+                        <MiniStat label="Tenants" value={`${hostel.active_tenants}`} />
+                        <MiniStat label="Occ." value={`${hostel.occupancy}%`} />
+                        <MiniStat label="Collected" value={fmtINR(hostel.collected_this_month)} />
+                      </div>
+
+                      {hostel.verification_status === 'PENDING' && (
+                        <button
+                          type="button"
+                          disabled={approve.isPending}
+                          onClick={() => approve.mutate(hostel.id)}
+                          className="mt-2.5 inline-flex h-[32px] items-center gap-1.5 rounded-lg bg-foreground px-3.5 text-[12px] font-bold text-background disabled:opacity-50"
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2.2} />
+                          {approve.isPending ? 'Approving…' : 'Approve & list'}
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section className="mt-5">
+              <h3 className="text-[11px] font-bold uppercase tracking-[0.06em] text-[#9C9186]">Health</h3>
+              <ul className="mt-2 divide-y divide-[#F2ECE5] overflow-hidden rounded-xl border border-[#EFE6DA]">
+                {dimensions.map((dimension) => (
+                  <li key={dimension.label} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+                    <span className="flex items-center gap-2">
+                      <span className={`h-1.5 w-1.5 rounded-full ${DIMENSION_DOT[dimension.state]}`} />
+                      <span className="text-[12.5px] font-bold text-foreground">{dimension.label}</span>
+                    </span>
+                    <span
+                      className={`text-[11.5px] ${
+                        dimension.state === 'untracked' ? 'italic text-[#9C9186]' : 'text-[#8A7F75]'
+                      }`}
+                    >
+                      {dimension.detail}
+                    </span>
                   </li>
                 ))}
               </ul>
             </section>
-          )}
-
-          <section className="mt-5">
-            <h3 className="text-[11px] font-bold uppercase tracking-[0.06em] text-[#9C9186]">Business</h3>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <Stat label="Hostels" value={`${signals.hostels}`} sub={`${signals.hostelsLive} live`} />
-              <Stat label="Tenants" value={`${signals.tenants}`} sub={`${signals.activeTenants} active`} />
-              <Stat label="Occupancy" value={`${Number(raw.occupancy ?? 0)}%`} sub={`${signals.capacity} beds`} />
-              <Stat
-                label="Collected"
-                value={fmtINR(signals.collectedThisMonth)}
-                sub={signals.outstanding > 0 ? `${fmtINR(signals.outstanding)} due` : 'this month'}
-              />
-            </div>
-          </section>
-
-          <section className="mt-5">
-            <h3 className="text-[11px] font-bold uppercase tracking-[0.06em] text-[#9C9186]">Health</h3>
-            <ul className="mt-2 divide-y divide-[#F2ECE5] overflow-hidden rounded-xl border border-[#EFE6DA]">
-              {dimensions.map((dimension) => (
-                <li key={dimension.label} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
-                  <span className="flex items-center gap-2">
-                    <span className={`h-1.5 w-1.5 rounded-full ${DIMENSION_DOT[dimension.state]}`} />
-                    <span className="text-[12.5px] font-bold text-foreground">{dimension.label}</span>
-                  </span>
-                  <span
-                    className={`text-[11.5px] ${
-                      dimension.state === 'untracked' ? 'italic text-[#9C9186]' : 'text-[#8A7F75]'
-                    }`}
-                  >
-                    {dimension.detail}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <section className="mt-5">
-            <h3 className="text-[11px] font-bold uppercase tracking-[0.06em] text-[#9C9186]">Hostels</h3>
-            {signals.hostels === 0 ? (
-              <p className="mt-2 text-[12.5px] text-[#9C9186]">No hostel created yet.</p>
-            ) : (
-              <>
-                <ul className="mt-2 flex flex-col gap-1.5">
-                  {(raw.hostel_names ?? []).map((name: string) => (
-                    <li key={name} className="flex items-center gap-2 rounded-xl border border-[#EFE6DA] px-3.5 py-2.5">
-                      <Building2 className="h-3.5 w-3.5 flex-none text-[#9C9186]" strokeWidth={1.9} />
-                      <span className="truncate text-[12.5px] font-bold text-foreground">{name}</span>
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  type="button"
-                  onClick={onOpenHostels}
-                  className="mt-2 inline-flex h-[32px] items-center gap-1 rounded-lg border border-[#E7DDD1] bg-white px-3.5 text-[12px] font-bold text-[#8A7F75] hover:border-primary hover:text-primary"
-                >
-                  Open all hostels <ArrowUpRight className="h-3 w-3" />
-                </button>
-              </>
-            )}
-          </section>
-        </div>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[10px] font-semibold text-[#9C9186]">{label}</div>
+      <div className="text-[12.5px] font-bold text-foreground">{value}</div>
     </div>
   );
 }
