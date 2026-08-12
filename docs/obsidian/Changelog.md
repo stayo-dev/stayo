@@ -10,12 +10,26 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-12 — Fixed Activate Tenants queue rendering in the legacy pre-StayO theme
+- **`/owner/tenants/activations` was rendering unbranded** — navy primary button, serif display font — instead of StayO's terracotta/Manrope look. Root cause: `PendingActivationsPage` is a sibling route of `<OwnerAppShell>` (not nested inside it), so it never inherited the shell's `<ThemeProvider theme="product">`, and fell back to `theme.css`'s unscoped legacy tokens — the pre-rebrand "Shri Adithya" theme, which intentionally still exists for not-yet-migrated screens.
+- **Fix:** `PendingActivationsPage` now wraps itself in `<ThemeProvider theme="product">`, matching the pattern its sibling routes (`PendingVerificationsPage`, `TenantDetailPage`) already used for the same reason.
+- Also fixed in the Action Center layout: Today's Revenue now always renders as a full-width card below the row (previously only when Renewal Agreements was also showing), and the Renewal Agreements card's visibility no longer causes a layout shift after page load (its settings fetch is now part of the same loading gate as the rest of the dashboard).
+- **Follow-up same day:** the shared `WorkQueue` component (behind all four owner queues — Collection, Agreements, Vacancy, Activation) was missing the graph-paper background pattern used elsewhere in the StayO product theme (e.g. `PendingVerificationsPage`). Added once at the `WorkQueue` level so all four queues stay visually consistent rather than fixing it per-page.
+- See [[Bugs]], [[Decisions#ADR-063|ADR-063]].
+
 ### 2026-08-11 — Rooms tab: vacant rooms open their sheet, and floors + rooms gain an explicit-Save "Reorder" mode
 - **Bug fix: a vacant room's card now opens, like every other room.** Previously only occupied/reserved rooms responded to a tap — a vacant room's card did nothing except its separate "Assign" button, so there was no way to view a vacant room's sheet at all. `RoomRow` is now always tappable; `RoomSheetModal` shows an explicit "No active tenants" row when a room has none, instead of a silently empty list.
 - **Floors can now be reordered.** New "Reorder" button at the top of the Rooms tab enters a dedicated mode (`RoomsReorderPanel`, new) where floors and, within each floor, its rooms, both drag into place — handle-only drag, same touch-safe pattern as the Home property list. Nothing saves while dragging; an explicit "Save" (or "Cancel") commits or discards the whole batch.
 - **This replaces, not adds to, the previous per-floor drag.** The "expand a floor → drag a room → auto-saves on release" behavior from 2026-08-10 (below) is gone — reordering now only happens inside the new Reorder mode. `useHostelRooms` gains `reorderFloors` (writes each floor's `sort_order` via `PATCH /floors/:id` — no bulk endpoint exists) alongside the existing `reorderRooms`, which now returns its mutation's promise so both can be awaited together on Save.
 - **Not verified in a live browser** — this session had no working `tsc`/dev-server toolchain; only `vite build` (esbuild, no type-check) and `check:architecture` were run, both clean for every touched file.
 - See [[Decisions#ADR-064|ADR-064]], [[Features]].
+
+### 2026-08-11 — Home dashboard: Action Center absorbs Snapshot, Renewal Agreements becomes conditional
+- **One Action Center instead of two sections.** The read-only "Snapshot" section (Beds, Outstanding, Today's Revenue) is gone. Beds was dropped as redundant with the existing Fill Vacant Beds action card (same figure); Outstanding was dropped outright, redundant with Collect Rent's overdue amount; Today's Revenue moved into Action Center and is now clickable for the first time, opening `/owner/money`.
+- **Renewal Agreements is now conditional** ([[Decisions#ADR-063|ADR-063]]) — the card only renders when the owner's primary hostel has `agreement_required` on ([[Decisions#ADR-059|ADR-059]]), reusing that existing setting rather than adding a second, dashboard-only toggle. Hidden until the settings query resolves, rather than flashing present-then-removed.
+- **Unchanged:** the monthly "{Month} Collection" progress bar, the "View all" Action Center sheet, and every other card's existing click destination (Collect Rent, Activate Tenants, Fill Vacant Beds).
+- **No backend change** — reuses `GET /hostels/:id/preferences`, already consumed elsewhere by the Agreement Requirement settings page.
+- See [[Decisions#ADR-063|ADR-063]], [[Features]], [[Business-Rules]].
 
 ### 2026-08-10 — Rooms tab: floors collapse to an accordion, rooms drag-reorder within a floor
 - **Floors on the owner Rooms tab now collapse, like the Food Library accordion** — previously every floor's rooms rendered flat, all at once. Tap a floor to reveal its rooms; collapsed, it shows a room/vacant-count summary. A search match force-expands the matching floor.

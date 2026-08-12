@@ -12,7 +12,6 @@ import { PropertyList } from '../property-order/PropertyList';
 import {
   mockOwnerName,
   mockActionCenter,
-  mockSnapshot,
   mockCollection,
   mockProperties,
   mockAlertCount,
@@ -20,7 +19,6 @@ import {
 } from '@shared/mocks/dashboard';
 
 type ActionCenterData = typeof mockActionCenter;
-type SnapshotData = typeof mockSnapshot;
 type CollectionData = typeof mockCollection;
 
 interface OwnerHomeDashboardProps {
@@ -28,7 +26,6 @@ interface OwnerHomeDashboardProps {
   properties?: MockProperty[];
   alertCount?: number;
   actionCenter?: ActionCenterData;
-  snapshot?: SnapshotData;
   collection?: CollectionData;
   onSelectProperty?: (hostelId: string) => void;
   onOpenAlerts?: () => void;
@@ -46,6 +43,8 @@ interface OwnerHomeDashboardProps {
   onOpenAgreements?: () => void;
   onOpenActivations?: () => void;
   onOpenVacancies?: () => void;
+  /** Opens the owner Money page. See ADR-063. */
+  onOpenRevenue?: () => void;
 }
 
 /**
@@ -66,7 +65,6 @@ export function OwnerHomeDashboard({
   properties = mockProperties,
   alertCount = mockAlertCount,
   actionCenter = mockActionCenter,
-  snapshot = mockSnapshot,
   collection = mockCollection,
   onSelectProperty,
   onOpenAlerts,
@@ -80,6 +78,7 @@ export function OwnerHomeDashboard({
   onOpenAgreements,
   onOpenActivations,
   onOpenVacancies,
+  onOpenRevenue,
 }: OwnerHomeDashboardProps) {
   const navigate = useNavigate();
   const session = useOwnerSession();
@@ -148,29 +147,27 @@ export function OwnerHomeDashboard({
           </DarkHeroCard>
         </button>
         <div className="grid grid-cols-3 gap-2">
-          {/* All three were non-interactive: StatCard had no onClick prop at
-              all, so they sat beside a tappable hero card doing nothing. Each
-              now opens its own work queue, same model as Collect Rent
-              (ADR-046). */}
-          <StatCard variant="action" label="Review Agreements" value={actionCenter.reviewAgreements.value} caption={actionCenter.reviewAgreements.caption} onClick={onOpenAgreements} ariaLabel="Review agreements" />
+          {/* All were non-interactive: StatCard had no onClick prop at all,
+              so they sat beside a tappable hero card doing nothing. Each now
+              opens its own work queue, same model as Collect Rent (ADR-046).
+              Renewal Agreements is conditional — only shown when the hostel
+              requires agreements (ADR-063). Today's Revenue was moved in
+              from the old Snapshot section, made clickable, and always spans
+              the full row as its own "big card" regardless of how many
+              cards sit above it. */}
           <StatCard variant="action" label="Activate Tenants" value={actionCenter.activateTenants.value} caption={actionCenter.activateTenants.caption} onClick={onOpenActivations} ariaLabel="Activate tenants" />
+          {actionCenter.showRenewalAgreements && (
+            <StatCard variant="action" label="Review Agreements" value={actionCenter.reviewAgreements.value} caption={actionCenter.reviewAgreements.caption} onClick={onOpenAgreements} ariaLabel="Review agreements" />
+          )}
           <StatCard variant="action" label="Fill Vacant Beds" value={actionCenter.fillVacantBeds.value} caption={actionCenter.fillVacantBeds.caption} onClick={onOpenVacancies} ariaLabel="Fill vacant beds" />
-        </div>
-      </section>
-
-      <section className="flex flex-col gap-3">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Snapshot</h2>
-        <div className="grid grid-cols-3 gap-2">
-          <StatCard label="Beds" value={snapshot.beds.value} caption={snapshot.beds.caption} />
           <StatCard
-            label="Outstanding"
-            value={<span className="text-destructive">{snapshot.outstanding.value}</span>}
-            caption={snapshot.outstanding.caption}
-          />
-          <StatCard
+            variant="action"
             label="Today's revenue"
-            value={<span className="text-success">{snapshot.todaysRevenue.value}</span>}
-            caption={snapshot.todaysRevenue.caption}
+            value={<span className="text-success">{actionCenter.todaysRevenue.value}</span>}
+            caption={actionCenter.todaysRevenue.caption}
+            onClick={onOpenRevenue}
+            ariaLabel="Today's revenue"
+            className="col-span-3"
           />
         </div>
       </section>

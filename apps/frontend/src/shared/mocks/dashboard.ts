@@ -16,12 +16,8 @@ export const mockActionCenter = {
   fillVacantBeds: { value: 25, caption: 'Vacant beds' },
   verifyKyc: { value: 1, caption: 'Tenant document pending' },
   sendReminders: { value: 37, caption: 'Overdue tenants not yet reminded' },
-};
-
-export const mockSnapshot = {
-  beds: { value: '49/137', caption: '88 vacant' },
-  outstanding: { value: '₹5.1L', caption: 'Due till today' },
-  todaysRevenue: { value: '₹18,500', caption: 'Collected today' },
+  todaysRevenue: { value: '₹18,500', caption: 'Collected this month' },
+  showRenewalAgreements: true,
 };
 
 export const mockCollection = {

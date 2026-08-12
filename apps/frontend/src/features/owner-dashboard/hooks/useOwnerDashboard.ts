@@ -4,6 +4,7 @@ import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { portfolioService } from '@features/dashboard/api';
 import { tenantService } from '@features/tenants/api';
 import { agreementService } from '@features/agreements/api';
+import { useHostelPolicy } from '@features/settings/settingsHooks';
 import { useAlerts } from '@features/owner-alerts/hooks/useAlerts';
 import { queryKeys } from '@lib/queryKeys';
 import type { MockProperty } from '@shared/mocks/dashboard';
@@ -103,6 +104,15 @@ export function useOwnerDashboard() {
     staleTime: 120_000,
   });
 
+  // Gates the Renewal Agreements card — reuses the existing per-hostel
+  // "Agreement Required" setting (ADR-059) rather than a new dashboard-only
+  // toggle. See ADR-063. Resolves to hidden while loading, since this
+  // controls whether the whole card exists, not just a number inside it.
+  const policyQuery = useHostelPolicy(session.primaryHostelId);
+  const showRenewalAgreements = policyQuery.isSuccess
+    ? policyQuery.data?.policy?.tenant_rules?.agreement_required !== false
+    : false;
+
   const aggregate = portfolioQuery.data?.aggregate;
 
   const properties: MockProperty[] = useMemo(
@@ -143,18 +153,11 @@ export function useOwnerDashboard() {
     // readiness audit) — overdue count is the honest real number available,
     // captioned accordingly rather than claiming something we can't know.
     sendReminders: { value: aggregate?.overdue_count ?? 0, caption: 'Overdue tenants' },
-  };
-
-  const snapshot = {
-    beds: {
-      value: `${aggregate?.active_tenants ?? 0}/${aggregate?.total_capacity ?? 0}`,
-      caption: `${aggregate?.vacant_beds ?? 0} vacant`,
-    },
-    outstanding: { value: formatLakh(aggregate?.pending_dues ?? 0), caption: 'Due till today' },
     // No daily-granularity revenue field exists on the backend (confirmed
     // during the readiness audit, only monthly) — labeled honestly as MTD
     // rather than mislabeled "today's".
     todaysRevenue: { value: formatLakh(aggregate?.rent_collected_this_month ?? 0), caption: 'Collected this month' },
+    showRenewalAgreements,
   };
 
   const collected = aggregate?.rent_collected_this_month ?? 0;
@@ -176,9 +179,12 @@ export function useOwnerDashboard() {
     ownerName: session.ownerName?.split(' ')[0] || 'Owner',
     properties,
     actionCenter,
-    snapshot,
     collection,
     alertCount,
-    isLoading: session.isLoading || portfolioQuery.isLoading,
+    // policyQuery is included so the Renewal Agreements card's appearance
+    // isn't a visible pop-in after the rest of the page has already
+    // rendered (it's a small, 5-min-cached fetch, so this costs nothing
+    // on repeat visits). See ADR-063.
+    isLoading: session.isLoading || portfolioQuery.isLoading || policyQuery.isLoading,
   };
 }

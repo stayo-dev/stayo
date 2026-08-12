@@ -133,14 +133,23 @@ The StayO redesign is being built in place inside the same `apps/frontend` tree,
 - **Post-review fixes (same day, 4 commits):** provenance is no longer rewritten by `FILL_GAPS`; the published guard is re-asserted inside its transaction; the votes check reads `generated_from_voting_period_id` via the pure `hasVotesApplied` instead of "a voting period exists"; `voterCount` → `voteCount` (rows, not students); the consecutive-days scan wraps Sunday→Monday; variety names every dominated meal type; the Today card has loading and no-schedule states rather than four dead *Fix* buttons; the Kitchen sheet takes `?hostelId=` and carries a switcher; inline add-item speaks its failure and keeps the typed name; the Home row names the hostel for multi-property owners. See [[Bugs]].
 - **Notes:** food went from **zero tests to 75** (25 backend pure, 50 frontend). The weekly-pattern grain is unchanged and remains the module's ceiling — no `serve_date`, so festival/exam menus stay unrepresentable and per-date history was never recorded. **Phases 2–3 are not built**; [[Food]] §13 lists exactly what.
 
-### Action Center work queues — one interaction model across all four cards
-- **Status:** shipped 2026-08-05 — **Phase 3 of 4** · see [[Decisions#ADR-046|ADR-046]]
+### Action Center work queues — one interaction model across every card
+- **Status:** shipped 2026-08-05 — **Phase 3 of 4** · see [[Decisions#ADR-046|ADR-046]]. Extended 2026-08-11 to a fifth card and conditional visibility — see [[Decisions#ADR-063|ADR-063]] and the entry below.
 - **Owner-facing?** yes · **Tenant-facing?** no
 - **Key files:** `features/owner-workqueue/{WorkQueue.tsx,AgreementQueuePage.tsx,VacancyQueuePage.tsx}` (new), `features/owner-tenants/pages/PendingActivationsPage.tsx` (rebuilt on the shared component), `features/owner-collection/CollectionQueuePage.tsx` (refactored onto it), `shared/ui-patterns/StatCard.tsx` (gained `onClick`), `platforms/owner/router/OwnerRoutes.tsx`, `features/owner-dashboard/components/OwnerHomeDashboard.tsx`.
 - **Routes:** `/owner/money/collect` · `/owner/agreements/review` · `/owner/tenants/activations` · `/owner/rooms/vacant`.
 - **The model:** card → prioritised queue → one-tap actions → the row leaves the list. Every card obeys it because there is **one** `WorkQueue` implementation; a queue supplies data and actions and cannot invent layout, ordering or empty states.
 - **No new backend.** Agreements reuse `getOwnerRenewalQueue` (already ranked and counted server-side), activations reuse the activation state machine via `usePendingActivations`, vacancy composes the existing `GET /api/rooms` across hostels.
 - **Notes:** No progress bar or daily target by explicit product direction — completion is the row disappearing. `StatCard` renders as a button only when interactive, so an informational tile never advertises an action it lacks. The vacancy queue's bed count was cross-checked live against the Home card's own figure and matches exactly. **Phase 4 (one merged daily task list) is not built** — the shared component is the precondition for it.
+
+### Home dashboard: Action Center absorbs Snapshot, Today's Revenue becomes clickable
+- **Status:** shipped 2026-08-11 · see [[Decisions#ADR-063|ADR-063]]
+- **Owner-facing?** yes · **Tenant-facing?** no
+- **Key files:** `features/owner-dashboard/hooks/useOwnerDashboard.ts`, `features/owner-dashboard/components/OwnerHomeDashboard.tsx`, `features/owner-onboarding/pages/OwnerDashboardPreviewPage.tsx`, `shared/mocks/dashboard.ts`. Reuses (unmodified) `features/settings/settingsHooks.ts`'s `useHostelPolicy`.
+- **What changed:** the separate "Snapshot" section (Beds, Outstanding, Today's Revenue — all read-only) is gone. Beds was redundant with the existing Fill Vacant Beds action card (same `vacant_beds` figure); Outstanding was dropped outright (redundant with Collect Rent's overdue amount); Today's Revenue moved into Action Center and is now clickable, opening `/owner/money`.
+- **What's new:** the Renewal Agreements ("Review Agreements") card is now conditionally rendered — only shown when the owner's primary hostel has `tenant_rules.agreement_required` on ([[Business-Rules#Whether a tenant must sign an agreement]]), reusing that existing setting rather than adding a dashboard-only one. Hidden (not defaulted to visible) until the policy query resolves, to avoid a present→removed flash.
+- **What's unchanged:** the separate monthly "{Month} Collection" progress bar, the "View all" Action Center sheet (`AllActionsSheet.tsx` — still reads the same underlying `actionCenter` object, unaffected by the two added fields), and every other card's existing click destination.
+- **Notes:** no backend change — `GET /hostels/:id/preferences` already returned `tenant_rules.agreement_required`; this only adds a frontend read of a field the Agreement Requirement settings page already consumes.
 
 ### Intelligent Collection Queue — the owner's "where do I start" entry point
 - **Status:** shipped 2026-08-05 — **Phase 2 of 4** · see [[Decisions#ADR-045|ADR-045]]

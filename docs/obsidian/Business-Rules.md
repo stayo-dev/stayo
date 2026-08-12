@@ -279,6 +279,7 @@ Set by [[Decisions#ADR-059|ADR-059]]. `tenant_rules.agreement_required` (default
 - **When off**, onboarding is `ACCOUNT → PROFILE → ACTIVATE`; attempting `RULES` or `AGREEMENT` is itself an invalid transition; and both activation gates (`assertTransition` **and** the independent re-check in the finalise path) stop requiring `rules_accepted`/`agreement_signed`.
 - **Skipped steps report as not done, not as complete.** `progress_percent` is computed over the steps this hostel requires, so a skipped-agreement tenant reads 2-of-3 rather than being credited with signatures they never gave.
 - **Turning it off is not retroactive** — agreements already signed remain, and remain credited.
+- **Since 2026-08-11 ([[Decisions#ADR-063|ADR-063]]), it also gates the owner Home dashboard.** The unified Action Center's "Renewal Agreements" card only renders when `agreement_required` is on for the owner's primary hostel — reusing this flag rather than adding a second, dashboard-only toggle. This is a real second effect of the flag, not just onboarding: an owner who has turned agreements off for their hostel won't see the renewal-queue card at all on Home. See [[Features]].
 
 The `PAYMENT_PENDING` / `RESERVED` / `MOVE_IN_READY` vocabulary is **deleted**. The tenant lifecycle is `INVITED` → `ACTIVE` (shown to owners as "Joined") → vacating → `FORMER_TENANT`.
 
