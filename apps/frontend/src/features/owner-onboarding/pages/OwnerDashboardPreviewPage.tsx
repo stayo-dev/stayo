@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { OwnerHomeDashboard } from '@features/owner-dashboard/components/OwnerHomeDashboard';
 import { HostelOptionsSheet } from '@features/owner-dashboard/components/HostelOptionsSheet';
-import { AddHostelModal } from '@features/owner-dashboard/components/AddHostelModal';
 import { useOwnerDashboard } from '@features/owner-dashboard/hooks/useOwnerDashboard';
 import { useHostelOrder } from '@features/owner-dashboard/property-order/useHostelOrder';
 import { moveItem } from '@features/owner-dashboard/property-order/hostelSort';
@@ -46,7 +45,15 @@ export function OwnerDashboardPreviewPage() {
   const reorder = useHostelOrder();
   const [hostelMenuFor, setHostelMenuFor] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [addHostelOpen, setAddHostelOpen] = useState(false);
+
+  // A hostel whose build was left unfinished. Derived from the data itself —
+  // a hostel with no rooms is one still being built — rather than a stored
+  // "onboarding step", which would drift the moment an owner adds or deletes
+  // rooms from the Rooms tab.
+  const unfinished = dash.properties.find((p) => (p.totalCapacity ?? 0) === 0);
+  const hostelInProgress = unfinished
+    ? { id: unfinished.id, name: unfinished.name, summary: 'No rooms added yet' }
+    : null;
 
   if (dash.isLoading) return <DashboardLoadingSkeleton />;
 
@@ -89,7 +96,8 @@ export function OwnerDashboardPreviewPage() {
         onOpenQuickActions={qa.openSheet}
         onViewAllActions={qa.openAllActions}
         onPropertyMenu={(hostelId) => setHostelMenuFor(hostelId)}
-        onAddHostel={() => setAddHostelOpen(true)}
+        onAddHostel={() => navigate(hostelInProgress ? `/owner/hostels/${hostelInProgress.id}/build` : '/owner/hostels/new')}
+        hostelInProgress={hostelInProgress}
         onReorderProperties={(orderedIds) => reorder.mutate(orderedIds)}
         onOpenSearch={() => setSearchOpen(true)}
         onOpenCollectionQueue={() => navigate('/owner/money/collect')}
@@ -147,7 +155,6 @@ export function OwnerDashboardPreviewPage() {
       />
       <QuickCollectModal open={qa.collectOpen} onClose={qa.closeCollect} initialTenant={qa.collectTenant} />
       <InviteTenantWizard open={qa.inviteOpen} onClose={qa.closeInvite} />
-      <AddHostelModal open={addHostelOpen} onClose={() => setAddHostelOpen(false)} />
       <HostelOptionsSheet
         open={Boolean(hostelMenuFor)}
         onClose={() => setHostelMenuFor(null)}

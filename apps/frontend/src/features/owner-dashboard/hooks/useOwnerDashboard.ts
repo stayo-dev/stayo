@@ -123,6 +123,9 @@ export function useOwnerDashboard() {
         displayOrder: h.display_order ?? null,
         status: h.status,
         activeTenants: h.active_tenants,
+        // Zero beds means no rooms exist yet — the signal that a hostel's
+        // build was never finished. Derived, not a stored setup flag.
+        totalCapacity: h.total_capacity,
       })),
     [portfolioQuery.data],
   );

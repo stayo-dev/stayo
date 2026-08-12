@@ -132,9 +132,20 @@ export async function POST(req: NextRequest) {
     const name = (body.name || body.hostel_name || "New Hostel").trim();
     const phone = body.phone || body.hostel_phone || "";
 
-    // Step-up confirmation required — adding a hostel is gated behind a
-    // fresh password re-entry, same as Change Rent/Change Frequency.
-    const identity = await verifyIdentityConfirmation(body.identity_token, "CREATE_HOSTEL", "create_hostel", session.sub);
+    // Step-up confirmation, but only once there is something to protect.
+    //
+    // Re-entering a password guards an account that already holds hostels,
+    // tenants and money. An owner creating their *first* hostel has none of
+    // that and authenticated minutes ago during signup, so the prompt was
+    // pure friction at the emptiest possible moment — and it sat directly in
+    // the path of the Add Hostel builder that now replaces onboarding's
+    // hostel setup. Second and subsequent hostels are still gated.
+    const existingHostelCount = await prisma.hostels.count({
+      where: { owner_id: session.sub, status: { in: ["ACTIVE", "INACTIVE"] } },
+    });
+    const identity = existingHostelCount > 0
+      ? await verifyIdentityConfirmation(body.identity_token, "CREATE_HOSTEL", "create_hostel", session.sub)
+      : null;
 
     const hostel = await prisma.$transaction(async (tx: any) => {
       // Owner-scoped duplicate hostel check
@@ -152,7 +163,7 @@ export async function POST(req: NextRequest) {
         throw new Error("VALIDATION_ERROR: A hostel with this name already exists");
       }
 
-      await consumeIdentityTokenInTx(tx, identity.jti);
+      if (identity) await consumeIdentityTokenInTx(tx, identity.jti);
 
       return tx.hostels.create({
         data: {

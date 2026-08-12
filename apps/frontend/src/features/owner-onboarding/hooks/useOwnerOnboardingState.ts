@@ -8,20 +8,19 @@ import {
 } from '../onboardingDraft';
 import { validateOnboardingStep } from './onboardingValidation';
 
-export const ONBOARDING_SCREENS = [
-  'welcome',
-  'account',
-  'kyc',
-  'create',
-  'location',
-  'details',
-  'floors',
-  'rooms',
-  'beds',
-  'review',
-  'publish',
-  'success',
-] as const;
+/**
+ * Onboarding covers only what onboarding alone can do: create the account and
+ * verify the owner.
+ *
+ * Hostel creation used to live here as eight further screens (`create`,
+ * `location`, `details`, `floors`, `rooms`, `beds`, `review`, `publish`).
+ * They asked for floors, rooms-per-floor, beds-per-room and one rent — four
+ * scalars that could not describe a floor mixing 4-sharing and 2-sharing
+ * rooms at different prices, so the building was wrong on arrival and had to
+ * be corrected room by room anyway. That work now happens in Add Hostel, when
+ * the owner chooses to do it. See ADR-064.
+ */
+export const ONBOARDING_SCREENS = ['welcome', 'account', 'kyc', 'success'] as const;
 
 export type OnboardingScreen = (typeof ONBOARDING_SCREENS)[number];
 
@@ -29,27 +28,9 @@ export interface OwnerOnboardingData {
   name: string;
   mobile: string;
   email: string;
+  /** Carried only to prefill Add Hostel when the owner heads there next. */
   hostelName: string;
-  type: 'Boys' | 'Girls' | 'Co-Living' | 'Working Pros';
-  address: string;
   city: string;
-  floors: number;
-  capacity: number;
-  food: 'Yes' | 'No';
-  /**
-   * Resolved security deposit in rupees — the single figure the backend
-   * stores. Derived from the three fields below by `resolveDepositAmount`;
-   * "0" is a real answer meaning no deposit is taken.
-   */
-  deposit: string;
-  /** How the owner expresses the deposit. NONE means they take none at all. */
-  depositMode: 'NONE' | 'MONTHS' | 'FLAT';
-  /** Months of rent, when depositMode is MONTHS. */
-  depositMonths: string;
-  /** Starting monthly rent, applied to every room publish creates. */
-  monthlyRent: string;
-  roomsPerFloor: number;
-  bedsPerRoom: number;
 }
 
 export interface OwnerOnboardingKyc {
@@ -63,25 +44,11 @@ const INITIAL_DATA: OwnerOnboardingData = {
   mobile: '',
   email: '',
   hostelName: '',
-  type: 'Co-Living',
-  address: '',
   city: '',
-  floors: 4,
-  capacity: 168,
-  food: 'Yes',
-  deposit: '',
-  depositMode: 'MONTHS',
-  depositMonths: '2',
-  monthlyRent: '',
-  roomsPerFloor: 10,
-  bedsPerRoom: 4,
 };
 
 /**
- * Step/data/generation state for the 12-step onboarding wizard, mirroring
- * `Owner Onboarding.dc.html`'s `state`/`setD`/`go` — same field names, same
- * step order, same floors/rooms/beds "generate" gating — so the port stays a
- * faithful translation rather than a redesign.
+ * Step/data state for the onboarding wizard.
  *
  * `initialData` (owner-acquisition funnel phase 2): optional prefill from a
  * lead-activation link (OwnerLeadInvitePage → router state). Absent for a
@@ -105,10 +72,6 @@ export function useOwnerOnboardingState(initialData?: Partial<OwnerOnboardingDat
   }));
   const [draftRestored, setDraftRestored] = useState(() => isDraftResumable(restored));
   const [kyc, setKyc] = useState<OwnerOnboardingKyc>({ aadhaar: false, pan: false, photo: false });
-  const [floorsGen, setFloorsGen] = useState(false);
-  const [roomsGen, setRoomsGen] = useState(false);
-  const [bedsGen, setBedsGen] = useState(false);
-  const [publishChoice, setPublishChoice] = useState<'now' | 'draft'>('now');
   const [otpOpen, setOtpOpen] = useState(false);
 
   const screenId = ONBOARDING_SCREENS[step];
@@ -160,8 +123,6 @@ export function useOwnerOnboardingState(initialData?: Partial<OwnerOnboardingDat
     go(step + 1);
   };
 
-  const totalRooms = data.floors * data.roomsPerFloor;
-  const totalBeds = totalRooms * data.bedsPerRoom;
   const hostelDisplay = data.hostelName.trim() || 'Your Hostel';
 
   const continueLabel = useMemo(() => {
@@ -169,18 +130,10 @@ export function useOwnerOnboardingState(initialData?: Partial<OwnerOnboardingDat
       welcome: 'Begin the journey',
       account: 'Continue',
       kyc: 'Continue',
-      create: 'Continue',
-      location: 'Continue',
-      details: 'Continue',
-      floors: 'Continue',
-      rooms: 'Continue',
-      beds: 'Continue',
-      review: 'Looks perfect',
-      publish: publishChoice === 'now' ? 'Publish now' : 'Save & finish',
       success: 'Go to dashboard',
     };
     return labels[screenId];
-  }, [screenId, publishChoice]);
+  }, [screenId]);
 
   return {
     step,
@@ -190,22 +143,12 @@ export function useOwnerOnboardingState(initialData?: Partial<OwnerOnboardingDat
     setD,
     kyc,
     setKyc,
-    floorsGen,
-    setFloorsGen,
-    roomsGen,
-    setRoomsGen,
-    bedsGen,
-    setBedsGen,
-    publishChoice,
-    setPublishChoice,
     otpOpen,
     setOtpOpen,
     go,
     back,
     next,
     verifyOtp,
-    totalRooms,
-    totalBeds,
     hostelDisplay,
     continueLabel,
     canBack: step > 0 && screenId !== 'success',

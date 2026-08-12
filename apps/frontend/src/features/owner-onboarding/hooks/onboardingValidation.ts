@@ -47,43 +47,6 @@ export function validateOnboardingStep(
       if (!EMAIL_RE.test(data.email.trim())) return 'Enter a valid email address.';
       return null;
 
-    case 'create':
-      if (data.hostelName.trim().length < 2) return 'Give your hostel a name.';
-      return null;
-
-    case 'location':
-      if (data.address.trim().length < 6) return 'Add the full address so tenants can find it.';
-      if (data.city.trim().length < 2) return 'Which city is it in?';
-      return null;
-
-    case 'details': {
-      if (data.capacity < 1) return 'Total capacity must be at least 1 bed.';
-      const deposit = Number(String(data.deposit).replace(/[^0-9.]/g, ''));
-      if (!data.deposit || Number.isNaN(deposit) || deposit < 0) {
-        return 'Enter the security deposit (0 if you don’t take one).';
-      }
-      // Required, not optional: every room publish creates inherits this as its
-      // base rent, and a room with no rent shows ₹0 on the room grid and
-      // prefills nothing when inviting a tenant into it.
-      const rent = Number(String(data.monthlyRent).replace(/[^0-9.]/g, ''));
-      if (!data.monthlyRent || Number.isNaN(rent) || rent <= 0) {
-        return 'Enter the starting monthly rent for a room.';
-      }
-      return null;
-    }
-
-    case 'floors':
-      if (data.floors < 1) return 'A hostel needs at least one floor.';
-      return null;
-
-    case 'rooms':
-      if (data.roomsPerFloor < 1) return 'Add at least one room per floor.';
-      return null;
-
-    case 'beds':
-      if (data.bedsPerRoom < 1) return 'Add at least one bed per room.';
-      return null;
-
     default:
       return null;
   }

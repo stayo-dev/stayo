@@ -56,18 +56,7 @@ export function serializeDraft(input: DraftInput): string {
       mobile: d.mobile,
       email: d.email,
       hostelName: d.hostelName,
-      type: d.type,
-      address: d.address,
       city: d.city,
-      floors: d.floors,
-      capacity: d.capacity,
-      food: d.food,
-      deposit: d.deposit,
-      depositMode: d.depositMode,
-      depositMonths: d.depositMonths,
-      monthlyRent: d.monthlyRent,
-      roomsPerFloor: d.roomsPerFloor,
-      bedsPerRoom: d.bedsPerRoom,
     },
   });
 }
@@ -113,8 +102,7 @@ export function isDraftResumable(draft: OnboardingDraft | null): boolean {
   return Boolean(
     String(d?.name || '').trim() ||
       String(d?.hostelName || '').trim() ||
-      String(d?.city || '').trim() ||
-      String(d?.address || '').trim(),
+      String(d?.city || '').trim(),
   );
 }
 
