@@ -1,7 +1,9 @@
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Users, Building2, ShieldAlert, Home, UserCheck, IndianRupee, Wallet, AlertTriangle } from 'lucide-react';
+import { ChevronRight, AlertTriangle } from 'lucide-react';
 import { platformAdminService } from '@features/platform-admin/api';
+import { deriveAttention, deriveSnapshot } from '@features/platform-admin/dashboard/needsAttention';
+import { deriveOwnerHealth, matchesFilter } from '@features/platform-admin/owners/ownerHealth';
 
 // Exact card treatment from Stayo Admin.dc.html: #fff bg, 1px #EFE6DA border,
 // 16px radius, two-layer shadow (a tight 1px hairline + a soft 30px lift).
@@ -16,7 +18,39 @@ const fmtINR = (n: number) => `₹${Number(n ?? 0).toLocaleString('en-IN')}`;
 export function AdminDashboardPage() {
   const navigate = useNavigate();
   const dashboardQuery = useQuery({ queryKey: ['admin', 'dashboard'], queryFn: () => platformAdminService.getDashboard(), staleTime: 15_000 });
+  // Owner-level attention can't come from the KPI endpoint — it is derived
+  // from each owner's own signals, so the count is computed from the same
+  // list the Owners screen renders.
+  const ownersQuery = useQuery({
+    queryKey: ['platform-admin', 'owners', ''],
+    queryFn: () => platformAdminService.getOwners({ limit: 100 }),
+    staleTime: 30_000,
+  });
   const d = dashboardQuery.data;
+
+  const ownersNeedingAttention = (ownersQuery.data?.owners ?? []).filter((o: any) =>
+    matchesFilter(
+      deriveOwnerHealth({
+        id: String(o.id),
+        name: String(o.name ?? ''),
+        joinedAt: o.joined_at ? String(o.joined_at) : null,
+        hostels: Number(o.hostels ?? 0),
+        hostelsLive: Number(o.hostels_live ?? 0),
+        hostelsAwaitingApproval: Number(o.hostels_awaiting_approval ?? 0),
+        tenants: Number(o.tenants ?? 0),
+        activeTenants: Number(o.active_tenants ?? 0),
+        capacity: Number(o.capacity ?? 0),
+        collectedThisMonth: Number(o.collected_this_month ?? 0),
+        outstanding: Number(o.outstanding ?? 0),
+        documentsSubmitted: Number(o.documents_submitted ?? 0),
+        documentsVerified: Boolean(o.documents_verified),
+        documentsRejected: Boolean(o.documents_rejected),
+        mrr: Number(o.mrr ?? 0),
+        subscriptionStatuses: Array.isArray(o.subscription_statuses) ? o.subscription_statuses.map(String) : [],
+      }),
+      'attention',
+    ),
+  ).length;
 
   if (dashboardQuery.isLoading || !d) {
     return (
@@ -28,32 +62,56 @@ export function AdminDashboardPage() {
     );
   }
 
-  // Per-KPI icon color, matching the mockup's varied {{k.bg}}/{{k.fg}}
-  // per row rather than one uniform tone for all 8.
-  const kpiRows = [
-    { label: 'New Leads', value: d.kpis.new_leads, icon: Users, to: '/admin/leads', bg: 'bg-info/10', fg: 'text-info' },
-    { label: 'Pending Approvals', value: d.kpis.pending_approvals, icon: ShieldAlert, to: '/admin/hostels', bg: 'bg-warning/10', fg: 'text-warning' },
-    { label: 'Active Hostels', value: d.kpis.active_hostels, icon: Building2, to: '/admin/hostels', bg: 'bg-success/10', fg: 'text-success' },
-    { label: 'Total Tenants', value: d.kpis.total_tenants, icon: Home, to: '/admin/hostels', bg: 'bg-info/10', fg: 'text-info' },
-    { label: 'Active Tenants', value: d.kpis.active_tenants, icon: UserCheck, to: '/admin/hostels', bg: 'bg-warning/10', fg: 'text-warning' },
-    { label: 'Platform Revenue', value: fmtINR(d.kpis.platform_revenue), icon: IndianRupee, to: '/admin/revenue', bg: 'bg-primary/10', fg: 'text-primary' },
-    { label: 'Collections', value: fmtINR(d.kpis.collections), icon: Wallet, to: '/admin/revenue', bg: 'bg-success/10', fg: 'text-success' },
-    { label: 'Pending Dues', value: fmtINR(d.kpis.pending_dues), icon: AlertTriangle, to: '/admin/revenue', bg: 'bg-destructive/10', fg: 'text-destructive' },
-  ];
+  const attention = deriveAttention(d.kpis as any, ownersNeedingAttention);
+  const snapshot = deriveSnapshot(d.kpis as any, fmtINR);
 
   return (
     <div className="mx-auto max-w-[1360px] px-7 py-7">
       <div className="grid grid-cols-1 gap-[18px] lg:grid-cols-[380px_1fr]">
-        {/* Left column — KPI overview */}
+        {/* Left column — what needs the admin, then the platform's own numbers */}
         <div className="flex flex-col gap-[18px] lg:order-1">
+          {/* Only rendered when something is actually queued: a permanent
+              "0 pending" row teaches people to skip this section. */}
+          {attention.length > 0 && (
+            <div className={`${card} p-1.5`}>
+              <div className="px-3.5 pb-1.5 pt-3 text-[12.5px] font-bold uppercase tracking-[0.04em] text-[#9C9186]">Needs you</div>
+              <div className="flex flex-col">
+                {attention.map((item) => (
+                  <button
+                    key={item.code}
+                    type="button"
+                    onClick={() => navigate(item.to)}
+                    className="flex w-full items-center gap-3 rounded-[11px] px-3 py-2.5 text-left hover:bg-[#F7F3EF]"
+                  >
+                    <span
+                      className={`flex h-8.5 w-8.5 flex-none items-center justify-center rounded-[9px] ${
+                        item.severity === 'high' ? 'bg-destructive/10 text-destructive' : 'bg-warning/10 text-warning'
+                      }`}
+                    >
+                      <AlertTriangle className="h-4 w-4" />
+                    </span>
+                    <span className="flex-1 text-[12.5px] font-semibold text-foreground">{item.label}</span>
+                    <ChevronRight className="h-4 w-4 flex-none text-[#9C9186]" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className={`${card} p-1.5`}>
-            <div className="px-3.5 pb-1.5 pt-3 text-[12.5px] font-bold uppercase tracking-[0.04em] text-[#9C9186]">Overview</div>
-            <div className="flex flex-col">
-              {kpiRows.map(({ label, value, icon: Icon, to, bg, fg }) => (
-                <button key={label} type="button" onClick={() => navigate(to)} className="flex w-full items-center gap-3 rounded-[11px] px-3 py-2.5 text-left hover:bg-[#F7F3EF]">
-                  <span className={`flex h-8.5 w-8.5 flex-none items-center justify-center rounded-[9px] ${bg} ${fg}`}><Icon className="h-4 w-4" /></span>
-                  <span className="flex-1 text-[12.5px] font-semibold text-[#8A7F75]">{label}</span>
-                  <span className="font-display text-[16px] font-extrabold tabular-nums text-foreground">{value}</span>
+            <div className="px-3.5 pb-1.5 pt-3 text-[12.5px] font-bold uppercase tracking-[0.04em] text-[#9C9186]">Platform</div>
+            <div className="grid grid-cols-2">
+              {snapshot.map((figure) => (
+                <button
+                  key={figure.label}
+                  type="button"
+                  onClick={() => navigate(figure.to)}
+                  className="rounded-[11px] px-3 py-2.5 text-left hover:bg-[#F7F3EF]"
+                >
+                  <span className="block text-[11.5px] font-semibold text-[#8A7F75]">{figure.label}</span>
+                  <span className="mt-0.5 block font-display text-[19px] font-extrabold tabular-nums text-foreground">
+                    {figure.value}
+                  </span>
                 </button>
               ))}
             </div>

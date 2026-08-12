@@ -10,6 +10,17 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-12 — Admin becomes owner-first: Owners replaces Hostels, and the dashboard becomes a queue router
+- **The admin app was built around the wrong entity.** Stayo's hierarchy is Stayo → Owner → Hostels, but the admin listed *properties* — so an owner running three hostels appeared as three unrelated rows with no way to see the business behind them, and there was no owner screen at all.
+- **Owners is now the primary list** and the nav destination. Each row leads with the *reason* it needs attention rather than a wall of metrics, and the list is ordered worst-first, because with hundreds of owners the admin should never scroll to find the problem.
+- **A new owner profile** — the screen that did not exist. Needs-you reasons each paired with the action that clears them, business figures, and a health panel. Deliberately observability and intervention only: it does not reproduce the owner's own app.
+- **The dashboard's nine static counters become a router.** A "Needs you" list of queues (documents to verify, hostels awaiting approval, owners needing attention, new leads, unpaid invoices), each routing to the screen that clears it *pre-filtered*, above a four-figure platform snapshot. A queue at zero is not rendered at all — a permanent "0 pending" row trains people to skip the section that exists to be read.
+- **Tenant counts left the dashboard.** "791 tenants" is not the admin's number to act on — tenants belong to owners — and it crowded out the figures that describe Stayo's own business (owners, live hostels, MRR, collected).
+- **Health is derived only from signals that exist.** Activation, verification, listing and collections are real. **Engagement is shown as `untracked`, never as healthy**, because there is no login or session tracking anywhere; `activity_logs` records a last *action* written by only a handful of services, so treating its absence as inactivity would flag every owner who simply hasn't hit one of those paths. Support is likewise untracked — there is no ticketing backend.
+- Backend adds `GET /api/platform-admin/owners` (raw per-owner signals, composed from the existing per-hostel aggregations) plus `documents_awaiting_review` and `owners_total` on the dashboard KPIs. Hostels stays routable so owner cards can deep-link into it.
+- **Verified:** 673 frontend tests pass (29 new, pure), `vite build` succeeds, no new type errors. **Not verified in a browser.**
+- See [[Features]], [[APIs]].
+
 ### 2026-08-12 — Action Center row is always complete: 1-3 without agreements, 1-3-1 with
 - **Today's Revenue now fills whatever space the Renewal Agreements card leaves.** With agreements on it stays a full-width card below the row of three (1-3-1); with agreements off it becomes the third card *in* the row (1-3). Previously it always spanned the row, so switching agreements off left a visible gap beside Activate Tenants and Fill Vacant Beds — a 1-2-1.
 - Purely presentational: no change to what any card reads or where it links. Agreement visibility is still the existing `showRenewalAgreements` derived from the hostel's `agreement_required` setting ([[Decisions#ADR-063|ADR-063]], [[Decisions#ADR-059|ADR-059]]).
