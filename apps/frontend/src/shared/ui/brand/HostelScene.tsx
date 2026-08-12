@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 
 /**
@@ -15,6 +16,35 @@ import type { CSSProperties } from 'react';
  *
  * Purely decorative and stateless: every prop is derived by the caller.
  */
+
+/**
+ * The scene is drawn on a wide 1200×820 stage with the building at x≈820.
+ * `slice` crops to fill, so on a phone-shaped viewport the visible slice
+ * collapses around the stage's centre — which is the owner figure, not the
+ * building. The tower the owner is actually raising ends up off-screen.
+ * On narrow viewports the stage is therefore re-framed around the building.
+ */
+const WIDE_VIEWBOX = '0 0 1200 820';
+/** Narrow + a building to see: frame the tower the owner is raising. */
+const NARROW_BUILDING_VIEWBOX = '560 96 560 724';
+/** Narrow with nothing built yet (onboarding): frame the owner instead, or
+ *  the crop lands on empty ground. */
+const NARROW_OWNER_VIEWBOX = '260 96 560 724';
+
+function useNarrowViewport(): boolean {
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 700px)').matches,
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const query = window.matchMedia('(max-width: 700px)');
+    const onChange = (event: MediaQueryListEvent) => setNarrow(event.matches);
+    query.addEventListener('change', onChange);
+    setNarrow(query.matches);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
+  return narrow;
+}
 
 /** More storeys than this are not drawn — the building would leave the frame. */
 export const MAX_DRAWN_FLOORS = 6;
@@ -84,6 +114,8 @@ export function HostelScene(props: HostelSceneState) {
     ownerWaving,
   } = props;
 
+  const narrow = useNarrowViewport();
+
   const cx = 820;
   const bw = 210;
   const fh = 46;
@@ -135,7 +167,11 @@ export function HostelScene(props: HostelSceneState) {
 
   return (
     <div className="pointer-events-none fixed inset-0 z-0 [filter:saturate(1.03)_blur(0.6px)]">
-      <svg viewBox="0 0 1200 820" preserveAspectRatio="xMidYMid slice" className="block h-full w-full">
+      <svg
+        viewBox={narrow ? (N > 0 ? NARROW_BUILDING_VIEWBOX : NARROW_OWNER_VIEWBOX) : WIDE_VIEWBOX}
+        preserveAspectRatio="xMidYMid slice"
+        className="block h-full w-full"
+      >
         <defs>
           <linearGradient id="stayo-sky" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0" stopColor="#FCEFE3" />

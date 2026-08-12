@@ -28,6 +28,37 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### The Add Hostel builder rendered in the legacy pre-StayO theme — the second time this trap has been hit
+
+- **Status:** fixed 2026-08-12
+- **Found:** 2026-08-12 (owner-reported: "entirely off branded")
+- **Area:** [[Frontend]]
+- **Symptom:** `/owner/hostels/new` rendered with a serif display face and a navy `#1B2D5B` primary button instead of StayO's Manrope and terracotta `#b46a55`.
+- **Root cause:** identical to the `PendingActivationsPage` entry below. `HostelBuilderPage` is mounted as a **sibling** of `<OwnerAppShell>` — deliberately, since it is a full-screen takeover rather than a bottom-nav tab — so it never inherits the shell's `<ThemeProvider theme="product">` and fell through to `theme.css`'s unscoped legacy `:root` tokens.
+- **Fix:** wrapped the page in `<ThemeProvider theme="product">`, matching every other sibling route.
+- **This is the design gap the previous entry predicted, realised within a day.** Any route added outside `OwnerAppShell` silently loses StayO theming with **no build-time, lint-time or test-time signal** — it is only visible in a browser. Two occurrences now. Worth a `check:architecture` rule asserting that every element rendered by a `<Route>` outside `OwnerAppShell` mounts a `ThemeProvider`, rather than waiting for a third.
+- **Related:** [[Decisions#ADR-066|ADR-066]], [[Frontend]]
+
+### The Add Hostel builder could not create a second hostel — 403 with no way forward
+
+- **Status:** fixed 2026-08-12
+- **Found:** 2026-08-12 (owner-reported)
+- **Area:** [[Frontend]] / [[Backend]]
+- **Symptom:** `POST /api/owner/hostels` returned **403 IDENTITY_REQUIRED** ("Identity verification required. Please confirm your password first.") and the builder simply showed the error — there was no password field anywhere in the flow, so the owner was stuck.
+- **Root cause:** a gap opened by [[Decisions#ADR-066|ADR-066]] itself. Step-up confirmation was narrowed to apply only from the owner's *second* hostel onward, and `+ Add hostel` was re-pointed from `AddHostelModal` (which had a password step) to the builder (which had none). A first hostel worked; every subsequent one dead-ended.
+- **Fix:** the builder now treats the 403 as the prompt it is — `IDENTITY_REQUIRED`/`IDENTITY_EXPIRED` reveals a password field on the Name step, mints the token via `confirmIdentity(password, 'CREATE_HOSTEL')`, and retries. Because step-up depends on how many hostels the owner already has, this is discovered from the response rather than pre-fetched, and a first hostel still never sees a password prompt. The raw error is withheld until a password has actually been tried and rejected.
+- **Related:** [[Decisions#ADR-066|ADR-066]], [[APIs]]
+
+### The hostel scene cropped to the owner figure on phones, hiding the building entirely
+
+- **Status:** fixed 2026-08-12
+- **Area:** [[Frontend]]
+- **Symptom:** on a 430px viewport the Add Hostel background showed a giant owner figure and no building — so the rising-tower animation, the whole point of the flow, was invisible on the device most owners use.
+- **Root cause:** `HostelScene` draws on a wide 1200×820 stage with the building at x≈820 and uses `preserveAspectRatio="…slice"`. On a phone-shaped viewport `slice` crops to the stage's **centre**, which is the owner at x≈540 — the building falls outside the visible slice.
+- **Fix:** the stage is re-framed on narrow viewports, and the frame follows what there is to see: a building-centred box when storeys exist, an owner-centred one when none do (onboarding, which no longer raises a building at all, would otherwise crop to empty ground).
+- **Related:** [[Decisions#ADR-066|ADR-066]]
+
+
 ### Activate Tenants queue rendered in the legacy pre-StayO theme (navy/serif) instead of StayO branding
 
 - **Status:** fixed 2026-08-12

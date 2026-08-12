@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { StayoLoader } from '@shared/ui/brand';
 import { eyebrow, h1, sub, fieldLabel, textInput } from '@features/owner-onboarding/components/stepStyles';
 
@@ -16,6 +15,9 @@ export function NameStep({
   onCityChange,
   isSubmitting,
   error,
+  needsPassword,
+  password,
+  onPasswordChange,
 }: {
   name: string;
   onNameChange: (value: string) => void;
@@ -23,6 +25,10 @@ export function NameStep({
   onCityChange: (value: string) => void;
   isSubmitting: boolean;
   error: string | null;
+  /** The owner already has a hostel, so this one needs a password. */
+  needsPassword: boolean;
+  password: string;
+  onPasswordChange: (value: string) => void;
 }) {
   return (
     <div>
@@ -49,6 +55,25 @@ export function NameStep({
           <span className={fieldLabel}>CITY (OPTIONAL)</span>
           <input value={city} onChange={(e) => onCityChange(e.target.value)} placeholder="Hyderabad" className={textInput} />
         </label>
+
+        {needsPassword && (
+          <label className="block">
+            <span className={fieldLabel}>CONFIRM YOUR PASSWORD</span>
+            <input
+              autoFocus
+              type="password"
+              value={password}
+              onChange={(e) => onPasswordChange(e.target.value)}
+              placeholder="••••••••"
+              className={textInput}
+            />
+            {/* Only from the second hostel onward — by then the account holds
+                real tenants and money worth protecting. */}
+            <span className="mt-2 block text-[12.5px] leading-relaxed text-muted-foreground">
+              You already have a hostel on this account, so we ask for your password before adding another.
+            </span>
+          </label>
+        )}
 
         {error && <p className="text-[13px] font-semibold text-destructive">{error}</p>}
         {isSubmitting && (

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ownerService } from '@features/owners/api';
+import { identityService } from '@features/auth/api';
 import { floorService, roomService } from '@features/rooms/api';
 import { queryKeys } from '@lib/queryKeys';
 import {
@@ -43,6 +44,13 @@ export function useHostelBuilder(existingHostelId?: string) {
   const [pattern, setPattern] = useState<NumberingPattern>('NUMERIC');
   const [rentMemory, setRentMemory] = useState<RentMemory>({});
   const [hydrated, setHydrated] = useState(false);
+  /**
+   * Set when the server asks for a password before creating this hostel.
+   * Step-up applies from the owner's *second* hostel onward, so this cannot
+   * be known up front without an extra request — the 403 is the signal, and
+   * the Name step reveals a password field in response.
+   */
+  const [needsPassword, setNeedsPassword] = useState(false);
 
   // ── Resume ───────────────────────────────────────────────────────────────
   const existing = useQuery({
@@ -105,13 +113,32 @@ export function useHostelBuilder(existingHostelId?: string) {
 
   // ── Step 0: the hostel exists as soon as it is named ─────────────────────
   const createHostel = useMutation({
-    mutationFn: (input: { name: string; city?: string }) =>
-      ownerService.createHostel({ name: input.name.trim(), city: input.city?.trim() ?? '' }),
+    mutationFn: async (input: { name: string; city?: string; password?: string }) => {
+      // An owner adding their second hostel must re-confirm their password.
+      // The token is minted only when one is offered, so a first hostel — the
+      // common case — never sees a password prompt at all.
+      let identityToken: string | undefined;
+      if (input.password) {
+        const identity = await identityService.confirmIdentity(input.password, 'CREATE_HOSTEL');
+        identityToken = identity?.identity_token;
+        if (!identityToken) throw new Error('That password did not match. Try again.');
+      }
+      return ownerService.createHostel({
+        name: input.name.trim(),
+        city: input.city?.trim() ?? '',
+        ...(identityToken ? { identity_token: identityToken } : {}),
+      });
+    },
     onSuccess: (result: any) => {
       const created = result?.data ?? result;
       setHostelId(String(created?.id ?? ''));
+      setNeedsPassword(false);
       invalidate();
       setStage('floors');
+    },
+    onError: (error: any) => {
+      const code = error?.response?.data?.error?.code;
+      if (code === 'IDENTITY_REQUIRED' || code === 'IDENTITY_EXPIRED') setNeedsPassword(true);
     },
   });
 
@@ -232,6 +259,7 @@ export function useHostelBuilder(existingHostelId?: string) {
     setStage,
     hostelId,
     hostelName,
+    needsPassword,
     setHostelName,
     floors,
     activeIndex,

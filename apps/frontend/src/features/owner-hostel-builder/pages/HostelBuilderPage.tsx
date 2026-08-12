@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
 import { HostelScene, StayoLoader } from '@shared/ui/brand';
+import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { stayoToast } from '@shared/ui-patterns/Toast';
-import { useHostelBuilder } from '../useHostelBuilder';
+import { useHostelBuilder, type BuilderStage } from '../useHostelBuilder';
 import { builderSceneState } from '../builderScene';
 import { defaultFloorName } from '../hostelBuilder';
 import { NameStep } from '../steps/NameStep';
@@ -11,7 +12,9 @@ import { FloorsStep } from '../steps/FloorsStep';
 import { FillFloorStep } from '../steps/FillFloorStep';
 import { ReviewStep } from '../steps/ReviewStep';
 
-const STAGE_LABELS: Record<string, string> = {
+/** Matches onboarding's "Step 1 of 8 · Owner" journey label. */
+const STAGE_ORDER: BuilderStage[] = ['name', 'floors', 'fill', 'review'];
+const STAGE_LABELS: Record<BuilderStage, string> = {
   name: 'Name',
   floors: 'Floors',
   fill: 'Rooms',
@@ -42,6 +45,7 @@ export function HostelBuilderPage() {
   const builder = useHostelBuilder(existingHostelId);
 
   const [city, setCity] = useState('');
+  const [password, setPassword] = useState('');
   const [floorCount, setFloorCount] = useState(3);
   const [floorNames, setFloorNames] = useState<string[]>(() =>
     Array.from({ length: 3 }, (_, i) => defaultFloorName(i)),
@@ -105,7 +109,7 @@ export function HostelBuilderPage() {
           stayoToast.error('Give your hostel a name to continue.');
           return;
         }
-        await createHostel.mutateAsync({ name: hostelName, city });
+        await createHostel.mutateAsync({ name: hostelName, city, password: password || undefined });
         return;
       }
       if (stage === 'floors') {
@@ -144,9 +148,22 @@ export function HostelBuilderPage() {
           : 'Open my hostel';
 
   const canContinue =
-    stage === 'name' ? Boolean(hostelName.trim()) : stage === 'fill' ? blocker === null : true;
+    stage === 'name'
+      ? Boolean(hostelName.trim()) && (!builder.needsPassword || password.trim().length > 0)
+      : stage === 'fill'
+        ? blocker === null
+        : true;
 
   return (
+    // Mounted as a sibling of OwnerAppShell (a full-screen takeover, not a
+    // bottom-nav tab), so it never inherits the shell's ThemeProvider and has
+    // to scope the StayO tokens itself. Without this the page falls through to
+    // theme.css's unscoped `:root` — the legacy pre-rebrand palette — and
+    // renders in navy and a serif face. Same fix its sibling routes
+    // (PendingActivationsPage, PendingVerificationsPage, TenantDetailPage)
+    // already carry; see [[Bugs]] "Activate Tenants queue rendered in the
+    // legacy pre-StayO theme".
+    <ThemeProvider theme="product">
     <div className="relative min-h-screen overflow-x-hidden">
       <HostelScene {...scene} />
 
@@ -167,8 +184,8 @@ export function HostelBuilderPage() {
             </button>
             <div className="flex-1" />
             <span className="font-display text-[12px] font-bold text-muted-foreground">
-              {STAGE_LABELS[stage]}
-              {stage === 'fill' && floors.length > 0 ? ` · ${activeIndex + 1}/${floors.length}` : ''}
+              Step {STAGE_ORDER.indexOf(stage) + 1} of {STAGE_ORDER.length} · {STAGE_LABELS[stage]}
+              {stage === 'fill' && floors.length > 0 ? ` ${activeIndex + 1}/${floors.length}` : ''}
             </span>
             <button
               type="button"
@@ -192,7 +209,17 @@ export function HostelBuilderPage() {
               city={city}
               onCityChange={setCity}
               isSubmitting={createHostel.isPending}
-              error={createHostel.isError ? errorMessage(createHostel.error, 'Could not create the hostel') : null}
+              error={
+                // The first 403 is not a failure the owner caused — it is the
+                // step-up prompt arriving. Show the raw message only once they
+                // have actually typed a password and it still did not work.
+                createHostel.isError && !(builder.needsPassword && !password)
+                  ? errorMessage(createHostel.error, 'Could not create the hostel')
+                  : null
+              }
+              needsPassword={builder.needsPassword}
+              password={password}
+              onPasswordChange={setPassword}
             />
           ) : stage === 'floors' ? (
             <FloorsStep count={floorCount} onCountChange={setCount} names={floorNames} onRename={(i, name) => {
@@ -249,5 +276,6 @@ export function HostelBuilderPage() {
         </footer>
       </div>
     </div>
+    </ThemeProvider>
   );
 }
