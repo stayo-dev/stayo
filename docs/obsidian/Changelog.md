@@ -10,6 +10,17 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-12 — New owners get a walkthrough: a self-ticking checklist plus a one-time spotlight
+- **A "Getting started" card leads the dashboard for a new owner** ([[Decisions#ADR-067|ADR-067]]): set up your hostel → invite your first tenant → record your first payment. Every step is **derived from real account data**, so it ticks itself off no matter where the work happened, needs no stored step counter, and cannot disagree with the account it describes. It removes itself for good once all three are done.
+- **A brand-new dashboard is all zeros**, which is why this is a checklist rather than a conventional tour — a spotlight over ₹0 cards points at things that do nothing yet.
+- **Owner KYC is reported, not asked for.** `owner_documents.status` is admin-set and "can only be changed by an admin", so it appears as a status line — in review / verified / needs attention, with the reviewer's reason on a rejection — explicitly labelled as blocking nothing. Making it a checklist step would have created an item the owner could never tick.
+- **A 3-stop spotlight runs once** on a genuinely empty account: the checklist, the Action Center, then search. Stops are anchored **by ref, not CSS selector**, so a rename cannot leave it dimming the screen while highlighting nothing. Esc skips, the page behind is inert, and it honours `prefers-reduced-motion`. No tour library was added.
+- **A monthly-reset trap avoided:** the payment signal is *this month's* collection, so completion is latched one-way. Without it the card would reappear every 1st to tell a long-running hostel it had never taken rent.
+- **Fixed during implementation:** anchor refs populate after the overlay's first render, and assigning a ref does not re-render — so the tour filtered every stop out and would have silently never appeared. It now arms a frame later.
+- `FirstHostelCard` is deleted; its content is step one. `useOwnerDashboard` exposes `gettingStartedSignals` as raw numbers, since the formatted strings beside them can't be compared to zero.
+- **Verified:** 644 frontend tests pass (19 new, pure), `vite build` succeeds, no new type errors. **Not verified in a browser.**
+- See [[Decisions#ADR-067|ADR-067]], [[Features]].
+
 ### 2026-08-12 — Hostel creation leaves onboarding: Add Hostel builds the property floor by floor
 - **Onboarding drops from 12 screens to 4** ([[Decisions#ADR-066|ADR-066]]) — welcome, account, KYC, done. It no longer creates a hostel; a new owner lands on their real dashboard with one invitation to build. The root problem wasn't the number of questions: `OwnerOnboardingData` modelled an entire property as four scalars (`floors`, `roomsPerFloor`, `bedsPerRoom`, one `monthlyRent`) which were multiplied into a uniform grid, so a ground floor of three 4-sharing rooms and one 2-sharing room **could not be described at all**. The answers didn't matter, because the building was wrong on arrival and got fixed room-by-room afterwards anyway.
 - **New builder at `/owner/hostels/new`** (resumable at `:id/build`): name it → raise the floors, with editable names → fill each floor from a room count plus a floor default, tapping any room that differs. "Same as this" clones a floor onto the next, and rent is remembered per sharing size, so a mixed 40-room building is a handful of decisions rather than 80.

@@ -202,6 +202,14 @@ The StayO redesign is being built in place inside the same `apps/frontend` tree,
 
   **Not verified by automated backend tests.** `DATABASE_URL_TEST` is defined nowhere and `.env.test` doesn't exist, so the backend suite is unrunnable in this environment — pre-existing, confirmed by an untouched existing test failing identically. The endpoint was verified live against the real API instead. Provisioning a test database is open work.
 
+### New-owner walkthrough — a checklist that ticks itself off, plus a one-time spotlight
+- **Status:** shipped 2026-08-12
+- **Owner-facing?** yes · **Tenant-facing?** no
+- **Key files:** `features/owner-dashboard/getting-started/gettingStarted.ts` + `.test.ts` (new, pure, 19 tests), `GettingStartedCard.tsx`, `useGettingStarted.ts` (all new), `shared/ui-patterns/Spotlight.tsx` (new), `features/owner-dashboard/components/OwnerHomeDashboard.tsx`, `hooks/useOwnerDashboard.ts` (exposes `gettingStartedSignals`), `features/owner-onboarding/pages/OwnerDashboardPreviewPage.tsx`. Deleted: `components/FirstHostelCard.tsx`.
+- **Depends on:** [[APIs]] (`GET /api/owner/portfolio/summary`, `GET /api/owner/kyc-documents`), [[Decisions#ADR-067|ADR-067]]. **No backend or schema change.**
+- **What it does:** three steps — hostel, first tenant, first payment — each derived from real data and ticking itself off; a verification status line below them; and a 3-stop orientation spotlight that runs once on a genuinely empty account. The card disappears permanently once the owner is up and running.
+- **Notes:** no tour library was added. Completion is latched in browser storage because the payment signal resets monthly; the spotlight's dismissal flag is also local, but it is additionally gated on the account being empty, so losing the flag can only re-show it to someone who still has nothing. See [[Decisions#ADR-067|ADR-067]].
+
 ### Add Hostel — the owner builds their property, floor by floor
 - **Status:** shipped 2026-08-12
 - **Owner-facing?** yes · **Tenant-facing?** no

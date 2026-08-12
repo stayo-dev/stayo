@@ -184,6 +184,18 @@ export function useOwnerDashboard() {
     actionCenter,
     collection,
     alertCount,
+    /**
+     * Raw figures behind the new-owner walkthrough. Exposed as numbers rather
+     * than letting the card re-parse the formatted strings above — "₹1,32,600"
+     * does not compare to zero.
+     */
+    gettingStartedSignals: {
+      roomCapacity: Number(aggregate?.total_capacity ?? 0),
+      // An invited tenant counts: the owner has done the work, and waiting on
+      // the tenant to accept is not a step they can take again.
+      tenantCount: Number(aggregate?.active_tenants ?? 0) + Number(invitedQuery.data ?? 0),
+      collectedThisMonth: Number(aggregate?.rent_collected_this_month ?? 0),
+    },
     // policyQuery is included so the Renewal Agreements card's appearance
     // isn't a visible pop-in after the rest of the page has already
     // rendered (it's a small, 5-min-cached fetch, so this costs nothing

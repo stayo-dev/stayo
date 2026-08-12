@@ -9,7 +9,8 @@ import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useFoodSchedule } from '@features/owner-food/hooks/useFoodSchedule';
 import { cellAt, dayKeyFor, isFilled, mealSlotAt } from '@features/owner-food/weekGrid';
 import { PropertyList } from '../property-order/PropertyList';
-import { FirstHostelCard } from './FirstHostelCard';
+import { GettingStartedCard } from '../getting-started/GettingStartedCard';
+import type { GettingStarted, StepId, VerificationStatus } from '../getting-started/gettingStarted';
 import {
   mockOwnerName,
   mockActionCenter,
@@ -36,6 +37,12 @@ interface OwnerHomeDashboardProps {
   onAddHostel?: () => void;
   /** A hostel that exists but still has floors without rooms. */
   hostelInProgress?: { name: string; summary: string } | null;
+  /** New-owner walkthrough. Absent once the owner has graduated. */
+  gettingStarted?: { state: GettingStarted; verification: VerificationStatus; onStep: (id: StepId) => void } | null;
+  /** Spotlight anchors, so the tour points at real elements not selectors. */
+  gettingStartedRef?: React.Ref<HTMLElement>;
+  actionCenterRef?: React.Ref<HTMLDivElement>;
+  searchRef?: React.Ref<HTMLButtonElement>;
   /** Full ordered list of hostel ids after a manual reorder. See ADR-042. */
   onReorderProperties?: (orderedIds: string[]) => void;
   /** Opens Universal Search. See ADR-044. */
@@ -76,6 +83,10 @@ export function OwnerHomeDashboard({
   onPropertyMenu,
   onAddHostel,
   hostelInProgress,
+  gettingStarted,
+  gettingStartedRef,
+  actionCenterRef,
+  searchRef,
   onReorderProperties,
   onOpenSearch,
   onOpenCollectionQueue,
@@ -124,6 +135,7 @@ export function OwnerHomeDashboard({
       {/* Was a non-interactive <div>+<span> — looked like a search field,
           did nothing. Now opens Universal Search (ADR-044). */}
       <button
+        ref={searchRef}
         type="button"
         onClick={onOpenSearch}
         aria-label="Search tenants, rooms and hostels"
@@ -133,7 +145,16 @@ export function OwnerHomeDashboard({
         <span className="text-[13px] text-muted-foreground">Search tenant, room, phone…</span>
       </button>
 
-      <section className="flex flex-col gap-3">
+      {gettingStarted && (
+        <GettingStartedCard
+          ref={gettingStartedRef}
+          state={gettingStarted.state}
+          verification={gettingStarted.verification}
+          onStep={gettingStarted.onStep}
+        />
+      )}
+
+      <section className="flex flex-col gap-3" ref={actionCenterRef}>
         <div className="flex items-baseline justify-between">
           <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Action Center</h2>
           <button type="button" onClick={onViewAllActions} className="text-[12.5px] font-semibold text-primary">
@@ -219,19 +240,14 @@ export function OwnerHomeDashboard({
         </div>
       </section>
 
-      {properties.length === 0 ? (
-        <FirstHostelCard onStart={() => onAddHostel?.()} inProgress={hostelInProgress} />
-      ) : (
-        <>
-          {hostelInProgress && <FirstHostelCard onStart={() => onAddHostel?.()} inProgress={hostelInProgress} />}
-          <PropertyList
-            properties={properties}
-            onSelectProperty={onSelectProperty}
-            onPropertyMenu={onPropertyMenu}
-            onAddHostel={onAddHostel}
-            onReorder={onReorderProperties}
-          />
-        </>
+      {properties.length > 0 && (
+        <PropertyList
+          properties={properties}
+          onSelectProperty={onSelectProperty}
+          onPropertyMenu={onPropertyMenu}
+          onAddHostel={onAddHostel}
+          onReorder={onReorderProperties}
+        />
       )}
 
       <button
