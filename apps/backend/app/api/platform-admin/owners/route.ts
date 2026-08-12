@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
       prisma.profile.count({ where }),
     ]);
 
-    const ownerIds = owners.map((o) => o.id);
+    const ownerIds = owners.map((o: { id: string }) => o.id);
     if (ownerIds.length === 0) {
       return apiResponse({ owners: [], total, offset, has_more: false });
     }
@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
       where: { owner_id: { in: ownerIds } },
       select: { id: true, owner_id: true, name: true, listing_status: true, verification_status: true },
     });
-    const hostelIds = hostels.map((h) => h.id);
+    const hostelIds = hostels.map((h: { id: string }) => h.id);
 
     const [
       tenantCounts,
@@ -140,30 +140,33 @@ export async function GET(req: NextRequest) {
     const collectedByHostel = byOwner(collectionSums, "hostel_id", (r) => Number(r._sum.amount_paid ?? 0));
     const duesByHostel = byOwner(duesSums, "hostel_id", (r) => Number(r._sum.amount ?? 0));
     const lastActivityByOwner = byOwner(lastActivity, "owner_id", (r) => r._max.timestamp as Date | null);
-    const subscriptionByHostel = new Map(subscriptions.map((s) => [s.hostel_id, s]));
+    const subscriptionByHostel = new Map(subscriptions.map((s: any) => [s.hostel_id, s] as const));
 
-    const result = owners.map((owner) => {
-      const own = hostels.filter((h) => h.owner_id === owner.id);
-      const ids = own.map((h) => h.id);
+    const result = owners.map((owner: any) => {
+      const own = hostels.filter((h: any) => h.owner_id === owner.id);
+      const ids = own.map((h: any) => h.id);
 
-      const sum = (map: Map<string, number>) => ids.reduce((acc, id) => acc + (map.get(id) ?? 0), 0);
+      const sum = (map: Map<string, number>) =>
+        ids.reduce((acc: number, id: string) => acc + (map.get(id) ?? 0), 0);
       const capacity = sum(capacityByHostel);
       const activeTenants = activeByOwner.get(owner.id) ?? 0;
 
-      const ownerDocs = documents.filter((d) => d.profile_id === owner.id);
+      const ownerDocs = documents.filter((d: any) => d.profile_id === owner.id);
       const verifiedTypes = new Set(
-        ownerDocs.filter((d) => String(d.status).toUpperCase() === "VERIFIED").map((d) => String(d.doc_type).toUpperCase()),
+        ownerDocs
+          .filter((d: any) => String(d.status).toUpperCase() === "VERIFIED")
+          .map((d: any) => String(d.doc_type).toUpperCase()),
       );
 
-      const subs = ids.map((id) => subscriptionByHostel.get(id)).filter(Boolean) as typeof subscriptions;
+      const subs = ids.map((id: string) => subscriptionByHostel.get(id)).filter(Boolean) as any[];
       const mrr = subs.reduce(
-        (acc, s) =>
+        (acc: number, s: any) =>
           String(s.status) === "ACTIVE"
             ? acc + (String(s.billing_cycle) === "YEARLY" ? Number(s.amount) / 12 : Number(s.amount))
             : acc,
         0,
       );
-      const renewals = subs.map((s) => s.next_renewal_at).filter(Boolean) as Date[];
+      const renewals = subs.map((s: any) => s.next_renewal_at).filter(Boolean) as Date[];
 
       return {
         id: owner.id,
@@ -174,9 +177,9 @@ export async function GET(req: NextRequest) {
         is_active: owner.is_active,
 
         hostels: own.length,
-        hostels_live: own.filter((h) => String(h.listing_status) === "LIVE").length,
-        hostels_awaiting_approval: own.filter((h) => String(h.verification_status) === "PENDING").length,
-        hostel_names: own.slice(0, 3).map((h) => h.name),
+        hostels_live: own.filter((h: any) => String(h.listing_status) === "LIVE").length,
+        hostels_awaiting_approval: own.filter((h: any) => String(h.verification_status) === "PENDING").length,
+        hostel_names: own.slice(0, 3).map((h: any) => h.name),
 
         tenants: tenantsByOwner.get(owner.id) ?? 0,
         active_tenants: activeTenants,
@@ -187,12 +190,12 @@ export async function GET(req: NextRequest) {
         outstanding: sum(duesByHostel),
 
         documents_verified: REQUIRED_DOCS.every((t) => verifiedTypes.has(t)),
-        documents_rejected: ownerDocs.some((d) => String(d.status).toUpperCase() === "REJECTED"),
+        documents_rejected: ownerDocs.some((d: any) => String(d.status).toUpperCase() === "REJECTED"),
         documents_submitted: ownerDocs.length,
 
         mrr,
-        subscription_statuses: subs.map((s) => String(s.status)),
-        next_renewal_at: renewals.length > 0 ? new Date(Math.min(...renewals.map((d) => d.getTime()))) : null,
+        subscription_statuses: subs.map((s: any) => String(s.status)),
+        next_renewal_at: renewals.length > 0 ? new Date(Math.min(...renewals.map((d: Date) => d.getTime()))) : null,
 
         /** Last recorded *action*, not a login — see the note above. */
         last_activity_at: lastActivityByOwner.get(owner.id) ?? null,

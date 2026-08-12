@@ -46,6 +46,11 @@ export const platformAdminService = {
     const response = await api.post(`/platform-admin/hostels/${id}/approve-listing`);
     return unwrap(response);
   },
+  /** The other half of approveListing — a reason is required server-side. */
+  rejectListing: async (id: string, reason: string) => {
+    const response = await api.post(`/platform-admin/hostels/${id}/reject-listing`, { reason });
+    return unwrap(response);
+  },
   suspendListing: async (id: string) => {
     const response = await api.post(`/platform-admin/hostels/${id}/suspend-listing`);
     return unwrap(response);

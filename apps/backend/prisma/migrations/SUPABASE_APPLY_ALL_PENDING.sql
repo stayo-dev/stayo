@@ -399,3 +399,19 @@ WHERE NOT EXISTS (
   WHERE migration_name = '20260519000000_floor_entity_room_fields'
 );
 
+
+-- ============================================================
+-- MIGRATION: 20260812120000_hostel_rejection
+-- The admin console could approve a hostel but never refuse one:
+-- HostelVerificationStatus had only PENDING | VERIFIED, so a hostel the
+-- admin had reviewed and declined looked identical to one nobody had
+-- opened, and the owner was never told why.
+-- ============================================================
+
+DO $$ BEGIN
+  ALTER TYPE "HostelVerificationStatus" ADD VALUE IF NOT EXISTS 'REJECTED';
+EXCEPTION WHEN undefined_object THEN NULL;
+END $$;
+
+ALTER TABLE hostels
+  ADD COLUMN IF NOT EXISTS verification_note TEXT;

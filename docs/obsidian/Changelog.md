@@ -10,6 +10,14 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-12 — Admin can finally say no, and assign a plan without leaving the owner
+- **The console could approve a hostel but never reject one.** `HostelVerificationStatus` had only `PENDING | VERIFIED`, so a hostel the admin had reviewed and declined was **indistinguishable from one nobody had opened** — it sat in the pending queue forever and the owner was never told anything. Added `REJECTED` plus `hostels.verification_note`, and `POST /api/platform-admin/hostels/[id]/reject-listing`.
+- **A reason is required** (min 4 chars, enforced server-side), matching the rule owner-document review already follows: a rejection with no reason just makes the owner resubmit the same thing into the same queue. The note is surfaced back on the hostel row.
+- **Rejection leaves the listing at `DRAFT`, not `SUSPENDED`.** Suspension means something was live and got pulled; using it for a hostel that never listed would misreport its history.
+- **Plan assignment is now reachable.** `POST /platform-admin/hostels/[id]/subscription` already existed and was simply never surfaced — the owner profile now assigns or changes a plan per hostel (14-day trial on first assignment). Plans are fetched only when the picker is opened. Billing stays per-hostel until the owner-level migration.
+- **Migration:** `20260812120000_hostel_rejection` appended to `SUPABASE_APPLY_ALL_PENDING.sql`, idempotent — **not yet applied to any database**.
+- See [[Database]], [[APIs]], [[Features]].
+
 ### 2026-08-12 — Admin: hostels move *inside* the owner, and approval happens there
 - **Making Owners the primary list wasn't enough — the logic underneath was still hostel-first.** Hostels are now loaded as a child of the owner (`GET /api/platform-admin/owners/[id]`, returning that owner's hostels with full per-hostel figures, documents and recent activity) instead of being filtered out of a platform-wide roster. That matches the admin's actual model: a property only means something in the context of whose it is.
 - **Approval moved to where the property is.** A hostel awaiting verification is approved from inside the owner profile, so the admin sees whose it is and what else that account needs, instead of being sent to a separate list to find it again.

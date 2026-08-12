@@ -45,13 +45,14 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         name: true,
         city: true,
         verification_status: true,
+        verification_note: true,
         listing_status: true,
         created_at: true,
         _count: { select: { rooms: true } },
       },
       orderBy: { created_at: "desc" },
     });
-    const hostelIds = hostels.map((h) => h.id);
+    const hostelIds = hostels.map((h: { id: string }) => h.id);
 
     const [activeTenants, capacity, collected, dues, documents, subscriptions, activity] = await Promise.all([
       prisma.tenants.groupBy({
@@ -100,17 +101,20 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const capacityByHostel = num(capacity, "hostel_id", (r) => Number(r._sum.capacity ?? 0));
     const collectedByHostel = num(collected, "hostel_id", (r) => Number(r._sum.amount_paid ?? 0));
     const duesByHostel = num(dues, "hostel_id", (r) => Number(r._sum.amount ?? 0));
-    const subByHostel = new Map(subscriptions.map((s) => [s.hostel_id, s]));
+    // `as const` on the tuple — without it TS widens the pair to an array and
+    // `.get()` resolves to `{}`, losing every field on the subscription.
+    const subByHostel = new Map(subscriptions.map((s: any) => [s.hostel_id, s] as const));
 
-    const hostelRows = hostels.map((h) => {
+    const hostelRows = hostels.map((h: any) => {
       const beds = capacityByHostel.get(h.id) ?? 0;
       const active = activeByHostel.get(h.id) ?? 0;
-      const sub = subByHostel.get(h.id);
+      const sub: any = subByHostel.get(h.id);
       return {
         id: h.id,
         name: h.name,
         city: h.city,
         verification_status: h.verification_status,
+        verification_note: h.verification_note,
         listing_status: h.listing_status,
         rooms: h._count.rooms,
         capacity: beds,
@@ -123,13 +127,14 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       };
     });
 
-    const sum = (map: Map<string, number>) => hostelIds.reduce((acc, id) => acc + (map.get(id) ?? 0), 0);
+    const sum = (map: Map<string, number>) =>
+      hostelIds.reduce((acc: number, id: string) => acc + (map.get(id) ?? 0), 0);
     const totalCapacity = sum(capacityByHostel);
     const totalActive = sum(activeByHostel);
     const totalTenants = await prisma.tenants.count({ where: { owner_id: owner.id } });
 
     const mrr = subscriptions.reduce(
-      (acc, s) =>
+      (acc: number, s: any) =>
         String(s.status) === "ACTIVE"
           ? acc + (String(s.billing_cycle) === "YEARLY" ? Number(s.amount) / 12 : Number(s.amount))
           : acc,
@@ -137,7 +142,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     );
 
     const verifiedTypes = new Set(
-      documents.filter((d) => String(d.status).toUpperCase() === "VERIFIED").map((d) => String(d.doc_type).toUpperCase()),
+      documents
+        .filter((d: any) => String(d.status).toUpperCase() === "VERIFIED")
+        .map((d: any) => String(d.doc_type).toUpperCase()),
     );
 
     return apiResponse({
@@ -151,8 +158,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         is_active: owner.is_active,
 
         hostels: hostels.length,
-        hostels_live: hostelRows.filter((h) => h.listing_status === "LIVE").length,
-        hostels_awaiting_approval: hostelRows.filter((h) => h.verification_status === "PENDING").length,
+        hostels_live: hostelRows.filter((h: any) => h.listing_status === "LIVE").length,
+        hostels_awaiting_approval: hostelRows.filter((h: any) => h.verification_status === "PENDING").length,
 
         tenants: totalTenants,
         active_tenants: totalActive,
@@ -164,10 +171,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
         documents_submitted: documents.length,
         documents_verified: ["AADHAAR", "PAN"].every((t) => verifiedTypes.has(t)),
-        documents_rejected: documents.some((d) => String(d.status).toUpperCase() === "REJECTED"),
+        documents_rejected: documents.some((d: any) => String(d.status).toUpperCase() === "REJECTED"),
 
         mrr,
-        subscription_statuses: subscriptions.map((s) => String(s.status)),
+        subscription_statuses: subscriptions.map((s: any) => String(s.status)),
       },
       hostels: hostelRows,
       documents,

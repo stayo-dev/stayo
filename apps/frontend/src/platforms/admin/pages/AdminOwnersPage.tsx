@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Building2, CheckCircle2, Search, X } from 'lucide-react';
+import { AlertTriangle, Building2, CheckCircle2, Search, X, XCircle } from 'lucide-react';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { platformAdminService } from '@features/platform-admin/api';
 import {
@@ -247,6 +247,10 @@ function OwnerDrawer({
     queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
   };
 
+  const [rejecting, setRejecting] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
+  const [planFor, setPlanFor] = useState<string | null>(null);
+
   const approve = useMutation({
     mutationFn: (hostelId: string) => platformAdminService.approveListing(hostelId),
     onSuccess: () => {
@@ -254,6 +258,39 @@ function OwnerDrawer({
       refresh();
     },
     onError: () => stayoToast.error('Could not approve that hostel'),
+  });
+
+  const reject = useMutation({
+    mutationFn: ({ hostelId, text }: { hostelId: string; text: string }) =>
+      platformAdminService.rejectListing(hostelId, text),
+    onSuccess: () => {
+      stayoToast.success('Rejected — the owner can see why');
+      setRejecting(null);
+      setReason('');
+      refresh();
+    },
+    onError: (error: any) =>
+      stayoToast.error(error?.response?.data?.error?.message ?? 'Could not reject that hostel'),
+  });
+
+  // Plans are only fetched once the admin opens the picker — an admin
+  // browsing owners should not pay for a plan list they never look at.
+  const plansQuery = useQuery({
+    queryKey: ['platform-admin', 'plans'],
+    queryFn: () => platformAdminService.getPlans(),
+    enabled: planFor !== null,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const assignPlan = useMutation({
+    mutationFn: ({ hostelId, planId }: { hostelId: string; planId: string }) =>
+      platformAdminService.assignSubscription(hostelId, { planId }),
+    onSuccess: () => {
+      stayoToast.success('Plan assigned — 14-day trial started');
+      setPlanFor(null);
+      refresh();
+    },
+    onError: () => stayoToast.error('Could not assign that plan'),
   });
 
   const owner = query.data?.owner;
@@ -369,16 +406,111 @@ function OwnerDrawer({
                         <MiniStat label="Collected" value={fmtINR(hostel.collected_this_month)} />
                       </div>
 
-                      {hostel.verification_status === 'PENDING' && (
+                      {hostel.verification_status === 'REJECTED' && hostel.verification_note && (
+                        <p className="mt-2 rounded-lg bg-destructive/5 px-2.5 py-2 text-[11.5px] leading-relaxed text-destructive">
+                          Rejected · {hostel.verification_note}
+                        </p>
+                      )}
+
+                      {/* Approve and reject sit together: an approve-only
+                          console cannot say no, so a refused hostel was
+                          indistinguishable from an unreviewed one. */}
+                      {hostel.verification_status === 'PENDING' && rejecting !== hostel.id && (
+                        <div className="mt-2.5 flex flex-wrap gap-1.5">
+                          <button
+                            type="button"
+                            disabled={approve.isPending}
+                            onClick={() => approve.mutate(hostel.id)}
+                            className="inline-flex h-[32px] items-center gap-1.5 rounded-lg bg-foreground px-3.5 text-[12px] font-bold text-background disabled:opacity-50"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2.2} />
+                            {approve.isPending ? 'Approving…' : 'Approve & list'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRejecting(hostel.id);
+                              setReason('');
+                            }}
+                            className="inline-flex h-[32px] items-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3 text-[12px] font-bold text-destructive"
+                          >
+                            <XCircle className="h-3.5 w-3.5" strokeWidth={2.2} />
+                            Reject
+                          </button>
+                        </div>
+                      )}
+
+                      {rejecting === hostel.id && (
+                        <div className="mt-2.5 rounded-lg border border-[#EFE6DA] p-2.5">
+                          {/* Required, matching owner-document review: a
+                              rejection with no reason just makes the owner
+                              resubmit the same thing. */}
+                          <textarea
+                            autoFocus
+                            value={reason}
+                            onChange={(e) => setReason(e.target.value)}
+                            rows={2}
+                            placeholder="What does the owner need to fix?"
+                            className="w-full resize-none rounded-lg border border-[#E7DDD1] px-2.5 py-2 text-[12px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                          <div className="mt-2 flex gap-1.5">
+                            <button
+                              type="button"
+                              disabled={reason.trim().length < 4 || reject.isPending}
+                              onClick={() => reject.mutate({ hostelId: hostel.id, text: reason.trim() })}
+                              className="h-[30px] flex-1 rounded-lg bg-destructive text-[12px] font-bold text-destructive-foreground disabled:opacity-50"
+                            >
+                              {reject.isPending ? 'Rejecting…' : 'Confirm rejection'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setRejecting(null)}
+                              className="h-[30px] rounded-lg border border-[#E7DDD1] px-3 text-[12px] font-bold text-[#8A7F75]"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Billing is still per hostel until owner-level
+                          subscriptions land, so the plan is assigned here. */}
+                      <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-[#F2ECE5] pt-2">
+                        <span className="text-[11.5px] font-semibold text-[#8A7F75]">
+                          {hostel.subscription_status ? `Plan · ${String(hostel.subscription_status).toLowerCase()}` : 'No plan'}
+                        </span>
                         <button
                           type="button"
-                          disabled={approve.isPending}
-                          onClick={() => approve.mutate(hostel.id)}
-                          className="mt-2.5 inline-flex h-[32px] items-center gap-1.5 rounded-lg bg-foreground px-3.5 text-[12px] font-bold text-background disabled:opacity-50"
+                          onClick={() => setPlanFor(planFor === hostel.id ? null : hostel.id)}
+                          className="h-[28px] rounded-lg border border-[#E7DDD1] px-2.5 text-[11.5px] font-bold text-[#8A7F75] hover:border-primary hover:text-primary"
                         >
-                          <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2.2} />
-                          {approve.isPending ? 'Approving…' : 'Approve & list'}
+                          {hostel.subscription_status ? 'Change plan' : 'Assign plan'}
                         </button>
+                      </div>
+
+                      {planFor === hostel.id && (
+                        <div className="mt-2 flex flex-col gap-1.5">
+                          {plansQuery.isLoading && (
+                            <span className="text-[11.5px] text-[#9C9186]">Loading plans…</span>
+                          )}
+                          {(plansQuery.data ?? []).map((plan: any) => (
+                            <button
+                              key={plan.id}
+                              type="button"
+                              disabled={assignPlan.isPending}
+                              onClick={() => assignPlan.mutate({ hostelId: hostel.id, planId: plan.id })}
+                              className="flex items-center justify-between rounded-lg border border-[#E7DDD1] px-2.5 py-2 text-left hover:border-primary disabled:opacity-50"
+                            >
+                              <span className="text-[12px] font-bold text-foreground">{plan.name}</span>
+                              <span className="text-[11.5px] text-[#8A7F75]">
+                                {fmtINR(Number(plan.price_amount))} · {String(plan.billing_cycle).toLowerCase()}
+                              </span>
+                            </button>
+                          ))}
+                          {plansQuery.data && plansQuery.data.length === 0 && (
+                            <span className="text-[11.5px] text-[#9C9186]">No plans defined yet.</span>
+                          )}
+                        </div>
                       )}
                     </li>
                   ))}
