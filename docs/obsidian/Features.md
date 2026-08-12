@@ -193,6 +193,15 @@ The StayO redesign is being built in place inside the same `apps/frontend` tree,
 
   **Not verified by automated backend tests.** `DATABASE_URL_TEST` is defined nowhere and `.env.test` doesn't exist, so the backend suite is unrunnable in this environment — pre-existing, confirmed by an untouched existing test failing identically. The endpoint was verified live against the real API instead. Provisioning a test database is open work.
 
+### Add Hostel — the owner builds their property, floor by floor
+- **Status:** shipped 2026-08-12
+- **Owner-facing?** yes · **Tenant-facing?** no
+- **Key files:** Frontend — `features/owner-hostel-builder/hostelBuilder.ts` + `.test.ts` (new, pure, 34 tests), `builderScene.ts` + `.test.ts` (new, 10 tests), `useHostelBuilder.ts`, `pages/HostelBuilderPage.tsx`, `steps/{NameStep,FloorsStep,FillFloorStep,ReviewStep}.tsx` (all new), `shared/ui/brand/HostelScene.tsx` (moved from `owner-onboarding/components/OnboardingScene.tsx`), `features/owner-dashboard/components/FirstHostelCard.tsx` (new), `features/rooms/api/index.js` (`bulkCreateForFloor`). Backend — `app/api/floors/[id]/rooms/route.ts` (new), `lib/services/property-service.ts` (`createRoomsForFloor`), `src/validators/rooms/index.ts` (`RoomBulkCreateSchema`), `app/api/owner/hostels/route.ts` (conditional step-up), `src/services/platform-leads/lead-invitation-service.ts` (`markLiveForOwner`), `tests/property-bulk-rooms.test.ts` (new, 7 DB-backed tests).
+- **Routes:** `/owner/hostels/new`, resumable at `/owner/hostels/:hostelId/build`. Entered from Home's `+ Add hostel` and from the first-hostel card.
+- **Depends on:** [[APIs]] (`POST /api/owner/hostels`, `POST /api/floors/[id]/rooms`, `PATCH`/`DELETE` on floors and rooms), [[Decisions#ADR-064|ADR-064]].
+- **What it does:** name the hostel (which creates it), raise the floors with editable names, then fill each floor — a room count plus a default sharing size and rent, with any room tappable to differ, because real floors mix 4-sharing and 2-sharing at different prices. "Same as this" clones a floor onto the next. Rent is remembered per sharing size across the session. The illustrated building behind the form gains a storey per floor added, grows windows as rooms appear, and lights them once the rooms are configured.
+- **Notes:** replaces onboarding steps 4–11, which described a whole property with four scalars and could not express a mixed floor. Writes are incremental, so leaving mid-build is normal and Home offers to resume. **Rent shown here is a default that prefills invites, not a price** — the tenant's real rent is set at invite time — and the builder deliberately shows **no revenue projection** for that reason. See [[Decisions#ADR-064|ADR-064]].
+
 ### Owner activation visibility — the owner can see where every invited tenant is stuck
 - **Status:** shipped 2026-08-01 — **activation business logic unchanged**
 - **Owner-facing?** yes · **Tenant-facing?** no

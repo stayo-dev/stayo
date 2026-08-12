@@ -192,7 +192,45 @@ export class LeadInvitationService {
     }
   }
 
-  /** Called once the wizard's full floor/room publish sequence finishes. */
+  /**
+   * Owner-scoped `markLive`, for the Add Hostel builder.
+   *
+   * The funnel used to reach LIVE from onboarding's publish step, which held
+   * the lead's invitation token in router state. Hostel creation now happens
+   * on the dashboard, where no token is in hand — so the lead is resolved by
+   * owner, exactly as `markHostelCreated` already does.
+   *
+   * The trigger is the first rooms landing, not the hostel row: with an
+   * incremental builder a hostel exists from the moment it is named, and a
+   * named hostel with no rooms is not a live property.
+   *
+   * Non-fatal throughout — a lead-bookkeeping failure must never fail the
+   * owner's room creation.
+   */
+  async markLiveForOwner(ownerId: string) {
+    try {
+      const lead = await prisma.platform_leads.findFirst({
+        where: { converted_owner_id: ownerId, status: "HOSTEL_CREATED" },
+      });
+      if (!lead) return;
+      await prisma.platform_leads.update({
+        where: { id: lead.id },
+        data: { status: "LIVE", updated_at: new Date() },
+      });
+      await eventLog.log("LEAD_LIVE", ownerId, { lead_id: lead.id });
+
+      void platformLeadNotificationService
+        .sendOnboardingComplete(
+          { id: lead.id, name: lead.name, phone: lead.phone, tracking_token: lead.tracking_token },
+          lead.hostel_name,
+        )
+        .catch((err) => console.error("[lead-invitation-service.markLiveForOwner] notify failed", err));
+    } catch (err) {
+      console.error("[lead-invitation-service.markLiveForOwner] non-fatal", err);
+    }
+  }
+
+  /** Token-keyed variant, kept for any caller that still holds an invitation token. */
   async markLive(token: string) {
     const invitation = await prisma.platform_lead_invitations.findUnique({ where: { token } });
     if (!invitation) return;

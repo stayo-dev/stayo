@@ -52,6 +52,13 @@ export async function POST(
       validated.data.rooms,
     );
 
+    // A hostel with rooms is a real property, which is what the lead funnel
+    // means by LIVE. Onboarding's publish step used to do this with the
+    // invitation token in hand; the builder resolves the lead by owner
+    // instead. No-op for any owner who did not come from a lead.
+    const { leadInvitationService } = await import("@/src/services/platform-leads/lead-invitation-service");
+    await leadInvitationService.markLiveForOwner(scope.owner_id);
+
     return ApiResponse.success({ rooms, rooms_created: rooms.length }, undefined, { status: 201 });
   } catch (error: any) {
     const message = typeof error?.message === "string" ? error.message : String(error);
