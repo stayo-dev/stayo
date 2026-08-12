@@ -3,16 +3,21 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { InviteTenantWizard } from '@features/owner-tenants/invite/InviteTenantWizard';
 import { ErrorCard } from '@shared/ui/error/ErrorCard';
+import { stayoToast } from '@shared/ui-patterns/Toast';
+import type { Floor } from '@shared/mocks/rooms';
 import { useHostelRooms } from '../hooks/useHostelRooms';
 import { FloorGroup } from '../components/FloorGroup';
+import { RoomsReorderPanel } from '../components/RoomsReorderPanel';
 import { RoomSheetModal } from '../room-sheet/RoomSheetModal';
 import { AddRoomModal } from '../add-room/AddRoomModal';
 import { AddFloorModal } from '../add-floor/AddFloorModal';
 import type { RoomWithOccupants } from '../types';
 
 /** Hostel Drill-down → Rooms sub-tab: floors as a collapsible list (Food
- * Library accordion pattern) — tap a floor to reveal its rooms, drag a room's
- * handle to reorder within that floor. Real data via `useHostelRooms`. */
+ * Library accordion pattern) — tap a floor to reveal its rooms. A dedicated
+ * "Reorder" mode (ADR-064) swaps this browsing view for `RoomsReorderPanel`,
+ * where floors and rooms can be dragged into place and saved explicitly.
+ * Real data via `useHostelRooms`. */
 export function HostelRoomsPage() {
   const { hostelId } = useParams<{ hostelId: string }>();
   const layout = useHostelRooms(hostelId ?? '');
@@ -23,6 +28,53 @@ export function HostelRoomsPage() {
   const [addFloorOpen, setAddFloorOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+
+  /**
+   * "Reorder" mode (ADR-064): drag floors and rooms into place, nothing
+   * persists until Save. `pendingFloors`/`pendingRoomsByFloor` are a local
+   * staging copy, seeded from `layout` when the mode is entered and diffed
+   * against it on Save so only floors/rooms that actually moved are written.
+   */
+  const [reorderMode, setReorderMode] = useState(false);
+  const [pendingFloors, setPendingFloors] = useState<Floor[]>([]);
+  const [pendingRoomsByFloor, setPendingRoomsByFloor] = useState<Map<string, RoomWithOccupants[]>>(new Map());
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
+
+  const startReorder = () => {
+    setPendingFloors([...layout.floors].sort((a, b) => a.order - b.order));
+    setPendingRoomsByFloor(new Map(layout.roomsByFloor));
+    setReorderMode(true);
+  };
+
+  const cancelReorder = () => setReorderMode(false);
+
+  const saveReorder = async () => {
+    setIsSavingOrder(true);
+    try {
+      const tasks: Promise<unknown>[] = [];
+
+      const originalFloorIds = [...layout.floors].sort((a, b) => a.order - b.order).map((f) => f.id);
+      const newFloorIds = pendingFloors.map((f) => f.id);
+      if (newFloorIds.join() !== originalFloorIds.join()) {
+        tasks.push(layout.reorderFloors(newFloorIds));
+      }
+
+      for (const [floorId, rooms] of pendingRoomsByFloor) {
+        const originalIds = (layout.roomsByFloor.get(floorId) ?? []).map((r) => r.id);
+        const newIds = rooms.map((r) => r.id);
+        if (newIds.join() !== originalIds.join()) {
+          tasks.push(layout.reorderRooms(floorId, newIds));
+        }
+      }
+
+      await Promise.all(tasks);
+      setReorderMode(false);
+    } catch {
+      stayoToast.error('Could not save the new layout');
+    } finally {
+      setIsSavingOrder(false);
+    }
+  };
 
   const toggleFloor = (floorId: string) => {
     setExpandedFloorIds((prev) => {
@@ -86,18 +138,55 @@ export function HostelRoomsPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <div className="flex flex-1 items-center gap-2 rounded-[11px] border border-border bg-card px-3 py-2.5">
-          <Search className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={1.6} />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search room…" className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground focus:outline-none" />
+      {reorderMode ? (
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={cancelReorder}
+            disabled={isSavingOrder}
+            className="flex-none rounded-[10px] border border-border px-3.5 py-2.5 font-display text-xs font-bold text-foreground disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <span className="flex-1 text-center text-[11.5px] text-muted-foreground">Drag ⠿ to reorder floors and rooms</span>
+          <button
+            type="button"
+            onClick={saveReorder}
+            disabled={isSavingOrder}
+            className="flex-none rounded-[10px] bg-primary px-3.5 py-2.5 font-display text-xs font-bold text-primary-foreground disabled:opacity-50"
+          >
+            {isSavingOrder ? 'Saving…' : 'Save'}
+          </button>
         </div>
-        <button type="button" onClick={() => setAddRoomOpen(true)} className="flex-none rounded-[10px] bg-foreground px-3.5 py-2.5 font-display text-xs font-bold text-background">
-          + Add
-        </button>
-      </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <div className="flex flex-1 items-center gap-2 rounded-[11px] border border-border bg-card px-3 py-2.5">
+            <Search className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={1.6} />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search room…" className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground focus:outline-none" />
+          </div>
+          <button type="button" onClick={() => setAddRoomOpen(true)} className="flex-none rounded-[10px] bg-foreground px-3.5 py-2.5 font-display text-xs font-bold text-background">
+            + Add
+          </button>
+          <button
+            type="button"
+            onClick={startReorder}
+            disabled={layout.floors.length === 0}
+            className="flex-none rounded-[10px] border border-border px-3.5 py-2.5 font-display text-xs font-bold text-foreground disabled:opacity-50"
+          >
+            Reorder
+          </button>
+        </div>
+      )}
 
       {layout.isError ? (
         <ErrorCard compact error={layout.error} onRetry={() => layout.refetch()} />
+      ) : reorderMode ? (
+        <RoomsReorderPanel
+          floors={pendingFloors}
+          roomsByFloor={pendingRoomsByFloor}
+          onFloorsChange={setPendingFloors}
+          onRoomsChange={(floorId, rooms) => setPendingRoomsByFloor((prev) => new Map(prev).set(floorId, rooms))}
+        />
       ) : (
         <div className="flex flex-col gap-3">
           {layout.floors.map((floor) => {
@@ -112,8 +201,6 @@ export function HostelRoomsPage() {
                 onToggle={() => toggleFloor(floor.id)}
                 onOpenRoom={setRoomSheetRoom}
                 onAssignRoom={() => setInviteOpen(true)}
-                onReorder={(order) => layout.reorderRooms(floor.id, order)}
-                reorderDisabled={searching}
               />
             );
           })}

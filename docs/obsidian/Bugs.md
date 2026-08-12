@@ -28,6 +28,16 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### Activate Tenants queue rendered in the legacy pre-StayO theme (navy/serif) instead of StayO branding
+
+- **Status:** fixed 2026-08-12
+- **Area:** [[Frontend]]
+- **Symptom:** the owner Home dashboard's "Activate Tenants" card opened `/owner/tenants/activations` looking like a completely different, unbranded app — a navy `#1B2D5B` primary button and a serif display font, instead of StayO's terracotta `#b46a55` primary and Manrope. Initially reported as if it were showing a different hostel's/project's UI entirely ("Siri Aditya Boys Hostel").
+- **Root cause:** `PendingActivationsPage` (`features/owner-tenants/pages/PendingActivationsPage.tsx`) is registered as a sibling route outside `<OwnerAppShell>` in `platforms/owner/router/OwnerRoutes.tsx` (alongside `/owner/tenants/verifications` and `/owner/tenants/:tenantId`), because it's a deep-link-style route, not a shell tab. `OwnerAppShell` is what mounts `<ThemeProvider theme="product">`, which sets `data-app-theme="product"` and scopes the actual StayO CSS tokens (`src/styles/tokens/product.css`). Per `ThemeProvider`'s own doc comment, "screens that haven't migrated yet simply render outside any ThemeProvider and keep resolving `theme.css`'s unscoped `:root` tokens" — and that unscoped `:root` block (`src/styles/theme.css`) is the **legacy Shri Adithya theme** ("Siri Aditya," misheard) that predates the StayO rebrand, still present on purpose per `stayo-theme.css`'s migration-coexistence comment. `PendingActivationsPage` never mounted its own `ThemeProvider`, so it fell straight through to those legacy tokens. Its two sibling routes at the exact same nesting level (`PendingVerificationsPage`, `TenantDetailPage`) already self-wrap in `<ThemeProvider theme="product">` for this exact reason — this page was the one instance missed.
+- **Fix:** wrapped `PendingActivationsPage`'s return in `<ThemeProvider theme="product">`, matching its siblings' existing pattern.
+- **Design gap it revealed:** any future route added as a sibling of `OwnerAppShell` (rather than nested inside it) silently loses StayO theming with no build-time or lint-time signal — it only shows up as a visual bug in the browser. Worth a `check:architecture`-style lint rule if this class of route keeps recurring.
+- **Related:** [[Features]], [[Frontend]], [[Changelog]]
+
 ### Every Supabase-side login failure surfaced as an opaque 500 "Something went wrong", hiding the fact that the server simply couldn't reach Supabase
 
 - **Status:** fixed 2026-08-09

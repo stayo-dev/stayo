@@ -18,7 +18,7 @@ import { validateOnboardingStep } from './onboardingValidation';
  * scalars that could not describe a floor mixing 4-sharing and 2-sharing
  * rooms at different prices, so the building was wrong on arrival and had to
  * be corrected room by room anyway. That work now happens in Add Hostel, when
- * the owner chooses to do it. See ADR-064.
+ * the owner chooses to do it. See ADR-066.
  */
 export const ONBOARDING_SCREENS = ['welcome', 'account', 'kyc', 'success'] as const;
 
