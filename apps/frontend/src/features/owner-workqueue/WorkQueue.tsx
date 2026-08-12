@@ -204,70 +204,79 @@ export function WorkQueue({
   let position = 0;
 
   return (
-    <div className="flex flex-col gap-4 px-4 pb-28 pt-5 sm:px-6">
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => navigate(backTo)}
-          aria-label="Back"
-          className="-ml-1 flex h-9 w-9 flex-none items-center justify-center rounded-full text-muted-foreground"
-        >
-          <ChevronLeft className="h-5 w-5" strokeWidth={2} />
-        </button>
-        <div className="min-w-0 flex-1">
-          <h1 className="font-display text-[19px] font-extrabold leading-tight text-foreground">{title}</h1>
-          {state === 'ready' && subtitle && <p className="mt-0.5 text-[12px] text-muted-foreground">{subtitle}</p>}
+    // Same graph-paper backdrop as PendingVerificationsPage/TenantDetailPage
+    // (the other routes that self-scope the StayO theme outside
+    // OwnerAppShell) — WorkQueue is the one shared implementation behind
+    // every queue (collection/agreements/vacancy/activation), so adding it
+    // here rather than per-page keeps all four consistent instead of
+    // drifting. See the file header comment on why there's a single
+    // implementation at all.
+    <div className="min-h-screen bg-background [background-image:linear-gradient(#EBDCCF_1px,transparent_1px),linear-gradient(90deg,#EBDCCF_1px,transparent_1px)] [background-size:52px_52px] sm:mx-auto sm:max-w-[480px] sm:border-x sm:border-border">
+      <div className="flex flex-col gap-4 px-4 pb-28 pt-5 sm:px-6">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => navigate(backTo)}
+            aria-label="Back"
+            className="-ml-1 flex h-9 w-9 flex-none items-center justify-center rounded-full text-muted-foreground"
+          >
+            <ChevronLeft className="h-5 w-5" strokeWidth={2} />
+          </button>
+          <div className="min-w-0 flex-1">
+            <h1 className="font-display text-[19px] font-extrabold leading-tight text-foreground">{title}</h1>
+            {state === 'ready' && subtitle && <p className="mt-0.5 text-[12px] text-muted-foreground">{subtitle}</p>}
+          </div>
         </div>
+
+        {state === 'loading' && <WorkQueueSkeleton />}
+
+        {state === 'error' && (
+          <div className="rounded-2xl border border-border bg-card p-6 text-center">
+            <p className="text-[13px] font-semibold text-destructive">Could not load this list.</p>
+            {onRetry && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="mt-3 rounded-xl bg-muted px-4 py-2 font-display text-[12.5px] font-bold text-foreground"
+              >
+                Try again
+              </button>
+            )}
+          </div>
+        )}
+
+        {state === 'empty' && (
+          <div className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-card px-6 py-12 text-center">
+            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-success/15">
+              <Check className="h-7 w-7 text-success" strokeWidth={3} />
+            </span>
+            <p className="font-display text-[16px] font-extrabold text-foreground">{emptyTitle}</p>
+            <p className="text-[12px] leading-relaxed text-muted-foreground">{emptyBody}</p>
+          </div>
+        )}
+
+        {state === 'ready' &&
+          sections.map((section) => {
+            const { Icon } = section;
+            return (
+              <section key={section.id} className="flex flex-col gap-2.5">
+                <div className="flex items-center gap-2 pl-0.5">
+                  <Icon className={cn('h-4 w-4 flex-none', section.tone)} strokeWidth={2.2} />
+                  <h2 className="flex-1 font-display text-[13px] font-bold text-foreground">{section.label}</h2>
+                  {section.summary && (
+                    <span className="text-[11px] font-semibold tabular-nums text-muted-foreground">{section.summary}</span>
+                  )}
+                </div>
+                {section.items.map((item) => {
+                  position += 1;
+                  return <WorkQueueCard key={item.id} item={item} position={position} onExplain={onExplain} />;
+                })}
+              </section>
+            );
+          })}
+
+        {children}
       </div>
-
-      {state === 'loading' && <WorkQueueSkeleton />}
-
-      {state === 'error' && (
-        <div className="rounded-2xl border border-border bg-card p-6 text-center">
-          <p className="text-[13px] font-semibold text-destructive">Could not load this list.</p>
-          {onRetry && (
-            <button
-              type="button"
-              onClick={onRetry}
-              className="mt-3 rounded-xl bg-muted px-4 py-2 font-display text-[12.5px] font-bold text-foreground"
-            >
-              Try again
-            </button>
-          )}
-        </div>
-      )}
-
-      {state === 'empty' && (
-        <div className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-card px-6 py-12 text-center">
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-success/15">
-            <Check className="h-7 w-7 text-success" strokeWidth={3} />
-          </span>
-          <p className="font-display text-[16px] font-extrabold text-foreground">{emptyTitle}</p>
-          <p className="text-[12px] leading-relaxed text-muted-foreground">{emptyBody}</p>
-        </div>
-      )}
-
-      {state === 'ready' &&
-        sections.map((section) => {
-          const { Icon } = section;
-          return (
-            <section key={section.id} className="flex flex-col gap-2.5">
-              <div className="flex items-center gap-2 pl-0.5">
-                <Icon className={cn('h-4 w-4 flex-none', section.tone)} strokeWidth={2.2} />
-                <h2 className="flex-1 font-display text-[13px] font-bold text-foreground">{section.label}</h2>
-                {section.summary && (
-                  <span className="text-[11px] font-semibold tabular-nums text-muted-foreground">{section.summary}</span>
-                )}
-              </div>
-              {section.items.map((item) => {
-                position += 1;
-                return <WorkQueueCard key={item.id} item={item} position={position} onExplain={onExplain} />;
-              })}
-            </section>
-          );
-        })}
-
-      {children}
     </div>
   );
 }

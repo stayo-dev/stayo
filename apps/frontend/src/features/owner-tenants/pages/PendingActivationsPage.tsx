@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserCheck, ShieldAlert, Phone, MessageCircle, ChevronRight } from 'lucide-react';
+import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { usePendingActivations } from '../hooks/usePendingActivations';
 import { WorkQueue, type WorkQueueSection, type WorkQueueItem } from '@features/owner-workqueue/WorkQueue';
 import { whatsAppNumber, phoneDigits } from '@features/owner-collection/collectionQueue';
@@ -89,14 +90,21 @@ export function PendingActivationsPage() {
   const state = isLoading ? 'loading' : isError ? 'error' : count === 0 ? 'empty' : 'ready';
 
   return (
-    <WorkQueue
-      title="Tenants to activate"
-      subtitle={`${count} tenant${count === 1 ? '' : 's'} still finishing activation`}
-      state={state}
-      sections={sections}
-      emptyTitle="Everyone is activated"
-      emptyBody="No invited tenant is waiting to complete activation."
-      onRetry={() => refetch()}
-    />
+    // This route sits outside <OwnerAppShell> (declared as a sibling in
+    // OwnerRoutes.tsx, like its neighbours /owner/tenants/verifications and
+    // /owner/tenants/:tenantId), so it doesn't inherit OwnerAppShell's
+    // ThemeProvider and must scope the StayO tokens itself — otherwise it
+    // silently falls back to theme.css's unscoped legacy (pre-StayO) tokens.
+    <ThemeProvider theme="product">
+      <WorkQueue
+        title="Tenants to activate"
+        subtitle={`${count} tenant${count === 1 ? '' : 's'} still finishing activation`}
+        state={state}
+        sections={sections}
+        emptyTitle="Everyone is activated"
+        emptyBody="No invited tenant is waiting to complete activation."
+        onRetry={() => refetch()}
+      />
+    </ThemeProvider>
   );
 }

@@ -82,7 +82,6 @@ export function OwnerDashboardPreviewPage() {
         properties={dash.properties}
         alertCount={dash.alertCount}
         actionCenter={dash.actionCenter}
-        snapshot={dash.snapshot}
         collection={dash.collection}
         onSelectProperty={(hostelId) => navigate(`/owner/hostels/${hostelId}/overview`)}
         onOpenAlerts={() => navigate('/owner/alerts')}
@@ -96,6 +95,7 @@ export function OwnerDashboardPreviewPage() {
         onOpenAgreements={() => navigate('/owner/agreements/review')}
         onOpenActivations={() => navigate(PENDING_ACTIVATIONS_PATH)}
         onOpenVacancies={() => navigate('/owner/rooms/vacant')}
+        onOpenRevenue={() => navigate('/owner/money')}
       />
 
       <UniversalSearchOverlay
