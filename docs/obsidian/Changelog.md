@@ -10,6 +10,10 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-12 — Action Center row is always complete: 1-3 without agreements, 1-3-1 with
+- **Today's Revenue now fills whatever space the Renewal Agreements card leaves.** With agreements on it stays a full-width card below the row of three (1-3-1); with agreements off it becomes the third card *in* the row (1-3). Previously it always spanned the row, so switching agreements off left a visible gap beside Activate Tenants and Fill Vacant Beds — a 1-2-1.
+- Purely presentational: no change to what any card reads or where it links. Agreement visibility is still the existing `showRenewalAgreements` derived from the hostel's `agreement_required` setting ([[Decisions#ADR-063|ADR-063]], [[Decisions#ADR-059|ADR-059]]).
+
 ### 2026-08-12 — New owners get a walkthrough: a self-ticking checklist plus a one-time spotlight
 - **A "Getting started" card leads the dashboard for a new owner** ([[Decisions#ADR-067|ADR-067]]): set up your hostel → invite your first tenant → record your first payment. Every step is **derived from real account data**, so it ticks itself off no matter where the work happened, needs no stored step counter, and cannot disagree with the account it describes. It removes itself for good once all three are done.
 - **A brand-new dashboard is all zeros**, which is why this is a checklist rather than a conventional tour — a spotlight over ₹0 cards points at things that do nothing yet.

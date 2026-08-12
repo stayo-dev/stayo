@@ -180,10 +180,14 @@ export function OwnerHomeDashboard({
               so they sat beside a tappable hero card doing nothing. Each now
               opens its own work queue, same model as Collect Rent (ADR-046).
               Renewal Agreements is conditional — only shown when the hostel
-              requires agreements (ADR-063). Today's Revenue was moved in
-              from the old Snapshot section, made clickable, and always spans
-              the full row as its own "big card" regardless of how many
-              cards sit above it. */}
+              requires agreements (ADR-063).
+
+              Today's Revenue fills whatever space that leaves, so the row is
+              always complete: with Agreements on it is a full-width card
+              below three (1-3-1), with Agreements off it becomes the third
+              card in the row itself (1-3). It previously always spanned the
+              row, which left a visible gap beside Activate Tenants and Fill
+              Vacant Beds whenever agreements were switched off. */}
           <StatCard variant="action" label="Activate Tenants" value={actionCenter.activateTenants.value} caption={actionCenter.activateTenants.caption} onClick={onOpenActivations} ariaLabel="Activate tenants" />
           {actionCenter.showRenewalAgreements && (
             <StatCard variant="action" label="Review Agreements" value={actionCenter.reviewAgreements.value} caption={actionCenter.reviewAgreements.caption} onClick={onOpenAgreements} ariaLabel="Review agreements" />
@@ -196,7 +200,7 @@ export function OwnerHomeDashboard({
             caption={actionCenter.todaysRevenue.caption}
             onClick={onOpenRevenue}
             ariaLabel="Today's revenue"
-            className="col-span-3"
+            className={actionCenter.showRenewalAgreements ? 'col-span-3' : undefined}
           />
         </div>
       </section>
