@@ -165,6 +165,9 @@ export function RoomSheetModal({ open, room, floor, floors, onClose, onAssign, o
               <span className="text-[10.5px] font-semibold text-primary">{vacant} beds available</span>
             </div>
             <div className="overflow-hidden rounded-2xl border border-border bg-card">
+              {residents.length === 0 && (
+                <p className="p-4 text-center text-[12.5px] text-muted-foreground">No active tenants</p>
+              )}
               {residents.map((t) => (
                 <button
                   key={t.tenant_id}

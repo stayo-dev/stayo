@@ -98,22 +98,18 @@ export function useHostelRooms(hostelId: string) {
   }, [allRooms]);
 
   /**
-   * Persists a floor's room order after a drag (Reorder.Group in FloorGroup).
-   * Optimistic: the list already shows the dragged arrangement, so this just
-   * needs to not snap back while the request is in flight. `floorId` is the
+   * Persists a floor's room order, staged locally in `RoomsReorderPanel` and
+   * committed here only when the owner taps Save on the Rooms tab's Reorder
+   * mode (ADR-064). Optimistic: the cache is updated immediately so the list
+   * doesn't snap back while the request is in flight. `floorId` is the
    * frontend's `"__unassigned"` sentinel for rooms with no floor_id — mapped
    * to `null` for the API, matched back against `f.id` for the cache write.
    */
   const reorderMutation = useMutation({
-    mutationFn: ({ floorId, order }: { floorId: string; order: string[] }) => {
-      console.log('DEBUG mutationFn called', floorId, order);
-      return roomService.reorder({ hostelId, floorId: floorId === '__unassigned' ? null : floorId, order })
-        .then((r: unknown) => { console.log('DEBUG mutationFn success', r); return r; })
-        .catch((e: unknown) => { console.log('DEBUG mutationFn error', e); throw e; });
-    },
+    mutationFn: ({ floorId, order }: { floorId: string; order: string[] }) =>
+      roomService.reorder({ hostelId, floorId: floorId === '__unassigned' ? null : floorId, order }),
 
     onMutate: async ({ floorId, order }: { floorId: string; order: string[] }) => {
-      console.log('DEBUG onMutate start');
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData<BackendFloorGroup[]>(queryKey);
 
@@ -139,10 +135,40 @@ export function useHostelRooms(hostelId: string) {
     onSettled: invalidate,
   });
 
-  const reorderRooms = (floorId: string, order: string[]) => {
-    console.log('DEBUG reorderRooms called', floorId, order);
-    reorderMutation.mutate({ floorId, order });
-  };
+  const reorderRooms = (floorId: string, order: string[]) => reorderMutation.mutateAsync({ floorId, order });
+
+  /**
+   * Persists a hostel's floor order (Rooms tab Reorder mode, ADR-064).
+   * There's no bulk floor-reorder endpoint, so this writes each floor's
+   * `sort_order` via the existing per-floor `PATCH /floors/:id` — same
+   * optimistic-then-invalidate shape as `reorderMutation` above.
+   */
+  const reorderFloorsMutation = useMutation({
+    mutationFn: (order: string[]) => Promise.all(order.map((id, index) => floorService.update(id, { sort_order: index }))),
+
+    onMutate: async (order: string[]) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<BackendFloorGroup[]>(queryKey);
+
+      if (previous) {
+        const position = new Map(order.map((id, i) => [id, i]));
+        queryClient.setQueryData<BackendFloorGroup[]>(
+          queryKey,
+          [...previous].sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0)),
+        );
+      }
+
+      return { previous };
+    },
+
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(queryKey, context.previous);
+    },
+
+    onSettled: invalidate,
+  });
+
+  const reorderFloors = (order: string[]) => reorderFloorsMutation.mutateAsync(order);
 
   const createFloorMutation = useMutation({
     mutationFn: (data: { name: string; sort_order?: number }) => floorService.create(hostelId, data),
@@ -166,6 +192,8 @@ export function useHostelRooms(hostelId: string) {
     stats,
     reorderRooms,
     isReordering: reorderMutation.isPending,
+    reorderFloors,
+    isReorderingFloors: reorderFloorsMutation.isPending,
     isLoading: roomsQuery.isLoading,
     isError: roomsQuery.isError,
     error: roomsQuery.error,

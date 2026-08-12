@@ -10,6 +10,13 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-11 — Rooms tab: vacant rooms open their sheet, and floors + rooms gain an explicit-Save "Reorder" mode
+- **Bug fix: a vacant room's card now opens, like every other room.** Previously only occupied/reserved rooms responded to a tap — a vacant room's card did nothing except its separate "Assign" button, so there was no way to view a vacant room's sheet at all. `RoomRow` is now always tappable; `RoomSheetModal` shows an explicit "No active tenants" row when a room has none, instead of a silently empty list.
+- **Floors can now be reordered.** New "Reorder" button at the top of the Rooms tab enters a dedicated mode (`RoomsReorderPanel`, new) where floors and, within each floor, its rooms, both drag into place — handle-only drag, same touch-safe pattern as the Home property list. Nothing saves while dragging; an explicit "Save" (or "Cancel") commits or discards the whole batch.
+- **This replaces, not adds to, the previous per-floor drag.** The "expand a floor → drag a room → auto-saves on release" behavior from 2026-08-10 (below) is gone — reordering now only happens inside the new Reorder mode. `useHostelRooms` gains `reorderFloors` (writes each floor's `sort_order` via `PATCH /floors/:id` — no bulk endpoint exists) alongside the existing `reorderRooms`, which now returns its mutation's promise so both can be awaited together on Save.
+- **Not verified in a live browser** — this session had no working `tsc`/dev-server toolchain; only `vite build` (esbuild, no type-check) and `check:architecture` were run, both clean for every touched file.
+- See [[Decisions#ADR-064|ADR-064]], [[Features]].
+
 ### 2026-08-10 — Rooms tab: floors collapse to an accordion, rooms drag-reorder within a floor
 - **Floors on the owner Rooms tab now collapse, like the Food Library accordion** — previously every floor's rooms rendered flat, all at once. Tap a floor to reveal its rooms; collapsed, it shows a room/vacant-count summary. A search match force-expands the matching floor.
 - **Drag-to-reorder rooms within a floor now actually works** ([[Decisions#ADR-062|ADR-062]]) — it didn't exist before. The old "layout" mode only moved a room *between* floors, and did so via native HTML5 `draggable`, which `DragHandle`'s own doc comment already flagged as non-functional (doesn't fire on touch — the same class of bug [[Decisions#ADR-042|ADR-042]] fixed for the Home Property list). Replaced with `motion/react`'s `Reorder`, handle-only drag, same pattern as the Property list. Order persists to a new nullable `rooms.sort_order` column (`PATCH /api/rooms/reorder`, `RoomOrderService`) — same shape as `hostels.display_order`.
