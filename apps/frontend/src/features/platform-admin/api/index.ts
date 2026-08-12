@@ -8,6 +8,22 @@ function unwrap(response: { data: any }) {
 }
 
 export const platformAdminService = {
+  /**
+   * The platform's customers. Returns raw per-owner signals; health and
+   * at-risk reasons are derived client-side in `owners/ownerHealth.ts` so the
+   * rules stay testable without a database.
+   */
+  getOwners: async (params: { search?: string; limit?: number; offset?: number } = {}) => {
+    const response = await api.get('/platform-admin/owners', { params });
+    const data = unwrap(response);
+    return {
+      owners: (data.owners ?? []) as any[],
+      total: Number(data.total ?? 0),
+      hasMore: Boolean(data.has_more),
+      offset: Number(data.offset ?? 0),
+    };
+  },
+
   getHostels: async (params: { search?: string; verification?: string; listing?: string } = {}) => {
     const response = await api.get('/platform-admin/hostels', { params });
     return unwrap(response).hostels as any[];

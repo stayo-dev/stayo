@@ -6,6 +6,7 @@ const AdminProviderShell = lazy(() =>
   import('./AdminProviderShell').then((m) => ({ default: m.AdminProviderShell })),
 );
 const AdminHostelsPage = lazy(() => import('../pages/AdminHostelsPage').then((m) => ({ default: m.AdminHostelsPage })));
+const AdminOwnersPage = lazy(() => import('../pages/AdminOwnersPage').then((m) => ({ default: m.AdminOwnersPage })));
 const AdminLeadsPage = lazy(() => import('../pages/AdminLeadsPage').then((m) => ({ default: m.AdminLeadsPage })));
 const AdminDocumentsPage = lazy(() => import('../pages/AdminDocumentsPage').then((m) => ({ default: m.AdminDocumentsPage })));
 const AdminRevenuePage = lazy(() => import('../pages/AdminRevenuePage').then((m) => ({ default: m.AdminRevenuePage })));
@@ -25,6 +26,9 @@ export function AdminRoutes() {
     <Route element={<AdminProviderShell />}>
       <Route element={<AdminAppShell />}>
         <Route path="/admin" element={<AdminDashboardPage />} />
+        {/* Owners is the primary list; a hostel is a child of an owner.
+            Hostels stays routable so owner cards can deep-link into it. */}
+        <Route path="/admin/owners" element={<AdminOwnersPage />} />
         <Route path="/admin/hostels" element={<AdminHostelsPage />} />
         <Route path="/admin/leads" element={<AdminLeadsPage />} />
         <Route path="/admin/documents" element={<AdminDocumentsPage />} />
