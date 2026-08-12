@@ -9,6 +9,7 @@ import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useFoodSchedule } from '@features/owner-food/hooks/useFoodSchedule';
 import { cellAt, dayKeyFor, isFilled, mealSlotAt } from '@features/owner-food/weekGrid';
 import { PropertyList } from '../property-order/PropertyList';
+import { FirstHostelCard } from './FirstHostelCard';
 import {
   mockOwnerName,
   mockActionCenter,
@@ -33,6 +34,8 @@ interface OwnerHomeDashboardProps {
   onViewAllActions?: () => void;
   onPropertyMenu?: (hostelId: string) => void;
   onAddHostel?: () => void;
+  /** A hostel that exists but still has floors without rooms. */
+  hostelInProgress?: { name: string; summary: string } | null;
   /** Full ordered list of hostel ids after a manual reorder. See ADR-042. */
   onReorderProperties?: (orderedIds: string[]) => void;
   /** Opens Universal Search. See ADR-044. */
@@ -72,6 +75,7 @@ export function OwnerHomeDashboard({
   onViewAllActions,
   onPropertyMenu,
   onAddHostel,
+  hostelInProgress,
   onReorderProperties,
   onOpenSearch,
   onOpenCollectionQueue,
@@ -97,7 +101,11 @@ export function OwnerHomeDashboard({
           <h1 className="font-display text-[22px] font-extrabold leading-tight tracking-tight text-foreground">
             Good morning, {ownerName}
           </h1>
-          <p className="mt-1.5 text-[13px] font-medium text-muted-foreground">{properties.length} hostels · {collection.month}</p>
+          <p className="mt-1.5 text-[13px] font-medium text-muted-foreground">
+            {properties.length === 0
+              ? 'Let\u2019s get your first hostel set up'
+              : `${properties.length} ${properties.length === 1 ? 'hostel' : 'hostels'} · ${collection.month}`}
+          </p>
         </div>
         <button
           type="button"
@@ -211,13 +219,20 @@ export function OwnerHomeDashboard({
         </div>
       </section>
 
-      <PropertyList
-        properties={properties}
-        onSelectProperty={onSelectProperty}
-        onPropertyMenu={onPropertyMenu}
-        onAddHostel={onAddHostel}
-        onReorder={onReorderProperties}
-      />
+      {properties.length === 0 ? (
+        <FirstHostelCard onStart={() => onAddHostel?.()} inProgress={hostelInProgress} />
+      ) : (
+        <>
+          {hostelInProgress && <FirstHostelCard onStart={() => onAddHostel?.()} inProgress={hostelInProgress} />}
+          <PropertyList
+            properties={properties}
+            onSelectProperty={onSelectProperty}
+            onPropertyMenu={onPropertyMenu}
+            onAddHostel={onAddHostel}
+            onReorder={onReorderProperties}
+          />
+        </>
+      )}
 
       <button
         type="button"

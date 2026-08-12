@@ -1,11 +1,56 @@
 import type { CSSProperties } from 'react';
-import type { OwnerOnboardingData, OnboardingScreen } from '../hooks/useOwnerOnboardingState';
 
-interface OnboardingSceneProps {
-  step: number;
-  screenId: OnboardingScreen;
-  data: Pick<OwnerOnboardingData, 'floors' | 'roomsPerFloor'>;
-  hostelDisplay: string;
+/**
+ * The illustrated world behind a hostel-setup flow: the building rising
+ * floor-by-floor, windows appearing and lighting up as rooms and beds are
+ * configured, the owner walking on site, sun rays and students at the end.
+ *
+ * Ported from `Owner Onboarding.dc.html`'s `sv` scene model, but driven by
+ * *what is true about the hostel* rather than by a wizard step index. It
+ * previously read `step >= 7` to draw windows and `step >= 8` to light them,
+ * which welded the artwork to one screen's step numbering — so the same
+ * animation could not be reused by the Add Hostel builder, where "floors
+ * exist" and "this floor's rooms are set" are real states rather than
+ * positions in a 12-step sequence.
+ *
+ * Purely decorative and stateless: every prop is derived by the caller.
+ */
+
+/** More storeys than this are not drawn — the building would leave the frame. */
+export const MAX_DRAWN_FLOORS = 6;
+
+export interface HostelSceneState {
+  /** Shown on the signboard. */
+  hostelName: string;
+  /** How far the owner figure has walked in: 0 far, 1 mid, 2 on site. */
+  approach: 0 | 1 | 2;
+  /** Reveals the living world at all — birds, grass, the owner. */
+  sceneStarted: boolean;
+  /** Green tick on the owner (identity verified). */
+  ownerVerified: boolean;
+  /** The hostel has a name, so the signboard drops in. */
+  showSign: boolean;
+  /** Road, plot and neighbouring building. */
+  showSite: boolean;
+  /** The location pin — only while the site is being chosen. */
+  showPin: boolean;
+  /** Storeys drawn, floor by floor. Clamped to MAX_DRAWN_FLOORS. */
+  floorsBuilt: number;
+  /** Scaffolding poles, ground platform and dust puffs. */
+  underConstruction: boolean;
+  showRoof: boolean;
+  /** Window density per storey — more rooms, more windows. */
+  roomsPerFloor: number;
+  /** Windows are cut into the walls (rooms exist). */
+  showWindows: boolean;
+  /** Windows glow and beds appear inside them (rooms are furnished). */
+  litWindows: boolean;
+  showChimney: boolean;
+  /** Green verification badge on the building. */
+  showBadge: boolean;
+  /** Sun rays, chimney smoke and students arriving. */
+  celebrate: boolean;
+  ownerWaving: boolean;
 }
 
 function reveal(cond: boolean, delay = '0ms', fromY = 12): CSSProperties {
@@ -18,23 +63,33 @@ function reveal(cond: boolean, delay = '0ms', fromY = 12): CSSProperties {
 
 const RAY_LIST = Array.from({ length: 12 }, (_, i) => ({ rot: i * 30, y: -6 }));
 
-/**
- * The "living world" — building rising floor-by-floor, owner figure walking
- * in, road/pin/trees/confetti-adjacent sun rays — ported from the `sv`
- * scene model and `reveal()` helper in Owner Onboarding.dc.html's script.
- * Purely decorative/reactive to `step`; carries no state of its own.
- */
-export function OnboardingScene({ step, screenId, data, hostelDisplay }: OnboardingSceneProps) {
-  const isSuccess = screenId === 'success';
+export function HostelScene(props: HostelSceneState) {
+  const {
+    hostelName,
+    approach,
+    sceneStarted,
+    ownerVerified,
+    showSign,
+    showSite,
+    showPin,
+    floorsBuilt,
+    underConstruction,
+    showRoof,
+    roomsPerFloor,
+    showWindows,
+    litWindows,
+    showChimney,
+    showBadge,
+    celebrate,
+    ownerWaving,
+  } = props;
 
   const cx = 820;
   const bw = 210;
   const fh = 46;
   const groundY = 560;
-  const N = step < 5 ? 0 : step === 5 ? 1 : Math.min(6, data.floors);
-  const winN = Math.min(4, Math.max(2, Math.round(data.roomsPerFloor / 3)));
-  const showWindows = step >= 7;
-  const litWindows = step >= 8;
+  const N = Math.min(MAX_DRAWN_FLOORS, Math.max(0, floorsBuilt));
+  const winN = Math.min(4, Math.max(2, Math.round(roomsPerFloor / 3)));
 
   const floors = Array.from({ length: N }, (_, i) => {
     const top = groundY - (i + 1) * fh;
@@ -49,8 +104,8 @@ export function OnboardingScene({ step, screenId, data, hostelDisplay }: Onboard
         op: showWindows ? 1 : 0,
         bx: wx + 3,
         by: top + 27,
-        bedOp: step >= 8 ? 1 : 0,
-        bedTf: step >= 8 ? 'translateY(0)' : 'translateY(7px)',
+        bedOp: litWindows ? 1 : 0,
+        bedTf: litWindows ? 'translateY(0)' : 'translateY(7px)',
         bedDelay: `${w * 70}ms`,
       };
     });
@@ -60,23 +115,23 @@ export function OnboardingScene({ step, screenId, data, hostelDisplay }: Onboard
   const apexY = groundY - N * fh - 40;
   const baseY = groundY - N * fh;
   const roof = `${cx},${apexY} ${cx - bw / 2 - 10},${baseY} ${cx + bw / 2 + 10},${baseY}`;
-  const signW = Math.max(96, Math.min(190, hostelDisplay.length * 9 + 26));
-  const ownerShift = step <= 1 ? -74 : step === 2 ? -44 : 0;
+  const signW = Math.max(96, Math.min(190, hostelName.length * 9 + 26));
+  const ownerShift = approach === 0 ? -74 : approach === 1 ? -44 : 0;
   const chimY = apexY - 16;
   const smokeY = apexY - 24;
 
   const pathStyle: CSSProperties = {
     strokeDasharray: 360,
-    strokeDashoffset: step >= 4 ? 0 : 360,
+    strokeDashoffset: showSite ? 0 : 360,
     transition: 'stroke-dashoffset 1.3s ease .2s',
-    opacity: step >= 4 ? 1 : 0,
+    opacity: showSite ? 1 : 0,
   };
   const pinStyle: CSSProperties =
-    step >= 4 && step < 6
+    showPin
       ? { animation: 'stayoDropPin .6s cubic-bezier(.3,1.3,.5,1) both', opacity: 1 }
       : { opacity: 0, transition: 'opacity .6s ease' };
-  const signStyle: CSSProperties = step >= 3 ? { animation: 'stayoDropPin .6s cubic-bezier(.3,1.3,.5,1) both', opacity: 1 } : { opacity: 0, transition: 'opacity .4s' };
-  const badgeStyle: CSSProperties = step >= 10 ? { animation: 'stayoDropPin .7s cubic-bezier(.3,1.3,.5,1) both', opacity: 1 } : { opacity: 0, transition: 'opacity .4s' };
+  const signStyle: CSSProperties = showSign ? { animation: 'stayoDropPin .6s cubic-bezier(.3,1.3,.5,1) both', opacity: 1 } : { opacity: 0, transition: 'opacity .4s' };
+  const badgeStyle: CSSProperties = showBadge ? { animation: 'stayoDropPin .7s cubic-bezier(.3,1.3,.5,1) both', opacity: 1 } : { opacity: 0, transition: 'opacity .4s' };
 
   return (
     <div className="pointer-events-none fixed inset-0 z-0 [filter:saturate(1.03)_blur(0.6px)]">
@@ -131,7 +186,7 @@ export function OnboardingScene({ step, screenId, data, hostelDisplay }: Onboard
 
         <circle cx="1010" cy="150" r="150" fill="url(#stayo-sun)" style={{ animation: 'stayoSunGlow 7s ease-in-out infinite' }} />
         <circle cx="1010" cy="150" r="52" fill="#FFE7C2" />
-        <g style={reveal(step >= 11)}>
+        <g style={reveal(celebrate)}>
           <g style={{ transformOrigin: '1010px 150px', animation: 'stayoSpinSlow 90s linear infinite' }}>
             {RAY_LIST.map((r, i) => (
               <rect key={i} x="1006" y={r.y} width="8" height="18" rx="4" fill="#FBD59A" transform={`rotate(${r.rot} 1010 150)`} />
@@ -139,7 +194,7 @@ export function OnboardingScene({ step, screenId, data, hostelDisplay }: Onboard
           </g>
         </g>
 
-        <g style={reveal(step >= 1)} stroke="#8A6A55" strokeWidth="2.4" fill="none" strokeLinecap="round">
+        <g style={reveal(sceneStarted)} stroke="#8A6A55" strokeWidth="2.4" fill="none" strokeLinecap="round">
           <g style={{ transform: 'translate(300px,150px)' }}>
             <g style={{ animation: 'stayoBirdFly 15s linear infinite' }}>
               <path d="M0 0 q7 -7 14 0 q7 -7 14 0" />
@@ -168,7 +223,7 @@ export function OnboardingScene({ step, screenId, data, hostelDisplay }: Onboard
 
         <rect x="0" y="560" width="1200" height="260" fill="#ECDAC7" />
 
-        <g style={reveal(step >= 4, '.1s', 10)} filter="url(#stayo-haze)" opacity="0.55">
+        <g style={reveal(showSite, '.1s', 10)} filter="url(#stayo-haze)" opacity="0.55">
           <rect x="1044" y="486" width="86" height="74" rx="4" fill="#C79A82" />
           <polygon points="1087,462 1040,488 1134,488" fill="#B07E66" />
           <rect x="1058" y="506" width="14" height="16" rx="2" fill="#F0DFC8" />
@@ -180,7 +235,7 @@ export function OnboardingScene({ step, screenId, data, hostelDisplay }: Onboard
         <ellipse cx="820" cy="580" rx="230" ry="40" fill="#E4CFB6" />
         <path d="M0 596 Q400 576 760 592 T1200 588" stroke="rgba(140,96,72,.10)" strokeWidth="2" fill="none" />
 
-        <g style={reveal(step >= 1, '0ms', 6)} fill="none">
+        <g style={reveal(sceneStarted, '0ms', 6)} fill="none">
           {[
             { x: 150, y: 592, delay: '0s' },
             { x: 360, y: 596, delay: '.4s' },
@@ -207,7 +262,7 @@ export function OnboardingScene({ step, screenId, data, hostelDisplay }: Onboard
           <circle cx="700" cy="527" r="10" fill="#FBEFE9" />
         </g>
 
-        <g style={reveal(step >= 3, '.1s', 8)}>
+        <g style={reveal(showSign, '.1s', 8)}>
           <rect x="656" y="576" width="330" height="9" rx="4" fill="#D8BE9F" />
           <rect x="662" y="570" width="7" height="16" rx="3" fill="#C7A987" />
           <rect x="740" y="570" width="7" height="16" rx="3" fill="#C7A987" />
@@ -216,15 +271,15 @@ export function OnboardingScene({ step, screenId, data, hostelDisplay }: Onboard
           <rect x="974" y="570" width="7" height="16" rx="3" fill="#C7A987" />
         </g>
 
-        <g style={reveal(step >= 5)}>
+        <g style={reveal(underConstruction)}>
           <rect x="699" y="554" width="242" height="14" rx="3" fill="#B7A488" />
         </g>
-        <g style={{ opacity: step >= 5 ? 1 : 0 }}>
+        <g style={{ opacity: underConstruction ? 1 : 0 }}>
           <ellipse cx="740" cy="558" rx="16" ry="6" fill="#D8C6AE" style={{ animation: 'stayoDustPuff 2.4s ease-out infinite' }} />
           <ellipse cx="828" cy="560" rx="18" ry="6" fill="#D8C6AE" style={{ animation: 'stayoDustPuff 2.4s ease-out infinite .8s' }} />
           <ellipse cx="906" cy="558" rx="15" ry="6" fill="#D8C6AE" style={{ animation: 'stayoDustPuff 2.4s ease-out infinite 1.5s' }} />
         </g>
-        <g style={reveal(step >= 5, '.15s', 14)} fill="#8E7A62">
+        <g style={reveal(underConstruction, '.15s', 14)} fill="#8E7A62">
           <rect x="716" y="420" width="9" height="140" rx="3" />
           <rect x="778" y="420" width="9" height="140" rx="3" />
           <rect x="853" y="420" width="9" height="140" rx="3" />
@@ -233,11 +288,11 @@ export function OnboardingScene({ step, screenId, data, hostelDisplay }: Onboard
 
         {/* BUILDING */}
         <g>
-          <polygon points={roof} fill="#8A4A34" style={reveal(step >= 6, `${N * 90}ms`, 16)} />
-          <g style={reveal(step >= 9)}>
+          <polygon points={roof} fill="#8A4A34" style={reveal(showRoof, `${N * 90}ms`, 16)} />
+          <g style={reveal(showChimney)}>
             <rect x="856" y={chimY} width="16" height="30" rx="2" fill="#8A4A34" />
           </g>
-          <g style={{ opacity: step >= 11 ? 1 : 0, transition: 'opacity .3s' }}>
+          <g style={{ opacity: celebrate ? 1 : 0, transition: 'opacity .3s' }}>
             <circle cx="864" cy={smokeY} r="7" fill="#E7D8C4" style={{ animation: 'stayoSmokePuff 3s ease-out infinite' }} />
             <circle cx="864" cy={smokeY} r="6" fill="#E7D8C4" style={{ animation: 'stayoSmokePuff 3s ease-out infinite 1.2s' }} />
             <circle cx="864" cy={smokeY} r="5" fill="#E7D8C4" style={{ animation: 'stayoSmokePuff 3s ease-out infinite 2.1s' }} />
@@ -261,7 +316,7 @@ export function OnboardingScene({ step, screenId, data, hostelDisplay }: Onboard
               {f.isGround && <rect x="808" y={f.doorY} width="26" height="34" rx="5" fill="#F0DCC2" />}
             </g>
           ))}
-          <g style={reveal(step >= 10)}>
+          <g style={reveal(showBadge)}>
             <circle cx="900" cy={apexY + 10} r="17" fill="#1F8A5B" style={badgeStyle} />
             <path d={`M892 ${apexY + 10} l6 6 l10 -12`} stroke="#fff" strokeWidth="3.2" fill="none" strokeLinecap="round" strokeLinejoin="round" style={badgeStyle} />
           </g>
@@ -272,11 +327,11 @@ export function OnboardingScene({ step, screenId, data, hostelDisplay }: Onboard
           <rect x={cx - signW / 2} y="520" width={signW} height="28" rx="6" fill="#FFFFFF" />
           <rect x={cx - signW / 2} y="520" width={signW} height="28" rx="6" fill="none" stroke="rgba(47,47,47,.1)" />
           <text x="820" y="538" textAnchor="middle" fontFamily="Manrope,sans-serif" fontWeight="800" fontSize="14" fill="#A45D44">
-            {hostelDisplay}
+            {hostelName}
           </text>
         </g>
 
-        <g style={reveal(step >= 9, '0ms', 14)}>
+        <g style={reveal(showChimney, '0ms', 14)}>
           <g style={{ transformOrigin: '635px 560px', animation: 'stayoSway 6s ease-in-out infinite' }}>
             <rect x="631" y="536" width="8" height="30" rx="4" fill="#8A5A3E" />
             <circle cx="635" cy="524" r="20" fill="#7FA36B" />
@@ -291,7 +346,7 @@ export function OnboardingScene({ step, screenId, data, hostelDisplay }: Onboard
           </g>
         </g>
 
-        <g style={reveal(step >= 11, '.2s', 0)}>
+        <g style={reveal(celebrate, '.2s', 0)}>
           <g style={{ animation: 'stayoStudentIn .7s ease both' }}>
             <g style={{ transformOrigin: '648px 592px', animation: 'stayoSway 4.4s ease-in-out infinite' }}>
               <ellipse cx="648" cy="594" rx="13" ry="4" fill="rgba(90,58,40,.12)" />
@@ -317,13 +372,13 @@ export function OnboardingScene({ step, screenId, data, hostelDisplay }: Onboard
 
         {/* OWNER */}
         <g style={{ transform: `translate(${120 + ownerShift}px,0)`, transition: 'transform 1.1s cubic-bezier(.3,.8,.3,1)' }}>
-          <g style={reveal(step >= 1, '.1s', 18)}>
+          <g style={reveal(sceneStarted, '.1s', 18)}>
             <g style={{ transformOrigin: '540px 548px', animation: 'stayoSway 7s ease-in-out infinite' }}>
               <ellipse cx="540" cy="552" rx="36" ry="9" fill="rgba(90,58,40,.12)" />
               <rect x="524" y="522" width="12" height="28" rx="6" fill="#6E4636" />
               <rect x="544" y="522" width="12" height="28" rx="6" fill="#6E4636" />
               <rect x="512" y="474" width="12" height="42" rx="6" fill="#A85B41" />
-              <g style={isSuccess ? { transformOrigin: '562px 478px', animation: 'stayoOwnerWave 1s ease-in-out infinite' } : { transformOrigin: '562px 478px' }}>
+              <g style={ownerWaving ? { transformOrigin: '562px 478px', animation: 'stayoOwnerWave 1s ease-in-out infinite' } : { transformOrigin: '562px 478px' }}>
                 <rect x="556" y="474" width="12" height="42" rx="6" fill="#A85B41" />
               </g>
               <rect x="516" y="470" width="48" height="58" rx="22" fill="url(#stayo-body)" />
@@ -332,11 +387,11 @@ export function OnboardingScene({ step, screenId, data, hostelDisplay }: Onboard
               <rect x="521" y="422" width="38" height="14" rx="9" fill="#4A3428" />
               <circle cx="534" cy="440" r="1.8" fill="#3A2E28" />
               <circle cx="546" cy="440" r="1.8" fill="#3A2E28" />
-              <g style={step >= 2 ? { animation: 'stayoPopIn .5s cubic-bezier(.3,1.4,.5,1) both', opacity: 1 } : { opacity: 0, transition: 'opacity .3s' }}>
+              <g style={ownerVerified ? { animation: 'stayoPopIn .5s cubic-bezier(.3,1.4,.5,1) both', opacity: 1 } : { opacity: 0, transition: 'opacity .3s' }}>
                 <circle cx="566" cy="424" r="11" fill="#1F8A5B" />
                 <path d="M560 424 l4 4 l7 -8" stroke="#fff" strokeWidth="2.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
               </g>
-              <g style={step >= 2 ? { animation: 'stayoSparkleBurst 1s ease-out .2s both' } : { opacity: 0 }} fill="#F4C67A">
+              <g style={ownerVerified ? { animation: 'stayoSparkleBurst 1s ease-out .2s both' } : { opacity: 0 }} fill="#F4C67A">
                 <path d="M584 410 l1.6 3.4 l3.4 1.6 l-3.4 1.6 l-1.6 3.4 l-1.6 -3.4 l-3.4 -1.6 l3.4 -1.6 Z" />
                 <path d="M556 404 l1.1 2.4 l2.4 1.1 l-2.4 1.1 l-1.1 2.4 l-1.1 -2.4 l-2.4 -1.1 l2.4 -1.1 Z" />
               </g>

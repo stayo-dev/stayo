@@ -28,6 +28,9 @@ const HostelOverviewPage = lazy(() =>
   import('@features/hostel-drilldown/pages/HostelOverviewPage').then((m) => ({ default: m.HostelOverviewPage })),
 );
 const HostelRoomsPage = lazy(() => import('@features/hostel-drilldown/pages/HostelRoomsPage').then((m) => ({ default: m.HostelRoomsPage })));
+const HostelBuilderPage = lazy(() =>
+  import('@features/owner-hostel-builder/pages/HostelBuilderPage').then((m) => ({ default: m.HostelBuilderPage })),
+);
 const HostelTenantsPage = lazy(() =>
   import('@features/hostel-drilldown/pages/HostelTenantsPage').then((m) => ({ default: m.HostelTenantsPage })),
 );
@@ -216,6 +219,12 @@ export function OwnerRoutes() {
       <Route path="/owner/tenants/verifications" element={<PendingVerificationsPage />} />
       <Route path="/owner/tenants/activations" element={<PendingActivationsPage />} />
       <Route path="/owner/tenants/:tenantId" element={<TenantDetailPage />} />
+
+      {/* Add Hostel — a full-screen build flow, not a drilldown tab. Declared
+          before the drilldown so `/owner/hostels/new` is not read as a hostel
+          id, and resumable at `:hostelId/build`. */}
+      <Route path="/owner/hostels/new" element={<HostelBuilderPage />} />
+      <Route path="/owner/hostels/:hostelId/build" element={<HostelBuilderPage />} />
 
       <Route path="/owner/hostels/:hostelId" element={<HostelDrilldownLayout />}>
         <Route index element={<Navigate to="overview" replace />} />

@@ -47,6 +47,8 @@ export interface MockProperty {
   displayOrder?: number | null;
   status?: string;
   activeTenants?: number;
+  /** Sum of room capacities. 0 means the hostel has no rooms yet. */
+  totalCapacity?: number;
 }
 
 export const mockProperties: MockProperty[] = [
