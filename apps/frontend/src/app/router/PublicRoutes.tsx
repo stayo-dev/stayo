@@ -17,7 +17,7 @@ const VisitPage = lazy(() => import('@/app/pages/public/VisitPage').then((m) => 
 const AuthCallbackPage = lazy(() => import('@/app/pages/AuthCallbackPage').then((m) => ({ default: m.AuthCallbackPage })));
 const ForgotPasswordPage = lazy(() => import('@/app/pages/ForgotPasswordPage').then((m) => ({ default: m.ForgotPasswordPage })));
 const ResetPasswordPage = lazy(() => import('@/app/pages/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })));
-const ActivateAccountPage = lazy(() => import('@/portal/pages/ActivateAccountPage').then((m) => ({ default: m.ActivateAccountPage })));
+const ActivationPage = lazy(() => import('@/platforms/tenant/onboarding/ActivationPage').then((m) => ({ default: m.ActivationPage })));
 const CompleteProfilePage = lazy(() => import('@/portal/pages/CompleteProfilePage').then((m) => ({ default: m.CompleteProfilePage })));
 const AuthRouteShell = lazy(() => import('@/app/providers/AuthRouteShell').then((m) => ({ default: m.AuthRouteShell })));
 const ReceiptVerificationPage = lazy(() => import('@/app/pages/public/ReceiptVerificationPage').then((m) => ({ default: m.ReceiptVerificationPage })));
@@ -95,9 +95,9 @@ export function PublicRoutes() {
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
-        <Route path="/activate" element={<ActivateAccountPage />} />
-        <Route path="/activate/:token" element={<ActivateAccountPage />} />
-        <Route path="/invite/:token" element={<ActivateAccountPage />} />
+        <Route path="/activate" element={<ActivationPage />} />
+        <Route path="/activate/:token" element={<ActivationPage />} />
+        <Route path="/invite/:token" element={<ActivationPage />} />
         <Route path="/complete-profile" element={<CompleteProfilePage />} />
       </Route>
     </>

@@ -91,6 +91,18 @@ Full details: [[Features]], [[Changelog]]. Closes navigation gaps found in a ful
 
 ---
 
+## Phase 5 — Tenant Activation: step-body extraction (2026-08-12)
+
+Different in kind from Phases 2–4 above: those built the **owner** app's mock-data preview screens under `/get-started/*`. This phase finishes a real, already-backend-wired flow's `portal → platforms/tenant` extraction instead — see [[Features]] and [[Changelog]] for full detail.
+
+- **What moved**: the tenant activation wizard's step bodies (previously all inline in `src/portal/pages/ActivateAccountPage.tsx`, 2,785 lines) into `platforms/tenant/onboarding/{ActivationPage.tsx, ActivationIntroScreen.tsx, steps/*}`. `ActivationLayout.tsx`/`ActivationProgress.tsx` (the chrome) had already moved in an earlier pass — this was the second and final slice its own doc comment had flagged as pending.
+- **Redesigned to match `Stayo SaaS redesign/Stayo Onboarding.dc.html`**: a new animated intro splash (full CSS-keyframe port of the design's time-of-day sky / building / actor sprites), and a new Step 5 celebration screen before handing off the session (the legacy page navigated immediately). The five backend steps (`ACCOUNT → RULES → AGREEMENT → PROFILE → ACTIVATE`) map onto the design's five visual steps — see the [[Features]] entry for the exact mapping and the two additions beyond the design source (the rules-acknowledgement checklist, and the profile step's emergency-contact/photo fields), both backend-required and neither in the design mockup.
+- **No backend change.** All business logic — OTP flows, phone validation, signature/photo upload, the profile-draft localStorage autosave, the activation-progress simulation, the post-activate Supabase session hand-off — carried over unchanged from the legacy page.
+- `src/portal/pages/ActivateAccountPage.tsx` marked `@deprecated` (added to the table below) — still on the `check-architecture.mjs` allowlist, no longer referenced by any route.
+- **Not verified in a live browser this session** — only `vite build` and `check:architecture` were run (both clean; the one architecture-check failure found, in `TenantHelpPage.tsx`, is pre-existing and unrelated).
+
+---
+
 ## Deprecated architecture (marked `@deprecated`, not removed)
 
 | File | Why deprecated | Depends on (must migrate first) |
@@ -102,6 +114,7 @@ Full details: [[Features]], [[Changelog]]. Closes navigation gaps found in a ful
 | `src/domains/payments/index.ts`, `tenants/index.ts`, `rooms/index.ts`, `hostels/index.ts`, `notifications/index.ts` (outer barrels) | Zero consumers — the inner `domains/*/api/*.ts` layer is what's actually used | `domains/payments/api/index.ts`, `tenants/api/index.ts`, `rooms/api/index.ts`, `hostels/api/index.ts` are depended on by 3 named legacy files: `app/pages/public/ReceiptVerificationPage.tsx`, `app/components/modals/AddTenantModal.tsx`, `app/components/modals/EditInviteModal.tsx` — migrate those 3 to StayO screens first, then this whole `domains/` layer (inner + outer) can go |
 | `src/domains/complaints/index.ts`, `auth/index.ts`, `moveout/index.ts`, `analytics/index.ts` | Empty scaffolding, zero consumers | None |
 | 12 unused shadcn primitives in `src/app/components/ui/`: `aspect-ratio.tsx`, `pagination.tsx`, `hover-card.tsx`, `resizable.tsx`, `navigation-menu.tsx`, `calendar.tsx`, `breadcrumb.tsx`, `menubar.tsx`, `sidebar.tsx`, `collapsible.tsx`, `context-menu.tsx`, `carousel.tsx` | Zero references anywhere in the app (confirmed by the frontend audit) | None — safe to delete outright, kept only per the deprecate-don't-delete policy |
+| `src/portal/pages/ActivateAccountPage.tsx` | Orphaned (Phase 5, 2026-08-12) — `PublicRoutes.tsx`'s `/activate*`/`/invite/:token` now render `platforms/tenant/onboarding/ActivationPage.tsx` instead | Nothing renders it anymore; still on the `check-architecture.mjs` legacy-portal allowlist — safe to delete once confirmed no other file imports it |
 
 ---
 
