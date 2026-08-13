@@ -90,6 +90,8 @@ src/portal/utils/payableObligations.ts
 ```
 Every file currently on disk under `src/portal/` is on this allowlist (confirmed). The script also forbids raw `fetch()`/`axios` in non-allowlisted portal files. `QrCodeImage.tsx` and `payableObligations.ts` are the only two files here still reused by *non-tenant-portal* code (the owner-side Admissions QR feature and Quick Collect modal, respectively) — everything else is either a still-routed tenant page (see Router section above) or `README.md`.
 
+**`ActivateAccountPage.tsx` is on this allowlist but is `@deprecated` and no longer routed** (2026-08-12) — `PublicRoutes.tsx`'s `/activate`, `/activate/:token`, `/invite/:token` now mount `platforms/tenant/onboarding/ActivationPage.tsx` instead. This was the second and final slice of the `portal → platforms/tenant` extraction: `ActivationLayout.tsx`/`ActivationProgress.tsx` (the chrome) moved first; the step bodies moved in this change, redesigned to match `Stayo Onboarding.dc.html`. See [[Features]] and [[Changelog]]. Kept on disk/allowlist per the deprecate-don't-delete policy until confirmed safe to remove.
+
 ## `src/domains/` — migration-in-progress scaffold
 
 Per its `README.md`: *"the old `src/features/*` folders remain as compatibility providers during the migration."* Actual state:

@@ -1,0 +1,131 @@
+/*
+ * Keyframes for the tenant activation intro splash — ported directly from
+ * `Stayo SaaS redesign/Stayo Onboarding.dc.html`'s <style> block (same names,
+ * same timing) so the scene reads identically to the design source: a
+ * pixel-art Stayo building with a swinging door, three looping actor
+ * sprites, a day/dusk/night sky cycle, and twinkling stars/drifting clouds.
+ * Scoped to this file only — never imported globally.
+ */
+
+.ob-intro-fade { animation: obFade 0.4s ease; }
+.ob-intro-up { animation: obUp 0.6s ease both; opacity: 0; }
+
+@keyframes obFade {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes obUp {
+  0% { transform: translateY(14px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+@keyframes obBob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+@keyframes obLegF {
+  0%, 100% { transform: rotate(20deg); }
+  50% { transform: rotate(-20deg); }
+}
+@keyframes obLegB {
+  0%, 100% { transform: rotate(-20deg); }
+  50% { transform: rotate(20deg); }
+}
+@keyframes obArmF {
+  0%, 100% { transform: rotate(-24deg); }
+  50% { transform: rotate(24deg); }
+}
+@keyframes obArmB {
+  0%, 100% { transform: rotate(24deg); }
+  50% { transform: rotate(-24deg); }
+}
+@keyframes obDust {
+  0% { transform: scale(0.4); opacity: 0.5; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+@keyframes obGlow {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+@keyframes obDrift {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(130px); }
+}
+@keyframes obDrift2 {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-110px); }
+}
+@keyframes actA {
+  0% { left: -58px; opacity: 1; transform: scale(1.1); }
+  18% { left: 62%; opacity: 1; transform: scale(1.1); }
+  22% { left: 64%; opacity: 1; transform: scale(1.1); }
+  26% { left: 65%; opacity: 0; transform: scale(0.5); }
+  100% { left: 65%; opacity: 0; transform: scale(0.5); }
+}
+@keyframes actB {
+  0% { left: 63%; opacity: 0; transform: scale(0.5); }
+  35% { left: 63%; opacity: 0; transform: scale(0.5); }
+  39% { left: 61%; opacity: 1; transform: scale(1.1); }
+  44% { left: 55%; opacity: 1; transform: scale(1.1); }
+  60% { left: -18%; opacity: 1; transform: scale(1.1); }
+  62% { left: -18%; opacity: 0; transform: scale(1.1); }
+  100% { left: -18%; opacity: 0; transform: scale(1.1); }
+}
+@keyframes actC {
+  0% { left: -22%; opacity: 0; }
+  63% { left: -22%; opacity: 0; }
+  64% { left: -22%; opacity: 1; transform: scale(1.1); }
+  82% { left: 61%; opacity: 1; transform: scale(1.1); }
+  86% { left: 65%; opacity: 0; transform: scale(0.6); }
+  100% { left: 65%; opacity: 0; transform: scale(0.6); }
+}
+@keyframes doorSwing {
+  0%, 16% { transform: perspective(320px) rotateY(0); }
+  18.5%, 27% { transform: perspective(320px) rotateY(-106deg); }
+  31%, 35% { transform: perspective(320px) rotateY(0); }
+  38%, 45% { transform: perspective(320px) rotateY(-106deg); }
+  49%, 79% { transform: perspective(320px) rotateY(0); }
+  81%, 88% { transform: perspective(320px) rotateY(-106deg); }
+  92%, 100% { transform: perspective(320px) rotateY(0); }
+}
+@keyframes wheelSpin {
+  100% { transform: rotate(360deg); }
+}
+@keyframes twinkle {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 0.9; }
+}
+
+.ob-actor-a { animation: actA 14s linear infinite; }
+.ob-actor-b { animation: actB 14s linear infinite; }
+.ob-actor-c { animation: actC 14s linear infinite; }
+/*
+ * The swing rotates past 90deg (rotateY(-106deg)), which exposes the
+ * element's back face. Without hiding it, that back face renders as an
+ * unstyled white rectangle mid-swing — hide it so only the door's front
+ * (styled) face is ever visible.
+ */
+.ob-door {
+  animation: doorSwing 14s linear infinite;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.ob-wheel { animation: wheelSpin 0.5s linear infinite; }
+.ob-bob-a { animation: obBob 0.5s ease-in-out infinite; }
+.ob-bob-b { animation: obBob 0.46s ease-in-out infinite; }
+.ob-legf-a { animation: obLegF 0.5s ease-in-out infinite; }
+.ob-legb-a { animation: obLegB 0.5s ease-in-out infinite; }
+.ob-armf-a { animation: obArmF 0.5s ease-in-out infinite; }
+.ob-armb-a { animation: obArmB 0.5s ease-in-out infinite; }
+.ob-legf-b { animation: obLegF 0.46s ease-in-out infinite; }
+.ob-legb-b { animation: obLegB 0.46s ease-in-out infinite; }
+.ob-armf-b { animation: obArmF 0.46s ease-in-out infinite; }
+.ob-armb-b { animation: obArmB 0.46s ease-in-out infinite; }
+.ob-legf-c { animation: obLegF 0.35s ease-in-out infinite; }
+.ob-legb-c { animation: obLegB 0.35s ease-in-out infinite; }
+.ob-dust { animation: obDust 1s ease-out infinite; }
+.ob-glow { animation: obGlow 4s ease-in-out infinite; }
+.ob-glow-fast { animation: obGlow 1.8s ease-in-out infinite; }
+.ob-glow-window { animation: obGlow 3.5s ease-in-out infinite; }
+.ob-drift { animation: obDrift 12s ease-in-out infinite alternate; }
+.ob-drift2 { animation: obDrift2 14s ease-in-out infinite alternate; }
+.ob-twinkle { animation: twinkle 2.6s ease-in-out infinite; }
