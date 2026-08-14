@@ -1,7 +1,6 @@
-import { InputHTMLAttributes, ReactNode, useState } from 'react';
+import { InputHTMLAttributes, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Download, X } from 'lucide-react';
-import { SignaturePad } from '@shared/ui/inputs';
 import { StayoLoader } from '@shared/ui/brand';
 import { currency } from '../activationTypes';
 import { fieldClass } from './stepStyles';
@@ -87,17 +86,77 @@ export function PrimaryButton({ loading, disabled, children }: { loading: boolea
   );
 }
 
+/** The 44px back tile from the design's sticky footer. */
 export function BackButton({ onClick, title }: { onClick: () => void; title: string }) {
   return (
     <button
       type="button"
       onClick={onClick}
       title={title}
-      className="rounded-2xl border border-border bg-background px-4 text-muted-foreground hover:bg-secondary/40 active:scale-[0.98] transition-transform shadow-sm flex items-center justify-center cursor-pointer"
+      aria-label={title}
+      className="flex h-11 w-11 flex-none cursor-pointer items-center justify-center rounded-[11px] border transition-transform active:scale-[0.98]"
+      style={{ background: 'rgba(246,241,234,.8)', borderColor: '#EDE3D5', color: '#4A433C' }}
     >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M19 12H5M12 19l-7-7 7-7" />
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M19 12H5M11 6l-6 6 6 6" />
       </svg>
+    </button>
+  );
+}
+
+/**
+ * The design's sticky footer: a glass pill holding the back tile and the
+ * step's primary action, pinned to the bottom of the flow column over a
+ * gradient scrim so scrolling content fades out beneath it rather than
+ * ending flush against it. Previously each step rendered this bar inline at
+ * the end of its content, so on any step taller than the viewport — every
+ * step but the last, in practice — the primary action was below the fold.
+ *
+ * `ActivationLayout` reserves 108px of bottom padding for this.
+ */
+export function StepActionBar({ children }: { children: ReactNode }) {
+  return (
+    <div className="fixed bottom-0 left-1/2 z-[2] w-full max-w-md -translate-x-1/2 p-3" style={{ background: 'linear-gradient(180deg,transparent,#F6F1EA 30%)' }}>
+      <div
+        className="flex items-center gap-2.5 rounded-[15px] border p-2.5"
+        style={{
+          background: 'rgba(255,255,255,.7)',
+          backdropFilter: 'blur(18px) saturate(150%)',
+          WebkitBackdropFilter: 'blur(18px) saturate(150%)',
+          borderColor: 'rgba(255,255,255,.6)',
+          boxShadow: '0 8px 24px rgba(20,16,13,.14)',
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** The design's primary footer button — terracotta by default, ink on the final "Enter Stayo" step. */
+export function PrimaryActionButton({
+  type = 'button',
+  onClick,
+  disabled,
+  dark,
+  children,
+}: {
+  type?: 'button' | 'submit';
+  onClick?: () => void;
+  disabled?: boolean;
+  dark?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      // eslint-disable-next-line react/button-has-type -- narrowed to 'button' | 'submit' by the prop type
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      className="flex flex-1 items-center justify-center gap-2 rounded-[11px] py-3.5 font-display text-sm font-bold text-white disabled:opacity-60"
+      style={{ background: dark ? '#1B1714' : '#B46A55', boxShadow: dark ? '0 6px 16px rgba(27,23,20,.3)' : '0 6px 16px rgba(180,106,85,.3)' }}
+    >
+      {children}
     </button>
   );
 }
@@ -299,199 +358,6 @@ export function AgreementPreviewModal({ agreement, onClose }: AgreementPreviewMo
             className="px-5 py-2.5 rounded-xl border border-border text-sm font-semibold text-muted-foreground hover:bg-secondary hover:text-foreground active:scale-95 transition-all cursor-pointer"
           >
             Close Preview
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-  if (typeof document === 'undefined') return null;
-  return createPortal(body, document.body);
-}
-
-interface TenantSignatureModalProps {
-  tenantSigName: string;
-  tenantSigBlob: Blob | null;
-  existingTenantSigUrl?: string | null;
-  onConfirm: (name: string, blob: Blob | null) => void;
-  onClose: () => void;
-}
-
-/** Matches `Stayo Onboarding.dc.html`'s "Tenant Signature" full-screen sheet. */
-export function TenantSignatureModal({
-  tenantSigName,
-  tenantSigBlob,
-  existingTenantSigUrl,
-  onConfirm,
-  onClose,
-}: TenantSignatureModalProps) {
-  const [name, setName] = useState(tenantSigName);
-  const [blob, setBlob] = useState<Blob | null>(tenantSigBlob);
-
-  const isValid = name.trim().length > 0 && (blob !== null || !!existingTenantSigUrl);
-
-  const body = (
-    <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-0 sm:p-4">
-      <div className="w-full h-full sm:h-auto sm:max-w-lg bg-card rounded-none sm:rounded-3xl border-0 sm:border border-border/80 shadow-2xl flex flex-col overflow-hidden">
-        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-muted/30 flex justify-between items-center">
-          <div>
-            <h3 className="font-extrabold text-foreground text-lg tracking-tight">Tenant Signature</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">Write your name and draw your signature below</p>
-          </div>
-          <button type="button" onClick={onClose} className="p-2 rounded-xl hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="p-4 sm:p-6 space-y-5 flex-1 overflow-y-auto flex flex-col">
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
-              Full Name (Type to sign) <span className="text-destructive">*</span>
-            </label>
-            <input
-              type="text"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Type your official full name"
-              className="w-full rounded-xl border border-border px-4 py-3 text-sm focus:border-primary focus:outline-none bg-background text-foreground"
-            />
-          </div>
-
-          <div className="flex-1 flex flex-col min-h-[200px]">
-            <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
-              Draw Signature <span className="text-destructive">*</span>
-            </label>
-            <div className="rounded-xl overflow-hidden border border-border relative bg-background [&_button.absolute]:hidden flex-1 flex flex-col">
-              <SignaturePad
-                onSave={(b) => setBlob(b)}
-                placeholder="Draw tenant signature here"
-                existingSignatureUrl={existingTenantSigUrl}
-                className="flex-1 flex flex-col space-y-2"
-                canvasHeightClass="flex-1 min-h-[160px]"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-border bg-muted/30 flex justify-between items-center gap-3">
-          <button type="button" onClick={onClose} className="px-4 py-2.5 rounded-xl border border-border text-sm font-semibold text-muted-foreground hover:bg-secondary hover:text-foreground active:scale-95 transition-all cursor-pointer">
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={!isValid}
-            onClick={() => onConfirm(name, blob)}
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50 active:scale-[0.98] transition-all cursor-pointer shadow-sm shadow-primary/20"
-          >
-            Apply Signature
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-  if (typeof document === 'undefined') return null;
-  return createPortal(body, document.body);
-}
-
-interface GuardianSignatureModalProps {
-  guardianName: string;
-  guardianRelation: string;
-  guardianSigBlob: Blob | null;
-  existingGuardianSigUrl?: string | null;
-  onConfirm: (name: string, relation: string, blob: Blob | null) => void;
-  onClose: () => void;
-}
-
-/** Matches `Stayo Onboarding.dc.html`'s "Parent/Guardian Co-Signature" full-screen sheet. */
-export function GuardianSignatureModal({
-  guardianName,
-  guardianRelation,
-  guardianSigBlob,
-  existingGuardianSigUrl,
-  onConfirm,
-  onClose,
-}: GuardianSignatureModalProps) {
-  const [name, setName] = useState(guardianName);
-  const [relation, setRelation] = useState(guardianRelation);
-  const [blob, setBlob] = useState<Blob | null>(guardianSigBlob);
-
-  const isValid = name.trim().length > 0 && relation.length > 0 && (blob !== null || !!existingGuardianSigUrl);
-
-  const body = (
-    <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-md flex items-center justify-center p-0 sm:p-4">
-      <div className="w-full h-full sm:h-auto sm:max-w-lg bg-card rounded-none sm:rounded-3xl border-0 sm:border border-border/80 shadow-2xl flex flex-col overflow-hidden">
-        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-border bg-muted/30 flex justify-between items-center">
-          <div>
-            <h3 className="font-extrabold text-foreground text-lg tracking-tight">Parent/Guardian Co-Signature</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">Provide guardian details and signature below</p>
-          </div>
-          <button type="button" onClick={onClose} className="p-2 rounded-xl hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="p-4 sm:p-6 space-y-5 flex-1 overflow-y-auto flex flex-col">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
-                Relationship <span className="text-destructive">*</span>
-              </label>
-              <select
-                required
-                value={relation}
-                onChange={(e) => setRelation(e.target.value)}
-                className="w-full rounded-xl border border-border px-3.5 py-3 text-sm focus:border-primary focus:outline-none bg-background text-foreground"
-              >
-                <option value="">Select</option>
-                <option value="Father">Father</option>
-                <option value="Mother">Mother</option>
-                <option value="Guardian">Guardian</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
-                Guardian Full Name <span className="text-destructive">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Guardian name"
-                className="w-full rounded-xl border border-border px-3.5 py-3 text-sm focus:border-primary focus:outline-none bg-background text-foreground"
-              />
-            </div>
-          </div>
-
-          <div className="flex-1 flex flex-col min-h-[200px]">
-            <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
-              Draw Signature <span className="text-destructive">*</span>
-            </label>
-            <div className="rounded-xl overflow-hidden border border-border relative bg-background [&_button.absolute]:hidden flex-1 flex flex-col">
-              <SignaturePad
-                onSave={(b) => setBlob(b)}
-                placeholder="Draw parent/guardian signature here"
-                existingSignatureUrl={existingGuardianSigUrl}
-                className="flex-1 flex flex-col space-y-2"
-                canvasHeightClass="flex-1 min-h-[160px]"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-border bg-muted/30 flex justify-between items-center gap-3">
-          <button type="button" onClick={onClose} className="px-4 py-2.5 rounded-xl border border-border text-sm font-semibold text-muted-foreground hover:bg-secondary hover:text-foreground active:scale-95 transition-all cursor-pointer">
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={!isValid}
-            onClick={() => onConfirm(name, relation, blob)}
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50 active:scale-[0.98] transition-all cursor-pointer shadow-sm shadow-primary/20"
-          >
-            Apply Signature
           </button>
         </div>
       </div>

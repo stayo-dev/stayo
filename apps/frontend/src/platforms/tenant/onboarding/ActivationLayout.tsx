@@ -1,5 +1,6 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
+import './onboarding.css';
 import { ActivationProgress, type ActivationVisualStep } from './ActivationProgress';
 import { hostelInitials, skyEnv, THEME_CYCLE, type ThemePhase } from './skyTheme';
 
@@ -13,30 +14,59 @@ interface ActivationLayoutProps {
   /** Dual-brand header (Stayo icon × hostel badge), ADR-070. */
   hostelName?: string;
   hostelLogoUrl?: string;
+  /** Gender picked on the Identity step — re-skins the journey-track avatar. */
+  gender?: string;
   /** Non-blocking banner; the caller owns dismissal. */
   error?: string;
   onDismissError?: () => void;
   children: ReactNode;
 }
 
+/** The design's idle threshold before the journey-track avatar sits down and dozes. */
+const IDLE_MS = 11000;
+
 /**
- * Flow chrome for the tenant activation wizard, rebuilt 2026-08-13 to match
- * `Stayo Onboarding.dc.html`'s actual "FLOW" header — the previous version
- * (a plain dark bar + hostel name/logo) was a reasonable StayO-themed shell
- * but didn't match the design source at all once compared side by side: no
- * time-of-day gradient carrying through from the intro screen, no Stayo "S"
- * logo mark, and a 4-pill text tracker instead of the design's 5-icon
- * journey track (now `ActivationProgress.tsx`).
+ * `bored` in the design source: 11s without a state-changing interaction and
+ * the tenant on the track sits down. Any pointer/key/scroll activity, or a
+ * change of step, wakes them back up.
+ */
+function useIdleBored(resetKey: unknown): boolean {
+  const [bored, setBored] = useState(false);
+  const timerRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    const arm = () => {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = window.setTimeout(() => setBored(true), IDLE_MS);
+    };
+    const wake = () => {
+      setBored((was) => (was ? false : was));
+      arm();
+    };
+    arm();
+    const events: (keyof WindowEventMap)[] = ['pointerdown', 'keydown', 'wheel', 'touchstart'];
+    events.forEach((e) => window.addEventListener(e, wake, { passive: true }));
+    return () => {
+      window.clearTimeout(timerRef.current);
+      events.forEach((e) => window.removeEventListener(e, wake));
+    };
+  }, [resetKey]);
+
+  return bored;
+}
+
+/**
+ * Flow chrome for the tenant activation wizard, matching `Stayo
+ * Onboarding.dc.html`'s "FLOW" screen: the time-of-day gradient carried
+ * through from the intro screen, its stars/clouds/sun-moon sky furniture, a
+ * dual-brand lockup (Stayo icon × hostel badge/initials, ADR-070) and the
+ * 5-node journey track (`ActivationProgress.tsx`).
  *
  * Body content renders directly over the gradient (no enclosing white
  * card) — matching the design, where only specific elements (room-summary
  * tiles, form fields, the sticky action bar) are their own cards, not the
- * whole step.
- *
- * 2026-08-14 (ADR-070): header became a dual-brand lockup (Stayo icon ×
- * hostel badge/initials) showing the real hostel name instead of a static
- * "Stayo", matching the newer `stayo onbaording/` design source; Identity
- * moved before Agreement in `ActivationProgress.tsx`'s node order.
+ * whole step. Bottom padding clears the sticky action bar each step renders
+ * via `StepActionBar` (`steps/shared.tsx`).
  */
 export function ActivationLayout({
   activeStep,
@@ -46,12 +76,14 @@ export function ActivationLayout({
   agreementRequired,
   hostelName,
   hostelLogoUrl,
+  gender,
   error,
   onDismissError,
   children,
 }: ActivationLayoutProps) {
   const [themeOverride, setThemeOverride] = useState<ThemePhase | null>(null);
   const sky = useMemo(() => skyEnv(new Date().getHours(), themeOverride), [themeOverride]);
+  const bored = useIdleBored(activeStep);
 
   const cycleTheme = () => {
     const idx = THEME_CYCLE.indexOf(themeOverride);
@@ -59,7 +91,7 @@ export function ActivationLayout({
   };
 
   return (
-    <div className="relative min-h-screen" style={{ background: sky.flowGradient, transition: 'background 1.2s ease' }}>
+    <div className="relative min-h-screen overflow-hidden" style={{ background: sky.flowGradient, transition: 'background 1.2s ease' }}>
       {error && (
         <div
           role="alert"
@@ -78,28 +110,41 @@ export function ActivationLayout({
         </div>
       )}
 
-      {sky.showSun && (
-        <button
-          type="button"
-          onClick={cycleTheme}
-          title="Tap to change theme"
-          className="absolute right-8 top-11 z-[3] h-10 w-10 animate-pulse rounded-full"
-          style={{ background: sky.sunFill, boxShadow: sky.sunGlow }}
-        />
-      )}
-      {sky.showMoon && (
-        <button
-          type="button"
-          onClick={cycleTheme}
-          title="Tap to change theme"
-          className="absolute right-8 top-11 z-[3] h-[38px] w-[38px] rounded-full"
-          style={{ background: '#EDE9DE', boxShadow: '0 0 26px rgba(220,225,240,.4), inset -11px -5px 0 -2px rgba(160,168,190,.35)' }}
-        />
-      )}
+      {/* `relative` so the sky furniture's percentage offsets resolve against this
+          column, not the viewport — the design authors them against a 402px frame. */}
+      <div className="relative mx-auto w-full max-w-md">
+        {/* sky furniture — stars, clouds and the tap-to-cycle sun/moon */}
+        <div className="pointer-events-none absolute inset-0 z-0" style={{ opacity: sky.starOpacity, transition: 'opacity 1.2s ease' }}>
+          <span className="ob-twinkle absolute h-0.5 w-0.5 rounded-full bg-white" style={{ top: 76, left: '32.8%', animationDelay: '.3s' }} />
+          <span className="ob-twinkle absolute h-0.5 w-0.5 rounded-full bg-white" style={{ top: 112, left: '17.4%', animationDuration: '3s', animationDelay: '.7s' }} />
+          <span className="ob-twinkle absolute h-0.5 w-0.5 rounded-full bg-white" style={{ top: 58, left: '52.2%', animationDuration: '3.3s', animationDelay: '1s' }} />
+        </div>
+        <div className="ob-drift-flow pointer-events-none absolute z-0 h-[14px] w-[52px] rounded-full" style={{ top: 70, left: '6.5%', background: sky.cloudFill }} />
+        <div className="ob-drift2-flow pointer-events-none absolute z-0 h-[11px] w-10 rounded-full" style={{ top: 120, left: '52.2%', background: sky.cloudFill2 }} />
 
-      <div className="mx-auto w-full max-w-md">
+        {sky.showSun && (
+          <button
+            type="button"
+            onClick={cycleTheme}
+            title="Tap to change theme"
+            aria-label="Change sky theme"
+            className="ob-glow-flow absolute right-[30px] top-11 z-[3] h-10 w-10 rounded-full"
+            style={{ background: sky.sunFill, boxShadow: sky.sunGlow }}
+          />
+        )}
+        {sky.showMoon && (
+          <button
+            type="button"
+            onClick={cycleTheme}
+            title="Tap to change theme"
+            aria-label="Change sky theme"
+            className="absolute right-[30px] top-11 z-[3] h-[38px] w-[38px] rounded-full"
+            style={{ background: '#EDE9DE', boxShadow: '0 0 26px rgba(220,225,240,.4), inset -11px -5px 0 -2px rgba(160,168,190,.35)' }}
+          />
+        )}
+
         <div className="relative z-[2] px-3 pb-2 pt-11">
-          <div className="flex items-center gap-2 px-1 pb-3.5">
+          <div className="flex items-center gap-[9px] px-1 pb-3.5">
             <img src="/stayo-icon.png" alt="Stayo" className="h-[38px] w-[38px] flex-none rounded-[11px]" style={{ boxShadow: '0 4px 12px rgba(180,106,85,.4)' }} />
             <span className="flex-none text-[15px]" style={{ color: '#C9BDAF' }}>
               ×
@@ -117,25 +162,36 @@ export function ActivationLayout({
               <div className="text-[9.5px] font-bold uppercase tracking-[.14em]" style={{ color: '#B7ADA2' }}>
                 Tenant Admission
               </div>
-              <div className="mt-0.5 truncate font-display text-[15px] font-extrabold tracking-tight text-white">{hostelName || 'Stayo'}</div>
+              <div className="mt-px truncate font-display text-[15px] font-extrabold tracking-tight text-white">{hostelName || 'Stayo'}</div>
             </div>
           </div>
 
           <div
-            className="rounded-2xl border p-3.5 pb-3"
+            className="rounded-2xl border"
             style={{
               background: 'rgba(255,255,255,.55)',
               backdropFilter: 'blur(16px) saturate(150%)',
               WebkitBackdropFilter: 'blur(16px) saturate(150%)',
               borderColor: 'rgba(255,255,255,.6)',
               boxShadow: '0 8px 26px rgba(20,16,13,.16)',
+              padding: '11px 14px 12px',
             }}
           >
-            <ActivationProgress activeStep={activeStep} currentStep={currentStep} completedSteps={completedSteps} onStepClick={onStepClick} agreementRequired={agreementRequired} />
+            <ActivationProgress
+              activeStep={activeStep}
+              currentStep={currentStep}
+              completedSteps={completedSteps}
+              onStepClick={onStepClick}
+              agreementRequired={agreementRequired}
+              bored={bored}
+              gender={gender}
+            />
           </div>
         </div>
 
-        <div className="relative z-[1] px-3.5 pb-24 pt-3">{children}</div>
+        <div className="relative z-[1]" style={{ padding: '14px 14px 108px' }}>
+          {children}
+        </div>
       </div>
     </div>
   );
