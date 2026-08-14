@@ -103,6 +103,19 @@ Different in kind from Phases 2–4 above: those built the **owner** app's mock-
 
 ---
 
+## Phase 6 — Tenant dashboard: pixel-fidelity rebuild against `Stayo Tenant.dc.html` (2026-08-14)
+
+**This phase's starting point wasn't a blank slate.** A separate, undocumented session on 2026-07-26/27 had already built a real, backend-wired 5-tab tenant app (`platforms/tenant/{router,pages}` — `TenantAppShell`, `TenantRoutes`, and pages for Home/Money/Room/Food/Profile) — that work was never logged here, only in scattered code comments. This phase rebuilds those 5 tabs' presentation layer against the design source (existing feature-hook data layer kept, since it already called the correct endpoints) — full detail in [[Features]], [[Changelog]], [[Decisions#ADR-068|ADR-068]], [[Bugs]].
+
+- **New generic overlay system** (`platforms/tenant/components/overlays/`) — `DetailScreen`/`FormPanel`/`SuccessPanel` + `useOverlayStack`, config-driven, matching the design source's own `DETAIL`/`FORM` map architecture instead of one-off screens for each of the ~20 Room/Profile drill-ins and 8 request-form flows.
+- **Complaints stayed a non-tab, by explicit user decision** matching the design (see ADR-068) — folded into Home/Room/Profile, backed by `tenant_service_requests`.
+- **Resolves the Phase 5 flag above**: `TenantHelpPage.tsx`'s `check-architecture.mjs` failure (a raw `fetch()` bypassing `@lib/api-client`) is fixed — the dead form was removed outright, replaced with a deep link into Room's real service-request flow.
+- **Verified live this time** — a dev-DB test tenant (`tenant@teststayo.dev`) was repaired and walked through all 5 tabs + overlay drill-ins with Playwright against the real backend. Found and fixed two real bugs in the process: overlay panels using `absolute` instead of `fixed` positioning (blank/misaligned after the page scrolled), and a pre-existing `findUnique(profile_id)` Prisma bug 500ing several `/api/tenants/me/*` and `/api/payments/*` routes for every tenant (8 of an estimated ~20 occurrences fixed — see [[Bugs]] for the rest).
+- **Same-day follow-up, driven by user feedback against the design screenshots**: "Your details" became real editable forms (was read-only, 4 fields → now up to 8 incl. new `blood_group`/`nationality`/`pan_number` columns), documents gained real inline upload (was a navigation to the frozen portal page), and a brand-new tenant-proposes/owner-approves workflow was built for phone/email/address/DOB (new routes + a new owner-side review screen at `/owner/profile-requests`) — full detail in [[Features]], [[Changelog]], [[Decisions#ADR-069|ADR-069]].
+- **Second same-day follow-up**: the always-open-form version above turned out to itself deviate from the design (which uses read-only cards with a view→edit toggle) and had a field-mapping bug (Emergency Contact editing a phone number as if it were a name). Rebuilt as a view/edit toggle sharing `DetailScreen.tsx`'s row visuals via a new shared `Section.tsx`; governance narrowed to phone/email only (address/DOB back to direct-editable); Emergency Contact now uses the real `guardian_name`/`guardian_relation` columns; Aadhaar routes to document upload instead of a text field; new `expected_completion_date` column for Academic Details. Two pre-existing, unrelated bugs found and fixed while verifying live (a broken validator re-export that silently no-opped every tenant-profile direct save, and a read-side field allowlist gap) — see [[Bugs]], [[Changelog]].
+
+---
+
 ## Deprecated architecture (marked `@deprecated`, not removed)
 
 | File | Why deprecated | Depends on (must migrate first) |

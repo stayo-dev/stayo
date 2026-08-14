@@ -23,7 +23,7 @@ const METHODS: Array<{ key: Method; title: string; sub: string; icon: typeof Sma
 /**
  * 3-stage pay sheet (form → paying → paid), shared by Home's "Pay Rent" quick
  * action and Money's own Pay buttons. Real flow: `POST /payments/create-intent`
- * then redirect to the PhonePe checkout URL, which handles its own method
+ * then redirect to the Razorpay checkout URL, which handles its own method
  * selection on its hosted page — the "Pay with" picker here (per the mockup)
  * is a visual pre-selection only and isn't sent anywhere, since the real
  * checkout provider doesn't accept a pre-chosen method through this API.
@@ -86,7 +86,7 @@ export function PaySheet({ stage, amount, error, onClose, onConfirm }: PaySheetP
           >
             Pay ₹{amount.toLocaleString('en-IN')} securely
           </button>
-          <p className="mt-[11px] text-center text-[11px] text-[#B0A597]">Secured by PhonePe · UPI &amp; cards</p>
+          <p className="mt-[11px] text-center text-[11px] text-[#B0A597]">Secured by Razorpay · UPI &amp; cards</p>
         </div>
       )}
 

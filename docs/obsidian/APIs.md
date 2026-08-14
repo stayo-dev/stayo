@@ -49,7 +49,7 @@ Tenant activation (`/api/tenants/activate`, see below) also mints a Supabase ses
 
 **Financial ledger/timeline** (`/api/tenants/[id]/financial-*`): `financial-ledger` (GET balance+history / POST record credit-or-debit), `financial-ledger/adjust` (apply future-credit against a specific obligation), `financial-ledger/refund-status` (PATCH), `financial-timeline` (unified read-only feed), `billing-timeline`.
 
-**Tenant self-service** (`/api/tenants/me/*`, all TENANT-scoped): `profile` (GET/PATCH), `complete-profile` (onboarding, multipart), `photo`, `room`, `score`, `documents` (GET/POST), `financial-ledger`, `financial-read-model` (the canonical `FinancialReadModel`, same source the owner overview reads — see [[Business-Rules]]), `billing-timeline`, `billing-frequency` (GET/POST, validated against cooldown/minimum-commitment/billing-period-cleanliness rules), `payments/history`, `onboarding-settings`, `reactivation-request`.
+**Tenant self-service** (`/api/tenants/me/*`, all TENANT-scoped): `profile` (GET/PATCH — **as of 2026-08-14, PATCH rejects `phone_1`/`phone`/`personal_email`/`permanent_address`/`date_of_birth`** with a `VALIDATION_ERROR` telling the caller to use `profile-requests` instead — these are governed fields, see [[Business-Rules]]), `complete-profile` (onboarding, multipart), `photo`, `room`, `score`, `documents` (GET/POST), `financial-ledger`, `financial-read-model` (the canonical `FinancialReadModel`, same source the owner overview reads — see [[Business-Rules]]), `billing-timeline`, `billing-frequency` (GET/POST, validated against cooldown/minimum-commitment/billing-period-cleanliness rules), `payments/history`, `onboarding-settings`, `reactivation-request`, `profile-requests` (**new 2026-08-14** — GET lists the tenant's own submitted governed-field change requests; POST body `{fields: {phone_1?, personal_email?, permanent_address?, date_of_birth?}, reason}` creates one `PENDING`, 400 if a request is already pending or `reason` is empty. See below and [[Business-Rules]]).
 
 ## Agreements & Renewals
 
@@ -58,6 +58,8 @@ Tenant activation (`/api/tenants/activate`, see below) also mints a Supabase ses
 ## Change Requests (owner-edit ↔ tenant-approval workflow)
 
 `/api/change-requests` (GET list), `/api/change-requests/[id]` (GET detail + event timeline), `/api/change-requests/[id]/approve` (**TENANT only**), `/api/change-requests/[id]/reject` (**TENANT only**), `/api/change-requests/[id]/cancel` (**OWNER/ADMIN only**). Backs the `change_requests`/`change_request_events` tables — see [[Database]].
+
+**Tenant-edit ↔ owner-approval workflow (new 2026-08-14, the reverse direction, deliberately separate routes — see [[Database]] and [[Decisions]] ADR-069):** `POST /api/tenants/me/profile-requests` (TENANT — create, see above), `GET /api/tenants/me/profile-requests` (TENANT — list own), `GET /api/owner/profile-requests?status=PENDING` (OWNER — list pending across the owner's hostels), `POST /api/owner/profile-requests/[id]/approve` (OWNER — applies the diff directly to `tenants`/`profiles` and marks `APPLIED`), `POST /api/owner/profile-requests/[id]/reject` (OWNER — body `{reason?}`, marks `REJECTED`). All four scoped by `owner_id`/`tenant_id` on the `change_requests` row, filtered to `change_type: 'tenant_self_service_update'` so they never see or touch the owner→tenant direction's rows.
 
 ## Owner Action Registry (catalog only)
 

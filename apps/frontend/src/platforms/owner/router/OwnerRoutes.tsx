@@ -39,6 +39,9 @@ const FoodPage = lazy(() => import('@features/owner-food/pages/FoodPage').then((
 const KitchenSheetPage = lazy(() => import('@features/owner-food/pages/KitchenSheetPage').then((m) => ({ default: m.KitchenSheetPage })));
 const FoodPollsPage = lazy(() => import('@features/owner-food/pages/FoodPollsPage').then((m) => ({ default: m.FoodPollsPage })));
 const AlertsPage = lazy(() => import('@features/owner-alerts/pages/AlertsPage').then((m) => ({ default: m.AlertsPage })));
+const OwnerProfileRequestsPage = lazy(() =>
+  import('@features/owner-profile-requests/pages/OwnerProfileRequestsPage').then((m) => ({ default: m.OwnerProfileRequestsPage })),
+);
 const MoreSettingsPage = lazy(() => import('@features/owner-more/pages/MoreSettingsPage').then((m) => ({ default: m.MoreSettingsPage })));
 const MoreProfilePage = lazy(() => import('@features/owner-more/pages/MoreProfilePage').then((m) => ({ default: m.MoreProfilePage })));
 const MoreHostelIdentityPage = lazy(() =>
@@ -175,6 +178,7 @@ export function OwnerRoutes() {
         <Route path="/owner/food/kitchen" element={<KitchenSheetPage />} />
         <Route path="/owner/food/polls" element={<FoodPollsPage />} />
         <Route path="/owner/alerts" element={<AlertsPage />} />
+        <Route path="/owner/profile-requests" element={<OwnerProfileRequestsPage />} />
 
         <Route path="/owner/more" element={<MoreConfigurationHubPage />} />
         <Route path="/owner/more/workspace-configuration" element={<MoreWorkspaceConfigPage />} />

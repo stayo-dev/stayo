@@ -42,6 +42,37 @@ Copy this block for each new entry:
 - **Diagnostic gap this exposed:** the API returns a generic `"Failed to send OTP"`; Meta's actual code and `error_data.details` are logged server-side but never surfaced, so an operator seeing this cannot distinguish a misconfiguration from a template rejection from a rate limit. Worth surfacing the provider code on admin-triggered sends.
 - **Related:** [[Business-Rules]], [[APIs]]
 
+### Every tenant-facing `/api/tenants/me/*` route using `findUnique({ where: { profile_id } })` 500'd, for every tenant
+
+- **Status:** partially fixed 2026-08-14 (10 of ~20 known occurrences — the original 8, plus `lib/auth/resolve-operational-scope.ts`'s `resolveTenantScope()` and its own callers, fixed the same day once the tenant profile-change-request feature started depending on it)
+- **Found:** 2026-08-14, while verifying the tenant dashboard rebuild live against a real dev-DB tenant
+- **Area:** [[Backend]]
+- **Symptom:** `GET /api/tenants/me/room`, `/billing-frequency`, `/payments/history` (and others) returned 500 with `Argument 'where' of type tenantsWhereUniqueInput needs at least one of 'id' arguments`, for every tenant, not just the test fixture used to find it — the tenant Room tab and parts of Money never worked.
+- **Root cause:** `prisma.tenants.findUnique({ where: { profile_id: session.sub } })` — but `profile_id` is not a `@unique` column on `tenants` in `prisma/schema.prisma` (a profile accumulates one `tenants` row per hostel it has ever stayed in; at most one is "live" at a time, enforced by a partial unique index, not a plain column constraint). `findUnique` requires a field Prisma's generated types recognize as unique; `lib/tenancy/active-tenancy.ts`'s `liveTenancyWhere(profileId)` + `findFirst` exists specifically to replace this exact pattern (its own doc comment names the bug class), but several routes predate that helper and were never migrated.
+- **Fix:** changed `findUnique({ where: { profile_id } })` → `findFirst({ where: liveTenancyWhere(profileId) })` in the 8 occurrences reachable from the tenant dashboard's real flows (`app/api/tenants/me/{room,billing-frequency,payments/history,documents,photo,complete-profile,onboarding-settings}/route.ts`, `app/api/payments/{create-intent,verify}/route.ts`), plus `lib/auth/resolve-operational-scope.ts`'s `resolveTenantScope()` — used by the new tenant profile-change-request endpoints (see [[Features]]) and by `payments/pay-dues`/`payments/preview` (fixed as a side effect, since they call this shared helper).
+- **Not fixed — same pattern still present, not reachable from any flow built so far, left for a follow-up:** `app/api/payments/{tenant-dues,attempts/[id]}/route.ts`, `app/api/tenants/[id]/documents/route.ts`, `app/api/allocations/tenant/[id]/route.ts`, `app/api/move-out/requests/route.ts`, `lib/services/dashboard-service.ts` (`getTenantStats`, line ~1626). Grep `findUnique` + `profile_id` in the same file to find any of these before relying on them.
+- **Related:** [[Features#Tenant dashboard — pixel-fidelity rebuild (2026-08-14)|Features]], [[Changelog]]
+
+### Tenant overlay panels (Room/Profile drill-ins, request forms) rendered blank when opened after scrolling
+
+- **Status:** fixed 2026-08-14
+- **Found:** 2026-08-14, live Playwright walkthrough of the rebuilt tenant dashboard
+- **Area:** [[Frontend]]
+- **Symptom:** Opening a Room service tile (e.g. "Lost key") or any Room/Profile detail card after scrolling down the tab rendered an almost-blank screen — header and body content invisible, only the submit button visible, with the bottom tab-nav bar bleeding through underneath it.
+- **Root cause:** `DetailScreen`/`FormPanel`/`SuccessPanel` (and the Food tab's inline meal-detail overlay) used `position: absolute; inset: 0` relative to the tab page's own `position: relative` wrapper — but that wrapper is normal scrolling document content, not a fixed-size frame (unlike `Stayo Tenant.dc.html`'s source, which lives inside a non-scrolling 402×874 device frame where `absolute` was already viewport-equivalent). If the underlying page had scrolled before the overlay opened, the overlay rendered at the top of its (taller-than-viewport) positioning context, which was scrolled out of view — only whatever happened to land at the current scroll position was visible.
+- **Fix:** changed all four overlay root elements from `absolute inset-0` to `fixed inset-0`, so they always cover the viewport regardless of the underlying page's scroll position. Removed the now-unnecessary `relative overflow-hidden` wrapper classes from the three tab pages that had them.
+- **Related:** [[Features#Tenant dashboard — pixel-fidelity rebuild (2026-08-14)|Features]], [[Changelog]]
+
+### Room/Food/Profile tab headers had a large dead-space gap at the top, exposing the shell's background grid pattern
+
+- **Status:** fixed 2026-08-14
+- **Found:** 2026-08-14, user-reported screenshots of the live app (Room/Food/Profile all showing a large blank grid-patterned area above the page title before content started)
+- **Area:** [[Frontend]]
+- **Symptom:** `My Room`/`My Menu`/`Profile` headers sat ~60px below the top of the content area with nothing filling that space except `TenantAppShell`'s graph-paper grid background — visually reading as a layout bug, especially since Home and Money's headers sit flush at the top with no such gap.
+- **Root cause:** same category of bug as the overlay `absolute`/`fixed` issue above — `Stayo Tenant.dc.html`'s source reserves `padding: 60px ...` at the top of literally every screen's header (Money/Room/Profile/Food all use the identical value in the source), because every screen renders inside the mockup's fixed-size device frame with a simulated phone status-bar area baked into that padding. `TenantHomePage.tsx` and `TenantMoneyPage.tsx` had already been adapted to `pt-6` for the real (frame-less) app when they were built; `TenantRoomPage.tsx`, `TenantFoodPage.tsx`, and `TenantProfilePage.tsx` still had the raw, unmodified `pt-[60px]` value copied from the mockup, and — unlike the full-screen overlays, which paint their own opaque `bg-background` over the shell's grid pattern — these tab pages render directly on top of the shell's grid background with no page-level fill of their own, so the unnecessary top padding fully exposed the grid pattern beneath it.
+- **Fix:** changed all three pages' top-level content wrapper from `pt-[60px]` to `pt-6`, matching the convention `TenantHomePage.tsx`/`TenantMoneyPage.tsx` already established. Verified live via Playwright — all 5 tab headers now sit at consistent top spacing with no exposed gap.
+- **Related:** [[Features#Tenant dashboard — pixel-fidelity rebuild (2026-08-14)|Features]], [[Changelog]]
+
 ### The Add Hostel builder rendered in the legacy pre-StayO theme — the second time this trap has been hit
 
 - **Status:** fixed 2026-08-12
@@ -1102,6 +1133,31 @@ Copy this block for each new entry:
 - **Fix:** `AdminDashboardPage.tsx` now has its own `leadApproveMutation` calling `platformAdminService.approveLead(id)` → `POST /api/platform-admin/leads/[id]/approve` — the same real accept flow (generates activation token, sends via WhatsApp/email, only advances to `INVITE_SENT` on a successful send) already used by `AdminLeadsPage.tsx`. The Reject button (`status: 'LOST'`) was unaffected — `LOST` is in `MANUALLY_SETTABLE_STATUSES`, so it worked correctly all along.
 - **Related:** [[APIs]], [[Frontend]]
 
+### `TenantProfileUpdateSchema` was silently `undefined` at runtime for every tenant-profile-update route — direct-save profile edits have likely never worked
+
+- **Status:** fixed, 2026-08-14
+- **Symptom:** every `PATCH` to a tenant-profile-update endpoint (`/api/tenants/me/profile`, `/api/tenants/profile`, `/api/tenants/me/complete-profile`, `/api/tenants/[id]`, `/api/profile/me`) 500'd with `"Cannot read properties of undefined (reading 'safeParse')"`. Found live while Playwright-verifying the Profile tab's new direct-save fields (see [[Business-Rules]], "Tenant self-service profile edits") — a filled-in Academic details form appeared to save, but a page reload showed the old, unsaved values.
+- **Cause:** all 5 routes import `TenantProfileUpdateSchema` from `@/lib/validators` → `apps/backend/lib/validators/index.ts`, which re-exports it `from "../../src/validators/tenants"` — that path resolves to the *directory* `src/validators/tenants/index.ts` (only `InvitationSchema`/`InvitationUpdateSchema`/`ActivationSchema` live there), not the *file* `src/validators/index.ts` (a separate, similarly-named top-level file that **did** have a `TenantProfileUpdateSchema`, including this session's earlier `blood_group`/`nationality`/`pan_number` additions). Nothing ever imported that top-level file's copy for tenant-profile updates — it was silently dead code, giving the false impression that editing it had any runtime effect. `tsc --noEmit` (not run as part of `next build`, which has `ignoreBuildErrors: true`) surfaces this immediately as `TS2305: Module has no exported member`, so this was catchable by a type-check that the project's own build pipeline skips.
+- **Fix:** moved `TenantProfileUpdateSchema`/`ReactivationRequestSchema` (plus `SHORT_TEXT`/`LONG_TEXT`/`URL_MAX` constants) into `src/validators/tenants/index.ts` — the file the working import chain actually resolves to — and deleted the dead duplicate from the top-level `src/validators/index.ts`. Verified live via Playwright: direct-field PATCHes now return 200 and persist (academic details, guardian name/relation, DOB/gender/blood group/nationality all confirmed round-tripping correctly after this fix).
+- **Scope note:** this predates the 2026-08-14 profile-edit work — it's a pre-existing wiring bug this session happened to trip over while verifying a change to one of the affected routes, not something introduced by that change. Worth a quick audit of other `@/lib/validators` re-exports (`../../src/validators/rooms`, `../../src/validators/payments`, `../../src/validators/hostels`) for the same directory-vs-file resolution mistake, though none were confirmed broken here.
+- **Related:** [[Business-Rules]], [[APIs]]
+
+### `getTenantPortalProfile` never returned several tenant fields the Profile tab needed to display — saves worked, reads silently came back blank
+
+- **Status:** fixed, 2026-08-14
+- **Symptom:** after saving Personal information's blood group/nationality/PAN, or Emergency contact's guardian name/relation/phone, or Academic details' expected-exit date, the Profile tab's read-only view kept showing "—" for those fields even though the PATCH had succeeded and the DB held the new value.
+- **Cause:** `getTenantPortalProfile()` (`lib/services/tenant-profile-portal-service.ts`, backing `GET /api/tenants/me/profile` — the query the whole Profile tab reads) built its returned `tenant: {...}` object as an explicit field allowlist that predated `blood_group`/`nationality`/`pan_number` (added earlier the same session) and `guardian_name`/`guardian_relation`/`guardian_phone`/`expected_completion_date` (added this pass) — none of the seven were ever added to that allowlist, so they were always `undefined` in the response regardless of what was actually in the row.
+- **Fix:** added all seven fields to the returned `tenant` object. Verified live — Personal information/Emergency contact/Academic details view mode now correctly reflect saved values after a reload.
+- **Related:** [[Business-Rules]], [[Database]]
+
+### Emergency Contact's "Contact name" field was silently editing a phone number, not a person's name
+
+- **Status:** fixed, 2026-08-14
+- **Symptom:** the Profile tab's Emergency contact screen had a "Contact name" text field bound to `profile.emergency_contact` — but that column is actually a **phone number**, synced with `tenants.phone_3` (confirmed via the `updateTenantSelfProfile` sync block: `syncedEmergency = data.phone_3 || data.emergency_contact`). Typing a person's name into it and saving would have corrupted the phone sync.
+- **Cause:** an earlier pass building this screen assumed `emergency_contact` meant what its name suggests (a contact's name) without checking how the field was actually used elsewhere in the service. The real guardian-name/relationship columns (`tenants.guardian_name`, `tenants.guardian_relation`) existed all along but were never added to this screen or to `updateTenantSelfProfile`'s field lists.
+- **Fix:** Emergency contact now uses the real fields — `guardian_name` ("Contact person's name"), `guardian_relation` ("Relationship"), `guardian_phone`/`phone_2` ("Phone"), `phone_3`/`emergency_contact` ("Alternate phone") — matching `Stayo Tenant.dc.html`'s actual DETAIL entry. Added `guardian_name`/`guardian_relation` to `updateTenantSelfProfile`'s `tenantFields` and to `TenantProfileUpdateSchema`.
+- **Related:** [[Business-Rules]]
+
 ## Open / known issues
 
 > See also `docs/known-issues.md` for the maintained list of known drift/gaps in `docs/`.
@@ -1118,6 +1174,7 @@ Copy this block for each new entry:
 - **Platform Admin Revenue routes (`/api/platform-admin/revenue`, `/revenue/hostels`, `/revenue/export`) run unbounded `findMany` queries across every `hostel_subscriptions`/`platform_invoices` row** with no `take` limit — correct for computing true platform-wide MRR/ARR (you can't paginate a sum), but worth revisiting (DB-side aggregate/`GROUP BY` instead of in-memory reduce) once hostel count grows large enough for this to matter. `hostels/route.ts`'s own list endpoint is already bounded (`take: 200`).
 - **Hostel detail "Uploaded Photos"/"Uploaded Documents" sections from `Stayo Admin.dc.html` are not built** — deliberately deferred 2026-07-27 (see the admin deep-audit entry above). No backing schema exists for either; building this needs new tables/storage plus an owner-side upload flow (an admin can't review photos nobody uploaded), not just an admin-side display.
 - **Revenue page's "Analytics" stats block (churn rate, ARPU, ARPT, new subscriptions, renewals, failed payments) and its date-range filter are not built** — deliberately deferred 2026-07-27 alongside the item above. Both need new backend time-windowed/derived calculations the current `/api/platform-admin/revenue` doesn't compute.
+- **Emergency Contact's Phone/Alternate phone fields have no OTP UI, but the backend requires one when changing an already-set number.** `updateTenantSelfProfile` gates any change to `phone_2`/`guardian_phone` or `phone_3`/`emergency_contact` (once a value already exists) behind a pre-existing OTP-verification check — this is unrelated to the 2026-08-14 owner-approval governance work (see [[Business-Rules]]) and predates it, but the Profile tab's Emergency contact edit form has no send-OTP/verify-OTP step, so such a save currently fails with a `VALIDATION_ERROR` toast instead of succeeding. Setting these fields for the *first time* (from empty) works fine — confirmed live. A full fix needs a small OTP-request UI reusing the existing `phoneVerificationOtp` flow (see `src/portal/pages/TenantProfilePortalPage.tsx`'s frozen-but-still-referenceable send/verify pattern for the shape of it), out of scope for the visual/governance-narrowing pass that surfaced this.
 
 ## See also
 - [[Features]] for which feature each bug affected

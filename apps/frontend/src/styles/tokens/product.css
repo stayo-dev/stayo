@@ -48,4 +48,19 @@
   --warning-foreground: #ffffff;
   --info: #3b5fa8;
   --info-foreground: #ffffff;
+
+  /* Soft-tint backgrounds for semantic colors — used on status chips, banners,
+     and detail-screen sections throughout the tenant app (Stayo Tenant.dc.html). */
+  --success-bg: #eaf3ee;
+  --warning-bg: #fbf1de;
+  --info-bg: #eaf0fb;
+  --destructive-bg: #fbe9e7;
+
+  /* Purple "research poll" accent — Food tab's food-research-poll card
+     (Stayo Tenant.dc.html), distinct from the green "active poll" card.
+     No existing semantic token covers this hue. */
+  --research: #6d4fa3;
+  --research-foreground: #ffffff;
+  --research-bg: #f6f2fb;
+  --research-border: #e7e0f2;
 }

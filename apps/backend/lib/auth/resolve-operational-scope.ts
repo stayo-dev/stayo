@@ -1,5 +1,6 @@
 import { prisma } from "../db";
 import type { AuthPayload } from "../auth-edge";
+import { liveTenancyWhere } from "../tenancy/active-tenancy";
 
 export type OwnerScope = {
   actor_id: string;
@@ -51,8 +52,8 @@ export async function resolveTenantScope(session: AuthPayload | null): Promise<T
   if (!session) throw unauthorized("Authentication required");
   if (session.role !== "TENANT") throw forbidden("Tenant access required");
 
-  const tenant = await prisma.tenants.findUnique({
-    where: { profile_id: session.sub },
+  const tenant = await prisma.tenants.findFirst({
+    where: liveTenancyWhere(session.sub),
     select: { id: true, owner_id: true, hostel_id: true },
   });
 

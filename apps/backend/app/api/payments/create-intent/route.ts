@@ -10,6 +10,7 @@ import { getLogger } from "@/lib/logger";
 import { assertBodySize, getClientIp, parseObligationIds } from "@/lib/security/api-guard";
 import { rateLimitService } from "@/lib/services/rate-limit-service";
 import { financialPaymentFacade } from "@/src/services/payments/financial-payment-facade";
+import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
 const logger = getLogger("create-intent");
 
@@ -46,8 +47,8 @@ export async function POST(req: Request) {
     // Resolve tenant record (needed for both paths)
     let tenantId: string | undefined;
     if (user.role === "TENANT") {
-      const tenant = await prisma.tenants.findUnique({
-        where: { profile_id: user.id },
+      const tenant = await prisma.tenants.findFirst({
+        where: liveTenancyWhere(user.id),
         select: { id: true },
       });
       if (!tenant) return apiError("Tenant enrollment not found", "NOT_FOUND", 404);

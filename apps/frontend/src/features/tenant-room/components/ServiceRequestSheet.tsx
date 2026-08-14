@@ -21,6 +21,14 @@ interface ServiceRequestSheetProps {
 }
 
 /**
+ * @deprecated Superseded by `platforms/tenant/components/overlays/FormPanel.tsx`
+ * (the shared Room+Profile overlay system, built to match `Stayo Tenant.dc.html`'s
+ * full-screen slide-in form panel rather than this bottom-sheet). Orphaned as of
+ * the Room/Profile tab rebuild — `TenantRoomPage.tsx` now drives all 6 (+ ticket/
+ * bug) request types through `FormPanel` + `serviceRequestFormConfigs.ts`. Kept
+ * per the repo's deprecate-don't-delete convention; safe to delete once confirmed
+ * no other file imports it.
+ *
  * One generic form driving all 6 tenant service-request types (maintenance,
  * room change, cleaning, lost key, visitor pass, extra mattress) — matches
  * the design's own single config-driven form engine rather than 6 bespoke flows.

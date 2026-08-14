@@ -5,6 +5,7 @@ import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { imagekit } from "@/lib/imagekit";
+import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
 export async function POST(req: NextRequest) {
   const session = await getSession(req);
@@ -25,8 +26,8 @@ export async function POST(req: NextRequest) {
       return apiError("Photo must be under 2MB", "VALIDATION_ERROR", 400);
     }
 
-    const tenant = await prisma.tenants.findUnique({
-      where: { profile_id: session.sub },
+    const tenant = await prisma.tenants.findFirst({
+      where: liveTenancyWhere(session.sub),
       select: { id: true, owner_id: true },
     });
     if (!tenant) return apiError("Tenant not found", "NOT_FOUND", 404);

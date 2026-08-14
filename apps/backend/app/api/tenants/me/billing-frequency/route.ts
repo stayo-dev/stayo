@@ -8,13 +8,14 @@ import { authService } from "@/lib/services/auth-service";
 import { billingTransitionService } from "@/lib/services/billing-transition-service";
 import { prisma } from "@/lib/db";
 import { hostelPolicyService } from "@/lib/services/hostel-policy-service";
+import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
 export async function GET(req: NextRequest) {
   try {
     const user = await authService.getCurrentUser(req);
     if (!user || user.role !== "TENANT") return ApiResponse.error(ApiError.unauthorized("Unauthorized"));
-    const tenant = await prisma.tenants.findUnique({
-      where: { profile_id: user.id },
+    const tenant = await prisma.tenants.findFirst({
+      where: liveTenancyWhere(user.id),
       select: {
         id: true,
         hostel_id: true,
