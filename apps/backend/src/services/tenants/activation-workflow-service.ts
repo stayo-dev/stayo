@@ -248,7 +248,11 @@ export class ActivationWorkflowService {
     if (!(tenant.phone_1 || profile?.phone)) missingTier1.push("phone");
     if (!tenant.gender) missingTier1.push("gender");
     if (!tenant.date_of_birth) missingTier1.push("date_of_birth");
-    if (!tenant.phone_3) missingTier1.push("emergency_phone");
+    // emergency_phone (phone_3) intentionally NOT tier-1: removed from the
+    // Identity screen's collected fields (ADR-070 amendment), so it is never
+    // populated by the current flow — treating it as required here made
+    // profile_completed permanently unreachable for every tenant. It remains
+    // tracked in optionalMissingFields() below (tier 3).
     if (!tenant.photo_url) missingTier1.push("photo_url");
 
     const profileCompleted = missingTier1.length === 0;
@@ -1304,11 +1308,8 @@ export class ActivationWorkflowService {
       }
     }
 
-    const ePhone = safeNormalizeWhatsApp(tenantNow.phone_3 || tenantNow.emergency_contact);
-    if (!ePhone) {
-      throw new Error("VALIDATION_ERROR: Emergency contact phone number is required");
-    }
-    // Emergency OTP verification not required — phone is collected for informational/operational use only.
+    // Emergency contact is no longer collected on the Identity screen
+    // (ADR-070 amendment) — informational only, never required to activate.
 
     const password = String(data?.password || "");
     const confirmPassword = String(data?.confirm_password || data?.confirmPassword || "");

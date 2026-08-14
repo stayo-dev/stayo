@@ -59,6 +59,7 @@ export function ActivationPage() {
   const [profileDraftStatus, setProfileDraftStatus] = useState<'idle' | 'restored' | 'saving' | 'saved'>('idle');
   const [photoUploading, setPhotoUploading] = useState(false);
   const [paymentFrequency, setPaymentFrequency] = useState('MONTHLY');
+  const [welcomeLocalPhase, setWelcomeLocalPhase] = useState<'welcome' | 'identity'>('welcome');
 
   const [account, setAccount] = useState({ password: '', confirm_password: '', phone: '', otp: '', email: '' });
   const [otpSent, setOtpSent] = useState(false);
@@ -509,7 +510,13 @@ export function ActivationPage() {
   return (
     <ThemeProvider theme="product">
     <ActivationLayout
-      activeStep={activationResult ? 'MOVE_IN' : ((activeStep || ctx.activation_state?.current_step || 'ACCOUNT') as ActivationVisualStep)}
+      activeStep={
+        activationResult
+          ? 'MOVE_IN'
+          : (((activeStep || ctx.activation_state?.current_step || 'ACCOUNT') === 'ACCOUNT' && welcomeLocalPhase === 'identity'
+              ? 'PROFILE'
+              : activeStep || ctx.activation_state?.current_step || 'ACCOUNT') as ActivationVisualStep)
+      }
       currentStep={activationResult ? 'MOVE_IN' : ((currentStep || 'ACCOUNT') as ActivationVisualStep)}
       completedSteps={new Set(activationResult ? ['ACCOUNT', 'RULES', 'AGREEMENT', 'PROFILE', 'ACTIVATE'] : ctx.activation_state?.completed_steps || [])}
       onStepClick={(step) => goToStep(step as ActivationStep)}
@@ -559,6 +566,8 @@ export function ActivationPage() {
             onSubmitAccount={submitAccount}
             onSubmitProfile={submitProfile}
             goToStep={goToStep}
+            localPhase={welcomeLocalPhase}
+            setLocalPhase={setWelcomeLocalPhase}
           />
         )}
 
