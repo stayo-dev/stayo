@@ -10,6 +10,10 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-14 — Tenant activation: removed two stale "emergency contact required" gates that blocked every activation
+- Owner-reported: activation flagged emergency contact as required despite it being explicitly dropped from the Identity screen earlier the same day (ADR-070 amendment). Root cause: that amendment only updated the Identity step's own submit validation (`saveProfile()`); `computeState()`'s tier-1-required list and `activate()`'s own hard check in `activation-workflow-service.ts` still required `tenant.phone_3`, which nothing populates anymore — so `profile_completed` could never be true and final activation always threw `VALIDATION_ERROR: Emergency contact phone number is required`, for every tenant.
+- Fix: `phone_3` removed from `missingTier1` in `computeState()` (already tracked as tier-3/optional) and the hard throw in `activate()` deleted. Emergency contact is now optional at every stage, matching the Identity screen's actual behavior. See [[Bugs]].
+
 ### 2026-08-14 — Tenant activation: journey-track avatar now follows the Welcome→Identity local phase switch
 - Owner-reported bug (screenshot): the wizard's progress track (step pips + bobbing avatar) stayed on "Welcome" after continuing into the Identity screen. `WelcomeIdentityStep.tsx` switches Welcome→Identity via local component state only (no backend call until submit), which the progress track — keyed purely off the backend `activation_state.current_step` — had no visibility into.
 - Fix: `localPhase` state lifted from `WelcomeIdentityStep.tsx` up into `ActivationPage.tsx`; the page now overrides the progress track's visual step to `PROFILE` whenever `activeStep === 'ACCOUNT' && localPhase === 'identity'`. See [[Bugs]].

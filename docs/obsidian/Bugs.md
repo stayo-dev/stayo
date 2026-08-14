@@ -57,6 +57,17 @@ Copy this block for each new entry:
 - **Fix:** `localPhase` lifted out of `WelcomeIdentityStep.tsx` into `ActivationPage.tsx` (passed down as `localPhase`/`setLocalPhase` props instead of local `useState`), so the page can compute the progress track's visual step as `PROFILE` (not `ACCOUNT`) whenever `activeStep === 'ACCOUNT' && localPhase === 'identity'`. `ActivationProgress.tsx` itself is unchanged — it already correctly derives everything from whatever `activeStep` it's given.
 - **Related:** [[Features]], [[Changelog]]
 
+### Tenant activation was permanently blocked for every tenant — two stale "emergency contact required" gates left behind by the ADR-070 amendment
+
+- **Status:** fixed 2026-08-14
+- **Found:** 2026-08-14, owner reported the activation link "isn't good at all" and flags emergency contact as required even though it was explicitly removed from the Identity screen earlier the same day.
+- **Area:** [[Backend]]
+- **Symptom:** no tenant could complete activation. The Identity step itself submitted fine (its own validation, `saveProfile()`, was correctly relaxed in the same-day ADR-070 amendment), but `profile_completed` could never become `true`, and the final `ACTIVATE` submission hard-failed with `VALIDATION_ERROR: Emergency contact phone number is required`.
+- **Root cause:** the amendment that dropped Emergency Contact from the Identity screen (see [[Decisions#ADR-070|ADR-070]]) only updated `saveProfile()`. Two other, independent gates in `activation-workflow-service.ts` still required `tenant.phone_3` (emergency phone): `computeState()`'s `missingTier1` list (line ~251, drives `profile_completed` and therefore `blocked_steps`/`current_step` for every tenant) and `activate()`'s own direct check (line ~1307) before finalizing activation. Since nothing in the current flow ever populates `phone_3` anymore, both gates failed unconditionally, for every tenant, permanently.
+- **Fix:** removed both gates. `phone_3` is no longer in `missingTier1` (it already exists in `optionalMissingFields()`/tier 3, which is where ADR-070 intended it) and the hard throw in `activate()` was deleted outright — emergency contact is now optional everywhere, matching `saveProfile()`'s existing behavior.
+- **The design gap this revealed:** a business-rule change (a field going from required→optional) had three separate enforcement points across one service file, and only one was updated. No test or invariant check caught it because `check:activation-invariants` uses real dev-DB tenants that predate the change; a check against a *fresh* activation flow would have caught this immediately.
+- **Related:** [[Decisions#ADR-070|ADR-070]], [[Business-Rules]], [[Changelog]]
+
 ### Every WhatsApp OTP was being rejected by Meta — owner signup hid it, tenant onboarding surfaced it
 
 - **Status:** fixed 2026-08-13
