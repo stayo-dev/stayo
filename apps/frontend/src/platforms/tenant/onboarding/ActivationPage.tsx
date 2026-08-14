@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
+import { resolveError, toErrorLine } from '@shared/errors';
 import { tenantService } from '@features/tenants/api';
 import { useAuth } from '@context/AuthContext';
 import { StayoLoader } from '@shared/ui/brand';
@@ -296,7 +297,7 @@ export function ActivationPage() {
       setOtpSent(true);
       setOtpCountdown(60);
     } catch (err: any) {
-      setError(err?.response?.data?.error?.message || err?.message || 'Could not send verification code');
+      setError(toErrorLine(resolveError(err, 'activation')));
     } finally {
       setOtpSending(false);
     }
@@ -325,7 +326,7 @@ export function ActivationPage() {
       setGuardianOtpSent(true);
       setGuardianOtpCountdown(60);
     } catch (err: any) {
-      setError(err?.response?.data?.error?.message || err?.message || 'Could not send verification code to guardian');
+      setError(toErrorLine(resolveError(err, 'activation')));
     } finally {
       setGuardianOtpSending(false);
     }
@@ -343,7 +344,7 @@ export function ActivationPage() {
       setGuardianVerifiedPhone(phone);
       setGuardianOverrideUnlocked(false);
     } catch (err: any) {
-      setError(err?.response?.data?.error?.message || err?.message || 'Verification failed. Invalid or expired code.');
+      setError(toErrorLine(resolveError(err, 'activation')));
     } finally {
       setGuardianOtpVerifying(false);
     }
@@ -382,7 +383,7 @@ export function ActivationPage() {
         setProfileDraftStatus('saved');
       }
     } catch (err: any) {
-      setError(err?.response?.data?.error?.message || err?.message || 'Photo upload failed. You can try again or save after choosing the photo.');
+      setError(toErrorLine(resolveError(err, 'activation')));
     } finally {
       setPhotoUploading(false);
     }
@@ -417,7 +418,7 @@ export function ActivationPage() {
         setProfileDraftStatus('idle');
       }
     } catch (err: any) {
-      setError(err?.response?.data?.error?.message || err?.message || 'Failed to save profile or upload photo');
+      setError(toErrorLine(resolveError(err, 'activation')));
     } finally {
       setSubmitting(false);
     }

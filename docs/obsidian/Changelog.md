@@ -10,6 +10,17 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-13 — Errors now say why, and what to do next
+- **Every error surface read the same way:** `error?.response?.data?.error?.message || 'fallback'` — one sentence, in a toast, written across **137 call sites**. It said *what* failed, never *why* or *what to do*, each site invented its own wording, and the backend's `code` was discarded everywhere. Only **3** places in the entire UI branched on it.
+- **New `shared/errors/`**: `resolveError(error, context)` turns a failure into `{ title, why, nextStep, severity, action?, code }`. The backend is unchanged — it already emits `code` + `metadata`; sentences live in the UI that renders them.
+- **Severity picks the vessel, once:** `recoverable` → toast, `needs-step` → `<ErrorNotice>` inline where the user was working, `blocking` → `<ErrorDialog>`. A next step shown in a toast that self-dismisses after 2.4 s is not guidance — the user who looks away cannot get it back.
+- **Generic codes get meaning from context, without a backend sweep.** `FORBIDDEN` is emitted 334 times and `VALIDATION_ERROR` 240; the call site names its flow, so `FORBIDDEN` during invite reads "You can't invite to that room" while during payment it reads "You can't record that payment".
+- **The unknown case still guides.** An unmapped code keeps the server's message as the title (it is the most accurate description available) but never as the *guidance*, since backend messages are written for developers. Every branch ends with something to try, and **always prints the code** — "Something went wrong" tells the user nothing and support less.
+- **Metadata interpolation** makes guidance specific ("Room 101 already exists") with no prose in the backend; a placeholder with no value is dropped rather than rendered raw.
+- **Migrated the flow we had just proved was confusing** — the tenant activation wizard's five error paths, including the guardian OTP failure that read only "Failed to send OTP". The remaining call sites are untouched and keep working; they will be migrated per-flow rather than in one sweep.
+- **Verified:** 691 frontend tests pass (17 new, pure), `vite build` succeeds, no new type errors (4 pre-existing in `ActivationPage` are another session's and unchanged). **Not verified in a browser.**
+- See [[Frontend]].
+
 ### 2026-08-13 — Step 2 (Agreement) rebuilt to match the design source exactly
 - Per explicit direction after the chrome rebuild (below): pixel-exact colors/fonts/layout going forward, not semantic-token approximations. `steps/AgreementStep.tsx` fully rewritten reading colors, copy, and layout directly from `Stayo Onboarding.dc.html`'s Step 2 markup rather than the semantic-token styling ported from the legacy page.
 - **Structural change, not just styling:** the design has Step 2 as *one* screen (agreement box + two signature rows), not the two sequential screens (a rules-acknowledgement screen, then a separate agreement screen) the previous version built. Merged into one screen — the 5-item acknowledgement checklist the backend requires (not shown in the design at all) now sits as a compact block between the agreement box and the signature rows, styled in the same cream/Inter language instead of a separate step. Submitting now signs both backend steps (`RULES` then `AGREEMENT`) in sequence behind one "Submit & sign contract" tap.
