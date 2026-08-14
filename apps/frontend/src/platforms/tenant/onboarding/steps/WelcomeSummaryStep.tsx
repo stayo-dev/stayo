@@ -1,4 +1,4 @@
-import { ArrowRight, CheckCircle2, Home, Key, MessageCircle } from 'lucide-react';
+import { ArrowRight, Download } from 'lucide-react';
 import { StayoLoader } from '@shared/ui/brand';
 import type { ActivationContext } from '../activationTypes';
 import { currency, fmtDate } from '../activationTypes';
@@ -6,9 +6,11 @@ import { currency, fmtDate } from '../activationTypes';
 /**
  * Step 5 — "Welcome to the Stayo Family!": a celebration/summary screen
  * shown after the backend's `ACTIVATE` step succeeds, before handing off the
- * new session and entering the tenant portal. New relative to the legacy
- * page (which navigated immediately on success) — added to match the design
- * source's Step 5, which shows this summary before "Enter Stayo →".
+ * new session and entering the tenant portal. Rebuilt 2026-08-14 to match
+ * `Stayo Onboarding.dc.html`'s Step 5 exactly — inline hex colors/cards/copy
+ * read directly from the design source, including its dark (not primary)
+ * "Enter Stayo" CTA and the "Download signed agreement" row inside the
+ * summary card, which the previous version was missing.
  */
 interface WelcomeSummaryStepProps {
   ctx: ActivationContext;
@@ -21,63 +23,96 @@ export function WelcomeSummaryStep({ ctx, tenantName, entering, onEnter }: Welco
   const displayName = tenantName || ctx.profile?.name || 'there';
 
   return (
-    <div className="space-y-6 text-center">
-      <div className="flex flex-col items-center pt-2">
-        <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-primary/15">
-          <div className="absolute inset-0 animate-pulse rounded-full bg-primary/10" />
-          <Home className="relative h-9 w-9 text-primary" strokeWidth={1.8} />
+    <div className="px-1 pb-1 pt-1.5 text-center" style={{ animation: 'obFade .3s ease' }}>
+      <div className="relative mx-auto mt-1.5" style={{ width: 96, height: 96 }}>
+        <div className="absolute inset-0 rounded-full" style={{ background: '#DCEFE4', opacity: 0.6 }} />
+        <div className="absolute overflow-hidden rounded-full" style={{ inset: 12, boxShadow: '0 10px 26px rgba(180,106,85,.4)' }}>
+          <img src="/stayo-icon.png" alt="Stayo" className="h-full w-full object-cover" />
         </div>
-        <p className="mt-5 text-xs font-bold uppercase tracking-wider text-primary">Admission Complete</p>
-        <h2 className="mt-1 text-2xl font-black tracking-tight text-foreground">Welcome to the Stayo family!</h2>
-        <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-          You're officially a resident, {displayName}. Your room is ready — we can't wait to have you.
+        <div className="absolute rounded-[2px]" style={{ top: -4, left: 6, width: 7, height: 7, background: '#D2986C', transform: 'rotate(20deg)' }} />
+        <div className="absolute rounded-full" style={{ top: 8, right: -6, width: 6, height: 6, background: '#1F9D57' }} />
+        <div className="absolute rounded-full" style={{ bottom: 2, left: -8, width: 6, height: 6, background: '#B46A55' }} />
+        <div className="absolute rounded-[2px]" style={{ bottom: -4, right: 10, width: 7, height: 7, background: '#E0B15E', transform: 'rotate(-15deg)' }} />
+      </div>
+
+      <p className="mt-4.5 text-[10px] font-extrabold uppercase" style={{ color: '#B46A55', letterSpacing: '.14em' }}>
+        Admission Complete
+      </p>
+      <h2 className="font-display mt-1.5 text-[22px] font-extrabold leading-tight tracking-tight" style={{ color: '#1A1A1A' }}>
+        Welcome to the
+        <br />
+        Stayo family!
+      </h2>
+      <p className="mx-auto mt-2 max-w-sm px-1.5 text-[12.5px] leading-relaxed" style={{ color: '#6E6459' }}>
+        You're officially a resident, {displayName}. Your room is ready — we can't wait to have you.
+      </p>
+
+      <div className="mt-4.5 rounded-2xl p-3.5 text-left" style={{ background: '#fff', border: '1px solid #EFE6DA', boxShadow: '0 6px 18px rgba(40,30,20,.06)' }}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full" style={{ background: '#1F9D57', boxShadow: '0 0 8px #1F9D57' }} />
+            <span className="font-display text-xs font-extrabold" style={{ color: '#1F7A52' }}>
+              Room confirmed
+            </span>
+          </div>
+          <span className="text-[11px] font-bold" style={{ color: '#8A7F75' }}>
+            Move-in {fmtDate(ctx.room_summary.joining_date)}
+          </span>
+        </div>
+        <div className="mt-3.5 flex gap-2.5">
+          {[
+            { value: ctx.room_summary.room_number || 'Assigned', label: 'Room' },
+            { value: currency(ctx.room_summary.monthly_rent), label: 'Rent/mo' },
+            { value: fmtDate(ctx.room_summary.joining_date), label: 'Move-in' },
+          ].map((m) => (
+            <div key={m.label} className="flex-1 rounded-[10px] p-[10px_8px] text-center" style={{ background: '#F9F5EF' }}>
+              <div className="font-display text-sm font-extrabold" style={{ color: '#1A1A1A' }}>
+                {m.value}
+              </div>
+              <div className="mt-0.5 text-[9.5px] font-semibold uppercase" style={{ color: '#8A7F75', letterSpacing: '.04em' }}>
+                {m.label}
+              </div>
+            </div>
+          ))}
+        </div>
+        {ctx.agreement?.pdf_url && (
+          <a
+            href={ctx.agreement.pdf_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 flex items-center justify-center gap-1.5 rounded-[10px] py-2.5 text-[12.5px] font-bold"
+            style={{ background: '#F6F1EA', border: '1px solid #E7DDCE', color: '#3A342E' }}
+          >
+            <Download className="h-3.5 w-3.5" />
+            Download signed agreement
+          </a>
+        )}
+      </div>
+
+      <div className="mt-3 rounded-2xl p-[13px_14px] text-left" style={{ background: '#F9F5EF', border: '1px dashed #E2D3C4' }}>
+        <p className="mb-1 text-[10px] font-extrabold uppercase" style={{ color: '#9A8F84', letterSpacing: '.08em' }}>
+          What's next
         </p>
-      </div>
-
-      <div className="rounded-2xl border border-border bg-secondary/20 p-4 text-left shadow-sm">
-        <div className="flex items-center gap-2 border-b border-border/50 pb-2.5">
-          <span className="h-2 w-2 rounded-full bg-success" />
-          <span className="text-xs font-bold text-success">Room confirmed · Move-in {fmtDate(ctx.room_summary.joining_date)}</span>
-        </div>
-        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-          <div className="rounded-xl bg-card border border-border/60 p-2.5">
-            <span className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Room</span>
-            <span className="text-base font-extrabold text-foreground">{ctx.room_summary.room_number || 'Assigned'}</span>
+        {[
+          'Collect your keys at the front desk on move-in day.',
+          `Your first rent cycle begins ${fmtDate(ctx.room_summary.joining_date)}.`,
+          'Message your hostel manager anytime from the app.',
+        ].map((n) => (
+          <div key={n} className="mt-2 flex items-start gap-2.5">
+            <span className="mt-1.5 h-1.5 w-1.5 flex-none rounded-full" style={{ background: '#B46A55' }} />
+            <span className="text-xs leading-snug" style={{ color: '#5A5147' }}>
+              {n}
+            </span>
           </div>
-          <div className="rounded-xl bg-card border border-border/60 p-2.5">
-            <span className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Rent/mo</span>
-            <span className="text-base font-extrabold text-foreground">{currency(ctx.room_summary.monthly_rent)}</span>
-          </div>
-          <div className="rounded-xl bg-card border border-border/60 p-2.5">
-            <span className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Move-in</span>
-            <span className="text-xs font-extrabold text-foreground block mt-1">{fmtDate(ctx.room_summary.joining_date)}</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-dashed border-border bg-background p-4 text-left">
-        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">What's next</p>
-        <ul className="mt-2.5 space-y-2 text-sm text-foreground">
-          <li className="flex items-start gap-2">
-            <Key className="mt-0.5 h-4 w-4 shrink-0 text-primary" strokeWidth={1.8} />
-            Collect your keys at the front desk on move-in day.
-          </li>
-          <li className="flex items-start gap-2">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" strokeWidth={1.8} />
-            Your first rent cycle begins {fmtDate(ctx.room_summary.joining_date)}.
-          </li>
-          <li className="flex items-start gap-2">
-            <MessageCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" strokeWidth={1.8} />
-            Message your hostel manager anytime from the app.
-          </li>
-        </ul>
+        ))}
       </div>
 
       <button
         type="button"
         onClick={onEnter}
         disabled={entering}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-foreground px-5 py-3.5 text-sm font-semibold text-background disabled:opacity-60 active:scale-[0.98] transition-transform shadow-sm cursor-pointer"
+        className="mt-4.5 flex w-full items-center justify-center gap-2 rounded-[11px] py-3.5 font-display text-sm font-bold text-white disabled:opacity-60"
+        style={{ background: '#1B1714', boxShadow: '0 6px 16px rgba(27,23,20,.3)' }}
       >
         {entering ? (
           <StayoLoader size="sm" label={null} />

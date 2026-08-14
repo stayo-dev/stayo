@@ -118,3 +118,15 @@ export function skyEnv(hour: number, override: ThemePhase | null): SkyEnv {
     cardBorder: 'rgba(255,255,255,.22)',
   };
 }
+
+/**
+ * Initials badge fallback for the dual-brand header (Stayo icon × hostel
+ * badge) when a hostel has no `logo_url` — up to 2 letters, one per word,
+ * matching the design source's static "SA" for "Sri Adithya Hostels".
+ */
+export function hostelInitials(name: string): string {
+  const words = (name || '').trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '?';
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}

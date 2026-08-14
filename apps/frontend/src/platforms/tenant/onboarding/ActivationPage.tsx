@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
 import { resolveError, toErrorLine } from '@shared/errors';
@@ -9,9 +9,8 @@ import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { ActivationLayout } from './ActivationLayout';
 import type { ActivationVisualStep } from './ActivationProgress';
 import { ActivationIntroScreen } from './ActivationIntroScreen';
-import { AccountStep } from './steps/AccountStep';
 import { AgreementStep } from './steps/AgreementStep';
-import { ProfileStep, type ProfileDraft } from './steps/ProfileStep';
+import { WelcomeIdentityStep, type ProfileDraft } from './steps/WelcomeIdentityStep';
 import { PasswordActivateStep } from './steps/PasswordActivateStep';
 import { WelcomeSummaryStep } from './steps/WelcomeSummaryStep';
 import {
@@ -206,7 +205,7 @@ export function ActivationPage() {
 
   useEffect(() => {
     if (!token || !ctx || !profileDraftReady || ctx.activation_state?.profile_completed) return;
-    if (activeStep !== 'PROFILE') return;
+    if (activeStep !== 'ACCOUNT' && activeStep !== 'PROFILE') return;
     setProfileDraftStatus('saving');
     const timer = window.setTimeout(() => {
       writeProfileDraft(token, {
@@ -303,12 +302,17 @@ export function ActivationPage() {
     }
   };
 
-  const accountSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const submitAccount = async (): Promise<boolean> => {
     const emailVal = (account.email || '').trim().toLowerCase();
-    if (!emailVal) return setError('Gmail ID is required');
-    if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(emailVal)) return setError('Please enter a valid Gmail ID (e.g. name@gmail.com)');
-    await submitStep('ACCOUNT', account);
+    if (!emailVal) {
+      setError('Gmail ID is required');
+      return false;
+    }
+    if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(emailVal)) {
+      setError('Please enter a valid Gmail ID (e.g. name@gmail.com)');
+      return false;
+    }
+    return submitStep('ACCOUNT', account);
   };
 
   const handleSendGuardianOtp = async () => {
@@ -389,20 +393,35 @@ export function ActivationPage() {
     }
   };
 
-  const profileSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const submitProfile = async (): Promise<boolean> => {
     if (isStudent) {
-      if (!profile.guardian_name?.trim()) return setError('Parent/Guardian name is required.');
-      if (!profile.guardian_relation) return setError('Parent/Guardian relation is required.');
-      if (!profile.guardian_phone) return setError('Parent/Guardian phone number is required.');
+      if (!profile.guardian_name?.trim()) {
+        setError('Parent/Guardian name is required.');
+        return false;
+      }
+      if (!profile.guardian_phone) {
+        setError('Parent/Guardian phone number is required.');
+        return false;
+      }
     }
-    const invalidMessage = invalidPhoneMessage({ primary: profile.phone, emergency: profile.emergency_phone, guardian: profile.guardian_phone });
-    if (invalidMessage) return setError(invalidMessage);
-    const duplicateMessage = duplicatePhoneMessage({ primary: profile.phone, emergency: profile.emergency_phone, guardian: profile.guardian_phone });
-    if (duplicateMessage) return setError(duplicateMessage);
-    if ((isStudent || profile.guardian_phone) && !isGuardianPhoneVerified) return setError('Please verify the parent/guardian phone number first.');
-    if (!profile.emergency_phone) return setError('Emergency contact mobile number is required.');
-    if (!profilePhotoFile && !profilePhotoPreview) return setError('Profile photo is required');
+    const invalidMessage = invalidPhoneMessage({ primary: profile.phone, guardian: profile.guardian_phone }, ['primary', 'guardian']);
+    if (invalidMessage) {
+      setError(invalidMessage);
+      return false;
+    }
+    const duplicateMessage = duplicatePhoneMessage({ primary: profile.phone, guardian: profile.guardian_phone });
+    if (duplicateMessage) {
+      setError(duplicateMessage);
+      return false;
+    }
+    if ((isStudent || profile.guardian_phone) && !isGuardianPhoneVerified) {
+      setError('Please verify the parent/guardian phone number first.');
+      return false;
+    }
+    if (!profilePhotoFile && !profilePhotoPreview) {
+      setError('Profile photo is required');
+      return false;
+    }
 
     setSubmitting(true);
     setError('');
@@ -417,8 +436,10 @@ export function ActivationPage() {
         clearProfileDraft(token);
         setProfileDraftStatus('idle');
       }
+      return saved;
     } catch (err: any) {
       setError(toErrorLine(resolveError(err, 'activation')));
+      return false;
     } finally {
       setSubmitting(false);
     }
@@ -474,6 +495,7 @@ export function ActivationPage() {
       <ThemeProvider theme="product">
         <ActivationIntroScreen
           hostelName={ctx.hostel.name || 'Stayo'}
+          hostelLogoUrl={ctx.hostel.logo_url}
           tenantFirstName={(ctx.profile?.name || '').split(' ')[0]}
           roomNumber={ctx.room_summary.room_number as any}
           monthlyRent={ctx.room_summary.monthly_rent as any}
@@ -492,26 +514,51 @@ export function ActivationPage() {
       completedSteps={new Set(activationResult ? ['ACCOUNT', 'RULES', 'AGREEMENT', 'PROFILE', 'ACTIVATE'] : ctx.activation_state?.completed_steps || [])}
       onStepClick={(step) => goToStep(step as ActivationStep)}
       agreementRequired={ctx.activation_state?.agreement_required !== false}
+      hostelName={ctx.hostel.name || 'Stayo'}
+      hostelLogoUrl={ctx.hostel.logo_url}
       error={error}
       onDismissError={() => setError('')}
     >
         {activationResult && <WelcomeSummaryStep ctx={ctx} tenantName={ctx.agreement?.tenant_signature_name || ctx.profile?.name || ''} entering={entering} onEnter={enterStayo} />}
 
-        {!activationResult && activeStep === 'ACCOUNT' && (
-          <AccountStep
+        {!activationResult && (activeStep === 'ACCOUNT' || activeStep === 'PROFILE') && (
+          <WelcomeIdentityStep
             ctx={ctx}
+            activeStep={activeStep}
+            accountVerified={Boolean(ctx.activation_state?.account_setup_completed)}
+            profileCompleted={completed.has('PROFILE') || Boolean(ctx.activation_state?.profile_completed)}
             account={account}
             setAccount={setAccount}
             otpSent={otpSent}
             otpSending={otpSending}
             otpCountdown={otpCountdown}
             onSendOtp={handleSendOtp}
-            submitting={submitting}
-            onSubmit={accountSubmit}
-            verified={Boolean(ctx.activation_state?.account_setup_completed)}
-            onContinue={() => setVisibleStep(null)}
             paymentFrequency={paymentFrequency}
             setPaymentFrequency={setPaymentFrequency}
+            profile={profile}
+            setProfile={setProfile}
+            isStudent={isStudent}
+            isGuardianLocked={isGuardianLocked}
+            setIsGuardianLocked={setIsGuardianLocked}
+            isGuardianPhoneVerified={Boolean(isGuardianPhoneVerified)}
+            setGuardianOverrideUnlocked={setGuardianOverrideUnlocked}
+            guardianOtp={guardianOtp}
+            setGuardianOtp={setGuardianOtp}
+            guardianOtpSent={guardianOtpSent}
+            guardianOtpSending={guardianOtpSending}
+            guardianOtpCountdown={guardianOtpCountdown}
+            guardianOtpVerifying={guardianOtpVerifying}
+            onSendGuardianOtp={handleSendGuardianOtp}
+            onVerifyGuardianOtp={handleVerifyGuardianOtp}
+            profileDraftStatus={profileDraftStatus}
+            profilePhotoPreview={profilePhotoPreview}
+            profilePhotoFile={profilePhotoFile}
+            photoUploading={photoUploading}
+            onPhotoChange={handlePhotoChange}
+            submitting={submitting}
+            onSubmitAccount={submitAccount}
+            onSubmitProfile={submitProfile}
+            goToStep={goToStep}
           />
         )}
 
@@ -529,36 +576,6 @@ export function ActivationPage() {
             uploadSignature={(file, type) => tenantService.uploadActivationSignature(token, file, type)}
             goToStep={goToStep}
             onError={setError}
-          />
-        )}
-
-        {!activationResult && activeStep === 'PROFILE' && (
-          <ProfileStep
-            profile={profile}
-            setProfile={setProfile}
-            isStudent={isStudent}
-            isGuardianLocked={isGuardianLocked}
-            setIsGuardianLocked={setIsGuardianLocked}
-            isGuardianPhoneVerified={Boolean(isGuardianPhoneVerified)}
-            guardianOverrideUnlocked={guardianOverrideUnlocked}
-            setGuardianOverrideUnlocked={setGuardianOverrideUnlocked}
-            guardianOtp={guardianOtp}
-            setGuardianOtp={setGuardianOtp}
-            guardianOtpSent={guardianOtpSent}
-            guardianOtpSending={guardianOtpSending}
-            guardianOtpCountdown={guardianOtpCountdown}
-            guardianOtpVerifying={guardianOtpVerifying}
-            onSendGuardianOtp={handleSendGuardianOtp}
-            onVerifyGuardianOtp={handleVerifyGuardianOtp}
-            profileDraftStatus={profileDraftStatus}
-            profilePhotoPreview={profilePhotoPreview}
-            profilePhotoFile={profilePhotoFile}
-            photoUploading={photoUploading}
-            onPhotoChange={handlePhotoChange}
-            submitting={submitting}
-            completedSteps={completed}
-            goToStep={goToStep}
-            onSubmit={profileSubmit}
           />
         )}
 

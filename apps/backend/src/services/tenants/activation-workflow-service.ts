@@ -313,10 +313,10 @@ export class ActivationWorkflowService {
     agreementRequired: boolean,
   ) {
     const blocked: ActivationStep[] = [];
-    if (!flags.accountSetupCompleted) blocked.push("RULES", "AGREEMENT", "PROFILE", "ACTIVATE");
-    else if (agreementRequired && !flags.rulesAccepted) blocked.push("AGREEMENT", "PROFILE", "ACTIVATE");
-    else if (agreementRequired && !flags.agreementSigned) blocked.push("PROFILE", "ACTIVATE");
-    else if (!flags.profileCompleted) blocked.push("ACTIVATE");
+    if (!flags.accountSetupCompleted) blocked.push("RULES", "PROFILE", "AGREEMENT", "ACTIVATE");
+    else if (agreementRequired && !flags.rulesAccepted) blocked.push("PROFILE", "AGREEMENT", "ACTIVATE");
+    else if (!flags.profileCompleted) blocked.push("AGREEMENT", "ACTIVATE");
+    else if (agreementRequired && !flags.agreementSigned) blocked.push("ACTIVATE");
     // The ceremony steps themselves are unreachable when not required, so they
     // are reported blocked rather than presented as available.
     if (!agreementRequired) blocked.push("RULES", "AGREEMENT");
@@ -783,23 +783,25 @@ export class ActivationWorkflowService {
     if (step === "RULES" && !state.account_setup_completed) {
       throw new Error("INVALID_TRANSITION: Complete account setup before accepting rules");
     }
-    if (step === "AGREEMENT" && !state.rules_accepted) {
-      throw new Error("INVALID_TRANSITION: Accept rules before signing agreement");
-    }
     if (step === "PROFILE" && !state.account_setup_completed) {
       throw new Error("INVALID_TRANSITION: Complete account setup before profile completion");
     }
     if (agreementRequired && step === "PROFILE" && !state.rules_accepted) {
       throw new Error("INVALID_TRANSITION: Accept hostel rules before profile completion");
     }
-    if (agreementRequired && step === "PROFILE" && !state.agreement_signed) {
-      throw new Error("INVALID_TRANSITION: Sign agreement before profile completion");
+    if (step === "AGREEMENT" && !state.rules_accepted) {
+      throw new Error("INVALID_TRANSITION: Accept rules before signing agreement");
+    }
+    // ADR-070: profile precedes agreement — a tenant completes their identity
+    // profile before reviewing and signing the residency agreement.
+    if (agreementRequired && step === "AGREEMENT" && !state.profile_completed) {
+      throw new Error("INVALID_TRANSITION: Complete your profile before signing agreement");
     }
     if (step === "ACTIVATE") {
       if (!state.account_setup_completed) throw new Error("INVALID_TRANSITION: Account setup is incomplete");
       if (agreementRequired && !state.rules_accepted) throw new Error("INVALID_TRANSITION: Rules must be accepted before activation");
-      if (agreementRequired && !state.agreement_signed) throw new Error("INVALID_TRANSITION: Agreement must be signed before activation");
       if (!state.profile_completed) throw new Error("INVALID_TRANSITION: Required profile fields are incomplete");
+      if (agreementRequired && !state.agreement_signed) throw new Error("INVALID_TRANSITION: Agreement must be signed before activation");
     }
   }
 
@@ -1097,7 +1099,12 @@ export class ActivationWorkflowService {
       : null;
     if (!phone) throw new Error("VALIDATION_ERROR: Valid primary phone is required");
     if (guardianPhone === null && (data?.guardian_phone || data?.phone_2)) throw new Error("VALIDATION_ERROR: Valid guardian phone is required");
-    if (!emergencyPhone) throw new Error("VALIDATION_ERROR: Valid emergency contact phone is required");
+    // Emergency contact is no longer collected on the Identity screen (ADR-070
+    // amendment) — optional here, same as guardian phone: only validated for
+    // format if one was actually provided, never required.
+    if (emergencyPhone === null && (data?.phone_3 || data?.emergency_phone || data?.emergency_contact)) {
+      throw new Error("VALIDATION_ERROR: Valid emergency contact phone is required");
+    }
     assertUniqueActivationPhones({ primary: phone, guardian: guardianPhone, emergency: emergencyPhone });
     await assertGuardianPhoneNotTenant(guardianPhone, tenant.id);
     if (!["Male", "Female", "Other", "Prefer not to say"].includes(gender)) throw new Error("VALIDATION_ERROR: Gender is required");
@@ -1108,8 +1115,11 @@ export class ActivationWorkflowService {
 
     if (profileType === "STUDENT") {
       if (!data?.guardian_name?.trim()) throw new Error("VALIDATION_ERROR: Parent/Guardian name is required for students");
-      if (!data?.guardian_relation) throw new Error("VALIDATION_ERROR: Parent/Guardian relationship is required for students");
       if (!guardianPhone) throw new Error("VALIDATION_ERROR: Parent/Guardian phone number is required for students");
+      // guardian_relation is intentionally not required here (ADR-070's Identity
+      // screen collects name+phone only, matching the design source) — it's
+      // filled in later if a guardian co-signs the residency agreement
+      // (`signAgreement()` writes it back), and stays null otherwise.
     }
 
     const currentGuardianPhone = tenant.phone_2 || tenant.guardian_phone;

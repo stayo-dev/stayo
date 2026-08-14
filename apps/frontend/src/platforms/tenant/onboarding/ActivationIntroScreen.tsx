@@ -1,21 +1,25 @@
 import { useMemo, useRef, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import './ActivationIntroScreen.css';
-import { skyEnv, THEME_CYCLE, type ThemePhase } from './skyTheme';
+import { hostelInitials, skyEnv, THEME_CYCLE, type ThemePhase } from './skyTheme';
 
 /**
  * The animated splash screen shown before the activation wizard starts —
- * ported from `Stayo SaaS redesign/Stayo Onboarding.dc.html`'s intro scene:
- * a time-of-day sky, a pixel-art Stayo building with a swinging door, three
- * looping actor sprites (an arriving tenant, a departing resident with
- * luggage, a passing cyclist), twinkling stars, drifting clouds, and a
- * tap-to-cycle sun/moon theme override. Real data (room/rent/move-in,
- * tenant's first name) replaces the design's hardcoded "Room G1 / ₹8,500."
- * Sky color logic lives in `./skyTheme.ts`, shared with `ActivationLayout.tsx`.
+ * ported from `stayo onbaording/Stayo Onboarding.dc.html`'s intro scene
+ * (2026-08-14, ADR-070 — supersedes the earlier `Stayo SaaS redesign/`
+ * source): a time-of-day sky, a pixel-art Stayo building with a swinging
+ * door and "Checking in…/Checking out…" speech bubbles, three looping actor
+ * sprites (an arriving tenant, a departing resident with luggage, a passing
+ * cyclist), twinkling stars, drifting clouds, a dual-brand header (Stayo
+ * icon × hostel badge), and a tap-to-cycle sun/moon theme override. Real
+ * data (room/rent/move-in, tenant's first name, hostel name/logo) replaces
+ * the design's hardcoded placeholders. Sky color logic lives in
+ * `./skyTheme.ts`, shared with `ActivationLayout.tsx`.
  */
 
 interface ActivationIntroScreenProps {
   hostelName: string;
+  hostelLogoUrl?: string;
   tenantFirstName?: string;
   roomNumber?: string | number | null;
   monthlyRent?: string | number | null;
@@ -25,6 +29,7 @@ interface ActivationIntroScreenProps {
 
 export function ActivationIntroScreen({
   hostelName,
+  hostelLogoUrl,
   tenantFirstName,
   roomNumber,
   monthlyRent,
@@ -113,11 +118,31 @@ export function ActivationIntroScreen({
         <div className="ob-intro-up text-[10px] font-bold uppercase tracking-[.2em]" style={{ color: sky.eyebrow, animationDelay: '.1s' }}>
           Tenant Admission
         </div>
+
+        <div className="ob-intro-up mt-3 flex items-center gap-2.5" style={{ animationDelay: '.18s' }}>
+          <img src="/stayo-icon.png" alt="Stayo" className="h-12 w-12 rounded-2xl" style={{ boxShadow: '0 8px 20px rgba(180,106,85,.42)' }} />
+          <span className="text-xl" style={{ color: sky.pillText, opacity: 0.55 }}>
+            ×
+          </span>
+          {hostelLogoUrl ? (
+            <img src={hostelLogoUrl} alt={hostelName} className="h-12 w-12 rounded-2xl object-cover" style={{ boxShadow: '0 8px 20px rgba(34,30,26,.4)' }} />
+          ) : (
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl" style={{ background: '#221E1A', boxShadow: '0 8px 20px rgba(34,30,26,.4)' }}>
+              <span className="font-display text-lg font-extrabold" style={{ color: '#F0E4D6' }}>
+                {hostelInitials(hostelName)}
+              </span>
+            </div>
+          )}
+        </div>
+
         <div
-          className="ob-intro-up mt-2 whitespace-nowrap font-display text-[24px] font-extrabold leading-tight tracking-tight"
+          className="ob-intro-up mt-3 whitespace-nowrap font-display text-[24px] font-extrabold leading-tight tracking-tight"
           style={{ color: sky.title, textShadow: sky.titleShadow, animationDelay: '.25s' }}
         >
           Welcome to Stayo
+        </div>
+        <div className="ob-intro-up mt-1.5 text-xs font-semibold" style={{ color: sky.pillText, animationDelay: '.3s' }}>
+          You're joining <b className="font-extrabold">{hostelName}</b>
         </div>
 
         <div
@@ -205,6 +230,26 @@ export function ActivationIntroScreen({
               <div className="absolute right-1.5 h-[5px] w-[5px] rounded-full" style={{ top: '52%', background: '#E0B15E', transform: 'translateY(-50%)' }} />
             </div>
           </div>
+
+          {/* check-in / check-out speech bubbles, above the door, synced to the actor loop */}
+          <div className="ob-chk-in absolute z-[6]" style={{ bottom: 80, left: '50%', transform: 'translateX(-50%)', opacity: 0, transformOrigin: 'bottom center' }}>
+            <div className="relative flex items-center gap-1.5 whitespace-nowrap rounded-[11px] bg-white px-3 py-1.5" style={{ boxShadow: '0 6px 16px rgba(20,16,13,.24)' }}>
+              <span className="h-1.5 w-1.5 flex-none rounded-full" style={{ background: '#1F9D57', boxShadow: '0 0 7px #1F9D57' }} />
+              <span className="font-display text-[10.5px] font-extrabold" style={{ color: '#1A1A1A' }}>
+                Checking in…
+              </span>
+              <span className="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-white" />
+            </div>
+          </div>
+          <div className="ob-chk-out absolute z-[6]" style={{ bottom: 80, left: '50%', transform: 'translateX(-50%)', opacity: 0, transformOrigin: 'bottom center' }}>
+            <div className="relative flex items-center gap-1.5 whitespace-nowrap rounded-[11px] bg-white px-3 py-1.5" style={{ boxShadow: '0 6px 16px rgba(20,16,13,.24)' }}>
+              <span className="h-1.5 w-1.5 flex-none rounded-full" style={{ background: '#B46A55', boxShadow: '0 0 7px #B46A55' }} />
+              <span className="font-display text-[10.5px] font-extrabold" style={{ color: '#1A1A1A' }}>
+                Checking out…
+              </span>
+              <span className="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-white" />
+            </div>
+          </div>
         </div>
 
         {/* actor A: tenant walks in */}
@@ -245,19 +290,21 @@ export function ActivationIntroScreen({
 
         {/* actor C: cyclist rides in */}
         <div className="ob-actor-c absolute z-[4] h-[60px] w-[62px]" style={{ bottom: 192 }}>
-          <div className="ob-wheel absolute rounded-full" style={{ bottom: 0, left: 3, width: 24, height: 24, border: '3px solid #23201C' }} />
-          <div className="ob-wheel absolute rounded-full" style={{ bottom: 0, left: 35, width: 24, height: 24, border: '3px solid #23201C' }} />
-          <div className="absolute" style={{ bottom: 11, left: 14, width: 30, height: 3, background: '#B46A55', transformOrigin: 'left', transform: 'rotate(-4deg)' }} />
-          <div className="absolute" style={{ bottom: 11, left: 15, width: 3, height: 20, background: '#B46A55', transformOrigin: 'bottom', transform: 'rotate(26deg)' }} />
-          <div className="absolute" style={{ bottom: 11, left: 38, width: 3, height: 20, background: '#B46A55', transformOrigin: 'bottom', transform: 'rotate(-18deg)' }} />
-          <div className="absolute rounded-[2px]" style={{ bottom: 29, left: 8, width: 12, height: 3, background: '#23201C' }} />
-          <div className="absolute rounded-[2px]" style={{ bottom: 27, left: 30, width: 11, height: 4, background: '#23201C' }} />
-          <div className="absolute" style={{ bottom: 30, left: 20, width: 20, height: 26 }}>
-            <div className="absolute rounded-[7px]" style={{ top: -2, left: 8, width: 14, height: 20, background: '#A45D44', transform: 'rotate(14deg)' }} />
-            <div className="absolute rounded-full" style={{ top: -14, left: 12, width: 15, height: 15, background: '#E8B88C' }} />
-            <div className="absolute rounded-t-full" style={{ top: -16, left: 11, width: 18, height: 8, background: '#2F2F2F' }} />
-            <div className="ob-legf-c absolute rounded-full" style={{ top: 16, left: 2, width: 5, height: 15, background: '#2F2F2F', transformOrigin: 'top' }} />
-            <div className="ob-legb-c absolute rounded-full" style={{ top: 16, left: 8, width: 5, height: 15, background: '#23201C', transformOrigin: 'top' }} />
+          <div className="absolute inset-0" style={{ transform: 'scaleX(-1)' }}>
+            <div className="ob-wheel absolute rounded-full" style={{ bottom: 0, left: 3, width: 24, height: 24, border: '3px solid #23201C' }} />
+            <div className="ob-wheel absolute rounded-full" style={{ bottom: 0, left: 35, width: 24, height: 24, border: '3px solid #23201C' }} />
+            <div className="absolute" style={{ bottom: 11, left: 14, width: 30, height: 3, background: '#B46A55', transformOrigin: 'left', transform: 'rotate(-4deg)' }} />
+            <div className="absolute" style={{ bottom: 11, left: 15, width: 3, height: 20, background: '#B46A55', transformOrigin: 'bottom', transform: 'rotate(26deg)' }} />
+            <div className="absolute" style={{ bottom: 11, left: 38, width: 3, height: 20, background: '#B46A55', transformOrigin: 'bottom', transform: 'rotate(-18deg)' }} />
+            <div className="absolute rounded-[2px]" style={{ bottom: 29, left: 8, width: 12, height: 3, background: '#23201C' }} />
+            <div className="absolute rounded-[2px]" style={{ bottom: 27, left: 30, width: 11, height: 4, background: '#23201C' }} />
+            <div className="absolute" style={{ bottom: 30, left: 20, width: 20, height: 26 }}>
+              <div className="absolute rounded-[7px]" style={{ top: -2, left: 8, width: 14, height: 20, background: '#A45D44', transform: 'rotate(14deg)' }} />
+              <div className="absolute rounded-full" style={{ top: -14, left: 12, width: 15, height: 15, background: '#E8B88C' }} />
+              <div className="absolute rounded-t-full" style={{ top: -16, left: 11, width: 18, height: 8, background: '#2F2F2F' }} />
+              <div className="ob-legf-c absolute rounded-full" style={{ top: 16, left: 2, width: 5, height: 15, background: '#2F2F2F', transformOrigin: 'top' }} />
+              <div className="ob-legb-c absolute rounded-full" style={{ top: 16, left: 8, width: 5, height: 15, background: '#23201C', transformOrigin: 'top' }} />
+            </div>
           </div>
         </div>
       </div>
