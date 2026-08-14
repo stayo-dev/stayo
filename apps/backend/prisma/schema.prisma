@@ -1369,7 +1369,6 @@ model tenants {
   job_role                          String?
   gender                            String?
   date_of_birth                     DateTime?                           @db.Date
-  blood_group                       String?
   nationality                       String?
   pan_number                        String?
   expected_completion_date          DateTime?                           @db.Date

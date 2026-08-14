@@ -424,7 +424,7 @@ export class TenantService {
     const tenantFields = [
       "photo_url", "phone_2", "phone_3", "date_of_birth",
       "college_name", "roll_number", "course", "year_of_study", "section", "branch",
-      "temporary_address", "gender", "profile_type", "blood_group", "nationality", "pan_number",
+      "temporary_address", "gender", "profile_type", "nationality", "pan_number",
       "office_name", "office_location", "job_role",
       "guardian_name", "guardian_relation", "expected_completion_date",
     ];

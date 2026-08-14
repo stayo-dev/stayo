@@ -178,7 +178,6 @@ export async function getTenantPortalProfile(profileId: string) {
       photo_url: tenant.photo_url,
       gender: tenant.gender,
       date_of_birth: tenant.date_of_birth,
-      blood_group: tenant.blood_group,
       nationality: tenant.nationality,
       pan_number: tenant.pan_number,
       phone_1: tenant.phone_1,
