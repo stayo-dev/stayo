@@ -30,14 +30,14 @@ Copy this block for each new entry:
 
 ### An unapplied `tenants` migration 500'd *every* authenticated request in production
 
-- **Status:** code fixed 2026-08-14; **the production database still needs the SQL below applied by hand**
+- **Status:** fixed 2026-08-14 — code fix deployed and the production database migration applied by hand (owner ran the `ALTER TABLE` below via the Supabase SQL editor)
 - **Found:** 2026-08-14 (owner-reported: "why am I getting these errors while logging in", with a DevTools console screenshot)
 - **Area:** [[Database]] / [[Backend]]
 - **Symptom:** login appeared to fail and dropped the user back on the marketing page. The console showed `GET /api/auth/me` **500** (×3), `GET /api/owner/hostels?include_archived=false` **500**, `POST /api/auth/activity` **500**. Nothing pointed at the database.
 - **How it was narrowed without production access.** Probing prod directly: unauthenticated `/api/auth/me` → clean **401**; a garbage bearer token → clean **401**; `/api/health` → `database: connected`, `project_ref: xhoqkhwsnqfwhjsffybs`, `jwks: ok`. So token verification was *fine* — this was not a repeat of the 2026-08-08 Supabase project mismatch. The decisive read was the routes' own null-session branches: `/api/owner/hostels` returns **403** and `/api/auth/activity` returns **401** when `getSession()` returns `null`. Both returned 500, so `getSession()` was **throwing**, not returning null. `POST /api/auth/onboarding-login` with a bogus phone returned a clean 401, which exercises a full-model `profiles` select — narrowing the drift to `tenants`.
 - **Root cause:** commit `7682562` (deployed as `ea0cccb`) added `blood_group`, `nationality`, `pan_number` and `expected_completion_date` to the `tenants` model with three hand-written migrations. `postinstall` runs `prisma generate`, so the deployed client asked for the new columns; nothing ran the migrations against production, so Postgres didn't have them (`42703`). The blast radius came from `getActiveTenancy()` (`lib/tenancy/active-tenancy.ts`), which does `tenants.findMany({ where })` with **no `select`** — Prisma therefore selects every column in the model — and which `resolveSupabaseSession()` calls **unconditionally, before the role check**, on every authenticated request. A tenant-Profile-tab column broke the owner dashboard.
 - **The design gap this revealed:** `schema.prisma` is a deploy artifact, the database is not. The Vercel build is `"build": "next build"` with no `prisma migrate deploy` anywhere in the repo, and `docs/README.md` documents migrations as hand-applied via the Supabase SQL editor. So any merge that adds a column is a production outage waiting on the next authenticated request, with no check that fails first — `next build` has `ignoreBuildErrors: true`, and `/api/health` only runs `SELECT 1`, which cannot see column-level drift.
-- **Fix:** `blood_group` removed entirely (it came from the design mockup, not from an operational need) — `schema.prisma`, `TenantProfileUpdateSchema`, `tenant-service`'s `tenantFields` allowlist, `getTenantPortalProfile()`, the tenant Profile tab's view + edit configs, plus migration `20260814180000_drop_tenant_blood_group` (`DROP COLUMN IF EXISTS`, because only the databases that ran `20260814120000` ever had it). **The other three columns must still be created in production:**
+- **Fix:** `blood_group` removed entirely (it came from the design mockup, not from an operational need) — `schema.prisma`, `TenantProfileUpdateSchema`, `tenant-service`'s `tenantFields` allowlist, `getTenantPortalProfile()`, the tenant Profile tab's view + edit configs, plus migration `20260814180000_drop_tenant_blood_group` (`DROP COLUMN IF EXISTS`, because only the databases that ran `20260814120000` ever had it). The other three columns were then created directly in production by hand, via the Supabase SQL editor (not through this repo's migration pipeline, which still has no automated apply step):
   ```sql
   ALTER TABLE public.tenants
     ADD COLUMN IF NOT EXISTS nationality TEXT,
@@ -46,6 +46,16 @@ Copy this block for each new entry:
   ```
 - **Still open — worth fixing so this can't recur:** (1) no drift detection between `schema.prisma` and the deployed database; (2) `.env` and `.env.test` currently carry an **identical** `DATABASE_URL`, so the DB-backed suite truncates whatever that host is; (3) that host is in `ap-northeast-2` while the canonical Supabase project is `ap-south-1` — the unresolved question from 2026-08-09 about which database production actually writes to.
 - **Related:** [[Database]], [[Changelog]], [[Architecture]]
+
+### Tenant activation's journey-track avatar stayed on "Welcome" while the Identity screen was already showing
+
+- **Status:** fixed 2026-08-14
+- **Found:** 2026-08-14, owner reported via screenshot: "Step 1 of 5" and the walking avatar still over the Welcome node, while the card below already read "Identity Profile."
+- **Area:** [[Frontend]]
+- **Symptom:** `WelcomeIdentityStep.tsx` (the merged Welcome+Identity component from ADR-070) switches from its Welcome screen to its Identity screen via **local component state** (`localPhase`) — no backend call happens until the tenant actually submits, so `activation_state.current_step` stays `ACCOUNT` throughout. `ActivationProgress.tsx`'s journey track only ever reads the backend step, so it had no way to know the screen underneath it had already moved on — the track (and the bobbing avatar sprite) stayed parked on node 1 while the visible content was node 2's.
+- **Root cause:** the one-component-two-backend-steps pattern (`ACCOUNT`+`PROFILE` merged into one component, `RULES`+`AGREEMENT` merged into `AgreementStep.tsx` the same way) works for the *step nodes themselves* — those are keyed off the real backend step and don't need to distinguish — but breaks for the *sub-phase within* `ACCOUNT`, which has no backend representation at all.
+- **Fix:** `localPhase` lifted out of `WelcomeIdentityStep.tsx` into `ActivationPage.tsx` (passed down as `localPhase`/`setLocalPhase` props instead of local `useState`), so the page can compute the progress track's visual step as `PROFILE` (not `ACCOUNT`) whenever `activeStep === 'ACCOUNT' && localPhase === 'identity'`. `ActivationProgress.tsx` itself is unchanged — it already correctly derives everything from whatever `activeStep` it's given.
+- **Related:** [[Features]], [[Changelog]]
 
 ### Every WhatsApp OTP was being rejected by Meta — owner signup hid it, tenant onboarding surfaced it
 

@@ -78,6 +78,14 @@ interface WelcomeIdentityStepProps {
   onSubmitAccount: () => Promise<boolean>;
   onSubmitProfile: () => Promise<boolean>;
   goToStep: (step: ActivationStep) => void;
+  /**
+   * Lifted to the parent (rather than local state) so `ActivationPage` can
+   * feed the 'identity' phase into `ActivationProgress`'s `activeStep` — the
+   * journey track otherwise has no way to know this component silently
+   * switched screens, since the backend step stays `ACCOUNT` until submit.
+   */
+  localPhase: 'welcome' | 'identity';
+  setLocalPhase: (phase: 'welcome' | 'identity') => void;
 }
 
 const label = { color: '#7A6F63', letterSpacing: '.05em' };
@@ -233,8 +241,9 @@ export function WelcomeIdentityStep({
   onSubmitAccount,
   onSubmitProfile,
   goToStep,
+  localPhase,
+  setLocalPhase,
 }: WelcomeIdentityStepProps) {
-  const [localPhase, setLocalPhase] = useState<'welcome' | 'identity'>('welcome');
   const [busy, setBusy] = useState(false);
 
   const allocation = [
