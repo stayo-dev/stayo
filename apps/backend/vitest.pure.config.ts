@@ -50,6 +50,7 @@ export default defineConfig({
       'tests/auth-config-diagnostics.test.ts',
       'tests/password-reset-otp-purpose.test.ts',
       'tests/agreement-requirement.test.ts',
+      'tests/otp-purpose-label-length.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),

@@ -28,6 +28,20 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### Every WhatsApp OTP was being rejected by Meta — owner signup hid it, tenant onboarding surfaced it
+
+- **Status:** fixed 2026-08-13
+- **Found:** 2026-08-13 (owner-reported: guardian mobile verification returned `OTP_SEND_FAILED`)
+- **Area:** [[Backend]]
+- **Symptom:** the tenant activation wizard's guardian-phone step returned `{"success": false, "error": {"message": "Failed to send OTP", "code": "OTP_SEND_FAILED"}}`. Owner signup appeared to work.
+- **Root cause:** the approved `otp` template is category **AUTHENTICATION**, and Meta caps *every body parameter* on an authentication template at **15 characters**. `{{2}}` carries a human-readable purpose label, and two shipped labels were over it — `"phone verification"` (18) and `"parent verification"` (19). Meta rejected both with `(#132018) body: Parameter at index 1 exceeds the parameter length limit 15`. **No OTP was being delivered for any purpose using those labels.**
+- **Why it looked like two different things.** `PHONE_VERIFICATION` is in `SKIPPABLE_OTP_PURPOSES`, so owner signup caught the rejection and degraded to `verification_required: false` — proceeding **without verifying anyone's phone**, silently. `ParentVerify` is not skippable, so tenant onboarding raised it as a hard error. One bug, two faces; the visible half was the *less* serious one.
+- **What it was not:** config was correct throughout — token valid, `otp` template APPROVED in `en_US` matching `OTP_TEMPLATE_LANGUAGE`, all four env vars set, WABA `account_review_status: APPROVED` and `business_verification_status: verified`, number `CONNECTED`/`GREEN`. The payload shape also already matched the template contract (2 body params + a `sub_type: url, index: 0` button), and `assertTemplateMatchesContract` passed — it checks parameter *counts*, which were right, and has no notion of parameter *length*.
+- **Fix:** `OTP_AUTH_PARAMETER_MAX_LENGTH = 15` is now explicit; the labels are shortened (`"verification"`, `"parent verify"`) and `REGISTRATION`/`PROFILEUPDATE` added; and the humanised fallback for unmapped purposes is capped by `capOtpParameter()`, which drops whole words so the result still reads as language. Without capping the fallback, the next purpose anyone adds would silently reintroduce #132018 for that flow alone.
+- **Verified against the live Graph API**, not just in tests: the old payload reproduced `#132018`, the fixed payload returned `message_status: "accepted"`, and the owner confirmed the OTP arrived on the handset.
+- **Diagnostic gap this exposed:** the API returns a generic `"Failed to send OTP"`; Meta's actual code and `error_data.details` are logged server-side but never surfaced, so an operator seeing this cannot distinguish a misconfiguration from a template rejection from a rate limit. Worth surfacing the provider code on admin-triggered sends.
+- **Related:** [[Business-Rules]], [[APIs]]
+
 ### The Add Hostel builder rendered in the legacy pre-StayO theme — the second time this trap has been hit
 
 - **Status:** fixed 2026-08-12

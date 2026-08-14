@@ -132,19 +132,42 @@ function ownerActivationTemplateLanguage(): string {
 export const OTP_TEMPLATE_LANGUAGE = "en_US";
 
 /**
+ * Meta's hard limit on **every body parameter of an AUTHENTICATION-category
+ * template** — which `otp` is. Exceeding it is rejected outright:
+ *
+ *   (#132018) body: Parameter at index 1 exceeds the parameter length limit 15
+ *
+ * This is not a style preference. Two shipped labels were over it
+ * ("phone verification" 18, "parent verification" 19), so **every OTP send
+ * was being rejected by Meta**. The two purposes failed differently, which is
+ * why it survived so long: `PHONE_VERIFICATION` is a skippable purpose, so
+ * owner signup swallowed the rejection and proceeded without verifying any
+ * phone number at all, while the non-skippable tenant purposes surfaced it as
+ * a hard OTP_SEND_FAILED.
+ */
+export const OTP_AUTH_PARAMETER_MAX_LENGTH = 15;
+
+/**
  * `{{2}}` is rendered to the user: "This is your OTP code for {{2}}."
  * Callers pass internal purpose codes (LEAD_CAPTURE, ParentVerify, …), so map
  * them to something a person should read. Unknown values are humanised rather
  * than rejected — a new purpose must never break OTP delivery.
+ *
+ * Every label is kept inside `OTP_AUTH_PARAMETER_MAX_LENGTH`, including the
+ * humanised fallback: without the cap there, the next purpose anyone adds
+ * silently reintroduces #132018 for that flow only.
  */
 export function otpPurposeLabel(purpose: string): string {
   const raw = String(purpose || "").trim();
   if (!raw) return "verification";
 
+  // All within 15 characters — see OTP_AUTH_PARAMETER_MAX_LENGTH.
   const known: Record<string, string> = {
     LEAD_CAPTURE: "sign up",
-    PHONE_VERIFICATION: "phone verification",
-    PARENTVERIFY: "parent verification",
+    PHONE_VERIFICATION: "verification",
+    PARENTVERIFY: "parent verify",
+    REGISTRATION: "registration",
+    PROFILEUPDATE: "profile update",
     LOGIN: "login",
     SIGNUP: "sign up",
     PASSWORD_RESET: "password reset",
@@ -153,7 +176,28 @@ export function otpPurposeLabel(purpose: string): string {
   const mapped = known[raw.toUpperCase().replace(/[\s-]+/g, "_")];
   if (mapped) return mapped;
 
-  return raw.replace(/[_-]+/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  const humanised = raw.replace(/[_-]+/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  return capOtpParameter(humanised) || "verification";
+}
+
+/**
+ * Trim a body parameter to what Meta will accept, preferring to drop whole
+ * words so the result still reads as language rather than a cut-off fragment.
+ */
+export function capOtpParameter(value: string): string {
+  const text = String(value || "").trim();
+  if (text.length <= OTP_AUTH_PARAMETER_MAX_LENGTH) return text;
+
+  const words = text.split(/\s+/);
+  let out = "";
+  for (const word of words) {
+    const next = out ? `${out} ${word}` : word;
+    if (next.length > OTP_AUTH_PARAMETER_MAX_LENGTH) break;
+    out = next;
+  }
+
+  // A single word longer than the limit has to be cut somewhere.
+  return (out || text.slice(0, OTP_AUTH_PARAMETER_MAX_LENGTH)).trim();
 }
 
 /**
