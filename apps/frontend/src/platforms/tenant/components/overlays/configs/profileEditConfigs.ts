@@ -2,7 +2,6 @@ import type { ProfileEditField, ProfileEditSection } from '../ProfileEditScreen'
 import type { DetailSection, OverlayTone } from '../types';
 
 const GENDER_OPTIONS = ['Male', 'Female', 'Other', 'Prefer not to say'];
-const BLOOD_GROUP_OPTIONS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 const RELATION_OPTIONS = ['Father', 'Mother', 'Guardian', 'Sibling', 'Other'];
 
 const iso = (v: unknown) => (v ? new Date(String(v)).toISOString().slice(0, 10) : '');
@@ -77,7 +76,6 @@ export function buildProfileEditConfigs(
             { label: 'Full name', value: dash(p.name) },
             { label: 'Date of birth', value: dateFull(t.date_of_birth) },
             { label: 'Gender', value: dash(t.gender) },
-            { label: 'Blood group', value: dash(t.blood_group) },
             { label: 'Nationality', value: dash(t.nationality) },
           ],
         },
@@ -97,7 +95,6 @@ export function buildProfileEditConfigs(
             { key: 'name', label: 'Full name', type: 'text', value: p.name ?? '' },
             { key: 'date_of_birth', label: 'Date of birth', type: 'date', value: iso(t.date_of_birth) },
             { key: 'gender', label: 'Gender', type: 'select', options: GENDER_OPTIONS, value: t.gender ?? '' },
-            { key: 'blood_group', label: 'Blood group', type: 'select', options: BLOOD_GROUP_OPTIONS, value: t.blood_group ?? '' },
             { key: 'nationality', label: 'Nationality', type: 'text', value: t.nationality ?? '' },
           ] as ProfileEditField[],
         },

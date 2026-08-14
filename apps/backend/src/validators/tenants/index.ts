@@ -90,7 +90,6 @@ export const TenantProfileUpdateSchema = z.object({
   temporary_address: z.string().max(LONG_TEXT).optional(),
   date_of_birth: z.string().max(30).optional().nullable(),
   gender: z.enum(["Male", "Female", "Other", "Prefer not to say"]).optional().nullable(),
-  blood_group: z.string().max(10).optional().nullable(),
   nationality: z.string().max(SHORT_TEXT).optional().nullable(),
   pan_number: z.string().max(20).optional().nullable(),
   profile_type: z.enum(["STUDENT", "WORKING_PROFESSIONAL"]).optional(),
