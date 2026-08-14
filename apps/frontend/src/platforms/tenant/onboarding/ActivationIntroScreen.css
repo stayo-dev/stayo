@@ -94,6 +94,18 @@
   0%, 100% { opacity: 0.25; }
   50% { opacity: 0.9; }
 }
+@keyframes chkIn {
+  0%, 12% { opacity: 0; transform: translate(-50%, 7px) scale(0.9); }
+  15%, 24% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  27%, 73% { opacity: 0; transform: translate(-50%, 7px) scale(0.9); }
+  76%, 85% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  88%, 100% { opacity: 0; transform: translate(-50%, 7px) scale(0.9); }
+}
+@keyframes chkOut {
+  0%, 31% { opacity: 0; transform: translate(-50%, 7px) scale(0.9); }
+  34%, 43% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  46%, 100% { opacity: 0; transform: translate(-50%, 7px) scale(0.9); }
+}
 
 .ob-actor-a { animation: actA 14s linear infinite; }
 .ob-actor-b { animation: actB 14s linear infinite; }
@@ -129,3 +141,5 @@
 .ob-drift { animation: obDrift 12s ease-in-out infinite alternate; }
 .ob-drift2 { animation: obDrift2 14s ease-in-out infinite alternate; }
 .ob-twinkle { animation: twinkle 2.6s ease-in-out infinite; }
+.ob-chk-in { animation: chkIn 14s linear infinite; }
+.ob-chk-out { animation: chkOut 14s linear infinite; }

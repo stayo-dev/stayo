@@ -3,12 +3,13 @@ import type { ActivationContext, ActivationStep } from '../activationTypes';
 import { BackButton, GuardianSignatureModal, TenantSignatureModal } from './shared';
 
 /**
- * Step 2 — "Review & Sign Agreement". Rebuilt 2026-08-13 to match
- * `Stayo Onboarding.dc.html` exactly (colors/copy/layout read directly from
- * the source, not approximated via semantic tokens) — the previous version
- * used a 2-column grid of centered cards and a separate "accept rules"
- * screen before the agreement; the design has neither: one screen, and two
- * horizontal signature rows (icon left, text middle, action right).
+ * Step 3 — "Review & Sign Agreement" (moved after Identity, ADR-070).
+ * Rebuilt 2026-08-13 to match `Stayo Onboarding.dc.html` exactly (colors/
+ * copy/layout read directly from the source, not approximated via semantic
+ * tokens) — the previous version used a 2-column grid of centered cards and
+ * a separate "accept rules" screen before the agreement; the design has
+ * neither: one screen, and two horizontal signature rows (icon left, text
+ * middle, action right).
  *
  * The backend keeps `RULES` and `AGREEMENT` as two distinct steps and
  * requires 5 named acknowledgements the design doesn't show at all (its
@@ -106,7 +107,7 @@ export function AgreementStep({
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (agreementSigned) {
-      goToStep('PROFILE');
+      goToStep('ACTIVATE');
       return;
     }
     if (!allAcksChecked) return onError('Please confirm you understand the rules above.');
@@ -393,14 +394,14 @@ export function AgreementStep({
       )}
 
       <div className="mt-5 flex items-center gap-2.5 rounded-[15px] p-2.5" style={{ background: 'rgba(255,255,255,.7)', border: '1px solid rgba(255,255,255,.6)' }}>
-        <BackButton title="Back to Welcome" onClick={() => goToStep('ACCOUNT')} />
+        <BackButton title="Back to Identity" onClick={() => goToStep('PROFILE')} />
         <button
           type="submit"
           disabled={isBusy}
           className="flex flex-1 items-center justify-center gap-2 rounded-[11px] py-3.5 font-display text-sm font-bold text-white disabled:opacity-60"
           style={{ background: '#B46A55', boxShadow: '0 6px 16px rgba(180,106,85,.3)' }}
         >
-          {isBusy ? 'Saving…' : agreementSigned ? 'Proceed to Identity' : 'Submit & sign contract'}
+          {isBusy ? 'Saving…' : agreementSigned ? 'Proceed to Account' : 'Submit & sign contract'}
         </button>
       </div>
     </form>

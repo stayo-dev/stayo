@@ -3,11 +3,13 @@ import './ActivationProgress.css';
 
 /**
  * The "live journey track" — ported to match `Stayo Onboarding.dc.html`'s
- * flow header exactly: 5 icon nodes (Welcome/Agreement/Identity/Account/Move
+ * flow header exactly: 5 icon nodes (Welcome/Identity/Agreement/Account/Move
  * In), a filling connector line, and a small bobbing avatar above whichever
  * node is active. Previous version of this component used a 4-pill text
  * tracker that didn't match the design source at all — rebuilt 2026-08-13
  * after direct comparison against the actual rendered `.dc.html` file.
+ * Identity moved before Agreement 2026-08-14 (ADR-070), matching the newer
+ * `stayo onbaording/` design source.
  */
 export type ActivationVisualStep = 'ACCOUNT' | 'RULES' | 'AGREEMENT' | 'PROFILE' | 'ACTIVATE' | 'MOVE_IN';
 
@@ -15,8 +17,8 @@ type NodeSpec = { id: Exclude<ActivationVisualStep, 'RULES'>; label: string; pat
 
 const ALL_NODES: NodeSpec[] = [
   { id: 'ACCOUNT', label: 'Welcome', paths: ['M3 11l9-8 9 8', 'M5 10v10h14V10'] },
-  { id: 'AGREEMENT', label: 'Agreement', paths: ['M7 3h7l4 4v14H7z', 'M14 3v4h4M10 12h5M10 16h5'] },
   { id: 'PROFILE', label: 'Identity', paths: ['M12 8m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0', 'M4.5 20c0-4 3.8-6 7.5-6s7.5 2 7.5 6'] },
+  { id: 'AGREEMENT', label: 'Agreement', paths: ['M7 3h7l4 4v14H7z', 'M14 3v4h4M10 12h5M10 16h5'] },
   { id: 'ACTIVATE', label: 'Account', paths: ['M5 10h14v10H5z', 'M8 10V7a4 4 0 0 1 8 0v3'] },
   { id: 'MOVE_IN', label: 'Move In', paths: ['M4 21h16', 'M6 21V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v15', 'M13 12h.5'] },
 ];
