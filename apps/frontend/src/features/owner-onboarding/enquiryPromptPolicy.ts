@@ -52,6 +52,15 @@ export type EnquiryPromptInput = {
   /** An authenticated owner who already has a hostel is not a lead. */
   isOwnerWithHostel: boolean;
   alreadyShownThisSession: boolean;
+  /**
+   * The visitor reached this page by choosing "owner" on the welcome screen
+   * (ADR-071), so they have already answered "are you a hostel owner?" — and
+   * the lead conversation opened for them on arrival. Asking again, on the
+   * page they were sent to *because* they answered, reads as not listening.
+   *
+   * Optional so the many callers that have no such signal stay unchanged.
+   */
+  declaredOwnerIntent?: boolean;
 };
 
 /**
@@ -62,6 +71,12 @@ export type EnquiryPromptInput = {
  * The component logs this in development.
  */
 export function explainEnquiryPromptSuppression(input: EnquiryPromptInput): string | null {
+  // Checked before every other rule: this one holds no matter how far the
+  // visitor scrolls or how long they stay, because the question is already
+  // answered rather than merely badly timed.
+  if (input.declaredOwnerIntent) {
+    return 'suppressed: arrived from the welcome screen having already chosen "owner"';
+  }
   if (input.isOwnerWithHostel) {
     return 'suppressed: signed in as an owner who already has a hostel — sign out to see it';
   }

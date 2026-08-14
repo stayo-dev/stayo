@@ -8,6 +8,8 @@ import {
 
 type OwnerEnquiryPromptProps = {
   isOwnerWithHostel: boolean;
+  /** See `enquiryPromptPolicy` — they already answered this on the way in. */
+  declaredOwnerIntent?: boolean;
   onAccept: () => void;
 };
 
@@ -23,7 +25,7 @@ type OwnerEnquiryPromptProps = {
  * Dismissing hides it for this page view only. There is no persistent
  * suppression by design — see the note in `enquiryPromptPolicy`.
  */
-export function OwnerEnquiryPrompt({ isOwnerWithHostel, onAccept }: OwnerEnquiryPromptProps) {
+export function OwnerEnquiryPrompt({ isOwnerWithHostel, declaredOwnerIntent, onAccept }: OwnerEnquiryPromptProps) {
   const [visible, setVisible] = useState(false);
   const shownRef = useRef(false);
   const loggedRef = useRef('');
@@ -33,6 +35,7 @@ export function OwnerEnquiryPrompt({ isOwnerWithHostel, onAccept }: OwnerEnquiry
       const reason = explainEnquiryPromptSuppression({
         scrollFraction: computeScrollFraction(readScrollGeometry()),
         isOwnerWithHostel,
+        declaredOwnerIntent,
         alreadyShownThisSession: shownRef.current,
       });
 
@@ -52,7 +55,7 @@ export function OwnerEnquiryPrompt({ isOwnerWithHostel, onAccept }: OwnerEnquiry
     };
 
     return subscribeToScroll(evaluate);
-  }, [isOwnerWithHostel]);
+  }, [isOwnerWithHostel, declaredOwnerIntent]);
 
   useEffect(() => {
     if (!visible) return;

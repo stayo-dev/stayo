@@ -1,0 +1,60 @@
+/*
+ * Keyframes for WelcomePage — ported verbatim from Stayo Welcome.dc.html.
+ * Prefixed `stayo-welcome-` so they can never collide with theme.css's legacy
+ * animation names or stayo-theme.css's onboarding-scene keyframes.
+ *
+ * The palette is hard-coded in the component rather than themed, for the same
+ * reason stayo-loading.css hard-codes its own: this screen is a brand
+ * takeover that renders before any [data-app-theme] shell exists, so there is
+ * no token scope to inherit from.
+ */
+@keyframes stayo-welcome-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes stayo-welcome-glow {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.9; }
+}
+
+/* The seam roundel pops in once the splash has cleared. Keeps its own
+   translateX(-50%) because it is positioned off the panel's centre line. */
+@keyframes stayo-welcome-pop {
+  0% { transform: translateX(-50%) scale(0.4); opacity: 0; }
+  60% { transform: translateX(-50%) scale(1.12); opacity: 1; }
+  100% { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
+@keyframes stayo-welcome-logo-in {
+  0% { transform: scale(0.86); opacity: 0; }
+  55% { transform: scale(1.03); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes stayo-welcome-word-in {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes stayo-welcome-bar {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/*
+ * Reduced motion: the screen still has to *work* — the seam still has to move
+ * when you pick a side, or the panels stop being legible as a choice. So the
+ * decorative loops (glow, spin, splash choreography) are dropped and the
+ * functional transitions are shortened rather than removed.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .stayo-welcome [style*='animation'],
+  .stayo-welcome-splash * {
+    animation: none !important;
+  }
+
+  .stayo-welcome-panel {
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -49,6 +49,10 @@ const NAV_LINKS = [
  * Submitted → Activation → Onboarding → Dashboard). V1 ships owner/staff
  * only — the tenant-facing marketplace (search/browse/enquire) is deferred
  * past V1 and intentionally not shown here (see ADR log).
+ *
+ * Served at `/owners` (and at `/login`, with the popup already open). It held
+ * `/` until ADR-071 put the audience chooser there — a student arriving at
+ * the root used to land in a pitch about occupancy dashboards.
  */
 export function LandingPage() {
   const navigate = useNavigate();
@@ -60,10 +64,25 @@ export function LandingPage() {
   // password reset — still has one to point at.
   const isLoginRoute = location.pathname === '/login';
 
+  // Arrived by choosing "owner" on the welcome screen (ADR-071). They have
+  // already told us what the "Are you a hostel owner?" prompt asks, so the
+  // lead conversation opens straight away and that prompt never fires — being
+  // asked again, on the page you were sent to *because* you answered, reads
+  // as not listening. Read once at mount: `useState`'s initialiser, not an
+  // effect, so the modal is open on the first paint rather than popping in.
+  const declaredOwnerIntent = Boolean((location.state as { declaredOwnerIntent?: boolean } | null)?.declaredOwnerIntent);
+
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(location.pathname === '/login');
-  const [leadModalOpen, setLeadModalOpen] = useState(false);
+  const [leadModalOpen, setLeadModalOpen] = useState(declaredOwnerIntent);
+
+  // Consume the intent so it can't fire a second time — otherwise going back
+  // and forward through history re-opens the conversation unbidden.
+  useEffect(() => {
+    if (!declaredOwnerIntent) return;
+    navigate(location.pathname, { replace: true, state: null });
+  }, [declaredOwnerIntent, location.pathname, navigate]);
 
   // `window.scrollY` is always 0 on this app and a scroll listener on `window`
   // never fires — `<body>` is the scroll container, because theme.css sets
@@ -135,7 +154,7 @@ export function LandingPage() {
       return;
     }
 
-    if (isLoginRoute) navigate('/', { replace: true });
+    if (isLoginRoute) navigate('/owners', { replace: true });
   };
 
   const ownerCtaLabel = session.isAuthenticated && session.hostels.length > 0 ? 'Go to Dashboard' : 'Manage My Hostel';
@@ -148,14 +167,18 @@ export function LandingPage() {
         mode="owner"
         onClose={() => {
           setLoginOpen(false);
-          // Don't strand the visitor on a bare /login with no dialog.
-          if (isLoginRoute) navigate('/', { replace: true });
+          // Don't strand the visitor on a bare /login with no dialog. Since
+          // ADR-071 that means `/owners`, not `/` — this *is* the owner
+          // marketing page, so bouncing back to the audience chooser would
+          // undo a choice the visitor has already made.
+          if (isLoginRoute) navigate('/owners', { replace: true });
         }}
         onSuccess={handleAuthSuccess}
       />
       <HostelLeadModal open={leadModalOpen} onClose={() => setLeadModalOpen(false)} />
       <OwnerEnquiryPrompt
         isOwnerWithHostel={session.isAuthenticated && session.hostels.length > 0}
+        declaredOwnerIntent={declaredOwnerIntent}
         onAccept={openOwnerAuth}
       />
 
@@ -166,9 +189,13 @@ export function LandingPage() {
         }`}
       >
         <div className="mx-auto flex max-w-6xl items-center gap-5 px-4 py-3.5 sm:px-6">
-          <a href="#top" className="flex flex-none items-center gap-2">
+          {/* The way back to the audience chooser. This was an in-page
+              `#top` anchor while this page *was* `/`; since ADR-071 it is
+              the only exit from the owner side, so it has to be a real
+              link — picking "owner" at `/` must not be a one-way door. */}
+          <Link to="/" className="flex flex-none items-center gap-2">
             <span className="font-display text-xl font-extrabold tracking-tight text-primary">Stayo</span>
-          </a>
+          </Link>
           <div className="flex-1" />
           <div className="hidden items-center gap-6 md:flex">
             {NAV_LINKS.map((link) => (

@@ -92,7 +92,7 @@ export function OwnerOnboardingWizard() {
         {/* TOP BAR + JOURNEY */}
         <div className="sticky top-0 z-40 border-b border-border/60 bg-background/72 backdrop-blur-md">
           <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3.5 sm:px-7.5">
-            <a href="/" className="flex flex-none items-center gap-2">
+            <a href="/owners" className="flex flex-none items-center gap-2">
               <span className="font-display text-xl font-extrabold tracking-tight text-primary">Stayo</span>
             </a>
             <div className="flex-1" />

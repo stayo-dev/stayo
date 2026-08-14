@@ -15,7 +15,7 @@ export function JourneyShell({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen flex-col bg-background">
       <div className="sticky top-0 z-10 border-b border-border bg-background/72 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center px-4 py-3.5 sm:px-6">
-          <Link to="/" className="font-display text-xl font-extrabold tracking-tight text-primary">
+          <Link to="/owners" className="font-display text-xl font-extrabold tracking-tight text-primary">
             Stayo
           </Link>
         </div>

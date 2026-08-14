@@ -109,11 +109,23 @@ This is an inventory of features **confirmed implemented** (live route + live UI
 
 | Feature | Route | Backing |
 |---|---|---|
-| StayO marketing landing page | `/` | `app/pages/public/LandingPage.tsx` — see "StayO owner acquisition journey" below. Replaced the legacy `HomePage.tsx` (now `@deprecated`, orphaned) as of the StayO rebuild's owner-journey phase. |
+| Welcome screen (audience chooser) | `/` | `app/pages/public/WelcomePage.tsx` + co-located `welcome.css` — see "Welcome screen — the audience fork at `/`" below. |
+| StayO marketing landing page | `/owners` (also `/login`, popup open) | `app/pages/public/LandingPage.tsx` — see "StayO owner acquisition journey" below. Replaced the legacy `HomePage.tsx` (now `@deprecated`, orphaned) as of the StayO rebuild's owner-journey phase. **Held `/` until 2026-08-14** (ADR-071). |
 | Legacy marketing site (remaining pages) | `/about`, `/facilities`, `/rooms`, `/gallery`, `/location`, `/contact`, `/pricing` | `app/pages/public/*`, Sanity CMS (`lib/sanity/`) — not yet migrated to the StayO design |
 | Legal pages | `/legal/*` | `content/legal.ts` |
 | Hostel admissions microsite | `/visit/:hostelSlug` | `/api/visit/[hostelSlug]*` — public lead capture, honeypot-protected |
 | Receipt verification | `/verify/r/:token` | `/api/verify/receipt` — public, signed-token |
+
+### Welcome screen — the audience fork at `/` (2026-08-14)
+
+- **Route:** `/` → `app/pages/public/WelcomePage.tsx` (lazy, inside `PublicShell` so it has `AuthProvider` + `QueryClientProvider`).
+- **What it does:** a full-viewport diagonal seam splits the screen — "Find your stay." (tenant, cream, top) above "Run your hostel, effortlessly." (owner, `#221E1A`, bottom). Hovering or tapping a panel slides the seam to 66/34 in its favour and expands that side's pitch and feature chips; the Stayo roundel rides the seam. A brand splash plays first, then the chosen CTA shows a commit overlay before the route changes.
+- **Where each side goes:** "Start free" → `/owners` **with the lead conversation already open** — choosing the owner panel answers the `OwnerEnquiryPrompt`'s "Are you a hostel owner?", so that prompt is suppressed for the visit rather than asking again (router state `declaredOwnerIntent`, consumed with a `replace` so history can't re-fire it). Or "Go to dashboard" → `/owner/home` when there's already an owner session with a hostel. The tenant side goes **nowhere on purpose** — "Browse hostels" is a non-navigating `aria-disabled` pill labelled "Coming soon", because the hostel-browsing page (cluster listings) is designed later. There is no separate tenant *marketing* page planned — one browsing page, not two surfaces.
+- **The choice is reversible.** The Stayo logo on `/owners` links back here, so picking "owner" is a mode, not a one-way door. `/` renders for everyone including signed-in owners — an owner must be able to browse the tenant side once listings live there. The tenant side's own way back is deferred until that page exists. Panels stay inert until both the splash and the session lookup have settled, so nothing flashes past on a slow connection.
+- **Ported from** `Stayo Welcome.dc.html` (Claude Design project `3f2fbde6`), with three substitutions: `StayoMark`/`StayoWordmark` instead of the design's PNG uploads (no new assets, and the mark inherits `currentColor`), lucide icons instead of inline SVG symbols, and `StayoLoader` instead of the design's rotating ring — rotating spinners are deliberately absent app-wide (`shared/ui/brand/index.ts`). The splash is 1.6s rather than the design's 2.65s, plays once per browser session (`sessionStorage: stayo.welcome.splashSeen`), and is skipped under `prefers-reduced-motion`.
+- **Palette is hard-coded, not themed** — this renders before any `[data-app-theme]` shell exists, same reasoning as `StayoLoadingScreen`. Keyframes live in a co-located `welcome.css`, prefixed `stayo-welcome-`.
+- **Not verified in a browser** — build, architecture check, typecheck and the 691-test suite all pass, but the seam geometry, splash timing and panel transitions have had no visual confirmation on a real viewport.
+- See [[Decisions#ADR-071|ADR-071]] (including the SEO consequence of `/` no longer being the crawlable owner page), [[Frontend]], [[Changelog]].
 
 ## StayO rebuild (new, in progress)
 
