@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, Phone, MessageCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Phone, MessageCircle, Wrench } from 'lucide-react';
 import { tenantPortalApi } from '@features/tenant-portal/api';
 
 const card = 'overflow-hidden rounded-[20px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]';
@@ -59,53 +59,20 @@ export function TenantHelpPage() {
         </div>
       )}
 
-      {/* COMPLAINTS / REQUESTS SECTION */}
-      <div className={`${card} p-4 mt-2`}>
-        <h2 className="font-display text-[15px] font-bold text-foreground mb-3">Raise a Request</h2>
-        <form 
-          className="flex flex-col gap-3"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const form = e.currentTarget;
-            const type = (form.elements.namedItem('type') as HTMLSelectElement).value;
-            const description = (form.elements.namedItem('description') as HTMLTextAreaElement).value;
-            
-            try {
-              const res = await fetch('/api/tenant/requests', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type, description })
-              });
-              if (!res.ok) throw new Error('Failed to submit request');
-              alert('Request submitted successfully!');
-              form.reset();
-            } catch (err) {
-              alert('Failed to submit request. Please try again.');
-            }
-          }}
-        >
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[12.5px] font-semibold text-foreground">Request Type</label>
-            <select name="type" required className="rounded-lg border border-border bg-transparent p-2.5 text-[13px] outline-none focus:border-foreground">
-              <option value="MAINTENANCE">Maintenance Issue</option>
-              <option value="CLEANING">Cleaning Request</option>
-              <option value="ROOM_CHANGE">Room Change Request</option>
-              <option value="LOST_KEY">Lost Key</option>
-              <option value="VISITOR_PASS">Visitor Pass</option>
-              <option value="EXTRA_MATTRESS">Extra Mattress</option>
-            </select>
-          </div>
-          
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[12.5px] font-semibold text-foreground">Details / Complaint</label>
-            <textarea name="description" required rows={3} placeholder="Please describe the issue..." className="resize-none rounded-lg border border-border bg-transparent p-2.5 text-[13px] outline-none focus:border-foreground" />
-          </div>
-          
-          <button type="submit" className="mt-1 w-full rounded-xl bg-foreground py-3 font-display text-[13.5px] font-bold text-background transition-transform active:scale-[0.98]">
-            Submit Request
-          </button>
-        </form>
-      </div>
+      <button
+        type="button"
+        onClick={() => navigate('/tenant/room')}
+        className={`${card} mt-2 flex items-center gap-3 p-4 text-left`}
+      >
+        <span className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px] bg-secondary text-primary">
+          <Wrench className="h-4.5 w-4.5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-[14px] font-semibold text-foreground">Raise a maintenance request</div>
+          <div className="mt-0.5 text-[11.5px] text-muted-foreground">Report an issue or request room services</div>
+        </div>
+        <ChevronRight className="h-4 w-4 flex-none text-muted-foreground" />
+      </button>
     </div>
   );
 }

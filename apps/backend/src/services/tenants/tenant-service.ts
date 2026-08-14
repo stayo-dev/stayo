@@ -396,12 +396,37 @@ export class TenantService {
       }
     }
 
-    const profileFields = ["name", "email", "phone", "emergency_contact", "city", "state", "pincode"];
+    // Primary phone and personal email are governed (2026-08-14 product
+    // decision, narrowed 2026-08-14 same day) — a tenant can no longer save
+    // these directly here; they must go through
+    // `POST /api/tenants/me/profile-requests` for owner approval instead.
+    // `phone` is blocked alongside `phone_1` — they're synced duplicates of
+    // the same primary-contact-number concept (see the sync block below),
+    // not a separate field; blocking only one would leave the other as a
+    // bypass. `profile.email`/`account_email` (the Supabase-login identity)
+    // is untouched by this method already (never was a self-edit field) and
+    // stays that way — the tenant-facing "email" this governs is
+    // `personal_email`, the contact field this Profile tab actually exposes.
+    // Address (city/state/pincode) and date of birth were briefly governed
+    // earlier the same day but that was reverted — the final product
+    // decision is that only phone and email need owner approval; everything
+    // else (address, DOB, guardian details, academic fields, blood group,
+    // nationality, PAN) saves directly.
+    const GOVERNED_FIELDS = ["phone_1", "phone", "personal_email"];
+    const attemptedGoverned = Object.keys(data).filter((k) => GOVERNED_FIELDS.includes(k));
+    if (attemptedGoverned.length > 0) {
+      throw new Error(
+        `VALIDATION_ERROR: ${attemptedGoverned.join(", ")} require owner approval — submit via POST /api/tenants/me/profile-requests instead of updating directly`,
+      );
+    }
+
+    const profileFields = ["name", "emergency_contact", "city", "state", "pincode"];
     const tenantFields = [
-      "photo_url", "phone_1", "phone_2", "phone_3", "personal_email",
+      "photo_url", "phone_2", "phone_3", "date_of_birth",
       "college_name", "roll_number", "course", "year_of_study", "section", "branch",
-      "temporary_address", "permanent_address", "gender", "profile_type",
-      "office_name", "office_location", "job_role", "date_of_birth"
+      "temporary_address", "gender", "profile_type", "blood_group", "nationality", "pan_number",
+      "office_name", "office_location", "job_role",
+      "guardian_name", "guardian_relation", "expected_completion_date",
     ];
 
     const profileUpdate: any = {};
@@ -411,7 +436,7 @@ export class TenantService {
       if (profileFields.includes(key)) {
         profileUpdate[key] = value;
       } else if (tenantFields.includes(key)) {
-        if (key === "date_of_birth") {
+        if (key === "date_of_birth" || key === "expected_completion_date") {
           tenantUpdate[key] = value ? new Date(value as string) : null;
         } else {
           tenantUpdate[key] = value;

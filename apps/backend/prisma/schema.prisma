@@ -1369,6 +1369,10 @@ model tenants {
   job_role                          String?
   gender                            String?
   date_of_birth                     DateTime?                           @db.Date
+  blood_group                       String?
+  nationality                       String?
+  pan_number                        String?
+  expected_completion_date          DateTime?                           @db.Date
   security_deposit                  Decimal                             @default(0) @db.Decimal(10, 2)
   maintenance_charge                Decimal                             @default(0) @db.Decimal(10, 2)
   maintenance_type                  String                              @default("MONTHLY")

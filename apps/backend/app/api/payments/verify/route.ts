@@ -7,6 +7,7 @@ import { authService } from "@/lib/services/auth-service";
 import { apiError, apiResponse } from "@/lib/utils/api-utils";
 import { prisma } from "@/lib/db";
 import { getLogger } from "@/lib/logger";
+import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
 const logger = getLogger("verify");
 
@@ -21,8 +22,8 @@ export async function POST(req: Request) {
     // user.id is profile_id, but payment attempts store tenant_id (tenants table PK).
     let tenantId: string | undefined;
     if (user.role === "TENANT") {
-      const tenant = await prisma.tenants.findUnique({
-        where: { profile_id: user.id },
+      const tenant = await prisma.tenants.findFirst({
+        where: liveTenancyWhere(user.id),
         select: { id: true },
       });
       tenantId = tenant?.id;

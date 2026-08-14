@@ -9,6 +9,7 @@ import { getTenantOperationalContext } from "@/lib/hostel-context";
 import { imagekit } from "@/lib/imagekit";
 import { normalizeIndianPhone } from "@/lib/utils/phone-utils";
 import { withOnboardingMetrics } from "@/lib/onboarding-metrics";
+import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
 /**
  * 👨‍🎓 COMPLETE TENANT PROFILE (Onboarding)
@@ -70,8 +71,8 @@ export async function POST(req: NextRequest) {
 
     const profilePhotoFile = formData.get("profile_photo") as File | null;
 
-    const tenantOwner = await prisma.tenants.findUnique({
-      where: { profile_id: session.sub },
+    const tenantOwner = await prisma.tenants.findFirst({
+      where: liveTenancyWhere(session.sub),
       select: { id: true, owner_id: true, hostel_id: true },
     });
     const normalizedRollNumber =

@@ -5,6 +5,7 @@ import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { paymentService } from "@/src/services/payments/payment-service";
 import { prisma } from "@/lib/db";
+import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
 
 /**
@@ -18,8 +19,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const tenant = await prisma.tenants.findUnique({
-      where: { profile_id: session.sub },
+    const tenant = await prisma.tenants.findFirst({
+      where: liveTenancyWhere(session.sub),
       select: { id: true }
     });
 

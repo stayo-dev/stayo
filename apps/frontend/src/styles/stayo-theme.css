@@ -34,6 +34,15 @@
   --color-warning-foreground: var(--warning-foreground);
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
+
+  --color-success-bg: var(--success-bg);
+  --color-warning-bg: var(--warning-bg);
+  --color-info-bg: var(--info-bg);
+  --color-destructive-bg: var(--destructive-bg);
+  --color-research: var(--research);
+  --color-research-foreground: var(--research-foreground);
+  --color-research-bg: var(--research-bg);
+  --color-research-border: var(--research-border);
 }
 
 /*
@@ -189,6 +198,52 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .stayo-save-bar {
+    animation: none;
+  }
+}
+
+/*
+ * Tenant app overlay system (platforms/tenant/components/overlays/*) —
+ * full-screen drill-in/form/success panels and hero-card entrances, ported
+ * 1:1 from Stayo Tenant.dc.html's tSlideIn/tUp/tPop/tRing/tAcc keyframes.
+ */
+@keyframes stayoPanelSlideIn {
+  0% { opacity: 0; transform: translateX(24px); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes stayoHeroUpIn {
+  0% { opacity: 0; transform: translateY(16px); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes stayoRingPulse {
+  0% { opacity: 0.5; transform: scale(0.8); }
+  100% { opacity: 0; transform: scale(1.7); }
+}
+@keyframes stayoAccordionReveal {
+  0% { opacity: 0; transform: translateY(-4px); }
+  100% { opacity: 1; transform: none; }
+}
+.stayo-panel-slide-in {
+  animation: stayoPanelSlideIn 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.stayo-hero-up-in {
+  animation: stayoHeroUpIn 300ms ease both;
+}
+.stayo-ring-pulse {
+  animation: stayoRingPulse 1s ease-out both;
+}
+.stayo-pop-in {
+  animation: stayoPopIn 400ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.stayo-accordion-reveal {
+  animation: stayoAccordionReveal 200ms ease both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .stayo-panel-slide-in,
+  .stayo-hero-up-in,
+  .stayo-ring-pulse,
+  .stayo-pop-in,
+  .stayo-accordion-reveal {
     animation: none;
   }
 }

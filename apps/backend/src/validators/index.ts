@@ -12,8 +12,6 @@ const MAX_AMOUNT_INR = 1_000_000;
 const SHORT_TEXT = 255;
 /** Long text fields (addresses, notes) */
 const LONG_TEXT = 1000;
-/** URL fields */
-const URL_MAX = 2048;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Auth Schemas
@@ -58,38 +56,13 @@ export const ResetPasswordSchema = z.object({
 // ─────────────────────────────────────────────────────────────────────────────
 // Tenant & Enrollment Schemas
 // ─────────────────────────────────────────────────────────────────────────────
-
-export const TenantProfileUpdateSchema = z.object({
-  name: z.string().min(1).max(SHORT_TEXT).trim().optional(),
-  phone: z.string().max(20).optional(),
-  verification_token: z.string().max(1024).optional(),
-  emergency_contact: z.string().max(SHORT_TEXT).optional(),
-  phone_1: z.string().max(20).optional(),
-  phone_2: z.string().max(20).optional(),
-  phone_3: z.string().max(20).optional(),
-  // aadhaar_number removed - now stored in identification_documents table
-  personal_email: z.string().trim().email().max(SHORT_TEXT).optional().nullable(),
-  college_name: z.string().max(SHORT_TEXT).optional(),
-  roll_number: z.string().max(100).optional(),
-  course: z.string().max(SHORT_TEXT).optional().nullable(),
-  year_of_study: z.union([z.coerce.number().int().min(1).max(6), z.literal(0)]).optional().nullable(),
-  section: z.string().max(100).optional().nullable(),
-  branch: z.string().max(SHORT_TEXT).optional(),
-  address: z.string().max(LONG_TEXT).optional(),
-  permanent_address: z.string().max(LONG_TEXT).optional(),
-  temporary_address: z.string().max(LONG_TEXT).optional(),
-  date_of_birth: z.string().max(30).optional().nullable(),
-  gender: z.enum(["Male", "Female", "Other", "Prefer not to say"]).optional().nullable(),
-  profile_type: z.enum(["STUDENT", "WORKING_PROFESSIONAL"]).optional(),
-  office_name: z.string().max(SHORT_TEXT).optional().nullable(),
-  office_location: z.string().max(SHORT_TEXT).optional().nullable(),
-  job_role: z.string().max(SHORT_TEXT).optional().nullable(),
-  photo_url: z.string().url().max(URL_MAX).optional().nullable(),
-});
-
-export const ReactivationRequestSchema = z.object({
-  notes: z.string().max(500).optional(),
-});
+// TenantProfileUpdateSchema / ReactivationRequestSchema live in
+// `src/validators/tenants/index.ts` — that's the file `lib/validators/index.ts`
+// actually re-exports from (`from "../../src/validators/tenants"` resolves to
+// the directory's index.ts, not this file). They used to be duplicated here as
+// well, but nothing imported this copy — every real route imports via
+// `@/lib/validators`, so the duplicate here was silently dead and, worse, gave
+// the false impression that editing it had any effect. See Bugs.md.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Property & Room Schemas
