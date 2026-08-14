@@ -4,7 +4,7 @@ import { StayoLoader } from '@shared/ui/brand';
 import type { ActivationContext, ActivationStep } from '../activationTypes';
 import { currency } from '../activationTypes';
 import { passwordStrength } from './passwordPolicy';
-import { AgreementPreviewModal, BackButton } from './shared';
+import { AgreementPreviewModal, BackButton, PrimaryActionButton, StepActionBar } from './shared';
 
 /**
  * Step 4 — "Set Your Password": password + confirm. Rebuilt 2026-08-14 to
@@ -211,7 +211,9 @@ export function PasswordActivateStep({
         </div>
         {showMatch && (
           <div className="mt-2 flex items-center gap-1.5 text-[11.5px] font-bold" style={{ color: passwordsMatch ? '#1F7A52' : '#D0473A' }}>
-            {passwordsMatch ? <CheckCircle2 className="h-3.5 w-3.5" /> : <span>✕</span>}
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="flex-none">
+              <path d={passwordsMatch ? 'M5 12.5l4.5 4.5L19 6' : 'M6 6l12 12M18 6L6 18'} />
+            </svg>
             {passwordsMatch ? 'Passwords match' : "Passwords don't match yet"}
           </div>
         )}
@@ -231,19 +233,13 @@ export function PasswordActivateStep({
         </div>
       )}
 
-      <div className="mt-5 flex items-center gap-2.5 rounded-[15px] p-2.5" style={{ background: 'rgba(255,255,255,.7)', border: '1px solid rgba(255,255,255,.6)' }}>
+      <StepActionBar>
         <BackButton title="Back to Agreement" onClick={() => goToStep('AGREEMENT')} />
-        <button
-          type="button"
-          onClick={onActivate}
-          disabled={submitting || password.length < 8 || password !== confirmPassword}
-          className="flex flex-1 items-center justify-center gap-2 rounded-[11px] py-3.5 font-display text-sm font-bold text-white disabled:opacity-60"
-          style={{ background: '#B46A55', boxShadow: '0 6px 16px rgba(180,106,85,.3)' }}
-        >
+        <PrimaryActionButton onClick={onActivate} disabled={submitting || password.length < 8 || password !== confirmPassword}>
           {submitting ? <StayoLoader size="sm" label={null} /> : <CheckCircle2 className="h-4 w-4" />}
-          Activate Account
-        </button>
-      </div>
+          Create Account &amp; Continue
+        </PrimaryActionButton>
+      </StepActionBar>
 
       {showAgreementPreview && ctx?.agreement && <AgreementPreviewModal agreement={ctx.agreement} onClose={() => setShowAgreementPreview(false)} />}
     </div>

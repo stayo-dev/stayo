@@ -1,6 +1,7 @@
 import { ArrowRight, Download } from 'lucide-react';
 import { StayoLoader } from '@shared/ui/brand';
 import type { ActivationContext } from '../activationTypes';
+import { PrimaryActionButton, StepActionBar } from './shared';
 import { currency, fmtDate } from '../activationTypes';
 
 /**
@@ -107,22 +108,18 @@ export function WelcomeSummaryStep({ ctx, tenantName, entering, onEnter }: Welco
         ))}
       </div>
 
-      <button
-        type="button"
-        onClick={onEnter}
-        disabled={entering}
-        className="mt-4.5 flex w-full items-center justify-center gap-2 rounded-[11px] py-3.5 font-display text-sm font-bold text-white disabled:opacity-60"
-        style={{ background: '#1B1714', boxShadow: '0 6px 16px rgba(27,23,20,.3)' }}
-      >
-        {entering ? (
-          <StayoLoader size="sm" label={null} />
-        ) : (
-          <>
-            Enter Stayo
-            <ArrowRight className="h-4 w-4" />
-          </>
-        )}
-      </button>
+      <StepActionBar>
+        <PrimaryActionButton dark onClick={onEnter} disabled={entering}>
+          {entering ? (
+            <StayoLoader size="sm" label={null} />
+          ) : (
+            <>
+              Enter Stayo
+              <ArrowRight className="h-4 w-4" />
+            </>
+          )}
+        </PrimaryActionButton>
+      </StepActionBar>
     </div>
   );
 }
