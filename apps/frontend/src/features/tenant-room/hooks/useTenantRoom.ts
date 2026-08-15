@@ -34,8 +34,9 @@ export function useTenantRoom() {
     () => (requestsQuery.data ?? []).filter((r) => r.status !== 'RESOLVED' && r.status !== 'REJECTED'),
     [requestsQuery.data],
   );
+  /** Most recently raised open request, of any type — not maintenance-only, so a room-change/cleaning/etc. request still surfaces on Room's inline ticket card. See `openRequests` for the full set (Room's "view all tickets" list). */
   const activeTicket = useMemo(
-    () => openRequests.find((r) => r.type === 'MAINTENANCE') ?? null,
+    () => [...openRequests].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] ?? null,
     [openRequests],
   );
 
