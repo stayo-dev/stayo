@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import type { ActivationContext, ActivationStep } from '../activationTypes';
-import { BackButton, GuardianSignatureModal, TenantSignatureModal } from './shared';
+import { SignatureSheet } from './SignatureSheet';
+import { BackButton, PrimaryActionButton, StepActionBar } from './shared';
 
 /**
  * Step 3 — "Review & Sign Agreement" (moved after Identity, ADR-070).
@@ -12,12 +13,28 @@ import { BackButton, GuardianSignatureModal, TenantSignatureModal } from './shar
  * middle, action right).
  *
  * The backend keeps `RULES` and `AGREEMENT` as two distinct steps and
- * requires 5 named acknowledgements the design doesn't show at all (its
- * mockup has no rules-acceptance UI) — both are folded into this single
- * screen: a compact checklist sits between the agreement box and the
- * signature rows (an addition beyond the design source, styled in the same
- * cream/Inter language so it doesn't look bolted on), and submitting signs
- * both backend steps in sequence behind one "Submit & sign contract" tap.
+ * requires 5 named acknowledgements the design shows no UI for — both are
+ * folded into this single screen, and submitting signs both backend steps in
+ * sequence behind one "Submit & sign contract" tap.
+ *
+ * **Why the acknowledgements survive an "exact design" pass.** They are not
+ * decoration: `acceptRules()` validates all five server-side and, on success,
+ * writes a `tenant_policy_acceptances` row stamped with the tenant's IP,
+ * user agent and typed name — a consent record. Dropping the UI would not
+ * drop the requirement, it would post `{all: true}` on behalf of someone who
+ * was never shown the statements. So instead of a second card sitting beside
+ * the design's document (which is what this used to be, and what read as
+ * bolted on), they are now a closing numbered section *inside* the document
+ * box — the design's own box already elides sections 2–5, so a final "7."
+ * belongs there. One cream box, as designed, with the consent intact.
+ *
+ * 2026-08-15: re-synced against the approved design — the unsigned tenant
+ * row is a solid terracotta card that pulses (`sigGlow`) with a nudging
+ * arrow until something is signed rather than a flat dashed one, the signed
+ * states use the design's mint fills, the guardian row is offered to every
+ * tenant (not only students), and tapping either row now opens
+ * `SignatureSheet` — the design's full-screen pad — instead of the generic
+ * dialog that used to wrap the owner-side `SignaturePad`.
  */
 
 const REQUIRED_ACKS: { key: string; label: string }[] = [
@@ -32,7 +49,6 @@ interface AgreementStepProps {
   ctx: ActivationContext;
   completedSteps: Set<string>;
   submitting: boolean;
-  isStudent: boolean;
   guardianName: string;
   guardianRelation: string;
   onGuardianSigned: (name: string, relation: string) => void;
@@ -53,7 +69,6 @@ export function AgreementStep({
   ctx,
   completedSteps,
   submitting,
-  isStudent,
   guardianName,
   guardianRelation,
   onGuardianSigned,
@@ -214,26 +229,31 @@ export function AgreementStep({
           </li>
         </ul>
 
+        {!rulesAccepted && (
+          <>
+            <div className="mt-4 text-[11.5px] font-extrabold uppercase" style={{ color: '#221E1A', letterSpacing: '.04em' }}>
+              7. Acknowledgements
+            </div>
+            <div className="mt-2.5 flex flex-col gap-1.5">
+              {REQUIRED_ACKS.map((a) => (
+                <label key={a.key} className="flex items-start gap-2 text-xs leading-relaxed" style={{ color: '#3A342E' }}>
+                  <input
+                    type="checkbox"
+                    checked={acks[a.key] === true}
+                    onChange={(e) => setAcks({ ...acks, [a.key]: e.target.checked })}
+                    className="mt-0.5 h-3.5 w-3.5 flex-none accent-primary"
+                  />
+                  <span>{a.label}</span>
+                </label>
+              ))}
+            </div>
+          </>
+        )}
+
         <div className="mt-3.5 border-t border-dashed pt-2.5 text-[11px] leading-relaxed" style={{ borderColor: '#D3C8B8', color: '#7A6F63' }}>
           Valid under the IT Act. Digital signatures and IP details collected during onboarding are legally binding.
         </div>
       </div>
-
-      {!rulesAccepted && (
-        <div className="mt-3.5 rounded-[13px] p-3.5" style={{ background: '#F6F1EA' }}>
-          <div className="text-[10px] font-extrabold uppercase" style={{ color: '#9A8F84', letterSpacing: '.08em' }}>
-            Confirm you understand
-          </div>
-          <div className="mt-2 space-y-1.5">
-            {REQUIRED_ACKS.map((a) => (
-              <label key={a.key} className="flex items-start gap-2 text-xs" style={{ color: '#3A342E' }}>
-                <input type="checkbox" checked={acks[a.key] === true} onChange={(e) => setAcks({ ...acks, [a.key]: e.target.checked })} className="mt-0.5 h-3.5 w-3.5 accent-primary" />
-                <span>{a.label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
 
       <div className="mt-3.5 flex items-center gap-2.5 rounded-[11px] px-3 py-2.5" style={{ background: '#E4F3EB', border: '1px solid #BFE3CE' }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F7A52" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-none">
@@ -251,15 +271,18 @@ export function AgreementStep({
       <button
         type="button"
         onClick={() => setActiveSigType('tenant')}
-        className="flex w-full items-center gap-3 rounded-[14px] p-[12px_13px] text-left transition-colors"
+        className={`flex w-full items-center gap-3 rounded-[14px] p-[12px_13px] text-left transition-colors ${
+          !tenantHasSignature && !guardianHasSignature ? 'ob-sig-glow' : ''
+        }`}
         style={{
-          background: tenantHasSignature ? '#F2F9F5' : '#fff',
-          border: tenantHasSignature ? '1.5px solid #1F9D57' : '1.5px dashed #E2D8CA',
+          background: tenantHasSignature ? '#F1FAF4' : '#fff',
+          border: tenantHasSignature ? '1.5px solid #1F9D57' : '1.5px solid #B46A55',
+          boxShadow: tenantHasSignature ? 'none' : '0 4px 14px rgba(180,106,85,.15)',
         }}
       >
         <div
           className="flex h-10 w-10 flex-none items-center justify-center rounded-xl"
-          style={{ background: tenantHasSignature ? '#1F9D57' : '#F3E7E0', color: tenantHasSignature ? '#fff' : '#B46A55' }}
+          style={{ background: tenantHasSignature ? '#DCEFE4' : '#F3E7E0', color: tenantHasSignature ? '#1F7A52' : '#B46A55' }}
         >
           {tenantHasSignature ? (
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -282,7 +305,7 @@ export function AgreementStep({
             </span>
           </div>
           <div className="mt-0.5 text-xs font-medium" style={{ color: tenantHasSignature ? '#1F7A52' : '#8A7F75' }}>
-            {tenantHasSignature ? `Signed as "${tenantSignatureName}"` : 'Tap to sign and enter name'}
+            {tenantHasSignature ? `Signed as "${tenantSignatureName}"` : 'Tap to open the signature pad'}
           </div>
         </div>
         <div className="flex-none">
@@ -296,9 +319,9 @@ export function AgreementStep({
               Edit
             </div>
           ) : (
-            <div className="flex items-center gap-1 rounded-full px-3.5 py-2 font-display text-xs font-extrabold text-white" style={{ background: '#B46A55', boxShadow: '0 4px 11px rgba(180,106,85,.3)' }}>
+            <div className="flex items-center gap-1.5 rounded-full px-3.5 py-2 font-display text-xs font-extrabold text-white" style={{ background: '#B46A55', boxShadow: '0 4px 11px rgba(180,106,85,.3)' }}>
               Sign
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <svg className="ob-nudge-x" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14M13 6l6 6-6 6" />
               </svg>
             </div>
@@ -306,104 +329,109 @@ export function AgreementStep({
         </div>
       </button>
 
-      {isStudent && (
-        <button
-          type="button"
-          onClick={() => setActiveSigType('guardian')}
-          className="mt-2.5 flex w-full items-center gap-3 rounded-[14px] p-[12px_13px] text-left transition-colors"
-          style={{
-            background: guardianHasSignature ? '#F2F9F5' : '#fff',
-            border: guardianHasSignature ? '1.5px solid #1F9D57' : '1px solid #EDE3D5',
-          }}
+      {/*
+       * Shown to every tenant, not just students: the design marks this row
+       * "Optional" and offers it unconditionally, and a co-signature is
+       * legitimately useful for a working professional too. Only the guardian
+       * *contact* fields on Identity are student-mandatory.
+       */}
+      <button
+        type="button"
+        onClick={() => setActiveSigType('guardian')}
+        className="mt-2.5 flex w-full items-center gap-3 rounded-[14px] p-[12px_13px] text-left transition-colors"
+        style={{
+          background: guardianHasSignature ? '#F1FAF4' : '#FBF8F3',
+          border: guardianHasSignature ? '1.5px solid #1F9D57' : '1.5px solid #E4DACB',
+        }}
+      >
+        <div
+          className="flex h-10 w-10 flex-none items-center justify-center rounded-xl"
+          style={{ background: guardianHasSignature ? '#DCEFE4' : '#F1EAE0', color: guardianHasSignature ? '#1F7A52' : '#9A8578' }}
         >
-          <div
-            className="flex h-10 w-10 flex-none items-center justify-center rounded-xl"
-            style={{ background: guardianHasSignature ? '#1F9D57' : '#EFE7DA', color: guardianHasSignature ? '#fff' : '#8A7F75' }}
-          >
-            {guardianHasSignature ? (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12.5l4.5 4.5L19 6" />
-              </svg>
-            ) : (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 3l7 3v6c0 4-3 6.5-7 9-4-2.5-7-5-7-9V6l7-3z" />
-              </svg>
-            )}
+          {guardianHasSignature ? (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12.5l4.5 4.5L19 6" />
+            </svg>
+          ) : (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3l7 3v6c0 4-3 6.5-7 9-4-2.5-7-5-7-9V6l7-3z" />
+            </svg>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="font-display text-sm font-extrabold" style={{ color: '#1A1A1A' }}>
+              Parent / Guardian
+            </span>
+            <span className="flex-none rounded-full px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase" style={{ color: '#8A7F75', background: '#EFE7DA', letterSpacing: '.06em' }}>
+              Optional
+            </span>
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <span className="font-display text-sm font-extrabold" style={{ color: '#1A1A1A' }}>
-                Parent / Guardian
-              </span>
-              <span className="flex-none rounded-full px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase" style={{ color: '#8A7F75', background: '#EFE7DA', letterSpacing: '.06em' }}>
-                Optional
-              </span>
-            </div>
-            <div className="mt-0.5 text-xs font-medium" style={{ color: guardianHasSignature ? '#1F7A52' : '#8A7F75' }}>
-              {guardianHasSignature ? `Signed as "${guardianSignatureName}"` : 'Add a co-signature if needed'}
-            </div>
+          <div className="mt-0.5 text-xs font-medium" style={{ color: guardianHasSignature ? '#1F7A52' : '#8A7F75' }}>
+            {guardianHasSignature ? 'Guardian signature applied' : 'Add a co-signature if needed'}
           </div>
-          <div className="flex-none">
-            {guardianHasSignature ? (
-              <div className="flex items-center gap-1.5 font-display text-xs font-extrabold" style={{ color: '#1F7A52' }}>
-                <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full" style={{ background: '#1F9D57' }}>
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M5 12.5l4.5 4.5L19 6" />
-                  </svg>
-                </span>
-                Edit
-              </div>
-            ) : (
-              <div className="flex items-center gap-1 rounded-full px-3.5 py-1.5 font-display text-xs font-extrabold" style={{ background: '#fff', border: '1.5px solid #D9CFC3', color: '#3A342E' }}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 5v14M5 12h14" />
+        </div>
+        <div className="flex-none">
+          {guardianHasSignature ? (
+            <div className="flex items-center gap-1.5 font-display text-xs font-extrabold" style={{ color: '#1F7A52' }}>
+              <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full" style={{ background: '#1F9D57' }}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 12.5l4.5 4.5L19 6" />
                 </svg>
-                Add
-              </div>
-            )}
-          </div>
-        </button>
-      )}
+              </span>
+              Edit
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 rounded-full font-display text-xs font-extrabold" style={{ background: '#fff', border: '1.5px solid #D9CFC3', color: '#3A342E', padding: '7px 13px' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Add
+            </div>
+          )}
+        </div>
+      </button>
 
       {activeSigType === 'tenant' && (
-        <TenantSignatureModal
-          tenantSigName={tenantSigName}
-          tenantSigBlob={tenantSigBlob}
-          existingTenantSigUrl={agreement.tenant_signature_url}
-          onConfirm={(name, blob) => {
+        <SignatureSheet
+          mode="tenant"
+          name={tenantSigName}
+          existingSignatureUrl={agreement.tenant_signature_url}
+          onApply={(name, _relation, blob) => {
             setTenantSigName(name);
-            setTenantSigBlob(blob);
+            if (blob) setTenantSigBlob(blob);
             setActiveSigType(null);
           }}
-          onClose={() => setActiveSigType(null)}
+          onCancel={() => setActiveSigType(null)}
         />
       )}
       {activeSigType === 'guardian' && (
-        <GuardianSignatureModal
-          guardianName={guardianName}
-          guardianRelation={guardianRelation}
-          guardianSigBlob={guardianSigBlob}
-          existingGuardianSigUrl={agreement.guardian_signature_url}
-          onConfirm={(name, relation, blob) => {
+        <SignatureSheet
+          mode="guardian"
+          name={guardianName}
+          relation={guardianRelation}
+          existingSignatureUrl={agreement.guardian_signature_url}
+          onApply={(name, relation, blob) => {
             onGuardianSigned(name, relation);
-            setGuardianSigBlob(blob);
+            if (blob) setGuardianSigBlob(blob);
             setActiveSigType(null);
           }}
-          onClose={() => setActiveSigType(null)}
+          onCancel={() => setActiveSigType(null)}
         />
       )}
 
-      <div className="mt-5 flex items-center gap-2.5 rounded-[15px] p-2.5" style={{ background: 'rgba(255,255,255,.7)', border: '1px solid rgba(255,255,255,.6)' }}>
+      <StepActionBar>
         <BackButton title="Back to Identity" onClick={() => goToStep('PROFILE')} />
-        <button
-          type="submit"
-          disabled={isBusy}
-          className="flex flex-1 items-center justify-center gap-2 rounded-[11px] py-3.5 font-display text-sm font-bold text-white disabled:opacity-60"
-          style={{ background: '#B46A55', boxShadow: '0 6px 16px rgba(180,106,85,.3)' }}
-        >
+        <PrimaryActionButton type="submit" disabled={isBusy}>
+          {!isBusy && !agreementSigned && (
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M8 12.5l2.5 2.5L16 9" />
+            </svg>
+          )}
           {isBusy ? 'Saving…' : agreementSigned ? 'Proceed to Account' : 'Submit & sign contract'}
-        </button>
-      </div>
+        </PrimaryActionButton>
+      </StepActionBar>
     </form>
   );
 }

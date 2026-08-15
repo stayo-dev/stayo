@@ -1,9 +1,9 @@
 import { FormEvent, useState } from 'react';
-import { Camera, CheckCircle2, Receipt, Send, Unlock } from 'lucide-react';
+import { AlertCircle, Camera, CheckCircle2, Receipt, Send } from 'lucide-react';
 import { StayoLoader } from '@shared/ui/brand';
 import type { ActivationContext, ActivationStep } from '../activationTypes';
 import { currency, fmtDate } from '../activationTypes';
-import { BackButton } from './shared';
+import { BackButton, PrimaryActionButton, StepActionBar } from './shared';
 
 export type ProfileDraft = {
   phone: string;
@@ -56,9 +56,6 @@ interface WelcomeIdentityStepProps {
   setPaymentFrequency: (v: string) => void;
   profile: ProfileDraft;
   setProfile: (next: ProfileDraft) => void;
-  isStudent: boolean;
-  isGuardianLocked: boolean;
-  setIsGuardianLocked: (v: boolean) => void;
   isGuardianPhoneVerified: boolean;
   setGuardianOverrideUnlocked: (v: boolean) => void;
   guardianOtp: string;
@@ -78,6 +75,12 @@ interface WelcomeIdentityStepProps {
   onSubmitAccount: () => Promise<boolean>;
   onSubmitProfile: () => Promise<boolean>;
   goToStep: (step: ActivationStep) => void;
+  /** Total visual stages — 4 when the hostel has `agreement_required: false`. */
+  stageCount: number;
+  /** Inline OTP failure from the last ACCOUNT submit, shown under the code box. */
+  otpError?: string;
+  /** Step 1's back tile leaves the wizard for the intro splash, per the design. */
+  onExitToIntro: () => void;
   /**
    * Lifted to the parent (rather than local state) so `ActivationPage` can
    * feed the 'identity' phase into `ActivationProgress`'s `activeStep` — the
@@ -162,6 +165,7 @@ function OtpBlock({
   sending,
   countdown,
   helperText,
+  error,
 }: {
   phone: string;
   otp: string;
@@ -170,9 +174,12 @@ function OtpBlock({
   sending: boolean;
   countdown: number;
   helperText: string;
+  /** Server-side verification failure, shown inline under the box per the design. */
+  error?: string;
 }) {
+  const borderColor = error ? '#D0473A' : otp.length === 6 ? '#1F9D57' : '#E7DDCE';
   return (
-    <div className="mt-2.5 rounded-[11px] p-[12px_13px]" style={{ background: '#FBF7F1', border: '1px solid #EEE3D4', animation: 'obUp .3s ease' }}>
+    <div className="ob-up-fast mt-2.5 rounded-[11px]" style={{ background: '#FBF7F1', border: '1px solid #EEE3D4', padding: '12px 13px' }}>
       <div className="flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-[11.5px] font-bold" style={{ color: '#1F7A52' }}>
           <Send className="h-3 w-3" />
@@ -185,7 +192,7 @@ function OtpBlock({
       <div className="mt-2.5 text-xs font-semibold" style={{ color: '#3A342E' }}>
         Enter 6-digit code
       </div>
-      <div className="mt-1.5 flex items-center rounded-[10px] bg-white" style={{ border: `1.5px solid ${otp.length === 6 ? '#1F9D57' : '#E7DDCE'}`, padding: '0 14px', transition: 'border-color .2s' }}>
+      <div className="mt-1.5 flex items-center rounded-[10px] bg-white" style={{ border: `1.5px solid ${borderColor}`, padding: '0 14px', transition: 'border-color .2s' }}>
         <input
           type="text"
           inputMode="numeric"
@@ -197,9 +204,16 @@ function OtpBlock({
           style={{ ...inputBase, letterSpacing: '.4em' }}
         />
       </div>
-      <div className="mt-1.5 text-[11px] font-medium" style={{ color: '#9A8F84' }}>
-        {helperText}
-      </div>
+      {error ? (
+        <div className="mt-1.5 flex items-center gap-1.5 text-[11.5px] font-bold" style={{ color: '#D0473A' }}>
+          <AlertCircle className="h-3 w-3 flex-none" />
+          {error}
+        </div>
+      ) : (
+        <div className="mt-1.5 text-[11px] font-medium" style={{ color: '#9A8F84' }}>
+          {helperText}
+        </div>
+      )}
     </div>
   );
 }
@@ -219,9 +233,6 @@ export function WelcomeIdentityStep({
   setPaymentFrequency,
   profile,
   setProfile,
-  isStudent,
-  isGuardianLocked,
-  setIsGuardianLocked,
   isGuardianPhoneVerified,
   setGuardianOverrideUnlocked,
   guardianOtp,
@@ -241,6 +252,9 @@ export function WelcomeIdentityStep({
   onSubmitAccount,
   onSubmitProfile,
   goToStep,
+  stageCount,
+  otpError,
+  onExitToIntro,
   localPhase,
   setLocalPhase,
 }: WelcomeIdentityStepProps) {
@@ -349,17 +363,13 @@ export function WelcomeIdentityStep({
         {/* Profile photo — circular avatar + edit badge */}
         <div className="mt-4.5 flex flex-col items-center gap-2.5">
           <label className="relative cursor-pointer" style={{ width: 88, height: 88 }}>
-            <div
-              className="flex h-full w-full items-center justify-center overflow-hidden rounded-full p-[3px]"
-              style={{ background: 'linear-gradient(135deg,#B46A55,#D2986C)' }}
-            >
-              <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full" style={{ background: '#F6F1EA' }}>
-                {profilePhotoPreview ? (
-                  <img src={profilePhotoPreview} alt="Profile" className="h-full w-full object-cover" />
-                ) : (
-                  <Camera className="h-7 w-7" style={{ color: '#B46A55' }} />
-                )}
-              </div>
+            <div className="h-full w-full overflow-hidden rounded-full" style={{ padding: 3, background: 'linear-gradient(135deg,#B46A55,#D2986C)' }}>
+              {profilePhotoPreview ? (
+                <img src={profilePhotoPreview} alt="Profile" className="h-full w-full rounded-full object-cover" />
+              ) : (
+                /* Empty state is the bare gradient disc — the design leaves this slot filled, not hollow. */
+                <div className="h-full w-full rounded-full" />
+              )}
             </div>
             <span
               className="absolute flex items-center justify-center rounded-full"
@@ -396,13 +406,18 @@ export function WelcomeIdentityStep({
                   value={account.phone}
                   onChange={(v) => setAccount({ ...account, phone: v })}
                   placeholder="10-digit mobile number"
-                  verified={false}
+                  verified={accountVerified}
                   onSend={onSendOtp}
                   sending={otpSending}
                   countdown={otpCountdown}
                   sent={otpSent}
                 />
               </div>
+              {account.phone.length > 0 && account.phone.length < 10 && (
+                <div className="mt-1.5 text-[11.5px] font-medium" style={{ color: '#8A7F75' }}>
+                  {10 - account.phone.length} more digit{10 - account.phone.length === 1 ? '' : 's'} to verify
+                </div>
+              )}
               {otpSent && (
                 <OtpBlock
                   phone={account.phone}
@@ -412,6 +427,7 @@ export function WelcomeIdentityStep({
                   sending={otpSending}
                   countdown={otpCountdown}
                   helperText="We sent a verification code to your mobile number."
+                  error={otpError}
                 />
               )}
             </div>
@@ -476,53 +492,23 @@ export function WelcomeIdentityStep({
           </div>
 
           <div>
-            <div className="mb-1.5 flex items-center justify-between text-[11px] font-bold uppercase" style={label}>
-              <span>Guardian Details</span>
-              {isGuardianLocked && profile.guardian_name && (
-                <button type="button" onClick={() => setIsGuardianLocked(false)} className="normal-case tracking-normal" style={{ color: '#A45D44' }}>
-                  Modify
-                </button>
-              )}
+            <div className="mb-1.5 text-[11px] font-bold uppercase" style={label}>
+              Guardian Full Name
             </div>
-
-            {isGuardianLocked && profile.guardian_name ? (
-              <div className="rounded-[10px] p-3" style={{ background: '#fff', border: '1px solid #EDE3D5' }}>
-                <div className="font-display text-sm font-bold" style={{ color: '#1A1A1A' }}>
-                  {profile.guardian_name}
-                </div>
-                <p className="mt-0.5 text-[11px]" style={{ color: '#8A7F75' }}>
-                  Synced and locked from agreement signing.
-                </p>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-2.5">
-                {!isGuardianLocked && profile.guardian_name && (
-                  <div className="flex items-center justify-between rounded-lg px-3 py-2 text-xs font-medium" style={{ background: '#FBF3E4', color: '#8A6D2F' }}>
-                    <span className="flex items-center gap-1.5">
-                      <Unlock className="h-3.5 w-3.5" />
-                      Editing details updates all stages.
-                    </span>
-                    <button type="button" onClick={() => setIsGuardianLocked(true)} className="font-bold underline">
-                      Lock
-                    </button>
-                  </div>
-                )}
-                <div style={cardWrap}>
-                  <input
-                    value={profile.guardian_name || ''}
-                    onChange={(e) => setProfile({ ...profile, guardian_name: e.target.value })}
-                    placeholder="Parent or guardian name"
-                    className="text-sm font-medium"
-                    style={inputBase}
-                  />
-                </div>
-              </div>
-            )}
+            <div style={cardWrap}>
+              <input
+                value={profile.guardian_name || ''}
+                onChange={(e) => setProfile({ ...profile, guardian_name: e.target.value })}
+                placeholder="Parent or guardian name"
+                className="text-sm font-medium"
+                style={inputBase}
+              />
+            </div>
           </div>
 
           <div>
             <div className="mb-1.5 text-[11px] font-bold uppercase" style={label}>
-              Guardian Mobile {isStudent && <span style={{ color: '#D0473A' }}>*</span>}
+              Guardian Mobile
             </div>
             <PhoneField
               value={profile.guardian_phone || ''}
@@ -540,9 +526,6 @@ export function WelcomeIdentityStep({
                 Edit guardian mobile
               </button>
             )}
-            <p className="mt-1.5 text-[11.5px]" style={{ color: '#8A7F75' }}>
-              {isStudent ? 'Mandatory mobile number for parent/guardian.' : 'Use a valid 10-digit mobile number if provided.'}
-            </p>
             {!isGuardianPhoneVerified && guardianOtpSent && (
               <>
                 <OtpBlock
@@ -569,26 +552,23 @@ export function WelcomeIdentityStep({
 
         </div>
 
-        <div className="mt-3.5 text-[11px] leading-relaxed" style={{ color: '#8A7F75' }}>
-          {profileDraftStatus === 'restored'
-            ? 'Draft restored from this device.'
-            : profileDraftStatus === 'saving'
-              ? 'Saving draft…'
-              : 'Address, academic, and work details can be completed later from your tenant portal.'}
-        </div>
+        {(profileDraftStatus === 'restored' || profileDraftStatus === 'saving') && (
+          <div className="mt-3.5 text-[11px] leading-relaxed" style={{ color: '#8A7F75' }}>
+            {profileDraftStatus === 'restored' ? 'Draft restored from this device.' : 'Saving draft…'}
+          </div>
+        )}
 
-        <div className="mt-5 flex items-center gap-2.5 rounded-[15px] p-2.5" style={{ background: 'rgba(255,255,255,.7)', border: '1px solid rgba(255,255,255,.6)' }}>
-          {showAccountFields && <BackButton title="Back to Welcome" onClick={() => setLocalPhase('welcome')} />}
-          <button
-            type="submit"
-            disabled={isBusy || photoUploading || !canSubmit}
-            className="flex flex-1 items-center justify-center gap-2 rounded-[11px] py-3.5 font-display text-sm font-bold text-white disabled:opacity-60"
-            style={{ background: '#B46A55', boxShadow: '0 6px 16px rgba(180,106,85,.3)' }}
-          >
+        <StepActionBar>
+          {showAccountFields ? (
+            <BackButton title="Back to Welcome" onClick={() => setLocalPhase('welcome')} />
+          ) : (
+            <BackButton title="Back to Welcome" onClick={() => goToStep('ACCOUNT')} />
+          )}
+          <PrimaryActionButton type="submit" disabled={isBusy || photoUploading || !canSubmit}>
             {(isBusy || photoUploading) && <StayoLoader size="sm" label={null} />}
             {photoUploading ? 'Uploading photo…' : isBusy ? 'Saving…' : 'Verify & Continue'}
-          </button>
-        </div>
+          </PrimaryActionButton>
+        </StepActionBar>
       </form>
     );
   };
@@ -598,26 +578,20 @@ export function WelcomeIdentityStep({
     return (
       <div style={{ animation: 'obFade .25s ease' }}>
         <p className="font-display text-[10px] font-extrabold uppercase" style={{ color: '#B46A55', letterSpacing: '.1em' }}>
-          Step 1 of 5
+          Step 1 of {stageCount}
         </p>
         <h2 className="font-display mt-1.5 text-[19px] font-extrabold leading-tight tracking-tight" style={{ color: '#1A1A1A' }}>
-          Welcome to {ctx.hostel.name}
+          Welcome to Stayo
         </h2>
         <p className="mt-1.5 text-xs leading-relaxed" style={{ color: '#6E6459' }}>
           Confirm your stay details and billing preference to begin.
         </p>
         {roomAllocationCard}
         {billingCard}
-        <div className="mt-5 flex items-center gap-2.5 rounded-[15px] p-2.5" style={{ background: 'rgba(255,255,255,.7)', border: '1px solid rgba(255,255,255,.6)' }}>
-          <button
-            type="button"
-            onClick={() => goToStep(profileCompleted ? 'AGREEMENT' : 'PROFILE')}
-            className="flex flex-1 items-center justify-center gap-2 rounded-[11px] py-3.5 font-display text-sm font-bold text-white"
-            style={{ background: '#B46A55', boxShadow: '0 6px 16px rgba(180,106,85,.3)' }}
-          >
-            Continue
-          </button>
-        </div>
+        <StepActionBar>
+          <BackButton title="Back to the welcome screen" onClick={onExitToIntro} />
+          <PrimaryActionButton onClick={() => goToStep(profileCompleted ? 'AGREEMENT' : 'PROFILE')}>Continue</PrimaryActionButton>
+        </StepActionBar>
       </div>
     );
   }
@@ -627,26 +601,20 @@ export function WelcomeIdentityStep({
     return (
       <div style={{ animation: 'obFade .25s ease' }}>
         <p className="font-display text-[10px] font-extrabold uppercase" style={{ color: '#B46A55', letterSpacing: '.1em' }}>
-          Step 1 of 5
+          Step 1 of {stageCount}
         </p>
         <h2 className="font-display mt-1.5 text-[19px] font-extrabold leading-tight tracking-tight" style={{ color: '#1A1A1A' }}>
-          Welcome to {ctx.hostel.name}
+          Welcome to Stayo
         </h2>
         <p className="mt-1.5 text-xs leading-relaxed" style={{ color: '#6E6459' }}>
           Confirm your stay details and billing preference to begin.
         </p>
         {roomAllocationCard}
         {billingCard}
-        <div className="mt-5 flex items-center gap-2.5 rounded-[15px] p-2.5" style={{ background: 'rgba(255,255,255,.7)', border: '1px solid rgba(255,255,255,.6)' }}>
-          <button
-            type="button"
-            onClick={() => setLocalPhase('identity')}
-            className="flex flex-1 items-center justify-center gap-2 rounded-[11px] py-3.5 font-display text-sm font-bold text-white"
-            style={{ background: '#B46A55', boxShadow: '0 6px 16px rgba(180,106,85,.3)' }}
-          >
-            Continue
-          </button>
-        </div>
+        <StepActionBar>
+          <BackButton title="Back to the welcome screen" onClick={onExitToIntro} />
+          <PrimaryActionButton onClick={() => setLocalPhase('identity')}>Continue</PrimaryActionButton>
+        </StepActionBar>
       </div>
     );
   }
