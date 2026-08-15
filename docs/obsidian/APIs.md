@@ -237,6 +237,27 @@ Public (no session — added to `middleware.ts`'s `PUBLIC_ROUTES`), backing the 
 
 **Related fix while building this:** `GET /api/auth/me`'s `is_admin` field was hardcoded `false` (dead code from before `ADMIN` was a real, assignable role) — now `profile.role === "ADMIN"`. See [[Bugs]].
 
+## Stayo Discover — Public Marketplace (`/api/discover/*`)
+
+**Added 2026-08-15 ([[Decisions#ADR-073|ADR-073]]).** The public hostel-browsing surface backing `/discover`. Split auth: browse is public, everything else needs a seeker session.
+
+**`middleware.ts`'s `PUBLIC_ROUTES` entry is `/api/discover/hostels`, deliberately not `/api/discover`** — that list is prefix-matched, so the broader entry would have made every seeker's enquiry history and saved list world-readable.
+
+All routes share one visibility predicate, `DISCOVERABLE` in `src/services/discovery/discovery-service.ts`: `listing_status = LIVE` **and** `verification_status = VERIFIED` **and** `status = ACTIVE` **and** `admissions_enabled` **and** non-null `public_slug`. Nothing under `/api/discover` writes `listing_status` or `verification_status` — see [[Decisions#ADR-040|ADR-040]].
+
+| Path | Methods | Summary |
+|---|---|---|
+| `/api/discover/hostels` | GET | **Public.** Search + filter + city facets. Query: `q` (name/address/city, case-insensitive), `city`, `min_price`/`max_price`, `sharing` (comma-separated room capacities), `hostel_type`, `food_included`, `has_vacancy`, `sort` (`recommended`\|`price_low`\|`newest`), `limit` (≤50), `offset`. Sharing and price push into SQL as a `rooms: { some }`; **`has_vacancy` cannot** — vacancy is capacity minus three live relations — so the service fetches the matching set up to a 500-hostel cap and sorts/paginates in memory. Cached 60s (shorter than `getPublicHostel`'s 180s, so a filling bed drops out of a vacancy search quickly); the cache key is a SHA-1 of the parameter set, because a free-text `q` would otherwise put unbounded user input into a Redis key |
+| `/api/discover/hostels/[slug]` | GET | **Public.** Listing detail. Checks the hostel row against `DISCOVERABLE` *first*, then composes `admissionsService.getPublicHostel(slug)` rather than re-deriving rooms/vacancy, merging `hostel_type` + `food_included` on top. **404s a suspended or unverified hostel even though its `/visit/:slug` page may still resolve** — that microsite is a direct-link surface with intentionally looser rules and is not tightened to serve discovery. Returns `ratings_available: false` / `amenities_available: false`, so the client reserves space for phase C/D data instead of the server inventing it |
+| `/api/discover/enquiries` | GET, POST | **Seeker session required.** POST creates a `visitor_leads` row (`source: 'DISCOVER'`, `seeker_profile_id` set, `assigned_to: 'Stayo Discover'`) and records a `REQUEST_JOIN` activity — worth 30 in the existing lead score. De-duplicates against the same exported `ACTIVE_LEAD_STATUSES` the microsite uses, updating an open lead rather than stacking duplicates in the owner's inbox. Rate-limited 10/hr keyed per account (not per IP, so shared campus wifi does not throttle a whole hostel). Move-in date, duration and room capacity ride in `notes` rather than in new columns — a human reads them, nothing queries them. GET lists the caller's own, newest first, capped at 100 |
+| `/api/discover/enquiries/[id]` | GET | **Seeker session required.** Scoped by `seeker_profile_id` as well as `id`, so an enquiry is never readable by whoever guesses its id. Returns a projected `stage` (`SENT`\|`REVIEWING`\|`ACCEPTED`\|`CLOSED`), **never the raw `visitor_leads.status`** — `DECISION_PENDING` is the owner's internal vocabulary and invites an applicant to read meaning into a label never written for them |
+| `/api/discover/saved` | GET, POST | **Seeker session required.** POST upserts, so a double tap on the heart is one save and not a 500. Saving a non-discoverable hostel 404s. GET returns only hostels still discoverable — an unlisted one drops out of Saved rather than becoming an unopenable card |
+| `/api/discover/saved/[hostelId]` | DELETE | **Seeker session required.** `deleteMany`, so unsaving something already unsaved is a no-op |
+
+**Who counts as a seeker:** `requireSeeker()` (`src/services/discovery/seeker-session.ts`) requires an active profile with `role = TENANT` and deliberately does **not** require a `tenants` row — demanding one would exclude nearly everyone browsing. A tenant who already lives somewhere is also a valid seeker; a tenancy is neither required nor disqualifying.
+
+**Related fix while building this:** `GET /api/auth/me` set `is_profile_completed` only inside its `if (tenant)` branch, so a TENANT with no tenancy — every seeker — received it as `undefined`. See [[Bugs]].
+
 ## Admin / Finance-Ops / Reconciliation
 
 `/api/admin/finance-ops` (**ADMIN only**) + `/attempts(/[id])`, `/anomalies`, `/webhook-events`, `/reconciliation-runs`. `/api/admin/finance/reconciliation/issues` + `/[issueId]` + `/scan` — **note: this sibling group requires role OWNER, not ADMIN**, despite the shared `/admin/finance` URL prefix — a role-scope inconsistency worth confirming is intentional. **Update 2026-07-26:** `ADMIN` is now a real, assignable role (Platform Admin Console, above) — `/api/admin/finance-ops/*` is consequently no longer purely theoretical/unreachable as previously noted here, though no frontend still consumes it and it remains a functionally separate, older subsystem from `/api/platform-admin/*`.

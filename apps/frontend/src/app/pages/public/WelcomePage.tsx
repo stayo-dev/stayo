@@ -10,7 +10,7 @@
  *
  * "Start free" commits to the owner journey and hands off to `/owners` — the
  * marketing page that used to live at `/`. "Browse hostels" commits to the
- * tenant journey and hands off to `/discover`, Stayo Discover (ADR-072). Until
+ * tenant journey and hands off to `/discover`, Stayo Discover (ADR-073). Until
  * that page existed the tenant side was deliberately inert, reading its pitch
  * behind a "Coming soon" label rather than routing into a dead end; both
  * halves of the fork now lead somewhere real.

@@ -239,6 +239,27 @@ Also dropped by migration 062: `tenants.reservation_policy` and `tenants.minimum
 
 > ⚠️ **These four migrations are the ones that took production down on 2026-08-14** (see [[Bugs]]). Prisma selects the *full* column set for any query without an explicit `select`, and `getSession()` runs one such query (`getActiveTenancy` → `tenants.findMany`) on **every authenticated request, for every role**. So a `tenants` column that exists in `schema.prisma` but not in the database 500s the entire authenticated API, not just the tenant Profile tab. Nothing in the deploy applies migrations — the Vercel build is `next build`, and this repo's migrations are run by hand (see [[Architecture]]) — so **schema.prisma and the production database drift silently until the next request**. `guardian_name`/`guardian_phone`/`guardian_relation` already existed (read by `getTenantPortalProfile`) but were never wired to tenant self-editing until 2026-08-14 — see [[Business-Rules]].
 
+## Stayo Discover — `seeker_profile_id` and `saved_hostels` (2026-08-15, migration 063)
+
+Two additive changes backing `/discover` ([[Decisions#ADR-073|ADR-073]]). No backfill, no rewrite.
+
+**`visitor_leads.seeker_profile_id`** — nullable `uuid`, FK → `profiles(id)`, with a partial index on `(seeker_profile_id, created_at DESC) WHERE seeker_profile_id IS NOT NULL`. Links an enquiry sent from Discover to the Stayo account that sent it.
+
+> **It is nullable forever, not merely for now.** Every pre-existing row, and every future QR / walk-in / reception lead, has no seeker account behind it. Nothing may assume it is set. Matching enquiries to a person on `student_phone` instead was rejected: it breaks the moment someone edits their number, and leaves the phase-B portable profile nothing to attach to.
+
+Prisma exposes this as **two relations on the same table**, which is easy to misread:
+
+| Field on `profile` | Means |
+|---|---|
+| `visitor_leads` | leads where this profile is the **owner** receiving them |
+| `seeker_enquiries` (`@relation("SeekerEnquiries")`) | leads where this profile is the **seeker** who sent them |
+
+**`saved_hostels`** — `(id, profile_id, hostel_id, created_at)`, unique on `(profile_id, hostel_id)`, both FKs `ON DELETE CASCADE`, plus `(profile_id, created_at DESC)`. The unique index is what makes the save endpoint's `upsert` idempotent, so a double tap on the heart is one row rather than a 500. A table rather than client storage because Saved is an authenticated tab with a count on the profile screen — localStorage would not survive a device change.
+
+`visitor_leads.source` gained the value `'DISCOVER'` with **no migration** — it is a plain `String` column, matching this schema's convention of descriptive statuses as strings rather than Prisma enums (see the quirks section below).
+
+> ⚠️ **Not verified against a live database.** The migration file and both objects need one real run; the accompanying tests use this repo's mocked-Prisma pattern. Note the 2026-08-14 warning above applies in spirit: `visitor_leads` is read by the owner lead funnel, so a column present in `schema.prisma` but absent from the database will 500 those routes.
+
 ## Key relations
 
 `hostels` is the root almost everything scopes to (`owner_id → profile`). `tenants` belongs to one `hostel_id` and is **many-to-one** with a `profile` — see the tenancy section below; it was 1:1 until 2026-08-07. `rent_obligations` belongs to a `tenant` + `hostel`, optionally an `allocation`, `agreement`, and `billing_plan`. `payments` belongs to one `obligation` and optionally a `payment_group`/`payment_attempt`, producing exactly one `receipts` row. `move_out_requests` fans out 1:1/1:N into `move_out_inspections`, `move_out_inspection_items`, `exit_settlement_transactions`, `exit_disputes`, `exit_feedbacks`. `Agreement` self-references forward/backward for renewal chains and links to `AgreementTemplate` and `RenewalOffer`. Full per-model relation table (100+ rows) lives in the research artifact this page was built from — not reproduced verbatim here to keep this page navigable; **ask for the full relation dump if you need it.**

@@ -10,6 +10,20 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-15 — Stayo Discover: the tenant half of `/` now leads somewhere
+- **Added** `/discover` — a public hostel marketplace with its own 4-tab shell (Explore / Saved / Enquiries / Profile), ported from `Stayo Discover.dc.html`. Browse, search, filter and listing detail are public and signed-out-reachable; Saved, Enquiries and Profile are the seeker's own.
+- **Added** `GET /api/discover/hostels`, `GET /api/discover/hostels/[slug]`, `GET|POST /api/discover/enquiries`, `GET /api/discover/enquiries/[id]`, `GET|POST /api/discover/saved`, `DELETE /api/discover/saved/[hostelId]`. See [[APIs]].
+- **Added** migration `063_discovery_phase_a.sql` — `visitor_leads.seeker_profile_id` (nullable FK) and the `saved_hostels` table. Both additive. See [[Database]].
+- **Changed** `WelcomePage`'s tenant panel: the `aria-disabled` "Browse hostels" pill labelled *Coming soon* is now a real commit into `/discover`. The file's header comment, which documented the dead end as deliberate, is updated.
+- **Enquiries are `visitor_leads` rows** (source `DISCOVER`), landing in the owner's existing inbox, scoring and funnel — no parallel entity, no second place for an owner to look. Approval routes into the pre-existing `convert-to-invitation`, so an accepted enquiry becomes a real tenant invitation feeding onboarding.
+- **No new signup was built.** `authService.selfSignUpTenant()` already created precisely this account and already described itself as a marketplace account; the phase built the screen against it. An email-OTP path was designed and discarded — see [[Decisions#ADR-073|ADR-073]] point 8.
+- **Nothing is faked.** Star ratings, review counts, amenity grids and distance-to-campus are omitted (the columns do not exist) rather than seeded; unpriced rooms read "Price on request", never "₹0". Listings look thinner than the prototype on purpose.
+- **Fixed, found by the compiler while building:** `getListing()` and `createEnquiry()` spread the shared visibility predicate *after* `public_slug`, so its own `public_slug: { not: null }` overwrote the slug being looked up — every detail request would have matched an arbitrary listed hostel. Pinned by a regression test.
+- **Fixed:** `GET /api/auth/me` set `is_profile_completed` only inside its `if (tenant)` branch, so a TENANT with no tenancy — every seeker — got it back `undefined` and any guard reading it bounced them to `/complete-profile` on reload. See [[Bugs]].
+- **Scope:** this is phase A of four. The portable profile (B), owner listing content (C) and reviews (D) are separate and unbuilt; identity and documents still hang off `tenants`, which is one row per tenancy, so nothing is portable yet.
+- **Verified:** 16 new backend tests pass; `check:architecture`, full `vite build` and the branding check are clean; `tsc --noEmit` clean across all new files. **Not verified against a live database** — the migration and both tables need one real run — and **not driven in a browser**. Pre-existing and untouched: 2 failures in `agreement-requirement.test.ts` and 1 `check:invariants` failure in `app/api/tenants/me/*`, both confirmed present on a clean tree.
+- See [[Decisions#ADR-073|ADR-073]], [[Features]], [[APIs]], [[Database]], [[Bugs]].
+
 ### 2026-08-15 — All five onboarding stages matched to the design screenshots
 - Owner-supplied screenshots of the Claude Design rendering, stage by stage, with the instruction that Welcome / Identity / Agreement / Account / Move In each match exactly.
 - **Identity** — the empty profile-photo state is the design's solid terracotta disc (it was a cream well with a camera glyph in it); the guardian *lock / Modify* card is gone in favour of the design's plain `GUARDIAN FULL NAME` input; `GUARDIAN MOBILE` loses the asterisk and the helper line beneath it, neither of which the design has. `isGuardianLocked` state removed from `ActivationPage` with its last consumer.

@@ -22,7 +22,7 @@ const DiscoverProfilePage = lazy(() =>
 );
 
 /**
- * Stayo Discover — the public marketplace (ADR-072).
+ * Stayo Discover — the public marketplace (ADR-073).
  *
  * Its own shell rather than a tab inside `/tenant/*`, for one reason that
  * decides it: almost everyone using Discover has no tenancy. Putting it behind
