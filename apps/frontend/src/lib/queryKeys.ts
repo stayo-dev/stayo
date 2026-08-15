@@ -130,6 +130,16 @@ export const queryKeys = {
    * none of it is owner-scoped — search and listing detail are public, and the
    * rest belongs to the signed-in seeker, not to a hostel.
    */
+  /**
+   * The portable Stayo profile (phase B). Person-scoped, not owner- or
+   * hostel-scoped, so it sits outside both `ownerKey` and `hostelKey`.
+   */
+  profile: {
+    all: () => ['profile'],
+    identity: () => ['profile', 'identity'],
+    documents: () => ['profile', 'documents'],
+  },
+
   discover: {
     all: () => ['discover'],
     search: (filters?: object) => ['discover', 'search', filters ?? {}],

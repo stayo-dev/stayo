@@ -293,9 +293,17 @@ export class AgreementGenerationService {
       ownerName: ownerName,
       ownerSignatureUrl: template?.owner_signature_url || null,
       tenantName: tenantName,
-      tenantEmail: tenant.personal_email || "",
-      tenantPhone: tenant.phone_1 || "",
-      permanentAddress: tenant.permanent_address || "N/A",
+      // Snapshot-first, like every other contractual value above.
+      //
+      // These three used to read the tenant row live. That was survivable while
+      // identity was per-tenancy and effectively frozen after activation; phase
+      // B made identity person-level and editable from a profile screen, so a
+      // live read meant regenerating an old agreement's PDF could print an
+      // address or email the signatory never agreed to. The `tenant.*` fallback
+      // stays for agreements signed before the snapshot carried these fields.
+      tenantEmail: snapshot.tenant_email || tenant.personal_email || "",
+      tenantPhone: snapshot.tenant_phone || tenant.phone_1 || "",
+      permanentAddress: snapshot.permanent_address || tenant.permanent_address || "N/A",
       roomNo: roomNo,
       monthlyRent,
       advanceDeposit,

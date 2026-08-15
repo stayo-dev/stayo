@@ -20,6 +20,9 @@ const SavedPage = lazy(() => import('@/app/pages/discover/SavedPage').then((m) =
 const DiscoverProfilePage = lazy(() =>
   import('@/app/pages/discover/DiscoverProfilePage').then((m) => ({ default: m.DiscoverProfilePage })),
 );
+const ProfileEditPage = lazy(() =>
+  import('@/app/pages/discover/ProfileEditPage').then((m) => ({ default: m.ProfileEditPage })),
+);
 
 /**
  * Stayo Discover — the public marketplace (ADR-073).
@@ -64,6 +67,9 @@ export function DiscoverRoutes() {
       <Route path="/discover/enquiries" element={<EnquiriesPage />} />
       <Route path="/discover/enquiries/:id" element={<EnquiryDetailPage />} />
       <Route path="/discover/profile" element={<DiscoverProfilePage />} />
+      {/* The portable profile's editor (phase B). Deliberately reachable with
+          no hostel involved — a tenant fills this in before enquiring. */}
+      <Route path="/discover/profile/details" element={<ProfileEditPage />} />
     </Route>
   );
 }

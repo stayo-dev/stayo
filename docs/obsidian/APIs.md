@@ -258,6 +258,23 @@ All routes share one visibility predicate, `DISCOVERABLE` in `src/services/disco
 
 **Related fix while building this:** `GET /api/auth/me` set `is_profile_completed` only inside its `if (tenant)` branch, so a TENANT with no tenancy — every seeker — received it as `undefined`. See [[Bugs]].
 
+## The Portable Profile (`/api/profile/*`, `/api/owner/document-shares/*`)
+
+**Added 2026-08-15 ([[Decisions#ADR-074|ADR-074]]).** The identity a tenant fills in once and every later onboarding reads as defaults.
+
+**All of these require a session but deliberately *not* a tenancy.** The whole point is that a tenant completes their profile before enquiring anywhere; demanding a `tenants` row would put it back behind the onboarding it exists to shortcut.
+
+| Path | Methods | Summary |
+|---|---|---|
+| `/api/profile/identity` | GET, PATCH | The person's identity. GET merges profile-first with a tenancy fallback and returns `is_complete`, `missing_core_fields`, and `pending_backfill_fields` (fields still read off a tenancy because the backfill has not run for this person — surfaced so the transition's end is observable). PATCH is **allowlisted** against `IDENTITY_FIELDS`, and **drops blanks rather than writing them**: onboarding writes back here and its forms ask for a subset, so treating an absent field as "clear it" would let a short form wipe a longer one's answers. Validates date-of-birth is real and not in the future, year of study 1–10, profile type ∈ {STUDENT, WORKING_PROFESSIONAL} |
+| `/api/profile/documents` | GET, POST | The vault. GET returns each document annotated with `shared_with` — every hostel it is visible to and that hostel's verdict; the tenant is the one party entitled to see every verdict at once, because it is their document. POST adds a file and retires any previous active document of the same type (`is_active: false`, never deleted — existing shares point at what an owner actually reviewed) |
+| `/api/profile/documents/shares` | POST, DELETE | The tenant's own control over who can see their documents. POST grants a hostel access to every active document (idempotent — re-granting revives the existing share and **keeps its prior verdict**, rather than making an owner re-check a file they already checked). DELETE (`?hostel_id=`) sets `revoked_at` rather than deleting, so a past verifier stays attributable. **An owner cannot grant themselves access** — that asymmetry is what makes a shared vault safe |
+| `/api/owner/document-shares` | GET | **OWNER/ADMIN.** Vault documents shared with one of the caller's hostels. `hostel_id` is **required and never defaulted** — falling back to "the owner's first hostel" is the pattern `check:invariants` forbids, and here the wrong default would show a multi-hostel owner documents a tenant shared with a different property. Optional `profile_id` narrows to one person |
+| `/api/owner/document-shares/[shareId]/verdict` | PATCH | **OWNER/ADMIN.** `{verdict: VERIFIED\|REJECTED, rejection_reason?}`. Written to the **share**, so it applies to this hostel only — a tenant carrying the same file to their next hostel carries the file, not this decision. Rejection requires a reason. 403 if the caller does not own the share's hostel, 403 if revoked, 409 if the document has been replaced |
+| `/api/tenants/me/onboarding-prefill` | GET | **TENANT.** What the activation form should open with: account fields (`name`, `email`, `phone`, `emergency_contact`) plus the merged identity, and `has_prefill` so the UI can choose between a confirm step and a blank form. Requires no tenancy — activation calls it while the tenancy is still `INVITED` |
+
+**Changed:** `POST /api/tenants/me/complete-profile` now writes `profile_identity` **inside the same transaction** as the tenancy row. A tenancy snapshot that committed while the portable record silently failed is exactly the drift this phase removes. Non-null fields only, same reasoning as PATCH above.
+
 ## Admin / Finance-Ops / Reconciliation
 
 `/api/admin/finance-ops` (**ADMIN only**) + `/attempts(/[id])`, `/anomalies`, `/webhook-events`, `/reconciliation-runs`. `/api/admin/finance/reconciliation/issues` + `/[issueId]` + `/scan` — **note: this sibling group requires role OWNER, not ADMIN**, despite the shared `/admin/finance` URL prefix — a role-scope inconsistency worth confirming is intentional. **Update 2026-07-26:** `ADMIN` is now a real, assignable role (Platform Admin Console, above) — `/api/admin/finance-ops/*` is consequently no longer purely theoretical/unreachable as previously noted here, though no frontend still consumes it and it remains a functionally separate, older subsystem from `/api/platform-admin/*`.

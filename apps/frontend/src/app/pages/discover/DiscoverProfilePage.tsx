@@ -4,6 +4,7 @@ import { ChevronRight, ClipboardList, Heart, Home, LifeBuoy, Luggage, ShieldChec
 
 import { useAuth } from '@context/AuthContext';
 import { useEnquiries, useIsSeeker, useSavedHostels } from '@features/discover/hooks/useDiscover';
+import { useProfileIdentity } from '@features/profile/hooks/useProfileIdentity';
 
 import { SignedOutPrompt } from './components/SignedOutPrompt';
 import { C, FONT } from './discoverTheme';
@@ -25,6 +26,7 @@ export function DiscoverProfilePage() {
   const { isSeeker, loading } = useIsSeeker();
   const { data: saved } = useSavedHostels();
   const { data: enquiries } = useEnquiries();
+  const { data: identity } = useProfileIdentity();
 
   useEffect(() => {
     document.title = 'Your Stayo account';
@@ -110,7 +112,7 @@ export function DiscoverProfilePage() {
           </div>
         </section>
 
-        {/* One account, honestly described */}
+        {/* The portable profile — now real, so it describes what it does. */}
         <section
           className="relative overflow-hidden rounded-[18px] p-5"
           style={{
@@ -131,14 +133,32 @@ export function DiscoverProfilePage() {
             </span>
             <div className="min-w-0">
               <p className="text-[14.5px] font-extrabold tracking-[-0.01em] text-white" style={{ fontFamily: FONT.display }}>
-                One account, every hostel
+                Your details travel with you
               </p>
               <p className="mt-1 text-[12px] leading-[1.5]" style={{ color: '#B6ABA0' }}>
-                This is the same Stayo account you'll use to move in — and to move again later.
-                Carrying your documents across so you never re-upload them is coming next.
+                {identity?.is_complete
+                  ? 'Filled in. Every hostel you join will open its onboarding with these already there.'
+                  : 'Fill these in once — before you even enquire — and every hostel you join opens its onboarding already filled.'}
               </p>
             </div>
           </div>
+
+          {/* Progress is stated only when we actually know it. */}
+          {identity && !identity.is_complete && identity.missing_core_fields.length > 0 && (
+            <p className="relative mt-3 text-[11.5px] font-semibold" style={{ color: C.clayPale }}>
+              {identity.missing_core_fields.length} detail
+              {identity.missing_core_fields.length === 1 ? '' : 's'} still needed
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={() => navigate('/discover/profile/details')}
+            className="relative mt-3.5 w-full rounded-[11px] py-3 text-[13px] font-extrabold"
+            style={{ fontFamily: FONT.display, background: C.clayLight, color: C.ink }}
+          >
+            {identity?.is_complete ? 'Review your details' : 'Complete your details'}
+          </button>
         </section>
 
         {/* Links */}

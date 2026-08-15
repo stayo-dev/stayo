@@ -18,7 +18,11 @@ const TABS = [
  * of a half-finished form.
  */
 function hidesTabBar(pathname: string): boolean {
-  return /^\/discover\/(h|search)\b/.test(pathname) || /^\/discover\/enquiries\/[^/]+$/.test(pathname);
+  return (
+    /^\/discover\/(h|search)\b/.test(pathname) ||
+    /^\/discover\/enquiries\/[^/]+$/.test(pathname) ||
+    /^\/discover\/profile\/[^/]+$/.test(pathname)
+  );
 }
 
 export function DiscoverShell({ children }: { children: ReactNode }) {

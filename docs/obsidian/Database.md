@@ -260,6 +260,26 @@ Prisma exposes this as **two relations on the same table**, which is easy to mis
 
 > ⚠️ **Not verified against a live database.** The migration file and both objects need one real run; the accompanying tests use this repo's mocked-Prisma pattern. Note the 2026-08-14 warning above applies in spirit: `visitor_leads` is read by the owner lead funnel, so a column present in `schema.prisma` but absent from the database will 500 those routes.
 
+## The portable profile — `profile_identity` + the document vault (2026-08-15, migration 064)
+
+Three new tables ([[Decisions#ADR-074|ADR-074]]). Nothing is dropped or altered, and there is no backfill in the migration.
+
+**`profile_identity`** — 1:1 with `profiles`, holding person-level identity: `date_of_birth`, `gender`, `nationality`, `pan_number`, `permanent_address`, `photo_url`, `personal_email`, `guardian_name`/`_phone`/`_relation`, `profile_type`, and the academic/professional set (`college_name`, `roll_number`, `course`, `year_of_study`, `branch`, `section`, `office_name`, `office_location`, `job_role`).
+
+> **Why not columns on `profiles`.** `getSession()` reads a profile on every authenticated request for every role, and Prisma selects the full column set on any query without an explicit `select`. That is the exact mechanism behind the 2026-08-14 outage documented above. A separate table keeps eighteen rarely-read columns off the hottest path in the system.
+
+**`tenants` keeps every matching column.** They stop being canonical and become **the snapshot of what was true when that tenancy began** — which is what agreements and history need. Reads go profile-first with a tenancy fallback; see [[Business-Rules]] for the fixed precedence (live tenancy, else most recent — never an `orderBy` on `status`, since `TenantStatus` declares `INVITED` before `ACTIVE`).
+
+**`identity_documents`** — the vault. `profile_id`, `doc_type`, file fields, `is_active`. One row per file the person has ever uploaded; no hostel, no tenancy. Replacing a document of the same type sets `is_active: false` on the old row rather than deleting it, because shares point at what an owner actually reviewed.
+
+**`identity_document_shares`** — one row per (document, hostel), unique on that pair. Carries `status` (`PENDING`/`VERIFIED`/`REJECTED`), `verified_by`/`verified_at`, `rejected_by`/`rejected_at`/`rejection_reason`, `granted_at`, `revoked_at`, and `tenant_id` once a tenancy exists.
+
+> **The verdict lives on the share, never on the document.** That is the whole model: one owner verifying an ID must not make it verified for every other hostel the person applies to. Revocation sets `revoked_at` instead of deleting, so a past verifier stays attributable.
+
+`identification_documents` (the pre-phase-B per-tenancy table) is **not** dropped. The migration copies rather than moves, so no owner loses a verification they have already made.
+
+> ⚠️ **Not verified against a live database.** Migration 064, all three tables and `npm run backfill:profile-identity` need one real run. The accompanying tests mock Prisma entirely and live in `vitest.pure.config.ts`, because `.env.test` points at the same Supabase project as dev (see the open issue in [[Bugs]]).
+
 ## Key relations
 
 `hostels` is the root almost everything scopes to (`owner_id → profile`). `tenants` belongs to one `hostel_id` and is **many-to-one** with a `profile` — see the tenancy section below; it was 1:1 until 2026-08-07. `rent_obligations` belongs to a `tenant` + `hostel`, optionally an `allocation`, `agreement`, and `billing_plan`. `payments` belongs to one `obligation` and optionally a `payment_group`/`payment_attempt`, producing exactly one `receipts` row. `move_out_requests` fans out 1:1/1:N into `move_out_inspections`, `move_out_inspection_items`, `exit_settlement_transactions`, `exit_disputes`, `exit_feedbacks`. `Agreement` self-references forward/backward for renewal chains and links to `AgreementTemplate` and `RenewalOffer`. Full per-model relation table (100+ rows) lives in the research artifact this page was built from — not reproduced verbatim here to keep this page navigable; **ask for the full relation dump if you need it.**
