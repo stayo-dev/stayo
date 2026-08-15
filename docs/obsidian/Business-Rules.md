@@ -276,9 +276,13 @@ Three consequences that are easy to get wrong:
 Set by [[Decisions#ADR-059|ADR-059]]. `tenant_rules.agreement_required` (default **true**; an absent or null flag reads as **true**) decides whether the `RULES` and `AGREEMENT` onboarding steps apply.
 
 - **It governs the signing ceremony only.** `Agreement` rows are created either way, because `contract_rent` on that record is what rent changes, obligation generation, renewals and move-out settlement key to.
+- **When on, the order is `ACCOUNT → RULES → PROFILE → AGREEMENT → ACTIVATE`** — Identity precedes Agreement ([[Decisions#ADR-070|ADR-070]], 2026-08-14; previously Agreement preceded Profile). `RULES` is auto-accepted as a side effect of any `mutate()`/`getContext()` call once `ACCOUNT` is done, so in practice the tenant-facing sequence is Account → Identity → Agreement → Password/Activate.
+- **A student profile's guardian *relationship* is no longer required at the Profile step** (ADR-070 amendment, 2026-08-14) — only guardian name and a verified guardian phone are, since Identity now runs before Agreement and nothing before Agreement collects a relationship label. It's filled in later only if a guardian actually co-signs the agreement (`signAgreement()` writes it back onto both `tenants.guardian_relation` and the `Agreement` row); otherwise it stays null.
+- **Emergency contact is no longer collected during activation at all** (ADR-070 second amendment, 2026-08-14) — removed from the Identity screen by explicit direction; `saveProfile()` no longer requires it (still validated for format if ever supplied). Collected later, if needed, from the tenant portal profile instead — see the direct-editable field list below.
 - **When off**, onboarding is `ACCOUNT → PROFILE → ACTIVATE`; attempting `RULES` or `AGREEMENT` is itself an invalid transition; and both activation gates (`assertTransition` **and** the independent re-check in the finalise path) stop requiring `rules_accepted`/`agreement_signed`.
 - **Skipped steps report as not done, not as complete.** `progress_percent` is computed over the steps this hostel requires, so a skipped-agreement tenant reads 2-of-3 rather than being credited with signatures they never gave.
 - **Turning it off is not retroactive** — agreements already signed remain, and remain credited.
+- **Since 2026-08-11 ([[Decisions#ADR-063|ADR-063]]), it also gates the owner Home dashboard.** The unified Action Center's "Renewal Agreements" card only renders when `agreement_required` is on for the owner's primary hostel — reusing this flag rather than adding a second, dashboard-only toggle. This is a real second effect of the flag, not just onboarding: an owner who has turned agreements off for their hostel won't see the renewal-queue card at all on Home. See [[Features]].
 
 The `PAYMENT_PENDING` / `RESERVED` / `MOVE_IN_READY` vocabulary is **deleted**. The tenant lifecycle is `INVITED` → `ACTIVE` (shown to owners as "Joined") → vacating → `FORMER_TENANT`.
 
@@ -337,6 +341,83 @@ Added 2026-08-06 ([[Decisions#ADR-050|ADR-050]], [[Decisions#ADR-051|ADR-051]]).
 6. **As of this writing, only ① `stayo_owner_lead_received` is approved in Meta.** Templates ②④⑤ (and ③, which is new relative to the superseded `stayo_owner_welcome`) are not yet approved — those sends fail until Meta approval completes. The code path is complete and correct for all five; the templates are the blocker. Contracts fail loudly with the template name in the log, not silently, so this is diagnosable in production. See [[Features]] for the honest per-template approval status and [[Decisions#ADR-050|ADR-050]] for why `stayo_owner_welcome` itself is now orphaned rather than reused.
 
 See [[Features]], [[Database]], [[APIs]], [[Decisions]].
+
+## Tenant self-service profile edits — governed vs. direct fields (2026-08-14, narrowed same day)
+
+A tenant editing their own profile (`platforms/tenant` Profile tab → `PATCH /api/tenants/me/profile`) hits one of two paths depending on the field, per explicit product decision. **This was narrowed the same day it shipped**: an earlier pass also governed `permanent_address`/`date_of_birth`; the final, authoritative rule is that *only phone and email* require approval — everything else, including address and DOB, saves directly.
+
+1. **Governed — requires owner approval before it takes effect**: primary phone (`phone_1`, and its synced twin `phone`), `personal_email`. `updateTenantSelfProfile()` (`src/services/tenants/tenant-service.ts`, `GOVERNED_FIELDS`) rejects these outright with a `VALIDATION_ERROR` if present in a direct `PATCH` payload — the only path to change them is `POST /api/tenants/me/profile-requests` (body `{fields, reason}`), which creates a `PENDING` `change_requests` row (`change_type: 'tenant_self_service_update'`, `entity_type: 'tenant'`) that only `POST /api/owner/profile-requests/[id]/approve` can apply. A tenant may have at most one pending request at a time (a second `POST` while one is `PENDING` 400s). **Opening the Profile tab's edit mode never itself requires approval** — only these two fields, once actually changed, route through the request flow.
+2. **Direct — saves immediately, no approval step**: name, gender, blood group, nationality, PAN number, date of birth, address (`profile.city`/`state`/`pincode`), guardian name/relationship/phone (`guardian_name`/`guardian_relation`/`guardian_phone`, synced with `phone_2`), alternate/emergency phone (`phone_3`, synced with `profile.emergency_contact`), academic fields (college/course/branch/roll-number/year/`expected_completion_date`, or office/role for working professionals), photo.
+
+**Aadhaar is not a directly-editable text field at all** — the Profile tab's Personal Information screen routes an Aadhaar edit to the existing document-upload flow (`onUploadDocument`, same mechanism as the Documents section) instead of a text input, since it's tied to an actual verified document (`identification_documents`, `doc_type: 'AADHAAR'`) rather than a hand-typeable value. PAN has no equivalent document/verification concept in this app and stays a plain text field (`tenants.pan_number`).
+
+**A known, separate gate on guardian/alternate phone (not owner-approval — pre-existing OTP verification):** changing `phone_2`/`guardian_phone` or `phone_3`/`emergency_contact` away from a value that was already set triggers `updateTenantSelfProfile`'s pre-existing OTP-verification block (matching `data.phone_2_otp`/`data.phone_3_otp` against a verified `phoneVerificationOtp` row) — this predates the 2026-08-14 work and is unrelated to the owner-approval governance above, but it does mean the Emergency Contact screen's Phone/Alternate phone fields aren't *fully* frictionless the way "directly editable" implies for a number that's changing rather than being set for the first time. No OTP-request UI is wired into the Profile tab's edit form yet, so such a save currently fails with a clear `VALIDATION_ERROR` toast rather than silently succeeding or silently failing — see [[Bugs]].
+
+**Why phone is blocked twice (`phone_1` *and* `phone`):** the service already synchronizes them as the same primary-contact-number concept (`syncedPhone = data.phone_1 || data.phone`) before this change existed — blocking only one would leave the other as a silent bypass.
+
+**Why this isn't built on the existing `change_requests`-consuming `ChangeManagementFacade`:** that facade is hardwired the opposite direction (owner proposes, tenant approves — see [[Database]]); its `approve()`/`reject()` methods hardcode tenant-only authorization. Reusing it here would have meant modifying methods a live owner-facing feature depends on. Instead this is a small, separate set of routes (see [[APIs]]) writing to the same tables under a distinguishing `change_type`, applying the diff itself rather than going through the facade's `entityAdapterRegistry`.
+
+**Primary phone verification (OTP) is now effectively dead for the self-service path** — `updateTenantSelfProfile`'s OTP-verification block (matching `data.phone_1_otp`/`data.phone_otp` against a verified `phoneVerificationOtp` row) can never execute anymore, since `phone_1`/`phone` are rejected before reaching it. Left in place rather than removed (low-risk, other unaudited callers may still reach this method) — flagged here so a future reader isn't confused by unreachable code. See [[Decisions]] ADR-069.
+
+**Profile tab visual pattern**: the 4 detail screens (Personal information / Contact details / Emergency contact / Academic details) are read-only card views by default — label/value rows, a person-card for Emergency Contact, a "Verified" pill on Personal Information when KYC is complete — matching `Stayo Tenant.dc.html`'s own DETAIL-map design exactly. Tapping the screen's own bottom button (its original design copy — e.g. "Request a correction", "Update contact details") switches to an editable form inside the *same* card layout; saving (or a no-op with unchanged direct fields) returns to the read-only view. See `ProfileEditScreen.tsx` + `configs/profileEditConfigs.ts`.
+
+## The portable profile — identity is person-level, verification is not (2026-08-15, phase B)
+
+See [[Decisions#ADR-074|ADR-074]]. Three rules follow from identity moving off `tenants`.
+
+**1. A person-level field changed by one owner changes it everywhere — so owners propose, they no longer apply.**
+
+`field-classification.ts` used to put `college_name`, `roll_number`, `course`, `year_of_study`, `branch`, `section`, `office_name`, `office_location`, `job_role`, `profile_type`, `photo_url`, `gender` and `date_of_birth` in **Category A** (owner edits immediately, audit log only). All of them are now **Category B** — owner proposes, tenant approves — alongside guardian fields, `personal_email` and `permanent_address`, which were already B but pointed at `tenants`.
+
+The test for Category B is **not** "is this sensitive". It is **"does one hostel changing it affect another"**. Under the old rules an owner editing `college_name` would silently rewrite the person's record at a hostel that owner has no relationship with.
+
+Category A now holds only genuinely per-tenancy flags: `document_verified`, `profile_completed`, `mobile_verified` — each of which means "has *this* owner checked *this* tenant", not a fact about the person.
+
+`temporary_address` deliberately stays on `tenants`: it is where someone lives *for this tenancy*, usually the hostel itself.
+
+**Accepted cost, named before building:** owners lose immediate edit on academic and personal fields.
+
+**2. A document is portable; a verification decision is not.**
+
+The vault (`identity_documents`) holds the file, uploaded once. `identity_document_shares` holds one row per (document, hostel) and carries the verdict — `PENDING`/`VERIFIED`/`REJECTED`, plus who decided and when.
+
+- An owner may see a document **only** through a live (non-revoked) share for a hostel they own.
+- Owner A verifying a document does **not** make it verified for Owner B. The tenant re-uses the *file*, never the judgement.
+- Revoking sets `revoked_at` rather than deleting, so an owner who verified something stays attributable afterwards.
+- Re-granting a previously revoked share **keeps** its old status: the same owner already checked that same file, and making them re-verify is friction with no safety benefit.
+- Rejection requires a reason — the same rule `owner_documents.review_note` already follows.
+- Replacing a document of the same type retires the old row (`is_active: false`) instead of deleting it, because existing shares point at what the owner actually looked at.
+
+This settles a contradiction in the design source: its verify screen promises "shared only with the owner you enquire to" while its profile screen promises "verified once, reuse anywhere". Only one can be the default; **uploaded once, verified per hostel** is it.
+
+**3. Reads are profile-first with a tenancy fallback, and the precedence is fixed.**
+
+Until the backfill has run for someone, their tenancy is still the best record available, so `getIdentity()` falls back to it: the **live** tenancy (`INVITED`/`ACTIVE`) first, else the most recently created — **never** an `orderBy: { status: 'asc' }`, which would prefer `INVITED` over `ACTIVE` because that is the order `TenantStatus` declares them. `scripts/backfill-profile-identity.ts` uses the identical precedence, so a read before the backfill and a read after it agree on which value wins.
+
+Blank values are never written by an update. Onboarding writes back to this record and its forms ask for a subset of the fields, so treating an absent field as "clear it" would let a short form wipe a longer one's answers.
+
+## Residency history — earned disclosure, facts only (2026-08-15)
+
+See [[Decisions#ADR-075|ADR-075]], which narrows [[Decisions#ADR-053|ADR-053]] rather than reversing it.
+
+**Who may see a person's stay history**, decided in one place (`residencyHistoryService.resolveAccess`), in this order:
+
+1. an explicit `REVOKED` or `DECLINED` row → **no** (the tenant's refusal outranks everything)
+2. an explicit `APPROVED` row → yes
+3. engagement — an **open enquiry** to that hostel, or a **tenancy** at it → yes
+4. otherwise → no
+
+An owner who has not earned access gets an empty list and a reason, never a count and never a hint that history exists. **Typing an identifier is not engagement**, which is what keeps ADR-053's enumeration protection intact.
+
+**What travels: facts only.** Hostel, city, joined/left dates, duration, room number, sharing, monthly rent, and whether the move-out settled.
+
+**What never travels:** `exit_reason`, `exit_notes`, `tenant_behavior_scores`, or any owner-authored note. These are one owner's unreviewed opinion; letting them follow a person means a single bad exit blacklists them across every hostel on Stayo with no right of reply. Enforced by the projection and asserted by test.
+
+**An invitation never taken up is not a stay.** Filtered on `activation_completed_at`, so an expired or cancelled invite never appears as a tenancy someone abandoned.
+
+**Owners request; only tenants decide.** There is no owner route that grants access. A request cannot re-open a `DECLINED`/`REVOKED` answer — otherwise "no" becomes a nag, and the repeated ask is itself a message the tenant never consented to receiving.
+
+**The known limit:** history cannot appear while an owner *composes* an invite, because the invitee has not responded and showing it there would rebuild the lookup-by-email oracle ADR-053 blocks. Owners request instead; the tenant answers.
 
 ## Explicit "Unknown / needs clarification" items
 

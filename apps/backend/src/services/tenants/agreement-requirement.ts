@@ -18,8 +18,16 @@
 
 export type ActivationStep = "ACCOUNT" | "RULES" | "AGREEMENT" | "PROFILE" | "ACTIVATE";
 
-/** Every step, in order, when the agreement ceremony applies. */
-export const ALL_ACTIVATION_STEPS: ActivationStep[] = ["ACCOUNT", "RULES", "AGREEMENT", "PROFILE", "ACTIVATE"];
+/**
+ * Every step, in order, when the agreement ceremony applies.
+ *
+ * PROFILE precedes AGREEMENT (ADR-070) — the tenant completes their identity
+ * profile before reviewing and signing the residency agreement, matching the
+ * `stayo onbaording/Stayo Onboarding.dc.html` design source. This governs the
+ * server-enforced completion order via `nextActivationStep()` below and
+ * `activation-workflow-service.ts`'s `assertTransition()`/`blockedSteps()`.
+ */
+export const ALL_ACTIVATION_STEPS: ActivationStep[] = ["ACCOUNT", "RULES", "PROFILE", "AGREEMENT", "ACTIVATE"];
 
 /** The steps skipped when a hostel does not require an agreement. */
 const AGREEMENT_STEPS: ActivationStep[] = ["RULES", "AGREEMENT"];

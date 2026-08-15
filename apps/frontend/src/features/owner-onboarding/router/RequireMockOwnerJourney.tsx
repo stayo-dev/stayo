@@ -14,6 +14,6 @@ interface RequireMockOwnerJourneyProps {
 export function RequireMockOwnerJourney({ require }: RequireMockOwnerJourneyProps) {
   const journey = useMockOwnerJourney();
   const ok = require === 'activated' ? journey.activated : journey.authenticated;
-  if (!ok) return <Navigate to="/" replace />;
+  if (!ok) return <Navigate to="/owners" replace />;
   return <Outlet />;
 }

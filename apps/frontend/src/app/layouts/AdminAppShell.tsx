@@ -19,7 +19,7 @@ import { ACTIONABLE_STATUSES } from '@/platforms/admin/leads/leadQueue';
  */
 const ADMIN_TABS = [
   { to: '/admin', label: 'Dashboard', icon: LayoutGrid, end: true },
-  { to: '/admin/hostels', label: 'Hostels', icon: Building2 },
+  { to: '/admin/owners', label: 'Owners', icon: Building2 },
   { to: '/admin/leads', label: 'Leads', icon: UserPlus },
   { to: '/admin/documents', label: 'Documents', icon: FileCheck },
   { to: '/admin/revenue', label: 'Revenue', icon: IndianRupee },
@@ -28,6 +28,7 @@ const ADMIN_TABS = [
 
 const PAGE_HEADERS: Record<string, { title: string; subtitle: string }> = {
   '/admin': { title: 'Dashboard', subtitle: 'How Stayo is doing today' },
+  '/admin/owners': { title: 'Owners', subtitle: 'Every business using Stayo' },
   '/admin/hostels': { title: 'Hostels', subtitle: 'Every hostel on the platform' },
   '/admin/leads': { title: 'Leads', subtitle: 'Prospective hostel owners' },
   '/admin/documents': { title: 'Owner documents', subtitle: 'Verify Aadhaar and PAN before a hostel goes live' },

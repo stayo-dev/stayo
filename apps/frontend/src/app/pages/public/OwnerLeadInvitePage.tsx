@@ -68,7 +68,7 @@ export function OwnerLeadInvitePage() {
       <p className="mt-2 max-w-sm text-sm text-muted-foreground">
         {errorMessage || 'This activation link has expired or was already used.'}
       </p>
-      <Link to="/" className="mt-5 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground">
+      <Link to="/owners" className="mt-5 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground">
         Back to StayO
       </Link>
     </div>

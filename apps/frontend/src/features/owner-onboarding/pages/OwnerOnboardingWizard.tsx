@@ -2,38 +2,22 @@ import type { CSSProperties } from 'react';
 import { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Save, Check, ArrowLeft, ArrowRight } from 'lucide-react';
-import { generationPromptFor, type GenerationPrompt } from '../generationGate';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useOwnerOnboardingState, type OwnerOnboardingData } from '../hooks/useOwnerOnboardingState';
 import { useOnboardingSubmission } from '../hooks/useOnboardingSubmission';
-import { OnboardingScene } from '../components/OnboardingScene';
+import { HostelScene } from '@shared/ui/brand';
+import { onboardingSceneState } from '../components/onboardingScene';
 import { WelcomeStep } from '../components/steps/WelcomeStep';
 import { AccountStep } from '../components/steps/AccountStep';
 import { KycStep } from '../components/steps/KycStep';
-import { CreateStep } from '../components/steps/CreateStep';
-import { LocationStep } from '../components/steps/LocationStep';
-import { DetailsStep } from '../components/steps/DetailsStep';
-import { FloorsStep } from '../components/steps/FloorsStep';
-import { RoomsStep } from '../components/steps/RoomsStep';
-import { BedsStep } from '../components/steps/BedsStep';
-import { ReviewStep } from '../components/steps/ReviewStep';
-import { PublishStep } from '../components/steps/PublishStep';
 import { SuccessStep } from '../components/steps/SuccessStep';
 
-const MILESTONE_NAMES = ['Owner', 'Verified', 'Location', 'Building', 'Rooms', 'Beds', 'Review', 'Live'];
+const MILESTONE_NAMES = ['Owner', 'Verified', 'Ready'];
 const MILESTONE_MAP: Record<string, number> = {
   account: 0,
   kyc: 1,
-  create: 2,
-  location: 2,
-  details: 3,
-  floors: 3,
-  rooms: 4,
-  beds: 5,
-  review: 6,
-  publish: 7,
-  success: 7,
+  success: 2,
 };
 
 const CONFETTI_COLORS = ['#A45D44', '#D2986C', '#EBD9C4', '#1F8A5B', '#F4C67A'];
@@ -84,7 +68,6 @@ export function OwnerOnboardingWizard() {
   const s = useOwnerOnboardingState(initialData);
   const submission = useOnboardingSubmission(s, leadToken);
 
-  const [pendingSkip, setPendingSkip] = useState<GenerationPrompt | null>(null);
 
   const isWelcome = s.screenId === 'welcome';
   const isSuccess = s.screenId === 'success';
@@ -99,7 +82,7 @@ export function OwnerOnboardingWizard() {
 
   return (
     <div className="relative min-h-screen overflow-x-hidden">
-      <OnboardingScene step={s.step} screenId={s.screenId} data={s.data} hostelDisplay={s.hostelDisplay} />
+      <HostelScene {...onboardingSceneState(s.step, s.screenId, s.data.hostelName)} />
 
       {/* atmospheric scrim keeps the form crisp & legible over the scene */}
       <div className="pointer-events-none fixed inset-0 z-[1] bg-[linear-gradient(90deg,var(--background)_0%,color-mix(in_srgb,var(--background)_94%,transparent)_28%,color-mix(in_srgb,var(--background)_55%,transparent)_52%,transparent_78%)]" />
@@ -109,7 +92,7 @@ export function OwnerOnboardingWizard() {
         {/* TOP BAR + JOURNEY */}
         <div className="sticky top-0 z-40 border-b border-border/60 bg-background/72 backdrop-blur-md">
           <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3.5 sm:px-7.5">
-            <a href="/" className="flex flex-none items-center gap-2">
+            <a href="/owners" className="flex flex-none items-center gap-2">
               <span className="font-display text-xl font-extrabold tracking-tight text-primary">Stayo</span>
             </a>
             <div className="flex-1" />
@@ -215,23 +198,7 @@ export function OwnerOnboardingWizard() {
               />
             )}
             {s.screenId === 'kyc' && <KycStep kyc={s.kyc} setKyc={s.setKyc} />}
-            {s.screenId === 'create' && <CreateStep data={s.data} setD={s.setD} />}
-            {s.screenId === 'location' && <LocationStep data={s.data} setD={s.setD} />}
-            {s.screenId === 'details' && <DetailsStep data={s.data} setD={s.setD} />}
-            {s.screenId === 'floors' && <FloorsStep data={s.data} setD={s.setD} generated={s.floorsGen} onGenerate={() => s.setFloorsGen(true)} />}
-            {s.screenId === 'rooms' && <RoomsStep data={s.data} setD={s.setD} generated={s.roomsGen} onGenerate={() => s.setRoomsGen(true)} />}
-            {s.screenId === 'beds' && <BedsStep data={s.data} setD={s.setD} generated={s.bedsGen} onGenerate={() => s.setBedsGen(true)} />}
-            {s.screenId === 'review' && (
-              <ReviewStep data={s.data} hostelDisplay={s.hostelDisplay} totalRooms={s.totalRooms} totalBeds={s.totalBeds} />
-            )}
-            {s.screenId === 'publish' && <PublishStep publishChoice={s.publishChoice} setPublishChoice={s.setPublishChoice} />}
-            {s.screenId === 'success' && (
-              <SuccessStep
-                hostelDisplay={s.hostelDisplay}
-                publishChoice={s.publishChoice}
-                onExplore={() => navigate('/owner/home')}
-              />
-            )}
+            {s.screenId === 'success' && <SuccessStep onExplore={() => navigate('/owner/home')} />}
           </div>
         </div>
 
@@ -252,7 +219,7 @@ export function OwnerOnboardingWizard() {
               <div className="flex-1" />
               <button
                 type="button"
-                disabled={submission.sendingOtp || submission.publishing}
+                disabled={submission.sendingOtp}
                 onClick={() => {
                   if (isSuccess) return navigate('/owner/home');
 
@@ -265,21 +232,7 @@ export function OwnerOnboardingWizard() {
                     return;
                   }
 
-                  // Generating floors/rooms/beds is optional, but walking past
-                  // it silently is how an owner finishes onboarding having
-                  // laid out nothing. Ask once, then respect the answer.
-                  const prompt = generationPromptFor(s.screenId, {
-                    floorsGen: s.floorsGen,
-                    roomsGen: s.roomsGen,
-                    bedsGen: s.bedsGen,
-                  });
-                  if (prompt) {
-                    setPendingSkip(prompt);
-                    return;
-                  }
-
                   if (s.screenId === 'account') return submission.submitAccount();
-                  if (s.screenId === 'publish') return submission.submitPublish();
                   return s.next();
                 }}
                 className="inline-flex items-center gap-2 rounded-[13px] bg-primary px-7.5 py-3.5 font-display text-base font-bold text-primary-foreground shadow-[0_12px_28px_-12px_rgba(164,93,68,0.65)] transition-transform hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-60"
@@ -288,8 +241,6 @@ export function OwnerOnboardingWizard() {
                   ? 'Creating account…'
                   : s.screenId === 'account' && submission.accountReady
                   ? 'Continue'
-                  : s.screenId === 'publish' && submission.publishing
-                  ? 'Publishing…'
                   : s.continueLabel}
                 <ArrowRight className="h-4 w-4" strokeWidth={2.4} />
               </button>
@@ -299,40 +250,6 @@ export function OwnerOnboardingWizard() {
       </div>
 
       {/* OTP SHEET */}
-      {/* Generation confirm — floors/rooms/beds only. Generating stays
-          optional, so this asks rather than blocks, and says the work can be
-          done later so the dialog is guidance and not an obstacle. */}
-      <BottomSheet
-        open={pendingSkip !== null}
-        onOpenChange={(next) => !next && setPendingSkip(null)}
-        title={pendingSkip?.title ?? ''}
-      >
-        {pendingSkip && (
-          <div className="px-5 pb-6">
-            <p className="text-[14px] leading-relaxed text-muted-foreground">{pendingSkip.body}</p>
-            <div className="mt-5 flex flex-col gap-2.5">
-              <button
-                type="button"
-                onClick={() => setPendingSkip(null)}
-                className="rounded-xl bg-primary px-5 py-3 font-display text-[15px] font-bold text-primary-foreground"
-              >
-                {pendingSkip.confirmLabel}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setPendingSkip(null);
-                  s.next();
-                }}
-                className="rounded-xl border-[1.5px] border-border px-5 py-3 font-display text-[15px] font-bold text-foreground/80"
-              >
-                {pendingSkip.skipLabel}
-              </button>
-            </div>
-          </div>
-        )}
-      </BottomSheet>
-
       <BottomSheet
         open={s.otpOpen}
         onOpenChange={s.setOtpOpen}

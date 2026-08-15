@@ -1,18 +1,9 @@
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { stayoToast } from '@shared/ui-patterns/Toast';
-import { onboardingApi, type HostelTypeCode } from '../api/onboardingApi';
-import { hostelLeadsApi } from '@features/hostel-leads/api';
-import type { OwnerOnboardingData, OwnerOnboardingStateApi } from './useOwnerOnboardingState';
+import { onboardingApi } from '../api/onboardingApi';
+import type { OwnerOnboardingStateApi } from './useOwnerOnboardingState';
 import { clearStoredDraft } from '../onboardingDraft';
-
-/** The wizard's display labels → the codes the backend stores. */
-const HOSTEL_TYPE_CODES: Record<OwnerOnboardingData['type'], HostelTypeCode> = {
-  Boys: 'BOYS',
-  Girls: 'GIRLS',
-  'Co-Living': 'CO_LIVING',
-  'Working Pros': 'WORKING_PROS',
-};
 
 /**
  * The backend's 409 "this already exists" — a taken email on
@@ -51,7 +42,6 @@ export function useOnboardingSubmission(s: OwnerOnboardingStateApi, leadToken?: 
   const [otpCode, setOtpCode] = useState('');
   const [sendingOtp, setSendingOtp] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
-  const [publishing, setPublishing] = useState(false);
 
   const completeSignup = async () => {
     const email = s.data.email.trim();
@@ -143,63 +133,6 @@ export function useOnboardingSubmission(s: OwnerOnboardingStateApi, leadToken?: 
     }
   };
 
-  /**
-   * Publishes the hostel in a single request.
-   *
-   * This used to be `1 + floors + (floors × roomsPerFloor)` sequential calls —
-   * 45 for the default 4-floor, 10-room property — with no transaction and no
-   * rollback. A failure at floor 3 committed a half-built hostel, and pressing
-   * Publish again hit the owner-scoped duplicate-name guard and 400'd forever,
-   * leaving the owner permanently stuck on this step. The backend now does the
-   * whole thing inside one transaction, so a failure leaves nothing behind and
-   * retrying just works.
-   */
-  const submitPublish = async () => {
-    setPublishing(true);
-    try {
-      await onboardingApi.provisionHostel({
-        name: s.data.hostelName.trim() || 'My Hostel',
-        type: HOSTEL_TYPE_CODES[s.data.type],
-        address: s.data.address.trim(),
-        city: s.data.city.trim() || undefined,
-        food_included: s.data.food === 'Yes',
-        security_deposit: Number(s.data.deposit) || 0,
-        floors: s.data.floors,
-        rooms_per_floor: s.data.roomsPerFloor,
-        beds_per_room: s.data.bedsPerRoom,
-        base_rent: Number(s.data.monthlyRent),
-        publish: s.publishChoice,
-      });
-
-      if (leadToken) {
-        try {
-          await hostelLeadsApi.completeInvitation(leadToken);
-        } catch (err) {
-          console.error('[useOnboardingSubmission] lead-complete side effect failed (non-fatal)', err);
-        }
-      }
-
-      // The hostel exists now, so the saved draft is spent. Leaving it would
-      // offer to "resume" an onboarding that already finished.
-      clearStoredDraft();
-
-      s.go(s.step + 1);
-    } catch (error) {
-      // A 409 means this owner already has a hostel by that name — most often
-      // a shell left behind by the pre-transaction publish flow. Say so
-      // plainly instead of asking them to retry something that cannot succeed.
-      if (isAlreadyRegistered(error)) {
-        stayoToast.error(
-          getErrorMessage(error, 'You already have a hostel with this name. Rename it here, or open it from your dashboard.'),
-        );
-      } else {
-        stayoToast.error(getErrorMessage(error, 'Could not publish your hostel. Please try again.'));
-      }
-    } finally {
-      setPublishing(false);
-    }
-  };
-
   return {
     accountReady: accountReady || Boolean(user),
     password,
@@ -210,9 +143,7 @@ export function useOnboardingSubmission(s: OwnerOnboardingStateApi, leadToken?: 
     setOtpCode,
     sendingOtp,
     verifyingOtp,
-    publishing,
     submitAccount,
     submitOtp,
-    submitPublish,
   };
 }

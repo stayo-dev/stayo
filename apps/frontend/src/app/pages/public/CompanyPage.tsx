@@ -46,7 +46,7 @@ export function CompanyPage() {
                 Contact
               </Link>
               <Link
-                to="/"
+                to="/owners"
                 className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4.5 py-2.5 font-display text-sm font-bold text-primary-foreground shadow-[0_8px_18px_-8px_rgba(164,93,68,0.6)] transition-transform hover:scale-[1.02]"
               >
                 Explore Stayo

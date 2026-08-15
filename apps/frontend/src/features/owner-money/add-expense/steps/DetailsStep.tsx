@@ -20,6 +20,11 @@ interface DetailsStepProps {
   onReused?: () => void;
 }
 
+/** Capitalizes the first letter of each word without touching the rest, so casing typed mid-word (e.g. "iPhone") is preserved. */
+function capitalizeWords(value: string): string {
+  return value.replace(/(^|\s)([a-z])/g, (_match, sep, char) => sep + char.toUpperCase());
+}
+
 /* ── Confidence label ────────────────────────────────────────────── */
 
 function confidenceLabel(occurrences: number): string | null {
@@ -399,7 +404,7 @@ export function DetailsStep({ data, setD, onReused }: DetailsStepProps) {
         </span>
         <input
           value={data.title}
-          onChange={(e) => setD({ title: e.target.value })}
+          onChange={(e) => setD({ title: capitalizeWords(e.target.value) })}
           placeholder="e.g. Rice purchase, Electricity bill, Staff salary"
           className="w-full rounded-2xl border-[1.5px] border-border bg-card px-4 py-4 text-[15px] font-semibold text-foreground focus:border-primary focus:outline-none"
         />

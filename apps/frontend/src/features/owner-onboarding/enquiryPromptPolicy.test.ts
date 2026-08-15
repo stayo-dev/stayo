@@ -70,6 +70,28 @@ describe('shouldShowEnquiryPrompt', () => {
     expect(shouldShowEnquiryPrompt({ ...base, alreadyShownThisSession: true })).toBe(false);
   });
 
+  // ADR-071: picking "owner" on the welcome screen at `/` answers the exact
+  // question this prompt asks, and opens the lead conversation on arrival.
+  // Asking again — on the page they were sent to *because* they answered —
+  // reads as not listening, and would stack a second card over the modal.
+  it('never asks a visitor who already chose "owner" on the welcome screen', () => {
+    expect(shouldShowEnquiryPrompt({ ...base, declaredOwnerIntent: true })).toBe(false);
+  });
+
+  it('suppresses declared intent regardless of scroll depth or dismissal state', () => {
+    expect(shouldShowEnquiryPrompt({ ...base, declaredOwnerIntent: true, scrollFraction: 1 })).toBe(false);
+    expect(
+      shouldShowEnquiryPrompt({ ...base, declaredOwnerIntent: true, alreadyShownThisSession: true }),
+    ).toBe(false);
+  });
+
+  // The field is optional so the callers with no such signal stay unchanged;
+  // absent and `false` must behave identically to the pre-ADR-071 rules.
+  it('is unaffected when the caller supplies no intent signal at all', () => {
+    expect(shouldShowEnquiryPrompt(base)).toBe(true);
+    expect(shouldShowEnquiryPrompt({ ...base, declaredOwnerIntent: false })).toBe(true);
+  });
+
   // The persistent 7-day cooldown was deliberately removed: on a pre-launch
   // marketing page, re-asking costs less than silently never asking again, and
   // an invisible stored timestamp made the feature look broken. A reload must

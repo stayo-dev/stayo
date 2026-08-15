@@ -6,7 +6,11 @@ const AdminProviderShell = lazy(() =>
   import('./AdminProviderShell').then((m) => ({ default: m.AdminProviderShell })),
 );
 const AdminHostelsPage = lazy(() => import('../pages/AdminHostelsPage').then((m) => ({ default: m.AdminHostelsPage })));
+const AdminOwnersPage = lazy(() => import('../pages/AdminOwnersPage').then((m) => ({ default: m.AdminOwnersPage })));
 const AdminLeadsPage = lazy(() => import('../pages/AdminLeadsPage').then((m) => ({ default: m.AdminLeadsPage })));
+const AdminMarketingReviewsPage = lazy(() =>
+  import('@/platforms/admin/pages/AdminMarketingReviewsPage').then((m) => ({ default: m.AdminMarketingReviewsPage })),
+);
 const AdminDocumentsPage = lazy(() => import('../pages/AdminDocumentsPage').then((m) => ({ default: m.AdminDocumentsPage })));
 const AdminRevenuePage = lazy(() => import('../pages/AdminRevenuePage').then((m) => ({ default: m.AdminRevenuePage })));
 const AdminDashboardPage = lazy(() => import('../pages/AdminDashboardPage').then((m) => ({ default: m.AdminDashboardPage })));
@@ -25,8 +29,15 @@ export function AdminRoutes() {
     <Route element={<AdminProviderShell />}>
       <Route element={<AdminAppShell />}>
         <Route path="/admin" element={<AdminDashboardPage />} />
+        {/* Owners is the primary list; a hostel is a child of an owner.
+            Hostels stays routable so owner cards can deep-link into it. */}
+        <Route path="/admin/owners" element={<AdminOwnersPage />} />
         <Route path="/admin/hostels" element={<AdminHostelsPage />} />
         <Route path="/admin/leads" element={<AdminLeadsPage />} />
+        {/* Listing content waiting on a human — see ADR-076. Separate from
+            /admin/hostels, which gates whether a hostel is discoverable at
+            all; a listing needs both. */}
+        <Route path="/admin/marketing-reviews" element={<AdminMarketingReviewsPage />} />
         <Route path="/admin/documents" element={<AdminDocumentsPage />} />
         <Route path="/admin/revenue" element={<AdminRevenuePage />} />
         <Route path="/admin/more" element={<AdminMorePage />} />

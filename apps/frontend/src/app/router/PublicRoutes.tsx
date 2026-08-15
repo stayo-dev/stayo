@@ -5,6 +5,7 @@ import { queryClient } from '@lib/queryClient';
 import { AuthProvider } from '@context/AuthContext';
 import { StayoLoadingScreen } from '@shared/ui/brand';
 
+const WelcomePage = lazy(() => import('@/app/pages/public/WelcomePage').then((m) => ({ default: m.WelcomePage })));
 const LandingPage = lazy(() => import('@/app/pages/public/LandingPage').then((m) => ({ default: m.LandingPage })));
 const LeadSignupCallbackPage = lazy(() => import('@/app/pages/public/LeadSignupCallbackPage').then((m) => ({ default: m.LeadSignupCallbackPage })));
 const OwnerLeadInvitePage = lazy(() => import('@/app/pages/public/OwnerLeadInvitePage').then((m) => ({ default: m.OwnerLeadInvitePage })));
@@ -17,7 +18,7 @@ const VisitPage = lazy(() => import('@/app/pages/public/VisitPage').then((m) => 
 const AuthCallbackPage = lazy(() => import('@/app/pages/AuthCallbackPage').then((m) => ({ default: m.AuthCallbackPage })));
 const ForgotPasswordPage = lazy(() => import('@/app/pages/ForgotPasswordPage').then((m) => ({ default: m.ForgotPasswordPage })));
 const ResetPasswordPage = lazy(() => import('@/app/pages/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })));
-const ActivateAccountPage = lazy(() => import('@/portal/pages/ActivateAccountPage').then((m) => ({ default: m.ActivateAccountPage })));
+const ActivationPage = lazy(() => import('@/platforms/tenant/onboarding/ActivationPage').then((m) => ({ default: m.ActivationPage })));
 const CompleteProfilePage = lazy(() => import('@/portal/pages/CompleteProfilePage').then((m) => ({ default: m.CompleteProfilePage })));
 const AuthRouteShell = lazy(() => import('@/app/providers/AuthRouteShell').then((m) => ({ default: m.AuthRouteShell })));
 const ReceiptVerificationPage = lazy(() => import('@/app/pages/public/ReceiptVerificationPage').then((m) => ({ default: m.ReceiptVerificationPage })));
@@ -62,7 +63,14 @@ export function PublicRoutes() {
     <>
       {/* ── Public hostel landing pages (SEO crawlable) ──────────────── */}
       <Route element={<PublicShell />}>
-        <Route path="/" element={<LandingPage />} />
+        {/* ADR-071: `/` asks which audience you are before it pitches at you.
+            The owner marketing page it used to hold now lives at `/owners`,
+            which is where "Start free" hands off to. Every other route that
+            means "the owner home" points at `/owners` too — `/` is a fork,
+            not a destination, so landing a signed-out owner there after a
+            session expiry or a logo click would have been a step backwards. */}
+        <Route path="/" element={<WelcomePage />} />
+        <Route path="/owners" element={<LandingPage />} />
         {/* ADR-035: one login surface. `/login` is the landing page with the
             Stayo login popup already open — kept as a real URL because
             session expiry, the admin guard, password reset and tenant
@@ -95,9 +103,9 @@ export function PublicRoutes() {
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
-        <Route path="/activate" element={<ActivateAccountPage />} />
-        <Route path="/activate/:token" element={<ActivateAccountPage />} />
-        <Route path="/invite/:token" element={<ActivateAccountPage />} />
+        <Route path="/activate" element={<ActivationPage />} />
+        <Route path="/activate/:token" element={<ActivationPage />} />
+        <Route path="/invite/:token" element={<ActivationPage />} />
         <Route path="/complete-profile" element={<CompleteProfilePage />} />
       </Route>
     </>

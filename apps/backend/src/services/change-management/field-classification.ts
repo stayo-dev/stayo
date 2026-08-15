@@ -24,8 +24,20 @@ import type { ChangeCategory, ChangeApprovalLevel } from "@prisma/client";
 export interface FieldClassification {
   /** The database column name */
   field: string;
-  /** Which table this field lives in */
-  table: "tenants" | "profile" | "agreement" | "rent_obligations" | "tenant_financial_ledger" | "payments";
+  /**
+   * Which table this field lives in.
+   *
+   * `profile_identity` (added by phase B) is the person-level identity record —
+   * shared across every tenancy, which is why everything in it is Category B.
+   */
+  table:
+    | "tenants"
+    | "profile"
+    | "profile_identity"
+    | "agreement"
+    | "rent_obligations"
+    | "tenant_financial_ledger"
+    | "payments";
   /** Change category: A, B, C, D */
   category: ChangeCategory;
   /** Approval level: L0, L1, L2, L3 */
@@ -40,25 +52,13 @@ export interface FieldClassification {
 // These fields can be edited immediately by the owner.
 // No tenant approval required. Audit log only.
 
+// Since phase B (2026-08-15) this category holds ONLY fields that describe
+// *this tenancy*. The academic, professional and personal-metadata fields that
+// used to live here are person-level now (`profile_identity`) and moved to
+// Category B — see the note above CATEGORY_B_FIELDS.
 const CATEGORY_A_FIELDS: FieldClassification[] = [
-  // Academic / Professional
-  { field: "year_of_study",     table: "tenants", category: "A", approvalLevel: "L1", label: "Year of Study",      hasFinancialImpact: false },
-  { field: "section",           table: "tenants", category: "A", approvalLevel: "L1", label: "Section",            hasFinancialImpact: false },
-  { field: "branch",            table: "tenants", category: "A", approvalLevel: "L1", label: "Branch",             hasFinancialImpact: false },
-  { field: "course",            table: "tenants", category: "A", approvalLevel: "L1", label: "Course",             hasFinancialImpact: false },
-  { field: "college_name",      table: "tenants", category: "A", approvalLevel: "L1", label: "College Name",       hasFinancialImpact: false },
-  { field: "roll_number",       table: "tenants", category: "A", approvalLevel: "L1", label: "Roll Number",        hasFinancialImpact: false },
-  { field: "profile_type",      table: "tenants", category: "A", approvalLevel: "L1", label: "Profile Type",       hasFinancialImpact: false },
-  { field: "office_name",       table: "tenants", category: "A", approvalLevel: "L1", label: "Office Name",        hasFinancialImpact: false },
-  { field: "office_location",   table: "tenants", category: "A", approvalLevel: "L1", label: "Office Location",    hasFinancialImpact: false },
-  { field: "job_role",          table: "tenants", category: "A", approvalLevel: "L1", label: "Job Role",           hasFinancialImpact: false },
-
-  // Personal metadata
-  { field: "photo_url",         table: "tenants", category: "A", approvalLevel: "L1", label: "Photo",              hasFinancialImpact: false },
-  { field: "gender",            table: "tenants", category: "A", approvalLevel: "L1", label: "Gender",             hasFinancialImpact: false },
-  { field: "date_of_birth",     table: "tenants", category: "A", approvalLevel: "L1", label: "Date of Birth",      hasFinancialImpact: false },
-
-  // Operational (owner internal)
+  // Operational (owner internal) — genuinely per-tenancy: "has *this* owner
+  // checked *this* tenant's documents", not a fact about the person.
   { field: "document_verified", table: "tenants", category: "A", approvalLevel: "L1", label: "Document Verified",  hasFinancialImpact: false },
   { field: "profile_completed", table: "tenants", category: "A", approvalLevel: "L1", label: "Profile Completed",  hasFinancialImpact: false },
   { field: "mobile_verified",   table: "tenants", category: "A", approvalLevel: "L1", label: "Mobile Verified",    hasFinancialImpact: false },
@@ -68,9 +68,38 @@ const CATEGORY_A_FIELDS: FieldClassification[] = [
 // Owner proposes change → Tenant must approve.
 // Both values visible until resolution.
 
+//
+// **Phase B (2026-08-15) widened this category considerably.** Identity moved
+// off `tenants` (one row per tenancy) to `profile_identity` (one row per
+// person), so these fields are now shared across every hostel someone has ever
+// stayed in. An owner editing `college_name` under the old Category A rules
+// would have silently rewritten the person's record at a hostel that owner has
+// no relationship with — so every person-level field is a *proposal* now, which
+// is exactly what this category, already named "Shared Profile Data", does.
+//
+// The cost is real and was accepted at design time: owners lose immediate edit
+// on academic and personal fields. The test for whether a field belongs here is
+// not "is it sensitive" but "does one hostel changing it affect another".
 const CATEGORY_B_FIELDS: FieldClassification[] = [
   // Profile table fields
   { field: "name",              table: "profile", category: "B", approvalLevel: "L2", label: "Full Name",          hasFinancialImpact: false },
+
+  // ── Person-level identity (moved from Category A by phase B) ─────────────
+  { field: "date_of_birth",     table: "profile_identity", category: "B", approvalLevel: "L2", label: "Date of Birth",   hasFinancialImpact: false },
+  { field: "gender",            table: "profile_identity", category: "B", approvalLevel: "L2", label: "Gender",          hasFinancialImpact: false },
+  { field: "photo_url",         table: "profile_identity", category: "B", approvalLevel: "L2", label: "Photo",           hasFinancialImpact: false },
+  { field: "nationality",       table: "profile_identity", category: "B", approvalLevel: "L2", label: "Nationality",     hasFinancialImpact: false },
+  { field: "pan_number",        table: "profile_identity", category: "B", approvalLevel: "L2", label: "PAN Number",      hasFinancialImpact: false },
+  { field: "profile_type",      table: "profile_identity", category: "B", approvalLevel: "L2", label: "Profile Type",    hasFinancialImpact: false },
+  { field: "college_name",      table: "profile_identity", category: "B", approvalLevel: "L2", label: "College Name",    hasFinancialImpact: false },
+  { field: "roll_number",       table: "profile_identity", category: "B", approvalLevel: "L2", label: "Roll Number",     hasFinancialImpact: false },
+  { field: "course",            table: "profile_identity", category: "B", approvalLevel: "L2", label: "Course",          hasFinancialImpact: false },
+  { field: "year_of_study",     table: "profile_identity", category: "B", approvalLevel: "L2", label: "Year of Study",   hasFinancialImpact: false },
+  { field: "branch",            table: "profile_identity", category: "B", approvalLevel: "L2", label: "Branch",          hasFinancialImpact: false },
+  { field: "section",           table: "profile_identity", category: "B", approvalLevel: "L2", label: "Section",         hasFinancialImpact: false },
+  { field: "office_name",       table: "profile_identity", category: "B", approvalLevel: "L2", label: "Office Name",     hasFinancialImpact: false },
+  { field: "office_location",   table: "profile_identity", category: "B", approvalLevel: "L2", label: "Office Location", hasFinancialImpact: false },
+  { field: "job_role",          table: "profile_identity", category: "B", approvalLevel: "L2", label: "Job Role",        hasFinancialImpact: false },
   { field: "email",             table: "profile", category: "B", approvalLevel: "L2", label: "Email",              hasFinancialImpact: false },
   { field: "phone",             table: "profile", category: "B", approvalLevel: "L2", label: "Phone",              hasFinancialImpact: false },
   { field: "emergency_contact", table: "profile", category: "B", approvalLevel: "L2", label: "Emergency Contact",  hasFinancialImpact: false },
@@ -79,13 +108,17 @@ const CATEGORY_B_FIELDS: FieldClassification[] = [
   { field: "phone_1",           table: "tenants", category: "B", approvalLevel: "L2", label: "Primary Phone",      hasFinancialImpact: false },
   { field: "phone_2",           table: "tenants", category: "B", approvalLevel: "L2", label: "Guardian Phone",     hasFinancialImpact: false },
   { field: "phone_3",           table: "tenants", category: "B", approvalLevel: "L2", label: "Emergency Phone",    hasFinancialImpact: false },
-  { field: "guardian_name",     table: "tenants", category: "B", approvalLevel: "L2", label: "Guardian Name",      hasFinancialImpact: false },
-  { field: "guardian_phone",    table: "tenants", category: "B", approvalLevel: "L2", label: "Guardian Phone",     hasFinancialImpact: false },
-  { field: "guardian_relation", table: "tenants", category: "B", approvalLevel: "L2", label: "Guardian Relation",  hasFinancialImpact: false },
-  { field: "personal_email",    table: "tenants", category: "B", approvalLevel: "L2", label: "Personal Email",     hasFinancialImpact: false },
+  // Guardian is person-level since phase B — fields on the tenant's own
+  // profile, not a second account. Parent logins are out of scope.
+  { field: "guardian_name",     table: "profile_identity", category: "B", approvalLevel: "L2", label: "Guardian Name",      hasFinancialImpact: false },
+  { field: "guardian_phone",    table: "profile_identity", category: "B", approvalLevel: "L2", label: "Guardian Phone",     hasFinancialImpact: false },
+  { field: "guardian_relation", table: "profile_identity", category: "B", approvalLevel: "L2", label: "Guardian Relation",  hasFinancialImpact: false },
+  { field: "personal_email",    table: "profile_identity", category: "B", approvalLevel: "L2", label: "Personal Email",     hasFinancialImpact: false },
 
-  // Address fields
-  { field: "permanent_address", table: "tenants", category: "B", approvalLevel: "L2", label: "Permanent Address",  hasFinancialImpact: false },
+  // Address fields. `permanent_address` follows the person; `temporary_address`
+  // is where they live *for this tenancy* — usually the hostel itself — so it
+  // stays on `tenants` deliberately rather than by omission.
+  { field: "permanent_address", table: "profile_identity", category: "B", approvalLevel: "L2", label: "Permanent Address",  hasFinancialImpact: false },
   { field: "temporary_address", table: "tenants", category: "B", approvalLevel: "L2", label: "Temporary Address",  hasFinancialImpact: false },
   { field: "address",           table: "tenants", category: "B", approvalLevel: "L2", label: "Address",            hasFinancialImpact: false },
 ];

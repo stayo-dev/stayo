@@ -15,6 +15,27 @@ export type RealTenantDocument = ReviewDocument & {
   sub: string;
 };
 
+/**
+ * The live invitation behind an INVITED tenant, as normalized by the backend's
+ * `invitation` block on the overview response. Carries no activation token —
+ * `activationLink` is the only shareable form of it.
+ */
+export interface RealTenantInvitation {
+  id: string;
+  status: string;
+  activationLink: string;
+  sentAt: string | null;
+  expiresAt: string | null;
+  openedAt: string | null;
+  activationStartedAt: string | null;
+  reservationExpiresAt: string | null;
+  email: string;
+  revision: number;
+  reservedRoom: { id: string; roomNo: string; floor: string | null } | null;
+  agreementDurationMonths: number | null;
+  agreementStartDate: string | null;
+}
+
 export interface RealTenantDetail {
   id: string;
   hostelId: string;
@@ -38,6 +59,12 @@ export interface RealTenantDetail {
   obligations: TenantObligation[];
   activity: TenantActivityItem[];
   documents: RealTenantDocument[];
+  /** Present only while the tenant is still INVITED. */
+  invitation?: RealTenantInvitation;
+  /** Raw maintenance terms — needed to show one consistent move-in total. */
+  maintenanceCharge: number;
+  maintenanceType: 'MONTHLY' | 'ONE_TIME' | 'NONE';
+  email: string;
   stay: {
     hostelName: string;
     roomBed: string;
@@ -181,18 +208,58 @@ export function useTenantDetail(tenantId: string | undefined) {
         }))
       : [];
 
-    const hostelIdGuess = String(o.tenant?.hostel_id ?? o.hostel_id ?? '');
-    const hostelName = session.hostels.find((h) => h.id === hostelIdGuess)?.name || (o.current_room ? 'This hostel' : '—');
+    const inv = (o.invitation ?? null) as Record<string, any> | null;
+
+    // `hostel_id` is now returned by the overview endpoint. The invitation's
+    // own hostel is kept as a fallback because every hostel-scoped editor
+    // (room list, pricing defaults) is dead without a hostel id — that was the
+    // cause of the invited-tenant edit form opening completely blank.
+    const hostelId = String(o.hostel_id ?? o.tenant?.hostel_id ?? inv?.hostel_id ?? '');
+    const hostelName = session.hostels.find((h) => h.id === hostelId)?.name || (o.current_room ? 'This hostel' : '—');
+
+    /**
+     * An INVITED tenant has no `room_allocation` — the bed is held by a
+     * reservation until they activate. Reading the room from allocations alone
+     * made every invited tenant look room-less and permanently "incomplete".
+     */
+    const reservedRoomNo = inv?.reserved_room?.room_no ? String(inv.reserved_room.room_no) : '';
+    const roomLabel = o.current_room
+      ? String(o.current_room.room_no)
+      : reservedRoomNo || (o.room_number ? String(o.room_number) : '—');
+
+    const invitation: RealTenantInvitation | undefined = inv
+      ? {
+          id: String(inv.id),
+          status: String(inv.status ?? 'PENDING'),
+          activationLink: String(inv.activation_link ?? ''),
+          sentAt: inv.sent_at ? String(inv.sent_at) : null,
+          expiresAt: inv.expires_at ? String(inv.expires_at) : null,
+          openedAt: inv.opened_at ? String(inv.opened_at) : null,
+          activationStartedAt: inv.activation_started_at ? String(inv.activation_started_at) : null,
+          reservationExpiresAt: inv.reservation_expires_at ? String(inv.reservation_expires_at) : null,
+          email: String(inv.email ?? ''),
+          revision: Number(inv.revision ?? 1),
+          reservedRoom: inv.reserved_room
+            ? {
+                id: String(inv.reserved_room.id),
+                roomNo: String(inv.reserved_room.room_no),
+                floor: inv.reserved_room.floor ? String(inv.reserved_room.floor) : null,
+              }
+            : null,
+          agreementDurationMonths: inv.agreement_duration_months ? Number(inv.agreement_duration_months) : null,
+          agreementStartDate: inv.agreement_start_date ? String(inv.agreement_start_date) : null,
+        }
+      : undefined;
 
     tenant = {
       id: String(o.id ?? tenantId),
-      hostelId: hostelIdGuess,
+      hostelId,
       name: String(o.name ?? 'Tenant'),
       initials: getInitials(String(o.name ?? '')),
       phone: String(o.phone ?? ''),
       status,
       statusLabel,
-      room: o.current_room ? `${o.current_room.room_no}` : o.room_number ? String(o.room_number) : '—',
+      room: roomLabel,
       joinedDate: formatDate(o.joined_on ?? o.joined_at),
       hostelName,
       agreementStatus: o.has_active_agreement ? 'Signed' : 'Pending',
@@ -207,9 +274,15 @@ export function useTenantDetail(tenantId: string | undefined) {
       obligations,
       activity,
       documents,
+      invitation,
+      maintenanceCharge: Number(o.maintenance_charge ?? 0),
+      maintenanceType: (['MONTHLY', 'ONE_TIME', 'NONE'].includes(String(o.maintenance_type))
+        ? String(o.maintenance_type)
+        : 'NONE') as RealTenantDetail['maintenanceType'],
+      email: String(o.email ?? ''),
       stay: {
         hostelName,
-        roomBed: o.current_room ? `${o.current_room.room_no}` : '—',
+        roomBed: roomLabel,
         moveInDate: formatDate(o.joined_on ?? o.joined_at),
         agreementPeriod: o.current_agreement
           ? `${formatDate(o.current_agreement.agreement_start_date)} – ${formatDate(o.current_agreement.agreement_end_date)}`

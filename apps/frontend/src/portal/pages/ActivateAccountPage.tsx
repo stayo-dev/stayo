@@ -462,6 +462,14 @@ function RuleIcon({ icon }: { icon?: string }) {
   );
 }
 
+/**
+ * @deprecated Superseded by `platforms/tenant/onboarding/ActivationPage.tsx`,
+ * which now owns `/activate`, `/activate/:token`, `/invite/:token` in
+ * `PublicRoutes.tsx`. Kept per this repo's deprecate-don't-delete policy
+ * (`docs/migration/frontend-foundation-tracker.md`) rather than removed
+ * outright — no route or import references this component anymore; safe to
+ * delete once confirmed unused for a while.
+ */
 export function ActivateAccountPage() {
   const { token: pathToken } = useParams();
   const [searchParams] = useSearchParams();

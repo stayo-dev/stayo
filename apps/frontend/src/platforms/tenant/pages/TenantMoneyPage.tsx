@@ -4,23 +4,38 @@ import { Share2, Receipt, Wallet, Info, ShieldCheck, Undo2 } from 'lucide-react'
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { paymentService } from '@features/payments/api';
 import { useTenantFinancials } from '@features/tenant-financials/hooks/useTenantFinancials';
+import { useTenantProfile } from '@features/tenant-profile/hooks/useTenantProfile';
 import { PaySheet } from '@features/tenant-financials/components/PaySheet';
 
 const card = 'rounded-[16px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_4px_14px_rgba(40,30,20,0.05)]';
 const sectionLabel = 'text-[13px] font-bold tracking-[0.06em] text-[#9C9186]';
 
+// Real grades from `tenant-score-service.ts`: EXCELLENT/GOOD/FAIR/NEEDS_ATTENTION/HIGH_RISK
+// (a payment-risk score, starts at 100 and is deducted for late payments — NOT
+// a "new tenant builds up over time" narrative). The design mockup's demo
+// state shows a "New tenant" framing, but that doesn't match how the real
+// score works (a fresh tenant with no history starts at the top, EXCELLENT,
+// not the bottom) — so tier copy here reflects the real scoring semantics
+// instead of the mockup's specific illustrative scenario.
 const STANDING_TIERS = [
-  { key: 'NEEDS_ATTENTION', label: 'Building' },
+  { key: 'ATTENTION', label: 'Building' },
   { key: 'FAIR', label: 'Fair' },
   { key: 'GOOD', label: 'Good' },
   { key: 'EXCELLENT', label: 'Excellent' },
 ];
 
+const STANDING_COPY = [
+  { heading: 'Building Consistency', sub: 'On-time payments will lift your standing' },
+  { heading: 'Fair standing', sub: "You're on the right track" },
+  { heading: 'Good standing', sub: "You're a reliable payer" },
+  { heading: 'Excellent standing', sub: 'Outstanding track record' },
+];
+
 function standingIndex(grade: string | undefined) {
-  if (grade === 'HIGH_RISK' || grade === 'NEEDS_ATTENTION') return 0;
-  if (grade === 'FAIR') return 1;
+  if (grade === 'EXCELLENT') return 3;
   if (grade === 'GOOD') return 2;
-  return 3; // EXCELLENT / unknown-default
+  if (grade === 'FAIR') return 1;
+  return 0; // NEEDS_ATTENTION / HIGH_RISK / unknown
 }
 
 const TIMELINE_DOT: Record<string, string> = {
@@ -49,6 +64,7 @@ function LoadingSkeleton() {
 export function TenantMoneyPage() {
   const navigate = useNavigate();
   const fin = useTenantFinancials();
+  const profile = useTenantProfile();
 
   const shareLinkMutation = useMutation({
     mutationFn: () => paymentService.generatePayLink({ tenantId: undefined, obligationId: undefined }),
@@ -74,10 +90,23 @@ export function TenantMoneyPage() {
   const installmentTotal = rentDue + lateFeeDue + maintenanceDue;
   const reversedPayments = (fin.history as any[]).filter((p: any) => p.is_reversal);
 
+  const activeFreq = fin.billingFrequency?.active_frequency ? `${fin.billingFrequency.active_frequency.charAt(0)}${fin.billingFrequency.active_frequency.slice(1).toLowerCase()} plan` : 'Monthly plan';
+
   return (
     <div className="flex flex-col gap-6 px-4 pb-8 pt-6 sm:px-6">
-      <div>
-        <h1 className="font-display text-[24px] font-extrabold tracking-[-0.03em] text-foreground">Money</h1>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h1 className="font-display text-[24px] font-extrabold tracking-[-0.03em] text-foreground">Money</h1>
+          <p className="mt-0.5 text-[12px] font-medium text-muted-foreground">
+            {new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })} · {activeFreq}
+          </p>
+        </div>
+        {profile.room?.room_no && (
+          <span className="flex flex-none items-center gap-1.5 rounded-full bg-foreground px-3 py-[7px]">
+            <span className="h-1.5 w-1.5 rounded-full bg-success" />
+            <span className="text-[11px] font-semibold text-background/80">Room {profile.room.room_no}</span>
+          </span>
+        )}
       </div>
 
       <div className="relative overflow-hidden rounded-[22px] bg-foreground p-5 text-background shadow-[0_12px_30px_rgba(34,30,26,0.24)]">
@@ -119,28 +148,31 @@ export function TenantMoneyPage() {
         <div className="flex flex-col gap-2.5">
           <span className={sectionLabel}>Payment standing</span>
           <div className={`${card} p-[17px]`}>
-            <div className="flex items-center justify-between">
-              <div className="font-display text-base font-bold text-foreground">
-                {STANDING_TIERS[tierIndex].label}
+            <div className="flex items-center justify-between gap-2.5">
+              <div>
+                <div className="font-display text-base font-bold text-foreground">{STANDING_COPY[tierIndex].heading}</div>
+                <div className="mt-0.5 text-[12px] text-muted-foreground">{STANDING_COPY[tierIndex].sub}</div>
               </div>
-              <span className="rounded-full bg-secondary/60 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
+              <span className="flex-none rounded-full bg-secondary/60 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
                 Score {fin.score.score}
               </span>
             </div>
-            <div className="mt-3 flex gap-1.5">
+            <div className="mt-3.5 flex gap-1.5">
               {STANDING_TIERS.map((t, i) => (
                 <div key={t.key} className={`h-[7px] flex-1 rounded-full ${i <= tierIndex ? 'bg-primary' : 'bg-[#E7DDD1]'}`} />
               ))}
             </div>
             <div className="mt-1.5 flex justify-between">
-              {STANDING_TIERS.map((t) => (
-                <span key={t.key} className="text-[9.5px] font-semibold text-muted-foreground">{t.label}</span>
+              {STANDING_TIERS.map((t, i) => (
+                <span key={t.key} className={`text-[10px] font-semibold ${i === tierIndex ? 'text-primary' : 'text-[#B0A597]'}`}>{t.label}</span>
               ))}
             </div>
             <div className="mt-3 flex items-start gap-2 rounded-xl bg-[#F6F0E8] p-[13px]">
               <Info className="mt-0.5 h-3.5 w-3.5 flex-none text-[#9C7A52]" />
               <p className="text-[11px] leading-relaxed text-[#6B6259]">
-                Clear this month on time and you'll move up. Every on-time payment lifts your standing — no penalty for a slow start.
+                {tierIndex < 3
+                  ? <>Clear this month on time and you'll move to <b className="font-semibold text-[#4A433C]">{STANDING_TIERS[tierIndex + 1].label}</b>. Every on-time payment lifts your standing.</>
+                  : "You're at the top tier — keep it up with on-time payments."}
               </p>
             </div>
           </div>
@@ -203,6 +235,13 @@ export function TenantMoneyPage() {
                 </div>
               </div>
             </div>
+            <button
+              type="button"
+              onClick={() => stayoToast.info('Billing change request opened')}
+              className="mt-3.5 flex w-full items-center justify-center gap-1.5 text-[12.5px] font-semibold text-primary"
+            >
+              Switch to quarterly or annual →
+            </button>
           </div>
         </div>
       )}
@@ -308,6 +347,8 @@ export function TenantMoneyPage() {
           </div>
         )}
       </div>
+
+      <p className="pt-0.5 text-center text-[11px] font-medium text-[#B7AC9F]">Stayo{profile.hostel?.name ? ` · ${profile.hostel.name}` : ''}</p>
 
       <PaySheet
         stage={fin.payStage}

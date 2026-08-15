@@ -14,8 +14,10 @@ export function ProtectedTenantRoute({ children }: ProtectedTenantRouteProps) {
     return <StayoLoadingScreen message="Signing you in…" />;
   }
 
+  // See ProtectedRoute — `/` is an audience chooser since ADR-071, not a
+  // place to land someone who was already using the app.
   if (!user || user.role?.toLowerCase() !== 'tenant') {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   if (!user.is_profile_completed) {

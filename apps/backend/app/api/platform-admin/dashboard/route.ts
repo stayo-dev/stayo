@@ -37,6 +37,8 @@ export async function GET(req: NextRequest) {
       pendingPlatformInvoices,
       lifetimePlatformRevenue,
       hostelsPreview,
+      documentsAwaitingReview,
+      ownersTotal,
     ] = await Promise.all([
       prisma.platform_leads.count({ where: { status: "NEW" } }),
       prisma.hostels.count({ where: { verification_status: "PENDING" } }),
@@ -56,6 +58,10 @@ export async function GET(req: NextRequest) {
         take: 3,
         select: { id: true, name: true, city: true, listing_status: true, _count: { select: { tenants: true } } },
       }),
+      // The admin's other real queue. Counted here so the dashboard can route
+      // into it without the client fetching the whole documents page first.
+      prisma.owner_documents.count({ where: { status: "PENDING", is_active: true } }),
+      prisma.profile.count({ where: { role: "OWNER" } }),
     ]);
 
     // MRR composed the same way as /api/platform-admin/revenue — one
@@ -91,6 +97,8 @@ export async function GET(req: NextRequest) {
         platform_revenue: mrr,
         collections: Number(collectedThisMonth._sum.amount ?? 0),
         pending_dues: Number(pendingPlatformInvoices._sum.amount ?? 0),
+        documents_awaiting_review: documentsAwaitingReview,
+        owners_total: ownersTotal,
       },
       hostels_preview: hostelsPreview.map((h: any) => {
         const capacity = Number(capacityByHostel.get(h.id) ?? 0);

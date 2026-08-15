@@ -28,14 +28,23 @@ const HostelOverviewPage = lazy(() =>
   import('@features/hostel-drilldown/pages/HostelOverviewPage').then((m) => ({ default: m.HostelOverviewPage })),
 );
 const HostelRoomsPage = lazy(() => import('@features/hostel-drilldown/pages/HostelRoomsPage').then((m) => ({ default: m.HostelRoomsPage })));
+const HostelBuilderPage = lazy(() =>
+  import('@features/owner-hostel-builder/pages/HostelBuilderPage').then((m) => ({ default: m.HostelBuilderPage })),
+);
 const HostelTenantsPage = lazy(() =>
   import('@features/hostel-drilldown/pages/HostelTenantsPage').then((m) => ({ default: m.HostelTenantsPage })),
+);
+const HostelMarketingPage = lazy(() =>
+  import('@features/hostel-drilldown/pages/HostelMarketingPage').then((m) => ({ default: m.HostelMarketingPage })),
 );
 const MoneyPage = lazy(() => import('@features/owner-money/pages/MoneyPage').then((m) => ({ default: m.MoneyPage })));
 const FoodPage = lazy(() => import('@features/owner-food/pages/FoodPage').then((m) => ({ default: m.FoodPage })));
 const KitchenSheetPage = lazy(() => import('@features/owner-food/pages/KitchenSheetPage').then((m) => ({ default: m.KitchenSheetPage })));
 const FoodPollsPage = lazy(() => import('@features/owner-food/pages/FoodPollsPage').then((m) => ({ default: m.FoodPollsPage })));
 const AlertsPage = lazy(() => import('@features/owner-alerts/pages/AlertsPage').then((m) => ({ default: m.AlertsPage })));
+const OwnerProfileRequestsPage = lazy(() =>
+  import('@features/owner-profile-requests/pages/OwnerProfileRequestsPage').then((m) => ({ default: m.OwnerProfileRequestsPage })),
+);
 const MoreSettingsPage = lazy(() => import('@features/owner-more/pages/MoreSettingsPage').then((m) => ({ default: m.MoreSettingsPage })));
 const MoreProfilePage = lazy(() => import('@features/owner-more/pages/MoreProfilePage').then((m) => ({ default: m.MoreProfilePage })));
 const MoreHostelIdentityPage = lazy(() =>
@@ -172,6 +181,7 @@ export function OwnerRoutes() {
         <Route path="/owner/food/kitchen" element={<KitchenSheetPage />} />
         <Route path="/owner/food/polls" element={<FoodPollsPage />} />
         <Route path="/owner/alerts" element={<AlertsPage />} />
+        <Route path="/owner/profile-requests" element={<OwnerProfileRequestsPage />} />
 
         <Route path="/owner/more" element={<MoreConfigurationHubPage />} />
         <Route path="/owner/more/workspace-configuration" element={<MoreWorkspaceConfigPage />} />
@@ -217,11 +227,18 @@ export function OwnerRoutes() {
       <Route path="/owner/tenants/activations" element={<PendingActivationsPage />} />
       <Route path="/owner/tenants/:tenantId" element={<TenantDetailPage />} />
 
+      {/* Add Hostel — a full-screen build flow, not a drilldown tab. Declared
+          before the drilldown so `/owner/hostels/new` is not read as a hostel
+          id, and resumable at `:hostelId/build`. */}
+      <Route path="/owner/hostels/new" element={<HostelBuilderPage />} />
+      <Route path="/owner/hostels/:hostelId/build" element={<HostelBuilderPage />} />
+
       <Route path="/owner/hostels/:hostelId" element={<HostelDrilldownLayout />}>
         <Route index element={<Navigate to="overview" replace />} />
         <Route path="overview" element={<HostelOverviewPage />} />
         <Route path="rooms" element={<HostelRoomsPage />} />
         <Route path="tenants" element={<HostelTenantsPage />} />
+        <Route path="marketing" element={<HostelMarketingPage />} />
       </Route>
     </Route>
   );

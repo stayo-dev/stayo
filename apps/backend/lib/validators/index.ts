@@ -92,7 +92,7 @@ export {
 
 // --- Property & Room Schemas ---
 // Re-exported from domain validators
-export { RoomCreateSchema, AllocationSchema } from "../../src/validators/rooms";
+export { RoomCreateSchema, RoomBulkCreateSchema, AllocationSchema } from "../../src/validators/rooms";
 
 // --- Payment & Billing Schemas ---
 export {

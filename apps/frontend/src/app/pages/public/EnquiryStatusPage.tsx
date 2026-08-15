@@ -39,7 +39,7 @@ export function EnquiryStatusPage() {
             This link may be mistyped or no longer valid. If you submitted an enquiry recently,
             check the most recent message we sent you on WhatsApp.
           </p>
-          <Link to="/" className="mt-5 inline-block text-sm font-medium text-[#B45309] underline">
+          <Link to="/owners" className="mt-5 inline-block text-sm font-medium text-[#B45309] underline">
             Back to Stayo
           </Link>
         </div>
@@ -55,7 +55,7 @@ export function EnquiryStatusPage() {
           <p className="mt-2 text-sm text-[#6B5B52]">
             We couldn't load your enquiry status right now. Please try again in a moment.
           </p>
-          <Link to="/" className="mt-5 inline-block text-sm font-medium text-[#B45309] underline">
+          <Link to="/owners" className="mt-5 inline-block text-sm font-medium text-[#B45309] underline">
             Back to Stayo
           </Link>
         </div>

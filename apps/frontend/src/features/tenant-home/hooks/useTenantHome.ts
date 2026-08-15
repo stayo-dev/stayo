@@ -5,6 +5,7 @@ import { tenantRoomService } from '@features/tenant-room/api';
 import { useTenantRoom } from '@features/tenant-room/hooks/useTenantRoom';
 import { useTenantSession } from '@features/tenant-session/useTenantSession';
 import { useTenantFinancials } from '@features/tenant-financials/hooks/useTenantFinancials';
+import { useTenantProfile } from '@features/tenant-profile/hooks/useTenantProfile';
 import { useTenantFoodSchedule, DAY_ORDER, type DayKey } from '@features/food/hooks/useTenantFoodSchedule';
 import { useTenantFoodVoting } from '@features/food/hooks/useTenantFoodVoting';
 
@@ -23,6 +24,7 @@ export function useTenantHome() {
   const schedule = useTenantFoodSchedule();
   const voting = useTenantFoodVoting();
   const roomState = useTenantRoom();
+  const profile = useTenantProfile();
 
   const announcementsQuery = useQuery({
     queryKey: ['tenant', 'announcements'],
@@ -63,6 +65,7 @@ export function useTenantHome() {
     isLoading: financials.isLoading || schedule.isLoading || voting.isLoading,
     name: session.name,
     hostelId: session.hostelId,
+    hostelName: profile.hostel?.name ?? null,
     roomNo: roomQuery.data?.room?.room_no ?? null,
     financials,
     todaysMeals,

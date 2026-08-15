@@ -9,6 +9,7 @@ import { getTenantOperationalContext } from "@/lib/hostel-context";
 import { imagekit } from "@/lib/imagekit";
 import { normalizeIndianPhone } from "@/lib/utils/phone-utils";
 import { withOnboardingMetrics } from "@/lib/onboarding-metrics";
+import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
 /**
  * 👨‍🎓 COMPLETE TENANT PROFILE (Onboarding)
@@ -70,8 +71,8 @@ export async function POST(req: NextRequest) {
 
     const profilePhotoFile = formData.get("profile_photo") as File | null;
 
-    const tenantOwner = await prisma.tenants.findUnique({
-      where: { profile_id: session.sub },
+    const tenantOwner = await prisma.tenants.findFirst({
+      where: liveTenancyWhere(session.sub),
       select: { id: true, owner_id: true, hostel_id: true },
     });
     const normalizedRollNumber =
@@ -184,6 +185,47 @@ export async function POST(req: NextRequest) {
           profile_completed: true,
         }
       });
+
+      // 3. Fold what they just confirmed into their PORTABLE profile (phase B).
+      //
+      // The tenancy row above is the snapshot of this stay; `profile_identity`
+      // is the person. Writing both here is what makes the *next* hostel
+      // prefill even for someone who never opened the profile screen.
+      //
+      // Inside the same transaction deliberately: a tenancy snapshot that
+      // committed while the portable record silently failed is precisely the
+      // drift this phase exists to remove.
+      const portable: Record<string, unknown> = {
+        gender: gender || undefined,
+        date_of_birth: payload.date_of_birth ? new Date(payload.date_of_birth) : undefined,
+        permanent_address: permAddr || undefined,
+        personal_email: payload.personal_email || undefined,
+        photo_url: photoUrl || undefined,
+        profile_type: payload.profile_type || "STUDENT",
+        college_name: payload.college_name || undefined,
+        roll_number: normalizedRollNumber || undefined,
+        course: payload.course || undefined,
+        year_of_study: payload.year_of_study || undefined,
+        branch: payload.branch || undefined,
+        section: payload.section || undefined,
+        office_name: payload.office_name || undefined,
+        office_location: payload.office_location || undefined,
+        job_role: payload.job_role || undefined,
+      };
+      // `undefined` rather than `null` throughout: this form asks for a subset
+      // of the portable profile, so an absent field must leave whatever the
+      // person entered elsewhere untouched rather than blanking it.
+      for (const key of Object.keys(portable)) {
+        if (portable[key] === undefined) delete portable[key];
+      }
+
+      if (Object.keys(portable).length > 0) {
+        await tx.profile_identity.upsert({
+          where: { profile_id: session.sub },
+          create: { profile_id: session.sub, ...(portable as any) },
+          update: { ...(portable as any), updated_at: new Date() },
+        });
+      }
 
       return tenantUpdate;
     }, { timeout: 15000 });

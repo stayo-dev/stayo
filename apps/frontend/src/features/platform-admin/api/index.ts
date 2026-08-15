@@ -8,6 +8,32 @@ function unwrap(response: { data: any }) {
 }
 
 export const platformAdminService = {
+  /**
+   * The platform's customers. Returns raw per-owner signals; health and
+   * at-risk reasons are derived client-side in `owners/ownerHealth.ts` so the
+   * rules stay testable without a database.
+   */
+  getOwners: async (params: { search?: string; limit?: number; offset?: number } = {}) => {
+    const response = await api.get('/platform-admin/owners', { params });
+    const data = unwrap(response);
+    return {
+      owners: (data.owners ?? []) as any[],
+      total: Number(data.total ?? 0),
+      hasMore: Boolean(data.has_more),
+      offset: Number(data.offset ?? 0),
+    };
+  },
+
+  /**
+   * One owner, plus their hostels, documents and recent activity. Hostels
+   * are served from the owner rather than filtered out of a platform-wide
+   * list — a property only means something in the context of whose it is.
+   */
+  getOwner: async (id: string) => {
+    const response = await api.get(`/platform-admin/owners/${id}`);
+    return unwrap(response) as { owner: any; hostels: any[]; documents: any[]; activity: any[] };
+  },
+
   getHostels: async (params: { search?: string; verification?: string; listing?: string } = {}) => {
     const response = await api.get('/platform-admin/hostels', { params });
     return unwrap(response).hostels as any[];
@@ -18,6 +44,11 @@ export const platformAdminService = {
   },
   approveListing: async (id: string) => {
     const response = await api.post(`/platform-admin/hostels/${id}/approve-listing`);
+    return unwrap(response);
+  },
+  /** The other half of approveListing — a reason is required server-side. */
+  rejectListing: async (id: string, reason: string) => {
+    const response = await api.post(`/platform-admin/hostels/${id}/reject-listing`, { reason });
     return unwrap(response);
   },
   suspendListing: async (id: string) => {

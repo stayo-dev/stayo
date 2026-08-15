@@ -28,6 +28,227 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### Onboarding Step 4 told tenants they had signed an agreement that was never required and never signed
+
+- **Status:** fixed 2026-08-15
+- **Found:** 2026-08-15, owner-reported with side-by-side design/production screenshots
+- **Area:** [[Frontend]]
+- **Symptom:** on a hostel with `agreement_required: false`, the journey track correctly read "Step 3 of 4" with the Agreement node dropped — and Step 4 then showed a checklist row "3. Hostel Agreement Signed — Signed as *Prakash*" plus a "Signed Rental Agreement / Digitally Signed" card offering a PDF. No agreement stage had run and no signature existed. *Prakash* was the tenant's profile name, rendered as though it were their signature.
+- **Root cause:** neither surface tested for a signature. The checklist row was static markup with a hardcoded green tick and `ctx.agreement?.tenant_signature_name || ctx.profile?.name` as its subtitle — so the absence of a signature silently became the tenant's own name. The preview card's guard was `ctx?.agreement`, which is truthy whenever an agreement *record* exists, independent of whether signing was required or done; its label fell back to the literal string "Digitally Signed".
+- **The pattern worth remembering:** both were "summary" surfaces that restated state from elsewhere in the flow instead of reading it. A summary that renders a fallback when its source is empty stops being a summary and starts being an assertion. The same shape appeared twice more in the same audit — a hardcoded "Step 1 of 5" that contradicted the 4-stage track, and guardian copy crediting an Agreement step that [[Decisions#ADR-070|ADR-070]] had moved to *after* the screen showing it.
+- **Fix:** both Step 4 surfaces removed rather than re-gated — the approved design has neither (`PasswordActivateStep.tsx`), which also removed the fallbacks that caused it. `AgreementPreviewModal` deleted from `steps/shared.tsx` with its last consumer. Step 1's stage count now derives from `agreement_required`; the guardian copy now names the invitation as the source.
+- **Related:** [[Changelog]], [[Decisions#ADR-072|ADR-072]], [[Decisions#ADR-070|ADR-070]]
+
+### Tenant activation's primary button sat below the fold on every step, and its keyframes were reachable only by accident
+
+- **Status:** fixed 2026-08-15
+- **Found:** 2026-08-15, while diffing the shipped flow against the approved `Stayo Onboarding.dc.html` (Claude Design project `3f2fbde6`)
+- **Area:** [[Frontend]]
+- **Symptom:** two defects, both invisible in a short-content screenshot and both consequences of porting the design's *layout* without its *behaviour*.
+  1. On Identity, Agreement and Set Password — every step long enough to scroll, which is all of them on a phone — Continue / Submit / Create Account was only reachable by scrolling to the very bottom of the page.
+  2. Step bodies animated in via inline `animation: 'obFade .25s ease'` / `'obUp .3s ease'`, but the only file defining those keyframes was `ActivationIntroScreen.css`, imported by the intro screen alone. Any render path that reached a step without the intro screen ever mounting — a resumed activation link, which lands mid-flow by design — had no keyframe to run, and the step appeared with no transition.
+- **Root cause:** the design pins the primary action in a glass bar at the bottom of the flow over a gradient scrim. That bar reads as chrome in a static mockup, so each step had reimplemented it as a plain `mt-5` row at the end of its own content — four copies, none of them pinned. The keyframe problem was the same shape: the CSS was co-located with the *first* component that used it rather than with the flow, and the coupling between "these steps animate" and "the intro screen happens to be imported" was never expressed anywhere.
+- **Fix:** `StepActionBar` + `PrimaryActionButton` in `platforms/tenant/onboarding/steps/shared.tsx`, used by all four steps, with `ActivationLayout` reserving the design's 108px of bottom padding. Keyframes consolidated into `platforms/tenant/onboarding/onboarding.css`, imported by both `ActivationIntroScreen` and `ActivationLayout` (which always wraps a step); `ActivationIntroScreen.css` and `ActivationProgress.css` deleted — they had additionally redefined the same walk-cycle keyframes under two different name sets.
+- **Worth noting:** nothing fails if a future step stops using `StepActionBar`, or if `onboarding.css` is dropped from `ActivationLayout`. There is no frontend test suite to pin either. See [[Decisions#ADR-072|ADR-072]].
+- **Related:** [[Changelog]], [[Features]], [[Decisions#ADR-072|ADR-072]]
+
+### An unapplied `tenants` migration 500'd *every* authenticated request in production
+
+- **Status:** fixed 2026-08-14 — code fix deployed and the production database migration applied by hand (owner ran the `ALTER TABLE` below via the Supabase SQL editor)
+- **Found:** 2026-08-14 (owner-reported: "why am I getting these errors while logging in", with a DevTools console screenshot)
+- **Area:** [[Database]] / [[Backend]]
+- **Symptom:** login appeared to fail and dropped the user back on the marketing page. The console showed `GET /api/auth/me` **500** (×3), `GET /api/owner/hostels?include_archived=false` **500**, `POST /api/auth/activity` **500**. Nothing pointed at the database.
+- **How it was narrowed without production access.** Probing prod directly: unauthenticated `/api/auth/me` → clean **401**; a garbage bearer token → clean **401**; `/api/health` → `database: connected`, `project_ref: xhoqkhwsnqfwhjsffybs`, `jwks: ok`. So token verification was *fine* — this was not a repeat of the 2026-08-08 Supabase project mismatch. The decisive read was the routes' own null-session branches: `/api/owner/hostels` returns **403** and `/api/auth/activity` returns **401** when `getSession()` returns `null`. Both returned 500, so `getSession()` was **throwing**, not returning null. `POST /api/auth/onboarding-login` with a bogus phone returned a clean 401, which exercises a full-model `profiles` select — narrowing the drift to `tenants`.
+- **Root cause:** commit `7682562` (deployed as `ea0cccb`) added `blood_group`, `nationality`, `pan_number` and `expected_completion_date` to the `tenants` model with three hand-written migrations. `postinstall` runs `prisma generate`, so the deployed client asked for the new columns; nothing ran the migrations against production, so Postgres didn't have them (`42703`). The blast radius came from `getActiveTenancy()` (`lib/tenancy/active-tenancy.ts`), which does `tenants.findMany({ where })` with **no `select`** — Prisma therefore selects every column in the model — and which `resolveSupabaseSession()` calls **unconditionally, before the role check**, on every authenticated request. A tenant-Profile-tab column broke the owner dashboard.
+- **The design gap this revealed:** `schema.prisma` is a deploy artifact, the database is not. The Vercel build is `"build": "next build"` with no `prisma migrate deploy` anywhere in the repo, and `docs/README.md` documents migrations as hand-applied via the Supabase SQL editor. So any merge that adds a column is a production outage waiting on the next authenticated request, with no check that fails first — `next build` has `ignoreBuildErrors: true`, and `/api/health` only runs `SELECT 1`, which cannot see column-level drift.
+- **Fix:** `blood_group` removed entirely (it came from the design mockup, not from an operational need) — `schema.prisma`, `TenantProfileUpdateSchema`, `tenant-service`'s `tenantFields` allowlist, `getTenantPortalProfile()`, the tenant Profile tab's view + edit configs, plus migration `20260814180000_drop_tenant_blood_group` (`DROP COLUMN IF EXISTS`, because only the databases that ran `20260814120000` ever had it). The other three columns were then created directly in production by hand, via the Supabase SQL editor (not through this repo's migration pipeline, which still has no automated apply step):
+  ```sql
+  ALTER TABLE public.tenants
+    ADD COLUMN IF NOT EXISTS nationality TEXT,
+    ADD COLUMN IF NOT EXISTS pan_number TEXT,
+    ADD COLUMN IF NOT EXISTS expected_completion_date DATE;
+  ```
+- **Still open — worth fixing so this can't recur:** (1) no drift detection between `schema.prisma` and the deployed database; (2) `.env` and `.env.test` currently carry an **identical** `DATABASE_URL`, so the DB-backed suite truncates whatever that host is; (3) that host is in `ap-northeast-2` while the canonical Supabase project is `ap-south-1` — the unresolved question from 2026-08-09 about which database production actually writes to.
+- **Related:** [[Database]], [[Changelog]], [[Architecture]]
+
+### Tenant activation's journey-track avatar stayed on "Welcome" while the Identity screen was already showing
+
+- **Status:** fixed 2026-08-14
+- **Found:** 2026-08-14, owner reported via screenshot: "Step 1 of 5" and the walking avatar still over the Welcome node, while the card below already read "Identity Profile."
+- **Area:** [[Frontend]]
+- **Symptom:** `WelcomeIdentityStep.tsx` (the merged Welcome+Identity component from ADR-070) switches from its Welcome screen to its Identity screen via **local component state** (`localPhase`) — no backend call happens until the tenant actually submits, so `activation_state.current_step` stays `ACCOUNT` throughout. `ActivationProgress.tsx`'s journey track only ever reads the backend step, so it had no way to know the screen underneath it had already moved on — the track (and the bobbing avatar sprite) stayed parked on node 1 while the visible content was node 2's.
+- **Root cause:** the one-component-two-backend-steps pattern (`ACCOUNT`+`PROFILE` merged into one component, `RULES`+`AGREEMENT` merged into `AgreementStep.tsx` the same way) works for the *step nodes themselves* — those are keyed off the real backend step and don't need to distinguish — but breaks for the *sub-phase within* `ACCOUNT`, which has no backend representation at all.
+- **Fix:** `localPhase` lifted out of `WelcomeIdentityStep.tsx` into `ActivationPage.tsx` (passed down as `localPhase`/`setLocalPhase` props instead of local `useState`), so the page can compute the progress track's visual step as `PROFILE` (not `ACCOUNT`) whenever `activeStep === 'ACCOUNT' && localPhase === 'identity'`. `ActivationProgress.tsx` itself is unchanged — it already correctly derives everything from whatever `activeStep` it's given.
+- **Related:** [[Features]], [[Changelog]]
+
+### Tenant activation was permanently blocked for every tenant — two stale "emergency contact required" gates left behind by the ADR-070 amendment
+
+- **Status:** fixed 2026-08-14
+- **Found:** 2026-08-14, owner reported the activation link "isn't good at all" and flags emergency contact as required even though it was explicitly removed from the Identity screen earlier the same day.
+- **Area:** [[Backend]]
+- **Symptom:** no tenant could complete activation. The Identity step itself submitted fine (its own validation, `saveProfile()`, was correctly relaxed in the same-day ADR-070 amendment), but `profile_completed` could never become `true`, and the final `ACTIVATE` submission hard-failed with `VALIDATION_ERROR: Emergency contact phone number is required`.
+- **Root cause:** the amendment that dropped Emergency Contact from the Identity screen (see [[Decisions#ADR-070|ADR-070]]) only updated `saveProfile()`. Two other, independent gates in `activation-workflow-service.ts` still required `tenant.phone_3` (emergency phone): `computeState()`'s `missingTier1` list (line ~251, drives `profile_completed` and therefore `blocked_steps`/`current_step` for every tenant) and `activate()`'s own direct check (line ~1307) before finalizing activation. Since nothing in the current flow ever populates `phone_3` anymore, both gates failed unconditionally, for every tenant, permanently.
+- **Fix:** removed both gates. `phone_3` is no longer in `missingTier1` (it already exists in `optionalMissingFields()`/tier 3, which is where ADR-070 intended it) and the hard throw in `activate()` was deleted outright — emergency contact is now optional everywhere, matching `saveProfile()`'s existing behavior.
+- **The design gap this revealed:** a business-rule change (a field going from required→optional) had three separate enforcement points across one service file, and only one was updated. No test or invariant check caught it because `check:activation-invariants` uses real dev-DB tenants that predate the change; a check against a *fresh* activation flow would have caught this immediately.
+- **Related:** [[Decisions#ADR-070|ADR-070]], [[Business-Rules]], [[Changelog]]
+
+### Every WhatsApp OTP was being rejected by Meta — owner signup hid it, tenant onboarding surfaced it
+
+- **Status:** fixed 2026-08-13
+- **Found:** 2026-08-13 (owner-reported: guardian mobile verification returned `OTP_SEND_FAILED`)
+- **Area:** [[Backend]]
+- **Symptom:** the tenant activation wizard's guardian-phone step returned `{"success": false, "error": {"message": "Failed to send OTP", "code": "OTP_SEND_FAILED"}}`. Owner signup appeared to work.
+- **Root cause:** the approved `otp` template is category **AUTHENTICATION**, and Meta caps *every body parameter* on an authentication template at **15 characters**. `{{2}}` carries a human-readable purpose label, and two shipped labels were over it — `"phone verification"` (18) and `"parent verification"` (19). Meta rejected both with `(#132018) body: Parameter at index 1 exceeds the parameter length limit 15`. **No OTP was being delivered for any purpose using those labels.**
+- **Why it looked like two different things.** `PHONE_VERIFICATION` is in `SKIPPABLE_OTP_PURPOSES`, so owner signup caught the rejection and degraded to `verification_required: false` — proceeding **without verifying anyone's phone**, silently. `ParentVerify` is not skippable, so tenant onboarding raised it as a hard error. One bug, two faces; the visible half was the *less* serious one.
+- **What it was not:** config was correct throughout — token valid, `otp` template APPROVED in `en_US` matching `OTP_TEMPLATE_LANGUAGE`, all four env vars set, WABA `account_review_status: APPROVED` and `business_verification_status: verified`, number `CONNECTED`/`GREEN`. The payload shape also already matched the template contract (2 body params + a `sub_type: url, index: 0` button), and `assertTemplateMatchesContract` passed — it checks parameter *counts*, which were right, and has no notion of parameter *length*.
+- **Fix:** `OTP_AUTH_PARAMETER_MAX_LENGTH = 15` is now explicit; the labels are shortened (`"verification"`, `"parent verify"`) and `REGISTRATION`/`PROFILEUPDATE` added; and the humanised fallback for unmapped purposes is capped by `capOtpParameter()`, which drops whole words so the result still reads as language. Without capping the fallback, the next purpose anyone adds would silently reintroduce #132018 for that flow alone.
+- **Verified against the live Graph API**, not just in tests: the old payload reproduced `#132018`, the fixed payload returned `message_status: "accepted"`, and the owner confirmed the OTP arrived on the handset.
+- **Diagnostic gap this exposed:** the API returns a generic `"Failed to send OTP"`; Meta's actual code and `error_data.details` are logged server-side but never surfaced, so an operator seeing this cannot distinguish a misconfiguration from a template rejection from a rate limit. Worth surfacing the provider code on admin-triggered sends.
+- **Related:** [[Business-Rules]], [[APIs]]
+
+### Every tenant-facing `/api/tenants/me/*` route using `findUnique({ where: { profile_id } })` 500'd, for every tenant
+
+- **Status:** partially fixed 2026-08-14 (10 of ~20 known occurrences — the original 8, plus `lib/auth/resolve-operational-scope.ts`'s `resolveTenantScope()` and its own callers, fixed the same day once the tenant profile-change-request feature started depending on it)
+- **Found:** 2026-08-14, while verifying the tenant dashboard rebuild live against a real dev-DB tenant
+- **Area:** [[Backend]]
+- **Symptom:** `GET /api/tenants/me/room`, `/billing-frequency`, `/payments/history` (and others) returned 500 with `Argument 'where' of type tenantsWhereUniqueInput needs at least one of 'id' arguments`, for every tenant, not just the test fixture used to find it — the tenant Room tab and parts of Money never worked.
+- **Root cause:** `prisma.tenants.findUnique({ where: { profile_id: session.sub } })` — but `profile_id` is not a `@unique` column on `tenants` in `prisma/schema.prisma` (a profile accumulates one `tenants` row per hostel it has ever stayed in; at most one is "live" at a time, enforced by a partial unique index, not a plain column constraint). `findUnique` requires a field Prisma's generated types recognize as unique; `lib/tenancy/active-tenancy.ts`'s `liveTenancyWhere(profileId)` + `findFirst` exists specifically to replace this exact pattern (its own doc comment names the bug class), but several routes predate that helper and were never migrated.
+- **Fix:** changed `findUnique({ where: { profile_id } })` → `findFirst({ where: liveTenancyWhere(profileId) })` in the 8 occurrences reachable from the tenant dashboard's real flows (`app/api/tenants/me/{room,billing-frequency,payments/history,documents,photo,complete-profile,onboarding-settings}/route.ts`, `app/api/payments/{create-intent,verify}/route.ts`), plus `lib/auth/resolve-operational-scope.ts`'s `resolveTenantScope()` — used by the new tenant profile-change-request endpoints (see [[Features]]) and by `payments/pay-dues`/`payments/preview` (fixed as a side effect, since they call this shared helper).
+- **Not fixed — same pattern still present, not reachable from any flow built so far, left for a follow-up:** `app/api/payments/{tenant-dues,attempts/[id]}/route.ts`, `app/api/tenants/[id]/documents/route.ts`, `app/api/allocations/tenant/[id]/route.ts`, `app/api/move-out/requests/route.ts`, `lib/services/dashboard-service.ts` (`getTenantStats`, line ~1626). Grep `findUnique` + `profile_id` in the same file to find any of these before relying on them.
+- **Related:** [[Features#Tenant dashboard — pixel-fidelity rebuild (2026-08-14)|Features]], [[Changelog]]
+
+### Tenant overlay panels (Room/Profile drill-ins, request forms) rendered blank when opened after scrolling
+
+- **Status:** fixed 2026-08-14
+- **Found:** 2026-08-14, live Playwright walkthrough of the rebuilt tenant dashboard
+- **Area:** [[Frontend]]
+- **Symptom:** Opening a Room service tile (e.g. "Lost key") or any Room/Profile detail card after scrolling down the tab rendered an almost-blank screen — header and body content invisible, only the submit button visible, with the bottom tab-nav bar bleeding through underneath it.
+- **Root cause:** `DetailScreen`/`FormPanel`/`SuccessPanel` (and the Food tab's inline meal-detail overlay) used `position: absolute; inset: 0` relative to the tab page's own `position: relative` wrapper — but that wrapper is normal scrolling document content, not a fixed-size frame (unlike `Stayo Tenant.dc.html`'s source, which lives inside a non-scrolling 402×874 device frame where `absolute` was already viewport-equivalent). If the underlying page had scrolled before the overlay opened, the overlay rendered at the top of its (taller-than-viewport) positioning context, which was scrolled out of view — only whatever happened to land at the current scroll position was visible.
+- **Fix:** changed all four overlay root elements from `absolute inset-0` to `fixed inset-0`, so they always cover the viewport regardless of the underlying page's scroll position. Removed the now-unnecessary `relative overflow-hidden` wrapper classes from the three tab pages that had them.
+- **Related:** [[Features#Tenant dashboard — pixel-fidelity rebuild (2026-08-14)|Features]], [[Changelog]]
+
+### Room/Food/Profile tab headers had a large dead-space gap at the top, exposing the shell's background grid pattern
+
+- **Status:** fixed 2026-08-14
+- **Found:** 2026-08-14, user-reported screenshots of the live app (Room/Food/Profile all showing a large blank grid-patterned area above the page title before content started)
+- **Area:** [[Frontend]]
+- **Symptom:** `My Room`/`My Menu`/`Profile` headers sat ~60px below the top of the content area with nothing filling that space except `TenantAppShell`'s graph-paper grid background — visually reading as a layout bug, especially since Home and Money's headers sit flush at the top with no such gap.
+- **Root cause:** same category of bug as the overlay `absolute`/`fixed` issue above — `Stayo Tenant.dc.html`'s source reserves `padding: 60px ...` at the top of literally every screen's header (Money/Room/Profile/Food all use the identical value in the source), because every screen renders inside the mockup's fixed-size device frame with a simulated phone status-bar area baked into that padding. `TenantHomePage.tsx` and `TenantMoneyPage.tsx` had already been adapted to `pt-6` for the real (frame-less) app when they were built; `TenantRoomPage.tsx`, `TenantFoodPage.tsx`, and `TenantProfilePage.tsx` still had the raw, unmodified `pt-[60px]` value copied from the mockup, and — unlike the full-screen overlays, which paint their own opaque `bg-background` over the shell's grid pattern — these tab pages render directly on top of the shell's grid background with no page-level fill of their own, so the unnecessary top padding fully exposed the grid pattern beneath it.
+- **Fix:** changed all three pages' top-level content wrapper from `pt-[60px]` to `pt-6`, matching the convention `TenantHomePage.tsx`/`TenantMoneyPage.tsx` already established. Verified live via Playwright — all 5 tab headers now sit at consistent top spacing with no exposed gap.
+- **Related:** [[Features#Tenant dashboard — pixel-fidelity rebuild (2026-08-14)|Features]], [[Changelog]]
+
+### The Add Hostel builder rendered in the legacy pre-StayO theme — the second time this trap has been hit
+
+- **Status:** fixed 2026-08-12
+- **Found:** 2026-08-12 (owner-reported: "entirely off branded")
+- **Area:** [[Frontend]]
+- **Symptom:** `/owner/hostels/new` rendered with a serif display face and a navy `#1B2D5B` primary button instead of StayO's Manrope and terracotta `#b46a55`.
+- **Root cause:** identical to the `PendingActivationsPage` entry below. `HostelBuilderPage` is mounted as a **sibling** of `<OwnerAppShell>` — deliberately, since it is a full-screen takeover rather than a bottom-nav tab — so it never inherits the shell's `<ThemeProvider theme="product">` and fell through to `theme.css`'s unscoped legacy `:root` tokens.
+- **Fix:** wrapped the page in `<ThemeProvider theme="product">`, matching every other sibling route.
+- **This is the design gap the previous entry predicted, realised within a day.** Any route added outside `OwnerAppShell` silently loses StayO theming with **no build-time, lint-time or test-time signal** — it is only visible in a browser. Two occurrences now. Worth a `check:architecture` rule asserting that every element rendered by a `<Route>` outside `OwnerAppShell` mounts a `ThemeProvider`, rather than waiting for a third.
+- **Related:** [[Decisions#ADR-066|ADR-066]], [[Frontend]]
+
+### The Add Hostel builder could not create a second hostel — 403 with no way forward
+
+- **Status:** fixed 2026-08-12
+- **Found:** 2026-08-12 (owner-reported)
+- **Area:** [[Frontend]] / [[Backend]]
+- **Symptom:** `POST /api/owner/hostels` returned **403 IDENTITY_REQUIRED** ("Identity verification required. Please confirm your password first.") and the builder simply showed the error — there was no password field anywhere in the flow, so the owner was stuck.
+- **Root cause:** a gap opened by [[Decisions#ADR-066|ADR-066]] itself. Step-up confirmation was narrowed to apply only from the owner's *second* hostel onward, and `+ Add hostel` was re-pointed from `AddHostelModal` (which had a password step) to the builder (which had none). A first hostel worked; every subsequent one dead-ended.
+- **Fix:** the builder now treats the 403 as the prompt it is — `IDENTITY_REQUIRED`/`IDENTITY_EXPIRED` reveals a password field on the Name step, mints the token via `confirmIdentity(password, 'CREATE_HOSTEL')`, and retries. Because step-up depends on how many hostels the owner already has, this is discovered from the response rather than pre-fetched, and a first hostel still never sees a password prompt. The raw error is withheld until a password has actually been tried and rejected.
+- **Related:** [[Decisions#ADR-066|ADR-066]], [[APIs]]
+
+### The hostel scene cropped to the owner figure on phones, hiding the building entirely
+
+- **Status:** fixed 2026-08-12
+- **Area:** [[Frontend]]
+- **Symptom:** on a 430px viewport the Add Hostel background showed a giant owner figure and no building — so the rising-tower animation, the whole point of the flow, was invisible on the device most owners use.
+- **Root cause:** `HostelScene` draws on a wide 1200×820 stage with the building at x≈820 and uses `preserveAspectRatio="…slice"`. On a phone-shaped viewport `slice` crops to the stage's **centre**, which is the owner at x≈540 — the building falls outside the visible slice.
+- **Fix:** the stage is re-framed on narrow viewports, and the frame follows what there is to see: a building-centred box when storeys exist, an owner-centred one when none do (onboarding, which no longer raises a building at all, would otherwise crop to empty ground).
+- **Moot for this screen as of 2026-08-15** — Add Hostel no longer renders `HostelScene` at all; it uses the standard owner graph-paper grid (see [[Features]]). The re-framing fix still matters, because the onboarding wizard is now this component's only caller and it is the owner-centred case described above.
+- **Related:** [[Decisions#ADR-066|ADR-066]]
+
+
+### Activate Tenants queue rendered in the legacy pre-StayO theme (navy/serif) instead of StayO branding
+
+- **Status:** fixed 2026-08-12
+- **Area:** [[Frontend]]
+- **Symptom:** the owner Home dashboard's "Activate Tenants" card opened `/owner/tenants/activations` looking like a completely different, unbranded app — a navy `#1B2D5B` primary button and a serif display font, instead of StayO's terracotta `#b46a55` primary and Manrope. Initially reported as if it were showing a different hostel's/project's UI entirely ("Siri Aditya Boys Hostel").
+- **Root cause:** `PendingActivationsPage` (`features/owner-tenants/pages/PendingActivationsPage.tsx`) is registered as a sibling route outside `<OwnerAppShell>` in `platforms/owner/router/OwnerRoutes.tsx` (alongside `/owner/tenants/verifications` and `/owner/tenants/:tenantId`), because it's a deep-link-style route, not a shell tab. `OwnerAppShell` is what mounts `<ThemeProvider theme="product">`, which sets `data-app-theme="product"` and scopes the actual StayO CSS tokens (`src/styles/tokens/product.css`). Per `ThemeProvider`'s own doc comment, "screens that haven't migrated yet simply render outside any ThemeProvider and keep resolving `theme.css`'s unscoped `:root` tokens" — and that unscoped `:root` block (`src/styles/theme.css`) is the **legacy Shri Adithya theme** ("Siri Aditya," misheard) that predates the StayO rebrand, still present on purpose per `stayo-theme.css`'s migration-coexistence comment. `PendingActivationsPage` never mounted its own `ThemeProvider`, so it fell straight through to those legacy tokens. Its two sibling routes at the exact same nesting level (`PendingVerificationsPage`, `TenantDetailPage`) already self-wrap in `<ThemeProvider theme="product">` for this exact reason — this page was the one instance missed.
+- **Fix:** wrapped `PendingActivationsPage`'s return in `<ThemeProvider theme="product">`, matching its siblings' existing pattern.
+- **Design gap it revealed:** any future route added as a sibling of `OwnerAppShell` (rather than nested inside it) silently loses StayO theming with no build-time or lint-time signal — it only shows up as a visual bug in the browser. Worth a `check:architecture`-style lint rule if this class of route keeps recurring.
+- **Related:** [[Features]], [[Frontend]], [[Changelog]]
+### Cancelling an invitation failed with "Transaction not found… old closed transaction" — a ledger write escaped its own transaction
+
+- **Status:** fixed 2026-08-11
+- **Found:** 2026-08-11 (owner-reported)
+- **Area:** [[Backend]]
+- **Symptom:** `POST /api/tenants/[id]/cancel-invitation` returned `{"success": false, "error": {"message": "Invalid prisma.tenant_financial_ledger.create() invocation: Transaction API error: Transaction not found. Transaction ID is invalid, refers to an old closed transaction Prisma doesn't have information about anymore, or was obtained before disconnecting."}}`. The invitation was not cancelled.
+- **Root cause:** `tenantFinancialLedgerService.debitInTx(tx, …)` — a method whose entire contract is "run inside the caller's transaction" — called `this._assertOwnership()`, which reads through the **global** Prisma client. That opened a *second* connection while the caller's interactive transaction was still holding one. The call chain reaching it is `cancelInvitation` → `$transaction` → `obligationEngine.bulkWaiveInTx` → `waiveObligationInTx` → `financialCorrectionGateway.applyCorrection` → `debitInTx`, i.e. cancelling waives the tenant's pending obligations, and waiving debits the ledger. Against a pooled/remote database (Supabase's pooler) the nested global read waits for a free connection, the interactive transaction blows past its **5 s default timeout** and closes, and the next `tx.*` call — `tenant_financial_ledger.create()` — fails with exactly this error. Only `debitInTx` had this escape; `credit()` and `debit()` assert ownership *before* opening their own transaction, which is fine.
+- **Fix:** the ownership check now runs on `tx`, reading `owner_id` alongside `hostel_id` in the tenant lookup `debitInTx` was already doing — same error strings (`NOT_FOUND:` / `FORBIDDEN:`), one fewer round trip, nothing leaving the transaction. `tests/ledger-debit-in-tx-scope.test.ts` (3 DB-backed tests) pins it: it debits a tenant **created inside the same uncommitted transaction**, which a global-client read cannot see — verified to fail with `NOT_FOUND: Tenant not found` against the old code, and pass against the fixed one.
+- **Note:** the pool stall itself is timing- and load-dependent, so the 500 will not necessarily reproduce on a fast local connection even with the defect present. The structural defect is fixed; **worth re-testing the cancel flow live** against the environment where it was seen.
+- **Related:** [[Backend]], [[Business-Rules]], [[Decisions#ADR-065|ADR-065]]
+
+### Phone numbers rendered with the country code twice — "+91 +918008046952"
+
+- **Status:** fixed 2026-08-11
+- **Found:** 2026-08-11 (owner-reported, on the invited-tenant workspace)
+- **Area:** [[Frontend]]
+- **Symptom:** the tenant's phone displayed as `+91 +918008046952`. Editing it and saving *without* the `+91` didn't help — it came back doubled again, which made it look like the save was broken.
+- **Root cause:** display only; the save was always correct. `normalizeIndianPhone` stores every phone in E.164 (`+91XXXXXXXXXX`), so the country code is already in the value — and the UI rendered it inside a `+91 {phone}` template. Whatever the owner typed was normalized back to E.164 on save and then re-prefixed on render, which is exactly why correcting it appeared to do nothing.
+- **Fix:** new `shared/lib/phone.ts` (`toLocalPhone` / `canonicalPhone` / `formatIndianPhone` / `isSamePhone`, 11 tests). Display goes through `formatIndianPhone` (`+91 80080 46952`) which is idempotent — formatting already-formatted output does not accumulate prefixes. The edit field shows the 10 local digits and stores back E.164, and `diffTerms` compares phones by digits, so re-typing the same number in a different notation is not reported as a change worth re-issuing the tenant's link for.
+- **Still present elsewhere — deliberately not fixed:** `portal/pages/ActivateAccountPage.tsx` (~lines 1380, 2094) renders a phone with the same `+91 {…}` template and is likely affected. It lives in the **frozen** `src/portal` tree, so it was left alone rather than swept into an unrelated change; whether those specific values are stored or user-typed is **unverified**. Call sites that render a *user-typed* form value (`AddTenantModal` / `EditInviteModal` success toasts, `invite/steps/VerifyStep.tsx`) are correct as they are — the owner types 10 digits there.
+- **Related:** [[Decisions#ADR-065|ADR-065]], [[Frontend]]
+
+### The invited-tenant "Configure" form opened completely blank, because the tenant overview never returned a hostel id
+
+- **Status:** fixed 2026-08-11
+- **Found:** 2026-08-11
+- **Area:** [[Backend]] / [[Frontend]]
+- **Symptom:** on an invited tenant's owner-side profile, every route into editing — the "Configure" link, all eight tappable rows, and all three items in the "Manage invitation" sheet — opened `EditInviteModal` with **no data**: empty name/phone, "Select a hostel…", "Select a hostel first…" for the room, placeholder amounts, and today's date instead of the real move-in date. The same screen showed the tenant's hostel as "—". The screen's entire purpose (fix a mistake before activation) was unreachable.
+- **Root cause:** `getOwnerTenantOverview` returned no `hostel_id` at any level. `useTenantDetail` read `o.tenant?.hostel_id ?? o.hostel_id`, got `undefined`, and set `hostelId: ''`. `EditInviteModal`'s prefill query is `enabled: Boolean(tenantId && hostelId)` — so it never ran, and since a *disabled* React Query is `pending` but not `isLoading`, the modal skipped its loading branch and rendered the empty form as if that were the loaded state. The same empty id made `hostelName` fail its `session.hostels.find()` lookup, producing the "—".
+- **Fix:** `hostel_id` is now returned by the overview endpoint, with the invitation's own `hostel_id` as a frontend fallback (`tenant-service.ts`, `useTenantDetail.ts`). The modal is no longer used on this screen at all (see [[Decisions#ADR-065|ADR-065]]). Regression test: `tests/tenant-overview-invitation.test.ts`.
+- **Related:** [[Decisions#ADR-065|ADR-065]], [[APIs]]
+
+### Every invited tenant showed "⚠ Assign room", permanently blocking the screen's primary action
+
+- **Status:** fixed 2026-08-11
+- **Found:** 2026-08-11
+- **Area:** [[Frontend]]
+- **Symptom:** an invited tenant's Room/Bed row read "⚠ Assign room" and the agreement summary showed "—", even though a room is **mandatory** at invite time. The primary button was therefore stuck on "Complete setup (1)" and its "Activate tenant" state could never be reached by any tenant, ever.
+- **Root cause:** the UI derived the room from `room_allocations`, but `tenant_invitation_lifecycle-service` only creates an allocation **at activation**. Before that the bed is held by an `ACTIVE` `tenant_invitation_reservations` row. So the readiness check `hasRoom = tenant.room !== '—'` was false for 100% of invited tenants by construction.
+- **Fix:** the overview's new `invitation.reserved_room` is used as the room for invited tenants, and `missingTerms()` (pure, tested) replaced the inline readiness check. The owner-side activate button was removed outright for unrelated and more important reasons — see [[Decisions#ADR-065|ADR-065]].
+- **Related:** [[Decisions#ADR-065|ADR-065]], [[Database]]
+
+### Owner-private notes were never saved — the notes API had no frontend caller at all
+
+- **Status:** fixed 2026-08-11
+- **Found:** 2026-08-11
+- **Area:** [[Frontend]]
+- **Symptom:** the Private Notes card on an invited tenant showed two notes — "Student requested lower-floor room." and "Parent will pay deposit on move-in." — for **every** tenant, and anything an owner typed vanished on refresh.
+- **Root cause:** the card was `useState` seeded with two hardcoded example strings. `tenant_notes` and `GET/POST/DELETE /api/tenants/[id]/notes` have existed the whole time, and `tenantService.getNotes/addNote/deleteNote` wrappers were already written — nothing had ever called them.
+- **Fix:** new `useTenantNotes` hook; the card now reads, adds and deletes real notes.
+- **Related:** [[APIs]], [[Decisions#ADR-065|ADR-065]]
+
+### "Copy link" copied a link that could never work, and two other actions on the same screen were stubs
+
+- **Status:** fixed 2026-08-11
+- **Found:** 2026-08-11
+- **Area:** [[Frontend]]
+- **Symptom:** "Copy invitation link" reported success and put `<origin>/activate?token=<tenant uuid>` on the clipboard. An owner sending that to a tenant sends a dead link: the tenant's id is not an invitation token, and the real route is `/activate/<token>`. Separately, "Preview agreement" was a `toast.info` and the Agreement card's "Send link" was a second, differently-labelled resend button.
+- **Root cause:** the link was string-built on the client from data the client had, because the real token was never exposed. Rather than ship the token to the browser, the backend now builds the link.
+- **Fix:** `invitation.activation_link` (server-built, token stays server-side) is what gets copied, and Copy is disabled with an explicit error when there is no live invitation. The two stub actions were deleted along with the Agreement card.
+- **Related:** [[Decisions#ADR-065|ADR-065]], [[APIs]]
+
+### The cancel-invitation dialog promised a 30-day retention that no code implements
+
+- **Status:** fixed 2026-08-11
+- **Found:** 2026-08-11
+- **Area:** [[Frontend]]
+- **Symptom:** the confirmation said "Their pending tenancy configuration will be retained for 30 days so you can re-invite them anytime." Nothing in `cancelInvitation` retains anything for 30 days — it sets the invitation `CANCELLED`, releases the reservation, ends the allocation, waives pending obligations through `ObligationEngine`, and sets the tenant `CANCELLED`, all permanently.
+- **Fix:** copy rewritten to describe what the code actually does. No behaviour change.
+- **Related:** [[Business-Rules]], [[Decisions#ADR-065|ADR-065]]
+
 ### Every Supabase-side login failure surfaced as an opaque 500 "Something went wrong", hiding the fact that the server simply couldn't reach Supabase
 
 - **Status:** fixed 2026-08-09
@@ -977,6 +1198,54 @@ Copy this block for each new entry:
 - **Fix:** `AdminDashboardPage.tsx` now has its own `leadApproveMutation` calling `platformAdminService.approveLead(id)` → `POST /api/platform-admin/leads/[id]/approve` — the same real accept flow (generates activation token, sends via WhatsApp/email, only advances to `INVITE_SENT` on a successful send) already used by `AdminLeadsPage.tsx`. The Reject button (`status: 'LOST'`) was unaffected — `LOST` is in `MANUALLY_SETTABLE_STATUSES`, so it worked correctly all along.
 - **Related:** [[APIs]], [[Frontend]]
 
+### `TenantProfileUpdateSchema` was silently `undefined` at runtime for every tenant-profile-update route — direct-save profile edits have likely never worked
+
+- **Status:** fixed, 2026-08-14
+- **Symptom:** every `PATCH` to a tenant-profile-update endpoint (`/api/tenants/me/profile`, `/api/tenants/profile`, `/api/tenants/me/complete-profile`, `/api/tenants/[id]`, `/api/profile/me`) 500'd with `"Cannot read properties of undefined (reading 'safeParse')"`. Found live while Playwright-verifying the Profile tab's new direct-save fields (see [[Business-Rules]], "Tenant self-service profile edits") — a filled-in Academic details form appeared to save, but a page reload showed the old, unsaved values.
+- **Cause:** all 5 routes import `TenantProfileUpdateSchema` from `@/lib/validators` → `apps/backend/lib/validators/index.ts`, which re-exports it `from "../../src/validators/tenants"` — that path resolves to the *directory* `src/validators/tenants/index.ts` (only `InvitationSchema`/`InvitationUpdateSchema`/`ActivationSchema` live there), not the *file* `src/validators/index.ts` (a separate, similarly-named top-level file that **did** have a `TenantProfileUpdateSchema`, including this session's earlier `blood_group`/`nationality`/`pan_number` additions). Nothing ever imported that top-level file's copy for tenant-profile updates — it was silently dead code, giving the false impression that editing it had any runtime effect. `tsc --noEmit` (not run as part of `next build`, which has `ignoreBuildErrors: true`) surfaces this immediately as `TS2305: Module has no exported member`, so this was catchable by a type-check that the project's own build pipeline skips.
+- **Fix:** moved `TenantProfileUpdateSchema`/`ReactivationRequestSchema` (plus `SHORT_TEXT`/`LONG_TEXT`/`URL_MAX` constants) into `src/validators/tenants/index.ts` — the file the working import chain actually resolves to — and deleted the dead duplicate from the top-level `src/validators/index.ts`. Verified live via Playwright: direct-field PATCHes now return 200 and persist (academic details, guardian name/relation, DOB/gender/blood group/nationality all confirmed round-tripping correctly after this fix).
+- **Scope note:** this predates the 2026-08-14 profile-edit work — it's a pre-existing wiring bug this session happened to trip over while verifying a change to one of the affected routes, not something introduced by that change. Worth a quick audit of other `@/lib/validators` re-exports (`../../src/validators/rooms`, `../../src/validators/payments`, `../../src/validators/hostels`) for the same directory-vs-file resolution mistake, though none were confirmed broken here.
+- **Related:** [[Business-Rules]], [[APIs]]
+
+### `getTenantPortalProfile` never returned several tenant fields the Profile tab needed to display — saves worked, reads silently came back blank
+
+- **Status:** fixed, 2026-08-14
+- **Symptom:** after saving Personal information's blood group/nationality/PAN, or Emergency contact's guardian name/relation/phone, or Academic details' expected-exit date, the Profile tab's read-only view kept showing "—" for those fields even though the PATCH had succeeded and the DB held the new value.
+- **Cause:** `getTenantPortalProfile()` (`lib/services/tenant-profile-portal-service.ts`, backing `GET /api/tenants/me/profile` — the query the whole Profile tab reads) built its returned `tenant: {...}` object as an explicit field allowlist that predated `blood_group`/`nationality`/`pan_number` (added earlier the same session) and `guardian_name`/`guardian_relation`/`guardian_phone`/`expected_completion_date` (added this pass) — none of the seven were ever added to that allowlist, so they were always `undefined` in the response regardless of what was actually in the row.
+- **Fix:** added all seven fields to the returned `tenant` object. Verified live — Personal information/Emergency contact/Academic details view mode now correctly reflect saved values after a reload.
+- **Related:** [[Business-Rules]], [[Database]]
+
+### Emergency Contact's "Contact name" field was silently editing a phone number, not a person's name
+
+- **Status:** fixed, 2026-08-14
+- **Symptom:** the Profile tab's Emergency contact screen had a "Contact name" text field bound to `profile.emergency_contact` — but that column is actually a **phone number**, synced with `tenants.phone_3` (confirmed via the `updateTenantSelfProfile` sync block: `syncedEmergency = data.phone_3 || data.emergency_contact`). Typing a person's name into it and saving would have corrupted the phone sync.
+- **Cause:** an earlier pass building this screen assumed `emergency_contact` meant what its name suggests (a contact's name) without checking how the field was actually used elsewhere in the service. The real guardian-name/relationship columns (`tenants.guardian_name`, `tenants.guardian_relation`) existed all along but were never added to this screen or to `updateTenantSelfProfile`'s field lists.
+- **Fix:** Emergency contact now uses the real fields — `guardian_name` ("Contact person's name"), `guardian_relation` ("Relationship"), `guardian_phone`/`phone_2` ("Phone"), `phone_3`/`emergency_contact` ("Alternate phone") — matching `Stayo Tenant.dc.html`'s actual DETAIL entry. Added `guardian_name`/`guardian_relation` to `updateTenantSelfProfile`'s `tenantFields` and to `TenantProfileUpdateSchema`.
+- **Related:** [[Business-Rules]]
+
+### `GET /api/auth/me` left `is_profile_completed` undefined for any TENANT with no tenancy
+
+- **Status:** fixed, 2026-08-15
+- **Found:** while building Stayo Discover ([[Decisions#ADR-073|ADR-073]]).
+- **Area:** [[Backend]]
+- **Symptom:** a signed-in marketplace account (`role = TENANT`, no `tenants` row) reloads the page and any guard reading `is_profile_completed` treats their complete profile as incomplete — `ProtectedTenantRoute` redirects them to `/complete-profile`, a page they have no reason to see.
+- **Cause:** the route builds an `extra` object and sets `extra.is_profile_completed` in two places: inside `if (tenant)`, and in the `else` branch for non-TENANT roles. **A TENANT with no tenancy hit neither** — it entered the TENANT branch, found no tenant row, and fell through with `extra` untouched, so the field was simply absent from the response. `authService.selfSignUpTenant()` has always written `is_profile_completed: true` on the profile itself, so the data was right and only the read was wrong.
+- **Why it was invisible until now:** `selfSignUpTenant` existed but had no surface. Every TENANT who could actually log in had been through activation and therefore had a tenancy, so the empty branch was unreachable in practice. Discovery is the first feature to give tenancy-less accounts somewhere to go.
+- **Fix:** the `if (tenant)` block gained an `else` that falls back to `profile.is_profile_completed`.
+- **Adjacent, deliberately not fixed:** the same lookup uses `prisma.tenants.findFirst({ where: { profile_id } })` rather than the live-tenancy helper in `lib/tenancy/active-tenancy.ts`, contrary to the rule in [[Database]] — so for anyone who has stayed in more than one hostel it returns an arbitrary tenancy. Real, pre-existing, and out of that phase's scope; worth its own change.
+- **Related:** [[APIs]], [[Database]]
+
+### Discovery's shared visibility predicate overwrote the slug it was looking up
+
+- **Status:** fixed before shipping, 2026-08-15
+- **Found:** by `tsc --noEmit` (TS2783, "`public_slug` is specified more than once") while building Stayo Discover.
+- **Area:** [[Backend]]
+- **Symptom:** would have been severe and quiet — `GET /api/discover/hostels/[slug]` returning an arbitrary listed hostel for *every* slug, and an enquiry sent to a hostel the seeker never chose.
+- **Cause:** the shared predicate `DISCOVERABLE` includes `public_slug: { not: null }`. Both call sites were written `where: { public_slug: slug, ...DISCOVERABLE }` — and a spread that comes *second* wins, so `{ not: null }` clobbered the actual slug and the query degraded to "any discoverable hostel".
+- **Fix:** spread first at both sites (`{ ...DISCOVERABLE, public_slug: slug }`), with a comment at each explaining the ordering, plus a regression test asserting the emitted `where.public_slug` is the requested slug.
+- **Worth remembering:** a constant that carries a *loosening* clause for a field a caller also narrows is a trap that only object-spread order decides. The compiler caught this one because both keys were literal; it would not have if either side were computed.
+- **Related:** [[Decisions#ADR-073|ADR-073]], [[APIs]]
+
 ## Open / known issues
 
 > See also `docs/known-issues.md` for the maintained list of known drift/gaps in `docs/`.
@@ -993,6 +1262,7 @@ Copy this block for each new entry:
 - **Platform Admin Revenue routes (`/api/platform-admin/revenue`, `/revenue/hostels`, `/revenue/export`) run unbounded `findMany` queries across every `hostel_subscriptions`/`platform_invoices` row** with no `take` limit — correct for computing true platform-wide MRR/ARR (you can't paginate a sum), but worth revisiting (DB-side aggregate/`GROUP BY` instead of in-memory reduce) once hostel count grows large enough for this to matter. `hostels/route.ts`'s own list endpoint is already bounded (`take: 200`).
 - **Hostel detail "Uploaded Photos"/"Uploaded Documents" sections from `Stayo Admin.dc.html` are not built** — deliberately deferred 2026-07-27 (see the admin deep-audit entry above). No backing schema exists for either; building this needs new tables/storage plus an owner-side upload flow (an admin can't review photos nobody uploaded), not just an admin-side display.
 - **Revenue page's "Analytics" stats block (churn rate, ARPU, ARPT, new subscriptions, renewals, failed payments) and its date-range filter are not built** — deliberately deferred 2026-07-27 alongside the item above. Both need new backend time-windowed/derived calculations the current `/api/platform-admin/revenue` doesn't compute.
+- **Emergency Contact's Phone/Alternate phone fields have no OTP UI, but the backend requires one when changing an already-set number.** `updateTenantSelfProfile` gates any change to `phone_2`/`guardian_phone` or `phone_3`/`emergency_contact` (once a value already exists) behind a pre-existing OTP-verification check — this is unrelated to the 2026-08-14 owner-approval governance work (see [[Business-Rules]]) and predates it, but the Profile tab's Emergency contact edit form has no send-OTP/verify-OTP step, so such a save currently fails with a `VALIDATION_ERROR` toast instead of succeeding. Setting these fields for the *first time* (from empty) works fine — confirmed live. A full fix needs a small OTP-request UI reusing the existing `phoneVerificationOtp` flow (see `src/portal/pages/TenantProfilePortalPage.tsx`'s frozen-but-still-referenceable send/verify pattern for the shape of it), out of scope for the visual/governance-narrowing pass that surfaced this.
 
 ## See also
 - [[Features]] for which feature each bug affected

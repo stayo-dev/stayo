@@ -1,8 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { OwnerHomeDashboard } from '@features/owner-dashboard/components/OwnerHomeDashboard';
 import { HostelOptionsSheet } from '@features/owner-dashboard/components/HostelOptionsSheet';
-import { AddHostelModal } from '@features/owner-dashboard/components/AddHostelModal';
 import { useOwnerDashboard } from '@features/owner-dashboard/hooks/useOwnerDashboard';
 import { useHostelOrder } from '@features/owner-dashboard/property-order/useHostelOrder';
 import { moveItem } from '@features/owner-dashboard/property-order/hostelSort';
@@ -15,6 +14,8 @@ import { QuickCollectModal } from '@features/owner-tenants/quick-collect/QuickCo
 import { InviteTenantWizard } from '@features/owner-tenants/invite/InviteTenantWizard';
 import { pendingVerificationsRoute } from '@features/owner-tenants/documents/kycDocuments';
 import { PENDING_ACTIVATIONS_PATH } from '@features/owner-tenants/activation/activationProgress';
+import { useGettingStarted } from '@features/owner-dashboard/getting-started/useGettingStarted';
+import { Spotlight } from '@shared/ui-patterns/Spotlight';
 
 function DashboardLoadingSkeleton() {
   return (
@@ -46,7 +47,27 @@ export function OwnerDashboardPreviewPage() {
   const reorder = useHostelOrder();
   const [hostelMenuFor, setHostelMenuFor] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [addHostelOpen, setAddHostelOpen] = useState(false);
+
+  // Spotlight anchors. Refs rather than selectors so a refactor cannot leave
+  // the tour dimming the screen and highlighting nothing.
+  const gettingStartedRef = useRef<HTMLElement>(null);
+  const actionCenterRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLButtonElement>(null);
+
+  // A hostel whose build was left unfinished. Derived from the data itself —
+  // a hostel with no rooms is one still being built — rather than a stored
+  // "onboarding step", which would drift the moment an owner adds or deletes
+  // rooms from the Rooms tab.
+  const unfinished = dash.properties.find((p) => (p.totalCapacity ?? 0) === 0);
+  const hostelInProgress = unfinished
+    ? { id: unfinished.id, name: unfinished.name, summary: 'No rooms added yet' }
+    : null;
+
+  const gettingStarted = useGettingStarted({
+    ...dash.gettingStartedSignals,
+    hostelInProgress: hostelInProgress ? { name: hostelInProgress.name, summary: hostelInProgress.summary } : null,
+    ready: !dash.isLoading,
+  });
 
   if (dash.isLoading) return <DashboardLoadingSkeleton />;
 
@@ -82,20 +103,41 @@ export function OwnerDashboardPreviewPage() {
         properties={dash.properties}
         alertCount={dash.alertCount}
         actionCenter={dash.actionCenter}
-        snapshot={dash.snapshot}
         collection={dash.collection}
         onSelectProperty={(hostelId) => navigate(`/owner/hostels/${hostelId}/overview`)}
         onOpenAlerts={() => navigate('/owner/alerts')}
         onOpenQuickActions={qa.openSheet}
         onViewAllActions={qa.openAllActions}
         onPropertyMenu={(hostelId) => setHostelMenuFor(hostelId)}
-        onAddHostel={() => setAddHostelOpen(true)}
+        onAddHostel={() => navigate(hostelInProgress ? `/owner/hostels/${hostelInProgress.id}/build` : '/owner/hostels/new')}
+        hostelInProgress={hostelInProgress}
+        gettingStartedRef={gettingStartedRef}
+        actionCenterRef={actionCenterRef}
+        searchRef={searchRef}
+        gettingStarted={
+          gettingStarted.state.visible
+            ? {
+                state: gettingStarted.state,
+                verification: gettingStarted.verification,
+                onStep: (id) => {
+                  if (id === 'hostel') {
+                    navigate(hostelInProgress ? `/owner/hostels/${hostelInProgress.id}/build` : '/owner/hostels/new');
+                  } else if (id === 'tenant') {
+                    qa.inviteTenant();
+                  } else {
+                    navigate('/owner/money/collect');
+                  }
+                },
+              }
+            : null
+        }
         onReorderProperties={(orderedIds) => reorder.mutate(orderedIds)}
         onOpenSearch={() => setSearchOpen(true)}
         onOpenCollectionQueue={() => navigate('/owner/money/collect')}
         onOpenAgreements={() => navigate('/owner/agreements/review')}
         onOpenActivations={() => navigate(PENDING_ACTIVATIONS_PATH)}
         onOpenVacancies={() => navigate('/owner/rooms/vacant')}
+        onOpenRevenue={() => navigate('/owner/money')}
       />
 
       <UniversalSearchOverlay
@@ -145,9 +187,33 @@ export function OwnerDashboardPreviewPage() {
         onInviteTenant={qa.inviteTenant}
         actionCenter={dash.actionCenter}
       />
+      {/* Orientation, once, and only for an account that is genuinely empty.
+          It ends on the checklist so the last thing highlighted is the thing
+          the owner should actually do next. */}
+      <Spotlight
+        open={gettingStarted.runSpotlight}
+        onDone={gettingStarted.dismissSpotlight}
+        stops={[
+          {
+            ref: gettingStartedRef,
+            title: 'Your next three steps',
+            body: 'Set up your hostel, invite a tenant, take your first payment. Each one ticks itself off as you go.',
+          },
+          {
+            ref: actionCenterRef,
+            title: 'Your daily view',
+            body: 'Rent to collect, tenants to activate and empty beds all show up here once people move in.',
+          },
+          {
+            ref: searchRef,
+            title: 'Find anyone, fast',
+            body: 'Search a tenant, room number or phone number from anywhere on this screen.',
+          },
+        ]}
+      />
+
       <QuickCollectModal open={qa.collectOpen} onClose={qa.closeCollect} initialTenant={qa.collectTenant} />
       <InviteTenantWizard open={qa.inviteOpen} onClose={qa.closeInvite} />
-      <AddHostelModal open={addHostelOpen} onClose={() => setAddHostelOpen(false)} />
       <HostelOptionsSheet
         open={Boolean(hostelMenuFor)}
         onClose={() => setHostelMenuFor(null)}

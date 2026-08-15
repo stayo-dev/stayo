@@ -1,0 +1,11 @@
+-- Drops `blood_group`, added earlier the same day by
+-- `20260814120000_add_tenant_identity_fields`. Not a field StayO collects:
+-- it was carried over from the Stayo Tenant.dc.html mockup's "Personal
+-- information" card without anyone needing it operationally.
+--
+-- `IF EXISTS` because the databases are not in the same state — the column
+-- was only ever created where 20260814120000 actually ran, and production
+-- never received it (this repo applies migrations by hand; the Vercel build
+-- is `next build`, with no `prisma migrate deploy` step). That drift is what
+-- 500'd every authenticated request on 2026-08-14 — see [[Bugs]].
+ALTER TABLE "public"."tenants" DROP COLUMN IF EXISTS "blood_group";

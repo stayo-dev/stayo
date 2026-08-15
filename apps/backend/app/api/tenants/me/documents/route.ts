@@ -8,6 +8,7 @@ import { imagekit } from "@/lib/imagekit";
 import { eventLog } from "@/lib/services/event-log-service";
 import { backendUrl } from "@/lib/config/domains";
 import { currentAgreementWhere } from "@/src/services/tenants/agreement-status";
+import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
 const allowedTypesForProfile = (profileType?: string | null) => {
   const type = String(profileType || "STUDENT").toUpperCase();
@@ -30,8 +31,8 @@ export async function GET(req: NextRequest) {
     return apiError("Forbidden", "FORBIDDEN", 403);
   }
 
-  const tenant = await prisma.tenants.findUnique({
-    where: { profile_id: session.sub },
+  const tenant = await prisma.tenants.findFirst({
+    where: liveTenancyWhere(session.sub),
     select: { id: true, profile_type: true },
   });
   if (!tenant) return apiError("Tenant not found", "NOT_FOUND", 404);
@@ -79,8 +80,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const tenant = await prisma.tenants.findUnique({
-      where: { profile_id: session.sub },
+    const tenant = await prisma.tenants.findFirst({
+      where: liveTenancyWhere(session.sub),
       select: { id: true, owner_id: true, profile_type: true },
     });
     if (!tenant) return apiError("Tenant not found", "NOT_FOUND", 404);

@@ -45,6 +45,8 @@ The tenant-contract subsystem — **entirely undocumented in `docs/data-models/s
 ### `change_requests` / `change_request_events`
 The newest subsystem in the schema (migration `20260707170000_change_management_system`), also undocumented in `docs/data-models/schema.md`. A generic, governed wrapper for approval-gated modifications to `tenant`/`profile`/`agreement`/`obligation`/`room_allocation` data — captures `before` (full prior state, JSON) and `diff` (changed fields only, JSON), a mandatory `reason`, and a multi-level approval model (`ChangeCategory` A–D, `ChangeApprovalLevel` L0–L3). See [[Business-Rules]] and [[Features]] for the tenant-approval workflow this powers.
 
+**Two directions now share this table, each with its own code path — don't assume "change request" means one specific flow.** `ChangeManagementFacade` (`src/services/change-management/change-management-facade.ts`) is hardwired **owner proposes → tenant approves** (`propose()`/`approve()`/`reject()` all hardcode `actor_role`/authorization for that direction; it powers the owner's "Request Change" button on the Tenant Profile page). As of 2026-08-14, a second, separate, **tenant proposes → owner approves** direction was added for governed self-service profile edits (phone/email only — narrowed same day from an initial phone/email/address/DOB list) — deliberately **not** built on `ChangeManagementFacade` (touching its hardcoded role checks would have risked the live owner-initiated flow); instead it's its own small set of routes (`app/api/tenants/me/profile-requests`, `app/api/owner/profile-requests[/[id]/approve|reject]`) writing directly to the same tables, tagged `change_type: 'tenant_self_service_update'` to keep the two directions distinguishable in a shared list. See [[Decisions]] ADR-069 and [[Features]].
+
 ### `correction_cases` / `correction_case_events`
 The foundation of the Business Recovery Platform (migration `20260720120000_business_recovery_platform`), a new Correction Case lifecycle engine for owner-facing undo/correction workflows — currently schema-only (Task 1 of a 17-task phased build, services/API/UI follow in later tasks). See `docs/business-logic/business-recovery-platform-architecture.md` for full design rationale.
 
@@ -232,6 +234,93 @@ One **live** tenancy per person; every past stay survives as its own row with it
 | `selectCurrentTenancy(rows)` | activation-link paths only: live, else most recent, so "cancelled"/"expired" can still be reported |
 
 Also dropped by migration 062: `tenants.reservation_policy` and `tenants.minimum_reservation_deposit`, which existed only to compute the deleted onboarding payment gate's threshold. See [[Decisions]] ADR-052, ADR-053.
+
+**Identity/academic columns added 2026-08-14** for the Profile tab's Personal information / Academic details screens, all nullable, no backfill: `nationality`, `pan_number` (migration `20260814120000_add_tenant_identity_fields`), `expected_completion_date` (`@db.Date`, migration `20260814140000_add_tenant_expected_completion_date`). Two columns from that same migration were dropped again the same day: `aadhaar_number` (`20260814120100_drop_tenant_aadhaar_number`) — Aadhaar is deliberately tracked only via `identification_documents` (`doc_type: 'AADHAAR'`), not a `tenants` column; don't re-add it without checking `TenantProfileUpdateSchema`'s own code comment first — and `blood_group` (`20260814180000_drop_tenant_blood_group`), which came from the design mockup's card layout rather than from an operational need.
+
+> ⚠️ **These four migrations are the ones that took production down on 2026-08-14** (see [[Bugs]]). Prisma selects the *full* column set for any query without an explicit `select`, and `getSession()` runs one such query (`getActiveTenancy` → `tenants.findMany`) on **every authenticated request, for every role**. So a `tenants` column that exists in `schema.prisma` but not in the database 500s the entire authenticated API, not just the tenant Profile tab. Nothing in the deploy applies migrations — the Vercel build is `next build`, and this repo's migrations are run by hand (see [[Architecture]]) — so **schema.prisma and the production database drift silently until the next request**. `guardian_name`/`guardian_phone`/`guardian_relation` already existed (read by `getTenantPortalProfile`) but were never wired to tenant self-editing until 2026-08-14 — see [[Business-Rules]].
+
+## Stayo Discover — `seeker_profile_id` and `saved_hostels` (2026-08-15, migration 063)
+
+Two additive changes backing `/discover` ([[Decisions#ADR-073|ADR-073]]). No backfill, no rewrite.
+
+**`visitor_leads.seeker_profile_id`** — nullable `uuid`, FK → `profiles(id)`, with a partial index on `(seeker_profile_id, created_at DESC) WHERE seeker_profile_id IS NOT NULL`. Links an enquiry sent from Discover to the Stayo account that sent it.
+
+> **It is nullable forever, not merely for now.** Every pre-existing row, and every future QR / walk-in / reception lead, has no seeker account behind it. Nothing may assume it is set. Matching enquiries to a person on `student_phone` instead was rejected: it breaks the moment someone edits their number, and leaves the phase-B portable profile nothing to attach to.
+
+Prisma exposes this as **two relations on the same table**, which is easy to misread:
+
+| Field on `profile` | Means |
+|---|---|
+| `visitor_leads` | leads where this profile is the **owner** receiving them |
+| `seeker_enquiries` (`@relation("SeekerEnquiries")`) | leads where this profile is the **seeker** who sent them |
+
+**`saved_hostels`** — `(id, profile_id, hostel_id, created_at)`, unique on `(profile_id, hostel_id)`, both FKs `ON DELETE CASCADE`, plus `(profile_id, created_at DESC)`. The unique index is what makes the save endpoint's `upsert` idempotent, so a double tap on the heart is one row rather than a 500. A table rather than client storage because Saved is an authenticated tab with a count on the profile screen — localStorage would not survive a device change.
+
+`visitor_leads.source` gained the value `'DISCOVER'` with **no migration** — it is a plain `String` column, matching this schema's convention of descriptive statuses as strings rather than Prisma enums (see the quirks section below).
+
+> ⚠️ **Not verified against a live database.** The migration file and both objects need one real run; the accompanying tests use this repo's mocked-Prisma pattern. Note the 2026-08-14 warning above applies in spirit: `visitor_leads` is read by the owner lead funnel, so a column present in `schema.prisma` but absent from the database will 500 those routes.
+
+## The portable profile — `profile_identity` + the document vault (2026-08-15, migration 064)
+
+Three new tables ([[Decisions#ADR-074|ADR-074]]). Nothing is dropped or altered, and there is no backfill in the migration.
+
+**`profile_identity`** — 1:1 with `profiles`, holding person-level identity: `date_of_birth`, `gender`, `nationality`, `pan_number`, `permanent_address`, `photo_url`, `personal_email`, `guardian_name`/`_phone`/`_relation`, `profile_type`, and the academic/professional set (`college_name`, `roll_number`, `course`, `year_of_study`, `branch`, `section`, `office_name`, `office_location`, `job_role`).
+
+> **Why not columns on `profiles`.** `getSession()` reads a profile on every authenticated request for every role, and Prisma selects the full column set on any query without an explicit `select`. That is the exact mechanism behind the 2026-08-14 outage documented above. A separate table keeps eighteen rarely-read columns off the hottest path in the system.
+
+**`tenants` keeps every matching column.** They stop being canonical and become **the snapshot of what was true when that tenancy began** — which is what agreements and history need. Reads go profile-first with a tenancy fallback; see [[Business-Rules]] for the fixed precedence (live tenancy, else most recent — never an `orderBy` on `status`, since `TenantStatus` declares `INVITED` before `ACTIVE`).
+
+**`identity_documents`** — the vault. `profile_id`, `doc_type`, file fields, `is_active`. One row per file the person has ever uploaded; no hostel, no tenancy. Replacing a document of the same type sets `is_active: false` on the old row rather than deleting it, because shares point at what an owner actually reviewed.
+
+**`identity_document_shares`** — one row per (document, hostel), unique on that pair. Carries `status` (`PENDING`/`VERIFIED`/`REJECTED`), `verified_by`/`verified_at`, `rejected_by`/`rejected_at`/`rejection_reason`, `granted_at`, `revoked_at`, and `tenant_id` once a tenancy exists.
+
+> **The verdict lives on the share, never on the document.** That is the whole model: one owner verifying an ID must not make it verified for every other hostel the person applies to. Revocation sets `revoked_at` instead of deleting, so a past verifier stays attributable.
+
+`identification_documents` (the pre-phase-B per-tenancy table) is **not** dropped. The migration copies rather than moves, so no owner loses a verification they have already made.
+
+> ⚠️ **Not verified against a live database.** Migration 064, all three tables and `npm run backfill:profile-identity` need one real run. The accompanying tests mock Prisma entirely and live in `vitest.pure.config.ts`, because `.env.test` points at the same Supabase project as dev (see the open issue in [[Bugs]]).
+
+## Residency history disclosure (2026-08-15, migration 065)
+
+**The history itself needed no new storage.** Since migration 062 a `tenants` row *is* one tenancy, and `room_allocations` + `move_out_requests` carry the room and the settlement. `residency_history_disclosures` stores only the tenant's **control** over who reads it ([[Decisions#ADR-075|ADR-075]]).
+
+`(id, profile_id, hostel_id, status, requested_by, requested_at, decided_at)`, unique on `(profile_id, hostel_id)` so a second request re-opens the standing row rather than stacking a rival decision beside it.
+
+Access is normally **derived**, not stored — a hostel sees a person's history because that person has an open enquiry to them or a tenancy there. Derived access cannot go stale and cannot leak through a forgotten grant. This table covers only what derivation cannot express:
+
+| `status` | Means |
+|---|---|
+| `REQUESTED` | An owner asked before the person engaged them (the invite flow). Grants nothing. |
+| `APPROVED` | The tenant said yes. Stands in for engagement. |
+| `DECLINED` | The tenant said no. |
+| `REVOKED` | The tenant withdrew access they would otherwise have by engagement. |
+
+> **`REVOKED` and `DECLINED` override engagement** — that override is the whole point of giving the tenant control. **No row at all** means "fall back to engagement".
+
+`exit_reason`, `exit_notes` and `tenant_behavior_scores` are **never** projected into a disclosed history. See [[Business-Rules]].
+
+> ⚠️ **Not verified against a live database.** Migration 065 needs one real run.
+
+## Hostel marketing revisions (2026-08-15, migration 066)
+
+`hostel_marketing_revisions` — one snapshot per version of a hostel's Discovery listing content ([[Decisions#ADR-076|ADR-076]]): `(id, hostel_id, version, status, content jsonb, submitted_at/by, reviewed_at/by, review_note)`.
+
+`status` is `DRAFT | PENDING_REVIEW | APPROVED | REJECTED | SUPERSEDED`, plain text per this schema's convention.
+
+Two partial unique indexes carry the real rules:
+
+| Index | Rule |
+|---|---|
+| `hostel_marketing_one_draft_per_hostel` (`status IN ('DRAFT','PENDING_REVIEW')`) | one editable revision — without it two tabs produce rival drafts and the last submit silently wins |
+| `hostel_marketing_one_approved_per_hostel` (`status = 'APPROVED'`) | one live revision — the one Discovery renders |
+
+> **Revisions rather than columns on `hostels`.** The APPROVED revision keeps serving Discovery while a DRAFT is edited and reviewed, so an owner fixing a typo never drops out of search and a rejected edit never takes down a page that was fine. Same reasoning as `agreements.content_snapshot` and `RuleVersion`.
+
+> **`SUPERSEDED` rows are kept, never deleted.** They record what was advertised and when — which is what settles "but the listing said ₹4,500".
+
+`content` is validated by `src/services/marketing/marketing-content.ts` on the way in **and** out, so a revision approved under an older shape degrades to empty rather than 500ing a public listing. **It has no field for a review** — the design's "Managed by Stayo" is enforced by the schema having nowhere to put one.
+
+> ⚠️ **Not verified against a live database.** Migration 066 needs one real run.
 
 ## Key relations
 

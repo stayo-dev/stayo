@@ -50,6 +50,15 @@ export default defineConfig({
       'tests/auth-config-diagnostics.test.ts',
       'tests/password-reset-otp-purpose.test.ts',
       'tests/agreement-requirement.test.ts',
+      'tests/otp-purpose-label-length.test.ts',
+      // Discover + the portable profile. These `vi.mock('@/lib/db')`, so the
+      // real client is never constructed and nothing reaches a database —
+      // which is what qualifies them for this config.
+      'tests/discovery-service.test.ts',
+      'tests/profile-identity-service.test.ts',
+      'tests/document-vault-service.test.ts',
+      'tests/residency-history-service.test.ts',
+      'tests/marketing-approval.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),

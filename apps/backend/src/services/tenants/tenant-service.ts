@@ -5,6 +5,7 @@ import { getTenantOperationalContext } from "../../../lib/hostel-context";
 import { authOtpService } from "../../../lib/services/auth/auth-otp-service";
 import { normalizeWhatsAppPhone } from "../../../lib/services/notifications/providers/whatsapp/meta-provider";
 import { assertGuardianPhoneNotTenant } from "../../../lib/utils/phone-utils";
+import { frontendUrl } from "../../../lib/config/domains";
 
 import { allocationReconciliationService } from "../../../lib/services/allocation-reconciliation-service";
 import { financialService } from "../../../src/services/payments/financial-service";
@@ -395,12 +396,37 @@ export class TenantService {
       }
     }
 
-    const profileFields = ["name", "email", "phone", "emergency_contact", "city", "state", "pincode"];
+    // Primary phone and personal email are governed (2026-08-14 product
+    // decision, narrowed 2026-08-14 same day) — a tenant can no longer save
+    // these directly here; they must go through
+    // `POST /api/tenants/me/profile-requests` for owner approval instead.
+    // `phone` is blocked alongside `phone_1` — they're synced duplicates of
+    // the same primary-contact-number concept (see the sync block below),
+    // not a separate field; blocking only one would leave the other as a
+    // bypass. `profile.email`/`account_email` (the Supabase-login identity)
+    // is untouched by this method already (never was a self-edit field) and
+    // stays that way — the tenant-facing "email" this governs is
+    // `personal_email`, the contact field this Profile tab actually exposes.
+    // Address (city/state/pincode) and date of birth were briefly governed
+    // earlier the same day but that was reverted — the final product
+    // decision is that only phone and email need owner approval; everything
+    // else (address, DOB, guardian details, academic fields, blood group,
+    // nationality, PAN) saves directly.
+    const GOVERNED_FIELDS = ["phone_1", "phone", "personal_email"];
+    const attemptedGoverned = Object.keys(data).filter((k) => GOVERNED_FIELDS.includes(k));
+    if (attemptedGoverned.length > 0) {
+      throw new Error(
+        `VALIDATION_ERROR: ${attemptedGoverned.join(", ")} require owner approval — submit via POST /api/tenants/me/profile-requests instead of updating directly`,
+      );
+    }
+
+    const profileFields = ["name", "emergency_contact", "city", "state", "pincode"];
     const tenantFields = [
-      "photo_url", "phone_1", "phone_2", "phone_3", "personal_email",
+      "photo_url", "phone_2", "phone_3", "date_of_birth",
       "college_name", "roll_number", "course", "year_of_study", "section", "branch",
-      "temporary_address", "permanent_address", "gender", "profile_type",
-      "office_name", "office_location", "job_role", "date_of_birth"
+      "temporary_address", "gender", "profile_type", "nationality", "pan_number",
+      "office_name", "office_location", "job_role",
+      "guardian_name", "guardian_relation", "expected_completion_date",
     ];
 
     const profileUpdate: any = {};
@@ -410,7 +436,7 @@ export class TenantService {
       if (profileFields.includes(key)) {
         profileUpdate[key] = value;
       } else if (tenantFields.includes(key)) {
-        if (key === "date_of_birth") {
+        if (key === "date_of_birth" || key === "expected_completion_date") {
           tenantUpdate[key] = value ? new Date(value as string) : null;
         } else {
           tenantUpdate[key] = value;
@@ -823,7 +849,18 @@ export class TenantService {
         profiles: true,
         tenant_invitations: {
           orderBy: { created_at: "desc" },
-          include: { room: true },
+          include: {
+            room: true,
+            // The bed is held by a reservation from the moment of invite —
+            // no room_allocation exists until activation. Owner-side screens
+            // that read the room from allocations therefore show INVITED
+            // tenants as room-less; the reservation is the real answer.
+            reservations: {
+              where: { status: "ACTIVE" },
+              orderBy: { reserved_at: "desc" },
+              take: 1,
+            },
+          },
         },
         move_out_requests: {
           where: { status: { notIn: ["COMPLETED", "REJECTED"] } },
@@ -983,6 +1020,51 @@ export class TenantService {
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 15);
 
     const floor = currentRoom?.floor ?? null;
+
+    // ── Invitation summary ───────────────────────────────────────────────
+    // The raw `tenant_invitations` rows are still returned below for older
+    // callers, but they carry the activation `token` and force every consumer
+    // to re-derive the same things. This normalized block is the shape owner
+    // screens should read: no token, a ready-built activation link, the
+    // reserved room (not the not-yet-existent allocation), and the delivery
+    // funnel the invitation table already tracks (PENDING → OPENED →
+    // ACTIVATION_STARTED) which no surface was exposing.
+    const liveInvitation = (legacyTenant.tenant_invitations ?? []).find((inv: any) =>
+      ["PENDING", "OPENED", "ACTIVATION_STARTED"].includes(String(inv.status))
+    ) ?? legacyTenant.tenant_invitations?.[0] ?? null;
+
+    const invitationSummary = liveInvitation
+      ? {
+          id: liveInvitation.id,
+          status: liveInvitation.status,
+          hostel_id: liveInvitation.hostel_id,
+          activation_link: frontendUrl(`/activate/${liveInvitation.token}`),
+          sent_at: liveInvitation.created_at,
+          expires_at: liveInvitation.expires_at,
+          opened_at: liveInvitation.opened_at,
+          activation_started_at: liveInvitation.activation_started_at,
+          cancelled_at: liveInvitation.cancelled_at,
+          name: liveInvitation.name,
+          email: liveInvitation.email,
+          phone: liveInvitation.phone,
+          notes: liveInvitation.notes,
+          // How many times the owner has revised the terms — the invitation
+          // table models this as a parent/child version chain.
+          revision: (legacyTenant.tenant_invitations ?? []).length,
+          reserved_room: liveInvitation.room
+            ? {
+                id: liveInvitation.room.id,
+                room_no: liveInvitation.room.room_no,
+                floor: liveInvitation.room.floor,
+                capacity: liveInvitation.room.capacity,
+              }
+            : null,
+          reservation_expires_at: liveInvitation.reservations?.[0]?.expires_at ?? null,
+          agreement_duration_months: liveInvitation.agreement_duration_months,
+          agreement_start_date: liveInvitation.agreement_start_date,
+        }
+      : null;
+
     const latestRuleAcceptance = legacyTenant.rule_acceptances?.[0] ?? null;
     const requiredDocumentTypes = String(legacyTenant.profile_type || "STUDENT").toUpperCase() === "WORKING_PROFESSIONAL"
       ? ["AADHAAR", "WORK_ID"]
@@ -1040,6 +1122,11 @@ export class TenantService {
           }
         : null,
       tenant_invitations: legacyTenant.tenant_invitations || [],
+      invitation: invitationSummary,
+      // Owner screens need the tenant's hostel scope to open any hostel-scoped
+      // editor (room lists, pricing defaults). It was never on this response,
+      // so callers fell back to `undefined` and silently rendered empty forms.
+      hostel_id: legacyTenant.hostel_id,
       payment_frequency: legacyTenant.payment_frequency || "MONTHLY",
       has_active_agreement: Boolean(currentAgreement),
       agreement_duration_months: currentAgreement?.agreement_duration_months

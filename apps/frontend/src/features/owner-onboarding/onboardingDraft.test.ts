@@ -12,18 +12,7 @@ const data = {
   mobile: '918008046952',
   email: 'a@b.com',
   hostelName: 'Green Nest',
-  type: 'Co-Living' as const,
-  address: 'Yamnampet',
   city: 'Hyderabad',
-  floors: 4,
-  capacity: 100,
-  food: 'Yes' as const,
-  deposit: '16000',
-  depositMode: 'MONTHS' as const,
-  depositMonths: '2',
-  monthlyRent: '8000',
-  roomsPerFloor: 10,
-  bedsPerRoom: 4,
 };
 
 describe('serializeDraft', () => {
@@ -42,14 +31,12 @@ describe('serializeDraft', () => {
     expect(parsed.step).toBe(3);
   });
 
-  // The deposit answer is three fields, not one — persisting only the
-  // resolved amount would restore "₹16,000 flat" for someone who said
-  // "2 months of rent".
-  it('persists how the deposit was expressed, not just the resolved amount', () => {
-    const parsed = JSON.parse(serializeDraft({ step: 5, data }));
-    expect(parsed.data.depositMode).toBe('MONTHS');
-    expect(parsed.data.depositMonths).toBe('2');
-    expect(parsed.data.deposit).toBe('16000');
+  // Onboarding no longer collects the building or its pricing — that moved to
+  // Add Hostel — so the draft carries only the account answers plus the name
+  // and city used to prefill the builder afterwards.
+  it('carries only what onboarding still asks for', () => {
+    const parsed = JSON.parse(serializeDraft({ step: 2, data }));
+    expect(Object.keys(parsed.data).sort()).toEqual(['city', 'email', 'hostelName', 'mobile', 'name']);
   });
 
   it('stamps a schema version so a future shape change can be discarded safely', () => {
@@ -104,7 +91,7 @@ describe('isDraftResumable', () => {
   // Restoring someone onto step 0 with empty fields is not "resuming", it is
   // just noise — and the banner would be a lie.
   it('does not offer to resume an untouched draft at the first step', () => {
-    expect(isDraftResumable({ ...fresh, step: 0, data: { ...data, hostelName: '', name: '', city: '', address: '' } })).toBe(false);
+    expect(isDraftResumable({ ...fresh, step: 0, data: { ...data, hostelName: '', name: '', city: '' } })).toBe(false);
   });
 
   it('offers to resume step 0 if the owner actually typed something', () => {

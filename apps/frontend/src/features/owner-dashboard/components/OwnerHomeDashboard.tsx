@@ -9,10 +9,11 @@ import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useFoodSchedule } from '@features/owner-food/hooks/useFoodSchedule';
 import { cellAt, dayKeyFor, isFilled, mealSlotAt } from '@features/owner-food/weekGrid';
 import { PropertyList } from '../property-order/PropertyList';
+import { GettingStartedCard } from '../getting-started/GettingStartedCard';
+import type { GettingStarted, StepId, VerificationStatus } from '../getting-started/gettingStarted';
 import {
   mockOwnerName,
   mockActionCenter,
-  mockSnapshot,
   mockCollection,
   mockProperties,
   mockAlertCount,
@@ -20,7 +21,6 @@ import {
 } from '@shared/mocks/dashboard';
 
 type ActionCenterData = typeof mockActionCenter;
-type SnapshotData = typeof mockSnapshot;
 type CollectionData = typeof mockCollection;
 
 interface OwnerHomeDashboardProps {
@@ -28,7 +28,6 @@ interface OwnerHomeDashboardProps {
   properties?: MockProperty[];
   alertCount?: number;
   actionCenter?: ActionCenterData;
-  snapshot?: SnapshotData;
   collection?: CollectionData;
   onSelectProperty?: (hostelId: string) => void;
   onOpenAlerts?: () => void;
@@ -36,6 +35,14 @@ interface OwnerHomeDashboardProps {
   onViewAllActions?: () => void;
   onPropertyMenu?: (hostelId: string) => void;
   onAddHostel?: () => void;
+  /** A hostel that exists but still has floors without rooms. */
+  hostelInProgress?: { name: string; summary: string } | null;
+  /** New-owner walkthrough. Absent once the owner has graduated. */
+  gettingStarted?: { state: GettingStarted; verification: VerificationStatus; onStep: (id: StepId) => void } | null;
+  /** Spotlight anchors, so the tour points at real elements not selectors. */
+  gettingStartedRef?: React.Ref<HTMLElement>;
+  actionCenterRef?: React.Ref<HTMLDivElement>;
+  searchRef?: React.Ref<HTMLButtonElement>;
   /** Full ordered list of hostel ids after a manual reorder. See ADR-042. */
   onReorderProperties?: (orderedIds: string[]) => void;
   /** Opens Universal Search. See ADR-044. */
@@ -46,6 +53,8 @@ interface OwnerHomeDashboardProps {
   onOpenAgreements?: () => void;
   onOpenActivations?: () => void;
   onOpenVacancies?: () => void;
+  /** Opens the owner Money page. See ADR-063. */
+  onOpenRevenue?: () => void;
 }
 
 /**
@@ -66,7 +75,6 @@ export function OwnerHomeDashboard({
   properties = mockProperties,
   alertCount = mockAlertCount,
   actionCenter = mockActionCenter,
-  snapshot = mockSnapshot,
   collection = mockCollection,
   onSelectProperty,
   onOpenAlerts,
@@ -74,12 +82,18 @@ export function OwnerHomeDashboard({
   onViewAllActions,
   onPropertyMenu,
   onAddHostel,
+  hostelInProgress,
+  gettingStarted,
+  gettingStartedRef,
+  actionCenterRef,
+  searchRef,
   onReorderProperties,
   onOpenSearch,
   onOpenCollectionQueue,
   onOpenAgreements,
   onOpenActivations,
   onOpenVacancies,
+  onOpenRevenue,
 }: OwnerHomeDashboardProps) {
   const navigate = useNavigate();
   const session = useOwnerSession();
@@ -98,7 +112,11 @@ export function OwnerHomeDashboard({
           <h1 className="font-display text-[22px] font-extrabold leading-tight tracking-tight text-foreground">
             Good morning, {ownerName}
           </h1>
-          <p className="mt-1.5 text-[13px] font-medium text-muted-foreground">{properties.length} hostels · {collection.month}</p>
+          <p className="mt-1.5 text-[13px] font-medium text-muted-foreground">
+            {properties.length === 0
+              ? 'Let\u2019s get your first hostel set up'
+              : `${properties.length} ${properties.length === 1 ? 'hostel' : 'hostels'} · ${collection.month}`}
+          </p>
         </div>
         <button
           type="button"
@@ -117,6 +135,7 @@ export function OwnerHomeDashboard({
       {/* Was a non-interactive <div>+<span> — looked like a search field,
           did nothing. Now opens Universal Search (ADR-044). */}
       <button
+        ref={searchRef}
         type="button"
         onClick={onOpenSearch}
         aria-label="Search tenants, rooms and hostels"
@@ -126,7 +145,16 @@ export function OwnerHomeDashboard({
         <span className="text-[13px] text-muted-foreground">Search tenant, room, phone…</span>
       </button>
 
-      <section className="flex flex-col gap-3">
+      {gettingStarted && (
+        <GettingStartedCard
+          ref={gettingStartedRef}
+          state={gettingStarted.state}
+          verification={gettingStarted.verification}
+          onStep={gettingStarted.onStep}
+        />
+      )}
+
+      <section className="flex flex-col gap-3" ref={actionCenterRef}>
         <div className="flex items-baseline justify-between">
           <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Action Center</h2>
           <button type="button" onClick={onViewAllActions} className="text-[12.5px] font-semibold text-primary">
@@ -148,29 +176,31 @@ export function OwnerHomeDashboard({
           </DarkHeroCard>
         </button>
         <div className="grid grid-cols-3 gap-2">
-          {/* All three were non-interactive: StatCard had no onClick prop at
-              all, so they sat beside a tappable hero card doing nothing. Each
-              now opens its own work queue, same model as Collect Rent
-              (ADR-046). */}
-          <StatCard variant="action" label="Review Agreements" value={actionCenter.reviewAgreements.value} caption={actionCenter.reviewAgreements.caption} onClick={onOpenAgreements} ariaLabel="Review agreements" />
-          <StatCard variant="action" label="Activate Tenants" value={actionCenter.activateTenants.value} caption={actionCenter.activateTenants.caption} onClick={onOpenActivations} ariaLabel="Activate tenants" />
-          <StatCard variant="action" label="Fill Vacant Beds" value={actionCenter.fillVacantBeds.value} caption={actionCenter.fillVacantBeds.caption} onClick={onOpenVacancies} ariaLabel="Fill vacant beds" />
-        </div>
-      </section>
+          {/* All were non-interactive: StatCard had no onClick prop at all,
+              so they sat beside a tappable hero card doing nothing. Each now
+              opens its own work queue, same model as Collect Rent (ADR-046).
+              Renewal Agreements is conditional — only shown when the hostel
+              requires agreements (ADR-063).
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Snapshot</h2>
-        <div className="grid grid-cols-3 gap-2">
-          <StatCard label="Beds" value={snapshot.beds.value} caption={snapshot.beds.caption} />
+              Today's Revenue fills whatever space that leaves, so the row is
+              always complete: with Agreements on it is a full-width card
+              below three (1-3-1), with Agreements off it becomes the third
+              card in the row itself (1-3). It previously always spanned the
+              row, which left a visible gap beside Activate Tenants and Fill
+              Vacant Beds whenever agreements were switched off. */}
+          <StatCard variant="action" label="Activate Tenants" value={actionCenter.activateTenants.value} caption={actionCenter.activateTenants.caption} onClick={onOpenActivations} ariaLabel="Activate tenants" />
+          {actionCenter.showRenewalAgreements && (
+            <StatCard variant="action" label="Review Agreements" value={actionCenter.reviewAgreements.value} caption={actionCenter.reviewAgreements.caption} onClick={onOpenAgreements} ariaLabel="Review agreements" />
+          )}
+          <StatCard variant="action" label="Fill Vacant Beds" value={actionCenter.fillVacantBeds.value} caption={actionCenter.fillVacantBeds.caption} onClick={onOpenVacancies} ariaLabel="Fill vacant beds" />
           <StatCard
-            label="Outstanding"
-            value={<span className="text-destructive">{snapshot.outstanding.value}</span>}
-            caption={snapshot.outstanding.caption}
-          />
-          <StatCard
+            variant="action"
             label="Today's revenue"
-            value={<span className="text-success">{snapshot.todaysRevenue.value}</span>}
-            caption={snapshot.todaysRevenue.caption}
+            value={<span className="text-success">{actionCenter.todaysRevenue.value}</span>}
+            caption={actionCenter.todaysRevenue.caption}
+            onClick={onOpenRevenue}
+            ariaLabel="Today's revenue"
+            className={actionCenter.showRenewalAgreements ? 'col-span-3' : undefined}
           />
         </div>
       </section>
@@ -214,13 +244,15 @@ export function OwnerHomeDashboard({
         </div>
       </section>
 
-      <PropertyList
-        properties={properties}
-        onSelectProperty={onSelectProperty}
-        onPropertyMenu={onPropertyMenu}
-        onAddHostel={onAddHostel}
-        onReorder={onReorderProperties}
-      />
+      {properties.length > 0 && (
+        <PropertyList
+          properties={properties}
+          onSelectProperty={onSelectProperty}
+          onPropertyMenu={onPropertyMenu}
+          onAddHostel={onAddHostel}
+          onReorder={onReorderProperties}
+        />
+      )}
 
       <button
         type="button"

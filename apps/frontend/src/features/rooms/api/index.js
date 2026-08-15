@@ -40,6 +40,16 @@ export const roomService = {
         const response = await api.post('/rooms', { ...data, hostelId });
         return response.data.success ? response.data.data : response.data;
     },
+    /**
+     * Create a whole floor's rooms at once. Used by the hostel builder, which
+     * fills one floor at a time — each room carries its own capacity and rent,
+     * because real floors mix sharing sizes. One request, one transaction:
+     * a rejected batch leaves the floor untouched rather than half-built.
+     */
+    bulkCreateForFloor: async (floorId, rooms) => {
+        const response = await api.post(`/floors/${floorId}/rooms`, { rooms });
+        return response.data.success ? response.data.data : response.data;
+    },
     update: async (id, data) => {
         const response = await api.patch(`/rooms/${id}`, data);
         return response.data;
