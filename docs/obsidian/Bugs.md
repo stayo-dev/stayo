@@ -28,6 +28,16 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### Notifications weren't reaching owners or the platform admin — two independent gaps, not one shared cause
+
+- **Status:** fixed, 2026-08-15
+- **Symptom:** reported as "notifications not working at all" — tenant service requests (the "complaint" flow, since the `complaints` table has no route/UI, see [[Database]]) never appeared on the owner dashboard's Alerts bell, admin broadcast messages never appeared there either, and tenant service requests never appeared anywhere on the Platform Admin dashboard.
+- **Cause 1 (owner side, killed both the tenant-request and admin-broadcast flows):** `apps/frontend/src/features/owner-alerts/hooks/useAlerts.ts` read `response.adminMessages`/`.renewals`/`.requests` directly off the Axios response object returned by `apiClient.get('/owner/alerts')`. `apiClient`'s response interceptor (`src/lib/api-client.ts`) returns the full Axios response, not `.data` — every other feature wrapper in the codebase (`src/features/notifications/api`, `src/features/platform-admin/api`) correctly reads `response.data`, this hook didn't. Result: all three arrays were always `undefined` → silently fell back to `[]`, even though the backend route (`apps/backend/app/api/owner/alerts/route.ts`) was already computing all three correctly (admin broadcasts via the `notifications` table, tenant requests via a live derived read of `tenant_service_requests`).
+- **Cause 2 (admin side, tenant service requests never had a path to the admin dashboard at all — not a regression, never built):** the Platform Admin notification bell is powered by `composeRecentActivity()` (`apps/backend/lib/services/platform-admin-activity-service.ts`), which unioned only `hostels` (new listings) and `platform_invoices` (paid) — it never queried `tenant_service_requests` or `notifications`.
+- **Fix:** `useAlerts.ts` now reads `response.data.adminMessages`/`.renewals`/`.requests`, plus a 60s `refetchInterval` (matching the admin bell's existing polling pattern) so alerts refresh without a full page remount. `composeRecentActivity()` now includes a third source — recent `tenant_service_requests` (all 6 types: maintenance, room change, cleaning, lost key, visitor pass, extra mattress), mapped into the same `ActivityItem` shape with a human-readable type label, hostel name, and tenant name.
+- **Verified live** against the real dev DB: `GET /api/owner/alerts` returns real non-empty `adminMessages`/`renewals`/`requests` matching the `.data.X` shape the fixed hook reads; a temporary debug route confirmed `composeRecentActivity()` now surfaces a real tenant maintenance request ("Maintenance request — Test Hostel") correctly merged and time-sorted alongside existing hostel/invoice items, with no regression to those.
+- **Related:** [[APIs]], [[Business-Rules]]
+
 ### An unapplied `tenants` migration 500'd *every* authenticated request in production
 
 - **Status:** fixed 2026-08-14 — code fix deployed and the production database migration applied by hand (owner ran the `ALTER TABLE` below via the Supabase SQL editor)

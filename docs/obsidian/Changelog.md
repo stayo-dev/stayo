@@ -10,6 +10,13 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-15 — Fixed notifications not reaching the owner dashboard or the platform admin dashboard
+- User-reported: "notifications not working at all" — tenant service requests never showed up as owner-dashboard notifications, admin broadcast messages never showed up there either, and tenant service requests never appeared anywhere on the Platform Admin dashboard.
+- Two independent, narrow fixes (not one shared root cause — full detail in [[Bugs]]): `apps/frontend/src/features/owner-alerts/hooks/useAlerts.ts` was reading the raw Axios response instead of `response.data`, so the owner Alerts bell silently stayed empty regardless of what the backend returned; and `apps/backend/lib/services/platform-admin-activity-service.ts`'s `composeRecentActivity()` (the admin notification bell's data source) never queried `tenant_service_requests` at all — a gap, not a regression.
+- Fix: corrected the `.data` unwrap plus added a 60s refetch interval to `useAlerts.ts`; added tenant service requests (all 6 types) as a third source in `composeRecentActivity()`, mapped to the existing `ActivityItem` shape with a human-readable type label, hostel name, and tenant name.
+- Verified live against the real dev DB — owner alerts endpoint confirmed returning real non-empty data matching the fixed hook's read shape; a temporary debug route confirmed the admin activity feed now correctly surfaces a real tenant maintenance request, merged and time-sorted with existing hostel/invoice items, no regression.
+- See [[Bugs]], [[APIs]].
+
 ### 2026-08-14 — Tenant activation: removed two stale "emergency contact required" gates that blocked every activation
 - Owner-reported: activation flagged emergency contact as required despite it being explicitly dropped from the Identity screen earlier the same day (ADR-070 amendment). Root cause: that amendment only updated the Identity step's own submit validation (`saveProfile()`); `computeState()`'s tier-1-required list and `activate()`'s own hard check in `activation-workflow-service.ts` still required `tenant.phone_3`, which nothing populates anymore — so `profile_completed` could never be true and final activation always threw `VALIDATION_ERROR: Emergency contact phone number is required`, for every tenant.
 - Fix: `phone_3` removed from `missingTier1` in `computeState()` (already tracked as tier-3/optional) and the hard throw in `activate()` deleted. Emergency contact is now optional at every stage, matching the Identity screen's actual behavior. See [[Bugs]].
