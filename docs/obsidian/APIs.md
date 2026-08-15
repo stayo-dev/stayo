@@ -286,6 +286,26 @@ All routes share one visibility predicate, `DISCOVERABLE` in `src/services/disco
 
 **Changed:** `POST /api/tenants/me/complete-profile` now writes `profile_identity` **inside the same transaction** as the tenancy row. A tenancy snapshot that committed while the portable record silently failed is exactly the drift this phase removes. Non-null fields only, same reasoning as PATCH above.
 
+## Hostel Marketing Page & Approval (`/api/owner/hostels/[id]/marketing*`, `/api/platform-admin/marketing-reviews*`)
+
+**Added 2026-08-15 ([[Decisions#ADR-076|ADR-076]]).** Owner-authored Discovery listing content, and the review cycle every version passes through.
+
+| Path | Methods | Summary |
+|---|---|---|
+| `/api/owner/hostels/[id]/marketing` | GET, PUT | **OWNER/ADMIN.** GET returns the editor state: the open draft (seeded from the owner's most recent work, whatever its status), what is currently live, the last rejection note, blocking `issues`, and `is_editable`. PUT saves the draft. **409 if the revision is `PENDING_REVIEW`** — an owner editing mid-review would mean the admin approves something other than what they read |
+| `/api/owner/hostels/[id]/marketing/submit` | POST | **OWNER/ADMIN.** DRAFT → PENDING_REVIEW. Rejects an incomplete listing here rather than queueing it for a human. Clears the previous verdict, which referred to a version that no longer exists |
+| `/api/owner/hostels/[id]/marketing/withdraw` | POST | **OWNER/ADMIN.** PENDING_REVIEW → DRAFT, so a locked listing can be edited again |
+| `/api/platform-admin/marketing-reviews` | GET | **ADMIN.** The queue, oldest first. Each row carries a content summary and `flags` |
+| `/api/platform-admin/marketing-reviews/[revisionId]` | GET | **ADMIN.** One submission in full plus `live` — what Discovery shows right now — so the reviewer judges the *change* |
+| `/api/platform-admin/marketing-reviews/[revisionId]/approve` | POST | **ADMIN.** Promotes to APPROVED and demotes the previous live revision to SUPERSEDED, **in one transaction** — the partial unique index allows one APPROVED per hostel, so a non-transactional approve would leave two or none |
+| `/api/platform-admin/marketing-reviews/[revisionId]/reject` | POST | **ADMIN.** `{note}` **required** — it is the owner's only route forward |
+
+**`flags`** (surfaced, never blocking): `PRICE_DRIFT` — advertised price vs real `min(rooms.base_rent)`, 5% tolerance; `SHARING_NOT_IN_INVENTORY` — a tier advertising room sizes the hostel has none of; `NO_ROOMS`.
+
+**This is a second gate, not ADR-040's.** Nothing here writes `listing_status`/`verification_status`; a hostel needs both an approved revision *and* a LIVE+VERIFIED listing to appear in Discovery.
+
+**Changed:** `GET /api/discover/hostels/[slug]` now returns `bed_tiers`, `amenities`, `places` and `marketing_published` from the **APPROVED** revision only — there is no code path from owner-authored content to a public page that skips the admin.
+
 ## Admin / Finance-Ops / Reconciliation
 
 `/api/admin/finance-ops` (**ADMIN only**) + `/attempts(/[id])`, `/anomalies`, `/webhook-events`, `/reconciliation-runs`. `/api/admin/finance/reconciliation/issues` + `/[issueId]` + `/scan` — **note: this sibling group requires role OWNER, not ADMIN**, despite the shared `/admin/finance` URL prefix — a role-scope inconsistency worth confirming is intentional. **Update 2026-07-26:** `ADMIN` is now a real, assignable role (Platform Admin Console, above) — `/api/admin/finance-ops/*` is consequently no longer purely theoretical/unreachable as previously noted here, though no frontend still consumes it and it remains a functionally separate, older subsystem from `/api/platform-admin/*`.

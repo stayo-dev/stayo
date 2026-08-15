@@ -67,7 +67,38 @@ export function ListingPage() {
   const [photoIndex, setPhotoIndex] = useState(0);
 
   const hostel = data?.hostel;
-  const bedOptions = useMemo(() => toBedOptions(data?.rooms ?? []), [data?.rooms]);
+  const amenities = data?.amenities ?? [];
+  const places = data?.places ?? [];
+
+  /**
+   * The advertised offer, carrying real availability.
+   *
+   * Where the owner has published approved bed tiers, those decide the tier's
+   * name, price and inclusions — that is the offer, and an admin has checked
+   * it. Availability still comes from real rooms matched on sharing size: a
+   * marketing tier says what is on sale, it does not get to say what is free.
+   *
+   * With no published tiers, this falls back to deriving everything from rooms
+   * exactly as it did before marketing pages existed.
+   */
+  const bedOptions = useMemo(() => {
+    const fromRooms = toBedOptions(data?.rooms ?? []);
+    const tiers = data?.bed_tiers ?? [];
+    if (tiers.length === 0) return fromRooms;
+
+    return tiers.map((tier) => {
+      const realTier = fromRooms.find((option) => option.capacity === tier.sharing);
+      return {
+        capacity: tier.sharing,
+        label: tier.name || (tier.sharing === 1 ? 'Single room' : `${tier.sharing}-bed sharing`),
+        price: tier.price > 0 ? tier.price : (realTier?.price ?? null),
+        // A tier the owner marked FULL is full regardless of what rooms say;
+        // otherwise the live count wins over any claim.
+        availableBeds: tier.availability === 'FULL' ? 0 : (realTier?.availableBeds ?? 0),
+        roomType: tier.inclusions ?? realTier?.roomType ?? null,
+      };
+    });
+  }, [data?.rooms, data?.bed_tiers]);
   const savedIds = useMemo(() => new Set((saved ?? []).map((item) => item.id)), [saved]);
   const isSaved = hostel ? savedIds.has(hostel.id) : false;
 
@@ -316,16 +347,66 @@ export function ListingPage() {
             )}
           </section>
 
-          {/* Honest about what isn't here yet, rather than padding the page
-              with generic copy that reads as hostel-specific fact. */}
+          {/* ── What this hostel offers ──────────────────────────────── */}
+          {amenities.length > 0 && (
+            <section className="mt-7">
+              <h2 className="text-[16px] font-extrabold tracking-[-0.01em]" style={{ fontFamily: FONT.display, color: C.text }}>
+                What this hostel offers
+              </h2>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {amenities.map((amenity) => (
+                  <span
+                    key={amenity.label}
+                    className="rounded-[10px] px-3 py-2 text-[12.5px] font-semibold"
+                    style={{ background: C.chipBg, color: '#6E6459' }}
+                  >
+                    {amenity.label}
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* ── Getting around ───────────────────────────────────────── */}
+          {places.length > 0 && (
+            <section className="mt-7">
+              <h2 className="text-[16px] font-extrabold tracking-[-0.01em]" style={{ fontFamily: FONT.display, color: C.text }}>
+                Getting around
+              </h2>
+              <div
+                className="mt-3 overflow-hidden rounded-2xl border bg-white"
+                style={{ borderColor: C.line, boxShadow: '0 1px 2px rgba(40,30,20,.04)' }}
+              >
+                {places.map((place, index) => (
+                  <div
+                    key={`${place.name}-${index}`}
+                    className="flex items-center gap-3 px-4 py-3"
+                    style={{ borderTop: index === 0 ? 'none' : `1px solid ${C.lineSoft}` }}
+                  >
+                    <MapPin className="h-4 w-4 flex-none" strokeWidth={1.8} style={{ color: C.clay }} />
+                    <span className="flex-1 text-[13px] font-medium" style={{ color: C.textBody }}>
+                      {place.name}
+                    </span>
+                    <span className="flex-none text-[12.5px] font-bold tabular-nums" style={{ fontFamily: FONT.display, color: C.text }}>
+                      {place.distance}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Still honest about what genuinely isn't here — but only about the
+              things that are actually missing for *this* hostel. */}
           <section
             className="mt-6 flex gap-3 rounded-2xl border p-4"
             style={{ background: '#F6F0E8', borderColor: '#EADFCF' }}
           >
             <Info className="h-4 w-4 flex-none" strokeWidth={2} style={{ color: C.clay }} />
             <p className="text-[11.5px] leading-[1.55]" style={{ color: '#5A5147' }}>
-              Photos, room types and live availability come straight from the owner. Amenity lists,
-              resident reviews and distance-to-campus are coming as owners add them.
+              {data?.marketing_published
+                ? 'This listing was written by the owner and checked by Stayo. Live availability comes from their real rooms. Resident reviews are coming.'
+                : 'Photos, room types and live availability come straight from the owner. Amenity lists and distances appear once this hostel publishes its listing.'}
             </p>
           </section>
         </div>

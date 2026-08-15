@@ -64,9 +64,32 @@ export interface DiscoverFilters {
  * exist yet. The server sends these flags so the UI can reserve the space
  * without inventing a number. See phases C/D of the design spec.
  */
+/** A bed tier as the owner advertises it — approved content, not inventory. */
+export interface ListingBedTier {
+  name: string;
+  sharing: number;
+  price: number;
+  inclusions?: string | null;
+  availability: 'BEDS_LEFT' | 'AVAILABLE' | 'FULL';
+}
+
+export interface ListingPlace {
+  name: string;
+  distance: string;
+  category: 'COLLEGE' | 'TRANSPORT' | 'MARKET' | 'HOSPITAL' | 'OTHER';
+}
+
 export interface DiscoverListing {
   hostel: any;
   rooms: any[];
+  /**
+   * Owner-authored and admin-approved (ADR-076). Empty until a hostel has had
+   * a marketing revision approved — never a draft, never a submission.
+   */
+  bed_tiers: ListingBedTier[];
+  amenities: { label: string; icon?: string | null }[];
+  places: ListingPlace[];
+  marketing_published: boolean;
   ratings_available: boolean;
   amenities_available: boolean;
   [key: string]: any;

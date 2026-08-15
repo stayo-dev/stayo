@@ -301,6 +301,27 @@ Access is normally **derived**, not stored — a hostel sees a person's history 
 
 > ⚠️ **Not verified against a live database.** Migration 065 needs one real run.
 
+## Hostel marketing revisions (2026-08-15, migration 066)
+
+`hostel_marketing_revisions` — one snapshot per version of a hostel's Discovery listing content ([[Decisions#ADR-076|ADR-076]]): `(id, hostel_id, version, status, content jsonb, submitted_at/by, reviewed_at/by, review_note)`.
+
+`status` is `DRAFT | PENDING_REVIEW | APPROVED | REJECTED | SUPERSEDED`, plain text per this schema's convention.
+
+Two partial unique indexes carry the real rules:
+
+| Index | Rule |
+|---|---|
+| `hostel_marketing_one_draft_per_hostel` (`status IN ('DRAFT','PENDING_REVIEW')`) | one editable revision — without it two tabs produce rival drafts and the last submit silently wins |
+| `hostel_marketing_one_approved_per_hostel` (`status = 'APPROVED'`) | one live revision — the one Discovery renders |
+
+> **Revisions rather than columns on `hostels`.** The APPROVED revision keeps serving Discovery while a DRAFT is edited and reviewed, so an owner fixing a typo never drops out of search and a rejected edit never takes down a page that was fine. Same reasoning as `agreements.content_snapshot` and `RuleVersion`.
+
+> **`SUPERSEDED` rows are kept, never deleted.** They record what was advertised and when — which is what settles "but the listing said ₹4,500".
+
+`content` is validated by `src/services/marketing/marketing-content.ts` on the way in **and** out, so a revision approved under an older shape degrades to empty rather than 500ing a public listing. **It has no field for a review** — the design's "Managed by Stayo" is enforced by the schema having nowhere to put one.
+
+> ⚠️ **Not verified against a live database.** Migration 066 needs one real run.
+
 ## Key relations
 
 `hostels` is the root almost everything scopes to (`owner_id → profile`). `tenants` belongs to one `hostel_id` and is **many-to-one** with a `profile` — see the tenancy section below; it was 1:1 until 2026-08-07. `rent_obligations` belongs to a `tenant` + `hostel`, optionally an `allocation`, `agreement`, and `billing_plan`. `payments` belongs to one `obligation` and optionally a `payment_group`/`payment_attempt`, producing exactly one `receipts` row. `move_out_requests` fans out 1:1/1:N into `move_out_inspections`, `move_out_inspection_items`, `exit_settlement_transactions`, `exit_disputes`, `exit_feedbacks`. `Agreement` self-references forward/backward for renewal chains and links to `AgreementTemplate` and `RenewalOffer`. Full per-model relation table (100+ rows) lives in the research artifact this page was built from — not reproduced verbatim here to keep this page navigable; **ask for the full relation dump if you need it.**

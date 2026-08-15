@@ -4,6 +4,7 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     hostels: { findFirst: vi.fn() },
     rooms: { findMany: vi.fn() },
+    visitorLead: { count: vi.fn() },
     hostel_marketing_revisions: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
@@ -44,7 +45,9 @@ function validContent(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  hostels().findFirst.mockResolvedValue({ id: "h1", name: "Sri Adithya" });
+  hostels().findFirst.mockResolvedValue({ id: "h1", name: "Sri Adithya", public_slug: "sri-adithya" });
+  // Real enquiry count backs the design's stats row; views are not tracked.
+  (prisma as any).visitorLead.count.mockResolvedValue(0);
 });
 
 describe("content normalisation", () => {

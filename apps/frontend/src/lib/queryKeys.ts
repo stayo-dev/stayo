@@ -136,6 +136,18 @@ export const queryKeys = {
    * The portable Stayo profile (phase B). Person-scoped, not owner- or
    * hostel-scoped, so it sits outside both `ownerKey` and `hostelKey`.
    */
+  /**
+   * The hostel marketing page and its review queue. Namespaced together
+   * because the owner's editor and the admin's queue read the same revision —
+   * an approval must invalidate both.
+   */
+  marketing: {
+    all: () => ['marketing'],
+    editor: (hostelId: string) => ['marketing', 'editor', hostelId],
+    queue: () => ['marketing', 'queue'],
+    submission: (revisionId: string) => ['marketing', 'submission', revisionId],
+  },
+
   profile: {
     all: () => ['profile'],
     identity: () => ['profile', 'identity'],

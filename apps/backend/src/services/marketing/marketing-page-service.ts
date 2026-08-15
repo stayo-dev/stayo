@@ -53,7 +53,7 @@ export class MarketingPageService {
   private async assertOwnsHostel(ownerId: string, hostelId: string) {
     const hostel = await prisma.hostels.findFirst({
       where: { id: hostelId, owner_id: ownerId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, public_slug: true },
     });
     if (!hostel) throw ApiError.forbidden("You do not manage this hostel");
     return hostel;
@@ -64,7 +64,7 @@ export class MarketingPageService {
    * is currently live, so the editor can show "you have unpublished changes".
    */
   async getEditorState(ownerId: string, hostelId: string) {
-    await this.assertOwnsHostel(ownerId, hostelId);
+    const hostel = await this.assertOwnsHostel(ownerId, hostelId);
 
     const [open, approved] = await Promise.all([
       prisma.hostel_marketing_revisions.findFirst({
@@ -101,7 +101,22 @@ export class MarketingPageService {
         ? normaliseContent(latest.content)
         : EMPTY_CONTENT;
 
+    // The design's status card shows "1,240 views · 30d" beside "38
+    // enquiries". Enquiries are real — every Discovery enquiry is a
+    // `visitor_leads` row. **View tracking does not exist**, so `views` is
+    // returned as null rather than as a plausible number, and the UI omits the
+    // stat instead of printing one Stayo cannot stand behind.
+    const enquiries = await prisma.visitorLead.count({
+      where: {
+        hostel_id: hostelId,
+        source: "DISCOVER",
+        created_at: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+      },
+    });
+
     return {
+      hostel: { id: hostel.id, name: hostel.name, public_slug: hostel.public_slug },
+      stats: { enquiries_30d: enquiries, views_30d: null as number | null },
       draft: open
         ? { ...open, content: draftContent, status: open.status as RevisionStatus }
         : { id: null, version: (approved?.version ?? 0) + 1, status: "DRAFT" as RevisionStatus, content: draftContent },

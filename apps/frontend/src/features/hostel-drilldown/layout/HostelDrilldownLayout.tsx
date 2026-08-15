@@ -9,6 +9,7 @@ const TABS = [
   { to: 'overview', label: 'Overview' },
   { to: 'rooms', label: 'Rooms' },
   { to: 'tenants', label: 'Tenants' },
+  { to: 'marketing', label: 'Marketing' },
 ];
 
 /**
