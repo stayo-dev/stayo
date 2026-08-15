@@ -38,9 +38,9 @@ export function useAlerts() {
     async function fetchAlerts() {
       try {
         const response = await apiClient.get('/owner/alerts');
-        setAdminMessages(response.adminMessages || []);
-        setRenewals(response.renewals || []);
-        setRequests(response.requests || []);
+        setAdminMessages(response.data.adminMessages || []);
+        setRenewals(response.data.renewals || []);
+        setRequests(response.data.requests || []);
       } catch (err) {
         console.error('Failed to fetch alerts', err);
       } finally {
@@ -48,6 +48,8 @@ export function useAlerts() {
       }
     }
     fetchAlerts();
+    const interval = setInterval(fetchAlerts, 60_000);
+    return () => clearInterval(interval);
   }, []);
 
   const markRead = async (cat: DynamicAlertCategory, id: string) => {
