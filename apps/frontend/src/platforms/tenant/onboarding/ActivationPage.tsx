@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
 import { resolveError, toErrorLine } from '@shared/errors';
@@ -60,6 +60,8 @@ export function ActivationPage() {
   const [photoUploading, setPhotoUploading] = useState(false);
   const [paymentFrequency, setPaymentFrequency] = useState('MONTHLY');
   const [welcomeLocalPhase, setWelcomeLocalPhase] = useState<'welcome' | 'identity'>('welcome');
+  /** Last ACCOUNT-submit failure, surfaced inline under the OTP box (design's `otpError` row). */
+  const [accountOtpError, setAccountOtpError] = useState('');
 
   const [account, setAccount] = useState({ password: '', confirm_password: '', phone: '', otp: '', email: '' });
   const [otpSent, setOtpSent] = useState(false);
@@ -74,7 +76,6 @@ export function ActivationPage() {
   const [guardianVerifiedPhone, setGuardianVerifiedPhone] = useState('');
   const [guardianOtpVerifying, setGuardianOtpVerifying] = useState(false);
   const [guardianOverrideUnlocked, setGuardianOverrideUnlocked] = useState(false);
-  const [isGuardianLocked, setIsGuardianLocked] = useState(true);
 
   const [profile, setProfile] = useState<ProfileDraft>({
     phone: '',
@@ -155,8 +156,6 @@ export function ActivationPage() {
         setGuardianVerifiedPhone(draft.guardianVerifiedPhone || '');
       }
 
-      setIsGuardianLocked(Boolean(mergedProfile.guardian_name || mergedProfile.guardian_relation));
-
       if (data.activation_state?.profile_completed) clearProfileDraft(token);
       setProfileDraftStatus(draft && !data.activation_state?.profile_completed ? 'restored' : 'idle');
     } catch (err: unknown) {
@@ -230,9 +229,12 @@ export function ActivationPage() {
     }
   };
 
+  const lastStepErrorRef = useRef('');
+
   const submitStep = async (step: ActivationStep, data: Record<string, unknown>) => {
     setSubmitting(true);
     setError('');
+    lastStepErrorRef.current = '';
     try {
       const result = await tenantService.updateActivationWorkflow({ token, step, data });
       if (step === 'ACTIVATE') {
@@ -244,6 +246,7 @@ export function ActivationPage() {
       return true;
     } catch (err: unknown) {
       const message = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message || 'Could not save this step';
+      lastStepErrorRef.current = message;
       setError(message);
       return false;
     } finally {
@@ -304,6 +307,7 @@ export function ActivationPage() {
   };
 
   const submitAccount = async (): Promise<boolean> => {
+    setAccountOtpError('');
     const emailVal = (account.email || '').trim().toLowerCase();
     if (!emailVal) {
       setError('Gmail ID is required');
@@ -313,7 +317,9 @@ export function ActivationPage() {
       setError('Please enter a valid Gmail ID (e.g. name@gmail.com)');
       return false;
     }
-    return submitStep('ACCOUNT', account);
+    const ok = await submitStep('ACCOUNT', account);
+    if (!ok) setAccountOtpError(lastStepErrorRef.current || 'Incorrect code — please try again');
+    return ok;
   };
 
   const handleSendGuardianOtp = async () => {
@@ -523,6 +529,7 @@ export function ActivationPage() {
       agreementRequired={ctx.activation_state?.agreement_required !== false}
       hostelName={ctx.hostel.name || 'Stayo'}
       hostelLogoUrl={ctx.hostel.logo_url}
+      gender={profile.gender}
       error={error}
       onDismissError={() => setError('')}
     >
@@ -544,9 +551,6 @@ export function ActivationPage() {
             setPaymentFrequency={setPaymentFrequency}
             profile={profile}
             setProfile={setProfile}
-            isStudent={isStudent}
-            isGuardianLocked={isGuardianLocked}
-            setIsGuardianLocked={setIsGuardianLocked}
             isGuardianPhoneVerified={Boolean(isGuardianPhoneVerified)}
             setGuardianOverrideUnlocked={setGuardianOverrideUnlocked}
             guardianOtp={guardianOtp}
@@ -566,6 +570,9 @@ export function ActivationPage() {
             onSubmitAccount={submitAccount}
             onSubmitProfile={submitProfile}
             goToStep={goToStep}
+            stageCount={ctx.activation_state?.agreement_required === false ? 4 : 5}
+            otpError={accountOtpError}
+            onExitToIntro={() => setScreen('intro')}
             localPhase={welcomeLocalPhase}
             setLocalPhase={setWelcomeLocalPhase}
           />
@@ -576,7 +583,6 @@ export function ActivationPage() {
             ctx={ctx}
             completedSteps={completed}
             submitting={submitting}
-            isStudent={isStudent}
             guardianName={profile.guardian_name}
             guardianRelation={profile.guardian_relation}
             onGuardianSigned={(name, relation) => setProfile({ ...profile, guardian_name: name, guardian_relation: relation })}
@@ -590,8 +596,6 @@ export function ActivationPage() {
 
         {!activationResult && activeStep === 'ACTIVATE' && (
           <PasswordActivateStep
-            ctx={ctx}
-            accountPhone={account.phone}
             password={account.password}
             setPassword={(v) => setAccount({ ...account, password: v })}
             confirmPassword={account.confirm_password}

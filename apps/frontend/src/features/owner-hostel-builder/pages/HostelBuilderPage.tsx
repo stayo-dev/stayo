@@ -1,11 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
-import { HostelScene, StayoLoader } from '@shared/ui/brand';
+import { StayoLoader } from '@shared/ui/brand';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useHostelBuilder, type BuilderStage } from '../useHostelBuilder';
-import { builderSceneState } from '../builderScene';
 import { defaultFloorName } from '../hostelBuilder';
 import { NameStep } from '../steps/NameStep';
 import { FloorsStep } from '../steps/FloorsStep';
@@ -29,11 +28,11 @@ function errorMessage(error: unknown, fallback: string) {
 /**
  * Add Hostel — the owner builds their property.
  *
- * Replaces the floors/rooms/beds steps that used to sit inside signup. The
- * building behind the form is the same illustration onboarding used, driven
- * here by what the owner is actually doing: it gains a storey per floor
- * added, cuts windows as rooms appear, and lights them once those rooms have
- * a sharing size and rent.
+ * Replaces the floors/rooms/beds steps that used to sit inside signup.
+ *
+ * Sits on the standard owner graph-paper background. It used to carry an
+ * animated building that grew a storey per floor added — see the note at the
+ * render root for why that went.
  *
  * Nothing is held hostage — the hostel exists from the moment it is named,
  * every floor is saved as it is finished, and leaving mid-build is a normal
@@ -75,25 +74,6 @@ export function HostelBuilderPage() {
     advance,
     isRestoring,
   } = builder;
-
-  const activeFurnished = Boolean(
-    activeFloor && activeFloor.rooms.length > 0 && activeFloor.rooms.every((room) => room.capacity > 0 && room.rent !== null),
-  );
-
-  const scene = useMemo(
-    () =>
-      builderSceneState({
-        stage,
-        hostelName,
-        // While floors are still being chosen the count is the live stepper
-        // value, so the tower rises under the owner's thumb.
-        floorCount: stage === 'floors' ? floorCount : floors.length,
-        activeRoomCount: activeFloor?.rooms.length ?? 0,
-        activeFloorFurnished: activeFurnished,
-        isComplete: progress.isComplete,
-      }),
-    [stage, hostelName, floorCount, floors.length, activeFloor, activeFurnished, progress.isComplete],
-  );
 
   const setCount = (count: number) => {
     setFloorCount(count);
@@ -164,14 +144,20 @@ export function HostelBuilderPage() {
     // already carry; see [[Bugs]] "Activate Tenants queue rendered in the
     // legacy pre-StayO theme".
     <ThemeProvider theme="product">
-    <div className="relative min-h-screen overflow-x-hidden">
-      <HostelScene {...scene} />
+    {/* The animated `HostelScene` illustration used to sit behind this form,
+        under a gradient scrim. Removed 2026-08-15: the graph-paper grid is
+        what every other owner surface uses (OwnerAppShell, TenantDetailPage,
+        HostelDrilldownLayout — `Stayo App.dc.html`'s root treatment), and a
+        moving building competing with the form made this one screen the
+        outlier.
 
-      {/* Same scrim treatment as onboarding — keeps the form legible over the
-          illustration without hiding it. */}
-      <div className="pointer-events-none fixed inset-0 z-[1] bg-[linear-gradient(90deg,var(--background)_0%,color-mix(in_srgb,var(--background)_94%,transparent)_28%,color-mix(in_srgb,var(--background)_55%,transparent)_52%,transparent_78%)]" />
-
-      <div className="relative z-[2] flex min-h-screen flex-col">
+        `HostelScene` itself is untouched and still live — the onboarding
+        wizard renders it. `builderScene.ts`, which mapped this page's
+        stage/floor state onto that scene, had no other consumer and was
+        deleted with its test file. Restoring the illustration here means
+        writing that mapping again; it is in git history, not on disk. */}
+    <div className="relative min-h-screen overflow-x-hidden bg-background [background-image:linear-gradient(#EBDCCF_1px,transparent_1px),linear-gradient(90deg,#EBDCCF_1px,transparent_1px)] [background-size:52px_52px]">
+      <div className="relative flex min-h-screen flex-col">
         <header className="sticky top-0 z-40 border-b border-border/60 bg-background/72 backdrop-blur-md">
           <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3.5 sm:px-7.5">
             <button

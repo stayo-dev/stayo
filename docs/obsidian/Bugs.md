@@ -28,6 +28,30 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### Onboarding Step 4 told tenants they had signed an agreement that was never required and never signed
+
+- **Status:** fixed 2026-08-15
+- **Found:** 2026-08-15, owner-reported with side-by-side design/production screenshots
+- **Area:** [[Frontend]]
+- **Symptom:** on a hostel with `agreement_required: false`, the journey track correctly read "Step 3 of 4" with the Agreement node dropped — and Step 4 then showed a checklist row "3. Hostel Agreement Signed — Signed as *Prakash*" plus a "Signed Rental Agreement / Digitally Signed" card offering a PDF. No agreement stage had run and no signature existed. *Prakash* was the tenant's profile name, rendered as though it were their signature.
+- **Root cause:** neither surface tested for a signature. The checklist row was static markup with a hardcoded green tick and `ctx.agreement?.tenant_signature_name || ctx.profile?.name` as its subtitle — so the absence of a signature silently became the tenant's own name. The preview card's guard was `ctx?.agreement`, which is truthy whenever an agreement *record* exists, independent of whether signing was required or done; its label fell back to the literal string "Digitally Signed".
+- **The pattern worth remembering:** both were "summary" surfaces that restated state from elsewhere in the flow instead of reading it. A summary that renders a fallback when its source is empty stops being a summary and starts being an assertion. The same shape appeared twice more in the same audit — a hardcoded "Step 1 of 5" that contradicted the 4-stage track, and guardian copy crediting an Agreement step that [[Decisions#ADR-070|ADR-070]] had moved to *after* the screen showing it.
+- **Fix:** both Step 4 surfaces removed rather than re-gated — the approved design has neither (`PasswordActivateStep.tsx`), which also removed the fallbacks that caused it. `AgreementPreviewModal` deleted from `steps/shared.tsx` with its last consumer. Step 1's stage count now derives from `agreement_required`; the guardian copy now names the invitation as the source.
+- **Related:** [[Changelog]], [[Decisions#ADR-072|ADR-072]], [[Decisions#ADR-070|ADR-070]]
+
+### Tenant activation's primary button sat below the fold on every step, and its keyframes were reachable only by accident
+
+- **Status:** fixed 2026-08-15
+- **Found:** 2026-08-15, while diffing the shipped flow against the approved `Stayo Onboarding.dc.html` (Claude Design project `3f2fbde6`)
+- **Area:** [[Frontend]]
+- **Symptom:** two defects, both invisible in a short-content screenshot and both consequences of porting the design's *layout* without its *behaviour*.
+  1. On Identity, Agreement and Set Password — every step long enough to scroll, which is all of them on a phone — Continue / Submit / Create Account was only reachable by scrolling to the very bottom of the page.
+  2. Step bodies animated in via inline `animation: 'obFade .25s ease'` / `'obUp .3s ease'`, but the only file defining those keyframes was `ActivationIntroScreen.css`, imported by the intro screen alone. Any render path that reached a step without the intro screen ever mounting — a resumed activation link, which lands mid-flow by design — had no keyframe to run, and the step appeared with no transition.
+- **Root cause:** the design pins the primary action in a glass bar at the bottom of the flow over a gradient scrim. That bar reads as chrome in a static mockup, so each step had reimplemented it as a plain `mt-5` row at the end of its own content — four copies, none of them pinned. The keyframe problem was the same shape: the CSS was co-located with the *first* component that used it rather than with the flow, and the coupling between "these steps animate" and "the intro screen happens to be imported" was never expressed anywhere.
+- **Fix:** `StepActionBar` + `PrimaryActionButton` in `platforms/tenant/onboarding/steps/shared.tsx`, used by all four steps, with `ActivationLayout` reserving the design's 108px of bottom padding. Keyframes consolidated into `platforms/tenant/onboarding/onboarding.css`, imported by both `ActivationIntroScreen` and `ActivationLayout` (which always wraps a step); `ActivationIntroScreen.css` and `ActivationProgress.css` deleted — they had additionally redefined the same walk-cycle keyframes under two different name sets.
+- **Worth noting:** nothing fails if a future step stops using `StepActionBar`, or if `onboarding.css` is dropped from `ActivationLayout`. There is no frontend test suite to pin either. See [[Decisions#ADR-072|ADR-072]].
+- **Related:** [[Changelog]], [[Features]], [[Decisions#ADR-072|ADR-072]]
+
 ### An unapplied `tenants` migration 500'd *every* authenticated request in production
 
 - **Status:** fixed 2026-08-14 — code fix deployed and the production database migration applied by hand (owner ran the `ALTER TABLE` below via the Supabase SQL editor)
@@ -152,6 +176,7 @@ Copy this block for each new entry:
 - **Symptom:** on a 430px viewport the Add Hostel background showed a giant owner figure and no building — so the rising-tower animation, the whole point of the flow, was invisible on the device most owners use.
 - **Root cause:** `HostelScene` draws on a wide 1200×820 stage with the building at x≈820 and uses `preserveAspectRatio="…slice"`. On a phone-shaped viewport `slice` crops to the stage's **centre**, which is the owner at x≈540 — the building falls outside the visible slice.
 - **Fix:** the stage is re-framed on narrow viewports, and the frame follows what there is to see: a building-centred box when storeys exist, an owner-centred one when none do (onboarding, which no longer raises a building at all, would otherwise crop to empty ground).
+- **Moot for this screen as of 2026-08-15** — Add Hostel no longer renders `HostelScene` at all; it uses the standard owner graph-paper grid (see [[Features]]). The re-framing fix still matters, because the onboarding wizard is now this component's only caller and it is the owner-centred case described above.
 - **Related:** [[Decisions#ADR-066|ADR-066]]
 
 
