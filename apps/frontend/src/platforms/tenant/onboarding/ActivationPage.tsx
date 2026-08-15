@@ -576,6 +576,7 @@ export function ActivationPage() {
             onSubmitAccount={submitAccount}
             onSubmitProfile={submitProfile}
             goToStep={goToStep}
+            stageCount={ctx.activation_state?.agreement_required === false ? 4 : 5}
             otpError={accountOtpError}
             onExitToIntro={() => setScreen('intro')}
             localPhase={welcomeLocalPhase}
@@ -601,8 +602,6 @@ export function ActivationPage() {
 
         {!activationResult && activeStep === 'ACTIVATE' && (
           <PasswordActivateStep
-            ctx={ctx}
-            accountPhone={account.phone}
             password={account.password}
             setPassword={(v) => setAccount({ ...account, password: v })}
             confirmPassword={account.confirm_password}
