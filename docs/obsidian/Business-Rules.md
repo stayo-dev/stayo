@@ -396,6 +396,29 @@ Until the backfill has run for someone, their tenancy is still the best record a
 
 Blank values are never written by an update. Onboarding writes back to this record and its forms ask for a subset of the fields, so treating an absent field as "clear it" would let a short form wipe a longer one's answers.
 
+## Residency history — earned disclosure, facts only (2026-08-15)
+
+See [[Decisions#ADR-075|ADR-075]], which narrows [[Decisions#ADR-053|ADR-053]] rather than reversing it.
+
+**Who may see a person's stay history**, decided in one place (`residencyHistoryService.resolveAccess`), in this order:
+
+1. an explicit `REVOKED` or `DECLINED` row → **no** (the tenant's refusal outranks everything)
+2. an explicit `APPROVED` row → yes
+3. engagement — an **open enquiry** to that hostel, or a **tenancy** at it → yes
+4. otherwise → no
+
+An owner who has not earned access gets an empty list and a reason, never a count and never a hint that history exists. **Typing an identifier is not engagement**, which is what keeps ADR-053's enumeration protection intact.
+
+**What travels: facts only.** Hostel, city, joined/left dates, duration, room number, sharing, monthly rent, and whether the move-out settled.
+
+**What never travels:** `exit_reason`, `exit_notes`, `tenant_behavior_scores`, or any owner-authored note. These are one owner's unreviewed opinion; letting them follow a person means a single bad exit blacklists them across every hostel on Stayo with no right of reply. Enforced by the projection and asserted by test.
+
+**An invitation never taken up is not a stay.** Filtered on `activation_completed_at`, so an expired or cancelled invite never appears as a tenancy someone abandoned.
+
+**Owners request; only tenants decide.** There is no owner route that grants access. A request cannot re-open a `DECLINED`/`REVOKED` answer — otherwise "no" becomes a nag, and the repeated ask is itself a message the tenant never consented to receiving.
+
+**The known limit:** history cannot appear while an owner *composes* an invite, because the invitee has not responded and showing it there would rebuild the lookup-by-email oracle ADR-053 blocks. Owners request instead; the tenant answers.
+
 ## Explicit "Unknown / needs clarification" items
 
 - Whether/where rent is prorated for partial-month billing.

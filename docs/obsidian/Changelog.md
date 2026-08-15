@@ -10,6 +10,18 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-15 — Residency history: a tenant's record, shared on their terms
+- **Added** `/discover/profile/history` — the tenant's own stay history (hostel, dates, duration, room, sharing, rent, whether it settled) **and** the controls for who can see it, on one screen. Showing someone their record without showing them its readers erodes trust rather than building it.
+- **Added** `GET /api/profile/residency-history`, `GET|POST /api/profile/residency-history/disclosures`, `GET /api/owner/tenant-history`, `POST /api/owner/tenant-history/request`. See [[APIs]].
+- **Added** migration `065_residency_history_disclosure.sql` — one small table. **The history itself needed no new storage**: since migration 062 a `tenants` row *is* one tenancy, and `room_allocations` + `move_out_requests` carry the rest. It had never had a reader.
+- **Added** `TenantHistoryPanel` on the owner's tenant detail → Stay tab.
+- **This narrows [[Decisions#ADR-053|ADR-053]] without reversing it.** That ADR refuses to name another owner's hostel because "any owner could enumerate a competitor's roster, and a person's address, by typing the right email" — a stalking control, not just a competitive one. Disclosure is now **earned by engagement** (an open enquiry, or a tenancy at that hostel) or by the tenant's explicit approval; an owner who merely types an identifier still learns nothing, including whether the person has any history at all. See the amendment on ADR-053.
+- **The tenant's "no" outranks engagement.** `REVOKED`/`DECLINED` beats a tenancy that would otherwise disclose automatically. Access is otherwise derived rather than stored, so it cannot go stale or leak through a forgotten grant — when an enquiry closes, access ends by construction.
+- **Facts only.** `exit_reason`, `exit_notes` and `tenant_behavior_scores` are never projected: one owner's unreviewed opinion must not follow a person across every hostel on Stayo with no right of reply. Asserted by test. An invitation never taken up is filtered out — it is not a stay.
+- **Not delivered as asked, stated before building:** history cannot appear while an owner *composes* an invite, because the invitee has not responded and showing it there would rebuild exactly the lookup oracle ADR-053 blocks. Owners request instead (`/request`), and the tenant answers; a request cannot re-open a refusal.
+- **Verified:** 19 new tests pass (`test:pure` now 411 passing); `check:architecture`, `vite build` and branding clean. **Not verified against a live database** — migration 065 needs one real run — and **not driven in a browser**. Pre-existing and untouched: the same 2 `agreement-requirement.test.ts` failures, the `check:invariants` false positive on `validated.error.issues[0]`, and 2 `tsc` errors in `TenantDetailPage.tsx` confirmed present on a clean tree.
+- See [[Decisions#ADR-075|ADR-075]], [[Business-Rules]], [[Database]], [[APIs]], [[Features]].
+
 ### 2026-08-15 — The portable Stayo profile: fill it in once, before you enquire anywhere
 - **Added** `profile_identity` (1:1 with `profiles`), `identity_documents` (the vault) and `identity_document_shares` (per-hostel access *and* per-hostel verdict) — migration `064_portable_profile.sql`. Nothing dropped, nothing altered, no backfill in the migration. See [[Database]].
 - **Added** `/discover/profile/details`, the profile editor, reachable with **no hostel involved**. That is the requirement, stated by the owner: a tenant completes their details before enquiring, and onboarding then reads them as defaults instead of asking again.

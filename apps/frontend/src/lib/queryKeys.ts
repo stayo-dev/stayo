@@ -13,6 +13,8 @@ export const queryKeys = {
     /** Today's collection queue; hostel-scoped when a hostel is chosen. See ADR-045. */
     collectionQueue: (hostelId?: string) => ownerKey('collection-queue', hostelId ?? 'all'),
     pendingDocuments: () => ownerKey('pending-documents'),
+    /** A tenant's disclosed residency history — see ADR-053's amendment. */
+    tenantHistory: (tenantId: string) => ownerKey('tenant-history', tenantId),
     renewalQueue: () => ownerKey('renewal-queue'),
     invitedCounts: (hostelIds: string[]) => ownerKey('invited-counts', [...hostelIds].sort()),
     // Expenses are portfolio-level, not per-hostel (expenseService.create strips
@@ -138,6 +140,8 @@ export const queryKeys = {
     all: () => ['profile'],
     identity: () => ['profile', 'identity'],
     documents: () => ['profile', 'documents'],
+    residencyHistory: () => ['profile', 'residency-history'],
+    disclosures: () => ['profile', 'residency-history', 'disclosures'],
   },
 
   discover: {

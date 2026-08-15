@@ -78,6 +78,45 @@ export interface VaultDocument {
   shared_with: VaultShare[];
 }
 
+export interface ResidencyStay {
+  id: string;
+  hostel: { id: string | null; name: string | null; city: string | null };
+  joined_on: string | null;
+  exit_date: string | null;
+  is_current: boolean;
+  duration_months: number | null;
+  room_no: string | null;
+  /** Room capacity — reads as sharing type: 4 → "4-bed". */
+  sharing: number | null;
+  room_type: string | null;
+  monthly_rent: number | null;
+  /** Whether the stay was closed out properly. */
+  settled: boolean;
+  ever_moved_in: boolean;
+}
+
+export interface ResidencyHistory {
+  stays: ResidencyStay[];
+  total_stays: number;
+  total_months: number;
+}
+
+export interface DisclosureEntry {
+  hostel_id: string;
+  hostel_name: string;
+  can_see: boolean;
+  /** TENANCY | OPEN_ENQUIRY | APPROVED | DECLINED | REVOKED | REQUESTED */
+  source: string;
+  requested_at?: string | null;
+  decided_at?: string | null;
+}
+
+export interface Disclosures {
+  shared_with: DisclosureEntry[];
+  pending_requests: DisclosureEntry[];
+  blocked: DisclosureEntry[];
+}
+
 export const profileService = {
   getIdentity: async (): Promise<ProfileIdentity> => {
     const response = await api.get('/profile/identity');
@@ -102,5 +141,24 @@ export const profileService = {
   revokeFromHostel: async (hostelId: string) => {
     const response = await api.delete('/profile/documents/shares', { params: { hostel_id: hostelId } });
     return unwrap(response) as { revoked: number };
+  },
+
+  getResidencyHistory: async (): Promise<ResidencyHistory> => {
+    const response = await api.get('/profile/residency-history');
+    return unwrap(response) as ResidencyHistory;
+  },
+
+  getDisclosures: async (): Promise<Disclosures> => {
+    const response = await api.get('/profile/residency-history/disclosures');
+    return unwrap(response) as Disclosures;
+  },
+
+  /** The decision verbs are the tenant's alone — owners can only request. */
+  setDisclosure: async (hostelId: string, status: 'APPROVED' | 'DECLINED' | 'REVOKED'): Promise<Disclosures> => {
+    const response = await api.post('/profile/residency-history/disclosures', {
+      hostel_id: hostelId,
+      status,
+    });
+    return unwrap(response) as Disclosures;
   },
 };

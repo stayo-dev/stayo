@@ -273,6 +273,17 @@ All routes share one visibility predicate, `DISCOVERABLE` in `src/services/disco
 | `/api/owner/document-shares/[shareId]/verdict` | PATCH | **OWNER/ADMIN.** `{verdict: VERIFIED\|REJECTED, rejection_reason?}`. Written to the **share**, so it applies to this hostel only — a tenant carrying the same file to their next hostel carries the file, not this decision. Rejection requires a reason. 403 if the caller does not own the share's hostel, 403 if revoked, 409 if the document has been replaced |
 | `/api/tenants/me/onboarding-prefill` | GET | **TENANT.** What the activation form should open with: account fields (`name`, `email`, `phone`, `emergency_contact`) plus the merged identity, and `has_prefill` so the UI can choose between a confirm step and a blank form. Requires no tenancy — activation calls it while the tenancy is still `INVITED` |
 
+### Residency history (2026-08-15, [[Decisions#ADR-075|ADR-075]])
+
+| Path | Methods | Summary |
+|---|---|---|
+| `/api/profile/residency-history` | GET | The person's own stay history — always fully visible to them, it is theirs. Facts only: hostel, city, dates, duration, room, sharing, rent, `settled`. **Never** `exit_reason`, `exit_notes` or behaviour scores |
+| `/api/profile/residency-history/disclosures` | GET, POST | Who can currently see it (`shared_with`, `pending_requests`, `blocked`) and the tenant's control. POST takes `{hostel_id, status}` where status ∈ APPROVED/DECLINED/REVOKED. **The decision verbs are the tenant's alone** — an owner has no route that grants access |
+| `/api/owner/tenant-history` | GET | **OWNER/ADMIN.** Either `tenant_id` (resolved to the person server-side against hostels the caller owns, so no person-identifier travels through owner UI state) **or** `hostel_id` + `profile_id` for the enquiry/invite path. Returns `{allowed, reason, stays, …}` rather than a 403 — so the UI can tell "not engaged yet" from "they declined" without either case revealing whether the person has any history. On refusal `stays` is empty and every count is zero |
+| `/api/owner/tenant-history/request` | POST | **OWNER/ADMIN.** `{hostel_id, profile_id}`. Asks a person to share. Grants nothing on its own, and **cannot re-open a `DECLINED`/`REVOKED` answer** — a repeated ask is itself a message the tenant never consented to receiving |
+
+**Disclosure rule, in one place:** `residencyHistoryService.resolveAccess()`. Precedence — an explicit `REVOKED`/`DECLINED` beats everything; then an explicit `APPROVED`; then engagement (open enquiry, or a tenancy at that hostel); otherwise refused. This narrows [[Decisions#ADR-053|ADR-053]] without weakening its enumeration protection: an owner who merely types an identifier still learns nothing.
+
 **Changed:** `POST /api/tenants/me/complete-profile` now writes `profile_identity` **inside the same transaction** as the tenancy row. A tenancy snapshot that committed while the portable record silently failed is exactly the drift this phase removes. Non-null fields only, same reasoning as PATCH above.
 
 ## Admin / Finance-Ops / Reconciliation

@@ -27,6 +27,35 @@ export function useUpdateProfileIdentity() {
   });
 }
 
+export function useResidencyHistory() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: queryKeys.profile.residencyHistory(),
+    queryFn: () => profileService.getResidencyHistory(),
+    enabled: Boolean(user),
+  });
+}
+
+export function useDisclosures() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: queryKeys.profile.disclosures(),
+    queryFn: () => profileService.getDisclosures(),
+    enabled: Boolean(user),
+  });
+}
+
+export function useSetDisclosure() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ hostelId, status }: { hostelId: string; status: 'APPROVED' | 'DECLINED' | 'REVOKED' }) =>
+      profileService.setDisclosure(hostelId, status),
+    onSuccess: (disclosures) => {
+      queryClient.setQueryData(queryKeys.profile.disclosures(), disclosures);
+    },
+  });
+}
+
 export function useVaultDocuments() {
   const { user } = useAuth();
   return useQuery({

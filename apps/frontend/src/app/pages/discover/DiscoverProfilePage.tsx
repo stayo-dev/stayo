@@ -1,10 +1,14 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, ClipboardList, Heart, Home, LifeBuoy, Luggage, ShieldCheck, User } from 'lucide-react';
+import { ChevronRight, ClipboardList, Heart, History, Home, LifeBuoy, Luggage, ShieldCheck, User } from 'lucide-react';
 
 import { useAuth } from '@context/AuthContext';
 import { useEnquiries, useIsSeeker, useSavedHostels } from '@features/discover/hooks/useDiscover';
-import { useProfileIdentity } from '@features/profile/hooks/useProfileIdentity';
+import {
+  useDisclosures,
+  useProfileIdentity,
+  useResidencyHistory,
+} from '@features/profile/hooks/useProfileIdentity';
 
 import { SignedOutPrompt } from './components/SignedOutPrompt';
 import { C, FONT } from './discoverTheme';
@@ -27,6 +31,10 @@ export function DiscoverProfilePage() {
   const { data: saved } = useSavedHostels();
   const { data: enquiries } = useEnquiries();
   const { data: identity } = useProfileIdentity();
+  const { data: history } = useResidencyHistory();
+  const { data: disclosures } = useDisclosures();
+
+  const pendingCount = disclosures?.pending_requests.length ?? 0;
 
   useEffect(() => {
     document.title = 'Your Stayo account';
@@ -158,6 +166,42 @@ export function DiscoverProfilePage() {
             style={{ fontFamily: FONT.display, background: C.clayLight, color: C.ink }}
           >
             {identity?.is_complete ? 'Review your details' : 'Complete your details'}
+          </button>
+        </section>
+
+        {/* Stay history — with any pending request surfaced, since it needs an answer */}
+        <section>
+          <h2 className="mb-2.5 pl-0.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: '#9C9186' }}>
+            Your record
+          </h2>
+          <button
+            type="button"
+            onClick={() => navigate('/discover/profile/history')}
+            className="flex w-full items-center gap-3.5 rounded-2xl border bg-white px-4 py-3.5 text-left"
+            style={{ borderColor: pendingCount > 0 ? C.clay : C.line, boxShadow: '0 1px 2px rgba(40,30,20,.04)' }}
+          >
+            <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px]" style={{ background: '#F4EEE7' }}>
+              <History className="h-[17px] w-[17px]" strokeWidth={1.8} style={{ color: C.textMuted }} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[13.5px] font-semibold" style={{ color: C.inkSoft }}>
+                Stay history
+              </span>
+              <span className="block truncate text-[11px]" style={{ color: C.textFaint }}>
+                {history
+                  ? `${history.total_stays} past stay${history.total_stays === 1 ? '' : 's'} · you choose who sees it`
+                  : 'Where you’ve stayed, and who can see it'}
+              </span>
+            </span>
+            {pendingCount > 0 && (
+              <span
+                className="flex-none rounded-full px-2.5 py-1 text-[10.5px] font-bold"
+                style={{ background: C.clayPaleBg, color: '#A4482F' }}
+              >
+                {pendingCount} to answer
+              </span>
+            )}
+            <ChevronRight className="h-4 w-4 flex-none" style={{ color: '#C9BFB4' }} />
           </button>
         </section>
 

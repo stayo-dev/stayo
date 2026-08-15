@@ -280,6 +280,27 @@ Three new tables ([[Decisions#ADR-074|ADR-074]]). Nothing is dropped or altered,
 
 > ⚠️ **Not verified against a live database.** Migration 064, all three tables and `npm run backfill:profile-identity` need one real run. The accompanying tests mock Prisma entirely and live in `vitest.pure.config.ts`, because `.env.test` points at the same Supabase project as dev (see the open issue in [[Bugs]]).
 
+## Residency history disclosure (2026-08-15, migration 065)
+
+**The history itself needed no new storage.** Since migration 062 a `tenants` row *is* one tenancy, and `room_allocations` + `move_out_requests` carry the room and the settlement. `residency_history_disclosures` stores only the tenant's **control** over who reads it ([[Decisions#ADR-075|ADR-075]]).
+
+`(id, profile_id, hostel_id, status, requested_by, requested_at, decided_at)`, unique on `(profile_id, hostel_id)` so a second request re-opens the standing row rather than stacking a rival decision beside it.
+
+Access is normally **derived**, not stored — a hostel sees a person's history because that person has an open enquiry to them or a tenancy there. Derived access cannot go stale and cannot leak through a forgotten grant. This table covers only what derivation cannot express:
+
+| `status` | Means |
+|---|---|
+| `REQUESTED` | An owner asked before the person engaged them (the invite flow). Grants nothing. |
+| `APPROVED` | The tenant said yes. Stands in for engagement. |
+| `DECLINED` | The tenant said no. |
+| `REVOKED` | The tenant withdrew access they would otherwise have by engagement. |
+
+> **`REVOKED` and `DECLINED` override engagement** — that override is the whole point of giving the tenant control. **No row at all** means "fall back to engagement".
+
+`exit_reason`, `exit_notes` and `tenant_behavior_scores` are **never** projected into a disclosed history. See [[Business-Rules]].
+
+> ⚠️ **Not verified against a live database.** Migration 065 needs one real run.
+
 ## Key relations
 
 `hostels` is the root almost everything scopes to (`owner_id → profile`). `tenants` belongs to one `hostel_id` and is **many-to-one** with a `profile` — see the tenancy section below; it was 1:1 until 2026-08-07. `rent_obligations` belongs to a `tenant` + `hostel`, optionally an `allocation`, `agreement`, and `billing_plan`. `payments` belongs to one `obligation` and optionally a `payment_group`/`payment_attempt`, producing exactly one `receipts` row. `move_out_requests` fans out 1:1/1:N into `move_out_inspections`, `move_out_inspection_items`, `exit_settlement_transactions`, `exit_disputes`, `exit_feedbacks`. `Agreement` self-references forward/backward for renewal chains and links to `AgreementTemplate` and `RenewalOffer`. Full per-model relation table (100+ rows) lives in the research artifact this page was built from — not reproduced verbatim here to keep this page navigable; **ask for the full relation dump if you need it.**

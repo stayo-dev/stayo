@@ -138,6 +138,16 @@ This is an inventory of features **confirmed implemented** (live route + live UI
 - **Prefill both ways:** activation reads `GET /api/tenants/me/onboarding-prefill`; completing onboarding writes back into `profile_identity` in the same transaction, so someone who never opened the profile screen still gets their *second* hostel prefilled.
 - **Fixed while building:** agreements read `permanent_address`, `tenant_email` and `tenant_phone` **live** at PDF-render time. Harmless while identity was frozen per tenancy; with an editable profile it meant regenerating an old agreement could print an address the signatory never agreed to. Now snapshotted at signing. See [[Decisions#ADR-074|ADR-074]].
 - **Out of scope, confirmed:** parent/guardian logins. Guardian stays fields on the tenant's own profile, not a second account.
+
+### Residency history (2026-08-15)
+
+- **Routes:** `/discover/profile/history` (tenant's own record **and** who can see it), plus a `TenantHistoryPanel` on the owner's tenant detail → Stay tab.
+- **No new storage for the history.** Since migration 062 a `tenants` row *is* one tenancy; `room_allocations` and `move_out_requests` carry the room and the settlement. Migration 065 adds only `residency_history_disclosures` — the tenant's control over who reads it.
+- **Disclosure is earned, not asked for.** A hostel sees a person's history because that person enquired to them or holds a tenancy there. An owner who types an identifier gets an empty list and a reason — never a count, never a hint history exists. This narrows [[Decisions#ADR-053|ADR-053]] while keeping its enumeration protection intact.
+- **The tenant's refusal outranks engagement**, and they can revoke a hostel that would otherwise see it automatically.
+- **Facts only:** hostel, city, dates, duration, room, sharing, rent, settled. Never `exit_reason`, `exit_notes` or behaviour scores — one owner's opinion must not follow someone across every hostel with no right of reply. An invitation never taken up is filtered out; it is not a stay.
+- **The known limit:** history cannot appear while an owner *composes* an invite — that would rebuild the lookup-by-email oracle. Owners request; the tenant answers.
+- **Status:** not verified against a live database (migration 065), not driven in a browser. See [[Decisions#ADR-075|ADR-075]], [[Business-Rules]].
 - **Status:** not verified against a live database — migration 064 and `npm run backfill:profile-identity` (dry-run by default) need one real run — and not driven in a browser.
 - **Ported from** `Stayo Discover.dc.html` (Claude Design project `3f2fbde6`); palette and type tokens live in one `app/pages/discover/discoverTheme.ts`, hard-coded rather than themed for the same reason as `WelcomePage` — Discover renders outside any `[data-app-theme]` shell.
 - **Status:** not verified against a live database and not driven in a browser. See [[Decisions#ADR-073|ADR-073]], [[APIs]], [[Database]], [[Changelog]].

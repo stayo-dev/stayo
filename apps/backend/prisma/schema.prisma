@@ -309,6 +309,7 @@ model hostels {
   platform_invoices              platform_invoices[]
   saved_hostels                  saved_hostels[]
   identity_document_shares       identity_document_shares[]
+  history_disclosures            residency_history_disclosures[]
 }
 
 model identity_tokens {
@@ -845,6 +846,8 @@ model profile {
   identity_documents                                                identity_documents[]
   verified_document_shares                                          identity_document_shares[] @relation("DocumentShareVerifier")
   rejected_document_shares                                          identity_document_shares[] @relation("DocumentShareRejecter")
+  history_disclosures                                               residency_history_disclosures[] @relation("HistoryDisclosureSubject")
+  history_disclosure_requests                                       residency_history_disclosures[] @relation("HistoryDisclosureRequester")
   lead_notes                                                        lead_notes[]
   room_reservations                                                 room_reservations[]
   platform_admins                                                   platform_admins?
@@ -1390,6 +1393,43 @@ model identity_document_shares {
   @@index([hostel_id, status], map: "idx_identity_document_shares_hostel_status")
   @@index([tenant_id], map: "idx_identity_document_shares_tenant")
   @@map("identity_document_shares")
+}
+
+/// The tenant's control over who reads their residency history.
+///
+/// Access is normally **derived** from engagement — a hostel sees a person's
+/// stays because that person enquired to them or holds a tenancy there —
+/// because derived access cannot go stale or leak through a forgotten grant.
+/// This table covers only what derivation cannot express: an owner asking
+/// before the person has engaged them (the invite flow), and a tenant
+/// withdrawing access they would otherwise have.
+///
+/// **A `REVOKED` or `DECLINED` row overrides engagement.** No row at all means
+/// "fall back to engagement".
+model residency_history_disclosures {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id   String    @db.Uuid
+  hostel_id    String    @db.Uuid
+
+  /// REQUESTED | APPROVED | DECLINED | REVOKED
+  status       String    @default("REQUESTED")
+
+  /// Null when the tenant acted without being asked.
+  requested_by String?   @db.Uuid
+  requested_at DateTime? @db.Timestamptz(6)
+  decided_at   DateTime? @db.Timestamptz(6)
+
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime? @db.Timestamptz(6)
+
+  profile      profile   @relation("HistoryDisclosureSubject", fields: [profile_id], references: [id], onDelete: Cascade)
+  hostel       hostels   @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
+  requester    profile?  @relation("HistoryDisclosureRequester", fields: [requested_by], references: [id])
+
+  @@unique([profile_id, hostel_id], map: "residency_history_disclosures_profile_hostel_key")
+  @@index([profile_id, status], map: "idx_residency_disclosures_profile_status")
+  @@index([hostel_id, status], map: "idx_residency_disclosures_hostel_status")
+  @@map("residency_history_disclosures")
 }
 
 /// One row per hostel a seeker has hearted in Discover. Deliberately a table

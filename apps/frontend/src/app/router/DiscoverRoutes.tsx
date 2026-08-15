@@ -23,6 +23,9 @@ const DiscoverProfilePage = lazy(() =>
 const ProfileEditPage = lazy(() =>
   import('@/app/pages/discover/ProfileEditPage').then((m) => ({ default: m.ProfileEditPage })),
 );
+const ResidencyHistoryPage = lazy(() =>
+  import('@/app/pages/discover/ResidencyHistoryPage').then((m) => ({ default: m.ResidencyHistoryPage })),
+);
 
 /**
  * Stayo Discover — the public marketplace (ADR-073).
@@ -70,6 +73,10 @@ export function DiscoverRoutes() {
       {/* The portable profile's editor (phase B). Deliberately reachable with
           no hostel involved — a tenant fills this in before enquiring. */}
       <Route path="/discover/profile/details" element={<ProfileEditPage />} />
+      {/* The tenant's own stay history, and their control over who reads it —
+          both on one screen, because a record without visibility of its
+          readers erodes trust rather than building it. */}
+      <Route path="/discover/profile/history" element={<ResidencyHistoryPage />} />
     </Route>
   );
 }
