@@ -90,17 +90,25 @@ export async function GET(req: NextRequest) {
       });
 
       if (tenant) {
-      tenantId = tenant.id;
-      extra.monthly_rent = tenant.monthly_rent;
-      extra.tenant_status = tenant.status;
-      extra.is_profile_completed = tenant.profile_completed || profile.is_profile_completed;
+        tenantId = tenant.id;
+        extra.monthly_rent = tenant.monthly_rent;
+        extra.tenant_status = tenant.status;
+        extra.is_profile_completed = tenant.profile_completed || profile.is_profile_completed;
 
-      const activeAlloc = (tenant as any).room_allocations[0];
-      if (activeAlloc) {
-        extra.room_id = activeAlloc.room_id;
-        extra.room_no = activeAlloc.room.room_no;
-        extra.room_capacity = activeAlloc.room.capacity;
-      }
+        const activeAlloc = (tenant as any).room_allocations[0];
+        if (activeAlloc) {
+          extra.room_id = activeAlloc.room_id;
+          extra.room_no = activeAlloc.room.room_no;
+          extra.room_capacity = activeAlloc.room.capacity;
+        }
+      } else {
+        // A TENANT with no tenancy is a Stayo Discover account — someone who
+        // signed up to browse and enquire but has not moved in anywhere
+        // (`authService.selfSignUpTenant`). This branch used to fall through
+        // leaving `is_profile_completed` undefined, so every guard reading it
+        // treated a complete profile as incomplete and bounced them to
+        // /complete-profile on reload. See Bugs.md.
+        extra.is_profile_completed = profile.is_profile_completed;
       }
     } else {
       extra.is_profile_completed = profile.is_profile_completed;

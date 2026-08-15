@@ -1,0 +1,8 @@
+STAYO — COLOR
+
+Warm Clay     #B46A55   Primary brand
+Terra Cotta   #A45D44   Deep accent
+Dusty Orange  #D2986C   Light accent
+Latte         #EBD9C4   Light surface
+Charcoal      #2F2F2F   Text / dark surface
+Cream         #F7F3EE   Background

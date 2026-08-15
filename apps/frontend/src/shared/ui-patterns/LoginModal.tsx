@@ -4,7 +4,7 @@ import { Eye, EyeOff, X } from 'lucide-react';
 import { cn } from '@shared/lib/cn';
 import { useAuth } from '@context/AuthContext';
 import { authApi } from '@lib/authApi';
-import { StayoLoader } from '@shared/ui/brand';
+import { StayoLoader, StayoMark, StayoWordmark } from '@shared/ui/brand';
 
 export type LoginModalMode = 'owner' | 'tenant';
 
@@ -210,8 +210,13 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
             <X className="h-4 w-4 text-foreground" />
           </Dialog.Close>
 
-          <div className="mb-1.5 flex items-center gap-2.5">
-            <span className="font-display text-lg font-extrabold tracking-tight text-primary">Stayo</span>
+          {/* The real lockup, not a typeset word. `StayoMark` + `StayoWordmark`
+              inherit `currentColor`, so the brand's terracotta comes from the
+              same `--primary` token the rest of the sheet uses rather than a
+              second hard-coded value that could drift from it. */}
+          <div className="mb-1.5 flex items-center gap-2 text-primary">
+            <StayoMark className="h-[22px] w-auto" />
+            <StayoWordmark className="h-[15px] w-auto" />
           </div>
 
           {otpRequired ? (

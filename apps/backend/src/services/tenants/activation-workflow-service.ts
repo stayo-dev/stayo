@@ -529,6 +529,13 @@ export class ActivationWorkflowService {
             agreement_duration_months: lifecycle.agreement_duration_months,
             payment_frequency: lifecycle.contract_payment_frequency,
             tenant_name: variables.TENANT_NAME,
+            // Frozen here rather than read live at render time. Phase B made
+            // identity person-level and editable from a profile screen, so
+            // without this an old agreement's regenerated PDF would print
+            // whatever address the tenant last saved — not what they signed.
+            permanent_address: tenant.permanent_address ?? null,
+            tenant_email: tenant.personal_email ?? null,
+            tenant_phone: tenant.phone_1 ?? null,
             owner_name: activeTemplate.owner_name,
             custom_rules: activeTemplate.custom_rules || "",
             terms_and_conditions: (activeTemplate.rules_content as any)?.terms_and_conditions || DEFAULT_TERMS_AND_CONDITIONS,

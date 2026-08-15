@@ -13,6 +13,8 @@ export const queryKeys = {
     /** Today's collection queue; hostel-scoped when a hostel is chosen. See ADR-045. */
     collectionQueue: (hostelId?: string) => ownerKey('collection-queue', hostelId ?? 'all'),
     pendingDocuments: () => ownerKey('pending-documents'),
+    /** A tenant's disclosed residency history — see ADR-053's amendment. */
+    tenantHistory: (tenantId: string) => ownerKey('tenant-history', tenantId),
     renewalQueue: () => ownerKey('renewal-queue'),
     invitedCounts: (hostelIds: string[]) => ownerKey('invited-counts', [...hostelIds].sort()),
     // Expenses are portfolio-level, not per-hostel (expenseService.create strips
@@ -123,5 +125,43 @@ export const queryKeys = {
     detail: (id: string) => ownerKey('admissions', 'detail', id),
     analytics: (filters?: object) => ownerKey('admissions', 'analytics', filters ?? {}),
     visit: (slug: string) => ['public', 'visit', slug],
+  },
+
+  /**
+   * Stayo Discover. Namespaced under 'discover' rather than 'owner' because
+   * none of it is owner-scoped — search and listing detail are public, and the
+   * rest belongs to the signed-in seeker, not to a hostel.
+   */
+  /**
+   * The portable Stayo profile (phase B). Person-scoped, not owner- or
+   * hostel-scoped, so it sits outside both `ownerKey` and `hostelKey`.
+   */
+  /**
+   * The hostel marketing page and its review queue. Namespaced together
+   * because the owner's editor and the admin's queue read the same revision —
+   * an approval must invalidate both.
+   */
+  marketing: {
+    all: () => ['marketing'],
+    editor: (hostelId: string) => ['marketing', 'editor', hostelId],
+    queue: () => ['marketing', 'queue'],
+    submission: (revisionId: string) => ['marketing', 'submission', revisionId],
+  },
+
+  profile: {
+    all: () => ['profile'],
+    identity: () => ['profile', 'identity'],
+    documents: () => ['profile', 'documents'],
+    residencyHistory: () => ['profile', 'residency-history'],
+    disclosures: () => ['profile', 'residency-history', 'disclosures'],
+  },
+
+  discover: {
+    all: () => ['discover'],
+    search: (filters?: object) => ['discover', 'search', filters ?? {}],
+    listing: (slug: string) => ['discover', 'listing', slug],
+    saved: () => ['discover', 'saved'],
+    enquiries: () => ['discover', 'enquiries'],
+    enquiry: (id: string) => ['discover', 'enquiries', id],
   },
 };

@@ -361,6 +361,81 @@ A tenant editing their own profile (`platforms/tenant` Profile tab → `PATCH /a
 
 **Profile tab visual pattern**: the 4 detail screens (Personal information / Contact details / Emergency contact / Academic details) are read-only card views by default — label/value rows, a person-card for Emergency Contact, a "Verified" pill on Personal Information when KYC is complete — matching `Stayo Tenant.dc.html`'s own DETAIL-map design exactly. Tapping the screen's own bottom button (its original design copy — e.g. "Request a correction", "Update contact details") switches to an editable form inside the *same* card layout; saving (or a no-op with unchanged direct fields) returns to the read-only view. See `ProfileEditScreen.tsx` + `configs/profileEditConfigs.ts`.
 
+## The portable profile — identity is person-level, verification is not (2026-08-15, phase B)
+
+See [[Decisions#ADR-074|ADR-074]]. Three rules follow from identity moving off `tenants`.
+
+**1. A person-level field changed by one owner changes it everywhere — so owners propose, they no longer apply.**
+
+`field-classification.ts` used to put `college_name`, `roll_number`, `course`, `year_of_study`, `branch`, `section`, `office_name`, `office_location`, `job_role`, `profile_type`, `photo_url`, `gender` and `date_of_birth` in **Category A** (owner edits immediately, audit log only). All of them are now **Category B** — owner proposes, tenant approves — alongside guardian fields, `personal_email` and `permanent_address`, which were already B but pointed at `tenants`.
+
+The test for Category B is **not** "is this sensitive". It is **"does one hostel changing it affect another"**. Under the old rules an owner editing `college_name` would silently rewrite the person's record at a hostel that owner has no relationship with.
+
+Category A now holds only genuinely per-tenancy flags: `document_verified`, `profile_completed`, `mobile_verified` — each of which means "has *this* owner checked *this* tenant", not a fact about the person.
+
+`temporary_address` deliberately stays on `tenants`: it is where someone lives *for this tenancy*, usually the hostel itself.
+
+**Accepted cost, named before building:** owners lose immediate edit on academic and personal fields.
+
+**2. A document is portable; a verification decision is not.**
+
+The vault (`identity_documents`) holds the file, uploaded once. `identity_document_shares` holds one row per (document, hostel) and carries the verdict — `PENDING`/`VERIFIED`/`REJECTED`, plus who decided and when.
+
+- An owner may see a document **only** through a live (non-revoked) share for a hostel they own.
+- Owner A verifying a document does **not** make it verified for Owner B. The tenant re-uses the *file*, never the judgement.
+- Revoking sets `revoked_at` rather than deleting, so an owner who verified something stays attributable afterwards.
+- Re-granting a previously revoked share **keeps** its old status: the same owner already checked that same file, and making them re-verify is friction with no safety benefit.
+- Rejection requires a reason — the same rule `owner_documents.review_note` already follows.
+- Replacing a document of the same type retires the old row (`is_active: false`) instead of deleting it, because existing shares point at what the owner actually looked at.
+
+This settles a contradiction in the design source: its verify screen promises "shared only with the owner you enquire to" while its profile screen promises "verified once, reuse anywhere". Only one can be the default; **uploaded once, verified per hostel** is it.
+
+**3. Reads are profile-first with a tenancy fallback, and the precedence is fixed.**
+
+Until the backfill has run for someone, their tenancy is still the best record available, so `getIdentity()` falls back to it: the **live** tenancy (`INVITED`/`ACTIVE`) first, else the most recently created — **never** an `orderBy: { status: 'asc' }`, which would prefer `INVITED` over `ACTIVE` because that is the order `TenantStatus` declares them. `scripts/backfill-profile-identity.ts` uses the identical precedence, so a read before the backfill and a read after it agree on which value wins.
+
+Blank values are never written by an update. Onboarding writes back to this record and its forms ask for a subset of the fields, so treating an absent field as "clear it" would let a short form wipe a longer one's answers.
+
+## Residency history — earned disclosure, facts only (2026-08-15)
+
+See [[Decisions#ADR-075|ADR-075]], which narrows [[Decisions#ADR-053|ADR-053]] rather than reversing it.
+
+**Who may see a person's stay history**, decided in one place (`residencyHistoryService.resolveAccess`), in this order:
+
+1. an explicit `REVOKED` or `DECLINED` row → **no** (the tenant's refusal outranks everything)
+2. an explicit `APPROVED` row → yes
+3. engagement — an **open enquiry** to that hostel, or a **tenancy** at it → yes
+4. otherwise → no
+
+An owner who has not earned access gets an empty list and a reason, never a count and never a hint that history exists. **Typing an identifier is not engagement**, which is what keeps ADR-053's enumeration protection intact.
+
+**What travels: facts only.** Hostel, city, joined/left dates, duration, room number, sharing, monthly rent, and whether the move-out settled.
+
+**What never travels:** `exit_reason`, `exit_notes`, `tenant_behavior_scores`, or any owner-authored note. These are one owner's unreviewed opinion; letting them follow a person means a single bad exit blacklists them across every hostel on Stayo with no right of reply. Enforced by the projection and asserted by test.
+
+**An invitation never taken up is not a stay.** Filtered on `activation_completed_at`, so an expired or cancelled invite never appears as a tenancy someone abandoned.
+
+**Owners request; only tenants decide.** There is no owner route that grants access. A request cannot re-open a `DECLINED`/`REVOKED` answer — otherwise "no" becomes a nag, and the repeated ask is itself a message the tenant never consented to receiving.
+
+**The known limit:** history cannot appear while an owner *composes* an invite, because the invitee has not responded and showing it there would rebuild the lookup-by-email oracle ADR-053 blocks. Owners request instead; the tenant answers.
+
+## The listing's mess menu is a reviewed claim, not this month's cooking (2026-08-15)
+
+See [[Decisions#ADR-077|ADR-077]]. Stayo stores a weekly menu twice, on purpose, and the two answer different questions.
+
+- **`food_schedules` / `food_schedule_meals`** — what is actually being cooked. Monthly, regenerable, can be driven by resident polls ([[Decisions#ADR-057|ADR-057]]). Lives in the Food tab; changes freely. See [[Food]].
+- **`content.mess` on a marketing revision** — what the *listing* promises a prospective tenant. Passes through admin review like every other listing claim, and changes only when a new revision is approved.
+
+**Discovery reads the second, never the first.** A menu shown to someone deciding whether to move in must not change without review, and must not vanish because next month's schedule has not been drafted yet.
+
+**Rules the content schema enforces:**
+
+- **Four meals, fixed** — Breakfast, Lunch, Snacks, Dinner. Owners write the dishes, set serving times and switch a meal off; they cannot add a fifth, or listings stop being comparable in search.
+- **A meal switched off never reaches the listing.** Filtered server-side, so a listing cannot advertise a meal slot the owner does not serve.
+- **The week is always exactly 7 rows.** Padded on the read path, because both the owner's day chips and Discovery's day chips index it positionally — a revision saved before this block existed must not make Tuesday read `undefined`.
+- **`provided` defaults to false.** An unstated claim is false: silence renders as "Meals not provided", never as "meals included".
+- **The reviewer sees the whole week** before approving. Approving a menu you cannot read is not approval.
+
 ## Explicit "Unknown / needs clarification" items
 
 - Whether/where rent is prorated for partial-month billing.

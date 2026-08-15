@@ -43,6 +43,80 @@
 }
 
 /*
+ * Hover response for pointer devices.
+ *
+ * On a phone the seam sliding 50% → 66% happens inches from your thumb and
+ * reads as a direct response. On a 1920px laptop the same motion is a slow
+ * diagonal far from where the eye actually is — the heading — so the screen
+ * felt inert even while it was responding. This leans the chosen panel's
+ * content a few pixels *toward* the seam, which puts the feedback where the
+ * user is looking and reinforces the two halves facing each other.
+ *
+ * Guarded on `hover: hover` so it never fires from a touch tap, and kept below
+ * the panel's own clip-path transition so the content settles first.
+ */
+.stayo-welcome-content {
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+
+@media (hover: hover) and (min-width: 1024px) {
+  /* Tenant is the top half, so "toward the seam" is downward; the owner half
+     is bottom-anchored, so its own rule below inverts this. */
+  .stayo-welcome-content--near {
+    transform: translateY(10px);
+  }
+
+  section[aria-label='For hostel owners'] .stayo-welcome-content--near {
+    transform: translateY(-10px);
+  }
+}
+
+/*
+ * Cursor footprints (FootprintTrail.tsx).
+ *
+ * The node is positioned by the component; everything time-based lives here so
+ * the trail costs no React renders. `--print-rotate` carries the heading and
+ * `--print-color` the ink, which the component picks per print depending on
+ * which side of the seam it landed — dark on the cream half, warm-light on the
+ * near-black one.
+ */
+.stayo-welcome-print {
+  position: absolute;
+  /* The coordinates the component sets are where the foot should *land*, so
+     the glyph is centred on them rather than hanging off to one side. */
+  margin: -11px 0 0 -8px;
+  color: var(--print-color, rgba(140, 103, 84, 0.3));
+  transform: rotate(var(--print-rotate, 0deg));
+  transform-origin: 50% 50%;
+  animation: stayo-welcome-step 1.5s ease-out forwards;
+}
+
+.stayo-welcome-print svg {
+  display: block;
+}
+
+@keyframes stayo-welcome-step {
+  0% {
+    opacity: 0;
+    /* Presses in rather than appearing at full size — the difference between
+       a footfall and a decal. */
+    scale: 0.72;
+  }
+  14% {
+    opacity: 1;
+    scale: 1;
+  }
+  60% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+    scale: 1.04;
+  }
+}
+
+/*
  * Reduced motion: the screen still has to *work* — the seam still has to move
  * when you pick a side, or the panels stop being legible as a choice. So the
  * decorative loops (glow, spin, splash choreography) are dropped and the
@@ -56,5 +130,12 @@
 
   .stayo-welcome-panel {
     transition-duration: 0.01ms !important;
+  }
+
+  /* The lean is decoration, not information — the seam already says which side
+     is chosen. Dropped outright rather than shortened. */
+  .stayo-welcome-content {
+    transition: none !important;
+    transform: none !important;
   }
 }

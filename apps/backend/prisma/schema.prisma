@@ -307,6 +307,10 @@ model hostels {
   hostel_utility_status          hostel_utility_status[]
   hostel_subscriptions           hostel_subscriptions?
   platform_invoices              platform_invoices[]
+  saved_hostels                  saved_hostels[]
+  identity_document_shares       identity_document_shares[]
+  history_disclosures            residency_history_disclosures[]
+  marketing_revisions            hostel_marketing_revisions[]
 }
 
 model identity_tokens {
@@ -832,6 +836,21 @@ model profile {
   // `lib/tenancy/active-tenancy.ts`, never by taking [0].
   tenants                                                           tenants[]
   visitor_leads                                                     visitor_leads[]
+  // Enquiries this person sent from Discover, as the seeker. Distinct from
+  // `visitor_leads` above, which is the same table seen as the *owner*.
+  seeker_enquiries                                                  visitor_leads[]       @relation("SeekerEnquiries")
+  saved_hostels                                                     saved_hostels[]
+  // Phase B: the portable half of this account. `identity` is the person's own
+  // record; the two share relations are this profile acting as an *owner* who
+  // verified or rejected someone else's document.
+  identity                                                          profile_identity?
+  identity_documents                                                identity_documents[]
+  verified_document_shares                                          identity_document_shares[] @relation("DocumentShareVerifier")
+  rejected_document_shares                                          identity_document_shares[] @relation("DocumentShareRejecter")
+  history_disclosures                                               residency_history_disclosures[] @relation("HistoryDisclosureSubject")
+  marketing_submissions                                             hostel_marketing_revisions[]    @relation("MarketingSubmitter")
+  marketing_reviews                                                 hostel_marketing_revisions[]    @relation("MarketingReviewer")
+  history_disclosure_requests                                       residency_history_disclosures[] @relation("HistoryDisclosureRequester")
   lead_notes                                                        lead_notes[]
   room_reservations                                                 room_reservations[]
   platform_admins                                                   platform_admins?
@@ -1242,10 +1261,15 @@ model visitor_leads {
   lost_note                 String?
   next_action_at            DateTime?           @db.Timestamptz(6)
   assigned_to               String              @default("Reception Desk")
+  /// The Stayo account that sent this enquiry from Discover. NULL for every
+  /// lead that has no seeker account behind it — QR, walk-in, reception — which
+  /// is every row that predates the discovery surface. Never assume it is set.
+  seeker_profile_id         String?             @db.Uuid
   created_at                DateTime            @default(now()) @db.Timestamptz(6)
   updated_at                DateTime?           @db.Timestamptz(6)
   hostel                    hostels             @relation(fields: [hostel_id], references: [id])
   owner                     profile             @relation(fields: [owner_id], references: [id])
+  seeker                    profile?            @relation("SeekerEnquiries", fields: [seeker_profile_id], references: [id])
   converted_tenant          tenants?            @relation(fields: [converted_tenant_id], references: [id])
   activities                lead_activities[]
   reservations              room_reservations[]
@@ -1256,7 +1280,228 @@ model visitor_leads {
   @@index([hostel_id, student_phone], map: "idx_visitor_leads_hostel_phone")
   @@index([owner_id, lead_score(sort: Desc)], map: "idx_visitor_leads_owner_score")
   @@index([converted_tenant_id], map: "idx_visitor_leads_converted_tenant")
+  @@index([seeker_profile_id, created_at(sort: Desc)], map: "idx_visitor_leads_seeker_created")
   @@map("visitor_leads")
+}
+
+/// One version of a hostel's Discovery listing content, and its review state.
+///
+/// **Revisions rather than columns on `hostels`, deliberately.** The APPROVED
+/// revision keeps serving Discovery while a DRAFT is edited and reviewed, so
+/// an owner fixing a typo never drops their hostel out of search, and a
+/// rejected edit never takes down a page that was fine. The admin approves a
+/// specific, diffable snapshot instead of "whatever the row says right now".
+///
+/// This is a second gate, independent of ADR-040's: `hostels.listing_status` /
+/// `verification_status` decide whether a hostel is discoverable **at all**;
+/// this decides whether its *content* may be shown. A listing needs both.
+model hostel_marketing_revisions {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hostel_id    String    @db.Uuid
+
+  /// Monotonic per hostel — human-facing ("v3 approved") and explicit about
+  /// ordering rather than inferring it from timestamps.
+  version      Int
+
+  /// DRAFT | PENDING_REVIEW | APPROVED | REJECTED | SUPERSEDED
+  ///
+  /// SUPERSEDED is what an APPROVED revision becomes when a newer one is
+  /// approved. Kept, not deleted: it records what was advertised and when,
+  /// which is what settles "but the listing said ₹4,500".
+  status       String    @default("DRAFT")
+
+  /// Validated on the way in by `marketing-content.ts` — a checked payload,
+  /// not a bag of anything. Child tables were rejected because a revision is
+  /// an immutable snapshot and they would each need their own versioning.
+  content      Json      @default("{}")
+
+  submitted_at DateTime? @db.Timestamptz(6)
+  submitted_by String?   @db.Uuid
+  reviewed_at  DateTime? @db.Timestamptz(6)
+  reviewed_by  String?   @db.Uuid
+  /// Owner-visible on reject, so a "no" always arrives with a reason they can
+  /// act on.
+  review_note  String?
+
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime? @db.Timestamptz(6)
+
+  hostel       hostels   @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
+  submitter    profile?  @relation("MarketingSubmitter", fields: [submitted_by], references: [id])
+  reviewer     profile?  @relation("MarketingReviewer", fields: [reviewed_by], references: [id])
+
+  @@unique([hostel_id, version], map: "hostel_marketing_revisions_hostel_version_key")
+  @@index([status, submitted_at], map: "idx_hostel_marketing_pending")
+  @@index([hostel_id, status], map: "idx_hostel_marketing_hostel_status")
+  @@map("hostel_marketing_revisions")
+}
+
+/// Person-level identity — the portable half of a Stayo account (phase B).
+///
+/// Deliberately its own table rather than columns on `profile`: `getSession()`
+/// reads a profile on every authenticated request for every role, and Prisma
+/// selects the full column set on any query without an explicit `select`. That
+/// is the mechanism behind the 2026-08-14 outage; eighteen rarely-read columns
+/// on that table buy the same risk for no benefit.
+///
+/// `tenants` keeps its matching columns as the tenancy-time snapshot. This is
+/// the source of truth; that is what was true when a given tenancy began.
+model profile_identity {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id        String    @unique @db.Uuid
+
+  date_of_birth     DateTime? @db.Date
+  gender            String?
+  nationality       String?
+  pan_number        String?
+  permanent_address String?
+  photo_url         String?
+  personal_email    String?
+
+  /// Fields on the tenant's own profile. Parent/guardian logins are explicitly
+  /// out of scope — there is no second account here.
+  guardian_name     String?
+  guardian_phone    String?
+  guardian_relation String?
+
+  /// STUDENT | WORKING_PROFESSIONAL. Drives which documents are required.
+  profile_type      String    @default("STUDENT")
+
+  college_name      String?
+  roll_number       String?
+  course            String?
+  year_of_study     Int?
+  branch            String?
+  section           String?
+
+  office_name       String?
+  office_location   String?
+  job_role          String?
+
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime? @db.Timestamptz(6)
+
+  profile           profile   @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+
+  @@map("profile_identity")
+}
+
+/// The document vault: one row per file the person has ever uploaded. No
+/// hostel and no tenancy — those live on `identity_document_shares`, which is
+/// what makes the document portable without making it universally visible.
+model identity_documents {
+  id         String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id String                     @db.Uuid
+  doc_type   String
+  doc_number String?
+  file_url   String
+  file_path  String?
+  file_id    String?
+  mime_type  String
+  file_size  Int
+  is_active  Boolean                    @default(true)
+  created_at DateTime                   @default(now()) @db.Timestamptz(6)
+  updated_at DateTime?                  @db.Timestamptz(6)
+
+  profile    profile                    @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+  shares     identity_document_shares[]
+
+  @@index([profile_id, doc_type, is_active], map: "idx_identity_documents_profile_type")
+  @@map("identity_documents")
+}
+
+/// Per-hostel access *and* per-hostel verification of a vault document.
+///
+/// **Verification state lives here, never on the document.** One owner
+/// verifying an ID must not silently make it verified for every other hostel
+/// the person applies to — the tenant re-uses the file, not the decision.
+model identity_document_shares {
+  id                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  identity_document_id String             @db.Uuid
+  hostel_id            String             @db.Uuid
+  /// Null while the person is only an applicant; set once a tenancy exists.
+  tenant_id            String?            @db.Uuid
+
+  /// PENDING | VERIFIED | REJECTED
+  status               String             @default("PENDING")
+  verified_by          String?            @db.Uuid
+  verified_at          DateTime?          @db.Timestamptz(6)
+  rejected_by          String?            @db.Uuid
+  rejected_at          DateTime?          @db.Timestamptz(6)
+  rejection_reason     String?
+
+  granted_at           DateTime           @default(now()) @db.Timestamptz(6)
+  /// Set rather than deleting the row: an owner who verified a document must
+  /// stay attributable after their access ends.
+  revoked_at           DateTime?          @db.Timestamptz(6)
+
+  created_at           DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime?          @db.Timestamptz(6)
+
+  document             identity_documents @relation(fields: [identity_document_id], references: [id], onDelete: Cascade)
+  hostel               hostels            @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
+  tenant               tenants?           @relation(fields: [tenant_id], references: [id])
+  verifier             profile?           @relation("DocumentShareVerifier", fields: [verified_by], references: [id])
+  rejecter             profile?           @relation("DocumentShareRejecter", fields: [rejected_by], references: [id])
+
+  @@unique([identity_document_id, hostel_id], map: "identity_document_shares_doc_hostel_key")
+  @@index([hostel_id, status], map: "idx_identity_document_shares_hostel_status")
+  @@index([tenant_id], map: "idx_identity_document_shares_tenant")
+  @@map("identity_document_shares")
+}
+
+/// The tenant's control over who reads their residency history.
+///
+/// Access is normally **derived** from engagement — a hostel sees a person's
+/// stays because that person enquired to them or holds a tenancy there —
+/// because derived access cannot go stale or leak through a forgotten grant.
+/// This table covers only what derivation cannot express: an owner asking
+/// before the person has engaged them (the invite flow), and a tenant
+/// withdrawing access they would otherwise have.
+///
+/// **A `REVOKED` or `DECLINED` row overrides engagement.** No row at all means
+/// "fall back to engagement".
+model residency_history_disclosures {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id   String    @db.Uuid
+  hostel_id    String    @db.Uuid
+
+  /// REQUESTED | APPROVED | DECLINED | REVOKED
+  status       String    @default("REQUESTED")
+
+  /// Null when the tenant acted without being asked.
+  requested_by String?   @db.Uuid
+  requested_at DateTime? @db.Timestamptz(6)
+  decided_at   DateTime? @db.Timestamptz(6)
+
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime? @db.Timestamptz(6)
+
+  profile      profile   @relation("HistoryDisclosureSubject", fields: [profile_id], references: [id], onDelete: Cascade)
+  hostel       hostels   @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
+  requester    profile?  @relation("HistoryDisclosureRequester", fields: [requested_by], references: [id])
+
+  @@unique([profile_id, hostel_id], map: "residency_history_disclosures_profile_hostel_key")
+  @@index([profile_id, status], map: "idx_residency_disclosures_profile_status")
+  @@index([hostel_id, status], map: "idx_residency_disclosures_hostel_status")
+  @@map("residency_history_disclosures")
+}
+
+/// One row per hostel a seeker has hearted in Discover. Deliberately a table
+/// rather than client storage: Saved is an authenticated tab with a count on
+/// the profile screen, so it has to survive a device change — and phase B's
+/// portable profile needs something to carry across.
+model saved_hostels {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id String   @db.Uuid
+  hostel_id  String   @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  profile    profile  @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+  hostel     hostels  @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
+
+  @@unique([profile_id, hostel_id], map: "saved_hostels_profile_hostel_key")
+  @@index([profile_id, created_at(sort: Desc)], map: "idx_saved_hostels_profile_created")
+  @@map("saved_hostels")
 }
 
 model lead_activities {
@@ -1402,7 +1647,11 @@ model tenants {
   tenant_financial_ledger           tenant_financial_ledger[]
   tenant_behavior_scores            tenant_behavior_scores?
   move_out_requests                 move_out_requests[]
+  // Per-tenancy documents (pre-phase-B). Superseded by the person-level vault
+  // in `identity_documents` + `identity_document_shares`; kept because the
+  // migration copies rather than moves, so no owner loses a verification.
   identification_documents          identificationDocument[]
+  identity_document_shares          identity_document_shares[]
   tenant_billing_plans              tenant_billing_plans[]
   payment_frequency_change_requests payment_frequency_change_requests[]
   hostels                           hostels                             @relation(fields: [hostel_id], references: [id])

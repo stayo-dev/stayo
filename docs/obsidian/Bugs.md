@@ -1234,6 +1234,29 @@ Copy this block for each new entry:
 - **Fix:** Emergency contact now uses the real fields — `guardian_name` ("Contact person's name"), `guardian_relation` ("Relationship"), `guardian_phone`/`phone_2` ("Phone"), `phone_3`/`emergency_contact` ("Alternate phone") — matching `Stayo Tenant.dc.html`'s actual DETAIL entry. Added `guardian_name`/`guardian_relation` to `updateTenantSelfProfile`'s `tenantFields` and to `TenantProfileUpdateSchema`.
 - **Related:** [[Business-Rules]]
 
+### `GET /api/auth/me` left `is_profile_completed` undefined for any TENANT with no tenancy
+
+- **Status:** fixed, 2026-08-15
+- **Found:** while building Stayo Discover ([[Decisions#ADR-073|ADR-073]]).
+- **Area:** [[Backend]]
+- **Symptom:** a signed-in marketplace account (`role = TENANT`, no `tenants` row) reloads the page and any guard reading `is_profile_completed` treats their complete profile as incomplete — `ProtectedTenantRoute` redirects them to `/complete-profile`, a page they have no reason to see.
+- **Cause:** the route builds an `extra` object and sets `extra.is_profile_completed` in two places: inside `if (tenant)`, and in the `else` branch for non-TENANT roles. **A TENANT with no tenancy hit neither** — it entered the TENANT branch, found no tenant row, and fell through with `extra` untouched, so the field was simply absent from the response. `authService.selfSignUpTenant()` has always written `is_profile_completed: true` on the profile itself, so the data was right and only the read was wrong.
+- **Why it was invisible until now:** `selfSignUpTenant` existed but had no surface. Every TENANT who could actually log in had been through activation and therefore had a tenancy, so the empty branch was unreachable in practice. Discovery is the first feature to give tenancy-less accounts somewhere to go.
+- **Fix:** the `if (tenant)` block gained an `else` that falls back to `profile.is_profile_completed`.
+- **Adjacent, deliberately not fixed:** the same lookup uses `prisma.tenants.findFirst({ where: { profile_id } })` rather than the live-tenancy helper in `lib/tenancy/active-tenancy.ts`, contrary to the rule in [[Database]] — so for anyone who has stayed in more than one hostel it returns an arbitrary tenancy. Real, pre-existing, and out of that phase's scope; worth its own change.
+- **Related:** [[APIs]], [[Database]]
+
+### Discovery's shared visibility predicate overwrote the slug it was looking up
+
+- **Status:** fixed before shipping, 2026-08-15
+- **Found:** by `tsc --noEmit` (TS2783, "`public_slug` is specified more than once") while building Stayo Discover.
+- **Area:** [[Backend]]
+- **Symptom:** would have been severe and quiet — `GET /api/discover/hostels/[slug]` returning an arbitrary listed hostel for *every* slug, and an enquiry sent to a hostel the seeker never chose.
+- **Cause:** the shared predicate `DISCOVERABLE` includes `public_slug: { not: null }`. Both call sites were written `where: { public_slug: slug, ...DISCOVERABLE }` — and a spread that comes *second* wins, so `{ not: null }` clobbered the actual slug and the query degraded to "any discoverable hostel".
+- **Fix:** spread first at both sites (`{ ...DISCOVERABLE, public_slug: slug }`), with a comment at each explaining the ordering, plus a regression test asserting the emitted `where.public_slug` is the requested slug.
+- **Worth remembering:** a constant that carries a *loosening* clause for a field a caller also narrows is a trap that only object-spread order decides. The compiler caught this one because both keys were literal; it would not have if either side were computed.
+- **Related:** [[Decisions#ADR-073|ADR-073]], [[APIs]]
+
 ## Open / known issues
 
 > See also `docs/known-issues.md` for the maintained list of known drift/gaps in `docs/`.
