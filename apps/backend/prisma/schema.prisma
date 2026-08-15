@@ -310,6 +310,7 @@ model hostels {
   saved_hostels                  saved_hostels[]
   identity_document_shares       identity_document_shares[]
   history_disclosures            residency_history_disclosures[]
+  marketing_revisions            hostel_marketing_revisions[]
 }
 
 model identity_tokens {
@@ -847,6 +848,8 @@ model profile {
   verified_document_shares                                          identity_document_shares[] @relation("DocumentShareVerifier")
   rejected_document_shares                                          identity_document_shares[] @relation("DocumentShareRejecter")
   history_disclosures                                               residency_history_disclosures[] @relation("HistoryDisclosureSubject")
+  marketing_submissions                                             hostel_marketing_revisions[]    @relation("MarketingSubmitter")
+  marketing_reviews                                                 hostel_marketing_revisions[]    @relation("MarketingReviewer")
   history_disclosure_requests                                       residency_history_disclosures[] @relation("HistoryDisclosureRequester")
   lead_notes                                                        lead_notes[]
   room_reservations                                                 room_reservations[]
@@ -1279,6 +1282,58 @@ model visitor_leads {
   @@index([converted_tenant_id], map: "idx_visitor_leads_converted_tenant")
   @@index([seeker_profile_id, created_at(sort: Desc)], map: "idx_visitor_leads_seeker_created")
   @@map("visitor_leads")
+}
+
+/// One version of a hostel's Discovery listing content, and its review state.
+///
+/// **Revisions rather than columns on `hostels`, deliberately.** The APPROVED
+/// revision keeps serving Discovery while a DRAFT is edited and reviewed, so
+/// an owner fixing a typo never drops their hostel out of search, and a
+/// rejected edit never takes down a page that was fine. The admin approves a
+/// specific, diffable snapshot instead of "whatever the row says right now".
+///
+/// This is a second gate, independent of ADR-040's: `hostels.listing_status` /
+/// `verification_status` decide whether a hostel is discoverable **at all**;
+/// this decides whether its *content* may be shown. A listing needs both.
+model hostel_marketing_revisions {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hostel_id    String    @db.Uuid
+
+  /// Monotonic per hostel — human-facing ("v3 approved") and explicit about
+  /// ordering rather than inferring it from timestamps.
+  version      Int
+
+  /// DRAFT | PENDING_REVIEW | APPROVED | REJECTED | SUPERSEDED
+  ///
+  /// SUPERSEDED is what an APPROVED revision becomes when a newer one is
+  /// approved. Kept, not deleted: it records what was advertised and when,
+  /// which is what settles "but the listing said ₹4,500".
+  status       String    @default("DRAFT")
+
+  /// Validated on the way in by `marketing-content.ts` — a checked payload,
+  /// not a bag of anything. Child tables were rejected because a revision is
+  /// an immutable snapshot and they would each need their own versioning.
+  content      Json      @default("{}")
+
+  submitted_at DateTime? @db.Timestamptz(6)
+  submitted_by String?   @db.Uuid
+  reviewed_at  DateTime? @db.Timestamptz(6)
+  reviewed_by  String?   @db.Uuid
+  /// Owner-visible on reject, so a "no" always arrives with a reason they can
+  /// act on.
+  review_note  String?
+
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime? @db.Timestamptz(6)
+
+  hostel       hostels   @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
+  submitter    profile?  @relation("MarketingSubmitter", fields: [submitted_by], references: [id])
+  reviewer     profile?  @relation("MarketingReviewer", fields: [reviewed_by], references: [id])
+
+  @@unique([hostel_id, version], map: "hostel_marketing_revisions_hostel_version_key")
+  @@index([status, submitted_at], map: "idx_hostel_marketing_pending")
+  @@index([hostel_id, status], map: "idx_hostel_marketing_hostel_status")
+  @@map("hostel_marketing_revisions")
 }
 
 /// Person-level identity — the portable half of a Stayo account (phase B).

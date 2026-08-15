@@ -5,6 +5,7 @@ vi.mock("@/lib/db", () => ({
     hostels: { findFirst: vi.fn(), findMany: vi.fn() },
     visitorLead: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), findMany: vi.fn() },
     saved_hostels: { findMany: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn() },
+    hostel_marketing_revisions: { findFirst: vi.fn() },
     profile: { findUnique: vi.fn() },
   },
   supabase: {},
@@ -110,6 +111,8 @@ describe("discovery visibility", () => {
     // own `public_slug: { not: null }` overwrite the slug, so every request
     // matched the first listed hostel.
     hostels().findFirst.mockResolvedValueOnce({ id: "h1", hostel_type: "BOYS", food_included: true });
+    // No approved marketing revision — the listing must still render.
+    (prisma as any).hostel_marketing_revisions.findFirst.mockResolvedValueOnce(null);
 
     await discoveryService.getListing("sri-adithya");
 

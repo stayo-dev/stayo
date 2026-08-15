@@ -6,6 +6,7 @@ import { redisKeys } from "@/lib/redis/keys";
 import { getOrSetJson, invalidateTag } from "@/lib/redis/cache";
 import { admissionsService, ACTIVE_LEAD_STATUSES } from "@/src/services/admissions/admissions-service";
 import { notificationService } from "@/lib/services/notification-service";
+import { marketingPageService } from "@/src/services/marketing/marketing-page-service";
 
 /**
  * Stayo Discover — the public marketplace surface.
@@ -373,7 +374,13 @@ export class DiscoveryService {
     });
     if (!visible) throw ApiError.notFound("This hostel is not listed on Stayo");
 
-    const detail = await admissionsService.getPublicHostel(slug);
+    const [detail, marketing] = await Promise.all([
+      admissionsService.getPublicHostel(slug),
+      // Only ever the APPROVED revision. A draft or a submission awaiting
+      // review is invisible here by construction — there is no code path from
+      // owner-authored content to a public page that skips the admin.
+      marketingPageService.getPublishedContent(visible.id),
+    ]);
 
     return {
       ...detail,
@@ -381,12 +388,33 @@ export class DiscoveryService {
         ...detail.hostel,
         hostel_type: visible.hostel_type,
         food_included: visible.food_included,
+        tagline: marketing?.basics.tagline ?? null,
+        about: marketing?.basics.about ?? null,
+        highlights: marketing?.basics.highlights ?? [],
+        // Owner-published photos win over the admissions gallery when they
+        // exist — those are the ones a human approved for this surface.
+        photos: marketing && marketing.photos.length > 0
+          ? marketing.photos.map((photo) => photo.url)
+          : detail.hostel.photos,
       },
-      // Phase A ships no ratings, amenity grid or distances — those columns do
-      // not exist. The flags let the client reserve the space without the
-      // server inventing a number. See phases C and D in the design spec.
+      /**
+       * The advertised offer. Live vacancy still comes from real rooms
+       * (`rooms` above) — a marketing tier describes what is on sale, it does
+       * not decide what is free. Where the two prices diverge, the admin
+       * review screen shows both before approving.
+       */
+      bed_tiers: marketing?.beds ?? [],
+      amenities: (marketing?.amenities ?? []).filter((amenity) => amenity.enabled),
+      places: marketing?.places ?? [],
+      /**
+       * Phase D still owns reviews, and the design is explicit that owners
+       * cannot write them ("Managed by Stayo"), so there is no content path to
+       * one here at all.
+       */
       ratings_available: false,
-      amenities_available: false,
+      amenities_available: Boolean(marketing && marketing.amenities.some((a) => a.enabled)),
+      /** Null when the owner has never had a listing approved. */
+      marketing_published: Boolean(marketing),
     };
   }
 
