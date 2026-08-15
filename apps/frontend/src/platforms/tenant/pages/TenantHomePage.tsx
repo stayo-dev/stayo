@@ -1,8 +1,10 @@
 import { useNavigate } from 'react-router-dom';
-import { Bell, Megaphone, CalendarDays } from 'lucide-react';
+import { Bell, Megaphone, CalendarDays, CreditCard } from 'lucide-react';
 import { MEAL_CATEGORY_META } from '@shared/mocks/food';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useTenantHome } from '@features/tenant-home/hooks/useTenantHome';
+import { useTenantFinancials } from '@features/tenant-financials/hooks/useTenantFinancials';
+import { PaySheet } from '@features/tenant-financials/components/PaySheet';
 import { mealIcon } from '@features/owner-food/mealIcons';
 
 const card = 'rounded-[16px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_4px_14px_rgba(40,30,20,0.05)]';
@@ -20,16 +22,31 @@ function LoadingSkeleton() {
 
 /**
  * Tenant Home tab — an at-a-glance feed of what's happening at the hostel,
- * not an actions hub (those live on their own tabs). Sections, in order:
- * today's meals, active food poll, announcements, complaint/request status,
- * upcoming events (owner-scheduled). No Quick Actions grid and no rent-due
- * hero — payment belongs to the Money tab.
+ * not a full actions hub (most live on their own tabs). Sections, in order:
+ * rent-due hero (only while something is owed — per Stayo Tenant.dc.html's
+ * `rentPending` card), today's meals, active food poll, announcements,
+ * complaint/request status, upcoming events (owner-scheduled). No Quick
+ * Actions grid — that part of the mockup stays out of scope.
+ *
+ * The rent-due card reuses `useTenantFinancials()` (same hook/read-model as
+ * the Money tab) and its own `PaySheet` instance so Home never disagrees
+ * with Money on what's owed — see the hook's own doc comment.
  */
 export function TenantHomePage() {
   const navigate = useNavigate();
   const home = useTenantHome();
+  const fin = useTenantFinancials();
 
   if (home.isLoading) return <LoadingSkeleton />;
+
+  const payableItems = (fin.readModel?.items ?? []).filter((i: any) => i.legacy_status !== 'UPCOMING');
+  const nextDueItem = payableItems.length
+    ? [...payableItems].sort((a: any, b: any) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0]
+    : null;
+  const rentPeriodLabel = nextDueItem
+    ? new Date(nextDueItem.rent_month).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+    : new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+  const rentDueDateLabel = nextDueItem ? new Date(nextDueItem.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—';
 
   return (
     <div className="flex flex-col gap-6 pb-8">
@@ -67,6 +84,38 @@ export function TenantHomePage() {
       </div>
 
       <div className="flex flex-col gap-6 px-4 sm:px-6">
+      {fin.amountDue > 0 && (
+        <div className={`${card} p-[18px]`}>
+          <div className="flex items-center gap-2">
+            <span className="h-[7px] w-[7px] flex-none rounded-full bg-warning" />
+            <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-warning">Rent due</span>
+            {fin.isOverdue && (
+              <span className="ml-auto text-[12px] font-semibold text-muted-foreground">{fin.overdueDays} day{fin.overdueDays === 1 ? '' : 's'} overdue</span>
+            )}
+          </div>
+          <div className="mt-3 flex items-end justify-between gap-3">
+            <div>
+              <div className="text-[13px] font-medium text-muted-foreground">{rentPeriodLabel}</div>
+              <div className="mt-0.5 font-display text-[34px] font-extrabold tracking-[-0.03em] tabular-nums text-foreground">
+                ₹{fin.amountDue.toLocaleString('en-IN')}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-[12px] font-medium text-[#9C9186]">Was due</div>
+              <div className="text-[14px] font-semibold text-[#4A433C]">{rentDueDateLabel}</div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={fin.openPay}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#A45D44] py-[15px] text-center font-display text-[15px] font-bold text-white shadow-[0_6px_16px_rgba(164,93,68,0.3)]"
+          >
+            <CreditCard className="h-[17px] w-[17px]" strokeWidth={1.7} />
+            Pay ₹{fin.amountDue.toLocaleString('en-IN')}
+          </button>
+        </div>
+      )}
+
       {home.todaysMeals.length > 0 && (
         <div className="flex flex-col gap-2.5">
           <div className="flex items-baseline justify-between">
@@ -190,6 +239,14 @@ export function TenantHomePage() {
 
       <p className="pt-0.5 text-center text-[11px] font-medium text-[#B7AC9F]">Stayo{home.hostelName ? ` · ${home.hostelName}` : ''}</p>
       </div>
+
+      <PaySheet
+        stage={fin.payStage}
+        amount={fin.amountDue}
+        error={fin.payError}
+        onClose={fin.closePay}
+        onConfirm={fin.confirmPay}
+      />
     </div>
   );
 }

@@ -14,6 +14,7 @@ import { ProfileEditScreen } from '../components/overlays/ProfileEditScreen';
 import { buildProfileEditConfigs } from '../components/overlays/configs/profileEditConfigs';
 import { buildServiceRequestFormConfigs } from '../components/overlays/configs/serviceRequestFormConfigs';
 import { buildServiceRequestDetailConfig } from '../components/overlays/configs/serviceRequestDetailConfig';
+import { TicketsListScreen } from '../components/overlays/TicketsListScreen';
 
 const card = 'rounded-[16px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_4px_14px_rgba(40,30,20,0.05)]';
 const sectionLabel = 'text-[13px] font-bold uppercase tracking-wide text-muted-foreground';
@@ -309,6 +310,13 @@ export function TenantProfilePage() {
                     </button>
                   ))}
                 </div>
+                <button
+                  type="button"
+                  onClick={() => overlay.push('all_tickets')}
+                  className="mt-1 w-full border-t border-[#F2ECE5] pt-3.5 text-center font-display text-[12.5px] font-bold text-primary"
+                >
+                  View all activity
+                </button>
               </>
             )}
           </div>
@@ -342,6 +350,9 @@ export function TenantProfilePage() {
 
       {activeTicket && (
         <DetailScreen config={buildServiceRequestDetailConfig(activeTicket, ticketEventsQuery.data?.tenant_service_request_events ?? [])} onBack={overlay.back} />
+      )}
+      {overlay.view === 'all_tickets' && (
+        <TicketsListScreen requests={room.requests} onBack={overlay.back} onOpenTicket={(id) => overlay.push(`tk_${id}`)} onNewTicket={() => overlay.push('raise_ticket')} />
       )}
       {!overlay.isHome && !activeTicketId && editConfigs[overlay.view] && (
         <ProfileEditScreen
