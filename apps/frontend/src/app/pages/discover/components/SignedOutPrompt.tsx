@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import type { Heart } from 'lucide-react';
 
 import { C, FONT } from '../discoverTheme';
+import { useDiscoverAuth } from '../DiscoverAuthContext';
 import { PrimaryButton } from './DiscoverShell';
 
 /**
@@ -16,14 +17,15 @@ export function SignedOutPrompt({
   title,
   body,
   icon: Icon,
-  returnTo,
 }: {
   title: string;
   body: string;
   icon: typeof Heart;
-  returnTo: string;
+  /** @deprecated Sign-in is a modal now, so there is nothing to return from. */
+  returnTo?: string;
 }) {
   const navigate = useNavigate();
+  const { openSignIn } = useDiscoverAuth();
 
   return (
     <div>
@@ -52,7 +54,7 @@ export function SignedOutPrompt({
         </p>
 
         <div className="mt-6 w-full max-w-[17rem]">
-          <PrimaryButton full onClick={() => navigate('/login', { state: { from: returnTo } })}>
+          <PrimaryButton full onClick={() => openSignIn()}>
             Sign in or create account
           </PrimaryButton>
         </div>

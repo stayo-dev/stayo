@@ -9,6 +9,7 @@ import {
   useToggleSaved,
 } from '@features/discover/hooks/useDiscover';
 
+import { useDiscoverAuth } from './DiscoverAuthContext';
 import { DiscoverEmpty, PrimaryButton } from './components/DiscoverShell';
 import { AUDIENCE_LABEL, C, FONT, PHOTO_FALLBACK, formatRupees } from './discoverTheme';
 
@@ -56,6 +57,7 @@ export function ListingPage() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const { isSeeker } = useIsSeeker();
+  const { openSignIn } = useDiscoverAuth();
 
   const { data, isLoading, isError } = useDiscoverListing(slug);
   const { data: saved } = useSavedHostels();
@@ -111,7 +113,7 @@ export function ListingPage() {
 
   const handleSave = () => {
     if (!isSeeker) {
-      navigate('/login', { state: { from: `/discover/h/${slug}` } });
+      openSignIn({ onDone: () => toggleSaved.mutate({ hostelId: hostel.id, saved: false }) });
       return;
     }
     toggleSaved.mutate({ hostelId: hostel.id, saved: isSaved });

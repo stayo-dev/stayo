@@ -7,6 +7,7 @@ import { AuthProvider } from '@context/AuthContext';
 import { StayoLoadingScreen } from '@shared/ui/brand';
 
 import { DiscoverShell } from '@/app/pages/discover/components/DiscoverShell';
+import { DiscoverAuthProvider } from '@/app/pages/discover/DiscoverAuthContext';
 
 const ExplorePage = lazy(() => import('@/app/pages/discover/ExplorePage').then((m) => ({ default: m.ExplorePage })));
 const SearchPage = lazy(() => import('@/app/pages/discover/SearchPage').then((m) => ({ default: m.SearchPage })));
@@ -49,11 +50,16 @@ function DiscoverProviderShell() {
           signed-out prompt, so it needs AuthProvider — but not the full
           protected shell, which would pull in owner dashboard bootstrap. */}
       <AuthProvider>
-        <DiscoverShell>
-          <Suspense fallback={<StayoLoadingScreen />}>
-            <Outlet />
-          </Suspense>
-        </DiscoverShell>
+        {/* Sign-in happens *here*, over whatever screen the visitor is on —
+            not by routing to `/login`, which is the owner marketing page.
+            Same LoginModal component, so there is still one auth surface. */}
+        <DiscoverAuthProvider>
+          <DiscoverShell>
+            <Suspense fallback={<StayoLoadingScreen />}>
+              <Outlet />
+            </Suspense>
+          </DiscoverShell>
+        </DiscoverAuthProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

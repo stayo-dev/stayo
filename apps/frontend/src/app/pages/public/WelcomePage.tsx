@@ -32,6 +32,7 @@ import { ArrowRight, BarChart3, MapPin, Search, ShieldCheck, Wallet } from 'luci
 
 import { StayoLoader, StayoMark, StayoWordmark } from '@shared/ui/brand';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
+import { FootprintTrail } from './FootprintTrail';
 
 import './welcome.css';
 
@@ -188,20 +189,28 @@ export function WelcomePage() {
           style={{ background: 'radial-gradient(circle,rgba(217,144,111,.30),transparent 70%)' }}
         />
 
-        <div className="relative mx-auto w-full max-w-2xl px-8 pt-[max(4rem,10vh)] sm:px-10">
+        <div
+          className={`stayo-welcome-content relative mx-auto w-full max-w-2xl px-8 pt-[clamp(3.5rem,9vh,7rem)] sm:px-10 lg:max-w-4xl lg:px-12 ${
+            active === 'tenant' ? 'stayo-welcome-content--near' : ''
+          }`}
+        >
           <span className="inline-flex items-center gap-1.5 rounded-full border border-[#EBDFD3] bg-white px-3 py-1.5 shadow-[0_2px_8px_rgba(40,30,20,.05)]">
             <MapPin className="h-3.5 w-3.5 text-[#B46A55]" strokeWidth={1.9} />
             <span className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-[#8A5A47]">Looking for a stay</span>
           </span>
 
-          <h1 className="mt-4 font-['Manrope',sans-serif] text-[clamp(2rem,6vw,3.25rem)] font-extrabold leading-[1.04] tracking-[-0.03em] text-[#221E1A]">
+          {/* The upper bound is set by the *collapsed* state, not the neutral
+              one: when the owner side is hovered the seam climbs to 34%, and
+              the badge + both heading lines still have to clear it. 4.5rem is
+              what fits at 1920×970 with margin to spare. */}
+          <h1 className="mt-4 font-['Manrope',sans-serif] text-[clamp(2rem,5.2vw,4.5rem)] font-extrabold leading-[1.04] tracking-[-0.03em] text-[#221E1A]">
             Find your
             <br />
             stay.
           </h1>
 
           <div className={active === 'owner' ? PANEL_BODY.shut : PANEL_BODY.open}>
-            <p className="mt-3 max-w-[19rem] text-sm font-medium leading-[1.5] text-[#6E645B]">
+            <p className="mt-3 max-w-[19rem] text-sm font-medium leading-[1.5] text-[#6E645B] lg:max-w-[26rem] lg:text-base">
               Verified hostels near your campus — real photos, real reviews, no broker games.
             </p>
 
@@ -251,20 +260,27 @@ export function WelcomePage() {
           style={{ background: 'radial-gradient(circle,rgba(217,144,111,.22),transparent 70%)' }}
         />
 
-        <div className="relative mx-auto flex h-full w-full max-w-2xl flex-col justify-end px-8 pb-[max(3.5rem,8vh)] sm:px-10">
+        <div
+          className={`stayo-welcome-content relative mx-auto flex h-full w-full max-w-2xl flex-col justify-end px-8 pb-[clamp(3rem,10vh,8rem)] sm:px-10 lg:max-w-4xl lg:px-12 ${
+            active === 'owner' ? 'stayo-welcome-content--near' : ''
+          }`}
+        >
           <span className="inline-flex items-center gap-2 self-start rounded-full border border-[#D9906F]/30 bg-[#D9906F]/[0.14] px-3.5 py-1.5">
             <span className="h-1.5 w-1.5 flex-none rounded-full bg-[#D9906F]" />
             <span className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-[#E7A986]">For hostel owners</span>
           </span>
 
-          <h2 className="mt-4 font-['Manrope',sans-serif] text-[clamp(1.9rem,5.6vw,3rem)] font-extrabold leading-[1.06] tracking-[-0.03em] text-white">
+          {/* Slightly under the tenant heading's cap: this one is bottom-anchored
+              and carries a longer first line, so matching sizes made it the
+              heavier of the two rather than the equal it should read as. */}
+          <h2 className="mt-4 font-['Manrope',sans-serif] text-[clamp(1.9rem,4.9vw,4.25rem)] font-extrabold leading-[1.06] tracking-[-0.03em] text-white">
             Run your hostel,
             <br />
             effortlessly.
           </h2>
 
           <div className={active === 'tenant' ? PANEL_BODY.shut : PANEL_BODY.open}>
-            <p className="mt-3 max-w-[20rem] text-sm font-medium leading-[1.5] text-[#B6ABA0]">
+            <p className="mt-3 max-w-[20rem] text-sm font-medium leading-[1.5] text-[#B6ABA0] lg:max-w-[28rem] lg:text-base">
               Fill empty beds faster, collect rent on autopilot, and resolve complaints before they pile up.
             </p>
 
@@ -298,6 +314,10 @@ export function WelcomePage() {
           </div>
         </div>
       </section>
+
+      {/* Footprints trailing the cursor — sits above both panels so a print can
+          cross the seam, below the roundel so nothing occludes the mark. */}
+      <FootprintTrail pct={pct} enabled={splashDone} />
 
       {/* ══════════ the mark rides the seam ══════════ */}
       <div

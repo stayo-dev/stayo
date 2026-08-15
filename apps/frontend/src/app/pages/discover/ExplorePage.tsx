@@ -10,6 +10,7 @@ import {
   useIsSeeker,
 } from '@features/discover/hooks/useDiscover';
 
+import { useDiscoverAuth } from './DiscoverAuthContext';
 import { HostelCard } from './components/HostelCard';
 import { DiscoverEmpty, HostelCardSkeleton, PrimaryButton } from './components/DiscoverShell';
 import { C, FONT } from './discoverTheme';
@@ -28,6 +29,7 @@ const CITY_KEY = 'stayo.discover.city';
 export function ExplorePage() {
   const navigate = useNavigate();
   const { isSeeker } = useIsSeeker();
+  const { openSignIn } = useDiscoverAuth();
 
   // The chosen city persists: someone browsing Hyderabad hostels does not want
   // to re-pick it on every visit. Falls back to "everywhere" rather than
@@ -70,7 +72,11 @@ export function ExplorePage() {
 
   const handleToggleSave = (hostel: DiscoverCard) => {
     if (!isSeeker) {
-      navigate('/login', { state: { from: '/discover' } });
+      // Sign in over the page, then complete the save they actually asked for
+      // — losing the tap would make signing in feel like a detour.
+      openSignIn({
+        onDone: () => toggleSaved.mutate({ hostelId: hostel.id, saved: false, card: hostel }),
+      });
       return;
     }
     toggleSaved.mutate({ hostelId: hostel.id, saved: savedIds.has(hostel.id), card: hostel });

@@ -10,6 +10,7 @@ import {
   useToggleSaved,
 } from '@features/discover/hooks/useDiscover';
 
+import { useDiscoverAuth } from './DiscoverAuthContext';
 import { HostelCard } from './components/HostelCard';
 import { DiscoverEmpty, HostelCardSkeleton, PrimaryButton } from './components/DiscoverShell';
 import { AUDIENCE_LABEL, C, FONT, formatRupees } from './discoverTheme';
@@ -30,6 +31,7 @@ export function SearchPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isSeeker } = useIsSeeker();
+  const { openSignIn } = useDiscoverAuth();
 
   // Quick filters on Explore hand their patch through router state.
   const seeded = (location.state ?? {}) as { patch?: Partial<DiscoverFilters>; city?: string };
@@ -77,7 +79,9 @@ export function SearchPage() {
 
   const handleToggleSave = (hostel: DiscoverCard) => {
     if (!isSeeker) {
-      navigate('/login', { state: { from: location.pathname } });
+      openSignIn({
+        onDone: () => toggleSaved.mutate({ hostelId: hostel.id, saved: false, card: hostel }),
+      });
       return;
     }
     toggleSaved.mutate({ hostelId: hostel.id, saved: savedIds.has(hostel.id), card: hostel });

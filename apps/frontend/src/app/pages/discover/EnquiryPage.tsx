@@ -4,6 +4,7 @@ import { ChevronLeft, Lock, ShieldCheck } from 'lucide-react';
 
 import { useCreateEnquiry, useDiscoverListing, useIsSeeker } from '@features/discover/hooks/useDiscover';
 
+import { useDiscoverAuth } from './DiscoverAuthContext';
 import { PrimaryButton } from './components/DiscoverShell';
 import { C, FONT, PHOTO_FALLBACK, formatRupees } from './discoverTheme';
 
@@ -29,6 +30,7 @@ export function EnquiryPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isSeeker, loading: authLoading, user } = useIsSeeker();
+  const { openSignIn } = useDiscoverAuth();
 
   const seeded = (location.state ?? {}) as { roomCapacity?: number; hostelName?: string };
 
@@ -231,12 +233,7 @@ export function EnquiryPage() {
               </div>
             </div>
             <div className="mt-3.5">
-              <PrimaryButton
-                full
-                onClick={() =>
-                  navigate('/login', { state: { from: `/discover/h/${slug}/enquire` } })
-                }
-              >
+              <PrimaryButton full onClick={() => openSignIn()}>
                 Sign in or create account
               </PrimaryButton>
             </div>
