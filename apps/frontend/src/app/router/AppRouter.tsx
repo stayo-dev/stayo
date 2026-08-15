@@ -5,6 +5,7 @@ import { OwnerJourneyRoutes } from '@features/owner-onboarding/router/OwnerJourn
 import { MockOwnerJourneyProvider } from '@features/owner-onboarding/context/MockOwnerJourneyContext';
 import { TenantRoutes } from '@/platforms/tenant/router/TenantRoutes';
 import { PublicRoutes } from './PublicRoutes';
+import { DiscoverRoutes } from './DiscoverRoutes';
 import { NotFoundPage } from '@/app/pages/public/NotFoundPage';
 
 export function AppRouter() {
@@ -12,6 +13,7 @@ export function AppRouter() {
     <MockOwnerJourneyProvider>
       <Routes>
         {PublicRoutes()}
+        {DiscoverRoutes()}
         {OwnerJourneyRoutes()}
         {OwnerRoutes()}
         {TenantRoutes()}

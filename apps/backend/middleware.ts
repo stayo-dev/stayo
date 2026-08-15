@@ -24,6 +24,11 @@ const PUBLIC_ROUTES = [
   "/api/auth/csrf",
   "/api/tenants/activate",
   "/api/visit",
+  // Stayo Discover's browse surface only. Deliberately NOT "/api/discover":
+  // this list is prefix-matched, so the broader entry would make
+  // /api/discover/enquiries and /api/discover/saved public too, handing every
+  // seeker's enquiry history to anyone who asked.
+  "/api/discover/hostels",
   // Meta WhatsApp Cloud API. The canonical path plus its legacy mount — both
   // are signature-verified (X-Hub-Signature-256), not session-authenticated.
   "/api/webhooks/whatsapp",

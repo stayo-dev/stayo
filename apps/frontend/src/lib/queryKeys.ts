@@ -124,4 +124,18 @@ export const queryKeys = {
     analytics: (filters?: object) => ownerKey('admissions', 'analytics', filters ?? {}),
     visit: (slug: string) => ['public', 'visit', slug],
   },
+
+  /**
+   * Stayo Discover. Namespaced under 'discover' rather than 'owner' because
+   * none of it is owner-scoped — search and listing detail are public, and the
+   * rest belongs to the signed-in seeker, not to a hostel.
+   */
+  discover: {
+    all: () => ['discover'],
+    search: (filters?: object) => ['discover', 'search', filters ?? {}],
+    listing: (slug: string) => ['discover', 'listing', slug],
+    saved: () => ['discover', 'saved'],
+    enquiries: () => ['discover', 'enquiries'],
+    enquiry: (id: string) => ['discover', 'enquiries', id],
+  },
 };

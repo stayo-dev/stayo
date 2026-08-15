@@ -9,15 +9,17 @@
  * and the seam yields to it.
  *
  * "Start free" commits to the owner journey and hands off to `/owners` — the
- * marketing page that used to live at `/`. The tenant side is deliberately
- * inert: the hostel-browsing page it would open doesn't exist yet, so the
- * panel reads its pitch and says so, rather than routing into a dead end.
+ * marketing page that used to live at `/`. "Browse hostels" commits to the
+ * tenant journey and hands off to `/discover`, Stayo Discover (ADR-072). Until
+ * that page existed the tenant side was deliberately inert, reading its pitch
+ * behind a "Coming soon" label rather than routing into a dead end; both
+ * halves of the fork now lead somewhere real.
  *
  * **Picking a side is not permanent.** The Stayo logo on `/owners` links back
  * here, and this screen renders for everyone including signed-in owners —
- * both deliberate, because an owner has to be able to browse the tenant side
- * once real hostel listings live there. The tenant side's own way back gets
- * designed with that page; there is nothing to return from yet.
+ * both deliberate, because an owner has to be able to browse the tenant side.
+ * Discover's own way back is its Profile tab, which links into the tenant
+ * portal for anyone who already lives somewhere.
  *
  * The palette is hard-coded rather than themed — this renders before any
  * [data-app-theme] shell exists, so there is no token scope to inherit. Same
@@ -38,6 +40,9 @@ const OWNER_LANDING = '/owners';
 
 /** …and where a returning owner goes instead, skipping the pitch. */
 const OWNER_DASHBOARD = '/owner/home';
+
+/** Where "Browse hostels" goes — Stayo Discover, the public marketplace. */
+const TENANT_DISCOVER = '/discover';
 
 /**
  * The splash is a greeting, not a loading screen — it plays once per browser
@@ -211,17 +216,22 @@ export function WelcomePage() {
               </span>
             </div>
 
-            {/* The marketplace this would open doesn't exist yet. Rather than
-                route into a dead end, the button says so and stays put. */}
             <div className="mt-5 flex flex-wrap items-center gap-3">
-              <span
-                aria-disabled="true"
-                className="inline-flex cursor-not-allowed items-center gap-2.5 rounded-2xl bg-[#221E1A]/35 px-5 py-3.5"
+              <button
+                type="button"
+                onClick={(event) => {
+                  // The panel itself handles clicks to *choose* the tenant
+                  // side; this button commits to it, so it must not also
+                  // re-trigger the panel's selection behind the overlay.
+                  event.stopPropagation();
+                  commit('tenant', TENANT_DISCOVER);
+                }}
+                className="inline-flex items-center gap-2.5 rounded-2xl bg-[#221E1A] px-5 py-3.5 transition-transform active:scale-[0.98]"
               >
                 <span className="font-['Manrope',sans-serif] text-sm font-bold tracking-[-0.01em] text-white">Browse hostels</span>
                 <ArrowRight className="h-[17px] w-[17px] text-[#D9906F]" strokeWidth={2} />
-              </span>
-              <span className="text-[11.5px] font-semibold text-[#8A7C72]">Coming soon</span>
+              </button>
+              <span className="text-[11.5px] font-semibold text-[#8A7C72]">Verified hostels only</span>
             </div>
           </div>
         </div>

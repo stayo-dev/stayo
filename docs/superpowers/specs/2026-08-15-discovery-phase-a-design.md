@@ -171,24 +171,43 @@ in. (`loginWithPhone()` at line 208 *does* hard-require a tenancy, but it
 serves the onboarding activation path only and is not reachable from
 discovery.)
 
-### Signup
+### Signup — already built, reused as-is
 
-**Email + OTP + password.** Not passwordless.
+**Corrected during implementation.** This spec originally proposed a new
+`POST /api/auth/seeker-signup` pair using email OTP. That was wrong: the
+account already exists.
 
-This is forced by ADR-031: `createSessionAndTokens()` is the single
-session-minting chokepoint and requires the plaintext password to provision or
-link the caller's Supabase identity before minting a real Supabase session. A
-passwordless path would need a second session mechanism, which is precisely
-what that ADR exists to prevent.
+`POST /api/auth/tenant-signup` → `authService.selfSignUpTenant()` already
+creates precisely this account, and its own doc comment describes it as "a
+marketplace account (browse/save/enquire), not a tenant of any hostel". It
+sets `role = TENANT`, writes no `tenants` row, provisions the Supabase
+identity at creation (ADR-031's "born linked"), sets
+`is_profile_completed = true`, and rejects a duplicate email or phone with a
+clear `ALREADY_EXISTS`. `AuthContext.signUpTenant()` already calls it and
+hydrates the session exactly like `login()`.
 
-```
-POST /api/auth/seeker-signup/start     email          → sends 6-digit OTP (Resend)
-POST /api/auth/seeker-signup/complete  email+otp+pass → profiles row + session
-```
+It verifies by **phone OTP over WhatsApp** (`resolveSignupPhoneVerification`,
+the same gate as owner signup), not email OTP. Phase A adopts that rather than
+adding an email-OTP path — a second signup route reintroduces exactly the
+parallel-session-mechanism problem ADR-031 exists to prevent.
 
-Email OTP rather than phone OTP because the WhatsApp templates for the owner
-lead funnel are still pending Meta approval; Resend is already integrated and
-unblocked.
+Phase A therefore builds **no signup backend**. It builds the seeker-facing
+signup *screen* against the existing endpoint.
+
+### Bug this phase must fix first
+
+`GET /api/auth/me` sets `extra.is_profile_completed` only inside its
+`if (tenant)` branch (`route.ts:80-105`). A TENANT with no tenancy — every
+seeker — therefore gets `is_profile_completed: undefined` back, even though
+their profile row says `true`. Any guard reading that field bounces them on
+reload. The TENANT branch must fall back to `profile.is_profile_completed`
+when there is no tenancy. Goes in `docs/obsidian/Bugs.md`.
+
+Separately noted, **not** fixed here: the same lookup uses
+`findFirst({ where: { profile_id } })` rather than the live-tenancy helper in
+`lib/tenancy/active-tenancy.ts`, contrary to the rule in CLAUDE.md. It picks an
+arbitrary tenancy for anyone who has stayed in more than one hostel. Real, but
+pre-existing and out of Phase A's scope.
 
 ### Verification in Phase A
 
