@@ -33,6 +33,7 @@ import { ArrowRight, BarChart3, MapPin, Search, ShieldCheck, Wallet } from 'luci
 import { StayoLoader, StayoMark, StayoWordmark } from '@shared/ui/brand';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { FootprintTrail } from './FootprintTrail';
+import { playWelcomeChime } from './welcomeChime';
 
 import './welcome.css';
 
@@ -130,6 +131,23 @@ export function WelcomePage() {
     }, SPLASH_MS);
     return () => clearTimeout(timer);
   }, [splashDone]);
+
+  /**
+   * The chime plays when the splash does — the same "first time this session"
+   * condition, read once at mount.
+   *
+   * Deliberately its own mount-scoped effect rather than living in the splash
+   * effect above: that one re-runs when `splashDone` flips, so its cleanup
+   * would cut the chime off at SPLASH_MS. The audio is ~4s and the splash is
+   * 1.6s, so it is meant to carry on past the mark landing and finish on its
+   * own. The only thing that stops it early is leaving the page.
+   */
+  useEffect(() => {
+    if (splashDone) return;
+    return playWelcomeChime();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only by
+    // design; `splashDone` is read from the first render and must not re-trigger.
+  }, []);
 
   useEffect(() => () => clearTimeout(commitTimer.current), []);
 
