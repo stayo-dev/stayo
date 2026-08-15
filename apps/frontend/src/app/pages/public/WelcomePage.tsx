@@ -9,15 +9,17 @@
  * and the seam yields to it.
  *
  * "Start free" commits to the owner journey and hands off to `/owners` — the
- * marketing page that used to live at `/`. The tenant side is deliberately
- * inert: the hostel-browsing page it would open doesn't exist yet, so the
- * panel reads its pitch and says so, rather than routing into a dead end.
+ * marketing page that used to live at `/`. "Browse hostels" commits to the
+ * tenant journey and hands off to `/discover`, Stayo Discover (ADR-073). Until
+ * that page existed the tenant side was deliberately inert, reading its pitch
+ * behind a "Coming soon" label rather than routing into a dead end; both
+ * halves of the fork now lead somewhere real.
  *
  * **Picking a side is not permanent.** The Stayo logo on `/owners` links back
  * here, and this screen renders for everyone including signed-in owners —
- * both deliberate, because an owner has to be able to browse the tenant side
- * once real hostel listings live there. The tenant side's own way back gets
- * designed with that page; there is nothing to return from yet.
+ * both deliberate, because an owner has to be able to browse the tenant side.
+ * Discover's own way back is its Profile tab, which links into the tenant
+ * portal for anyone who already lives somewhere.
  *
  * The palette is hard-coded rather than themed — this renders before any
  * [data-app-theme] shell exists, so there is no token scope to inherit. Same
@@ -30,6 +32,8 @@ import { ArrowRight, BarChart3, MapPin, Search, ShieldCheck, Wallet } from 'luci
 
 import { StayoLoader, StayoMark, StayoWordmark } from '@shared/ui/brand';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
+import { FootprintTrail } from './FootprintTrail';
+import { playWelcomeChime } from './welcomeChime';
 
 import './welcome.css';
 
@@ -38,6 +42,9 @@ const OWNER_LANDING = '/owners';
 
 /** …and where a returning owner goes instead, skipping the pitch. */
 const OWNER_DASHBOARD = '/owner/home';
+
+/** Where "Browse hostels" goes — Stayo Discover, the public marketplace. */
+const TENANT_DISCOVER = '/discover';
 
 /**
  * The splash is a greeting, not a loading screen — it plays once per browser
@@ -125,6 +132,23 @@ export function WelcomePage() {
     return () => clearTimeout(timer);
   }, [splashDone]);
 
+  /**
+   * The chime plays when the splash does — the same "first time this session"
+   * condition, read once at mount.
+   *
+   * Deliberately its own mount-scoped effect rather than living in the splash
+   * effect above: that one re-runs when `splashDone` flips, so its cleanup
+   * would cut the chime off at SPLASH_MS. The audio is ~4s and the splash is
+   * 1.6s, so it is meant to carry on past the mark landing and finish on its
+   * own. The only thing that stops it early is leaving the page.
+   */
+  useEffect(() => {
+    if (splashDone) return;
+    return playWelcomeChime();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only by
+    // design; `splashDone` is read from the first render and must not re-trigger.
+  }, []);
+
   useEffect(() => () => clearTimeout(commitTimer.current), []);
 
   useEffect(() => {
@@ -183,20 +207,28 @@ export function WelcomePage() {
           style={{ background: 'radial-gradient(circle,rgba(217,144,111,.30),transparent 70%)' }}
         />
 
-        <div className="relative mx-auto w-full max-w-2xl px-8 pt-[max(4rem,10vh)] sm:px-10">
+        <div
+          className={`stayo-welcome-content relative mx-auto w-full max-w-2xl px-8 pt-[clamp(3.5rem,9vh,7rem)] sm:px-10 lg:max-w-4xl lg:px-12 ${
+            active === 'tenant' ? 'stayo-welcome-content--near' : ''
+          }`}
+        >
           <span className="inline-flex items-center gap-1.5 rounded-full border border-[#EBDFD3] bg-white px-3 py-1.5 shadow-[0_2px_8px_rgba(40,30,20,.05)]">
             <MapPin className="h-3.5 w-3.5 text-[#B46A55]" strokeWidth={1.9} />
             <span className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-[#8A5A47]">Looking for a stay</span>
           </span>
 
-          <h1 className="mt-4 font-['Manrope',sans-serif] text-[clamp(2rem,6vw,3.25rem)] font-extrabold leading-[1.04] tracking-[-0.03em] text-[#221E1A]">
+          {/* The upper bound is set by the *collapsed* state, not the neutral
+              one: when the owner side is hovered the seam climbs to 34%, and
+              the badge + both heading lines still have to clear it. 4.5rem is
+              what fits at 1920×970 with margin to spare. */}
+          <h1 className="mt-4 font-['Manrope',sans-serif] text-[clamp(2rem,5.2vw,4.5rem)] font-extrabold leading-[1.04] tracking-[-0.03em] text-[#221E1A]">
             Find your
             <br />
             stay.
           </h1>
 
           <div className={active === 'owner' ? PANEL_BODY.shut : PANEL_BODY.open}>
-            <p className="mt-3 max-w-[19rem] text-sm font-medium leading-[1.5] text-[#6E645B]">
+            <p className="mt-3 max-w-[19rem] text-sm font-medium leading-[1.5] text-[#6E645B] lg:max-w-[26rem] lg:text-base">
               Verified hostels near your campus — real photos, real reviews, no broker games.
             </p>
 
@@ -211,17 +243,22 @@ export function WelcomePage() {
               </span>
             </div>
 
-            {/* The marketplace this would open doesn't exist yet. Rather than
-                route into a dead end, the button says so and stays put. */}
             <div className="mt-5 flex flex-wrap items-center gap-3">
-              <span
-                aria-disabled="true"
-                className="inline-flex cursor-not-allowed items-center gap-2.5 rounded-2xl bg-[#221E1A]/35 px-5 py-3.5"
+              <button
+                type="button"
+                onClick={(event) => {
+                  // The panel itself handles clicks to *choose* the tenant
+                  // side; this button commits to it, so it must not also
+                  // re-trigger the panel's selection behind the overlay.
+                  event.stopPropagation();
+                  commit('tenant', TENANT_DISCOVER);
+                }}
+                className="inline-flex items-center gap-2.5 rounded-2xl bg-[#221E1A] px-5 py-3.5 transition-transform active:scale-[0.98]"
               >
                 <span className="font-['Manrope',sans-serif] text-sm font-bold tracking-[-0.01em] text-white">Browse hostels</span>
                 <ArrowRight className="h-[17px] w-[17px] text-[#D9906F]" strokeWidth={2} />
-              </span>
-              <span className="text-[11.5px] font-semibold text-[#8A7C72]">Coming soon</span>
+              </button>
+              <span className="text-[11.5px] font-semibold text-[#8A7C72]">Verified hostels only</span>
             </div>
           </div>
         </div>
@@ -241,20 +278,27 @@ export function WelcomePage() {
           style={{ background: 'radial-gradient(circle,rgba(217,144,111,.22),transparent 70%)' }}
         />
 
-        <div className="relative mx-auto flex h-full w-full max-w-2xl flex-col justify-end px-8 pb-[max(3.5rem,8vh)] sm:px-10">
+        <div
+          className={`stayo-welcome-content relative mx-auto flex h-full w-full max-w-2xl flex-col justify-end px-8 pb-[clamp(3rem,10vh,8rem)] sm:px-10 lg:max-w-4xl lg:px-12 ${
+            active === 'owner' ? 'stayo-welcome-content--near' : ''
+          }`}
+        >
           <span className="inline-flex items-center gap-2 self-start rounded-full border border-[#D9906F]/30 bg-[#D9906F]/[0.14] px-3.5 py-1.5">
             <span className="h-1.5 w-1.5 flex-none rounded-full bg-[#D9906F]" />
             <span className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-[#E7A986]">For hostel owners</span>
           </span>
 
-          <h2 className="mt-4 font-['Manrope',sans-serif] text-[clamp(1.9rem,5.6vw,3rem)] font-extrabold leading-[1.06] tracking-[-0.03em] text-white">
+          {/* Slightly under the tenant heading's cap: this one is bottom-anchored
+              and carries a longer first line, so matching sizes made it the
+              heavier of the two rather than the equal it should read as. */}
+          <h2 className="mt-4 font-['Manrope',sans-serif] text-[clamp(1.9rem,4.9vw,4.25rem)] font-extrabold leading-[1.06] tracking-[-0.03em] text-white">
             Run your hostel,
             <br />
             effortlessly.
           </h2>
 
           <div className={active === 'tenant' ? PANEL_BODY.shut : PANEL_BODY.open}>
-            <p className="mt-3 max-w-[20rem] text-sm font-medium leading-[1.5] text-[#B6ABA0]">
+            <p className="mt-3 max-w-[20rem] text-sm font-medium leading-[1.5] text-[#B6ABA0] lg:max-w-[28rem] lg:text-base">
               Fill empty beds faster, collect rent on autopilot, and resolve complaints before they pile up.
             </p>
 
@@ -288,6 +332,10 @@ export function WelcomePage() {
           </div>
         </div>
       </section>
+
+      {/* Footprints trailing the cursor — sits above both panels so a print can
+          cross the seam, below the roundel so nothing occludes the mark. */}
+      <FootprintTrail pct={pct} enabled={splashDone} />
 
       {/* ══════════ the mark rides the seam ══════════ */}
       <div

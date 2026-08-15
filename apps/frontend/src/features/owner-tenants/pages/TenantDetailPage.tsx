@@ -18,6 +18,7 @@ import { useActivationState } from '../hooks/useActivationState';
 import { RejectDocumentSheet } from '../documents/RejectDocumentSheet';
 import type { TenantDetailTab } from '../types';
 import { InvitedTenantProfileView } from '../components/InvitedTenantProfileView';
+import { TenantHistoryPanel } from '../components/TenantHistoryPanel';
 import { TenantActionsSheet } from '../actions/TenantActionsSheet';
 import { ChangeRentModal } from '../actions/ChangeRentModal';
 import { MoveOutSheet } from '../actions/MoveOutSheet';
@@ -375,6 +376,13 @@ export function TenantDetailPage() {
                 <StayRow label="Security deposit" value={`₹${tenant.stay.deposit.toLocaleString('en-IN')}`} />
                 <StayRow label="Billing frequency" value={tenant.stay.billingFrequency} />
               </div>
+
+              {/* Where they stayed before this. Disclosure is decided
+                  server-side — see ADR-053's amendment; the panel renders
+                  "not shared with you" rather than hiding itself, so the
+                  absence of history and the absence of consent stay
+                  distinguishable to the owner without leaking either. */}
+              <TenantHistoryPanel tenantId={tenantId} />
               <div className="flex gap-2.5">
                 <button type="button" onClick={() => setActionsOpen(true)} className="flex-1 rounded-xl border border-border bg-card py-3 text-center font-display text-[12.5px] font-bold text-foreground">
                   Change room

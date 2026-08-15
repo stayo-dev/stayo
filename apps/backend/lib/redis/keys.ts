@@ -56,6 +56,13 @@ export const redisKeys = {
     analytics: (ownerId: string, hostelId: string) =>
       redisKey("admissions", "analytics", ownerId, "hostel", hostelId),
   },
+  discovery: {
+    /**
+     * Keyed by the whole parameter set, hashed by the caller into a single
+     * string. Short TTL — see SEARCH_CACHE_SECONDS in discovery-service.
+     */
+    search: (paramsKey: string) => redisKey("discovery", "search", paramsKey),
+  },
   rateLimit: (scope: string, identifier: string) => redisKey("rate-limit", scope, identifier),
   session: {
     revoked: (sessionId: string) => redisKey("session", "revoked", sessionId),

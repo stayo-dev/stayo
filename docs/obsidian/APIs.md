@@ -237,6 +237,75 @@ Public (no session — added to `middleware.ts`'s `PUBLIC_ROUTES`), backing the 
 
 **Related fix while building this:** `GET /api/auth/me`'s `is_admin` field was hardcoded `false` (dead code from before `ADMIN` was a real, assignable role) — now `profile.role === "ADMIN"`. See [[Bugs]].
 
+## Stayo Discover — Public Marketplace (`/api/discover/*`)
+
+**Added 2026-08-15 ([[Decisions#ADR-073|ADR-073]]).** The public hostel-browsing surface backing `/discover`. Split auth: browse is public, everything else needs a seeker session.
+
+**`middleware.ts`'s `PUBLIC_ROUTES` entry is `/api/discover/hostels`, deliberately not `/api/discover`** — that list is prefix-matched, so the broader entry would have made every seeker's enquiry history and saved list world-readable.
+
+All routes share one visibility predicate, `DISCOVERABLE` in `src/services/discovery/discovery-service.ts`: `listing_status = LIVE` **and** `verification_status = VERIFIED` **and** `status = ACTIVE` **and** `admissions_enabled` **and** non-null `public_slug`. Nothing under `/api/discover` writes `listing_status` or `verification_status` — see [[Decisions#ADR-040|ADR-040]].
+
+| Path | Methods | Summary |
+|---|---|---|
+| `/api/discover/hostels` | GET | **Public.** Search + filter + city facets. Query: `q` (name/address/city, case-insensitive), `city`, `min_price`/`max_price`, `sharing` (comma-separated room capacities), `hostel_type`, `food_included`, `has_vacancy`, `sort` (`recommended`\|`price_low`\|`newest`), `limit` (≤50), `offset`. Sharing and price push into SQL as a `rooms: { some }`; **`has_vacancy` cannot** — vacancy is capacity minus three live relations — so the service fetches the matching set up to a 500-hostel cap and sorts/paginates in memory. Cached 60s (shorter than `getPublicHostel`'s 180s, so a filling bed drops out of a vacancy search quickly); the cache key is a SHA-1 of the parameter set, because a free-text `q` would otherwise put unbounded user input into a Redis key |
+| `/api/discover/hostels/[slug]` | GET | **Public.** Listing detail. Checks the hostel row against `DISCOVERABLE` *first*, then composes `admissionsService.getPublicHostel(slug)` rather than re-deriving rooms/vacancy, merging `hostel_type` + `food_included` on top. **404s a suspended or unverified hostel even though its `/visit/:slug` page may still resolve** — that microsite is a direct-link surface with intentionally looser rules and is not tightened to serve discovery. Returns `ratings_available: false` / `amenities_available: false`, so the client reserves space for phase C/D data instead of the server inventing it |
+| `/api/discover/enquiries` | GET, POST | **Seeker session required.** POST creates a `visitor_leads` row (`source: 'DISCOVER'`, `seeker_profile_id` set, `assigned_to: 'Stayo Discover'`) and records a `REQUEST_JOIN` activity — worth 30 in the existing lead score. De-duplicates against the same exported `ACTIVE_LEAD_STATUSES` the microsite uses, updating an open lead rather than stacking duplicates in the owner's inbox. Rate-limited 10/hr keyed per account (not per IP, so shared campus wifi does not throttle a whole hostel). Move-in date, duration and room capacity ride in `notes` rather than in new columns — a human reads them, nothing queries them. GET lists the caller's own, newest first, capped at 100 |
+| `/api/discover/enquiries/[id]` | GET | **Seeker session required.** Scoped by `seeker_profile_id` as well as `id`, so an enquiry is never readable by whoever guesses its id. Returns a projected `stage` (`SENT`\|`REVIEWING`\|`ACCEPTED`\|`CLOSED`), **never the raw `visitor_leads.status`** — `DECISION_PENDING` is the owner's internal vocabulary and invites an applicant to read meaning into a label never written for them |
+| `/api/discover/saved` | GET, POST | **Seeker session required.** POST upserts, so a double tap on the heart is one save and not a 500. Saving a non-discoverable hostel 404s. GET returns only hostels still discoverable — an unlisted one drops out of Saved rather than becoming an unopenable card |
+| `/api/discover/saved/[hostelId]` | DELETE | **Seeker session required.** `deleteMany`, so unsaving something already unsaved is a no-op |
+
+**Who counts as a seeker:** `requireSeeker()` (`src/services/discovery/seeker-session.ts`) requires an active profile with `role = TENANT` and deliberately does **not** require a `tenants` row — demanding one would exclude nearly everyone browsing. A tenant who already lives somewhere is also a valid seeker; a tenancy is neither required nor disqualifying.
+
+**Related fix while building this:** `GET /api/auth/me` set `is_profile_completed` only inside its `if (tenant)` branch, so a TENANT with no tenancy — every seeker — received it as `undefined`. See [[Bugs]].
+
+## The Portable Profile (`/api/profile/*`, `/api/owner/document-shares/*`)
+
+**Added 2026-08-15 ([[Decisions#ADR-074|ADR-074]]).** The identity a tenant fills in once and every later onboarding reads as defaults.
+
+**All of these require a session but deliberately *not* a tenancy.** The whole point is that a tenant completes their profile before enquiring anywhere; demanding a `tenants` row would put it back behind the onboarding it exists to shortcut.
+
+| Path | Methods | Summary |
+|---|---|---|
+| `/api/profile/identity` | GET, PATCH | The person's identity. GET merges profile-first with a tenancy fallback and returns `is_complete`, `missing_core_fields`, and `pending_backfill_fields` (fields still read off a tenancy because the backfill has not run for this person — surfaced so the transition's end is observable). PATCH is **allowlisted** against `IDENTITY_FIELDS`, and **drops blanks rather than writing them**: onboarding writes back here and its forms ask for a subset, so treating an absent field as "clear it" would let a short form wipe a longer one's answers. Validates date-of-birth is real and not in the future, year of study 1–10, profile type ∈ {STUDENT, WORKING_PROFESSIONAL} |
+| `/api/profile/documents` | GET, POST | The vault. GET returns each document annotated with `shared_with` — every hostel it is visible to and that hostel's verdict; the tenant is the one party entitled to see every verdict at once, because it is their document. POST adds a file and retires any previous active document of the same type (`is_active: false`, never deleted — existing shares point at what an owner actually reviewed) |
+| `/api/profile/documents/shares` | POST, DELETE | The tenant's own control over who can see their documents. POST grants a hostel access to every active document (idempotent — re-granting revives the existing share and **keeps its prior verdict**, rather than making an owner re-check a file they already checked). DELETE (`?hostel_id=`) sets `revoked_at` rather than deleting, so a past verifier stays attributable. **An owner cannot grant themselves access** — that asymmetry is what makes a shared vault safe |
+| `/api/owner/document-shares` | GET | **OWNER/ADMIN.** Vault documents shared with one of the caller's hostels. `hostel_id` is **required and never defaulted** — falling back to "the owner's first hostel" is the pattern `check:invariants` forbids, and here the wrong default would show a multi-hostel owner documents a tenant shared with a different property. Optional `profile_id` narrows to one person |
+| `/api/owner/document-shares/[shareId]/verdict` | PATCH | **OWNER/ADMIN.** `{verdict: VERIFIED\|REJECTED, rejection_reason?}`. Written to the **share**, so it applies to this hostel only — a tenant carrying the same file to their next hostel carries the file, not this decision. Rejection requires a reason. 403 if the caller does not own the share's hostel, 403 if revoked, 409 if the document has been replaced |
+| `/api/tenants/me/onboarding-prefill` | GET | **TENANT.** What the activation form should open with: account fields (`name`, `email`, `phone`, `emergency_contact`) plus the merged identity, and `has_prefill` so the UI can choose between a confirm step and a blank form. Requires no tenancy — activation calls it while the tenancy is still `INVITED` |
+
+### Residency history (2026-08-15, [[Decisions#ADR-075|ADR-075]])
+
+| Path | Methods | Summary |
+|---|---|---|
+| `/api/profile/residency-history` | GET | The person's own stay history — always fully visible to them, it is theirs. Facts only: hostel, city, dates, duration, room, sharing, rent, `settled`. **Never** `exit_reason`, `exit_notes` or behaviour scores |
+| `/api/profile/residency-history/disclosures` | GET, POST | Who can currently see it (`shared_with`, `pending_requests`, `blocked`) and the tenant's control. POST takes `{hostel_id, status}` where status ∈ APPROVED/DECLINED/REVOKED. **The decision verbs are the tenant's alone** — an owner has no route that grants access |
+| `/api/owner/tenant-history` | GET | **OWNER/ADMIN.** Either `tenant_id` (resolved to the person server-side against hostels the caller owns, so no person-identifier travels through owner UI state) **or** `hostel_id` + `profile_id` for the enquiry/invite path. Returns `{allowed, reason, stays, …}` rather than a 403 — so the UI can tell "not engaged yet" from "they declined" without either case revealing whether the person has any history. On refusal `stays` is empty and every count is zero |
+| `/api/owner/tenant-history/request` | POST | **OWNER/ADMIN.** `{hostel_id, profile_id}`. Asks a person to share. Grants nothing on its own, and **cannot re-open a `DECLINED`/`REVOKED` answer** — a repeated ask is itself a message the tenant never consented to receiving |
+
+**Disclosure rule, in one place:** `residencyHistoryService.resolveAccess()`. Precedence — an explicit `REVOKED`/`DECLINED` beats everything; then an explicit `APPROVED`; then engagement (open enquiry, or a tenancy at that hostel); otherwise refused. This narrows [[Decisions#ADR-053|ADR-053]] without weakening its enumeration protection: an owner who merely types an identifier still learns nothing.
+
+**Changed:** `POST /api/tenants/me/complete-profile` now writes `profile_identity` **inside the same transaction** as the tenancy row. A tenancy snapshot that committed while the portable record silently failed is exactly the drift this phase removes. Non-null fields only, same reasoning as PATCH above.
+
+## Hostel Marketing Page & Approval (`/api/owner/hostels/[id]/marketing*`, `/api/platform-admin/marketing-reviews*`)
+
+**Added 2026-08-15 ([[Decisions#ADR-076|ADR-076]]).** Owner-authored Discovery listing content, and the review cycle every version passes through.
+
+| Path | Methods | Summary |
+|---|---|---|
+| `/api/owner/hostels/[id]/marketing` | GET, PUT | **OWNER/ADMIN.** GET returns the editor state: the open draft (seeded from the owner's most recent work, whatever its status), what is currently live, the last rejection note, blocking `issues`, and `is_editable`. PUT saves the draft. **409 if the revision is `PENDING_REVIEW`** — an owner editing mid-review would mean the admin approves something other than what they read |
+| `/api/owner/hostels/[id]/marketing/submit` | POST | **OWNER/ADMIN.** DRAFT → PENDING_REVIEW. Rejects an incomplete listing here rather than queueing it for a human. Clears the previous verdict, which referred to a version that no longer exists |
+| `/api/owner/hostels/[id]/marketing/withdraw` | POST | **OWNER/ADMIN.** PENDING_REVIEW → DRAFT, so a locked listing can be edited again |
+| `/api/platform-admin/marketing-reviews` | GET | **ADMIN.** The queue, oldest first. Each row carries a content summary and `flags` |
+| `/api/platform-admin/marketing-reviews/[revisionId]` | GET | **ADMIN.** One submission in full plus `live` — what Discovery shows right now — so the reviewer judges the *change* |
+| `/api/platform-admin/marketing-reviews/[revisionId]/approve` | POST | **ADMIN.** Promotes to APPROVED and demotes the previous live revision to SUPERSEDED, **in one transaction** — the partial unique index allows one APPROVED per hostel, so a non-transactional approve would leave two or none |
+| `/api/platform-admin/marketing-reviews/[revisionId]/reject` | POST | **ADMIN.** `{note}` **required** — it is the owner's only route forward |
+
+**`flags`** (surfaced, never blocking): `PRICE_DRIFT` — advertised price vs real `min(rooms.base_rent)`, 5% tolerance; `SHARING_NOT_IN_INVENTORY` — a tier advertising room sizes the hostel has none of; `NO_ROOMS`.
+
+**This is a second gate, not ADR-040's.** Nothing here writes `listing_status`/`verification_status`; a hostel needs both an approved revision *and* a LIVE+VERIFIED listing to appear in Discovery.
+
+**Changed:** `GET /api/discover/hostels/[slug]` now returns `bed_tiers`, `amenities`, `places` and `marketing_published` from the **APPROVED** revision only — there is no code path from owner-authored content to a public page that skips the admin.
+
 ## Admin / Finance-Ops / Reconciliation
 
 `/api/admin/finance-ops` (**ADMIN only**) + `/attempts(/[id])`, `/anomalies`, `/webhook-events`, `/reconciliation-runs`. `/api/admin/finance/reconciliation/issues` + `/[issueId]` + `/scan` — **note: this sibling group requires role OWNER, not ADMIN**, despite the shared `/admin/finance` URL prefix — a role-scope inconsistency worth confirming is intentional. **Update 2026-07-26:** `ADMIN` is now a real, assignable role (Platform Admin Console, above) — `/api/admin/finance-ops/*` is consequently no longer purely theoretical/unreachable as previously noted here, though no frontend still consumes it and it remains a functionally separate, older subsystem from `/api/platform-admin/*`.

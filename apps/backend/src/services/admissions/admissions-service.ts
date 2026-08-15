@@ -43,7 +43,12 @@ export const ACTIVITY_SCORES: Record<string, number> = {
   SCHEDULE_VISIT: 10,
 };
 
-const ACTIVE_LEAD_STATUSES = ["NEW", "INTERESTED", "ROOM_VISITED", "DECISION_PENDING", "READY_TO_JOIN", "INVITED"];
+/**
+ * Exported so Stayo Discover's enquiry de-duplication uses the same definition
+ * of "this lead is still open" as the microsite does. Two definitions would
+ * mean an enquiry looked closed to one surface and open to the other.
+ */
+export const ACTIVE_LEAD_STATUSES = ["NEW", "INTERESTED", "ROOM_VISITED", "DECISION_PENDING", "READY_TO_JOIN", "INVITED"];
 const RESERVATION_COOLDOWN_HOURS = 12;
 
 function cleanString(value: unknown, max = 200) {

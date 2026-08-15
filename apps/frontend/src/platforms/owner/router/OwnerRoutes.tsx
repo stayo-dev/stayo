@@ -34,6 +34,9 @@ const HostelBuilderPage = lazy(() =>
 const HostelTenantsPage = lazy(() =>
   import('@features/hostel-drilldown/pages/HostelTenantsPage').then((m) => ({ default: m.HostelTenantsPage })),
 );
+const HostelMarketingPage = lazy(() =>
+  import('@features/hostel-drilldown/pages/HostelMarketingPage').then((m) => ({ default: m.HostelMarketingPage })),
+);
 const MoneyPage = lazy(() => import('@features/owner-money/pages/MoneyPage').then((m) => ({ default: m.MoneyPage })));
 const FoodPage = lazy(() => import('@features/owner-food/pages/FoodPage').then((m) => ({ default: m.FoodPage })));
 const KitchenSheetPage = lazy(() => import('@features/owner-food/pages/KitchenSheetPage').then((m) => ({ default: m.KitchenSheetPage })));
@@ -235,6 +238,7 @@ export function OwnerRoutes() {
         <Route path="overview" element={<HostelOverviewPage />} />
         <Route path="rooms" element={<HostelRoomsPage />} />
         <Route path="tenants" element={<HostelTenantsPage />} />
+        <Route path="marketing" element={<HostelMarketingPage />} />
       </Route>
     </Route>
   );
