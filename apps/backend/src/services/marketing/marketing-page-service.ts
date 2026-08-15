@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { imagekit } from "@/lib/imagekit";
 import { ApiError } from "@/src/lib/api-error";
 import {
   EMPTY_CONTENT,
@@ -35,6 +36,15 @@ export type RevisionStatus = "DRAFT" | "PENDING_REVIEW" | "APPROVED" | "REJECTED
 
 /** Statuses an owner is still working on — at most one exists per hostel. */
 const OPEN_STATUSES = ["DRAFT", "PENDING_REVIEW"];
+
+/**
+ * Listing photo limits. Larger than the 2MB hostel-logo cap because these are
+ * full-bleed gallery images straight off a phone camera, and rejecting a normal
+ * photo teaches owners to stop uploading rather than to compress.
+ */
+const ALLOWED_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
+const MAX_PHOTOS_PER_UPLOAD = 10;
 
 const REVISION_SELECT = {
   id: true,
@@ -177,6 +187,68 @@ export class MarketingPageService {
       select: REVISION_SELECT,
     });
     return { ...created, content, issues: contentIssues(content) };
+  }
+
+  /**
+   * Upload listing photos and hand back their URLs.
+   *
+   * This deliberately does **not** touch the revision. The URLs go into the
+   * draft the owner is editing in the browser and are persisted by the next
+   * `saveDraft` — writing them here too would give the page two sources of
+   * truth for its photo list, and an upload followed by a discarded edit would
+   * leave a photo on the listing the owner never accepted.
+   *
+   * Locked while a revision is in review, for the same reason `saveDraft` is:
+   * an owner cannot change what a reviewer is currently reading.
+   */
+  async uploadPhotos(ownerId: string, hostelId: string, files: File[]) {
+    await this.assertOwnsHostel(ownerId, hostelId);
+
+    const open = await prisma.hostel_marketing_revisions.findFirst({
+      where: { hostel_id: hostelId, status: { in: OPEN_STATUSES } },
+      select: { status: true },
+    });
+    if (open?.status === "PENDING_REVIEW") {
+      throw new ApiError(
+        "This listing is being reviewed. Withdraw it if you need to make changes.",
+        409,
+        "CONFLICT",
+      );
+    }
+
+    if (files.length === 0) throw ApiError.validationError("No photos were uploaded");
+    if (files.length > MAX_PHOTOS_PER_UPLOAD) {
+      throw ApiError.validationError(`Upload up to ${MAX_PHOTOS_PER_UPLOAD} photos at a time`);
+    }
+
+    for (const file of files) {
+      if (!ALLOWED_PHOTO_TYPES.includes(file.type)) {
+        throw ApiError.validationError(`${file.name || "That file"} is not a JPG, PNG or WebP image`);
+      }
+      if (file.size > MAX_PHOTO_BYTES) {
+        throw ApiError.validationError(
+          `${file.name || "That file"} is larger than ${MAX_PHOTO_BYTES / (1024 * 1024)}MB`,
+        );
+      }
+    }
+
+    // Sequential rather than Promise.all: a hostel gallery is a handful of
+    // large images, and firing ten multi-megabyte uploads at the provider at
+    // once is how the whole batch fails together on a phone connection.
+    const uploaded: { url: string; label: string | null }[] = [];
+    for (const file of files) {
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const response = await imagekit.files.upload({
+        file: buffer.toString("base64"),
+        fileName: `hostel_${hostelId}_listing_${Date.now()}_${uploaded.length}`,
+        folder: "/hostel_listings",
+        tags: ["listing", hostelId],
+      });
+      if (!response?.url) throw new Error("Photo provider did not return a URL");
+      uploaded.push({ url: response.url, label: null });
+    }
+
+    return { photos: uploaded };
   }
 
   /** Hand the draft to the admin queue. */

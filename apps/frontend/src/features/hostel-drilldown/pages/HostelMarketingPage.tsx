@@ -833,7 +833,14 @@ export function HostelMarketingPage() {
         open={sheet.kind === 'amenity'}
         existing={content.amenities.map((amenity) => amenity.label)}
         onClose={closeSheet}
-        onAdd={(label) => patch({ amenities: [...content.amenities, { label, enabled: true, icon: null }] })}
+        onAdd={(labels) =>
+          patch({
+            amenities: [
+              ...content.amenities,
+              ...labels.map((label) => ({ label, enabled: true, icon: null })),
+            ],
+          })
+        }
       />
 
       <BedSheet
@@ -885,6 +892,7 @@ export function HostelMarketingPage() {
 
       <PhotosScreen
         open={sheet.kind === 'photos'}
+        hostelId={hostelId}
         photos={content.photos}
         onChange={(photos) => patch({ photos })}
         onClose={closeSheet}

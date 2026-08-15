@@ -67,7 +67,7 @@ export function EnquiryPage() {
   };
 
   return (
-    <div className="flex min-h-[100dvh] flex-col" style={{ background: C.paper }}>
+    <div className="flex min-h-[100dvh] flex-col">
       <header
         className="flex items-center gap-3 border-b px-5 pb-3.5 pt-[max(3.25rem,env(safe-area-inset-top))]"
         style={{ background: C.cardWarm, borderColor: C.line }}

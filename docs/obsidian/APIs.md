@@ -293,6 +293,7 @@ All routes share one visibility predicate, `DISCOVERABLE` in `src/services/disco
 | Path | Methods | Summary |
 |---|---|---|
 | `/api/owner/hostels/[id]/marketing` | GET, PUT | **OWNER/ADMIN.** GET returns the editor state: the open draft (seeded from the owner's most recent work, whatever its status), what is currently live, the last rejection note, blocking `issues`, and `is_editable`. PUT saves the draft. **409 if the revision is `PENDING_REVIEW`** — an owner editing mid-review would mean the admin approves something other than what they read |
+| `/api/owner/hostels/[id]/marketing/photos` | POST | **OWNER/ADMIN.** Multipart, repeatable `files` field (≤10 per request, JPG/PNG/WebP, ≤8MB each). Uploads to ImageKit `/hostel_listings` and returns `{photos:[{url,label}]}`. **Writes no revision** — the URLs go into the owner's in-browser draft and are persisted by the next `PUT`, so an upload the owner then discards never reaches the listing. **409 while `PENDING_REVIEW`**, same lock as `PUT` |
 | `/api/owner/hostels/[id]/marketing/submit` | POST | **OWNER/ADMIN.** DRAFT → PENDING_REVIEW. Rejects an incomplete listing here rather than queueing it for a human. Clears the previous verdict, which referred to a version that no longer exists |
 | `/api/owner/hostels/[id]/marketing/withdraw` | POST | **OWNER/ADMIN.** PENDING_REVIEW → DRAFT, so a locked listing can be edited again |
 | `/api/platform-admin/marketing-reviews` | GET | **ADMIN.** The queue, oldest first. Each row carries a content summary and `flags` |

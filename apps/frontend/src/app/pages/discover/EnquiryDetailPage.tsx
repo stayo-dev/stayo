@@ -28,7 +28,7 @@ export function EnquiryDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-[100dvh] space-y-4 p-5 pt-24" style={{ background: C.paper }}>
+      <div className="min-h-[100dvh] space-y-4 p-5 pt-24">
         <div className="h-20 animate-pulse rounded-2xl" style={{ background: '#EDE4DA' }} />
         <div className="h-40 animate-pulse rounded-2xl" style={{ background: '#F2ECE5' }} />
       </div>
@@ -37,7 +37,7 @@ export function EnquiryDetailPage() {
 
   if (isError || !data) {
     return (
-      <div className="min-h-[100dvh] pt-24" style={{ background: C.paper }}>
+      <div className="min-h-[100dvh] pt-24">
         <DiscoverEmpty
           icon={Info}
           title="Enquiry not found"
@@ -64,7 +64,7 @@ export function EnquiryDetailPage() {
   ];
 
   return (
-    <div className="flex min-h-[100dvh] flex-col" style={{ background: C.paper }}>
+    <div className="flex min-h-[100dvh] flex-col">
       <header
         className="flex items-center gap-3 border-b px-5 pb-3.5 pt-[max(3.25rem,env(safe-area-inset-top))]"
         style={{ background: C.cardWarm, borderColor: C.line }}

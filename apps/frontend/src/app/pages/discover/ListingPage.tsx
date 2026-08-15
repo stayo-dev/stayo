@@ -130,7 +130,7 @@ export function ListingPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-[100dvh]" style={{ background: C.paper }}>
+      <div className="min-h-[100dvh]">
         <div className="h-[290px] animate-pulse" style={{ background: '#EDE4DA' }} />
         <div className="space-y-3 p-5">
           <div className="h-6 w-2/3 animate-pulse rounded" style={{ background: '#EDE4DA' }} />
@@ -143,7 +143,7 @@ export function ListingPage() {
 
   if (isError || !hostel) {
     return (
-      <div className="min-h-[100dvh] pt-24" style={{ background: C.paper }}>
+      <div className="min-h-[100dvh] pt-24">
         <DiscoverEmpty
           icon={Info}
           title="This hostel isn't listed"
@@ -168,7 +168,7 @@ export function ListingPage() {
   };
 
   return (
-    <div className="flex min-h-[100dvh] flex-col" style={{ background: C.paper }}>
+    <div className="flex min-h-[100dvh] flex-col">
       <div className="flex-1">
         {/* ── Gallery ──────────────────────────────────────────────────── */}
         <div

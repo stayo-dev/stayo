@@ -203,6 +203,8 @@ The StayO redesign is being built in place inside this same tree, per the design
 
   The design pins each sheet to a fixed pixel offset from the top of its 402×874 device frame (96px for the mess editor, 200px for the short ones). Those are **not** reproduced literally — on a real viewport that is what `BottomSheet`'s content-driven height under `max-h-[88vh]` already expresses. See [[Features]] and [[Decisions#ADR-077|ADR-077]].
 
+- **Discover's graph-paper ground (2026-08-15 fix).** `DiscoverShell` now applies `GRID_GROUND` from `discoverTheme.ts` — the same `#EBDCCF` 1px / 52px grid as `OwnerAppShell`, `TenantAppShell` and `HostelDrilldownLayout`. The constant had existed since Discover was built but **was never referenced**, so this was the one product surface on flat cream. Nine full-height Discover page roots also painted an opaque `background: C.paper` over the shell and had it stripped; the two genuinely-layered paper surfaces (SearchPage's filter sheet, ListingPage's body sheet over the hero) keep theirs. **If you add a Discover page, do not set a background on its root** — the shell owns it.
+
 ## See also
 - [[APIs]] for the endpoint shapes feature wrappers call
 - [[Features]] for what's built on top of this structure

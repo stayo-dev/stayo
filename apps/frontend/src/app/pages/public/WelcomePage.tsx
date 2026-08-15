@@ -333,8 +333,9 @@ export function WelcomePage() {
         </div>
       </section>
 
-      {/* Footprints trailing the cursor — sits above both panels so a print can
-          cross the seam, below the roundel so nothing occludes the mark. */}
+      {/* Footprints — trailing the cursor on desktop, a dragged finger plus an
+          ambient stroll on touch. Sits above both panels so a print can cross
+          the seam, below the roundel so nothing occludes the mark. */}
       <FootprintTrail pct={pct} enabled={splashDone} />
 
       {/* ══════════ the mark rides the seam ══════════ */}

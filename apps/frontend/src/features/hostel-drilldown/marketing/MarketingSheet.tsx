@@ -154,6 +154,7 @@ export function SheetInput({
   primary,
   inputMode,
   maxLength,
+  onEnter,
 }: {
   value: string;
   onChange: (next: string) => void;
@@ -161,11 +162,18 @@ export function SheetInput({
   primary?: boolean;
   inputMode?: 'text' | 'numeric';
   maxLength?: number;
+  /** Enter commits, so a field that feeds a list doesn't need the mouse. */
+  onEnter?: () => void;
 }) {
   return (
     <input
       value={value}
       onChange={(event) => onChange(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' || !onEnter) return;
+        event.preventDefault();
+        onEnter();
+      }}
       placeholder={placeholder}
       inputMode={inputMode}
       maxLength={maxLength}

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { ClipboardList, Compass, Heart, User } from 'lucide-react';
 
-import { C, FONT } from '../discoverTheme';
+import { C, FONT, GRID_GROUND } from '../discoverTheme';
 
 const TABS = [
   { to: '/discover', label: 'Explore', Icon: Compass, end: true },
@@ -32,7 +32,12 @@ export function DiscoverShell({ children }: { children: ReactNode }) {
   return (
     <div
       className="flex min-h-[100dvh] flex-col antialiased"
-      style={{ background: C.paper, fontFamily: FONT.body }}
+      // The graph-paper ground every Stayo surface stands on — the same
+      // `#EBDCCF` 1px / 52px grid as `OwnerAppShell`, `TenantAppShell` and
+      // `HostelDrilldownLayout`. `GRID_GROUND` had been defined in
+      // `discoverTheme.ts` since Discover was built but never actually applied,
+      // so this was the one product surface rendering on flat cream.
+      style={{ ...GRID_GROUND, fontFamily: FONT.body }}
     >
       <div className="flex-1 pb-[env(safe-area-inset-bottom)]">{children}</div>
 

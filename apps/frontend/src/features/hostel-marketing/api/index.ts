@@ -144,6 +144,17 @@ export const marketingService = {
     return unwrap(response);
   },
 
+  /**
+   * Upload listing photos, get URLs back. The caller puts them in the draft;
+   * nothing is persisted until the draft is saved.
+   */
+  uploadPhotos: async (hostelId: string, files: File[]): Promise<{ url: string; label: string | null }[]> => {
+    const form = new FormData();
+    files.forEach((file) => form.append('files', file));
+    const response = await api.post(`/owner/hostels/${hostelId}/marketing/photos`, form);
+    return (unwrap(response)?.photos ?? []) as { url: string; label: string | null }[];
+  },
+
   submit: async (hostelId: string) => {
     const response = await api.post(`/owner/hostels/${hostelId}/marketing/submit`);
     return unwrap(response);

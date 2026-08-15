@@ -16,6 +16,15 @@ import { useEffect, useRef } from 'react';
  *   - each print is coloured by which side of the seam it lands on — dark on
  *     the cream tenant half, light on the near-black owner half — using the
  *     same seam geometry the panels clip to.
+ *
+ * **On touch, there is no cursor to trail, so the effect comes from two
+ * sources instead of one.** Dragging a finger leaves prints exactly as a
+ * cursor does — `pointermove` covers touch already. But a visitor who only
+ * taps would never see the screen move at all, so coarse-pointer devices also
+ * get an *ambient* walk: a stroll across the screen every few seconds, laid
+ * down one print at a time so it reads as walking rather than appearing. That
+ * is the whole difference between the two platforms; the print geometry,
+ * colouring and cleanup are shared.
  */
 
 /** Pixels of travel between prints. Roughly a stride at this scale. */
@@ -29,6 +38,17 @@ const SEAM_SPREAD = 3.2;
 
 /** Matches the CSS animation duration; nodes are also removed on animationend. */
 const PRINT_MS = 1500;
+
+/** Ambient walk (touch only) — pace, length, and the rest between strolls. */
+const AMBIENT_STEP_MS = 340;
+const AMBIENT_MIN_STEPS = 6;
+const AMBIENT_MAX_STEPS = 10;
+const AMBIENT_REST_MIN_MS = 2200;
+const AMBIENT_REST_MAX_MS = 4200;
+/** A beat after the screen settles, so the first stroll isn't part of the splash. */
+const AMBIENT_FIRST_DELAY_MS = 1200;
+
+const randomBetween = (min: number, max: number) => min + Math.random() * (max - min);
 
 interface FootprintTrailProps {
   /** Where the seam's midpoint sits, in % of viewport height. */
@@ -50,39 +70,18 @@ export function FootprintTrail({ pct, enabled }: FootprintTrailProps) {
     const layer = layerRef.current;
     if (!layer) return;
 
-    // Touch taps would leave a lone print with no walk behind it, and a coarse
-    // pointer has no hover to trail from. Desktop only, by construction.
-    const fine = window.matchMedia('(hover: hover) and (pointer: fine)');
-    if (!fine.matches) return;
+    // Motion is the whole effect — there is nothing to degrade to.
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
-    let lastX: number | null = null;
-    let lastY: number | null = null;
-    let travelled = 0;
+    // Touch has no hover to trail from, so a dragged finger is only half the
+    // answer; the ambient stroll below is the other half.
+    const coarse = !window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
     let leftFoot = true;
 
-    const onMove = (event: PointerEvent) => {
-      const { clientX: x, clientY: y } = event;
-
-      if (lastX === null || lastY === null) {
-        lastX = x;
-        lastY = y;
-        return;
-      }
-
-      const dx = x - lastX;
-      const dy = y - lastY;
-      const step = Math.hypot(dx, dy);
-      lastX = x;
-      lastY = y;
-
-      travelled += step;
-      if (travelled < STRIDE) return;
-      travelled = 0;
-
-      // Heading, and the unit normal to it — the normal is what separates the
-      // two feet.
-      const angle = Math.atan2(dy, dx);
+    /** Lay one print at (x, y) travelling along `angle`. The shared core. */
+    const emit = (x: number, y: number, angle: number) => {
+      // Heading's unit normal — what separates the two feet.
       const nx = -Math.sin(angle);
       const ny = Math.cos(angle);
       const side = leftFoot ? 1 : -1;
@@ -111,10 +110,94 @@ export function FootprintTrail({ pct, enabled }: FootprintTrailProps) {
       layer.appendChild(print);
     };
 
+    // ── Pointer trail: cursor on desktop, dragged finger on touch ──────────
+    let lastX: number | null = null;
+    let lastY: number | null = null;
+    let travelled = 0;
+
+    const onMove = (event: PointerEvent) => {
+      const { clientX: x, clientY: y } = event;
+
+      if (lastX === null || lastY === null) {
+        lastX = x;
+        lastY = y;
+        return;
+      }
+
+      const dx = x - lastX;
+      const dy = y - lastY;
+      travelled += Math.hypot(dx, dy);
+      lastX = x;
+      lastY = y;
+
+      if (travelled < STRIDE) return;
+      travelled = 0;
+
+      emit(x, y, Math.atan2(dy, dx));
+    };
+
+    // A finger lifted and put down elsewhere is a new walk, not a giant stride
+    // across the screen — without this the next print sits on a heading drawn
+    // between two unrelated touches.
+    const onPointerDown = (event: PointerEvent) => {
+      lastX = event.clientX;
+      lastY = event.clientY;
+      travelled = 0;
+    };
+
     window.addEventListener('pointermove', onMove, { passive: true });
+    window.addEventListener('pointerdown', onPointerDown, { passive: true });
+
+    // ── Ambient stroll: touch only ─────────────────────────────────────────
+    // Someone who only ever taps would otherwise see a completely still
+    // screen, which is the bug this exists to fix.
+    let stepTimer: ReturnType<typeof setTimeout> | undefined;
+    let restTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const stroll = () => {
+      const { innerWidth: w, innerHeight: h } = window;
+
+      // Walk broadly left-to-right or right-to-left, with a gentle drift, and
+      // start off the edge so the walker appears to enter rather than pop in.
+      const leftToRight = Math.random() < 0.5;
+      const heading = (leftToRight ? 0 : Math.PI) + randomBetween(-0.42, 0.42);
+      const steps = Math.round(randomBetween(AMBIENT_MIN_STEPS, AMBIENT_MAX_STEPS));
+
+      let x = leftToRight ? -STRIDE : w + STRIDE;
+      // Keep clear of the CTAs at the vertical extremes; the middle band is
+      // where the seam lives and where a walk reads best.
+      let y = randomBetween(h * 0.18, h * 0.82);
+
+      let placed = 0;
+      const walk = () => {
+        if (placed >= steps) {
+          restTimer = setTimeout(stroll, randomBetween(AMBIENT_REST_MIN_MS, AMBIENT_REST_MAX_MS));
+          return;
+        }
+        x += Math.cos(heading) * STRIDE;
+        y += Math.sin(heading) * STRIDE;
+        placed += 1;
+
+        // Stop early rather than laying prints into the void off-screen.
+        if (x < -STRIDE || x > w + STRIDE || y < 0 || y > h) {
+          restTimer = setTimeout(stroll, randomBetween(AMBIENT_REST_MIN_MS, AMBIENT_REST_MAX_MS));
+          return;
+        }
+
+        emit(x, y, heading);
+        stepTimer = setTimeout(walk, AMBIENT_STEP_MS);
+      };
+
+      walk();
+    };
+
+    if (coarse) restTimer = setTimeout(stroll, AMBIENT_FIRST_DELAY_MS);
 
     return () => {
       window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerdown', onPointerDown);
+      clearTimeout(stepTimer);
+      clearTimeout(restTimer);
       // A trail mid-fade would otherwise outlive the screen it belongs to.
       layer.replaceChildren();
     };
