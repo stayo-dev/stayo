@@ -28,6 +28,17 @@ Copy this block for each new entry:
 
 ## Fixed
 
+### Onboarding Step 4 told tenants they had signed an agreement that was never required and never signed
+
+- **Status:** fixed 2026-08-15
+- **Found:** 2026-08-15, owner-reported with side-by-side design/production screenshots
+- **Area:** [[Frontend]]
+- **Symptom:** on a hostel with `agreement_required: false`, the journey track correctly read "Step 3 of 4" with the Agreement node dropped — and Step 4 then showed a checklist row "3. Hostel Agreement Signed — Signed as *Prakash*" plus a "Signed Rental Agreement / Digitally Signed" card offering a PDF. No agreement stage had run and no signature existed. *Prakash* was the tenant's profile name, rendered as though it were their signature.
+- **Root cause:** neither surface tested for a signature. The checklist row was static markup with a hardcoded green tick and `ctx.agreement?.tenant_signature_name || ctx.profile?.name` as its subtitle — so the absence of a signature silently became the tenant's own name. The preview card's guard was `ctx?.agreement`, which is truthy whenever an agreement *record* exists, independent of whether signing was required or done; its label fell back to the literal string "Digitally Signed".
+- **The pattern worth remembering:** both were "summary" surfaces that restated state from elsewhere in the flow instead of reading it. A summary that renders a fallback when its source is empty stops being a summary and starts being an assertion. The same shape appeared twice more in the same audit — a hardcoded "Step 1 of 5" that contradicted the 4-stage track, and guardian copy crediting an Agreement step that [[Decisions#ADR-070|ADR-070]] had moved to *after* the screen showing it.
+- **Fix:** both Step 4 surfaces removed rather than re-gated — the approved design has neither (`PasswordActivateStep.tsx`), which also removed the fallbacks that caused it. `AgreementPreviewModal` deleted from `steps/shared.tsx` with its last consumer. Step 1's stage count now derives from `agreement_required`; the guardian copy now names the invitation as the source.
+- **Related:** [[Changelog]], [[Decisions#ADR-072|ADR-072]], [[Decisions#ADR-070|ADR-070]]
+
 ### Tenant activation's primary button sat below the fold on every step, and its keyframes were reachable only by accident
 
 - **Status:** fixed 2026-08-15

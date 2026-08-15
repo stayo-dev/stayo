@@ -78,6 +78,8 @@ interface WelcomeIdentityStepProps {
   onSubmitAccount: () => Promise<boolean>;
   onSubmitProfile: () => Promise<boolean>;
   goToStep: (step: ActivationStep) => void;
+  /** Total visual stages — 4 when the hostel has `agreement_required: false`. */
+  stageCount: number;
   /** Inline OTP failure from the last ACCOUNT submit, shown under the code box. */
   otpError?: string;
   /** Step 1's back tile leaves the wizard for the intro splash, per the design. */
@@ -256,6 +258,7 @@ export function WelcomeIdentityStep({
   onSubmitAccount,
   onSubmitProfile,
   goToStep,
+  stageCount,
   otpError,
   onExitToIntro,
   localPhase,
@@ -514,7 +517,7 @@ export function WelcomeIdentityStep({
                   {profile.guardian_name}
                 </div>
                 <p className="mt-0.5 text-[11px]" style={{ color: '#8A7F75' }}>
-                  Synced and locked from agreement signing.
+                  Added by your hostel on your invitation.
                 </p>
               </div>
             ) : (
@@ -592,13 +595,11 @@ export function WelcomeIdentityStep({
 
         </div>
 
-        <div className="mt-3.5 text-[11px] leading-relaxed" style={{ color: '#8A7F75' }}>
-          {profileDraftStatus === 'restored'
-            ? 'Draft restored from this device.'
-            : profileDraftStatus === 'saving'
-              ? 'Saving draft…'
-              : 'Address, academic, and work details can be completed later from your tenant portal.'}
-        </div>
+        {(profileDraftStatus === 'restored' || profileDraftStatus === 'saving') && (
+          <div className="mt-3.5 text-[11px] leading-relaxed" style={{ color: '#8A7F75' }}>
+            {profileDraftStatus === 'restored' ? 'Draft restored from this device.' : 'Saving draft…'}
+          </div>
+        )}
 
         <StepActionBar>
           {showAccountFields ? (
@@ -620,7 +621,7 @@ export function WelcomeIdentityStep({
     return (
       <div style={{ animation: 'obFade .25s ease' }}>
         <p className="font-display text-[10px] font-extrabold uppercase" style={{ color: '#B46A55', letterSpacing: '.1em' }}>
-          Step 1 of 5
+          Step 1 of {stageCount}
         </p>
         <h2 className="font-display mt-1.5 text-[19px] font-extrabold leading-tight tracking-tight" style={{ color: '#1A1A1A' }}>
           Welcome to Stayo
@@ -643,7 +644,7 @@ export function WelcomeIdentityStep({
     return (
       <div style={{ animation: 'obFade .25s ease' }}>
         <p className="font-display text-[10px] font-extrabold uppercase" style={{ color: '#B46A55', letterSpacing: '.1em' }}>
-          Step 1 of 5
+          Step 1 of {stageCount}
         </p>
         <h2 className="font-display mt-1.5 text-[19px] font-extrabold leading-tight tracking-tight" style={{ color: '#1A1A1A' }}>
           Welcome to Stayo
