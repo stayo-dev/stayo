@@ -141,7 +141,7 @@ export function ActivationProgress({
           Step {activeIdx + 1} of {nodes.length}
         </span>
         <span className="text-[11px] font-medium" style={{ color: '#5A5147' }}>
-          {remaining === 0 ? 'Last step' : `${remaining} step${remaining === 1 ? '' : 's'} left`}
+          {`${remaining} step${remaining === 1 ? '' : 's'} left`}
         </span>
       </div>
 
