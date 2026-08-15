@@ -71,6 +71,17 @@ Copy this block for each new entry:
 - **Still open — worth fixing so this can't recur:** (1) no drift detection between `schema.prisma` and the deployed database; (2) `.env` and `.env.test` currently carry an **identical** `DATABASE_URL`, so the DB-backed suite truncates whatever that host is; (3) that host is in `ap-northeast-2` while the canonical Supabase project is `ap-south-1` — the unresolved question from 2026-08-09 about which database production actually writes to.
 - **Related:** [[Database]], [[Changelog]], [[Architecture]]
 
+### Food Polls 500'd in production — `food_polls` migration was never applied there
+
+- **Status:** fixed 2026-08-15 — migration applied directly to production
+- **Found:** 2026-08-15, owner-reported via console screenshot on `yourstayo.com/owner/food/polls`: `GET`/`POST /api/food/polls` all **500**, dialog showing `Invalid prisma.food_polls.create() invocation: The table public.food_polls does not exist in the current database.`
+- **Area:** [[Database]] / [[Backend]]
+- **Symptom:** Food Polls tab entirely broken in production — listing and creating both failed.
+- **Root cause:** same class of gap as the `tenants`-migration outage earlier the same day (see above): `food_polls`/`food_poll_options`/`food_poll_votes` (migration `20260808130000_add_food_polls`, added 2026-08-08) had only ever been applied by hand to the **dev** database (`qsjrazcbtpmubclkevwi`, `ap-northeast-2`) — see [[Food]] §16. Nothing ever ran the same SQL against the production database (`xhoqkhwsnqfwhjsffybs`, `ap-south-1`), and there is still no automated `prisma migrate deploy` step in the build to catch this.
+- **Fix:** the migration's SQL (two enum types, three tables, four indexes, five FKs) applied directly to production via the `DIRECT_URL` (non-pooled) connection, statement-by-statement — `$executeRawUnsafe` on the pgbouncer pooled `DATABASE_URL` rejects multi-statement bodies (`42601`), and a first attempt at manual statement-splitting glued a leading SQL comment block onto the first `CREATE TYPE`, causing it to be skipped as "just a comment" and created only `FoodPollStatus` on that pass; the stray type was dropped and the corrected split (strip full-line comments before splitting on `;`) reapplied everything cleanly. Verified via `information_schema.tables` and `pg_constraint` post-apply.
+- **Still open — same unresolved gap as the `tenants` incident above:** no drift detection between `schema.prisma`/`prisma/migrations` and what's actually deployed to production; every hand-applied migration since (`20260810120000_room_sort_order`, `20260814120000_add_tenant_identity_fields`, etc.) needs the same production-vs-dev check before being trusted as "done."
+- **Related:** [[Database]], [[Changelog]], [[Food]]
+
 ### Tenant activation's journey-track avatar stayed on "Welcome" while the Identity screen was already showing
 
 - **Status:** fixed 2026-08-14

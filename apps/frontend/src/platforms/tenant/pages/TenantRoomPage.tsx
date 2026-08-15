@@ -10,6 +10,7 @@ import { FormPanel } from '../components/overlays/FormPanel';
 import { buildRoomDetailConfigs } from '../components/overlays/configs/roomDetailConfigs';
 import { buildServiceRequestFormConfigs } from '../components/overlays/configs/serviceRequestFormConfigs';
 import { buildServiceRequestDetailConfig } from '../components/overlays/configs/serviceRequestDetailConfig';
+import { TicketsListScreen } from '../components/overlays/TicketsListScreen';
 
 const card = 'rounded-[16px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_4px_14px_rgba(40,30,20,0.05)]';
 const sectionLabel = 'text-[13px] font-bold uppercase tracking-wide text-muted-foreground';
@@ -70,6 +71,15 @@ export function TenantRoomPage() {
     queryKey: ['tenant', 'service-requests', room.activeTicket?.id, 'events'],
     queryFn: () => tenantRoomService.getServiceRequestDetail(room.activeTicket!.id),
     enabled: overlay.view === 'maint_ticket' && Boolean(room.activeTicket),
+  });
+
+  /** Generic ticket detail, opened from the "view all tickets" list (any request, not just the inline `activeTicket`) — mirrors Profile's `tk_<id>` handling. */
+  const genericTicketId = overlay.view.startsWith('tk_') ? overlay.view.slice(3) : null;
+  const genericTicket = genericTicketId ? room.requests.find((r) => r.id === genericTicketId) ?? null : null;
+  const genericTicketEventsQuery = useQuery({
+    queryKey: ['tenant', 'service-requests', genericTicketId, 'events'],
+    queryFn: () => tenantRoomService.getServiceRequestDetail(genericTicketId!),
+    enabled: Boolean(genericTicketId && genericTicket),
   });
 
   if (room.isLoading) return <LoadingSkeleton />;
@@ -219,11 +229,18 @@ export function TenantRoomPage() {
 
         {room.activeTicket && (
           <div className="flex flex-col gap-2.5">
-            <span className={sectionLabel}>Maintenance</span>
+            <div className="flex items-baseline justify-between">
+              <span className={sectionLabel}>Tickets</span>
+              {room.openRequests.length > 1 && (
+                <button type="button" onClick={() => overlay.push('all_tickets')} className="text-[12px] font-semibold text-primary">
+                  {room.openRequests.length} open · view all
+                </button>
+              )}
+            </div>
             <div className={`${card} p-4`}>
               <button type="button" onClick={() => overlay.push('maint_ticket')} className="flex w-full items-start gap-2.5 text-left">
                 <div className="min-w-0 flex-1">
-                  <div className="font-display text-[16px] font-extrabold tracking-[-0.01em] text-foreground">{room.activeTicket.category ?? 'Maintenance issue'}</div>
+                  <div className="font-display text-[16px] font-extrabold tracking-[-0.01em] text-foreground">{room.activeTicket.category ?? room.activeTicket.type.replace('_', ' ')}</div>
                   <div className="mt-0.5 text-[12px] font-medium text-muted-foreground">Ticket · raised {new Date(room.activeTicket.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · tap to track</div>
                 </div>
                 <span className="flex-none rounded-full bg-warning-bg px-2.5 py-1 text-[11px] font-bold text-warning">{room.activeTicket.status.replace('_', ' ')}</span>
@@ -310,6 +327,12 @@ export function TenantRoomPage() {
       )}
       {overlay.view === 'maint_ticket' && room.activeTicket && (
         <DetailScreen config={buildServiceRequestDetailConfig(room.activeTicket, ticketEventsQuery.data?.tenant_service_request_events ?? [])} onBack={overlay.back} />
+      )}
+      {overlay.view === 'all_tickets' && (
+        <TicketsListScreen requests={room.requests} onBack={overlay.back} onOpenTicket={(id) => overlay.push(`tk_${id}`)} onNewTicket={() => overlay.push('maint_new')} />
+      )}
+      {genericTicketId && genericTicket && (
+        <DetailScreen config={buildServiceRequestDetailConfig(genericTicket, genericTicketEventsQuery.data?.tenant_service_request_events ?? [])} onBack={overlay.back} />
       )}
       {!overlay.isHome && formConfigs[overlay.view] && (
         <FormPanel config={formConfigs[overlay.view]} onBack={overlay.back} onClose={overlay.close} />
