@@ -76,7 +76,6 @@ export function ActivationPage() {
   const [guardianVerifiedPhone, setGuardianVerifiedPhone] = useState('');
   const [guardianOtpVerifying, setGuardianOtpVerifying] = useState(false);
   const [guardianOverrideUnlocked, setGuardianOverrideUnlocked] = useState(false);
-  const [isGuardianLocked, setIsGuardianLocked] = useState(true);
 
   const [profile, setProfile] = useState<ProfileDraft>({
     phone: '',
@@ -156,8 +155,6 @@ export function ActivationPage() {
         setGuardianOtpVerified(true);
         setGuardianVerifiedPhone(draft.guardianVerifiedPhone || '');
       }
-
-      setIsGuardianLocked(Boolean(mergedProfile.guardian_name || mergedProfile.guardian_relation));
 
       if (data.activation_state?.profile_completed) clearProfileDraft(token);
       setProfileDraftStatus(draft && !data.activation_state?.profile_completed ? 'restored' : 'idle');
@@ -554,9 +551,6 @@ export function ActivationPage() {
             setPaymentFrequency={setPaymentFrequency}
             profile={profile}
             setProfile={setProfile}
-            isStudent={isStudent}
-            isGuardianLocked={isGuardianLocked}
-            setIsGuardianLocked={setIsGuardianLocked}
             isGuardianPhoneVerified={Boolean(isGuardianPhoneVerified)}
             setGuardianOverrideUnlocked={setGuardianOverrideUnlocked}
             guardianOtp={guardianOtp}

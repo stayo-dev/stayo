@@ -13,12 +13,20 @@ import { BackButton, PrimaryActionButton, StepActionBar } from './shared';
  * middle, action right).
  *
  * The backend keeps `RULES` and `AGREEMENT` as two distinct steps and
- * requires 5 named acknowledgements the design doesn't show at all (its
- * mockup has no rules-acceptance UI) — both are folded into this single
- * screen: a compact checklist sits between the agreement box and the
- * signature rows (an addition beyond the design source, styled in the same
- * cream/Inter language so it doesn't look bolted on), and submitting signs
- * both backend steps in sequence behind one "Submit & sign contract" tap.
+ * requires 5 named acknowledgements the design shows no UI for — both are
+ * folded into this single screen, and submitting signs both backend steps in
+ * sequence behind one "Submit & sign contract" tap.
+ *
+ * **Why the acknowledgements survive an "exact design" pass.** They are not
+ * decoration: `acceptRules()` validates all five server-side and, on success,
+ * writes a `tenant_policy_acceptances` row stamped with the tenant's IP,
+ * user agent and typed name — a consent record. Dropping the UI would not
+ * drop the requirement, it would post `{all: true}` on behalf of someone who
+ * was never shown the statements. So instead of a second card sitting beside
+ * the design's document (which is what this used to be, and what read as
+ * bolted on), they are now a closing numbered section *inside* the document
+ * box — the design's own box already elides sections 2–5, so a final "7."
+ * belongs there. One cream box, as designed, with the consent intact.
  *
  * 2026-08-15: re-synced against the approved design — the unsigned tenant
  * row is a solid terracotta card that pulses (`sigGlow`) with a nudging
@@ -221,26 +229,31 @@ export function AgreementStep({
           </li>
         </ul>
 
+        {!rulesAccepted && (
+          <>
+            <div className="mt-4 text-[11.5px] font-extrabold uppercase" style={{ color: '#221E1A', letterSpacing: '.04em' }}>
+              7. Acknowledgements
+            </div>
+            <div className="mt-2.5 flex flex-col gap-1.5">
+              {REQUIRED_ACKS.map((a) => (
+                <label key={a.key} className="flex items-start gap-2 text-xs leading-relaxed" style={{ color: '#3A342E' }}>
+                  <input
+                    type="checkbox"
+                    checked={acks[a.key] === true}
+                    onChange={(e) => setAcks({ ...acks, [a.key]: e.target.checked })}
+                    className="mt-0.5 h-3.5 w-3.5 flex-none accent-primary"
+                  />
+                  <span>{a.label}</span>
+                </label>
+              ))}
+            </div>
+          </>
+        )}
+
         <div className="mt-3.5 border-t border-dashed pt-2.5 text-[11px] leading-relaxed" style={{ borderColor: '#D3C8B8', color: '#7A6F63' }}>
           Valid under the IT Act. Digital signatures and IP details collected during onboarding are legally binding.
         </div>
       </div>
-
-      {!rulesAccepted && (
-        <div className="mt-3.5 rounded-[13px] p-3.5" style={{ background: '#F6F1EA' }}>
-          <div className="text-[10px] font-extrabold uppercase" style={{ color: '#9A8F84', letterSpacing: '.08em' }}>
-            Confirm you understand
-          </div>
-          <div className="mt-2 space-y-1.5">
-            {REQUIRED_ACKS.map((a) => (
-              <label key={a.key} className="flex items-start gap-2 text-xs" style={{ color: '#3A342E' }}>
-                <input type="checkbox" checked={acks[a.key] === true} onChange={(e) => setAcks({ ...acks, [a.key]: e.target.checked })} className="mt-0.5 h-3.5 w-3.5 accent-primary" />
-                <span>{a.label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
 
       <div className="mt-3.5 flex items-center gap-2.5 rounded-[11px] px-3 py-2.5" style={{ background: '#E4F3EB', border: '1px solid #BFE3CE' }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F7A52" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-none">

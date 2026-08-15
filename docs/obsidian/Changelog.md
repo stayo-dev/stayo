@@ -10,6 +10,16 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-15 — All five onboarding stages matched to the design screenshots
+- Owner-supplied screenshots of the Claude Design rendering, stage by stage, with the instruction that Welcome / Identity / Agreement / Account / Move In each match exactly.
+- **Identity** — the empty profile-photo state is the design's solid terracotta disc (it was a cream well with a camera glyph in it); the guardian *lock / Modify* card is gone in favour of the design's plain `GUARDIAN FULL NAME` input; `GUARDIAN MOBILE` loses the asterisk and the helper line beneath it, neither of which the design has. `isGuardianLocked` state removed from `ActivationPage` with its last consumer.
+- **Agreement** — the five acknowledgements moved *inside* the agreement document as a closing numbered section ("7. Acknowledgements") instead of a second cream card beside it. The design has one document box; this restores that silhouette without dropping the consent. See below.
+- **Move In** — the track now reads "0 steps left" on the last stage, matching the design literally, rather than the "Last step" wording introduced earlier as a tidier alternative.
+- **Welcome** and **Account** needed no further change — Account was stripped to the design earlier the same day, Welcome already matched.
+- **The acknowledgements were kept, and this is settled rather than deferred.** `activation-workflow-service.ts`'s `acceptRules()` validates all five server-side and writes a `tenant_policy_acceptances` row stamped with the tenant's IP, user agent and typed name. Removing the UI would not remove the requirement — it would post `{all: true}` for someone never shown the statements, fabricating a consent record. Folding them into the document was the way to satisfy the design's layout without that. Confirmed with the owner: when a hostel has `agreement_required: false` the backend blocks `RULES` *and* `AGREEMENT`, so nothing agreement-shaped — acknowledgements included — runs for those hostels at all.
+- **Verified:** `check:architecture`, full `vite build` + branding check clean; `tsc --noEmit` unchanged at the flow's 5 pre-existing errors. **Not verified in a browser.**
+- See [[Decisions#ADR-072|ADR-072]], [[Features]].
+
 ### 2026-08-15 — Onboarding Step 4 stripped to the design, removing a card that claimed an unsigned agreement was signed
 - Owner-reported with side-by-side screenshots: on a hostel with `agreement_required: false` the flow correctly showed **"Step 3 of 4"** with the Agreement node dropped from the track — and then Step 4 rendered an "Onboarding Verification Checklist" whose third row read **"3. Hostel Agreement Signed — Signed as 'Prakash'"**, above a "Signed Rental Agreement / Digitally Signed / View / Generating PDF…" card. Nothing had been signed; the agreement stage never ran.
 - **Root cause:** neither surface was gated on a signature existing. The checklist row was hardcoded with a green tick and fell back to `ctx.profile.name` when `tenant_signature_name` was absent, so it rendered a *name* as if it were a signature. The preview card was gated on `ctx.agreement` merely existing — which it does even when signing isn't required — and printed the literal "Digitally Signed" whenever no signature name was present. See [[Bugs]].

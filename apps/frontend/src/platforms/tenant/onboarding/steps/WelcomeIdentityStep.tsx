@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { AlertCircle, Camera, CheckCircle2, Receipt, Send, Unlock } from 'lucide-react';
+import { AlertCircle, Camera, CheckCircle2, Receipt, Send } from 'lucide-react';
 import { StayoLoader } from '@shared/ui/brand';
 import type { ActivationContext, ActivationStep } from '../activationTypes';
 import { currency, fmtDate } from '../activationTypes';
@@ -56,9 +56,6 @@ interface WelcomeIdentityStepProps {
   setPaymentFrequency: (v: string) => void;
   profile: ProfileDraft;
   setProfile: (next: ProfileDraft) => void;
-  isStudent: boolean;
-  isGuardianLocked: boolean;
-  setIsGuardianLocked: (v: boolean) => void;
   isGuardianPhoneVerified: boolean;
   setGuardianOverrideUnlocked: (v: boolean) => void;
   guardianOtp: string;
@@ -236,9 +233,6 @@ export function WelcomeIdentityStep({
   setPaymentFrequency,
   profile,
   setProfile,
-  isStudent,
-  isGuardianLocked,
-  setIsGuardianLocked,
   isGuardianPhoneVerified,
   setGuardianOverrideUnlocked,
   guardianOtp,
@@ -369,17 +363,13 @@ export function WelcomeIdentityStep({
         {/* Profile photo — circular avatar + edit badge */}
         <div className="mt-4.5 flex flex-col items-center gap-2.5">
           <label className="relative cursor-pointer" style={{ width: 88, height: 88 }}>
-            <div
-              className="flex h-full w-full items-center justify-center overflow-hidden rounded-full p-[3px]"
-              style={{ background: 'linear-gradient(135deg,#B46A55,#D2986C)' }}
-            >
-              <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full" style={{ background: '#F6F1EA' }}>
-                {profilePhotoPreview ? (
-                  <img src={profilePhotoPreview} alt="Profile" className="h-full w-full object-cover" />
-                ) : (
-                  <Camera className="h-7 w-7" style={{ color: '#B46A55' }} />
-                )}
-              </div>
+            <div className="h-full w-full overflow-hidden rounded-full" style={{ padding: 3, background: 'linear-gradient(135deg,#B46A55,#D2986C)' }}>
+              {profilePhotoPreview ? (
+                <img src={profilePhotoPreview} alt="Profile" className="h-full w-full rounded-full object-cover" />
+              ) : (
+                /* Empty state is the bare gradient disc — the design leaves this slot filled, not hollow. */
+                <div className="h-full w-full rounded-full" />
+              )}
             </div>
             <span
               className="absolute flex items-center justify-center rounded-full"
@@ -502,53 +492,23 @@ export function WelcomeIdentityStep({
           </div>
 
           <div>
-            <div className="mb-1.5 flex items-center justify-between text-[11px] font-bold uppercase" style={label}>
-              <span>Guardian Details</span>
-              {isGuardianLocked && profile.guardian_name && (
-                <button type="button" onClick={() => setIsGuardianLocked(false)} className="normal-case tracking-normal" style={{ color: '#A45D44' }}>
-                  Modify
-                </button>
-              )}
+            <div className="mb-1.5 text-[11px] font-bold uppercase" style={label}>
+              Guardian Full Name
             </div>
-
-            {isGuardianLocked && profile.guardian_name ? (
-              <div className="rounded-[10px] p-3" style={{ background: '#fff', border: '1px solid #EDE3D5' }}>
-                <div className="font-display text-sm font-bold" style={{ color: '#1A1A1A' }}>
-                  {profile.guardian_name}
-                </div>
-                <p className="mt-0.5 text-[11px]" style={{ color: '#8A7F75' }}>
-                  Added by your hostel on your invitation.
-                </p>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-2.5">
-                {!isGuardianLocked && profile.guardian_name && (
-                  <div className="flex items-center justify-between rounded-lg px-3 py-2 text-xs font-medium" style={{ background: '#FBF3E4', color: '#8A6D2F' }}>
-                    <span className="flex items-center gap-1.5">
-                      <Unlock className="h-3.5 w-3.5" />
-                      Editing details updates all stages.
-                    </span>
-                    <button type="button" onClick={() => setIsGuardianLocked(true)} className="font-bold underline">
-                      Lock
-                    </button>
-                  </div>
-                )}
-                <div style={cardWrap}>
-                  <input
-                    value={profile.guardian_name || ''}
-                    onChange={(e) => setProfile({ ...profile, guardian_name: e.target.value })}
-                    placeholder="Parent or guardian name"
-                    className="text-sm font-medium"
-                    style={inputBase}
-                  />
-                </div>
-              </div>
-            )}
+            <div style={cardWrap}>
+              <input
+                value={profile.guardian_name || ''}
+                onChange={(e) => setProfile({ ...profile, guardian_name: e.target.value })}
+                placeholder="Parent or guardian name"
+                className="text-sm font-medium"
+                style={inputBase}
+              />
+            </div>
           </div>
 
           <div>
             <div className="mb-1.5 text-[11px] font-bold uppercase" style={label}>
-              Guardian Mobile {isStudent && <span style={{ color: '#D0473A' }}>*</span>}
+              Guardian Mobile
             </div>
             <PhoneField
               value={profile.guardian_phone || ''}
@@ -566,9 +526,6 @@ export function WelcomeIdentityStep({
                 Edit guardian mobile
               </button>
             )}
-            <p className="mt-1.5 text-[11.5px]" style={{ color: '#8A7F75' }}>
-              {isStudent ? 'Mandatory mobile number for parent/guardian.' : 'Use a valid 10-digit mobile number if provided.'}
-            </p>
             {!isGuardianPhoneVerified && guardianOtpSent && (
               <>
                 <OtpBlock
