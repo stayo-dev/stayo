@@ -7,7 +7,7 @@ import {
   useMarketingSubmission,
   useReviewDecision,
 } from '@features/hostel-marketing/hooks/useMarketing';
-import type { MarketingContent, ReviewFlag } from '@features/hostel-marketing/api';
+import { MESS_DAYS, MESS_TYPE_LABELS, type MarketingContent, type ReviewFlag } from '@features/hostel-marketing/api';
 
 /**
  * Platform Admin → Marketing reviews.
@@ -294,6 +294,36 @@ function ContentPreview({ content, live }: { content: MarketingContent; live: Ma
             </li>
           ))}
         </ul>
+      </Block>
+
+      {/* The mess menu is published content like any other claim on the
+          listing, so a reviewer has to be able to read it before approving —
+          the whole week, not a sample. */}
+      <Block title="Mess menu" changed={changed(content.mess, live?.mess)}>
+        {content.mess?.provided ? (
+          <>
+            <p className="mb-2 text-[12px] text-muted-foreground">
+              {MESS_TYPE_LABELS[content.mess.type] ?? content.mess.type} ·{' '}
+              {content.mess.meals.filter((meal) => meal.enabled).map((meal) => meal.label).join(', ') || 'no meals on'}
+            </p>
+            <div className="space-y-2">
+              {MESS_DAYS.map((day, dayIndex) => (
+                <div key={day} className="flex gap-3 text-[12px]">
+                  <span className="w-8 flex-none font-semibold text-muted-foreground">{day}</span>
+                  <span className="min-w-0 flex-1 text-foreground">
+                    {content.mess.meals
+                      .filter((meal) => meal.enabled)
+                      .map((meal) => content.mess.week[dayIndex]?.[meal.key]?.trim())
+                      .filter(Boolean)
+                      .join(' / ') || <span className="text-muted-foreground">not written</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className="text-[12.5px] text-muted-foreground">Meals not provided.</p>
+        )}
       </Block>
     </div>
   );

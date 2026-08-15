@@ -307,6 +307,8 @@ Access is normally **derived**, not stored — a hostel sees a person's history 
 
 `status` is `DRAFT | PENDING_REVIEW | APPROVED | REJECTED | SUPERSEDED`, plain text per this schema's convention.
 
+**`content` gained a `mess` block on 2026-08-15 ([[Decisions#ADR-077|ADR-077]]) — no migration.** The column is `jsonb`; its shape is enforced by a zod schema (`src/services/marketing/marketing-content.ts`), not by DDL, so adding `{provided, type, meals[4], week[7]}` was a code change only. Old rows parse fine and read back as "no mess provided" — `normaliseContent` pads the week to 7 rows and restores the fixed meal set on the read path. **This is the listing's reviewed copy of the menu, deliberately separate from `food_schedules`/`food_schedule_meals`** (the operational one); see [[Food]] and the ADR for why.
+
 Two partial unique indexes carry the real rules:
 
 | Index | Rule |

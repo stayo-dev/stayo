@@ -129,6 +129,64 @@ describe("discovery visibility", () => {
   });
 });
 
+describe("the published mess menu", () => {
+  /** A discoverable hostel whose approved revision carries `mess`. */
+  function listingWithMess(mess: unknown) {
+    hostels().findFirst.mockResolvedValueOnce({ id: "h1", hostel_type: "BOYS", food_included: true });
+    (prisma as any).hostel_marketing_revisions.findFirst.mockResolvedValueOnce({
+      content: { mess },
+    });
+  }
+
+  it("publishes the reviewed weekly menu on the listing", async () => {
+    listingWithMess({
+      provided: true,
+      type: "BOTH",
+      week: [{ b: "Idli · Sambar" }],
+    });
+
+    const listing: any = await discoveryService.getListing("sri-adithya");
+
+    expect(listing.mess.type).toBe("BOTH");
+    expect(listing.mess.week).toHaveLength(7);
+    expect(listing.mess.week[0].b).toBe("Idli · Sambar");
+  });
+
+  it("sends null when the hostel does not provide meals", async () => {
+    // The section hides outright rather than rendering "Food & mess" with
+    // nothing under it — that reads as missing data, not as no mess.
+    listingWithMess({ provided: false, week: [{ b: "leftover draft text" }] });
+
+    const listing: any = await discoveryService.getListing("sri-adithya");
+
+    expect(listing.mess).toBeNull();
+  });
+
+  it("drops meals the owner switched off", async () => {
+    // A listing must never advertise a meal slot the owner does not serve.
+    listingWithMess({
+      provided: true,
+      meals: [
+        { key: "b", label: "Breakfast", time: "7:30 – 9:00 AM", enabled: true },
+        { key: "s", label: "Snacks", time: "5:00 – 6:00 PM", enabled: false },
+      ],
+    });
+
+    const listing: any = await discoveryService.getListing("sri-adithya");
+
+    expect(listing.mess.meals.map((meal: any) => meal.key)).toEqual(["b", "l", "dn"]);
+  });
+
+  it("sends null for a hostel that has never published a listing", async () => {
+    hostels().findFirst.mockResolvedValueOnce({ id: "h1", hostel_type: "BOYS", food_included: true });
+    (prisma as any).hostel_marketing_revisions.findFirst.mockResolvedValueOnce(null);
+
+    const listing: any = await discoveryService.getListing("sri-adithya");
+
+    expect(listing.mess).toBeNull();
+  });
+});
+
 describe("card projection", () => {
   it("treats an unpriced room as unpriced, not free", async () => {
     hostels().findMany.mockResolvedValueOnce([hostelRow({ rooms: [room(4, null), room(2, 6000)] })]);

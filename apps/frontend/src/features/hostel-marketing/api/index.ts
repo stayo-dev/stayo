@@ -53,12 +53,37 @@ export interface MarketingPlace {
   sort: number;
 }
 
+/** The four meals the design lays out. The set is fixed; dishes are not. */
+export type MessMealKey = 'b' | 'l' | 's' | 'dn';
+
+export type MessType = 'VEG' | 'NON_VEG' | 'BOTH';
+
+export interface MessMeal {
+  key: MessMealKey;
+  label: string;
+  time: string;
+  /** Off means the hostel doesn't serve that meal — it drops off the listing. */
+  enabled: boolean;
+}
+
+/** One day's dishes, keyed by meal. Free text, "Idli · Sambar · Chutney". */
+export type MessDay = Record<MessMealKey, string>;
+
+export interface MarketingMess {
+  provided: boolean;
+  type: MessType;
+  meals: MessMeal[];
+  /** Mon–Sun, always exactly 7 — the server pads it. */
+  week: MessDay[];
+}
+
 export interface MarketingContent {
   basics: { tagline: string | null; about: string | null; highlights: string[] };
   photos: MarketingPhoto[];
   beds: MarketingBed[];
   amenities: MarketingAmenity[];
   places: MarketingPlace[];
+  mess: MarketingMess;
 }
 
 export interface MarketingEditorState {
@@ -151,10 +176,32 @@ export const marketingService = {
   },
 };
 
+/** Mirrors `DEFAULT_MESS_MEALS` in the backend's marketing-content schema. */
+export const DEFAULT_MESS_MEALS: MessMeal[] = [
+  { key: 'b', label: 'Breakfast', time: '7:30 – 9:00 AM', enabled: true },
+  { key: 'l', label: 'Lunch', time: '12:30 – 2:00 PM', enabled: true },
+  { key: 's', label: 'Snacks', time: '5:00 – 6:00 PM', enabled: true },
+  { key: 'dn', label: 'Dinner', time: '8:00 – 9:30 PM', enabled: true },
+];
+
+export const MESS_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+
+export const MESS_TYPE_LABELS: Record<MessType, string> = {
+  VEG: 'Veg only',
+  NON_VEG: 'Non-veg',
+  BOTH: 'Veg + Non-veg',
+};
+
 export const EMPTY_MARKETING_CONTENT: MarketingContent = {
   basics: { tagline: null, about: null, highlights: [] },
   photos: [],
   beds: [],
   amenities: [],
   places: [],
+  mess: {
+    provided: false,
+    type: 'VEG',
+    meals: DEFAULT_MESS_MEALS,
+    week: Array.from({ length: 7 }, () => ({ b: '', l: '', s: '', dn: '' })),
+  },
 };

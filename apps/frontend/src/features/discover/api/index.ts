@@ -79,6 +79,20 @@ export interface ListingPlace {
   category: 'COLLEGE' | 'TRANSPORT' | 'MARKET' | 'HOSPITAL' | 'OTHER';
 }
 
+/**
+ * The reviewed weekly mess menu, or absent when the hostel serves no meals.
+ *
+ * Same content the owner edits in the marketing page's mess card, carried
+ * through the same approval cycle — this is not the operational food schedule.
+ */
+export interface ListingMess {
+  type: 'VEG' | 'NON_VEG' | 'BOTH';
+  /** Only meals the owner serves; disabled ones are dropped server-side. */
+  meals: { key: 'b' | 'l' | 's' | 'dn'; label: string; time: string }[];
+  /** Mon–Sun, always 7 entries, each keyed by meal. */
+  week: Record<'b' | 'l' | 's' | 'dn', string>[];
+}
+
 export interface DiscoverListing {
   hostel: any;
   rooms: any[];
@@ -89,6 +103,8 @@ export interface DiscoverListing {
   bed_tiers: ListingBedTier[];
   amenities: { label: string; icon?: string | null }[];
   places: ListingPlace[];
+  /** Null when this hostel does not provide meals. */
+  mess: ListingMess | null;
   marketing_published: boolean;
   ratings_available: boolean;
   amenities_available: boolean;

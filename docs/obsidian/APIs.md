@@ -306,6 +306,21 @@ All routes share one visibility predicate, `DISCOVERABLE` in `src/services/disco
 
 **Changed:** `GET /api/discover/hostels/[slug]` now returns `bed_tiers`, `amenities`, `places` and `marketing_published` from the **APPROVED** revision only — there is no code path from owner-authored content to a public page that skips the admin.
 
+**Changed 2026-08-15 ([[Decisions#ADR-077|ADR-077]]) — the marketing content payload gained `mess`.** `PUT /api/owner/hostels/[id]/marketing` accepts and `GET` returns a `mess` block inside `content`:
+
+```
+mess: {
+  provided: boolean,                 // false when the hostel serves no meals
+  type: 'VEG' | 'NON_VEG' | 'BOTH',
+  meals: [{ key: 'b'|'l'|'s'|'dn', label, time, enabled }],   // fixed set of 4
+  week:  [ { b, l, s, dn } × 7 ]                               // Mon–Sun
+}
+```
+
+No migration — `hostel_marketing_revisions.content` is a JSON column and this is an additive change to the zod schema that validates it (`src/services/marketing/marketing-content.ts`). `normaliseContent` pads `week` to exactly 7 rows and restores the fixed four meals on the read path, so **every revision written before this block existed parses fine** and comes back as "no mess provided" rather than throwing. Both surfaces index the week positionally (`week[dayIndex]`), which is why the padding is not optional.
+
+`GET /api/discover/hostels/[slug]` correspondingly returns **`mess`: the same block with disabled meals filtered out, or `null`** when `provided` is false or the hostel has no approved revision. Null rather than an empty menu so the listing hides the section outright — a "Food & mess" heading with nothing under it reads as missing data, not as a hostel that doesn't feed you.
+
 ## Admin / Finance-Ops / Reconciliation
 
 `/api/admin/finance-ops` (**ADMIN only**) + `/attempts(/[id])`, `/anomalies`, `/webhook-events`, `/reconciliation-runs`. `/api/admin/finance/reconciliation/issues` + `/[issueId]` + `/scan` — **note: this sibling group requires role OWNER, not ADMIN**, despite the shared `/admin/finance` URL prefix — a role-scope inconsistency worth confirming is intentional. **Update 2026-07-26:** `ADMIN` is now a real, assignable role (Platform Admin Console, above) — `/api/admin/finance-ops/*` is consequently no longer purely theoretical/unreachable as previously noted here, though no frontend still consumes it and it remains a functionally separate, older subsystem from `/api/platform-admin/*`.

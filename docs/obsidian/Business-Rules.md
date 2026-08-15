@@ -419,6 +419,23 @@ An owner who has not earned access gets an empty list and a reason, never a coun
 
 **The known limit:** history cannot appear while an owner *composes* an invite, because the invitee has not responded and showing it there would rebuild the lookup-by-email oracle ADR-053 blocks. Owners request instead; the tenant answers.
 
+## The listing's mess menu is a reviewed claim, not this month's cooking (2026-08-15)
+
+See [[Decisions#ADR-077|ADR-077]]. Stayo stores a weekly menu twice, on purpose, and the two answer different questions.
+
+- **`food_schedules` / `food_schedule_meals`** — what is actually being cooked. Monthly, regenerable, can be driven by resident polls ([[Decisions#ADR-057|ADR-057]]). Lives in the Food tab; changes freely. See [[Food]].
+- **`content.mess` on a marketing revision** — what the *listing* promises a prospective tenant. Passes through admin review like every other listing claim, and changes only when a new revision is approved.
+
+**Discovery reads the second, never the first.** A menu shown to someone deciding whether to move in must not change without review, and must not vanish because next month's schedule has not been drafted yet.
+
+**Rules the content schema enforces:**
+
+- **Four meals, fixed** — Breakfast, Lunch, Snacks, Dinner. Owners write the dishes, set serving times and switch a meal off; they cannot add a fifth, or listings stop being comparable in search.
+- **A meal switched off never reaches the listing.** Filtered server-side, so a listing cannot advertise a meal slot the owner does not serve.
+- **The week is always exactly 7 rows.** Padded on the read path, because both the owner's day chips and Discovery's day chips index it positionally — a revision saved before this block existed must not make Tuesday read `undefined`.
+- **`provided` defaults to false.** An unstated claim is false: silence renders as "Meals not provided", never as "meals included".
+- **The reviewer sees the whole week** before approving. Approving a menu you cannot read is not approval.
+
 ## Explicit "Unknown / needs clarification" items
 
 - Whether/where rent is prorated for partial-month billing.

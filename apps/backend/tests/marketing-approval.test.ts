@@ -89,6 +89,54 @@ describe("content normalisation", () => {
     const issues = contentIssues(validContent({ beds: [{ name: "Free?", sharing: 2, price: 0 }] }));
     expect(issues.join(" ")).toMatch(/₹0 price reads as free/i);
   });
+
+  it("pads the mess week to seven days, whatever was saved", () => {
+    // Both surfaces index the week positionally — the owner's day chips and
+    // Discovery's day chips both read `week[dayIndex]`. Every revision written
+    // before the mess block existed has no week at all, and tapping "Sun" on
+    // one of those must not read `undefined`.
+    expect(normaliseContent({}).mess.week).toHaveLength(7);
+
+    const partial = normaliseContent({
+      mess: { provided: true, week: [{ b: "Idli · Sambar" }, { l: "Rice · Rasam" }] },
+    });
+    expect(partial.mess.week).toHaveLength(7);
+    expect(partial.mess.week[0].b).toBe("Idli · Sambar");
+    // A day that was never written comes back empty, not missing.
+    expect(partial.mess.week[0].l).toBe("");
+    expect(partial.mess.week[6]).toEqual({ b: "", l: "", s: "", dn: "" });
+  });
+
+  it("restores the fixed four meals rather than leaving the set short", () => {
+    // Owners edit dishes and can switch a meal off; they do not get to invent
+    // a fifth meal, or a listing stops being comparable in search.
+    const parsed = normaliseContent({
+      mess: { provided: true, meals: [{ key: "b", label: "Breakfast", time: "8 AM", enabled: false }] },
+    });
+
+    expect(parsed.mess.meals.map((meal) => meal.key)).toEqual(["b", "l", "s", "dn"]);
+    // The owner's own edit survives the restore — it is not overwritten by the
+    // default just because the other three were missing.
+    expect(parsed.mess.meals[0]).toMatchObject({ time: "8 AM", enabled: false });
+    expect(parsed.mess.meals[1].enabled).toBe(true);
+  });
+
+  it("round-trips a full mess menu through parse and repair", () => {
+    const week = Array.from({ length: 7 }, (_unused, day) => ({
+      b: `b${day}`, l: `l${day}`, s: `s${day}`, dn: `dn${day}`,
+    }));
+    const parsed = normaliseContent({ mess: { provided: true, type: "BOTH", week } });
+
+    expect(parsed.mess.provided).toBe(true);
+    expect(parsed.mess.type).toBe("BOTH");
+    expect(parsed.mess.week).toEqual(week);
+  });
+
+  it("defaults a hostel with no mess block to serving no meals", () => {
+    // Silence must not read as "meals included" — that is a claim, and an
+    // unstated one is false by default.
+    expect(normaliseContent({}).mess.provided).toBe(false);
+  });
 });
 
 describe("the owner's side of the cycle", () => {

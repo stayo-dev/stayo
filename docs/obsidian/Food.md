@@ -30,6 +30,8 @@ Two jobs that share a tab and almost nothing else:
 
 Before Phase 1 the tab served only the second job — it opened on the Food Library accordion, and there was no today view anywhere in the owner app at all. Phase 1 put Operating first without moving Planning off the same screen; a fully separate "Plan `<Month>`" flow is Phase 2 and is **not built**.
 
+**There is a second weekly menu in this system, and it is not this one.** A hostel's public Discovery listing carries its own reviewed copy of a weekly mess menu, inside `hostel_marketing_revisions.content.mess` ([[Decisions#ADR-077|ADR-077]]) — written on the owner's Marketing page and approved by an admin before a tenant sees it. **Discovery does not read `food_schedules`, and should not be wired to**: this module's schedules are regenerated monthly and can be driven by resident polls, so a listing pointed at them would change what a prospective tenant was promised with no review at all. The two are allowed to disagree — this one is what is being cooked, that one is what was advertised. See [[Business-Rules]].
+
 ## 2. The grain — one week, repeated. This is the ceiling.
 
 `food_schedule_meals` is keyed:

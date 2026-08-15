@@ -407,6 +407,17 @@ export class DiscoveryService {
       amenities: (marketing?.amenities ?? []).filter((amenity) => amenity.enabled),
       places: marketing?.places ?? [],
       /**
+       * The reviewed weekly mess menu, or null when this hostel does not serve
+       * meals. Null rather than an empty menu so the listing hides the section
+       * outright — "Food & mess" with nothing under it reads as missing data,
+       * not as a hostel that does not feed you. Meals switched off are dropped
+       * here rather than in the UI, so a listing never advertises a meal slot
+       * the owner has turned off.
+       */
+      mess: marketing?.mess.provided
+        ? { ...marketing.mess, meals: marketing.mess.meals.filter((meal) => meal.enabled) }
+        : null,
+      /**
        * Phase D still owns reviews, and the design is explicit that owners
        * cannot write them ("Managed by Stayo"), so there is no content path to
        * one here at all.

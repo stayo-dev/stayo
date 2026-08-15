@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  AlertTriangle, BookOpen, Car, Check, Clock, Droplets, Dumbbell, ExternalLink, ImagePlus, Lock,
-  MapPin, Plus, ShieldCheck, Shirt, Snowflake, Sparkles, Star, Tag, Trash2, Utensils, Wifi, X, Zap,
+  AlertTriangle, BedDouble, ChevronRight, Clock, FileText, GripVertical, ImagePlus, Lock, Plus, Star,
 } from 'lucide-react';
 
 import { stayoToast } from '@shared/ui-patterns/Toast';
@@ -14,73 +13,70 @@ import {
 } from '@features/hostel-marketing/hooks/useMarketing';
 import {
   EMPTY_MARKETING_CONTENT,
+  MESS_TYPE_LABELS,
   type MarketingBed,
   type MarketingContent,
   type MarketingPlace,
-  type PlaceCategory,
+  type MessType,
   type RevisionStatus,
 } from '@features/hostel-marketing/api';
 
+import { AmenitySheet } from '../marketing/AmenitySheet';
+import { BasicsSheet } from '../marketing/BasicsSheet';
+import { BedSheet } from '../marketing/BedSheet';
+import { MEAL_ICON, MessMenuSheet } from '../marketing/MessMenuSheet';
+import { PhotosScreen } from '../marketing/PhotosScreen';
+import { PlaceSheet, placeIcon } from '../marketing/PlaceSheet';
+import { PreviewScreen } from '../marketing/PreviewScreen';
+import { TemplateSheet } from '../marketing/TemplateSheet';
+import { amenityIcon } from '../marketing/amenityIcons';
+import { CARD_SHADOW, M, MESS_DAY_LABELS } from '../marketing/marketingTheme';
+
 /**
- * Hostel Drill-down → Marketing, per the `HOSTEL: MARKETING` section of
- * `Stayo App.dc.html` (lines 1647–1798) and its five edit modals.
+ * Hostel Drill-down → Marketing, rebuilt from the `HOSTEL: MARKETING` section
+ * of `Stayo App.dc.html` (lines 1648–1835) and its seven modals.
  *
- * One deliberate departure from the design: its primary action is
- * **"Save & publish"**, and here nothing publishes on an owner's say-so. The
- * button submits for review, and the status pill carries the real revision
- * state instead of a simple on/off — because a listing an admin has not seen
- * must never be reachable from Discovery.
+ * Two deliberate departures, both about not saying things that aren't true:
  *
- * The design's "Switch / reuse" and "Save as new" template controls render
- * disabled: one marketing page per hostel for now. Reuse across hostels
- * changes the approval story materially (one edit re-opens review for every
- * hostel pointing at the page) and is its own piece of work.
+ * 1. The design's status toggle publishes a listing on the owner's say-so.
+ *    Here it submits for review and the caps label carries the real revision
+ *    state — a listing an admin has not seen must never be reachable from
+ *    Discovery. The card, toggle and label are the design's, the action is not.
+ * 2. The design prints `1,240 views · 30d` and `★ 4.8 · 126 resident reviews`.
+ *    Stayo tracks no listing views and collects no reviews yet, so both slots
+ *    render in place with what is real: the true enquiry count, an em dash for
+ *    views, and a review card that says none have come in.
  */
 
-const STATUS_META: Record<RevisionStatus, { label: string; className: string }> = {
-  DRAFT: { label: 'Draft', className: 'bg-muted text-muted-foreground' },
-  PENDING_REVIEW: { label: 'In review', className: 'bg-amber-100 text-amber-800' },
-  APPROVED: { label: 'Live', className: 'bg-emerald-100 text-emerald-700' },
-  REJECTED: { label: 'Changes requested', className: 'bg-rose-100 text-rose-700' },
-  SUPERSEDED: { label: 'Replaced', className: 'bg-muted text-muted-foreground' },
+const STATUS_META: Record<RevisionStatus, { label: string; color: string }> = {
+  DRAFT: { label: 'Draft', color: '#B9AFA3' },
+  PENDING_REVIEW: { label: 'In review', color: '#E0B776' },
+  APPROVED: { label: 'Live', color: '#7FCBA1' },
+  REJECTED: { label: 'Changes requested', color: '#E59D8E' },
+  SUPERSEDED: { label: 'Replaced', color: '#B9AFA3' },
 };
 
-/**
- * The design's amenity chips each carry an icon. Rather than storing a glyph
- * per amenity, the label is matched to one — so a custom amenity an owner
- * types still gets a sensible mark instead of a blank space, and the mapping
- * can grow without a migration.
- */
-const AMENITY_ICONS: { match: RegExp; Icon: typeof Wifi }[] = [
-  { match: /wi-?fi|internet/i, Icon: Wifi },
-  { match: /meal|food|mess|dining/i, Icon: Utensils },
-  { match: /laundry|washing/i, Icon: Shirt },
-  { match: /power|backup|generator/i, Icon: Zap },
-  { match: /study|desk|library/i, Icon: BookOpen },
-  { match: /housekeep|clean/i, Icon: Sparkles },
-  { match: /cctv|security|guard|safe/i, Icon: ShieldCheck },
-  { match: /water|ro\b/i, Icon: Droplets },
-  { match: /ac\b|air.?con|cooling/i, Icon: Snowflake },
-  { match: /parking|bike|car/i, Icon: Car },
-  { match: /gym|fitness/i, Icon: Dumbbell },
-];
+const MESS_TYPES: MessType[] = ['VEG', 'NON_VEG', 'BOTH'];
 
-function amenityIcon(label: string) {
-  return AMENITY_ICONS.find((entry) => entry.match.test(label))?.Icon ?? Tag;
-}
+/** Which sheet is open. One at a time, as the design's stacking implies. */
+type Sheet =
+  | { kind: 'none' }
+  | { kind: 'template' }
+  | { kind: 'basics'; field: 'tagline' | 'about' }
+  | { kind: 'amenity' }
+  | { kind: 'bed'; index: number }
+  | { kind: 'place'; index: number }
+  | { kind: 'mess' }
+  | { kind: 'photos' }
+  | { kind: 'preview' };
 
-const AMENITY_SUGGESTIONS = [
-  '3 meals / day', 'High-speed Wi-Fi', 'Free laundry', 'Power backup', 'Study desk',
-  'Housekeeping', 'CCTV security', 'RO water', 'AC rooms', 'Parking',
-];
-
-const PLACE_CATEGORIES: { value: PlaceCategory; label: string }[] = [
-  { value: 'COLLEGE', label: 'College' },
-  { value: 'TRANSPORT', label: 'Transport' },
-  { value: 'MARKET', label: 'Market' },
-  { value: 'HOSPITAL', label: 'Hospital' },
-  { value: 'OTHER', label: 'Other' },
-];
+const NEW_BED: MarketingBed = {
+  name: '',
+  sharing: 4,
+  price: 0,
+  inclusions: null,
+  availability: 'BEDS_LEFT',
+};
 
 export function HostelMarketingPage() {
   const { hostelId } = useParams<{ hostelId: string }>();
@@ -91,6 +87,8 @@ export function HostelMarketingPage() {
 
   const [content, setContent] = useState<MarketingContent>(EMPTY_MARKETING_CONTENT);
   const [dirty, setDirty] = useState(false);
+  const [sheet, setSheet] = useState<Sheet>({ kind: 'none' });
+  const [messDay, setMessDay] = useState(0);
 
   // Server state seeds the editor, but must not clobber unsaved edits — a
   // background refetch mid-typing would otherwise silently discard them.
@@ -101,6 +99,7 @@ export function HostelMarketingPage() {
   const status = data?.draft.status ?? 'DRAFT';
   const locked = !(data?.is_editable ?? true);
   const meta = STATUS_META[status];
+  const closeSheet = () => setSheet({ kind: 'none' });
 
   const patch = (next: Partial<MarketingContent>) => {
     setContent((current) => ({ ...current, ...next }));
@@ -116,253 +115,538 @@ export function HostelMarketingPage() {
     return list;
   }, [content]);
 
-  const onSave = () =>
+  const onSave = (options?: { thenSubmit?: boolean }) =>
     save.mutate(content, {
       onSuccess: () => {
         setDirty(false);
-        stayoToast.success('Saved');
+        if (!options?.thenSubmit) {
+          stayoToast.success('Saved');
+          return;
+        }
+        submit.mutate(undefined, {
+          onSuccess: () => stayoToast.success('Sent to Stayo for review'),
+          onError: (error: any) =>
+            stayoToast.error(error?.response?.data?.message ?? 'Saved, but could not submit'),
+        });
       },
       onError: (error: any) => stayoToast.error(error?.response?.data?.message ?? 'Could not save'),
     });
 
-  const onSubmit = () => {
-    if (dirty) {
-      stayoToast.info('Save your changes first');
+  /**
+   * The design's status toggle. Off→on sends the draft for review; on→off
+   * withdraws it. Saving first is implicit: submitting a version an owner can
+   * see unsaved edits on top of is the bug the old "Save your changes first"
+   * toast existed to prevent, and doing it for them is better than refusing.
+   */
+  const onToggle = () => {
+    if (status === 'PENDING_REVIEW') {
+      withdraw.mutate(undefined, {
+        onSuccess: () => stayoToast.success('Withdrawn — you can edit again'),
+        onError: (error: any) => stayoToast.error(error?.response?.data?.message ?? 'Could not withdraw'),
+      });
       return;
     }
-    submit.mutate(undefined, {
-      onSuccess: () => stayoToast.success('Sent to Stayo for review'),
-      onError: (error: any) => stayoToast.error(error?.response?.data?.message ?? 'Could not submit'),
-    });
+    if (issues.length > 0) {
+      stayoToast.info(issues[0]);
+      return;
+    }
+    onSave({ thenSubmit: true });
   };
 
   if (isLoading) {
     return (
-      <div className="space-y-3 p-5">
-        <div className="h-28 animate-pulse rounded-2xl bg-muted" />
-        <div className="h-40 animate-pulse rounded-2xl bg-muted" />
+      <div className="flex flex-col gap-3.5 px-5 pt-3.5">
+        <div className="h-32 animate-pulse rounded-[20px] bg-muted" />
+        <div className="h-28 animate-pulse rounded-[18px] bg-muted" />
+        <div className="h-44 animate-pulse rounded-[18px] bg-muted" />
       </div>
     );
   }
 
+  const toggleOn = status === 'PENDING_REVIEW' || status === 'APPROVED';
+  const messMealsOn = content.mess.meals.filter((meal) => meal.enabled).length;
+
   return (
-    <div className="flex flex-col gap-3.5 px-5 pb-28 pt-3.5">
-      {/* ── Status ─────────────────────────────────────────────────────── */}
-      <section className="rounded-[20px] bg-[#2A2521] p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="font-display text-[15px] font-bold text-white">Discovery listing</h2>
-            <p className="mt-1 max-w-[210px] text-[12px] text-[#B9AFA3]">
-              What tenants see when they find this hostel on Stayo
-            </p>
-          </div>
-          <span className={`flex-none rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.06em] ${meta.className}`}>
-            {meta.label}
-          </span>
-        </div>
-
-        <div className="mt-3 flex items-center gap-5 border-t border-white/10 pt-3">
-          <div>
-            <p className="font-display text-[17px] font-extrabold tabular-nums text-white">
-              {data?.stats.enquiries_30d ?? 0}
-            </p>
-            <p className="text-[10.5px] text-[#8C8177]">enquiries · 30d</p>
-          </div>
-          {/* The design also shows a views counter. Stayo does not track
-              listing views anywhere, so rather than print a plausible number
-              the stat is left out until there is something real behind it. */}
-          {data?.published?.version && (
-            <a
-              href={data.hostel.public_slug ? `/discover/h/${data.hostel.public_slug}` : undefined}
-              target="_blank"
-              rel="noreferrer"
-              className="ml-auto flex items-center gap-1.5 rounded-[10px] bg-white/10 px-3 py-2 font-display text-[12px] font-bold text-white"
-            >
-              Preview <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />
-            </a>
-          )}
-        </div>
-
-        {data?.published && (
-          <p className="mt-2.5 text-[11.5px] text-[#8C8177]">
-            v{data.published.version} is live now
-            {status === 'DRAFT' && dirty ? ' · you have unsaved changes' : ''}
-            {status === 'PENDING_REVIEW' ? ' · your new version is being reviewed' : ''}
-          </p>
-        )}
-      </section>
-
-      {/* Changes requested — the owner's route forward */}
-      {data?.last_rejection?.review_note && (
-        <section className="flex gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4">
-          <AlertTriangle className="mt-0.5 h-4 w-4 flex-none text-rose-600" strokeWidth={2} />
-          <div>
-            <p className="text-[13px] font-bold text-rose-800">Stayo asked for changes</p>
-            <p className="mt-1 text-[12.5px] leading-[1.5] text-rose-700">{data.last_rejection.review_note}</p>
-          </div>
-        </section>
-      )}
-
-      {locked && (
-        <section className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-          <Clock className="h-4 w-4 flex-none text-amber-700" strokeWidth={2} />
-          <p className="flex-1 text-[12.5px] text-amber-800">
-            Stayo is reviewing this listing, so it's locked. Withdraw it if you need to make changes.
-          </p>
-          <button
-            type="button"
-            onClick={() => withdraw.mutate()}
-            className="flex-none rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-[12px] font-bold text-amber-800"
-          >
-            Withdraw
-          </button>
-        </section>
-      )}
-
-      {/* ── Template (deferred, shown honestly) ─────────────────────────── */}
-      <section className="rounded-[18px] border border-border bg-card p-4">
-        <p className="text-[13.5px] font-bold text-foreground">This hostel's own listing page</p>
-        <p className="mt-1 text-[11.5px] leading-[1.5] text-muted-foreground">
-          Reusing one page across several hostels is coming — for now each hostel has its own.
-        </p>
-        <div className="mt-3 flex gap-2">
-          <button type="button" disabled aria-disabled className="flex-1 cursor-not-allowed rounded-[11px] border-[1.5px] border-border py-2.5 text-[12.5px] font-bold text-muted-foreground opacity-60">
-            Switch / reuse
-          </button>
-          <button type="button" disabled aria-disabled className="flex-1 cursor-not-allowed rounded-[11px] border-[1.5px] border-border py-2.5 text-[12.5px] font-bold text-muted-foreground opacity-60">
-            Save as new
-          </button>
-        </div>
-      </section>
-
-      {/* ── Basics ─────────────────────────────────────────────────────── */}
-      <Card title="Basics">
-        <div className="space-y-3 px-4 pb-4">
-          <Field label="Tagline" hint="One line under your hostel name in search">
-            <input
-              value={content.basics.tagline ?? ''}
-              disabled={locked}
-              maxLength={120}
-              onChange={(e) => patch({ basics: { ...content.basics, tagline: e.target.value } })}
-              placeholder="Walk to campus, meals included"
-              className="w-full rounded-[11px] border border-border bg-muted px-3.5 py-2.5 text-[13.5px] font-medium text-foreground outline-none focus:border-primary disabled:opacity-60"
-            />
-          </Field>
-          <Field label="About" hint="A short paragraph — what makes this place good to live in">
-            <textarea
-              value={content.basics.about ?? ''}
-              disabled={locked}
-              rows={3}
-              maxLength={2000}
-              onChange={(e) => patch({ basics: { ...content.basics, about: e.target.value } })}
-              className="w-full resize-none rounded-[11px] border border-border bg-muted px-3.5 py-2.5 text-[13.5px] text-foreground outline-none focus:border-primary disabled:opacity-60"
-            />
-          </Field>
-        </div>
-      </Card>
-
-      {/* ── Photos ─────────────────────────────────────────────────────── */}
-      <Card title="Photos" subtitle={`${content.photos.length} · the cover shows first in search`}>
-        <div className="flex gap-2.5 overflow-x-auto px-4 pb-4">
-          {content.photos.map((photo, index) => (
-            <div key={`${photo.url}-${index}`} className="relative h-[126px] w-[104px] flex-none overflow-hidden rounded-[13px] bg-muted">
-              <img src={photo.url} alt={photo.label ?? ''} className="h-full w-full object-cover" />
-              {photo.is_cover && (
-                <span className="absolute left-1.5 top-1.5 rounded-md bg-[#2A2521] px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-white">
-                  COVER
-                </span>
-              )}
-              {!locked && (
-                <div className="absolute right-1.5 top-1.5 flex gap-1">
-                  <button
-                    type="button"
-                    aria-label={photo.is_cover ? 'Already the cover' : 'Set as cover'}
-                    disabled={photo.is_cover}
-                    onClick={() =>
-                      patch({ photos: content.photos.map((p, i) => ({ ...p, is_cover: i === index })) })
-                    }
-                    className="flex h-6 w-6 items-center justify-center rounded-md bg-white/90 disabled:opacity-50"
-                  >
-                    <Star
-                      className="h-3 w-3 text-primary"
-                      strokeWidth={2}
-                      fill={photo.is_cover ? 'currentColor' : 'none'}
-                    />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Remove photo"
-                    onClick={() => patch({ photos: content.photos.filter((_, i) => i !== index) })}
-                    className="flex h-6 w-6 items-center justify-center rounded-md bg-white/90"
-                  >
-                    <Trash2 className="h-3 w-3 text-rose-600" strokeWidth={2} />
-                  </button>
-                </div>
-              )}
-              {/* The design captions every photo ("Building", "Common area").
-                  Editable in place rather than behind a modal — one field is
-                  not worth a sheet. */}
-              <input
-                value={photo.label ?? ''}
-                disabled={locked}
-                placeholder="Caption"
-                onChange={(e) =>
-                  patch({
-                    photos: content.photos.map((p, i) => (i === index ? { ...p, label: e.target.value } : p)),
-                  })
-                }
-                className="absolute inset-x-0 bottom-0 border-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-1.5 text-[10.5px] font-semibold text-white placeholder:text-white/60 outline-none"
-              />
+    <>
+      <div className="flex flex-col gap-3.5 px-5 pb-32 pt-3.5">
+        {/* ── Status ───────────────────────────────────────────────────── */}
+        <section className="rounded-[20px] px-[18px] py-4" style={{ background: M.ink }}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-col gap-[5px]">
+              <h2 className="font-display text-[15px] font-bold text-white">Discovery listing</h2>
+              <p className="max-w-[190px] text-[12px]" style={{ color: M.inkText }}>
+                What tenants see when they find this hostel on Stayo
+              </p>
             </div>
-          ))}
-          <AddPhotoTile
-            disabled={locked}
-            onAdd={(url) =>
-              patch({
-                photos: [
-                  ...content.photos,
-                  { url, label: null, is_cover: content.photos.length === 0, sort: content.photos.length },
-                ],
-              })
+            <div className="flex flex-none flex-col items-end gap-2">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={toggleOn}
+                aria-label={toggleOn ? 'Withdraw from review' : 'Send listing to Stayo for review'}
+                onClick={onToggle}
+                disabled={save.isPending || submit.isPending || withdraw.isPending}
+                className="relative h-[26px] w-[46px] rounded-full transition-colors disabled:opacity-60"
+                style={{ background: toggleOn ? 'var(--primary)' : 'rgba(255,255,255,.18)' }}
+              >
+                <span
+                  className="absolute top-[3px] h-5 w-5 rounded-full bg-white transition-all"
+                  style={{ left: toggleOn ? 23 : 3 }}
+                />
+              </button>
+              <span
+                className="text-[10px] font-bold uppercase tracking-[0.06em]"
+                style={{ color: meta.color }}
+              >
+                {meta.label}
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-3 flex gap-5 border-t border-white/[0.08] pt-3">
+            <div className="flex flex-col gap-0.5">
+              {/* Stayo tracks no listing views. The design's slot stays, with
+                  an em dash rather than a plausible-looking number. */}
+              <span className="font-display text-[17px] font-extrabold tabular-nums text-white">
+                {data?.stats.views_30d ?? '—'}
+              </span>
+              <span className="text-[10.5px]" style={{ color: M.inkTextFaint }}>
+                views · 30d
+              </span>
+            </div>
+            <span className="w-px bg-white/10" />
+            <div className="flex flex-col gap-0.5">
+              <span className="font-display text-[17px] font-extrabold tabular-nums text-white">
+                {data?.stats.enquiries_30d ?? 0}
+              </span>
+              <span className="text-[10.5px]" style={{ color: M.inkTextFaint }}>
+                enquiries
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSheet({ kind: 'preview' })}
+              className="ml-auto self-center rounded-[10px] bg-white/10 px-3 py-2 font-display text-[12px] font-bold text-white"
+            >
+              Preview
+            </button>
+          </div>
+
+          {data?.published && (
+            <p className="mt-2.5 text-[11.5px]" style={{ color: M.inkTextFaint }}>
+              v{data.published.version} is live now
+              {status === 'DRAFT' && dirty ? ' · you have unsaved changes' : ''}
+              {status === 'PENDING_REVIEW' ? ' · your new version is being reviewed' : ''}
+            </p>
+          )}
+        </section>
+
+        {/* Changes requested — the owner's route forward */}
+        {data?.last_rejection?.review_note && (
+          <section className="flex gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-none text-rose-600" strokeWidth={2} />
+            <div>
+              <p className="text-[13px] font-bold text-rose-800">Stayo asked for changes</p>
+              <p className="mt-1 text-[12.5px] leading-[1.5] text-rose-700">{data.last_rejection.review_note}</p>
+            </div>
+          </section>
+        )}
+
+        {locked && (
+          <section className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <Clock className="h-4 w-4 flex-none text-amber-700" strokeWidth={2} />
+            <p className="flex-1 text-[12.5px] text-amber-800">
+              Stayo is reviewing this listing, so it's locked. Withdraw it if you need to make changes.
+            </p>
+            <button
+              type="button"
+              onClick={() => withdraw.mutate()}
+              className="flex-none rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-[12px] font-bold text-amber-800"
+            >
+              Withdraw
+            </button>
+          </section>
+        )}
+
+        {/* ── Template / reuse ─────────────────────────────────────────── */}
+        <Card padded>
+          <div className="flex items-center gap-[11px]">
+            <span
+              className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px]"
+              style={{ background: M.iconTile, color: 'var(--primary)' }}
+            >
+              <FileText className="h-[18px] w-[18px]" strokeWidth={1.8} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-display text-[13.5px] font-bold text-foreground">
+                {data?.hostel.name ?? 'This hostel'}
+              </p>
+              <p className="text-[11.5px] text-muted-foreground">Its own listing page · v{data?.draft.version ?? 1}</p>
+            </div>
+          </div>
+          <p className="mt-3 text-[11.5px] leading-[1.5] text-muted-foreground">
+            One page can be reused across hostels, or draft a separate page per hostel.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={() => setSheet({ kind: 'template' })}
+              className="flex-1 rounded-[11px] border-[1.5px] py-[11px] font-display text-[12.5px] font-bold"
+              style={{ borderColor: M.outline, color: M.outlineText }}
+            >
+              Switch / reuse
+            </button>
+            <button
+              type="button"
+              onClick={() => setSheet({ kind: 'template' })}
+              className="flex-1 rounded-[11px] border-[1.5px] py-[11px] font-display text-[12.5px] font-bold"
+              style={{ borderColor: M.outline, color: M.outlineText }}
+            >
+              Save as new
+            </button>
+          </div>
+        </Card>
+
+        {/* ── Photos ───────────────────────────────────────────────────── */}
+        <Card>
+          <CardHeader
+            title="Photos"
+            subtitle={`${content.photos.length} added`}
+            action={
+              !locked && (
+                <button
+                  type="button"
+                  onClick={() => setSheet({ kind: 'photos' })}
+                  className="font-display text-[12.5px] font-bold text-primary"
+                >
+                  Manage
+                </button>
+              )
             }
           />
-        </div>
-      </Card>
+          <div className="flex gap-2.5 overflow-x-auto px-4 pb-4 pt-0">
+            {content.photos.map((photo, index) => (
+              <button
+                key={`${photo.url}-${index}`}
+                type="button"
+                onClick={() => setSheet({ kind: 'photos' })}
+                className="relative h-[126px] w-[104px] flex-none overflow-hidden rounded-[13px] bg-muted"
+              >
+                <img src={photo.url} alt={photo.label ?? ''} className="h-full w-full object-cover" />
+                {photo.is_cover && (
+                  <span
+                    className="absolute left-[7px] top-[7px] rounded-md px-[7px] py-0.5 text-[9px] font-bold tracking-[0.04em] text-white"
+                    style={{ background: M.ink }}
+                  >
+                    COVER
+                  </span>
+                )}
+                {photo.label && (
+                  <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[rgba(30,24,20,.55)] to-transparent px-[9px] py-2 text-left text-[10px] font-semibold text-white">
+                    {photo.label}
+                  </span>
+                )}
+              </button>
+            ))}
+            {!locked && (
+              <button
+                type="button"
+                onClick={() => setSheet({ kind: 'photos' })}
+                className="flex h-[126px] w-[104px] flex-none flex-col items-center justify-center gap-1.5 rounded-[13px] text-primary"
+                style={{ border: `1.5px dashed ${M.dashed}`, background: M.dashedBg }}
+              >
+                <ImagePlus className="h-5 w-5" strokeWidth={1.8} />
+                <span className="font-display text-[11px] font-bold">Add</span>
+              </button>
+            )}
+          </div>
+        </Card>
 
-      {/* ── Beds & pricing ─────────────────────────────────────────────── */}
-      <Card
-        title="Beds & pricing"
-        subtitle="sharing types tenants can request"
-        action={
-          !locked && (
-            <AddButton
-              onClick={() =>
-                patch({
-                  beds: [...content.beds, { name: '', sharing: 4, price: 0, inclusions: null, availability: 'BEDS_LEFT' }],
-                })
-              }
-            />
-          )
-        }
-      >
-        <div className="space-y-2.5 px-4 pb-4">
-          {content.beds.length === 0 && <Empty>No bed types yet. Tenants can't request a bed you haven't listed.</Empty>}
+        {/* ── Beds & pricing ───────────────────────────────────────────── */}
+        <Card>
+          <CardHeader
+            title="Beds & pricing"
+            subtitle="sharing types tenants can request"
+            action={
+              !locked && (
+                <AddButton
+                  onClick={() => {
+                    patch({ beds: [...content.beds, NEW_BED] });
+                    setSheet({ kind: 'bed', index: content.beds.length });
+                  }}
+                />
+              )
+            }
+          />
+          {content.beds.length === 0 && (
+            <Empty>No bed types yet. Tenants can't request a bed you haven't listed.</Empty>
+          )}
           {content.beds.map((bed, index) => (
-            <BedRow
-              key={index}
-              bed={bed}
-              disabled={locked}
-              onChange={(next) => patch({ beds: content.beds.map((b, i) => (i === index ? next : b)) })}
-              onRemove={() => patch({ beds: content.beds.filter((_, i) => i !== index) })}
-            />
+            <Row key={index} onClick={locked ? undefined : () => setSheet({ kind: 'bed', index })}>
+              <RowIcon>
+                <BedDouble className="h-[17px] w-[17px]" strokeWidth={1.8} />
+              </RowIcon>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-[7px]">
+                  <span className="font-display text-[13.5px] font-bold text-foreground">
+                    {bed.name || `${bed.sharing}-bed sharing`}
+                  </span>
+                  <span
+                    className="rounded-[5px] px-[7px] py-0.5 text-[9.5px] font-bold"
+                    style={
+                      bed.availability === 'FULL'
+                        ? { background: M.lockedBg, color: M.lockedText }
+                        : { background: M.greenBg, color: M.greenText }
+                    }
+                  >
+                    {bed.availability === 'FULL' ? 'Full' : bed.availability === 'AVAILABLE' ? 'Available' : 'Beds left'}
+                  </span>
+                </div>
+                <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                  {bed.inclusions || `${bed.sharing} beds per room`}
+                </p>
+              </div>
+              <div className="flex-none text-right">
+                <p className="font-display text-[14px] font-extrabold tabular-nums text-foreground">
+                  ₹{bed.price.toLocaleString('en-IN')}
+                </p>
+                <p className="text-[10px]" style={{ color: M.faint }}>
+                  /month
+                </p>
+              </div>
+              {!locked && <ChevronRight className="h-4 w-4 flex-none" style={{ color: M.chevron }} />}
+            </Row>
           ))}
-        </div>
-      </Card>
+        </Card>
 
-      {/* ── Amenities ──────────────────────────────────────────────────── */}
-      <Card title="What this hostel offers" subtitle={`${content.amenities.filter((a) => a.enabled).length} on`}>
-        <div className="px-4 pb-4">
-          <p className="mb-3 text-[11px] text-muted-foreground">Tap to show or hide on the listing</p>
+        {/* ── Mess menu ────────────────────────────────────────────────── */}
+        <Card>
+          <CardHeader
+            title="Mess menu"
+            subtitle="weekly food shown on Discovery"
+            action={
+              <button
+                type="button"
+                role="switch"
+                aria-checked={content.mess.provided}
+                aria-label="Meals provided"
+                disabled={locked}
+                onClick={() => patch({ mess: { ...content.mess, provided: !content.mess.provided } })}
+                className="relative h-[26px] w-[46px] flex-none rounded-full transition-colors disabled:opacity-60"
+                style={{ background: content.mess.provided ? 'var(--primary)' : M.lockedTile }}
+              >
+                <span
+                  className="absolute top-[3px] h-5 w-5 rounded-full bg-white transition-all"
+                  style={{ left: content.mess.provided ? 23 : 3 }}
+                />
+              </button>
+            }
+          />
+
+          {content.mess.provided ? (
+            <>
+              <div className="flex flex-wrap gap-[7px] px-4 pb-[13px]">
+                {MESS_TYPES.map((type) => {
+                  const active = content.mess.type === type;
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      aria-pressed={active}
+                      disabled={locked}
+                      onClick={() => patch({ mess: { ...content.mess, type } })}
+                      className="rounded-[9px] px-3 py-[7px] font-display text-[12px]"
+                      style={
+                        active
+                          ? { background: M.ink, color: '#FFFFFF', fontWeight: 700, border: '1px solid transparent' }
+                          : { background: '#FFFFFF', color: M.chipText, fontWeight: 600, border: `1px solid ${M.inputLine}` }
+                      }
+                    >
+                      {MESS_TYPE_LABELS[type]}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {content.mess.meals.map((meal, index) => {
+                const Icon = MEAL_ICON[meal.key];
+                return (
+                  <Row
+                    key={meal.key}
+                    onClick={
+                      locked
+                        ? undefined
+                        : () =>
+                            patch({
+                              mess: {
+                                ...content.mess,
+                                meals: content.mess.meals.map((entry, i) =>
+                                  i === index ? { ...entry, enabled: !entry.enabled } : entry,
+                                ),
+                              },
+                            })
+                    }
+                  >
+                    <RowIcon>
+                      <Icon className="h-4 w-4" strokeWidth={1.8} />
+                    </RowIcon>
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className="font-display text-[13px] font-bold"
+                        style={{ color: meal.enabled ? 'var(--foreground)' : M.ghost }}
+                      >
+                        {meal.label}
+                      </p>
+                      <p className="mt-px text-[11px]" style={{ color: M.faint }}>
+                        {meal.time}
+                      </p>
+                    </div>
+                    <span
+                      className="flex-none rounded-md px-[9px] py-1 text-[9.5px] font-bold uppercase tracking-[0.04em]"
+                      style={
+                        meal.enabled
+                          ? { background: M.greenBg, color: M.greenText }
+                          : { background: M.lockedBg, color: M.ghost }
+                      }
+                    >
+                      {meal.enabled ? 'Served' : 'Off'}
+                    </span>
+                  </Row>
+                );
+              })}
+
+              <div className="px-4 pb-[15px] pt-[13px]" style={{ borderTop: `1px solid ${M.rowLine}` }}>
+                <div className="mb-[11px] flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: M.faint }}>
+                    This week
+                  </span>
+                  {!locked && (
+                    <button
+                      type="button"
+                      onClick={() => setSheet({ kind: 'mess' })}
+                      className="font-display text-[12px] font-bold text-primary"
+                    >
+                      Edit weekly menu
+                    </button>
+                  )}
+                </div>
+
+                <div className="mb-3 flex gap-1.5 overflow-x-auto pb-0.5">
+                  {MESS_DAY_LABELS.map((label, index) => {
+                    const active = index === messDay;
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => setMessDay(index)}
+                        className="flex-none rounded-[9px] px-3 py-[7px] font-display text-[12px]"
+                        style={{
+                          background: active ? 'var(--primary)' : M.chipBg,
+                          color: active ? '#FFFFFF' : M.chipText,
+                          fontWeight: active ? 700 : 600,
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div
+                  className="overflow-hidden rounded-[13px]"
+                  style={{ background: M.dashedBg, border: '1px solid #F0E7DB' }}
+                >
+                  {content.mess.meals.filter((meal) => meal.enabled).length === 0 && (
+                    <p className="px-[13px] py-3 text-[12px]" style={{ color: M.ghost }}>
+                      Every meal is switched off.
+                    </p>
+                  )}
+                  {content.mess.meals
+                    .filter((meal) => meal.enabled)
+                    .map((meal, index) => {
+                      const Icon = MEAL_ICON[meal.key];
+                      const dishes = content.mess.week[messDay]?.[meal.key]?.trim();
+                      return (
+                        <div
+                          key={meal.key}
+                          className="flex gap-[11px] px-[13px] py-[11px]"
+                          style={{ borderTop: index === 0 ? 'none' : `1px solid ${M.rowLine}` }}
+                        >
+                          <span className="flex w-[26px] flex-none justify-center pt-px" style={{ color: M.ghost }}>
+                            <Icon className="h-[15px] w-[15px]" strokeWidth={1.8} />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p
+                              className="text-[10px] font-bold uppercase tracking-[0.05em]"
+                              style={{ color: M.ghost }}
+                            >
+                              {meal.label}
+                            </p>
+                            <p
+                              className="mt-0.5 text-[12.5px] font-medium leading-[1.45]"
+                              style={{ color: dishes ? M.outlineText : M.ghost }}
+                            >
+                              {dishes || 'Not written yet'}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="px-4 pb-4 pt-0.5 text-[12px] leading-[1.5]" style={{ color: M.faint }}>
+              Mess is off. Tenants will see “Meals not provided” on your listing.
+            </p>
+          )}
+        </Card>
+
+        {/* ── Basics ───────────────────────────────────────────────────── */}
+        <Card>
+          <div className="px-4 pb-1 pt-4 font-display text-[14px] font-bold text-foreground">Basics</div>
+          <Row onClick={locked ? undefined : () => setSheet({ kind: 'basics', field: 'tagline' })}>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px]" style={{ color: M.faint }}>
+                Tagline
+              </p>
+              <p
+                className="mt-0.5 truncate text-[13.5px] font-semibold"
+                style={{ color: content.basics.tagline ? 'var(--foreground)' : M.ghost }}
+              >
+                {content.basics.tagline || 'Not set — one line under your name in search'}
+              </p>
+            </div>
+            {!locked && <ChevronRight className="h-4 w-4 flex-none" style={{ color: M.chevron }} />}
+          </Row>
+          <Row onClick={locked ? undefined : () => setSheet({ kind: 'basics', field: 'about' })}>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px]" style={{ color: M.faint }}>
+                About
+              </p>
+              <p
+                className="mt-0.5 truncate text-[13.5px] font-semibold"
+                style={{ color: content.basics.about ? 'var(--foreground)' : M.ghost }}
+              >
+                {content.basics.about || 'Not set — a short paragraph about the place'}
+              </p>
+            </div>
+            {!locked && <ChevronRight className="h-4 w-4 flex-none" style={{ color: M.chevron }} />}
+          </Row>
+        </Card>
+
+        {/* ── Amenities ────────────────────────────────────────────────── */}
+        <Card padded>
+          <div className="mb-1 flex items-baseline justify-between">
+            <h3 className="font-display text-[14px] font-bold text-foreground">What this hostel offers</h3>
+            <span className="text-[11.5px] text-muted-foreground">
+              {content.amenities.filter((amenity) => amenity.enabled).length} on
+            </span>
+          </div>
+          <p className="mb-[13px] text-[11px]" style={{ color: M.faint }}>
+            Tap to show or hide on the listing
+          </p>
           <div className="flex flex-wrap gap-2">
             {content.amenities.map((amenity, index) => {
               const Icon = amenityIcon(amenity.label);
@@ -374,14 +658,17 @@ export function HostelMarketingPage() {
                   aria-pressed={amenity.enabled}
                   onClick={() =>
                     patch({
-                      amenities: content.amenities.map((a, i) => (i === index ? { ...a, enabled: !a.enabled } : a)),
+                      amenities: content.amenities.map((entry, i) =>
+                        i === index ? { ...entry, enabled: !entry.enabled } : entry,
+                      ),
                     })
                   }
-                  className={`flex items-center gap-1.5 rounded-[10px] border px-3 py-2 text-[12px] font-semibold transition-colors ${
+                  className="flex items-center gap-[7px] rounded-[10px] px-[11px] py-2 text-[12px] font-semibold"
+                  style={
                     amenity.enabled
-                      ? 'border-primary/60 bg-card text-primary'
-                      : 'border-border bg-card text-muted-foreground'
-                  }`}
+                      ? { background: M.iconTile, border: '1px solid transparent', color: '#4A433C' }
+                      : { background: '#FFFFFF', border: `1px solid ${M.inputLine}`, color: M.ghost }
+                  }
                 >
                   <Icon className="h-3.5 w-3.5" strokeWidth={1.9} />
                   {amenity.label}
@@ -389,130 +676,298 @@ export function HostelMarketingPage() {
               );
             })}
             {!locked && (
-              <AddAmenity
-                existing={content.amenities.map((a) => a.label)}
-                suggestions={AMENITY_SUGGESTIONS}
-                onAdd={(label) => patch({ amenities: [...content.amenities, { label, enabled: true, icon: null }] })}
-              />
+              <button
+                type="button"
+                onClick={() => setSheet({ kind: 'amenity' })}
+                className="flex items-center gap-1.5 rounded-[10px] bg-card px-[11px] py-2 font-display text-[12px] font-bold text-primary"
+                style={{ border: `1px dashed ${M.dashedClay}` }}
+              >
+                <Plus className="h-3.5 w-3.5" strokeWidth={2.4} />
+                Add amenity
+              </button>
             )}
           </div>
-        </div>
-      </Card>
+        </Card>
 
-      {/* ── Getting around ─────────────────────────────────────────────── */}
-      <Card
-        title="Getting around"
-        subtitle="nearby places"
-        action={
-          !locked && (
-            <AddButton
-              onClick={() =>
-                patch({
-                  places: [...content.places, { name: '', distance: '', category: 'OTHER', sort: content.places.length }],
-                })
-              }
-            />
-          )
-        }
-      >
-        <div className="space-y-2.5 px-4 pb-4">
-          {content.places.length === 0 && <Empty>Add a college, metro or market so tenants can place you.</Empty>}
-          {content.places.map((place, index) => (
-            <PlaceRow
-              key={index}
-              place={place}
-              disabled={locked}
-              onChange={(next) => patch({ places: content.places.map((p, i) => (i === index ? next : p)) })}
-              onRemove={() => patch({ places: content.places.filter((_, i) => i !== index) })}
-            />
-          ))}
-        </div>
-      </Card>
+        {/* ── Getting around ───────────────────────────────────────────── */}
+        <Card>
+          <CardHeader
+            title="Getting around"
+            subtitle="nearby places"
+            action={
+              !locked && (
+                <AddButton
+                  onClick={() => {
+                    const place: MarketingPlace = {
+                      name: '',
+                      distance: '',
+                      category: 'OTHER',
+                      sort: content.places.length,
+                    };
+                    patch({ places: [...content.places, place] });
+                    setSheet({ kind: 'place', index: content.places.length });
+                  }}
+                />
+              )
+            }
+          />
+          {content.places.length === 0 && (
+            <Empty>Add a college, metro or market so tenants can place you.</Empty>
+          )}
+          {content.places.map((place, index) => {
+            const Icon = placeIcon(place.category);
+            return (
+              <Row key={index} onClick={locked ? undefined : () => setSheet({ kind: 'place', index })}>
+                <GripVertical className="h-4 w-4 flex-none" style={{ color: '#C6B8A8' }} />
+                <RowIcon>
+                  <Icon className="h-4 w-4" strokeWidth={1.8} />
+                </RowIcon>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-semibold text-foreground">
+                    {place.name || 'Unnamed place'}
+                  </p>
+                  <p className="text-[11px] capitalize" style={{ color: M.faint }}>
+                    {place.category.toLowerCase()}
+                  </p>
+                </div>
+                <span className="flex-none font-display text-[12.5px] font-bold tabular-nums" style={{ color: M.chipText }}>
+                  {place.distance || '—'}
+                </span>
+                {!locked && <ChevronRight className="h-4 w-4 flex-none" style={{ color: M.chevron }} />}
+              </Row>
+            );
+          })}
+        </Card>
 
-      {/* ── Reviews: locked by design ──────────────────────────────────── */}
-      <section className="rounded-[18px] border border-border bg-muted p-4">
-        <div className="flex items-center gap-2.5">
-          <span className="flex h-8 w-8 flex-none items-center justify-center rounded-[10px] bg-card">
-            <Lock className="h-4 w-4 text-muted-foreground" strokeWidth={1.9} />
-          </span>
-          <div>
-            <p className="text-[13.5px] font-bold text-foreground">Resident reviews</p>
-            <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Managed by Stayo</p>
+        {/* ── Reviews: locked by design ────────────────────────────────── */}
+        <section
+          className="flex flex-col gap-[11px] rounded-[18px] px-4 py-[15px]"
+          style={{ background: M.lockedBg, border: `1px solid ${M.lockedBorder}` }}
+        >
+          <div className="flex items-center gap-2.5">
+            <span
+              className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px]"
+              style={{ background: M.lockedTile, color: M.lockedText }}
+            >
+              <Lock className="h-4 w-4" strokeWidth={1.9} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-[7px]">
+                <p className="font-display text-[13.5px] font-bold" style={{ color: M.lockedText }}>
+                  Resident reviews
+                </p>
+                <span
+                  className="rounded-[5px] px-[7px] py-0.5 text-[9px] font-bold uppercase tracking-[0.05em]"
+                  style={{ background: M.lockedTile, color: '#8A7F75' }}
+                >
+                  Managed by Stayo
+                </span>
+              </div>
+              {/* The design shows "★ 4.8 · 126 resident reviews". None are
+                  collected yet, so the line says that instead. */}
+              <p className="mt-[3px] flex items-center gap-1 text-[12px] font-semibold text-muted-foreground">
+                <Star className="h-3 w-3" strokeWidth={2} /> No reviews yet
+              </p>
+            </div>
           </div>
-        </div>
-        <p className="mt-2.5 text-[11.5px] leading-[1.6] text-muted-foreground">
-          Residents review your hostel through Stayo. To keep them trustworthy, owners can't add, edit or remove
-          reviews. Reviews aren't collected yet — when they are, they'll appear here and on your listing.
-        </p>
-      </section>
+          <p className="text-[11.5px] leading-[1.6] text-muted-foreground">
+            Residents review your hostel through Stayo. To keep them trustworthy, owners can't add, edit or remove
+            reviews. Spotted something unfair?
+          </p>
+          <a
+            href="mailto:support@yourstayo.com?subject=Report%20a%20review"
+            className="self-start font-display text-[12px] font-bold text-primary"
+          >
+            Report a review to Stayo →
+          </a>
+        </section>
+      </div>
 
-      {/* ── Save / submit bar ──────────────────────────────────────────── */}
+      {/* ── Save bar ───────────────────────────────────────────────────── */}
       {!locked && (
-        <div className="fixed inset-x-0 bottom-0 z-30 flex gap-2.5 border-t border-border bg-card/95 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur">
+        <div className="fixed inset-x-0 bottom-0 z-30 flex gap-2.5 px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-5 bg-gradient-to-t from-background from-[22%] to-transparent">
           <button
             type="button"
-            onClick={onSave}
-            disabled={!dirty || save.isPending}
-            className="flex-none rounded-[13px] border-[1.5px] border-border px-4 py-3 font-display text-[13px] font-bold text-foreground disabled:opacity-50"
+            onClick={() => setSheet({ kind: 'preview' })}
+            className="flex-none rounded-[13px] border-[1.5px] bg-card px-4 py-3.5 font-display text-[13px] font-bold"
+            style={{ borderColor: M.outline, color: M.outlineText }}
           >
-            {save.isPending ? 'Saving…' : 'Save'}
+            Preview
           </button>
           <button
             type="button"
-            onClick={onSubmit}
-            disabled={issues.length > 0 || submit.isPending}
+            onClick={() => onSave({ thenSubmit: true })}
+            disabled={issues.length > 0 || save.isPending || submit.isPending}
             title={issues[0]}
-            className="flex-1 rounded-[13px] bg-primary py-3 font-display text-[13.5px] font-bold text-primary-foreground disabled:opacity-50"
+            className="flex-1 rounded-[13px] bg-primary py-3.5 font-display text-[13.5px] font-bold text-primary-foreground disabled:opacity-50"
+            style={{ boxShadow: '0 8px 20px rgba(180,106,85,.3)' }}
           >
-            {issues.length > 0 ? issues[0] : submit.isPending ? 'Sending…' : 'Send to Stayo for review'}
+            {issues.length > 0
+              ? issues[0]
+              : save.isPending || submit.isPending
+                ? 'Sending…'
+                : 'Save & send for review'}
           </button>
         </div>
       )}
-    </div>
+
+      {/* ── Sheets ─────────────────────────────────────────────────────── */}
+      <TemplateSheet
+        open={sheet.kind === 'template'}
+        hostelName={data?.hostel.name ?? 'This hostel'}
+        onClose={closeSheet}
+      />
+
+      <BasicsSheet
+        open={sheet.kind === 'basics'}
+        basics={content.basics}
+        focusField={sheet.kind === 'basics' ? sheet.field : 'tagline'}
+        onClose={closeSheet}
+        onSave={(basics) => {
+          patch({ basics });
+          closeSheet();
+        }}
+      />
+
+      <AmenitySheet
+        open={sheet.kind === 'amenity'}
+        existing={content.amenities.map((amenity) => amenity.label)}
+        onClose={closeSheet}
+        onAdd={(label) => patch({ amenities: [...content.amenities, { label, enabled: true, icon: null }] })}
+      />
+
+      <BedSheet
+        open={sheet.kind === 'bed'}
+        bed={sheet.kind === 'bed' ? (content.beds[sheet.index] ?? null) : null}
+        onClose={closeSheet}
+        onSave={(next) => {
+          if (sheet.kind !== 'bed') return;
+          patch({ beds: content.beds.map((bed, i) => (i === sheet.index ? next : bed)) });
+          closeSheet();
+        }}
+        onRemove={() => {
+          if (sheet.kind !== 'bed') return;
+          patch({ beds: content.beds.filter((_bed, i) => i !== sheet.index) });
+          closeSheet();
+        }}
+      />
+
+      <PlaceSheet
+        open={sheet.kind === 'place'}
+        place={sheet.kind === 'place' ? (content.places[sheet.index] ?? null) : null}
+        onClose={closeSheet}
+        onSave={(next) => {
+          if (sheet.kind !== 'place') return;
+          patch({ places: content.places.map((place, i) => (i === sheet.index ? next : place)) });
+          closeSheet();
+        }}
+        onRemove={() => {
+          if (sheet.kind !== 'place') return;
+          patch({
+            places: content.places
+              .filter((_place, i) => i !== sheet.index)
+              .map((place, i) => ({ ...place, sort: i })),
+          });
+          closeSheet();
+        }}
+      />
+
+      <MessMenuSheet
+        open={sheet.kind === 'mess'}
+        mess={content.mess}
+        initialDay={messDay}
+        onClose={closeSheet}
+        onSave={(week) => {
+          patch({ mess: { ...content.mess, week } });
+          closeSheet();
+        }}
+      />
+
+      <PhotosScreen
+        open={sheet.kind === 'photos'}
+        photos={content.photos}
+        onChange={(photos) => patch({ photos })}
+        onClose={closeSheet}
+      />
+
+      <PreviewScreen
+        open={sheet.kind === 'preview'}
+        content={content}
+        hostelName={data?.hostel.name ?? 'This hostel'}
+        location={null}
+        onClose={closeSheet}
+      />
+    </>
   );
 }
 
 /* ── small building blocks ─────────────────────────────────────────────── */
 
-function Card({
-  title,
-  subtitle,
-  action,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  action?: React.ReactNode;
-  children: React.ReactNode;
-}) {
+function Card({ children, padded }: { children: React.ReactNode; padded?: boolean }) {
   return (
-    <section className="overflow-hidden rounded-[18px] border border-border bg-card">
-      <header className="flex items-center justify-between px-4 pb-3 pt-4">
-        <div className="flex items-baseline gap-2">
-          <h3 className="font-display text-[14px] font-bold text-foreground">{title}</h3>
-          {subtitle && <span className="text-[11.5px] text-muted-foreground">{subtitle}</span>}
-        </div>
-        {action}
-      </header>
+    <section
+      className={`overflow-hidden rounded-[18px] bg-card ${padded ? 'px-4 py-[15px]' : ''}`}
+      style={{ border: '1px solid var(--border)', boxShadow: CARD_SHADOW }}
+    >
       {children}
     </section>
   );
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function CardHeader({
+  title,
+  subtitle,
+  action,
+}: {
+  title: string;
+  subtitle?: string;
+  action?: React.ReactNode;
+}) {
   return (
-    <label className="block">
-      <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
-        {label}
-      </span>
+    <header className="flex items-center justify-between gap-3 px-4 pb-3 pt-[15px]">
+      <div className="flex min-w-0 items-baseline gap-2">
+        <h3 className="flex-none font-display text-[14px] font-bold text-foreground">{title}</h3>
+        {subtitle && <span className="truncate text-[11.5px] text-muted-foreground">{subtitle}</span>}
+      </div>
+      {action}
+    </header>
+  );
+}
+
+/** A tappable row inside a card, with the design's hairline above it. */
+function Row({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) {
+  const className = 'flex w-full items-center gap-3 px-4 py-3 text-left';
+  const style = { borderTop: `1px solid ${M.rowLine}` };
+
+  if (!onClick) {
+    return (
+      <div className={className} style={style}>
+        {children}
+      </div>
+    );
+  }
+  return (
+    <button type="button" onClick={onClick} className={className} style={style}>
       {children}
-      {hint && <span className="mt-1 block text-[11px] text-muted-foreground">{hint}</span>}
-    </label>
+    </button>
+  );
+}
+
+function RowIcon({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px]"
+      style={{ background: M.iconTile, color: 'var(--primary)' }}
+    >
+      {children}
+    </span>
   );
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="rounded-xl bg-muted px-3.5 py-3 text-[12px] text-muted-foreground">{children}</p>;
+  return (
+    <p className="mx-4 mb-4 rounded-xl bg-muted px-3.5 py-3 text-[12px] text-muted-foreground">{children}</p>
+  );
 }
 
 function AddButton({ onClick }: { onClick: () => void }) {
@@ -520,261 +975,10 @@ function AddButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center gap-1 rounded-[9px] bg-[#2A2521] px-2.5 py-1.5 font-display text-[11.5px] font-bold text-white"
+      className="flex flex-none items-center gap-1 rounded-[9px] px-[11px] py-[7px] font-display text-[11.5px] font-bold text-white"
+      style={{ background: M.ink }}
     >
       <Plus className="h-3 w-3" strokeWidth={2.5} /> Add
     </button>
-  );
-}
-
-/**
- * Photos are added by URL rather than uploaded here.
- *
- * ImageKit upload already exists elsewhere in this app (profile photos,
- * documents) and wiring it in is real work; a URL field is the honest interim
- * — it stores exactly what the listing will render, rather than pretending an
- * upload happened.
- */
-function AddPhotoTile({ disabled, onAdd }: { disabled: boolean; onAdd: (url: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const [url, setUrl] = useState('');
-
-  if (disabled) return null;
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="flex h-[126px] w-[104px] flex-none flex-col items-center justify-center gap-1.5 rounded-[13px] border-[1.5px] border-dashed border-border bg-muted text-primary"
-      >
-        <ImagePlus className="h-5 w-5" strokeWidth={1.8} />
-        <span className="font-display text-[11px] font-bold">Add</span>
-      </button>
-    );
-  }
-
-  return (
-    <div className="flex h-[126px] w-[190px] flex-none flex-col gap-2 rounded-[13px] border border-border bg-card p-2.5">
-      <input
-        autoFocus
-        value={url}
-        onChange={(e) => setUrl(e.target.value)}
-        placeholder="https://…"
-        className="w-full rounded-lg border border-border bg-muted px-2 py-1.5 text-[12px] outline-none focus:border-primary"
-      />
-      <div className="mt-auto flex gap-1.5">
-        <button
-          type="button"
-          onClick={() => {
-            const trimmed = url.trim();
-            if (!trimmed) return;
-            onAdd(trimmed);
-            setUrl('');
-            setOpen(false);
-          }}
-          className="flex-1 rounded-lg bg-primary py-1.5 text-[11.5px] font-bold text-primary-foreground"
-        >
-          Add
-        </button>
-        <button
-          type="button"
-          onClick={() => { setOpen(false); setUrl(''); }}
-          className="rounded-lg border border-border px-2 py-1.5 text-[11.5px] font-semibold text-muted-foreground"
-        >
-          <X className="h-3 w-3" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function AddAmenity({
-  existing,
-  suggestions,
-  onAdd,
-}: {
-  existing: string[];
-  suggestions: string[];
-  onAdd: (label: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [value, setValue] = useState('');
-  const remaining = suggestions.filter((s) => !existing.includes(s));
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="rounded-[10px] border border-dashed border-primary/50 px-3 py-2 font-display text-[12px] font-bold text-primary"
-      >
-        + Add amenity
-      </button>
-    );
-  }
-
-  return (
-    <div className="w-full rounded-xl border border-border bg-muted p-3">
-      <div className="flex gap-2">
-        <input
-          autoFocus
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="e.g. Rooftop lounge"
-          className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-[13px] outline-none focus:border-primary"
-        />
-        <button
-          type="button"
-          onClick={() => {
-            const trimmed = value.trim();
-            if (!trimmed) return;
-            onAdd(trimmed);
-            setValue('');
-            setOpen(false);
-          }}
-          className="rounded-lg bg-primary px-3 py-2 text-[12.5px] font-bold text-primary-foreground"
-        >
-          Add
-        </button>
-      </div>
-      {remaining.length > 0 && (
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-          {remaining.map((suggestion) => (
-            <button
-              key={suggestion}
-              type="button"
-              onClick={() => { onAdd(suggestion); setOpen(false); }}
-              className="rounded-lg border border-border bg-card px-2.5 py-1.5 text-[11.5px] font-semibold text-foreground"
-            >
-              + {suggestion}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function BedRow({
-  bed,
-  disabled,
-  onChange,
-  onRemove,
-}: {
-  bed: MarketingBed;
-  disabled: boolean;
-  onChange: (next: MarketingBed) => void;
-  onRemove: () => void;
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-muted p-3">
-      <div className="flex gap-2">
-        <input
-          value={bed.name}
-          disabled={disabled}
-          placeholder="4-Bed AC"
-          onChange={(e) => onChange({ ...bed, name: e.target.value })}
-          className="min-w-0 flex-1 rounded-lg border border-border bg-card px-3 py-2 text-[13px] font-semibold outline-none focus:border-primary disabled:opacity-60"
-        />
-        {!disabled && (
-          <button type="button" aria-label="Remove bed type" onClick={onRemove} className="flex-none px-1.5 text-rose-600">
-            <Trash2 className="h-4 w-4" strokeWidth={2} />
-          </button>
-        )}
-      </div>
-      <div className="mt-2 grid grid-cols-3 gap-2">
-        <label className="block">
-          <span className="mb-1 block text-[10px] font-semibold uppercase text-muted-foreground">Sharing</span>
-          <input
-            type="number"
-            min={1}
-            max={20}
-            value={bed.sharing}
-            disabled={disabled}
-            onChange={(e) => onChange({ ...bed, sharing: Number(e.target.value) || 1 })}
-            className="w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-[13px] outline-none focus:border-primary disabled:opacity-60"
-          />
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-[10px] font-semibold uppercase text-muted-foreground">₹ / month</span>
-          <input
-            type="number"
-            min={0}
-            value={bed.price}
-            disabled={disabled}
-            onChange={(e) => onChange({ ...bed, price: Number(e.target.value) || 0 })}
-            className="w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-[13px] outline-none focus:border-primary disabled:opacity-60"
-          />
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-[10px] font-semibold uppercase text-muted-foreground">Availability</span>
-          <select
-            value={bed.availability}
-            disabled={disabled}
-            onChange={(e) => onChange({ ...bed, availability: e.target.value as MarketingBed['availability'] })}
-            className="w-full rounded-lg border border-border bg-card px-2 py-1.5 text-[12px] outline-none focus:border-primary disabled:opacity-60"
-          >
-            <option value="BEDS_LEFT">Beds left</option>
-            <option value="AVAILABLE">Available</option>
-            <option value="FULL">Full</option>
-          </select>
-        </label>
-      </div>
-      <input
-        value={bed.inclusions ?? ''}
-        disabled={disabled}
-        placeholder="Attached bath · study desk · locker"
-        onChange={(e) => onChange({ ...bed, inclusions: e.target.value })}
-        className="mt-2 w-full rounded-lg border border-border bg-card px-3 py-2 text-[12.5px] outline-none focus:border-primary disabled:opacity-60"
-      />
-    </div>
-  );
-}
-
-function PlaceRow({
-  place,
-  disabled,
-  onChange,
-  onRemove,
-}: {
-  place: MarketingPlace;
-  disabled: boolean;
-  onChange: (next: MarketingPlace) => void;
-  onRemove: () => void;
-}) {
-  return (
-    <div className="flex items-center gap-2 rounded-xl border border-border bg-muted p-2.5">
-      <MapPin className="h-4 w-4 flex-none text-muted-foreground" strokeWidth={1.8} />
-      <input
-        value={place.name}
-        disabled={disabled}
-        placeholder="Osmania University"
-        onChange={(e) => onChange({ ...place, name: e.target.value })}
-        className="min-w-0 flex-1 rounded-lg border border-border bg-card px-2.5 py-1.5 text-[12.5px] outline-none focus:border-primary disabled:opacity-60"
-      />
-      <input
-        value={place.distance}
-        disabled={disabled}
-        placeholder="400 m"
-        onChange={(e) => onChange({ ...place, distance: e.target.value })}
-        className="w-[76px] flex-none rounded-lg border border-border bg-card px-2 py-1.5 text-[12.5px] outline-none focus:border-primary disabled:opacity-60"
-      />
-      <select
-        value={place.category}
-        disabled={disabled}
-        onChange={(e) => onChange({ ...place, category: e.target.value as PlaceCategory })}
-        className="w-[92px] flex-none rounded-lg border border-border bg-card px-1.5 py-1.5 text-[11.5px] outline-none focus:border-primary disabled:opacity-60"
-      >
-        {PLACE_CATEGORIES.map((category) => (
-          <option key={category.value} value={category.value}>{category.label}</option>
-        ))}
-      </select>
-      {!disabled && (
-        <button type="button" aria-label="Remove place" onClick={onRemove} className="flex-none text-rose-600">
-          <Trash2 className="h-4 w-4" strokeWidth={2} />
-        </button>
-      )}
-    </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, Heart, Info, MapPin, ShieldCheck, Utensils } from 'lucide-react';
+import { ChevronLeft, Coffee, Heart, Info, MapPin, Moon, ShieldCheck, Sun, Utensils } from 'lucide-react';
 
 import {
   useDiscoverListing,
@@ -12,6 +12,21 @@ import {
 import { useDiscoverAuth } from './DiscoverAuthContext';
 import { DiscoverEmpty, PrimaryButton } from './components/DiscoverShell';
 import { AUDIENCE_LABEL, C, FONT, PHOTO_FALLBACK, formatRupees } from './discoverTheme';
+
+const MESS_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+
+const MESS_TYPE_LABEL: Record<string, string> = {
+  VEG: 'Veg only',
+  NON_VEG: 'Non-veg',
+  BOTH: 'Veg + Non-veg',
+};
+
+const MEAL_ICON: Record<string, typeof Coffee> = {
+  b: Coffee,
+  l: Utensils,
+  s: Sun,
+  dn: Moon,
+};
 
 /** One selectable option per room size, aggregated from the real room rows. */
 interface BedOption {
@@ -65,10 +80,12 @@ export function ListingPage() {
 
   const [selected, setSelected] = useState<number | null>(null);
   const [photoIndex, setPhotoIndex] = useState(0);
+  const [messDay, setMessDay] = useState(0);
 
   const hostel = data?.hostel;
   const amenities = data?.amenities ?? [];
   const places = data?.places ?? [];
+  const mess = data?.mess ?? null;
 
   /**
    * The advertised offer, carrying real availability.
@@ -363,6 +380,97 @@ export function ListingPage() {
                     {amenity.label}
                   </span>
                 ))}
+              </div>
+            </section>
+          )}
+
+          {/* ── Food & mess ──────────────────────────────────────────────
+              Per the `Food & mess` block of `Stayo Discover.dc.html`. The
+              menu is reviewed marketing content, not the operational food
+              schedule — see ADR-077. */}
+          {mess && mess.meals.length > 0 && (
+            <section className="mt-7">
+              <div className="flex items-center justify-between">
+                <h2 className="text-[16px] font-extrabold tracking-[-0.01em]" style={{ fontFamily: FONT.display, color: C.text }}>
+                  Food &amp; mess
+                </h2>
+                <span
+                  className="flex items-center gap-[5px] rounded-full px-2.5 py-1"
+                  style={{ background: '#ECF4EF' }}
+                >
+                  <span className="h-[7px] w-[7px] rounded-[2px]" style={{ background: C.green }} />
+                  <span className="text-[11px] font-bold" style={{ color: C.green }}>
+                    {MESS_TYPE_LABEL[mess.type] ?? mess.type}
+                  </span>
+                </span>
+              </div>
+              <p className="mt-0.5 text-[12px]" style={{ color: C.textMuted }}>
+                Meals included in rent · served fresh in the mess hall
+              </p>
+
+              <div className="mt-[13px] flex gap-1.5 overflow-x-auto pb-0.5">
+                {MESS_DAYS.map((day, index) => {
+                  const active = index === messDay;
+                  return (
+                    <button
+                      key={day}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => setMessDay(index)}
+                      className="flex-none rounded-[10px] px-3.5 py-2 text-[12.5px]"
+                      style={{
+                        fontFamily: FONT.display,
+                        fontWeight: active ? 700 : 600,
+                        background: active ? C.clay : '#F1EBE3',
+                        color: active ? '#FFFFFF' : '#6E6459',
+                      }}
+                    >
+                      {day}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div
+                className="mt-3 overflow-hidden rounded-2xl border bg-white"
+                style={{ borderColor: C.line, boxShadow: '0 1px 2px rgba(40,30,20,.04)' }}
+              >
+                {mess.meals.map((meal, index) => {
+                  const Icon = MEAL_ICON[meal.key] ?? Utensils;
+                  const dishes = mess.week[messDay]?.[meal.key]?.trim();
+                  return (
+                    <div
+                      key={meal.key}
+                      className="flex gap-3 px-[15px] py-[14px]"
+                      style={{ borderTop: index === 0 ? 'none' : `1px solid ${C.lineSoft}` }}
+                    >
+                      <span
+                        className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px]"
+                        style={{ background: C.chipBg, color: C.clay }}
+                      >
+                        <Icon className="h-[17px] w-[17px]" strokeWidth={1.7} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-baseline gap-2">
+                          <span className="text-[13px] font-bold" style={{ fontFamily: FONT.display, color: C.text }}>
+                            {meal.label}
+                          </span>
+                          <span className="text-[11px]" style={{ color: C.textGhost }}>
+                            {meal.time}
+                          </span>
+                        </div>
+                        {/* An unwritten day is said plainly rather than left
+                            blank — a gap in a menu row reads as a bug. */}
+                        <p
+                          className="mt-[3px] text-[12.5px] font-medium leading-[1.5]"
+                          style={{ color: dishes ? '#5A5147' : C.textGhost }}
+                        >
+                          {dishes || 'Menu not published for this day yet'}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </section>
           )}

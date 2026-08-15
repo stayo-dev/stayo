@@ -197,6 +197,12 @@ The StayO redesign is being built in place inside this same tree, per the design
 
   **The fork is two-way, and that is load-bearing.** `/` renders for everyone, signed-in owners included — an owner has to be able to reach the tenant side once hostel listings live there. A hard redirect for authenticated owners was written and reverted the same day for exactly that reason; see [[Decisions#ADR-071|ADR-071]] point 4. The tenant side's own way back is deferred until that page is designed. See [[Features]].
 
+- **`features/hostel-drilldown/marketing/`** (2026-08-15) — the owner Marketing page's sheet set, sitting beside the page it serves rather than in `shared/`: `MarketingSheet.tsx` (the design's sheet header/footer/chip/input vocabulary, wrapping the shared `BottomSheet` in `hideHeader` mode), the five bottom sheets (`Template`/`Basics`/`Amenity`/`Bed`/`Place`/`MessMenu`), two full-screen portalled overlays (`PhotosScreen`, `PreviewScreen`), `amenityIcons.ts` (label→glyph, shared by the editor and the preview so one amenity cannot pick up two different marks), and `marketingTheme.ts`.
+
+  **`marketingTheme.ts` holds only what has no token.** `styles/tokens/product.css` already *is* this design's palette — `--primary` is `#B46A55`, `--border` is `#EFE6DA`, `--muted-foreground` is `#8A7F75` — so the module carries just the dozen accents the token set never named (the `#2A2521` status card, `#F3E9DF` icon tiles, the `#F3ECE4` row hairline that sits a shade off `--border`, the locked-review greys). Same reasoning and shape as Discover's `discoverTheme.ts`. **Use tokens where one exists**; reach for `M.*` only for those values.
+
+  The design pins each sheet to a fixed pixel offset from the top of its 402×874 device frame (96px for the mess editor, 200px for the short ones). Those are **not** reproduced literally — on a real viewport that is what `BottomSheet`'s content-driven height under `max-h-[88vh]` already expresses. See [[Features]] and [[Decisions#ADR-077|ADR-077]].
+
 ## See also
 - [[APIs]] for the endpoint shapes feature wrappers call
 - [[Features]] for what's built on top of this structure
