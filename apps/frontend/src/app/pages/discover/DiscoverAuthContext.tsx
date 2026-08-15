@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 
 import { LoginModal, type LoginModalUser } from '@shared/ui-patterns/LoginModal';
+import { ThemeProvider } from '@/app/providers/ThemeProvider';
 
 /**
  * Sign-in for Stayo Discover, in place.
@@ -69,16 +70,31 @@ export function DiscoverAuthProvider({ children }: { children: ReactNode }) {
   return (
     <DiscoverAuthContext.Provider value={value}>
       {children}
-      <LoginModal
-        open={open}
-        mode="tenant"
-        initialTab={tab}
-        onClose={() => {
-          setOpen(false);
-          setOnDone(null);
-        }}
-        onSuccess={handleSuccess}
-      />
+      {/*
+        `LoginModal` is token-driven (`bg-primary`, `text-foreground`…), and
+        Discover renders outside any ThemeProvider — it hard-codes its palette
+        the way WelcomePage does. So the modal was resolving `theme.css`'s
+        unscoped `:root`, where `--primary` is still the **retired navy**
+        `#1B2D5B`, and the sheet came up in the old identity.
+
+        Scoping it to `marketing` resolves the real brand tokens instead
+        (`--primary: #a45d44`, Terra Cotta). ThemeProvider is required rather
+        than a wrapper div because the modal portals to `document.body` via
+        Radix — CSS custom properties cascade through the DOM tree, not the
+        React tree — and ThemeProvider is what also stamps `<html>`.
+      */}
+      <ThemeProvider theme="marketing">
+        <LoginModal
+          open={open}
+          mode="tenant"
+          initialTab={tab}
+          onClose={() => {
+            setOpen(false);
+            setOnDone(null);
+          }}
+          onSuccess={handleSuccess}
+        />
+      </ThemeProvider>
     </DiscoverAuthContext.Provider>
   );
 }

@@ -13,7 +13,14 @@ bot for tenants — plus a Platform Admin console for the marketplace layer
 | `apps/backend/` | Next.js 14 App Router + Prisma + Postgres (Supabase) | **Canonical API.** All business logic lives here. |
 | `apps/frontend/` | Vite + React 19 SPA | **Canonical UI.** Owner app, tenant portal, admin console, public marketing site. |
 | `migrations/` | Hand-written SQL | Applied via Supabase SQL editor/psql — order matters, see `docs/architecture/data-models/schema.md`. |
-| `apps/backend/prisma/migrations/` | Prisma-managed SQL | Schema migrations since the Prisma-managed era began. |
+| `apps/backend/prisma/migrations/` | Prisma-managed SQL | Schema migrations since the Prisma-managed era began. |It's directionally right on owner-first IA, and I built that. But a third of its dashboard can't exist here:
+
+Review assumed	Reality
+Owner has a plan/MRR	Billing is per-hostel (hostel_subscriptions.hostel_id @unique)
+"Last active 18 days ago"	No login tracking anywhere
+"Support ✓ No issues"	No ticketing backend
+Lead stages New→Contacted→Qualified	Real enum is NEW→UNDER_REVIEW→APPROVED→…, system-managed from APPROVED on
+And it missed the two things your scree
 | `docs/` | Markdown | A maintained "rebuild map" — architecture, every module, business rules, schema, known issues. |
 | `docs/obsidian/` | Markdown (Obsidian vault) | **Read this first.** The most current architecture/API/schema/business-rule reference — built directly from the live code. Start at `docs/obsidian/README.md`. |
 | `scripts/backup/` | Bash | Local/Supabase Storage backup utilities. |
