@@ -1,13 +1,11 @@
-import { lazy, Suspense, type ReactNode } from 'react';
-import { Navigate, Outlet, Route, useNavigate } from 'react-router-dom';
+import { lazy, type ReactNode } from 'react';
+import { Navigate, Route, useNavigate } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
-import { StayoLoadingScreen } from '@shared/ui/brand';
-import { AppShell } from '@/app/layouts/AppShell';
+import { TenantProviderShell } from './TenantProviderShell';
 
 const TenantAppShell = lazy(() =>
   import('@/app/layouts/TenantAppShell').then((m) => ({ default: m.TenantAppShell })),
 );
-const TenantProviderShell = lazy(() => import('./TenantProviderShell').then((m) => ({ default: m.TenantProviderShell })));
 const TenantFoodPage = lazy(() => import('../pages/TenantFoodPage').then((m) => ({ default: m.TenantFoodPage })));
 const TenantHomePage = lazy(() => import('../pages/TenantHomePage').then((m) => ({ default: m.TenantHomePage })));
 const TenantMoneyPage = lazy(() => import('../pages/TenantMoneyPage').then((m) => ({ default: m.TenantMoneyPage })));
@@ -24,18 +22,13 @@ const TenantPaymentReturnPage = lazy(() =>
 );
 
 /**
- * Cold entry into the tenant app — nothing is mounted yet, so there is no
- * layout to skeleton. Continues the boot splash's loading screen. Tab-to-tab
- * transitions use the layout skeleton in TenantProviderShell instead.
- */
-function TenantRouteFallback() {
-  return <StayoLoadingScreen />;
-}
-
-/**
  * Chrome for full-screen takeover sub-pages salvaged from the frozen
  * `src/portal` tree (no bottom nav, own back button) — matches the owner
  * side's Tenant Detail / Hostel Drilldown "outside the shell" convention.
+ * `AppBottomNav`'s `hidesOuterNav()` hides the shared outer nav for these
+ * paths (anything under `/tenant/*` that isn't one of the four tab pages),
+ * preserving that "no bottom nav" contract now that they're nested under
+ * the same shared `SeekerAppShell` as the tab pages.
  */
 function TenantSubPage({ title, backTo, children }: { title: string; backTo: string; children: ReactNode }) {
   const navigate = useNavigate();
@@ -52,14 +45,6 @@ function TenantSubPage({ title, backTo, children }: { title: string; backTo: str
   );
 }
 
-function TenantBoundary() {
-  return (
-    <Suspense fallback={<TenantRouteFallback />}>
-      <TenantProviderShell />
-    </Suspense>
-  );
-}
-
 /**
  * StayO tenant-app route tree — flat IA, no drill-down beyond the Room
  * overlay system, one modal type — implemented as real routes instead of
@@ -73,19 +58,24 @@ function TenantBoundary() {
  * `/tenant/move-out` below. The remaining sub-pages salvage real logic from
  * the frozen `src/portal` tree and the previously-orphaned
  * `TenantRenewalPage`.
+ *
+ * Every route here is nested under `TenantProviderShell` (the
+ * `ProtectedTenantRoute` tenancy-liveness gate — unchanged), which is itself
+ * nested under the shared `SeekerAppShell` alongside `DiscoverRoutes()` —
+ * there is no `AppShell`/provider instance of its own here anymore, so
+ * crossing in from Explore/Profile is a normal nested-route swap, not a
+ * remount.
  */
 export function TenantRoutes() {
   return (
-    <Route element={<TenantBoundary />}>
+    <Route element={<TenantProviderShell />}>
       <Route path="/payment-return" element={<TenantPaymentReturnPage />} />
-      <Route element={<AppShell><Outlet /></AppShell>}>
-        <Route element={<TenantAppShell />}>
-          <Route path="/tenant" element={<Navigate to="/tenant/home" replace />} />
-          <Route path="/tenant/home" element={<TenantHomePage />} />
-          <Route path="/tenant/money" element={<TenantMoneyPage />} />
-          <Route path="/tenant/room" element={<TenantRoomPage />} />
-          <Route path="/tenant/food" element={<TenantFoodPage />} />
-        </Route>
+      <Route element={<TenantAppShell />}>
+        <Route path="/tenant" element={<Navigate to="/tenant/home" replace />} />
+        <Route path="/tenant/home" element={<TenantHomePage />} />
+        <Route path="/tenant/money" element={<TenantMoneyPage />} />
+        <Route path="/tenant/room" element={<TenantRoomPage />} />
+        <Route path="/tenant/food" element={<TenantFoodPage />} />
       </Route>
       <Route path="/tenant/complaints" element={<TenantComplaintsPage />} />
       <Route

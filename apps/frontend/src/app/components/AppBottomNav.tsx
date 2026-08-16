@@ -2,21 +2,33 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { C, FONT, GRID_GROUND } from '@/app/pages/discover/discoverTheme';
 import { useAppNav } from '@/app/nav/useAppNav';
 
+/** The four `/tenant/*` paths that are actual primary-nav tab pages. */
+const TENANT_TAB_PATHS = new Set(['/tenant/home', '/tenant/money', '/tenant/room', '/tenant/food']);
+
 /**
  * Routes that own the whole viewport — listing detail, search, the enquiry
- * flow, an enquiry's detail view, and Profile's sub-pages (editor, stay
- * history) — and therefore hide the outer bar. They are pushed *onto* a tab
- * rather than being tabs themselves, so leaving the bar visible would offer
- * a lateral jump out of a half-finished form. Saved/Enquiries themselves are
- * list pages reached *from* the Profile tab and keep the bar. Carried over
- * from the old `DiscoverShell`'s `hidesTabBar`, updated for the `/profile/*`
- * route tree Saved/Enquiries/Profile moved into.
+ * flow, an enquiry's detail view, Profile's sub-pages (editor, stay history),
+ * and every `/tenant/*` full-screen takeover that isn't one of the four tab
+ * pages (Complaints, move-out, personal details, help, renewal) plus the
+ * payment-return redirect page — and therefore hide the outer bar. They are
+ * pushed *onto* a tab rather than being tabs themselves, so leaving the bar
+ * visible would offer a lateral jump out of a half-finished form or a
+ * transient redirect. Saved/Enquiries themselves are list pages reached
+ * *from* the Profile tab and keep the bar. Carried over from the old
+ * `DiscoverShell`'s `hidesTabBar`, updated for the `/profile/*` route tree
+ * Saved/Enquiries/Profile moved into, and again when the Tenant Dashboard's
+ * sub-pages joined this same shared shell (see `SeekerAppShell`) — the
+ * `/tenant/*` clause is a blocklist-by-exception (anything not a tab path)
+ * rather than an enumerated list, since these sub-pages already relied on
+ * simply not being inside any `AppShell` at all before that change.
  */
 function hidesOuterNav(pathname: string): boolean {
   return (
     /^\/discover\/(h|search)\b/.test(pathname) ||
     /^\/profile\/enquiries\/[^/]+$/.test(pathname) ||
-    /^\/profile\/(details|history|documents)$/.test(pathname)
+    /^\/profile\/(details|history|documents)$/.test(pathname) ||
+    pathname === '/payment-return' ||
+    (pathname.startsWith('/tenant/') && !TENANT_TAB_PATHS.has(pathname))
   );
 }
 
