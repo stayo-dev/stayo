@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Flag, AlertTriangle, ExternalLink } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Flag, AlertTriangle, ExternalLink, X, ChevronLeft, ChevronRight, Maximize2 } from 'lucide-react';
 import { useMarketingSubmission } from '@features/hostel-marketing/hooks/useMarketing';
 import { DrawerSection, KeyValueRows } from './AdminDrawer';
 
@@ -36,6 +36,7 @@ export function MarketingReviewBody({
   onFlagNote: (section: ReviewSection, note: string) => void;
 }) {
   const submission = useMarketingSubmission(revisionId);
+  const [lightbox, setLightbox] = useState<number | null>(null);
 
   if (submission.isLoading) {
     return <div className="py-12 text-center text-[13px] text-[#8A7F75]">Loading submission…</div>;
@@ -48,8 +49,19 @@ export function MarketingReviewBody({
   const c = s.content ?? {};
   const platformListed = String(s.hostel?.listing_source) === 'PLATFORM_LISTED';
 
+  const photos: any[] = c.photos ?? [];
+
   return (
     <div className="flex flex-col gap-4">
+      {lightbox !== null && photos[lightbox] && (
+        <PhotoLightbox
+          photos={photos}
+          index={lightbox}
+          onClose={() => setLightbox(null)}
+          onIndex={setLightbox}
+        />
+      )}
+
       {/* automated advisories — never block approval (ADR-076) */}
       {(s.flags ?? []).length > 0 && (
         <div className="rounded-2xl border border-[#F0DFC4] bg-[#FBF1DE] px-4 py-3.5">
@@ -123,13 +135,22 @@ export function MarketingReviewBody({
         ) : (
           <div className="grid grid-cols-3 gap-2 p-[18px]">
             {c.photos.map((p: any, i: number) => (
-              <a key={i} href={p.url} target="_blank" rel="noreferrer" className="block">
+              <button
+                key={i}
+                type="button"
+                onClick={() => setLightbox(i)}
+                title="Open full size"
+                className="group relative block overflow-hidden rounded-[10px] border border-[#EFE6DA]"
+              >
                 <img
                   src={p.url}
                   alt={p.caption || `Photo ${i + 1}`}
-                  className="h-20 w-full rounded-[10px] border border-[#EFE6DA] object-cover"
+                  className="h-20 w-full object-cover transition group-hover:scale-[1.04]"
                 />
-              </a>
+                <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/35 group-hover:opacity-100">
+                  <Maximize2 className="h-4 w-4 text-white" strokeWidth={2.2} />
+                </span>
+              </button>
             ))}
           </div>
         )}
@@ -278,6 +299,117 @@ function Section({
             placeholder="What needs changing here? (the owner sees this)"
             className="w-full rounded-[10px] border border-[#E6C7BF] bg-white px-3 py-2.5 text-[12.5px] text-[#2A2521] outline-none"
           />
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/**
+ * Full-screen photo viewer for review.
+ *
+ * A plain link to the photo does not work: owner photos arrive as `data:`
+ * URIs, and browsers refuse to navigate a top-level tab to one — clicking did
+ * nothing at all. Reviewing a listing means actually looking at the pictures,
+ * so this renders them at full size with keyboard paging.
+ *
+ * Rendered above the drawer (z-[100]) because the drawer itself is z-[90].
+ */
+function PhotoLightbox({
+  photos, index, onClose, onIndex,
+}: {
+  photos: any[];
+  index: number;
+  onClose: () => void;
+  onIndex: (i: number) => void;
+}) {
+  const go = (delta: number) => onIndex((index + delta + photos.length) % photos.length);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowRight') go(1);
+      if (e.key === 'ArrowLeft') go(-1);
+    };
+    window.addEventListener('keydown', onKey);
+    // Stop the page behind from scrolling while the viewer is open.
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  });
+
+  const photo = photos[index];
+
+  return (
+    <div className="fixed inset-0 z-[100] flex flex-col bg-[rgba(16,12,10,.94)]">
+      <div className="flex flex-none items-center gap-3 px-5 py-3.5 text-white">
+        <span className="font-admin text-[13px] font-bold">
+          Photo {index + 1} of {photos.length}
+        </span>
+        {photo?.caption && (
+          <span className="truncate text-[12px] text-white/70">{photo.caption}</span>
+        )}
+        <div className="flex-1" />
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-white/10 hover:bg-white/20"
+        >
+          <X className="h-4 w-4" strokeWidth={2.2} />
+        </button>
+      </div>
+
+      <div className="relative flex min-h-0 flex-1 items-center justify-center px-4 pb-4">
+        {photos.length > 1 && (
+          <button
+            type="button"
+            onClick={() => go(-1)}
+            aria-label="Previous photo"
+            className="absolute left-4 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+          >
+            <ChevronLeft className="h-5 w-5" strokeWidth={2.2} />
+          </button>
+        )}
+
+        {/* object-contain, never cover: a cropped review photo hides exactly
+            the edges an admin is checking. */}
+        <img
+          src={photo.url}
+          alt={photo.caption || `Photo ${index + 1}`}
+          className="max-h-full max-w-full rounded-xl object-contain"
+        />
+
+        {photos.length > 1 && (
+          <button
+            type="button"
+            onClick={() => go(1)}
+            aria-label="Next photo"
+            className="absolute right-4 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+          >
+            <ChevronRight className="h-5 w-5" strokeWidth={2.2} />
+          </button>
+        )}
+      </div>
+
+      {photos.length > 1 && (
+        <div className="flex flex-none justify-center gap-2 overflow-x-auto px-4 pb-5">
+          {photos.map((p: any, i: number) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => onIndex(i)}
+              className={`h-12 w-16 flex-none overflow-hidden rounded-lg border-2 ${
+                i === index ? 'border-[#B46A55]' : 'border-transparent opacity-55 hover:opacity-100'
+              }`}
+            >
+              <img src={p.url} alt="" className="h-full w-full object-cover" />
+            </button>
+          ))}
         </div>
       )}
     </div>

@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Eye } from 'lucide-react';
 import { ListingPage } from '@/app/pages/discover/ListingPage';
+import { DiscoverAuthProvider } from '@/app/pages/discover/DiscoverAuthContext';
 
 /**
  * Admin preview of a submitted marketing page, rendered by the REAL Discovery
@@ -8,6 +9,12 @@ import { ListingPage } from '@/app/pages/discover/ListingPage';
  *
  * The banner is the only thing added — without it an admin could mistake an
  * unapproved draft for the live page.
+ *
+ * Wrapped in DiscoverAuthProvider because ListingPage calls useDiscoverAuth
+ * for its enquiry CTA, and that hook throws outside the Discovery tree. The
+ * provider is self-contained state plus a sign-in modal, so supplying it here
+ * is cheaper and safer than making the hook tolerate a missing provider —
+ * that guard exists to catch exactly this mistake on the public side.
  */
 export function ListingPreviewPage() {
   const { revisionId } = useParams<{ revisionId: string }>();
@@ -32,7 +39,9 @@ export function ListingPreviewPage() {
           Exactly how this will appear on Discovery if you approve it.
         </span>
       </div>
-      <ListingPage previewRevisionId={revisionId} />
+      <DiscoverAuthProvider>
+        <ListingPage previewRevisionId={revisionId} />
+      </DiscoverAuthProvider>
     </div>
   );
 }
