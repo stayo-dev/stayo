@@ -41,6 +41,19 @@ EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
 -- 4. Drop the old enum types
+-- Step 2's rename silently no-ops (via `EXCEPTION WHEN OTHERS THEN NULL`)
+-- on a database where `tenant_financial_ledger` already exists as a
+-- separate table under its final name — confirmed live 2026-08-15 while
+-- resolving a stuck `migrate deploy`: `tenant_financial_ledger` already
+-- held the real 33 rows of ledger data, correctly on the new enum types,
+-- while `tenant_advance_ledger` survived as an empty (0-row), orphaned
+-- leftover still on the old types — the only thing left referencing them,
+-- confirmed via information_schema before dropping. Explicitly dropping it
+-- here (rather than a blanket CASCADE on the enum DROPs, which could
+-- silently take out something unexpected) makes this migration converge to
+-- the same end state whether it's renaming a still-old-named table or
+-- cleaning up after that rename already happened by hand.
+DROP TABLE IF EXISTS "tenant_advance_ledger";
 DROP TYPE IF EXISTS "AdvanceLedgerType";
 DROP TYPE IF EXISTS "AdvanceLedgerReason";
 
@@ -57,14 +70,21 @@ EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
 -- 7. Update old string references in database
+-- Original SQL referenced "paymentAttempt" (camelCase, matching neither this
+-- table's actual name nor this codebase's snake_case convention) — the real
+-- table is "payment_attempts", confirmed live 2026-08-15 while resolving a
+-- stuck `migrate deploy`.
 UPDATE "rent_obligations" SET "obligation_type" = 'SECURITY_DEPOSIT' WHERE "obligation_type" = 'ADVANCE';
 
-UPDATE "paymentAttempt" SET "flow_type" = 'FUTURE_RENT_CREDIT' WHERE "flow_type" = 'ADVANCE';
-UPDATE "paymentAttempt" SET "flow_type" = 'SECURITY_DEPOSIT' WHERE "flow_type" = 'DEPOSIT';
-UPDATE "paymentAttempt" SET "payment_type" = 'FUTURE_RENT_CREDIT' WHERE "payment_type" = 'ADVANCE';
-UPDATE "paymentAttempt" SET "payment_type" = 'SECURITY_DEPOSIT' WHERE "payment_type" = 'DEPOSIT';
+UPDATE "payment_attempts" SET "flow_type" = 'FUTURE_RENT_CREDIT' WHERE "flow_type" = 'ADVANCE';
+UPDATE "payment_attempts" SET "flow_type" = 'SECURITY_DEPOSIT' WHERE "flow_type" = 'DEPOSIT';
+UPDATE "payment_attempts" SET "payment_type" = 'FUTURE_RENT_CREDIT' WHERE "payment_type" = 'ADVANCE';
+UPDATE "payment_attempts" SET "payment_type" = 'SECURITY_DEPOSIT' WHERE "payment_type" = 'DEPOSIT';
 
-UPDATE "payments" SET "flow_type" = 'FUTURE_RENT_CREDIT' WHERE "flow_type" = 'ADVANCE';
-UPDATE "payments" SET "flow_type" = 'SECURITY_DEPOSIT' WHERE "flow_type" = 'DEPOSIT';
-UPDATE "payments" SET "payment_type" = 'FUTURE_RENT_CREDIT' WHERE "payment_type" = 'ADVANCE';
-UPDATE "payments" SET "payment_type" = 'SECURITY_DEPOSIT' WHERE "payment_type" = 'DEPOSIT';
+-- The original SQL here also targeted "payments" with these same four
+-- UPDATEs, but "payments" never has (and, per the current schema.prisma
+-- model, never had) flow_type/payment_type columns — confirmed live
+-- 2026-08-15 while resolving a stuck `migrate deploy`. That classification
+-- lives on "payment_attempts" (already updated above) and
+-- "rent_obligations.obligation_type" (already updated above); removed as
+-- dead statements rather than left to fail every future deploy attempt.

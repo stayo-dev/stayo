@@ -24,6 +24,8 @@ export interface SupabaseSessionContext {
   provider: string | null;
   ipAddress?: string;
   userAgent?: string;
+  /** Google's display name, if any — only read by supabase-provision.ts. */
+  name?: string;
 }
 
 export type ResolveResult =

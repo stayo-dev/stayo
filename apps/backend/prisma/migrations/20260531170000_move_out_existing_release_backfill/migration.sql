@@ -52,16 +52,23 @@ WITH due_move_outs AS (
     AND room_release_date IS NOT NULL
     AND COALESCE(physical_exit_date, actual_exit_date, planned_exit_date)::date <= CURRENT_DATE
 )
+-- 'LEFT' was this enum's original name for this status; the live database's
+-- TenantStatus enum already has it as 'FORMER_TENANT' (renamed outside the
+-- tracked Prisma migration history, before this backfill was ever applied —
+-- confirmed live 2026-08-15 while resolving a stuck `migrate deploy`). This
+-- backfill never ran against any database where 'LEFT' was still the
+-- current name, so updating the literal here matches what actually exists
+-- rather than rewriting real history.
 UPDATE tenants t
 SET
-  status = 'LEFT',
+  status = 'FORMER_TENANT',
   exit_date = COALESCE(t.exit_date, d.release_date),
   exit_reason = COALESCE(t.exit_reason, d.reason),
   exit_notes = COALESCE(t.exit_notes, d.reason_text),
   updated_at = NOW()
 FROM due_move_outs d
 WHERE t.id = d.tenant_id
-  AND t.status <> 'LEFT';
+  AND t.status <> 'FORMER_TENANT';
 
 UPDATE rent_obligations ro
 SET

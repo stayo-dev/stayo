@@ -67,7 +67,9 @@ export async function GET(req: NextRequest) {
         name: true,
         role: true,
         owner_id: true,
-        is_profile_completed: true
+        is_profile_completed: true,
+        phone: true,
+        phone_verified: true,
       }
     });
 
@@ -109,6 +111,7 @@ export async function GET(req: NextRequest) {
         // treated a complete profile as incomplete and bounced them to
         // /complete-profile on reload. See Bugs.md.
         extra.is_profile_completed = profile.is_profile_completed;
+        extra.tenant_status = null;
       }
     } else {
       extra.is_profile_completed = profile.is_profile_completed;
@@ -124,6 +127,8 @@ export async function GET(req: NextRequest) {
       is_admin: profile.role === "ADMIN",
       is_owner: profile.role === "OWNER",
       is_tenant: profile.role === "TENANT",
+      phone: profile.phone,
+      phone_verified: profile.phone_verified,
       ...extra
     });
     // Deliberately NOT rotating the CSRF token here. `/auth/me` is a GET that

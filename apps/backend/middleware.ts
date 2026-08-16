@@ -57,6 +57,7 @@ const PUBLIC_CSRF_ROUTES = [
 const IDENTITY_HEADERS = [
   "x-user-id", "x-user-role", "x-user-email", "x-owner-id", "x-tenant-id", "x-session-id",
   "x-auth-mode", "x-auth-user-id", "x-auth-email", "x-auth-session-id", "x-auth-provider", "x-auth-issued-at",
+  "x-auth-name",
 ];
 
 function stripIdentityHeaders(headers: Headers) {
@@ -190,6 +191,12 @@ export async function middleware(req: NextRequest) {
     requestHeaders.set("x-auth-email", supabaseClaims.email || "");
     if (supabaseClaims.session_id) requestHeaders.set("x-auth-session-id", supabaseClaims.session_id);
     requestHeaders.set("x-auth-provider", supabaseClaims.app_metadata?.provider || "email");
+    // Google's display name — only ever read by the new-account provisioning
+    // path (a brand-new profile needs a `name`, which is NOT NULL and has no
+    // other source at that point); every other consumer of these headers
+    // ignores it.
+    const displayName = supabaseClaims.user_metadata?.full_name || supabaseClaims.user_metadata?.name;
+    if (displayName) requestHeaders.set("x-auth-name", displayName);
     if (supabaseClaims.iat) requestHeaders.set("x-auth-issued-at", String(supabaseClaims.iat));
     sid = supabaseClaims.session_id || null;
     revocationSubject = supabaseClaims.sub;

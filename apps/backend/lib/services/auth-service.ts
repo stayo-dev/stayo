@@ -128,6 +128,7 @@ export class AuthService {
 
     let tenantId = null;
     let tenantProfileCompleted = null;
+    let tenantStatus: string | null = null;
 
     if (profile.role === "TENANT") {
       const tenant = await prisma.tenants.findFirst({
@@ -141,13 +142,14 @@ export class AuthService {
       if (tenant) {
         tenantId = tenant.id;
         tenantProfileCompleted = tenant.profile_completed;
+        tenantStatus = tenant.status;
         if (tenant.status === "INVITED") {
           throw new Error("FORBIDDEN: Account not activated. Please check your email.");
         }
       }
     }
 
-    return this.createSessionAndTokens(profile, tenantId, tenantProfileCompleted, meta, password);
+    return this.createSessionAndTokens(profile, tenantId, tenantProfileCompleted, meta, password, tenantStatus);
   }
 
   /**
@@ -164,7 +166,8 @@ export class AuthService {
     tenantId: string | null,
     tenantProfileCompleted: boolean | null,
     meta: AuthSessionMeta = {},
-    plaintextPassword?: string
+    plaintextPassword?: string,
+    tenantStatus: string | null = null
   ) {
     let effectiveOwnerId = profile.owner_id;
     if (profile.role === "OWNER" && (!effectiveOwnerId || effectiveOwnerId.trim() === "")) {
@@ -202,6 +205,7 @@ export class AuthService {
       owner_id: effectiveOwnerId || null,
       tenant_id: tenantId,
       is_profile_completed: tenantId ? tenantProfileCompleted : profile.is_profile_completed,
+      tenant_status: tenantStatus,
     };
   }
 
@@ -249,7 +253,7 @@ export class AuthService {
       throw new Error("FORBIDDEN: Account is not active");
     }
 
-    const result = await this.createSessionAndTokens(profile, tenant.id, tenant.profile_completed, meta, password);
+    const result = await this.createSessionAndTokens(profile, tenant.id, tenant.profile_completed, meta, password, tenant.status);
     return {
       ...result,
       password_reset_required: profile.password_reset_required,

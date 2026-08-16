@@ -2,9 +2,21 @@
 -- Additive only; no existing tables modified.
 -- See docs/business-logic/business-recovery-platform-architecture.md
 
-CREATE TYPE "RecoveryTier" AS ENUM ('OPERATIONAL_UNDO', 'FINANCIAL_CORRECTION', 'ADMINISTRATIVE_REVERSAL');
-CREATE TYPE "CorrectionDomain" AS ENUM ('PAYMENTS', 'ROOMS', 'AGREEMENTS', 'EXPENSES', 'ADMISSIONS', 'RENEWALS', 'SETTINGS', 'DOCUMENTS', 'KYC', 'RESERVATIONS');
-CREATE TYPE "CaseStatus" AS ENUM ('DRAFT', 'PREVIEW', 'VALIDATED', 'EXECUTING', 'COMPLETED', 'FAILED', 'EXPIRED', 'CANCELLED');
+-- Made idempotent 2026-08-15 while resolving a stuck `migrate deploy`: this
+-- database already had these three enums (values confirmed matching
+-- exactly against information_schema before editing).
+DO $$ BEGIN
+  CREATE TYPE "RecoveryTier" AS ENUM ('OPERATIONAL_UNDO', 'FINANCIAL_CORRECTION', 'ADMINISTRATIVE_REVERSAL');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  CREATE TYPE "CorrectionDomain" AS ENUM ('PAYMENTS', 'ROOMS', 'AGREEMENTS', 'EXPENSES', 'ADMISSIONS', 'RENEWALS', 'SETTINGS', 'DOCUMENTS', 'KYC', 'RESERVATIONS');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  CREATE TYPE "CaseStatus" AS ENUM ('DRAFT', 'PREVIEW', 'VALIDATED', 'EXECUTING', 'COMPLETED', 'FAILED', 'EXPIRED', 'CANCELLED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS "correction_cases" (
   "id" UUID NOT NULL DEFAULT gen_random_uuid(),
