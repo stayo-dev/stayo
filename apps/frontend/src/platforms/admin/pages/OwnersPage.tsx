@@ -19,8 +19,8 @@ const COLUMNS: DataColumn[] = [
 ];
 
 export function OwnersPage() {
-  const [search, setSearch] = useState('');
   const [params, setParams] = useSearchParams();
+  const search = params.get('search') ?? '';
   const detail = parseDetailParam(params.get('detail'));
 
   const owners = useQuery({
@@ -52,8 +52,13 @@ export function OwnersPage() {
           <Search className="h-4 w-4 flex-none text-[#988D82]" />
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search an owner by name, email or phone…"
+            onChange={(e) => {
+              const next = new URLSearchParams(params);
+              if (e.target.value) next.set('search', e.target.value);
+              else next.delete('search');
+              setParams(next, { replace: true });
+            }}
+            placeholder="Search by owner, phone, email, hostel or city…"
             className="w-full min-w-0 border-none bg-transparent text-[13px] text-[#2A2521] outline-none"
           />
         </div>

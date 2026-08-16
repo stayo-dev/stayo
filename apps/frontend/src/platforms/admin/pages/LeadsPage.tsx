@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Search } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { platformAdminService } from '@features/platform-admin/api';
@@ -46,11 +47,14 @@ export function LeadsPage() {
   const fireToast = useToast();
   const [lostFor, setLostFor] = useState<string | null>(null);
 
+  const search = params.get('search') ?? '';
+
   const leads = useQuery({
-    queryKey: ['admin', 'leads', stage],
+    queryKey: ['admin', 'leads', stage, search],
     queryFn: () =>
       platformAdminService.getLeads({
         status: stage === 'all' ? undefined : stage,
+        search: search || undefined,
         limit: 100,
       }),
     staleTime: 30_000,
@@ -146,11 +150,22 @@ export function LeadsPage() {
             ))}
           </div>
 
-          <FilterChips
-            chips={stageChips(counts)}
-            active={stage}
-            onChange={(k) => setParam('stage', k === 'all' ? null : k)}
-          />
+          <div className="flex flex-wrap items-center gap-3">
+            <FilterChips
+              chips={stageChips(counts)}
+              active={stage}
+              onChange={(k) => setParam('stage', k === 'all' ? null : k)}
+            />
+            <div className="flex min-w-[240px] flex-1 items-center gap-2 rounded-xl border border-[#EAE1D8] bg-white px-3.5 py-2 sm:max-w-[320px]">
+              <Search className="h-3.5 w-3.5 flex-none text-[#988D82]" />
+              <input
+                value={search}
+                onChange={(e) => setParam('search', e.target.value || null)}
+                placeholder="Search by name, hostel, city or phone…"
+                className="w-full min-w-0 border-none bg-transparent text-[12.5px] text-[#2A2521] outline-none"
+              />
+            </div>
+          </div>
 
           {leads.isLoading ? (
             <div className="py-16 text-center text-[13px] text-[#8A7F75]">Loading leads…</div>

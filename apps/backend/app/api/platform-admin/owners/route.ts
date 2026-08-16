@@ -45,10 +45,15 @@ export async function GET(req: NextRequest) {
       role: "OWNER" as const,
       ...(search
         ? {
+            // City is matched through the owner's hostels: an admin searching
+            // "Hyderabad" wants the owners operating there, and an owner's own
+            // profile carries no city.
             OR: [
               { name: { contains: search, mode: "insensitive" as const } },
               { email: { contains: search, mode: "insensitive" as const } },
               { phone: { contains: search, mode: "insensitive" as const } },
+              { hostels: { some: { city: { contains: search, mode: "insensitive" as const } } } },
+              { hostels: { some: { name: { contains: search, mode: "insensitive" as const } } } },
             ],
           }
         : {}),

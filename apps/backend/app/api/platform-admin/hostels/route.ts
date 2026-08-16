@@ -30,9 +30,18 @@ export async function GET(req: NextRequest) {
       where: {
         ...(search
           ? {
+              // An admin searching "Shiva" or a phone number is looking for
+              // that person's hostels, not for a hostel called Shiva — so the
+              // owner relation is searched too. Address is included because
+              // locality names ("Koramangala") live there, not in `city`.
               OR: [
                 { name: { contains: search, mode: "insensitive" } },
                 { city: { contains: search, mode: "insensitive" } },
+                { address: { contains: search, mode: "insensitive" } },
+                { phone: { contains: search } },
+                { profiles: { name: { contains: search, mode: "insensitive" } } },
+                { profiles: { phone: { contains: search } } },
+                { profiles: { email: { contains: search, mode: "insensitive" } } },
               ],
             }
           : {}),

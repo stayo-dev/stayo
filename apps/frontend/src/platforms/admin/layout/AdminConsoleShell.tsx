@@ -36,6 +36,7 @@ export function AdminConsoleShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const [notifOpen, setNotifOpen] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState('');
   const { toast, fire } = useAdminToast();
   const header = headerFor(location.pathname);
 
@@ -173,8 +174,19 @@ export function AdminConsoleShell() {
 
               <div className="hidden w-[300px] items-center gap-2 rounded-[11px] border border-[#EAE1D8] bg-white px-3 py-[9px] min-[1100px]:flex">
                 <Search className="h-3.5 w-3.5 flex-none text-[#988D82]" />
+                {/* Routes to Owners, whose search spans owner name/email/phone
+                    plus the city and name of any hostel they run — so one box
+                    answers "who is this" and "where is this". */}
                 <input
-                  placeholder="Search owners, hostels, leads…"
+                  value={globalSearch}
+                  onChange={(e) => setGlobalSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return;
+                    const q = globalSearch.trim();
+                    if (!q) return;
+                    navigate(`/admin/owners?search=${encodeURIComponent(q)}`);
+                  }}
+                  placeholder="Search owners, hostels, cities…"
                   className="w-full min-w-0 border-none bg-transparent text-[12.5px] text-[#2A2521] outline-none"
                 />
               </div>
