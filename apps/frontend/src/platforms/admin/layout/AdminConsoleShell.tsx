@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Search, Bell, Calendar } from 'lucide-react';
+import { Search, Bell, Calendar, LogOut } from 'lucide-react';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
+import { useAuth } from '@context/AuthContext';
 import { useAdminSession } from '@features/admin-session/useAdminSession';
 import { platformAdminService } from '@features/platform-admin/api';
 import { ACTIONABLE_STATUSES } from '@/platforms/admin/leads/leadQueue';
@@ -31,6 +32,7 @@ const BADGE_BG: Record<string, string> = {
  */
 export function AdminConsoleShell() {
   const session = useAdminSession();
+  const { logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [notifOpen, setNotifOpen] = useState(false);
@@ -138,6 +140,17 @@ export function AdminConsoleShell() {
                 </div>
                 <span className="h-[7px] w-[7px] flex-none rounded-full bg-[#4FA97C]" />
               </div>
+              {/* The console's only sign-out control. It lived on the old
+                  "More" page, which this rebuild removed — without this the
+                  admin has no way out. Covered by logoutIntegrity.test.ts. */}
+              <button
+                type="button"
+                onClick={() => logout()}
+                className="mt-1.5 flex w-full items-center gap-[11px] rounded-xl px-2.5 py-2 text-[12.5px] font-semibold text-[#A79C90] transition-colors hover:bg-white/[.06] hover:text-[#EDE6DE]"
+              >
+                <LogOut className="h-4 w-4 flex-none" strokeWidth={1.7} />
+                Sign out
+              </button>
             </div>
           </aside>
 

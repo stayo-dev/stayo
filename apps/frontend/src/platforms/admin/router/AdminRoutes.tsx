@@ -1,47 +1,59 @@
 import { lazy } from 'react';
-import { Route } from 'react-router-dom';
+import { Navigate, Route } from 'react-router-dom';
 
-const AdminAppShell = lazy(() => import('@/app/layouts/AdminAppShell').then((m) => ({ default: m.AdminAppShell })));
+const AdminConsoleShell = lazy(() =>
+  import('../layout/AdminConsoleShell').then((m) => ({ default: m.AdminConsoleShell })),
+);
 const AdminProviderShell = lazy(() =>
   import('./AdminProviderShell').then((m) => ({ default: m.AdminProviderShell })),
 );
-const AdminHostelsPage = lazy(() => import('../pages/AdminHostelsPage').then((m) => ({ default: m.AdminHostelsPage })));
-const AdminOwnersPage = lazy(() => import('../pages/AdminOwnersPage').then((m) => ({ default: m.AdminOwnersPage })));
-const AdminLeadsPage = lazy(() => import('../pages/AdminLeadsPage').then((m) => ({ default: m.AdminLeadsPage })));
-const AdminMarketingReviewsPage = lazy(() =>
-  import('@/platforms/admin/pages/AdminMarketingReviewsPage').then((m) => ({ default: m.AdminMarketingReviewsPage })),
-);
-const AdminDocumentsPage = lazy(() => import('../pages/AdminDocumentsPage').then((m) => ({ default: m.AdminDocumentsPage })));
-const AdminRevenuePage = lazy(() => import('../pages/AdminRevenuePage').then((m) => ({ default: m.AdminRevenuePage })));
-const AdminDashboardPage = lazy(() => import('../pages/AdminDashboardPage').then((m) => ({ default: m.AdminDashboardPage })));
-const AdminMorePage = lazy(() => import('../pages/AdminMorePage').then((m) => ({ default: m.AdminMorePage })));
-const AdminSettingsPage = lazy(() => import('../pages/AdminSettingsPage').then((m) => ({ default: m.AdminSettingsPage })));
+
+const OverviewPage = lazy(() => import('../pages/OverviewPage').then((m) => ({ default: m.OverviewPage })));
+const LeadsPage = lazy(() => import('../pages/LeadsPage').then((m) => ({ default: m.LeadsPage })));
+const OwnersPage = lazy(() => import('../pages/OwnersPage').then((m) => ({ default: m.OwnersPage })));
+const KycPage = lazy(() => import('../pages/KycPage').then((m) => ({ default: m.KycPage })));
+const ListingsPage = lazy(() => import('../pages/ListingsPage').then((m) => ({ default: m.ListingsPage })));
+const RevenuePage = lazy(() => import('../pages/RevenuePage').then((m) => ({ default: m.RevenuePage })));
+const SettlementsPage = lazy(() => import('../pages/SettlementsPage').then((m) => ({ default: m.SettlementsPage })));
+const SubscriptionsPage = lazy(() => import('../pages/SubscriptionsPage').then((m) => ({ default: m.SubscriptionsPage })));
+const ReportsPage = lazy(() => import('../pages/ReportsPage').then((m) => ({ default: m.ReportsPage })));
+const BroadcastsPage = lazy(() => import('../pages/BroadcastsPage').then((m) => ({ default: m.BroadcastsPage })));
+const SettingsPage = lazy(() => import('../pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 
 /**
- * StayO Platform Admin console route tree, per `Stayo Admin Dashboard/Stayo
- * Admin.dc.html` — a desktop sidebar console (Dashboard/Hostels/Leads/
- * Revenue/More/Settings), gated by `RequireAdminSession` (a real `ADMIN`-role
- * session — see docs/obsidian/Decisions.md ADR-030 for why this persona
- * exists at all). All screens real as of 2026-07-26.
+ * StayO Platform Admin console route tree, per `Stayo Admin.dc.html`
+ * (2026-08-16 rebuild). A desktop sidebar console gated by
+ * `RequireAdminSession` — a real `ADMIN`-role session, see
+ * docs/obsidian/Decisions.md ADR-030 for why this persona exists.
+ *
+ * Settlements and Reports & Bugs deliberately render honest empty states:
+ * their backends are not yet designed. See the spec at
+ * docs/superpowers/specs/2026-08-16-admin-console-rebuild-design.md.
  */
 export function AdminRoutes() {
   return (
     <Route element={<AdminProviderShell />}>
-      <Route element={<AdminAppShell />}>
-        <Route path="/admin" element={<AdminDashboardPage />} />
-        {/* Owners is the primary list; a hostel is a child of an owner.
-            Hostels stays routable so owner cards can deep-link into it. */}
-        <Route path="/admin/owners" element={<AdminOwnersPage />} />
-        <Route path="/admin/hostels" element={<AdminHostelsPage />} />
-        <Route path="/admin/leads" element={<AdminLeadsPage />} />
-        {/* Listing content waiting on a human — see ADR-076. Separate from
-            /admin/hostels, which gates whether a hostel is discoverable at
-            all; a listing needs both. */}
-        <Route path="/admin/marketing-reviews" element={<AdminMarketingReviewsPage />} />
-        <Route path="/admin/documents" element={<AdminDocumentsPage />} />
-        <Route path="/admin/revenue" element={<AdminRevenuePage />} />
-        <Route path="/admin/more" element={<AdminMorePage />} />
-        <Route path="/admin/settings" element={<AdminSettingsPage />} />
+      <Route element={<AdminConsoleShell />}>
+        <Route path="/admin" element={<OverviewPage />} />
+        <Route path="/admin/leads" element={<LeadsPage />} />
+        <Route path="/admin/owners" element={<OwnersPage />} />
+        {/* Listing approval gates whether a hostel is discoverable; the
+            marketing-content review (ADR-076) is a tab inside it rather than
+            a separate destination — a listing needs both to go live. */}
+        <Route path="/admin/kyc" element={<KycPage />} />
+        <Route path="/admin/listings" element={<ListingsPage />} />
+        <Route path="/admin/revenue" element={<RevenuePage />} />
+        <Route path="/admin/settlements" element={<SettlementsPage />} />
+        <Route path="/admin/subscriptions" element={<SubscriptionsPage />} />
+        <Route path="/admin/reports" element={<ReportsPage />} />
+        <Route path="/admin/broadcasts" element={<BroadcastsPage />} />
+        <Route path="/admin/settings" element={<SettingsPage />} />
+
+        {/* Old paths, kept so existing links and bookmarks do not rot. */}
+        <Route path="/admin/documents" element={<Navigate to="/admin/kyc" replace />} />
+        <Route path="/admin/hostels" element={<Navigate to="/admin/listings" replace />} />
+        <Route path="/admin/marketing-reviews" element={<Navigate to="/admin/listings?tab=content" replace />} />
+        <Route path="/admin/more" element={<Navigate to="/admin/settings" replace />} />
       </Route>
     </Route>
   );
