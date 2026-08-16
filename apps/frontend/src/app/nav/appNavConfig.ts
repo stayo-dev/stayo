@@ -21,7 +21,7 @@ export const EXPLORE_PROFILE_TABS: AppNavTab[] = [
 ];
 
 /**
- * The single-level active-tenant nav — Room | Food | Home | Payments |
+ * The single-level active-tenant nav — Home | Room | Food | Payments |
  * Profile | Explore, all six in one primary bar. Supersedes the old
  * Explore/Dashboard/Profile outer bar + Home/Money/Room/Food/Complaints
  * inner strip split (ADR-078): there is no "Dashboard" item and no second
@@ -30,9 +30,9 @@ export const EXPLORE_PROFILE_TABS: AppNavTab[] = [
  * primary tab (see `TenantComplaintsPage`).
  */
 export const ACTIVE_TENANT_TABS: AppNavTab[] = [
+  { to: '/tenant/home', label: 'Home', Icon: Home, end: false },
   { to: '/tenant/room', label: 'Room', Icon: DoorOpen, end: false },
   { to: '/tenant/food', label: 'Food', Icon: UtensilsCrossed, end: false },
-  { to: '/tenant/home', label: 'Home', Icon: Home, end: false },
   { to: '/tenant/money', label: 'Payments', Icon: Wallet, end: false },
   { to: '/profile', label: 'Profile', Icon: User, end: false },
   { to: '/discover', label: 'Explore', Icon: Compass, end: true },
