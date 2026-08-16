@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Droplets, Wifi, Zap, Sparkles, Wrench, DoorOpen, KeyRound, UserPlus, BedDouble, ListChecks } from 'lucide-react';
+import { ChevronDown, ChevronRight, Droplets, Wifi, Zap, Sparkles, Wrench, DoorOpen, KeyRound, UserPlus, BedDouble, ListChecks, MessageSquareWarning } from 'lucide-react';
 import { useTenantRoom } from '@features/tenant-room/hooks/useTenantRoom';
 import { tenantRoomService, type ServiceRequestType } from '@features/tenant-room/api';
 import { useTenantProfile } from '@features/tenant-profile/hooks/useTenantProfile';
@@ -54,6 +55,7 @@ function LoadingSkeleton() {
 
 /** Tenant Room tab, per Stayo Tenant.dc.html. Drill-ins/forms use the shared overlay system (DetailScreen/FormPanel) rather than one-off screens — same architecture the design source itself uses. */
 export function TenantRoomPage() {
+  const navigate = useNavigate();
   const room = useTenantRoom();
   const profile = useTenantProfile();
   const overlay = useOverlayStack();
@@ -286,6 +288,21 @@ export function TenantRoomPage() {
             ))}
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={() => navigate('/tenant/complaints')}
+          className={`${card} flex items-center gap-3 px-4 py-3.5 text-left`}
+        >
+          <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] bg-secondary text-primary">
+            <MessageSquareWarning className="h-4.5 w-4.5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13px] font-semibold text-[#2A2521]">Complaints</span>
+            <span className="block text-[11px] text-muted-foreground">Raise a ticket, report a bug, or track what's open</span>
+          </span>
+          <ChevronRight className="h-4 w-4 flex-none text-[#C9BFB4]" />
+        </button>
 
         {room.houseRules.length > 0 && (
           <div className="flex flex-col gap-2.5">

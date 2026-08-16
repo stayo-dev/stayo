@@ -56,6 +56,11 @@ export function AdminConsoleShell() {
     queryFn: () => platformAdminService.getHostels({ verification: 'PENDING' }),
     ...poll,
   });
+  const openTickets = useQuery({
+    queryKey: ['admin', 'support-tickets', 'OPEN'],
+    queryFn: () => platformAdminService.getSupportTickets('OPEN'),
+    ...poll,
+  });
   const notifications = useQuery({
     queryKey: ['admin', 'notifications'],
     queryFn: () => platformAdminService.getNotifications(),
@@ -74,6 +79,7 @@ export function AdminConsoleShell() {
     leads: actionableLeads,
     kyc: pendingKycOwners,
     listings: pendingHostels.data?.length ?? 0,
+    reports: openTickets.data?.length ?? 0,
   });
 
   return (

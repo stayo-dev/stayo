@@ -54,6 +54,10 @@ export function AdminRoutes() {
         <Route path="/admin/hostels" element={<Navigate to="/admin/listings" replace />} />
         <Route path="/admin/marketing-reviews" element={<Navigate to="/admin/listings?tab=content" replace />} />
         <Route path="/admin/more" element={<Navigate to="/admin/settings" replace />} />
+        {/* Support tickets landed on main while this console was being rebuilt.
+            They are exactly what the design's Reports & Bugs section is for, so
+            that screen now serves them and the old path redirects here. */}
+        <Route path="/admin/support-tickets" element={<Navigate to="/admin/reports" replace />} />
       </Route>
     </Route>
   );

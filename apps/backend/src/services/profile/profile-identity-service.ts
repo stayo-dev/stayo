@@ -61,6 +61,19 @@ const CORE_FIELDS: IdentityField[] = [
   "guardian_phone",
 ];
 
+/** Optional fields relevant to everyone, regardless of student/professional. */
+const GENERAL_OPTIONAL_FIELDS: IdentityField[] = [
+  "nationality",
+  "pan_number",
+  "photo_url",
+  "personal_email",
+  "guardian_relation",
+  "profile_type",
+];
+
+const ACADEMIC_FIELDS: IdentityField[] = ["college_name", "roll_number", "course", "year_of_study", "branch", "section"];
+const PROFESSIONAL_FIELDS: IdentityField[] = ["office_name", "office_location", "job_role"];
+
 function isBlank(value: unknown): boolean {
   return value === null || value === undefined || (typeof value === "string" && value.trim() === "");
 }
@@ -138,11 +151,32 @@ export class ProfileIdentityService {
 
     const missingCore = CORE_FIELDS.filter((field) => isBlank(merged[field]));
 
+    /**
+     * A single numeric completion percentage — the canonical source other
+     * surfaces (the Explore/Profile nudge, the Dashboard nudge card) both
+     * read instead of each computing their own (three different ad hoc
+     * versions existed before this). Denominator is profile-type-aware:
+     * core fields + general-optional fields + whichever of
+     * academic/professional actually applies — not all 20 `IDENTITY_FIELDS`
+     * naively, which would cap a working professional under 100% for never
+     * having `college_name` (and vice versa for a student).
+     */
+    const profileType = merged.profile_type === "WORKING_PROFESSIONAL" ? "WORKING_PROFESSIONAL" : "STUDENT";
+    const relevantFields: IdentityField[] = [
+      ...CORE_FIELDS,
+      ...GENERAL_OPTIONAL_FIELDS,
+      ...(profileType === "WORKING_PROFESSIONAL" ? PROFESSIONAL_FIELDS : ACADEMIC_FIELDS),
+    ];
+    const filledCount = relevantFields.filter((field) => !isBlank(merged[field])).length;
+    const completionPercent = Math.round((filledCount / relevantFields.length) * 100);
+
     return {
       ...merged,
       /** True once every CORE_FIELD is present — what onboarding checks. */
       is_complete: missingCore.length === 0,
       missing_core_fields: missingCore,
+      /** 0-100, profile-type-aware — see comment above. */
+      completion_percent: completionPercent,
       /**
        * Fields still being read off a tenancy because the backfill has not run
        * for this person. Surfaced rather than hidden so the transition's end is

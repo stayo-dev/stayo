@@ -28,6 +28,18 @@ export const authApi = {
   },
 
   /**
+   * `name`/`phone` live on `profile` directly (account-level), distinct from
+   * `profile_identity`'s portable fields. Used to save/confirm a phone
+   * number before sending an OTP to it — e.g. at enquiry time for a
+   * Google-signed-up account, which has no phone on file yet. Changing the
+   * phone re-arms `phone_verified` server-side.
+   */
+  updateBasicProfile: async (patch: { name?: string; phone?: string }) => {
+    const response = await api.patch('/profile', patch);
+    return response.data.profile as { id: string; name: string; phone: string | null; phone_verified: boolean; email: string; role: string };
+  },
+
+  /**
    * Password recovery. `delivery_degraded` reports that this deployment
    * cannot actually send email (no provider key, or the provider's sandbox
    * sender, which only reaches the account owner) — it is derived from

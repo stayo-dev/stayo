@@ -1,8 +1,15 @@
 import { Suspense } from 'react';
 import { Outlet } from 'react-router-dom';
 import { ProtectedTenantRoute } from '@/app/components/ProtectedTenantRoute';
-import { ProtectedAppProviders } from '@/app/providers/ProtectedAppProviders';
 
+/**
+ * Page-level loading skeleton only — not the full-screen branding/loading
+ * screen. `QueryClientProvider`/`AuthProvider`/`AppShell` now live once,
+ * shared with Explore/Profile, above this in `SeekerAppShell`
+ * (`app/providers/SeekerAppShell.tsx`) — this component is just
+ * `ProtectedTenantRoute`'s tenancy-liveness gate plus a lightweight
+ * placeholder while an individual tenant page's own lazy chunk loads.
+ */
 function TenantRouteFallback() {
   return (
     <div className="min-h-screen bg-background px-4 py-5">
@@ -17,12 +24,10 @@ function TenantRouteFallback() {
 
 export function TenantProviderShell() {
   return (
-    <ProtectedAppProviders>
-      <ProtectedTenantRoute>
-        <Suspense fallback={<TenantRouteFallback />}>
-          <Outlet />
-        </Suspense>
-      </ProtectedTenantRoute>
-    </ProtectedAppProviders>
+    <ProtectedTenantRoute>
+      <Suspense fallback={<TenantRouteFallback />}>
+        <Outlet />
+      </Suspense>
+    </ProtectedTenantRoute>
   );
 }

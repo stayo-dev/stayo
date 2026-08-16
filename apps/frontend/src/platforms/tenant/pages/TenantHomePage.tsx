@@ -6,6 +6,7 @@ import { useTenantHome } from '@features/tenant-home/hooks/useTenantHome';
 import { useTenantFinancials } from '@features/tenant-financials/hooks/useTenantFinancials';
 import { PaySheet } from '@features/tenant-financials/components/PaySheet';
 import { mealIcon } from '@features/owner-food/mealIcons';
+import { ProfileCompletionNudge } from '../components/ProfileCompletionNudge';
 
 const card = 'rounded-[16px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_4px_14px_rgba(40,30,20,0.05)]';
 const sectionLabel = 'text-[13px] font-bold uppercase tracking-wide text-muted-foreground';
@@ -84,6 +85,7 @@ export function TenantHomePage() {
       </div>
 
       <div className="flex flex-col gap-6 px-4 sm:px-6">
+      <ProfileCompletionNudge />
       {fin.amountDue > 0 && (
         <div className={`${card} p-[18px]`}>
           <div className="flex items-center gap-2">

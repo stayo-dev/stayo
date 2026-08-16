@@ -1,88 +1,16 @@
 import type { ReactNode } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
-import { ClipboardList, Compass, Heart, User } from 'lucide-react';
+import { Heart } from 'lucide-react';
 
-import { C, FONT, GRID_GROUND } from '../discoverTheme';
-
-const TABS = [
-  { to: '/discover', label: 'Explore', Icon: Compass, end: true },
-  { to: '/discover/saved', label: 'Saved', Icon: Heart, end: false },
-  { to: '/discover/enquiries', label: 'Enquiries', Icon: ClipboardList, end: false },
-  { to: '/discover/profile', label: 'Profile', Icon: User, end: false },
-] as const;
+import { C, FONT } from '../discoverTheme';
 
 /**
- * Routes that own the whole viewport — listing detail, the enquiry flow — and
- * therefore hide the tab bar. They are pushed *onto* a tab rather than being
- * tabs themselves, so leaving the bar visible would offer a lateral jump out
- * of a half-finished form.
+ * `DiscoverShell` (the nav-owning wrapper) was retired when the app-wide
+ * `AppShell`/`AppBottomNav` (see `app/layouts/AppShell.tsx`) took over its
+ * job — Explore/Saved/Enquiries/Profile collapsed into the shared
+ * Explore/Dashboard/Profile outer nav, so a Discover-only shell no longer
+ * makes sense. These presentational helpers stay: they're used throughout
+ * `app/pages/discover/*` independent of which shell renders around them.
  */
-function hidesTabBar(pathname: string): boolean {
-  return (
-    /^\/discover\/(h|search)\b/.test(pathname) ||
-    /^\/discover\/enquiries\/[^/]+$/.test(pathname) ||
-    /^\/discover\/profile\/[^/]+$/.test(pathname)
-  );
-}
-
-export function DiscoverShell({ children }: { children: ReactNode }) {
-  const { pathname } = useLocation();
-  const showTabs = !hidesTabBar(pathname);
-
-  return (
-    <div
-      className="flex min-h-[100dvh] flex-col antialiased"
-      // The graph-paper ground every Stayo surface stands on — the same
-      // `#EBDCCF` 1px / 52px grid as `OwnerAppShell`, `TenantAppShell` and
-      // `HostelDrilldownLayout`. `GRID_GROUND` had been defined in
-      // `discoverTheme.ts` since Discover was built but never actually applied,
-      // so this was the one product surface rendering on flat cream.
-      style={{ ...GRID_GROUND, fontFamily: FONT.body }}
-    >
-      <div className="flex-1 pb-[env(safe-area-inset-bottom)]">{children}</div>
-
-      {showTabs && (
-        <nav
-          aria-label="Discover"
-          className="sticky bottom-0 z-40 grid flex-none grid-cols-4 border-t px-1.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2.5"
-          style={{
-            borderColor: C.line,
-            background: C.cardWarm,
-            boxShadow: '0 -4px 16px rgba(40,30,20,.03)',
-          }}
-        >
-          {TABS.map(({ to, label, Icon, end }) => (
-            <NavLink key={to} to={to} end={end} className="flex flex-col items-center gap-1.5 py-1">
-              {({ isActive }) => (
-                <>
-                  <span
-                    className="flex h-[26px] w-11 items-center justify-center rounded-[13px] transition-colors"
-                    style={{ background: isActive ? 'rgba(180,106,85,.12)' : 'transparent' }}
-                  >
-                    <Icon
-                      className="h-[19px] w-[19px]"
-                      strokeWidth={1.8}
-                      style={{ color: isActive ? C.clay : C.textMuted }}
-                    />
-                  </span>
-                  <span
-                    className="text-[10.5px]"
-                    style={{
-                      color: isActive ? C.clay : C.textMuted,
-                      fontWeight: isActive ? 700 : 500,
-                    }}
-                  >
-                    {label}
-                  </span>
-                </>
-              )}
-            </NavLink>
-          ))}
-        </nav>
-      )}
-    </div>
-  );
-}
 
 /** Consistent empty state across Saved, Enquiries and a fruitless search. */
 export function DiscoverEmpty({

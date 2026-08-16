@@ -1,17 +1,16 @@
-import { lazy, Suspense, type ReactNode } from 'react';
+import { lazy, type ReactNode } from 'react';
 import { Navigate, Route, useNavigate } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
-import { StayoLoadingScreen } from '@shared/ui/brand';
+import { TenantProviderShell } from './TenantProviderShell';
 
 const TenantAppShell = lazy(() =>
   import('@/app/layouts/TenantAppShell').then((m) => ({ default: m.TenantAppShell })),
 );
-const TenantProviderShell = lazy(() => import('./TenantProviderShell').then((m) => ({ default: m.TenantProviderShell })));
 const TenantFoodPage = lazy(() => import('../pages/TenantFoodPage').then((m) => ({ default: m.TenantFoodPage })));
 const TenantHomePage = lazy(() => import('../pages/TenantHomePage').then((m) => ({ default: m.TenantHomePage })));
 const TenantMoneyPage = lazy(() => import('../pages/TenantMoneyPage').then((m) => ({ default: m.TenantMoneyPage })));
 const TenantRoomPage = lazy(() => import('../pages/TenantRoomPage').then((m) => ({ default: m.TenantRoomPage })));
-const TenantProfilePage = lazy(() => import('../pages/TenantProfilePage').then((m) => ({ default: m.TenantProfilePage })));
+const TenantComplaintsPage = lazy(() => import('../pages/TenantComplaintsPage').then((m) => ({ default: m.TenantComplaintsPage })));
 const TenantHelpPage = lazy(() => import('../pages/TenantHelpPage').then((m) => ({ default: m.TenantHelpPage })));
 const TenantProfilePortalPage = lazy(() =>
   import('@/portal/pages/TenantProfilePortalPage').then((m) => ({ default: m.TenantProfilePortalPage })),
@@ -23,18 +22,13 @@ const TenantPaymentReturnPage = lazy(() =>
 );
 
 /**
- * Cold entry into the tenant app — nothing is mounted yet, so there is no
- * layout to skeleton. Continues the boot splash's loading screen. Tab-to-tab
- * transitions use the layout skeleton in TenantProviderShell instead.
- */
-function TenantRouteFallback() {
-  return <StayoLoadingScreen />;
-}
-
-/**
  * Chrome for full-screen takeover sub-pages salvaged from the frozen
  * `src/portal` tree (no bottom nav, own back button) — matches the owner
  * side's Tenant Detail / Hostel Drilldown "outside the shell" convention.
+ * `AppBottomNav`'s `hidesOuterNav()` hides the shared outer nav for these
+ * paths (anything under `/tenant/*` that isn't one of the four tab pages),
+ * preserving that "no bottom nav" contract now that they're nested under
+ * the same shared `SeekerAppShell` as the tab pages.
  */
 function TenantSubPage({ title, backTo, children }: { title: string; backTo: string; children: ReactNode }) {
   const navigate = useNavigate();
@@ -51,24 +45,30 @@ function TenantSubPage({ title, backTo, children }: { title: string; backTo: str
   );
 }
 
-function TenantBoundary() {
-  return (
-    <Suspense fallback={<TenantRouteFallback />}>
-      <TenantProviderShell />
-    </Suspense>
-  );
-}
-
 /**
- * StayO tenant-app route tree, per Stayo Tenant.dc.html's flat IA (5 bottom
- * tabs, no drill-down, one modal type) — implemented as real routes instead
- * of client-only state. All 5 tabs are real as of 2026-07-26 (Home/Money/
- * Room/Food/Profile); Profile's sub-pages salvage real logic from the frozen
- * `src/portal` tree and the previously-orphaned `TenantRenewalPage`.
+ * StayO tenant-app route tree — flat IA, no drill-down beyond the Room
+ * overlay system, one modal type — implemented as real routes instead of
+ * client-only state. Tabs are Home/Payments/Food/Room, plus the app-wide
+ * shared Profile and Explore tabs mounted outside this tree (one single-
+ * level nav — see `ACTIVE_TENANT_TABS` in `appNavConfig.ts`; supersedes
+ * ADR-078's Explore/Dashboard/Profile outer bar + Home/Money/Room/Food/
+ * Complaints inner strip). Complaints is no longer a tab — `/tenant/
+ * complaints` renders as a full-screen takeover (own back button, no bottom
+ * nav) reached contextually from Room, same "outside the shell" pattern as
+ * `/tenant/move-out` below. The remaining sub-pages salvage real logic from
+ * the frozen `src/portal` tree and the previously-orphaned
+ * `TenantRenewalPage`.
+ *
+ * Every route here is nested under `TenantProviderShell` (the
+ * `ProtectedTenantRoute` tenancy-liveness gate — unchanged), which is itself
+ * nested under the shared `SeekerAppShell` alongside `DiscoverRoutes()` —
+ * there is no `AppShell`/provider instance of its own here anymore, so
+ * crossing in from Explore/Profile is a normal nested-route swap, not a
+ * remount.
  */
 export function TenantRoutes() {
   return (
-    <Route element={<TenantBoundary />}>
+    <Route element={<TenantProviderShell />}>
       <Route path="/payment-return" element={<TenantPaymentReturnPage />} />
       <Route element={<TenantAppShell />}>
         <Route path="/tenant" element={<Navigate to="/tenant/home" replace />} />
@@ -76,12 +76,12 @@ export function TenantRoutes() {
         <Route path="/tenant/money" element={<TenantMoneyPage />} />
         <Route path="/tenant/room" element={<TenantRoomPage />} />
         <Route path="/tenant/food" element={<TenantFoodPage />} />
-        <Route path="/tenant/profile" element={<TenantProfilePage />} />
       </Route>
+      <Route path="/tenant/complaints" element={<TenantComplaintsPage />} />
       <Route
         path="/tenant/profile/details"
         element={
-          <TenantSubPage title="Personal details" backTo="/tenant/profile">
+          <TenantSubPage title="Personal details" backTo="/profile">
             <TenantProfilePortalPage />
           </TenantSubPage>
         }
@@ -89,7 +89,7 @@ export function TenantRoutes() {
       <Route
         path="/tenant/move-out"
         element={
-          <TenantSubPage title="Move-out" backTo="/tenant/profile">
+          <TenantSubPage title="Move-out" backTo="/profile">
             <TenantMoveOutPage />
           </TenantSubPage>
         }
