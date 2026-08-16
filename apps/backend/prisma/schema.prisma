@@ -854,6 +854,10 @@ model profile {
   lead_notes                                                        lead_notes[]
   room_reservations                                                 room_reservations[]
   platform_admins                                                   platform_admins?
+  // Tenant/user → Stayo Admin app-problem reports (ADR-079). Deliberately
+  // independent of `tenant_service_requests`/`complaints` (tenant → owner) —
+  // no owner_id/hostel_id here, since this queue belongs to Stayo, not a hostel.
+  platform_support_tickets                                          platform_support_tickets[]
 
   @@index([email])
   @@index([name])
@@ -3420,6 +3424,31 @@ model owner_documents {
   profile profile @relation(fields: [profile_id], references: [id], onDelete: Cascade)
 
   @@unique([profile_id, doc_type, is_active])
+  @@index([profile_id])
+  @@index([status])
+}
+
+/// Tenant/user → Stayo Admin support tickets (ADR-079). Reports a problem
+/// with the Stayo app/website, not a hostel — deliberately has no owner_id
+/// or hostel_id and no relation to `tenants`/`tenant_service_requests`, which
+/// stay the tenant → owner/hostel complaint channel. Available to every
+/// signed-in profile regardless of role or tenancy.
+model platform_support_tickets {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id  String    @db.Uuid
+  category    String // APP_BUG | ACCOUNT_ISSUE | PAYMENT_ISSUE | OTHER
+  subject     String
+  description String
+  /// OPEN until a Stayo admin resolves it — never set by the reporter.
+  status      String    @default("OPEN")
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  resolved_at DateTime? @db.Timestamptz(6)
+  resolved_by String?   @db.Uuid
+  /// Admin's resolution note, shown back to the reporter.
+  admin_note  String?
+
+  profile profile @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+
   @@index([profile_id])
   @@index([status])
 }

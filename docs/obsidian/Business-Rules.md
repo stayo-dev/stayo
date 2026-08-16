@@ -444,6 +444,15 @@ See [[Decisions#ADR-077|ADR-077]]. Stayo stores a weekly menu twice, on purpose,
 - **`provided` defaults to false.** An unstated claim is false: silence renders as "Meals not provided", never as "meals included".
 - **The reviewer sees the whole week** before approving. Approving a menu you cannot read is not approval.
 
+## Two tenant-ticket systems, kept deliberately separate (2026-08-16)
+
+See [[Decisions#ADR-079|ADR-079]]. Two different complaint/ticket paths exist and must never be merged or cross-linked at the data layer:
+
+- **Tenant → Owner/Hostel** — `tenant_service_requests` (Room's maintenance tiles) and the unused `complaints` table, both `owner_id`/`hostel_id`-bound. Reached from Room, and from Food/Payments via a link into `/tenant/complaints` (`TenantComplaintsPage`) — untouched by this change.
+- **Tenant/User → Stayo Admin** — new `platform_support_tickets`, `profile_id`-scoped only, **no `owner_id`, no `hostel_id`, no relation to `tenants`**. Reached from the common Profile's standalone "Raise a ticket" section, available to any signed-in account regardless of role or tenancy — it reports a Stayo app/website problem, not a hostel issue, so gating it on tenancy would be wrong.
+- **The distinguishing rule:** if a report is about *this hostel* (room, food, a payment), it goes to the owner via the existing system. If it's about *Stayo itself* (the app or website misbehaving, an account problem), it goes to Stayo Admin via the new one. Nothing in either route reads or writes the other's table.
+- A ticket can only leave `OPEN` by an admin resolving it (`status → RESOLVED`, `admin_note` shown back to the reporter) — the reporter can never set their own ticket's status, same discipline as `owner_documents`' review-only `status`.
+
 ## Explicit "Unknown / needs clarification" items
 
 - Whether/where rent is prorated for partial-month billing.

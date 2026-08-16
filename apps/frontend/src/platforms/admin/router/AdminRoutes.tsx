@@ -12,6 +12,9 @@ const AdminMarketingReviewsPage = lazy(() =>
   import('@/platforms/admin/pages/AdminMarketingReviewsPage').then((m) => ({ default: m.AdminMarketingReviewsPage })),
 );
 const AdminDocumentsPage = lazy(() => import('../pages/AdminDocumentsPage').then((m) => ({ default: m.AdminDocumentsPage })));
+const AdminSupportTicketsPage = lazy(() =>
+  import('../pages/AdminSupportTicketsPage').then((m) => ({ default: m.AdminSupportTicketsPage })),
+);
 const AdminRevenuePage = lazy(() => import('../pages/AdminRevenuePage').then((m) => ({ default: m.AdminRevenuePage })));
 const AdminDashboardPage = lazy(() => import('../pages/AdminDashboardPage').then((m) => ({ default: m.AdminDashboardPage })));
 const AdminMorePage = lazy(() => import('../pages/AdminMorePage').then((m) => ({ default: m.AdminMorePage })));
@@ -39,6 +42,10 @@ export function AdminRoutes() {
             all; a listing needs both. */}
         <Route path="/admin/marketing-reviews" element={<AdminMarketingReviewsPage />} />
         <Route path="/admin/documents" element={<AdminDocumentsPage />} />
+        {/* Profile → "Raise a Ticket" queue (ADR-079) — app/website problems,
+            not hostel complaints. Reached via More, like /admin/marketing-reviews,
+            not a primary sidebar tab (see ADMIN_TABS in AdminAppShell.tsx). */}
+        <Route path="/admin/support-tickets" element={<AdminSupportTicketsPage />} />
         <Route path="/admin/revenue" element={<AdminRevenuePage />} />
         <Route path="/admin/more" element={<AdminMorePage />} />
         <Route path="/admin/settings" element={<AdminSettingsPage />} />

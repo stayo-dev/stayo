@@ -288,6 +288,18 @@ All routes share one visibility predicate, `DISCOVERABLE` in `src/services/disco
 
 **Changed:** `POST /api/tenants/me/complete-profile` now writes `profile_identity` **inside the same transaction** as the tenancy row. A tenancy snapshot that committed while the portable record silently failed is exactly the drift this phase removes. Non-null fields only, same reasoning as PATCH above.
 
+## Platform Support Tickets (`/api/profile/support-tickets`, `/api/platform-admin/support-tickets*`)
+
+**Added 2026-08-16 ([[Decisions#ADR-079|ADR-079]]).** Profile → "Raise a Ticket" — a signed-in account reporting a problem with the Stayo app/website to Stayo Admin. Deliberately independent of the tenant → owner complaint system (`/api/service-requests`, table `tenant_service_requests`/`complaints`): no `owner_id`/`hostel_id`, no relation to `tenants`, and neither system's routes touch the other's table.
+
+| Path | Methods | Summary |
+|---|---|---|
+| `/api/profile/support-tickets` | GET, POST | **Any signed-in profile** (no role or tenancy requirement — a seeker, an active tenant, an owner or an admin can all use this). GET lists the caller's own tickets, newest first. POST `{category, subject, description}` (`category` ∈ `APP_BUG`\|`ACCOUNT_ISSUE`\|`PAYMENT_ISSUE`\|`OTHER`, `subject` ≤140 chars, `description` ≤4000 chars). `status` always starts `OPEN` and cannot be set by the reporter |
+| `/api/platform-admin/support-tickets?status=OPEN` | GET | **ADMIN only.** The review queue, oldest first, capped at 200. Defaults to `OPEN`; `status=RESOLVED` looks up past tickets. Includes the reporting `profile` (`id`/`name`/`phone`/`email`) |
+| `/api/platform-admin/support-tickets/[id]/resolve` | POST | **ADMIN only.** `{note?}`. The only way a ticket leaves `OPEN` — 400 `INVALID_TRANSITION` if it's already `RESOLVED`, so a resolution can't silently overwrite a prior admin's note. Sets `status: RESOLVED`, `resolved_at`, `resolved_by`, `admin_note` |
+
+Frontend: `features/profile/api`'s `profileService.listSupportTickets`/`createSupportTicket` (Profile's own `/profile/tickets` page); `features/platform-admin/api`'s `platformAdminService.getSupportTickets`/`resolveSupportTicket` (`AdminSupportTicketsPage`, reached from More, not a primary `ADMIN_TABS` sidebar slot — see [[Decisions#ADR-079|ADR-079]]).
+
 ## Hostel Marketing Page & Approval (`/api/owner/hostels/[id]/marketing*`, `/api/platform-admin/marketing-reviews*`)
 
 **Added 2026-08-15 ([[Decisions#ADR-076|ADR-076]]).** Owner-authored Discovery listing content, and the review cycle every version passes through.

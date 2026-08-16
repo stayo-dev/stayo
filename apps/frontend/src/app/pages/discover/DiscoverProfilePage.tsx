@@ -13,6 +13,7 @@ import {
   Lock,
   LogOut,
   Luggage,
+  MessageSquareWarning,
   Phone,
   ShieldAlert,
   ShieldCheck,
@@ -348,6 +349,30 @@ export function DiscoverProfilePage() {
                 {tenantProfile.missingDocuments.length} pending
               </span>
             )}
+            <ChevronRight className="h-4 w-4 flex-none" style={{ color: '#C9BFB4' }} />
+          </button>
+        </section>
+
+        {/* Raise a Ticket — tenant/user → Stayo Admin (ADR-079). Its own
+            section, deliberately not folded into Support & settings below or
+            /tenant/complaints (which stays the tenant → owner channel). */}
+        <section>
+          <h2 className="mb-2.5 pl-0.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: '#9C9186' }}>
+            Stayo support
+          </h2>
+          <button
+            type="button"
+            onClick={() => navigate('/profile/tickets')}
+            className="flex w-full items-center gap-3.5 rounded-2xl border bg-white px-4 py-3.5 text-left"
+            style={{ borderColor: C.line, boxShadow: '0 1px 2px rgba(40,30,20,.04)' }}
+          >
+            <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px]" style={{ background: '#F4EEE7' }}>
+              <MessageSquareWarning className="h-[17px] w-[17px]" strokeWidth={1.8} style={{ color: C.textMuted }} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[13.5px] font-semibold" style={{ color: C.inkSoft }}>Raise a ticket</span>
+              <span className="block truncate text-[11px]" style={{ color: C.textFaint }}>Report a Stayo app or website problem</span>
+            </span>
             <ChevronRight className="h-4 w-4 flex-none" style={{ color: '#C9BFB4' }} />
           </button>
         </section>
