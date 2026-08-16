@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Bug, MessageSquareWarning } from 'lucide-react';
+import { Bug, ChevronLeft, MessageSquareWarning } from 'lucide-react';
 import { useTenantRoom } from '@features/tenant-room/hooks/useTenantRoom';
 import { tenantRoomService } from '@features/tenant-room/api';
 import { useOverlayStack } from '../components/overlays/useOverlayStack';
@@ -23,16 +24,22 @@ function LoadingSkeleton() {
 }
 
 /**
- * Dashboard's Complaints tab (ADR-078 supersedes ADR-068's "no Complaints
- * tab" call — new explicit product direction). Ticket UI/copy carried over
- * from the old `TenantProfilePage`'s "Tickets & bug reports" section
- * (deleted as part of the same change, dissolved into the shared Profile
- * hub and here) rather than rebuilt — same `tenant_service_requests` data
- * via `useTenantRoom()`, same overlay system Room's own service-request
- * tiles already use (`buildServiceRequestFormConfigs` produces both sets of
- * keys from one function; Room's tiles are unaffected).
+ * Tenant → owner/hostel complaint hub. No longer a primary nav tab (the
+ * single-level active-tenant nav is Home/Payments/Food/Room/Profile/Explore
+ * — see `ACTIVE_TENANT_TABS`) — reached contextually from Room instead, as a
+ * full-screen takeover with its own back button, same "outside the shell"
+ * pattern as `/tenant/move-out`. Deliberately kept separate from the
+ * Stayo-Admin-bound Profile → "Raise a Ticket" system (ADR-079) — this page
+ * still only ever writes to `tenant_service_requests`, unchanged. Ticket
+ * UI/copy carried over from the old `TenantProfilePage`'s "Tickets & bug
+ * reports" section (deleted as part of an earlier change, dissolved into the
+ * shared Profile hub and here) rather than rebuilt — same
+ * `tenant_service_requests` data via `useTenantRoom()`, same overlay system
+ * Room's own service-request tiles already use (`buildServiceRequestFormConfigs`
+ * produces both sets of keys from one function; Room's tiles are unaffected).
  */
 export function TenantComplaintsPage() {
+  const navigate = useNavigate();
   const room = useTenantRoom();
   const overlay = useOverlayStack();
 
@@ -53,9 +60,19 @@ export function TenantComplaintsPage() {
   return (
     <div className="min-h-screen">
       <div className="flex flex-col gap-6 px-[22px] pb-8 pt-6">
-        <div>
-          <h1 className="font-display text-[24px] font-extrabold tracking-[-0.03em] text-foreground">Complaints</h1>
-          <p className="mt-0.5 text-[12px] font-medium text-muted-foreground">Raise a ticket, report a bug, or track what's open</p>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            aria-label="Back"
+            onClick={() => navigate('/tenant/room')}
+            className="flex h-9 w-9 flex-none items-center justify-center rounded-full border border-border"
+          >
+            <ChevronLeft className="h-[18px] w-[18px]" />
+          </button>
+          <div>
+            <h1 className="font-display text-[24px] font-extrabold tracking-[-0.03em] text-foreground">Complaints</h1>
+            <p className="mt-0.5 text-[12px] font-medium text-muted-foreground">Raise a ticket, report a bug, or track what's open</p>
+          </div>
         </div>
 
         <div className="flex flex-col gap-2.5">

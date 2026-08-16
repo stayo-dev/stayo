@@ -61,13 +61,17 @@ function TenantBoundary() {
 }
 
 /**
- * StayO tenant-app route tree — flat IA, no drill-down beyond the Room/
- * Complaints overlay system, one modal type — implemented as real routes
- * instead of client-only state. Tabs are Home/Money/Room/Food/Complaints
- * (ADR-078 supersedes the original ADR-068 5-tab design, which had Profile
- * here instead — Profile is now the app-wide shared tab, mounted outside
- * this tree, see `ProfileRoutes.tsx`). The remaining sub-pages salvage real
- * logic from the frozen `src/portal` tree and the previously-orphaned
+ * StayO tenant-app route tree — flat IA, no drill-down beyond the Room
+ * overlay system, one modal type — implemented as real routes instead of
+ * client-only state. Tabs are Home/Payments/Food/Room, plus the app-wide
+ * shared Profile and Explore tabs mounted outside this tree (one single-
+ * level nav — see `ACTIVE_TENANT_TABS` in `appNavConfig.ts`; supersedes
+ * ADR-078's Explore/Dashboard/Profile outer bar + Home/Money/Room/Food/
+ * Complaints inner strip). Complaints is no longer a tab — `/tenant/
+ * complaints` renders as a full-screen takeover (own back button, no bottom
+ * nav) reached contextually from Room, same "outside the shell" pattern as
+ * `/tenant/move-out` below. The remaining sub-pages salvage real logic from
+ * the frozen `src/portal` tree and the previously-orphaned
  * `TenantRenewalPage`.
  */
 export function TenantRoutes() {
@@ -81,9 +85,9 @@ export function TenantRoutes() {
           <Route path="/tenant/money" element={<TenantMoneyPage />} />
           <Route path="/tenant/room" element={<TenantRoomPage />} />
           <Route path="/tenant/food" element={<TenantFoodPage />} />
-          <Route path="/tenant/complaints" element={<TenantComplaintsPage />} />
         </Route>
       </Route>
+      <Route path="/tenant/complaints" element={<TenantComplaintsPage />} />
       <Route
         path="/tenant/profile/details"
         element={

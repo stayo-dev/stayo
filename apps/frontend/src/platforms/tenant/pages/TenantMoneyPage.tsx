@@ -60,7 +60,7 @@ function LoadingSkeleton() {
   );
 }
 
-/** Tenant Money tab, per Stayo Tenant.dc.html. Real data via `useTenantFinancials()` — the same hook Home's rent-due hero uses, so the two never disagree. */
+/** Tenant Payments tab (route stays `/tenant/money`; label renamed from "Money" for the single-level nav), per Stayo Tenant.dc.html. Real data via `useTenantFinancials()` — the same hook Home's rent-due hero uses, so the two never disagree. */
 export function TenantMoneyPage() {
   const navigate = useNavigate();
   const fin = useTenantFinancials();
@@ -96,7 +96,7 @@ export function TenantMoneyPage() {
     <div className="flex flex-col gap-6 px-4 pb-8 pt-6 sm:px-6">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="font-display text-[24px] font-extrabold tracking-[-0.03em] text-foreground">Money</h1>
+          <h1 className="font-display text-[24px] font-extrabold tracking-[-0.03em] text-foreground">Payments</h1>
           <p className="mt-0.5 text-[12px] font-medium text-muted-foreground">
             {new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })} · {activeFreq}
           </p>
