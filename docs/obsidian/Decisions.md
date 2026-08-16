@@ -1218,6 +1218,23 @@ That reading was wrong, and measurement is what showed it. Two production endpoi
 - **Consequences:** the funnel is now genuinely reportable, and the Overview's acquisition funnel gains real middle stages. The cost is that lead status is now edited by hand far more often, so the manual/system boundary matters more than it did — if a future route writes status directly it can bypass `MANUALLY_SETTABLE_STATUSES`, which is worth a coverage check if it recurs. **Not verified against a live database**: migration 067 is written and the Prisma client generates, but it has not been applied — the repo applies SQL by hand via Supabase (see `migrations/README.md`), so the new columns and tables are unexercised against real rows.
 - **Related:** [[Decisions#ADR-032|ADR-032]], [[Decisions#ADR-080|ADR-080]] (the console this lives in), [[Database]], [[APIs]], [[Features]], [[Changelog]].
 
+## ADR-082: Stayo lists hostels it does not manage, and hands them over when the owner joins
+
+- **Date:** 2026-08-16
+- **Status:** accepted (extends [[Decisions#ADR-076|ADR-076]] to admin-authored content; implemented by migration 068)
+- **Context:** Discovery could only ever show hostels whose owners had signed up, which makes it useless as a search surface in any city Stayo has not yet sold into. The owner asked for two things: finish the marketing review loop (show the admin everything submitted, preview it, flag specific parts), and let admins author listings for hostels with no Stayo owner — assignable to that owner if they later join.
+- **Decision:**
+  1. **`hostels.listing_source` + a sentinel owner, not a nullable `owner_id`.** A platform listing points at an inactive "Stayo Platform" profile until claimed. Nullable ownership would force every owner-scoped query in the codebase to handle a hostel with nobody, and `architectural-invariants-check.ts` already forbids treating hostel ownership as optional. The sentinel is `is_active: false` with no credentials — a foreign-key placeholder, not an account.
+  2. **An absent `listing_source` reads as OWNER_MANAGED.** Every hostel predating migration 068 has no value there; defaulting the other way would make the entire existing estate claimable — one API call from handing a live hostel with real tenants to a stranger. Pinned by test.
+  3. **Claiming refuses on any owner-managed hostel.** Transferring a live hostel moves its tenants, obligations and payouts; that is a different and far more dangerous operation and must not share this code path.
+  4. **Claiming never touches `listing_status`/`verification_status`.** Deciding *who owns* a listing is not deciding *whether it is discoverable*; conflating them would let a claim silently publish or unpublish.
+  5. **A platform listing never shows live vacancy.** It has no real `rooms` — nobody operates it here — so its bed tiers are an advertised claim. `projectListing` returns `availability_confirmed: false` and the UI must say so. Advertising beds nobody can honour, to someone trying to find somewhere to live, is the worst failure available in this feature.
+  6. **One projection, shared by preview and the live page.** `listing-projection.ts` was extracted from `getListing` so the admin previews through the exact code tenants see. A second renderer drifts, and once it does the review gate inspects something other than what ships.
+  7. **Per-section review flags.** Send-back carries `[{section, note}]`; either a flag or a note suffices (a flagged section *is* an instruction), neither is refused — enforced once, in `isSendBackActionable`. The owner's notification names the sections.
+  8. **Enquiries on unclaimed listings raise a `platform_leads` row**, named after the hostel rather than the enquiring tenant, with an empty phone: a listing's number belongs to the business, not to someone who consented to contact.
+- **Consequences:** Discovery can cover a city ahead of sales, and demand becomes the pitch — but Stayo now publishes pages for businesses that never agreed to be listed, which is a real editorial and legal posture, not just a feature. Admin-authored listings are approved by their author (no second reviewer); recorded in the audit trail and revisitable once the scoped-access work lands a `LISTINGS`-scoped reviewer. **Not verified against a live database or in a browser** — migrations 067 and 068 are unapplied outside test, and no flow here has been exercised end to end.
+- **Related:** [[Decisions#ADR-076|ADR-076]], [[Decisions#ADR-080|ADR-080]], [[Decisions#ADR-081|ADR-081]], [[Database]], [[APIs]], [[Features]], [[Changelog]].
+
 ## See also
 - [[Changelog]] for the chronological record of what shipped
 - [[Architecture]] for the system these decisions govern

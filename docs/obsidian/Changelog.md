@@ -10,6 +10,15 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-16 — Marketing review, finished; and Stayo-listed hostels
+- **The review loop is real.** The admin drawer now shows every section an owner submitted — basics, photos, bed tiers, amenities, getting around, the full 7-day mess grid — each independently flaggable with its own note. Send-back carries structured flags and the owner's notification names the sections. Replaces a `window.prompt`. See [[Decisions]] ADR-082.
+- **Preview shares the live code path.** `getListing`'s inline mapping became `listing-projection.ts`; `/admin/listings/preview/:revisionId` renders the real Discovery `ListingPage` through it. One renderer, so preview cannot drift from what ships.
+- **Stayo-listed hostels** (migration 068): `hostels.listing_source`, `claimed_at/by`, a Stayo-listed tab with creation and an assign-to-owner flow. `owner_id` stays NOT NULL via an inactive sentinel profile.
+- **Platform listings never advertise live vacancy** — no real rooms exist, so `availability_confirmed` is false and bed tiers read as an advertised claim. A missed `select` would have shipped the opposite; caught while wiring the projection.
+- **Enquiries on unclaimed listings raise a sales lead**, named after the hostel and carrying no phone (a business's number is not a consented contact).
+- Tests +45 backend, +2 frontend. Migrations 067 and 068 remain **unapplied outside the test database**.
+
+
 ### 2026-08-16 — Leads section + the merged owner lifecycle (migration 067)
 - **One lifecycle, not two.** The design shipped a sales funnel while the code had an activation funnel; they are halves of one journey. `PlatformLeadStatus` gains `CONTACTED`, `DEMO`, `NEGOTIATING`. Ownership stays split and is enforced where it always was — `MANUALLY_SETTABLE_STATUSES` now covers the admin-driven stages, `APPROVED` onward remains system-only. `UNDER_REVIEW` rows migrate to `CONTACTED`; the value is retained since Postgres cannot drop an enum member. See [[Decisions]] ADR-081.
 - **A prospect must never read "Negotiating" about themselves.** `lead-stage-mapper.ts` drives the public `/enquiry/:token` page, so all three new stages collapse into "Under review". Four regression tests pin it, including one asserting the words never appear anywhere in the rendered timeline.
