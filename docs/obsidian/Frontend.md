@@ -37,7 +37,25 @@ Entry: `app/Router.tsx` → `app/router/AppRouter.tsx`, composing four route-gro
 
 **Tenant routes** (`platforms/tenant/router/TenantRoutes.tsx`, wrapped in `TenantProviderShell`) — rebuilt 2026-07-26 around `Stayo Tenant.dc.html`'s flat IA: `/payment-return` (mounts the frozen tree's `TenantPaymentReturnPage.tsx` — the PhonePe checkout-redirect landing page; wired 2026-07-27, was a `RouteScaffold` stub until the stabilization pass, see [[Bugs]]), then inside `TenantAppShell` (bottom nav, no `TenantPortalLayout` — deleted 2026-07-27, see below) — `/tenant/{home,money,room,food,profile}`, all 5 real. Three full-screen takeover routes outside the shell (own back button, no bottom nav, matching the owner side's Tenant Detail convention): `/tenant/profile/details` (mounts the frozen tree's `TenantProfilePortalPage.tsx` unrestyled — real profile edit/OTP/KYC/doc-chat, salvaged rather than rebuilt against a design source that only stubbed this tab), `/tenant/move-out` (mounts the frozen tree's `TenantMoveOutPage.tsx`), `/tenant/renewal` (`platforms/tenant/pages/TenantRenewalPage.tsx`, built 2026-07-22 but unrouted until now — see [[Bugs]]). New `platforms/tenant/pages/{TenantHomePage,TenantMoneyPage,TenantRoomPage,TenantProfilePage,TenantHelpPage}.tsx` plus new `features/{tenant-home,tenant-financials,tenant-room,hostel-content}` hold the hooks/API wrappers. `src/portal/pages/{TenantDashboardPage,TenantFinancialsPage,TenantPaymentsPage,TenantRoomPage}.tsx` were fully superseded (their real logic was salvaged into the new pages above) and, once confirmed fully unreferenced, deleted in the 2026-07-27 stabilization pass — see [[Bugs]].
 
-**Admin routes**: `platforms/admin/router/AdminRoutes.tsx` — built out 2026-07-26 as the StayO Platform Admin Console (was a no-op `<Fragment/>` before then), a sidebar console (`AdminAppShell`, ≥900px; floating bottom-nav pill below 900px, fixed 2026-07-27 — see [[Bugs]]) gated by `RequireAdminSession`: `/admin` (Dashboard), `/admin/hostels`, `/admin/leads`, `/admin/revenue`, `/admin/more`, `/admin/settings`, all 6 real — see [[Features]], [[Decisions]] ADR-030. **`platforms/warden/`** is reserved, `.gitkeep` only — no code.
+**Admin routes**: `platforms/admin/router/AdminRoutes.tsx` — **rebuilt wholesale 2026-08-16** against a new `Stayo Admin.dc.html`, replacing the 2026-07-26 console (`AdminAppShell` + 9 `Admin*Page.tsx` files, all deleted). See [[Decisions]] ADR-078.
+
+Structure under `platforms/admin/`:
+
+| Path | Role |
+|---|---|
+| `layout/AdminConsoleShell.tsx` | Dark 250px sidebar (4 nav groups) + topbar + toast host + the console's only sign-out control |
+| `layout/adminNav.ts` | Nav groups, badges, active-matching — **tested**, one source of truth for sidebar and small-screen nav |
+| `layout/pageHeaders.ts` | Topbar title/subtitle per route, copied from the design's `META` block |
+| `theme/palette.ts` | The design's exact hex values + `tintForId` (deterministic avatar colour) |
+| `ui/` | `StatCard`, `DataTable`, `SegmentedTabs`, `FilterChips`, `EmptyState`, `NotWiredYet`, `Toast` |
+| `drawer/` | `AdminDrawer` chrome + `drawerParam.ts` (**tested**) — the drawer is addressable via `?detail=<kind>:<id>` |
+| `owners/`, `listings/`, `kyc/` | Per-screen pure logic, each with tests |
+
+Eleven routes: `/admin` (Overview), `/leads`, `/owners`, `/kyc`, `/listings`, `/revenue`, `/settlements`, `/subscriptions`, `/reports`, `/broadcasts`, `/settings`. Four redirects keep old links alive: `documents→kyc`, `hostels→listings`, `marketing-reviews→listings?tab=content`, `more→settings`.
+
+**Real as of 2026-08-16**: Owners, Hostel Listings (incl. the marketing content-review tab), KYC Approvals. The remaining screens render `NotWiredYet` — see [[Features]] for which and why. **`platforms/warden/`** is reserved, `.gitkeep` only — no code.
+
+**Typography note**: the console uses `.font-admin` (Manrope) from `styles/admin-console.css`, *not* the shared `.font-display`, which resolves to Playfair Display — the pre-rebuild console was rendering off-design because of this.
 
 ## `src/features/*` — the live API-wrapper layer
 

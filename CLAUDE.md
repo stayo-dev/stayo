@@ -56,7 +56,11 @@ npm run build                # runs check:architecture, then vite build, then br
 npm run check:architecture   # scripts/check-architecture.mjs, standalone
 ```
 
-No test suite in `apps/frontend/` currently.
+`apps/frontend/` **does** have a test suite (`npm test` → vitest). It is deliberately
+**node-environment only — no jsdom, no component rendering** — and matches
+`src/**/*.test.ts` (not `.tsx`). The pattern is therefore: put decision logic in pure
+`.ts` modules and test those directly, leaving components as thin renderers over
+already-tested state. Don't add a `.test.tsx` or try to render a component in a test.
 
 ## Architecture
 

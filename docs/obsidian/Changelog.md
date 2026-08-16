@@ -10,6 +10,15 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-16 — The admin console, rebuilt from scratch
+- **Replaced the entire platform-admin console** with the new `Stayo Admin.dc.html` design. `AdminAppShell` and all 9 `Admin*Page.tsx` files deleted (~3,400 LOC); new shell at `platforms/admin/layout/AdminConsoleShell.tsx` with a dark 250px sidebar, four nav groups, an addressable detail drawer and a toast host. See [[Decisions]] ADR-078, [[Frontend]], [[Features]].
+- **Eleven routes**, with four redirects so old links survive: `documents→kyc`, `hostels→listings`, `marketing-reviews→listings?tab=content`, `more→settings`.
+- **Real screens**: Owners (list + drawer on `/platform-admin/owners`), Hostel Listings (approve/reject + the marketing content-review queue folded in as a tab), KYC Approvals (documents grouped by owner, approve/reject with a required rejection note).
+- **Layout-only, by decision**: Overview, Leads, Revenue, Settlements, Subscriptions, Reports & Bugs, Broadcasts, Settings — each renders `NotWiredYet` rather than fabricated data. Settlements and Reports have no backend at all; the rest are queued for the next plan.
+- **Two regressions caught during the rebuild, not shipped**: the console's only sign-out control lived on the deleted More page and is now in the sidebar footer (`logoutIntegrity.test.ts` covers it, 8→9 generated cases); and the old console rendered Playfair Display where the design specifies Manrope, because it reused the shared `.font-display` token — the console now has its own `.font-admin` scope.
+- **Tests**: +33 (699→724 across the rebuild), all pure-logic modules — nav model, drawer URL state, owner row shaping, listing tabs, KYC grouping.
+- Spec and plan: `docs/superpowers/specs/2026-08-16-admin-console-rebuild-design.md`, `docs/superpowers/plans/2026-08-16-admin-console-foundation.md`.
+
 ### 2026-08-15 — Real photo upload, multi-select amenities, the Discover grid, and footprints on touch
 - Four owner-reported follow-ups from the marketing-page rebuild and the front door.
 - **Photos are uploaded from the device now, not pasted as URLs** (`marketing/PhotosScreen.tsx`, new `POST /api/owner/hostels/[id]/marketing/photos`). File picker plus desktop drag-and-drop over the whole screen, multi-select, placeholder tiles while a batch is in flight, and per-file validation matched to the server's (JPG/PNG/WebP, ≤8MB, ≤10 per request, 24 per listing). Uploads go to ImageKit `/hostel_listings` via the existing `lib/imagekit.ts`, following the `hostels/[id]/logo` route's shape. **The URL field is gone** — it was an interim the previous entry flagged and should not have shipped in an owner-facing surface.
