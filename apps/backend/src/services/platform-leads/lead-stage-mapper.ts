@@ -19,7 +19,15 @@ export type LeadDisplayStage = {
 
 const STAGE_ORDER = [
   { key: "submitted", label: "Submitted", statuses: ["NEW"] },
-  { key: "under_review", label: "Under review", statuses: ["UNDER_REVIEW"] },
+  // CONTACTED/DEMO/NEGOTIATING are INTERNAL sales stages and must never reach
+  // an applicant: a prospective owner reading "Negotiating" on their own
+  // status page learns they are being haggled with. They collapse into the
+  // one applicant-meaningful stage, exactly as UNDER_REVIEW always did.
+  {
+    key: "under_review",
+    label: "Under review",
+    statuses: ["UNDER_REVIEW", "CONTACTED", "DEMO", "NEGOTIATING"],
+  },
   { key: "approved", label: "Approved — activation link sent", statuses: ["APPROVED", "INVITE_SENT"] },
   { key: "setup", label: "Setting up your hostel", statuses: ["OWNER_ACTIVATED", "HOSTEL_CREATED"] },
   { key: "live", label: "Live on Stayo", statuses: ["LIVE"] },

@@ -12,6 +12,9 @@
 export type LeadStatus =
   | 'NEW'
   | 'UNDER_REVIEW'
+  | 'CONTACTED'
+  | 'DEMO'
+  | 'NEGOTIATING'
   | 'APPROVED'
   | 'INVITE_SENT'
   | 'OWNER_ACTIVATED'
@@ -39,14 +42,26 @@ export type AdminLead = {
  * failed to send" — it needs a retry, not a decision (see
  * lead-invitation-service).
  */
-export const ACTIONABLE_STATUSES: LeadStatus[] = ['NEW', 'UNDER_REVIEW', 'APPROVED'];
+export const ACTIONABLE_STATUSES: LeadStatus[] = [
+  'NEW', 'UNDER_REVIEW', 'CONTACTED', 'DEMO', 'NEGOTIATING', 'APPROVED',
+];
+
+/**
+ * The stages an admin moves a lead through by hand. Mirrors
+ * MANUALLY_SETTABLE_STATUSES on the server — everything after NEGOTIATING is
+ * system-driven and must not appear as a choice in the UI.
+ */
+export const SALES_STAGES: LeadStatus[] = ['NEW', 'CONTACTED', 'DEMO', 'NEGOTIATING'];
 
 /** Statuses where the funnel is progressing on its own. */
 export const IN_FLIGHT_STATUSES: LeadStatus[] = ['INVITE_SENT', 'OWNER_ACTIVATED', 'HOSTEL_CREATED'];
 
 export const STATUS_LABEL: Record<string, string> = {
   NEW: 'New',
-  UNDER_REVIEW: 'Under review',
+  UNDER_REVIEW: 'Contacted',
+  CONTACTED: 'Contacted',
+  DEMO: 'Demo booked',
+  NEGOTIATING: 'Negotiating',
   APPROVED: 'Send failed',
   INVITE_SENT: 'Invite sent',
   OWNER_ACTIVATED: 'Activated',
@@ -59,6 +74,9 @@ export const STATUS_LABEL: Record<string, string> = {
 export const STATUS_TONE: Record<string, 'action' | 'progress' | 'done' | 'dead'> = {
   NEW: 'action',
   UNDER_REVIEW: 'action',
+  CONTACTED: 'action',
+  DEMO: 'action',
+  NEGOTIATING: 'action',
   APPROVED: 'action',
   INVITE_SENT: 'progress',
   OWNER_ACTIVATED: 'progress',

@@ -85,3 +85,40 @@ describe("canRejectLead", () => {
     expect(canRejectLead("LOST").ok).toBe(false);
   });
 });
+
+/**
+ * The sales stages added in migration 067 are internal vocabulary. This
+ * mapper drives the PUBLIC /enquiry/:token page a prospective owner reads
+ * about themselves, so a leak here is visible to a customer, not to us.
+ */
+describe("merged sales stages never reach the applicant", () => {
+  const SALES_STAGES = ["CONTACTED", "DEMO", "NEGOTIATING"];
+
+  it("shows every internal sales stage as 'Under review'", () => {
+    for (const status of SALES_STAGES) {
+      expect(mapLeadStatusToStage(status).label).toBe("Under review");
+    }
+  });
+
+  it("never renders the words Demo, Negotiating or Contacted anywhere in the timeline", () => {
+    for (const status of SALES_STAGES) {
+      const labels = buildLeadTimeline(status).map((s) => s.label).join(" | ");
+      expect(labels).not.toMatch(/demo|negotiat|contacted/i);
+    }
+  });
+
+  it("places a lead in a sales stage at the review step, not back at Submitted", () => {
+    for (const status of SALES_STAGES) {
+      const timeline = buildLeadTimeline(status);
+      const current = timeline.find((s) => s.state === "current");
+      expect(current?.key).toBe("under_review");
+      expect(timeline.find((s) => s.key === "submitted")?.state).toBe("done");
+    }
+  });
+
+  it("treats a sales stage as non-terminal — the lead is still in play", () => {
+    for (const status of SALES_STAGES) {
+      expect(mapLeadStatusToStage(status).isTerminal).toBe(false);
+    }
+  });
+});

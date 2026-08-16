@@ -10,7 +10,11 @@ import { prisma } from "@/lib/db";
 // auto-progression choke points in owner-signup/owner-hostels — that's
 // what actually guarantees "no manual status updates after invite sent,"
 // not just a UI convention. Use POST .../approve to move a lead forward.
-const MANUALLY_SETTABLE_STATUSES = ["NEW", "UNDER_REVIEW", "LOST"];
+const MANUALLY_SETTABLE_STATUSES = [
+  "NEW", "CONTACTED", "DEMO", "NEGOTIATING", "LOST",
+  // Retained for historical rows only; migration 067 moved them to CONTACTED.
+  "UNDER_REVIEW",
+];
 
 function requireAdmin(session: any) {
   if (!session || session.role !== "ADMIN") throw new Error("FORBIDDEN: Admin access only");

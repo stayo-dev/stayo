@@ -23,7 +23,11 @@ const DEFAULT_INVITE_DAYS = 7;
 // provider error) can be retried — it means "approved, not yet
 // successfully delivered," not "already delivered." A successful send
 // always moves the lead to INVITE_SENT, which is not retryable this way.
-const APPROVABLE_STATUSES = ["NEW", "UNDER_REVIEW", "APPROVED"];
+// A lead is approved out of whatever sales stage it reached — most often
+// NEGOTIATING. APPROVED is included so a failed send can be retried.
+const APPROVABLE_STATUSES = [
+  "NEW", "UNDER_REVIEW", "CONTACTED", "DEMO", "NEGOTIATING", "APPROVED",
+];
 
 function generateToken() {
   return crypto.randomBytes(32).toString("hex");

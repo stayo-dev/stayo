@@ -97,6 +97,58 @@ export const platformAdminService = {
     return unwrap(response);
   },
 
+  /**
+   * The lead CRM (migration 067) — the outreach log, notes thread,
+   * qualification answers and structured lost reasons that let the next call
+   * start from what the last one learned.
+   */
+  getLeadActivities: async (id: string) => {
+    const response = await api.get(`/platform-admin/leads/${id}/activities`);
+    return unwrap(response).activities as Array<{
+      id: string; type: string; outcome: string; note: string | null; created_at: string;
+    }>;
+  },
+  logLeadActivity: async (id: string, data: { type: string; outcome: string; note?: string }) => {
+    const response = await api.post(`/platform-admin/leads/${id}/activities`, data);
+    return unwrap(response);
+  },
+  getLeadNotes: async (id: string) => {
+    const response = await api.get(`/platform-admin/leads/${id}/notes`);
+    return unwrap(response).notes as Array<{
+      id: string; body: string; created_at: string; author_name: string;
+    }>;
+  },
+  addLeadNote: async (id: string, body: string) => {
+    const response = await api.post(`/platform-admin/leads/${id}/notes`, { body });
+    return unwrap(response);
+  },
+  /** Every field optional and independently clearable — filled in across several calls. */
+  saveLeadQualification: async (id: string, data: Record<string, unknown>) => {
+    const response = await api.patch(`/platform-admin/leads/${id}/qualification`, data);
+    return unwrap(response);
+  },
+  /** Structured loss, for the insights chart. Distinct from rejectLead, which the owner sees. */
+  markLeadLost: async (id: string, reason: string, note?: string) => {
+    const response = await api.post(`/platform-admin/leads/${id}/lost`, { reason, note });
+    return unwrap(response);
+  },
+  reopenLead: async (id: string) => {
+    const response = await api.delete(`/platform-admin/leads/${id}/lost`);
+    return unwrap(response);
+  },
+  getLeadInsights: async () => {
+    const response = await api.get('/platform-admin/leads/insights');
+    return unwrap(response) as {
+      totals: {
+        total_leads: number; lost: number; live: number; with_discovery: number;
+        conversion_pct: number | null; loss_pct: number | null;
+      };
+      lost_reasons: Array<{ reason: string; count: number }>;
+      tooling: Array<{ label: string; count: number }>;
+      discovery: any[];
+    };
+  },
+
   getOwnerDocuments: async (status: 'PENDING' | 'VERIFIED' | 'REJECTED' = 'PENDING') => {
     const response = await api.get('/platform-admin/owner-documents', { params: { status } });
     return unwrap(response).documents as Array<{

@@ -3227,15 +3227,42 @@ enum HostelListingStatus {
 /// set only by lead-invitation-service.ts and the auto-progression choke
 /// points in owner-signup and owner/hostels. See Decisions.md ADR for the
 /// migration mapping from the old 6-value enum.
+/// One merged lifecycle: the sales funnel the admin drives, then the
+/// activation funnel the system drives. See migration 067 and Decisions.md.
+///
+///   admin-driven   NEW → CONTACTED → DEMO → NEGOTIATING   (and → LOST)
+///   system-driven  APPROVED → INVITE_SENT → OWNER_ACTIVATED
+///                  → HOSTEL_CREATED → LIVE
+///
+/// UNDER_REVIEW is retained only so the enum value still resolves for any
+/// historical row; migration 067 moved every row to CONTACTED and no code
+/// path writes it. Postgres cannot drop an enum value without recreating the
+/// type, so it stays.
 enum PlatformLeadStatus {
   NEW
   UNDER_REVIEW
+  CONTACTED
+  DEMO
+  NEGOTIATING
   APPROVED
   INVITE_SENT
   OWNER_ACTIVATED
   HOSTEL_CREATED
   LIVE
   LOST
+}
+
+/// Why a lead was lost. Structured — unlike `pain_point`/`current_tooling`,
+/// which are deliberately free-form and unsafe to aggregate — because the
+/// admin console's "why leads are lost" chart counts these directly.
+enum PlatformLeadLostReason {
+  PRICE
+  WENT_WITH_COMPETITOR
+  NOT_READY
+  NO_RESPONSE
+  MISSING_FEATURE
+  TOO_SMALL
+  OTHER
 }
 
 /// Single-use activation token for a platform_leads row, generated when an
@@ -3287,10 +3314,77 @@ model platform_leads {
   pain_point         String?
   current_tooling    String?
   converted_owner_id String?            @db.Uuid
+
+  /// Why this lead was lost, and the detail behind it. Set only by
+  /// POST /api/platform-admin/leads/[id]/lost.
+  lost_reason        PlatformLeadLostReason?
+  lost_note          String?
+
+  /// Discovery answers captured on the call — "what's broken today", "why
+  /// Stayo", "what they expect". These feed the console's insights tab and,
+  /// more importantly, mean the next call starts from what the last one
+  /// learned rather than from nothing.
+  discovery_problem  String?
+  discovery_why      String?
+  discovery_expect   String?
+
+  /// Qualification captured while on the call. Nullable throughout: a lead
+  /// nobody has spoken to yet legitimately has none of this, and a zero would
+  /// read as "this hostel has no beds".
+  qual_beds            Int?
+  qual_rooms           Int?
+  qual_occupancy_pct   Int?
+  qual_monthly_revenue Decimal? @db.Decimal(12, 2)
+  qual_branches        String?
+  /// Admin's estimate of annual contract value. Not a billed amount.
+  estimated_value      Decimal? @db.Decimal(12, 2)
+
   created_at         DateTime           @default(now()) @db.Timestamptz(6)
   updated_at         DateTime?          @db.Timestamptz(6)
 
+  activities platform_lead_activities[]
+  lead_notes platform_lead_notes[]
+
   @@index([status, created_at(sort: Desc)])
+}
+
+/// One row per outreach attempt, authored by an admin during or after a call.
+///
+/// Deliberately not `systemEventLog`: that is the automated audit trail and
+/// carries `lead_id` inside `metadata` with no column (a reuse tradeoff
+/// recorded in Decisions.md). This one is human-written, queried per lead on
+/// every drawer open, and needs an index to match. The drawer merges both.
+model platform_lead_activities {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lead_id    String   @db.Uuid
+  /// CALL | EMAIL | WHATSAPP | MEETING
+  type       String
+  /// CONNECTED | NO_ANSWER | SENT | BUSY | ...
+  outcome    String
+  note       String?
+  actor_id   String?  @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  lead platform_leads @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+
+  @@index([lead_id, created_at(sort: Desc)])
+  @@map("platform_lead_activities")
+}
+
+/// The notes thread on a lead. `platform_leads.notes` (a single free-text
+/// scratchpad) still exists and is untouched, but a thread is what survives a
+/// handover between two admins.
+model platform_lead_notes {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lead_id    String   @db.Uuid
+  body       String
+  author_id  String?  @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  lead platform_leads @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+
+  @@index([lead_id, created_at(sort: Desc)])
+  @@map("platform_lead_notes")
 }
 
 enum SubscriptionBillingCycle {

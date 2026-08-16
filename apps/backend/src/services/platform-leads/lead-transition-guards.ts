@@ -6,7 +6,10 @@
 
 export type GuardResult = { ok: true } | { ok: false; reason: string };
 
-const REJECTABLE_STATUSES = ["NEW", "UNDER_REVIEW"];
+// Every admin-driven stage is still "under consideration" — a lead can be
+// declined at any point before an activation link exists. UNDER_REVIEW is
+// retained for historical rows (migration 067 moved them to CONTACTED).
+const REJECTABLE_STATUSES = ["NEW", "UNDER_REVIEW", "CONTACTED", "DEMO", "NEGOTIATING"];
 
 /**
  * A lead can only be declined while it is still under consideration. Once
