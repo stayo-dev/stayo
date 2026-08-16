@@ -81,6 +81,19 @@ BEGIN
     WHERE conname = 'chk_tenant_invitation_reservation_release_metadata'
       AND conrelid = 'public.tenant_invitation_reservations'::regclass
   ) THEN
+    -- The original allow-list here (ACTIVATED/EXPIRED/CANCELLED/TRANSFERRED)
+    -- was incomplete against the application's actual behavior, confirmed
+    -- live 2026-08-15 while resolving a stuck `migrate deploy`: it excluded
+    -- JOINED_ELSEWHERE (in `ReservationReleaseReason`,
+    -- tenant-invitation-lifecycle-service.ts) and SUPERSEDED/ROOM_CHANGE
+    -- (written by `editInvitation`'s reservation-release step at the same
+    -- file, an untyped call site the TS union never covered). Applying the
+    -- original 4-value list would have both failed on 82 pre-existing
+    -- SUPERSEDED rows and started rejecting live `editInvitation` calls
+    -- going forward, since that code path writes SUPERSEDED/ROOM_CHANGE on
+    -- every invitation edit. The allow-list now matches every value real
+    -- code paths actually write, not a narrower list this backfill never
+    -- ran against.
     ALTER TABLE "public"."tenant_invitation_reservations"
       ADD CONSTRAINT "chk_tenant_invitation_reservation_release_metadata"
       CHECK (
@@ -88,7 +101,7 @@ BEGIN
         OR (
           "released_by" IS NOT NULL
           AND "released_at" IS NOT NULL
-          AND "release_reason" IN ('ACTIVATED', 'EXPIRED', 'CANCELLED', 'TRANSFERRED')
+          AND "release_reason" IN ('ACTIVATED', 'EXPIRED', 'CANCELLED', 'TRANSFERRED', 'JOINED_ELSEWHERE', 'SUPERSEDED', 'ROOM_CHANGE')
         )
       );
   END IF;

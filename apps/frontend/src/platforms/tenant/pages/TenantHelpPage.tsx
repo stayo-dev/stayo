@@ -22,7 +22,7 @@ export function TenantHelpPage() {
   return (
     <div className="flex flex-col gap-5 px-4 pb-8 pt-6 sm:px-6">
       <div className="flex items-center gap-2">
-        <button type="button" onClick={() => navigate('/tenant/profile')} className="flex h-8 w-8 items-center justify-center rounded-full border border-border">
+        <button type="button" onClick={() => navigate('/profile')} className="flex h-8 w-8 items-center justify-center rounded-full border border-border">
           <ChevronLeft className="h-4 w-4" />
         </button>
         <h1 className="font-display text-[18px] font-extrabold text-foreground">Help & support</h1>

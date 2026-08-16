@@ -1,42 +1,29 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { Home, Wallet, DoorOpen, UtensilsCrossed, User } from 'lucide-react';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
+import { DASHBOARD_TABS } from '@/app/nav/appNavConfig';
 
 /**
- * Tenant app shell — bottom-nav chrome per TenantNav.dc.html (Home / Money /
- * Room / Food / Profile). Flatter IA than the owner app (no drill-down beyond
- * the Room/Profile overlay system), one global modal type (pay sheet) — this
- * shell is just the persistent nav + content area, matching that simplicity.
- * No header/logo bar — the mockup has none (verified 2026-07-27 fidelity
- * audit; an earlier pass added one with no design basis, since removed).
+ * The Tenant Dashboard's *inner* shell — Home / Money / Room / Food /
+ * Complaints, per `appNavConfig.DASHBOARD_TABS` (ADR-078 supersedes
+ * ADR-068's "no Complaints tab" call; Profile moved out to the app-wide
+ * outer nav, shared with Explore). No longer owns the fixed-bottom bar
+ * itself — `AppShell`'s `AppBottomNav` (Explore/Dashboard/Profile) does
+ * that one level up; this renders as a `sticky top-0` strip directly below
+ * it, so the two nav layers never stack as two competing bottom bars.
  *
  * Desktop: same treatment as `OwnerAppShell` — `Stayo Tenant.dc.html` has no
  * `@media`/desktop rules (fixed 402x874 mobile device-frame mockup), so on
  * `sm:`+ viewports this centers the same mobile layout in a bordered 480px
  * frame rather than inventing a new breakpoint.
  */
-const TENANT_TABS = [
-  { to: '/tenant/home', label: 'Home', icon: Home },
-  { to: '/tenant/money', label: 'Money', icon: Wallet },
-  { to: '/tenant/room', label: 'Room', icon: DoorOpen },
-  { to: '/tenant/food', label: 'Food', icon: UtensilsCrossed },
-  { to: '/tenant/profile', label: 'Profile', icon: User },
-];
-
 export function TenantAppShell() {
   return (
     <ThemeProvider theme="product">
       <div className="flex min-h-screen flex-col bg-background text-foreground [background-image:linear-gradient(#EBDCCF_1px,transparent_1px),linear-gradient(90deg,#EBDCCF_1px,transparent_1px)] [background-size:52px_52px] sm:mx-auto sm:max-w-[480px] sm:border-x sm:border-border">
-        <main className="flex-1 pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))]">
-          <ErrorBoundary>
-            <Outlet />
-          </ErrorBoundary>
-        </main>
-
-        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-4px_16px_rgba(40,30,20,0.03)] sm:inset-x-auto sm:left-1/2 sm:w-[480px] sm:-translate-x-1/2">
+        <nav className="sticky top-0 z-30 border-b border-border bg-card shadow-[0_4px_16px_rgba(40,30,20,0.03)]">
           <div className="mx-auto grid max-w-md grid-cols-5">
-            {TENANT_TABS.map(({ to, label, icon: Icon }) => (
+            {DASHBOARD_TABS.map(({ to, label, Icon: Icon }) => (
               <NavLink
                 key={to}
                 to={to}
@@ -67,6 +54,12 @@ export function TenantAppShell() {
             ))}
           </div>
         </nav>
+
+        <main className="flex-1">
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
+        </main>
       </div>
     </ThemeProvider>
   );

@@ -1,12 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, Lock, ShieldCheck } from 'lucide-react';
+import { ChevronLeft, Lock, Phone, ShieldCheck } from 'lucide-react';
 
+import { useAuth } from '@context/AuthContext';
+import { authApi } from '@lib/authApi';
 import { useCreateEnquiry, useDiscoverListing, useIsSeeker } from '@features/discover/hooks/useDiscover';
 
 import { useDiscoverAuth } from './DiscoverAuthContext';
 import { PrimaryButton } from './components/DiscoverShell';
 import { C, FONT, PHOTO_FALLBACK, formatRupees } from './discoverTheme';
+import {
+  needsPhoneVerification as computeNeedsPhoneVerification,
+  resolveSendCodeOutcome,
+  shouldUpdateName,
+  validateOtpInput,
+  validatePhoneInput,
+} from './enquiryPhoneVerification';
 
 const DURATIONS = [3, 6, 12];
 
@@ -31,6 +40,7 @@ export function EnquiryPage() {
   const location = useLocation();
   const { isSeeker, loading: authLoading, user } = useIsSeeker();
   const { openSignIn } = useDiscoverAuth();
+  const { updateUser } = useAuth();
 
   const seeded = (location.state ?? {}) as { roomCapacity?: number; hostelName?: string };
 
@@ -42,6 +52,75 @@ export function EnquiryPage() {
   const [duration, setDuration] = useState(6);
   const [message, setMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  // Phone verification — only asked once, and only when actually needed
+  // (no verified phone on file yet). `phoneStep` starts at 'confirm' if the
+  // account already has *some* phone on file (just needs re-confirming +
+  // OTP), or empty if it's a fresh Google-provisioned account with none.
+  const [phoneStep, setPhoneStep] = useState<'confirm' | 'otp'>('confirm');
+  const [phoneInput, setPhoneInput] = useState('');
+  const [nameInput, setNameInput] = useState('');
+  const [otpInput, setOtpInput] = useState('');
+  const [phoneSubmitting, setPhoneSubmitting] = useState(false);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user?.phone) setPhoneInput(user.phone);
+    if (user?.name) setNameInput(user.name);
+  }, [user?.phone, user?.name]);
+
+  const needsPhoneVerification = computeNeedsPhoneVerification(isSeeker, user);
+
+  const sendCode = async () => {
+    setPhoneError(null);
+    const phone = phoneInput.trim();
+    const phoneCheck = validatePhoneInput(phone);
+    if (!phoneCheck.valid) {
+      setPhoneError(phoneCheck.error);
+      return;
+    }
+    setPhoneSubmitting(true);
+    try {
+      if (shouldUpdateName(nameInput, user?.name)) await authApi.updateBasicProfile({ name: nameInput.trim() });
+      // Phone must be saved to the profile BEFORE the OTP is verified —
+      // verifyPhoneOtp marks `phone_verified: true` on whichever profile(s)
+      // currently have this phone on file (lib/services/auth/auth-otp-service.ts).
+      await authApi.updateBasicProfile({ phone });
+      const result = await authApi.sendPhoneOtp(phone);
+      const outcome = resolveSendCodeOutcome(result);
+      if (outcome.kind === 'submit_immediately') {
+        updateUser({ phone, phone_verified: false });
+        submit();
+        return;
+      }
+      updateUser({ phone });
+      setOtpInput('');
+      setPhoneStep('otp');
+    } catch (err: any) {
+      setPhoneError(err?.response?.data?.error?.message || 'Could not send the code. Please try again.');
+    } finally {
+      setPhoneSubmitting(false);
+    }
+  };
+
+  const verifyCodeAndSubmit = async () => {
+    setPhoneError(null);
+    const otpCheck = validateOtpInput(otpInput);
+    if (!otpCheck.valid) {
+      setPhoneError(otpCheck.error);
+      return;
+    }
+    setPhoneSubmitting(true);
+    try {
+      await authApi.verifyPhoneOtp(phoneInput.trim(), otpInput.trim());
+      updateUser({ phone: phoneInput.trim(), phone_verified: true });
+      submit();
+    } catch (err: any) {
+      setPhoneError(err?.response?.data?.error?.message || 'Verification failed. Check the code and try again.');
+    } finally {
+      setPhoneSubmitting(false);
+    }
+  };
 
   const hostel = data?.hostel;
   const capacity = seeded.roomCapacity;
@@ -56,7 +135,7 @@ export function EnquiryPage() {
     createEnquiry.mutate(
       { slug, roomCapacity: capacity, moveInDate: moveIn, durationMonths: duration, message: message.trim() || undefined },
       {
-        onSuccess: (enquiry) => navigate(`/discover/enquiries/${enquiry.id}`, { replace: true }),
+        onSuccess: (enquiry) => navigate(`/profile/enquiries/${enquiry.id}`, { replace: true }),
         onError: (mutationError: any) =>
           setError(
             mutationError?.response?.data?.message ??
@@ -200,7 +279,81 @@ export function EnquiryPage() {
         </section>
 
         {/* Identity */}
-        {isSeeker ? (
+        {isSeeker && needsPhoneVerification ? (
+          <section
+            className="rounded-2xl border p-4"
+            style={{ background: '#F6F0E8', borderColor: '#EADFCF' }}
+          >
+            <div className="flex items-start gap-3">
+              <Phone className="h-4 w-4 flex-none" strokeWidth={2} style={{ color: C.clay }} />
+              <div>
+                <p className="text-[13px] font-bold" style={{ fontFamily: FONT.display, color: C.text }}>
+                  {phoneStep === 'otp' ? 'Enter the code we sent' : 'Confirm your phone number'}
+                </p>
+                <p className="mt-1 text-[11.5px] leading-[1.55]" style={{ color: '#5A5147' }}>
+                  {phoneStep === 'otp'
+                    ? `Sent to ${phoneInput.trim()}.`
+                    : "The owner needs a verified number to reach you — this only happens once."}
+                </p>
+              </div>
+            </div>
+
+            {phoneStep === 'confirm' ? (
+              <div className="mt-3.5 flex flex-col gap-2.5">
+                {!user?.name && (
+                  <input
+                    value={nameInput}
+                    onChange={(event) => setNameInput(event.target.value)}
+                    placeholder="Your name"
+                    className="w-full rounded-[11px] border bg-white px-3.5 py-2.5 text-[13.5px] outline-none"
+                    style={{ borderColor: C.lineInput, color: C.inkSoft }}
+                  />
+                )}
+                <input
+                  value={phoneInput}
+                  onChange={(event) => setPhoneInput(event.target.value)}
+                  placeholder="+91 90000 00000"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  className="w-full rounded-[11px] border bg-white px-3.5 py-2.5 text-[13.5px] outline-none"
+                  style={{ borderColor: C.lineInput, color: C.inkSoft }}
+                />
+                {phoneError && (
+                  <p className="text-[11.5px] font-semibold" style={{ color: '#B3402F' }}>{phoneError}</p>
+                )}
+                <PrimaryButton full disabled={phoneSubmitting} onClick={sendCode}>
+                  {phoneSubmitting ? 'Sending…' : 'Send code'}
+                </PrimaryButton>
+              </div>
+            ) : (
+              <div className="mt-3.5 flex flex-col gap-2.5">
+                <input
+                  value={otpInput}
+                  onChange={(event) => setOtpInput(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                  inputMode="numeric"
+                  autoFocus
+                  placeholder="123456"
+                  className="w-full rounded-[11px] border bg-white px-3.5 py-2.5 text-center text-[13.5px] tracking-[0.3em] outline-none"
+                  style={{ borderColor: C.lineInput, color: C.inkSoft }}
+                />
+                {phoneError && (
+                  <p className="text-[11.5px] font-semibold" style={{ color: '#B3402F' }}>{phoneError}</p>
+                )}
+                <PrimaryButton full disabled={phoneSubmitting} onClick={verifyCodeAndSubmit}>
+                  {phoneSubmitting ? 'Verifying…' : 'Verify & send enquiry'}
+                </PrimaryButton>
+                <button
+                  type="button"
+                  onClick={() => setPhoneStep('confirm')}
+                  className="text-center text-[11.5px] font-semibold"
+                  style={{ color: C.textMuted }}
+                >
+                  Wrong number? Go back
+                </button>
+              </div>
+            )}
+          </section>
+        ) : isSeeker ? (
           <section
             className="flex items-start gap-3 rounded-2xl border p-4"
             style={{ background: '#fff', borderColor: C.line }}
@@ -251,18 +404,24 @@ export function EnquiryPage() {
         )}
       </main>
 
-      <div
-        className="sticky bottom-0 flex-none border-t px-5 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-3"
-        style={{ background: C.cardWarm, borderColor: C.line }}
-      >
-        <PrimaryButton
-          full
-          disabled={!isSeeker || authLoading || createEnquiry.isPending}
-          onClick={submit}
+      {/* When phone verification is needed, the Identity card above owns
+          submission (its own buttons call sendCode/verifyCodeAndSubmit,
+          the latter calling submit() itself on success) — this bar would
+          otherwise offer a second, confusing way to submit. */}
+      {!needsPhoneVerification && (
+        <div
+          className="sticky bottom-0 flex-none border-t px-5 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-3"
+          style={{ background: C.cardWarm, borderColor: C.line }}
         >
-          {createEnquiry.isPending ? 'Sending…' : 'Send enquiry to owner'}
-        </PrimaryButton>
-      </div>
+          <PrimaryButton
+            full
+            disabled={!isSeeker || authLoading || createEnquiry.isPending}
+            onClick={submit}
+          >
+            {createEnquiry.isPending ? 'Sending…' : 'Send enquiry to owner'}
+          </PrimaryButton>
+        </div>
+      )}
     </div>
   );
 }

@@ -27,7 +27,7 @@ export function SavedPage() {
         title="Saved hostels"
         icon={Heart}
         body="Sign in to keep a shortlist. Your saved hostels follow you to any device, and stay with your Stayo account."
-        returnTo="/discover/saved"
+        returnTo="/profile/saved"
       />
     );
   }

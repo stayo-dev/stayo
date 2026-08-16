@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@context/AuthContext';
+import { hasLiveTenancy } from '@/app/nav/useAppNav';
 import { StayoLoadingScreen } from '@shared/ui/brand';
 
 interface ProtectedTenantRouteProps {
@@ -20,9 +21,21 @@ export function ProtectedTenantRoute({ children }: ProtectedTenantRouteProps) {
     return <Navigate to="/login" replace />;
   }
 
-  if (!user.is_profile_completed) {
-    return <Navigate to="/complete-profile" replace />;
+  // A TENANT role alone isn't enough — a Discover-only marketplace account
+  // (no `tenants` row, e.g. someone who signed up to browse/enquire) has
+  // nothing to show inside the Dashboard. Previously nothing checked this,
+  // so such an account could reach `/tenant/*` as long as
+  // `is_profile_completed` happened to be true. Send them to Explore instead
+  // — the outer nav won't even offer a Dashboard tab for this state.
+  if (!hasLiveTenancy(user)) {
+    return <Navigate to="/discover" replace />;
   }
+
+  // Dashboard entry is no longer blocked on profile completeness — the
+  // Dashboard shows a "Complete your profile" nudge card instead (see
+  // ProfileCompletionNudge). `is_profile_completed` still exists and still
+  // gates the separate invited-tenant onboarding wizard; it just isn't this
+  // route's door anymore.
 
   return children ? <>{children}</> : <Outlet />;
 }

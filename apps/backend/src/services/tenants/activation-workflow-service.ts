@@ -760,7 +760,8 @@ export class ActivationWorkflowService {
         activatedTenancy?.id || null,
         activatedTenancy?.profile_completed || false,
         { ipAddress: context.ip, userAgent: context.userAgent },
-        activationPassword
+        activationPassword,
+        activatedTenancy?.status || null
       ) : null;
 
       return {
