@@ -10,6 +10,13 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-16 — Admin Overview screen, on real data
+- Built the design's OVERVIEW section: six KPI cards, the owner-acquisition funnel, "Waiting on your review", and Live activity. Sources: `/platform-admin/dashboard`, `/leads` counts, pending owner-documents, pending hostels, `/platform-admin/notifications`.
+- **The funnel is cumulative by construction** — a `LIVE` lead is counted as having passed through every earlier stage. Counting statuses in isolation would draw a funnel that widens at the bottom as leads progress, which is the standard way these charts mislead. Pinned by a monotonic-narrowing test.
+- **Two deliberate departures from the mockup**, both to avoid misreporting: the revenue card reads "Revenue this month" because `/dashboard` returns month-to-date (the design says "today" — same number under that label overstates daily revenue by ~30x); and the 14-day daily-gross bar chart states that daily revenue is not measured, since no endpoint returns a date series.
+- The design's "Landing visitors" funnel row is omitted — it needs web analytics the platform does not collect, and inventing it would make every conversion rate below it fictional. See [[Decisions]] ADR-078's honest-gap rule.
+- Tests +17 (724→741). See [[Frontend]], [[Features]].
+
 ### 2026-08-16 — The admin console, rebuilt from scratch
 - **Replaced the entire platform-admin console** with the new `Stayo Admin.dc.html` design. `AdminAppShell` and all 9 `Admin*Page.tsx` files deleted (~3,400 LOC); new shell at `platforms/admin/layout/AdminConsoleShell.tsx` with a dark 250px sidebar, four nav groups, an addressable detail drawer and a toast host. See [[Decisions]] ADR-078, [[Frontend]], [[Features]].
 - **Eleven routes**, with four redirects so old links survive: `documents→kyc`, `hostels→listings`, `marketing-reviews→listings?tab=content`, `more→settings`.

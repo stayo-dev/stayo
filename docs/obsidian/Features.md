@@ -441,10 +441,11 @@ The StayO redesign is being built in place inside the same `apps/frontend` tree,
 >
 > | Screen | State |
 > |---|---|
+> | Overview | Real — KPIs, cumulative acquisition funnel, review queue, live activity. Daily-revenue chart states it isn't measured |
 > | Owners | Real — list + detail drawer |
 > | Hostel Listings | Real — approve/reject, plus the marketing content-review queue as a tab |
 > | KYC Approvals | Real — documents grouped by owner; business details/automated checks not yet collected |
-> | Overview, Leads, Revenue, Subscriptions, Broadcasts, Settings | Layout only — backends exist, screens queued for the next plan |
+> | Leads, Revenue, Subscriptions, Broadcasts, Settings | Layout only — backends exist, screens queued for the next plan |
 > | **Settlements**, **Reports & Bugs** | Layout only — **no backend exists**; settlement routes return 410 Gone |
 >
 > Screens without data render `NotWiredYet`, never a fabricated zero.
