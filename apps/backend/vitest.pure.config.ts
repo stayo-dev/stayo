@@ -64,6 +64,7 @@ export default defineConfig({
       'tests/platform-listing-claim.test.ts',
       'tests/platform-listing-enquiry-lead.test.ts',
       'tests/marketing-editor-scope.test.ts',
+      'tests/enquiry-template-contracts.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),

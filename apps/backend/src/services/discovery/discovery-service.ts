@@ -2,6 +2,11 @@ import { createHash } from "crypto";
 
 import { prisma } from "@/lib/db";
 import { projectListing } from "./listing-projection";
+import { whatsAppTemplateDeliveryService } from "@/lib/services/notifications/whatsapp-template-delivery";
+import {
+  buildOwnerEnquiryReceived,
+  resolveEnquiryTemplateName,
+} from "@/lib/services/notifications/providers/whatsapp/enquiry-template-contracts";
 import {
   shouldRaisePlatformLead,
   buildPlatformLeadFromEnquiry,
@@ -558,6 +563,39 @@ export class DiscoveryService {
         }
       })().catch(() => undefined);
     }
+
+    // Tell the owner on WhatsApp. An enquiry they do not see for a day is an
+    // enquiry lost to whoever replied first, and the dashboard alone does not
+    // reach them. Never fatal: the lead is already committed, and losing it
+    // because a message failed would be the wrong trade.
+    await (async () => {
+      const owner = await prisma.profile.findUnique({
+        where: { id: hostel.owner_id },
+        select: { name: true, phone: true },
+      });
+      if (!owner?.phone) return;
+
+      const template = resolveEnquiryTemplateName("OWNER_ENQUIRY_RECEIVED");
+      await whatsAppTemplateDeliveryService.send({
+        phone: owner.phone,
+        templateName: template.name,
+        languageCode: template.language,
+        ...buildOwnerEnquiryReceived({
+          ownerName: owner.name,
+          hostelName: hostel.name,
+          tenantName: seeker.name,
+          bedType: input.roomCapacity ? `${input.roomCapacity}-sharing` : null,
+          monthlyRent: null,
+          moveInDate: input.moveInDate ?? null,
+          leadId: lead.id,
+        }),
+        // Keyed on the lead: re-enquiring updates the same lead, and the owner
+        // should not be messaged twice for one conversation.
+        idempotencyKey: `enquiry-received:${lead.id}`,
+        ownerId: hostel.owner_id,
+        hostelId: hostel.id,
+      });
+    })().catch(() => undefined);
 
     await invalidateTag(redisKeys.admissions.owner(hostel.owner_id));
 
