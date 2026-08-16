@@ -104,13 +104,8 @@ export function ExplorePage() {
             aria-label="Stayo home"
             className="mb-3 flex items-center"
           >
-            {/* The horizontal lockup already contains the wordmark, so there is
-                no separate text beside it. */}
-            <img
-              src="/stayo-logo-horizontal.svg"
-              alt="Stayo"
-              className="h-9 w-auto"
-            />
+            {/* Wordmark only — no separate text label beside it. */}
+            <img src="/stayo-wordmark.svg" alt="Stayo" className="h-7 w-auto" />
           </button>
 
           <p className="text-[10.5px] font-bold uppercase tracking-[0.14em]" style={{ color: '#8C8177' }}>
