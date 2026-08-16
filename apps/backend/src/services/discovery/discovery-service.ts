@@ -2,6 +2,11 @@ import { createHash } from "crypto";
 
 import { prisma } from "@/lib/db";
 import { projectListing } from "./listing-projection";
+import {
+  shouldRaisePlatformLead,
+  buildPlatformLeadFromEnquiry,
+  bumpEnquiryNote,
+} from "@/src/services/marketing/platform-listing-leads";
 import { ApiError } from "@/src/lib/api-error";
 import { redisKeys } from "@/lib/redis/keys";
 import { getOrSetJson, invalidateTag } from "@/lib/redis/cache";
@@ -461,7 +466,7 @@ export class DiscoveryService {
     const hostel = await prisma.hostels.findFirst({
       // Spread first — see getListing for why the order matters.
       where: { ...DISCOVERABLE, public_slug: input.slug },
-      select: { id: true, owner_id: true, name: true },
+      select: { id: true, owner_id: true, name: true, city: true, listing_source: true },
     });
     if (!hostel) throw ApiError.notFound("This hostel is not listed on Stayo");
 
@@ -525,6 +530,34 @@ export class DiscoveryService {
       // A failed notification must not lose the lead — the row is already
       // committed and visible in the owner's inbox regardless.
       .catch(() => undefined);
+
+    // An enquiry on a hostel Stayo listed itself is demand evidence, not an
+    // owner's inbox item — nobody is operating it here to receive it. Raise or
+    // bump a sales lead so the Leads pipeline can show real interest when we
+    // approach that owner. Never fatal: the enquiry itself is already saved,
+    // and losing it because the sales side failed would be the wrong trade.
+    if (shouldRaisePlatformLead(hostel)) {
+      await (async () => {
+        const open = await prisma.platform_leads.findFirst({
+          where: { hostel_name: hostel.name, status: { notIn: ["LOST", "LIVE"] } },
+          orderBy: { created_at: "desc" },
+          select: { id: true, notes: true },
+        });
+        if (open) {
+          await prisma.platform_leads.update({
+            where: { id: open.id },
+            data: { notes: bumpEnquiryNote(open.notes), updated_at: new Date() },
+          });
+        } else {
+          await prisma.platform_leads.create({
+            data: {
+              ...buildPlatformLeadFromEnquiry(hostel),
+              tracking_token: crypto.randomUUID(),
+            },
+          });
+        }
+      })().catch(() => undefined);
+    }
 
     await invalidateTag(redisKeys.admissions.owner(hostel.owner_id));
 

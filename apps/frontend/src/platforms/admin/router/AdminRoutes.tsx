@@ -18,6 +18,7 @@ const SettlementsPage = lazy(() => import('../pages/SettlementsPage').then((m) =
 const SubscriptionsPage = lazy(() => import('../pages/SubscriptionsPage').then((m) => ({ default: m.SubscriptionsPage })));
 const ReportsPage = lazy(() => import('../pages/ReportsPage').then((m) => ({ default: m.ReportsPage })));
 const BroadcastsPage = lazy(() => import('../pages/BroadcastsPage').then((m) => ({ default: m.BroadcastsPage })));
+const ListingPreviewPage = lazy(() => import('../pages/ListingPreviewPage').then((m) => ({ default: m.ListingPreviewPage })));
 const SettingsPage = lazy(() => import('../pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 
 /**
@@ -42,6 +43,9 @@ export function AdminRoutes() {
             a separate destination — a listing needs both to go live. */}
         <Route path="/admin/kyc" element={<KycPage />} />
         <Route path="/admin/listings" element={<ListingsPage />} />
+        {/* Full-screen: it renders the real Discovery listing, so it must not
+            sit inside the console chrome. */}
+        <Route path="/admin/listings/preview/:revisionId" element={<ListingPreviewPage />} />
         <Route path="/admin/revenue" element={<RevenuePage />} />
         <Route path="/admin/settlements" element={<SettlementsPage />} />
         <Route path="/admin/subscriptions" element={<SubscriptionsPage />} />

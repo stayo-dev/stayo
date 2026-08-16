@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { marketingPreviewService } from '@features/hostel-marketing/api';
 import { ChevronLeft, Coffee, Heart, Info, MapPin, Moon, ShieldCheck, Sun, Utensils } from 'lucide-react';
 
 import {
@@ -68,13 +70,29 @@ function toBedOptions(rooms: any[]): BedOption[] {
   return Array.from(byCapacity.values()).sort((a, b) => a.capacity - b.capacity);
 }
 
-export function ListingPage() {
+/**
+ * The public Discovery listing.
+ *
+ * `previewRevisionId` renders an unapproved marketing revision through this
+ * exact component, for the admin review screen. Deliberately the same
+ * renderer: a separate preview would drift, and the admin would end up
+ * approving something other than what ships.
+ */
+export function ListingPage({ previewRevisionId }: { previewRevisionId?: string } = {}) {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const { isSeeker } = useIsSeeker();
   const { openSignIn } = useDiscoverAuth();
 
-  const { data, isLoading, isError } = useDiscoverListing(slug);
+  const live = useDiscoverListing(previewRevisionId ? undefined : slug);
+  const preview = useQuery({
+    queryKey: ['admin', 'marketing-preview', previewRevisionId],
+    queryFn: () => marketingPreviewService.get(previewRevisionId as string),
+    enabled: Boolean(previewRevisionId),
+  });
+  const source = previewRevisionId ? preview : live;
+  const data = previewRevisionId ? (preview.data as any)?.listing : live.data;
+  const { isLoading, isError } = source;
   const { data: saved } = useSavedHostels();
   const toggleSaved = useToggleSaved();
 

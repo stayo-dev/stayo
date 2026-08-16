@@ -224,3 +224,17 @@ export const EMPTY_MARKETING_CONTENT: MarketingContent = {
     week: Array.from({ length: 7 }, () => ({ b: '', l: '', s: '', dn: '' })),
   },
 };
+
+
+/**
+ * Admin-only preview of an unapproved marketing revision, projected through
+ * the same function the live Discovery listing uses. See
+ * apps/backend/src/services/discovery/listing-projection.ts.
+ */
+export const marketingPreviewService = {
+  get: async (revisionId: string) => {
+    const response = await api.get(`/platform-admin/marketing-reviews/${revisionId}/preview`);
+    const data = response.data?.data ?? response.data;
+    return data as { revision: { id: string; version: number; status: string }; listing: any };
+  },
+};
