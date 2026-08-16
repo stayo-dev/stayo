@@ -61,6 +61,7 @@ export default defineConfig({
       'tests/marketing-approval.test.ts',
       'tests/discovery-listing-projection.test.ts',
       'tests/marketing-review-flags.test.ts',
+      'tests/platform-listing-claim.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),

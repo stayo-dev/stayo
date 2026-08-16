@@ -188,6 +188,27 @@ export const platformAdminService = {
     return unwrap(response);
   },
 
+  /** Stayo-authored listings for hostels nobody operates here yet (ADR: platform listings). */
+  getPlatformListings: async () => {
+    const response = await api.get('/platform-admin/platform-listings');
+    return unwrap(response).listings as Array<{
+      id: string; name: string; city: string; address: string;
+      public_slug: string | null; listing_status: string; verification_status: string;
+      enquiry_count: number; created_at: string;
+    }>;
+  },
+  createPlatformListing: async (data: {
+    name: string; city: string; address: string; phone: string; hostel_type?: string;
+  }) => {
+    const response = await api.post('/platform-admin/platform-listings', data);
+    return unwrap(response).hostel as { id: string; name: string; city: string; public_slug: string };
+  },
+  /** Hand a platform listing to its real owner. Refused for owner-managed hostels. */
+  assignListingOwner: async (hostelId: string, ownerId: string) => {
+    const response = await api.post(`/platform-admin/hostels/${hostelId}/assign-owner`, { owner_id: ownerId });
+    return unwrap(response);
+  },
+
   getPlans: async () => {
     const response = await api.get('/platform-admin/plans');
     return unwrap(response).plans as any[];

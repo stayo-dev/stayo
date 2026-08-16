@@ -7,7 +7,11 @@ describe('resolveListingTab', () => {
     expect(resolveListingTab('')).toBe('pending');
   });
 
-  it('accepts the four known tabs', () => {
+  it('accepts every known tab', () => {
+    expect(resolveListingTab('stayo')).toBe('stayo');
+  });
+
+  it('accepts the four hostel tabs', () => {
     expect(resolveListingTab('pending')).toBe('pending');
     expect(resolveListingTab('approved')).toBe('approved');
     expect(resolveListingTab('rejected')).toBe('rejected');
@@ -32,5 +36,9 @@ describe('listingFilterFor', () => {
 
   it('returns null for the content tab, which reads marketing revisions instead', () => {
     expect(listingFilterFor('content')).toBeNull();
+  });
+
+  it('returns null for the Stayo-listed tab, which reads platform listings instead', () => {
+    expect(listingFilterFor('stayo')).toBeNull();
   });
 });

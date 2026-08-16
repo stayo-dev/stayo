@@ -11,13 +11,14 @@
  * PURE MODULE — no I/O, runs under vitest's node environment.
  */
 
-export type ListingTabKey = 'pending' | 'approved' | 'rejected' | 'content';
+export type ListingTabKey = 'pending' | 'approved' | 'rejected' | 'content' | 'stayo';
 
 export const LISTING_TABS: { key: ListingTabKey; label: string }[] = [
   { key: 'pending', label: 'Pending' },
   { key: 'approved', label: 'Approved' },
   { key: 'rejected', label: 'Rejected' },
   { key: 'content', label: 'Content review' },
+  { key: 'stayo', label: 'Stayo-listed' },
 ];
 
 const KEYS = LISTING_TABS.map((t) => t.key);

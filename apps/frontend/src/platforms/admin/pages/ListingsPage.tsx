@@ -12,6 +12,7 @@ import {
   type ReviewSection, type SectionFlagDraft,
 } from '../drawer/MarketingReviewBody';
 import { parseDetailParam, serializeDetail } from '../drawer/drawerParam';
+import { StayoListedPanel } from '../listings/StayoListedPanel';
 import { tintForId } from '../theme/palette';
 
 const STATUS_PILL: Record<string, { bg: string; color: string; label: string }> = {
@@ -64,6 +65,11 @@ export function ListingsPage() {
   });
 
   const marketingQueue = useMarketingQueue();
+  const platformListings = useQuery({
+    queryKey: ['admin', 'platform-listings'],
+    queryFn: () => platformAdminService.getPlatformListings(),
+    staleTime: 60_000,
+  });
   const reviewDecision = useReviewDecision();
 
   const setTab = (key: string) => {
@@ -118,7 +124,9 @@ export function ListingsPage() {
     <div className="flex animate-[adFade_.25s_ease] flex-col gap-[18px]">
       <FilterChips chips={chips} active={tab} onChange={setTab} />
 
-      {tab === 'content' ? (
+      {tab === 'stayo' ? (
+        <StayoListedPanel />
+      ) : tab === 'content' ? (
         <ContentReviewQueue
           items={marketingQueue.data}
           isLoading={marketingQueue.isLoading}
