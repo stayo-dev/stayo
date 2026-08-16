@@ -19,6 +19,8 @@ export interface SupabaseClaims {
   email_verified?: boolean;
   session_id?: string;
   app_metadata?: { provider?: string; providers?: string[] };
+  /** Google (and other OAuth providers) populate `full_name`/`name`/`avatar_url` here. */
+  user_metadata?: { full_name?: string; name?: string; avatar_url?: string };
   iat?: number;
   exp?: number;
 }

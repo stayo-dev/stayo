@@ -104,7 +104,7 @@ export function ProfileEditPage() {
   const save = () => {
     setError(null);
     if (Object.keys(draft).length === 0) {
-      navigate('/discover/profile');
+      navigate('/profile');
       return;
     }
     update.mutate(draft, {
@@ -129,7 +129,7 @@ export function ProfileEditPage() {
         <button
           type="button"
           aria-label="Back"
-          onClick={() => navigate('/discover/profile')}
+          onClick={() => navigate('/profile')}
           className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-full"
           style={{ background: '#F4EEE7' }}
         >

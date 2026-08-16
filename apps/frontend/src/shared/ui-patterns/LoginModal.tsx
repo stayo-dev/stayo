@@ -3,7 +3,6 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { Eye, EyeOff, X } from 'lucide-react';
 import { cn } from '@shared/lib/cn';
 import { useAuth } from '@context/AuthContext';
-import { authApi } from '@lib/authApi';
 import { StayoLoader, StayoMark, StayoWordmark } from '@shared/ui/brand';
 
 export type LoginModalMode = 'owner' | 'tenant';
@@ -25,13 +24,11 @@ interface LoginModalProps {
 }
 
 interface LoginModalForm {
-  name: string;
   email: string;
-  phone: string;
   password: string;
 }
 
-const EMPTY_FORM: LoginModalForm = { name: '', email: '', phone: '', password: '' };
+const EMPTY_FORM: LoginModalForm = { email: '', password: '' };
 
 const inputClass =
   'w-full rounded-[11px] border-[1.5px] border-border bg-muted px-3.5 py-2.5 text-[14.5px] font-medium text-foreground transition-colors focus:border-primary focus:outline-none';
@@ -43,43 +40,51 @@ const labelClass = 'mb-1.5 block font-display text-[10.5px] font-bold tracking-w
  * landing page with this open, so every redirect that needs a URL — session
  * expiry, the admin guard, password reset, activation — still has one.
  *
- * Real auth as of 2026-07-31: this was previously a mock (a 650ms setTimeout
- * standing in for the network call) while the real work lived on a separate,
- * off-theme `/login` page, which has since been deleted.
- *
  * Owner mode is login-only — owner accounts are created through the lead →
- * approval → onboarding funnel, never here. Tenant signup creates a
- * *marketplace* account (browse/save/enquire); someone becomes a tenant of a
- * hostel only when an owner invites them and they activate.
+ * approval → onboarding funnel, never here.
+ *
+ * Tenant signup is Google-only as of 2026-08-16 (the password/phone-OTP
+ * signup form is gone from this UI — `AuthContext.signUpTenant()` and
+ * `POST /api/auth/tenant-signup` are untouched underneath, just no longer
+ * wired to this component, in case anything else still depends on them).
+ * "Continue with Google" now creates the account when the email is new
+ * (`loginWithGoogleAllowProvision`) via a narrow, separately-gated backend
+ * path (`lib/auth/supabase-provision.ts`) — the existing "Google never
+ * auto-provisions" invariant on the plain login path is untouched. Phone
+ * verification moved out of signup entirely — it happens once, at the
+ * moment it's actually needed (sending an enquiry), see `EnquiryPage`.
+ * The Login tab keeps email+password, for anyone with a password-based
+ * account from before this change, plus the same Google button — since
+ * there's no other way to create an account now, this tab's Google button
+ * is provisioning-capable too, so a new visitor who starts here isn't
+ * dead-ended.
  *
  * Built directly on `@radix-ui/react-dialog` rather than
  * `app/components/ui/dialog.tsx` — same reasoning as BottomSheet using
  * `vaul` directly: `shared/` can't import `app/` (scripts/check-architecture.mjs).
  */
 export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login' }: LoginModalProps) {
-  const { login, loginWithGoogle, signUpTenant } = useAuth();
+  const { login, loginWithGoogle, loginWithGoogleAllowProvision } = useAuth();
 
   const [tab, setTab] = useState<'login' | 'signup'>(initialTab);
   const [form, setForm] = useState<LoginModalForm>(EMPTY_FORM);
-  const [otp, setOtp] = useState('');
-  const [otpRequired, setOtpRequired] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [googleSubmitting, setGoogleSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   const isOwner = mode === 'owner';
   const isLogin = isOwner || tab === 'login';
-  const showName = !isOwner && !isLogin;
+  const isTenantSignup = !isOwner && tab === 'signup';
 
   useEffect(() => {
     if (!open) return;
     setTab(isOwner ? 'login' : initialTab);
     setForm(EMPTY_FORM);
-    setOtp('');
-    setOtpRequired(false);
     setShowPassword(false);
     setError('');
     setSubmitting(false);
+    setGoogleSubmitting(false);
   }, [open, initialTab, isOwner]);
 
   const handleOpenChange = (next: boolean) => {
@@ -111,84 +116,30 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
     }
   };
 
-  /** Creates the account and logs in. Shared by the skip and verified paths. */
-  const createAccount = async () => {
-    const user = await signUpTenant({
-      name: form.name,
-      email: form.email,
-      phone: form.phone,
-      password: form.password,
-    });
-    onSuccess({
-      role: String(user.role ?? 'TENANT'),
-      name: user.name ?? form.name,
-      email: user.email ?? form.email,
-      tenantId: (user as { tenant_id?: string | null }).tenant_id ?? null,
-    });
-  };
-
-  const submitSignup = async () => {
-    if (!form.name.trim() || !form.email.trim() || !form.phone.trim() || !form.password.trim()) {
-      setError('Please fill in all fields.');
-      return;
-    }
-    if (form.password.trim().length < 8) {
-      setError('Password must be at least 8 characters.');
-      return;
-    }
-    setError('');
-    setSubmitting(true);
-    try {
-      const result = await authApi.sendPhoneOtp(form.phone.trim());
-
-      // WhatsApp can't deliver a code right now (ADR-034) — the backend has
-      // already recorded the number as unverified, so create the account
-      // rather than showing an OTP screen for a code nobody will receive.
-      if (result.verification_required === false) {
-        await createAccount();
-        return;
-      }
-
-      setOtp('');
-      setOtpRequired(true);
-    } catch (err) {
-      setError(getMessage(err, 'Could not create your account. Please try again.'));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const submitOtp = async () => {
-    if (otp.trim().length !== 6) {
-      setError('Enter the 6-digit code.');
-      return;
-    }
-    setError('');
-    setSubmitting(true);
-    try {
-      await authApi.verifyPhoneOtp(form.phone.trim(), otp.trim());
-      await createAccount();
-    } catch (err) {
-      setError(getMessage(err, 'Verification failed. Check the code and try again.'));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const submitGoogle = async () => {
-    setError('');
-    try {
-      // Full-page redirect (ADR-031) — nothing after this runs.
-      await loginWithGoogle();
-    } catch (err) {
-      setError(getMessage(err, 'Google sign-in failed.'));
-    }
-  };
-
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (otpRequired) return submitOtp();
-    return isLogin ? submitLogin() : submitSignup();
+    return submitLogin();
+  };
+
+  /**
+   * Tenant mode allows Google to create a new account (no other signup path
+   * exists here anymore); owner mode never does — owner accounts are only
+   * ever created through the onboarding funnel.
+   */
+  const submitGoogle = async () => {
+    setError('');
+    setGoogleSubmitting(true);
+    try {
+      if (isOwner) {
+        await loginWithGoogle();
+      } else {
+        await loginWithGoogleAllowProvision();
+      }
+      // No further code runs on success — signInWithOAuth navigates the browser away.
+    } catch (err) {
+      setError(getMessage(err, 'Google sign-in failed.'));
+      setGoogleSubmitting(false);
+    }
   };
 
   return (
@@ -219,16 +170,7 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
             <StayoWordmark className="h-[15px] w-auto" />
           </div>
 
-          {otpRequired ? (
-            <>
-              <Dialog.Title className="mb-1 mt-3.5 font-display text-[22px] font-extrabold text-foreground">
-                Enter verification code
-              </Dialog.Title>
-              <Dialog.Description className="mb-5 text-sm leading-normal text-muted-foreground">
-                Sent to {form.phone.trim()}
-              </Dialog.Description>
-            </>
-          ) : isOwner ? (
+          {isOwner ? (
             <>
               <Dialog.Title className="mb-1 mt-3.5 font-display text-[22px] font-extrabold text-foreground">
                 Owner Login
@@ -243,7 +185,7 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
                 {isLogin ? 'Welcome back' : 'Create your account'}
               </Dialog.Title>
               <Dialog.Description className="mb-4.5 text-sm leading-normal text-muted-foreground">
-                {isLogin ? 'Log in to continue.' : 'Sign up to browse, save and enquire about stays.'}
+                {isLogin ? 'Log in to continue.' : 'One tap to browse, save and enquire about stays.'}
               </Dialog.Description>
 
               <div className="relative mb-5 flex gap-0 rounded-[13px] border border-border bg-muted p-1.5">
@@ -274,32 +216,30 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
             </>
           )}
 
-          <form onSubmit={onSubmit} className="flex flex-col gap-3.5">
-            {otpRequired ? (
-              <label className="block">
-                <span className={labelClass}>6-DIGIT CODE</span>
-                <input
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  inputMode="numeric"
-                  autoFocus
-                  placeholder="123456"
-                  className={`${inputClass} text-center tracking-[0.3em]`}
-                />
-              </label>
-            ) : (
-              <>
-                {showName && (
-                  <label className="block">
-                    <span className={labelClass}>FULL NAME</span>
-                    <input
-                      value={form.name}
-                      onChange={(e) => set('name', e.target.value)}
-                      placeholder="Your name"
-                      className={inputClass}
-                    />
-                  </label>
-                )}
+          {isTenantSignup ? (
+            <div className="flex flex-col gap-3.5">
+              <p className="text-[12.5px] leading-normal text-muted-foreground">
+                Your Google account becomes your Stayo account — no password to remember. We'll ask for your
+                phone number only when you're ready to send an enquiry.
+              </p>
+              {error && (
+                <div className="rounded-[9px] bg-destructive/10 px-3 py-2.5 text-[12.5px] font-semibold text-destructive">
+                  {error}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={submitGoogle}
+                disabled={googleSubmitting}
+                className="flex w-full items-center justify-center gap-2.5 rounded-xl bg-primary px-4 py-3.5 font-display text-[15px] font-bold text-primary-foreground shadow-[0_14px_28px_-14px_rgba(164,93,68,0.6)] disabled:opacity-75"
+              >
+                {googleSubmitting ? <StayoLoader size="sm" label={null} /> : <GoogleMark light />}
+                {googleSubmitting ? 'Please wait…' : 'Continue with Google'}
+              </button>
+            </div>
+          ) : (
+            <>
+              <form onSubmit={onSubmit} className="flex flex-col gap-3.5">
                 <label className="block">
                   <span className={labelClass}>EMAIL</span>
                   <input
@@ -311,19 +251,6 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
                     className={inputClass}
                   />
                 </label>
-                {showName && (
-                  <label className="block">
-                    <span className={labelClass}>MOBILE NUMBER</span>
-                    <input
-                      value={form.phone}
-                      onChange={(e) => set('phone', e.target.value)}
-                      placeholder="+91 90000 00000"
-                      inputMode="tel"
-                      autoComplete="tel"
-                      className={inputClass}
-                    />
-                  </label>
-                )}
                 <label className="block">
                   <span className={labelClass}>PASSWORD</span>
                   <div className="relative">
@@ -332,7 +259,7 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
                       onChange={(e) => set('password', e.target.value)}
                       type={showPassword ? 'text' : 'password'}
                       placeholder="••••••••"
-                      autoComplete={isLogin ? 'current-password' : 'new-password'}
+                      autoComplete="current-password"
                       className={`${inputClass} pr-11`}
                     />
                     <button
@@ -346,35 +273,23 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
                     </button>
                   </div>
                 </label>
-              </>
-            )}
 
-            {error && (
-              <div className="rounded-[9px] bg-destructive/10 px-3 py-2.5 text-[12.5px] font-semibold text-destructive">
-                {error}
-              </div>
-            )}
+                {error && (
+                  <div className="rounded-[9px] bg-destructive/10 px-3 py-2.5 text-[12.5px] font-semibold text-destructive">
+                    {error}
+                  </div>
+                )}
 
-            <button
-              type="submit"
-              disabled={submitting}
-              className="mt-1 flex w-full items-center justify-center gap-2.5 rounded-xl bg-primary px-4 py-3.5 font-display text-[15px] font-bold text-primary-foreground shadow-[0_14px_28px_-14px_rgba(164,93,68,0.6)] disabled:opacity-75"
-            >
-              {submitting && (
-                <StayoLoader size="sm" label={null} />
-              )}
-              {submitting
-                ? 'Please wait…'
-                : otpRequired
-                  ? 'Verify & Continue'
-                  : isLogin
-                    ? 'Log In'
-                    : 'Create Account'}
-            </button>
-          </form>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="mt-1 flex w-full items-center justify-center gap-2.5 rounded-xl bg-primary px-4 py-3.5 font-display text-[15px] font-bold text-primary-foreground shadow-[0_14px_28px_-14px_rgba(164,93,68,0.6)] disabled:opacity-75"
+                >
+                  {submitting && <StayoLoader size="sm" label={null} />}
+                  {submitting ? 'Please wait…' : 'Log In'}
+                </button>
+              </form>
 
-          {!otpRequired && isLogin && (
-            <>
               <div className="my-4 flex items-center gap-3">
                 <span className="h-px flex-1 bg-border" />
                 <span className="font-display text-[11px] font-bold tracking-wider text-muted-foreground">OR</span>
@@ -383,21 +298,24 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
               <button
                 type="button"
                 onClick={submitGoogle}
-                className="flex w-full items-center justify-center gap-2.5 rounded-xl border-[1.5px] border-border bg-card px-4 py-3 font-display text-[14.5px] font-bold text-foreground transition-colors hover:border-primary"
+                disabled={googleSubmitting}
+                className="flex w-full items-center justify-center gap-2.5 rounded-xl border-[1.5px] border-border bg-card px-4 py-3 font-display text-[14.5px] font-bold text-foreground transition-colors hover:border-primary disabled:opacity-75"
               >
-                <GoogleMark />
-                Continue with Google
+                {googleSubmitting ? <StayoLoader size="sm" label={null} /> : <GoogleMark />}
+                {googleSubmitting ? 'Please wait…' : 'Continue with Google'}
               </button>
-              <a
-                href="/forgot-password"
-                className="mt-4 text-center text-[12.5px] font-semibold text-primary hover:underline"
-              >
-                Forgot password?
-              </a>
+              {!isOwner && (
+                <a
+                  href="/forgot-password"
+                  className="mt-4 text-center text-[12.5px] font-semibold text-primary hover:underline"
+                >
+                  Forgot password?
+                </a>
+              )}
             </>
           )}
 
-          {isOwner && !otpRequired && (
+          {isOwner && (
             <p className="mt-4 text-center text-[12.5px] leading-normal text-muted-foreground">
               Owner accounts are created during onboarding — contact Stayo support if you need help accessing yours.
             </p>
@@ -415,13 +333,24 @@ function getMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-function GoogleMark() {
+function GoogleMark({ light }: { light?: boolean } = {}) {
   return (
     <svg viewBox="0 0 48 48" className="h-4 w-4" aria-hidden="true">
-      <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.6 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.2 17.6 9.5 24 9.5z" />
-      <path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.1 5.5c4.2-3.8 6.6-9.5 6.6-16.2z" />
-      <path fill="#FBBC05" d="M10.4 28.7c-.5-1.4-.8-2.9-.8-4.5s.3-3.1.8-4.5l-7.8-6.1C.9 16.7 0 20.2 0 24s.9 7.3 2.6 10.4l7.8-5.7z" />
-      <path fill="#34A853" d="M24 48c6.2 0 11.5-2 15.3-5.6l-7.1-5.5c-2 1.4-4.6 2.2-8.2 2.2-6.4 0-11.7-3.7-13.6-9.1l-7.8 5.7C6.5 42.6 14.6 48 24 48z" />
+      {light ? (
+        <>
+          <path fill="#fff" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.6 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.2 17.6 9.5 24 9.5z" opacity={0.92} />
+          <path fill="#fff" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.1 5.5c4.2-3.8 6.6-9.5 6.6-16.2z" opacity={0.75} />
+          <path fill="#fff" d="M10.4 28.7c-.5-1.4-.8-2.9-.8-4.5s.3-3.1.8-4.5l-7.8-6.1C.9 16.7 0 20.2 0 24s.9 7.3 2.6 10.4l7.8-5.7z" opacity={0.6} />
+          <path fill="#fff" d="M24 48c6.2 0 11.5-2 15.3-5.6l-7.1-5.5c-2 1.4-4.6 2.2-8.2 2.2-6.4 0-11.7-3.7-13.6-9.1l-7.8 5.7C6.5 42.6 14.6 48 24 48z" opacity={0.85} />
+        </>
+      ) : (
+        <>
+          <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.6 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.2 17.6 9.5 24 9.5z" />
+          <path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.1 5.5c4.2-3.8 6.6-9.5 6.6-16.2z" />
+          <path fill="#FBBC05" d="M10.4 28.7c-.5-1.4-.8-2.9-.8-4.5s.3-3.1.8-4.5l-7.8-6.1C.9 16.7 0 20.2 0 24s.9 7.3 2.6 10.4l7.8-5.7z" />
+          <path fill="#34A853" d="M24 48c6.2 0 11.5-2 15.3-5.6l-7.1-5.5c-2 1.4-4.6 2.2-8.2 2.2-6.4 0-11.7-3.7-13.6-9.1l-7.8 5.7C6.5 42.6 14.6 48 24 48z" />
+        </>
+      )}
     </svg>
   );
 }

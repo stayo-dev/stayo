@@ -43,7 +43,7 @@ export function ResidencyHistoryPage() {
         <button
           type="button"
           aria-label="Back"
-          onClick={() => navigate('/discover/profile')}
+          onClick={() => navigate('/profile')}
           className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-full"
           style={{ background: '#F4EEE7' }}
         >

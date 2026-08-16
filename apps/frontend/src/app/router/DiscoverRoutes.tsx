@@ -6,27 +6,14 @@ import { queryClient } from '@lib/queryClient';
 import { AuthProvider } from '@context/AuthContext';
 import { StayoLoadingScreen } from '@shared/ui/brand';
 
-import { DiscoverShell } from '@/app/pages/discover/components/DiscoverShell';
+import { AppShell } from '@/app/layouts/AppShell';
 import { DiscoverAuthProvider } from '@/app/pages/discover/DiscoverAuthContext';
+import { ProfileRoutes } from './ProfileRoutes';
 
 const ExplorePage = lazy(() => import('@/app/pages/discover/ExplorePage').then((m) => ({ default: m.ExplorePage })));
 const SearchPage = lazy(() => import('@/app/pages/discover/SearchPage').then((m) => ({ default: m.SearchPage })));
 const ListingPage = lazy(() => import('@/app/pages/discover/ListingPage').then((m) => ({ default: m.ListingPage })));
 const EnquiryPage = lazy(() => import('@/app/pages/discover/EnquiryPage').then((m) => ({ default: m.EnquiryPage })));
-const EnquiriesPage = lazy(() => import('@/app/pages/discover/EnquiriesPage').then((m) => ({ default: m.EnquiriesPage })));
-const EnquiryDetailPage = lazy(() =>
-  import('@/app/pages/discover/EnquiryDetailPage').then((m) => ({ default: m.EnquiryDetailPage })),
-);
-const SavedPage = lazy(() => import('@/app/pages/discover/SavedPage').then((m) => ({ default: m.SavedPage })));
-const DiscoverProfilePage = lazy(() =>
-  import('@/app/pages/discover/DiscoverProfilePage').then((m) => ({ default: m.DiscoverProfilePage })),
-);
-const ProfileEditPage = lazy(() =>
-  import('@/app/pages/discover/ProfileEditPage').then((m) => ({ default: m.ProfileEditPage })),
-);
-const ResidencyHistoryPage = lazy(() =>
-  import('@/app/pages/discover/ResidencyHistoryPage').then((m) => ({ default: m.ResidencyHistoryPage })),
-);
 
 /**
  * Stayo Discover — the public marketplace (ADR-073).
@@ -54,11 +41,11 @@ function DiscoverProviderShell() {
             not by routing to `/login`, which is the owner marketing page.
             Same LoginModal component, so there is still one auth surface. */}
         <DiscoverAuthProvider>
-          <DiscoverShell>
+          <AppShell>
             <Suspense fallback={<StayoLoadingScreen />}>
               <Outlet />
             </Suspense>
-          </DiscoverShell>
+          </AppShell>
         </DiscoverAuthProvider>
       </AuthProvider>
     </QueryClientProvider>
@@ -72,17 +59,9 @@ export function DiscoverRoutes() {
       <Route path="/discover/search" element={<SearchPage />} />
       <Route path="/discover/h/:slug" element={<ListingPage />} />
       <Route path="/discover/h/:slug/enquire" element={<EnquiryPage />} />
-      <Route path="/discover/saved" element={<SavedPage />} />
-      <Route path="/discover/enquiries" element={<EnquiriesPage />} />
-      <Route path="/discover/enquiries/:id" element={<EnquiryDetailPage />} />
-      <Route path="/discover/profile" element={<DiscoverProfilePage />} />
-      {/* The portable profile's editor (phase B). Deliberately reachable with
-          no hostel involved — a tenant fills this in before enquiring. */}
-      <Route path="/discover/profile/details" element={<ProfileEditPage />} />
-      {/* The tenant's own stay history, and their control over who reads it —
-          both on one screen, because a record without visibility of its
-          readers erodes trust rather than building it. */}
-      <Route path="/discover/profile/history" element={<ResidencyHistoryPage />} />
+      {/* Saved/Enquiries/Profile moved to `/profile/*` — the common Stayo
+          Profile is a shared, app-wide tab now, not Discover-specific. */}
+      {ProfileRoutes()}
     </Route>
   );
 }

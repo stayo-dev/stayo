@@ -57,7 +57,7 @@ export function EnquiriesPage() {
         title="Enquiries"
         icon={ClipboardList}
         body="Sign in to send enquiries and track every owner's reply in one place."
-        returnTo="/discover/enquiries"
+        returnTo="/profile/enquiries"
       />
     );
   }
@@ -99,7 +99,7 @@ export function EnquiriesPage() {
             <EnquiryRow
               key={enquiry.id}
               enquiry={enquiry}
-              onOpen={() => navigate(`/discover/enquiries/${enquiry.id}`)}
+              onOpen={() => navigate(`/profile/enquiries/${enquiry.id}`)}
             />
           ))}
         </div>

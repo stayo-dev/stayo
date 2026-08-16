@@ -1,7 +1,8 @@
 import { lazy, Suspense, type ReactNode } from 'react';
-import { Navigate, Route, useNavigate } from 'react-router-dom';
+import { Navigate, Outlet, Route, useNavigate } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import { StayoLoadingScreen } from '@shared/ui/brand';
+import { AppShell } from '@/app/layouts/AppShell';
 
 const TenantAppShell = lazy(() =>
   import('@/app/layouts/TenantAppShell').then((m) => ({ default: m.TenantAppShell })),
@@ -11,7 +12,7 @@ const TenantFoodPage = lazy(() => import('../pages/TenantFoodPage').then((m) => 
 const TenantHomePage = lazy(() => import('../pages/TenantHomePage').then((m) => ({ default: m.TenantHomePage })));
 const TenantMoneyPage = lazy(() => import('../pages/TenantMoneyPage').then((m) => ({ default: m.TenantMoneyPage })));
 const TenantRoomPage = lazy(() => import('../pages/TenantRoomPage').then((m) => ({ default: m.TenantRoomPage })));
-const TenantProfilePage = lazy(() => import('../pages/TenantProfilePage').then((m) => ({ default: m.TenantProfilePage })));
+const TenantComplaintsPage = lazy(() => import('../pages/TenantComplaintsPage').then((m) => ({ default: m.TenantComplaintsPage })));
 const TenantHelpPage = lazy(() => import('../pages/TenantHelpPage').then((m) => ({ default: m.TenantHelpPage })));
 const TenantProfilePortalPage = lazy(() =>
   import('@/portal/pages/TenantProfilePortalPage').then((m) => ({ default: m.TenantProfilePortalPage })),
@@ -60,28 +61,33 @@ function TenantBoundary() {
 }
 
 /**
- * StayO tenant-app route tree, per Stayo Tenant.dc.html's flat IA (5 bottom
- * tabs, no drill-down, one modal type) — implemented as real routes instead
- * of client-only state. All 5 tabs are real as of 2026-07-26 (Home/Money/
- * Room/Food/Profile); Profile's sub-pages salvage real logic from the frozen
- * `src/portal` tree and the previously-orphaned `TenantRenewalPage`.
+ * StayO tenant-app route tree — flat IA, no drill-down beyond the Room/
+ * Complaints overlay system, one modal type — implemented as real routes
+ * instead of client-only state. Tabs are Home/Money/Room/Food/Complaints
+ * (ADR-078 supersedes the original ADR-068 5-tab design, which had Profile
+ * here instead — Profile is now the app-wide shared tab, mounted outside
+ * this tree, see `ProfileRoutes.tsx`). The remaining sub-pages salvage real
+ * logic from the frozen `src/portal` tree and the previously-orphaned
+ * `TenantRenewalPage`.
  */
 export function TenantRoutes() {
   return (
     <Route element={<TenantBoundary />}>
       <Route path="/payment-return" element={<TenantPaymentReturnPage />} />
-      <Route element={<TenantAppShell />}>
-        <Route path="/tenant" element={<Navigate to="/tenant/home" replace />} />
-        <Route path="/tenant/home" element={<TenantHomePage />} />
-        <Route path="/tenant/money" element={<TenantMoneyPage />} />
-        <Route path="/tenant/room" element={<TenantRoomPage />} />
-        <Route path="/tenant/food" element={<TenantFoodPage />} />
-        <Route path="/tenant/profile" element={<TenantProfilePage />} />
+      <Route element={<AppShell><Outlet /></AppShell>}>
+        <Route element={<TenantAppShell />}>
+          <Route path="/tenant" element={<Navigate to="/tenant/home" replace />} />
+          <Route path="/tenant/home" element={<TenantHomePage />} />
+          <Route path="/tenant/money" element={<TenantMoneyPage />} />
+          <Route path="/tenant/room" element={<TenantRoomPage />} />
+          <Route path="/tenant/food" element={<TenantFoodPage />} />
+          <Route path="/tenant/complaints" element={<TenantComplaintsPage />} />
+        </Route>
       </Route>
       <Route
         path="/tenant/profile/details"
         element={
-          <TenantSubPage title="Personal details" backTo="/tenant/profile">
+          <TenantSubPage title="Personal details" backTo="/profile">
             <TenantProfilePortalPage />
           </TenantSubPage>
         }
@@ -89,7 +95,7 @@ export function TenantRoutes() {
       <Route
         path="/tenant/move-out"
         element={
-          <TenantSubPage title="Move-out" backTo="/tenant/profile">
+          <TenantSubPage title="Move-out" backTo="/profile">
             <TenantMoveOutPage />
           </TenantSubPage>
         }

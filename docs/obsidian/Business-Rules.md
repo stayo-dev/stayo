@@ -214,8 +214,10 @@ Changed by [[Decisions#ADR-054|ADR-054]] and [[Decisions#ADR-055|ADR-055]].
 
 **Google sign-in** is available to **every** role — owner, tenant, admin. Two rules survive that change and are load-bearing:
 
-1. **It never creates an account.** A Google identity must match an existing `profiles` row, by `auth_user_id` or by verified email. An unknown email is rejected with `NO_STAYO_ACCOUNT`, whatever the role. Tenancy remains an owner-initiated relationship.
+1. **It never creates an account — on the plain login path.** `resolveSupabaseSession()` still matches only an existing `profiles` row, by `auth_user_id` or by verified email, and rejects an unknown email with `NO_STAYO_ACCOUNT`, whatever the role. Tenancy remains an owner-initiated relationship.
 2. **It cannot skip activation.** A TENANT whose live tenancy is `INVITED` is rejected with `TENANCY_NOT_ACTIVATED` — the same gate `authService.login()` applies. Previously the blanket tenant block enforced this by accident; now it is explicit.
+
+**Amendment, 2026-08-16 ([[Decisions#ADR-078|ADR-078]]):** rule 1 gained one narrow, explicit exception for **tenants only**, not a relaxation of the rule itself. `POST /api/auth/google/provision` — a separate endpoint, calling a separate function (`provisionMarketplaceTenantFromSupabase()`), never invoked from the login path — may create a new `role: TENANT` marketplace profile (no `tenants` row) when Google has verified the email and no `profiles` row exists for it at all. `resolveSupabaseSession()` itself is unmodified and still enforces rule 1 exactly as before for every other caller, including this same person's *next* login. Owners and admins can never be created this way — nothing calls the provisioning endpoint for `mode="owner"`. See [[Decisions#ADR-078|ADR-078]] for the full design and the invariant test that pins this.
 
 **Password reset** has two channels, and both end at the same place:
 
@@ -251,6 +253,10 @@ Refusals: `TENANT_HAS_ACTIVE_TENANCY` and `PREVIOUS_TENANCY_NOT_SETTLED`, both H
 **Disclosure is scoped to ownership.** The refusal names the hostel and room **only when that hostel belongs to the owner asking**. For any other owner's property it says only "currently a tenant at another property on Stayo" — no hostel name, no room, no tenant id. Otherwise any owner could enumerate a competitor's roster, and a person's home address, by guessing emails. Enforced on both sides: the backend blanks the fields, and the frontend's `parseTenancyConflict` ignores a hostel name that arrives without an `OWN` scope.
 
 **Accepting one invitation voids the others.** Several owners may invite the same person; the first acceptance cancels every other live invitation for them, releases those room reservations back to capacity with `release_reason: 'JOINED_ELSEWHERE'`, and logs `invitation_voided_joined_elsewhere` for the losing owners. A pending invitation from another owner therefore **does not** block a new invite — blocking there would let any owner reserve a person with an invite they never send follow-up on.
+
+## "Live tenancy" as the app-wide nav-gating definition (2026-08-16)
+
+Added by [[Decisions#ADR-078|ADR-078]]. The app-wide bottom nav shows a Dashboard tab, and `ProtectedTenantRoute` allows `/tenant/*` at all, **only** when the signed-in person has a live tenancy — defined as `tenant_status` (surfaced on `/auth/me`, sourced from `tenants.status`) being `INVITED` or `ACTIVE`. This is not a new rule invented for navigation: it's the same "live" definition `profile-identity-service.ts`'s tenancy-fallback logic already used (`selectFallbackTenancy`), reused rather than redefined so the frontend and backend never disagree on what "live" means. An account existing (any signed-in `role: TENANT` profile) is explicitly **not** sufficient — a Discover-only marketplace account with no `tenants` row at all must never see a Dashboard tab or reach `/tenant/*`. `useTenantSession().isAuthenticated` (the gate several tenant-dashboard hooks share, e.g. `useTenantProfile`, `useTenantRoom`) was tightened to this same definition at the same time — previously it only checked `role === 'tenant'`, which would have fired tenancy-scoped API calls for a seeker with no tenancy once those hooks became reachable from the shared Profile hub.
 
 ## Joining a hostel does not require payment (2026-08-07)
 
@@ -321,6 +327,8 @@ Added 2026-07-31 ([[Decisions#ADR-034|ADR-034]]). **Phone verification is requir
 5. **Rate limits are enforced before the skip path**, so it can never become an unthrottled way to write rows keyed by an arbitrary phone number.
 6. **The outcome is recorded, not enforced away**: `profiles.phone_verified`/`mobile_verified` and `platform_leads.phone_verified` carry which path a signup took, and the admin leads list shows an "Unverified" marker.
 7. **Explicit non-goal:** nothing retroactively verifies accounts or leads created while degraded. There is no login-time prompt, no dashboard banner, and no step-up gate for unverified users — turning the credentials on affects new signups only.
+
+**Amendment, 2026-08-16 ([[Decisions#ADR-078|ADR-078]]):** phone verification is no longer part of signup at all for tenants — signup is Google-only and Google doesn't collect a phone number. The same OTP mechanism (points 1–5 above apply identically) now runs **once, at the moment it's actually needed**: `EnquiryPage` gates "Send enquiry to owner" on `profile.phone_verified`. If already `true`, nothing is asked again — not on this enquiry, not on the next one, until the phone number itself changes (`PATCH /api/profile` re-arms `phone_verified: false` only when the new value differs from what's on file). If `false` or no phone is on file (the common case for a fresh Google-provisioned account), the enquiry flow shows an inline confirm-phone-then-OTP step before submitting. Point 3's degradation scope needed no change — `PHONE_VERIFICATION` is still the purpose used, just triggered from a different UI moment.
 
 See [[APIs]], [[Database]], [[Features]].
 

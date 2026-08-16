@@ -14,7 +14,30 @@ export interface AuthUser {
   tenant_id?: string;
   hostel_id?: string;
   is_profile_completed?: boolean;
+  /**
+   * `tenants.status` for this person's current tenancy (`INVITED`/`ACTIVE`/
+   * `FORMER_TENANT`/`EXPIRED`/`CANCELLED`), or `null` for a TENANT-role
+   * account with no tenancy at all (a Discover-only marketplace account).
+   * Drives the app-wide nav's Explore/Dashboard/Profile vs Explore/Profile
+   * split — see `app/nav/useAppNav.ts`. Sourced from `/auth/me`'s
+   * `extra.tenant_status`, which the backend already computed but this
+   * context previously dropped on the floor.
+   */
+  tenant_status?: string | null;
+  phone?: string | null;
+  phone_verified?: boolean;
 }
+
+/**
+ * Read by `AuthCallbackPage` after the full-page Google redirect returns —
+ * `sessionStorage` because in-memory state (a callback, a promise) cannot
+ * survive navigating away to Google and back. `_PROVISION` marks "this
+ * attempt is allowed to create a new account if none exists"; `_RETURN_TO`
+ * is the page to send the person back to afterward (e.g. the enquiry they
+ * were filling in) rather than a generic landing page.
+ */
+export const GOOGLE_PROVISION_INTENT_KEY = 'stayo_auth_google_provision';
+export const GOOGLE_RETURN_TO_KEY = 'stayo_auth_return_to';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -28,6 +51,12 @@ interface AuthContextValue {
    * afterward via the auth-state listener below.
    */
   loginWithGoogle: () => Promise<void>;
+  /**
+   * Google sign-in that also creates a new Stayo account when the email has
+   * none yet (2026-08-16) — see the function's own doc comment. Owner mode
+   * must never call this.
+   */
+  loginWithGoogleAllowProvision: (returnTo?: string) => Promise<void>;
   /**
    * Self-serve tenant signup (ADR-035) — creates a marketplace account and
    * logs it straight in. Lives here rather than in a feature API wrapper
@@ -124,6 +153,9 @@ function buildAuthUser(data: any): AuthUser {
     tenant_id: data.tenant_id,
     hostel_id: data.hostel_id,
     is_profile_completed: data.is_profile_completed,
+    tenant_status: data.tenant_status ?? null,
+    phone: data.phone ?? null,
+    phone_verified: Boolean(data.phone_verified),
   };
 }
 
@@ -302,6 +334,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // No further code runs — signInWithOAuth navigates the browser away.
   };
 
+  /**
+   * Same redirect as `loginWithGoogle()`, but marks this attempt as allowed
+   * to create a brand-new Stayo account if the email has none yet
+   * (`AuthCallbackPage` reads `GOOGLE_PROVISION_INTENT_KEY` on return and
+   * calls `POST /api/auth/google/provision` only when it's set). Owner mode
+   * must never call this — only `mode="tenant"` in `LoginModal` does.
+   * `returnTo` defaults to the current page so a visitor mid-enquiry lands
+   * back on it, not a generic landing page.
+   */
+  const loginWithGoogleAllowProvision = async (returnTo?: string): Promise<void> => {
+    try {
+      sessionStorage.setItem(GOOGLE_PROVISION_INTENT_KEY, '1');
+      sessionStorage.setItem(GOOGLE_RETURN_TO_KEY, returnTo || `${window.location.pathname}${window.location.search}`);
+    } catch {
+      /* sessionStorage may be unavailable in strict privacy modes — provisioning still works, just without a return path */
+    }
+    await loginWithGoogle();
+  };
+
   // Server-driven session termination (idle timeout past the app's own
   // 30-min rule, or a Redis-revoked session) — distinct from client-side
   // idle detection, which lives in useIdleSessionTimeout. Dispatched by
@@ -327,7 +378,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, login, loginWithGoogle, signUpTenant, updateUser, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, loginWithGoogle, loginWithGoogleAllowProvision, signUpTenant, updateUser, logout, loading }}>
       {children}
       {showIdleWarning && user && (
         <SessionSecurityModal

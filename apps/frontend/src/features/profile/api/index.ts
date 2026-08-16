@@ -44,6 +44,14 @@ export interface ProfileIdentity {
   is_complete: boolean;
   missing_core_fields: string[];
   /**
+   * 0-100, profile-type-aware (core + general-optional + whichever of
+   * academic/professional applies) — the one canonical completion number,
+   * computed server-side so every consumer (Explore/Profile's nudge card,
+   * the Dashboard's `ProfileCompletionNudge`) reads the same figure instead
+   * of each computing its own.
+   */
+  completion_percent: number;
+  /**
    * Fields still being read off a tenancy because the backfill hasn't run for
    * this person yet. Surfaced so the transition's end is observable.
    */
@@ -53,7 +61,7 @@ export interface ProfileIdentity {
 
 export type IdentityPatch = Partial<Omit<
   ProfileIdentity,
-  'is_complete' | 'missing_core_fields' | 'pending_backfill_fields' | 'has_profile_record'
+  'is_complete' | 'missing_core_fields' | 'completion_percent' | 'pending_backfill_fields' | 'has_profile_record'
 >>;
 
 export interface VaultShare {
