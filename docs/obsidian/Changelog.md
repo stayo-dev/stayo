@@ -10,6 +10,15 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-16 — Leads section + the merged owner lifecycle (migration 067)
+- **One lifecycle, not two.** The design shipped a sales funnel while the code had an activation funnel; they are halves of one journey. `PlatformLeadStatus` gains `CONTACTED`, `DEMO`, `NEGOTIATING`. Ownership stays split and is enforced where it always was — `MANUALLY_SETTABLE_STATUSES` now covers the admin-driven stages, `APPROVED` onward remains system-only. `UNDER_REVIEW` rows migrate to `CONTACTED`; the value is retained since Postgres cannot drop an enum member. See [[Decisions]] ADR-079.
+- **A prospect must never read "Negotiating" about themselves.** `lead-stage-mapper.ts` drives the public `/enquiry/:token` page, so all three new stages collapse into "Under review". Four regression tests pin it, including one asserting the words never appear anywhere in the rendered timeline.
+- **New tables** (`migrations/067_lead_crm.sql`): `platform_lead_activities` (outreach log — call connected / no answer / email sent) and `platform_lead_notes` (thread that survives a handover). `platform_leads` gains discovery answers, qualification fields, `estimated_value`, and a structured `lost_reason` enum. See [[Database]].
+- **New endpoints**: `GET/POST .../leads/[id]/activities`, `GET/POST .../notes`, `PATCH .../qualification`, `POST/DELETE .../lost`, `GET /leads/insights`. See [[APIs]].
+- **Why the lost reason is an enum and discovery is not**: `pain_point`/`current_tooling` are free-form by design (a reworded option creates a new distinct value), so insights *counts* lost reasons and *lists* discovery quotes. Bar-charting free text would invent categories out of phrasing.
+- Logging outreach deliberately does not advance the stage — three "no answer" entries are not progress, and auto-advancing would take the decision from the admin who made the call.
+- Tests +16 frontend (737→753), +4 backend. See [[Features]], [[Frontend]].
+
 ### 2026-08-16 — Admin Overview screen, on real data
 - Built the design's OVERVIEW section: six KPI cards, the owner-acquisition funnel, "Waiting on your review", and Live activity. Sources: `/platform-admin/dashboard`, `/leads` counts, pending owner-documents, pending hostels, `/platform-admin/notifications`.
 - **The funnel is cumulative by construction** — a `LIVE` lead is counted as having passed through every earlier stage. Counting statuses in isolation would draw a funnel that widens at the bottom as leads progress, which is the standard way these charts mislead. Pinned by a monotonic-narrowing test.

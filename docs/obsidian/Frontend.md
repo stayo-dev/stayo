@@ -53,7 +53,7 @@ Structure under `platforms/admin/`:
 
 Eleven routes: `/admin` (Overview), `/leads`, `/owners`, `/kyc`, `/listings`, `/revenue`, `/settlements`, `/subscriptions`, `/reports`, `/broadcasts`, `/settings`. Four redirects keep old links alive: `documents→kyc`, `hostels→listings`, `marketing-reviews→listings?tab=content`, `more→settings`.
 
-**Real as of 2026-08-16**: Overview, Owners, Hostel Listings (incl. the marketing content-review tab), KYC Approvals. The remaining screens render `NotWiredYet` — see [[Features]] for which and why. **`platforms/warden/`** is reserved, `.gitkeep` only — no code.
+**Real as of 2026-08-16**: Overview, Leads, Owners, Hostel Listings (incl. the marketing content-review tab), KYC Approvals. The remaining screens render `NotWiredYet` — see [[Features]] for which and why. **`platforms/warden/`** is reserved, `.gitkeep` only — no code.
 
 **Typography note**: the console uses `.font-admin` (Manrope) from `styles/admin-console.css`, *not* the shared `.font-display`, which resolves to Playfair Display — the pre-rebuild console was rendering off-design because of this.
 
