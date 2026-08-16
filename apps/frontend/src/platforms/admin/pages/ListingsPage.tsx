@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import { PenLine, Search } from 'lucide-react';
 import { platformAdminService } from '@features/platform-admin/api';
 import { useMarketingQueue, useReviewDecision } from '@features/hostel-marketing/hooks/useMarketing';
 import { EmptyState, FilterChips } from '../ui';
@@ -32,6 +33,23 @@ export function ListingsPage() {
   const [flags, setFlags] = useState<SectionFlagDraft[]>([]);
   const [sendBackNote, setSendBackNote] = useState('');
   const [sendingBack, setSendingBack] = useState(false);
+  const [search, setSearch] = useState('');
+
+  /**
+   * A card is a hostel; the review is of a revision. The pending queue is the
+   * mapping between them, and it is already loaded for the chips.
+   */
+  const pendingRevisionFor = (hostelId: string) =>
+    (marketingQueue.data ?? []).find((r: any) => r.hostel?.id === hostelId) ?? null;
+
+  const openHostel = (hostelId: string) => {
+    const next = new URLSearchParams(params);
+    next.set('detail', serializeDetail({ kind: 'listing', id: hostelId }));
+    setParams(next);
+    setFlags([]);
+    setSendBackNote('');
+    setSendingBack(false);
+  };
 
   const toggleFlag = (section: ReviewSection) =>
     setFlags((f) =>
@@ -53,8 +71,8 @@ export function ListingsPage() {
   const filter = listingFilterFor(tab);
 
   const hostels = useQuery({
-    queryKey: ['admin', 'hostels', filter],
-    queryFn: () => platformAdminService.getHostels(filter ?? {}),
+    queryKey: ['admin', 'hostels', filter, search],
+    queryFn: () => platformAdminService.getHostels({ ...(filter ?? {}), search: search || undefined }),
     enabled: filter !== null,
     staleTime: 30_000,
   });
@@ -123,7 +141,20 @@ export function ListingsPage() {
 
   return (
     <div className="flex animate-[adFade_.25s_ease] flex-col gap-[18px]">
-      <FilterChips chips={chips} active={tab} onChange={setTab} />
+      <div className="flex flex-wrap items-center gap-3">
+        <FilterChips chips={chips} active={tab} onChange={setTab} />
+        {tab !== 'content' && tab !== 'stayo' && (
+          <div className="flex min-w-[240px] flex-1 items-center gap-2 rounded-xl border border-[#EAE1D8] bg-white px-3.5 py-2 sm:max-w-[320px]">
+            <Search className="h-3.5 w-3.5 flex-none text-[#988D82]" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by hostel or city…"
+              className="w-full min-w-0 border-none bg-transparent text-[12.5px] text-[#2A2521] outline-none"
+            />
+          </div>
+        )}
+      </div>
 
       {tab === 'stayo' ? (
         <StayoListedPanel />
@@ -131,9 +162,9 @@ export function ListingsPage() {
         <ContentReviewQueue
           items={marketingQueue.data}
           isLoading={marketingQueue.isLoading}
-          onOpen={(revisionId) => {
+          onOpen={(hostelId) => {
             const next = new URLSearchParams(params);
-            next.set('detail', serializeDetail({ kind: 'listing', id: revisionId }));
+            next.set('detail', serializeDetail({ kind: 'listing', id: hostelId }));
             setParams(next);
             setFlags([]);
             setSendBackNote('');
@@ -152,74 +183,92 @@ export function ListingsPage() {
           }
         />
       ) : (
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {(hostels.data ?? []).map((h: any) => {
             const pill = STATUS_PILL[String(h.verification_status)] ?? {
               bg: '#F2ECE5', color: '#8A7F75', label: String(h.verification_status),
             };
+            const pending = String(h.verification_status) === 'PENDING';
             return (
               <div
                 key={h.id}
-                className="overflow-hidden rounded-[18px] border border-[#EFE6DA] bg-white shadow-[0_1px_2px_rgba(40,30,20,.04),0_6px_16px_rgba(40,30,20,.05)]"
+                role="button"
+                tabIndex={0}
+                onClick={() => openHostel(h.id)}
+                onKeyDown={(e) => { if (e.key === 'Enter') openHostel(h.id); }}
+                className="flex cursor-pointer flex-col overflow-hidden rounded-[16px] border border-[#EFE6DA] bg-white shadow-[0_1px_2px_rgba(40,30,20,.04),0_6px_16px_rgba(40,30,20,.05)] transition hover:border-[#DCC9BE] hover:shadow-[0_2px_4px_rgba(40,30,20,.06),0_10px_24px_rgba(40,30,20,.09)]"
               >
-                <div className="flex">
-                  <div
-                    className="w-[130px] flex-none"
-                    style={{ background: `linear-gradient(135deg, ${tintForId(h.id)}, #201C18)` }}
-                  />
-                  <div className="min-w-0 flex-1 px-[17px] py-[15px]">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="truncate font-admin text-[14.5px] font-bold tracking-[-0.01em] text-[#221E1A]">
-                          {h.name}
-                        </div>
-                        <div className="truncate text-[11.5px] text-[#8A7F75]">
-                          {[h.owner, h.city].filter(Boolean).join(' · ')}
-                        </div>
-                      </div>
-                      <span
-                        className="flex-none rounded-full px-2.5 py-1 text-[10px] font-semibold"
-                        style={{ background: pill.bg, color: pill.color }}
-                      >
-                        {pill.label}
-                      </span>
-                    </div>
-                    <div className="mt-3 flex gap-3.5">
-                      <Metric value={h.capacity ?? 0} label="beds" />
-                      <Metric value={h.active_tenants ?? 0} label="tenants" />
-                      <Metric value={h.owner_hostel_count ?? 1} label="owner's hostels" />
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2.5 px-[17px] pb-[15px]">
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/admin/listings/${h.id}/edit`)}
-                    className="rounded-[11px] border border-[#E9DFD3] bg-white px-3.5 py-2 font-admin text-[12px] font-bold text-[#5A5147]"
+                {/* Cover as a short banner rather than a tall side column: at
+                    four-up the card is ~330px, and a side column ate half of it. */}
+                <div
+                  className="relative h-[68px] flex-none"
+                  style={{ background: `linear-gradient(135deg, ${tintForId(h.id)}, #201C18)` }}
+                >
+                  <span
+                    className="absolute right-2 top-2 rounded-full px-2 py-[3px] text-[9.5px] font-semibold"
+                    style={{ background: pill.bg, color: pill.color }}
                   >
-                    Write listing page
-                  </button>
-                  <div className="flex-1" />
+                    {pill.label}
+                  </span>
                 </div>
-                {String(h.verification_status) === 'PENDING' && (
-                  <div className="flex items-center gap-2.5 px-[17px] pb-[15px]">
-                    <div className="flex-1" />
-                    <button
-                      type="button"
-                      onClick={() => reject(h.id, h.name)}
-                      className="rounded-[11px] border border-[#E6C7BF] bg-[#FBEFE9] px-[15px] py-[9px] font-admin text-[12px] font-bold text-[#B3402F]"
-                    >
-                      Reject
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => approve(h.id, h.name)}
-                      className="rounded-[11px] bg-[#B46A55] px-[15px] py-[9px] font-admin text-[12px] font-bold text-white shadow-[0_4px_12px_rgba(180,106,85,.28)]"
-                    >
-                      Publish
-                    </button>
+
+                <div className="flex flex-1 flex-col gap-2.5 p-3.5">
+                  <div className="min-w-0">
+                    <div className="truncate font-admin text-[14px] font-bold tracking-[-0.01em] text-[#221E1A]">
+                      {h.name}
+                    </div>
+                    <div className="truncate text-[11px] text-[#8A7F75]">
+                      {[h.owner, h.city].filter(Boolean).join(' · ')}
+                    </div>
                   </div>
-                )}
+
+                  {/* One line instead of a three-column block — the numbers are
+                      scanned, not compared. */}
+                  <div className="flex items-center gap-1.5 text-[11px] text-[#8A7F75]">
+                    <b className="font-admin text-[12.5px] text-[#221E1A]">{h.capacity ?? 0}</b> beds
+                    <span className="text-[#DCD1C4]">·</span>
+                    <b className="font-admin text-[12.5px] text-[#221E1A]">{h.active_tenants ?? 0}</b> tenants
+                    {(h.owner_hostel_count ?? 1) > 1 && (
+                      <>
+                        <span className="text-[#DCD1C4]">·</span>
+                        <span>{h.owner_hostel_count} owned</span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Footer pinned to the bottom so cards in a row align even
+                      when names wrap to two lines. */}
+                  <div className="mt-auto flex items-center gap-1.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); navigate(`/admin/listings/${h.id}/edit`); }}
+                      title="Write or edit this hostel's marketing page"
+                      className="flex items-center gap-1.5 rounded-[9px] border border-[#E9DFD3] bg-white px-2.5 py-1.5 text-[11.5px] font-semibold text-[#5A5147] hover:border-[#B46A55] hover:text-[#B46A55]"
+                    >
+                      <PenLine className="h-3 w-3" strokeWidth={2} />
+                      Page
+                    </button>
+                    <div className="flex-1" />
+                    {pending && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); reject(h.id, h.name); }}
+                          className="rounded-[9px] border border-[#E6C7BF] bg-[#FBEFE9] px-2.5 py-1.5 font-admin text-[11.5px] font-bold text-[#B3402F]"
+                        >
+                          Reject
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); approve(h.id, h.name); }}
+                          className="rounded-[9px] bg-[#B46A55] px-3 py-1.5 font-admin text-[11.5px] font-bold text-white"
+                        >
+                          Publish
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
             );
           })}
@@ -228,12 +277,12 @@ export function ListingsPage() {
 
       {detail?.kind === 'listing' && (
         <AdminDrawer
-          title="Listing content review"
-          subtitle="Everything the owner submitted"
+          title={(hostels.data ?? []).find((r: any) => r.id === detail.id)?.name ?? 'Listing'}
+          subtitle={pendingRevisionFor(detail.id) ? 'Submitted for review' : 'No submission waiting'}
           initials="MR"
           onClose={closeReview}
           footer={
-            sendingBack ? (
+            !pendingRevisionFor(detail.id) ? null : sendingBack ? (
               <div>
                 <input
                   value={sendBackNote}
@@ -263,7 +312,7 @@ export function ListingsPage() {
                       }
                       try {
                         await reviewDecision.mutateAsync({
-                          revisionId: detail.id,
+                          revisionId: pendingRevisionFor(detail.id)!.id,
                           verdict: 'reject',
                           note: sendBackNote.trim(),
                           flags: flags.map((f) => ({ section: f.section, note: f.note || undefined })),
@@ -293,7 +342,7 @@ export function ListingsPage() {
                   type="button"
                   onClick={async () => {
                     try {
-                      await reviewDecision.mutateAsync({ revisionId: detail.id, verdict: 'approve' });
+                      await reviewDecision.mutateAsync({ revisionId: pendingRevisionFor(detail.id)!.id, verdict: 'approve' });
                       closeReview();
                       fireToast('Published — the listing is live on Discovery');
                     } catch {
@@ -308,14 +357,37 @@ export function ListingsPage() {
             )
           }
         >
-          <MarketingReviewBody
-            revisionId={detail.id}
-            flags={flags}
-            onToggleFlag={toggleFlag}
-            onFlagNote={setFlagNote}
-          />
+          {pendingRevisionFor(detail.id) ? (
+            <MarketingReviewBody
+              revisionId={pendingRevisionFor(detail.id)!.id}
+              flags={flags}
+              onToggleFlag={toggleFlag}
+              onFlagNote={setFlagNote}
+            />
+          ) : (
+            <NoSubmission hostelId={detail.id} onWrite={() => navigate(`/admin/listings/${detail.id}/edit`)} />
+          )}
         </AdminDrawer>
       )}
+    </div>
+  );
+}
+
+function NoSubmission({ hostelId, onWrite }: { hostelId: string; onWrite: () => void }) {
+  return (
+    <div className="rounded-2xl border border-[#EFE6DA] bg-white px-5 py-10 text-center">
+      <div className="font-admin text-[15px] font-bold text-[#221E1A]">Nothing submitted for review</div>
+      <div className="mx-auto mt-1.5 max-w-[360px] text-[12.5px] leading-relaxed text-[#8A7F75]">
+        This hostel has no marketing page waiting on you. You can write or edit its listing page
+        yourself — Stayo authors these too.
+      </div>
+      <button
+        type="button"
+        onClick={onWrite}
+        className="mt-4 rounded-xl bg-[#B46A55] px-5 py-2.5 font-admin text-[12.5px] font-bold text-white"
+      >
+        Write listing page
+      </button>
     </div>
   );
 }
@@ -353,7 +425,7 @@ function ContentReviewQueue({
         <button
           key={item.id}
           type="button"
-          onClick={() => onOpen(item.id)}
+          onClick={() => onOpen(item.hostel?.id ?? item.id)}
           className={`flex w-full items-center gap-3.5 px-5 py-[15px] text-left hover:bg-[#FCFAF7] ${
             index > 0 ? 'border-t border-[#F2ECE5]' : ''
           }`}
