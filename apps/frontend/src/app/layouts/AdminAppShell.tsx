@@ -32,6 +32,7 @@ const PAGE_HEADERS: Record<string, { title: string; subtitle: string }> = {
   '/admin/hostels': { title: 'Hostels', subtitle: 'Every hostel on the platform' },
   '/admin/leads': { title: 'Leads', subtitle: 'Prospective hostel owners' },
   '/admin/documents': { title: 'Owner documents', subtitle: 'Verify Aadhaar and PAN before a hostel goes live' },
+  '/admin/support-tickets': { title: 'Support tickets', subtitle: 'App/website problems reported via Profile → Raise a ticket' },
   '/admin/revenue': { title: 'Revenue', subtitle: 'Subscriptions and platform billing' },
   '/admin/more': { title: 'More', subtitle: 'Settings, support & broadcast' },
   '/admin/settings': { title: 'Settings', subtitle: 'Configure the admin console' },

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Settings, User, Mail, Megaphone, LogOut, X, ChevronRight } from 'lucide-react';
+import { Settings, User, Mail, Megaphone, LogOut, X, ChevronRight, MessageSquareWarning } from 'lucide-react';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useAuth } from '@context/AuthContext';
 import { useAdminSession } from '@features/admin-session/useAdminSession';
@@ -38,6 +38,7 @@ export function AdminMorePage() {
     { key: 'settings', title: 'Settings', icon: Settings, onClick: () => navigate('/admin/settings') },
     { key: 'profile', title: 'Profile', icon: User, onClick: () => setProfileOpen(true) },
     { key: 'support', title: 'Support', icon: Mail, onClick: () => window.location.assign('mailto:support@yourstayo.com') },
+    { key: 'support-tickets', title: 'Support Tickets', icon: MessageSquareWarning, onClick: () => navigate('/admin/support-tickets') },
     { key: 'broadcast', title: 'Broadcast Notice', icon: Megaphone, onClick: () => setBroadcastOpen(true) },
     { key: 'logout', title: 'Log Out', icon: LogOut, onClick: () => logout(), destructive: true },
   ];

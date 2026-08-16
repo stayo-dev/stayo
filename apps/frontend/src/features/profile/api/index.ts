@@ -125,6 +125,24 @@ export interface Disclosures {
   blocked: DisclosureEntry[];
 }
 
+export type SupportTicketCategory = 'APP_BUG' | 'ACCOUNT_ISSUE' | 'PAYMENT_ISSUE' | 'OTHER';
+
+/**
+ * Tenant/user → Stayo Admin support ticket (ADR-079) — a problem with the
+ * Stayo app/website, not a hostel. Deliberately unrelated to the
+ * `tenant_service_requests`/`complaints` tenant → owner system.
+ */
+export interface SupportTicket {
+  id: string;
+  category: SupportTicketCategory;
+  subject: string;
+  description: string;
+  status: 'OPEN' | 'RESOLVED';
+  created_at: string;
+  resolved_at: string | null;
+  admin_note: string | null;
+}
+
 export const profileService = {
   getIdentity: async (): Promise<ProfileIdentity> => {
     const response = await api.get('/profile/identity');
@@ -168,5 +186,15 @@ export const profileService = {
       status,
     });
     return unwrap(response) as Disclosures;
+  },
+
+  listSupportTickets: async (): Promise<SupportTicket[]> => {
+    const response = await api.get('/profile/support-tickets');
+    return unwrap(response).tickets as SupportTicket[];
+  },
+
+  createSupportTicket: async (data: { category: SupportTicketCategory; subject: string; description: string }): Promise<SupportTicket> => {
+    const response = await api.post('/profile/support-tickets', data);
+    return unwrap(response).ticket as SupportTicket;
   },
 };

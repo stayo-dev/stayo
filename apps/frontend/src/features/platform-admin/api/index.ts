@@ -116,6 +116,26 @@ export const platformAdminService = {
     return unwrap(response);
   },
 
+  /** The Profile → "Raise a Ticket" queue (ADR-079) — Stayo app/website problems, not hostel complaints. */
+  getSupportTickets: async (status: 'OPEN' | 'RESOLVED' = 'OPEN') => {
+    const response = await api.get('/platform-admin/support-tickets', { params: { status } });
+    return unwrap(response).tickets as Array<{
+      id: string;
+      category: 'APP_BUG' | 'ACCOUNT_ISSUE' | 'PAYMENT_ISSUE' | 'OTHER';
+      subject: string;
+      description: string;
+      status: 'OPEN' | 'RESOLVED';
+      created_at: string;
+      resolved_at: string | null;
+      admin_note: string | null;
+      profile: { id: string; name: string; phone: string | null; email: string | null };
+    }>;
+  },
+  resolveSupportTicket: async (id: string, note?: string) => {
+    const response = await api.post(`/platform-admin/support-tickets/${id}/resolve`, { note });
+    return unwrap(response);
+  },
+
   getPlans: async () => {
     const response = await api.get('/platform-admin/plans');
     return unwrap(response).plans as any[];

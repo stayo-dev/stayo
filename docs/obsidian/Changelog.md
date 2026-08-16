@@ -10,6 +10,16 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-16 — Profile → Raise a Ticket: a second, Stayo Admin-bound ticket system
+- New, fully independent ticket system for reporting Stayo app/website problems — see [[Decisions#ADR-079|ADR-079]] for the full reasoning, including why an earlier proposal to reuse `/tenant/complaints` was rejected.
+- **Schema:** new `platform_support_tickets` model + migration `20260816120000_add_platform_support_tickets` (idempotent `CREATE TABLE IF NOT EXISTS`, applied to the dev database). Modeled on `owner_documents`'s shape — `profile_id`-scoped, `status` (`OPEN`→`RESOLVED`, admin-only), `resolved_at`/`resolved_by`/`admin_note`. Deliberately **no `owner_id`, no `hostel_id`, no relation to `tenants`**.
+- **Backend:** `GET/POST /api/profile/support-tickets` (any signed-in profile, no tenancy requirement); `GET /api/platform-admin/support-tickets?status=` + `POST .../[id]/resolve` (ADMIN-only, mirrors the `owner-documents` route pair).
+- **Profile UI:** new standalone "Raise a ticket" section in `DiscoverProfilePage.tsx` (not folded into Support & settings) → new `SupportTicketsPage.tsx` at `/profile/tickets`.
+- **Admin UI:** new `AdminSupportTicketsPage.tsx` at `/admin/support-tickets`, reached via a new row on `/admin/more` (not a 7th `ADMIN_TABS` slot — that list stays pixel-matched to `Stayo Admin.dc.html`).
+- `tenant_service_requests`/`complaints` (the existing tenant → owner system) are completely untouched — no shared code, no shared table.
+- **Verification:** `apps/backend/npm run check:invariants` and `apps/frontend/npm run check:architecture` both pass; full frontend `npm run build` (architecture check + `vite build` + branding check) succeeds; both new route families smoke-tested against the running dev server (401 unauthenticated, not 500). Backend vitest suite could not run — same pre-existing `.env.test`/`DATABASE_URL_TEST` gap noted below, unrelated to this change.
+- See [[Features]], [[Business-Rules]], [[APIs]], [[Database]], [[Decisions]].
+
 ### 2026-08-16 — Explore/Dashboard/Profile restructure: one shared nav, one common profile, Google-only tenant signup
 - Full restructure per explicit product direction — see [[Decisions#ADR-078|ADR-078]] for the complete reasoning (supersedes [[Decisions#ADR-068|ADR-068]]'s "no Complaints tab" call).
 - **Nav:** new `app/nav/{appNavConfig,useAppNav}.ts` + `app/layouts/AppShell.tsx` + `app/components/AppBottomNav.tsx` — one shared, state-dependent bottom nav (Explore/Profile, or Explore/Dashboard/Profile with a live tenancy) replacing the two independent ones (`DiscoverShell`'s 4 tabs, `TenantAppShell`'s 5). `TenantAppShell` repurposed into the Dashboard's inner sticky-top tab strip. `tenant_status` threaded through `/auth/me` and every login path.
