@@ -95,6 +95,29 @@ export function ExplorePage() {
         />
 
         <div className="relative">
+          {/* Home affordance. Discovery is reachable directly (shared links,
+              WhatsApp buttons), so a seeker can land here with no way back to
+              the front door — the owner landing page has had this all along. */}
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            aria-label="Stayo home"
+            className="mb-3 flex items-center gap-2.5"
+          >
+            <img
+              src="/stayo-icon.png"
+              alt="Stayo"
+              className="h-9 w-9 flex-none rounded-[11px]"
+              style={{ boxShadow: '0 4px 12px rgba(180,106,85,.4)' }}
+            />
+            <span
+              className="text-[16px] font-extrabold tracking-[-0.02em] text-white"
+              style={{ fontFamily: FONT.display }}
+            >
+              Stayo
+            </span>
+          </button>
+
           <p className="text-[10.5px] font-bold uppercase tracking-[0.14em]" style={{ color: '#8C8177' }}>
             Discover on Stayo
           </p>
