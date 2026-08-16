@@ -7,6 +7,8 @@
 /* StayO's new brand theme — coexists with the legacy import above, scoped via
  * [data-app-theme]. See stayo-theme.css for why this doesn't replace theme.css. */
 @import './stayo-theme.css';
+/* Admin console (Stayo Admin.dc.html) — Manrope/Inter, scoped to .admin-console. */
+@import './admin-console.css';
 
 /*
  * iOS Safari auto-zooms into any focused form control whose computed font-size

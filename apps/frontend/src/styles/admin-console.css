@@ -1,0 +1,57 @@
+/*
+ * Admin console styles, ported from `Stayo Admin.dc.html`.
+ *
+ * The console deliberately does NOT reuse `.font-display`: that resolves to
+ * --font-display, which is Playfair Display for the marketing and product
+ * themes. The design specifies Manrope for display/numerics and Inter for
+ * body text, both already loaded in index.html. Routing the console through
+ * the shared token would make a typography change intended for owners
+ * silently restyle the admin console — and did, before this rebuild.
+ */
+.admin-console {
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.font-admin {
+  font-family: Manrope, sans-serif;
+}
+
+/* The design's own animation set, prefixed `ad` as in the source file. */
+@keyframes adFade {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes adUp {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes adToast {
+  0% { transform: translateY(24px); opacity: 0; }
+  10% { transform: translateY(0); opacity: 1; }
+  88% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(24px); opacity: 0; }
+}
+
+@keyframes adDrawer {
+  0% { transform: translateX(40px); opacity: 0.4; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+/* Scrollbar treatment from the design's helmet block. */
+.admin-console ::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+.admin-console ::-webkit-scrollbar-thumb {
+  background: #dcd1c4;
+  border-radius: 9px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.admin-console ::-webkit-scrollbar-track {
+  background: transparent;
+}

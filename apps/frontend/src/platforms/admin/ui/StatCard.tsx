@@ -32,13 +32,13 @@ export function StatCard({
         <div className="text-[11.5px] font-semibold text-[#8A7F75]">{label}</div>
         {delta ? (
           <span
-            className={`rounded-full px-2 py-[3px] font-display text-[10.5px] font-bold ${TONE[deltaTone]} ${DELTA_BG[deltaTone]}`}
+            className={`rounded-full px-2 py-[3px] font-admin text-[10.5px] font-bold ${TONE[deltaTone]} ${DELTA_BG[deltaTone]}`}
           >
             {delta}
           </span>
         ) : null}
       </div>
-      <div className={`mt-1.5 font-display text-[23px] font-extrabold tracking-[-0.02em] ${TONE[valueTone]}`}>
+      <div className={`mt-1.5 font-admin text-[23px] font-extrabold tracking-[-0.02em] ${TONE[valueTone]}`}>
         {value}
       </div>
       {sub ? <div className="mt-px text-[11px] text-[#A2978B]">{sub}</div> : null}

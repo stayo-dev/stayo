@@ -15,7 +15,7 @@ import { ADMIN_CARD } from '../theme/palette';
 export function NotWiredYet({ title, className = '' }: { title: string; className?: string }) {
   return (
     <div className={`${ADMIN_CARD} px-5 py-14 text-center ${className}`}>
-      <div className="font-display text-[17px] font-bold text-[#221E1A]">{title}</div>
+      <div className="font-admin text-[17px] font-bold text-[#221E1A]">{title}</div>
       <div className="mx-auto mt-1.5 max-w-[420px] text-[13px] leading-relaxed text-[#8A7F75]">
         This screen is built and waiting — the data behind it is still being designed.
         Nothing is missing from your queue.
