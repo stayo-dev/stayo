@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { ApiError } from "@/src/lib/api-error";
 import { notificationService } from "@/lib/services/notification-service";
+import { normaliseReviewFlags, isSendBackActionable, summariseFlagsForOwner, type SectionFlag } from "./review-flags";
 import { normaliseContent, type MarketingContent } from "./marketing-content";
 
 /**
@@ -148,7 +149,14 @@ export class MarketingReviewService {
         status: true,
         content: true,
         submitted_at: true,
-        hostel: { select: { id: true, name: true, city: true, address: true, listing_status: true, verification_status: true } },
+        review_flags: true,
+        hostel: {
+          select: {
+            id: true, name: true, city: true, address: true,
+            listing_status: true, verification_status: true,
+            listing_source: true,
+          },
+        },
       },
     });
     if (!revision) throw ApiError.notFound("Submission not found");
@@ -216,12 +224,20 @@ export class MarketingReviewService {
     return approved;
   }
 
-  /** Reject, with a reason the owner will actually see. */
-  async reject(adminId: string, revisionId: string, note: string) {
-    if (!note?.trim()) {
-      // The owner's only route forward is this sentence. A rejection without
-      // one just produces a resubmission of the same thing.
-      throw ApiError.validationError("Give a reason — the owner sees it and acts on it");
+  /**
+   * Send back, with feedback the owner can act on.
+   *
+   * Accepts per-section flags as well as the covering note. Either is enough
+   * on its own — a flagged section IS an instruction ("this part") — but
+   * neither is not: a bare "no" just produces a resubmission of the same page,
+   * which is what ADR-076 set out to prevent.
+   */
+  async reject(adminId: string, revisionId: string, note: string, rawFlags?: unknown) {
+    const flags: SectionFlag[] = normaliseReviewFlags(rawFlags, adminId);
+    if (!isSendBackActionable(flags, note)) {
+      throw ApiError.validationError(
+        "Flag at least one section or give a reason — the owner sees this and acts on it",
+      );
     }
 
     const revision = await prisma.hostel_marketing_revisions.findUnique({
@@ -239,17 +255,22 @@ export class MarketingReviewService {
         status: "REJECTED",
         reviewed_at: new Date(),
         reviewed_by: adminId,
-        review_note: note.trim(),
+        review_note: note?.trim() || null,
+        review_flags: flags as any,
         updated_at: new Date(),
       },
-      select: { id: true, version: true, status: true, review_note: true },
+      select: { id: true, version: true, status: true, review_note: true, review_flags: true },
     });
 
     await notificationService
       .createNotification(
         revision.hostel.owner_id,
         "Your listing needs changes",
-        `${revision.hostel.name}: ${note.trim()}`,
+        // Name the sections, so the notification itself says what to fix
+        // rather than "something needs changing, go and look".
+        [revision.hostel.name, summariseFlagsForOwner(flags) || note?.trim()]
+          .filter(Boolean)
+          .join(": "),
         "marketing",
       )
       .catch(() => undefined);

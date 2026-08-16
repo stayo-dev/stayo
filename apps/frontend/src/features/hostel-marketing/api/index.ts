@@ -181,8 +181,16 @@ export const marketingService = {
     return unwrap(response);
   },
 
-  reject: async (revisionId: string, note: string) => {
-    const response = await api.post(`/platform-admin/marketing-reviews/${revisionId}/reject`, { note });
+  /**
+   * Send back with per-section flags. Either a flag or a note is enough; the
+   * server refuses a send-back carrying neither.
+   */
+  reject: async (
+    revisionId: string,
+    note: string,
+    flags: { section: string; note?: string }[] = [],
+  ) => {
+    const response = await api.post(`/platform-admin/marketing-reviews/${revisionId}/reject`, { note, flags });
     return unwrap(response);
   },
 };

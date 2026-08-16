@@ -8,7 +8,20 @@ import { marketingReviewService } from "@/src/services/marketing/marketing-revie
 import { ApiResponse } from "@/src/lib/api-response";
 import { ApiError } from "@/src/lib/api-error";
 
-const RejectSchema = z.object({ note: z.string().trim().min(1).max(500) });
+/**
+ * The note is now optional at the schema level because a flagged section is
+ * itself actionable feedback. The service still refuses a send-back carrying
+ * NEITHER — that check lives in one place (isSendBackActionable) rather than
+ * being duplicated here.
+ */
+const RejectSchema = z.object({
+  note: z.string().trim().max(500).optional().default(""),
+  flags: z
+    .array(z.object({ section: z.string(), note: z.string().max(1000).optional() }))
+    .max(6)
+    .optional()
+    .default([]),
+});
 
 /**
  * Reject, with a reason.
@@ -29,7 +42,7 @@ export async function POST(req: NextRequest, { params }: { params: { revisionId:
       throw ApiError.validationError("Give a reason — the owner sees it and acts on it");
     }
 
-    const rejected = await marketingReviewService.reject(session.sub, params.revisionId, parsed.data.note);
+    const rejected = await marketingReviewService.reject(session.sub, params.revisionId, parsed.data.note, parsed.data.flags);
     return ApiResponse.success(rejected, "Sent back to the owner");
   } catch (error) {
     return ApiResponse.error(error);

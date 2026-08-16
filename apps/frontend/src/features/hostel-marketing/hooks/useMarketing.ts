@@ -67,10 +67,15 @@ export function useMarketingSubmission(revisionId: string | undefined) {
 export function useReviewDecision() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ revisionId, verdict, note }: { revisionId: string; verdict: 'approve' | 'reject'; note?: string }) =>
+    mutationFn: ({ revisionId, verdict, note, flags }: {
+      revisionId: string;
+      verdict: 'approve' | 'reject';
+      note?: string;
+      flags?: { section: string; note?: string }[];
+    }) =>
       verdict === 'approve'
         ? marketingService.approve(revisionId, note)
-        : marketingService.reject(revisionId, note ?? ''),
+        : marketingService.reject(revisionId, note ?? '', flags ?? []),
     onSuccess: () => {
       // The queue and the item both change; the hostel may also have just
       // become renderable in Discovery.

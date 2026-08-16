@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { platformAdminService } from '@features/platform-admin/api';
@@ -5,6 +6,12 @@ import { useMarketingQueue, useReviewDecision } from '@features/hostel-marketing
 import { EmptyState, FilterChips } from '../ui';
 import { LISTING_TABS, listingFilterFor, resolveListingTab } from '../listings/listingTabs';
 import { useToast } from '../layout/toastContext';
+import { AdminDrawer } from '../drawer/AdminDrawer';
+import {
+  MarketingReviewBody, SECTION_LABEL,
+  type ReviewSection, type SectionFlagDraft,
+} from '../drawer/MarketingReviewBody';
+import { parseDetailParam, serializeDetail } from '../drawer/drawerParam';
 import { tintForId } from '../theme/palette';
 
 const STATUS_PILL: Record<string, { bg: string; color: string; label: string }> = {
@@ -18,6 +25,28 @@ export function ListingsPage() {
   const tab = resolveListingTab(params.get('tab'));
   const queryClient = useQueryClient();
   const fireToast = useToast();
+
+  const detail = parseDetailParam(params.get('detail'));
+  const [flags, setFlags] = useState<SectionFlagDraft[]>([]);
+  const [sendBackNote, setSendBackNote] = useState('');
+  const [sendingBack, setSendingBack] = useState(false);
+
+  const toggleFlag = (section: ReviewSection) =>
+    setFlags((f) =>
+      f.some((x) => x.section === section)
+        ? f.filter((x) => x.section !== section)
+        : [...f, { section, note: '' }],
+    );
+  const setFlagNote = (section: ReviewSection, note: string) =>
+    setFlags((f) => f.map((x) => (x.section === section ? { ...x, note } : x)));
+  const closeReview = () => {
+    const next = new URLSearchParams(params);
+    next.delete('detail');
+    setParams(next, { replace: true });
+    setFlags([]);
+    setSendBackNote('');
+    setSendingBack(false);
+  };
 
   const filter = listingFilterFor(tab);
 
@@ -93,17 +122,13 @@ export function ListingsPage() {
         <ContentReviewQueue
           items={marketingQueue.data}
           isLoading={marketingQueue.isLoading}
-          onDecide={async (revisionId, verdict) => {
-            const note =
-              verdict === 'reject'
-                ? window.prompt('What needs changing?')?.trim()
-                : undefined;
-            if (verdict === 'reject' && !note) {
-              fireToast('A note is required when sending copy back', 'no');
-              return;
-            }
-            await reviewDecision.mutateAsync({ revisionId, verdict, note });
-            fireToast(verdict === 'approve' ? 'Listing copy approved' : 'Copy sent back to the owner');
+          onOpen={(revisionId) => {
+            const next = new URLSearchParams(params);
+            next.set('detail', serializeDetail({ kind: 'listing', id: revisionId }));
+            setParams(next);
+            setFlags([]);
+            setSendBackNote('');
+            setSendingBack(false);
           }}
         />
       ) : hostels.isLoading ? (
@@ -181,6 +206,97 @@ export function ListingsPage() {
           })}
         </div>
       )}
+
+      {detail?.kind === 'listing' && (
+        <AdminDrawer
+          title="Listing content review"
+          subtitle="Everything the owner submitted"
+          initials="MR"
+          onClose={closeReview}
+          footer={
+            sendingBack ? (
+              <div>
+                <input
+                  value={sendBackNote}
+                  onChange={(e) => setSendBackNote(e.target.value)}
+                  placeholder="Covering note (optional if you flagged sections)"
+                  className="mb-2.5 w-full rounded-[11px] border border-[#E7DDD1] px-3 py-2.5 text-[12.5px] text-[#2A2521] outline-none"
+                />
+                {flags.length > 0 && (
+                  <div className="mb-2.5 text-[11.5px] text-[#8A7F75]">
+                    Flagged: {flags.map((f) => SECTION_LABEL[f.section]).join(' · ')}
+                  </div>
+                )}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setSendingBack(false)}
+                    className="flex-1 rounded-xl border border-[#E9DFD3] bg-white py-3 font-admin text-[13px] font-bold text-[#5A5147]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (flags.length === 0 && !sendBackNote.trim()) {
+                        fireToast('Flag a section or write a note first', 'no');
+                        return;
+                      }
+                      try {
+                        await reviewDecision.mutateAsync({
+                          revisionId: detail.id,
+                          verdict: 'reject',
+                          note: sendBackNote.trim(),
+                          flags: flags.map((f) => ({ section: f.section, note: f.note || undefined })),
+                        });
+                        closeReview();
+                        fireToast('Sent back to the owner with your notes');
+                      } catch {
+                        fireToast('Could not send that back', 'no');
+                      }
+                    }}
+                    className="flex-[1.4] rounded-xl bg-[#B3402F] py-3 font-admin text-[13px] font-bold text-white"
+                  >
+                    Confirm send back
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSendingBack(true)}
+                  className="flex-1 rounded-xl border border-[#E6C7BF] bg-[#FBEFE9] py-3 font-admin text-[13.5px] font-bold text-[#B3402F]"
+                >
+                  Send back{flags.length > 0 ? ` (${flags.length})` : ''}
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await reviewDecision.mutateAsync({ revisionId: detail.id, verdict: 'approve' });
+                      closeReview();
+                      fireToast('Published — the listing is live on Discovery');
+                    } catch {
+                      fireToast('Could not publish that listing', 'no');
+                    }
+                  }}
+                  className="flex-[1.4] rounded-xl bg-[#1F7A52] py-3 font-admin text-[13.5px] font-bold text-white shadow-[0_4px_14px_rgba(31,122,82,.3)]"
+                >
+                  Approve &amp; publish
+                </button>
+              </div>
+            )
+          }
+        >
+          <MarketingReviewBody
+            revisionId={detail.id}
+            flags={flags}
+            onToggleFlag={toggleFlag}
+            onFlagNote={setFlagNote}
+          />
+        </AdminDrawer>
+      )}
     </div>
   );
 }
@@ -195,11 +311,11 @@ function Metric({ value, label }: { value: number | string; label: string }) {
 }
 
 function ContentReviewQueue({
-  items, isLoading, onDecide,
+  items, isLoading, onOpen,
 }: {
   items: any[] | undefined;
   isLoading: boolean;
-  onDecide: (revisionId: string, verdict: 'approve' | 'reject') => Promise<void>;
+  onOpen: (revisionId: string) => void;
 }) {
   if (isLoading) {
     return <div className="py-16 text-center text-[13px] text-[#8A7F75]">Loading content queue…</div>;
@@ -215,33 +331,30 @@ function ContentReviewQueue({
   return (
     <div className="overflow-hidden rounded-[18px] border border-[#EFE6DA] bg-white shadow-[0_1px_2px_rgba(40,30,20,.04),0_6px_16px_rgba(40,30,20,.05)]">
       {items.map((item: any, index: number) => (
-        <div
+        <button
           key={item.id}
-          className={`flex items-center gap-3.5 px-5 py-[15px] ${index > 0 ? 'border-t border-[#F2ECE5]' : ''}`}
+          type="button"
+          onClick={() => onOpen(item.id)}
+          className={`flex w-full items-center gap-3.5 px-5 py-[15px] text-left hover:bg-[#FCFAF7] ${
+            index > 0 ? 'border-t border-[#F2ECE5]' : ''
+          }`}
         >
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[13px] font-semibold text-[#2A2521]">
-              {item.hostel_name ?? item.hostel?.name ?? 'Listing copy'}
-            </div>
-            <div className="truncate text-[11.5px] text-[#9A8F84]">
-              Submitted for review
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => onDecide(item.id, 'reject')}
-            className="flex-none rounded-[11px] border border-[#E6C7BF] bg-[#FBEFE9] px-[15px] py-2 font-admin text-[12px] font-bold text-[#B3402F]"
-          >
-            Send back
-          </button>
-          <button
-            type="button"
-            onClick={() => onDecide(item.id, 'approve')}
-            className="flex-none rounded-[11px] bg-[#1F7A52] px-[15px] py-2 font-admin text-[12px] font-bold text-white"
-          >
-            Approve
-          </button>
-        </div>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[13px] font-semibold text-[#2A2521]">
+              {item.hostel?.name ?? 'Listing copy'}
+            </span>
+            <span className="block truncate text-[11.5px] text-[#9A8F84]">
+              {[item.hostel?.city, item.summary?.tagline].filter(Boolean).join(' · ') ||
+                'Submitted for review'}
+            </span>
+          </span>
+          {(item.flags ?? []).length > 0 && (
+            <span className="flex-none rounded-full bg-[#FBF1DE] px-2.5 py-1 text-[11px] font-semibold text-[#B8792B]">
+              {item.flags.length} to check
+            </span>
+          )}
+          <span className="flex-none text-[12px] font-semibold text-[#B46A55]">Review ›</span>
+        </button>
       ))}
     </div>
   );

@@ -60,6 +60,7 @@ export default defineConfig({
       'tests/residency-history-service.test.ts',
       'tests/marketing-approval.test.ts',
       'tests/discovery-listing-projection.test.ts',
+      'tests/marketing-review-flags.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),
