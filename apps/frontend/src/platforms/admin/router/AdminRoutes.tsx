@@ -18,6 +18,15 @@ const SettlementsPage = lazy(() => import('../pages/SettlementsPage').then((m) =
 const SubscriptionsPage = lazy(() => import('../pages/SubscriptionsPage').then((m) => ({ default: m.SubscriptionsPage })));
 const ReportsPage = lazy(() => import('../pages/ReportsPage').then((m) => ({ default: m.ReportsPage })));
 const BroadcastsPage = lazy(() => import('../pages/BroadcastsPage').then((m) => ({ default: m.BroadcastsPage })));
+/**
+ * The owner's marketing editor, reused verbatim. Stayo's team authors and
+ * manages listing pages for any hostel — including ones an owner already runs
+ * — so the admin console mounts the same component rather than growing a
+ * second editor that would drift from it.
+ */
+const HostelMarketingPage = lazy(() =>
+  import('@/features/hostel-drilldown/pages/HostelMarketingPage').then((m) => ({ default: m.HostelMarketingPage })),
+);
 const ListingPreviewPage = lazy(() => import('../pages/ListingPreviewPage').then((m) => ({ default: m.ListingPreviewPage })));
 const SettingsPage = lazy(() => import('../pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 
@@ -46,6 +55,7 @@ export function AdminRoutes() {
         {/* Full-screen: it renders the real Discovery listing, so it must not
             sit inside the console chrome. */}
         <Route path="/admin/listings/preview/:revisionId" element={<ListingPreviewPage />} />
+        <Route path="/admin/listings/:hostelId/edit" element={<HostelMarketingPage />} />
         <Route path="/admin/revenue" element={<RevenuePage />} />
         <Route path="/admin/settlements" element={<SettlementsPage />} />
         <Route path="/admin/subscriptions" element={<SubscriptionsPage />} />

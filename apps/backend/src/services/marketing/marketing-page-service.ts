@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { imagekit } from "@/lib/imagekit";
+import { marketingScopeWhere, type MarketingActor } from "./marketing-scope";
 import { ApiError } from "@/src/lib/api-error";
 import {
   EMPTY_CONTENT,
@@ -60,10 +61,16 @@ const REVISION_SELECT = {
 } as const;
 
 export class MarketingPageService {
-  private async assertOwnsHostel(ownerId: string, hostelId: string) {
+  /**
+   * `ownerId` may be an owner (scoped to their own hostels) or an admin
+   * (unscoped). Stayo's team authors listings on an owner's behalf, so the
+   * editor must open for hostels the actor does not own — see marketing-scope.ts.
+   */
+  private async assertOwnsHostel(actor: string | MarketingActor, hostelId: string) {
+    const resolved: MarketingActor = typeof actor === "string" ? { id: actor } : actor;
     const hostel = await prisma.hostels.findFirst({
-      where: { id: hostelId, owner_id: ownerId },
-      select: { id: true, name: true, public_slug: true },
+      where: marketingScopeWhere(resolved, hostelId),
+      select: { id: true, name: true, public_slug: true, owner_id: true },
     });
     if (!hostel) throw ApiError.forbidden("You do not manage this hostel");
     return hostel;
@@ -73,7 +80,7 @@ export class MarketingPageService {
    * The owner's editing view: their open draft (created on demand), plus what
    * is currently live, so the editor can show "you have unpublished changes".
    */
-  async getEditorState(ownerId: string, hostelId: string) {
+  async getEditorState(ownerId: string | MarketingActor, hostelId: string) {
     const hostel = await this.assertOwnsHostel(ownerId, hostelId);
 
     const [open, approved] = await Promise.all([
@@ -146,7 +153,7 @@ export class MarketingPageService {
    * it mid-review would mean the admin approves something other than what they
    * read. They withdraw it first (which returns it to DRAFT).
    */
-  async saveDraft(ownerId: string, hostelId: string, rawContent: unknown) {
+  async saveDraft(ownerId: string | MarketingActor, hostelId: string, rawContent: unknown) {
     await this.assertOwnsHostel(ownerId, hostelId);
 
     const parsed = MarketingContentSchema.safeParse(rawContent ?? {});
@@ -252,7 +259,7 @@ export class MarketingPageService {
   }
 
   /** Hand the draft to the admin queue. */
-  async submitForReview(ownerId: string, hostelId: string) {
+  async submitForReview(ownerId: string | MarketingActor, hostelId: string) {
     await this.assertOwnsHostel(ownerId, hostelId);
 
     const draft = await prisma.hostel_marketing_revisions.findFirst({
@@ -288,7 +295,7 @@ export class MarketingPageService {
   }
 
   /** Pull a submission back out of the queue so it can be edited again. */
-  async withdraw(ownerId: string, hostelId: string) {
+  async withdraw(ownerId: string | MarketingActor, hostelId: string) {
     await this.assertOwnsHostel(ownerId, hostelId);
 
     const pending = await prisma.hostel_marketing_revisions.findFirst({

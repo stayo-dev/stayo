@@ -63,6 +63,7 @@ export default defineConfig({
       'tests/marketing-review-flags.test.ts',
       'tests/platform-listing-claim.test.ts',
       'tests/platform-listing-enquiry-lead.test.ts',
+      'tests/marketing-editor-scope.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),

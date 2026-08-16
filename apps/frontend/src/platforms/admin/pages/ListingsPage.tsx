@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { platformAdminService } from '@features/platform-admin/api';
 import { useMarketingQueue, useReviewDecision } from '@features/hostel-marketing/hooks/useMarketing';
 import { EmptyState, FilterChips } from '../ui';
@@ -26,6 +26,7 @@ export function ListingsPage() {
   const tab = resolveListingTab(params.get('tab'));
   const queryClient = useQueryClient();
   const fireToast = useToast();
+  const navigate = useNavigate();
 
   const detail = parseDetailParam(params.get('detail'));
   const [flags, setFlags] = useState<SectionFlagDraft[]>([]);
@@ -189,6 +190,16 @@ export function ListingsPage() {
                       <Metric value={h.owner_hostel_count ?? 1} label="owner's hostels" />
                     </div>
                   </div>
+                </div>
+                <div className="flex items-center gap-2.5 px-[17px] pb-[15px]">
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/admin/listings/${h.id}/edit`)}
+                    className="rounded-[11px] border border-[#E9DFD3] bg-white px-3.5 py-2 font-admin text-[12px] font-bold text-[#5A5147]"
+                  >
+                    Write listing page
+                  </button>
+                  <div className="flex-1" />
                 </div>
                 {String(h.verification_status) === 'PENDING' && (
                   <div className="flex items-center gap-2.5 px-[17px] pb-[15px]">

@@ -20,7 +20,9 @@ async function requireOwner(req: NextRequest) {
   if (!session || !["OWNER", "ADMIN"].includes(session.role)) {
     throw ApiError.forbidden("Owner access required");
   }
-  return session.sub;
+  // An admin is unscoped: Stayo's team authors listings on an owner's behalf,
+  // including for hostels the owner already runs. See marketing-scope.ts.
+  return { id: session.sub, isAdmin: session.role === "ADMIN" };
 }
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
