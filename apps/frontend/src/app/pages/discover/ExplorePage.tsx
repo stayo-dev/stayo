@@ -102,20 +102,15 @@ export function ExplorePage() {
             type="button"
             onClick={() => navigate('/')}
             aria-label="Stayo home"
-            className="mb-3 flex items-center gap-2.5"
+            className="mb-3 flex items-center"
           >
+            {/* The horizontal lockup already contains the wordmark, so there is
+                no separate text beside it. */}
             <img
-              src="/stayo-icon.png"
+              src="/stayo-logo-horizontal.svg"
               alt="Stayo"
-              className="h-9 w-9 flex-none rounded-[11px]"
-              style={{ boxShadow: '0 4px 12px rgba(180,106,85,.4)' }}
+              className="h-9 w-auto"
             />
-            <span
-              className="text-[16px] font-extrabold tracking-[-0.02em] text-white"
-              style={{ fontFamily: FONT.display }}
-            >
-              Stayo
-            </span>
           </button>
 
           <p className="text-[10.5px] font-bold uppercase tracking-[0.14em]" style={{ color: '#8C8177' }}>
