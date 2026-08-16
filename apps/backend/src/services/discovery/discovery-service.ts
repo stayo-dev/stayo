@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 
 import { prisma } from "@/lib/db";
+import { projectListing } from "./listing-projection";
 import { ApiError } from "@/src/lib/api-error";
 import { redisKeys } from "@/lib/redis/keys";
 import { getOrSetJson, invalidateTag } from "@/lib/redis/cache";
@@ -370,7 +371,10 @@ export class DiscoveryService {
       // getPublicHostel's payload: that response serves `/visit/:slug`, and
       // widening a shared contract for one consumer is how it stops being a
       // contract. Discovery merges what it needs on top instead.
-      select: { id: true, hostel_type: true, food_included: true },
+      // listing_source is REQUIRED here: without it projectListing defaults to
+      // OWNER_MANAGED and a platform listing would claim confirmed
+      // availability it cannot honour.
+      select: { id: true, hostel_type: true, food_included: true, listing_source: true },
     });
     if (!visible) throw ApiError.notFound("This hostel is not listed on Stayo");
 
@@ -382,51 +386,9 @@ export class DiscoveryService {
       marketingPageService.getPublishedContent(visible.id),
     ]);
 
-    return {
-      ...detail,
-      hostel: {
-        ...detail.hostel,
-        hostel_type: visible.hostel_type,
-        food_included: visible.food_included,
-        tagline: marketing?.basics.tagline ?? null,
-        about: marketing?.basics.about ?? null,
-        highlights: marketing?.basics.highlights ?? [],
-        // Owner-published photos win over the admissions gallery when they
-        // exist — those are the ones a human approved for this surface.
-        photos: marketing && marketing.photos.length > 0
-          ? marketing.photos.map((photo) => photo.url)
-          : detail.hostel.photos,
-      },
-      /**
-       * The advertised offer. Live vacancy still comes from real rooms
-       * (`rooms` above) — a marketing tier describes what is on sale, it does
-       * not decide what is free. Where the two prices diverge, the admin
-       * review screen shows both before approving.
-       */
-      bed_tiers: marketing?.beds ?? [],
-      amenities: (marketing?.amenities ?? []).filter((amenity) => amenity.enabled),
-      places: marketing?.places ?? [],
-      /**
-       * The reviewed weekly mess menu, or null when this hostel does not serve
-       * meals. Null rather than an empty menu so the listing hides the section
-       * outright — "Food & mess" with nothing under it reads as missing data,
-       * not as a hostel that does not feed you. Meals switched off are dropped
-       * here rather than in the UI, so a listing never advertises a meal slot
-       * the owner has turned off.
-       */
-      mess: marketing?.mess.provided
-        ? { ...marketing.mess, meals: marketing.mess.meals.filter((meal) => meal.enabled) }
-        : null,
-      /**
-       * Phase D still owns reviews, and the design is explicit that owners
-       * cannot write them ("Managed by Stayo"), so there is no content path to
-       * one here at all.
-       */
-      ratings_available: false,
-      amenities_available: Boolean(marketing && marketing.amenities.some((a) => a.enabled)),
-      /** Null when the owner has never had a listing approved. */
-      marketing_published: Boolean(marketing),
-    };
+    // One projection, shared with the admin preview — see listing-projection.ts
+    // for why this must not be duplicated.
+    return projectListing({ detail, visible, marketing });
   }
 
   // ── Saved ──────────────────────────────────────────────────────────────────

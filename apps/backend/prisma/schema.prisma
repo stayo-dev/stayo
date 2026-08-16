@@ -221,6 +221,11 @@ model hostel_invariant_checks {
 model hostels {
   id                             String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   owner_id                       String                           @db.Uuid
+  /// See ListingSource. Stays OWNER_MANAGED for every hostel an owner runs.
+  listing_source                 ListingSource                    @default(OWNER_MANAGED)
+  /// Set when a PLATFORM_LISTED hostel is assigned to its real owner.
+  claimed_at                     DateTime?                        @db.Timestamptz(6)
+  claimed_by                     String?                          @db.Uuid
   name                           String
   phone                          String
   address                        String
@@ -1324,8 +1329,17 @@ model hostel_marketing_revisions {
   reviewed_at  DateTime? @db.Timestamptz(6)
   reviewed_by  String?   @db.Uuid
   /// Owner-visible on reject, so a "no" always arrives with a reason they can
-  /// act on.
+  /// act on. The covering sentence; `review_flags` carries the specifics.
   review_note  String?
+
+  /// Admin-authored, per-section objections:
+  /// `[{ section, note, flagged_by, flagged_at }]` where section is one of
+  /// basics | photos | beds | amenities | places | mess.
+  ///
+  /// Distinct from the automated `ReviewFlag`s in marketing-review-service.ts,
+  /// which are computed advisories (price drift, sharing not in inventory) and
+  /// are never stored.
+  review_flags Json      @default("[]")
 
   created_at   DateTime  @default(now()) @db.Timestamptz(6)
   updated_at   DateTime? @db.Timestamptz(6)
@@ -3223,6 +3237,17 @@ enum HostelListingStatus {
   DRAFT
   LIVE
   SUSPENDED
+}
+
+/// Who authored this hostel's presence on Stayo.
+///
+/// PLATFORM_LISTED exists so Discovery can cover a city rather than only the
+/// hostels that signed up. Nobody operates a platform listing inside Stayo, so
+/// it has no real `rooms` — its bed tiers are an advertised claim and it must
+/// never render live vacancy. Assignable to the real owner when they join.
+enum ListingSource {
+  OWNER_MANAGED
+  PLATFORM_LISTED
 }
 
 /// Real business-progress lifecycle (owner-acquisition-funnel phase 2).

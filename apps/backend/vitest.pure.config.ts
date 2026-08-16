@@ -59,6 +59,7 @@ export default defineConfig({
       'tests/document-vault-service.test.ts',
       'tests/residency-history-service.test.ts',
       'tests/marketing-approval.test.ts',
+      'tests/discovery-listing-projection.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),
