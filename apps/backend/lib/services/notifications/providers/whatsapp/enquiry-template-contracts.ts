@@ -42,8 +42,10 @@ export const ENQUIRY_TEMPLATES: Record<EnquiryTemplateKey, EnquiryTemplateDefini
    *  Move-in date: {{6}}.
    *  Review and respond from your dashboard."   [Review Enquiry →]
    *
-   * Utility category — it is a transactional response to the owner's own
-   * listing, not marketing.
+   * Utility category, 12-hour validity period, and a STATIC "Review Enquiry"
+   * button pointing at the owner's dashboard — verified against the approved
+   * template in WhatsApp Manager. Static means no button parameter: sending
+   * one to a static-URL button is rejected by Meta.
    */
   OWNER_ENQUIRY_RECEIVED: {
     envVar: "WHATSAPP_OWNER_ENQUIRY_RECEIVED_TEMPLATE",
@@ -51,7 +53,8 @@ export const ENQUIRY_TEMPLATES: Record<EnquiryTemplateKey, EnquiryTemplateDefini
     defaultName: "stayo_owner_enquiry_received",
     defaultLanguage: "en_IN",
     bodyParameters: ["owner_name", "hostel_name", "tenant_name", "bed_type", "monthly_rent", "move_in_date"],
-    buttonParameters: ["lead_id"],
+    // Static button — every owner goes to their own dashboard.
+    buttonParameters: [],
   },
 
   /**
@@ -105,7 +108,6 @@ export function buildOwnerEnquiryReceived(input: {
   bedType?: string | null;
   monthlyRent?: number | null;
   moveInDate?: string | null;
-  leadId: string;
 }): TemplatePayload {
   return {
     bodyParameters: [
@@ -118,7 +120,7 @@ export function buildOwnerEnquiryReceived(input: {
       input.monthlyRent == null ? "—" : formatRent(input.monthlyRent),
       safe(input.moveInDate, "Not specified"),
     ],
-    buttonParameters: [input.leadId],
+    buttonParameters: [],
   };
 }
 

@@ -587,7 +587,6 @@ export class DiscoveryService {
           bedType: input.roomCapacity ? `${input.roomCapacity}-sharing` : null,
           monthlyRent: null,
           moveInDate: input.moveInDate ?? null,
-          leadId: lead.id,
         }),
         // Keyed on the lead: re-enquiring updates the same lead, and the owner
         // should not be messaged twice for one conversation.

@@ -7,7 +7,6 @@ import {
   formatRent,
 } from "@/lib/services/notifications/providers/whatsapp/enquiry-template-contracts";
 
-const LEAD = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
 /**
  * Meta rejects a send whose parameter count does not match the approved
@@ -18,7 +17,7 @@ const LEAD = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 describe("builders match their declared parameter shape", () => {
   it("owner enquiry received", () => {
     const def = ENQUIRY_TEMPLATES.OWNER_ENQUIRY_RECEIVED;
-    const built = buildOwnerEnquiryReceived({ leadId: LEAD });
+    const built = buildOwnerEnquiryReceived({});
     expect(built.bodyParameters).toHaveLength(def.bodyParameters.length);
     expect(built.buttonParameters).toHaveLength(def.buttonParameters.length);
   });
@@ -35,7 +34,7 @@ describe("no parameter is ever empty", () => {
   // WhatsApp rejects the whole message if any body parameter is blank, so a
   // missing move-in date must not silently break the owner's notification.
   it("fills every owner slot even from an empty enquiry", () => {
-    const built = buildOwnerEnquiryReceived({ leadId: LEAD });
+    const built = buildOwnerEnquiryReceived({});
     for (const p of built.bodyParameters) expect(p.trim().length).toBeGreaterThan(0);
   });
 
@@ -45,7 +44,7 @@ describe("no parameter is ever empty", () => {
   });
 
   it("says a missing bed preference was not specified, rather than blanking it", () => {
-    const built = buildOwnerEnquiryReceived({ leadId: LEAD, bedType: "   " });
+    const built = buildOwnerEnquiryReceived({ bedType: "   " });
     expect(built.bodyParameters[3]).toBe("Not specified");
   });
 });
@@ -54,12 +53,14 @@ describe("content", () => {
   it("puts the values in the order the approved template reads them", () => {
     const built = buildOwnerEnquiryReceived({
       ownerName: "Shiva", hostelName: "Starlink", tenantName: "harsha",
-      bedType: "4-Bed AC", monthlyRent: 6000, moveInDate: "12 Aug 2026", leadId: LEAD,
+      bedType: "4-Bed AC", monthlyRent: 6000, moveInDate: "12 Aug 2026",
     });
     expect(built.bodyParameters).toEqual([
       "Shiva", "Starlink", "harsha", "4-Bed AC", "₹6,000", "12 Aug 2026",
     ]);
-    expect(built.buttonParameters).toEqual([LEAD]);
+    // Both approved templates use a STATIC URL button. Sending a button
+    // parameter to one is rejected by Meta, so this must stay empty.
+    expect(built.buttonParameters).toEqual([]);
   });
 
   it("carries the rejection reason the owner gave", () => {
