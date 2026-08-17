@@ -1,19 +1,48 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@lib/supabaseClient';
 import api from '@lib/api-client';
 import { GOOGLE_PROVISION_INTENT_KEY, GOOGLE_RETURN_TO_KEY } from '@context/AuthContext';
+import { shouldProvisionAccount } from './authCallbackDecision';
 import { StayoLoadingScreen } from '@shared/ui/brand';
 
-function consumeProvisionIntent(): { allowed: boolean; returnTo: string | null } {
+/**
+ * Reads the sign-in intent WITHOUT destroying it.
+ *
+ * It used to delete on read, which silently broke Google signup: this effect
+ * can run more than once (React StrictMode double-invokes it, and
+ * `AuthContext` hydrates on every Supabase auth event, so several passes race
+ * over the same callback). The first pass consumed the flag; whichever pass
+ * actually received the 403 then saw `allowed: false` and rendered "No account
+ * found" instead of creating the account. The POST never happened at all.
+ *
+ * So the flag is now cleared only by `clearProvisionIntent()`, once the flow
+ * has genuinely finished — see below.
+ */
+function readProvisionIntent(): { allowed: boolean; returnTo: string | null } {
   try {
-    const allowed = sessionStorage.getItem(GOOGLE_PROVISION_INTENT_KEY) === '1';
-    const returnTo = sessionStorage.getItem(GOOGLE_RETURN_TO_KEY);
-    sessionStorage.removeItem(GOOGLE_PROVISION_INTENT_KEY);
-    sessionStorage.removeItem(GOOGLE_RETURN_TO_KEY);
-    return { allowed, returnTo };
+    return {
+      allowed: sessionStorage.getItem(GOOGLE_PROVISION_INTENT_KEY) === '1',
+      returnTo: sessionStorage.getItem(GOOGLE_RETURN_TO_KEY),
+    };
   } catch {
     return { allowed: false, returnTo: null };
+  }
+}
+
+/**
+ * Clear the intent once this sign-in has resolved either way.
+ *
+ * Called on success and on terminal failure — never mid-flight — so a retry
+ * within the same tab starts clean, but a re-run of this effect cannot strip
+ * the intent out from under itself.
+ */
+function clearProvisionIntent() {
+  try {
+    sessionStorage.removeItem(GOOGLE_PROVISION_INTENT_KEY);
+    sessionStorage.removeItem(GOOGLE_RETURN_TO_KEY);
+  } catch {
+    /* private mode — nothing to clear */
   }
 }
 
@@ -47,11 +76,22 @@ function consumeProvisionIntent(): { allowed: boolean; returnTo: string | null }
 export function AuthCallbackPage() {
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
+  /**
+   * One callback, one attempt. StrictMode double-invokes effects and
+   * `navigate` can change identity, and without this the flow ran several
+   * times against the same Supabase session — which is how the provisioning
+   * intent came to be read by a pass that was not the one handling the 403.
+   */
+  const started = useRef(false);
 
   useEffect(() => {
+    if (started.current) return;
+    started.current = true;
     let cancelled = false;
 
     const proceed = (data: any, returnTo: string | null) => {
+      // Landed somewhere real: this sign-in is done with its intent.
+      clearProvisionIntent();
       const role = String(data.role || '').toLowerCase();
       if (role === 'admin') return navigate('/admin', { replace: true });
       if (role === 'owner') return navigate('/owner/home', { replace: true });
@@ -74,7 +114,7 @@ export function AuthCallbackPage() {
         return;
       }
 
-      const { allowed: provisionAllowed, returnTo } = consumeProvisionIntent();
+      const { allowed: provisionAllowed, returnTo } = readProvisionIntent();
 
       try {
         const response = await api.get('/auth/me');
@@ -86,7 +126,7 @@ export function AuthCallbackPage() {
         const code = err?.response?.data?.error?.code;
         const serverMessage = err?.response?.data?.error?.message;
 
-        if (status === 403 && code === 'NO_STAYO_ACCOUNT' && provisionAllowed) {
+        if (shouldProvisionAccount({ status, code, provisionAllowed })) {
           try {
             await api.post('/auth/google/provision');
             const retry = await api.get('/auth/me');
@@ -95,6 +135,7 @@ export function AuthCallbackPage() {
             return;
           } catch (provisionErr: any) {
             if (cancelled) return;
+            clearProvisionIntent();
             await supabase.auth.signOut();
             setError(
               provisionErr?.response?.data?.error?.message ||
@@ -104,6 +145,7 @@ export function AuthCallbackPage() {
           }
         }
 
+        clearProvisionIntent();
         await supabase.auth.signOut();
         if (status === 403 && serverMessage) {
           setError(serverMessage);
