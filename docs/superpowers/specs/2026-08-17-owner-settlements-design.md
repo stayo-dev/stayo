@@ -15,16 +15,46 @@ The nightly job is therefore: *for each owner, how much did Stayo collect on the
 
 ## The rule that prevents Stayo paying money it never received
 
-`payments` records both:
+**Settleability is decided by the payment gateway ledger, never by the payment record.**
 
-- **Online payments** — collected through the gateway into Stayo's account.
-- **Offline payments** — cash or direct UPI the tenant handed the owner, merely *recorded* in Stayo (`offline_recorded_by`, `offline_recorded_at`).
+An owner marks rent as paid and picks a type — cash, UPI, bank transfer — and may enter a UPI reference. That is a *record of something that already happened between the tenant and the owner*, and it must keep working exactly as it does today. Nothing here blocks or changes it.
 
-**Only online payments are settleable.** The owner already holds the offline money; Stayo never received it and owes nothing against it.
+But such a record proves nothing about Stayo's bank balance. An owner-marked "UPI" payment looks online and is not: the money went to the owner's own UPI ID. Inferring settleability from `payments.payment_method`, or from `offline_recorded_by` being null, would therefore be wrong in the one direction that costs Stayo money.
 
-Getting this wrong is not a display bug. Settling on all recorded rent would have Stayo transferring its own money to owners every single night, in proportion to how much rent was paid in cash — silently, and growing with the business. This is the invariant the whole feature is built to protect, and it gets an explicit test.
+So a payment is settleable **only if a gateway transaction exists for it**, confirming Razorpay actually received the funds into Stayo's account. The `payments` row is the operational record; the gateway ledger is the financial one. They are different things and this feature reads the second.
 
-The run still *shows* directly-collected amounts, labelled as not settled, so an owner reconciling their day sees the full picture rather than wondering where the rest went.
+### Not all gateway money is the owner's
+
+Two different kinds of money will land in the same Razorpay account:
+
+| Purpose | Whose money | Settles? |
+|---|---|---|
+| `TENANT_RENT` | The owner's — Stayo is holding it | **Yes**, in full |
+| `OWNER_SUBSCRIPTION` | **Stayo's own revenue** | **Never** |
+
+Owners will pay for their subscription through the same gateway. That money is Stayo's income. If the run selected on "money in the Razorpay account" alone, every subscription payment an owner made would be handed straight back to them — Stayo would collect nothing, and the error would look like generosity rather than a bug.
+
+The purpose is therefore recorded **at the moment the transaction is created**, not inferred later from which table happens to reference it. Inference breaks the first time a third money type appears (deposits, refunds, penalties), and it breaks silently.
+
+```
+model gateway_transactions
+  id
+  provider            String        -- razorpay
+  provider_payment_id String @unique -- idempotency against webhook replay
+  purpose             GatewayPurpose -- TENANT_RENT | OWNER_SUBSCRIPTION
+  amount              Decimal
+  status              String        -- CAPTURED | FAILED | REFUNDED
+  captured_at         DateTime?
+  -- exactly one of these is set, per purpose
+  payment_id          String? @unique  -- TENANT_RENT -> the payments row
+  hostel_id           String?          -- whose rent, for per-hostel totals
+  owner_id            String?          -- who is owed, or who subscribed
+  raw                 Json             -- the provider payload, kept verbatim
+```
+
+A settlement item is built from `gateway_transactions` where `purpose = TENANT_RENT`, `status = CAPTURED`, and `captured_at` falls in the run's day. Cash, direct UPI, and subscription income are all excluded by construction rather than by a filter someone must remember.
+
+**This also fixes a subtler problem:** the settlement amount is now the money Stayo *actually holds*, at the amount the gateway captured — not the amount the owner typed into a form. Those can differ, and when they do the gateway is right.
 
 ## Decisions taken
 
@@ -33,6 +63,8 @@ The run still *shows* directly-collected amounts, labelled as not settled, so an
 | 1 | What settles | Only money Stayo actually received (online/gateway). Direct collections shown but excluded |
 | 2 | Before the gateway exists | Build it live and correctly empty — ₹0 with an explanatory note, never seeded data |
 | 3 | Run boundary | Calendar day, 00:00–23:59 **IST**. Late payments roll into the next run |
+| 4 | Source of truth | The gateway ledger, not the payment record. Owner-marked payments are untouched |
+| 5 | Gateway money is typed | `TENANT_RENT` settles; `OWNER_SUBSCRIPTION` is Stayo's revenue and never does |
 
 On (2): fabricated rows in a financial screen are indistinguishable from real money owed. The same honest-gap rule as ADR-080, and it matters more here than anywhere else in the console.
 
@@ -107,7 +139,11 @@ The decommissioned `/api/admin/settlements/*` routes (currently 410 Gone) are re
 
 ## Where the bank details come from
 
-**Unresolved.** The scoped-access spec deliberately deferred payout bank fields (`payout_account_no`, `payout_ifsc`, `payout_holder_name`) to this work. They belong on the owner, are needed for every payout, and must be captured and verified during KYC. This spec assumes they are added here; if that is wrong, the drawer's payout-destination card has no source and the feature cannot ship.
+The **owner's own Settings page**, in a "Payout account" section: account holder name, account number (entered twice — a typo here sends money to a stranger and is unrecoverable), IFSC, and bank name. Stored on the owner and surfaced in the admin's settlement drawer.
+
+The owner enters these themselves rather than an admin transcribing them from a call: it is their money, a mistyped digit is irreversible, and they are the only person who can check it against their own passbook. Admins can view but not edit.
+
+Changing a payout account is a security-sensitive act — the obvious fraud is an attacker redirecting an owner's rent to their own account — so it should sit behind the existing step-up confirmation used for the other financially-sensitive owner routes, and the previous value should be kept in the audit log. A change while an item is `PROCESSING` must not alter that item; it already has its destination.
 
 ## Non-goals
 
@@ -120,7 +156,9 @@ The decommissioned `/api/admin/settlements/*` routes (currently 410 Gone) are re
 
 - `npm run check:financial-safety` and `check:invariants` must pass.
 - Tests that matter most:
-  - an offline payment is never included in a settlement item;
+  - an owner-marked payment with method "UPI" and a reference, but no gateway transaction, is never settled — the exact case that looks online and is not;
+  - an `OWNER_SUBSCRIPTION` transaction is never settled, even though it is captured gateway money;
+  - a settlement item's amount equals the sum of its gateway transactions, not the sum of the `payments` rows;
   - a payment cannot be attached to two runs (constraint-level);
   - marking paid without a reference is refused;
   - a PAID item cannot be reopened;
@@ -144,4 +182,5 @@ Steps 1–2 are worth reviewing on their own: if the computation is wrong, every
 - **Paying money Stayo never received** — the central risk; mitigated by the online-only rule and a dedicated test.
 - **Double payment** — mitigated structurally by the unique index on `payment_id`.
 - **Reconciliation drift.** Recorded payouts are what an admin *says* they transferred. Nothing verifies against a real bank statement, so a typo'd UTR is undetectable here. Automated reconciliation is out of scope but this is where it would go.
+- **A gateway transaction with no purpose set** would be unsettleable-but-also-unattributed. The column is non-nullable and set at creation for exactly this reason.
 - **Refunds and chargebacks are not modelled.** A payment settled to an owner and later refunded to the tenant leaves Stayo out of pocket. Worth deciding before the gateway goes live, not after.
