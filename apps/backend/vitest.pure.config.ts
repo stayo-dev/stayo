@@ -65,6 +65,8 @@ export default defineConfig({
       'tests/platform-listing-enquiry-lead.test.ts',
       'tests/marketing-editor-scope.test.ts',
       'tests/settlement-run-computation.test.ts',
+      'tests/settlement-transitions.test.ts',
+      'tests/payout-account.test.ts',
       'tests/enquiry-template-contracts.test.ts',
     ],
     alias: {

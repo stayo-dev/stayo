@@ -90,13 +90,13 @@ export function groupIntoItems(transactions: GatewayTxn[]): SettlementItemDraft[
     }
   }
 
-  return [...byOwner.values()]
+  return Array.from(byOwner.values())
     .map((item) => ({
       ...item,
       // Money is compared and displayed to 2dp; floating addition of many
       // rupee amounts otherwise leaves 14500.000000000002 in a payout screen.
       amount: round2(item.amount),
-      byHostel: item.byHostel.map((h) => ({ ...h, amount: round2(h.amount) })),
+      byHostel: item.byHostel.map((h: { hostelId: string; amount: number; count: number }) => ({ ...h, amount: round2(h.amount) })),
     }))
     .sort((a, b) => b.amount - a.amount);
 }

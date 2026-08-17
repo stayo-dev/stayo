@@ -209,6 +209,41 @@ export const platformAdminService = {
     return unwrap(response);
   },
 
+  /**
+   * Settlements. Stayo pools tenant rent and passes it through in full — every
+   * amount here is computed from captured gateway transactions, never typed.
+   */
+  getSettlementRun: async (date?: string) => {
+    const response = await api.get('/admin/settlements/run', { params: date ? { date } : {} });
+    return unwrap(response) as {
+      date: string;
+      run?: { id: string; date: string; status: string; gross_collected: number; owner_count: number } | null;
+      lanes?: { pending: any[]; processing: any[]; paid: any[]; failed: any[] };
+      totals?: {
+        to_settle: number; settled: number;
+        pending_count: number; done_count: number; total_count: number;
+      };
+      items?: any[];
+    };
+  },
+  createSettlementRun: async (date?: string) => {
+    const response = await api.post('/admin/settlements/run', date ? { date } : {});
+    return unwrap(response);
+  },
+  startSettlementItem: async (id: string) => {
+    const response = await api.post(`/admin/settlements/items/${id}/start`);
+    return unwrap(response);
+  },
+  /** Records a transfer that already happened. Method and reference are both required. */
+  paySettlementItem: async (id: string, method: string, reference: string) => {
+    const response = await api.post(`/admin/settlements/items/${id}/paid`, { method, reference });
+    return unwrap(response);
+  },
+  failSettlementItem: async (id: string, reason: string) => {
+    const response = await api.post(`/admin/settlements/items/${id}/fail`, { reason });
+    return unwrap(response);
+  },
+
   getPlans: async () => {
     const response = await api.get('/platform-admin/plans');
     return unwrap(response).plans as any[];
