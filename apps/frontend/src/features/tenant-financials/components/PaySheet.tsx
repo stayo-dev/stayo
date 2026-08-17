@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { Check, CreditCard, Landmark, Smartphone } from 'lucide-react';
+import { Check, Smartphone } from 'lucide-react';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import type { PayStage } from '../hooks/useTenantFinancials';
 import { StayoLoader } from '@shared/ui/brand';
@@ -12,27 +11,20 @@ interface PaySheetProps {
   onConfirm: () => void;
 }
 
-type Method = 'upi' | 'card' | 'net';
-
-const METHODS: Array<{ key: Method; title: string; sub: string; icon: typeof Smartphone; tint: string; ic: string }> = [
-  { key: 'upi', title: 'UPI', sub: 'GPay, PhonePe, Paytm', icon: Smartphone, tint: '#EAF0FB', ic: '#3B5B9E' },
-  { key: 'card', title: 'Card', sub: 'Debit or credit', icon: CreditCard, tint: '#F5E9E3', ic: '#B46A55' },
-  { key: 'net', title: 'Net banking', sub: 'All major banks', icon: Landmark, tint: '#EAF3EE', ic: '#1F7A52' },
-];
-
 /**
  * 3-stage pay sheet (form → paying → paid), shared by Home's "Pay Rent" quick
  * action and Money's own Pay buttons. Real flow: `POST /payments/create-intent`
- * then redirect to the Razorpay checkout URL, which handles its own method
- * selection on its hosted page — the "Pay with" picker here (per the mockup)
- * is a visual pre-selection only and isn't sent anywhere, since the real
- * checkout provider doesn't accept a pre-chosen method through this API.
+ * then redirect to the Razorpay checkout URL, which handles method selection
+ * on its hosted page.
+ *
+ * There is deliberately NO method picker here. Stayo collects by UPI only, and
+ * the old picker was cosmetic — it was never sent anywhere, because this API
+ * does not accept a pre-chosen method. Showing Card and Net banking implied a
+ * choice the tenant did not have and that Stayo does not offer.
  * There is no in-app "paid" step for the real provider (`paying` is shown
  * until the redirect happens; `paid` only for the rare no-redirect edge case).
  */
 export function PaySheet({ stage, amount, error, onClose, onConfirm }: PaySheetProps) {
-  const [method, setMethod] = useState<Method>('upi');
-
   return (
     <BottomSheet open={stage !== 'closed'} onOpenChange={(open) => !open && onClose()} title="Pay rent" hideHeader>
       {stage === 'form' && (
@@ -49,35 +41,14 @@ export function PaySheet({ stage, amount, error, onClose, onConfirm }: PaySheetP
           {error && (
             <div className="mt-3 rounded-xl bg-destructive/10 px-3.5 py-2.5 text-[12.5px] font-semibold text-destructive">{error}</div>
           )}
-          <div className="mt-[18px] text-[11px] font-bold uppercase tracking-[0.08em] text-[#A2978B]">Pay with</div>
-          <div className="mt-2.5 flex flex-col gap-[9px]">
-            {METHODS.map((m) => {
-              const active = method === m.key;
-              return (
-                <button
-                  key={m.key}
-                  type="button"
-                  onClick={() => setMethod(m.key)}
-                  className={`flex items-center gap-3 rounded-[14px] border bg-card px-[15px] py-3.5 text-left ${
-                    active ? 'border-[1.5px] border-primary' : 'border-[#EAE1D8]'
-                  }`}
-                >
-                  <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[9px]" style={{ background: m.tint, color: m.ic }}>
-                    <m.icon className="h-4 w-4" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[13.5px] font-semibold text-foreground">{m.title}</span>
-                    <span className="block text-[11px] text-[#9A8F84]">{m.sub}</span>
-                  </span>
-                  <span
-                    className={`flex h-5 w-5 flex-none items-center justify-center rounded-full ${active ? '' : 'border-2 border-[#DCD1C4]'}`}
-                    style={active ? { background: '#A45D44' } : undefined}
-                  >
-                    {active && <span className="h-[10px] w-[10px] rounded-full bg-white" />}
-                  </span>
-                </button>
-              );
-            })}
+          <div className="mt-[18px] flex items-center gap-3 rounded-[14px] border border-[#EAE1D8] bg-card px-[15px] py-3.5">
+            <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[9px]" style={{ background: '#EAF0FB', color: '#3B5B9E' }}>
+              <Smartphone className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[13.5px] font-semibold text-foreground">Pay by UPI</span>
+              <span className="block text-[11px] text-[#9A8F84]">GPay, PhonePe, Paytm and more</span>
+            </span>
           </div>
           <button
             type="button"
@@ -86,7 +57,7 @@ export function PaySheet({ stage, amount, error, onClose, onConfirm }: PaySheetP
           >
             Pay ₹{amount.toLocaleString('en-IN')} securely
           </button>
-          <p className="mt-[11px] text-center text-[11px] text-[#B0A597]">Secured by Razorpay · UPI &amp; cards</p>
+          <p className="mt-[11px] text-center text-[11px] text-[#B0A597]">Secured by Razorpay · UPI</p>
         </div>
       )}
 
