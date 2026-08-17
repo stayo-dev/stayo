@@ -1,4 +1,4 @@
-import { Compass, DoorOpen, Home, User, UtensilsCrossed, Wallet } from 'lucide-react';
+import { Compass, DoorOpen, Home, LogIn, User, UtensilsCrossed, Wallet } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export interface AppNavTab {
@@ -40,3 +40,28 @@ export const ACTIVE_TENANT_TABS: AppNavTab[] = [
 
 /** A tenancy is "live" for nav purposes if it hasn't ended or fallen through. */
 export const LIVE_TENANCY_STATUSES = new Set(['INVITED', 'ACTIVE']);
+
+
+/**
+ * The outer bar, with the account tab named for what the person actually has.
+ *
+ * A first-time seeker arrives on Discovery with no account at all, so
+ * labelling that tab "Profile" advertises something that does not exist yet
+ * and reads as though they have one. It becomes "Profile" the moment they do.
+ *
+ * The destination stays `/profile` in both states: that page already handles
+ * the signed-out case, and moving the route under someone would break links.
+ *
+ * PURE — runs under vitest's node environment.
+ */
+export function buildOuterTabs(
+  { signedIn, liveTenancy }: { signedIn: boolean; liveTenancy: boolean },
+): AppNavTab[] {
+  // A live tenancy implies a signed-in account, so that bar is never relabelled.
+  if (liveTenancy) return ACTIVE_TENANT_TABS;
+  if (signedIn) return EXPLORE_PROFILE_TABS;
+
+  return EXPLORE_PROFILE_TABS.map((tab) =>
+    tab.to === '/profile' ? { ...tab, label: 'Log in', Icon: LogIn } : tab,
+  );
+}

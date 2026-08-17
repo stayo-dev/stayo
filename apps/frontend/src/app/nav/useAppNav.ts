@@ -1,5 +1,5 @@
 import { useAuth } from '@context/AuthContext';
-import { ACTIVE_TENANT_TABS, EXPLORE_PROFILE_TABS, LIVE_TENANCY_STATUSES, type AppNavTab } from './appNavConfig';
+import { LIVE_TENANCY_STATUSES, buildOuterTabs, type AppNavTab } from './appNavConfig';
 
 /**
  * Single source of truth for "does this signed-in user have a live tenancy"
@@ -15,7 +15,7 @@ export function useAppNav(): { outerTabs: AppNavTab[]; liveTenancy: boolean } {
   const { user } = useAuth();
   const liveTenancy = hasLiveTenancy(user);
   return {
-    outerTabs: liveTenancy ? ACTIVE_TENANT_TABS : EXPLORE_PROFILE_TABS,
+    outerTabs: buildOuterTabs({ signedIn: Boolean(user), liveTenancy }),
     liveTenancy,
   };
 }
