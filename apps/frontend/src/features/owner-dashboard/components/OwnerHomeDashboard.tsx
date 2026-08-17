@@ -109,6 +109,7 @@ export function OwnerHomeDashboard({
     <div className="flex flex-col gap-7 px-4 pb-8 pt-6 sm:px-6">
       <div className="flex items-center justify-between gap-3">
         <div>
+          <img src="/stayo-wordmark.svg" alt="Stayo" className="mb-2 h-[15px] w-auto" />
           <h1 className="font-display text-[22px] font-extrabold leading-tight tracking-tight text-foreground">
             Good morning, {ownerName}
           </h1>

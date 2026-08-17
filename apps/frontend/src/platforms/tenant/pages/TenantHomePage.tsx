@@ -56,6 +56,15 @@ export function TenantHomePage() {
           className="pointer-events-none absolute -right-10 -top-8 h-[150px] w-[150px] rounded-full"
           style={{ background: 'radial-gradient(circle, rgba(217,144,111,0.2), transparent 70%)' }}
         />
+        {/* Stayo mark above the hostel identity: the resident's relationship is
+            with their hostel, so that stays the headline — this only says whose
+            app they are in. */}
+        <img
+          src="/stayo-wordmark.svg"
+          alt="Stayo"
+          className="relative mb-3 h-[15px] w-auto opacity-90"
+        />
+
         <div className="relative flex items-center gap-3">
           <span className="flex h-[42px] w-[42px] flex-none items-center justify-center rounded-[12px] bg-primary font-display text-[15px] font-extrabold text-white shadow-[0_4px_12px_rgba(180,106,85,0.35)]">
             {home.hostelName ? home.hostelName.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase() : 'SA'}
