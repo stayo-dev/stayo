@@ -1280,6 +1280,21 @@ Copy this block for each new entry:
 - [[Changelog]] for when fixes shipped
 
 
+
+## 2026-08-19 — Discovery showed a placeholder for every hostel, and the gallery had no way to reach photo 2
+
+**Symptom:** every card on `/discover` rendered the striped placeholder texture instead of the hostel's cover photo, while the listing page those cards open showed a full gallery of the same hostel's photos. On the listing page itself, photos 2..n were unreachable on a phone.
+
+**Root cause — two independent bugs, one per surface:**
+
+1. **The card projection never learned where photos live.** `discovery-service.toCard()` read `hostels.admission_photos`, and **nothing writes that column** — a hostel's photos arrive through the marketing review flow and live on its APPROVED `hostel_marketing_revisions.content.photos` (ADR-076). Verified against the live database: `admission_photos` is `null` for every hostel row, while the approved Starlink revision holds 3 photos. `projectListing` (the listing page) already preferred marketing photos; the card path was written before that source existed and was never revisited. `marketing-content.ts`'s `normaliseContent` even carries the comment *"the design's Discovery search shows the cover photo first"* and guarantees exactly one `is_cover` per revision — **nothing read the flag**, on either surface.
+
+2. **The gallery was a single background image.** `ListingPage` rendered `photos[photoIndex]` as one `background-image` whose only control was three **3px-tall** indicator bars — no swipe track, no arrows, a tap target three pixels high, and the bars sat *underneath* the body sheet (pulled `-mt-6` over the gallery), so they were both invisible and unclickable. White-on-white over a bright photo finished the job.
+
+**Fix:** one shared `listingPhotos(marketing, fallback)` in `listing-projection.ts` — approved photos win, cover first — used by both the listing and, via a new post-pagination `fillCoverPhotos()`, by cards/saved/enquiries. Cards carry one photo (the cover), and the revision content is fetched only for the rows actually returned, never for the up-to-500 candidates the facet pass scans. The gallery became a native scroll-snap track (real swipe, trackpad, `md`+ arrows), with the index derived from scroll position by a pure `photoIndexFromScroll`, indicators lifted clear of the sheet, and a scrim behind them.
+
+**Lesson:** the listing page and the card were two projections of "this hostel's photos" and only one of them was updated when the source of truth moved. The rule now lives in a single exported function that both call — the same compose-don't-reimplement pattern the financial read model uses. Verified end to end: `/api/discover/hostels` returns the cover, and the gallery was driven in a real browser (swipe → "3 / 3", dot click → "1 / 3"). See [[Frontend]], [[Features]], [[Changelog]].
+
 ## 2026-08-07 — `window.scrollY` is always 0: `<body>` is the scroll container, not the document
 
 **Symptom:** the new scroll-depth enquiry prompt never appeared at any scroll position, and — found while investigating — the landing nav's `scrolled` styling had *never once fired in production*.

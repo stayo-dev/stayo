@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 
 import { prisma } from "@/lib/db";
-import { projectListing } from "./listing-projection";
+import { listingPhotos, projectListing } from "./listing-projection";
 import { whatsAppTemplateDeliveryService } from "@/lib/services/notifications/whatsapp-template-delivery";
 import {
   buildOwnerEnquiryReceived,
@@ -247,6 +247,40 @@ function toEnquiry(lead: any) {
   };
 }
 
+/**
+ * Fills in the photo every card, saved row and enquiry thumbnail shows.
+ *
+ * Cards used to read `hostels.admission_photos` alone. **Nothing writes that
+ * column** — a hostel's photos arrive through the marketing review flow and
+ * live on its APPROVED revision — so every card on Discovery rendered the
+ * striped placeholder while the listing page it opened showed a full gallery.
+ *
+ * Run **after** pagination, on the rows actually being returned, and not as a
+ * join in the candidate query: `content` is the whole approved revision (beds,
+ * mess week, every photo URL) and the search scans up to `MAX_CANDIDATES`
+ * hostels to build facets. One extra bounded query beats 500 revisions loaded
+ * to read one field.
+ *
+ * Cards carry **one** photo — the cover. The card UI shows exactly one, and a
+ * gallery of 24 URLs per result is payload nobody renders.
+ */
+async function fillCoverPhotos(holders: { id: string; photos: string[] }[]): Promise<void> {
+  const ids = Array.from(new Set(holders.map((holder) => holder.id)));
+  if (ids.length === 0) return;
+
+  const revisions = await prisma.hostel_marketing_revisions.findMany({
+    // APPROVED only, same rule as the listing: a draft or a revision awaiting
+    // review must never reach a public surface, and a card is a public surface.
+    where: { hostel_id: { in: ids }, status: "APPROVED" },
+    select: { hostel_id: true, content: true },
+  });
+  const byHostel = new Map(revisions.map((revision: any) => [revision.hostel_id, revision.content]));
+
+  for (const holder of holders) {
+    holder.photos = listingPhotos(byHostel.get(holder.id), holder.photos).slice(0, 1);
+  }
+}
+
 export class DiscoveryService {
   /**
    * Search is cached briefly and keyed by the full parameter set. 60s rather
@@ -351,11 +385,14 @@ export class DiscoveryService {
         cityFacets.set(card.city, (cityFacets.get(card.city) ?? 0) + 1);
       }
 
+      const page = cards.slice(offset, offset + limit);
+      await fillCoverPhotos(page);
+
       return {
         total: cards.length,
         limit,
         offset,
-        results: cards.slice(offset, offset + limit),
+        results: page,
         facets: {
           cities: Array.from(cityFacets.entries())
             .map(([city, count]) => ({ city, count }))
@@ -363,6 +400,59 @@ export class DiscoveryService {
         },
       };
     });
+  }
+
+  /**
+   * The data behind a share preview (`/h/:slug`), which is unfurled by
+   * WhatsApp/Instagram/Telegram rather than rendered by the SPA.
+   *
+   * Gated by the same `DISCOVERABLE` predicate as search and detail — an
+   * admin suspending a hostel must stop every shared link previewing it, and
+   * a second copy of that rule is exactly the drift the constant exists to
+   * prevent. Returns null rather than throwing: the route answers 404 with a
+   * page of its own, and a suspended hostel is not an error condition.
+   *
+   * Composes the pieces that already exist (`listingPhotos`, `summariseRooms`)
+   * instead of re-deriving a price or a photo order for a third surface.
+   */
+  async getShareCard(slug: string) {
+    const hostel = await prisma.hostels.findFirst({
+      where: { ...DISCOVERABLE, public_slug: slug },
+      select: {
+        id: true,
+        public_slug: true,
+        name: true,
+        city: true,
+        food_included: true,
+        verification_status: true,
+        admission_photos: true,
+        rooms: SUMMARY_ROOM_SELECT,
+        marketing_revisions: {
+          // Only ever the APPROVED revision — a draft has not been reviewed,
+          // and a share preview is as public as a page gets.
+          where: { status: "APPROVED" },
+          orderBy: { version: "desc" },
+          take: 1,
+          select: { content: true },
+        },
+      },
+    });
+    if (!hostel) return null;
+
+    const summary = summariseRooms(hostel.rooms || []);
+    return {
+      name: hostel.name,
+      slug: hostel.public_slug as string,
+      city: hostel.city,
+      photos: listingPhotos(
+        (hostel as any).marketing_revisions?.[0]?.content,
+        asPhotoArray(hostel.admission_photos),
+      ),
+      startingPrice: summary.starting_price,
+      sharing: summary.sharing,
+      foodIncluded: Boolean(hostel.food_included),
+      verified: hostel.verification_status === "VERIFIED",
+    };
   }
 
   /**
@@ -427,7 +517,9 @@ export class DiscoveryService {
       },
     });
 
-    return rows.map((row: any) => ({ ...toCard(row.hostel), saved_at: row.created_at }));
+    const saved = rows.map((row: any) => ({ ...toCard(row.hostel), saved_at: row.created_at }));
+    await fillCoverPhotos(saved);
+    return saved;
   }
 
   async save(profileId: string, hostelId: string) {
@@ -608,7 +700,9 @@ export class DiscoveryService {
       take: 100,
       select: ENQUIRY_SELECT,
     });
-    return leads.map(toEnquiry);
+    const enquiries = leads.map(toEnquiry);
+    await fillCoverPhotos(enquiries.map((enquiry) => enquiry.hostel));
+    return enquiries;
   }
 
   async getEnquiry(profileId: string, enquiryId: string) {
@@ -619,7 +713,9 @@ export class DiscoveryService {
       select: ENQUIRY_SELECT,
     });
     if (!lead) throw ApiError.notFound("Enquiry not found");
-    return toEnquiry(lead);
+    const enquiry = toEnquiry(lead);
+    await fillCoverPhotos([enquiry.hostel]);
+    return enquiry;
   }
 }
 

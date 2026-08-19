@@ -53,6 +53,13 @@ function hidesOuterNav(pathname: string): boolean {
  * exactly its content's width (no slack for `justify-center` to redistribute
  * into), and the browser scrolls the overflow — avoiding the classic
  * flex-center-plus-overflow bug where the start of the row gets clipped.
+ *
+ * From `lg` up it stops being a full-bleed bar and becomes a **centred
+ * floating dock**: a laptop-width edge-to-edge bar carrying two items reads
+ * as unfinished chrome, and the border-top drew a line across the whole
+ * screen for no reason. Same markup, same tabs — `lg:w-fit lg:self-center`
+ * shrinks it to its content (it is a flex child of `AppShell`'s column) and
+ * the pill styling replaces the top border.
  */
 export function AppBottomNav() {
   const { pathname } = useLocation();
@@ -62,15 +69,14 @@ export function AppBottomNav() {
   return (
     <nav
       aria-label="Stayo"
-      className="sticky bottom-0 z-40 flex-none overflow-x-auto border-t pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="sticky bottom-0 z-40 flex-none overflow-x-auto border-t pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2.5 [scrollbar-width:none] lg:mb-6 lg:w-fit lg:self-center lg:rounded-full lg:border lg:px-3 lg:pb-2.5 lg:backdrop-blur shadow-[0_-4px_16px_rgba(40,30,20,.03)] lg:shadow-[0_12px_32px_rgba(40,30,20,.14)] [&::-webkit-scrollbar]:hidden"
       style={{
         borderColor: C.line,
         background: C.cardWarm,
-        boxShadow: '0 -4px 16px rgba(40,30,20,.03)',
         fontFamily: FONT.body,
       }}
     >
-      <div className="flex w-max min-w-full justify-center gap-1 px-2">
+      <div className="flex w-max min-w-full justify-center gap-1 px-2 lg:min-w-0">
         {outerTabs.map(({ to, label, Icon, end }) => (
           <NavLink key={to} to={to} end={end} className="flex w-[76px] flex-none flex-col items-center gap-1.5 py-1">
             {({ isActive }) => (

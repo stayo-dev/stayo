@@ -20,6 +20,11 @@ interface HostelCardProps {
  * Everything it renders comes from a real column. There is no rating and no
  * amenity row because that data does not exist yet (phases C/D); the layout
  * leaves room for them instead of filling the gap with a plausible number.
+ *
+ * The full card is width-agnostic: one per row on a phone, a grid tile from
+ * `sm` up. Its photo is therefore a fixed height only at phone width and an
+ * aspect ratio above it — a fixed 186px on a 380px-wide grid tile letterboxes
+ * the photo, which is the single most decision-carrying thing on the card.
  */
 export function HostelCard({ hostel, saved, onOpen, onToggleSave, variant = 'full' }: HostelCardProps) {
   const price = priceLabel(hostel.starting_price);
@@ -117,11 +122,11 @@ export function HostelCard({ hostel, saved, onOpen, onToggleSave, variant = 'ful
   return (
     <article
       onClick={open}
-      className="cursor-pointer overflow-hidden rounded-[20px] border bg-white transition-shadow hover:shadow-lg"
-      style={{ borderColor: C.line, boxShadow: '0 1px 2px rgba(40,30,20,.04),0 8px 20px rgba(40,30,20,.06)' }}
+      className="group flex h-full cursor-pointer flex-col overflow-hidden rounded-[20px] border bg-white shadow-[0_1px_2px_rgba(40,30,20,.04),0_8px_20px_rgba(40,30,20,.06)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_2px_4px_rgba(40,30,20,.06),0_16px_32px_rgba(40,30,20,.12)]"
+      style={{ borderColor: C.line }}
     >
       <div
-        className="relative h-[186px] bg-cover bg-center"
+        className="relative h-[186px] bg-cover bg-center sm:h-auto sm:aspect-[4/3]"
         style={photo ? { backgroundImage: `url(${photo})` } : PHOTO_FALLBACK}
       >
         {hostel.verified && (
@@ -152,7 +157,7 @@ export function HostelCard({ hostel, saved, onOpen, onToggleSave, variant = 'ful
         )}
       </div>
 
-      <div className="px-4 pb-4 pt-3.5">
+      <div className="flex flex-1 flex-col px-4 pb-4 pt-3.5">
         <h3 className="text-[16px] font-bold tracking-[-0.01em]" style={{ fontFamily: FONT.display, color: C.text }}>
           {hostel.name}
         </h3>
@@ -173,7 +178,7 @@ export function HostelCard({ hostel, saved, onOpen, onToggleSave, variant = 'ful
           ))}
         </div>
 
-        <div className="mt-3 flex items-baseline justify-between">
+        <div className="mt-auto flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 pt-3">
           {price ? (
             <span className="flex items-baseline gap-1">
               <span className="text-[11.5px]" style={{ color: C.textMuted }}>from</span>

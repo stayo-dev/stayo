@@ -25,6 +25,70 @@ export type ProjectListingInput = {
   preview?: boolean;
 };
 
+/**
+ * Which photos a hostel shows, in one place.
+ *
+ * Approved marketing photos win over the admissions gallery — those are the
+ * ones a human reviewed for this surface — and the **cover comes first**.
+ * `marketing-content.ts` already guarantees exactly one `is_cover` per
+ * revision precisely so that Discovery can lead with it; nothing was reading
+ * the flag, so the hero and the search card both showed whichever photo
+ * happened to sort first.
+ *
+ * Shared with `discovery-service`'s card projection, which used to read only
+ * `hostels.admission_photos` and therefore showed the placeholder texture for
+ * every hostel whose photos arrived through the marketing review flow (which
+ * is all of them — nothing populates `admission_photos`). See [[Bugs]].
+ */
+export function listingPhotos(marketing: any | null, fallback: string[] = []): string[] {
+  const photos = Array.isArray(marketing?.photos) ? [...marketing.photos] : [];
+  const urls = photos
+    // Two keys, in order: the cover leads, everything else keeps the owner's
+    // arrangement. Array#sort is stable, so equal ranks do not get shuffled.
+    .sort((a: any, b: any) => {
+      const cover = Number(Boolean(b?.is_cover)) - Number(Boolean(a?.is_cover));
+      if (cover !== 0) return cover;
+      return Number(a?.sort ?? 0) - Number(b?.sort ?? 0);
+    })
+    .map((photo: any) => photo?.url)
+    .filter((url: unknown): url is string => typeof url === "string" && url.length > 0);
+
+  return urls.length > 0 ? urls : fallback;
+}
+
+export interface ListingMedia {
+  url: string;
+  kind: "image" | "video";
+  thumbnail_url: string | null;
+  label: string | null;
+}
+
+/**
+ * The gallery as the listing page renders it — same order and same source as
+ * `listingPhotos`, but keeping each item's kind. Everything without an
+ * explicit kind is an image: every revision written before video existed says
+ * nothing on the subject, and those are all photos.
+ */
+export function listingMedia(marketing: any | null, fallback: string[] = []): ListingMedia[] {
+  const photos = Array.isArray(marketing?.photos) ? [...marketing.photos] : [];
+  const ordered = photos
+    .sort((a: any, b: any) => {
+      const cover = Number(Boolean(b?.is_cover)) - Number(Boolean(a?.is_cover));
+      if (cover !== 0) return cover;
+      return Number(a?.sort ?? 0) - Number(b?.sort ?? 0);
+    })
+    .filter((photo: any) => typeof photo?.url === "string" && photo.url.length > 0)
+    .map((photo: any) => ({
+      url: photo.url as string,
+      kind: (photo.kind === "video" ? "video" : "image") as "image" | "video",
+      thumbnail_url: typeof photo.thumbnail_url === "string" ? photo.thumbnail_url : null,
+      label: typeof photo.label === "string" ? photo.label : null,
+    }));
+
+  if (ordered.length > 0) return ordered;
+  return fallback.map((url) => ({ url, kind: "image" as const, thumbnail_url: null, label: null }));
+}
+
 export function projectListing({ detail, visible, marketing, preview = false }: ProjectListingInput) {
   const platformListed = String(visible.listing_source ?? "OWNER_MANAGED") === "PLATFORM_LISTED";
 
@@ -37,12 +101,15 @@ export function projectListing({ detail, visible, marketing, preview = false }: 
       tagline: marketing?.basics?.tagline ?? null,
       about: marketing?.basics?.about ?? null,
       highlights: marketing?.basics?.highlights ?? [],
-      // Owner-published photos win over the admissions gallery when they
-      // exist — those are the ones a human approved for this surface.
-      photos:
-        marketing && marketing.photos?.length > 0
-          ? marketing.photos.map((photo: any) => photo.url)
-          : detail.hostel.photos,
+      photos: listingPhotos(marketing, detail.hostel.photos ?? []),
+      /**
+       * The gallery with its kinds intact, so the listing can render a video
+       * as a video. `photos` stays a plain URL list beside it: several
+       * surfaces (and the share preview's og:image) only ever want stills,
+       * and widening that field would have made every one of them handle a
+       * clip they cannot display.
+       */
+      media: listingMedia(marketing, detail.hostel.photos ?? []),
     },
 
     /**

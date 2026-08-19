@@ -1,4 +1,4 @@
-import { Compass, DoorOpen, Home, LogIn, User, UtensilsCrossed, Wallet } from 'lucide-react';
+import { CircleUserRound, Compass, DoorOpen, Home, User, UtensilsCrossed, Wallet } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export interface AppNavTab {
@@ -52,6 +52,12 @@ export const LIVE_TENANCY_STATUSES = new Set(['INVITED', 'ACTIVE']);
  * The destination stays `/profile` in both states: that page already handles
  * the signed-out case, and moving the route under someone would break links.
  *
+ * The icon is a **person**, not lucide's `LogIn` arrow-into-door. That arrow
+ * is the same glyph almost every app uses for *sign out*, so on a nav bar it
+ * read as "leave" to people who had never signed in at all. A person avatar
+ * is what every marketplace (Airbnb included) puts on this control, and it
+ * stays coherent with the signed-in `User` icon beside it.
+ *
  * PURE — runs under vitest's node environment.
  */
 export function buildOuterTabs(
@@ -62,6 +68,6 @@ export function buildOuterTabs(
   if (signedIn) return EXPLORE_PROFILE_TABS;
 
   return EXPLORE_PROFILE_TABS.map((tab) =>
-    tab.to === '/profile' ? { ...tab, label: 'Log in', Icon: LogIn } : tab,
+    tab.to === '/profile' ? { ...tab, label: 'Log in', Icon: CircleUserRound } : tab,
   );
 }

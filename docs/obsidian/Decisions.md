@@ -1235,6 +1235,22 @@ That reading was wrong, and measurement is what showed it. Two production endpoi
 - **Consequences:** Discovery can cover a city ahead of sales, and demand becomes the pitch — but Stayo now publishes pages for businesses that never agreed to be listed, which is a real editorial and legal posture, not just a feature. Admin-authored listings are approved by their author (no second reviewer); recorded in the audit trail and revisitable once the scoped-access work lands a `LISTINGS`-scoped reviewer. **Not verified against a live database or in a browser** — migrations 067 and 068 are unapplied outside test, and no flow here has been exercised end to end.
 - **Related:** [[Decisions#ADR-076|ADR-076]], [[Decisions#ADR-080|ADR-080]], [[Decisions#ADR-081|ADR-081]], [[Database]], [[APIs]], [[Features]], [[Changelog]].
 
+## ADR-084: A shared hostel link is a server-rendered preview page, not the SPA URL
+
+- **Date:** 2026-08-19
+- **Status:** accepted
+- **Context:** Seekers had no way to send a hostel to a friend and owners no way to send their own listing anywhere. Copying the address bar does not solve it: `apps/frontend` is a **static Vite SPA**, so every path serves one `index.html` carrying site-wide Open Graph tags, and a listing URL pasted into WhatsApp unfurls as the generic "Stayo | Hostel Management Platform" card. Link crawlers (WhatsApp, facebookexternalhit, TelegramBot, Slackbot) do not execute JavaScript, so no client-side meta-tag library can change what they read.
+- **Decision:**
+  1. **Share `yourstayo.com/h/:slug`, not `/discover/h/:slug`.** A `vercel.json` rewrite sends it to `GET /api/discover/share/[slug]` on the backend, which returns HTML with per-hostel OG tags — the same arrangement `/pay/:token` already uses, so this is an established route in this repo rather than a new deployment concept. The rewrite must precede the SPA catch-all, which otherwise swallows it.
+  2. **Rejected: user-agent sniffing on the canonical URL.** Rewriting `/discover/h/:slug` only for known crawler UAs keeps one URL, but any chat app not on the list silently falls back to the generic card, and the list is a maintenance burden that fails silently when it rots. A dedicated path works for every crawler with no guessing.
+  3. **Same visibility predicate, no second copy.** The route reads `discoveryService.getShareCard`, gated by the one `DISCOVERABLE` constant. A hostel an admin suspends must stop previewing in every chat it was ever pasted into; a private copy of that rule is exactly the drift the constant exists to prevent.
+  4. **An unlisted slug renders a page with no hostel identity** — no name, no photo, the site cover only, `noindex`, HTTP 404, `Cache-Control: no-store`. A de-listed hostel must not keep unfurling its own photograph in fifty existing chats.
+  5. **The description states only facts we hold** — starting price (or "Price on request", never ₹0), sharing sizes, meals, verified. This is the most-read sentence Stayo writes about a hostel; one unbackable claim there devalues every claim on the listing.
+  6. **`navigator.share` first, clipboard as the fallback.** The OS sheet is the only route to Instagram and the only list that knows which apps the person has. Dismissing it (`AbortError`) is a no-op, not a failure — copying a link at someone who just cancelled makes cancel feel broken.
+  7. **No share buttons on result cards, and no photo-as-file attachment.** The card already carries a heart, badges and a beds-free pill; and file sharing is unsupported on desktop and patchy in Android WebViews, while the OG card already delivers the photo.
+- **Consequences:** Every hostel now has a public, crawler-facing URL that renders without a session — deliberately, since a stranger's WhatsApp must be able to fetch it. It exposes nothing the public listing does not. `middleware.ts`'s `PUBLIC_ROUTES` gains `/api/discover/share` (prefix-matched, and deliberately narrower than `/api/discover`). Two URLs now address one hostel, resolved with `rel="canonical"` pointing at the listing. **Unverified in production:** that `api.yourstayo.com` serves this path exactly as it serves `/api/payments/pay/` is proven only by the first deploy.
+- **Related:** [[Decisions#ADR-073|ADR-073]], [[Decisions#ADR-076|ADR-076]], [[APIs]], [[Frontend]], [[Features]], [[Changelog]].
+
 ## See also
 - [[Changelog]] for the chronological record of what shipped
 - [[Architecture]] for the system these decisions govern

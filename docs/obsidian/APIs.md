@@ -242,6 +242,8 @@ Public (no session — added to `middleware.ts`'s `PUBLIC_ROUTES`), backing the 
 
 **Added 2026-08-15 ([[Decisions#ADR-073|ADR-073]]).** The public hostel-browsing surface backing `/discover`. Split auth: browse is public, everything else needs a seeker session.
 
+**`GET /api/discover/share/[slug]` returns HTML, not JSON** (2026-08-19). It is the hostel share preview, reached as `yourstayo.com/h/:slug` through a `vercel.json` rewrite, and is fetched by WhatsApp/Instagram/Telegram crawlers that carry no session — `middleware.ts`'s `PUBLIC_ROUTES` therefore also lists `/api/discover/share`. It renders per-hostel Open Graph tags (title, description built only from columns we hold, ImageKit cover cropped to 1200×630, `rel=canonical` → the listing) and redirects humans onward. Gated by the same `DISCOVERABLE` predicate as search; an unlisted slug returns **404** with no hostel name or photo. Cached `s-maxage=300`. See [[Decisions#ADR-084|ADR-084]].
+
 **`middleware.ts`'s `PUBLIC_ROUTES` entry is `/api/discover/hostels`, deliberately not `/api/discover`** — that list is prefix-matched, so the broader entry would have made every seeker's enquiry history and saved list world-readable.
 
 All routes share one visibility predicate, `DISCOVERABLE` in `src/services/discovery/discovery-service.ts`: `listing_status = LIVE` **and** `verification_status = VERIFIED` **and** `status = ACTIVE` **and** `admissions_enabled` **and** non-null `public_slug`. Nothing under `/api/discover` writes `listing_status` or `verification_status` — see [[Decisions#ADR-040|ADR-040]].

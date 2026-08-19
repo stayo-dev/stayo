@@ -29,6 +29,12 @@ const PUBLIC_ROUTES = [
   // /api/discover/enquiries and /api/discover/saved public too, handing every
   // seeker's enquiry history to anyone who asked.
   "/api/discover/hostels",
+  // The share preview page (`yourstayo.com/h/:slug` rewrites here). Fetched by
+  // WhatsApp/Instagram/Telegram crawlers, which carry no session and never
+  // will — that is the entire point of a link preview. It renders only what
+  // the public listing page already shows, and it is gated by the same
+  // DISCOVERABLE predicate. See ADR-084.
+  "/api/discover/share",
   // Meta WhatsApp Cloud API. The canonical path plus its legacy mount — both
   // are signature-verified (X-Hub-Signature-256), not session-authenticated.
   "/api/webhooks/whatsapp",

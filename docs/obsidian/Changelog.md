@@ -10,6 +10,29 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-19 — Share a hostel
+- **`yourstayo.com/h/:slug`** — a share link whose preview card carries the hostel's cover photo, name, city and starting price in WhatsApp, Instagram, Telegram and anything else that unfurls a URL. A `vercel.json` rewrite (placed above the SPA catch-all) sends it to a new `GET /api/discover/share/[slug]`, which renders HTML; the SPA cannot do this itself, since it is one `index.html` for every route and crawlers do not run JS. See [[Decisions#ADR-084|ADR-084]].
+- **Share buttons** on the Discovery listing page (beside Save) and the owner marketing page (enabled only once the listing is approved and has a public slug). `navigator.share` where it exists — the OS sheet is the only route to Instagram — and clipboard + toast where it does not. A dismissed sheet is a no-op.
+- An unlisted slug renders **no hostel name and no hostel photo**, `noindex`, 404: a suspended hostel must stop unfurling in chats it was already pasted into.
+- `middleware.ts` gains `/api/discover/share` in `PUBLIC_ROUTES` (narrower than `/api/discover`, which would expose enquiry history).
+- Tests +19 backend pure, +10 frontend (788→797). Verified in a browser: fetched with a WhatsApp user-agent the tags resolve to the hostel's ImageKit cover, and clicking the button copies `/h/<slug>` and toasts.
+- Spec: `docs/superpowers/specs/2026-08-19-hostel-share-links-design.md`.
+
+### 2026-08-19 — Hostel photos, on both Discovery surfaces
+- **Cards showed a placeholder for every hostel.** `toCard()` read `hostels.admission_photos`, which nothing writes — photos live on the APPROVED marketing revision. New shared `listingPhotos()` in `listing-projection.ts` (approved photos win, **cover first**, honouring the `is_cover` flag that `marketing-content.ts` has always guaranteed and nobody read), applied to cards/saved/enquiries via `fillCoverPhotos()` **after** pagination — the search scans up to 500 candidates to build facets and must not load 500 revisions to read one field. Cards carry the cover only. See [[Bugs]].
+- **The listing gallery had no way to reach photo 2.** One background image, controlled by three 3px indicator bars that sat under the body sheet. It is a native scroll-snap track now — swipe on touch, trackpad on a laptop, arrows at `md`+ — with the index from a pure `photoIndexFromScroll` (5 tests), indicators lifted clear of the sheet, bigger tap targets, and a scrim so white indicators survive a bright photo.
+- Listing body and enquire bar capped at 860px, like the rest of Discover.
+- Tests +5 frontend (783→788), +6 backend pure. Verified end to end in a browser: the API returns the cover, and the gallery was driven for real (swipe → "3 / 3", dot → "1 / 3").
+
+### 2026-08-19 — Discover at laptop width
+- **`/discover` was a phone layout stretched to the browser window** — one ~1400px-wide hostel card per row, a phone-sized hero, and a full-bleed bottom bar carrying two items. Explore and Search now share `PAGE_SHELL` (max 1180px) and `RESULTS_GRID` (1 → 2 → 3 → 4 columns) from `discoverTheme.ts`, so the two pages cannot disagree about page width or column count.
+- **Explore at `lg`**: a top bar (wordmark · "List your hostel" → `/owners` · account/log-in), an Airbnb-style **Where / What** search bar with the city facet as a popover under it, centred quick filters, and a **"Why look here and not on a listings site"** strip stating the three claims the data can back — verified before listing, live rent and vacancy, enquiry straight to the owner. A visitor arriving from a shared link was previously told nowhere on the page what Stayo is.
+- **The signed-out account tab is a person icon now** (`CircleUserRound`), not lucide's `LogIn` arrow-into-door — the same glyph most apps use for *sign out*, so it read as "leave" to someone who had never signed in. `AppBottomNav` also becomes a centred floating dock from `lg` up.
+- **Search**: capped width, the same results grid, and its filter bottom sheet becomes a centred dialog at `lg`. `HostelCard`'s photo is a fixed 186px only at phone width and `sm:aspect-[4/3]` above it, since a fixed height letterboxes a grid tile.
+- **White wordmark on the ink header** — `public/stayo-wordmark-white.svg`; the terracotta original stays for light grounds.
+- **The phone hero lost three competing tiers.** It stacked wordmark, a "DISCOVER ON STAYO" eyebrow, an 18px bold city line, the headline, a subtitle and a two-line search field. The eyebrow is desktop-only, the search field is one line (its second line listed available cities right under a control showing the selected city — two location readouts, neither obviously current), and the **city picker moved into the filter row as its first chip**, since "where" is a filter. Phone hero is now wordmark → headline → one line → search.
+- Verified in a browser at 390px and 1440px, including the city picker's open state at both; frontend suite 783 tests and `check:architecture` pass. See [[Frontend]], [[Features]].
+
 ### 2026-08-16 — Marketing review, finished; and Stayo-listed hostels
 - **The review loop is real.** The admin drawer now shows every section an owner submitted — basics, photos, bed tiers, amenities, getting around, the full 7-day mess grid — each independently flaggable with its own note. Send-back carries structured flags and the owner's notification names the sections. Replaces a `window.prompt`. See [[Decisions]] ADR-082.
 - **Preview shares the live code path.** `getListing`'s inline mapping became `listing-projection.ts`; `/admin/listings/preview/:revisionId` renders the real Discovery `ListingPage` through it. One renderer, so preview cannot drift from what ships.

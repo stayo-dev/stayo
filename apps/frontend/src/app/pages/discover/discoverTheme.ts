@@ -63,6 +63,20 @@ export const PHOTO_FALLBACK = {
   backgroundImage: 'repeating-linear-gradient(135deg,rgba(255,255,255,.4) 0 1px,transparent 1px 12px)',
 } as const;
 
+/**
+ * Discover's page container and results layout, shared by Explore and Search
+ * so the two never disagree about how wide a laptop page is or how many
+ * hostels sit in a row.
+ *
+ * Discover was drawn phone-first and rendered at whatever width the browser
+ * happened to be, so on a laptop a single 1400px-wide card per row was the
+ * whole page. The cap plus the grid is what makes it a browsable marketplace
+ * at desk widths while leaving the phone layout (one card per row) untouched.
+ */
+export const PAGE_SHELL = 'mx-auto w-full max-w-[1180px] px-5 lg:px-8';
+export const RESULTS_GRID =
+  'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6 xl:grid-cols-4';
+
 /** Graph-paper ground, shared with `/` and `/owners`. */
 export const GRID_GROUND = {
   backgroundColor: C.paper,

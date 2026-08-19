@@ -36,6 +36,10 @@
       "destination": "https://api.yourstayo.com/api/payments/pay/:token"
     },
     {
+      "source": "/h/:slug",
+      "destination": "https://api.yourstayo.com/api/discover/share/:slug"
+    },
+    {
       "source": "/((?!api/)(?!.*\\.[a-zA-Z0-9]{1,5}$).*)",
       "destination": "/index.html"
     }

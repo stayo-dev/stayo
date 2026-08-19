@@ -1,8 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { marketingPreviewService } from '@features/hostel-marketing/api';
-import { ChevronLeft, Coffee, Heart, Info, MapPin, Moon, ShieldCheck, Sun, Utensils } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Coffee,
+  Heart,
+  Info,
+  MapPin,
+  Moon,
+  Share2,
+  ShieldCheck,
+  Sun,
+  Utensils,
+} from 'lucide-react';
 
 import {
   useDiscoverListing,
@@ -14,6 +26,8 @@ import {
 import { useDiscoverAuth } from './DiscoverAuthContext';
 import { DiscoverEmpty, PrimaryButton } from './components/DiscoverShell';
 import { AUDIENCE_LABEL, C, FONT, PHOTO_FALLBACK, formatRupees } from './discoverTheme';
+import { photoIndexFromScroll } from './galleryScroll';
+import { useShareHostel } from '@shared/hooks/useShareHostel';
 
 const MESS_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 
@@ -95,9 +109,11 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
   const { isLoading, isError } = source;
   const { data: saved } = useSavedHostels();
   const toggleSaved = useToggleSaved();
+  const { share } = useShareHostel();
 
   const [selected, setSelected] = useState<number | null>(null);
   const [photoIndex, setPhotoIndex] = useState(0);
+  const galleryRef = useRef<HTMLDivElement | null>(null);
   const [messDay, setMessDay] = useState(0);
 
   const hostel = data?.hostel;
@@ -172,7 +188,16 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
     );
   }
 
-  const photos: string[] = hostel.photos ?? [];
+  /**
+   * The gallery, with videos kept as videos. `media` arrives from the
+   * projection; `photos` is the older URL-only field, still the fallback for
+   * anything served before `media` existed.
+   */
+  const media: { url: string; kind: 'image' | 'video'; thumbnail_url?: string | null }[] =
+    data?.media?.length
+      ? data.media
+      : (hostel.photos ?? []).map((url: string) => ({ url, kind: 'image' as const }));
+  const photos: string[] = media.map((item) => item.url);
   const audience = hostel.hostel_type ? AUDIENCE_LABEL[hostel.hostel_type] : null;
   const selectedOption = bedOptions.find((option) => option.capacity === selected) ?? null;
   const displayPrice = selectedOption?.price ?? hostel.starting_price ?? null;
@@ -185,14 +210,72 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
     toggleSaved.mutate({ hostelId: hostel.id, saved: isSaved });
   };
 
+  /** Dots and arrows drive the same scroll the finger does — one source. */
+  const scrollToPhoto = (index: number) => {
+    const track = galleryRef.current;
+    if (!track) return;
+    track.scrollTo({ left: index * track.clientWidth, behavior: 'smooth' });
+  };
+
+  const handleGalleryScroll = () => {
+    const track = galleryRef.current;
+    if (!track) return;
+    setPhotoIndex(photoIndexFromScroll(track.scrollLeft, track.clientWidth, photos.length));
+  };
+
   return (
     <div className="flex min-h-[100dvh] flex-col">
       <div className="flex-1">
         {/* ── Gallery ──────────────────────────────────────────────────── */}
-        <div
-          className="relative h-[290px] bg-cover bg-center"
-          style={photos[photoIndex] ? { backgroundImage: `url(${photos[photoIndex]})` } : PHOTO_FALLBACK}
-        >
+        {/*
+          A real swipe track, not a single background image.
+
+          It used to render `photos[photoIndex]` as one `background-image` with
+          three 3px indicator bars as the only way to change photo: nothing to
+          swipe on a phone, nothing to click on a laptop, and a tap target
+          three pixels tall. A hostel's photos are the whole reason this page
+          exists, and all but the first were effectively unreachable.
+
+          Native scroll-snap does the work — real momentum swipe on touch,
+          trackpad swipe on a laptop, no gesture library — with the index
+          derived from scroll position so the counter, the dots and the arrows
+          all read the same source.
+        */}
+        <div className="relative h-[290px] lg:h-[420px]">
+          <div
+            ref={galleryRef}
+            onScroll={handleGalleryScroll}
+            className="flex h-full snap-x snap-mandatory overflow-x-auto overscroll-x-contain scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {(media.length > 0 ? media : [null]).map((item, index) => (
+              <div key={item?.url ?? 'placeholder'} className="h-full w-full flex-none snap-center">
+                {!item ? (
+                  <div className="h-full w-full" style={PHOTO_FALLBACK} />
+                ) : item.kind === 'video' ? (
+                  // Controls, not autoplay: a listing that starts making noise
+                  // when someone opens it is a listing they close.
+                  <video
+                    src={item.url}
+                    poster={item.thumbnail_url ?? undefined}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    className="h-full w-full bg-black object-contain"
+                  />
+                ) : (
+                  <img
+                    src={item.url}
+                    alt={`${hostel.name} — photo ${index + 1} of ${media.length}`}
+                    // The first photo is the one every visitor sees; the rest
+                    // load as they swipe rather than on arrival.
+                    loading={index === 0 ? 'eager' : 'lazy'}
+                    className="h-full w-full object-cover"
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+
           <button
             type="button"
             aria-label="Back"
@@ -201,6 +284,20 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
             style={{ background: 'rgba(255,255,255,.95)', boxShadow: '0 2px 8px rgba(0,0,0,.15)' }}
           >
             <ChevronLeft className="h-5 w-5" style={{ color: '#3A342E' }} />
+          </button>
+
+          {/* Sharing a hostel with a friend is how most people decide on one,
+              so it sits beside Save rather than at the bottom of the page. */}
+          <button
+            type="button"
+            aria-label={`Share ${hostel.name}`}
+            onClick={() =>
+              share({ name: hostel.name, slug: slug as string, city: hostel.city })
+            }
+            className="absolute right-[62px] top-[max(3.25rem,env(safe-area-inset-top))] flex h-[38px] w-[38px] items-center justify-center rounded-full"
+            style={{ background: 'rgba(255,255,255,.95)', boxShadow: '0 2px 8px rgba(0,0,0,.15)' }}
+          >
+            <Share2 className="h-[17px] w-[17px]" strokeWidth={1.8} style={{ color: '#6E6459' }} />
           </button>
 
           <button
@@ -220,33 +317,82 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
 
           {photos.length > 1 && (
             <>
+              {/* Indicators are white, and a photo of a bright room is white
+                  too. The scrim is what makes "2 / 5" readable on both — the
+                  old bars were invisible over half the galleries. */}
+              <div
+                className="pointer-events-none absolute inset-x-0 bottom-0 h-28"
+                style={{ background: 'linear-gradient(to top,rgba(20,14,10,.5),transparent)' }}
+              />
               <span
-                className="absolute bottom-4 right-4 rounded-full px-2.5 py-1 text-[11px] font-semibold text-white"
+                className="pointer-events-none absolute bottom-9 right-4 rounded-full px-2.5 py-1 text-[11px] font-semibold text-white"
                 style={{ background: 'rgba(34,30,26,.72)' }}
               >
                 {photoIndex + 1} / {photos.length}
               </span>
-              <div className="absolute bottom-4 left-4 flex gap-1.5">
+
+              {/* The bars stay 3px tall; the button around them is 24px, so
+                  the tap target is a thumb's width rather than a hairline. */}
+              {/* Clear of the body sheet, which is pulled 24px up over the
+                  gallery — the indicators used to sit *under* it, which is
+                  the other half of why photo 2 was unreachable. */}
+              <div className="absolute bottom-8 left-3 flex">
                 {photos.map((photo, index) => (
                   <button
                     key={photo}
                     type="button"
                     aria-label={`Photo ${index + 1}`}
-                    onClick={() => setPhotoIndex(index)}
-                    className="h-[3px] rounded-sm transition-all"
-                    style={{
-                      width: index === photoIndex ? 20 : 6,
-                      background: index === photoIndex ? '#fff' : 'rgba(255,255,255,.5)',
-                    }}
-                  />
+                    aria-current={index === photoIndex}
+                    onClick={() => scrollToPhoto(index)}
+                    className="flex h-6 items-center px-1"
+                  >
+                    <span
+                      className="block h-[3px] rounded-sm transition-all"
+                      style={{
+                        width: index === photoIndex ? 20 : 6,
+                        background: index === photoIndex ? '#fff' : 'rgba(255,255,255,.5)',
+                      }}
+                    />
+                  </button>
                 ))}
               </div>
+
+              {/* Pointer users have no swipe gesture worth the name, so they
+                  get arrows. Hidden on touch widths, where the swipe is the
+                  affordance and an arrow would just cover a photo. */}
+              {photoIndex > 0 && (
+                <button
+                  type="button"
+                  aria-label="Previous photo"
+                  onClick={() => scrollToPhoto(photoIndex - 1)}
+                  className="absolute left-4 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full md:flex"
+                  style={{ background: 'rgba(255,255,255,.95)', boxShadow: '0 2px 8px rgba(0,0,0,.18)' }}
+                >
+                  <ChevronLeft className="h-5 w-5" style={{ color: '#3A342E' }} />
+                </button>
+              )}
+              {photoIndex < photos.length - 1 && (
+                <button
+                  type="button"
+                  aria-label="Next photo"
+                  onClick={() => scrollToPhoto(photoIndex + 1)}
+                  className="absolute right-4 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full md:flex"
+                  style={{ background: 'rgba(255,255,255,.95)', boxShadow: '0 2px 8px rgba(0,0,0,.18)' }}
+                >
+                  <ChevronRight className="h-5 w-5" style={{ color: '#3A342E' }} />
+                </button>
+              )}
             </>
           )}
         </div>
 
         {/* ── Body ─────────────────────────────────────────────────────── */}
-        <div className="relative -mt-6 rounded-t-[24px] px-5 pb-8 pt-5" style={{ background: C.paper }}>
+        {/* Capped like the rest of Discover — a 1280px line of body copy is
+            unreadable, and the sheet is the page's reading column. */}
+        <div
+          className="relative mx-auto -mt-6 w-full max-w-[860px] rounded-t-[24px] px-5 pb-8 pt-5 lg:rounded-[24px] lg:px-8"
+          style={{ background: C.paper }}
+        >
           <div className="flex flex-wrap items-center gap-2">
             <span
               className="flex items-center gap-1.5 rounded-full px-2.5 py-1"
@@ -540,7 +686,7 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
 
       {/* ── Sticky enquire bar ───────────────────────────────────────────── */}
       <div
-        className="sticky bottom-0 z-30 flex flex-none items-center gap-3.5 border-t px-4 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-3"
+        className="sticky bottom-0 z-30 mx-auto flex w-full max-w-[860px] flex-none items-center gap-3.5 border-t px-4 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-3 lg:rounded-t-[20px] lg:border lg:px-8"
         style={{ background: C.cardWarm, borderColor: C.line, boxShadow: '0 -6px 18px rgba(40,30,20,.06)' }}
       >
         <div className="min-w-0 flex-1">
