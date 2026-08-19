@@ -10,6 +10,14 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-19 — Meal Timings: owner-configured serving windows, tenant Next Serving card
+- New `meal_timings` JSON key in `hostels.preferences_config` — start/end/enabled per meal type, zero migration. Replaces the hardcoded frontend-only `MEAL_TIMES` constant (`owner-food/weekGrid.ts`), which is removed along with `mealSlotAt`. See [[Decisions#ADR-083|ADR-083]].
+- **Backend:** new pure `lib/services/food/meal-timings.ts` (normalize/validate, no I/O — tested under `npm run test:pure`, 18 new tests); new `GET/PATCH /api/hostels/[id]/meal-timings` (owner) and `GET /api/food/tenant/meal-timings` (tenant).
+- **Owner:** new `/owner/food/meal-timings` screen (toggle each meal, edit start/end, save-only-when-dirty, confirmation toast), linked from `/owner/food`. The Weekly Schedule grid gained a read-only meal-time legend — never re-entered per cell. `TodayCard` and `OwnerHomeDashboard`'s food line both switched from the hardcoded hour to real per-hostel timings.
+- **Tenant:** new `NextServingCard` (meal, dish, time range, live "Starts in 42 min"/"Serving Now" countdown) mounted on both `/tenant/food` and `/tenant/home`. Today's Meals on the Food page now includes Snacks (previously missing) and shows time + a Served/Serving now/Upcoming status pill.
+- Verified: full frontend suite (803 tests) and backend `test:pure` (534 tests, 2 pre-existing unrelated failures untouched) pass; `check:architecture` passes; production build succeeds; both new routes smoke-tested against the running dev server (401, not 500).
+- See [[Features]], [[Business-Rules]], [[APIs]], [[Database]], [[Food]], [[Decisions]].
+
 ### 2026-08-16 — Marketing review, finished; and Stayo-listed hostels
 - **The review loop is real.** The admin drawer now shows every section an owner submitted — basics, photos, bed tiers, amenities, getting around, the full 7-day mess grid — each independently flaggable with its own note. Send-back carries structured flags and the owner's notification names the sections. Replaces a `window.prompt`. See [[Decisions]] ADR-082.
 - **Preview shares the live code path.** `getListing`'s inline mapping became `listing-projection.ts`; `/admin/listings/preview/:revisionId` renders the real Discovery `ListingPage` through it. One renderer, so preview cannot drift from what ships.

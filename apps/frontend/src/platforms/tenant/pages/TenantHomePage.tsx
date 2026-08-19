@@ -1,11 +1,13 @@
 import { useNavigate } from 'react-router-dom';
 import { Bell, Megaphone, CalendarDays, CreditCard } from 'lucide-react';
-import { MEAL_CATEGORY_META } from '@shared/mocks/food';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useTenantHome } from '@features/tenant-home/hooks/useTenantHome';
 import { useTenantFinancials } from '@features/tenant-financials/hooks/useTenantFinancials';
+import { useTenantMealTimings } from '@features/food/hooks/useTenantMealTimings';
+import { useNow } from '@features/food/hooks/useNow';
+import { nextServingAt } from '@features/food/mealTimings';
+import { NextServingCard } from '@features/food/components/NextServingCard';
 import { PaySheet } from '@features/tenant-financials/components/PaySheet';
-import { mealIcon } from '@features/owner-food/mealIcons';
 import { ProfileCompletionNudge } from '../components/ProfileCompletionNudge';
 
 const card = 'rounded-[16px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_4px_14px_rgba(40,30,20,0.05)]';
@@ -37,8 +39,15 @@ export function TenantHomePage() {
   const navigate = useNavigate();
   const home = useTenantHome();
   const fin = useTenantFinancials();
+  const mealTimings = useTenantMealTimings();
+  const now = useNow();
 
   if (home.isLoading) return <LoadingSkeleton />;
+
+  const upcomingMeal = nextServingAt(mealTimings.mealTimings, now);
+  const nextServing = upcomingMeal
+    ? { ...upcomingMeal, itemName: home.todaysMeals.find((m) => m.slot === upcomingMeal.slot)?.cell?.item_name ?? null }
+    : null;
 
   const payableItems = (fin.readModel?.items ?? []).filter((i: any) => i.legacy_status !== 'UPCOMING');
   const nextDueItem = payableItems.length
@@ -130,24 +139,12 @@ export function TenantHomePage() {
       {home.todaysMeals.length > 0 && (
         <div className="flex flex-col gap-2.5">
           <div className="flex items-baseline justify-between">
-            <span className={sectionLabel}>Today's meals</span>
+            <span className={sectionLabel}>Food</span>
             <button type="button" onClick={() => navigate('/tenant/food')} className="text-[13px] font-semibold text-primary">
               Menu
             </button>
           </div>
-          <div className={`${card} divide-y divide-border px-4`}>
-            {home.todaysMeals.map(({ slot, cell }) => (
-              <div key={slot} className="flex items-center gap-3 py-3">
-                <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] bg-secondary text-[16px]">
-                  {(() => { const I = mealIcon(slot); return <I className="h-4 w-4" strokeWidth={1.75} />; })()}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="font-display text-[14.5px] font-bold text-foreground">{cell!.item_name}</div>
-                  <div className="text-[11.5px] font-medium text-muted-foreground">{MEAL_CATEGORY_META[slot].label}</div>
-                </div>
-              </div>
-            ))}
-          </div>
+          <NextServingCard next={nextServing} now={now} />
         </div>
       )}
 

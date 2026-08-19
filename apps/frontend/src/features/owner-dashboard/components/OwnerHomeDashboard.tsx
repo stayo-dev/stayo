@@ -7,7 +7,9 @@ import { StatusPill } from '@shared/ui-patterns/StatusPill';
 import { MEAL_CATEGORY_META } from '@shared/mocks/food';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useFoodSchedule } from '@features/owner-food/hooks/useFoodSchedule';
-import { cellAt, dayKeyFor, isFilled, mealSlotAt } from '@features/owner-food/weekGrid';
+import { useMealTimings } from '@features/owner-food/hooks/useMealTimings';
+import { cellAt, dayKeyFor, isFilled } from '@features/owner-food/weekGrid';
+import { currentAndNextMeal } from '@features/food/mealTimings';
 import { PropertyList } from '../property-order/PropertyList';
 import { GettingStartedCard } from '../getting-started/GettingStartedCard';
 import type { GettingStarted, StepId, VerificationStatus } from '../getting-started/gettingStarted';
@@ -98,11 +100,12 @@ export function OwnerHomeDashboard({
   const navigate = useNavigate();
   const session = useOwnerSession();
   const foodSchedule = useFoodSchedule(session.primaryHostelId, new Date().toISOString().slice(0, 7));
+  const mealTimings = useMealTimings(session.primaryHostelId);
   const foodToday = useMemo(() => {
-    const { current } = mealSlotAt(new Date());
+    const { current } = currentAndNextMeal(mealTimings.mealTimings, new Date());
     const cell = cellAt(foodSchedule.weekGrid, dayKeyFor(new Date()), current);
     return isFilled(cell) ? { slot: current, name: cell!.item_name } : null;
-  }, [foodSchedule.weekGrid]);
+  }, [foodSchedule.weekGrid, mealTimings.mealTimings]);
   const foodHostelName = session.hostels.find((h) => h.id === session.primaryHostelId)?.name ?? '';
 
   return (
