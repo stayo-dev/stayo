@@ -29,9 +29,19 @@ export function ReviewsSection({
   hostelName: string;
   onSignIn: () => void;
 }) {
-  const { data, isLoading } = useHostelReviews(slug);
+  const { data, isLoading, isError } = useHostelReviews(slug);
   const { isSeeker } = useIsSeeker();
   const submit = useSubmitReview(slug);
+
+  /**
+   * If the endpoint is unavailable, show nothing at all.
+   *
+   * Reviews live in a table added by migration 071; until that has run in an
+   * environment, every call here 500s. A write box that throws when someone
+   * finishes typing is worse than a page with no review section, so the whole
+   * block stands down rather than degrading into a broken form.
+   */
+  if (isError) return null;
 
   const summary = data?.summary;
   const reviews = data?.reviews ?? [];

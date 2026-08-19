@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { marketingPreviewService } from '@features/hostel-marketing/api';
 import {
@@ -97,6 +97,7 @@ function toBedOptions(rooms: any[]): BedOption[] {
  */
 export function ListingPage({ previewRevisionId }: { previewRevisionId?: string } = {}) {
   const { slug } = useParams<{ slug: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
   const { isSeeker } = useIsSeeker();
   const { openSignIn } = useDiscoverAuth();
@@ -216,6 +217,20 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
     toggleSaved.mutate({ hostelId: hostel.id, saved: isSaved });
   };
 
+  /**
+   * Back, for someone who did not arrive from Discovery.
+   *
+   * `navigate(-1)` is fine when this page was pushed onto a history stack —
+   * but a shared `/h/<slug>` link opens it as the first entry in the session,
+   * where "back" has nowhere to go and the button silently does nothing. Every
+   * listing link we hand out is that case. React Router marks the first entry
+   * with `key === 'default'`, so that is the one that falls back to the list.
+   */
+  const goBack = () => {
+    if (location.key === 'default') navigate('/discover');
+    else navigate(-1);
+  };
+
   /** Dots and arrows drive the same scroll the finger does — one source. */
   const scrollToPhoto = (index: number) => {
     const track = galleryRef.current;
@@ -241,6 +256,19 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
           full-bleed gallery — there is no room for a title above it.
         */}
         <div className={`hidden lg:block ${PAGE_SHELL} pt-7`}>
+          {/* The only Back button used to live over the phone gallery, which
+              is hidden at this width — so a laptop visitor who opened a shared
+              link had no way back to the list at all. */}
+          <button
+            type="button"
+            onClick={goBack}
+            className="mb-3 flex items-center gap-1.5 text-[12.5px] font-semibold transition-colors hover:underline"
+            style={{ color: C.textMuted }}
+          >
+            <ChevronLeft className="h-4 w-4" strokeWidth={2} />
+            All hostels
+          </button>
+
           <div className="flex items-end justify-between gap-4">
             <h1
               className="min-w-0 text-[26px] font-extrabold leading-[1.2] tracking-[-0.02em]"
@@ -398,7 +426,7 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
           <button
             type="button"
             aria-label="Back"
-            onClick={() => navigate(-1)}
+            onClick={goBack}
             className="absolute left-4 top-[max(3.25rem,env(safe-area-inset-top))] flex h-[38px] w-[38px] items-center justify-center rounded-full backdrop-blur-sm transition-colors hover:bg-white/95"
             style={{ background: 'rgba(255,255,255,.82)' }}
           >

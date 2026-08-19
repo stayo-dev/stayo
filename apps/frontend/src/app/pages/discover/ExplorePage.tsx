@@ -22,9 +22,11 @@ import {
 } from '@features/discover/hooks/useDiscover';
 
 import { useDiscoverAuth } from './DiscoverAuthContext';
+import { useShareHostel } from '@shared/hooks/useShareHostel';
 import { HostelCard } from './components/HostelCard';
 import { DiscoverEmpty, HostelCardSkeleton, PrimaryButton } from './components/DiscoverShell';
 import { C, FONT, PAGE_SHELL, RESULTS_GRID } from './discoverTheme';
+import { FootprintTrail } from './components/FootprintTrail';
 
 /** Shortcuts that map onto real filters — nothing here is decorative. */
 const QUICK_FILTERS: { label: string; icon: typeof Search; patch: Partial<DiscoverFilters> }[] = [
@@ -65,6 +67,7 @@ export function ExplorePage() {
   const navigate = useNavigate();
   const { isSeeker } = useIsSeeker();
   const { openSignIn } = useDiscoverAuth();
+  const { share } = useShareHostel();
 
   // The chosen city persists: someone browsing Hyderabad hostels does not want
   // to re-pick it on every visit. Falls back to "everywhere" rather than
@@ -141,6 +144,17 @@ export function ExplorePage() {
 
   return (
     <div>
+      {/*
+        Footprints follow the cursor across the page — and are painted
+        underneath it. `FootprintTrail` is `fixed z-0` while everything below
+        is `relative z-[1]`, so a print can only ever land on the graph-paper
+        ground in the margins between cards, never across a hostel's photo.
+        See the component for the rest of the rules (off on touch, off under
+        prefers-reduced-motion, never eats a click).
+      */}
+      <FootprintTrail />
+
+      <div className="relative z-[1]">
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <header
         className="relative overflow-hidden rounded-b-[28px] pb-5 pt-[max(3.5rem,env(safe-area-inset-top))] lg:rounded-b-[40px] lg:pb-14 lg:pt-0"
@@ -412,6 +426,9 @@ export function ExplorePage() {
               saved={savedIds.has(hostel.id)}
               onOpen={openListing}
               onToggleSave={handleToggleSave}
+              onShare={(card) =>
+                card.slug ? share({ name: card.name, slug: card.slug, city: card.city }) : undefined
+              }
             />
           ))}
         </div>
@@ -451,6 +468,7 @@ export function ExplorePage() {
           </div>
         </div>
       </section>
+      </div>
     </div>
   );
 }

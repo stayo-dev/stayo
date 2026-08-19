@@ -11,6 +11,7 @@ import {
 } from '@features/discover/hooks/useDiscover';
 
 import { useDiscoverAuth } from './DiscoverAuthContext';
+import { useShareHostel } from '@shared/hooks/useShareHostel';
 import { HostelCard } from './components/HostelCard';
 import { DiscoverEmpty, HostelCardSkeleton, PrimaryButton } from './components/DiscoverShell';
 import { AUDIENCE_LABEL, C, FONT, PAGE_SHELL, RESULTS_GRID, formatRupees } from './discoverTheme';
@@ -32,6 +33,7 @@ export function SearchPage() {
   const location = useLocation();
   const { isSeeker } = useIsSeeker();
   const { openSignIn } = useDiscoverAuth();
+  const { share } = useShareHostel();
 
   // Quick filters on Explore hand their patch through router state.
   const seeded = (location.state ?? {}) as { patch?: Partial<DiscoverFilters>; city?: string };
@@ -218,6 +220,9 @@ export function SearchPage() {
               saved={savedIds.has(hostel.id)}
               onOpen={(slug) => navigate(`/discover/h/${slug}`)}
               onToggleSave={handleToggleSave}
+              onShare={(card) =>
+                card.slug ? share({ name: card.name, slug: card.slug, city: card.city }) : undefined
+              }
             />
           ))}
         </div>

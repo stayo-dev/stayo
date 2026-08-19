@@ -10,6 +10,13 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-19 — Footprints, a way back, and share from a card
+- **Footprints follow the cursor across Discovery** — and are painted *underneath* the page (`fixed z-0` under content at `z-1`), so a print can only ever land on the graph-paper ground in the margins, never across a hostel photo. Off on touch, off under `prefers-reduced-motion`, off below 1024px, `pointer-events: none`, six prints maximum, one rAF per move. `footprintTrail.ts`, 11 tests.
+- **Arrow keys in the photo viewer were dead.** One effect with no dependency array re-ran on every render and reset `scrollLeft` to the frame the viewer opened on, so every move undid itself. Split into a mount-only jump and a re-bound key handler; verified in a browser (1→2→3→2, and the on-screen arrow).
+- **There was no way back from a listing at desk width** — the only Back button lived over the phone gallery, which is hidden there. There is one in the desktop header now, and it falls back to `/discover` when the page was opened from a shared link (`location.key === 'default'`), where `navigate(-1)` had nowhere to go.
+- **Share on hostel cards**, beside Save.
+- Reviews stand down entirely if their endpoint errors — until migration 071 runs, a write box that throws when someone finishes typing is worse than no section.
+
 ### 2026-08-19 — The listing page, rebuilt on Airbnb's shape
 - **Title above the photos, and a photo grid** at desk width: one large frame plus four, with "Show all N photos" opening a full-screen viewer (`MediaLightbox`, same scroll-snap track as the phone gallery, arrow keys and Escape). A phone keeps the immersive full-bleed carousel.
 - **Who runs it.** The payload now carries `host` — the owner as "Ravi K." and "On Stayo since March 2026". Name only: a public listing is not where a phone number goes, and a PLATFORM_LISTED hostel says "Listed by Stayo" rather than naming the sentinel profile.

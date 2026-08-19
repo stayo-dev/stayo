@@ -31,12 +31,31 @@ export function MediaLightbox({
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [index, setIndex] = useState(startIndex);
 
-  // Open on the frame that was clicked, and close on Escape — a full-screen
-  // overlay with no keyboard exit is a trap.
+  const scrollTo = (next: number) => {
+    const track = trackRef.current;
+    if (!track || next < 0 || next >= media.length) return;
+    track.scrollTo({ left: next * track.clientWidth, behavior: 'smooth' });
+  };
+
+  /**
+   * Jump to the clicked frame — **once, on open**.
+   *
+   * This and the key handler below were one effect with no dependency array,
+   * so it re-ran after every render: pressing → scrolled the track, the scroll
+   * updated `index`, the re-render ran the effect again and set `scrollLeft`
+   * straight back to where the viewer opened. Arrow keys and the on-screen
+   * arrows both looked dead because every move was immediately undone.
+   */
   useEffect(() => {
     const track = trackRef.current;
     if (track) track.scrollLeft = startIndex * track.clientWidth;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startIndex]);
 
+  // Escape closes — a full-screen overlay with no keyboard exit is a trap —
+  // and the arrows step through. Re-bound as `index` moves so the handler is
+  // never one photo behind.
+  useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
       if (event.key === 'ArrowRight') scrollTo(index + 1);
@@ -44,13 +63,8 @@ export function MediaLightbox({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  });
-
-  const scrollTo = (next: number) => {
-    const track = trackRef.current;
-    if (!track || next < 0 || next >= media.length) return;
-    track.scrollTo({ left: next * track.clientWidth, behavior: 'smooth' });
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index, media.length, onClose]);
 
   return (
     <div className="fixed inset-0 z-[80] flex flex-col" style={{ background: 'rgba(14,10,8,.96)' }}>

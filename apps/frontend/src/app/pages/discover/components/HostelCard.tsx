@@ -1,4 +1,4 @@
-import { Heart, MapPin, ShieldCheck } from 'lucide-react';
+import { Heart, MapPin, Share2, ShieldCheck } from 'lucide-react';
 
 import type { DiscoverCard } from '@features/discover/api';
 import { AUDIENCE_LABEL, C, FONT, PHOTO_FALLBACK, priceLabel, sharingLabels } from '../discoverTheme';
@@ -8,6 +8,8 @@ interface HostelCardProps {
   saved: boolean;
   onOpen: (slug: string) => void;
   onToggleSave: (hostel: DiscoverCard) => void;
+  /** Sends this hostel's `/h/<slug>` link to the OS share sheet. */
+  onShare?: (hostel: DiscoverCard) => void;
   /** `compact` is the horizontal row used on Saved; default is the full card. */
   variant?: 'full' | 'compact';
 }
@@ -26,7 +28,7 @@ interface HostelCardProps {
  * aspect ratio above it — a fixed 186px on a 380px-wide grid tile letterboxes
  * the photo, which is the single most decision-carrying thing on the card.
  */
-export function HostelCard({ hostel, saved, onOpen, onToggleSave, variant = 'full' }: HostelCardProps) {
+export function HostelCard({ hostel, saved, onOpen, onToggleSave, onShare, variant = 'full' }: HostelCardProps) {
   const price = priceLabel(hostel.starting_price);
   const audience = hostel.hostel_type ? AUDIENCE_LABEL[hostel.hostel_type] : null;
   const photo = hostel.photos[0];
@@ -64,6 +66,33 @@ export function HostelCard({ hostel, saved, onOpen, onToggleSave, variant = 'ful
       />
     </button>
   );
+
+  /**
+   * Share sits beside Save rather than in the card's text, because the two are
+   * the same kind of thing — something you do *to* this hostel — and a person
+   * looks for them together. Two small pucks on a thumbnail is the convention;
+   * the reason they were wrong on the listing page is that there the photo is
+   * the thing you are studying, and here it is a 4:3 preview.
+   */
+  const shareButton = onShare ? (
+    <button
+      type="button"
+      aria-label={`Share ${hostel.name}`}
+      onClick={(event) => {
+        event.stopPropagation();
+        onShare(hostel);
+      }}
+      className="flex flex-none items-center justify-center rounded-full transition-transform active:scale-90"
+      style={{
+        width: 34,
+        height: 34,
+        background: 'rgba(255,255,255,.92)',
+        boxShadow: '0 2px 6px rgba(0,0,0,.15)',
+      }}
+    >
+      <Share2 className="h-4 w-4" strokeWidth={1.8} style={{ color: C.textMuted }} />
+    </button>
+  ) : null;
 
   if (compact) {
     return (
@@ -138,7 +167,10 @@ export function HostelCard({ hostel, saved, onOpen, onToggleSave, variant = 'ful
             <span className="text-[9.5px] font-bold tracking-[0.03em] text-white">Verified</span>
           </span>
         )}
-        <div className="absolute right-3 top-3">{saveButton}</div>
+        <div className="absolute right-3 top-3 flex items-center gap-1.5">
+          {shareButton}
+          {saveButton}
+        </div>
         {audience && (
           <span
             className="absolute bottom-3 left-3 rounded-full px-2.5 py-1.5 text-[11px] font-bold"
