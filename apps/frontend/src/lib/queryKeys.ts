@@ -146,6 +146,7 @@ export const queryKeys = {
     editor: (hostelId: string) => ['marketing', 'editor', hostelId],
     queue: () => ['marketing', 'queue'],
     submission: (revisionId: string) => ['marketing', 'submission', revisionId],
+    kitchenMenu: (hostelId: string) => ['marketing', 'kitchen-menu', hostelId],
   },
 
   profile: {

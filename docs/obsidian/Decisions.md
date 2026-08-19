@@ -1251,6 +1251,15 @@ That reading was wrong, and measurement is what showed it. Two production endpoi
 - **Consequences:** Every hostel now has a public, crawler-facing URL that renders without a session — deliberately, since a stranger's WhatsApp must be able to fetch it. It exposes nothing the public listing does not. `middleware.ts`'s `PUBLIC_ROUTES` gains `/api/discover/share` (prefix-matched, and deliberately narrower than `/api/discover`). Two URLs now address one hostel, resolved with `rel="canonical"` pointing at the listing. **Unverified in production:** that `api.yourstayo.com` serves this path exactly as it serves `/api/payments/pay/` is proven only by the first deploy.
 - **Related:** [[Decisions#ADR-073|ADR-073]], [[Decisions#ADR-076|ADR-076]], [[APIs]], [[Frontend]], [[Features]], [[Changelog]].
 
+## ADR-085: The listing's mess menu is a copy of the kitchen's, taken on request
+
+- **Date:** 2026-08-19
+- **Status:** accepted (fills the gap [[Decisions#ADR-077|ADR-077]] left open)
+- **Context:** ADR-077 keeps the listing's mess menu as its own reviewed copy rather than reading `food_schedules` live, and that reasoning holds — a food schedule is regenerated monthly and can be driven by a residents' poll, so wiring the listing to it would let the menu a tenant is shown *before* moving in change with no review at all. What it left unsolved is that an owner already maintaining a weekly menu in Food had to retype all 28 cells into the listing by hand. Most did not: they reported being unable to put their menu on the marketing page at all.
+- **Decision:** A **one-time copy, on the owner's request.** `GET /api/owner/hostels/[id]/marketing/kitchen-menu` returns the current month's PUBLISHED schedule (falling back to the most recent published one — on the 1st, before the new month is generated, last month's is what the kitchen is still cooking) mapped into the listing's 7×4 grid. The mess editor's "Copy this hostel's kitchen menu" button fills the **draft**, which the owner then edits and sends through the ordinary review cycle. Nothing is saved by the import itself, and no live link is created.
+- **Consequences:** The listing's menu can drift from the kitchen's, and that is intentional — the published one is what Stayo reviewed. The mapping skips any day or meal it does not recognise rather than guessing, and always returns exactly seven days, because both surfaces index the week positionally.
+- **Related:** [[Decisions#ADR-077|ADR-077]], [[Food]], [[Features]], [[APIs]].
+
 ## See also
 - [[Changelog]] for the chronological record of what shipped
 - [[Architecture]] for the system these decisions govern

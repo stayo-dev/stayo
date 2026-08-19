@@ -28,7 +28,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const formData = await req.formData();
     const files = formData.getAll("files").filter((entry): entry is File => entry instanceof File);
 
-    const result = await marketingPageService.uploadPhotos(session.sub, params.id, files);
+    const result = await marketingPageService.uploadPhotos({ id: session.sub, isAdmin: session.role === "ADMIN" }, params.id, files);
     return ApiResponse.success(result, "Uploaded");
   } catch (error) {
     return ApiResponse.error(error);

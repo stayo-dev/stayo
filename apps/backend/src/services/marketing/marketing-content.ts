@@ -39,6 +39,19 @@ const PhotoSchema = z.object({
   /** Exactly one photo is the cover — enforced in `normaliseContent`. */
   is_cover: z.boolean().default(false),
   sort: z.number().int().min(0).max(200).default(0),
+  /**
+   * Images and videos share this list because they share a gallery, an order
+   * and a caption — an owner thinks in "my listing's photos", not in two
+   * collections. `.default("image")` matters: every revision written before
+   * video existed has no key here, and must keep parsing as what it is.
+   */
+  kind: z.enum(["image", "video"]).default("image"),
+  /**
+   * A still for a video, used where a moving picture cannot go — the search
+   * card and the link-preview OG tag. Absent on images, which are their own
+   * thumbnail.
+   */
+  thumbnail_url: z.string().url().optional().nullable(),
 });
 
 const AmenitySchema = z.object({
@@ -171,11 +184,19 @@ export function normaliseContent(raw: unknown): MarketingContent {
 
   // Exactly one cover. The design's Discovery search shows the cover photo
   // first, so "none" and "three" are both broken states rather than variations.
+  //
+  // The cover must be an **image**: it becomes the search card's thumbnail and
+  // the og:image of a shared link, and neither can play a video. A revision
+  // whose cover is a video (or which is all video) has its cover moved to the
+  // first image rather than being rejected — the owner's gallery is fine, only
+  // the one derived role needs a still.
   const photos = [...content.photos].sort((a, b) => a.sort - b.sort);
-  const coverIndex = photos.findIndex((photo) => photo.is_cover);
+  const markedCover = photos.findIndex((photo) => photo.is_cover && photo.kind !== "video");
+  const firstImage = photos.findIndex((photo) => photo.kind !== "video");
+  const coverIndex = markedCover !== -1 ? markedCover : firstImage;
   const normalisedPhotos = photos.map((photo, index) => ({
     ...photo,
-    is_cover: index === (coverIndex === -1 ? 0 : coverIndex),
+    is_cover: coverIndex !== -1 && index === coverIndex,
     sort: index,
   }));
 
@@ -214,8 +235,10 @@ export function normaliseContent(raw: unknown): MarketingContent {
 export function contentIssues(content: MarketingContent): string[] {
   const issues: string[] = [];
 
-  if (content.photos.length === 0) {
-    issues.push("Add at least one photo — Discovery shows a cover image on every card.");
+  // An image specifically, not just any media: the search card and a shared
+  // link both need a still, and a listing of videos alone leaves both blank.
+  if (!content.photos.some((photo) => photo.kind !== "video")) {
+    issues.push("Add at least one photo — Discovery shows a cover image on every card, and a video can't be one.");
   }
   if (content.beds.length === 0) {
     issues.push("Add at least one bed type, so tenants know what they can ask for.");

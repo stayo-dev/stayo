@@ -1281,6 +1281,27 @@ Copy this block for each new entry:
 
 
 
+
+## 2026-08-19 — A normal phone multi-select of photos was rejected as "limit exceeded"
+
+**Symptom:** an owner picking several photos at once on a phone was told the size limit was exceeded, though every individual photo was well inside it.
+
+**Root cause:** the client sent the whole selection as **one** request (`MAX_PER_UPLOAD = 10`), so ten 4MB photos became a ~40MB body that the platform rejected before any of the per-file checks in `uploadPhotos` ran. Both the client and the server checked size **per file** and correctly so — the failure happened above both of them, which is why the message the owner saw named a limit nothing had actually crossed.
+
+**Fix:** one file per request (`marketingService.uploadMedia`), uploaded sequentially, with photos re-encoded in the browser first (`compressImage` — a 6MB phone photo becomes a few hundred KB at a resolution the listing can use). A failure now costs one photo instead of the whole selection, and progress is reported per file.
+
+**Lesson:** a size rule enforced in two places was still not enforced where it mattered. Neither test suite could see the failure, because the limit that broke was the transport's, not the application's.
+
+## 2026-08-19 — A live listing told its owner it was a "Draft"
+
+**Symptom:** owners could not tell what state their listing was in — whether a submission had reached Stayo, or whether what was live included their latest edits.
+
+**Root cause:** the marketing page derived its badge from `draft.status` alone. After approval there is **no open revision** (`getEditorState` synthesises a fresh draft), so the status read `DRAFT` and the page said "Draft" about a listing that was live on Discovery. The status toggle had a `status === 'APPROVED'` branch that could never be reached for the same reason. Nothing anywhere confirmed a submission had been received. Verified against the live database: the hostel had v3 APPROVED and v4 PENDING_REVIEW at the time — the cycle itself was working; only the reporting of it was not.
+
+**Fix:** `listingLifecycle` derives the real state from three facts — the open revision's status, what is published, and whether there are unsent edits — into six states (Draft, In review, Live, Live + in review, Live + unsent edits, Changes requested), shown as a three-step tracker with a sentence saying what happens next.
+
+**Lesson:** one field looked like it described the whole state machine and described a corner of it. See [[Features]], [[Changelog]].
+
 ## 2026-08-19 — Discovery showed a placeholder for every hostel, and the gallery had no way to reach photo 2
 
 **Symptom:** every card on `/discover` rendered the striped placeholder texture instead of the hostel's cover photo, while the listing page those cards open showed a full gallery of the same hostel's photos. On the listing page itself, photos 2..n were unreachable on a phone.

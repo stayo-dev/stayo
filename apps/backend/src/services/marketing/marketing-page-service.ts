@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { imagekit } from "@/lib/imagekit";
 import { marketingScopeWhere, type MarketingActor } from "./marketing-scope";
+import { mealsServed, scheduleToMessWeek } from "./mess-import";
 import { ApiError } from "@/src/lib/api-error";
 import {
   EMPTY_CONTENT,
@@ -44,8 +45,43 @@ const OPEN_STATUSES = ["DRAFT", "PENDING_REVIEW"];
  * photo teaches owners to stop uploading rather than to compress.
  */
 const ALLOWED_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
+/**
+ * Video, alongside photos. `quicktime` is here because that is what an iPhone
+ * hands over when someone picks a clip from their camera roll — refusing it
+ * would reject the single most likely video an owner uploads.
+ */
+const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime"];
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
+/**
+ * Videos are allowed to be much bigger than photos, but not unbounded: this
+ * request is buffered in memory by the function that receives it, and a phone
+ * on Indian mobile data uploading 200MB is a failed upload with a spinner.
+ */
+const MAX_VIDEO_BYTES = 60 * 1024 * 1024;
+/**
+ * **One file per request is what the client sends** (see `PhotosScreen`), so
+ * this is a ceiling on abuse rather than the normal path. It used to be the
+ * batch size, and a phone multi-select of ten 4MB photos became a single
+ * ~40MB request that the platform rejected before any of this code ran — the
+ * owner saw "limit exceeded" while every individual file was well inside the
+ * limit.
+ */
 const MAX_PHOTOS_PER_UPLOAD = 10;
+
+/**
+ * ImageKit's video-to-still transform. `so-1` seeks one second in — frame zero
+ * of a phone video is very often a blur or a black frame while the sensor
+ * settles.
+ */
+export function videoThumbnailUrl(videoUrl: string): string {
+  const separator = videoUrl.includes("?") ? "&" : "?";
+  return `${videoUrl}${separator}tr=so-1`;
+}
+
+/** Just enough of a schedule's 28 rows to rebuild a week. */
+const MEAL_SELECT = {
+  select: { day_of_week: true, meal_type: true, item_name: true },
+} as const;
 
 const REVISION_SELECT = {
   id: true,
@@ -208,7 +244,12 @@ export class MarketingPageService {
    * Locked while a revision is in review, for the same reason `saveDraft` is:
    * an owner cannot change what a reviewer is currently reading.
    */
-  async uploadPhotos(ownerId: string, hostelId: string, files: File[]) {
+  /**
+   * Takes an actor, not a bare owner id: an admin authoring a listing on an
+   * owner's behalf (marketing-scope.ts) could open the editor and save text,
+   * but every photo they uploaded was rejected as somebody else's hostel.
+   */
+  async uploadPhotos(ownerId: string | MarketingActor, hostelId: string, files: File[]) {
     await this.assertOwnsHostel(ownerId, hostelId);
 
     const open = await prisma.hostel_marketing_revisions.findFirst({
@@ -229,12 +270,19 @@ export class MarketingPageService {
     }
 
     for (const file of files) {
-      if (!ALLOWED_PHOTO_TYPES.includes(file.type)) {
-        throw ApiError.validationError(`${file.name || "That file"} is not a JPG, PNG or WebP image`);
-      }
-      if (file.size > MAX_PHOTO_BYTES) {
+      const isVideo = ALLOWED_VIDEO_TYPES.includes(file.type);
+      if (!isVideo && !ALLOWED_PHOTO_TYPES.includes(file.type)) {
         throw ApiError.validationError(
-          `${file.name || "That file"} is larger than ${MAX_PHOTO_BYTES / (1024 * 1024)}MB`,
+          `${file.name || "That file"} is not a JPG, PNG or WebP image, or an MP4/WebM/MOV video`,
+        );
+      }
+      // Per file, never summed. A limit that adds several files together
+      // rejects a selection in which nothing is actually too big, and the
+      // owner has no way to tell which file to remove.
+      const limit = isVideo ? MAX_VIDEO_BYTES : MAX_PHOTO_BYTES;
+      if (file.size > limit) {
+        throw ApiError.validationError(
+          `${file.name || "That file"} is larger than ${limit / (1024 * 1024)}MB`,
         );
       }
     }
@@ -242,8 +290,14 @@ export class MarketingPageService {
     // Sequential rather than Promise.all: a hostel gallery is a handful of
     // large images, and firing ten multi-megabyte uploads at the provider at
     // once is how the whole batch fails together on a phone connection.
-    const uploaded: { url: string; label: string | null }[] = [];
+    const uploaded: {
+      url: string;
+      label: string | null;
+      kind: "image" | "video";
+      thumbnail_url: string | null;
+    }[] = [];
     for (const file of files) {
+      const isVideo = ALLOWED_VIDEO_TYPES.includes(file.type);
       const buffer = Buffer.from(await file.arrayBuffer());
       const response = await imagekit.files.upload({
         file: buffer.toString("base64"),
@@ -252,10 +306,60 @@ export class MarketingPageService {
         tags: ["listing", hostelId],
       });
       if (!response?.url) throw new Error("Photo provider did not return a URL");
-      uploaded.push({ url: response.url, label: null });
+      uploaded.push({
+        url: response.url,
+        label: null,
+        kind: isVideo ? "video" : "image",
+        // ImageKit renders a still from a video on demand; the card and the
+        // share preview need one, because neither can play a clip.
+        thumbnail_url: isVideo ? videoThumbnailUrl(response.url) : null,
+      });
     }
 
     return { photos: uploaded };
+  }
+
+  /**
+   * The hostel's real kitchen menu, shaped for the listing's mess block.
+   *
+   * Read-only and **not** saved here: it is handed to the editor, the owner
+   * adjusts it, and it goes through the normal review cycle like any other
+   * edit. The listing keeps its own reviewed copy of the menu (ADR-077) —
+   * this only spares the owner retyping 28 cells they already maintain, which
+   * is why most listings had no menu at all.
+   *
+   * Prefers the current month's schedule, falling back to the most recent
+   * published one: on the 1st of a month, before that month's schedule is
+   * generated, "there is no menu" would be wrong — last month's is what the
+   * kitchen is still cooking.
+   */
+  async getKitchenMenu(actor: string | MarketingActor, hostelId: string) {
+    await this.assertOwnsHostel(actor, hostelId);
+
+    const startOfMonth = new Date();
+    startOfMonth.setUTCDate(1);
+    startOfMonth.setUTCHours(0, 0, 0, 0);
+
+    const schedule =
+      (await prisma.food_schedules.findFirst({
+        where: { hostel_id: hostelId, status: "PUBLISHED", month: startOfMonth },
+        select: { id: true, month: true, food_schedule_meals: MEAL_SELECT },
+      })) ??
+      (await prisma.food_schedules.findFirst({
+        where: { hostel_id: hostelId, status: "PUBLISHED" },
+        orderBy: { month: "desc" },
+        select: { id: true, month: true, food_schedule_meals: MEAL_SELECT },
+      }));
+
+    if (!schedule) return { available: false as const, month: null, week: null, served: null };
+
+    const meals = schedule.food_schedule_meals ?? [];
+    return {
+      available: true as const,
+      month: schedule.month,
+      week: scheduleToMessWeek(meals as any),
+      served: mealsServed(meals as any),
+    };
   }
 
   /** Hand the draft to the admin queue. */

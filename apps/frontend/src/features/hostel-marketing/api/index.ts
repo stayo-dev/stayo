@@ -27,6 +27,22 @@ export interface MarketingPhoto {
   label?: string | null;
   is_cover: boolean;
   sort: number;
+  /**
+   * Images and videos share one gallery, one order and one caption field —
+   * an owner thinks in "my listing's photos", not two collections. Absent on
+   * every revision written before video existed, which is why it is optional
+   * and read as `image` everywhere.
+   */
+  kind?: 'image' | 'video';
+  /** A still for a video, for the search card and the link preview. */
+  thumbnail_url?: string | null;
+}
+
+export interface UploadedMedia {
+  url: string;
+  label: string | null;
+  kind: 'image' | 'video';
+  thumbnail_url: string | null;
 }
 
 export interface MarketingBed {
@@ -86,6 +102,14 @@ export interface MarketingContent {
   mess: MarketingMess;
 }
 
+export interface KitchenMenu {
+  available: boolean;
+  /** The month the imported schedule belongs to. */
+  month: string | null;
+  week: MessDay[] | null;
+  served: Record<MessMealKey, boolean> | null;
+}
+
 export interface MarketingEditorState {
   hostel: { id: string; name: string; public_slug: string | null };
   /**
@@ -94,7 +118,14 @@ export interface MarketingEditorState {
    * silently omitting a stat the design asks for.
    */
   stats: { enquiries_30d: number; views_30d: number | null };
-  draft: { id: string | null; version: number; status: RevisionStatus; content: MarketingContent };
+  draft: {
+    id: string | null;
+    version: number;
+    status: RevisionStatus;
+    content: MarketingContent;
+    /** Set once sent for review — what "in review since…" is read from. */
+    submitted_at?: string | null;
+  };
   published: { id: string; version: number; content: MarketingContent; reviewed_at: string | null } | null;
   last_rejection: { version: number; review_note: string | null; reviewed_at: string | null } | null;
   /** What the owner must fix before the submit button does anything. */
@@ -148,11 +179,31 @@ export const marketingService = {
    * Upload listing photos, get URLs back. The caller puts them in the draft;
    * nothing is persisted until the draft is saved.
    */
-  uploadPhotos: async (hostelId: string, files: File[]): Promise<{ url: string; label: string | null }[]> => {
+  /**
+   * Uploads **one file per request**, deliberately.
+   *
+   * This used to take a batch, and a phone multi-select of ten 4MB photos
+   * became a single ~40MB request that the platform rejected before any
+   * per-file size check ran — the owner was told the limit was exceeded when
+   * no individual photo was near it. One file per request also means a
+   * failure loses one photo instead of the whole selection, and progress can
+   * be reported per file.
+   */
+  uploadMedia: async (hostelId: string, file: File): Promise<UploadedMedia | null> => {
     const form = new FormData();
-    files.forEach((file) => form.append('files', file));
+    form.append('files', file);
     const response = await api.post(`/owner/hostels/${hostelId}/marketing/photos`, form);
-    return (unwrap(response)?.photos ?? []) as { url: string; label: string | null }[];
+    const uploaded = (unwrap(response)?.photos ?? []) as UploadedMedia[];
+    return uploaded[0] ?? null;
+  },
+
+  /**
+   * The hostel's real kitchen menu, to copy into the listing's mess block.
+   * Read-only — importing it fills the draft, which still goes through review.
+   */
+  kitchenMenu: async (hostelId: string): Promise<KitchenMenu> => {
+    const response = await api.get(`/owner/hostels/${hostelId}/marketing/kitchen-menu`);
+    return unwrap(response) as KitchenMenu;
   },
 
   submit: async (hostelId: string) => {

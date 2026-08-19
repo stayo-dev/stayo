@@ -10,6 +10,16 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-19 — Listing media, the review cycle, and the kitchen menu
+- **A phone multi-select of photos no longer fails.** The client batched a whole selection into one request, so ten legal 4MB photos became a ~40MB body rejected above every size check we had — the owner was told a limit was exceeded that nothing had crossed. One file per request now, photos downscaled in the browser first. See [[Bugs]].
+- **Videos** upload alongside photos (MP4/WebM/MOV, 60MB), play inline in the Discovery gallery, and can never be the cover — the cover is the search card's still and a shared link's `og:image`. `content.photos` gains `kind` and `thumbnail_url`, both back-compatible.
+- **Reordering** on the photos screen: ‹ › on every tile, plus drag on a desktop. The gallery's order is the order visitors swipe through.
+- **A live listing used to call itself "Draft."** The page read one field (`draft.status`), which after approval is `DRAFT` because there is no open revision. `listingLifecycle` derives the real state from three facts and shows a Draft → With Stayo → Live tracker, so a submission is visibly received and unsent edits are visibly not live. See [[Bugs]].
+- **Admins can see what changed.** The review drawer diffs the submission against the live version — per section, before → after, price changes called out on their own, added/removed media, a changed cover, reordering, and which days of the mess menu were edited. The data was already in the payload; nothing had rendered it.
+- **"Copy this hostel's kitchen menu"** fills the listing's mess editor from the published Food schedule, as an editable draft that still goes through review ([[Decisions#ADR-085|ADR-085]]).
+- **Admin edit parity**: `photos`, `submit` and `withdraw` took a bare owner id, so an admin authoring a listing could save text but not upload a photo or submit it. All three take a `MarketingActor` now.
+- Tests +37 frontend (797→834), +6 backend pure.
+
 ### 2026-08-19 — Share a hostel
 - **`yourstayo.com/h/:slug`** — a share link whose preview card carries the hostel's cover photo, name, city and starting price in WhatsApp, Instagram, Telegram and anything else that unfurls a URL. A `vercel.json` rewrite (placed above the SPA catch-all) sends it to a new `GET /api/discover/share/[slug]`, which renders HTML; the SPA cannot do this itself, since it is one `index.html` for every route and crawlers do not run JS. See [[Decisions#ADR-084|ADR-084]].
 - **Share buttons** on the Discovery listing page (beside Save) and the owner marketing page (enabled only once the listing is approved and has a public slug). `navigator.share` where it exists — the OS sheet is the only route to Instagram — and clipboard + toast where it does not. A dismissed sheet is a no-op.

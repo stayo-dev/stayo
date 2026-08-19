@@ -358,12 +358,26 @@ export function ListingsPage() {
           }
         >
           {pendingRevisionFor(detail.id) ? (
-            <MarketingReviewBody
-              revisionId={pendingRevisionFor(detail.id)!.id}
-              flags={flags}
-              onToggleFlag={toggleFlag}
-              onFlagNote={setFlagNote}
-            />
+            <>
+              {/* Parity with the owner: anything they can edit on their
+                  marketing page, an admin can edit here — including a
+                  submission that is currently in review, where a reviewer
+                  fixing one wrong price themselves beats sending the whole
+                  listing back for it. */}
+              <button
+                type="button"
+                onClick={() => navigate(`/admin/listings/${detail.id}/edit`)}
+                className="mb-3 w-full rounded-xl border border-[#E6DCD1] bg-white py-2.5 font-admin text-[12.5px] font-bold text-[#221E1A]"
+              >
+                Edit this listing yourself
+              </button>
+              <MarketingReviewBody
+                revisionId={pendingRevisionFor(detail.id)!.id}
+                flags={flags}
+                onToggleFlag={toggleFlag}
+                onFlagNote={setFlagNote}
+              />
+            </>
           ) : (
             <NoSubmission hostelId={detail.id} onWrite={() => navigate(`/admin/listings/${detail.id}/edit`)} />
           )}

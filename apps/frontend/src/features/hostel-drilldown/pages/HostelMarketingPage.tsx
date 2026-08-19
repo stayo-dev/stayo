@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  AlertTriangle, BedDouble, ChevronRight, Clock, FileText, GripVertical, ImagePlus, Lock, Plus, Star,
+  AlertTriangle, BedDouble, ChevronRight, Clock, FileText, GripVertical, ImagePlus, Lock, Plus,
+  Share2, Star,
 } from 'lucide-react';
 
 import { stayoToast } from '@shared/ui-patterns/Toast';
+import { useShareHostel } from '@shared/hooks/useShareHostel';
+import { LIFECYCLE_STEPS, listingLifecycle, primaryActionLabel } from '../marketing/listingLifecycle';
 import {
   useMarketingEditor,
   useSaveMarketingDraft,
@@ -48,12 +51,19 @@ import { CARD_SHADOW, M, MESS_DAY_LABELS } from '../marketing/marketingTheme';
  *    views, and a review card that says none have come in.
  */
 
-const STATUS_META: Record<RevisionStatus, { label: string; color: string }> = {
-  DRAFT: { label: 'Draft', color: '#B9AFA3' },
-  PENDING_REVIEW: { label: 'In review', color: '#E0B776' },
-  APPROVED: { label: 'Live', color: '#7FCBA1' },
-  REJECTED: { label: 'Changes requested', color: '#E59D8E' },
-  SUPERSEDED: { label: 'Replaced', color: '#B9AFA3' },
+/**
+ * Colours for the six real states of a listing (see `listingLifecycle`), not
+ * for the five revision statuses. The two are not the same thing: after
+ * approval there is no open revision at all, so a status-keyed badge said
+ * "Draft" about a listing that was live.
+ */
+const LIFECYCLE_COLOR: Record<string, string> = {
+  DRAFT: '#B9AFA3',
+  IN_REVIEW: '#E0B776',
+  LIVE_IN_REVIEW: '#E0B776',
+  LIVE: '#7FCBA1',
+  LIVE_EDITED: '#E0B776',
+  CHANGES_REQUESTED: '#E59D8E',
 };
 
 const MESS_TYPES: MessType[] = ['VEG', 'NON_VEG', 'BOTH'];
@@ -96,9 +106,19 @@ export function HostelMarketingPage() {
     if (data?.draft.content && !dirty) setContent(data.draft.content);
   }, [data?.draft.content, dirty]);
 
+  const { share } = useShareHostel();
+
+  /**
+   * An owner can only share a listing the public can actually open: an
+   * APPROVED revision (`published`) on a hostel that has a public slug. Before
+   * that, `/h/:slug` would 404 — better to say so on the button than to hand
+   * someone a dead link to send to their tenants.
+   */
+  const shareSlug = data?.published && data.hostel.public_slug ? data.hostel.public_slug : null;
+
   const status = data?.draft.status ?? 'DRAFT';
   const locked = !(data?.is_editable ?? true);
-  const meta = STATUS_META[status];
+  const lifecycle = listingLifecycle(data, dirty);
   const closeSheet = () => setSheet({ kind: 'none' });
 
   const patch = (next: Partial<MarketingContent>) => {
@@ -138,8 +158,8 @@ export function HostelMarketingPage() {
    * see unsaved edits on top of is the bug the old "Save your changes first"
    * toast existed to prevent, and doing it for them is better than refusing.
    */
-  const onToggle = () => {
-    if (status === 'PENDING_REVIEW') {
+  const onPrimaryAction = () => {
+    if (lifecycle.action === 'WITHDRAW') {
       withdraw.mutate(undefined, {
         onSuccess: () => stayoToast.success('Withdrawn — you can edit again'),
         onError: (error: any) => stayoToast.error(error?.response?.data?.message ?? 'Could not withdraw'),
@@ -163,7 +183,6 @@ export function HostelMarketingPage() {
     );
   }
 
-  const toggleOn = status === 'PENDING_REVIEW' || status === 'APPROVED';
   const messMealsOn = content.mess.meals.filter((meal) => meal.enabled).length;
 
   return (
@@ -178,30 +197,63 @@ export function HostelMarketingPage() {
                 What tenants see when they find this hostel on Stayo
               </p>
             </div>
-            <div className="flex flex-none flex-col items-end gap-2">
-              <button
-                type="button"
-                role="switch"
-                aria-checked={toggleOn}
-                aria-label={toggleOn ? 'Withdraw from review' : 'Send listing to Stayo for review'}
-                onClick={onToggle}
-                disabled={save.isPending || submit.isPending || withdraw.isPending}
-                className="relative h-[26px] w-[46px] rounded-full transition-colors disabled:opacity-60"
-                style={{ background: toggleOn ? 'var(--primary)' : 'rgba(255,255,255,.18)' }}
-              >
-                <span
-                  className="absolute top-[3px] h-5 w-5 rounded-full bg-white transition-all"
-                  style={{ left: toggleOn ? 23 : 3 }}
-                />
-              </button>
-              <span
-                className="text-[10px] font-bold uppercase tracking-[0.06em]"
-                style={{ color: meta.color }}
-              >
-                {meta.label}
-              </span>
-            </div>
+            <span
+              className="flex-none rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.06em]"
+              style={{ color: LIFECYCLE_COLOR[lifecycle.key], background: 'rgba(255,255,255,.08)' }}
+            >
+              {lifecycle.label}
+            </span>
           </div>
+
+          {/*
+            The review cycle, stated. An owner used to get no confirmation that
+            a submission had landed anywhere, and a live listing announced
+            itself as "Draft" — so nobody could tell whether what they were
+            looking at was what the public sees. Three steps, the current one
+            lit, and a sentence saying what happens next.
+          */}
+          <div className="mt-3.5 flex items-center gap-1.5">
+            {LIFECYCLE_STEPS.map((label, index) => (
+              <div key={label} className="flex flex-1 flex-col gap-1">
+                <span
+                  className="h-[3px] rounded-full transition-colors"
+                  style={{
+                    background:
+                      index <= lifecycle.step ? LIFECYCLE_COLOR[lifecycle.key] : 'rgba(255,255,255,.14)',
+                  }}
+                />
+                <span
+                  className="text-[9.5px] font-bold uppercase tracking-[0.05em]"
+                  style={{ color: index === lifecycle.step ? '#fff' : M.inkTextFaint }}
+                >
+                  {label}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <p className="mt-2.5 text-[11.5px] leading-[1.55]" style={{ color: M.inkText }}>
+            {lifecycle.detail}
+          </p>
+
+          {primaryActionLabel(lifecycle.action) && (
+            <button
+              type="button"
+              onClick={onPrimaryAction}
+              disabled={save.isPending || submit.isPending || withdraw.isPending}
+              className="mt-3 w-full rounded-[12px] px-4 py-2.5 font-display text-[13px] font-bold transition-opacity disabled:opacity-60"
+              style={{
+                background: lifecycle.action === 'WITHDRAW' ? 'rgba(255,255,255,.12)' : 'var(--primary)',
+                color: '#fff',
+              }}
+            >
+              {save.isPending || submit.isPending
+                ? 'Sending…'
+                : withdraw.isPending
+                  ? 'Withdrawing…'
+                  : primaryActionLabel(lifecycle.action)}
+            </button>
+          )}
 
           <div className="mt-3 flex gap-5 border-t border-white/[0.08] pt-3">
             <div className="flex flex-col gap-0.5">
@@ -223,22 +275,33 @@ export function HostelMarketingPage() {
                 enquiries
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => setSheet({ kind: 'preview' })}
-              className="ml-auto self-center rounded-[10px] bg-white/10 px-3 py-2 font-display text-[12px] font-bold text-white"
-            >
-              Preview
-            </button>
+            <div className="ml-auto flex items-center gap-2 self-center">
+              <button
+                type="button"
+                disabled={!shareSlug}
+                onClick={() =>
+                  shareSlug && data
+                    ? share({ name: data.hostel.name, slug: shareSlug })
+                    : undefined
+                }
+                title={shareSlug ? 'Share this listing' : 'Publish your listing to share it'}
+                aria-label={shareSlug ? 'Share this listing' : 'Publish your listing to share it'}
+                className="flex items-center gap-1.5 rounded-[10px] bg-white/10 px-3 py-2 font-display text-[12px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Share2 className="h-3.5 w-3.5" strokeWidth={2} />
+                Share
+              </button>
+              <button
+                type="button"
+                onClick={() => setSheet({ kind: 'preview' })}
+                className="rounded-[10px] bg-white/10 px-3 py-2 font-display text-[12px] font-bold text-white"
+              >
+                Preview
+              </button>
+            </div>
           </div>
 
-          {data?.published && (
-            <p className="mt-2.5 text-[11.5px]" style={{ color: M.inkTextFaint }}>
-              v{data.published.version} is live now
-              {status === 'DRAFT' && dirty ? ' · you have unsaved changes' : ''}
-              {status === 'PENDING_REVIEW' ? ' · your new version is being reviewed' : ''}
-            </p>
-          )}
+
         </section>
 
         {/* Changes requested — the owner's route forward */}
@@ -881,6 +944,7 @@ export function HostelMarketingPage() {
 
       <MessMenuSheet
         open={sheet.kind === 'mess'}
+        hostelId={hostelId}
         mess={content.mess}
         initialDay={messDay}
         onClose={closeSheet}

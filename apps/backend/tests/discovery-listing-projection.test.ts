@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { projectListing } from "@/src/services/discovery/listing-projection";
+import { listingPhotos, projectListing } from "@/src/services/discovery/listing-projection";
 
 const detail = {
   hostel: { id: "h1", name: "Starlink", city: "Hyderabad", photos: ["/admissions-1.jpg"] },
@@ -36,6 +36,21 @@ describe("projectListing", () => {
   it("falls back to admissions photos when marketing has none", () => {
     const out = projectListing({ detail, visible, marketing: { ...marketing, photos: [] } });
     expect(out.hostel.photos).toEqual(["/admissions-1.jpg"]);
+  });
+
+  it("leads with the cover photo, whatever position it was saved in", () => {
+    // The card and the listing hero both show photos[0]. `marketing-content`
+    // guarantees exactly one is_cover for this reason; nothing read it.
+    const shuffled = {
+      ...marketing,
+      photos: [
+        { url: "/owner-1.jpg", sort: 0, is_cover: false },
+        { url: "/owner-2.jpg", sort: 1, is_cover: true },
+        { url: "/owner-3.jpg", sort: 2, is_cover: false },
+      ],
+    };
+    expect(projectListing({ detail, visible, marketing: shuffled }).hostel.photos)
+      .toEqual(["/owner-2.jpg", "/owner-1.jpg", "/owner-3.jpg"]);
   });
 
   it("drops amenities the owner switched off", () => {
@@ -108,5 +123,40 @@ describe("preview parity", () => {
   it("marks a preview so the UI can badge it, without changing the content", () => {
     expect(projectListing({ detail, visible, marketing, preview: true }).preview).toBe(true);
     expect(projectListing({ detail, visible, marketing }).preview).toBe(false);
+  });
+});
+
+/**
+ * The same rule the search card now runs on — a card that reads only
+ * `hostels.admission_photos` shows a placeholder for every hostel whose photos
+ * came through the marketing review flow, which is all of them.
+ */
+describe("listingPhotos", () => {
+  it("prefers approved marketing photos over the admissions gallery", () => {
+    expect(listingPhotos({ photos: [{ url: "/owner-1.jpg" }] }, ["/admissions-1.jpg"]))
+      .toEqual(["/owner-1.jpg"]);
+  });
+
+  it("falls back to the admissions gallery when no revision is approved", () => {
+    expect(listingPhotos(null, ["/admissions-1.jpg"])).toEqual(["/admissions-1.jpg"]);
+  });
+
+  it("returns nothing rather than inventing a photo", () => {
+    expect(listingPhotos(null, [])).toEqual([]);
+    expect(listingPhotos({ photos: [] }, [])).toEqual([]);
+  });
+
+  it("skips entries with no usable url", () => {
+    expect(listingPhotos({ photos: [{ url: null }, { url: "/real.jpg" }, {}] }, []))
+      .toEqual(["/real.jpg"]);
+  });
+
+  it("keeps the owner's order below the cover", () => {
+    const photos = [
+      { url: "/c.jpg", sort: 2, is_cover: false },
+      { url: "/a.jpg", sort: 0, is_cover: false },
+      { url: "/b.jpg", sort: 1, is_cover: true },
+    ];
+    expect(listingPhotos({ photos }, [])).toEqual(["/b.jpg", "/a.jpg", "/c.jpg"]);
   });
 });
