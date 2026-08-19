@@ -36,19 +36,6 @@ interface RawMeal {
 }
 
 /**
- * Default meal times. Deliberately not stored anywhere yet — four sensible
- * defaults beat a settings screen nobody asked for. If these need to become
- * per-hostel, `preferences_config` already exists for exactly this kind of
- * setting; no new table.
- */
-export const MEAL_TIMES: Record<MealSlotKey, { hour: number; label: string }> = {
-  breakfast: { hour: 8, label: '8:00am' },
-  lunch: { hour: 13, label: '1:00pm' },
-  snacks: { hour: 17, label: '5:00pm' },
-  dinner: { hour: 20, label: '8:00pm' },
-};
-
-/**
  * The one word every surface uses for a cell with no meal in it — and the
  * literal string the generator writes when a meal type's library is empty,
  * which is why `isFilled` has to recognise it. Surfaces used to spell this
@@ -99,18 +86,7 @@ export function dayCompleteness(grid: WeekGrid, day: DayKey): 'COMPLETE' | 'PART
 }
 
 /**
- * Which meal the owner is most likely asking about right now, and what follows.
- * Before the first meal of the day, breakfast is still "current" — at 2am the
- * useful answer is what's coming, not yesterday's dinner.
+ * "Which meal is current/next" now lives in `features/food/mealTimings.ts`
+ * (`currentAndNextMeal`), driven by real per-hostel `preferences_config`
+ * timings instead of a hardcoded hour — see ADR on Meal Timings.
  */
-export function mealSlotAt(now: Date): { current: MealSlotKey; next: MealSlotKey | null } {
-  const hour = now.getHours() + now.getMinutes() / 60;
-  let currentIndex = 0;
-  for (let i = 0; i < SLOT_ORDER.length; i++) {
-    if (hour >= MEAL_TIMES[SLOT_ORDER[i]].hour) currentIndex = i;
-  }
-  return {
-    current: SLOT_ORDER[currentIndex],
-    next: currentIndex + 1 < SLOT_ORDER.length ? SLOT_ORDER[currentIndex + 1] : null,
-  };
-}

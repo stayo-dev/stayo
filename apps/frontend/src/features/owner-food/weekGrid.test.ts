@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  toWeekGrid, dayKeyFor, cellAt, isFilled, dayCompleteness, mealSlotAt, MEAL_TIMES, EMPTY_CELL_LABEL,
+  toWeekGrid, dayKeyFor, cellAt, isFilled, dayCompleteness, EMPTY_CELL_LABEL,
   type WeekGrid,
 } from './weekGrid';
 
@@ -84,21 +84,5 @@ describe('dayCompleteness', () => {
   });
 });
 
-describe('mealSlotAt', () => {
-  it('shows breakfast as current in the early morning', () => {
-    expect(mealSlotAt(new Date('2026-08-06T07:40:00'))).toEqual({ current: 'breakfast', next: 'lunch' });
-  });
-  it('shows lunch as current in the early afternoon', () => {
-    expect(mealSlotAt(new Date('2026-08-06T13:30:00'))).toEqual({ current: 'lunch', next: 'snacks' });
-  });
-  it('shows dinner as current in the evening with nothing after it', () => {
-    expect(mealSlotAt(new Date('2026-08-06T20:30:00'))).toEqual({ current: 'dinner', next: null });
-  });
-  it('after midnight and before breakfast, breakfast is still what is coming', () => {
-    expect(mealSlotAt(new Date('2026-08-06T02:00:00'))).toEqual({ current: 'breakfast', next: 'lunch' });
-  });
-  it('exposes meal times in ascending hour order', () => {
-    const hours = (['breakfast', 'lunch', 'snacks', 'dinner'] as const).map((s) => MEAL_TIMES[s].hour);
-    expect(hours).toEqual([...hours].sort((a, b) => a - b));
-  });
-});
+// `mealSlotAt`/`MEAL_TIMES` moved to `features/food/mealTimings.ts`
+// (`currentAndNextMeal`, real per-hostel timings) — see that file's own tests.

@@ -1,7 +1,8 @@
 import { UtensilsCrossed } from 'lucide-react';
 import { MEAL_CATEGORY_META, type MealSlotKey } from '@shared/mocks/food';
+import { currentAndNextMeal, formatTimeRange, type MealTimings } from '@features/food/mealTimings';
 import { mealIcon } from '../../mealIcons';
-import { cellAt, dayKeyFor, EMPTY_CELL_LABEL, isFilled, mealSlotAt, MEAL_TIMES, SLOT_ORDER, type WeekGrid } from '../../weekGrid';
+import { cellAt, dayKeyFor, EMPTY_CELL_LABEL, isFilled, SLOT_ORDER, type WeekGrid } from '../../weekGrid';
 
 interface TodayCardProps {
   grid: WeekGrid;
@@ -9,6 +10,7 @@ interface TodayCardProps {
   /** False when this hostel has no `food_schedules` row for the month at all. */
   hasSchedule: boolean;
   onFix: (slot: MealSlotKey) => void;
+  mealTimings: MealTimings;
 }
 
 /**
@@ -23,10 +25,10 @@ interface TodayCardProps {
  * Fix buttons that have no cell to open. The remedy for a whole missing month
  * is Generate, which the grid below already owns.
  */
-export function TodayCard({ grid, isLoading, hasSchedule, onFix }: TodayCardProps) {
+export function TodayCard({ grid, isLoading, hasSchedule, onFix, mealTimings }: TodayCardProps) {
   const now = new Date();
   const day = dayKeyFor(now);
-  const { current, next } = mealSlotAt(now);
+  const { current, next } = currentAndNextMeal(mealTimings, now);
 
   const dateLabel = now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
 
@@ -60,7 +62,7 @@ export function TodayCard({ grid, isLoading, hasSchedule, onFix }: TodayCardProp
 
   const currentCell = cellAt(grid, day, current);
   const nextCell = next ? cellAt(grid, day, next) : null;
-  const rest = SLOT_ORDER.filter((slot) => slot !== current && slot !== next);
+  const rest = SLOT_ORDER.filter((slot) => slot !== current && slot !== next && mealTimings[slot]?.enabled);
 
   const CurrentIcon = mealIcon(current);
 
@@ -91,7 +93,7 @@ export function TodayCard({ grid, isLoading, hasSchedule, onFix }: TodayCardProp
 
         {next && (
           <span className="mt-2 block text-[12.5px] text-muted-foreground">
-            Next · {MEAL_CATEGORY_META[next].label} {MEAL_TIMES[next].label} —{' '}
+            Next · {MEAL_CATEGORY_META[next].label} {formatTimeRange(mealTimings[next])} —{' '}
             <span className={isFilled(nextCell) ? 'font-semibold text-foreground' : 'italic'}>
               {isFilled(nextCell) ? nextCell!.item_name : EMPTY_CELL_LABEL}
             </span>
@@ -116,7 +118,7 @@ export function TodayCard({ grid, isLoading, hasSchedule, onFix }: TodayCardProp
               <span className="w-[68px] flex-none text-[11.5px] font-semibold text-muted-foreground">
                 {MEAL_CATEGORY_META[slot].label}
               </span>
-              <span className="text-[11px] text-muted-foreground/70">{MEAL_TIMES[slot].label}</span>
+              <span className="text-[11px] text-muted-foreground/70">{formatTimeRange(mealTimings[slot])}</span>
               <span className={`ml-auto text-[13px] ${filled ? 'font-semibold text-foreground' : 'italic text-muted-foreground/60'}`}>
                 {filled ? cell!.item_name : EMPTY_CELL_LABEL}
               </span>
