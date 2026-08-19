@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { marketingScopeWhere, type MarketingActor } from "@/src/services/marketing/marketing-scope";
+import { marketingScopeWhere, type MarketingActor, actorId } from "@/src/services/marketing/marketing-scope";
 
 const OWNER: MarketingActor = { id: "owner-1", isAdmin: false };
 const ADMIN: MarketingActor = { id: "admin-1", isAdmin: true };
@@ -30,5 +30,26 @@ describe("marketingScopeWhere", () => {
       id: "h1",
       owner_id: "x",
     });
+  });
+});
+
+/**
+ * `submitForReview` wrote the whole actor object into `submitted_by`, a uuid
+ * column, the moment the route started passing an actor so admins could
+ * submit — every submission failed with a Prisma validation error. Nothing
+ * typed it: `lib/db.ts` exports the client as `any`.
+ */
+describe("actorId", () => {
+  it("takes the id out of an actor", () => {
+    expect(actorId({ id: "profile-1" })).toBe("profile-1");
+    expect(actorId({ id: "admin-1", isAdmin: true })).toBe("admin-1");
+  });
+
+  it("passes a bare id through, for the call sites that still send one", () => {
+    expect(actorId("profile-1")).toBe("profile-1");
+  });
+
+  it("never returns an object, whatever it is handed", () => {
+    expect(typeof actorId({ id: "x", isAdmin: false })).toBe("string");
   });
 });

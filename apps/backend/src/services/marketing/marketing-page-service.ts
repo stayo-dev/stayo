@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { imagekit } from "@/lib/imagekit";
-import { marketingScopeWhere, type MarketingActor } from "./marketing-scope";
+import { actorId, marketingScopeWhere, type MarketingActor } from "./marketing-scope";
 import { mealsServed, scheduleToMessWeek } from "./mess-import";
 import { ApiError } from "@/src/lib/api-error";
 import {
@@ -386,7 +386,8 @@ export class MarketingPageService {
       data: {
         status: "PENDING_REVIEW",
         submitted_at: new Date(),
-        submitted_by: ownerId,
+        // The id, never the actor object — this column is a uuid.
+        submitted_by: actorId(ownerId),
         // A resubmission clears the previous verdict — the note referred to a
         // version that no longer exists.
         review_note: null,
