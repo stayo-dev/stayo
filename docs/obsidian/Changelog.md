@@ -10,6 +10,12 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-19 — The enquiry-rejected WhatsApp template is actually sent
+- **`TENANT_ENQUIRY_REJECTED` had existed as an approved template since the enquiry work shipped and nothing ever sent it** — a Discovery applicant whose enquiry was turned down simply heard nothing, forever. It now fires when an owner moves that lead to `LOST`. `OWNER_ENQUIRY_RECEIVED` was already wired and is unchanged.
+- **Only for enquiries that came through Discovery** (`seeker_profile_id`): those people have a Stayo account and used the platform to ask. A walk-in lead marked lost never opted into being messaged.
+- **No "accepted" message, by decision.** An approved enquiry is followed by an invitation, and the invitation *is* the acceptance — a second notification would say what the invite already says.
+- **The reason is translated, never repeated.** `JOINED_COMPETITOR` and `NO_RESPONSE` are deliberately unmapped — the first is the owner's read of someone else's decision, the second an accusation — and fall through to the template's neutral wording. `rejectionReasonText`, 4 tests. See [[APIs]].
+
 ### 2026-08-19 — Tenant screens: fixed headers, and the dark slabs removed
 - **Screen titles stay put.** My Room / My Menu / Payments rendered their title as the first item in the scrolling column, so the name of the screen you were on left the page as soon as you looked at anything on it. One `TenantPageHeader`, sticky, translucent over the graph-paper ground.
 - **The dark headers on Home and Profile are gone.** Each spent ~120px of a phone screen and a radial glow to say a name — on Home, above "rent due". Both now sit on the app's own paper ground with the terracotta monogram carrying the brand instead of a slab of ink, and both are sticky.

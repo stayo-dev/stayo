@@ -5,6 +5,12 @@ import { checkFixedWindowLimit } from "@/lib/redis/rate-limit";
 import { redisKeys } from "@/lib/redis/keys";
 import { getOrSetJson, invalidateTag } from "@/lib/redis/cache";
 import { invitationService } from "@/src/services/tenants/invitation-service";
+import { whatsAppTemplateDeliveryService } from "@/lib/services/notifications/whatsapp-template-delivery";
+import {
+  buildTenantEnquiryRejected,
+  rejectionReasonText,
+  resolveEnquiryTemplateName,
+} from "@/lib/services/notifications/providers/whatsapp/enquiry-template-contracts";
 
 export const LEAD_STATUSES = [
   "NEW",
@@ -576,6 +582,52 @@ export class AdmissionsService {
         updated_at: new Date(),
       },
     });
+    /**
+     * Tell the applicant their enquiry was turned down.
+     *
+     * `TENANT_ENQUIRY_REJECTED` has existed as an approved template since the
+     * enquiry work shipped and **was never sent by anything** — a Discovery
+     * applicant simply heard nothing back, forever. There is deliberately no
+     * matching "accepted" message: an approved enquiry is followed by an
+     * invitation, and the invitation *is* the acceptance.
+     *
+     * Only for enquiries that came through Discovery (`seeker_profile_id`):
+     * those people have a Stayo account and used the platform to ask. A
+     * walk-in lead marked lost never opted into being messaged.
+     *
+     * Never fatal — the status change is already committed, and losing it
+     * because a message failed would be the wrong trade.
+     */
+    if (input.status === "LOST" && lead.status !== "LOST" && lead.seeker_profile_id) {
+      void (async () => {
+        const [seeker, hostel] = await Promise.all([
+          prisma.profile.findUnique({
+            where: { id: lead.seeker_profile_id as string },
+            select: { name: true, phone: true },
+          }),
+          prisma.hostels.findUnique({ where: { id: lead.hostel_id }, select: { name: true } }),
+        ]);
+        if (!seeker?.phone) return;
+
+        const template = resolveEnquiryTemplateName("TENANT_ENQUIRY_REJECTED");
+        await whatsAppTemplateDeliveryService.send({
+          phone: seeker.phone,
+          templateName: template.name,
+          languageCode: template.language,
+          ...buildTenantEnquiryRejected({
+            tenantName: seeker.name,
+            hostelName: hostel?.name ?? null,
+            reason: rejectionReasonText(input.lost_reason),
+          }),
+          // Keyed on the lead: re-opening and re-losing one conversation must
+          // not message the same person twice.
+          idempotencyKey: `enquiry-rejected:${leadId}`,
+          ownerId,
+          hostelId: lead.hostel_id,
+        });
+      })().catch(() => undefined);
+    }
+
     await invalidateTag(redisKeys.admissions.owner(ownerId));
     return this.shapeLead(updated);
   }
