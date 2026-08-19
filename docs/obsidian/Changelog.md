@@ -10,6 +10,10 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-19 — A signed-in user could not post a review, and cross-surface logins are announced
+- **Writing a review returned "Sign in to continue" to people who were signed in.** `PUBLIC_ROUTES` is prefix-matched and `/api/discover/hostels` is public, so `POST .../reviews` inherited that — and the public branch of `middleware.ts` *strips every identity header and never sets `x-auth-mode`*, making `getSession` return null by design. Reading reviews must stay public; writing one cannot. `requiresSessionDespitePublicPrefix` states that exception (5 tests). Verified: POST with no session now returns the middleware's "Authentication required" instead of the route's message, and GET is still 200. See [[Bugs]].
+- **An owner signing in on Discovery is told before being moved.** Both doors used to bounce the wrong-side account to the other app silently, mid-redirect — which right after typing a password reads as a bug or as somebody else's account. `crossSurfaceHandoff` decides the destination and the sentence; both surfaces show it for 1.6s and then go. The redirect itself is unchanged: it was the right destination, just unexplained.
+
 ### 2026-08-19 — Footprints, a way back, and share from a card
 - **Footprints follow the cursor across Discovery** — and are painted *underneath* the page (`fixed z-0` under content at `z-1`), so a print can only ever land on the graph-paper ground in the margins, never across a hostel photo. Off on touch, off under `prefers-reduced-motion`, off below 1024px, `pointer-events: none`, six prints maximum, one rAF per move. `footprintTrail.ts`, 11 tests.
 - **Arrow keys in the photo viewer were dead.** One effect with no dependency array re-ran on every render and reset `scrollLeft` to the frame the viewer opened on, so every move undid itself. Split into a mount-only jump and a re-bound key handler; verified in a browser (1→2→3→2, and the on-screen arrow).

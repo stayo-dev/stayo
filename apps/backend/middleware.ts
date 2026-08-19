@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requiresSessionDespitePublicPrefix } from "@/lib/auth/public-route-exceptions";
 import { verifyToken } from "./lib/auth-edge";
 import { verifySupabaseAccessToken } from "./lib/auth/supabase-jwt-edge";
 import { getCorsAllowOrigin } from "./lib/config/domains";
@@ -133,8 +134,12 @@ export async function middleware(req: NextRequest) {
     return NextResponse.json({}, { headers: corsHeaders });
   }
 
-  // 2. Allow public routes
-  if (PUBLIC_ROUTES.some((route) => pathname.startsWith(route))) {
+  // 2. Allow public routes — except the handful of writes that live under a
+  //    public prefix and still need an account (see the module for why).
+  if (
+    PUBLIC_ROUTES.some((route) => pathname.startsWith(route)) &&
+    !requiresSessionDespitePublicPrefix(pathname, req.method)
+  ) {
     const requestHeaders = new Headers(req.headers);
     stripIdentityHeaders(requestHeaders);
     const response = NextResponse.next({ request: { headers: requestHeaders } });

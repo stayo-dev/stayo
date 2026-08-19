@@ -1282,6 +1282,17 @@ Copy this block for each new entry:
 
 
 
+
+## 2026-08-19 — A signed-in user was told to sign in when posting a review
+
+**Symptom:** `POST /api/discover/hostels/[slug]/reviews` returned `UNAUTHORIZED — "Sign in to continue"` for a user with a valid session.
+
+**Root cause:** `middleware.ts` matches `PUBLIC_ROUTES` **by prefix**, and `/api/discover/hostels` is public so that anyone can browse. The reviews route lives under that prefix because it is the same resource — and the public branch deliberately calls `stripIdentityHeaders()` and never sets `x-auth-mode`, so `getSession()` inside *any* route beneath a public prefix returns null **by design**. Reading reviews must be public; writing one cannot be, and the two shared a prefix.
+
+**Fix:** `lib/auth/public-route-exceptions.ts` — `requiresSessionDespitePublicPrefix(pathname, method)`, consulted in the public branch. The alternative was moving the write to a path outside the prefix, which would have split one resource across two URL trees to work around a matching rule.
+
+**Lesson:** a prefix-matched allowlist silently confers its permissions on every path added beneath it later. Adding a route under an existing public prefix is a security-relevant decision, not a filing choice.
+
 ## 2026-08-19 — A normal phone multi-select of photos was rejected as "limit exceeded"
 
 **Symptom:** an owner picking several photos at once on a phone was told the size limit was exceeded, though every individual photo was well inside it.
