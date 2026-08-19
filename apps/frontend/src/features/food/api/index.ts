@@ -127,4 +127,47 @@ export const foodService = {
     const response = await api.post(`/food/tenant/polls/${pollId}/vote`, { optionId });
     return unwrap(response) as { option_id: string; voted: boolean };
   },
+
+  // Meal Timings — permanent per-hostel serving-window config, distinct from
+  // the changing weekly menu above. Lives under /hostels/[id]/*, matching
+  // the other hostel-settings routes (e.g. billing-defaults), not /food/*.
+  //
+  // The backend stores/returns FoodMealType keys (BREAKFAST/LUNCH/SNACKS/
+  // DINNER, matching the Prisma enum); every frontend consumer works in
+  // lowercase MealSlotKey (breakfast/lunch/snacks/dinner), same convention
+  // `toWeekGrid` already uses for the schedule grid. The conversion happens
+  // once, here, at the API boundary — not scattered through every page.
+  getMealTimings: async (hostelId: string) => {
+    const response = await api.get(`/hostels/${hostelId}/meal-timings`);
+    return toLowercaseMealTimings(unwrap(response).meal_timings);
+  },
+  updateMealTimings: async (hostelId: string, mealTimings: Record<string, { start: string; end: string; enabled: boolean }>) => {
+    const response = await api.patch(`/hostels/${hostelId}/meal-timings`, { meal_timings: toUppercaseMealTimings(mealTimings) });
+    return toLowercaseMealTimings(unwrap(response).meal_timings);
+  },
+  getTenantMealTimings: async () => {
+    const response = await api.get('/food/tenant/meal-timings');
+    return toLowercaseMealTimings(unwrap(response).meal_timings);
+  },
 };
+
+const SLOT_TO_MEAL_TYPE: Record<string, string> = { breakfast: 'BREAKFAST', lunch: 'LUNCH', snacks: 'SNACKS', dinner: 'DINNER' };
+const MEAL_TYPE_TO_SLOT: Record<string, string> = { BREAKFAST: 'breakfast', LUNCH: 'lunch', SNACKS: 'snacks', DINNER: 'dinner' };
+
+function toLowercaseMealTimings(raw: Record<string, any> | null | undefined): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const [key, value] of Object.entries(raw ?? {})) {
+    const slot = MEAL_TYPE_TO_SLOT[key];
+    if (slot) out[slot] = value;
+  }
+  return out;
+}
+
+function toUppercaseMealTimings(raw: Record<string, any> | null | undefined): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const [key, value] of Object.entries(raw ?? {})) {
+    const mealType = SLOT_TO_MEAL_TYPE[key];
+    if (mealType) out[mealType] = value;
+  }
+  return out;
+}

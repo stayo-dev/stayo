@@ -316,6 +316,24 @@ Real feature, `food_polls`/`food_poll_options`/`food_poll_votes` — deliberatel
 
 See [[Food]] §16 for full detail, including a documented minor inconsistency (the "Allow multiple selections" toggle is independent of the Poll Type selector, inherited unreconciled from the reference design).
 
+## Meal Timings — permanent config, never re-entered into the weekly menu (2026-08-19)
+
+See [[Decisions#ADR-083|ADR-083]]. Two different things share the word "meal" and must stay separate:
+
+- **Meal Timings** (`preferences_config.meal_timings`) — *when* a meal is served. Owner-configured once per hostel, rarely changes.
+- **Weekly Menu** (`food_schedule_meals`) — *what* is served, per day. Changes every week; still has no time-of-day column and never will need one — a cell only ever holds a dish name.
+
+**Every reader composes the two rather than re-deriving a time.** The weekly schedule grid's meal-type header, the owner Today card, the tenant Next Serving card and Today's Meals list all read the same `meal_timings` and pair it with whichever day's `food_schedule_meals` row is relevant — none of them store or accept a time of their own.
+
+**Validation rules** (`sanitizeMealTimingsPayload`, `lib/services/food/meal-timings.ts`):
+- `start`/`end` must be `"HH:mm"`, 24h.
+- `start < end` **within** a meal type — no meal may span midnight. Overlap **between** different meal types is allowed (a hostel may run Lunch and Snacks close together); only a meal's own ordering is enforced.
+- A disabled (`enabled: false`) meal is skipped everywhere it's read — the weekly grid header shows "Off," it's absent from the tenant's Today's Meals list, and it's never a Next Serving candidate. It stays editable while disabled (not hidden), so re-enabling doesn't require retyping hours.
+
+**Status classification is end-exclusive**: a meal is `SERVING_NOW` from `start` up to (not including) `end`; `COMPLETED` from `end` onward. `nextServingAt()` returns the currently-serving meal if one exists, else the soonest upcoming one, else `null` once every enabled meal for the day is done.
+
+**Unconfigured hostels get sensible defaults, never a blank state.** `DEFAULT_MEAL_TIMINGS` — Breakfast 07:00–09:00, Lunch 12:30–14:00, Snacks 17:00–18:00, Dinner 19:00–21:00 — is the fallback for any hostel that has never saved its own, applied per-meal so one malformed key doesn't blank the other three.
+
 ## Signup phone verification
 
 Added 2026-07-31 ([[Decisions#ADR-034|ADR-034]]). **Phone verification is required for signup only when the provider can actually deliver it.**

@@ -5,12 +5,22 @@ import { MEAL_CATEGORY_META, type MealSlotKey } from '@shared/mocks/food';
 import { useTenantFoodSchedule, DAY_ORDER, type DayKey } from '@features/food/hooks/useTenantFoodSchedule';
 import { useTenantFoodPolls } from '@features/food/hooks/useTenantFoodPolls';
 import { useTenantFoodVoting } from '@features/food/hooks/useTenantFoodVoting';
+import { useTenantMealTimings } from '@features/food/hooks/useTenantMealTimings';
+import { useNow } from '@features/food/hooks/useNow';
+import { formatTimeRange, mealStatusAt, nextServingAt } from '@features/food/mealTimings';
+import { NextServingCard } from '@features/food/components/NextServingCard';
 import { mealIcon } from '@features/owner-food/mealIcons';
+import { SLOT_ORDER } from '@features/owner-food/weekGrid';
 
 const card = 'rounded-[16px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]';
 const sectionLabel = 'text-[13px] font-bold uppercase tracking-wide text-muted-foreground';
 
-const TODAY_SLOTS: MealSlotKey[] = ['breakfast', 'lunch', 'dinner'];
+const STATUS_PILL: Record<'COMPLETED' | 'SERVING_NOW' | 'UPCOMING', { label: string; className: string }> = {
+  COMPLETED: { label: 'Served', className: 'bg-muted text-muted-foreground' },
+  SERVING_NOW: { label: 'Serving now', className: 'bg-success/15 text-success' },
+  UPCOMING: { label: 'Upcoming', className: 'bg-warning-bg text-warning' },
+};
+
 const DAY_LABEL: Record<DayKey, string> = { MONDAY: 'Mon', TUESDAY: 'Tue', WEDNESDAY: 'Wed', THURSDAY: 'Thu', FRIDAY: 'Fri', SATURDAY: 'Sat', SUNDAY: 'Sun' };
 
 function todayKey(): DayKey {
@@ -33,6 +43,8 @@ export function TenantFoodPage() {
   const schedule = useTenantFoodSchedule();
   const polls = useTenantFoodPolls();
   const voting = useTenantFoodVoting();
+  const mealTimings = useTenantMealTimings();
+  const now = useNow();
   const [openMeal, setOpenMeal] = useState<{ name: string; slot: MealSlotKey } | null>(null);
 
   if (schedule.isLoading) return <FoodLoadingSkeleton />;
@@ -40,8 +52,15 @@ export function TenantFoodPage() {
   const currentMonth = schedule.months.find((m) => m.isCurrent) ?? null;
   const today = todayKey();
   const todayMeals = currentMonth
-    ? TODAY_SLOTS.map((slot) => ({ slot, cell: currentMonth.grid[today]?.[slot] })).filter((m) => m.cell)
+    ? SLOT_ORDER.filter((slot) => mealTimings.mealTimings[slot]?.enabled)
+        .map((slot) => ({ slot, cell: currentMonth.grid[today]?.[slot] }))
+        .filter((m) => m.cell)
     : [];
+
+  const upcoming = nextServingAt(mealTimings.mealTimings, now);
+  const nextServing = upcoming
+    ? { ...upcoming, itemName: currentMonth?.grid[today]?.[upcoming.slot]?.item_name ?? null }
+    : null;
 
   const researchPoll = polls.polls[0] ?? null;
   const lunchVoteItems = voting.itemsBySlot.lunch ?? [];
@@ -61,26 +80,34 @@ export function TenantFoodPage() {
           </div>
         </div>
 
+        <NextServingCard next={nextServing} now={now} />
+
         {todayMeals.length > 0 && (
           <div className="flex flex-col gap-2.5">
             <span className={sectionLabel}>Today's meals</span>
             <div className={`${card} px-2 py-1.5`}>
               {todayMeals.map(({ slot, cell }, i) => {
                 const Icon = mealIcon(slot);
+                const entry = mealTimings.mealTimings[slot];
+                const status = mealStatusAt(entry, now);
+                const pill = STATUS_PILL[status];
                 return (
                   <button
                     key={slot}
                     type="button"
                     onClick={() => setOpenMeal({ name: cell!.item_name, slot })}
-                    className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-3 text-left ${i > 0 ? 'border-t border-border' : ''}`}
+                    className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-3 text-left ${i > 0 ? 'border-t border-border' : ''} ${status === 'SERVING_NOW' ? 'bg-secondary/40' : ''}`}
                   >
                     <span className="flex h-10 w-10 flex-none items-center justify-center rounded-[11px] bg-secondary text-primary">
                       <Icon className="h-4.5 w-4.5" strokeWidth={1.75} />
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="text-[10px] font-semibold uppercase tracking-wide text-[#A2978B]">{MEAL_CATEGORY_META[slot].label}</div>
+                      <div className={`text-[10px] font-semibold uppercase tracking-wide ${status === 'SERVING_NOW' ? 'text-success' : 'text-[#A2978B]'}`}>
+                        {MEAL_CATEGORY_META[slot].label} · {formatTimeRange(entry)}
+                      </div>
                       <div className="mt-0.5 font-display text-[15.5px] font-bold tracking-[-0.01em] text-foreground">{cell!.item_name}</div>
                     </div>
+                    <span className={`flex-none rounded-full px-2.5 py-1 text-[10px] font-bold ${pill.className}`}>{pill.label}</span>
                   </button>
                 );
               })}

@@ -2,11 +2,14 @@ import { useRef } from 'react';
 import { GripVertical, Sparkles } from 'lucide-react';
 import type { useFoodSchedule } from '../../hooks/useFoodSchedule';
 import { UtensilsCrossed } from 'lucide-react';
+import { MEAL_CATEGORY_META } from '@shared/mocks/food';
+import { formatTimeRange, type MealTimings } from '@features/food/mealTimings';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { buildPublishChecks } from '../../publishChecks';
 import { findDropTarget, isValidDrop, type DropCandidate } from '../../dragSwap';
 import { PublishChecklist } from './PublishChecklist';
 import { DayRow } from './DayRow';
+import { mealIcon } from '../../mealIcons';
 import { DAY_ORDER, SLOT_ORDER, dayKeyFor, isFilled } from '../../weekGrid';
 
 /**
@@ -31,10 +34,11 @@ function measure(el: HTMLElement): DropCandidate['rect'] {
 interface WeeklyScheduleGridProps {
   schedule: ReturnType<typeof useFoodSchedule>;
   tenantCount: number | null;
+  mealTimings: MealTimings;
 }
 
 /** The weekly (Mon-Sun x 4 meals) review/edit grid — one real week, replacing the old Week1-4 model. Tap a cell to swap its item. */
-export function WeeklyScheduleGrid({ schedule, tenantCount }: WeeklyScheduleGridProps) {
+export function WeeklyScheduleGrid({ schedule, tenantCount, mealTimings }: WeeklyScheduleGridProps) {
   // Every mounted chip's element, keyed by meal id. Elements rather than rects
   // because a rect measured at mount is stale the moment the page scrolls or
   // the grid re-renders; measuring is deferred to drag start.
@@ -125,6 +129,22 @@ export function WeeklyScheduleGrid({ schedule, tenantCount }: WeeklyScheduleGrid
             <Sparkles className="h-3 w-3" /> {schedule.schedule!.status === 'PUBLISHED' ? 'Fill gaps' : 'Rebuild'}
           </button>
         </div>
+      </div>
+
+      {/* Configured once on the Meal Timings screen, shown here read-only — a
+          cell only ever holds a dish name, never a time, so there is nothing
+          to re-enter per meal. */}
+      <div className="flex flex-wrap gap-x-3 gap-y-1 px-1.5">
+        {SLOT_ORDER.map((slot) => {
+          const Icon = mealIcon(slot);
+          const timing = mealTimings[slot];
+          return (
+            <span key={slot} className="flex items-center gap-1 text-[10.5px] font-semibold text-muted-foreground">
+              <Icon className="h-3 w-3" strokeWidth={1.9} />
+              {MEAL_CATEGORY_META[slot].label} · {timing.enabled ? formatTimeRange(timing) : 'Off'}
+            </span>
+          );
+        })}
       </div>
 
       <div className="flex flex-col gap-1">
