@@ -18,6 +18,8 @@ export type ProjectListingInput = {
     hostel_type?: unknown;
     food_included?: unknown;
     listing_source?: string | null;
+    created_at?: Date | string | null;
+    owner?: { name?: string | null } | null;
   };
   /** The marketing revision's validated content, or null when never approved. */
   marketing: any | null;
@@ -89,6 +91,18 @@ export function listingMedia(marketing: any | null, fallback: string[] = []): Li
   return fallback.map((url) => ({ url, kind: "image" as const, thumbnail_url: null, label: null }));
 }
 
+/**
+ * "Ravi K." — the owner as a public listing names them. Same rule as a review
+ * author: enough to read as a person, never a full identity beside a business
+ * a stranger can walk into.
+ */
+export function hostName(fullName: string | null | undefined): string | null {
+  const parts = String(fullName ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return null;
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.`;
+}
+
 export function projectListing({ detail, visible, marketing, preview = false }: ProjectListingInput) {
   const platformListed = String(visible.listing_source ?? "OWNER_MANAGED") === "PLATFORM_LISTED";
 
@@ -139,6 +153,23 @@ export function projectListing({ detail, visible, marketing, preview = false }: 
      * doing so advertises beds nobody can honour, to someone trying to find
      * somewhere to live. This is the single most important flag here.
      */
+    /**
+     * Who runs this place, and since when.
+     *
+     * A listing with no human attached is a database row; every marketplace
+     * that trades on trust puts a person on the page. First name and last
+     * initial only — the same rule as a review's author (`reviewerDisplayName`)
+     * — and nothing else: no phone, no email. A PLATFORM_LISTED hostel has no
+     * real owner, so it says so rather than naming the sentinel profile.
+     */
+    host: platformListed
+      ? { name: null, listed_since: visible.created_at ?? null, platform_listed: true }
+      : {
+          name: hostName(visible.owner?.name),
+          listed_since: visible.created_at ?? null,
+          platform_listed: false,
+        },
+
     availability_confirmed: !platformListed,
     platform_listed: platformListed,
 

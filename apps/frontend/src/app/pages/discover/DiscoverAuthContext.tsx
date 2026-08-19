@@ -106,3 +106,15 @@ export function useDiscoverAuth(): DiscoverAuthValue {
   }
   return context;
 }
+
+/**
+ * The same context, or null outside the provider.
+ *
+ * `AppBottomNav` opens the sign-in sheet from the "Log in" tab, and it is
+ * mounted by a shell that may one day render outside `DiscoverAuthProvider`.
+ * Throwing there would take the whole navigation bar down to save one tap, so
+ * the nav asks and falls back to routing when the answer is no.
+ */
+export function useDiscoverAuthOptional(): DiscoverAuthValue | null {
+  return useContext(DiscoverAuthContext);
+}

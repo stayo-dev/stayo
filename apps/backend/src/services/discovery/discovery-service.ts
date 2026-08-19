@@ -474,7 +474,19 @@ export class DiscoveryService {
       // listing_source is REQUIRED here: without it projectListing defaults to
       // OWNER_MANAGED and a platform listing would claim confirmed
       // availability it cannot honour.
-      select: { id: true, hostel_type: true, food_included: true, listing_source: true },
+      select: {
+        id: true,
+        hostel_type: true,
+        food_included: true,
+        listing_source: true,
+        // "Managed by …, on Stayo since …" — the one thing on this page that
+        // says a person runs this hostel. Name only: a public listing is not
+        // the place for an owner's phone or email, and the hostel's own
+        // business number is already on it.
+        created_at: true,
+        // The relation on `hostels` is `profiles`, not `owner`.
+        profiles: { select: { name: true } },
+      },
     });
     if (!visible) throw ApiError.notFound("This hostel is not listed on Stayo");
 
@@ -488,7 +500,7 @@ export class DiscoveryService {
 
     // One projection, shared with the admin preview — see listing-projection.ts
     // for why this must not be duplicated.
-    return projectListing({ detail, visible, marketing });
+    return projectListing({ detail, visible: { ...visible, owner: visible.profiles }, marketing });
   }
 
   // ── Saved ──────────────────────────────────────────────────────────────────

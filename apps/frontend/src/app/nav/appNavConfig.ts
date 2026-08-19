@@ -6,6 +6,15 @@ export interface AppNavTab {
   label: string;
   Icon: LucideIcon;
   end?: boolean;
+  /**
+   * When set, tapping this tab performs an action instead of navigating.
+   *
+   * "Log in" is the only one: it used to route to `/profile`, which for a
+   * signed-out visitor is a page whose entire content is a second button that
+   * opens the sign-in sheet. Two taps, one intent, and a page-load in between
+   * — the person had already told us what they wanted by tapping Log in.
+   */
+  action?: 'SIGN_IN';
 }
 
 /**
@@ -68,6 +77,8 @@ export function buildOuterTabs(
   if (signedIn) return EXPLORE_PROFILE_TABS;
 
   return EXPLORE_PROFILE_TABS.map((tab) =>
-    tab.to === '/profile' ? { ...tab, label: 'Log in', Icon: CircleUserRound } : tab,
+    tab.to === '/profile'
+      ? { ...tab, label: 'Log in', Icon: CircleUserRound, action: 'SIGN_IN' as const }
+      : tab,
   );
 }

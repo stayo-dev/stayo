@@ -10,6 +10,12 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-19 — The listing page, rebuilt on Airbnb's shape
+- **Title above the photos, and a photo grid** at desk width: one large frame plus four, with "Show all N photos" opening a full-screen viewer (`MediaLightbox`, same scroll-snap track as the phone gallery, arrow keys and Escape). A phone keeps the immersive full-bleed carousel.
+- **Who runs it.** The payload now carries `host` — the owner as "Ravi K." and "On Stayo since March 2026". Name only: a public listing is not where a phone number goes, and a PLATFORM_LISTED hostel says "Listed by Stayo" rather than naming the sentinel profile.
+- **Highlights and About are finally rendered.** Both were collected in the marketing editor, reviewed by an admin, and displayed nowhere.
+- **Tapping "Log in" opens the sign-in sheet** instead of routing to `/profile`, whose entire signed-out content was a second sign-in button — two taps and a page load for one intent. `AppNavTab.action`, covered by tests.
+
 ### 2026-08-19 — The enquiry-rejected WhatsApp template is actually sent
 - **`TENANT_ENQUIRY_REJECTED` had existed as an approved template since the enquiry work shipped and nothing ever sent it** — a Discovery applicant whose enquiry was turned down simply heard nothing, forever. It now fires when an owner moves that lead to `LOST`. `OWNER_ENQUIRY_RECEIVED` was already wired and is unchanged.
 - **Only for enquiries that came through Discovery** (`seeker_profile_id`): those people have a Stayo account and used the platform to ask. A walk-in lead marked lost never opted into being messaged.
