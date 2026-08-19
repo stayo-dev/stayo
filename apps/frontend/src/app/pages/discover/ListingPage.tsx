@@ -194,8 +194,8 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
    * anything served before `media` existed.
    */
   const media: { url: string; kind: 'image' | 'video'; thumbnail_url?: string | null }[] =
-    data?.media?.length
-      ? data.media
+    hostel.media?.length
+      ? hostel.media
       : (hostel.photos ?? []).map((url: string) => ({ url, kind: 'image' as const }));
   const photos: string[] = media.map((item) => item.url);
   const audience = hostel.hostel_type ? AUDIENCE_LABEL[hostel.hostel_type] : null;
