@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { TenantPageHeader } from '../components/TenantPageHeader';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, Droplets, Wifi, Zap, Sparkles, Wrench, DoorOpen, KeyRound, UserPlus, BedDouble, ListChecks, MessageSquareWarning } from 'lucide-react';
@@ -91,12 +92,8 @@ export function TenantRoomPage() {
 
   return (
     <div className="min-h-screen">
-      <div className="flex flex-col gap-6 px-[22px] pb-8 pt-6">
-        <div>
-          <h1 className="font-display text-[24px] font-extrabold tracking-[-0.03em] text-foreground">My Room</h1>
-          <p className="mt-0.5 text-[12px] font-medium text-muted-foreground">Everything about your living space</p>
-        </div>
-
+      <TenantPageHeader title="My Room" subtitle="Everything about your living space" />
+      <div className="flex flex-col gap-6 px-[22px] pb-8 pt-5">
         <button
           type="button"
           onClick={() => overlay.push('room_details')}

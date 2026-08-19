@@ -277,43 +277,27 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
             ))}
           </div>
 
+          {/*
+            Only Back stays over the photo, and only because you need a way out
+            before you have scrolled anywhere. Share and Save moved down beside
+            the hostel's name: they were three opaque pucks sitting on the
+            middle of the subject of every cover photo, which is the one thing
+            this screen exists to show. A gradient behind this one keeps a dark
+            chevron legible on a bright sky without a white disc over the
+            building.
+          */}
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 h-24"
+            style={{ background: 'linear-gradient(to bottom,rgba(20,14,10,.38),transparent)' }}
+          />
           <button
             type="button"
             aria-label="Back"
             onClick={() => navigate(-1)}
-            className="absolute left-4 top-[max(3.25rem,env(safe-area-inset-top))] flex h-[38px] w-[38px] items-center justify-center rounded-full"
-            style={{ background: 'rgba(255,255,255,.95)', boxShadow: '0 2px 8px rgba(0,0,0,.15)' }}
+            className="absolute left-4 top-[max(3.25rem,env(safe-area-inset-top))] flex h-[38px] w-[38px] items-center justify-center rounded-full backdrop-blur-sm transition-colors hover:bg-white/95"
+            style={{ background: 'rgba(255,255,255,.82)' }}
           >
             <ChevronLeft className="h-5 w-5" style={{ color: '#3A342E' }} />
-          </button>
-
-          {/* Sharing a hostel with a friend is how most people decide on one,
-              so it sits beside Save rather than at the bottom of the page. */}
-          <button
-            type="button"
-            aria-label={`Share ${hostel.name}`}
-            onClick={() =>
-              share({ name: hostel.name, slug: slug as string, city: hostel.city })
-            }
-            className="absolute right-[62px] top-[max(3.25rem,env(safe-area-inset-top))] flex h-[38px] w-[38px] items-center justify-center rounded-full"
-            style={{ background: 'rgba(255,255,255,.95)', boxShadow: '0 2px 8px rgba(0,0,0,.15)' }}
-          >
-            <Share2 className="h-[17px] w-[17px]" strokeWidth={1.8} style={{ color: '#6E6459' }} />
-          </button>
-
-          <button
-            type="button"
-            aria-label={isSaved ? 'Remove from saved' : 'Save this hostel'}
-            aria-pressed={isSaved}
-            onClick={handleSave}
-            className="absolute right-4 top-[max(3.25rem,env(safe-area-inset-top))] flex h-[38px] w-[38px] items-center justify-center rounded-full"
-            style={{ background: 'rgba(255,255,255,.95)', boxShadow: '0 2px 8px rgba(0,0,0,.15)' }}
-          >
-            <Heart
-              className="h-[18px] w-[18px]"
-              strokeWidth={1.8}
-              style={{ color: isSaved ? C.clayLight : '#6E6459', fill: isSaved ? C.clayLight : 'transparent' }}
-            />
           </button>
 
           {photos.length > 1 && (
@@ -429,12 +413,49 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
             )}
           </div>
 
+          {/* Share and Save live here, beside the name — labelled, in reach of
+              a thumb at the bottom of the screen rather than the top, and off
+              the photograph. */}
+          <div className="mt-2.5 flex items-start justify-between gap-3">
           <h1
-            className="mt-2.5 text-[23px] font-extrabold leading-[1.2] tracking-[-0.02em]"
+            className="min-w-0 flex-1 text-[23px] font-extrabold leading-[1.2] tracking-[-0.02em]"
             style={{ fontFamily: FONT.display, color: C.text }}
           >
             {hostel.name}
           </h1>
+
+            <div className="flex flex-none items-center gap-1.5">
+              <button
+                type="button"
+                aria-label={`Share ${hostel.name}`}
+                onClick={() => share({ name: hostel.name, slug: slug as string, city: hostel.city })}
+                className="flex h-9 items-center gap-1.5 rounded-full border px-3 transition-colors hover:bg-white"
+                style={{ borderColor: C.line, background: C.cardWarm }}
+              >
+                <Share2 className="h-[15px] w-[15px]" strokeWidth={1.8} style={{ color: C.textBody }} />
+                <span className="hidden text-[12px] font-semibold sm:inline" style={{ color: C.textBody }}>
+                  Share
+                </span>
+              </button>
+              <button
+                type="button"
+                aria-label={isSaved ? 'Remove from saved' : 'Save this hostel'}
+                aria-pressed={isSaved}
+                onClick={handleSave}
+                className="flex h-9 items-center gap-1.5 rounded-full border px-3 transition-colors hover:bg-white"
+                style={{ borderColor: C.line, background: C.cardWarm }}
+              >
+                <Heart
+                  className="h-[15px] w-[15px]"
+                  strokeWidth={1.8}
+                  style={{ color: isSaved ? C.clayLight : C.textBody, fill: isSaved ? C.clayLight : 'transparent' }}
+                />
+                <span className="hidden text-[12px] font-semibold sm:inline" style={{ color: C.textBody }}>
+                  {isSaved ? 'Saved' : 'Save'}
+                </span>
+              </button>
+            </div>
+          </div>
 
           <p className="mt-2 flex items-center gap-1.5 text-[12.5px]" style={{ color: C.textMuted }}>
             <MapPin className="h-3.5 w-3.5 flex-none" strokeWidth={1.7} style={{ color: C.textGhost }} />

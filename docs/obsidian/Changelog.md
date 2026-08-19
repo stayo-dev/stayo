@@ -10,6 +10,12 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-19 — Tenant screens: fixed headers, and the dark slabs removed
+- **Screen titles stay put.** My Room / My Menu / Payments rendered their title as the first item in the scrolling column, so the name of the screen you were on left the page as soon as you looked at anything on it. One `TenantPageHeader`, sticky, translucent over the graph-paper ground.
+- **The dark headers on Home and Profile are gone.** Each spent ~120px of a phone screen and a radial glow to say a name — on Home, above "rent due". Both now sit on the app's own paper ground with the terracotta monogram carrying the brand instead of a slab of ink, and both are sticky.
+- **Home greets by time of day** ("Good evening, Sharan") rather than repeating the product name at someone who lives there — pure `tenantGreeting.ts`, 4 tests.
+- **Share and Save came off the photograph** on a hostel listing. Three opaque pucks sat in the middle of the subject of every cover photo; they are pills beside the hostel's name now, labelled from `sm` up. Only Back stays over the image — you need a way out before you have scrolled — over a gradient rather than as a white disc.
+
 ### 2026-08-19 — Hostel reviews, and a laptop layout for the listing
 - **Reviews on a hostel listing**, written by signed-in accounts and **published only by an admin** (`/admin/reviews`). Every review lands PENDING; editing a published one sends it back. See [[Decisions#ADR-086|ADR-086]], migration **071 (needs applying)**.
 - **The listing says why it has no reviews** rather than showing a blank: Stayo checks each one before it appears. And it never prints an average below three reviews — two reviews averaging 3.0 carry a number's authority and a sample of two.
