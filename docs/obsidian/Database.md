@@ -376,3 +376,18 @@ Applied to the live database on 2026-08-07. See [[APIs]] and [[Features]].
 ### `platform_support_tickets` (added 2026-08-16, [[Decisions#ADR-079|ADR-079]])
 
 Tenant/user → Stayo Admin support tickets — Profile → "Raise a Ticket". Modeled directly on `owner_documents`' shape (see above) but deliberately **has no `owner_id`/`hostel_id` and no relation to `tenants`** — the whole point is that this queue belongs to Stayo, not to a hostel, and stays fully independent of the tenant → owner complaint system (`tenant_service_requests`/`complaints`, both of which remain hostel/owner-bound and untouched by this change). Columns: `profile_id` (FK → `profiles`, `ON DELETE CASCADE`), `category` (`APP_BUG`|`ACCOUNT_ISSUE`|`PAYMENT_ISSUE`|`OTHER`, plain string), `subject`, `description`, `status` (`OPEN` default; only an admin resolution can move it to `RESOLVED` — never set by the reporter), `created_at`, `resolved_at`/`resolved_by`, `admin_note` (shown back to the reporter). Indexed on `(profile_id)` and `(status)`, same as `owner_documents`. Migration: `prisma/migrations/20260816120000_add_platform_support_tickets/migration.sql` (idempotent, applied to the dev database on 2026-08-16). See [[APIs]] and [[Features]].
+
+## `hostel_reviews` (migration 071 — 2026-08-19, **not yet applied outside dev**)
+
+Resident reviews of a hostel, shown on its Discovery listing.
+
+| Column | Notes |
+|---|---|
+| `hostel_id`, `profile_id` | Unique together — one review per account per hostel; an edit replaces it. |
+| `rating` | `smallint`, `CHECK (rating BETWEEN 1 AND 5)` — constrained in the database, not only in the service. |
+| `body` | Optional: a rating with no words is a valid review. |
+| `status` | `PENDING` \| `PUBLISHED` \| `REJECTED`, defaulting to PENDING. **Nothing is public until an admin publishes it** ([[Decisions#ADR-086|ADR-086]]). |
+| `stayed_here` | Snapshotted from a real tenancy at write time, so it stays true after move-out. A badge and a moderation signal, never a gate. |
+| `moderated_at/by`, `moderation_note` | The note is shown to the author, so a rejection arrives with a reason. |
+
+Indexes: `(hostel_id, status)` for the listing, `(status, created_at DESC)` for the moderation queue.

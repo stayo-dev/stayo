@@ -1,7 +1,6 @@
 import {
   LayoutGrid, TrendingUp, Users, ShieldCheck, Building2,
-  BarChart3, Wallet, CreditCard, Bug, Megaphone, Settings,
-} from 'lucide-react';
+  BarChart3, Wallet, CreditCard, Bug, Megaphone, Settings, Star } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export type AdminNavItem = {
@@ -19,6 +18,8 @@ export type AdminNavCounts = {
   leads?: number;
   kyc?: number;
   listings?: number;
+  /** Reviews waiting to be published — nothing reaches a listing without this. */
+  reviews?: number;
   reports?: number;
 };
 
@@ -54,6 +55,7 @@ export function buildAdminNav(counts: AdminNavCounts): AdminNavGroup[] {
       items: [
         item('/admin/kyc', 'KYC Approvals', ShieldCheck, counts.kyc ?? 0, 'amber'),
         item('/admin/listings', 'Hostel Listings', Building2, counts.listings ?? 0, 'accent'),
+        item('/admin/reviews', 'Reviews', Star, counts.reviews ?? 0, 'amber'),
       ],
     },
     {

@@ -10,6 +10,13 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-19 — Hostel reviews, and a laptop layout for the listing
+- **Reviews on a hostel listing**, written by signed-in accounts and **published only by an admin** (`/admin/reviews`). Every review lands PENDING; editing a published one sends it back. See [[Decisions#ADR-086|ADR-086]], migration **071 (needs applying)**.
+- **The listing says why it has no reviews** rather than showing a blank: Stayo checks each one before it appears. And it never prints an average below three reviews — two reviews averaging 3.0 carry a number's authority and a sample of two.
+- **Laptop layout for the listing page**: two columns from `lg` — the listing on the left, a sticky price/Enquire card on the right, replacing the bottom bar that was pinned below the fold of a 900px window.
+- New: `GET/POST /api/discover/hostels/[slug]/reviews`, `GET /api/platform-admin/reviews`, `PATCH /api/platform-admin/reviews/[id]`. See [[APIs]].
+- Tests +12 backend pure.
+
 ### 2026-08-19 — Listing media, the review cycle, and the kitchen menu
 - **A phone multi-select of photos no longer fails.** The client batched a whole selection into one request, so ten legal 4MB photos became a ~40MB body rejected above every size check we had — the owner was told a limit was exceeded that nothing had crossed. One file per request now, photos downscaled in the browser first. See [[Bugs]].
 - **Videos** upload alongside photos (MP4/WebM/MOV, 60MB), play inline in the Discovery gallery, and can never be the cover — the cover is the search card's still and a shared link's `og:image`. `content.photos` gains `kind` and `thumbnail_url`, both back-compatible.

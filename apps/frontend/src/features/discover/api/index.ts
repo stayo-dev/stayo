@@ -111,6 +111,44 @@ export interface DiscoverListing {
   [key: string]: any;
 }
 
+
+// ── Reviews ────────────────────────────────────────────────────────────────
+
+export interface HostelReview {
+  id: string;
+  rating: number;
+  body: string | null;
+  /** This person held a tenancy here — a badge, never a gate on writing one. */
+  stayed_here: boolean;
+  created_at: string;
+  /** "Sharan K." — never a full name, an email or a phone number. */
+  author: string;
+}
+
+export interface ReviewSummary {
+  count: number;
+  /** Null until there are enough reviews for a mean to mean anything. */
+  average: number | null;
+  distribution: { rating: number; count: number }[];
+  emptyReason: 'NONE_YET' | 'TOO_FEW' | null;
+}
+
+/** The reader's own review, in whatever state — including not yet published. */
+export interface MyReview {
+  id: string;
+  rating: number;
+  body: string | null;
+  status: 'PENDING' | 'PUBLISHED' | 'REJECTED';
+  moderation_note: string | null;
+  created_at: string;
+}
+
+export interface HostelReviewsPayload {
+  summary: ReviewSummary;
+  reviews: HostelReview[];
+  mine: MyReview | null;
+}
+
 export type EnquiryStage = 'SENT' | 'REVIEWING' | 'ACCEPTED' | 'CLOSED';
 
 export interface DiscoverEnquiry {
@@ -154,6 +192,21 @@ export const discoverService = {
   getListing: async (slug: string): Promise<DiscoverListing> => {
     const response = await api.get(`/discover/hostels/${encodeURIComponent(slug)}`);
     return unwrap(response) as DiscoverListing;
+  },
+
+  /** Published reviews for a hostel, plus the reader's own if they have one. */
+  listReviews: async (slug: string): Promise<HostelReviewsPayload> => {
+    const response = await api.get(`/discover/hostels/${encodeURIComponent(slug)}/reviews`);
+    return unwrap(response) as HostelReviewsPayload;
+  },
+
+  /**
+   * Write or replace a review. Always lands as PENDING — nothing a visitor
+   * writes reaches a listing without an admin publishing it.
+   */
+  submitReview: async (slug: string, input: { rating: number; body?: string | null }) => {
+    const response = await api.post(`/discover/hostels/${encodeURIComponent(slug)}/reviews`, input);
+    return unwrap(response);
   },
 
   listSaved: async (): Promise<DiscoverCard[]> => {

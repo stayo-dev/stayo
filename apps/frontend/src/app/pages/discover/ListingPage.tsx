@@ -27,6 +27,7 @@ import { useDiscoverAuth } from './DiscoverAuthContext';
 import { DiscoverEmpty, PrimaryButton } from './components/DiscoverShell';
 import { AUDIENCE_LABEL, C, FONT, PHOTO_FALLBACK, formatRupees } from './discoverTheme';
 import { photoIndexFromScroll } from './galleryScroll';
+import { ReviewsSection } from './components/ReviewsSection';
 import { useShareHostel } from '@shared/hooks/useShareHostel';
 
 const MESS_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
@@ -387,10 +388,18 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
         </div>
 
         {/* ── Body ─────────────────────────────────────────────────────── */}
-        {/* Capped like the rest of Discover — a 1280px line of body copy is
-            unreadable, and the sheet is the page's reading column. */}
+        {/*
+          One reading column on a phone; two at desk width — the listing on the
+          left, the money on the right. The price and the enquire button ride
+          along as a sticky card rather than a bar pinned to the bottom of a
+          900px-tall window: on a laptop, the thing you are deciding about
+          should stay beside what you are reading, not below the fold of it.
+          Capped at 1180px like the rest of Discover — a 1280px line of body
+          copy is unreadable.
+        */}
+        <div className="relative mx-auto -mt-6 w-full max-w-[860px] lg:grid lg:max-w-[1180px] lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-7 lg:px-8">
         <div
-          className="relative mx-auto -mt-6 w-full max-w-[860px] rounded-t-[24px] px-5 pb-8 pt-5 lg:rounded-[24px] lg:px-8"
+          className="rounded-t-[24px] px-5 pb-8 pt-5 lg:rounded-[24px] lg:px-8"
           style={{ background: C.paper }}
         >
           <div className="flex flex-wrap items-center gap-2">
@@ -681,12 +690,72 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
                 : 'Photos, room types and live availability come straight from the owner. Amenity lists and distances appear once this hostel publishes its listing.'}
             </p>
           </section>
+
+          {/* ── Reviews ──────────────────────────────────────────────────── */}
+          <ReviewsSection
+            slug={slug}
+            hostelName={hostel.name}
+            onSignIn={() => openSignIn()}
+          />
+        </div>
+
+        {/* Desktop-only: the decision column. Mirrors the sticky bar a phone
+            gets, which is hidden at this width so there is only ever one
+            price and one Enquire button on screen. */}
+        <aside className="hidden lg:block lg:sticky lg:top-6">
+          <div
+            className="rounded-[20px] border p-5"
+            style={{ background: C.cardWarm, borderColor: C.line, boxShadow: '0 8px 24px rgba(40,30,20,.07)' }}
+          >
+            <p className="text-[11px]" style={{ color: C.textMuted }}>
+              {selectedOption ? `${selectedOption.label} selected` : 'Starting from'}
+            </p>
+            {displayPrice != null ? (
+              <p className="mt-1 flex items-baseline gap-1">
+                <span
+                  className="text-[26px] font-extrabold tracking-[-0.02em]"
+                  style={{ fontFamily: FONT.display, color: C.text }}
+                >
+                  ₹{formatRupees(displayPrice)}
+                </span>
+                <span className="text-[12px]" style={{ color: C.textMuted }}>/month</span>
+              </p>
+            ) : (
+              <p className="mt-1 text-[18px] font-bold" style={{ fontFamily: FONT.display, color: C.text }}>
+                Price on request
+              </p>
+            )}
+
+            {hostel.vacant_beds > 0 && (
+              <p className="mt-1.5 text-[12px] font-semibold" style={{ color: C.green }}>
+                {hostel.vacant_beds} {hostel.vacant_beds === 1 ? 'bed' : 'beds'} available right now
+              </p>
+            )}
+
+            <div className="mt-4">
+              <PrimaryButton
+                full
+                onClick={() =>
+                  navigate(`/discover/h/${slug}/enquire`, {
+                    state: { roomCapacity: selectedOption?.capacity, hostelName: hostel.name },
+                  })
+                }
+              >
+                Enquire
+              </PrimaryButton>
+            </div>
+
+            <p className="mt-3 text-[11px] leading-[1.55]" style={{ color: C.textMuted }}>
+              Enquiring is free and does not book anything — the hostel replies to you directly.
+            </p>
+          </div>
+        </aside>
         </div>
       </div>
 
       {/* ── Sticky enquire bar ───────────────────────────────────────────── */}
       <div
-        className="sticky bottom-0 z-30 mx-auto flex w-full max-w-[860px] flex-none items-center gap-3.5 border-t px-4 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-3 lg:rounded-t-[20px] lg:border lg:px-8"
+        className="sticky bottom-0 z-30 mx-auto flex w-full max-w-[860px] flex-none items-center gap-3.5 border-t px-4 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-3 lg:hidden"
         style={{ background: C.cardWarm, borderColor: C.line, boxShadow: '0 -6px 18px rgba(40,30,20,.06)' }}
       >
         <div className="min-w-0 flex-1">

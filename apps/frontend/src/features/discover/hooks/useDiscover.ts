@@ -41,6 +41,32 @@ export function useIsSeeker() {
   };
 }
 
+/** A hostel's published reviews (public), with the reader's own attached. */
+export function useHostelReviews(slug: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.discover.reviews(slug ?? ''),
+    queryFn: () => discoverService.listReviews(slug as string),
+    enabled: Boolean(slug),
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * Write a review. No optimistic insert into the list: the review is not
+ * published yet and showing it there would tell the writer a lie about what
+ * the public can see.
+ */
+export function useSubmitReview(slug: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { rating: number; body?: string | null }) =>
+      discoverService.submitReview(slug as string, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.discover.reviews(slug ?? '') });
+    },
+  });
+}
+
 export function useSavedHostels() {
   const { isSeeker } = useIsSeeker();
   return useQuery({

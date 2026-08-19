@@ -1276,6 +1276,23 @@ That reading was wrong, and measurement is what showed it. Two production endpoi
 - **Consequences:** The listing's menu can drift from the kitchen's, and that is intentional — the published one is what Stayo reviewed. The mapping skips any day or meal it does not recognise rather than guessing, and always returns exactly seven days, because both surfaces index the week positionally.
 - **Related:** [[Decisions#ADR-077|ADR-077]], [[Food]], [[Features]], [[APIs]].
 
+## ADR-086: Reviews are written by signed-in accounts and published only by an admin
+
+- **Date:** 2026-08-19
+- **Status:** accepted
+- **Context:** Discovery has returned `ratings_available: false` since launch, reserving the space for reviews rather than inventing a number. Listings therefore had no social proof at all, and nothing explained the absence — a blank where reviews belong reads as neglect. The ask was a review box on the listing, with **control of what appears held by admins**.
+- **Decision:**
+  1. **Signed-in accounts only.** An open text field attached to a named business, on a page carrying Stayo's verification badge, is not something to accept from an anonymous visitor. The write box shows a sign-in prompt rather than a form that discards the writing at the end.
+  2. **Nothing is public until an admin publishes it.** Every review lands `PENDING`; `/admin/reviews` is the only path to `PUBLISHED`. Editing a published review returns it to `PENDING` — otherwise "approve once, rewrite after" is an open door onto the page.
+  3. **Moderation is Stayo's, not the owner's.** An owner choosing which reviews of their own hostel appear is a testimonial page, not a review system, and a reader can tell the difference.
+  4. **One review per account per hostel**, enforced by a unique index rather than a hopeful check. A second opinion from the same account replaces the first.
+  5. **No average below three reviews.** Two reviews averaging 3.0 say nothing about a hostel and everything about two people, while carrying the authority of a number printed beside a star. Below the threshold the reviews are shown and the score is not — the same honesty rule that produced `ratings_available: false`.
+  6. **`stayed_here` is a badge and a moderation signal, never a gate.** Snapshotted at write time from a real tenancy, so it stays true after the person moves out. Someone who toured a hostel and was treated badly has something worth saying too.
+  7. **Reviewer identity is first name plus last initial**, and "A resident" when there is no name — never an email or a phone number, which is where "use whatever identifier we have" ends up.
+  8. **The author is told where their review stands** — pending, published, or rejected with the reason. A review that silently vanishes reads as a lost submission and gets rewritten.
+- **Consequences:** A new `hostel_reviews` table (migration 071) and a moderation queue someone has to actually work — an unread queue is a slower way of rejecting everything. Reviews are gathered per hostel and shown only on that hostel's listing; there is no cross-hostel reputation, no owner reply, and no rating on search cards yet.
+- **Related:** [[Decisions#ADR-073|ADR-073]], [[Decisions#ADR-084|ADR-084]], [[Database]], [[APIs]], [[Features]], [[Changelog]].
+
 ## See also
 - [[Changelog]] for the chronological record of what shipped
 - [[Architecture]] for the system these decisions govern

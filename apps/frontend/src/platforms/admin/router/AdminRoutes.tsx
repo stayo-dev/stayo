@@ -13,6 +13,7 @@ const LeadsPage = lazy(() => import('../pages/LeadsPage').then((m) => ({ default
 const OwnersPage = lazy(() => import('../pages/OwnersPage').then((m) => ({ default: m.OwnersPage })));
 const KycPage = lazy(() => import('../pages/KycPage').then((m) => ({ default: m.KycPage })));
 const ListingsPage = lazy(() => import('../pages/ListingsPage').then((m) => ({ default: m.ListingsPage })));
+const ReviewsPage = lazy(() => import('../pages/ReviewsPage').then((m) => ({ default: m.ReviewsPage })));
 const RevenuePage = lazy(() => import('../pages/RevenuePage').then((m) => ({ default: m.RevenuePage })));
 const SettlementsPage = lazy(() => import('../pages/SettlementsPage').then((m) => ({ default: m.SettlementsPage })));
 const SubscriptionsPage = lazy(() => import('../pages/SubscriptionsPage').then((m) => ({ default: m.SubscriptionsPage })));
@@ -52,6 +53,7 @@ export function AdminRoutes() {
             a separate destination — a listing needs both to go live. */}
         <Route path="/admin/kyc" element={<KycPage />} />
         <Route path="/admin/listings" element={<ListingsPage />} />
+        <Route path="/admin/reviews" element={<ReviewsPage />} />
         {/* Full-screen: it renders the real Discovery listing, so it must not
             sit inside the console chrome. */}
         <Route path="/admin/listings/preview/:revisionId" element={<ListingPreviewPage />} />

@@ -63,6 +63,7 @@ export default defineConfig({
       'tests/discovery-listing-projection.test.ts',
       'tests/discovery-share-card.test.ts',
       'tests/marketing-mess-import.test.ts',
+      'tests/review-summary.test.ts',
       'tests/marketing-review-flags.test.ts',
       'tests/platform-listing-claim.test.ts',
       'tests/platform-listing-enquiry-lead.test.ts',

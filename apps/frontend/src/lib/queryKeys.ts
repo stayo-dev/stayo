@@ -141,6 +141,12 @@ export const queryKeys = {
    * because the owner's editor and the admin's queue read the same revision —
    * an approval must invalidate both.
    */
+  /** Hostel reviews — the admin moderation queue. */
+  reviews: {
+    all: () => ['reviews'],
+    queue: (status: string) => ['reviews', 'queue', status],
+  },
+
   marketing: {
     all: () => ['marketing'],
     editor: (hostelId: string) => ['marketing', 'editor', hostelId],
@@ -158,6 +164,7 @@ export const queryKeys = {
   },
 
   discover: {
+    reviews: (slug: string) => ['discover', 'reviews', slug],
     all: () => ['discover'],
     search: (filters?: object) => ['discover', 'search', filters ?? {}],
     listing: (slug: string) => ['discover', 'listing', slug],
