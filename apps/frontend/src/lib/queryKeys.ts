@@ -15,6 +15,8 @@ export const queryKeys = {
     pendingDocuments: () => ownerKey('pending-documents'),
     /** A tenant's disclosed residency history — see ADR-053's amendment. */
     tenantHistory: (tenantId: string) => ownerKey('tenant-history', tenantId),
+    /** Same disclosed history, looked up by hostel+profile — the enquiry/invite path, before a tenancy exists. */
+    tenantHistoryByProfile: (hostelId: string, profileId: string) => ownerKey('tenant-history', hostelId, profileId),
     renewalQueue: () => ownerKey('renewal-queue'),
     invitedCounts: (hostelIds: string[]) => ownerKey('invited-counts', [...hostelIds].sort()),
     // Expenses are portfolio-level, not per-hostel (expenseService.create strips
