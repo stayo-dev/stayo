@@ -16,6 +16,7 @@ import { stayoToast } from '@shared/ui-patterns/Toast';
 import { marketingService, type MarketingPhoto } from '@features/hostel-marketing/api';
 
 import { M } from './marketingTheme';
+import { PHOTO_CATEGORIES } from './photoCategories';
 import {
   IMAGE_TYPES,
   MAX_MEDIA,
@@ -207,7 +208,8 @@ export function PhotosScreen({
       <div className="flex-1 overflow-auto px-5 pb-8 pt-4">
         <p className="mb-3.5 text-[12px] leading-[1.6] text-muted-foreground">
           The order here is the order visitors swipe through — use ‹ › to rearrange. Tap ★ to set the
-          cover photo, which shows first in Discovery search.
+          cover photo, which shows first in Discovery search. Label each one with the part of the
+          hostel it shows; the listing groups them into a photo tour.
           {photos.length > 0 && ` · ${photos.length} of ${MAX_MEDIA}`}
         </p>
 
@@ -330,6 +332,24 @@ export function PhotosScreen({
                     </button>
                   )}
                 </div>
+
+                {/* Which part of the hostel this is. The listing groups the
+                    photo tour by it, so an unlabelled photo lands in "More
+                    photos" rather than being lost. */}
+                <select
+                  value={photo.category ?? 'other'}
+                  onChange={(event) =>
+                    onChange(photos.map((p, i) => (i === index ? { ...p, category: event.target.value } : p)))
+                  }
+                  onClick={(event) => event.stopPropagation()}
+                  className="absolute bottom-[30px] left-2 rounded-[7px] border-0 bg-black/55 px-1.5 py-1 text-[10px] font-semibold text-white outline-none"
+                >
+                  {PHOTO_CATEGORIES.map((category) => (
+                    <option key={category.key} value={category.key} className="text-foreground">
+                      {category.label}
+                    </option>
+                  ))}
+                </select>
 
                 <input
                   value={photo.label ?? ''}

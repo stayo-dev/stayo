@@ -32,6 +32,31 @@ const BedTierSchema = z.object({
   availability: z.enum(["BEDS_LEFT", "AVAILABLE", "FULL"]).default("BEDS_LEFT"),
 });
 
+/**
+ * The parts of a hostel a photo can be of.
+ *
+ * Fixed rather than free text: the listing groups photos into a tour by this,
+ * and "Room", "rooms", "Bedroom" and "4-sharing room" typed by four owners
+ * would be four sections of one photo each. The set is what a person deciding
+ * where to live actually wants to see, in the order they want to see it.
+ */
+export const PHOTO_CATEGORIES = [
+  { key: "rooms", label: "Rooms" },
+  { key: "bathrooms", label: "Bathrooms" },
+  { key: "mess", label: "Mess & kitchen" },
+  { key: "common", label: "Common areas" },
+  { key: "study", label: "Study & work" },
+  { key: "outside", label: "Building & outside" },
+  { key: "other", label: "More photos" },
+] as const;
+
+export type PhotoCategoryKey = (typeof PHOTO_CATEGORIES)[number]["key"];
+
+const PHOTO_CATEGORY_KEYS = PHOTO_CATEGORIES.map((category) => category.key) as [
+  PhotoCategoryKey,
+  ...PhotoCategoryKey[],
+];
+
 const PhotoSchema = z.object({
   url: z.string().url(),
   /** Shown over the photo, e.g. "hostel · common area". */
@@ -39,6 +64,12 @@ const PhotoSchema = z.object({
   /** Exactly one photo is the cover — enforced in `normaliseContent`. */
   is_cover: z.boolean().default(false),
   sort: z.number().int().min(0).max(200).default(0),
+  /**
+   * Which part of the hostel this shows, for the photo tour. Defaults to
+   * `other` so every photo uploaded before categories existed still lands in
+   * a section rather than vanishing from a grouped view.
+   */
+  category: z.enum(PHOTO_CATEGORY_KEYS).default("other"),
   /**
    * Images and videos share this list because they share a gallery, an order
    * and a caption — an owner thinks in "my listing's photos", not in two

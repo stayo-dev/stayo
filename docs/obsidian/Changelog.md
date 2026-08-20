@@ -10,6 +10,12 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-20 — Photo tour
+- **"Show all photos" opens a photo tour**, grouped by the part of the hostel — Rooms, Bathrooms, Mess & kitchen, Common areas, Study & work, Building & outside — with a thumbnail strip to jump by, each section's first photo large and the rest two-up, and any photo opening full screen. Airbnb's shape, Stayo's palette and vocabulary.
+- **Photos carry a `category`** (`marketing-content.ts`, no migration — it is JSON content), chosen by the owner in the photos screen and reviewed like everything else. Anything uploaded before this lands in "More photos" rather than disappearing from a grouped view.
+- Grouping rules are pinned in `photo-tour.ts` (9 tests): empty sections never render, the order is the order someone decides in, a video stays with the photos of the same place, and the full-screen viewer walks the tour's own order so "next" from the last room photo is the first bathroom photo.
+- Planned, not built: `docs/superpowers/specs/2026-08-20-feeling-the-room-design.md` — 360° rooms and, more importantly, making room size *felt* (per-bed floor area, storage as counted objects, a drawn-to-scale plan). Its first finding is that Stayo collects none of the data any of it needs.
+
 ### 2026-08-19 — Only residents review, and reviews are per-category
 - **Reviews are now restricted to people who lived there.** Current (`ACTIVE`) and former (`FORMER_TENANT`) residents *of that hostel* only; `INVITED`, `CANCELLED` and `EXPIRED` are invitations never taken up. This reverses the same-day decision that `stayed_here` be a badge rather than a gate — labelling the trustworthy reviews left the page open to anyone with an account. Enforced server-side and reported in the payload, so the box says why before anyone writes. Verified against live tenancy rows. See [[Decisions#ADR-086|ADR-086]].
 - **Per-category ratings** (migration **072**, applied): Cleanliness, Food & mess, Safety, Staff & support, Value for money, Location — Airbnb's six translated for a year-long stay, with food asked only of hostels that serve meals. The overall star is the **mean of the categories**, never a separate question. The listing shows a per-category breakdown; the admin queue shows each review's scores, with low ones marked, because a 1-star for food under a 4 for location is a different decision from a grumble.

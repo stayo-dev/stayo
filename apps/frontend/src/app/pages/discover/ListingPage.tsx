@@ -30,6 +30,7 @@ import { AUDIENCE_LABEL, C, FONT, PAGE_SHELL, PHOTO_FALLBACK, formatRupees } fro
 import { photoIndexFromScroll } from './galleryScroll';
 import { ReviewsSection } from './components/ReviewsSection';
 import { MediaLightbox } from './components/MediaLightbox';
+import { PhotoTour } from './components/PhotoTour';
 import { useShareHostel } from '@shared/hooks/useShareHostel';
 
 const MESS_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
@@ -121,6 +122,8 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
   /** Which photo the full-screen viewer opens on; null when closed. */
   const [lightbox, setLightbox] = useState<number | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
+  /** The grouped photo tour, opened by "Show all photos". */
+  const [tourOpen, setTourOpen] = useState(false);
   const [messDay, setMessDay] = useState(0);
 
   const hostel = data?.hostel;
@@ -351,7 +354,7 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
           {media.length > 1 && (
             <button
               type="button"
-              onClick={() => setLightbox(0)}
+              onClick={() => setTourOpen(true)}
               className="mt-3 rounded-[10px] border px-3.5 py-2 text-[12.5px] font-bold transition-colors hover:bg-white"
               style={{ borderColor: C.line, background: C.cardWarm, color: C.text }}
             >
@@ -983,6 +986,10 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
         </aside>
         </div>
       </div>
+
+      {tourOpen && (
+        <PhotoTour media={media as any} hostelName={hostel.name} onClose={() => setTourOpen(false)} />
+      )}
 
       {lightbox !== null && media.length > 0 && (
         <MediaLightbox

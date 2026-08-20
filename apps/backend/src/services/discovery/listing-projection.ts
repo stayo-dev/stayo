@@ -63,6 +63,8 @@ export interface ListingMedia {
   kind: "image" | "video";
   thumbnail_url: string | null;
   label: string | null;
+  /** Which part of the hostel this shows — groups the photo tour. */
+  category: string;
 }
 
 /**
@@ -85,10 +87,17 @@ export function listingMedia(marketing: any | null, fallback: string[] = []): Li
       kind: (photo.kind === "video" ? "video" : "image") as "image" | "video",
       thumbnail_url: typeof photo.thumbnail_url === "string" ? photo.thumbnail_url : null,
       label: typeof photo.label === "string" ? photo.label : null,
+      category: typeof photo.category === "string" ? photo.category : "other",
     }));
 
   if (ordered.length > 0) return ordered;
-  return fallback.map((url) => ({ url, kind: "image" as const, thumbnail_url: null, label: null }));
+  return fallback.map((url) => ({
+    url,
+    kind: "image" as const,
+    thumbnail_url: null,
+    label: null,
+    category: "other",
+  }));
 }
 
 /**

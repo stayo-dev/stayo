@@ -36,6 +36,11 @@ export interface MarketingPhoto {
   kind?: 'image' | 'video';
   /** A still for a video, for the search card and the link preview. */
   thumbnail_url?: string | null;
+  /**
+   * Which part of the hostel this shows — `rooms`, `bathrooms`, `mess`,
+   * `common`, `study`, `outside`, `other`. Groups the listing's photo tour.
+   */
+  category?: string;
 }
 
 export interface UploadedMedia {
