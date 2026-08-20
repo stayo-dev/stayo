@@ -65,6 +65,7 @@ export default defineConfig({
       'tests/marketing-mess-import.test.ts',
       'tests/review-summary.test.ts',
       'tests/public-route-exceptions.test.ts',
+      'tests/review-eligibility.test.ts',
       'tests/marketing-review-flags.test.ts',
       'tests/platform-listing-claim.test.ts',
       'tests/platform-listing-enquiry-lead.test.ts',

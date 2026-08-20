@@ -1536,8 +1536,20 @@ model hostel_reviews {
   hostel_id       String    @db.Uuid
   profile_id      String    @db.Uuid
 
-  /// 1–5. Constrained in the database, not only in the service.
+  /// 1–5, the mean of the categories below. Constrained in the database, not
+  /// only in the service.
   rating          Int       @db.SmallInt
+
+  /// Per-category scores (migration 072), in Airbnb's shape. All nullable:
+  /// `food` does not apply to a hostel that serves no meals, and reviews
+  /// written before 072 have none of them. Averages skip what was not
+  /// answered rather than counting it as zero.
+  rating_cleanliness Int?   @db.SmallInt
+  rating_food        Int?   @db.SmallInt
+  rating_safety      Int?   @db.SmallInt
+  rating_staff       Int?   @db.SmallInt
+  rating_value       Int?   @db.SmallInt
+  rating_location    Int?   @db.SmallInt
   body            String?
 
   /// PENDING | PUBLISHED | REJECTED — a plain string, like the rest of this

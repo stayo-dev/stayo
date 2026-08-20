@@ -49,6 +49,23 @@ export function ReviewsPage() {
     );
   };
 
+/**
+ * The category scores behind a review's overall star, for the moderator.
+ *
+ * The overall number is a mean — it hides a 1-star for food under a 4 for
+ * location. A reviewer alleging filthy kitchens and one grumbling about the
+ * walk to campus are different moderation decisions, and this is what tells
+ * them apart at a glance.
+ */
+const CATEGORY_LABELS: [keyof AdminReview, string][] = [
+  ['rating_cleanliness', 'Cleanliness'],
+  ['rating_food', 'Food'],
+  ['rating_safety', 'Safety'],
+  ['rating_staff', 'Staff'],
+  ['rating_value', 'Value'],
+  ['rating_location', 'Location'],
+];
+
   const reviews = queue.data?.reviews ?? [];
 
   return (
@@ -116,6 +133,30 @@ export function ReviewsPage() {
                   ))}
                 </div>
               </div>
+
+              {/* The breakdown, so a moderator sees which part of the stay the
+                  review is actually about. */}
+              {CATEGORY_LABELS.some(([key]) => review[key] != null) && (
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  {CATEGORY_LABELS.filter(([key]) => review[key] != null).map(([key, label]) => {
+                    const score = review[key] as number;
+                    return (
+                      <span
+                        key={String(key)}
+                        className="rounded-md px-2 py-1 text-[11px] font-semibold"
+                        style={{
+                          // A low score is not a rejection reason — it is the
+                          // thing most worth reading before deciding.
+                          background: score <= 2 ? '#FBE9E5' : '#F2ECE5',
+                          color: score <= 2 ? '#B3402F' : '#6E5B4E',
+                        }}
+                      >
+                        {label} {score}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
 
               {review.body ? (
                 <p className="mt-2.5 whitespace-pre-line text-[13px] leading-relaxed text-[#4A433C]">

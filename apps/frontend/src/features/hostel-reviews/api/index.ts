@@ -18,14 +18,21 @@ export type ReviewStatus = 'PENDING' | 'PUBLISHED' | 'REJECTED';
 
 export interface AdminReview {
   id: string;
+  /** Derived from the categories below, not entered separately. */
   rating: number;
+  rating_cleanliness: number | null;
+  rating_food: number | null;
+  rating_safety: number | null;
+  rating_staff: number | null;
+  rating_value: number | null;
+  rating_location: number | null;
   body: string | null;
   status: ReviewStatus;
   stayed_here: boolean;
   created_at: string;
   moderated_at: string | null;
   moderation_note: string | null;
-  hostel: { id: string; name: string; city: string | null; public_slug: string | null };
+  hostel: { id: string; name: string; city: string | null; public_slug: string | null; food_included?: boolean };
   profile: { id: string; name: string | null; email: string | null };
 }
 

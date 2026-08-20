@@ -59,7 +59,7 @@ export function useHostelReviews(slug: string | undefined) {
 export function useSubmitReview(slug: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { rating: number; body?: string | null }) =>
+    mutationFn: (input: { categories: Record<string, number>; body?: string | null }) =>
       discoverService.submitReview(slug as string, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.discover.reviews(slug ?? '') });

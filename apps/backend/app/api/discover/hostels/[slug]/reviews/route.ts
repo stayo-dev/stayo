@@ -9,7 +9,13 @@ import { ApiResponse } from "@/src/lib/api-response";
 import { ApiError } from "@/src/lib/api-error";
 
 const ReviewSchema = z.object({
-  rating: z.number().int().min(1).max(5),
+  /**
+   * Per-category scores, keyed by `REVIEW_CATEGORIES`. The overall star is
+   * derived from these server-side rather than accepted from the client —
+   * a card's number should not be something a caller can set independently
+   * of the judgements behind it.
+   */
+  categories: z.record(z.string(), z.number().int().min(1).max(5)),
   body: z.string().max(1500).optional().nullable(),
 });
 
@@ -25,8 +31,14 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
   try {
     const published = await reviewsService.listPublished(params.slug);
     const seeker = await getSeeker(req);
-    const mine = seeker ? await reviewsService.getMine(seeker.id, params.slug) : null;
-    return ApiResponse.success({ ...published, mine });
+    const [mine, eligibility] = await Promise.all([
+      seeker ? reviewsService.getMine(seeker.id, params.slug) : Promise.resolve(null),
+      reviewsService.eligibility(seeker?.id ?? null, params.slug),
+    ]);
+    // The page needs to know who may write *before* they write: telling
+    // someone at submit time that they were never eligible is the worst
+    // moment to say it.
+    return ApiResponse.success({ ...published, mine, eligibility });
   } catch (error) {
     return ApiResponse.error(error);
   }

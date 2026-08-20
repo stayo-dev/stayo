@@ -11,11 +11,45 @@
  * PURE MODULE — no I/O, runs under vitest.pure.config.ts.
  */
 
+/**
+ * The things residents actually judge a hostel on.
+ *
+ * Airbnb's six, translated: a hostel is a place you live for a year, so
+ * "food" replaces "accuracy" (the mess is the single most argued-about part
+ * of hostel life) and "staff" covers the warden and management rather than
+ * a host's messaging.
+ *
+ * `appliesWhenNoFood: false` marks the one category that is not always asked —
+ * a hostel that serves no meals cannot be scored on them, and asking anyway
+ * produces a number that means nothing.
+ */
+export const REVIEW_CATEGORIES = [
+  { key: "cleanliness", label: "Cleanliness", column: "rating_cleanliness" },
+  { key: "food", label: "Food & mess", column: "rating_food", foodOnly: true },
+  { key: "safety", label: "Safety", column: "rating_safety" },
+  { key: "staff", label: "Staff & support", column: "rating_staff" },
+  { key: "value", label: "Value for money", column: "rating_value" },
+  { key: "location", label: "Location", column: "rating_location" },
+] as const;
+
+export type ReviewCategoryKey = (typeof REVIEW_CATEGORIES)[number]["key"];
+
+/** The categories a given hostel is scored on. */
+export function categoriesFor(foodIncluded: boolean) {
+  return REVIEW_CATEGORIES.filter((category) => !("foodOnly" in category && category.foodOnly) || foodIncluded);
+}
+
 export type ReviewStatus = "PENDING" | "PUBLISHED" | "REJECTED";
 
 export interface ReviewLike {
   rating: number;
   status?: string;
+  rating_cleanliness?: number | null;
+  rating_food?: number | null;
+  rating_safety?: number | null;
+  rating_staff?: number | null;
+  rating_value?: number | null;
+  rating_location?: number | null;
 }
 
 export interface ReviewSummary {
@@ -24,6 +58,12 @@ export interface ReviewSummary {
   average: number | null;
   /** 5→1, for the distribution bars. */
   distribution: { rating: number; count: number }[];
+  /**
+   * Per-category means, in the same all-or-nothing spirit as `average`: a
+   * category nobody scored is absent rather than zero, and the whole block is
+   * withheld until there are enough reviews to average at all.
+   */
+  categories: { key: ReviewCategoryKey; label: string; average: number; count: number }[];
   /** What the listing says when it cannot show a score. */
   emptyReason: "NONE_YET" | "TOO_FEW" | null;
 }
@@ -36,6 +76,21 @@ export interface ReviewSummary {
  * printed next to a star.
  */
 export const MIN_REVIEWS_FOR_AVERAGE = 3;
+
+/**
+ * The overall score from the categories someone answered.
+ *
+ * The form asks for categories, not for an overall star on top of them —
+ * asking a person to rate the same stay twice invites two different answers
+ * and makes the card's number arbitrary. Rounded to a whole star because
+ * `rating` is the integer a card renders.
+ */
+export function overallFromCategories(values: (number | null | undefined)[]): number | null {
+  const answered = values.filter((value): value is number => isValidRating(value));
+  if (answered.length === 0) return null;
+  const mean = answered.reduce((total, value) => total + value, 0) / answered.length;
+  return Math.min(5, Math.max(1, Math.round(mean)));
+}
 
 export function summariseReviews(reviews: ReviewLike[]): ReviewSummary {
   const published = reviews.filter(
@@ -50,11 +105,28 @@ export function summariseReviews(reviews: ReviewLike[]): ReviewSummary {
     count: ratings.filter((value) => value === rating).length,
   }));
 
+  // Each category averaged over the reviews that actually answered it.
+  const categories = REVIEW_CATEGORIES.map((category) => {
+    const values = published
+      .map((review) => (review as any)[category.column])
+      .filter((value: unknown): value is number => isValidRating(value));
+    return {
+      key: category.key,
+      label: category.label,
+      count: values.length,
+      average: values.length
+        ? Math.round((values.reduce((total: number, value: number) => total + value, 0) / values.length) * 10) / 10
+        : 0,
+    };
+  }).filter((category) => category.count > 0);
+
   if (ratings.length === 0) {
-    return { count: 0, average: null, distribution, emptyReason: "NONE_YET" };
+    return { count: 0, average: null, distribution, categories: [], emptyReason: "NONE_YET" };
   }
   if (ratings.length < MIN_REVIEWS_FOR_AVERAGE) {
-    return { count: ratings.length, average: null, distribution, emptyReason: "TOO_FEW" };
+    // Same rule as the overall score: too few to average is too few per
+    // category as well.
+    return { count: ratings.length, average: null, distribution, categories: [], emptyReason: "TOO_FEW" };
   }
 
   const mean = ratings.reduce((total, rating) => total + rating, 0) / ratings.length;
@@ -64,6 +136,7 @@ export function summariseReviews(reviews: ReviewLike[]): ReviewSummary {
     // these listings will not have for a long time.
     average: Math.round(mean * 10) / 10,
     distribution,
+    categories,
     emptyReason: null,
   };
 }

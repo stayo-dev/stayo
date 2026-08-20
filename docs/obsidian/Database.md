@@ -391,3 +391,5 @@ Resident reviews of a hostel, shown on its Discovery listing.
 | `moderated_at/by`, `moderation_note` | The note is shown to the author, so a rejection arrives with a reason. |
 
 Indexes: `(hostel_id, status)` for the listing, `(status, created_at DESC)` for the moderation queue.
+
+**Migration 072 (applied 2026-08-19)** adds six nullable `rating_*` columns to `hostel_reviews` — cleanliness, food, safety, staff, value, location — under one `hostel_reviews_category_range` CHECK (each 1–5 or NULL). Nullable because `food` does not apply to a hostel serving no meals and reviews predating 072 have none; averages skip what was not answered rather than counting it as zero. `rating` is now **derived**: the mean of the answered categories.

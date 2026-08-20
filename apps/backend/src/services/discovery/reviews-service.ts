@@ -1,11 +1,14 @@
 import { prisma } from "@/lib/db";
 import { ApiError } from "@/src/lib/api-error";
 import {
+  categoriesFor,
   isValidRating,
   normaliseReviewBody,
+  overallFromCategories,
   reviewerDisplayName,
   summariseReviews,
 } from "./review-summary";
+import { reviewEligibility, type ReviewEligibility } from "./review-eligibility";
 import { DISCOVERABLE } from "./discovery-service";
 
 /**
@@ -27,12 +30,22 @@ import { DISCOVERABLE } from "./discovery-service";
  * rewrite afterwards" is an open door straight onto the page.
  */
 
+const CATEGORY_SELECT = {
+  rating_cleanliness: true,
+  rating_food: true,
+  rating_safety: true,
+  rating_staff: true,
+  rating_value: true,
+  rating_location: true,
+} as const;
+
 const PUBLIC_REVIEW_SELECT = {
   id: true,
   rating: true,
   body: true,
   stayed_here: true,
   created_at: true,
+  ...CATEGORY_SELECT,
   profile: { select: { name: true } },
 } as const;
 
@@ -43,7 +56,7 @@ export class ReviewsService {
       // The same visibility predicate as search and detail — a suspended
       // hostel must not keep collecting reviews through a stale link.
       where: { ...DISCOVERABLE, public_slug: slug },
-      select: { id: true, name: true },
+      select: { id: true, name: true, food_included: true },
     });
     if (!hostel) throw ApiError.notFound("This hostel is not listed on Stayo");
     return hostel;
@@ -62,6 +75,11 @@ export class ReviewsService {
 
     return {
       summary: summariseReviews(reviews as any),
+      /** Which categories this hostel is scored on — food only if it feeds people. */
+      categories: categoriesFor(Boolean(hostel.food_included)).map((category) => ({
+        key: category.key,
+        label: category.label,
+      })),
       reviews: reviews.map((review: any) => ({
         id: review.id,
         rating: review.rating,
@@ -69,8 +87,37 @@ export class ReviewsService {
         stayed_here: review.stayed_here,
         created_at: review.created_at,
         author: reviewerDisplayName(review.profile?.name),
+        categories: categoriesFor(Boolean(hostel.food_included))
+          .map((category) => ({
+            key: category.key,
+            label: category.label,
+            rating: review[category.column] as number | null,
+          }))
+          .filter((entry) => isValidRating(entry.rating)),
       })),
     };
+  }
+
+  /**
+   * Whether this person may review this hostel, and why not if they may not.
+   *
+   * Read by the listing so the box can say the right thing *before* someone
+   * writes three paragraphs — being told at submit time that you were never
+   * eligible is the worst possible moment to learn it.
+   */
+  async eligibility(profileId: string | null, slug: string): Promise<ReviewEligibility> {
+    if (!profileId) return reviewEligibility({ signedIn: false, tenancyStatuses: [] });
+
+    const hostel = await this.discoverableHostel(slug);
+    const tenancies = await prisma.tenants.findMany({
+      where: { profile_id: profileId, hostel_id: hostel.id },
+      select: { status: true },
+    });
+
+    return reviewEligibility({
+      signedIn: true,
+      tenancyStatuses: tenancies.map((tenancy: any) => String(tenancy.status)),
+    });
   }
 
   /**
@@ -103,13 +150,37 @@ export class ReviewsService {
   async submit(
     profile: { id: string },
     slug: string,
-    input: { rating: unknown; body?: unknown },
+    input: { categories?: Record<string, unknown>; body?: unknown },
   ) {
     const hostel = await this.discoverableHostel(slug);
 
-    if (!isValidRating(input.rating)) {
-      throw ApiError.validationError("Choose a rating from 1 to 5 stars");
+    /**
+     * Only people who have lived here. Checked on the server, not merely
+     * hidden in the UI — the endpoint is the boundary, and a hidden form is
+     * a suggestion.
+     */
+    const eligibility = await this.eligibility(profile.id, slug);
+    if (!eligibility.canReview) {
+      throw ApiError.forbidden(
+        "Only residents of this hostel can review it — current or former.",
+      );
     }
+
+    const categories = categoriesFor(Boolean(hostel.food_included));
+    const scores: Record<string, number | null> = {};
+    for (const category of categories) {
+      const value = (input.categories ?? {})[category.key];
+      if (!isValidRating(value)) {
+        throw ApiError.validationError(`Rate ${category.label.toLowerCase()} from 1 to 5 stars`);
+      }
+      scores[category.column] = value;
+    }
+
+    // The overall star is derived, never asked for separately: rating the same
+    // stay twice invites two different answers and makes the card arbitrary.
+    const overall = overallFromCategories(Object.values(scores));
+    if (overall == null) throw ApiError.validationError("Rate each category from 1 to 5 stars");
+
     const body = normaliseReviewBody(input.body);
 
     /**
@@ -130,13 +201,15 @@ export class ReviewsService {
       create: {
         hostel_id: hostel.id,
         profile_id: profile.id,
-        rating: Number(input.rating),
+        rating: overall,
+        ...scores,
         body,
         stayed_here: Boolean(tenancy),
         status: "PENDING",
       },
       update: {
-        rating: Number(input.rating),
+        rating: overall,
+        ...scores,
         body,
         stayed_here: Boolean(tenancy),
         // Back to the queue. Approving a review once must not license every
@@ -174,7 +247,8 @@ export class ReviewsService {
         created_at: true,
         moderated_at: true,
         moderation_note: true,
-        hostel: { select: { id: true, name: true, city: true, public_slug: true } },
+        ...CATEGORY_SELECT,
+        hostel: { select: { id: true, name: true, city: true, public_slug: true, food_included: true } },
         profile: { select: { id: true, name: true, email: true } },
       },
     });
