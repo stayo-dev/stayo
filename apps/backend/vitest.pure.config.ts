@@ -69,6 +69,8 @@ export default defineConfig({
       'tests/settlement-transitions.test.ts',
       'tests/payout-account.test.ts',
       'tests/enquiry-template-contracts.test.ts',
+      'tests/admissions-lead-transition-guards.test.ts',
+      'tests/admissions-lead-actions.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),

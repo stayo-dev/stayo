@@ -5,6 +5,15 @@ import { checkFixedWindowLimit } from "@/lib/redis/rate-limit";
 import { redisKeys } from "@/lib/redis/keys";
 import { getOrSetJson, invalidateTag } from "@/lib/redis/cache";
 import { invitationService } from "@/src/services/tenants/invitation-service";
+import { canTransitionLeadStatus } from "@/src/services/admissions/lead-transition-guards";
+import { whatsAppTemplateDeliveryService } from "@/lib/services/notifications/whatsapp-template-delivery";
+import {
+  resolveEnquiryTemplateName,
+  buildTenantEnquiryRejected,
+} from "@/lib/services/notifications/providers/whatsapp/enquiry-template-contracts";
+import { getLogger } from "@/lib/logger";
+
+const logger = getLogger("admissions.lead-actions");
 
 export const LEAD_STATUSES = [
   "NEW",
@@ -12,10 +21,16 @@ export const LEAD_STATUSES = [
   "ROOM_VISITED",
   "DECISION_PENDING",
   "READY_TO_JOIN",
+  "ACCEPTED",
+  "ON_HOLD",
+  "REJECTED",
   "INVITED",
   "JOINED",
   "LOST",
 ] as const;
+
+/** The owner Leads tab's three primary actions on a lead. */
+export const LEAD_ACTION_STATUSES = ["ACCEPTED", "ON_HOLD", "REJECTED"] as const;
 
 export const LOST_REASONS = [
   "PRICE_HIGH",
@@ -48,7 +63,16 @@ export const ACTIVITY_SCORES: Record<string, number> = {
  * of "this lead is still open" as the microsite does. Two definitions would
  * mean an enquiry looked closed to one surface and open to the other.
  */
-export const ACTIVE_LEAD_STATUSES = ["NEW", "INTERESTED", "ROOM_VISITED", "DECISION_PENDING", "READY_TO_JOIN", "INVITED"];
+export const ACTIVE_LEAD_STATUSES = [
+  "NEW",
+  "INTERESTED",
+  "ROOM_VISITED",
+  "DECISION_PENDING",
+  "READY_TO_JOIN",
+  "ACCEPTED",
+  "ON_HOLD",
+  "INVITED",
+];
 const RESERVATION_COOLDOWN_HOURS = 12;
 
 function cleanString(value: unknown, max = 200) {
@@ -526,6 +550,21 @@ export class AdmissionsService {
     const lead = await prisma.visitorLead.findFirst({ where: { id: leadId, owner_id: ownerId } });
     if (!lead) throw ApiError.notFound("Lead not found");
 
+    // The owner Leads tab's Accept / Hold / Reject actions: a dedicated
+    // transition guard (separate from the pre-existing funnel logic below,
+    // which these three statuses never trigger) plus, for Hold, a required
+    // reason message stored the same way any other lead note is.
+    let holdNote: string | null = null;
+    const isLeadAction = input.status && (LEAD_ACTION_STATUSES as readonly string[]).includes(input.status);
+    if (isLeadAction) {
+      const guard = canTransitionLeadStatus(lead.status, input.status);
+      if (!guard.ok) throw ApiError.conflict(guard.reason);
+      if (input.status === "ON_HOLD") {
+        holdNote = cleanString(input.note, 1200);
+        if (!holdNote) throw ApiError.validationError("A message is required to put this enquiry on hold");
+      }
+    }
+
     // Auto-create activity if status is explicitly changed
     if (input.status && input.status !== lead.status) {
       if (input.status === "ROOM_VISITED") {
@@ -542,6 +581,14 @@ export class AdmissionsService {
             lead_id: leadId,
             activity_type: "PARENT_CALL_LOGGED",
             metadata: { source: "status_update" },
+          }
+        });
+      } else if (isLeadAction) {
+        await prisma.leadActivity.create({
+          data: {
+            lead_id: leadId,
+            activity_type: `LEAD_${input.status}`,
+            metadata: input.status === "ON_HOLD" ? { note: holdNote } : {},
           }
         });
       }
@@ -575,9 +622,47 @@ export class AdmissionsService {
         last_activity_at: (input.activity_type || (input.status && input.status !== lead.status)) ? new Date() : lead.last_activity_at,
         updated_at: new Date(),
       },
+      include: { hostel: { select: { name: true } } },
     });
+
+    if (holdNote) {
+      await prisma.leadNote.create({ data: { lead_id: leadId, owner_id: ownerId, note: holdNote } });
+    }
+
     await invalidateTag(redisKeys.admissions.owner(ownerId));
+
+    // Tenant-facing notice. Never fatal — the status change is already
+    // committed, and losing it because WhatsApp failed (or the template
+    // isn't approved yet in Meta) would be the wrong trade. Reject only:
+    // Hold deliberately does not notify — it just saves the owner's note
+    // and changes status, per explicit product decision.
+    if (input.status === "REJECTED" && lead.status !== "REJECTED") {
+      await this.notifyEnquiryRejected(updated);
+    }
+
     return this.shapeLead(updated);
+  }
+
+  /** Fire-and-forget-safe: catches internally, never throws into updateStatus's critical path. */
+  private async notifyEnquiryRejected(lead: any) {
+    if (!lead.student_phone) return;
+    try {
+      const template = resolveEnquiryTemplateName("TENANT_ENQUIRY_REJECTED");
+      await whatsAppTemplateDeliveryService.send({
+        phone: lead.student_phone,
+        templateName: template.name,
+        languageCode: template.language,
+        ...buildTenantEnquiryRejected({
+          tenantName: lead.student_name,
+          hostelName: lead.hostel?.name,
+        }),
+        idempotencyKey: `lead-rejected:${lead.id}`,
+        ownerId: lead.owner_id,
+        hostelId: lead.hostel_id,
+      });
+    } catch (error: any) {
+      logger.warn("admissions.lead_rejected.notify_failed", { lead_id: lead.id, error: String(error?.message || error) });
+    }
   }
 
   async addNote(leadId: string, ownerId: string, note: string) {
@@ -679,21 +764,35 @@ export class AdmissionsService {
     const lead = await prisma.visitorLead.findFirst({ where: { id: leadId, owner_id: ownerId } });
     if (!lead) throw ApiError.notFound("Lead not found");
     if (lead.converted_tenant_id) throw ApiError.conflict("Lead is already connected to a tenant invitation");
+    // Only reachable once the owner has Accepted the enquiry — mirrors
+    // canTransitionLeadStatus's ON_HOLD->ACCEPTED/open->ACCEPTED rules, so a
+    // lead can't be converted to a tenant while still sitting on hold or
+    // before the owner has made a decision.
+    if (lead.status !== "ACCEPTED") {
+      throw ApiError.conflict("Accept the enquiry before creating an invitation");
+    }
     const email = cleanString(input.email || lead.student_email, 180)?.toLowerCase();
     if (!email) throw ApiError.validationError("Email is required before sending an invitation");
     const roomId = String(input.room_id || "");
     if (!roomId) throw ApiError.validationError("Room is required before sending an invitation");
+    // Owner-editable in the Add Tenant form, but default to exactly what the
+    // tenant supplied at enquiry so nothing is silently dropped either way.
+    const name = cleanString(input.name, 200) || lead.student_name;
+    const phone = input.phone ? normalizeIndianPhone(input.phone) || lead.student_phone : lead.student_phone;
 
     const result: any = await invitationService.inviteTenant({
       email,
-      name: lead.student_name,
-      phone: lead.student_phone,
+      name,
+      phone,
       room_id: roomId,
       monthly_rent: input.monthly_rent,
       advance_amount: input.advance_amount,
       maintenance_amount: input.maintenance_amount,
       joining_date: input.joining_date,
       maintenance_type: input.maintenance_type,
+      agreement_duration_months: input.agreement_duration_months,
+      agreement_start_date: input.agreement_start_date,
+      payment_frequency: input.payment_frequency,
     }, ownerId);
 
     const tenantId = result?.tenant_id || result?.tenant?.id || null;

@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { Inbox, Loader2, ChevronRight, UserCog } from 'lucide-react';
+import { Inbox, Loader2, ChevronRight, UserCog, MessageCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { EmptyState } from '@shared/ui-patterns/EmptyState';
+import { openWhatsAppShare } from '@lib/share';
 import { useAlerts, DynamicAlertCategory } from '../hooks/useAlerts';
 import { useOwnerProfileRequests } from '@features/owner-profile-requests/hooks/useOwnerProfileRequests';
 import { LeadDetailSheet } from '../components/LeadDetailSheet';
+import { LEAD_SOURCE_LABEL, leadStatusLabel, leadStatusToneClass } from '../leadConstants';
 
 const CATEGORIES: DynamicAlertCategory[] = ['leads', 'admin', 'renewals', 'requests'];
 
@@ -14,12 +16,6 @@ const ALERT_CATEGORY_LABELS: Record<DynamicAlertCategory, string> = {
   admin: 'Messages',
   renewals: 'Renewals',
   requests: 'Requests',
-};
-
-const LEAD_SOURCE_LABEL: Record<string, string> = {
-  DISCOVER: 'website',
-  QR: 'QR code',
-  WALK_IN: 'walk-in',
 };
 
 const rowCard = 'flex flex-col gap-2.5 rounded-[18px] border border-border bg-card p-3.5 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]';
@@ -79,7 +75,16 @@ export function AlertsPage() {
             <EmptyState icon={<Inbox className="h-5 w-5" />} title="No enquiries yet" />
           ) : (
             alerts.leads.map((l) => (
-              <div key={l.id} className={rowCard}>
+              <div
+                key={l.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedLeadId(l.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') setSelectedLeadId(l.id);
+                }}
+                className={`${rowCard} cursor-pointer`}
+              >
                 <div className="flex items-center gap-3">
                   <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-secondary font-display text-xs font-bold text-primary">
                     {initials(l.student_name)}
@@ -90,26 +95,37 @@ export function AlertsPage() {
                       Enquired via {LEAD_SOURCE_LABEL[l.source] ?? l.source} · {l.hostel?.name ?? ''}
                     </div>
                   </div>
-                  <span className="flex-none rounded-md bg-info/10 px-2 py-0.5 text-[10.5px] font-semibold text-info">
-                    {l.status?.replace(/_/g, ' ')}
+                  <span className={`flex-none rounded-md px-2 py-0.5 text-[10.5px] font-semibold ${leadStatusToneClass(l.status)}`}>
+                    {leadStatusLabel(l.status)}
                   </span>
                 </div>
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => setSelectedLeadId(l.id)} className={actionBtn}>
-                    Follow up
-                  </button>
                   {l.student_phone ? (
-                    <a href={`tel:${l.student_phone}`} className={sideBtn}>
+                    <a href={`tel:${l.student_phone}`} onClick={(e) => e.stopPropagation()} className={sideBtn}>
                       Call
                     </a>
                   ) : (
-                    <button type="button" onClick={soon} className={sideBtn}>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); soon(); }} className={sideBtn}>
                       Call
                     </button>
                   )}
-                  <button type="button" onClick={soon} className={`${sideBtn} text-success`}>
-                    Chat
-                  </button>
+                  {l.student_phone ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openWhatsAppShare(`Hi ${l.student_name}, this is regarding your enquiry at ${l.hostel?.name ?? 'our hostel'}.`, l.student_phone ?? undefined);
+                      }}
+                      className={`${actionBtn} flex items-center justify-center gap-1.5`}
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" strokeWidth={2} />
+                      WhatsApp
+                    </button>
+                  ) : (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); soon(); }} className={`${actionBtn} text-success`}>
+                      WhatsApp
+                    </button>
+                  )}
                 </div>
               </div>
             ))

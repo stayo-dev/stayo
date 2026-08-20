@@ -221,7 +221,10 @@ const ENQUIRY_SELECT = {
  */
 function toEnquiryStage(status: string): "SENT" | "REVIEWING" | "ACCEPTED" | "CLOSED" {
   if (status === "JOINED" || status === "INVITED") return "ACCEPTED";
-  if (status === "LOST") return "CLOSED";
+  // REJECTED (owner Leads tab) is a terminal decline, same as LOST — a
+  // Discover-sourced enquiry the owner rejects must not read as still
+  // "reviewing" to the seeker.
+  if (status === "LOST" || status === "REJECTED") return "CLOSED";
   if (status === "NEW") return "SENT";
   return "REVIEWING";
 }

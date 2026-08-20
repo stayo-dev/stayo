@@ -1,16 +1,20 @@
 /**
- * Contracts for the two tenant-enquiry WhatsApp templates.
+ * Contracts for the tenant-enquiry WhatsApp templates.
  *
  * Follows `platform-lead-template-contracts.ts` deliberately: same declared
  * parameter shape, same env-var override so a rename during Meta review is
  * config rather than a redeploy, same pure builders pinned by tests.
  *
- * The flow these serve:
- *   tenant enquires on Discovery
- *     → OWNER_ENQUIRY_RECEIVED to the hostel owner
- *     → owner calls/WhatsApps the tenant from their dashboard
- *     → positive: owner sends a tenant invitation (existing pipeline)
- *     → negative: TENANT_ENQUIRY_REJECTED to the tenant
+ * The flow these serve — the owner Leads tab's Accept / Hold / Reject
+ * actions, which apply to every `visitor_leads` row regardless of source
+ * (Discover, QR, walk-in):
+ *   tenant enquires
+ *     → OWNER_ENQUIRY_RECEIVED to the hostel owner (Discover-sourced only)
+ *     → owner opens the lead and Accepts / Holds / Rejects
+ *     → Accept: owner sends a tenant invitation (existing pipeline)
+ *     → Hold: no tenant notification — the owner's message is saved to
+ *       `lead_notes` only (deliberate product decision)
+ *     → Reject: TENANT_ENQUIRY_REJECTED to the tenant
  *
  * PURE MODULE. Imports nothing with I/O, so it runs under
  * vitest.pure.config.ts. Keep it that way.

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import apiClient from '@lib/api-client';
 import { admissionsService } from '@features/admissions/api';
+import { queryKeys } from '@lib/queryKeys';
 
 export type DynamicAlertCategory = 'leads' | 'admin' | 'renewals' | 'requests';
 
@@ -45,9 +47,6 @@ export function useAlerts() {
   const [adminMessages, setAdminMessages] = useState<DynamicAdminMessage[]>([]);
   const [renewals, setRenewals] = useState<DynamicRenewal[]>([]);
   const [requests, setRequests] = useState<DynamicRequest[]>([]);
-  const [leads, setLeads] = useState<DynamicLead[]>([]);
-  const [leadsLoaded, setLeadsLoaded] = useState(false);
-  const [leadsLoading, setLeadsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -69,28 +68,16 @@ export function useAlerts() {
   }, []);
 
   // Leads have their own funnel elsewhere and don't need the 60s poll the
-  // other three categories share — fetched once, the first time this tab is
-  // opened, not on a timer.
-  useEffect(() => {
-    if (category !== 'leads' || leadsLoaded) return;
-    let cancelled = false;
-    setLeadsLoading(true);
-    admissionsService
-      .list({ limit: 20 })
-      .then((result: { items?: DynamicLead[] }) => {
-        if (!cancelled) setLeads(result.items || []);
-      })
-      .catch((err: unknown) => console.error('Failed to fetch leads', err))
-      .finally(() => {
-        if (!cancelled) {
-          setLeadsLoading(false);
-          setLeadsLoaded(true);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [category, leadsLoaded]);
+  // other three categories share — fetched via the shared admissions query
+  // key, so Accept/Hold/Reject mutations in LeadDetailSheet can invalidate
+  // it instead of this hook needing its own refetch plumbing.
+  const leadsQuery = useQuery({
+    queryKey: queryKeys.admissions.list({ limit: 20 }),
+    queryFn: () => admissionsService.list({ limit: 20 }) as Promise<{ items?: DynamicLead[] }>,
+    enabled: category === 'leads',
+  });
+  const leads = leadsQuery.data?.items ?? [];
+  const leadsLoading = leadsQuery.isLoading;
 
   const markRead = async (cat: DynamicAlertCategory, id: string) => {
     // Optimistic UI update
