@@ -1160,6 +1160,21 @@ model roomAllocation {
 }
 
 model rooms {
+  /// ── Space (migration 073) ────────────────────────────────────────────────
+  /// What the room is like to live in, as opposed to how it is operated.
+  /// All nullable: a room with no measurements says nothing rather than
+  /// showing a plausible default. Two dimensions, not one area — a 6×20 room
+  /// and an 11×11 room are the same area and completely different to live in.
+  length_ft         Decimal? @db.Decimal(5, 1)
+  width_ft          Decimal? @db.Decimal(5, 1)
+  /// One lockable cupboard per bed.
+  cupboard_per_bed  Boolean?
+  /// NONE | CABIN_BAG | LARGE_SUITCASE — storage as objects that fit, not adjectives.
+  under_bed_storage String?
+  /// NONE | SHARED | PER_BED
+  study_desk        String?
+  windows           Int?     @db.SmallInt
+
   id                             String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   hostel_id                      String                           @db.Uuid
   room_no                        String

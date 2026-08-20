@@ -393,3 +393,5 @@ Resident reviews of a hostel, shown on its Discovery listing.
 Indexes: `(hostel_id, status)` for the listing, `(status, created_at DESC)` for the moderation queue.
 
 **Migration 072 (applied 2026-08-19)** adds six nullable `rating_*` columns to `hostel_reviews` — cleanliness, food, safety, staff, value, location — under one `hostel_reviews_category_range` CHECK (each 1–5 or NULL). Nullable because `food` does not apply to a hostel serving no meals and reviews predating 072 have none; averages skip what was not answered rather than counting it as zero. `rating` is now **derived**: the mean of the answered categories.
+
+**Migration 073 (applied 2026-08-20)** adds six nullable columns to `rooms` — `length_ft`, `width_ft` (numeric 5,1), `cupboard_per_bed` (bool), `under_bed_storage` (`NONE`|`CABIN_BAG`|`LARGE_SUITCASE`), `study_desk` (`NONE`|`SHARED`|`PER_BED`), `windows` — under one `rooms_space_check`. **Two dimensions, not one area**: a 6×20 room and an 11×11 room are the same area and completely different to live in. Nothing is backfilled; an unmeasured room shows nothing on the listing rather than a default. Derived reads live in `room-space.ts`.

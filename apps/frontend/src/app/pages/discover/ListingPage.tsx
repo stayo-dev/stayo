@@ -8,6 +8,7 @@ import {
   Coffee,
   Heart,
   Info,
+  LayoutGrid,
   MapPin,
   Moon,
   Share2,
@@ -157,6 +158,9 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
         // otherwise the live count wins over any claim.
         availableBeds: tier.availability === 'FULL' ? 0 : (realTier?.availableBeds ?? 0),
         roomType: tier.inclusions ?? realTier?.roomType ?? null,
+        // What the real rooms of this size are like to live in — measured by
+        // the owner, summarised by the server (`room-space.ts`).
+        space: (tier as any).space ?? null,
       };
     });
   }, [data?.rooms, data?.bed_tiers]);
@@ -312,7 +316,7 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
             swiping five times. Falls back gracefully — with fewer than five
             images the big frame simply takes the width it needs.
           */}
-          <div className="mt-4 grid h-[400px] grid-cols-2 gap-2 overflow-hidden rounded-[18px]">
+          <div className="relative mt-4 grid h-[400px] grid-cols-2 gap-2 overflow-hidden rounded-[18px]">
             <button
               type="button"
               onClick={() => setLightbox(0)}
@@ -349,18 +353,26 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
                 </button>
               ))}
             </div>
+
+            {/*
+              Inside the grid's corner, the way Airbnb does it — it used to sit
+              below the grid, where the body sheet's -mt-6 pulled straight over
+              it and nobody could see it at all.
+            */}
+            {media.length > 1 && (
+              <button
+                type="button"
+                onClick={() => setTourOpen(true)}
+                className="absolute bottom-4 right-4 flex items-center gap-2 rounded-[10px] border px-3.5 py-2 text-[12.5px] font-bold shadow-[0_2px_8px_rgba(0,0,0,.18)] transition-transform hover:scale-[1.02]"
+                style={{ borderColor: C.line, background: '#fff', color: C.text }}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" strokeWidth={2} />
+                Show all {media.length} photos
+              </button>
+            )}
           </div>
 
-          {media.length > 1 && (
-            <button
-              type="button"
-              onClick={() => setTourOpen(true)}
-              className="mt-3 rounded-[10px] border px-3.5 py-2 text-[12.5px] font-bold transition-colors hover:bg-white"
-              style={{ borderColor: C.line, background: C.cardWarm, color: C.text }}
-            >
-              Show all {media.length} photos
-            </button>
-          )}
+
         </div>
 
         {/* ── Gallery (phone) ──────────────────────────────────────────── */}
@@ -452,6 +464,18 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
                 {photoIndex + 1} / {photos.length}
               </span>
 
+              {/* On a phone the only way through the photos was swiping one at
+                  a time. The tour is where they are grouped — rooms, mess,
+                  bathrooms — so there is a door to it here too. */}
+              <button
+                type="button"
+                onClick={() => setTourOpen(true)}
+                className="absolute bottom-9 left-1/2 -translate-x-1/2 rounded-full px-3 py-1.5 text-[11px] font-bold text-white lg:hidden"
+                style={{ background: 'rgba(34,30,26,.72)' }}
+              >
+                All {media.length} photos
+              </button>
+
               {/* The bars stay 3px tall; the button around them is 24px, so
                   the tap target is a thumb's width rather than a hairline. */}
               {/* Clear of the body sheet, which is pulled 24px up over the
@@ -517,7 +541,13 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
           Capped at 1180px like the rest of Discover — a 1280px line of body
           copy is unreadable.
         */}
-        <div className="relative mx-auto -mt-6 w-full max-w-[860px] lg:grid lg:max-w-[1180px] lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-7 lg:px-8">
+        {/*
+          `-mt-6` lifts the sheet over the phone's full-bleed gallery like a
+          card. On desktop there is nothing to lift over — the photo grid is a
+          contained block that ends — so the negative margin only cut the
+          bottom off the photographs and half-covered "Show all photos".
+        */}
+        <div className="relative mx-auto -mt-6 w-full max-w-[860px] lg:mt-8 lg:grid lg:max-w-[1180px] lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-7 lg:px-8">
         <div
           className="rounded-t-[24px] px-5 pb-8 pt-5 lg:rounded-[24px] lg:px-8"
           style={{ background: C.paper }}
@@ -549,10 +579,10 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
             )}
           </div>
 
-          {/* Share and Save live here, beside the name — labelled, in reach of
-              a thumb at the bottom of the screen rather than the top, and off
-              the photograph. */}
-          <div className="mt-2.5 flex items-start justify-between gap-3">
+          {/* The phone's title row. Desktop shows the name and these actions
+              above the photo grid instead — rendering both put the hostel's
+              name on screen twice. */}
+          <div className="mt-2.5 flex items-start justify-between gap-3 lg:hidden">
           <h1
             className="min-w-0 flex-1 text-[23px] font-extrabold leading-[1.2] tracking-[-0.02em]"
             style={{ fontFamily: FONT.display, color: C.text }}
@@ -748,6 +778,40 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
                         {option.roomType && (
                           <span className="mt-0.5 block text-[11.5px]" style={{ color: C.textMuted }}>
                             {option.roomType}
+                          </span>
+                        )}
+
+                        {/*
+                          The size, in the only unit that compares across
+                          hostels: floor per person. A 140 sq ft room is 35 sq
+                          ft each at 4-sharing and 23 at 6 — the same photo,
+                          a different life. Absent entirely for rooms the
+                          owner has not measured.
+                        */}
+                        {(option as any).space?.perBedArea != null && (
+                          <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span
+                              className="rounded-md px-1.5 py-0.5 text-[10.5px] font-bold"
+                              style={{ background: C.clayPaleBg, color: C.clayDeep }}
+                            >
+                              {(option as any).space.perBedArea} sq ft per bed
+                            </span>
+                            {(option as any).space.dimensions && !(option as any).space.varies && (
+                              <span className="text-[11px]" style={{ color: C.textMuted }}>
+                                {(option as any).space.dimensions}
+                              </span>
+                            )}
+                            {(option as any).space.anchor && (
+                              <span className="text-[11px]" style={{ color: C.textMuted }}>
+                                · {(option as any).space.anchor}
+                              </span>
+                            )}
+                          </span>
+                        )}
+
+                        {((option as any).space?.storage?.length ?? 0) > 0 && (
+                          <span className="mt-1 block text-[11px] leading-[1.55]" style={{ color: C.textMuted }}>
+                            {(option as any).space.storage.join(' · ')}
                           </span>
                         )}
                       </span>

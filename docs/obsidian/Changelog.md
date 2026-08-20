@@ -10,6 +10,13 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+### 2026-08-20 — Room space: the number nobody publishes
+- **Rooms can be measured** (migration **073**, applied): `length_ft`, `width_ft`, `cupboard_per_bed`, `under_bed_storage`, `study_desk`, `windows`, all nullable and CHECK-constrained. Owners enter them in the room sheet; the listing turns them into **floor area per bed** — a 140 sq ft room is 35 sq ft a person at 4-sharing and 23 at 6, the same photograph and a different life. Nobody publishes this, which is why it is worth publishing.
+- **Storage is counted objects, never adjectives**: "One lockable cupboard per person · A large suitcase fits under each bed · A study desk for every bed". Every listing claims "ample storage"; none of them can be checked.
+- **Three refusals are pinned by tests** (19 in `room-space.ts`): a room nobody measured says nothing rather than showing a default; where rooms of one sharing size differ the listing says so and promises the *smaller*; and storage is only claimed when every room of that size has it. The size wording does not flatter — under 25 sq ft per bed reads "Tight", because a listing that calls that "cosy" is why people distrust listings.
+- **Two UI bugs fixed on the listing**: the hostel's name and Share/Save rendered twice at desk width, and the body sheet's `-mt-6` (which lifts it over the phone's full-bleed gallery) was climbing over the desktop photo grid and half-covering "Show all photos". That button now sits in the grid's corner, where Airbnb puts it, and the phone gallery gained its own way into the tour.
+- Design note: `docs/superpowers/specs/2026-08-20-feeling-the-room-design.md`. This is its phase 1; 360° capture is phase 3 and deliberately last.
+
 ### 2026-08-20 — Photo tour
 - **"Show all photos" opens a photo tour**, grouped by the part of the hostel — Rooms, Bathrooms, Mess & kitchen, Common areas, Study & work, Building & outside — with a thumbnail strip to jump by, each section's first photo large and the rest two-up, and any photo opening full screen. Airbnb's shape, Stayo's palette and vocabulary.
 - **Photos carry a `category`** (`marketing-content.ts`, no migration — it is JSON content), chosen by the owner in the photos screen and reviewed like everything else. Anything uploaded before this lands in "More photos" rather than disappearing from a grouped view.

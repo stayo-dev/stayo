@@ -126,6 +126,19 @@ function publicRoom(room: any) {
       maintenance: null,
     },
     notes: room.notes || null,
+    /**
+     * What the room is like to live in (migration 073). Passed through raw —
+     * the listing turns it into per-bed area and storage lines via
+     * `room-space.ts`, so one place decides how it reads.
+     */
+    space: {
+      length_ft: room.length_ft == null ? null : Number(room.length_ft),
+      width_ft: room.width_ft == null ? null : Number(room.width_ft),
+      cupboard_per_bed: room.cupboard_per_bed ?? null,
+      under_bed_storage: room.under_bed_storage ?? null,
+      study_desk: room.study_desk ?? null,
+      windows: room.windows ?? null,
+    },
     photos: asArray(room.admission_photos),
     roommate_preview: activeAllocations
       .map((allocation: any) => allocation.tenant)

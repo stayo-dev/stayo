@@ -26,6 +26,17 @@ export function RoomSheetModal({ open, room, floor, floors, onClose, onAssign, o
   const [number, setNumber] = useState('');
   const [rent, setRent] = useState('');
   const [floorId, setFloorId] = useState('');
+  /**
+   * What the room is like to live in (migration 073). Two tape measurements
+   * and three storage facts — the listing turns them into floor area per bed,
+   * which is the number that actually compares one hostel to another.
+   */
+  const [lengthFt, setLengthFt] = useState('');
+  const [widthFt, setWidthFt] = useState('');
+  const [cupboard, setCupboard] = useState<'yes' | 'shared' | ''>('');
+  const [underBed, setUnderBed] = useState('');
+  const [desk, setDesk] = useState('');
+  const [windows, setWindows] = useState('');
 
   useEffect(() => {
     if (open) setEditing(false);
@@ -36,6 +47,13 @@ export function RoomSheetModal({ open, room, floor, floors, onClose, onAssign, o
       setNumber(room.number);
       setRent(String(room.rent));
       setFloorId(room.floorId);
+      const space = (room as any).space ?? {};
+      setLengthFt(space.length_ft == null ? '' : String(space.length_ft));
+      setWidthFt(space.width_ft == null ? '' : String(space.width_ft));
+      setCupboard(space.cupboard_per_bed == null ? '' : space.cupboard_per_bed ? 'yes' : 'shared');
+      setUnderBed(space.under_bed_storage ?? '');
+      setDesk(space.study_desk ?? '');
+      setWindows(space.windows == null ? '' : String(space.windows));
     }
   }, [room]);
 
@@ -51,7 +69,15 @@ export function RoomSheetModal({ open, room, floor, floors, onClose, onAssign, o
         room_no: number.trim(),
         base_rent: Number(rent) || 0,
         ...(floorId && floorId !== room.floorId ? { floor_id: floorId } : {}),
-      });
+        // Empty means "not measured", which the listing shows as nothing at
+        // all rather than as a zero.
+        length_ft: lengthFt === '' ? null : Number(lengthFt),
+        width_ft: widthFt === '' ? null : Number(widthFt),
+        cupboard_per_bed: cupboard === '' ? null : cupboard === 'yes',
+        under_bed_storage: underBed === '' ? null : underBed,
+        study_desk: desk === '' ? null : desk,
+        windows: windows === '' ? null : Number(windows),
+      } as any);
       stayoToast.success('Room details updated');
       setEditing(false);
     } catch {
@@ -116,6 +142,93 @@ export function RoomSheetModal({ open, room, floor, floors, onClose, onAssign, o
               className="w-full rounded-[11px] border-[1.5px] border-primary bg-card px-3.5 py-3 text-sm font-semibold text-foreground focus:outline-none"
             />
           </label>
+          {/*
+            The space block. Tenants ask "how big is it" and "where do my
+            things go" more than anything after the rent, and no listing
+            answers either — the app has never had anywhere to record it.
+          */}
+          <div className="rounded-[13px] border border-border bg-card p-3.5">
+            <p className="font-display text-[13px] font-bold text-foreground">The space</p>
+            <p className="mt-0.5 text-[11.5px] leading-[1.5] text-muted-foreground">
+              Measure once with a tape. Your listing turns this into floor space per bed — the
+              figure people actually compare hostels on. Leave blank if you have not measured.
+            </p>
+
+            <div className="mt-3 flex gap-2">
+              <label className="block flex-1">
+                <span className={labelStyle}>Length (ft)</span>
+                <input
+                  value={lengthFt}
+                  onChange={(e) => setLengthFt(e.target.value.replace(/[^0-9.]/g, ''))}
+                  inputMode="decimal"
+                  placeholder="14"
+                  className="w-full rounded-[11px] border border-border bg-card px-3 py-2.5 text-sm font-semibold text-foreground focus:outline-none"
+                />
+              </label>
+              <label className="block flex-1">
+                <span className={labelStyle}>Width (ft)</span>
+                <input
+                  value={widthFt}
+                  onChange={(e) => setWidthFt(e.target.value.replace(/[^0-9.]/g, ''))}
+                  inputMode="decimal"
+                  placeholder="10"
+                  className="w-full rounded-[11px] border border-border bg-card px-3 py-2.5 text-sm font-semibold text-foreground focus:outline-none"
+                />
+              </label>
+              <label className="block w-[86px]">
+                <span className={labelStyle}>Windows</span>
+                <input
+                  value={windows}
+                  onChange={(e) => setWindows(e.target.value.replace(/[^0-9]/g, ''))}
+                  inputMode="numeric"
+                  placeholder="2"
+                  className="w-full rounded-[11px] border border-border bg-card px-3 py-2.5 text-sm font-semibold text-foreground focus:outline-none"
+                />
+              </label>
+            </div>
+
+            <label className="mt-3 block">
+              <span className={labelStyle}>Cupboards</span>
+              <select
+                value={cupboard}
+                onChange={(e) => setCupboard(e.target.value as 'yes' | 'shared' | '')}
+                className="w-full rounded-[11px] border border-border bg-card px-3 py-2.5 text-sm font-semibold text-foreground focus:outline-none"
+              >
+                <option value="">Not recorded</option>
+                <option value="yes">One lockable cupboard per person</option>
+                <option value="shared">Shared cupboard space</option>
+              </select>
+            </label>
+
+            <label className="mt-2.5 block">
+              <span className={labelStyle}>Under-bed storage</span>
+              <select
+                value={underBed}
+                onChange={(e) => setUnderBed(e.target.value)}
+                className="w-full rounded-[11px] border border-border bg-card px-3 py-2.5 text-sm font-semibold text-foreground focus:outline-none"
+              >
+                <option value="">Not recorded</option>
+                <option value="LARGE_SUITCASE">A large suitcase fits</option>
+                <option value="CABIN_BAG">A cabin bag fits</option>
+                <option value="NONE">Nothing fits under the bed</option>
+              </select>
+            </label>
+
+            <label className="mt-2.5 block">
+              <span className={labelStyle}>Study desk</span>
+              <select
+                value={desk}
+                onChange={(e) => setDesk(e.target.value)}
+                className="w-full rounded-[11px] border border-border bg-card px-3 py-2.5 text-sm font-semibold text-foreground focus:outline-none"
+              >
+                <option value="">Not recorded</option>
+                <option value="PER_BED">A desk for every bed</option>
+                <option value="SHARED">One shared table</option>
+                <option value="NONE">No desk</option>
+              </select>
+            </label>
+          </div>
+
           <label className="block">
             <span className={labelStyle}>Monthly rent (per bed)</span>
             <div className="flex items-center rounded-[11px] border border-border bg-card px-3.5">

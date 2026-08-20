@@ -1,3 +1,5 @@
+import { summariseSpace } from "./room-space";
+
 /**
  * The one projection from stored content to a Discovery listing payload.
  *
@@ -112,6 +114,20 @@ export function hostName(fullName: string | null | undefined): string | null {
   return `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.`;
 }
 
+/**
+ * Each advertised bed type, with what the real rooms of that size are like to
+ * live in. Attached here rather than left to the client so the "smaller room
+ * wins" and "only claim what every room has" rules live in one place.
+ */
+export function bedTierSpace(bedTiers: any[], rooms: any[]) {
+  return bedTiers.map((tier: any) => {
+    const matching = (rooms ?? [])
+      .filter((room: any) => Number(room.capacity) === Number(tier.sharing))
+      .map((room: any) => ({ capacity: Number(room.capacity), ...(room.space ?? {}) }));
+    return { ...tier, space: summariseSpace(matching) };
+  });
+}
+
 export function projectListing({ detail, visible, marketing, preview = false }: ProjectListingInput) {
   const platformListed = String(visible.listing_source ?? "OWNER_MANAGED") === "PLATFORM_LISTED";
 
@@ -140,7 +156,7 @@ export function projectListing({ detail, visible, marketing, preview = false }: 
      * comes from real rooms — a marketing tier describes what is on sale, it
      * does not decide what is free.
      */
-    bed_tiers: marketing?.beds ?? [],
+    bed_tiers: bedTierSpace(marketing?.beds ?? [], detail.rooms ?? []),
 
     amenities: (marketing?.amenities ?? []).filter((amenity: any) => amenity.enabled),
     places: marketing?.places ?? [],

@@ -68,6 +68,13 @@ export async function GET(req: NextRequest) {
           r.base_rent,
           r.wifi_name,
           r.notes,
+          -- What the room is like to live in (migration 073).
+          r.length_ft,
+          r.width_ft,
+          r.cupboard_per_bed,
+          r.under_bed_storage,
+          r.study_desk,
+          r.windows,
           r.hostel_id,
           r.is_active,
           COALESCE(alloc.tenants, '[]'::jsonb) AS tenants
@@ -137,6 +144,15 @@ export async function GET(req: NextRequest) {
         rent: room.base_rent,
         wifi_name: room.wifi_name ?? null,
         notes: room.notes ?? null,
+        /** Grouped, because the owner edits and the listing reads them together. */
+        space: {
+          length_ft: room.length_ft == null ? null : Number(room.length_ft),
+          width_ft: room.width_ft == null ? null : Number(room.width_ft),
+          cupboard_per_bed: room.cupboard_per_bed ?? null,
+          under_bed_storage: room.under_bed_storage ?? null,
+          study_desk: room.study_desk ?? null,
+          windows: room.windows ?? null,
+        },
         hostel_id: room.hostel_id,
         is_active: room.is_active,
         status: derivedStatus,
