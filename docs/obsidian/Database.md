@@ -295,6 +295,10 @@ Prisma exposes this as **two relations on the same table**, which is easy to mis
 
 > ⚠️ **Not verified against a live database.** The migration file and both objects need one real run; the accompanying tests use this repo's mocked-Prisma pattern. Note the 2026-08-14 warning above applies in spirit: `visitor_leads` is read by the owner lead funnel, so a column present in `schema.prisma` but absent from the database will 500 those routes.
 
+## `visitor_leads.status` gains ACCEPTED / ON_HOLD / REJECTED (2026-08-20, no migration)
+
+The owner Leads tab's Accept/Hold/Reject actions ([[Decisions#ADR-087|ADR-087]]) added three values to the app-level `LEAD_STATUSES` const (`src/services/admissions/admissions-service.ts`) — `status` remains a plain `String` column, so this is a zero-migration change, same convention as the `'DISCOVER'` source value above. No new table: Hold's owner-typed reason is stored as an ordinary row in the pre-existing `lead_notes` table (`lead_id`, `owner_id`, `note`, `created_at`) — the same table a plain enquiry note already used. `ACCEPTED` and `ON_HOLD` were also added to the exported `ACTIVE_LEAD_STATUSES` list (used by Discover's re-enquiry de-duplication, [[Decisions#ADR-073|ADR-073]]) — a lead the owner has accepted or put on hold is still "open" for that purpose; `REJECTED`, like `LOST`, is not.
+
 ## The portable profile — `profile_identity` + the document vault (2026-08-15, migration 064)
 
 Three new tables ([[Decisions#ADR-074|ADR-074]]). Nothing is dropped or altered, and there is no backfill in the migration.

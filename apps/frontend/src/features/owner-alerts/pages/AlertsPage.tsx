@@ -1,13 +1,18 @@
-import { Inbox, Loader2, ChevronRight, UserCog } from 'lucide-react';
+import { useState } from 'react';
+import { Inbox, Loader2, ChevronRight, UserCog, MessageCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { EmptyState } from '@shared/ui-patterns/EmptyState';
+import { openWhatsAppShare } from '@lib/share';
 import { useAlerts, DynamicAlertCategory } from '../hooks/useAlerts';
 import { useOwnerProfileRequests } from '@features/owner-profile-requests/hooks/useOwnerProfileRequests';
+import { LeadDetailSheet } from '../components/LeadDetailSheet';
+import { LEAD_SOURCE_LABEL, leadStatusLabel, leadStatusToneClass } from '../leadConstants';
 
-const CATEGORIES: DynamicAlertCategory[] = ['admin', 'renewals', 'requests'];
+const CATEGORIES: DynamicAlertCategory[] = ['leads', 'admin', 'renewals', 'requests'];
 
 const ALERT_CATEGORY_LABELS: Record<DynamicAlertCategory, string> = {
+  leads: 'Leads',
   admin: 'Messages',
   renewals: 'Renewals',
   requests: 'Requests',
@@ -22,17 +27,24 @@ const initials = (name: string) =>
 
 const soon = () => stayoToast.info('Coming soon');
 
-/** Alerts tab — Admin/Renewals/Requests, per Stayo App.dc.html. Reached via Home's bell icon, not the bottom nav (design has no Alerts nav icon). */
+/**
+ * Alerts tab — Leads/Admin/Renewals/Requests, per Stayo App.dc.html. Reached
+ * via Home's bell icon, not the bottom nav (design has no Alerts nav icon).
+ * Leads was speced in the design source but never implemented until now —
+ * see docs/obsidian/Decisions.md for the ADR on returning-tenant awareness,
+ * which is what its detail sheet (`LeadDetailSheet`) surfaces.
+ */
 export function AlertsPage() {
   const navigate = useNavigate();
   const alerts = useAlerts();
   const profileRequests = useOwnerProfileRequests();
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
 
   return (
     <div className="flex flex-col gap-3 px-4 pb-8 pt-6 sm:px-6">
       <div>
         <h1 className="font-display text-[22px] font-extrabold tracking-tight text-foreground">Alerts</h1>
-        <p className="mt-0.5 text-[12.5px] text-muted-foreground">Messages, renewals and tenant requests in one place</p>
+        <p className="mt-0.5 text-[12.5px] text-muted-foreground">Leads, messages, renewals and tenant requests in one place</p>
       </div>
 
       <div className="flex gap-1.5 overflow-x-auto pb-0.5">
@@ -54,7 +66,71 @@ export function AlertsPage() {
       </div>
 
       <div className="flex flex-col gap-2">
-        {alerts.loading ? (
+        {alerts.category === 'leads' && alerts.leadsLoading ? (
+          <div className="flex h-40 items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : alerts.category === 'leads' ? (
+          alerts.leads.length === 0 ? (
+            <EmptyState icon={<Inbox className="h-5 w-5" />} title="No enquiries yet" />
+          ) : (
+            alerts.leads.map((l) => (
+              <div
+                key={l.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedLeadId(l.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') setSelectedLeadId(l.id);
+                }}
+                className={`${rowCard} cursor-pointer`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-secondary font-display text-xs font-bold text-primary">
+                    {initials(l.student_name)}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13.5px] font-semibold text-foreground">{l.student_name}</div>
+                    <div className="text-[11.5px] text-muted-foreground">
+                      Enquired via {LEAD_SOURCE_LABEL[l.source] ?? l.source} · {l.hostel?.name ?? ''}
+                    </div>
+                  </div>
+                  <span className={`flex-none rounded-md px-2 py-0.5 text-[10.5px] font-semibold ${leadStatusToneClass(l.status)}`}>
+                    {leadStatusLabel(l.status)}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  {l.student_phone ? (
+                    <a href={`tel:${l.student_phone}`} onClick={(e) => e.stopPropagation()} className={sideBtn}>
+                      Call
+                    </a>
+                  ) : (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); soon(); }} className={sideBtn}>
+                      Call
+                    </button>
+                  )}
+                  {l.student_phone ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openWhatsAppShare(`Hi ${l.student_name}, this is regarding your enquiry at ${l.hostel?.name ?? 'our hostel'}.`, l.student_phone ?? undefined);
+                      }}
+                      className={`${actionBtn} flex items-center justify-center gap-1.5`}
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" strokeWidth={2} />
+                      WhatsApp
+                    </button>
+                  ) : (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); soon(); }} className={`${actionBtn} text-success`}>
+                      WhatsApp
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))
+          )
+        ) : alerts.loading ? (
           <div className="flex h-40 items-center justify-center">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
@@ -147,6 +223,8 @@ export function AlertsPage() {
           </>
         )}
       </div>
+
+      <LeadDetailSheet leadId={selectedLeadId} onClose={() => setSelectedLeadId(null)} />
     </div>
   );
 }

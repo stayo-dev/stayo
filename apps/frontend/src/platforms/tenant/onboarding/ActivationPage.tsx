@@ -128,7 +128,12 @@ export function ActivationPage() {
       setAccount((prev) => ({
         ...prev,
         phone: prev.phone || phoneDigits(data.tenant?.phone_1 || data.profile?.phone),
-        email: prev.email || '',
+        // Pre-filled from whatever the owner captured at invite (which, for a
+        // lead-accepted tenant, traces back to the enquiry) — still editable,
+        // and submit's Gmail-format validation is unchanged, so a non-Gmail
+        // invite email just shows up ready to correct rather than retyped
+        // from scratch.
+        email: prev.email || String(data.profile?.email || ''),
       }));
 
       const backendProfile: ProfileDraft = {

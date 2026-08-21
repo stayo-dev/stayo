@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { tenantService } from '@features/tenants/api';
+import { admissionsService } from '@features/admissions/api';
+import { queryKeys } from '@lib/queryKeys';
 import {
   resolveInviteDelivery,
   resolveResendDelivery,
@@ -14,6 +16,17 @@ import {
   EMAIL_REGEX,
 } from '../invite/validation';
 import { EMPTY_INVITE_WIZARD_DATA, type InviteWizardData } from '../types';
+
+export interface UseInviteWizardOptions {
+  /** Pre-fills the form — e.g. from an accepted lead — instead of starting blank. */
+  initialData?: Partial<InviteWizardData>;
+  /**
+   * When set, submit calls the lead-aware `POST /leads/:id/convert-to-invitation`
+   * instead of the plain invite endpoint, so the created tenant is linked back
+   * to the lead it came from (`visitor_leads.converted_tenant_id`).
+   */
+  leadId?: string;
+}
 
 const STEP_LABELS = ['Tenant', 'Stay', 'Money', 'Verify'] as const;
 
@@ -38,10 +51,11 @@ function getErrorMessage(error: unknown, fallback: string) {
  * / `email_sent` / `needs_email` / `activation_link`, all of which this hook
  * used to discard while the UI claimed success regardless.
  */
-export function useInviteWizard() {
+export function useInviteWizard(options: UseInviteWizardOptions = {}) {
+  const { initialData, leadId } = options;
   const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
-  const [data, setData] = useState<InviteWizardData>(EMPTY_INVITE_WIZARD_DATA);
+  const [data, setData] = useState<InviteWizardData>({ ...EMPTY_INVITE_WIZARD_DATA, ...initialData });
   const [agreed, setAgreed] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [delivery, setDelivery] = useState<InviteDeliveryOutcome | null>(null);
@@ -80,8 +94,8 @@ export function useInviteWizard() {
   const emailInvalid = !isValidTenantEmail(email);
 
   const inviteMutation = useMutation({
-    mutationFn: () =>
-      tenantService.invite({
+    mutationFn: async () => {
+      const payload = {
         name: data.tenantName.trim(),
         phone: sanitizeIndianPhone(data.tenantPhone),
         // Omitted rather than sent blank: the backend's InvitationSchema
@@ -94,7 +108,15 @@ export function useInviteWizard() {
         joining_date: data.joiningDate || undefined,
         agreement_duration_months: Number(data.agreementMonths) || undefined,
         payment_frequency: BILLING_TO_FREQUENCY[data.billing] ?? 'MONTHLY',
-      }),
+      };
+      if (leadId) {
+        // Response is { invitation, lead } — unwrap so the rest of this hook
+        // (resolveInviteDelivery, tenant_id) sees the same flat shape either way.
+        const result = (await admissionsService.convertToInvitation(leadId, payload)) as { invitation?: unknown } | null;
+        return result?.invitation ?? result;
+      }
+      return tenantService.invite(payload);
+    },
     onSuccess: (response: unknown) => {
       const outcome = resolveInviteDelivery(response);
       setDelivery(outcome);
@@ -106,6 +128,7 @@ export function useInviteWizard() {
       setFallbackEmail(email);
       setSubmitted(true);
       queryClient.invalidateQueries({ queryKey: ['owner', 'tenants', 'list-merged'] });
+      if (leadId) queryClient.invalidateQueries({ queryKey: queryKeys.admissions.all() });
     },
   });
 
@@ -139,7 +162,7 @@ export function useInviteWizard() {
 
   const reset = () => {
     setStep(0);
-    setData(EMPTY_INVITE_WIZARD_DATA);
+    setData({ ...EMPTY_INVITE_WIZARD_DATA, ...initialData });
     setAgreed(false);
     setSubmitted(false);
     setDelivery(null);

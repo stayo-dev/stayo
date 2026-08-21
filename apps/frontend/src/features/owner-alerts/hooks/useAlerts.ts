@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import apiClient from '@lib/api-client';
+import { admissionsService } from '@features/admissions/api';
+import { queryKeys } from '@lib/queryKeys';
 
-export type DynamicAlertCategory = 'admin' | 'renewals' | 'requests';
+export type DynamicAlertCategory = 'leads' | 'admin' | 'renewals' | 'requests';
 
 export interface DynamicAdminMessage {
   id: string;
@@ -27,8 +30,20 @@ export interface DynamicRequest {
   read: boolean;
 }
 
+/** One `visitor_leads` row, shaped as `admissionsService.list()` returns it. */
+export interface DynamicLead {
+  id: string;
+  student_name: string;
+  student_phone: string | null;
+  source: string;
+  status: string;
+  hostel_id: string;
+  hostel?: { id: string; name: string };
+  seeker_profile_id: string | null;
+}
+
 export function useAlerts() {
-  const [category, setCategory] = useState<DynamicAlertCategory>('admin');
+  const [category, setCategory] = useState<DynamicAlertCategory>('leads');
   const [adminMessages, setAdminMessages] = useState<DynamicAdminMessage[]>([]);
   const [renewals, setRenewals] = useState<DynamicRenewal[]>([]);
   const [requests, setRequests] = useState<DynamicRequest[]>([]);
@@ -52,6 +67,18 @@ export function useAlerts() {
     return () => clearInterval(interval);
   }, []);
 
+  // Leads have their own funnel elsewhere and don't need the 60s poll the
+  // other three categories share — fetched via the shared admissions query
+  // key, so Accept/Hold/Reject mutations in LeadDetailSheet can invalidate
+  // it instead of this hook needing its own refetch plumbing.
+  const leadsQuery = useQuery({
+    queryKey: queryKeys.admissions.list({ limit: 20 }),
+    queryFn: () => admissionsService.list({ limit: 20 }) as Promise<{ items?: DynamicLead[] }>,
+    enabled: category === 'leads',
+  });
+  const leads = leadsQuery.data?.items ?? [];
+  const leadsLoading = leadsQuery.isLoading;
+
   const markRead = async (cat: DynamicAlertCategory, id: string) => {
     // Optimistic UI update
     if (cat === 'admin') setAdminMessages((l) => l.map((x) => (x.id === id ? { ...x, read: true } : x)));
@@ -71,10 +98,13 @@ export function useAlerts() {
     adminMessages,
     renewals,
     requests,
-    counts: { 
-      admin: adminMessages.length, 
-      renewals: renewals.length, 
-      requests: requests.length 
+    leads,
+    leadsLoading,
+    counts: {
+      leads: leads.length,
+      admin: adminMessages.length,
+      renewals: renewals.length,
+      requests: requests.length,
     },
     markRead,
     loading

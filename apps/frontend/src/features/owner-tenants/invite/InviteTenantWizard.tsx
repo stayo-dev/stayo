@@ -8,15 +8,20 @@ import { TenantStep } from './steps/TenantStep';
 import { StayStep } from './steps/StayStep';
 import { MoneyStep } from './steps/MoneyStep';
 import { VerifyStep } from './steps/VerifyStep';
+import type { InviteWizardData } from '../types';
 
 interface InviteTenantWizardProps {
   open: boolean;
   onClose: () => void;
+  /** Pre-fills the form — e.g. from an accepted lead — instead of starting blank. */
+  initialData?: Partial<InviteWizardData>;
+  /** When set, the invitation is created via the lead-aware endpoint so the tenant links back to the enquiry it came from. */
+  leadId?: string;
 }
 
 /** 4-step Invite Tenant wizard (Tenant → Stay → Money → Verify), per Stayo App.dc.html. Submits to the real invite endpoint. */
-export function InviteTenantWizard({ open, onClose }: InviteTenantWizardProps) {
-  const wizard = useInviteWizard();
+export function InviteTenantWizard({ open, onClose, initialData, leadId }: InviteTenantWizardProps) {
+  const wizard = useInviteWizard({ initialData, leadId });
   const session = useOwnerSession();
 
   useEffect(() => {
