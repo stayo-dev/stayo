@@ -62,14 +62,20 @@ export function HostelCardSkeleton({
       {Array.from({ length: count }).map((_, index) => (
         <div
           key={index}
-          className="overflow-hidden rounded-[20px] border bg-white"
+          className="flex aspect-square flex-col overflow-hidden rounded-[20px] border bg-white"
           style={{ borderColor: C.line }}
         >
-          <div className="h-[186px] animate-pulse sm:h-auto sm:aspect-[4/3]" style={{ background: '#EDE4DA' }} />
-          <div className="space-y-2.5 p-4">
+          {/* Square, and split exactly where the real card splits — photo takes
+              what the text block leaves — so nothing shifts vertically or
+              horizontally when the results land. */}
+          <div className="min-h-0 flex-1 animate-pulse" style={{ background: '#EDE4DA' }} />
+          <div className="flex-none px-4 pb-4 pt-3.5">
             <div className="h-4 w-2/3 animate-pulse rounded" style={{ background: '#EDE4DA' }} />
-            <div className="h-3 w-1/2 animate-pulse rounded" style={{ background: '#F2ECE5' }} />
-            <div className="h-5 w-1/3 animate-pulse rounded" style={{ background: '#F2ECE5' }} />
+            <div className="mt-2 h-3 w-5/6 animate-pulse rounded" style={{ background: '#F2ECE5' }} />
+            <div className="mt-3 flex items-center justify-between border-t pt-3" style={{ borderColor: '#F4EEE7' }}>
+              <div className="h-5 w-24 animate-pulse rounded" style={{ background: '#EDE4DA' }} />
+              <div className="h-3 w-20 animate-pulse rounded" style={{ background: '#F2ECE5' }} />
+            </div>
           </div>
         </div>
       ))}

@@ -1,7 +1,8 @@
-import { Heart, MapPin, Share2, ShieldCheck } from 'lucide-react';
+import { Heart, MapPin, Share2, UtensilsCrossed } from 'lucide-react';
 
 import type { DiscoverCard } from '@features/discover/api';
-import { AUDIENCE_LABEL, C, FONT, PHOTO_FALLBACK, priceLabel, sharingLabels } from '../discoverTheme';
+import { C, FONT, PHOTO_FALLBACK } from '../discoverTheme';
+import { hostelCardFacts, type AvailabilityTone } from '../hostelCardFacts';
 
 interface HostelCardProps {
   hostel: DiscoverCard;
@@ -14,24 +15,38 @@ interface HostelCardProps {
   variant?: 'full' | 'compact';
 }
 
+/** Availability reads as colour before it reads as words. */
+const AVAILABILITY_COLOR: Record<AvailabilityTone, string> = {
+  open: C.green,
+  scarce: C.amber,
+  full: C.textFaint,
+};
+
 /**
  * The one hostel card. Deliberately a single component with a `variant` rather
  * than two near-identical ones — the prototype drew three shapes of card and
  * they had already drifted apart in spacing and price formatting.
  *
- * Everything it renders comes from a real column. There is no rating and no
- * amenity row because that data does not exist yet (phases C/D); the layout
- * leaves room for them instead of filling the gap with a plausible number.
+ * Two things govern the full card's layout:
  *
- * The full card is width-agnostic: one per row on a phone, a grid tile from
- * `sm` up. Its photo is therefore a fixed height only at phone width and an
- * aspect ratio above it — a fixed 186px on a 380px-wide grid tile letterboxes
- * the photo, which is the single most decision-carrying thing on the card.
+ * 1. **Every card is the same height, by construction.** The text block is a
+ *    fixed rhythm — one title line, one location line, one chip line, one
+ *    price line — and `hostelCardFacts` guarantees each of those has content
+ *    and fits. The old card let the data decide: a hostel with one room type
+ *    drew a lonely chip and left a hole above the price, which is what made a
+ *    row of cards look lopsided at desk width.
+ * 2. **Nothing on it is true of every hostel.** A "Verified" badge on a
+ *    surface where every hostel is verified is decoration that costs a corner
+ *    of the photo; verification is stated once, in the section heading. What
+ *    stays on the photo is the one thing that disqualifies a hostel outright —
+ *    who it is for.
+ *
+ * There is no rating and no amenity row because that data does not exist yet
+ * (phases C/D); the layout leaves room for them rather than filling the gap
+ * with a plausible number.
  */
 export function HostelCard({ hostel, saved, onOpen, onToggleSave, onShare, variant = 'full' }: HostelCardProps) {
-  const price = priceLabel(hostel.starting_price);
-  const audience = hostel.hostel_type ? AUDIENCE_LABEL[hostel.hostel_type] : null;
-  const photo = hostel.photos[0];
+  const facts = hostelCardFacts(hostel);
   const compact = variant === 'compact';
 
   const open = () => {
@@ -48,7 +63,18 @@ export function HostelCard({ hostel, saved, onOpen, onToggleSave, onShare, varia
         event.stopPropagation();
         onToggleSave(hostel);
       }}
-      className="flex flex-none items-center justify-center rounded-full transition-transform active:scale-90"
+      className={
+        compact
+          ? 'flex flex-none items-center justify-center rounded-full transition-transform active:scale-90'
+          : // Hidden until hover on a pointer device, always present on touch —
+            // and always present once saved, since it is then a state readout
+            // and not just a control.
+            `flex flex-none items-center justify-center rounded-full transition-[opacity,transform,background-color] duration-200 ease-out hover:bg-white active:scale-90 ${
+              saved
+                ? 'opacity-100'
+                : 'lg:-translate-y-1 lg:opacity-0 lg:group-hover:translate-y-0 lg:group-hover:opacity-100 lg:group-focus-within:translate-y-0 lg:group-focus-within:opacity-100'
+            }`
+      }
       style={{
         width: compact ? 30 : 34,
         height: compact ? 30 : 34,
@@ -82,7 +108,7 @@ export function HostelCard({ hostel, saved, onOpen, onToggleSave, onShare, varia
         event.stopPropagation();
         onShare(hostel);
       }}
-      className="flex flex-none items-center justify-center rounded-full transition-transform active:scale-90"
+      className="flex flex-none items-center justify-center rounded-full transition-[opacity,transform,background-color] duration-200 ease-out hover:bg-white active:scale-90 lg:-translate-y-1 lg:opacity-0 lg:group-hover:translate-y-0 lg:group-hover:opacity-100 lg:group-focus-within:translate-y-0 lg:group-focus-within:opacity-100"
       style={{
         width: 34,
         height: 34,
@@ -103,7 +129,7 @@ export function HostelCard({ hostel, saved, onOpen, onToggleSave, onShare, varia
       >
         <div
           className="h-24 w-24 flex-none rounded-[13px] bg-cover bg-center"
-          style={photo ? { backgroundImage: `url(${photo})` } : PHOTO_FALLBACK}
+          style={facts.photo ? { backgroundImage: `url(${facts.photo})` } : PHOTO_FALLBACK}
         />
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex items-start gap-2">
@@ -117,10 +143,10 @@ export function HostelCard({ hostel, saved, onOpen, onToggleSave, onShare, varia
           </div>
           <p className="mt-1 flex items-center gap-1.5 text-[11.5px]" style={{ color: C.textMuted }}>
             <MapPin className="h-3 w-3 flex-none" strokeWidth={1.8} style={{ color: C.textGhost }} />
-            <span className="truncate">{hostel.city ?? hostel.address}</span>
+            <span className="truncate">{facts.location}</span>
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {sharingLabels(hostel.sharing).slice(0, 3).map((label) => (
+            {facts.sharing.map((label) => (
               <span
                 key={label}
                 className="rounded-[7px] px-2 py-1 text-[10.5px] font-semibold"
@@ -131,11 +157,11 @@ export function HostelCard({ hostel, saved, onOpen, onToggleSave, onShare, varia
             ))}
           </div>
           <div className="mt-auto pt-2">
-            {price ? (
+            {facts.price ? (
               <span className="flex items-baseline gap-1">
                 <span className="text-[10.5px]" style={{ color: C.textMuted }}>from</span>
                 <span className="text-[16px] font-extrabold tracking-[-0.01em]" style={{ fontFamily: FONT.display, color: C.text }}>
-                  {price}
+                  {facts.price}
                 </span>
                 <span className="text-[10.5px]" style={{ color: C.textMuted }}>/mo</span>
               </span>
@@ -149,82 +175,122 @@ export function HostelCard({ hostel, saved, onOpen, onToggleSave, onShare, varia
   }
 
   return (
-    <article
-      onClick={open}
-      className="group flex h-full cursor-pointer flex-col overflow-hidden rounded-[20px] border bg-white shadow-[0_1px_2px_rgba(40,30,20,.04),0_8px_20px_rgba(40,30,20,.06)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_2px_4px_rgba(40,30,20,.06),0_16px_32px_rgba(40,30,20,.12)]"
-      style={{ borderColor: C.line }}
-    >
-      <div
-        className="relative h-[186px] bg-cover bg-center sm:h-auto sm:aspect-[4/3]"
-        style={photo ? { backgroundImage: `url(${photo})` } : PHOTO_FALLBACK}
-      >
-        {hostel.verified && (
-          <span
-            className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full px-2.5 py-1.5"
-            style={{ background: 'rgba(34,30,26,.82)' }}
-          >
-            <ShieldCheck className="h-[11px] w-[11px]" strokeWidth={2} style={{ color: C.clayLight }} />
-            <span className="text-[9.5px] font-bold tracking-[0.03em] text-white">Verified</span>
-          </span>
-        )}
-        <div className="absolute right-3 top-3 flex items-center gap-1.5">
+    <article className="group relative flex aspect-square flex-col overflow-hidden rounded-[20px] border border-[#EFE6DA] bg-white shadow-[0_1px_2px_rgba(40,30,20,.04),0_8px_20px_rgba(40,30,20,.06)] transition-[transform,box-shadow,border-color] duration-300 ease-out hover:-translate-y-1 hover:border-[#E6D5C7] hover:shadow-[0_4px_10px_rgba(40,30,20,.05),0_22px_44px_rgba(40,30,20,.13)] focus-within:ring-2 focus-within:ring-[#D9906F] motion-reduce:transition-none motion-reduce:hover:translate-y-0">
+      {/*
+        No aspect ratio of its own any more: the card is the square, and the
+        photo takes every pixel the text block does not. That is what keeps the
+        footprint exactly 1:1 at any column width instead of only at the one
+        width the ratios happened to agree on.
+      */}
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        {/*
+          The photo is its own layer so it can drift on hover without dragging
+          the chips and the pucks with it.
+        */}
+        <div
+          className="absolute inset-0 bg-cover bg-center transition-transform duration-[600ms] ease-out group-hover:scale-[1.05] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
+          style={facts.photo ? { backgroundImage: `url(${facts.photo})` } : PHOTO_FALLBACK}
+        />
+        {/* Keeps the audience chip legible over a bright photo, and deepens on
+            hover so the whole tile reads as lit. */}
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-24 opacity-60 transition-opacity duration-300 group-hover:opacity-100"
+          style={{ background: 'linear-gradient(to top,rgba(34,30,26,.34),rgba(34,30,26,0))' }}
+        />
+
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
           {shareButton}
           {saveButton}
         </div>
-        {audience && (
+
+        {facts.audience && (
           <span
-            className="absolute bottom-3 left-3 rounded-full px-2.5 py-1.5 text-[11px] font-bold"
+            className="absolute bottom-3 left-3 rounded-full px-2.5 py-1 text-[11px] font-bold"
             style={{ background: 'rgba(255,255,255,.94)', color: C.textBody }}
           >
-            {audience}
-          </span>
-        )}
-        {hostel.vacant_beds > 0 && (
-          <span
-            className="absolute bottom-3 right-3 rounded-full px-2.5 py-1.5 text-[10.5px] font-bold"
-            style={{ background: C.greenPale, color: C.green }}
-          >
-            {hostel.vacant_beds} {hostel.vacant_beds === 1 ? 'bed' : 'beds'} free
+            {facts.audience}
           </span>
         )}
       </div>
 
-      <div className="flex flex-1 flex-col px-4 pb-4 pt-3.5">
-        <h3 className="text-[16px] font-bold tracking-[-0.01em]" style={{ fontFamily: FONT.display, color: C.text }}>
-          {hostel.name}
+      {/*
+        `flex-none`, and deliberately shorter than the rectangular card's block:
+        every row here is a row the photo does not get. The chip line is gone —
+        its two facts moved into the meta line as text — which buys the photo
+        back about 40px on a 290px card.
+      */}
+      <div className="flex flex-none flex-col px-4 pb-4 pt-3.5">
+        <h3
+          className="truncate text-[15.5px] font-bold leading-[1.3] tracking-[-0.01em] text-[#221E1A] transition-colors duration-200 group-hover:text-[#A45D44]"
+          style={{ fontFamily: FONT.display }}
+        >
+          {/*
+            The title is the card's real control: a button gives keyboard and
+            screen-reader users the same target the mouse gets, and its
+            stretched ::after is what makes the whole card clickable without
+            nesting the save and share buttons inside another button.
+          */}
+          <button
+            type="button"
+            onClick={open}
+            className="block w-full cursor-pointer truncate text-left after:absolute after:inset-0 after:content-[''] focus:outline-none"
+          >
+            {hostel.name}
+          </button>
         </h3>
-        <p className="mt-1.5 flex items-center gap-1.5 text-[12px]" style={{ color: C.textMuted }}>
+
+        {/*
+          One meta line carrying what used to be a location line plus a chip
+          row. The location truncates and the two facts after it never do — a
+          long address must not be what pushes "Meals" off the card, because
+          the address is the part you can already read off the photo.
+        */}
+        <p className="mt-1 flex min-w-0 items-center gap-1.5 text-[12px]" style={{ color: C.textMuted }}>
           <MapPin className="h-3 w-3 flex-none" strokeWidth={1.8} style={{ color: C.textGhost }} />
-          <span className="truncate">{[hostel.address, hostel.city].filter(Boolean).join(', ')}</span>
+          <span className="truncate">{facts.location}</span>
+          {facts.sharingSummary && (
+            <>
+              <span className="flex-none" style={{ color: C.textGhost }}>·</span>
+              <span className="flex-none font-medium">{facts.sharingSummary}</span>
+            </>
+          )}
+          {facts.meals && (
+            <>
+              <span className="flex-none" style={{ color: C.textGhost }}>·</span>
+              <span className="flex flex-none items-center gap-1 font-semibold" style={{ color: C.green }}>
+                <UtensilsCrossed className="h-3 w-3 flex-none" strokeWidth={2} />
+                Meals
+              </span>
+            </>
+          )}
         </p>
 
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-          {sharingLabels(hostel.sharing).map((label) => (
-            <span
-              key={label}
-              className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold"
-              style={{ background: C.chipBg, color: '#6E6459' }}
-            >
-              {label}
-            </span>
-          ))}
-        </div>
-
-        <div className="mt-auto flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 pt-3">
-          {price ? (
+        {/* Price and availability are the two facts a person compares across
+            cards, so they sit on one baseline at the same height on every
+            card, under a hairline that ends the block instead of trailing off
+            into white space. */}
+        <div className="mt-3 flex items-baseline justify-between gap-3 border-t border-[#F4EEE7] pt-3">
+          {facts.price ? (
             <span className="flex items-baseline gap-1">
               <span className="text-[11.5px]" style={{ color: C.textMuted }}>from</span>
               <span className="text-[19px] font-extrabold tracking-[-0.01em]" style={{ fontFamily: FONT.display, color: C.text }}>
-                {price}
+                {facts.price}
               </span>
               <span className="text-[11.5px]" style={{ color: C.textMuted }}>/mo</span>
             </span>
           ) : (
             <span className="text-[12.5px] font-semibold" style={{ color: C.textMuted }}>Price on request</span>
           )}
-          {hostel.food_included && (
-            <span className="text-[11px] font-medium" style={{ color: C.green }}>Meals included</span>
-          )}
+          <span
+            className="flex flex-none items-center gap-1.5 text-[11.5px] font-semibold"
+            style={{ color: AVAILABILITY_COLOR[facts.availability.tone] }}
+          >
+            <span
+              className="h-1.5 w-1.5 flex-none rounded-full"
+              style={{ background: AVAILABILITY_COLOR[facts.availability.tone] }}
+            />
+            {facts.availability.label}
+          </span>
         </div>
       </div>
     </article>
