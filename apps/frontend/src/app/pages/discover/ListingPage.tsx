@@ -11,6 +11,7 @@ import {
   LayoutGrid,
   MapPin,
   Moon,
+  Navigation,
   Share2,
   Sparkles,
   ShieldCheck,
@@ -29,6 +30,7 @@ import { useDiscoverAuth } from './DiscoverAuthContext';
 import { DiscoverEmpty, PrimaryButton } from './components/DiscoverShell';
 import { AUDIENCE_LABEL, C, FONT, PAGE_SHELL, PHOTO_FALLBACK, formatRupees } from './discoverTheme';
 import { photoIndexFromScroll } from './galleryScroll';
+import { directionsUrl, distanceLine, hasNavigation } from './hostelNavigation';
 import { ReviewsSection } from './components/ReviewsSection';
 import { MediaLightbox } from './components/MediaLightbox';
 import { PhotoTour } from './components/PhotoTour';
@@ -130,6 +132,12 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
   const hostel = data?.hostel;
   const amenities = data?.amenities ?? [];
   const places = data?.places ?? [];
+  /**
+   * Admin-entered, never owner-entered — see migration 074. Null for a hostel
+   * nobody has located yet, which renders as no directions block rather than a
+   * button that opens the wrong building.
+   */
+  const navigation = data?.navigation ?? null;
   const mess = data?.mess ?? null;
 
   /**
@@ -947,11 +955,76 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
           )}
 
           {/* ── Getting around ───────────────────────────────────────── */}
-          {places.length > 0 && (
+          {(hasNavigation(navigation) || places.length > 0) && (
             <section className="mt-7">
               <h2 className="text-[16px] font-extrabold tracking-[-0.01em]" style={{ fontFamily: FONT.display, color: C.text }}>
                 Getting around
               </h2>
+
+              {/*
+                Finding the door.
+
+                In a cluster of hostels off one lane, an address resolves to the
+                lane and a map pin dropped by hand resolves to the roof next
+                door. This block exists because the last fifty metres is where
+                people actually get lost: a Place ID Google itself resolves, the
+                sentence a senior would say out loud, and a photograph of the
+                gate you are looking for. Only rendered when an admin has
+                located this hostel — see migration 074.
+              */}
+              {hasNavigation(navigation) && (
+                <div
+                  className="mt-3 overflow-hidden rounded-2xl border bg-white sm:flex"
+                  style={{ borderColor: C.line, boxShadow: '0 1px 2px rgba(40,30,20,.04)' }}
+                >
+                  {navigation?.entrancePhoto && (
+                    <div className="relative h-[168px] flex-none bg-cover bg-center sm:h-auto sm:w-[210px]"
+                      style={{ backgroundImage: `url(${navigation.entrancePhoto})` }}
+                    >
+                      <div
+                        className="pointer-events-none absolute inset-x-0 bottom-0 h-16"
+                        style={{ background: 'linear-gradient(to top,rgba(34,30,26,.62),rgba(34,30,26,0))' }}
+                      />
+                      <span className="absolute bottom-2.5 left-3 right-3 text-[11.5px] font-bold text-white">
+                        Look for this entrance
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex flex-1 flex-col gap-2 p-4">
+                    {distanceLine(navigation) && (
+                      <p className="flex items-center gap-1.5 text-[13px] font-bold" style={{ fontFamily: FONT.display, color: C.text }}>
+                        <MapPin className="h-3.5 w-3.5 flex-none" strokeWidth={2} style={{ color: C.clay }} />
+                        {distanceLine(navigation)}
+                      </p>
+                    )}
+                    {navigation?.landmark && (
+                      <p className="text-[12.5px] leading-[1.5]" style={{ color: C.textBody }}>
+                        {navigation.landmark}
+                      </p>
+                    )}
+
+                    {/*
+                      A real link, not a button with an onClick: a student can
+                      long-press it, and it still works if the JS handler never
+                      runs. `dir_action=navigate` means one tap, not a route
+                      preview they have to confirm.
+                    */}
+                    <a
+                      href={directionsUrl(navigation, hostel?.name ?? '') ?? undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-1 flex items-center justify-center gap-2 rounded-[13px] px-4 py-3 text-[13.5px] font-bold text-white transition-transform active:scale-[.98] sm:self-start sm:px-5"
+                      style={{ fontFamily: FONT.display, background: C.clay }}
+                    >
+                      <Navigation className="h-4 w-4 flex-none" strokeWidth={2.2} />
+                      Get Directions
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {places.length > 0 && (
               <div
                 className="mt-3 overflow-hidden rounded-2xl border bg-white"
                 style={{ borderColor: C.line, boxShadow: '0 1px 2px rgba(40,30,20,.04)' }}
@@ -972,6 +1045,7 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
                   </div>
                 ))}
               </div>
+              )}
             </section>
           )}
 

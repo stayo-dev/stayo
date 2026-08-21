@@ -107,6 +107,39 @@ Added 2026-08-10 ([[Decisions#ADR-062|ADR-062]], migration `20260810120000_room_
 
 Written **only** by `PATCH /api/rooms/reorder` (`RoomOrderService.reorder`), which rewrites every room's position **within one floor** inside one `prisma.$transaction` — same all-or-nothing reasoning as `hostels.display_order`, scoped to a floor rather than a whole owner. See [[APIs]] for the endpoint and [[Features]] for the UI.
 
+### `hostels.navigation`
+
+`jsonb`, nullable, added by **migration 074** (2026-08-22). How to find the hostel's
+front door, and the single source of truth for one-tap Google Maps directions.
+
+```jsonc
+{
+  "placeId":               "ChIJ…",                    // required — from Google's Place ID Finder
+  "landmark":              "Opposite SNIST Gate 2",     // nullable
+  "entrancePhoto":         "https://ik.imagekit.io/…",  // nullable, ImageKit
+  "distanceFromReference": "400m",                      // nullable, free text
+  "referenceName":         "SNIST"                      // defaulted, not hardcoded in the UI
+}
+```
+
+Three properties worth knowing before touching it:
+
+- **No Maps URL is stored.** The `/maps/dir/?api=1&…&dir_action=navigate` link is built
+  on the frontend from `placeId` at render time (`hostelNavigation.ts`). A stored URL
+  would be a second source of truth that goes stale silently. **Phase 1 uses no Google
+  Maps API at all** — no key, no billing, no quota.
+- **Admin-write-only.** Written exclusively by `PUT /api/platform-admin/hostels/:id/navigation`.
+  There is deliberately no owner route that reads or writes it, and it is deliberately
+  *not* in `hostel_marketing_revisions.content` — that payload is owner-authored and moves
+  with the draft/review lifecycle. Same side of the line as `listing_status` (ADR-040).
+  See [[Decisions#ADR-088|ADR-088]].
+- **Validated on read as well as write** by `NavigationSchema` (`src/services/discovery/hostel-navigation.ts`).
+  `parseNavigation()` never throws: a malformed row degrades to `null`, which renders as
+  a listing with no directions block rather than a button that opens the wrong building.
+
+A partial index `hostels_navigation_missing_idx ON hostels (listing_status) WHERE navigation IS NULL`
+answers the admin's first question — which live listings still have no Place ID.
+
 ### `hostels.house_rules`
 Added 2026-07-26 (`Json?` column on the existing `hostels` table, not a new table) for the tenant Room tab's House Rules accordion — an array of `{title, items: string[]}` sections. Deliberately kept out of the deep-merged hostel preferences policy blob (`hostelPolicyService`) — house rules are static reference content, not a policy setting, and folding it into that already-complex deep-merge schema risked corrupting real owner config for no benefit. New dedicated endpoint: `GET/PATCH /api/hostels/:id/house-rules`.
 

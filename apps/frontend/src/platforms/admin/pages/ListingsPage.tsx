@@ -14,6 +14,7 @@ import {
 } from '../drawer/MarketingReviewBody';
 import { parseDetailParam, serializeDetail } from '../drawer/drawerParam';
 import { StayoListedPanel } from '../listings/StayoListedPanel';
+import { NavigationBlock } from '../listings/NavigationBlock';
 import { tintForId } from '../theme/palette';
 
 const STATUS_PILL: Record<string, { bg: string; color: string; label: string }> = {
@@ -357,6 +358,14 @@ export function ListingsPage() {
             )
           }
         >
+          {/*
+            Above the review branch, not inside it: navigation is hostel-level,
+            not revision-level. Every hostel on Stayo the day this shipped was
+            already live with nothing pending, and putting this inside the
+            "submitted for review" branch would have made those unreachable.
+          */}
+          <NavigationBlock hostelId={detail.id} />
+
           {pendingRevisionFor(detail.id) ? (
             <>
               {/* Parity with the owner: anything they can edit on their

@@ -274,6 +274,13 @@ model hostels {
   archive_reason                 String?
   logo_url                       String?
   preferences_config             Json?
+  /// How to find the front door: Google Place ID (the single source of truth for
+  /// directions), landmark, entrance photo and distance from the reference campus.
+  /// Written ONLY by /api/platform-admin/* — it is platform data an admin enters at
+  /// approval, not owner marketing content, for the same reason as `listing_status`
+  /// (see ADR-040). Shape is validated by NavigationSchema on read and write; a
+  /// Maps URL is deliberately never stored. See migration 074.
+  navigation                     Json?
   bulk_import_batches            bulk_import_batches[]
   complaints                     complaints[]
   rule_acceptances               TenantPolicyAcceptance[]

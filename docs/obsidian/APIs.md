@@ -227,6 +227,22 @@ Added 2026-07-26 — the backend for the StayO Platform Admin Console, per `Stay
 | `/api/platform-admin/broadcast` | POST | `{message}` — fires an in-app notification (`notificationService.createNotification`) to every active `OWNER` profile |
 | `/api/platform-admin/notifications` | GET | **Added 2026-07-30.** Powers the admin console's header bell — returns the 20 most recent items from `composeRecentActivity()` (`lib/services/platform-admin-activity-service.ts`). No dedicated notifications table; polled by the frontend every 60s. **Since 2026-08-07, this is the sole caller** (the dashboard's own inline "Recent Activity" card was removed) and the composition still deliberately excludes leads — leads have a dedicated place (`/admin/leads`, plus the header's own leads-count badge); see [[Bugs]]. **Since 2026-08-15, also includes recent `tenant_service_requests`** (all 6 types) alongside hostel/invoice events, so tenant-raised requests are now visible platform-wide, not just on the owner's own Alerts page; see [[Bugs]] |
 
+### Hostel navigation (admin-only), added 2026-08-22
+
+| Route | Notes |
+|---|---|
+| `GET /api/platform-admin/hostels/:id/navigation` | Returns `{hostel_id, navigation, gaps}`. `gaps` names what is still missing, in the order worth chasing. |
+| `PUT /api/platform-admin/hostels/:id/navigation` | Body `{navigation: {...}}`, validated by `NavigationSchema` → 422 on a bad Place ID. Body `{navigation: null}` **clears** the column — the honest undo for a wrong Place ID, since the listing then shows no directions rather than wrong ones. |
+| `POST /api/platform-admin/hostels/:id/navigation/entrance-photo` | `multipart/form-data`, one `file`. JPG/PNG/WebP, 8MB. Uploads to ImageKit `/hostel_entrances` and returns `{url}` — it writes nothing; the drawer persists the URL with the next `PUT`. |
+
+All three are `session.role === "ADMIN"` strict, 403 otherwise. **There is deliberately no
+owner-facing equivalent**: this is the field that decides where a student physically walks.
+See [[Database#`hostels.navigation`]] and [[Decisions#ADR-088|ADR-088]].
+
+The public listing payload (`GET /api/discover/hostels/:slug`) gained a `navigation` key —
+the parsed object, or `null`. The admin marketing **preview** route emits it too, so what a
+reviewer sees is what the public page renders.
+
 ## Owner-Acquisition Funnel — Public Lead Capture & Activation (`/api/leads/*`)
 
 Public (no session — added to `middleware.ts`'s `PUBLIC_ROUTES`), backing the landing-page "Manage My Hostel" flow → Admin Console approval → real onboarding. Deliberately a separate `/api/leads/*` namespace from `/api/platform-admin/leads/*` (admin-only) to keep the public and admin surfaces cleanly split. See [[Decisions]] ADR-032, [[Database]].

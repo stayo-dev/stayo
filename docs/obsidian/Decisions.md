@@ -1298,3 +1298,50 @@ That reading was wrong, and measurement is what showed it. Two production endpoi
 - [[Changelog]] for the chronological record of what shipped
 - [[Architecture]] for the system these decisions govern
 - [[Bugs]] for issues that prompted some of these decisions
+
+## ADR-088: A hostel's navigation data is admin-owned platform data, not owner marketing content
+
+**Date:** 2026-08-22 · **Status:** accepted
+
+**Context.** Stayo's listings cluster around campuses, and in a dense cluster a hostel's
+`address` resolves to the lane, not the building — five hostels share it. Phase 1 fixes this
+with a **Google Place ID collected by hand** from Google's Place ID Finder, plus a landmark, a
+photo of the entrance and a distance from a reference campus. No Google Maps API is used: no
+key, no billing, no quota. The obvious home for this was `hostel_marketing_revisions.content`,
+alongside the existing `places[]` "Getting around" list.
+
+**Decision.**
+
+1. **Navigation lives on `hostels.navigation` (jsonb), written only by `/api/platform-admin/*`.**
+   Not in marketing content. That payload is authored by the owner and moves with the
+   draft/review lifecycle — putting a Place ID there would let an owner point Stayo's
+   directions at whatever building they liked, and would *withdraw* the Place ID along with a
+   draft. `hostels` already encodes this line: `listing_status` carries a schema comment saying
+   it is deliberately not owner-writable "so an owner writing it directly would self-approve
+   past platform verification" (ADR-040). Navigation belongs on the same side of it.
+2. **The Google Maps URL is never stored.** It is derived from `placeId` at render time. A
+   stored URL is a second source of truth that goes stale silently, and the failure mode is a
+   student standing on the wrong street.
+3. **The distance is admin-entered too**, in the same object, rather than read from the owner's
+   existing `places[]` SNIST row. The owner's row stays and keeps rendering; the navigation
+   block's number is admin-owned so the whole block is trustworthy end to end. It is free text
+   ("400m", "5 min walk") because a `numeric` metres column invites a precision nobody measured.
+4. **`referenceName` is stored, not hardcoded.** "400m from SNIST" reads from data, so the first
+   hostel Stayo lists near a different college is not a code change.
+5. **Approval warns, it does not block.** Two hostels were already LIVE with no Place ID the day
+   this shipped; a hard server-side gate would have made them unfixable through the normal flow
+   and would have failed an admin mid-approval with no way forward. The admin drawer shows a
+   loud "No Place ID — students get no directions" warning instead. Revisit once every live
+   hostel has one.
+
+**Consequences.** Owners cannot see or set navigation, and the owner marketing editor is not
+told the field exists. Admins gain a Navigation block in the Listings drawer, deliberately
+*outside* the review branch — navigation is hostel-level, not revision-level, and every hostel
+on Stayo the day this shipped was already live with nothing pending.
+
+A hostel nobody has located renders **no directions block at all**. That is the intended
+failure: no button beats a button that opens the wrong building. `parseNavigation()` therefore
+never throws, and a malformed row degrades to `null` rather than 500ing a public listing.
+
+Related: [[Database#`hostels.navigation`]] · [[APIs]] · [[Features]] · ADR-040 · ADR-076
+

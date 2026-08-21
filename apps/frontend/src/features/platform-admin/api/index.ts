@@ -61,6 +61,30 @@ export const platformAdminService = {
   },
 
   /**
+   * Navigation — Google Place ID, landmark, entrance photo, distance.
+   *
+   * Admin-only on the server too, not just here: this is the field that decides
+   * where a student physically walks, and there is deliberately no owner-facing
+   * equivalent of these three calls. See migration 074.
+   */
+  getNavigation: async (id: string) => {
+    const response = await api.get(`/platform-admin/hostels/${id}/navigation`);
+    return unwrap(response) as { hostel_id: string; navigation: any | null; gaps: string[] };
+  },
+  /** `navigation: null` clears it — the honest undo for a wrong Place ID. */
+  saveNavigation: async (id: string, navigation: any | null) => {
+    const response = await api.put(`/platform-admin/hostels/${id}/navigation`, { navigation });
+    return unwrap(response) as { hostel_id: string; navigation: any | null; gaps: string[] };
+  },
+  /** Returns a URL; the drawer persists it with the next saveNavigation. */
+  uploadEntrancePhoto: async (id: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await api.post(`/platform-admin/hostels/${id}/navigation/entrance-photo`, form);
+    return unwrap(response) as { url: string };
+  },
+
+  /**
    * Paginated. The endpoint also returns per-status counts computed under the
    * same search, so the filter chips can show the shape of the backlog
    * without one request per status.

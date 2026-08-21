@@ -1,3 +1,4 @@
+import { parseNavigation } from "./hostel-navigation";
 import { summariseSpace } from "./room-space";
 
 /**
@@ -160,6 +161,15 @@ export function projectListing({ detail, visible, marketing, preview = false }: 
 
     amenities: (marketing?.amenities ?? []).filter((amenity: any) => amenity.enabled),
     places: marketing?.places ?? [],
+
+    /**
+     * How to find the front door, or null when nobody has located this hostel
+     * yet. Parsed rather than passed through: a hand-edited row must degrade to
+     * "no directions" instead of rendering a Get Directions button that opens
+     * the wrong building. The Maps URL itself is built on the frontend from
+     * `placeId` — deliberately never stored. See migration 074.
+     */
+    navigation: parseNavigation((visible as any).navigation),
 
     /**
      * The reviewed weekly mess menu, or null when this hostel does not serve

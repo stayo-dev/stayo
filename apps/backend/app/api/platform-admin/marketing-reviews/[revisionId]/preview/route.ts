@@ -49,6 +49,10 @@ export async function GET(
         hostel_type: true,
         food_included: true,
         listing_source: true,
+        // The preview must show the directions block exactly as the public page
+        // will, so the admin can see whether the Place ID they entered actually
+        // produces one before approving.
+        navigation: true,
       },
     });
     if (!hostel) return apiError("Hostel not found", "NOT_FOUND", 404);

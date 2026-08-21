@@ -479,6 +479,10 @@ export class DiscoveryService {
         hostel_type: true,
         food_included: true,
         listing_source: true,
+        // How to find the front door. Admin-entered platform data, not owner
+        // marketing content, so it is read from the hostel row rather than
+        // from the approved revision — see migration 074.
+        navigation: true,
         // "Managed by …, on Stayo since …" — the one thing on this page that
         // says a person runs this hostel. Name only: a public listing is not
         // the place for an owner's phone or email, and the hostel's own
