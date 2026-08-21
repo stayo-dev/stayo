@@ -313,6 +313,7 @@ model hostels {
   hostel_subscriptions           hostel_subscriptions?
   platform_invoices              platform_invoices[]
   saved_hostels                  saved_hostels[]
+  hostel_reviews                 hostel_reviews[]
   identity_document_shares       identity_document_shares[]
   history_disclosures            residency_history_disclosures[]
   marketing_revisions            hostel_marketing_revisions[]
@@ -845,6 +846,7 @@ model profile {
   // `visitor_leads` above, which is the same table seen as the *owner*.
   seeker_enquiries                                                  visitor_leads[]       @relation("SeekerEnquiries")
   saved_hostels                                                     saved_hostels[]
+  hostel_reviews                                                    hostel_reviews[]
   // Phase B: the portable half of this account. `identity` is the person's own
   // record; the two share relations are this profile acting as an *owner* who
   // verified or rejected someone else's document.
@@ -1158,6 +1160,21 @@ model roomAllocation {
 }
 
 model rooms {
+  /// ── Space (migration 073) ────────────────────────────────────────────────
+  /// What the room is like to live in, as opposed to how it is operated.
+  /// All nullable: a room with no measurements says nothing rather than
+  /// showing a plausible default. Two dimensions, not one area — a 6×20 room
+  /// and an 11×11 room are the same area and completely different to live in.
+  length_ft         Decimal? @db.Decimal(5, 1)
+  width_ft          Decimal? @db.Decimal(5, 1)
+  /// One lockable cupboard per bed.
+  cupboard_per_bed  Boolean?
+  /// NONE | CABIN_BAG | LARGE_SUITCASE — storage as objects that fit, not adjectives.
+  under_bed_storage String?
+  /// NONE | SHARED | PER_BED
+  study_desk        String?
+  windows           Int?     @db.SmallInt
+
   id                             String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   hostel_id                      String                           @db.Uuid
   room_no                        String
@@ -1520,6 +1537,62 @@ model saved_hostels {
   @@unique([profile_id, hostel_id], map: "saved_hostels_profile_hostel_key")
   @@index([profile_id, created_at(sort: Desc)], map: "idx_saved_hostels_profile_created")
   @@map("saved_hostels")
+}
+
+/// Resident reviews of a hostel, shown on its Discovery listing.
+///
+/// **Nothing here is public until an admin publishes it.** `status` starts at
+/// PENDING for every review, including an edit to one already published: the
+/// listing is content Stayo has lent its name to, and a review box that
+/// published straight to a public page would be an open text field on a
+/// stranger's business. See ADR-086.
+model hostel_reviews {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hostel_id       String    @db.Uuid
+  profile_id      String    @db.Uuid
+
+  /// 1–5, the mean of the categories below. Constrained in the database, not
+  /// only in the service.
+  rating          Int       @db.SmallInt
+
+  /// Per-category scores (migration 072), in Airbnb's shape. All nullable:
+  /// `food` does not apply to a hostel that serves no meals, and reviews
+  /// written before 072 have none of them. Averages skip what was not
+  /// answered rather than counting it as zero.
+  rating_cleanliness Int?   @db.SmallInt
+  rating_food        Int?   @db.SmallInt
+  rating_safety      Int?   @db.SmallInt
+  rating_staff       Int?   @db.SmallInt
+  rating_value       Int?   @db.SmallInt
+  rating_location    Int?   @db.SmallInt
+  body            String?
+
+  /// PENDING | PUBLISHED | REJECTED — a plain string, like the rest of this
+  /// schema's moderation columns.
+  status          String    @default("PENDING")
+
+  /// Whether this person has ever held a tenancy at this hostel, snapshotted
+  /// when they wrote the review. A moderation signal for the admin and a badge
+  /// on the published review — never a gate on who may write one.
+  stayed_here     Boolean   @default(false)
+
+  moderated_at    DateTime? @db.Timestamptz(6)
+  moderated_by    String?   @db.Uuid
+  /// Why it was rejected. Shown to the author, so a "no" arrives with a reason.
+  moderation_note String?
+
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime? @db.Timestamptz(6)
+
+  hostel          hostels   @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
+  profile         profile   @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+
+  /// One review per person per hostel — an edit replaces it and returns to the
+  /// queue, rather than stacking a second opinion from the same account.
+  @@unique([hostel_id, profile_id], map: "hostel_reviews_hostel_profile_key")
+  @@index([hostel_id, status], map: "idx_hostel_reviews_hostel_status")
+  @@index([status, created_at(sort: Desc)], map: "idx_hostel_reviews_status_created")
+  @@map("hostel_reviews")
 }
 
 model lead_activities {

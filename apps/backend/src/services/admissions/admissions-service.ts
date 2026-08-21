@@ -8,8 +8,9 @@ import { invitationService } from "@/src/services/tenants/invitation-service";
 import { canTransitionLeadStatus } from "@/src/services/admissions/lead-transition-guards";
 import { whatsAppTemplateDeliveryService } from "@/lib/services/notifications/whatsapp-template-delivery";
 import {
-  resolveEnquiryTemplateName,
   buildTenantEnquiryRejected,
+  rejectionReasonText,
+  resolveEnquiryTemplateName,
 } from "@/lib/services/notifications/providers/whatsapp/enquiry-template-contracts";
 import { getLogger } from "@/lib/logger";
 
@@ -144,6 +145,19 @@ function publicRoom(room: any) {
       maintenance: null,
     },
     notes: room.notes || null,
+    /**
+     * What the room is like to live in (migration 073). Passed through raw —
+     * the listing turns it into per-bed area and storage lines via
+     * `room-space.ts`, so one place decides how it reads.
+     */
+    space: {
+      length_ft: room.length_ft == null ? null : Number(room.length_ft),
+      width_ft: room.width_ft == null ? null : Number(room.width_ft),
+      cupboard_per_bed: room.cupboard_per_bed ?? null,
+      under_bed_storage: room.under_bed_storage ?? null,
+      study_desk: room.study_desk ?? null,
+      windows: room.windows ?? null,
+    },
     photos: asArray(room.admission_photos),
     roommate_preview: activeAllocations
       .map((allocation: any) => allocation.tenant)
@@ -627,6 +641,52 @@ export class AdmissionsService {
 
     if (holdNote) {
       await prisma.leadNote.create({ data: { lead_id: leadId, owner_id: ownerId, note: holdNote } });
+    }
+
+    /**
+     * Tell the applicant their enquiry was turned down.
+     *
+     * `TENANT_ENQUIRY_REJECTED` has existed as an approved template since the
+     * enquiry work shipped and **was never sent by anything** — a Discovery
+     * applicant simply heard nothing back, forever. There is deliberately no
+     * matching "accepted" message: an approved enquiry is followed by an
+     * invitation, and the invitation *is* the acceptance.
+     *
+     * Only for enquiries that came through Discovery (`seeker_profile_id`):
+     * those people have a Stayo account and used the platform to ask. A
+     * walk-in lead marked lost never opted into being messaged.
+     *
+     * Never fatal — the status change is already committed, and losing it
+     * because a message failed would be the wrong trade.
+     */
+    if (input.status === "LOST" && lead.status !== "LOST" && lead.seeker_profile_id) {
+      void (async () => {
+        const [seeker, hostel] = await Promise.all([
+          prisma.profile.findUnique({
+            where: { id: lead.seeker_profile_id as string },
+            select: { name: true, phone: true },
+          }),
+          prisma.hostels.findUnique({ where: { id: lead.hostel_id }, select: { name: true } }),
+        ]);
+        if (!seeker?.phone) return;
+
+        const template = resolveEnquiryTemplateName("TENANT_ENQUIRY_REJECTED");
+        await whatsAppTemplateDeliveryService.send({
+          phone: seeker.phone,
+          templateName: template.name,
+          languageCode: template.language,
+          ...buildTenantEnquiryRejected({
+            tenantName: seeker.name,
+            hostelName: hostel?.name ?? null,
+            reason: rejectionReasonText(input.lost_reason),
+          }),
+          // Keyed on the lead: re-opening and re-losing one conversation must
+          // not message the same person twice.
+          idempotencyKey: `enquiry-rejected:${leadId}`,
+          ownerId,
+          hostelId: lead.hostel_id,
+        });
+      })().catch(() => undefined);
     }
 
     await invalidateTag(redisKeys.admissions.owner(ownerId));

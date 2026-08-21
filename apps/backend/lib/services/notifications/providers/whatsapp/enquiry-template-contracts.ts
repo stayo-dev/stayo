@@ -128,6 +128,27 @@ export function buildOwnerEnquiryReceived(input: {
   };
 }
 
+/**
+ * The owner's internal lost-reason, in words the applicant can be told.
+ *
+ * `JOINED_COMPETITOR` and `NO_RESPONSE` are deliberately unmapped: the first
+ * is the owner's read of someone else's decision, the second is an accusation,
+ * and neither belongs in a message to the person it is about. Unmapped reasons
+ * fall through to the template's own neutral floor rather than being repeated
+ * verbatim — an internal CRM value is not a sentence.
+ */
+const REJECTION_REASON_TEXT: Record<string, string> = {
+  PRICE_HIGH: "the budget did not match",
+  LOCATION_UNSUITABLE: "the location did not suit",
+  FOOD_QUALITY: "the food arrangement did not suit",
+  PARENT_REJECTED: "it could not be confirmed with your family",
+  OTHER: "no rooms available right now",
+};
+
+export function rejectionReasonText(reason: string | null | undefined): string | null {
+  return REJECTION_REASON_TEXT[String(reason)] ?? null;
+}
+
 export function buildTenantEnquiryRejected(input: {
   tenantName?: string | null;
   hostelName?: string | null;

@@ -1,8 +1,22 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { marketingPreviewService } from '@features/hostel-marketing/api';
-import { ChevronLeft, Coffee, Heart, Info, MapPin, Moon, ShieldCheck, Sun, Utensils } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Coffee,
+  Heart,
+  Info,
+  LayoutGrid,
+  MapPin,
+  Moon,
+  Share2,
+  Sparkles,
+  ShieldCheck,
+  Sun,
+  Utensils,
+} from 'lucide-react';
 
 import {
   useDiscoverListing,
@@ -13,7 +27,12 @@ import {
 
 import { useDiscoverAuth } from './DiscoverAuthContext';
 import { DiscoverEmpty, PrimaryButton } from './components/DiscoverShell';
-import { AUDIENCE_LABEL, C, FONT, PHOTO_FALLBACK, formatRupees } from './discoverTheme';
+import { AUDIENCE_LABEL, C, FONT, PAGE_SHELL, PHOTO_FALLBACK, formatRupees } from './discoverTheme';
+import { photoIndexFromScroll } from './galleryScroll';
+import { ReviewsSection } from './components/ReviewsSection';
+import { MediaLightbox } from './components/MediaLightbox';
+import { PhotoTour } from './components/PhotoTour';
+import { useShareHostel } from '@shared/hooks/useShareHostel';
 
 const MESS_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 
@@ -80,6 +99,7 @@ function toBedOptions(rooms: any[]): BedOption[] {
  */
 export function ListingPage({ previewRevisionId }: { previewRevisionId?: string } = {}) {
   const { slug } = useParams<{ slug: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
   const { isSeeker } = useIsSeeker();
   const { openSignIn } = useDiscoverAuth();
@@ -95,9 +115,16 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
   const { isLoading, isError } = source;
   const { data: saved } = useSavedHostels();
   const toggleSaved = useToggleSaved();
+  const { share } = useShareHostel();
 
   const [selected, setSelected] = useState<number | null>(null);
   const [photoIndex, setPhotoIndex] = useState(0);
+  const galleryRef = useRef<HTMLDivElement | null>(null);
+  /** Which photo the full-screen viewer opens on; null when closed. */
+  const [lightbox, setLightbox] = useState<number | null>(null);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  /** The grouped photo tour, opened by "Show all photos". */
+  const [tourOpen, setTourOpen] = useState(false);
   const [messDay, setMessDay] = useState(0);
 
   const hostel = data?.hostel;
@@ -131,6 +158,9 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
         // otherwise the live count wins over any claim.
         availableBeds: tier.availability === 'FULL' ? 0 : (realTier?.availableBeds ?? 0),
         roomType: tier.inclusions ?? realTier?.roomType ?? null,
+        // What the real rooms of this size are like to live in — measured by
+        // the owner, summarised by the server (`room-space.ts`).
+        space: (tier as any).space ?? null,
       };
     });
   }, [data?.rooms, data?.bed_tiers]);
@@ -172,7 +202,16 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
     );
   }
 
-  const photos: string[] = hostel.photos ?? [];
+  /**
+   * The gallery, with videos kept as videos. `media` arrives from the
+   * projection; `photos` is the older URL-only field, still the fallback for
+   * anything served before `media` existed.
+   */
+  const media: { url: string; kind: 'image' | 'video'; thumbnail_url?: string | null }[] =
+    hostel.media?.length
+      ? hostel.media
+      : (hostel.photos ?? []).map((url: string) => ({ url, kind: 'image' as const }));
+  const photos: string[] = media.map((item) => item.url);
   const audience = hostel.hostel_type ? AUDIENCE_LABEL[hostel.hostel_type] : null;
   const selectedOption = bedOptions.find((option) => option.capacity === selected) ?? null;
   const displayPrice = selectedOption?.price ?? hostel.starting_price ?? null;
@@ -185,68 +224,334 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
     toggleSaved.mutate({ hostelId: hostel.id, saved: isSaved });
   };
 
+  /**
+   * Back, for someone who did not arrive from Discovery.
+   *
+   * `navigate(-1)` is fine when this page was pushed onto a history stack —
+   * but a shared `/h/<slug>` link opens it as the first entry in the session,
+   * where "back" has nowhere to go and the button silently does nothing. Every
+   * listing link we hand out is that case. React Router marks the first entry
+   * with `key === 'default'`, so that is the one that falls back to the list.
+   */
+  const goBack = () => {
+    if (location.key === 'default') navigate('/discover');
+    else navigate(-1);
+  };
+
+  /** Dots and arrows drive the same scroll the finger does — one source. */
+  const scrollToPhoto = (index: number) => {
+    const track = galleryRef.current;
+    if (!track) return;
+    track.scrollTo({ left: index * track.clientWidth, behavior: 'smooth' });
+  };
+
+  const handleGalleryScroll = () => {
+    const track = galleryRef.current;
+    if (!track) return;
+    setPhotoIndex(photoIndexFromScroll(track.scrollLeft, track.clientWidth, photos.length));
+  };
+
   return (
     <div className="flex min-h-[100dvh] flex-col">
       <div className="flex-1">
-        {/* ── Gallery ──────────────────────────────────────────────────── */}
-        <div
-          className="relative h-[290px] bg-cover bg-center"
-          style={photos[photoIndex] ? { backgroundImage: `url(${photos[photoIndex]})` } : PHOTO_FALLBACK}
-        >
+        {/*
+          ── Desktop header ───────────────────────────────────────────────
+          Airbnb's order, and it is the right one: the name of the place comes
+          before its photographs, so a laptop visitor knows what they are
+          looking at while the images load. Share and Save sit on the same
+          line, off the photograph entirely. A phone keeps the immersive
+          full-bleed gallery — there is no room for a title above it.
+        */}
+        <div className={`hidden lg:block ${PAGE_SHELL} pt-7`}>
+          {/* The only Back button used to live over the phone gallery, which
+              is hidden at this width — so a laptop visitor who opened a shared
+              link had no way back to the list at all. */}
+          <button
+            type="button"
+            onClick={goBack}
+            className="mb-3 flex items-center gap-1.5 text-[12.5px] font-semibold transition-colors hover:underline"
+            style={{ color: C.textMuted }}
+          >
+            <ChevronLeft className="h-4 w-4" strokeWidth={2} />
+            All hostels
+          </button>
+
+          <div className="flex items-end justify-between gap-4">
+            <h1
+              className="min-w-0 text-[26px] font-extrabold leading-[1.2] tracking-[-0.02em]"
+              style={{ fontFamily: FONT.display, color: C.text }}
+            >
+              {hostel.name}
+            </h1>
+            <div className="flex flex-none items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => share({ name: hostel.name, slug: slug as string, city: hostel.city })}
+                className="flex h-9 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-semibold underline-offset-4 transition-colors hover:bg-white hover:underline"
+                style={{ color: C.textBody }}
+              >
+                <Share2 className="h-[15px] w-[15px]" strokeWidth={1.8} />
+                Share
+              </button>
+              <button
+                type="button"
+                aria-pressed={isSaved}
+                onClick={handleSave}
+                className="flex h-9 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-semibold underline-offset-4 transition-colors hover:bg-white hover:underline"
+                style={{ color: C.textBody }}
+              >
+                <Heart
+                  className="h-[15px] w-[15px]"
+                  strokeWidth={1.8}
+                  style={{ color: isSaved ? C.clayLight : C.textBody, fill: isSaved ? C.clayLight : 'transparent' }}
+                />
+                {isSaved ? 'Saved' : 'Save'}
+              </button>
+            </div>
+          </div>
+
+          {/*
+            The photo grid: one large frame and four small ones, which is the
+            shape that lets someone judge a place in a single glance instead of
+            swiping five times. Falls back gracefully — with fewer than five
+            images the big frame simply takes the width it needs.
+          */}
+          <div className="relative mt-4 grid h-[400px] grid-cols-2 gap-2 overflow-hidden rounded-[18px]">
+            <button
+              type="button"
+              onClick={() => setLightbox(0)}
+              className="group relative h-full w-full overflow-hidden"
+            >
+              {media[0]?.kind === 'video' ? (
+                <video src={media[0].url} poster={media[0].thumbnail_url ?? undefined} muted playsInline
+                  preload="metadata" className="h-full w-full bg-black object-cover" />
+              ) : media[0] ? (
+                <img src={media[0].url} alt={`${hostel.name} — main photo`} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]" />
+              ) : (
+                <div className="h-full w-full" style={PHOTO_FALLBACK} />
+              )}
+            </button>
+
+            <div className="grid grid-cols-2 grid-rows-2 gap-2">
+              {[1, 2, 3, 4].map((index) => (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={() => setLightbox(index)}
+                  disabled={!media[index]}
+                  className="group relative h-full w-full overflow-hidden"
+                >
+                  {media[index]?.kind === 'video' ? (
+                    <video src={media[index].url} poster={media[index].thumbnail_url ?? undefined} muted playsInline
+                      preload="metadata" className="h-full w-full bg-black object-cover" />
+                  ) : media[index] ? (
+                    <img src={media[index].url} alt={`${hostel.name} — photo ${index + 1}`}
+                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]" />
+                  ) : (
+                    <div className="h-full w-full" style={PHOTO_FALLBACK} />
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/*
+              Inside the grid's corner, the way Airbnb does it — it used to sit
+              below the grid, where the body sheet's -mt-6 pulled straight over
+              it and nobody could see it at all.
+            */}
+            {media.length > 1 && (
+              <button
+                type="button"
+                onClick={() => setTourOpen(true)}
+                className="absolute bottom-4 right-4 flex items-center gap-2 rounded-[10px] border px-3.5 py-2 text-[12.5px] font-bold shadow-[0_2px_8px_rgba(0,0,0,.18)] transition-transform hover:scale-[1.02]"
+                style={{ borderColor: C.line, background: '#fff', color: C.text }}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" strokeWidth={2} />
+                Show all {media.length} photos
+              </button>
+            )}
+          </div>
+
+
+        </div>
+
+        {/* ── Gallery (phone) ──────────────────────────────────────────── */}
+        {/*
+          A real swipe track, not a single background image.
+
+          It used to render `photos[photoIndex]` as one `background-image` with
+          three 3px indicator bars as the only way to change photo: nothing to
+          swipe on a phone, nothing to click on a laptop, and a tap target
+          three pixels tall. A hostel's photos are the whole reason this page
+          exists, and all but the first were effectively unreachable.
+
+          Native scroll-snap does the work — real momentum swipe on touch,
+          trackpad swipe on a laptop, no gesture library — with the index
+          derived from scroll position so the counter, the dots and the arrows
+          all read the same source.
+        */}
+        <div className="relative h-[290px] lg:hidden">
+          <div
+            ref={galleryRef}
+            onScroll={handleGalleryScroll}
+            className="flex h-full snap-x snap-mandatory overflow-x-auto overscroll-x-contain scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {(media.length > 0 ? media : [null]).map((item, index) => (
+              <div key={item?.url ?? 'placeholder'} className="h-full w-full flex-none snap-center">
+                {!item ? (
+                  <div className="h-full w-full" style={PHOTO_FALLBACK} />
+                ) : item.kind === 'video' ? (
+                  // Controls, not autoplay: a listing that starts making noise
+                  // when someone opens it is a listing they close.
+                  <video
+                    src={item.url}
+                    poster={item.thumbnail_url ?? undefined}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    className="h-full w-full bg-black object-contain"
+                  />
+                ) : (
+                  <img
+                    src={item.url}
+                    alt={`${hostel.name} — photo ${index + 1} of ${media.length}`}
+                    // The first photo is the one every visitor sees; the rest
+                    // load as they swipe rather than on arrival.
+                    loading={index === 0 ? 'eager' : 'lazy'}
+                    className="h-full w-full object-cover"
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/*
+            Only Back stays over the photo, and only because you need a way out
+            before you have scrolled anywhere. Share and Save moved down beside
+            the hostel's name: they were three opaque pucks sitting on the
+            middle of the subject of every cover photo, which is the one thing
+            this screen exists to show. A gradient behind this one keeps a dark
+            chevron legible on a bright sky without a white disc over the
+            building.
+          */}
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 h-24"
+            style={{ background: 'linear-gradient(to bottom,rgba(20,14,10,.38),transparent)' }}
+          />
           <button
             type="button"
             aria-label="Back"
-            onClick={() => navigate(-1)}
-            className="absolute left-4 top-[max(3.25rem,env(safe-area-inset-top))] flex h-[38px] w-[38px] items-center justify-center rounded-full"
-            style={{ background: 'rgba(255,255,255,.95)', boxShadow: '0 2px 8px rgba(0,0,0,.15)' }}
+            onClick={goBack}
+            className="absolute left-4 top-[max(3.25rem,env(safe-area-inset-top))] flex h-[38px] w-[38px] items-center justify-center rounded-full backdrop-blur-sm transition-colors hover:bg-white/95"
+            style={{ background: 'rgba(255,255,255,.82)' }}
           >
             <ChevronLeft className="h-5 w-5" style={{ color: '#3A342E' }} />
           </button>
 
-          <button
-            type="button"
-            aria-label={isSaved ? 'Remove from saved' : 'Save this hostel'}
-            aria-pressed={isSaved}
-            onClick={handleSave}
-            className="absolute right-4 top-[max(3.25rem,env(safe-area-inset-top))] flex h-[38px] w-[38px] items-center justify-center rounded-full"
-            style={{ background: 'rgba(255,255,255,.95)', boxShadow: '0 2px 8px rgba(0,0,0,.15)' }}
-          >
-            <Heart
-              className="h-[18px] w-[18px]"
-              strokeWidth={1.8}
-              style={{ color: isSaved ? C.clayLight : '#6E6459', fill: isSaved ? C.clayLight : 'transparent' }}
-            />
-          </button>
-
           {photos.length > 1 && (
             <>
+              {/* Indicators are white, and a photo of a bright room is white
+                  too. The scrim is what makes "2 / 5" readable on both — the
+                  old bars were invisible over half the galleries. */}
+              <div
+                className="pointer-events-none absolute inset-x-0 bottom-0 h-28"
+                style={{ background: 'linear-gradient(to top,rgba(20,14,10,.5),transparent)' }}
+              />
               <span
-                className="absolute bottom-4 right-4 rounded-full px-2.5 py-1 text-[11px] font-semibold text-white"
+                className="pointer-events-none absolute bottom-9 right-4 rounded-full px-2.5 py-1 text-[11px] font-semibold text-white"
                 style={{ background: 'rgba(34,30,26,.72)' }}
               >
                 {photoIndex + 1} / {photos.length}
               </span>
-              <div className="absolute bottom-4 left-4 flex gap-1.5">
+
+              {/* On a phone the only way through the photos was swiping one at
+                  a time. The tour is where they are grouped — rooms, mess,
+                  bathrooms — so there is a door to it here too. */}
+              <button
+                type="button"
+                onClick={() => setTourOpen(true)}
+                className="absolute bottom-9 left-1/2 -translate-x-1/2 rounded-full px-3 py-1.5 text-[11px] font-bold text-white lg:hidden"
+                style={{ background: 'rgba(34,30,26,.72)' }}
+              >
+                All {media.length} photos
+              </button>
+
+              {/* The bars stay 3px tall; the button around them is 24px, so
+                  the tap target is a thumb's width rather than a hairline. */}
+              {/* Clear of the body sheet, which is pulled 24px up over the
+                  gallery — the indicators used to sit *under* it, which is
+                  the other half of why photo 2 was unreachable. */}
+              <div className="absolute bottom-8 left-3 flex">
                 {photos.map((photo, index) => (
                   <button
                     key={photo}
                     type="button"
                     aria-label={`Photo ${index + 1}`}
-                    onClick={() => setPhotoIndex(index)}
-                    className="h-[3px] rounded-sm transition-all"
-                    style={{
-                      width: index === photoIndex ? 20 : 6,
-                      background: index === photoIndex ? '#fff' : 'rgba(255,255,255,.5)',
-                    }}
-                  />
+                    aria-current={index === photoIndex}
+                    onClick={() => scrollToPhoto(index)}
+                    className="flex h-6 items-center px-1"
+                  >
+                    <span
+                      className="block h-[3px] rounded-sm transition-all"
+                      style={{
+                        width: index === photoIndex ? 20 : 6,
+                        background: index === photoIndex ? '#fff' : 'rgba(255,255,255,.5)',
+                      }}
+                    />
+                  </button>
                 ))}
               </div>
+
+              {/* Pointer users have no swipe gesture worth the name, so they
+                  get arrows. Hidden on touch widths, where the swipe is the
+                  affordance and an arrow would just cover a photo. */}
+              {photoIndex > 0 && (
+                <button
+                  type="button"
+                  aria-label="Previous photo"
+                  onClick={() => scrollToPhoto(photoIndex - 1)}
+                  className="absolute left-4 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full md:flex"
+                  style={{ background: 'rgba(255,255,255,.95)', boxShadow: '0 2px 8px rgba(0,0,0,.18)' }}
+                >
+                  <ChevronLeft className="h-5 w-5" style={{ color: '#3A342E' }} />
+                </button>
+              )}
+              {photoIndex < photos.length - 1 && (
+                <button
+                  type="button"
+                  aria-label="Next photo"
+                  onClick={() => scrollToPhoto(photoIndex + 1)}
+                  className="absolute right-4 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full md:flex"
+                  style={{ background: 'rgba(255,255,255,.95)', boxShadow: '0 2px 8px rgba(0,0,0,.18)' }}
+                >
+                  <ChevronRight className="h-5 w-5" style={{ color: '#3A342E' }} />
+                </button>
+              )}
             </>
           )}
         </div>
 
         {/* ── Body ─────────────────────────────────────────────────────── */}
-        <div className="relative -mt-6 rounded-t-[24px] px-5 pb-8 pt-5" style={{ background: C.paper }}>
+        {/*
+          One reading column on a phone; two at desk width — the listing on the
+          left, the money on the right. The price and the enquire button ride
+          along as a sticky card rather than a bar pinned to the bottom of a
+          900px-tall window: on a laptop, the thing you are deciding about
+          should stay beside what you are reading, not below the fold of it.
+          Capped at 1180px like the rest of Discover — a 1280px line of body
+          copy is unreadable.
+        */}
+        {/*
+          `-mt-6` lifts the sheet over the phone's full-bleed gallery like a
+          card. On desktop there is nothing to lift over — the photo grid is a
+          contained block that ends — so the negative margin only cut the
+          bottom off the photographs and half-covered "Show all photos".
+        */}
+        <div className="relative mx-auto -mt-6 w-full max-w-[860px] lg:mt-8 lg:grid lg:max-w-[1180px] lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-7 lg:px-8">
+        <div
+          className="rounded-t-[24px] px-5 pb-8 pt-5 lg:rounded-[24px] lg:px-8"
+          style={{ background: C.paper }}
+        >
           <div className="flex flex-wrap items-center gap-2">
             <span
               className="flex items-center gap-1.5 rounded-full px-2.5 py-1"
@@ -274,12 +579,49 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
             )}
           </div>
 
+          {/* The phone's title row. Desktop shows the name and these actions
+              above the photo grid instead — rendering both put the hostel's
+              name on screen twice. */}
+          <div className="mt-2.5 flex items-start justify-between gap-3 lg:hidden">
           <h1
-            className="mt-2.5 text-[23px] font-extrabold leading-[1.2] tracking-[-0.02em]"
+            className="min-w-0 flex-1 text-[23px] font-extrabold leading-[1.2] tracking-[-0.02em]"
             style={{ fontFamily: FONT.display, color: C.text }}
           >
             {hostel.name}
           </h1>
+
+            <div className="flex flex-none items-center gap-1.5">
+              <button
+                type="button"
+                aria-label={`Share ${hostel.name}`}
+                onClick={() => share({ name: hostel.name, slug: slug as string, city: hostel.city })}
+                className="flex h-9 items-center gap-1.5 rounded-full border px-3 transition-colors hover:bg-white"
+                style={{ borderColor: C.line, background: C.cardWarm }}
+              >
+                <Share2 className="h-[15px] w-[15px]" strokeWidth={1.8} style={{ color: C.textBody }} />
+                <span className="hidden text-[12px] font-semibold sm:inline" style={{ color: C.textBody }}>
+                  Share
+                </span>
+              </button>
+              <button
+                type="button"
+                aria-label={isSaved ? 'Remove from saved' : 'Save this hostel'}
+                aria-pressed={isSaved}
+                onClick={handleSave}
+                className="flex h-9 items-center gap-1.5 rounded-full border px-3 transition-colors hover:bg-white"
+                style={{ borderColor: C.line, background: C.cardWarm }}
+              >
+                <Heart
+                  className="h-[15px] w-[15px]"
+                  strokeWidth={1.8}
+                  style={{ color: isSaved ? C.clayLight : C.textBody, fill: isSaved ? C.clayLight : 'transparent' }}
+                />
+                <span className="hidden text-[12px] font-semibold sm:inline" style={{ color: C.textBody }}>
+                  {isSaved ? 'Saved' : 'Save'}
+                </span>
+              </button>
+            </div>
+          </div>
 
           <p className="mt-2 flex items-center gap-1.5 text-[12.5px]" style={{ color: C.textMuted }}>
             <MapPin className="h-3.5 w-3.5 flex-none" strokeWidth={1.7} style={{ color: C.textGhost }} />
@@ -290,6 +632,83 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
             <p className="mt-2 text-[12.5px] font-semibold" style={{ color: C.green }}>
               {totalVacant} {totalVacant === 1 ? 'bed' : 'beds'} available right now
             </p>
+          )}
+
+          {/* ── Who runs it ────────────────────────────────────────────── */}
+          {/*
+            A listing with nobody attached is a database row. Airbnb puts the
+            host on the page for the same reason: somebody is answerable for
+            this place. Name and start date only — a public listing is not
+            where an owner's phone number goes, and the hostel's own business
+            number is already above.
+          */}
+          {(data?.host?.name || data?.host?.listed_since) && (
+            <div
+              className="mt-5 flex items-center gap-3 border-t pt-5"
+              style={{ borderColor: C.lineSoft }}
+            >
+              <span
+                className="flex h-11 w-11 flex-none items-center justify-center rounded-full text-[15px] font-extrabold"
+                style={{ fontFamily: FONT.display, background: C.clayPaleBg, color: C.clayDeep }}
+              >
+                {(data.host.name ?? 'S').trim().charAt(0).toUpperCase()}
+              </span>
+              <div className="min-w-0">
+                <p className="text-[13.5px] font-bold" style={{ fontFamily: FONT.display, color: C.text }}>
+                  {data.host.platform_listed
+                    ? 'Listed by Stayo'
+                    : data.host.name
+                      ? `Managed by ${data.host.name}`
+                      : 'Managed by the owner'}
+                </p>
+                <p className="mt-0.5 text-[11.5px]" style={{ color: C.textMuted }}>
+                  {data.host.listed_since
+                    ? `On Stayo since ${new Date(data.host.listed_since).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}`
+                    : 'On Stayo'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ── Highlights ─────────────────────────────────────────────── */}
+          {/* The owner's own three things worth knowing, reviewed like the
+              rest of the listing. They were collected and never displayed. */}
+          {(hostel.highlights?.length ?? 0) > 0 && (
+            <section className="mt-5 border-t pt-5" style={{ borderColor: C.lineSoft }}>
+              <div className="flex flex-col gap-3">
+                {hostel.highlights.slice(0, 6).map((highlight: string) => (
+                  <div key={highlight} className="flex items-start gap-3">
+                    <Sparkles className="mt-0.5 h-4 w-4 flex-none" strokeWidth={1.8} style={{ color: C.clay }} />
+                    <p className="text-[12.5px] leading-[1.5]" style={{ color: C.textBody }}>{highlight}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* ── About ──────────────────────────────────────────────────── */}
+          {hostel.about && (
+            <section className="mt-5 border-t pt-5" style={{ borderColor: C.lineSoft }}>
+              <h2 className="text-[16px] font-extrabold tracking-[-0.01em]" style={{ fontFamily: FONT.display, color: C.text }}>
+                About this hostel
+              </h2>
+              <p
+                className={`mt-2 whitespace-pre-line text-[12.5px] leading-[1.7] ${aboutOpen ? '' : 'line-clamp-4'}`}
+                style={{ color: C.textBody }}
+              >
+                {hostel.about}
+              </p>
+              {hostel.about.length > 240 && (
+                <button
+                  type="button"
+                  onClick={() => setAboutOpen((open) => !open)}
+                  className="mt-2 text-[12.5px] font-bold underline underline-offset-4"
+                  style={{ color: C.text }}
+                >
+                  {aboutOpen ? 'Show less' : 'Show more'}
+                </button>
+              )}
+            </section>
           )}
 
           {/* ── Beds ───────────────────────────────────────────────────── */}
@@ -359,6 +778,40 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
                         {option.roomType && (
                           <span className="mt-0.5 block text-[11.5px]" style={{ color: C.textMuted }}>
                             {option.roomType}
+                          </span>
+                        )}
+
+                        {/*
+                          The size, in the only unit that compares across
+                          hostels: floor per person. A 140 sq ft room is 35 sq
+                          ft each at 4-sharing and 23 at 6 — the same photo,
+                          a different life. Absent entirely for rooms the
+                          owner has not measured.
+                        */}
+                        {(option as any).space?.perBedArea != null && (
+                          <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span
+                              className="rounded-md px-1.5 py-0.5 text-[10.5px] font-bold"
+                              style={{ background: C.clayPaleBg, color: C.clayDeep }}
+                            >
+                              {(option as any).space.perBedArea} sq ft per bed
+                            </span>
+                            {(option as any).space.dimensions && !(option as any).space.varies && (
+                              <span className="text-[11px]" style={{ color: C.textMuted }}>
+                                {(option as any).space.dimensions}
+                              </span>
+                            )}
+                            {(option as any).space.anchor && (
+                              <span className="text-[11px]" style={{ color: C.textMuted }}>
+                                · {(option as any).space.anchor}
+                              </span>
+                            )}
+                          </span>
+                        )}
+
+                        {((option as any).space?.storage?.length ?? 0) > 0 && (
+                          <span className="mt-1 block text-[11px] leading-[1.55]" style={{ color: C.textMuted }}>
+                            {(option as any).space.storage.join(' · ')}
                           </span>
                         )}
                       </span>
@@ -535,12 +988,85 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
                 : 'Photos, room types and live availability come straight from the owner. Amenity lists and distances appear once this hostel publishes its listing.'}
             </p>
           </section>
+
+          {/* ── Reviews ──────────────────────────────────────────────────── */}
+          <ReviewsSection
+            slug={slug}
+            hostelName={hostel.name}
+            onSignIn={() => openSignIn()}
+          />
+        </div>
+
+        {/* Desktop-only: the decision column. Mirrors the sticky bar a phone
+            gets, which is hidden at this width so there is only ever one
+            price and one Enquire button on screen. */}
+        <aside className="hidden lg:block lg:sticky lg:top-6">
+          <div
+            className="rounded-[20px] border p-5"
+            style={{ background: C.cardWarm, borderColor: C.line, boxShadow: '0 8px 24px rgba(40,30,20,.07)' }}
+          >
+            <p className="text-[11px]" style={{ color: C.textMuted }}>
+              {selectedOption ? `${selectedOption.label} selected` : 'Starting from'}
+            </p>
+            {displayPrice != null ? (
+              <p className="mt-1 flex items-baseline gap-1">
+                <span
+                  className="text-[26px] font-extrabold tracking-[-0.02em]"
+                  style={{ fontFamily: FONT.display, color: C.text }}
+                >
+                  ₹{formatRupees(displayPrice)}
+                </span>
+                <span className="text-[12px]" style={{ color: C.textMuted }}>/month</span>
+              </p>
+            ) : (
+              <p className="mt-1 text-[18px] font-bold" style={{ fontFamily: FONT.display, color: C.text }}>
+                Price on request
+              </p>
+            )}
+
+            {hostel.vacant_beds > 0 && (
+              <p className="mt-1.5 text-[12px] font-semibold" style={{ color: C.green }}>
+                {hostel.vacant_beds} {hostel.vacant_beds === 1 ? 'bed' : 'beds'} available right now
+              </p>
+            )}
+
+            <div className="mt-4">
+              <PrimaryButton
+                full
+                onClick={() =>
+                  navigate(`/discover/h/${slug}/enquire`, {
+                    state: { roomCapacity: selectedOption?.capacity, hostelName: hostel.name },
+                  })
+                }
+              >
+                Enquire
+              </PrimaryButton>
+            </div>
+
+            <p className="mt-3 text-[11px] leading-[1.55]" style={{ color: C.textMuted }}>
+              Enquiring is free and does not book anything — the hostel replies to you directly.
+            </p>
+          </div>
+        </aside>
         </div>
       </div>
 
+      {tourOpen && (
+        <PhotoTour media={media as any} hostelName={hostel.name} onClose={() => setTourOpen(false)} />
+      )}
+
+      {lightbox !== null && media.length > 0 && (
+        <MediaLightbox
+          media={media}
+          startIndex={lightbox}
+          hostelName={hostel.name}
+          onClose={() => setLightbox(null)}
+        />
+      )}
+
       {/* ── Sticky enquire bar ───────────────────────────────────────────── */}
       <div
-        className="sticky bottom-0 z-30 flex flex-none items-center gap-3.5 border-t px-4 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-3"
+        className="sticky bottom-0 z-30 mx-auto flex w-full max-w-[860px] flex-none items-center gap-3.5 border-t px-4 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-3 lg:hidden"
         style={{ background: C.cardWarm, borderColor: C.line, boxShadow: '0 -6px 18px rgba(40,30,20,.06)' }}
       >
         <div className="min-w-0 flex-1">

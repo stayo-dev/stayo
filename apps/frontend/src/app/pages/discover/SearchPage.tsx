@@ -11,9 +11,10 @@ import {
 } from '@features/discover/hooks/useDiscover';
 
 import { useDiscoverAuth } from './DiscoverAuthContext';
+import { useShareHostel } from '@shared/hooks/useShareHostel';
 import { HostelCard } from './components/HostelCard';
 import { DiscoverEmpty, HostelCardSkeleton, PrimaryButton } from './components/DiscoverShell';
-import { AUDIENCE_LABEL, C, FONT, formatRupees } from './discoverTheme';
+import { AUDIENCE_LABEL, C, FONT, PAGE_SHELL, RESULTS_GRID, formatRupees } from './discoverTheme';
 
 const SHARING_OPTIONS = [1, 2, 3, 4, 6];
 const AUDIENCE_OPTIONS: HostelType[] = ['BOYS', 'GIRLS', 'CO_LIVING', 'WORKING_PROS'];
@@ -32,6 +33,7 @@ export function SearchPage() {
   const location = useLocation();
   const { isSeeker } = useIsSeeker();
   const { openSignIn } = useDiscoverAuth();
+  const { share } = useShareHostel();
 
   // Quick filters on Explore hand their patch through router state.
   const seeded = (location.state ?? {}) as { patch?: Partial<DiscoverFilters>; city?: string };
@@ -101,9 +103,13 @@ export function SearchPage() {
     <div className="flex min-h-[100dvh] flex-col">
       {/* ── Search bar ─────────────────────────────────────────────────── */}
       <header
-        className="sticky top-0 z-30 border-b px-4 pb-3 pt-[max(3.25rem,env(safe-area-inset-top))]"
+        className="sticky top-0 z-30 border-b pb-3 pt-[max(3.25rem,env(safe-area-inset-top))] lg:pt-4"
         style={{ background: C.cardWarm, borderColor: C.line }}
       >
+        {/* Full-bleed bar, capped contents — same page width as Explore, so
+            arriving here from "See all" does not change the column the
+            results sit in. */}
+        <div className={PAGE_SHELL}>
         <div className="flex items-center gap-2.5">
           <button
             type="button"
@@ -173,15 +179,16 @@ export function SearchPage() {
             onClick={() => setApplied((f) => ({ ...f, foodIncluded: !f.foodIncluded }))}
           />
         </div>
+        </div>
       </header>
 
       {/* ── Results ────────────────────────────────────────────────────── */}
-      <main className="flex-1 px-5 pb-8 pt-4">
+      <main className={`${PAGE_SHELL} flex-1 pb-8 pt-4`}>
         <p className="mb-3 text-[13px] font-bold" style={{ color: C.textBody }}>
           {isLoading ? 'Searching…' : `${data?.total ?? 0} ${data?.total === 1 ? 'hostel' : 'hostels'}`}
         </p>
 
-        {isLoading && <HostelCardSkeleton count={2} />}
+        {isLoading && <HostelCardSkeleton count={4} className={RESULTS_GRID} />}
 
         {isError && (
           <DiscoverEmpty
@@ -205,7 +212,7 @@ export function SearchPage() {
           />
         )}
 
-        <div className="flex flex-col gap-4">
+        <div className={RESULTS_GRID}>
           {data?.results.map((hostel) => (
             <HostelCard
               key={hostel.id}
@@ -213,6 +220,9 @@ export function SearchPage() {
               saved={savedIds.has(hostel.id)}
               onOpen={(slug) => navigate(`/discover/h/${slug}`)}
               onToggleSave={handleToggleSave}
+              onShare={(card) =>
+                card.slug ? share({ name: card.name, slug: card.slug, city: card.city }) : undefined
+              }
             />
           ))}
         </div>
@@ -220,7 +230,7 @@ export function SearchPage() {
 
       {/* ── Filter sheet ───────────────────────────────────────────────── */}
       {sheetOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end">
+        <div className="fixed inset-0 z-50 flex flex-col justify-end lg:items-center lg:justify-center lg:p-6">
           <button
             type="button"
             aria-label="Close filters"
@@ -228,12 +238,16 @@ export function SearchPage() {
             className="absolute inset-0"
             style={{ background: 'rgba(34,30,26,.42)' }}
           />
+          {/* A bottom sheet is a thumb-reach shape. On a laptop the same
+              content becomes a centred dialog — a panel hugging the bottom
+              edge of a 900px-tall window is a long way from where the
+              pointer already is. */}
           <div
-            className="relative flex max-h-[85%] flex-col rounded-t-[24px]"
+            className="relative flex max-h-[85%] flex-col rounded-t-[24px] lg:w-full lg:max-w-[560px] lg:rounded-[24px] lg:shadow-[0_28px_60px_rgba(20,14,10,.4)]"
             style={{ background: C.paper }}
           >
             <div className="flex-none px-5 pb-1.5 pt-3.5">
-              <div className="mx-auto mb-3 h-1 w-9 rounded-full" style={{ background: '#D9CFC3' }} />
+              <div className="mx-auto mb-3 h-1 w-9 rounded-full lg:hidden" style={{ background: '#D9CFC3' }} />
               <div className="flex items-center justify-between">
                 <h2 className="text-[19px] font-extrabold tracking-[-0.02em]" style={{ fontFamily: FONT.display, color: C.text }}>
                   Filters

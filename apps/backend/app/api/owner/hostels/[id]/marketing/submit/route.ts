@@ -21,7 +21,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       throw ApiError.forbidden("Owner access required");
     }
 
-    const submitted = await marketingPageService.submitForReview(session.sub, params.id);
+    const submitted = await marketingPageService.submitForReview({ id: session.sub, isAdmin: session.role === "ADMIN" }, params.id);
     return ApiResponse.success(submitted, "Sent to Stayo for review");
   } catch (error) {
     return ApiResponse.error(error);

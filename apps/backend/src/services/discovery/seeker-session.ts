@@ -35,3 +35,19 @@ export async function requireSeeker(req: NextRequest) {
 
   return profile;
 }
+
+/**
+ * The same account, or null when there is no usable session.
+ *
+ * For endpoints that are public but say more to someone signed in — the
+ * reviews list, which serves published reviews to everybody and adds the
+ * reader's own pending one on top. Never throws: an expired session on a
+ * public page is not an error, it is a visitor.
+ */
+export async function getSeeker(req: NextRequest) {
+  try {
+    return await requireSeeker(req);
+  } catch {
+    return null;
+  }
+}

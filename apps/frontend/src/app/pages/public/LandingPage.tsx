@@ -1,4 +1,9 @@
 import { useEffect, useState } from 'react';
+import {
+  HANDOFF_DELAY_MS,
+  crossSurfaceHandoff,
+  type CrossSurfaceHandoff,
+} from '@shared/lib/crossSurfaceLogin';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Check, LayoutGrid, Menu, X } from 'lucide-react';
 import { LoginModal, type LoginModalUser } from '@shared/ui-patterns/LoginModal';
@@ -129,6 +134,14 @@ export function LandingPage() {
 
   const openLogin = () => setLoginOpen(true);
 
+  /** Set when the account that just signed in belongs on the resident side. */
+  const [handoff, setHandoff] = useState<CrossSurfaceHandoff | null>(null);
+  useEffect(() => {
+    if (!handoff) return;
+    const timer = window.setTimeout(() => navigate(handoff.path, { replace: true }), HANDOFF_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [handoff, navigate]);
+
   // Login is owner/admin only in V1 (LoginModal mode="owner" is a login-only
   // form — no signup tab). Role routing for the one login surface (ADR-035).
   const handleAuthSuccess = (authUser: LoginModalUser) => {
@@ -149,8 +162,13 @@ export function LandingPage() {
     // session back from the same API. Without this branch that login
     // silently went nowhere: modal closes, no redirect, tenant looks
     // logged out. Existing tenants can still reach their portal directly.
-    if (authUser.tenantId) {
-      navigate('/tenant/home', { replace: true });
+    // A resident account on the owner door. It authenticates fine — the modal
+    // was never gated — and used to be routed away with no explanation, which
+    // right after a password reads as somebody else's account. Announced, then
+    // moved. See `crossSurfaceLogin.ts`.
+    const crossing = crossSurfaceHandoff({ role: authUser.role, tenantId: authUser.tenantId }, 'owner');
+    if (crossing) {
+      setHandoff(crossing);
       return;
     }
 
@@ -162,6 +180,21 @@ export function LandingPage() {
   return (
     <ThemeProvider theme="marketing">
     <div className="overflow-x-hidden bg-background text-foreground [background-image:linear-gradient(rgba(120,80,70,.07)_1px,transparent_1px),linear-gradient(90deg,rgba(120,80,70,.07)_1px,transparent_1px)] [background-size:52px_52px]">
+      {handoff && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-6"
+          style={{ background: 'rgba(20,14,10,.55)' }}
+          role="status"
+          aria-live="polite"
+        >
+          <div className="w-full max-w-[20rem] rounded-[20px] bg-card p-5 text-center shadow-2xl">
+            <p className="font-display text-[14px] font-bold text-foreground">Signed in</p>
+            <p className="mt-1.5 text-[12.5px] leading-[1.6] text-muted-foreground">{handoff.message}</p>
+            <p className="mt-3 text-[11.5px] font-semibold text-primary">Taking you there…</p>
+          </div>
+        </div>
+      )}
+
       <LoginModal
         open={loginOpen}
         mode="owner"

@@ -21,7 +21,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       throw ApiError.forbidden("Owner access required");
     }
 
-    const withdrawn = await marketingPageService.withdraw(session.sub, params.id);
+    const withdrawn = await marketingPageService.withdraw({ id: session.sub, isAdmin: session.role === "ADMIN" }, params.id);
     return ApiResponse.success(withdrawn, "Withdrawn — you can edit it again");
   } catch (error) {
     return ApiResponse.error(error);

@@ -948,7 +948,27 @@ export class PropertyService {
       if (duplicate) throw new Error(`VALIDATION: Room ${data.room_no} already exists`);
     }
 
-    const { capacity, floor, floor_id, room_no, base_rent, wifi_name, wifi_password, notes } = data;
+    const {
+      capacity, floor, floor_id, room_no, base_rent, wifi_name, wifi_password, notes,
+      // What the room is like to live in (migration 073) — measurements and
+      // storage, which the Discovery listing turns into per-bed floor area.
+      length_ft, width_ft, cupboard_per_bed, under_bed_storage, study_desk, windows,
+    } = data;
+
+    // Guard the two free-text columns here as well as in the CHECK: a bad
+    // value should fail as a validation error the owner can read, not as a
+    // constraint violation.
+    if (under_bed_storage != null && !["NONE", "CABIN_BAG", "LARGE_SUITCASE"].includes(under_bed_storage)) {
+      throw new Error("VALIDATION: Unknown under-bed storage option");
+    }
+    if (study_desk != null && !["NONE", "SHARED", "PER_BED"].includes(study_desk)) {
+      throw new Error("VALIDATION: Unknown study desk option");
+    }
+    for (const [label, value] of [["Length", length_ft], ["Width", width_ft]] as const) {
+      if (value != null && value !== "" && !(Number(value) > 0 && Number(value) <= 100)) {
+        throw new Error(`VALIDATION: ${label} must be between 1 and 100 feet`);
+      }
+    }
     const updateData: any = {
       ...(capacity  !== undefined && { capacity:  Number(capacity) }),
       ...(floor     !== undefined && { floor:     Number(floor) }),
@@ -958,6 +978,12 @@ export class PropertyService {
       ...(wifi_name     !== undefined && { wifi_name:     wifi_name     ?? null }),
       ...(wifi_password !== undefined && { wifi_password: wifi_password ?? null }),
       ...(notes         !== undefined && { notes:         notes         ?? null }),
+      ...(length_ft !== undefined && { length_ft: length_ft === '' || length_ft === null ? null : Number(length_ft) }),
+      ...(width_ft  !== undefined && { width_ft:  width_ft  === '' || width_ft  === null ? null : Number(width_ft) }),
+      ...(cupboard_per_bed  !== undefined && { cupboard_per_bed:  cupboard_per_bed ?? null }),
+      ...(under_bed_storage !== undefined && { under_bed_storage: under_bed_storage ?? null }),
+      ...(study_desk        !== undefined && { study_desk:        study_desk ?? null }),
+      ...(windows !== undefined && { windows: windows === '' || windows === null ? null : Number(windows) }),
       updated_at: new Date(),
     };
 

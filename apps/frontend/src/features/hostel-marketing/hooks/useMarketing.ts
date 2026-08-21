@@ -13,6 +13,20 @@ export function useMarketingEditor(hostelId: string | undefined) {
 }
 
 /**
+ * The hostel's live kitchen menu, fetched only when the owner asks to import
+ * it — most owners open the mess editor to type, not to copy, and a menu
+ * nobody imported is a query nobody needed.
+ */
+export function useKitchenMenu(hostelId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.marketing.kitchenMenu(hostelId ?? ''),
+    queryFn: () => marketingService.kitchenMenu(hostelId as string),
+    enabled: Boolean(hostelId) && enabled,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
  * Saves are explicit, not autosaved-on-keystroke: this content is what a human
  * reviewer will read, and a draft that changes under an owner's fingers makes
  * "what did I actually submit" unanswerable.

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Flag, AlertTriangle, ExternalLink, X, ChevronLeft, ChevronRight, Maximize2 } from 'lucide-react';
+import { Flag, AlertTriangle, ExternalLink, X, ChevronLeft, ChevronRight, GitCompare, Maximize2 } from 'lucide-react';
 import { useMarketingSubmission } from '@features/hostel-marketing/hooks/useMarketing';
 import { DrawerSection, KeyValueRows } from './AdminDrawer';
+import { diffMarketingContent, type ContentDiff } from './marketingDiff';
 
 export const REVIEW_SECTIONS = ['basics', 'photos', 'beds', 'amenities', 'places', 'mess'] as const;
 export type ReviewSection = (typeof REVIEW_SECTIONS)[number];
@@ -51,6 +52,14 @@ export function MarketingReviewBody({
 
   const photos: any[] = c.photos ?? [];
 
+  /**
+   * What the owner actually changed. The endpoint has always returned the
+   * live revision alongside the submitted one ("so the reviewer sees the
+   * change") and nothing rendered it — so a reviewer had to re-read a whole
+   * listing to find a one-word edit.
+   */
+  const diff: ContentDiff = diffMarketingContent(s.live?.content ?? null, c);
+
   return (
     <div className="flex flex-col gap-4">
       {lightbox !== null && photos[lightbox] && (
@@ -89,6 +98,59 @@ export function MarketingReviewBody({
             Nobody operates this hostel in Stayo, so it has no real rooms. Its bed tiers are an
             advertised claim and the listing will not show live vacancy.
           </div>
+        </div>
+      )}
+
+      {/* ── What changed ─────────────────────────────────────────────── */}
+      {diff.isFirstSubmission ? (
+        <div className="rounded-2xl border border-[#E6DCD1] bg-[#F7F3EF] px-4 py-3">
+          <div className="text-[11px] font-bold uppercase tracking-[.06em] text-[#5A5147]">
+            First submission
+          </div>
+          <div className="mt-1 text-[12px] leading-relaxed text-[#6E5B4E]">
+            Nothing is live for this hostel yet, so every section below is new.
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-[#E6DCD1] bg-white px-4 py-3.5">
+          <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.06em] text-[#5A5147]">
+            <GitCompare className="h-3.5 w-3.5" strokeWidth={2} />
+            Changed since v{s.live?.version} {diff.changeCount > 0 && `· ${diff.changeCount}`}
+          </div>
+
+          {diff.changeCount === 0 ? (
+            <div className="mt-1.5 text-[12px] leading-relaxed text-[#6E5B4E]">
+              Nothing differs from the live version. Re-submitted without an edit, or the change is
+              in a field this comparison does not cover — read the sections below before approving.
+            </div>
+          ) : (
+            <div className="mt-2.5 flex flex-col gap-3">
+              {diff.sections.map((section) => (
+                <div key={section.section}>
+                  <div className="text-[11px] font-bold text-[#221E1A]">{section.label}</div>
+                  <div className="mt-1 flex flex-col gap-1">
+                    {section.lines.map((line, index) => (
+                      <div key={`${line.label}-${index}`} className="text-[12px] leading-relaxed text-[#6E5B4E]">
+                        <span className="text-[#8A7F75]">{line.label}</span>
+                        {line.before != null && (
+                          <>
+                            {' '}
+                            <span className="text-[#B3402F] line-through decoration-[#D8B3AB]">{line.before}</span>
+                          </>
+                        )}
+                        {line.after != null && (
+                          <>
+                            {line.before != null ? ' → ' : ' '}
+                            <span className="font-semibold text-[#1F7A52]">{line.after}</span>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

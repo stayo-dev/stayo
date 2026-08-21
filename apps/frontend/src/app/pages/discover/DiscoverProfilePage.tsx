@@ -159,41 +159,44 @@ export function DiscoverProfilePage() {
 
   return (
     <div>
+      {/*
+        Minimal by decision.
+
+        This was a dark slab with a radial glow and a translucent stat strip —
+        a lot of chrome to say a name and two numbers, on the one screen where
+        a person is looking for their own details. It sits on the app's paper
+        ground now, with the terracotta monogram carrying the brand instead of
+        a block of ink, and the two counts as plain figures rather than a card
+        inside a header. Sticky, so the person's identity stays put while their
+        details scroll.
+      */}
       <header
-        className="relative overflow-hidden rounded-b-[28px] px-5 pb-6 pt-[max(3.5rem,env(safe-area-inset-top))]"
-        style={{ background: C.ink }}
+        className="sticky top-0 z-20 px-5 pb-3.5 pt-[max(2.5rem,env(safe-area-inset-top))] backdrop-blur-md"
+        style={{ background: 'rgba(247,243,239,.88)', borderBottom: `1px solid ${C.line}` }}
       >
-        <div
-          className="pointer-events-none absolute -right-12 -top-8 h-40 w-40 rounded-full"
-          style={{ background: 'radial-gradient(circle,rgba(217,144,111,.22),transparent 70%)' }}
-        />
-        <div className="relative flex items-center gap-3.5">
+        <div className="flex items-center gap-3.5">
           <span
-            className="flex h-14 w-14 flex-none items-center justify-center rounded-2xl text-[19px] font-extrabold text-white"
-            style={{ fontFamily: FONT.display, background: C.clay, boxShadow: '0 6px 16px rgba(180,106,85,.4)' }}
+            className="flex h-14 w-14 flex-none items-center justify-center rounded-2xl text-[19px] font-extrabold"
+            style={{ fontFamily: FONT.display, background: C.clayPaleBg, color: C.clayDeep }}
           >
             {initials(user?.name)}
           </span>
           <div className="min-w-0 flex-1">
             <p
-              className="truncate text-[19px] font-extrabold tracking-[-0.01em] text-white"
-              style={{ fontFamily: FONT.display }}
+              className="truncate text-[19px] font-extrabold tracking-[-0.01em]"
+              style={{ fontFamily: FONT.display, color: C.text }}
             >
               {user?.name ?? 'Your account'}
             </p>
-            <p className="mt-0.5 truncate text-[12px]" style={{ color: '#A79C90' }}>
+            <p className="mt-0.5 truncate text-[12px]" style={{ color: C.textMuted }}>
               {user?.email}
             </p>
           </div>
-        </div>
-
-        <div
-          className="relative mt-5 flex overflow-hidden rounded-2xl"
-          style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.07)' }}
-        >
-          <Stat value={enquiries?.length ?? 0} label="Enquiries" />
-          <span className="my-3 w-px" style={{ background: 'rgba(255,255,255,.08)' }} />
-          <Stat value={saved?.length ?? 0} label="Saved" />
+          <div className="flex flex-none items-center gap-4 pr-0.5 text-right">
+            <MiniStat value={enquiries?.length ?? 0} label="Enquiries" />
+            <span className="h-7 w-px" style={{ background: C.line }} />
+            <MiniStat value={saved?.length ?? 0} label="Saved" />
+          </div>
         </div>
       </header>
 
@@ -507,6 +510,19 @@ export function DiscoverProfilePage() {
           onUploadDocument={triggerDocumentUpload}
         />
       )}
+    </div>
+  );
+}
+
+function MiniStat({ value, label }: { value: number; label: string }) {
+  return (
+    <div>
+      <div className="text-[15px] font-extrabold tabular-nums" style={{ fontFamily: FONT.display, color: C.text }}>
+        {value}
+      </div>
+      <div className="text-[9.5px] font-bold uppercase tracking-[0.06em]" style={{ color: C.textGhost }}>
+        {label}
+      </div>
     </div>
   );
 }

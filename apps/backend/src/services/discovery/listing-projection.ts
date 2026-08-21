@@ -1,3 +1,5 @@
+import { summariseSpace } from "./room-space";
+
 /**
  * The one projection from stored content to a Discovery listing payload.
  *
@@ -18,12 +20,113 @@ export type ProjectListingInput = {
     hostel_type?: unknown;
     food_included?: unknown;
     listing_source?: string | null;
+    created_at?: Date | string | null;
+    owner?: { name?: string | null } | null;
   };
   /** The marketing revision's validated content, or null when never approved. */
   marketing: any | null;
   /** True when serving an unapproved revision to an admin. */
   preview?: boolean;
 };
+
+/**
+ * Which photos a hostel shows, in one place.
+ *
+ * Approved marketing photos win over the admissions gallery — those are the
+ * ones a human reviewed for this surface — and the **cover comes first**.
+ * `marketing-content.ts` already guarantees exactly one `is_cover` per
+ * revision precisely so that Discovery can lead with it; nothing was reading
+ * the flag, so the hero and the search card both showed whichever photo
+ * happened to sort first.
+ *
+ * Shared with `discovery-service`'s card projection, which used to read only
+ * `hostels.admission_photos` and therefore showed the placeholder texture for
+ * every hostel whose photos arrived through the marketing review flow (which
+ * is all of them — nothing populates `admission_photos`). See [[Bugs]].
+ */
+export function listingPhotos(marketing: any | null, fallback: string[] = []): string[] {
+  const photos = Array.isArray(marketing?.photos) ? [...marketing.photos] : [];
+  const urls = photos
+    // Two keys, in order: the cover leads, everything else keeps the owner's
+    // arrangement. Array#sort is stable, so equal ranks do not get shuffled.
+    .sort((a: any, b: any) => {
+      const cover = Number(Boolean(b?.is_cover)) - Number(Boolean(a?.is_cover));
+      if (cover !== 0) return cover;
+      return Number(a?.sort ?? 0) - Number(b?.sort ?? 0);
+    })
+    .map((photo: any) => photo?.url)
+    .filter((url: unknown): url is string => typeof url === "string" && url.length > 0);
+
+  return urls.length > 0 ? urls : fallback;
+}
+
+export interface ListingMedia {
+  url: string;
+  kind: "image" | "video";
+  thumbnail_url: string | null;
+  label: string | null;
+  /** Which part of the hostel this shows — groups the photo tour. */
+  category: string;
+}
+
+/**
+ * The gallery as the listing page renders it — same order and same source as
+ * `listingPhotos`, but keeping each item's kind. Everything without an
+ * explicit kind is an image: every revision written before video existed says
+ * nothing on the subject, and those are all photos.
+ */
+export function listingMedia(marketing: any | null, fallback: string[] = []): ListingMedia[] {
+  const photos = Array.isArray(marketing?.photos) ? [...marketing.photos] : [];
+  const ordered = photos
+    .sort((a: any, b: any) => {
+      const cover = Number(Boolean(b?.is_cover)) - Number(Boolean(a?.is_cover));
+      if (cover !== 0) return cover;
+      return Number(a?.sort ?? 0) - Number(b?.sort ?? 0);
+    })
+    .filter((photo: any) => typeof photo?.url === "string" && photo.url.length > 0)
+    .map((photo: any) => ({
+      url: photo.url as string,
+      kind: (photo.kind === "video" ? "video" : "image") as "image" | "video",
+      thumbnail_url: typeof photo.thumbnail_url === "string" ? photo.thumbnail_url : null,
+      label: typeof photo.label === "string" ? photo.label : null,
+      category: typeof photo.category === "string" ? photo.category : "other",
+    }));
+
+  if (ordered.length > 0) return ordered;
+  return fallback.map((url) => ({
+    url,
+    kind: "image" as const,
+    thumbnail_url: null,
+    label: null,
+    category: "other",
+  }));
+}
+
+/**
+ * "Ravi K." — the owner as a public listing names them. Same rule as a review
+ * author: enough to read as a person, never a full identity beside a business
+ * a stranger can walk into.
+ */
+export function hostName(fullName: string | null | undefined): string | null {
+  const parts = String(fullName ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return null;
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.`;
+}
+
+/**
+ * Each advertised bed type, with what the real rooms of that size are like to
+ * live in. Attached here rather than left to the client so the "smaller room
+ * wins" and "only claim what every room has" rules live in one place.
+ */
+export function bedTierSpace(bedTiers: any[], rooms: any[]) {
+  return bedTiers.map((tier: any) => {
+    const matching = (rooms ?? [])
+      .filter((room: any) => Number(room.capacity) === Number(tier.sharing))
+      .map((room: any) => ({ capacity: Number(room.capacity), ...(room.space ?? {}) }));
+    return { ...tier, space: summariseSpace(matching) };
+  });
+}
 
 export function projectListing({ detail, visible, marketing, preview = false }: ProjectListingInput) {
   const platformListed = String(visible.listing_source ?? "OWNER_MANAGED") === "PLATFORM_LISTED";
@@ -37,12 +140,15 @@ export function projectListing({ detail, visible, marketing, preview = false }: 
       tagline: marketing?.basics?.tagline ?? null,
       about: marketing?.basics?.about ?? null,
       highlights: marketing?.basics?.highlights ?? [],
-      // Owner-published photos win over the admissions gallery when they
-      // exist — those are the ones a human approved for this surface.
-      photos:
-        marketing && marketing.photos?.length > 0
-          ? marketing.photos.map((photo: any) => photo.url)
-          : detail.hostel.photos,
+      photos: listingPhotos(marketing, detail.hostel.photos ?? []),
+      /**
+       * The gallery with its kinds intact, so the listing can render a video
+       * as a video. `photos` stays a plain URL list beside it: several
+       * surfaces (and the share preview's og:image) only ever want stills,
+       * and widening that field would have made every one of them handle a
+       * clip they cannot display.
+       */
+      media: listingMedia(marketing, detail.hostel.photos ?? []),
     },
 
     /**
@@ -50,7 +156,7 @@ export function projectListing({ detail, visible, marketing, preview = false }: 
      * comes from real rooms — a marketing tier describes what is on sale, it
      * does not decide what is free.
      */
-    bed_tiers: marketing?.beds ?? [],
+    bed_tiers: bedTierSpace(marketing?.beds ?? [], detail.rooms ?? []),
 
     amenities: (marketing?.amenities ?? []).filter((amenity: any) => amenity.enabled),
     places: marketing?.places ?? [],
@@ -72,6 +178,23 @@ export function projectListing({ detail, visible, marketing, preview = false }: 
      * doing so advertises beds nobody can honour, to someone trying to find
      * somewhere to live. This is the single most important flag here.
      */
+    /**
+     * Who runs this place, and since when.
+     *
+     * A listing with no human attached is a database row; every marketplace
+     * that trades on trust puts a person on the page. First name and last
+     * initial only — the same rule as a review's author (`reviewerDisplayName`)
+     * — and nothing else: no phone, no email. A PLATFORM_LISTED hostel has no
+     * real owner, so it says so rather than naming the sentinel profile.
+     */
+    host: platformListed
+      ? { name: null, listed_since: visible.created_at ?? null, platform_listed: true }
+      : {
+          name: hostName(visible.owner?.name),
+          listed_since: visible.created_at ?? null,
+          platform_listed: false,
+        },
+
     availability_confirmed: !platformListed,
     platform_listed: platformListed,
 

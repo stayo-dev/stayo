@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TenantPageHeader } from '../components/TenantPageHeader';
 import { ChevronLeft, Camera, TriangleAlert, Check, UtensilsCrossed } from 'lucide-react';
 import { EmptyState } from '@shared/ui-patterns/EmptyState';
 import { MEAL_CATEGORY_META, type MealSlotKey } from '@shared/mocks/food';
@@ -68,17 +69,21 @@ export function TenantFoodPage() {
 
   return (
     <div className="min-h-screen">
-      <div className="flex flex-col gap-6 px-5 pb-8 pt-6">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="font-display text-[24px] font-extrabold tracking-[-0.03em] text-foreground">My Menu</h1>
-            <p className="mt-0.5 text-[12px] font-medium text-muted-foreground">Your meals this week</p>
+      <TenantPageHeader
+        title="My Menu"
+        subtitle="Your meals this week"
+        right={
+          <div className="text-right">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-[#B0A597]">
+              {new Date().toLocaleDateString('en-IN', { weekday: 'long' })}
+            </div>
+            <div className="font-display text-[13px] font-bold text-foreground">
+              {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+            </div>
           </div>
-          <div className="flex-none text-right">
-            <div className="text-[11px] font-bold uppercase tracking-wide text-[#B0A597]">{new Date().toLocaleDateString('en-IN', { weekday: 'long' })}</div>
-            <div className="font-display text-[13px] font-bold text-foreground">{new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</div>
-          </div>
-        </div>
+        }
+      />
+      <div className="flex flex-col gap-6 px-5 pb-8 pt-5">
 
         <NextServingCard next={nextServing} now={now} />
 

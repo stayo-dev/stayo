@@ -23,13 +23,15 @@ describe('buildAdminNav', () => {
     const items = groups.flatMap((g) => g.items);
     expect(items.find((i) => i.to === '/admin/kyc')?.badge).toBe(4);
     expect(items.find((i) => i.to === '/admin/listings')?.badge).toBe(2);
+    expect(buildAdminNav({ reviews: 3 }).flatMap((g) => g.items).find((i) => i.to === '/admin/reviews')?.badge)
+      .toBe(3);
   });
 
   it('exposes every screen the console routes to', () => {
     const paths = buildAdminNav({}).flatMap((g) => g.items).map((i) => i.to);
     expect(paths).toEqual([
       '/admin', '/admin/leads', '/admin/owners',
-      '/admin/kyc', '/admin/listings',
+      '/admin/kyc', '/admin/listings', '/admin/reviews',
       '/admin/revenue', '/admin/settlements', '/admin/subscriptions',
       '/admin/reports', '/admin/broadcasts', '/admin/settings',
     ]);

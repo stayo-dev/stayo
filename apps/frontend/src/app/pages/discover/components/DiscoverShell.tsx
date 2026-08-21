@@ -43,17 +43,29 @@ export function DiscoverEmpty({
   );
 }
 
-/** Card-shaped skeletons, so the page does not jump when results land. */
-export function HostelCardSkeleton({ count = 3 }: { count?: number }) {
+/**
+ * Card-shaped skeletons, so the page does not jump when results land.
+ *
+ * `className` overrides the wrapper layout: Explore lays its results out as a
+ * responsive grid, and a skeleton that stacks in one column while the real
+ * results arrive in four is the jump this component exists to prevent.
+ */
+export function HostelCardSkeleton({
+  count = 3,
+  className = 'flex flex-col gap-4',
+}: {
+  count?: number;
+  className?: string;
+}) {
   return (
-    <div className="flex flex-col gap-4">
+    <div className={className}>
       {Array.from({ length: count }).map((_, index) => (
         <div
           key={index}
           className="overflow-hidden rounded-[20px] border bg-white"
           style={{ borderColor: C.line }}
         >
-          <div className="h-[186px] animate-pulse" style={{ background: '#EDE4DA' }} />
+          <div className="h-[186px] animate-pulse sm:h-auto sm:aspect-[4/3]" style={{ background: '#EDE4DA' }} />
           <div className="space-y-2.5 p-4">
             <div className="h-4 w-2/3 animate-pulse rounded" style={{ background: '#EDE4DA' }} />
             <div className="h-3 w-1/2 animate-pulse rounded" style={{ background: '#F2ECE5' }} />

@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Coffee, Moon, Sun, Utensils } from 'lucide-react';
+import { Coffee, CopyPlus, Loader2, Moon, Sun, Utensils } from 'lucide-react';
 
 import type { MarketingMess, MessMealKey } from '@features/hostel-marketing/api';
+import { useKitchenMenu } from '@features/hostel-marketing/hooks/useMarketing';
+import { stayoToast } from '@shared/ui-patterns/Toast';
 
 import { MarketingSheet, SheetFooter } from './MarketingSheet';
 import { M, MESS_DAY_LABELS } from './marketingTheme';
@@ -24,12 +26,15 @@ export const MEAL_ICON: Record<MessMealKey, typeof Coffee> = {
  */
 export function MessMenuSheet({
   open,
+  hostelId,
   mess,
   initialDay,
   onClose,
   onSave,
 }: {
   open: boolean;
+  /** Needed to read the hostel's real kitchen menu for the import button. */
+  hostelId: string | undefined;
   mess: MarketingMess;
   initialDay: number;
   onClose: () => void;
@@ -37,6 +42,8 @@ export function MessMenuSheet({
 }) {
   const [week, setWeek] = useState(mess.week);
   const [day, setDay] = useState(initialDay);
+  const [importing, setImporting] = useState(false);
+  const kitchen = useKitchenMenu(hostelId, importing);
 
   // Reopening the sheet must start from what is saved, not from the edits a
   // previous Cancel discarded.
@@ -51,6 +58,26 @@ export function MessMenuSheet({
 
   const setDish = (key: MessMealKey, value: string) => {
     setWeek(week.map((entry, index) => (index === day ? { ...entry, [key]: value } : entry)));
+  };
+
+  /**
+   * Copy the hostel's live kitchen menu in.
+   *
+   * A copy, not a link: the listing keeps its own reviewed menu (ADR-077), so
+   * what lands here is an editable draft that still goes through review. The
+   * owner was otherwise retyping 28 cells they already maintain in Food,
+   * which is why most listings had no menu at all.
+   */
+  const importKitchenMenu = async () => {
+    setImporting(true);
+    const result = await kitchen.refetch();
+    const data = result.data;
+    if (!data?.available || !data.week) {
+      stayoToast.info("No published menu found in Food yet — publish this month's menu first.");
+      return;
+    }
+    setWeek(data.week);
+    stayoToast.success('Menu copied in — edit it, then save and send for review');
   };
 
   return (
@@ -92,6 +119,21 @@ export function MessMenuSheet({
           );
         })}
       </div>
+
+      <button
+        type="button"
+        onClick={importKitchenMenu}
+        disabled={kitchen.isFetching}
+        className="mb-4 flex w-full items-center justify-center gap-2 rounded-[11px] border border-dashed px-3.5 py-3 font-display text-[12.5px] font-bold text-primary disabled:opacity-60"
+        style={{ borderColor: M.dashed, background: M.dashedBg }}
+      >
+        {kitchen.isFetching ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
+        ) : (
+          <CopyPlus className="h-3.5 w-3.5" strokeWidth={2} />
+        )}
+        Copy this hostel's kitchen menu
+      </button>
 
       <div className="flex flex-col gap-4 pb-2">
         {meals.length === 0 && (

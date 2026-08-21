@@ -1,6 +1,10 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { C, FONT, GRID_GROUND } from '@/app/pages/discover/discoverTheme';
 import { useAppNav } from '@/app/nav/useAppNav';
+import { useDiscoverAuthOptional } from '@/app/pages/discover/DiscoverAuthContext';
+import type { AppNavTab } from '@/app/nav/appNavConfig';
+
+type AppNavIcon = AppNavTab['Icon'];
 
 /** The four `/tenant/*` paths that are actual primary-nav tab pages. */
 const TENANT_TAB_PATHS = new Set(['/tenant/home', '/tenant/money', '/tenant/room', '/tenant/food']);
@@ -53,48 +57,68 @@ function hidesOuterNav(pathname: string): boolean {
  * exactly its content's width (no slack for `justify-center` to redistribute
  * into), and the browser scrolls the overflow — avoiding the classic
  * flex-center-plus-overflow bug where the start of the row gets clipped.
+ *
+ * From `lg` up it stops being a full-bleed bar and becomes a **centred
+ * floating dock**: a laptop-width edge-to-edge bar carrying two items reads
+ * as unfinished chrome, and the border-top drew a line across the whole
+ * screen for no reason. Same markup, same tabs — `lg:w-fit lg:self-center`
+ * shrinks it to its content (it is a flex child of `AppShell`'s column) and
+ * the pill styling replaces the top border.
  */
 export function AppBottomNav() {
   const { pathname } = useLocation();
   const { outerTabs } = useAppNav();
+  const auth = useDiscoverAuthOptional();
   if (hidesOuterNav(pathname)) return null;
+
+  /** The visual body of a tab — identical whether it links or acts. */
+  const tabInner = (Icon: AppNavIcon, label: string, isActive: boolean) => (
+    <>
+      <span
+        className="flex h-[26px] w-11 items-center justify-center rounded-[13px] transition-colors"
+        style={{ background: isActive ? 'rgba(180,106,85,.12)' : 'transparent' }}
+      >
+        <Icon className="h-[19px] w-[19px]" strokeWidth={1.8} style={{ color: isActive ? C.clay : C.textMuted }} />
+      </span>
+      <span
+        className="text-[10.5px]"
+        style={{ color: isActive ? C.clay : C.textMuted, fontWeight: isActive ? 700 : 500 }}
+      >
+        {label}
+      </span>
+    </>
+  );
 
   return (
     <nav
       aria-label="Stayo"
-      className="sticky bottom-0 z-40 flex-none overflow-x-auto border-t pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="sticky bottom-0 z-40 flex-none overflow-x-auto border-t pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2.5 [scrollbar-width:none] lg:mb-6 lg:w-fit lg:self-center lg:rounded-full lg:border lg:px-3 lg:pb-2.5 lg:backdrop-blur shadow-[0_-4px_16px_rgba(40,30,20,.03)] lg:shadow-[0_12px_32px_rgba(40,30,20,.14)] [&::-webkit-scrollbar]:hidden"
       style={{
         borderColor: C.line,
         background: C.cardWarm,
-        boxShadow: '0 -4px 16px rgba(40,30,20,.03)',
         fontFamily: FONT.body,
       }}
     >
-      <div className="flex w-max min-w-full justify-center gap-1 px-2">
-        {outerTabs.map(({ to, label, Icon, end }) => (
-          <NavLink key={to} to={to} end={end} className="flex w-[76px] flex-none flex-col items-center gap-1.5 py-1">
-            {({ isActive }) => (
-              <>
-                <span
-                  className="flex h-[26px] w-11 items-center justify-center rounded-[13px] transition-colors"
-                  style={{ background: isActive ? 'rgba(180,106,85,.12)' : 'transparent' }}
-                >
-                  <Icon
-                    className="h-[19px] w-[19px]"
-                    strokeWidth={1.8}
-                    style={{ color: isActive ? C.clay : C.textMuted }}
-                  />
-                </span>
-                <span
-                  className="text-[10.5px]"
-                  style={{ color: isActive ? C.clay : C.textMuted, fontWeight: isActive ? 700 : 500 }}
-                >
-                  {label}
-                </span>
-              </>
-            )}
-          </NavLink>
-        ))}
+      <div className="flex w-max min-w-full justify-center gap-1 px-2 lg:min-w-0">
+        {outerTabs.map(({ to, label, Icon, end, action }) =>
+          // "Log in" opens the sheet where it stands. Routing to /profile
+          // first showed a page whose only content was another sign-in
+          // button — two taps and a page load for one intent.
+          action === 'SIGN_IN' && auth ? (
+            <button
+              key={to}
+              type="button"
+              onClick={() => auth.openSignIn()}
+              className="flex w-[76px] flex-none flex-col items-center gap-1.5 py-1"
+            >
+              {tabInner(Icon, label, false)}
+            </button>
+          ) : (
+            <NavLink key={to} to={to} end={end} className="flex w-[76px] flex-none flex-col items-center gap-1.5 py-1">
+              {({ isActive }) => tabInner(Icon, label, isActive)}
+            </NavLink>
+          ),
+        )}
       </div>
     </nav>
   );

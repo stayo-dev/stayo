@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { TenantPageHeader } from '../components/TenantPageHeader';
 import { useMutation } from '@tanstack/react-query';
 import { Share2, Receipt, Wallet, Info, ShieldCheck, Undo2 } from 'lucide-react';
 import { stayoToast } from '@shared/ui-patterns/Toast';
@@ -93,21 +94,20 @@ export function TenantMoneyPage() {
   const activeFreq = fin.billingFrequency?.active_frequency ? `${fin.billingFrequency.active_frequency.charAt(0)}${fin.billingFrequency.active_frequency.slice(1).toLowerCase()} plan` : 'Monthly plan';
 
   return (
-    <div className="flex flex-col gap-6 px-4 pb-8 pt-6 sm:px-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-[24px] font-extrabold tracking-[-0.03em] text-foreground">Payments</h1>
-          <p className="mt-0.5 text-[12px] font-medium text-muted-foreground">
-            {new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })} · {activeFreq}
-          </p>
-        </div>
-        {profile.room?.room_no && (
-          <span className="flex flex-none items-center gap-1.5 rounded-full bg-foreground px-3 py-[7px]">
-            <span className="h-1.5 w-1.5 rounded-full bg-success" />
-            <span className="text-[11px] font-semibold text-background/80">Room {profile.room.room_no}</span>
-          </span>
-        )}
-      </div>
+    <div>
+      <TenantPageHeader
+        title="Payments"
+        subtitle={`${new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })} · ${activeFreq}`}
+        right={
+          profile.room?.room_no ? (
+            <span className="flex items-center gap-1.5 rounded-full bg-foreground px-3 py-[7px]">
+              <span className="h-1.5 w-1.5 rounded-full bg-success" />
+              <span className="text-[11px] font-semibold text-background/80">Room {profile.room.room_no}</span>
+            </span>
+          ) : undefined
+        }
+      />
+      <div className="flex flex-col gap-6 px-4 pb-8 pt-5 sm:px-6">
 
       <div className="relative overflow-hidden rounded-[22px] bg-foreground p-5 text-background shadow-[0_12px_30px_rgba(34,30,26,0.24)]">
         <div
@@ -357,6 +357,7 @@ export function TenantMoneyPage() {
         onClose={fin.closePay}
         onConfirm={fin.confirmPay}
       />
+      </div>
     </div>
   );
 }

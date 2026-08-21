@@ -1,28 +1,49 @@
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ImagePlus, Loader2, Star, Trash2, UploadCloud } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronLeft as MoveLeft,
+  ChevronRight as MoveRight,
+  ImagePlus,
+  Loader2,
+  Play,
+  Star,
+  Trash2,
+  UploadCloud,
+} from 'lucide-react';
 
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { marketingService, type MarketingPhoto } from '@features/hostel-marketing/api';
 
 import { M } from './marketingTheme';
+import { PHOTO_CATEGORIES } from './photoCategories';
+import {
+  IMAGE_TYPES,
+  MAX_MEDIA,
+  VIDEO_TYPES,
+  canBeCover,
+  classifyFiles,
+  compressImage,
+  removeMedia,
+  reorderMedia,
+  setCover as setCoverAt,
+} from './mediaUpload';
 
-/** Matches the server's own limits, so an impossible upload fails before it starts. */
-const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const MAX_BYTES = 8 * 1024 * 1024;
-const MAX_PER_UPLOAD = 10;
-/** The content schema's own ceiling. */
-const MAX_PHOTOS = 24;
+const ACCEPTED_TYPES = [...IMAGE_TYPES, ...VIDEO_TYPES];
 
 /**
- * `MODAL: MARKETING PHOTOS` of `Stayo App.dc.html` — the full-screen photo
- * manager: a 2-up grid with star (set cover) and trash on every tile.
+ * `MODAL: MARKETING PHOTOS` of `Stayo App.dc.html` — the full-screen media
+ * manager: a 2-up grid with cover, caption, reorder and delete on every tile.
  *
- * Photos are uploaded from the device — the file picker, or dropped onto the
- * grid on a desktop. Uploads go straight to ImageKit via
- * `POST /owner/hostels/:id/marketing/photos`, which hands back URLs; those URLs
- * live in the draft until the owner saves, so an upload the owner then discards
- * never reaches the listing.
+ * Photos **and videos** are uploaded from the device — the file picker, or
+ * dropped onto the grid on a desktop — through
+ * `POST /owner/hostels/:id/marketing/photos`, **one file per request** (see
+ * `marketingService.uploadMedia` for why). The returned URLs live in the draft
+ * until the owner saves, so an upload they then discard never reaches the
+ * listing.
+ *
+ * All the rules — what is accepted, what the cover may be, what order things
+ * are in — live in `mediaUpload.ts` and are tested there.
  */
 export function PhotosScreen({
   open,
@@ -38,25 +59,22 @@ export function PhotosScreen({
   onClose: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(0);
+  const [pending, setPending] = useState(0);
+  const [done, setDone] = useState(0);
   const [dragging, setDragging] = useState(false);
   // Nested dragenter/dragleave pairs fire as the pointer crosses child
   // elements, so a plain boolean flickers the drop state off mid-drag.
   const dragDepth = useRef(0);
+  // Which tile is being dragged to a new position (desktop reordering).
+  const dragFrom = useRef<number | null>(null);
 
   if (!open) return null;
 
-  const remainingSlots = MAX_PHOTOS - photos.length;
+  const remainingSlots = MAX_MEDIA - photos.length;
 
-  const setCover = (index: number) =>
-    onChange(photos.map((photo, i) => ({ ...photo, is_cover: i === index })));
-
-  const remove = (index: number) => {
-    const next = photos.filter((_photo, i) => i !== index);
-    // The cover must survive its own deletion — a listing with no cover has no
-    // card image in search.
-    if (next.length > 0 && !next.some((photo) => photo.is_cover)) next[0].is_cover = true;
-    onChange(next.map((photo, i) => ({ ...photo, sort: i })));
+  const move = (from: number, to: number) => {
+    if (to < 0 || to >= photos.length) return;
+    onChange(reorderMedia(photos, from, to));
   };
 
   /**
@@ -67,55 +85,75 @@ export function PhotosScreen({
     if (!hostelId || picked.length === 0) return;
 
     if (remainingSlots <= 0) {
-      stayoToast.info(`A listing can show ${MAX_PHOTOS} photos. Remove one to add another.`);
+      stayoToast.info(`A listing can show ${MAX_MEDIA} photos and videos. Remove one to add another.`);
       return;
     }
 
-    const images = picked.filter((file) => ACCEPTED_TYPES.includes(file.type));
-    const tooBig = images.filter((file) => file.size > MAX_BYTES);
-    let accepted = images.filter((file) => file.size <= MAX_BYTES);
+    const { accepted, wrongType, tooBig, overflow } = classifyFiles(picked, remainingSlots);
 
     // Say what is being dropped and why, rather than silently uploading a
     // subset of what the owner selected.
-    if (images.length < picked.length) stayoToast.info('Only JPG, PNG and WebP images can be uploaded');
-    if (tooBig.length > 0) stayoToast.error(`${tooBig.length} photo(s) over 8MB were skipped`);
-
-    if (accepted.length > remainingSlots) {
-      stayoToast.info(`Only ${remainingSlots} more photo(s) fit on this listing`);
-      accepted = accepted.slice(0, remainingSlots);
+    if (wrongType.length > 0) stayoToast.info('Only JPG, PNG, WebP photos and MP4, WebM, MOV videos can be uploaded');
+    if (tooBig.length > 0) {
+      stayoToast.error(
+        tooBig.length === 1
+          ? `"${tooBig[0].name}" is too large — photos up to 8MB, videos up to 60MB`
+          : `${tooBig.length} files were too large — photos up to 8MB, videos up to 60MB`,
+      );
     }
+    if (overflow.length > 0) stayoToast.info(`Only ${remainingSlots} more file(s) fit on this listing`);
     if (accepted.length === 0) return;
 
-    // The server caps a single request; batch rather than refusing the rest.
-    const batches: File[][] = [];
-    for (let i = 0; i < accepted.length; i += MAX_PER_UPLOAD) {
-      batches.push(accepted.slice(i, i + MAX_PER_UPLOAD));
-    }
+    setPending(accepted.length);
+    setDone(0);
 
-    setUploading(accepted.length);
+    // One request per file, sequentially. A batch was what made a normal
+    // phone multi-select fail as "limit exceeded"; sequential also keeps a
+    // handful of large uploads from competing for one mobile connection.
     let added: MarketingPhoto[] = [];
-    try {
-      for (const batch of batches) {
-        const result = await marketingService.uploadPhotos(hostelId, batch);
+    let failed = 0;
+    for (const file of accepted) {
+      try {
+        const uploaded = await marketingService.uploadMedia(hostelId, await compressImage(file));
+        if (!uploaded) {
+          failed += 1;
+          continue;
+        }
         added = [
           ...added,
-          ...result.map((photo, index) => ({
-            url: photo.url,
+          {
+            url: uploaded.url,
             label: null,
-            is_cover: photos.length === 0 && added.length + index === 0,
-            sort: photos.length + added.length + index,
-          })),
+            kind: uploaded.kind,
+            thumbnail_url: uploaded.thumbnail_url,
+            // The first image on an empty listing becomes the cover; a video
+            // never can (it is the search card's still and a link's preview).
+            is_cover:
+              uploaded.kind !== 'video' &&
+              ![...photos, ...added].some((item) => item.is_cover && item.kind !== 'video'),
+            sort: photos.length + added.length,
+          },
         ];
+        // Kept as they land: an upload that fails halfway must not discard the
+        // ones that already succeeded.
+        onChange([...photos, ...added]);
+      } catch (error: any) {
+        failed += 1;
+        const message = error?.response?.data?.message;
+        // One toast per failure would bury the screen on a bad connection.
+        if (failed === 1 && message) stayoToast.error(message);
+      } finally {
+        setDone((count) => count + 1);
       }
-      onChange([...photos, ...added]);
-      stayoToast.success(added.length === 1 ? 'Photo added' : `${added.length} photos added`);
-    } catch (error: any) {
-      // Whatever did land is kept — losing three successful uploads because the
-      // fourth failed is worse than a partial batch.
-      if (added.length > 0) onChange([...photos, ...added]);
-      stayoToast.error(error?.response?.data?.message ?? 'Could not upload those photos');
-    } finally {
-      setUploading(0);
+    }
+
+    setPending(0);
+    setDone(0);
+    if (added.length > 0) {
+      stayoToast.success(added.length === 1 ? 'Added' : `${added.length} files added`);
+    }
+    if (failed > 0) {
+      stayoToast.error(failed === 1 ? "One file didn't upload" : `${failed} files didn't upload`);
     }
   };
 
@@ -123,10 +161,14 @@ export function PhotosScreen({
     event.preventDefault();
     dragDepth.current = 0;
     setDragging(false);
-    upload(Array.from(event.dataTransfer.files ?? []));
+    // A tile being dragged within the grid carries no files — that is a
+    // reorder, handled on the tile itself.
+    const files = Array.from(event.dataTransfer.files ?? []);
+    if (files.length > 0) upload(files);
   };
 
-  const busy = uploading > 0;
+  const busy = pending > 0;
+  const imageCount = photos.filter((photo) => photo.kind !== 'video').length;
 
   return createPortal(
     <div
@@ -135,7 +177,7 @@ export function PhotosScreen({
       onDragEnter={(event) => {
         event.preventDefault();
         dragDepth.current += 1;
-        setDragging(true);
+        if (dragFrom.current === null) setDragging(true);
       }}
       onDragOver={(event) => event.preventDefault()}
       onDragLeave={(event) => {
@@ -156,7 +198,7 @@ export function PhotosScreen({
           >
             <ChevronLeft className="h-4 w-4" strokeWidth={2} />
           </span>
-          <span className="font-display text-[17px] font-extrabold text-foreground">Photos</span>
+          <span className="font-display text-[17px] font-extrabold text-foreground">Photos & videos</span>
         </button>
         <button type="button" onClick={onClose} className="font-display text-[13px] font-bold text-primary">
           Done
@@ -165,8 +207,10 @@ export function PhotosScreen({
 
       <div className="flex-1 overflow-auto px-5 pb-8 pt-4">
         <p className="mb-3.5 text-[12px] leading-[1.6] text-muted-foreground">
-          The cover photo shows first in Discovery search. Tap ★ to set the cover.
-          {photos.length > 0 && ` · ${photos.length} of ${MAX_PHOTOS}`}
+          The order here is the order visitors swipe through — use ‹ › to rearrange. Tap ★ to set the
+          cover photo, which shows first in Discovery search. Label each one with the part of the
+          hostel it shows; the listing groups them into a photo tour.
+          {photos.length > 0 && ` · ${photos.length} of ${MAX_MEDIA}`}
         </p>
 
         <input
@@ -183,61 +227,154 @@ export function PhotosScreen({
         />
 
         <div className="grid grid-cols-2 gap-3">
-          {photos.map((photo, index) => (
-            <div key={`${photo.url}-${index}`} className="relative h-[150px] overflow-hidden rounded-[15px] bg-muted">
-              <img src={photo.url} alt={photo.label ?? ''} className="h-full w-full object-cover" />
-              {photo.is_cover && (
-                <span
-                  className="absolute left-[9px] top-[9px] rounded-[7px] px-[9px] py-[3px] text-[9.5px] font-bold tracking-[0.04em] text-white"
-                  style={{ background: M.ink }}
-                >
-                  COVER
-                </span>
-              )}
-              <div className="absolute right-2 top-2 flex gap-1.5">
-                <button
-                  type="button"
-                  aria-label={photo.is_cover ? 'Already the cover' : 'Set as cover'}
-                  disabled={photo.is_cover}
-                  onClick={() => setCover(index)}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.92] disabled:opacity-60"
-                >
-                  <Star
-                    className="h-3.5 w-3.5 text-primary"
-                    strokeWidth={2}
-                    fill={photo.is_cover ? 'currentColor' : 'none'}
-                  />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Remove photo"
-                  onClick={() => remove(index)}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.92]"
-                >
-                  <Trash2 className="h-3.5 w-3.5 text-destructive" strokeWidth={2} />
-                </button>
-              </div>
-              <input
-                value={photo.label ?? ''}
-                placeholder="Caption"
-                onChange={(event) =>
-                  onChange(photos.map((p, i) => (i === index ? { ...p, label: event.target.value } : p)))
-                }
-                className="absolute inset-x-0 bottom-0 border-0 bg-gradient-to-t from-[rgba(30,24,20,.55)] to-transparent px-2.5 py-2 text-[11px] font-semibold text-white outline-none placeholder:text-white/60"
-              />
-            </div>
-          ))}
+          {photos.map((photo, index) => {
+            const isVideo = photo.kind === 'video';
+            return (
+              <div
+                key={`${photo.url}-${index}`}
+                draggable
+                onDragStart={() => {
+                  dragFrom.current = index;
+                }}
+                onDragOver={(event) => {
+                  if (dragFrom.current !== null) event.preventDefault();
+                }}
+                onDrop={(event) => {
+                  if (dragFrom.current === null) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  move(dragFrom.current, index);
+                  dragFrom.current = null;
+                }}
+                onDragEnd={() => {
+                  dragFrom.current = null;
+                }}
+                className="relative h-[150px] overflow-hidden rounded-[15px] bg-muted"
+              >
+                {isVideo ? (
+                  <>
+                    <video
+                      src={photo.url}
+                      poster={photo.thumbnail_url ?? undefined}
+                      // Metadata only: a grid that autoloads six clips costs
+                      // the owner their data allowance to look at a page.
+                      preload="metadata"
+                      muted
+                      playsInline
+                      className="h-full w-full object-cover"
+                    />
+                    <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55">
+                        <Play className="h-4 w-4 text-white" fill="currentColor" strokeWidth={0} />
+                      </span>
+                    </span>
+                  </>
+                ) : (
+                  <img src={photo.url} alt={photo.label ?? ''} className="h-full w-full object-cover" />
+                )}
 
-          {/* Placeholder tiles while the batch is in flight, so the grid grows
+                {photo.is_cover && (
+                  <span
+                    className="absolute left-[9px] top-[9px] rounded-[7px] px-[9px] py-[3px] text-[9.5px] font-bold tracking-[0.04em] text-white"
+                    style={{ background: M.ink }}
+                  >
+                    COVER
+                  </span>
+                )}
+
+                <div className="absolute right-2 top-2 flex gap-1.5">
+                  {canBeCover(photo) && (
+                    <button
+                      type="button"
+                      aria-label={photo.is_cover ? 'Already the cover' : 'Set as cover'}
+                      disabled={photo.is_cover}
+                      onClick={() => onChange(setCoverAt(photos, index))}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.92] disabled:opacity-60"
+                    >
+                      <Star
+                        className="h-3.5 w-3.5 text-primary"
+                        strokeWidth={2}
+                        fill={photo.is_cover ? 'currentColor' : 'none'}
+                      />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    aria-label={isVideo ? 'Remove video' : 'Remove photo'}
+                    onClick={() => onChange(removeMedia(photos, index))}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.92]"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-destructive" strokeWidth={2} />
+                  </button>
+                </div>
+
+                {/* Reorder. Buttons rather than drag alone: dragging a tile is
+                    unreliable on touch, which is where most owners are. */}
+                <div className="absolute left-2 top-2 flex gap-1.5">
+                  {index > 0 && (
+                    <button
+                      type="button"
+                      aria-label="Move earlier"
+                      onClick={() => move(index, index - 1)}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.92]"
+                    >
+                      <MoveLeft className="h-3.5 w-3.5 text-foreground" strokeWidth={2.2} />
+                    </button>
+                  )}
+                  {index < photos.length - 1 && (
+                    <button
+                      type="button"
+                      aria-label="Move later"
+                      onClick={() => move(index, index + 1)}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.92]"
+                    >
+                      <MoveRight className="h-3.5 w-3.5 text-foreground" strokeWidth={2.2} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Which part of the hostel this is. The listing groups the
+                    photo tour by it, so an unlabelled photo lands in "More
+                    photos" rather than being lost. */}
+                <select
+                  value={photo.category ?? 'other'}
+                  onChange={(event) =>
+                    onChange(photos.map((p, i) => (i === index ? { ...p, category: event.target.value } : p)))
+                  }
+                  onClick={(event) => event.stopPropagation()}
+                  className="absolute bottom-[30px] left-2 rounded-[7px] border-0 bg-black/55 px-1.5 py-1 text-[10px] font-semibold text-white outline-none"
+                >
+                  {PHOTO_CATEGORIES.map((category) => (
+                    <option key={category.key} value={category.key} className="text-foreground">
+                      {category.label}
+                    </option>
+                  ))}
+                </select>
+
+                <input
+                  value={photo.label ?? ''}
+                  placeholder="Caption"
+                  onChange={(event) =>
+                    onChange(photos.map((p, i) => (i === index ? { ...p, label: event.target.value } : p)))
+                  }
+                  className="absolute inset-x-0 bottom-0 border-0 bg-gradient-to-t from-[rgba(30,24,20,.55)] to-transparent px-2.5 py-2 text-[11px] font-semibold text-white outline-none placeholder:text-white/60"
+                />
+              </div>
+            );
+          })}
+
+          {/* Placeholder tiles for what is still in flight, so the grid grows
               immediately instead of sitting still through a slow upload. */}
-          {Array.from({ length: uploading }).map((_unused, index) => (
+          {Array.from({ length: Math.max(pending - done, 0) }).map((_unused, index) => (
             <div
               key={`pending-${index}`}
               className="flex h-[150px] flex-col items-center justify-center gap-2 rounded-[15px]"
               style={{ border: `1.5px dashed ${M.dashed}`, background: M.dashedBg }}
             >
               <Loader2 className="h-5 w-5 animate-spin text-primary" strokeWidth={2} />
-              <span className="text-[11px] font-semibold text-muted-foreground">Uploading…</span>
+              <span className="text-[11px] font-semibold text-muted-foreground">
+                {pending > 1 ? `Uploading ${done + 1} of ${pending}…` : 'Uploading…'}
+              </span>
             </div>
           ))}
 
@@ -250,7 +387,7 @@ export function PhotosScreen({
               style={{ border: `1.5px dashed ${M.dashed}`, background: M.dashedBg }}
             >
               <ImagePlus className="h-5 w-5" strokeWidth={1.8} />
-              <span className="font-display text-[12px] font-bold">Add photos</span>
+              <span className="font-display text-[12px] font-bold">Add photos or videos</span>
               <span className="text-[10.5px] font-medium leading-[1.4]" style={{ color: M.ghost }}>
                 Choose from your device
               </span>
@@ -258,23 +395,31 @@ export function PhotosScreen({
           )}
         </div>
 
+        {photos.length > 0 && imageCount === 0 && (
+          <p className="mt-4 text-center text-[11.5px] text-destructive">
+            Add at least one photo — a video can't be the cover image Discovery shows on your card.
+          </p>
+        )}
+
         {photos.length === 0 && !busy && (
           <p className="mt-4 text-center text-[11.5px]" style={{ color: M.ghost }}>
-            JPG, PNG or WebP · up to 8MB each
+            JPG, PNG or WebP up to 8MB · MP4, WebM or MOV up to 60MB
           </p>
         )}
       </div>
 
-      {/* Desktop drag-and-drop. The listener is on the whole screen so a drop
-          anywhere lands, and this is only the visual confirmation. */}
-      {dragging && (
+      {/* Desktop drag-and-drop of files from outside the browser. The listener
+          is on the whole screen so a drop anywhere lands; this is only the
+          visual confirmation, and it stays out of the way while a tile is
+          being dragged to a new position. */}
+      {dragging && dragFrom.current === null && (
         <div
           className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-3"
           style={{ background: 'rgba(245,239,232,.92)', border: `2px dashed ${M.dashedClay}` }}
         >
           <UploadCloud className="h-9 w-9 text-primary" strokeWidth={1.6} />
-          <p className="font-display text-[15px] font-bold text-foreground">Drop photos to upload</p>
-          <p className="text-[12px] text-muted-foreground">JPG, PNG or WebP · up to 8MB each</p>
+          <p className="font-display text-[15px] font-bold text-foreground">Drop photos or videos to upload</p>
+          <p className="text-[12px] text-muted-foreground">Photos up to 8MB · videos up to 60MB</p>
         </div>
       )}
     </div>,

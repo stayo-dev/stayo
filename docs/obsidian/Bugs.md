@@ -1280,6 +1280,53 @@ Copy this block for each new entry:
 - [[Changelog]] for when fixes shipped
 
 
+
+
+
+## 2026-08-19 — A signed-in user was told to sign in when posting a review
+
+**Symptom:** `POST /api/discover/hostels/[slug]/reviews` returned `UNAUTHORIZED — "Sign in to continue"` for a user with a valid session.
+
+**Root cause:** `middleware.ts` matches `PUBLIC_ROUTES` **by prefix**, and `/api/discover/hostels` is public so that anyone can browse. The reviews route lives under that prefix because it is the same resource — and the public branch deliberately calls `stripIdentityHeaders()` and never sets `x-auth-mode`, so `getSession()` inside *any* route beneath a public prefix returns null **by design**. Reading reviews must be public; writing one cannot be, and the two shared a prefix.
+
+**Fix:** `lib/auth/public-route-exceptions.ts` — `requiresSessionDespitePublicPrefix(pathname, method)`, consulted in the public branch. The alternative was moving the write to a path outside the prefix, which would have split one resource across two URL trees to work around a matching rule.
+
+**Lesson:** a prefix-matched allowlist silently confers its permissions on every path added beneath it later. Adding a route under an existing public prefix is a security-relevant decision, not a filing choice.
+
+## 2026-08-19 — A normal phone multi-select of photos was rejected as "limit exceeded"
+
+**Symptom:** an owner picking several photos at once on a phone was told the size limit was exceeded, though every individual photo was well inside it.
+
+**Root cause:** the client sent the whole selection as **one** request (`MAX_PER_UPLOAD = 10`), so ten 4MB photos became a ~40MB body that the platform rejected before any of the per-file checks in `uploadPhotos` ran. Both the client and the server checked size **per file** and correctly so — the failure happened above both of them, which is why the message the owner saw named a limit nothing had actually crossed.
+
+**Fix:** one file per request (`marketingService.uploadMedia`), uploaded sequentially, with photos re-encoded in the browser first (`compressImage` — a 6MB phone photo becomes a few hundred KB at a resolution the listing can use). A failure now costs one photo instead of the whole selection, and progress is reported per file.
+
+**Lesson:** a size rule enforced in two places was still not enforced where it mattered. Neither test suite could see the failure, because the limit that broke was the transport's, not the application's.
+
+## 2026-08-19 — A live listing told its owner it was a "Draft"
+
+**Symptom:** owners could not tell what state their listing was in — whether a submission had reached Stayo, or whether what was live included their latest edits.
+
+**Root cause:** the marketing page derived its badge from `draft.status` alone. After approval there is **no open revision** (`getEditorState` synthesises a fresh draft), so the status read `DRAFT` and the page said "Draft" about a listing that was live on Discovery. The status toggle had a `status === 'APPROVED'` branch that could never be reached for the same reason. Nothing anywhere confirmed a submission had been received. Verified against the live database: the hostel had v3 APPROVED and v4 PENDING_REVIEW at the time — the cycle itself was working; only the reporting of it was not.
+
+**Fix:** `listingLifecycle` derives the real state from three facts — the open revision's status, what is published, and whether there are unsent edits — into six states (Draft, In review, Live, Live + in review, Live + unsent edits, Changes requested), shown as a three-step tracker with a sentence saying what happens next.
+
+**Lesson:** one field looked like it described the whole state machine and described a corner of it. See [[Features]], [[Changelog]].
+
+## 2026-08-19 — Discovery showed a placeholder for every hostel, and the gallery had no way to reach photo 2
+
+**Symptom:** every card on `/discover` rendered the striped placeholder texture instead of the hostel's cover photo, while the listing page those cards open showed a full gallery of the same hostel's photos. On the listing page itself, photos 2..n were unreachable on a phone.
+
+**Root cause — two independent bugs, one per surface:**
+
+1. **The card projection never learned where photos live.** `discovery-service.toCard()` read `hostels.admission_photos`, and **nothing writes that column** — a hostel's photos arrive through the marketing review flow and live on its APPROVED `hostel_marketing_revisions.content.photos` (ADR-076). Verified against the live database: `admission_photos` is `null` for every hostel row, while the approved Starlink revision holds 3 photos. `projectListing` (the listing page) already preferred marketing photos; the card path was written before that source existed and was never revisited. `marketing-content.ts`'s `normaliseContent` even carries the comment *"the design's Discovery search shows the cover photo first"* and guarantees exactly one `is_cover` per revision — **nothing read the flag**, on either surface.
+
+2. **The gallery was a single background image.** `ListingPage` rendered `photos[photoIndex]` as one `background-image` whose only control was three **3px-tall** indicator bars — no swipe track, no arrows, a tap target three pixels high, and the bars sat *underneath* the body sheet (pulled `-mt-6` over the gallery), so they were both invisible and unclickable. White-on-white over a bright photo finished the job.
+
+**Fix:** one shared `listingPhotos(marketing, fallback)` in `listing-projection.ts` — approved photos win, cover first — used by both the listing and, via a new post-pagination `fillCoverPhotos()`, by cards/saved/enquiries. Cards carry one photo (the cover), and the revision content is fetched only for the rows actually returned, never for the up-to-500 candidates the facet pass scans. The gallery became a native scroll-snap track (real swipe, trackpad, `md`+ arrows), with the index derived from scroll position by a pure `photoIndexFromScroll`, indicators lifted clear of the sheet, and a scrim behind them.
+
+**Lesson:** the listing page and the card were two projections of "this hostel's photos" and only one of them was updated when the source of truth moved. The rule now lives in a single exported function that both call — the same compose-don't-reimplement pattern the financial read model uses. Verified end to end: `/api/discover/hostels` returns the cover, and the gallery was driven in a real browser (swipe → "3 / 3", dot click → "1 / 3"). See [[Frontend]], [[Features]], [[Changelog]].
+
 ## 2026-08-07 — `window.scrollY` is always 0: `<body>` is the scroll container, not the document
 
 **Symptom:** the new scroll-depth enquiry prompt never appeared at any scroll position, and — found while investigating — the landing nav's `scrolled` styling had *never once fired in production*.

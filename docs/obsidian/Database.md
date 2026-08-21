@@ -264,7 +264,7 @@ Prisma exposes this as **two relations on the same table**, which is easy to mis
 
 ## `visitor_leads.status` gains ACCEPTED / ON_HOLD / REJECTED (2026-08-20, no migration)
 
-The owner Leads tab's Accept/Hold/Reject actions ([[Decisions#ADR-085|ADR-085]]) added three values to the app-level `LEAD_STATUSES` const (`src/services/admissions/admissions-service.ts`) — `status` remains a plain `String` column, so this is a zero-migration change, same convention as the `'DISCOVER'` source value above. No new table: Hold's owner-typed reason is stored as an ordinary row in the pre-existing `lead_notes` table (`lead_id`, `owner_id`, `note`, `created_at`) — the same table a plain enquiry note already used. `ACCEPTED` and `ON_HOLD` were also added to the exported `ACTIVE_LEAD_STATUSES` list (used by Discover's re-enquiry de-duplication, [[Decisions#ADR-073|ADR-073]]) — a lead the owner has accepted or put on hold is still "open" for that purpose; `REJECTED`, like `LOST`, is not.
+The owner Leads tab's Accept/Hold/Reject actions ([[Decisions#ADR-087|ADR-087]]) added three values to the app-level `LEAD_STATUSES` const (`src/services/admissions/admissions-service.ts`) — `status` remains a plain `String` column, so this is a zero-migration change, same convention as the `'DISCOVER'` source value above. No new table: Hold's owner-typed reason is stored as an ordinary row in the pre-existing `lead_notes` table (`lead_id`, `owner_id`, `note`, `created_at`) — the same table a plain enquiry note already used. `ACCEPTED` and `ON_HOLD` were also added to the exported `ACTIVE_LEAD_STATUSES` list (used by Discover's re-enquiry de-duplication, [[Decisions#ADR-073|ADR-073]]) — a lead the owner has accepted or put on hold is still "open" for that purpose; `REJECTED`, like `LOST`, is not.
 
 ## The portable profile — `profile_identity` + the document vault (2026-08-15, migration 064)
 
@@ -380,3 +380,22 @@ Applied to the live database on 2026-08-07. See [[APIs]] and [[Features]].
 ### `platform_support_tickets` (added 2026-08-16, [[Decisions#ADR-079|ADR-079]])
 
 Tenant/user → Stayo Admin support tickets — Profile → "Raise a Ticket". Modeled directly on `owner_documents`' shape (see above) but deliberately **has no `owner_id`/`hostel_id` and no relation to `tenants`** — the whole point is that this queue belongs to Stayo, not to a hostel, and stays fully independent of the tenant → owner complaint system (`tenant_service_requests`/`complaints`, both of which remain hostel/owner-bound and untouched by this change). Columns: `profile_id` (FK → `profiles`, `ON DELETE CASCADE`), `category` (`APP_BUG`|`ACCOUNT_ISSUE`|`PAYMENT_ISSUE`|`OTHER`, plain string), `subject`, `description`, `status` (`OPEN` default; only an admin resolution can move it to `RESOLVED` — never set by the reporter), `created_at`, `resolved_at`/`resolved_by`, `admin_note` (shown back to the reporter). Indexed on `(profile_id)` and `(status)`, same as `owner_documents`. Migration: `prisma/migrations/20260816120000_add_platform_support_tickets/migration.sql` (idempotent, applied to the dev database on 2026-08-16). See [[APIs]] and [[Features]].
+
+## `hostel_reviews` (migration 071 — 2026-08-19, **not yet applied outside dev**)
+
+Resident reviews of a hostel, shown on its Discovery listing.
+
+| Column | Notes |
+|---|---|
+| `hostel_id`, `profile_id` | Unique together — one review per account per hostel; an edit replaces it. |
+| `rating` | `smallint`, `CHECK (rating BETWEEN 1 AND 5)` — constrained in the database, not only in the service. |
+| `body` | Optional: a rating with no words is a valid review. |
+| `status` | `PENDING` \| `PUBLISHED` \| `REJECTED`, defaulting to PENDING. **Nothing is public until an admin publishes it** ([[Decisions#ADR-086|ADR-086]]). |
+| `stayed_here` | Snapshotted from a real tenancy at write time, so it stays true after move-out. A badge and a moderation signal, never a gate. |
+| `moderated_at/by`, `moderation_note` | The note is shown to the author, so a rejection arrives with a reason. |
+
+Indexes: `(hostel_id, status)` for the listing, `(status, created_at DESC)` for the moderation queue.
+
+**Migration 072 (applied 2026-08-19)** adds six nullable `rating_*` columns to `hostel_reviews` — cleanliness, food, safety, staff, value, location — under one `hostel_reviews_category_range` CHECK (each 1–5 or NULL). Nullable because `food` does not apply to a hostel serving no meals and reviews predating 072 have none; averages skip what was not answered rather than counting it as zero. `rating` is now **derived**: the mean of the answered categories.
+
+**Migration 073 (applied 2026-08-20)** adds six nullable columns to `rooms` — `length_ft`, `width_ft` (numeric 5,1), `cupboard_per_bed` (bool), `under_bed_storage` (`NONE`|`CABIN_BAG`|`LARGE_SUITCASE`), `study_desk` (`NONE`|`SHARED`|`PER_BED`), `windows` — under one `rooms_space_check`. **Two dimensions, not one area**: a 6×20 room and an 11×11 room are the same area and completely different to live in. Nothing is backfilled; an unmeasured room shows nothing on the listing rather than a default. Derived reads live in `room-space.ts`.

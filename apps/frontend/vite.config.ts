@@ -72,6 +72,19 @@ export default defineConfig(({ command, mode }) => {
           target: command === 'serve' ? requireApiProxyTarget(env) : '',
           changeOrigin: true,
         },
+        /**
+         * The share preview (`/h/:slug`). In production this is a rewrite in
+         * `vercel.json`; the dev server needs the same mapping or a share link
+         * copied while developing 404s against the SPA instead of rendering
+         * the preview page. Same target, same path rewrite as the deployed
+         * rule — one place to change if the backend path ever moves.
+         */
+        '/h/': {
+          target: command === 'serve' ? requireApiProxyTarget(env) : '',
+          changeOrigin: true,
+          rewrite: (requestPath: string) =>
+            requestPath.replace(/^\/h\//, '/api/discover/share/'),
+        },
       },
     },
     // File types to support raw imports. Never add .css, .tsx, or .ts files to this.

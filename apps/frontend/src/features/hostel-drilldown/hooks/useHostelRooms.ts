@@ -43,6 +43,7 @@ function mapRoom(hostelId: string, floorId: string, room: BackendRoom): RoomWith
     rent: Number(room.base_rent ?? 0),
     beds,
     occupants,
+    space: (room as any).space ?? null,
   };
 }
 

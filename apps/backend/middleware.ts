@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requiresSessionDespitePublicPrefix } from "@/lib/auth/public-route-exceptions";
 import { verifyToken } from "./lib/auth-edge";
 import { verifySupabaseAccessToken } from "./lib/auth/supabase-jwt-edge";
 import { getCorsAllowOrigin } from "./lib/config/domains";
@@ -29,6 +30,12 @@ const PUBLIC_ROUTES = [
   // /api/discover/enquiries and /api/discover/saved public too, handing every
   // seeker's enquiry history to anyone who asked.
   "/api/discover/hostels",
+  // The share preview page (`yourstayo.com/h/:slug` rewrites here). Fetched by
+  // WhatsApp/Instagram/Telegram crawlers, which carry no session and never
+  // will — that is the entire point of a link preview. It renders only what
+  // the public listing page already shows, and it is gated by the same
+  // DISCOVERABLE predicate. See ADR-084.
+  "/api/discover/share",
   // Meta WhatsApp Cloud API. The canonical path plus its legacy mount — both
   // are signature-verified (X-Hub-Signature-256), not session-authenticated.
   "/api/webhooks/whatsapp",
@@ -127,8 +134,12 @@ export async function middleware(req: NextRequest) {
     return NextResponse.json({}, { headers: corsHeaders });
   }
 
-  // 2. Allow public routes
-  if (PUBLIC_ROUTES.some((route) => pathname.startsWith(route))) {
+  // 2. Allow public routes — except the handful of writes that live under a
+  //    public prefix and still need an account (see the module for why).
+  if (
+    PUBLIC_ROUTES.some((route) => pathname.startsWith(route)) &&
+    !requiresSessionDespitePublicPrefix(pathname, req.method)
+  ) {
     const requestHeaders = new Headers(req.headers);
     stripIdentityHeaders(requestHeaders);
     const response = NextResponse.next({ request: { headers: requestHeaders } });

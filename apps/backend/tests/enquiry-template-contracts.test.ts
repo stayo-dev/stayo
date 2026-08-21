@@ -5,6 +5,7 @@ import {
   buildOwnerEnquiryReceived,
   buildTenantEnquiryRejected,
   formatRent,
+  rejectionReasonText,
 } from "@/lib/services/notifications/providers/whatsapp/enquiry-template-contracts";
 
 
@@ -99,5 +100,37 @@ describe("resolveEnquiryTemplateName", () => {
   it("lets env override the name, so a Meta rename is config not a redeploy", () => {
     const env = { WHATSAPP_OWNER_ENQUIRY_RECEIVED_TEMPLATE: "stayo_owner_enquiry_v2" } as any;
     expect(resolveEnquiryTemplateName("OWNER_ENQUIRY_RECEIVED", env).name).toBe("stayo_owner_enquiry_v2");
+  });
+});
+
+/**
+ * `TENANT_ENQUIRY_REJECTED` was an approved template that nothing ever sent —
+ * a Discovery applicant heard nothing back, forever. It is wired to the
+ * owner's reject action now, and what it says about *why* is a decision about
+ * a person, not a string lookup.
+ */
+describe("rejectionReasonText", () => {
+  it("puts the owner's internal reason into words for the applicant", () => {
+    expect(rejectionReasonText("PRICE_HIGH")).toBe("the budget did not match");
+    expect(rejectionReasonText("LOCATION_UNSUITABLE")).toBe("the location did not suit");
+  });
+
+  it("never repeats a reason that blames the person", () => {
+    // "They went to a competitor" is the owner's read of someone else's
+    // decision; "no response" is an accusation. Both fall through to the
+    // template's neutral floor.
+    expect(rejectionReasonText("JOINED_COMPETITOR")).toBeNull();
+    expect(rejectionReasonText("NO_RESPONSE")).toBeNull();
+  });
+
+  it("never leaks a raw CRM value into a message", () => {
+    expect(rejectionReasonText("SOMETHING_NEW")).toBeNull();
+    expect(rejectionReasonText(null)).toBeNull();
+    expect(rejectionReasonText(undefined)).toBeNull();
+  });
+
+  it("falls back to the template's own wording when unmapped", () => {
+    expect(buildTenantEnquiryRejected({ reason: rejectionReasonText("NO_RESPONSE") }).bodyParameters[2])
+      .toBe("no rooms available right now");
   });
 });
