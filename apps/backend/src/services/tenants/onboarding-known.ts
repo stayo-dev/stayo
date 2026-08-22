@@ -1,4 +1,4 @@
-import { IDENTITY_FIELDS } from "../profile/profile-identity-service";
+import { IDENTITY_FIELDS } from "../profile/identity-fields";
 
 /**
  * What onboarding already knows about the person in front of it, and where

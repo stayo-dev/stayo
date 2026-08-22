@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ApiError } from "@/src/lib/api-error";
+import { IDENTITY_FIELDS, type IdentityField } from "./identity-fields";
 
 /**
  * The portable half of a Stayo account (phase B).
@@ -15,37 +16,9 @@ import { ApiError } from "@/src/lib/api-error";
  * defaults instead of asking again.
  */
 
-/**
- * Person-level fields, and the `tenants` column each one falls back to.
- *
- * The names happen to match today, but the mapping is written out rather than
- * assumed — the fallback is a transition mechanism and this is the list that
- * gets deleted when it ends, not a naming convention to rely on.
- */
-export const IDENTITY_FIELDS = [
-  "date_of_birth",
-  "gender",
-  "nationality",
-  "pan_number",
-  "permanent_address",
-  "photo_url",
-  "personal_email",
-  "guardian_name",
-  "guardian_phone",
-  "guardian_relation",
-  "profile_type",
-  "college_name",
-  "roll_number",
-  "course",
-  "year_of_study",
-  "branch",
-  "section",
-  "office_name",
-  "office_location",
-  "job_role",
-] as const;
+// Re-export so existing importers keep working unchanged
+export { IDENTITY_FIELDS, type IdentityField };
 
-export type IdentityField = (typeof IDENTITY_FIELDS)[number];
 export type IdentityPatch = Partial<Record<IdentityField, unknown>>;
 
 /**

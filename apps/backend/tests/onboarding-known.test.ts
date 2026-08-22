@@ -1,10 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
-
-vi.mock("@/lib/db", () => ({
-  prisma: { profile_identity: {} },
-  supabase: {},
-}));
-
+import { describe, it, expect } from "vitest";
 import { buildKnown } from "@/src/services/tenants/onboarding-known";
 
 const identity = (over: Record<string, unknown> = {}) => ({
