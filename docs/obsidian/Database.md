@@ -109,7 +109,7 @@ Written **only** by `PATCH /api/rooms/reorder` (`RoomOrderService.reorder`), whi
 
 ### `hostels.navigation`
 
-`jsonb`, nullable, added by **migration 074** (2026-08-22). How to find the hostel's
+`jsonb`, nullable, added by **migration 074** (2026-08-22, **applied to production**; not applied to the test project, which does not need it — see the access-path note below). How to find the hostel's
 front door, and the single source of truth for one-tap Google Maps directions.
 
 ```jsonc
@@ -133,6 +133,12 @@ Three properties worth knowing before touching it:
   *not* in `hostel_marketing_revisions.content` — that payload is owner-authored and moves
   with the draft/review lifecycle. Same side of the line as `listing_status` (ADR-040).
   See [[Decisions#ADR-088|ADR-088]].
+- **Not declared on the Prisma `hostels` model, deliberately, and it stays that way.** Declaring
+  it makes Prisma request the column on every `hostels` read that passes no explicit `select`
+  (~10 `include:`-only reads out of 147), which took production down on 2026-08-22 — see [[Bugs]].
+  It is read via `readNavigationSafely()` and written via `$executeRaw`. Keeping it undeclared is
+  now the stable design rather than a temporary patch: it is what lets the same code run against
+  the test project, where 074 has *not* been applied, without every hostel query failing.
 - **Validated on read as well as write** by `NavigationSchema` (`src/services/discovery/hostel-navigation.ts`).
   `parseNavigation()` never throws: a malformed row degrades to `null`, which renders as
   a listing with no directions block rather than a button that opens the wrong building.
