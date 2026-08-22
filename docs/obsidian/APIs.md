@@ -229,6 +229,20 @@ Added 2026-07-26 — the backend for the StayO Platform Admin Console, per `Stay
 | `/api/platform-admin/broadcast` | POST | `{message}` — fires an in-app notification (`notificationService.createNotification`) to every active `OWNER` profile |
 | `/api/platform-admin/notifications` | GET | **Added 2026-07-30.** Powers the admin console's header bell — returns the 20 most recent items from `composeRecentActivity()` (`lib/services/platform-admin-activity-service.ts`). No dedicated notifications table; polled by the frontend every 60s. **Since 2026-08-07, this is the sole caller** (the dashboard's own inline "Recent Activity" card was removed) and the composition still deliberately excludes leads — leads have a dedicated place (`/admin/leads`, plus the header's own leads-count badge); see [[Bugs]]. **Since 2026-08-15, also includes recent `tenant_service_requests`** (all 6 types) alongside hostel/invoice events, so tenant-raised requests are now visible platform-wide, not just on the owner's own Alerts page; see [[Bugs]] |
 
+### Live-listing control and address (admin-only), added 2026-08-22
+
+| Route | Notes |
+|---|---|
+| `POST /api/platform-admin/hostels/:id/listing-review` | Body `{action, note, flags?}`. `action: "REQUEST_CHANGES"` leaves the page live and opens/annotates a DRAFT for the owner; `action: "UNPUBLISH"` marks the APPROVED revision `WITHDRAWN` and blanks the listing. 409 when nothing is live, or when requesting changes while a submission is queued. A note is always required to unpublish. Keyed on the **hostel**, not a revision id — the admin is acting on "what is live", and which revision that is, is the server's business. See [[Decisions#ADR-089|ADR-089]]. |
+| `PATCH /api/platform-admin/hostels/:id` | Corrects the postal address only — `address`, `city`, `state`, `pincode`. Deliberately not a general hostel editor: name, phone, pricing and listing state all have their own governed paths. `address` may be corrected but not emptied; pincode must be 6 digits. |
+
+`GET /api/platform-admin/hostels/:id` gained `listing_review: {has_live_listing, live_version,
+live_since, open_status}`, so the console knows which levers to offer before the admin clicks.
+
+Neither route removes a hostel from Discovery — that remains
+`POST /api/platform-admin/hostels/:id/suspend-listing`, which existed with **no caller in the
+app** until this change.
+
 ### Hostel navigation (admin-only), added 2026-08-22
 
 | Route | Notes |

@@ -64,6 +64,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       prisma.rooms.aggregate({ where: { hostel_id: id }, _sum: { capacity: true } }),
     ]);
 
+    // What the console needs to know before offering "Request changes" or
+    // "Unpublish": whether anything is actually live, and whether a submission
+    // is already sitting in the queue. Offering the buttons blind and letting
+    // the server 409 works, but tells the admin nothing until they have clicked.
+    const [liveRevision, openRevision] = await Promise.all([
+      prisma.hostel_marketing_revisions.findFirst({
+        where: { hostel_id: id, status: "APPROVED" },
+        select: { id: true, version: true, reviewed_at: true },
+      }),
+      prisma.hostel_marketing_revisions.findFirst({
+        where: { hostel_id: id, status: { in: ["DRAFT", "PENDING_REVIEW"] } },
+        select: { status: true },
+      }),
+    ]);
+
     return apiResponse({
       hostel: {
         id: hostel.id,
@@ -87,11 +102,78 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         revenue: Number(revenue._sum.amount_paid ?? 0),
         dues: Number(dues._sum.amount ?? 0),
         subscription: hostel.hostel_subscriptions,
+        /** The live Discovery listing, if any, and what the owner has open. */
+        listing_review: {
+          has_live_listing: Boolean(liveRevision),
+          live_version: liveRevision?.version ?? null,
+          live_since: liveRevision?.reviewed_at ?? null,
+          open_status: openRevision?.status ?? null,
+        },
       },
     });
   } catch (error: any) {
     const msg = String(error?.message || "Failed to fetch hostel");
     if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
     return apiError(msg);
+  }
+}
+
+/**
+ * PATCH — correct a hostel's postal address.
+ *
+ * Admin-only, and narrow on purpose: exactly the five fields that make up where
+ * the building is. It exists because the address is owner-typed and reaches
+ * every listing card and the listing page, and Stayo's team fields the "the
+ * address is wrong" mails — but had no way to fix one without asking the owner
+ * to do it. Deliberately not a general hostel editor: name, phone, pricing and
+ * listing state all have their own governed paths.
+ */
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await getSession(req);
+  if (!session || session.role !== "ADMIN") return apiError("Forbidden", "FORBIDDEN", 403);
+  const { id } = await params;
+
+  try {
+    const existing = await prisma.hostels.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) return apiError("Hostel not found", "NOT_FOUND", 404);
+
+    const body = await req.json().catch(() => ({}));
+
+    // `address` is the one field the listing cannot render without, so it may be
+    // corrected but not emptied. The rest are genuinely optional on the model and
+    // an empty string is stored as NULL rather than as "".
+    const text = (value: unknown, max: number): string | null | undefined => {
+      if (value === undefined) return undefined;
+      const trimmed = String(value ?? "").trim();
+      if (trimmed.length > max) return undefined;
+      return trimmed.length > 0 ? trimmed : null;
+    };
+
+    const address = text(body?.address, 300);
+    if (body?.address !== undefined && !address) {
+      return apiError("A hostel needs an address", "VALIDATION_ERROR", 422);
+    }
+
+    const pincode = text(body?.pincode, 10);
+    if (pincode && !/^\d{6}$/.test(pincode)) {
+      return apiError("Pincode must be 6 digits", "VALIDATION_ERROR", 422);
+    }
+
+    const data: Record<string, unknown> = { updated_at: new Date() };
+    if (address !== undefined) data.address = address;
+    const city = text(body?.city, 120);
+    if (city !== undefined) data.city = city;
+    const state = text(body?.state, 120);
+    if (state !== undefined) data.state = state;
+    if (pincode !== undefined) data.pincode = pincode;
+
+    const updated = await prisma.hostels.update({
+      where: { id },
+      data,
+      select: { id: true, address: true, city: true, state: true, pincode: true },
+    });
+    return apiResponse(updated);
+  } catch (error: any) {
+    return apiError(error?.message || "Failed to update the address");
   }
 }

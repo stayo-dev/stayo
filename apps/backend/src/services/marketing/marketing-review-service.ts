@@ -3,6 +3,13 @@ import { ApiError } from "@/src/lib/api-error";
 import { notificationService } from "@/lib/services/notification-service";
 import { normaliseReviewFlags, isSendBackActionable, summariseFlagsForOwner, type SectionFlag } from "./review-flags";
 import { normaliseContent, type MarketingContent } from "./marketing-content";
+import {
+  canTransition,
+  isActionable,
+  keepsListingLive,
+  ownerNotification,
+  type PostApprovalAction,
+} from "./post-approval-transitions";
 
 /**
  * The platform-admin side of the marketing approval cycle.
@@ -277,6 +284,123 @@ export class MarketingReviewService {
 
     return rejected;
   }
+  /**
+   * Act on a listing that is already approved and live.
+   *
+   * Before this existed, `approve()` and `reject()` both required
+   * `PENDING_REVIEW`, so an APPROVED revision was beyond the console's reach —
+   * a wrong price could only be dealt with by suspending the whole hostel,
+   * taking a real verified hostel off Discovery to fix a sentence.
+   *
+   * `REQUEST_CHANGES` leaves the approved revision APPROVED, so the live page
+   * does not go dark while the owner gets round to it, and opens a DRAFT
+   * carrying the reviewer's note and flags. `UNPUBLISH` marks the approved
+   * revision WITHDRAWN — not REJECTED, which means "never went live" — and the
+   * listing immediately renders as a hostel that has not published details.
+   *
+   * The hostel itself stays on Discovery either way. Removing the hostel is
+   * `suspend-listing`, a deliberately separate and blunter lever.
+   */
+  async actOnLiveListing(
+    adminId: string,
+    hostelId: string,
+    action: PostApprovalAction,
+    note: string,
+    rawFlags?: unknown,
+  ) {
+    const flags: SectionFlag[] = normaliseReviewFlags(rawFlags, adminId);
+    if (!isActionable(action, note ?? "", flags.length)) {
+      throw ApiError.validationError(
+        action === "UNPUBLISH"
+          ? "Give a reason — the owner sees this and it is all they get to act on"
+          : "Flag at least one section or give a reason — the owner sees this and acts on it",
+      );
+    }
+
+    const hostel = await prisma.hostels.findUnique({
+      where: { id: hostelId },
+      select: { id: true, name: true, owner_id: true },
+    });
+    if (!hostel) throw ApiError.notFound("Hostel not found");
+
+    const [approved, open] = await Promise.all([
+      prisma.hostel_marketing_revisions.findFirst({
+        where: { hostel_id: hostelId, status: "APPROVED" },
+        select: { id: true, version: true, content: true },
+      }),
+      prisma.hostel_marketing_revisions.findFirst({
+        where: { hostel_id: hostelId, status: { in: ["DRAFT", "PENDING_REVIEW"] } },
+        select: { id: true, status: true },
+      }),
+    ]);
+
+    const decision = canTransition(action, {
+      approved: Boolean(approved),
+      openStatus: (open?.status as "DRAFT" | "PENDING_REVIEW" | undefined) ?? null,
+    });
+    if (!decision.ok) {
+      throw new ApiError(decision.reason, 409, "CONFLICT");
+    }
+
+    const now = new Date();
+    const trimmed = (note ?? "").trim() || null;
+
+    if (keepsListingLive(action)) {
+      // The owner's landing place for this feedback. Reuse the draft they
+      // already have open rather than opening a second one — two drafts for one
+      // listing is a state the editor has no way to show.
+      if (open) {
+        await prisma.hostel_marketing_revisions.update({
+          where: { id: open.id },
+          data: { review_note: trimmed, review_flags: flags as any, updated_at: now },
+        });
+      } else {
+        const latest = await prisma.hostel_marketing_revisions.findFirst({
+          where: { hostel_id: hostelId },
+          orderBy: { version: "desc" },
+          select: { version: true },
+        });
+        await prisma.hostel_marketing_revisions.create({
+          data: {
+            hostel_id: hostelId,
+            version: (latest?.version ?? 0) + 1,
+            status: "DRAFT",
+            // Seeded from what is live, because that is the thing being
+            // criticised — the owner should open the editor onto the page the
+            // reviewer was reading, not a blank one.
+            content: (approved!.content ?? {}) as any,
+            review_note: trimmed,
+            review_flags: flags as any,
+            updated_at: now,
+          },
+        });
+      }
+    } else {
+      await prisma.hostel_marketing_revisions.update({
+        where: { id: approved!.id },
+        data: {
+          status: "WITHDRAWN",
+          review_note: trimmed,
+          review_flags: flags as any,
+          reviewed_at: now,
+          reviewed_by: adminId,
+          updated_at: now,
+        },
+      });
+    }
+
+    const message = ownerNotification(action, hostel.name, trimmed ?? summariseFlagsForOwner(flags));
+    await notificationService
+      .createNotification(hostel.owner_id, message.title, message.body, "marketing")
+      .catch(() => undefined);
+
+    return {
+      hostel_id: hostelId,
+      action,
+      listing_live: keepsListingLive(action),
+    };
+  }
+
 }
 
 export const marketingReviewService = new MarketingReviewService();

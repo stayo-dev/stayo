@@ -307,3 +307,101 @@ describe("what Discovery can reach", () => {
     await expect(marketingPageService.getPublishedContent("h1")).resolves.toBeNull();
   });
 });
+
+/**
+ * Acting on a listing that is already live.
+ *
+ * Before this existed, an APPROVED revision was beyond the console's reach:
+ * `approve()` and `reject()` both require PENDING_REVIEW, so a wrong price on a
+ * live page could only be dealt with by suspending the whole hostel.
+ */
+describe("actOnLiveListing", () => {
+  const live = { id: "rev-live", version: 5, content: validContent() };
+
+  beforeEach(() => {
+    hostels().findUnique = vi.fn().mockResolvedValue({ id: "h1", name: "Sri Adithya", owner_id: "o1" });
+  });
+
+  /** findFirst is called for the APPROVED revision, then for any open one. */
+  function withRevisions(approved: any, open: any) {
+    revisions().findFirst
+      .mockResolvedValueOnce(approved)
+      .mockResolvedValueOnce(open)
+      .mockResolvedValue({ version: 5 });
+  }
+
+  it("keeps the page live when changes are requested, and opens a draft carrying the note", async () => {
+    withRevisions(live, null);
+    revisions().create.mockResolvedValue({ id: "rev-6" });
+
+    const result = await marketingReviewService.actOnLiveListing(
+      "admin1", "h1", "REQUEST_CHANGES", "The mess menu is from last term.",
+    );
+
+    expect(result.listing_live).toBe(true);
+    // The approved revision is untouched — that is what keeps the page up.
+    expect(revisions().update).not.toHaveBeenCalled();
+    const created = revisions().create.mock.calls[0][0].data;
+    expect(created.status).toBe("DRAFT");
+    expect(created.version).toBe(6);
+    expect(created.review_note).toBe("The mess menu is from last term.");
+    // Seeded from what is live: the owner opens onto the page being criticised.
+    expect(created.content).toEqual(live.content);
+  });
+
+  it("writes the note onto the draft the owner already has open rather than making a second one", async () => {
+    withRevisions(live, { id: "rev-draft", status: "DRAFT" });
+
+    await marketingReviewService.actOnLiveListing("admin1", "h1", "REQUEST_CHANGES", "Fix the price.");
+
+    expect(revisions().create).not.toHaveBeenCalled();
+    expect(revisions().update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "rev-draft" } }),
+    );
+  });
+
+  it("takes the content down on unpublish, marking it WITHDRAWN rather than REJECTED", async () => {
+    withRevisions(live, null);
+
+    const result = await marketingReviewService.actOnLiveListing(
+      "admin1", "h1", "UNPUBLISH", "The ₹4,500 tier does not exist.",
+    );
+
+    expect(result.listing_live).toBe(false);
+    const update = revisions().update.mock.calls[0][0];
+    expect(update.where).toEqual({ id: "rev-live" });
+    // REJECTED means "never went live"; this one was live and came down. The
+    // distinction is what settles "but the listing said ₹4,500".
+    expect(update.data.status).toBe("WITHDRAWN");
+    expect(update.data.reviewed_by).toBe("admin1");
+  });
+
+  it("refuses either action when nothing is live to act on", async () => {
+    withRevisions(null, null);
+    await expect(
+      marketingReviewService.actOnLiveListing("admin1", "h1", "UNPUBLISH", "reason"),
+    ).rejects.toThrow(/no live listing/i);
+  });
+
+  it("refuses to request changes while a submission is already queued", async () => {
+    withRevisions(live, { id: "rev-sub", status: "PENDING_REVIEW" });
+    await expect(
+      marketingReviewService.actOnLiveListing("admin1", "h1", "REQUEST_CHANGES", "note"),
+    ).rejects.toThrow(/already has a submission/i);
+  });
+
+  it("still unpublishes while a submission is queued — a false claim comes down now", async () => {
+    withRevisions(live, { id: "rev-sub", status: "PENDING_REVIEW" });
+    const result = await marketingReviewService.actOnLiveListing(
+      "admin1", "h1", "UNPUBLISH", "Price is wrong.",
+    );
+    expect(result.listing_live).toBe(false);
+  });
+
+  it("demands a written reason before taking a live page down", async () => {
+    withRevisions(live, null);
+    await expect(
+      marketingReviewService.actOnLiveListing("admin1", "h1", "UNPUBLISH", "   "),
+    ).rejects.toThrow(/give a reason/i);
+  });
+});

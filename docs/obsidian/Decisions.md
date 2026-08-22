@@ -1362,3 +1362,48 @@ never throws, and a malformed row degrades to `null` rather than 500ing a public
 
 Related: [[Database#`hostels.navigation`]] · [[APIs]] · [[Features]] · ADR-040 · ADR-076
 
+## ADR-089: A live listing has two pull-back levers, not one, and neither removes the hostel
+
+**Date:** 2026-08-22 · **Status:** accepted
+
+**Context.** `marketingReviewService.approve()` and `.reject()` both hard-require
+`PENDING_REVIEW`. The moment a revision became `APPROVED` it left the console's reach
+entirely: there was no transition out of `APPROVED` except being `SUPERSEDED` by a later
+approval. An admin who spotted a wrong price on a live listing had exactly one lever —
+`suspend-listing` — which removes a real, verified hostel from Discovery in order to fix a
+sentence. Worse, that lever existed end to end on the backend *and* in the frontend API
+wrapper and was **wired to no button anywhere in the app**, so in practice there was nothing.
+
+**Decision.** Two post-approval actions, deliberately different in blast radius, because the
+two real situations are different:
+
+1. **Request changes** — the approved revision stays `APPROVED`, so the live page does not go
+   dark while the owner gets round to it. A `DRAFT` seeded from the live content, carrying the
+   reviewer's note and section flags, is waiting in their editor. For a typo, a stale menu, a
+   weak photo: the listing being imperfect for another day beats it being blank.
+2. **Unpublish** — the approved revision becomes `WITHDRAWN` and the listing immediately
+   renders as a hostel that has not published details. For a false claim or a wrong price,
+   where "still up while they fix it" is the wrong answer.
+
+**Neither removes the hostel from Discovery.** Suspending remains the third and bluntest lever,
+now actually reachable from the drawer.
+
+**`WITHDRAWN` is a new revision status, not a reuse of `REJECTED`.** `REJECTED` means "an admin
+read this and it never went live". `WITHDRAWN` means "this was live and we took it down" — a
+different fact about what tenants actually saw. That distinction is the same reason `SUPERSEDED`
+exists rather than deleting old revisions: anything that settles "but the listing said ₹4,500"
+has to know which of the two happened.
+
+**Request changes refuses while a submission is queued.** That submission is the thing to
+review; quietly writing notes onto a different draft would leave the queue item unanswered and
+the owner holding two sets of feedback about one listing. Unpublish is *allowed* in that state —
+the live page and the queued submission are different things, and a false claim comes down now
+regardless of what is waiting behind it.
+
+**Consequences.** `getEditorState`'s `last_rejection` now also fires on `WITHDRAWN`, and carries
+the status, because a blank listing with the reason visible nowhere in the product is the exact
+state this ADR exists to avoid. Revision-status readers are confined to the two marketing
+services, which is what made adding a status cheap.
+
+Related: [[Business-Rules]] · [[APIs]] · [[Features]] · ADR-076 · ADR-040
+

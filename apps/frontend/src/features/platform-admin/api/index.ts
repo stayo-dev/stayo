@@ -60,6 +60,36 @@ export const platformAdminService = {
     return unwrap(response);
   },
 
+  /** Correct the postal address. Admin-only; narrow by design (five fields). */
+  updateHostelAddress: async (
+    id: string,
+    address: { address?: string; city?: string; state?: string; pincode?: string },
+  ) => {
+    const response = await api.patch(`/platform-admin/hostels/${id}`, address);
+    return unwrap(response);
+  },
+
+  /**
+   * Act on a listing that is already live.
+   *
+   * `REQUEST_CHANGES` leaves the page up and opens a draft for the owner;
+   * `UNPUBLISH` takes the content down now. Neither removes the hostel from
+   * Discovery — that is `suspendListing`.
+   */
+  actOnLiveListing: async (
+    id: string,
+    action: 'REQUEST_CHANGES' | 'UNPUBLISH',
+    note: string,
+    flags?: { section: string; note?: string }[],
+  ) => {
+    const response = await api.post(`/platform-admin/hostels/${id}/listing-review`, {
+      action,
+      note,
+      flags,
+    });
+    return unwrap(response);
+  },
+
   /**
    * Navigation — Google Place ID, landmark, entrance photo, distance.
    *

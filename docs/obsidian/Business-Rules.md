@@ -8,6 +8,31 @@ Related: [[Database]] · [[APIs]] · [[Backend]] · [[Features]]
 
 Everything below was extracted by reading the actual implementation (not types, not doc-comments alone) in `apps/backend/`. File:line references point at the evidence. Anything not verifiable in code is explicitly marked **Unknown**.
 
+## Marketing listing lifecycle — after approval (2026-08-22)
+
+An APPROVED listing is no longer the end of the line. Two admin actions exist, and the one thing
+that separates them is whether the live page survives:
+
+| Action | Approved revision | Live page | Owner gets |
+|---|---|---|---|
+| **Request changes** | stays `APPROVED` | **stays up** | a DRAFT seeded from the live content, carrying the note and section flags |
+| **Unpublish** | becomes `WITHDRAWN` | **goes blank** | the reason, and can edit/resubmit |
+| **Suspend hostel** | untouched | hostel leaves Discovery entirely | — |
+
+Rules that hold:
+
+- **Both need something live.** No `APPROVED` revision → 409.
+- **Request changes refuses while a submission is queued** (`PENDING_REVIEW`): that submission is
+  the thing to review, and annotating a different draft would leave the queue item unanswered.
+- **Unpublish is allowed while a submission is queued.** The live page and the queued submission
+  are different things; a false claim comes down now regardless of what is behind it.
+- **Unpublish always demands a written reason.** There are no section flags on that path to lean
+  on, so the sentence is all the owner gets.
+- **`WITHDRAWN` ≠ `REJECTED`.** REJECTED never went live; WITHDRAWN was live and was taken down.
+- The hostel stays on Discovery for both actions — only `suspend-listing` removes it.
+
+See [[Decisions#ADR-089|ADR-089]] and [[APIs]].
+
 ## Late fee / billing calculation
 
 **File:** `lib/billing/engine.ts` (pure functions, no DB/side effects).

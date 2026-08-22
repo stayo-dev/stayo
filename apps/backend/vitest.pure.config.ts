@@ -69,6 +69,7 @@ export default defineConfig({
       'tests/photo-tour.test.ts',
       'tests/room-space.test.ts',
       'tests/hostel-navigation.test.ts',
+      'tests/post-approval-transitions.test.ts',
       'tests/marketing-review-flags.test.ts',
       'tests/platform-listing-claim.test.ts',
       'tests/platform-listing-enquiry-lead.test.ts',

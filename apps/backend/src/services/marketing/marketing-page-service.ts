@@ -143,9 +143,19 @@ export class MarketingPageService {
           select: { version: true, status: true, content: true, review_note: true, reviewed_at: true },
         });
 
+    // WITHDRAWN as well as REJECTED: a listing an admin pulled down after it was
+    // live is exactly when the owner most needs to see the reason, and reading
+    // only REJECTED here would have left them with a blank listing and no
+    // explanation anywhere in the product.
     const lastRejected =
-      latest?.status === "REJECTED"
-        ? { version: latest.version, review_note: latest.review_note, reviewed_at: latest.reviewed_at }
+      latest && ["REJECTED", "WITHDRAWN"].includes(String(latest.status))
+        ? {
+            version: latest.version,
+            review_note: latest.review_note,
+            reviewed_at: latest.reviewed_at,
+            /** REJECTED = never went live. WITHDRAWN = was live and taken down. */
+            status: latest.status,
+          }
         : null;
 
     const draftContent = open

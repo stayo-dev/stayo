@@ -15,6 +15,8 @@ import {
 import { parseDetailParam, serializeDetail } from '../drawer/drawerParam';
 import { StayoListedPanel } from '../listings/StayoListedPanel';
 import { NavigationBlock } from '../listings/NavigationBlock';
+import { AddressBlock } from '../listings/AddressBlock';
+import { LiveListingControls } from '../listings/LiveListingControls';
 import { tintForId } from '../theme/palette';
 
 const STATUS_PILL: Record<string, { bg: string; color: string; label: string }> = {
@@ -359,12 +361,12 @@ export function ListingsPage() {
           }
         >
           {/*
-            Above the review branch, not inside it: navigation is hostel-level,
-            not revision-level. Every hostel on Stayo the day this shipped was
-            already live with nothing pending, and putting this inside the
-            "submitted for review" branch would have made those unreachable.
+            All three of these are hostel-level, not revision-level, so they sit
+            above the review branch. Every hostel on Stayo the day navigation
+            shipped was already live with nothing pending; inside the "submitted
+            for review" branch they would have been unreachable.
           */}
-          <NavigationBlock hostelId={detail.id} />
+          <ListingHostelControls hostelId={detail.id} onDone={closeReview} />
 
           {pendingRevisionFor(detail.id) ? (
             <>
@@ -393,6 +395,46 @@ export function ListingsPage() {
         </AdminDrawer>
       )}
     </div>
+  );
+}
+
+/**
+ * The hostel-level half of the drawer: what is live, and where the building is.
+ *
+ * Address and navigation are one "Location" heading because they describe the
+ * same building from two angles — the address is what the listing *prints*, the
+ * Place ID is what Maps *navigates to* — and an admin correcting one almost
+ * always wants to check the other.
+ */
+function ListingHostelControls({ hostelId, onDone }: { hostelId: string; onDone: () => void }) {
+  const hostel = useQuery({
+    queryKey: ['admin', 'hostel', hostelId],
+    queryFn: () => platformAdminService.getHostel(hostelId),
+  });
+
+  const review = hostel.data?.listing_review;
+
+  return (
+    <>
+      <LiveListingControls
+        hostelId={hostelId}
+        hostelName={hostel.data?.name ?? 'this hostel'}
+        hasLiveListing={Boolean(review?.has_live_listing)}
+        openStatus={review?.open_status ?? null}
+        listingStatus={String(hostel.data?.listing_status ?? '')}
+        onDone={onDone}
+      />
+
+      <div className="mb-3">
+        <div className="mb-2 px-1 font-admin text-[11px] font-bold uppercase tracking-[0.08em] text-[#B0A597]">
+          Location
+        </div>
+        <div className="space-y-3">
+          <AddressBlock hostelId={hostelId} />
+          <NavigationBlock hostelId={hostelId} />
+        </div>
+      </div>
+    </>
   );
 }
 
