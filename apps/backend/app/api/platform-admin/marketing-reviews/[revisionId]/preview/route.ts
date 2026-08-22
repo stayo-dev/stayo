@@ -6,6 +6,7 @@ import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { admissionsService } from "@/src/services/admissions/admissions-service";
 import { projectListing } from "@/src/services/discovery/listing-projection";
+import { readNavigationSafely } from "@/src/services/discovery/hostel-navigation";
 import { normaliseContent } from "@/src/services/marketing/marketing-content";
 
 function requireAdmin(session: any): asserts session is { sub: string; role: string } {
@@ -49,10 +50,6 @@ export async function GET(
         hostel_type: true,
         food_included: true,
         listing_source: true,
-        // The preview must show the directions block exactly as the public page
-        // will, so the admin can see whether the Place ID they entered actually
-        // produces one before approving.
-        navigation: true,
       },
     });
     if (!hostel) return apiError("Hostel not found", "NOT_FOUND", 404);
@@ -69,9 +66,25 @@ export async function GET(
     // previewing something the public page could not render.
     const content = normaliseContent(revision.content);
 
+    // The preview must show the directions block exactly as the public page
+    // will, so an admin can see whether the Place ID they entered produces one
+    // before approving. Read the same tolerant way the live path reads it —
+    // see `readNavigationSafely` for why selecting it inline is not safe.
+    const navigation = await readNavigationSafely(async () => {
+      const rows = await prisma.$queryRaw<{ navigation: unknown }[]>`
+        SELECT navigation FROM hostels WHERE id = ${hostel.id}::uuid LIMIT 1
+      `;
+      return rows[0]?.navigation ?? null;
+    });
+
     return apiResponse({
       revision: { id: revision.id, version: revision.version, status: revision.status },
-      listing: projectListing({ detail, visible: hostel, marketing: content, preview: true }),
+      listing: projectListing({
+        detail,
+        visible: { ...hostel, navigation },
+        marketing: content,
+        preview: true,
+      }),
     });
   } catch (error: any) {
     const msg = String(error?.message || "Failed to build preview");

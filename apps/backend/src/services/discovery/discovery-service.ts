@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 
 import { prisma } from "@/lib/db";
 import { listingPhotos, projectListing } from "./listing-projection";
+import { readNavigationSafely } from "./hostel-navigation";
 import { whatsAppTemplateDeliveryService } from "@/lib/services/notifications/whatsapp-template-delivery";
 import {
   buildOwnerEnquiryReceived,
@@ -482,10 +483,6 @@ export class DiscoveryService {
         hostel_type: true,
         food_included: true,
         listing_source: true,
-        // How to find the front door. Admin-entered platform data, not owner
-        // marketing content, so it is read from the hostel row rather than
-        // from the approved revision — see migration 074.
-        navigation: true,
         // "Managed by …, on Stayo since …" — the one thing on this page that
         // says a person runs this hostel. Name only: a public listing is not
         // the place for an owner's phone or email, and the hostel's own
@@ -497,17 +494,38 @@ export class DiscoveryService {
     });
     if (!visible) throw ApiError.notFound("This hostel is not listed on Stayo");
 
-    const [detail, marketing] = await Promise.all([
+    const [detail, marketing, navigation] = await Promise.all([
       admissionsService.getPublicHostel(slug),
       // Only ever the APPROVED revision. A draft or a submission awaiting
       // review is invisible here by construction — there is no code path from
       // owner-authored content to a public page that skips the admin.
       marketingPageService.getPublishedContent(visible.id),
+      /**
+       * How to find the front door — admin-entered platform data, so it is read
+       * from the hostel row rather than from the approved revision.
+       *
+       * Deliberately NOT part of the `findFirst` above. Selecting it there ties
+       * the whole listing to migration 074 having run: when this shipped ahead
+       * of the migration, every listing detail page 500'd on "column
+       * `t1.navigation` does not exist". Read separately and tolerantly, a
+       * hostel with no directions renders as a hostel with no directions, and
+       * the block appears by itself once the column exists.
+       */
+      readNavigationSafely(async () => {
+        const rows = await prisma.$queryRaw<{ navigation: unknown }[]>`
+          SELECT navigation FROM hostels WHERE id = ${visible.id}::uuid LIMIT 1
+        `;
+        return rows[0]?.navigation ?? null;
+      }),
     ]);
 
     // One projection, shared with the admin preview — see listing-projection.ts
     // for why this must not be duplicated.
-    return projectListing({ detail, visible: { ...visible, owner: visible.profiles }, marketing });
+    return projectListing({
+      detail,
+      visible: { ...visible, owner: visible.profiles, navigation },
+      marketing,
+    });
   }
 
   // ── Saved ──────────────────────────────────────────────────────────────────

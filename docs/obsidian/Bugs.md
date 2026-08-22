@@ -8,6 +8,40 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-08-22 — A one-field Prisma schema addition took down every listing detail page
+
+**Symptom.** `GET /api/discover/hostels/:slug` returned 500 in production with
+`Invalid prisma.hostels.findFirst() invocation: The column t1.navigation does not exist in
+the current database.` Every hostel listing detail page showed "This hostel isn't listed".
+
+**Cause, and it is not the obvious one.** Migration 074 adds `hostels.navigation`, and the
+code shipped ahead of the migration — expected, and flagged before the push. What was *not*
+anticipated is the blast radius. The obvious culprit, an explicit `navigation: true` in
+`discoveryService.getListing`'s select, was only one of the callers. **Declaring
+`navigation Json?` on the `hostels` model in `schema.prisma` makes Prisma request that column
+on every query that does not pass an explicit `select`** — and this codebase has ~10
+`include:`-only reads of `hostels` among 147 total. `admissionsService.getPublicHostel` is one
+of them, which is why the page died in a service that never asked for navigation at all.
+
+**Fix.** `navigation` is **deliberately not declared on the Prisma model**. It is read and
+written exclusively through raw SQL: `readNavigationSafely()` on the read path (which swallows
+a missing column and returns `null`), `$executeRaw` on the admin write path (which detects the
+missing column and returns a 503 naming migration 074). The app now works on a database whether
+or not 074 has run, and the directions block appears by itself the moment the column exists —
+no redeploy, no flag. `schema.prisma` carries a comment at the field's would-be position saying
+why it is absent and to fold it back in once 074 is applied everywhere.
+
+**Verified** against the live production database with the column still missing:
+`/api/discover/hostels/:slug` → 200 with `navigation: null` and `places` intact, plus the
+Explore list, both live hostels and the share route all 200.
+
+**The general lesson, worth more than this fix:** adding a field to a Prisma model is not an
+additive change to the queries that name their columns — it is a change to every query that
+*doesn't*. Deploy-before-migrate is only safe for a new column if no unselected read of that
+table can reach production first.
+
+Related: [[Database#`hostels.navigation`]] · [[Decisions#ADR-088|ADR-088]] · [[Changelog]]
+
 ## Bug report template
 
 Copy this block for each new entry:

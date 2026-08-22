@@ -2,13 +2,13 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 import { NextRequest } from "next/server";
-import { Prisma } from "@prisma/client";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
   NavigationSchema,
   navigationGaps,
   parseNavigation,
+  readNavigationSafely,
 } from "@/src/services/discovery/hostel-navigation";
 
 /**
@@ -37,14 +37,24 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const hostel = await prisma.hostels.findUnique({
       where: { id },
-      select: { id: true, name: true, navigation: true },
+      select: { id: true, name: true },
     });
     if (!hostel) return apiError("Hostel not found", "NOT_FOUND", 404);
 
+    // Read tolerantly, like the public listing does: this screen must still open
+    // on a database where migration 074 has not run, so the admin can be told
+    // that rather than shown a Prisma stack trace.
+    const raw = await readNavigationSafely(async () => {
+      const rows = await prisma.$queryRaw<{ navigation: unknown }[]>`
+        SELECT navigation FROM hostels WHERE id = ${id}::uuid LIMIT 1
+      `;
+      return rows[0]?.navigation ?? null;
+    });
+
     return apiResponse({
       hostel_id: hostel.id,
-      navigation: parseNavigation(hostel.navigation),
-      gaps: navigationGaps(hostel.navigation),
+      navigation: raw,
+      gaps: navigationGaps(raw),
     });
   } catch (error: any) {
     return apiError(error?.message || "Failed to load navigation");
@@ -69,8 +79,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const body = await req.json().catch(() => undefined);
     const raw = body?.navigation;
 
+    // Raw SQL, not `prisma.hostels.update`: `navigation` is deliberately not on
+    // the Prisma model (see schema.prisma and migration 074), because declaring
+    // it makes every `include:`-only read of `hostels` demand the column.
     if (raw === null) {
-      await prisma.hostels.update({ where: { id }, data: { navigation: Prisma.DbNull } });
+      await prisma.$executeRaw`UPDATE hostels SET navigation = NULL WHERE id = ${id}::uuid`;
       return apiResponse({ hostel_id: id, navigation: null, gaps: navigationGaps(null) });
     }
 
@@ -83,18 +96,27 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       );
     }
 
-    const updated = await prisma.hostels.update({
-      where: { id },
-      data: { navigation: parsed.data },
-      select: { navigation: true },
-    });
+    await prisma.$executeRaw`
+      UPDATE hostels SET navigation = ${JSON.stringify(parsed.data)}::jsonb WHERE id = ${id}::uuid
+    `;
 
     return apiResponse({
       hostel_id: id,
-      navigation: parseNavigation(updated.navigation),
-      gaps: navigationGaps(updated.navigation),
+      navigation: parsed.data,
+      gaps: navigationGaps(parsed.data),
     });
   } catch (error: any) {
-    return apiError(error?.message || "Failed to save navigation");
+    // The one failure worth naming: saving cannot degrade the way reading can,
+    // so say what is actually wrong rather than surfacing "column does not
+    // exist" to whoever is trying to locate a hostel.
+    const message = String(error?.message || "");
+    if (message.includes("navigation") && /does not exist|undefined column/i.test(message)) {
+      return apiError(
+        "Navigation storage is not set up on this database yet — migration 074 has not been applied.",
+        "MIGRATION_REQUIRED",
+        503,
+      );
+    }
+    return apiError(message || "Failed to save navigation");
   }
 }

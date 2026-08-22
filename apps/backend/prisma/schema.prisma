@@ -274,13 +274,21 @@ model hostels {
   archive_reason                 String?
   logo_url                       String?
   preferences_config             Json?
-  /// How to find the front door: Google Place ID (the single source of truth for
-  /// directions), landmark, entrance photo and distance from the reference campus.
-  /// Written ONLY by /api/platform-admin/* — it is platform data an admin enters at
-  /// approval, not owner marketing content, for the same reason as `listing_status`
-  /// (see ADR-040). Shape is validated by NavigationSchema on read and write; a
-  /// Maps URL is deliberately never stored. See migration 074.
-  navigation                     Json?
+  /// `navigation` (jsonb) is DELIBERATELY NOT DECLARED HERE. See migration 074.
+  ///
+  /// It exists in the database and holds the Google Place ID, landmark, entrance
+  /// photo and distance that produce one-tap directions — but declaring it on this
+  /// model makes Prisma request the column on **every** query that does not pass an
+  /// explicit `select`, and this codebase has ~10 such `include:`-only reads of
+  /// `hostels` out of 147. On 2026-08-22 that took down every listing detail page in
+  /// production with "column `t1.navigation` does not exist" the moment the code
+  /// deployed ahead of the migration — a one-field schema addition breaking queries
+  /// that never asked for the field.
+  ///
+  /// So navigation is read and written exclusively through raw SQL
+  /// (`readNavigationSafely` on the read path, `$executeRaw` on the write path),
+  /// which keeps the app working on a database whether or not 074 has run.
+  /// Fold it back into this model once 074 is applied everywhere.
   bulk_import_batches            bulk_import_batches[]
   complaints                     complaints[]
   rule_acceptances               TenantPolicyAcceptance[]

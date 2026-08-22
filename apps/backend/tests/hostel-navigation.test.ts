@@ -5,6 +5,7 @@ import {
   hasDirections,
   navigationGaps,
   parseNavigation,
+  readNavigationSafely,
 } from "@/src/services/discovery/hostel-navigation";
 
 const PLACE_ID = "ChIJN1t_tDeuEmsRUsoyG83frY4";
@@ -108,5 +109,34 @@ describe("navigationGaps", () => {
     expect(navigationGaps({ ...full, distanceFromReference: null, referenceName: "VNRVJIET" })).toEqual([
       "Distance from VNRVJIET",
     ]);
+  });
+});
+
+describe("readNavigationSafely", () => {
+  it("returns the navigation when the read succeeds", async () => {
+    await expect(readNavigationSafely(async () => full)).resolves.toEqual(full);
+  });
+
+  it("survives the column not existing yet, which is how this shipped", async () => {
+    // The real 2026-08-22 production error, verbatim. Code that selects
+    // `navigation` reached production before migration 074 did, and every
+    // listing detail page 500'd. A listing without directions beats no listing.
+    const missingColumn = async () => {
+      throw new Error("The column `t1.navigation` does not exist in the current database.");
+    };
+    await expect(readNavigationSafely(missingColumn)).resolves.toBeNull();
+  });
+
+  it("swallows any read failure rather than propagating it to the page", async () => {
+    await expect(
+      readNavigationSafely(async () => {
+        throw new Error("connection reset");
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it("still rejects a malformed row that reads back fine", async () => {
+    await expect(readNavigationSafely(async () => ({ landmark: "Gate 2" }))).resolves.toBeNull();
+    await expect(readNavigationSafely(async () => null)).resolves.toBeNull();
   });
 });

@@ -81,3 +81,28 @@ export function navigationGaps(raw: unknown): string[] {
   if (!navigation.distanceFromReference) gaps.push(`Distance from ${navigation.referenceName}`);
   return gaps;
 }
+
+/**
+ * Read navigation without letting its absence take down the page around it.
+ *
+ * Migration 074 adds `hostels.navigation`, and code that selects the column can
+ * reach production before the migration does — it did, on 2026-08-22, and every
+ * listing detail page 500'd with "column `t1.navigation` does not exist" until
+ * this existed. The listing is worth rendering without directions; it is not
+ * worth losing because directions are unavailable.
+ *
+ * Takes a reader rather than a Prisma client so this module stays free of I/O
+ * and keeps its place in `vitest.pure.config.ts`.
+ *
+ * Self-healing on purpose: the moment the column exists, the read succeeds and
+ * the block appears. No redeploy, no flag to remember to flip.
+ */
+export async function readNavigationSafely(
+  read: () => Promise<unknown>,
+): Promise<HostelNavigation | null> {
+  try {
+    return parseNavigation(await read());
+  } catch {
+    return null;
+  }
+}
