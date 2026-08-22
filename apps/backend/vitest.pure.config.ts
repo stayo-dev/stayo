@@ -57,6 +57,7 @@ export default defineConfig({
       // which is what qualifies them for this config.
       'tests/discovery-service.test.ts',
       'tests/profile-identity-service.test.ts',
+      'tests/onboarding-known.test.ts',
       'tests/document-vault-service.test.ts',
       'tests/residency-history-service.test.ts',
       'tests/marketing-approval.test.ts',
