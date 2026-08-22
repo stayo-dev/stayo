@@ -14,6 +14,7 @@ import { CollectionRateCard } from '../components/pulse/CollectionRateCard';
 import { ActionQueueCard } from '../components/pulse/ActionQueueCard';
 import { CashflowForecastCard } from '../components/pulse/CashflowForecastCard';
 import { CollectionsFilters, type CollectionsSort } from '../components/collections/CollectionsFilters';
+import { PayoutStrip } from '../components/payouts/PayoutStrip';
 import { TenantDueRow } from '../components/collections/TenantDueRow';
 import { ExpenseSearchBar } from '../components/expenses/ExpenseSearchBar';
 import { ExpenseSearchSummary } from '../components/expenses/ExpenseSearchSummary';
@@ -297,6 +298,16 @@ export function MoneyPage() {
 
       {money.tab === 'collections' && (
         <div className="flex flex-col gap-3">
+          {/* Money coming TO the owner sits above the money he is chasing.
+              Both halves are the same story — a tenant in the list below moves
+              into this strip the moment they pay — and keeping them on one tab
+              is what stops the owner having to reconcile two screens himself.
+
+              The strip deliberately ignores the hostel filter: a payout is one
+              bank transfer covering every hostel at once, so a filtered figure
+              would match no line in his passbook. Per-hostel attribution lives
+              inside a payout's own breakdown instead. */}
+          <PayoutStrip />
           <CollectionsFilters hostels={real.hostelOptions} hostelFilter={hostelFilter} onHostelFilterChange={setHostelFilter} sort={collectionsSort} onSortChange={setCollectionsSort} />
           <div className="flex flex-col gap-2">
             {overdueTenants.length === 0 ? (

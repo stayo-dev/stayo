@@ -541,3 +541,43 @@ A Meta template is addressed by **(name, language)**. Sending the wrong language
 Only `lead_received` was submitted as English (IND); everything else is plain English. The defaults in `platform-lead-template-contracts.ts` now match, and a test pins them.
 
 **Open question — the two MARKETING templates.** `onboarding_complete` ("your hostel is live") and `account_activated` are transactional in intent but were submitted under MARKETING. Marketing templates are subject to per-user marketing opt-out and Meta's marketing frequency caps, so an owner who has opted out of marketing may never receive them. Recategorising to UTILITY in WhatsApp Manager would need re-approval. See [[Features]] and [[APIs]].
+
+## Owner payouts — what the owner is shown, and why it adds up
+
+**Files:** `src/services/settlements/owner-payout-read-model.ts` (composition), `owner-payout-month.ts` + `payout-promise.ts` (pure), `gateway-ledger.ts` (ingestion), `apps/frontend/src/features/owner-money/payouts/payoutState.ts` (the voice). See [[Decisions#ADR-090|ADR-090]], [[Decisions#ADR-091|ADR-091]].
+
+### Every rupee is in exactly one of four states
+
+| State | Derived from |
+|---|---|
+| **Owed** | `rent_obligations`, via `collectionQueueService` — composed, never recomputed |
+| **Paid to you directly** | `payments` with `payment_attempt_id IS NULL` |
+| **With Stayo** | captured `TENANT_RENT` transactions whose settlement item is **not** `PAID` |
+| **In your bank** | captured transactions whose item **is** `PAID` |
+
+Conservation is structural: `settlement_item_transactions.transaction_id` is `UNIQUE`, so a captured rupee is in exactly one of the last two, always. `assembleMonth` **derives** `throughStayo = inYourBank + withStayo` and `collected = direct + throughStayo` rather than accepting them and checking — there is no code path where a rupee is shown twice or lost.
+
+- **The partition keys on `item_status <> 'PAID'`, not an enumerated pending list.** An item that is `FAILED`, `CANCELLED`, or attached to no run at all is money Stayo still holds. Enumerating "pending" statuses would mean a status added later silently drops money out of the owner's total — the one direction this screen must never fail in.
+- **A `FAILED` transfer stays counted.** A total that shrinks at the moment a transfer fails is the fastest way to lose an owner.
+- **"Paid to you directly" is never added to anything Stayo owes.** This is a *display* distinction; settleability still comes only from `gateway_transactions`, per migration 070. Reversal rows are summed in rather than filtered out, so a corrected payment nets to zero instead of counting forever.
+- **Negative sums are clamped to zero, not passed through.** A negative here is a data fault; a visible zero can be investigated, a plausible-but-wrong total cannot.
+
+### The promise (T+2 working days)
+
+`expectedPayoutDate(capturedAt)` = the IST capture date plus two working days, weekends skipped, **bank holidays deliberately not modelled** — a payout falling on a holiday is reported late, honestly, rather than the promise being quietly bent. Computed once at run creation and stored (see [[Decisions#ADR-091|ADR-091]]).
+
+`scorePromises()` grades only items that carried a promise **and** have been paid; lateness is judged on the **IST** day, so an admin transferring at 11:55 PM IST met the promise and one transferring at 12:05 AM IST did not. The streak breaks at the first late payout. Below two judged payouts the counter says nothing — a record of one is not a record.
+
+### Gateway ingestion, and the three rules that keep it safe
+
+`recordCapturedRentInTx` runs inside the same transaction as settlement, at all three paths of `finalizePaymentAttempt` (advance / deposit / rent).
+
+1. **Inside a Postgres savepoint.** A failed statement aborts the whole transaction, so a plain try/catch would be a lie — the settlement would roll back anyway. Concretely: deploying ahead of migration 075 would otherwise have failed *every gateway payment in production*. The savepoint makes recording the settlement record genuinely optional relative to taking the money, which is the correct priority: a missing gateway row makes Stayo under-settle and an admin can fix that; a rolled-back capture leaves a tenant charged with no record anywhere.
+2. **No `provider_payment_id` → no row.** Without it there is no idempotency key, and a replayed webhook would create a second settleable row — Stayo would pay an owner twice. Skipping errs toward under-settling, which is visible and correctable; double-paying is not.
+3. **The stored amount is the attempt amount in rupees.** The provider reports paise; taking its number directly is a 100× error waiting to happen in a table that decides real bank transfers, and there are currently zero captured payments in any environment to verify the payload shape against. The provider's figure is preserved under `raw.__provider_amount_paise` so the two can be reconciled once real captures exist. **If they ever disagree, the gateway is right.**
+
+### Owner-facing vocabulary
+
+The word **"settlement" never appears in owner-facing copy** — owners do not use it, the same reason Obligations were renamed to Charges. Internal identifiers stay `settlement_*`. `PENDING` and `PROCESSING` both read as "With Stayo": the difference is Stayo's workflow, not something an owner asked about. Every pending state is shown as a state **plus a date**, never "Processing".
+
+The strip's voice priority is **failed › paid today › pending › settled › never**. A failure outranks all good news, because an owner told only the pleasant half of the truth trusts the pleasant half less next time.

@@ -64,10 +64,26 @@ const checks: Array<{
   },
   {
     name: "no $queryRawUnsafe in operational services or API routes",
-    roots: ["lib/services", "app/api"],
+    // `src/services` added 2026-08-23. CLAUDE.md points new domain services
+    // here, so the newest financial code in the repo — settlement, payouts,
+    // the gateway ledger — was sitting entirely outside this rule. That is the
+    // opposite of where a raw-SQL guard is most needed.
+    //
+    // NOTE: the other rules in this file still scan only `lib/services` and
+    // `app/api`. Extending them is worth doing but needs each pre-existing hit
+    // audited first, so it is left as known, visible debt rather than done
+    // blind here.
+    roots: ["lib/services", "app/api", "src/services"],
     pattern: /\$queryRawUnsafe/,
     allow: [
       /architectural-invariants-check\.ts$/,
+      // Audited 2026-08-23 and genuinely require the unsafe form:
+      //  - settlement-engine: interpolates a generated ORDER BY priority CASE
+      //    clause (an identifier-level fragment, not parameterisable). All
+      //    values are still bound as $1/$2.
+      //  - agreement-r4-readiness: interpolates nothing; every value is bound.
+      /src\/services\/payments\/settlement-engine\.ts$/,
+      /src\/services\/tenants\/agreement-r4-readiness-service\.ts$/,
       // Approved exceptions — audit/invariant tooling only (per RAW_SQL_HARDENING_REPORT.md)
       /lib\/services\/financial-invariants?\.ts$/,
       /lib\/services\/financial-invariant-service\.ts$/,

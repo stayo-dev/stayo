@@ -28,6 +28,8 @@ import { paymentProviderVerificationSnapshotService } from "@/lib/services/payme
 import { backendUrl } from "@/lib/config/domains";
 import { activationFinancialStatusService } from "@/src/services/tenants/activation-financial-status-service";
 import { getActivePaymentProvider, validatePaymentEnvironment } from "./payment-env";
+import { recordCapturedRentInTx } from "@/src/services/settlements/gateway-ledger";
+import { notifyTenantPaid } from "@/src/services/settlements/payout-notifications";
 import { consumeIdentityTokenInTx } from "./identity-confirmation-guard";
 import { financialPaymentFacade } from "./financial-payment-facade";
 import { obligationEngine } from "./obligation-engine";
@@ -116,6 +118,47 @@ export class PaymentService {
       const amt = Number(entry.amount);
       return entry.type === "CREDIT" ? acc + amt : acc - amt;
     }, 0);
+  }
+
+  /**
+   * Record that Razorpay actually put this money in Stayo's account.
+   *
+   * Called inside every settlement transaction, so the financial record and the
+   * operational one commit or roll back together. Without this, Stayo would owe
+   * owners money it had no record of holding — which is precisely the state the
+   * system was in before: `gateway_transactions` had a settlement engine reading
+   * it and nothing at all writing it.
+   *
+   * Never throws, and — more importantly — never poisons the caller's
+   * transaction: the insert runs inside its own savepoint (see
+   * `gateway-ledger.ts`), so a failure to write the settlement record cannot
+   * roll back a payment the provider has already captured. That would leave the
+   * tenant charged with nothing to show for it, trading a reconcilable gap for
+   * an unrecoverable one. The catch here is a backstop for anything that is not
+   * a SQL error.
+   */
+  private async recordGatewayCaptureInTx(
+    tx: any,
+    attempt: any,
+    gatewayTxnId: string | undefined,
+    rawPayload: any,
+  ): Promise<void> {
+    try {
+      await recordCapturedRentInTx(tx, {
+        providerPaymentId: gatewayTxnId,
+        amount: Number(attempt.amount),
+        ownerId: attempt.owner_id,
+        hostelId: attempt.hostel_id ?? null,
+        tenantId: attempt.tenant_id ?? null,
+        raw: rawPayload ?? null,
+      });
+    } catch (error: any) {
+      logger.error("settlement.gateway_ledger.write_failed", {
+        attempt_id: attempt?.id,
+        owner_id: attempt?.owner_id,
+        error: String(error?.message || error),
+      });
+    }
   }
 
   private async validatePaymentAttemptSettlementInTx(
@@ -2328,6 +2371,8 @@ export class PaymentService {
           },
         });
 
+        await this.recordGatewayCaptureInTx(tx, attempt, gatewayTxnId, rawPayload);
+
         await this.validatePaymentAttemptSettlementInTx(tx, {
           attemptId,
           initialOutstanding,
@@ -2432,6 +2477,8 @@ export class PaymentService {
             } : {}),
           },
         });
+
+        await this.recordGatewayCaptureInTx(tx, attempt, gatewayTxnId, rawPayload);
 
         await this.validatePaymentAttemptSettlementInTx(tx, {
           attemptId,
@@ -2670,6 +2717,8 @@ export class PaymentService {
         },
       });
 
+      await this.recordGatewayCaptureInTx(tx, attempt, gatewayTxnId, rawPayload);
+
       if (attempt.tenant_id) {
         await this.validatePaymentAttemptSettlementInTx(tx, {
           attemptId,
@@ -2684,6 +2733,17 @@ export class PaymentService {
     }, { maxWait: 15000, timeout: 30000 });
     }
     logger.info("payments.finalize.marked_success", { ...requestMeta, attempt_id: attemptId, gateway_txn_id: gatewayTxnId ?? null, source: context?.source ?? "auto" });
+
+    // Once per attempt, deliberately outside the loop below: a FIFO settlement
+    // creates one payments row per obligation it touches, and the owner cares
+    // that a person paid him — not how many months it happened to cover.
+    if (attempt?.owner_id) {
+      await notifyTenantPaid({
+        ownerId: attempt.owner_id,
+        tenantId: attempt.tenant_id ?? null,
+        amount: Number(attempt.amount),
+      });
+    }
 
     // Post-transaction side-effects: events, receipts, audit logs
     for (const { payment, tenantId: tId } of appliedPayments) {

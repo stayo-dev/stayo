@@ -3,6 +3,15 @@ import { groupIntoItems, istDayBounds, type GatewayTxn } from "./settlement-comp
 import {
   canStart, canMarkPaid, canMarkFailed, validatePayout,
 } from "./settlement-transitions";
+import { expectedPayoutDate } from "./payout-promise";
+
+/** Tagged-template raw SQL — Prisma parameterises every interpolated value. */
+const sql = (strings: TemplateStringsArray, ...values: unknown[]): Promise<any[]> =>
+  (prisma as any).$queryRaw(strings, ...values);
+
+import {
+  notifyPayoutOnItsWay, notifyPayoutPaid, notifyPayoutFailed,
+} from "./payout-notifications";
 
 /**
  * Builds and progresses the nightly settlement run.
@@ -62,6 +71,10 @@ export class SettlementRunService {
 
     const drafts = groupIntoItems(transactions);
     const gross = drafts.reduce((sum, d) => sum + d.amount, 0);
+    // Every transaction in a run was captured on the same IST day, so one
+    // promise covers the whole run. Midday avoids any midnight-boundary
+    // ambiguity when the date string is read back as an instant.
+    const promisedDate = expectedPayoutDate(`${isoDate}T12:00:00.000Z`);
 
     const run = await prisma.$transaction(async (tx: any) => {
       const created = await tx.settlement_runs.create({
@@ -94,6 +107,25 @@ export class SettlementRunService {
             amount: 0,
           })),
         });
+
+        // The promise the owner is shown, fixed at the moment it is made.
+        //
+        // Raw SQL because `expected_payout_date` is deliberately absent from
+        // schema.prisma (migration 075 explains why), and inside a savepoint so
+        // a run created before that migration is applied still creates — it
+        // simply carries no promise, which the owner-facing counter treats as
+        // "no promise was made" rather than a broken one.
+        await (tx as any).$executeRaw`SAVEPOINT stayo_payout_promise`;
+        try {
+          await (tx as any).$executeRaw`
+            UPDATE settlement_items
+            SET expected_payout_date = ${promisedDate}::date
+            WHERE id = ${item.id}::uuid`;
+          await (tx as any).$executeRaw`RELEASE SAVEPOINT stayo_payout_promise`;
+        } catch {
+          await (tx as any).$executeRaw`ROLLBACK TO SAVEPOINT stayo_payout_promise`.catch(() => undefined);
+          await (tx as any).$executeRaw`RELEASE SAVEPOINT stayo_payout_promise`.catch(() => undefined);
+        }
       }
 
       return created;
@@ -183,6 +215,11 @@ export class SettlementRunService {
       data: { status: "PROCESSING", updated_at: new Date() },
     });
     await this.log("ITEM_STARTED", { amount: Number(item.amount) }, actorId, { runId: item.run_id, itemId });
+    await notifyPayoutOnItsWay({
+      ownerId: item.owner_id,
+      amount: Number(item.amount),
+      expectedPayoutDate: await this.promisedDateFor(itemId),
+    });
     return updated;
   }
 
@@ -222,8 +259,32 @@ export class SettlementRunService {
       { runId: item.run_id, itemId },
     );
 
+    await notifyPayoutPaid({
+      ownerId: item.owner_id,
+      amount: Number(item.amount),
+      method: payout.method ?? null,
+      reference: payout.reference ?? null,
+    });
+
     await this.completeRunIfDone(item.run_id);
     return updated;
+  }
+
+  /**
+   * The promise recorded for one item, or null if it predates migration 075.
+   *
+   * Raw SQL and null-on-error for the same reason the column is absent from
+   * schema.prisma: reading it must never be able to break a payout transition.
+   */
+  private async promisedDateFor(itemId: string): Promise<string | null> {
+    try {
+      const rows = await sql`
+        SELECT expected_payout_date FROM settlement_items WHERE id = ${itemId}::uuid`;
+      const value = rows?.[0]?.expected_payout_date;
+      return value ? new Date(value).toISOString().slice(0, 10) : null;
+    } catch {
+      return null;
+    }
   }
 
   async markFailed(itemId: string, actorId: string, reason: string) {
@@ -239,6 +300,14 @@ export class SettlementRunService {
       data: { status: "FAILED", failure_reason: reason.trim(), updated_at: new Date() },
     });
     await this.log("ITEM_FAILED", { reason: reason.trim() }, actorId, { runId: item.run_id, itemId });
+    // Told, not hidden. The owner's first fear on a failed transfer is that the
+    // money has gone somewhere — saying so before he notices the absence is the
+    // difference between a problem and a betrayal.
+    await notifyPayoutFailed({
+      ownerId: item.owner_id,
+      amount: Number(item.amount),
+      reason: reason.trim(),
+    });
     return updated;
   }
 

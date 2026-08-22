@@ -187,6 +187,28 @@ Added 2026-07-26 for the real StayO tenant app (Home/Money/Room/Profile tabs) �
 
 `/api/owner/finance/{by-hostel,collections,summary,transfers}`, `/api/owner/me/{subscription,usage,activation}`, `/api/billing/{message-quota,overflow,plans,upgrade}`, `/api/addons*`, `/api/subscription`, `/api/plans`, `/api/usage`, `/api/admin/activation-analytics`, `/api/admin/finance-ops/invoices` — **all 410 Gone**, per in-code comment "Do not add this route back to vercel.json without a new design." Still live: `/api/owner/billing/frequency-requests` (GET list) and `/[id]/decision` (POST).
 
+## Owner Payouts — "Money in" (`/api/owner/payouts*`)
+
+Added 2026-08-23 ([[Decisions#ADR-090|ADR-090]]). The owner's view of money Stayo is holding for them — the counterpart to the admin console's `/api/admin/settlements/*`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/owner/payouts/summary` | Strip facts + month reconciliation block + kept-promise counter |
+| GET | `/api/owner/payouts?q=&limit=` | Payout history; `q` matches UTR / method / amount / tenant name |
+| GET | `/api/owner/payouts/[itemId]` | Which tenants make up one payout, plus per-hostel split |
+
+**All three are owner-scoped through `resolveOwnerScope(session)` and take no `ownerId` parameter at all** — offering one would invite a caller to pass the wrong owner's. A payout belonging to another owner returns **404, not 403**: the two must be indistinguishable, or the route becomes a way to probe for the existence of other owners' payouts.
+
+`/summary` returns **facts, not a headline** — `paidToday` (with tenant names and capture times), `withStayo.expectedBy`, `failed`, `lastPaid`, `everOnline`, `promise`, `month`, `bank` (masked), `degraded`. The strip's single sentence is chosen client-side in `features/owner-money/payouts/payoutState.ts`; returning the copy from the backend would put owner-facing wording behind a deploy and make the same numbers unusable elsewhere.
+
+**No hostel filter is accepted, by design.** A payout is one bank transfer covering every hostel at once, so a filtered payout figure would match no line in the owner's passbook. Per-hostel attribution lives inside `/[itemId]`'s `byHostel` instead.
+
+`degraded: true` reports that the payout tables could not be read as expected (in practice: migration 075 not applied) — surfaced rather than thrown, so the screen shows its honest empty state instead of a 500 an owner cannot act on.
+
+`/[itemId]` always includes `fee: 0`. Stayo passes rent through in full and says so on every payout; an unstated zero reads as a fee somebody chose not to mention.
+
+Outstanding on the month block is **composed from `collectionQueueService.getQueue`**, not recomputed — so the strip and the dues list beneath it cannot disagree. See [[Business-Rules]].
+
 ## Owner — Misc
 
 `/api/owner/search` (navbar search), `/api/owner/integrity` (**no auth guard found in the file — flag**), `/api/owner/whatsapp/connections` (GET, DELETE `/[connectionId]`), `/api/owner/whatsapp/link-code`, `/api/owners/invitations` (**near-duplicate of `/api/tenants/invite`** — same underlying call, OWNER-only not ADMIN, unclear why both exist), `/api/profiles/unassigned/tenants`, `/api/profiles/[id]`, `/api/profile`, `/api/profile/me`.

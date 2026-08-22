@@ -1407,3 +1407,39 @@ services, which is what made adding a status cheap.
 
 Related: [[Business-Rules]] · [[APIs]] · [[Features]] · ADR-076 · ADR-040
 
+### ADR-090 — The owner sees the payout pipeline, and every rupee in it has a state (2026-08-23)
+
+- **Status:** Accepted
+- **Context:** Migration 070 built settlement for the **admin who executes it**. The owner — whose money it is — could see none of it; the only owner-facing route was `/api/owner/payout-account`. Worse, **nothing wrote `gateway_transactions`**: the Razorpay webhook never created a row, so the settlement engine had a reader and no writer (confirmed against live data — 0 gateway transactions, 0 successful payment attempts). The 2026-08-17 design listed owner-facing views as an explicit non-goal.
+- **Decision:** Add an owner-facing "Money in" surface **inside the Money tab's Collections section**, not as a fourth tab, and wire gateway ingestion so it has a source. Every rupee is presented in exactly one of four states — **Owed / Paid to you directly / With Stayo / In your bank** — and the totals are *derived from* their parts rather than computed separately and validated, so the block reconciles by construction.
+- **Consequences:**
+  - **A `FAILED` transfer stays counted inside "With Stayo."** It is money Stayo still holds; a total that shrinks when a transfer fails is the fastest way to lose an owner.
+  - **Rent paid directly to the owner is never summed into anything Stayo owes** — a display distinction only, settleability still comes solely from `gateway_transactions`.
+  - Payout figures **ignore the hostel filter**: a payout is one bank transfer covering every hostel, so a filtered figure would match no line in the owner's passbook. Per-hostel attribution moved inside a payout's breakdown.
+  - The word **"settlement" never appears in owner-facing copy** — same reasoning that renamed Obligations to Charges. A test asserts it across all five strip states.
+  - The strip's voice priority is **failed › paid today › pending › settled › never**, enforced in a tested pure function rather than by JSX ordering.
+- **See:** [[Business-Rules]], [[APIs]], [[Database]], [[Features]], `docs/superpowers/specs/2026-08-23-owner-money-in-design.md`
+
+### ADR-091 — A payout carries a stored promise, not a recomputed estimate (2026-08-23)
+
+- **Status:** Accepted
+- **Context:** An owner's month is shaped by what goes *out* — building lease on the 1st–5th, staff on the 1st, mess supplier weekly — while rent arrives across the 1st–10th. He lives in that gap. A payout **date** is therefore the product, not a status detail, and *predictability beats speed*: he can plan around a consistent T+2 and cannot plan around "usually fast."
+- **Decision:** `settlement_items.expected_payout_date` = capture date **+ 2 working days**, computed once at run creation and **stored**. Two working days rather than one because every transfer is still made by a human from a real bank, and a promise that needs everything to go right is not a promise.
+- **Consequences:**
+  - A promise derived at read time can never be *missed* — it silently moves. Stored, it becomes a fact `paid_at` is measured against, which is what lets "Last 8 payouts — all on time" be **false when it is false**.
+  - The counter stays silent below two judged payouts, and reports "6 of the last 8" when a promise was missed. A counter that only ever reports good news is not evidence of anything.
+  - Weekends are skipped. **Public holidays are deliberately not modelled** — there is no calendar in this system and Indian bank holidays are state-specific, so a payout falling on Diwali is reported late, honestly, rather than the promise being bent to cover it.
+  - Items predating the column carry `NULL`, which the counter treats as *no promise was made* rather than a broken one.
+- **See:** [[Business-Rules]], [[Database]], [[Decisions#ADR-090|ADR-090]]
+
+### ADR-092 — Two columns that must not exist in the Prisma schema (2026-08-23)
+
+- **Status:** Accepted
+- **Context:** On 2026-08-22, declaring `navigation Json?` on `hostels` and deploying ahead of migration 074 500'd every hostel listing page in production — Prisma requests *all* declared scalars on any read without an explicit `select`, so one new field broke services that never asked for it. Migration 075 needed to add two columns to tables read on the payment path.
+- **Decision:** `settlement_items.expected_payout_date` and `gateway_transactions.tenant_id` are added by migration 075 and **deliberately left out of `prisma/schema.prisma`**. All access to both is parameterised raw SQL.
+- **Consequences:**
+  - Application code is correct whether or not 075 has been applied, so deploy order stops being a production risk.
+  - The gateway ingestion INSERT runs inside a **Postgres savepoint** — a failed statement aborts the entire transaction, so a plain try/catch would be a lie and the payment settlement would roll back with it. Concretely: without the savepoint, deploying ahead of 075 would have failed *every gateway payment*.
+  - `items()` falls back to a promise-less query; the summary uses `Promise.allSettled` so one unreadable column cannot blank the other three sources.
+  - This makes `src/services` a place that writes raw SQL, so the `no $queryRawUnsafe` invariant was **extended to scan `src/services`** — CLAUDE.md points new domain services there, meaning the newest financial code in the repo had been sitting entirely outside that rule.
+- **See:** [[Database]], [[Architecture]], [[Bugs]]

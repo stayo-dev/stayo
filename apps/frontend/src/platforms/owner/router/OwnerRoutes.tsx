@@ -38,6 +38,7 @@ const HostelMarketingPage = lazy(() =>
   import('@features/hostel-drilldown/pages/HostelMarketingPage').then((m) => ({ default: m.HostelMarketingPage })),
 );
 const MoneyPage = lazy(() => import('@features/owner-money/pages/MoneyPage').then((m) => ({ default: m.MoneyPage })));
+const MoneyInPage = lazy(() => import('@features/owner-money/pages/MoneyInPage').then((m) => ({ default: m.MoneyInPage })));
 const FoodPage = lazy(() => import('@features/owner-food/pages/FoodPage').then((m) => ({ default: m.FoodPage })));
 const KitchenSheetPage = lazy(() => import('@features/owner-food/pages/KitchenSheetPage').then((m) => ({ default: m.KitchenSheetPage })));
 const FoodPollsPage = lazy(() => import('@features/owner-food/pages/FoodPollsPage').then((m) => ({ default: m.FoodPollsPage })));
@@ -173,6 +174,7 @@ export function OwnerRoutes() {
 
         {/* Today's rent-collection work queue (ADR-045). */}
         <Route path="/owner/money/collect" element={<CollectionQueuePage />} />
+        <Route path="/owner/money/payouts" element={<MoneyInPage />} />
         <Route path="/owner/agreements/review" element={<AgreementQueuePage />} />
         <Route path="/owner/rooms/vacant" element={<VacancyQueuePage />} />
         <Route path="/owner/tenants" element={<TenantsPage />} />

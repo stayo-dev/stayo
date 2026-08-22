@@ -438,3 +438,24 @@ Indexes: `(hostel_id, status)` for the listing, `(status, created_at DESC)` for 
 **Migration 072 (applied 2026-08-19)** adds six nullable `rating_*` columns to `hostel_reviews` — cleanliness, food, safety, staff, value, location — under one `hostel_reviews_category_range` CHECK (each 1–5 or NULL). Nullable because `food` does not apply to a hostel serving no meals and reviews predating 072 have none; averages skip what was not answered rather than counting it as zero. `rating` is now **derived**: the mean of the answered categories.
 
 **Migration 073 (applied 2026-08-20)** adds six nullable columns to `rooms` — `length_ft`, `width_ft` (numeric 5,1), `cupboard_per_bed` (bool), `under_bed_storage` (`NONE`|`CABIN_BAG`|`LARGE_SUITCASE`), `study_desk` (`NONE`|`SHARED`|`PER_BED`), `windows` — under one `rooms_space_check`. **Two dimensions, not one area**: a 6×20 room and an 11×11 room are the same area and completely different to live in. Nothing is backfilled; an unmeasured room shows nothing on the listing rather than a default. Derived reads live in `room-space.ts`.
+
+## Migration 075 — two columns that are NOT in `schema.prisma`
+
+Applied via `migrations/075_owner_payout_visibility.sql` ([[Decisions#ADR-092|ADR-092]]).
+
+| Column | Purpose |
+|---|---|
+| `settlement_items.expected_payout_date DATE NULL` | The working day Stayo committed the payout would land. Written once at run creation, never recomputed — see [[Decisions#ADR-091|ADR-091]]. `NULL` means *no promise was made*, which the on-time counter skips rather than scoring. |
+| `gateway_transactions.tenant_id UUID NULL` | Who paid. Attribution only, **never a settleability input**. `NULL` for `OWNER_SUBSCRIPTION`, which has no tenant. |
+
+**Both are deliberately absent from `prisma/schema.prisma` and accessed only through parameterised raw SQL.** Declaring a scalar on a Prisma model makes every read of that table *without* an explicit `select` demand the column — the mechanism behind the 2026-08-22 hostel-listings outage (see [[Bugs]]). Keeping them off the model means application code is correct whether or not 075 has been applied.
+
+`gateway_transactions.tenant_id` rather than joining through `payments`: one captured payment FIFO-allocates into N obligation rows, so `payments` is many-per-transaction. Joining through it to name the payer would either duplicate the amount or pick an arbitrary row — and the figure shown to an owner must be the amount the gateway captured, which is the whole point of migration 070.
+
+Two indexes accompany them: `idx_gateway_transactions_tenant`, and `idx_gateway_transactions_owner_captured (owner_id, purpose, status, captured_at DESC)` — the 070 index leads with `purpose`, so an owner-scoped month read would otherwise scan every owner's rows.
+
+### `gateway_transactions` finally has a writer
+
+Until 2026-08-23 **nothing wrote this table** — the settlement engine read it and no code path inserted into it, so every run was correctly empty. `src/services/settlements/gateway-ledger.ts` now writes a row inside the same transaction that settles the payment, at all three settlement paths in `finalizePaymentAttempt`. `provider_payment_id`'s unique constraint is the idempotency: a replayed webhook is a verified no-op. See [[Business-Rules]].
+
+**One item per owner per run** — `settlement_items` is `UNIQUE(run_id, owner_id)`. An owner receives at most one payout per settlement run.

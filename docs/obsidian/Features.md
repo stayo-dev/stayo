@@ -683,3 +683,19 @@ Three changes to the owner Configuration surface, each fixing something that was
 - **Depends on:** [[Business-Rules#Admissions / Leads — Accept / Hold / Reject (2026-08-20)|Business-Rules]], [[APIs]] (Admissions/Leads section), [[Database]] (`visitor_leads.status`, `lead_notes`).
 - **Notes:** no new API routes — everything routes through the pre-existing `PATCH /api/leads/[id]` and the previously-dead `POST /api/leads/[id]/convert-to-invitation`. `useAlerts.ts`'s lead fetch and `LeadDetailSheet`'s own detail fetch were migrated onto the pre-existing-but-unused `queryKeys.admissions.*` so the new mutations can invalidate by key. **Not yet verified:** `stayo_tenant_enquiry_rejected` (Reject's WhatsApp template) is not approved in Meta as of this writing, so that send currently no-ops (logged, non-fatal); no `DATABASE_URL_TEST`/local TypeScript compiler in this environment, so verification is `npm run test:pure` (backend) + the full frontend suite + `vite build`, not an end-to-end run against a live database or browser.
 - **Amendment (same day, 2026-08-20): Hold's WhatsApp notification removed.** Originally shipped with its own `TENANT_ENQUIRY_ON_HOLD` template, mirroring Reject. Explicit product direction reversed this — Hold now only writes the `lead_notes` row and changes status, exactly as described above; no tenant-facing message is sent. The template, its builder, and the backend call site were deleted (not left dead) along with their tests. Accept, Reject, and tenant activation are unaffected. See [[Decisions#ADR-087|ADR-087]]'s amendment.
+
+## Owner "Money in" — payout visibility (2026-08-23)
+
+The owner's half of the settlement system, added inside **Money → Collections** rather than as a fourth tab: a separate tab would leave the owner reconciling two screens himself. See [[Decisions#ADR-090|ADR-090]].
+
+**The payout strip** sits above the existing dues queue and is an *event* line, not a status line — `3 tenants paid today · ₹18,500 / in your bank by Wed 27 Aug`, then the payers by name and time, then `Stayo takes ₹0 · Last 8 payouts — all on time`. It exists because online rent lands in *Stayo's* account, not the owner's, so being paid stops being an event he witnesses; without it, online rent feels like less control than cash, and he is the one who has to push tenants to use it. It also stitches the tab together — a tenant he is chasing in the list below moves up into the strip the moment they pay.
+
+On a failed transfer the strip leads with it and carries a **one-tap route into the payout-account form**, since only the owner can correct his own bank details.
+
+**`/owner/money/payouts`** ("Money in") holds the month reconciliation block — five nested lines that add up, plus "still to collect" linking back to the dues queue — the kept-promise counter, and the payout history. Search matches **UTR, amount, or tenant name**, because an owner reconciling reads his bank statement first and the app second.
+
+**Each payout expands into the tenants who paid it**, with `Collected / Stayo fee ₹0 / You received`, room and hostel per tenant, and a tap through to that tenant's profile. This expansion is the point of the feature: a payout he cannot open into names is a number Stayo asserts, while an opened one is a claim he can check by phoning someone.
+
+**Notifications** ([[Backend]] `payout-notifications.ts`) fire on three moments — a tenant paid, the payout is on its way (carrying the committed date), it reached the bank (carrying the UTR) — plus a failure message that states the cause and that the money is still safe. In-app only; the WhatsApp equivalents need Meta template approval and must not gate this.
+
+**Deferred:** statement export (PDF/CSV) for a CA or a working-capital loan application.

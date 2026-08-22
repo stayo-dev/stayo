@@ -18,6 +18,15 @@ export const queryKeys = {
     /** Same disclosed history, looked up by hostel+profile — the enquiry/invite path, before a tenancy exists. */
     tenantHistoryByProfile: (hostelId: string, profileId: string) => ownerKey('tenant-history', hostelId, profileId),
     renewalQueue: () => ownerKey('renewal-queue'),
+    /**
+     * Money Stayo is holding for this owner. Portfolio-level, never hostel-keyed:
+     * a payout is one bank transfer covering every hostel at once, so a
+     * hostel-scoped cache entry would describe a figure that appears on no
+     * bank statement.
+     */
+    payoutSummary: () => ownerKey('payouts', 'summary'),
+    payouts: (q?: string) => ownerKey('payouts', 'list', q ?? ''),
+    payoutBreakdown: (itemId: string) => ownerKey('payouts', 'breakdown', itemId),
     invitedCounts: (hostelIds: string[]) => ownerKey('invited-counts', [...hostelIds].sort()),
     // Expenses are portfolio-level, not per-hostel (expenseService.create strips
     // hostelId from the payload) — keyed at the owner level, not hostelKey(...).
