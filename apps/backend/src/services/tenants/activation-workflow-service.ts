@@ -1034,9 +1034,17 @@ export class ActivationWorkflowService {
     );
     if (!primaryPhone) throw new Error("VALIDATION_ERROR: Valid primary phone is required");
 
+    // Compare digits, not strings. Self-signup stores `919876543210` while
+    // `normalizeIndianPhone` yields `+919876543210`, and `onboarding-known.ts`
+    // — which decides whether the UI even shows an OTP box — already compares
+    // the last ten digits. Two formats across that seam meant the form hid the
+    // OTP field and this check then demanded a code the UI could not collect.
+    const last10 = (value: unknown) => String(value ?? "").replace(/\D/g, "").slice(-10);
+    const primaryPhoneDigits = last10(primaryPhone);
     const isAlreadyVerified = Boolean(
       (profile?.mobile_verified || profile?.phone_verified || tenant?.mobile_verified) &&
-      (profile?.phone === primaryPhone || tenant?.phone_1 === primaryPhone)
+      primaryPhoneDigits &&
+      (last10(profile?.phone) === primaryPhoneDigits || last10(tenant?.phone_1) === primaryPhoneDigits)
     );
 
     if (!isAlreadyVerified) {
@@ -1253,7 +1261,33 @@ export class ActivationWorkflowService {
     // portable copy must never fail an activation the tenant already completed.
     try {
       const savedTenancy = await prisma.tenants.findUnique({ where: { id: tenant.id } });
-      if (savedTenancy) await profileIdentityService.absorbFromTenancy(profile.id, savedTenancy as any);
+      if (savedTenancy) {
+        // Onboarding may only teach the portable profile things the tenant
+        // actually confirmed on this form. These fields are shared across
+        // every hostel the person has ever stayed at, so a tenancy default or
+        // an owner-typed guess must never overwrite the person's own record:
+        // `tenants.profile_type` defaults to "STUDENT", and this wizard never
+        // asks for `permanent_address`, `personal_email`, `nationality` or
+        // `pan_number` at all. Absorbing the whole row let hostel B flip a
+        // working professional back to STUDENT.
+        const confirmed = {
+          date_of_birth: savedTenancy.date_of_birth,
+          gender: savedTenancy.gender,
+          guardian_name: savedTenancy.guardian_name,
+          guardian_phone: savedTenancy.guardian_phone,
+          guardian_relation: savedTenancy.guardian_relation,
+          photo_url: savedTenancy.photo_url,
+          college_name: savedTenancy.college_name,
+          course: savedTenancy.course,
+          year_of_study: savedTenancy.year_of_study,
+          branch: savedTenancy.branch,
+          roll_number: savedTenancy.roll_number,
+          office_name: savedTenancy.office_name,
+          office_location: savedTenancy.office_location,
+          job_role: savedTenancy.job_role,
+        };
+        await profileIdentityService.absorbFromTenancy(profile.id, confirmed as any);
+      }
     } catch (absorbError) {
       console.error("Failed to absorb onboarding profile into profile_identity:", absorbError);
     }

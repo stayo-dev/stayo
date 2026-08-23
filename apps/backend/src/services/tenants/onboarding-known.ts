@@ -1,5 +1,3 @@
-import { IDENTITY_FIELDS } from "../profile/identity-fields";
-
 /**
  * What onboarding already knows about the person in front of it, and where
  * each fact came from.
@@ -41,6 +39,35 @@ interface IdentityLike extends Record<string, unknown> {
   pending_backfill_fields?: string[];
   has_profile_record?: boolean;
 }
+
+/**
+ * The identity fields onboarding is allowed to hand back.
+ *
+ * `GET /api/tenants/activate/context` is authenticated by the invite token
+ * alone — no session — so a public route must expose only what the onboarding
+ * form actually renders. For a second-hostel invite these values come from the
+ * person's *prior* stay, and anyone holding the link would otherwise be able to
+ * read their PAN, nationality, personal email and photo before the person has
+ * accepted anything. `permanent_address` and `profile_type` stay because the
+ * form uses them; everything the form does not show is withheld.
+ */
+export const ONBOARDING_PREFILL_FIELDS = [
+  "date_of_birth",
+  "gender",
+  "permanent_address",
+  "guardian_name",
+  "guardian_phone",
+  "guardian_relation",
+  "profile_type",
+  "college_name",
+  "course",
+  "year_of_study",
+  "branch",
+  "roll_number",
+  "office_name",
+  "office_location",
+  "job_role",
+] as const;
 
 const isBlank = (value: unknown) =>
   value === null || value === undefined || (typeof value === "string" && value.trim() === "");
@@ -87,7 +114,7 @@ export function buildKnown(input: {
 
   const identityOut: Record<string, unknown> = {};
   const backfilled = new Set(identity?.pending_backfill_fields ?? []);
-  for (const field of IDENTITY_FIELDS) {
+  for (const field of ONBOARDING_PREFILL_FIELDS) {
     const value = identity ? identity[field] : null;
     if (isBlank(value)) {
       identityOut[field] = null;

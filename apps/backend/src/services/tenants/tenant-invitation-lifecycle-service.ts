@@ -856,11 +856,15 @@ export class TenantInvitationLifecycleService {
 
     const rawEmail = String(data?.email || "").trim().toLowerCase();
     if (!rawEmail) {
-      throw new Error("VALIDATION_ERROR: Gmail ID is required");
+      throw new Error("VALIDATION_ERROR: An email address is required");
     }
-    const gmailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
-    if (!gmailRegex.test(rawEmail)) {
-      throw new Error("VALIDATION_ERROR: Please enter a valid Gmail ID (e.g. name@gmail.com)");
+    // Any real address, not just Gmail. This is the path `saveAccount()` takes
+    // for the ordinary "owner invited someone with no Stayo account yet" case,
+    // so a Gmail-only rule here rejected the college and work addresses the
+    // form now accepts.
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    if (!emailRegex.test(rawEmail)) {
+      throw new Error("VALIDATION_ERROR: Please enter a valid email address");
     }
     const normalizedEmail = rawEmail;
 

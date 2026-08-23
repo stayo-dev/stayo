@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildKnown } from "@/src/services/tenants/onboarding-known";
+import { buildKnown, ONBOARDING_PREFILL_FIELDS } from "@/src/services/tenants/onboarding-known";
 
 const identity = (over: Record<string, unknown> = {}) => ({
   date_of_birth: null, gender: null, nationality: null, pan_number: null,
@@ -86,6 +86,34 @@ describe("buildKnown", () => {
     });
     expect(known.source_of.gender).toBeUndefined();
     expect(known.identity.gender).toBeNull();
+  });
+
+  it("withholds identity fields the onboarding form never renders", () => {
+    // The activation context is a public, token-only route. Anything not on
+    // the form must not travel on it — a second-hostel invite would otherwise
+    // hand whoever holds the link the person's PAN from their previous stay.
+    const known = buildKnown({
+      profile: { id: "p1", name: "Asha", email: "a@b.com", phone: "9876543210" },
+      tenant: {}, invitation: null,
+      identity: identity({
+        gender: "Female",
+        pan_number: "ABCDE1234F",
+        nationality: "Indian",
+        personal_email: "asha.personal@example.com",
+        photo_url: "https://cdn.example.com/asha.jpg",
+        section: "B",
+        has_profile_record: true,
+      }),
+    });
+
+    for (const field of ["pan_number", "nationality", "personal_email", "photo_url", "section"]) {
+      expect(known.identity).not.toHaveProperty(field);
+      expect(known.source_of[field]).toBeUndefined();
+    }
+    expect(Object.keys(known.identity).sort()).toEqual([...ONBOARDING_PREFILL_FIELDS].sort());
+    expect(known.identity.gender).toBe("Female");
+    expect(known.identity.permanent_address).toBeNull();
+    expect(known.identity.profile_type).toBe("STUDENT");
   });
 
   it("has prefill when a backfill-sourced field exists even with no profile record", () => {
