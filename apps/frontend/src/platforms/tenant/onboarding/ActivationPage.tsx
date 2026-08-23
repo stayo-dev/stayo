@@ -130,20 +130,36 @@ export function ActivationPage() {
       setError('');
       setAccount((prev) => ({
         ...prev,
-        // `known` is the person; `tenant`/`profile` is the tenancy snapshot the
-        // owner typed. Prefer the person.
-        phone: prev.phone || phoneDigits(data.known?.phone || data.tenant?.phone_1 || data.profile?.phone),
+        // The tenancy's own number wins: the owner invited this person on the
+        // number they are reachable on *now*, and the portable profile may
+        // still hold an older one. When the two differ, `buildKnown` reports
+        // `phone_verified: false`, so the field stays editable with an OTP box
+        // rather than silently reverting the tenancy to a stale number.
+        phone: prev.phone || phoneDigits(data.tenant?.phone_1 || data.known?.phone || data.profile?.phone),
         email: prev.email || String(data.known?.email || data.profile?.email || ''),
       }));
 
+      // Seed the editable inputs from the person's own portable record first,
+      // then fall back to the tenancy snapshot the owner typed. Without this
+      // the "we already know these" panel showed a date of birth and gender
+      // that the form underneath it did not actually hold, and submit failed
+      // on "Gender is required".
+      const knownIdentity = (data.known?.identity || {}) as Record<string, unknown>;
+      // `profile_identity.date_of_birth` can arrive as a full ISO timestamp;
+      // `<input type="date">` only accepts `YYYY-MM-DD`.
+      const knownDob = String(knownIdentity.date_of_birth || '').slice(0, 10);
       const backendProfile: ProfileDraft = {
-        phone: phoneDigits(data.tenant?.phone_1 || data.profile?.phone),
-        gender: String(data.tenant?.gender || ''),
-        date_of_birth: String(data.tenant?.date_of_birth || ''),
-        profile_type: String(data.tenant?.profile_type || 'STUDENT'),
-        guardian_name: String(data.tenant?.guardian_name || data.agreement?.guardian_signature_name || ''),
-        guardian_phone: phoneDigits(data.tenant?.guardian_phone || data.tenant?.phone_2),
-        guardian_relation: String(data.tenant?.guardian_relation || data.agreement?.guardian_relation || ''),
+        phone: phoneDigits(data.tenant?.phone_1 || data.known?.phone || data.profile?.phone),
+        gender: String(knownIdentity.gender || data.tenant?.gender || ''),
+        date_of_birth: knownDob || String(data.tenant?.date_of_birth || ''),
+        profile_type: String(knownIdentity.profile_type || data.tenant?.profile_type || 'STUDENT'),
+        guardian_name: String(
+          knownIdentity.guardian_name || data.tenant?.guardian_name || data.agreement?.guardian_signature_name || ''
+        ),
+        guardian_phone: phoneDigits(knownIdentity.guardian_phone || data.tenant?.guardian_phone || data.tenant?.phone_2),
+        guardian_relation: String(
+          knownIdentity.guardian_relation || data.tenant?.guardian_relation || data.agreement?.guardian_relation || ''
+        ),
         emergency_phone: phoneDigits(data.tenant?.phone_3),
       };
       const mergedProfile: ProfileDraft = {
@@ -189,7 +205,10 @@ export function ActivationPage() {
   const prefillPlan = buildPrefillPlan({
     known: ctx?.known,
     profileType: isStudent ? 'STUDENT' : 'WORKING_PROFESSIONAL',
-    phoneEdited,
+    // "Change" records intent, not a change. Retyping the same verified number
+    // is not an edit, and the server would not demand an OTP for it — so don't
+    // latch the tenant into an OTP box the server will ignore.
+    phoneEdited: phoneEdited && phoneDigits(account.phone) !== phoneDigits(ctx?.known?.phone),
   });
   const activationStageIndex = activationProgress < 40 ? 0 : activationProgress < 78 ? 1 : 2;
   const activationProgressWidth = `${Math.max(8, Math.round(activationProgress))}%`;

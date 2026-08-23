@@ -496,7 +496,9 @@ export function WelcomeIdentityStep({
               ))}
             </div>
             <div className="mt-2.5 text-[11px] leading-relaxed" style={{ color: '#9A8F84' }}>
-              From your Stayo profile. Anything below can still be edited.
+              {prefill.knownRows.every((row) => row.origin === 'PROFILE')
+                ? 'From your Stayo profile. Anything below can still be edited.'
+                : 'From your Stayo profile and your invite — please check these. Anything below can still be edited.'}
             </div>
           </div>
         )}
