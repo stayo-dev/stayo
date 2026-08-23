@@ -19,8 +19,18 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 #### Changed
 - **`saveProfile()` now writes back to `profile_identity`** via the pre-existing `profileIdentityService.absorbFromTenancy()` (previously zero production callers), non-fatally, after its transaction commits. This is what makes a *second* hostel's onboarding open pre-filled — without it, hostel B's fresh `tenants` row has nothing for `known` to compose. See [[Business-Rules]].
-- **The Gmail-only email regex is gone**, backend (`saveAccount()`) and frontend (`ActivationPage.tsx`), replaced by `/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/` — owners routinely invite people on college/work addresses the old rule rejected.
+- **The Gmail-only email regex is gone**, backend (`saveAccount()` **and** `tenantInvitationLifecycleService.startActivation()`) and frontend (`ActivationPage.tsx`), replaced by `/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/` — owners routinely invite people on college/work addresses the old rule rejected.
 - **The Identity screen's false OTP gate is removed.** `canSubmit` now gates on `otpRequired` (`!phoneVerified || phoneEdited`), matching `saveAccount()`'s own server-side rule instead of demanding a fresh OTP unconditionally.
+
+#### Fixed (pre-merge review of the above)
+- **The prefill panel and the form underneath it now agree.** `ActivationPage.tsx` seeded its editable inputs from `tenant.*` only, so at hostel B the panel read "Gender Female" while the input below it was blank and submit failed on `Gender is required`. Each field now seeds from `known.identity` first, with the old `tenant`/`agreement` fallbacks kept behind it (`date_of_birth` sliced to `YYYY-MM-DD` for `<input type="date">`).
+- **`startActivation()` still enforced Gmail-only** — the path `saveAccount()` delegates to for the ordinary "owner invited someone with no Stayo account" case, i.e. the dominant one. The frontend accepted `priya@nitw.ac.in` and the server rejected it. Now the same general regex as `saveAccount()`.
+- **Phone comparison is digit-based on both sides of the seam** (`saveAccount()` compared raw strings, `buildKnown()` compared last-10). See [[Business-Rules]].
+- **The write-back no longer lets tenancy defaults clobber person-level truth** — `absorbFromTenancy()` receives an explicit whitelist of what the wizard actually collected, not the raw saved row. See [[Business-Rules]].
+- **The tenancy's phone wins over the profile's** in the activation prefill: an owner invites on the number the person is reachable on now, and preferring a stale profile number silently reverted the tenancy and rendered the field disabled.
+- **`known.identity` no longer carries PII the form never shows.** `pan_number`, `nationality`, `personal_email`, `photo_url` and `section` are withheld from this public, token-only route. See [[APIs]].
+- **The "we already know these" footer is honest about origin** — it says "From your Stayo profile and your invite — please check these" whenever any rendered row's `source_of` is not `PROFILE`, rather than presenting an owner's invite-time guess as the person's own record.
+- **"Change" no longer latches** — retyping the same verified number is not treated as an edit.
 
 See [[Decisions#ADR-090|ADR-090]] for why email is shown without a Verified tick (no email verification exists anywhere in this system) and for the reasoning behind locking verified fields. **No schema change** — `profile_identity` and the residency-history tables already existed. The spec's automated "activate at A, move out, invite to B, confirm pre-filled" backend test is **not present** — no test database in this environment (`DATABASE_URL_TEST` unset); that round trip is verified only manually.
 

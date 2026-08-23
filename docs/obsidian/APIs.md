@@ -324,13 +324,15 @@ The public, token-authenticated `GET /api/tenants/activate/context` (see the Act
 known: {
   name, email, phone,
   phone_verified,   // true only when the number offered is the number actually verified
-  identity: { …IDENTITY_FIELDS },
+  identity: { …ONBOARDING_PREFILL_FIELDS },   // only what the form renders — not all of IDENTITY_FIELDS
   has_prefill,
   source_of: { field → 'PROFILE' | 'TENANCY' | 'INVITE' }
 }
 ```
 
-Built by the new pure `buildKnown()` (`apps/backend/src/services/tenants/onboarding-known.ts`) from `IDENTITY_FIELDS` (extracted into `apps/backend/src/services/profile/identity-fields.ts`, a zero-import leaf module so this stays pure and runnable under `test:pure`). `getContext()` already resolves the profile from the invite token via `resolveInvitation()`, so **no session is required** — this was the actual blocker on wiring the wizard to any prefill data at all, since `/api/tenants/me/onboarding-prefill` above needs a `TENANT` session that doesn't exist until activation completes. `source_of` is derived, not recomputed: a field is `TENANCY` when `getIdentity()`'s own `pending_backfill_fields` names it, `PROFILE` when the identity record supplied it directly, and `INVITE` when only the invitation carried it — so the UI can tell the person's own record from an owner's guess rather than presenting both with equal confidence. See [[Features]], [[Business-Rules]].
+Built by the new pure `buildKnown()` (`apps/backend/src/services/tenants/onboarding-known.ts`).
+
+**`identity` is deliberately narrower than `IDENTITY_FIELDS`.** This route is authenticated by the invite token alone — no session — so it exposes only the fields the onboarding form actually renders, named by the exported `ONBOARDING_PREFILL_FIELDS` constant in that same file: `date_of_birth`, `gender`, `permanent_address`, `guardian_name`/`_phone`/`_relation`, `profile_type`, `college_name`, `course`, `year_of_study`, `branch`, `roll_number`, `office_name`, `office_location`, `job_role`. `pan_number`, `nationality`, `personal_email`, `photo_url` and `section` are **withheld**, and get no `source_of` entry either. For a second-hostel invite these values come from the person's *prior* stay, so anything on this payload is readable by whoever holds the link before the person has accepted anything. `getContext()` already resolves the profile from the invite token via `resolveInvitation()`, so **no session is required** — this was the actual blocker on wiring the wizard to any prefill data at all, since `/api/tenants/me/onboarding-prefill` above needs a `TENANT` session that doesn't exist until activation completes. `source_of` is derived, not recomputed: a field is `TENANCY` when `getIdentity()`'s own `pending_backfill_fields` names it, `PROFILE` when the identity record supplied it directly, and `INVITE` when only the invitation carried it — so the UI can tell the person's own record from an owner's guess rather than presenting both with equal confidence. See [[Features]], [[Business-Rules]].
 
 ### Residency history (2026-08-15, [[Decisions#ADR-075|ADR-075]])
 
