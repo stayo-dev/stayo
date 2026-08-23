@@ -6,6 +6,12 @@
  * transitively importing `@/lib/db`. `vitest.pure.config.ts` admits only files
  * that reach no I/O, and that rule is what keeps those tests runnable with no
  * database at all.
+ *
+ * The names happen to match today, but the mapping to `tenants` columns is a
+ * transition mechanism and this is the list that gets deleted when it ends,
+ * not a naming convention to rely on. The matching `tenants.*` columns stay as
+ * snapshots of what was true when each tenancy began — the fallback exists only
+ * during phase B.
  */
 export const IDENTITY_FIELDS = [
   "date_of_birth",
