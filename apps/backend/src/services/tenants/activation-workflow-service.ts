@@ -1068,11 +1068,14 @@ export class ActivationWorkflowService {
 
     const rawEmail = String(data?.email || "").trim().toLowerCase();
     if (!rawEmail) {
-      throw new Error("VALIDATION_ERROR: Gmail ID is required");
+      throw new Error("VALIDATION_ERROR: An email address is required");
     }
-    const gmailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
-    if (!gmailRegex.test(rawEmail)) {
-      throw new Error("VALIDATION_ERROR: Please enter a valid Gmail ID (e.g. name@gmail.com)");
+    // Any real address, not just Gmail. Owners invite people on college and
+    // work addresses all the time, and rejecting those made the tenant retype
+    // a perfectly valid one — or invent a Gmail account to get past the form.
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    if (!emailRegex.test(rawEmail)) {
+      throw new Error("VALIDATION_ERROR: Please enter a valid email address");
     }
     const normalizedEmail = rawEmail;
 
@@ -1235,6 +1238,25 @@ export class ActivationWorkflowService {
         }),
       });
     });
+
+    // Fold what the tenant just confirmed into their portable profile, so the
+    // hostel *after* this one opens pre-filled even though this one didn't.
+    //
+    // Read back rather than reusing the local variables: the transaction above
+    // applied `compactObject`, so the row is the authoritative record of what
+    // actually landed. `absorbFromTenancy` ignores blanks, so nothing the
+    // person filled in on their profile screen gets wiped by a form that
+    // simply didn't ask.
+    //
+    // Deliberately outside the transaction and non-fatal: the tenancy is the
+    // record that must be right for this stay, and a failure to update the
+    // portable copy must never fail an activation the tenant already completed.
+    try {
+      const savedTenancy = await prisma.tenants.findUnique({ where: { id: tenant.id } });
+      if (savedTenancy) await profileIdentityService.absorbFromTenancy(profile.id, savedTenancy as any);
+    } catch (absorbError) {
+      console.error("Failed to absorb onboarding profile into profile_identity:", absorbError);
+    }
     await eventLog.log("profile_completed", tenant.owner_id || null, { tenant_id: tenant.id, hostel_id: tenant.hostel_id }, tenant.id);
   }
 
