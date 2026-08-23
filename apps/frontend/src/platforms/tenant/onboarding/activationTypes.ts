@@ -7,6 +7,8 @@
  * definition instead of redeclaring it.
  */
 
+import type { KnownBlock } from './onboardingPrefill';
+
 export type ActivationStep = 'ACCOUNT' | 'RULES' | 'AGREEMENT' | 'PROFILE' | 'ACTIVATE';
 
 export type RuleCategory = {
@@ -35,6 +37,8 @@ export type ActivationContext = {
   current_step: ActivationStep;
   verification_status?: { guardian_verified?: boolean; emergency_verified?: boolean };
   profile: { name?: string; email?: string; phone?: string };
+  /** What Stayo already knows about this person (see `onboarding-known.ts`). */
+  known?: KnownBlock;
   tenant: Record<string, string | number | null | undefined>;
   hostel: { name?: string; logo_url?: string; address?: string; phone?: string };
   room_summary: Record<string, string | number | boolean | string[] | null | undefined>;

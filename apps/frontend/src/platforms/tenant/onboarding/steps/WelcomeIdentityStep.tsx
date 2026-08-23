@@ -3,6 +3,7 @@ import { AlertCircle, Camera, CheckCircle2, Receipt, Send } from 'lucide-react';
 import { StayoLoader } from '@shared/ui/brand';
 import type { ActivationContext, ActivationStep } from '../activationTypes';
 import { currency, fmtDate } from '../activationTypes';
+import type { PrefillPlan } from '../onboardingPrefill';
 import { BackButton, PrimaryActionButton, StepActionBar } from './shared';
 
 export type ProfileDraft = {
@@ -89,6 +90,10 @@ interface WelcomeIdentityStepProps {
    */
   localPhase: 'welcome' | 'identity';
   setLocalPhase: (phase: 'welcome' | 'identity') => void;
+  /** What we already know — see `onboardingPrefill.ts`. */
+  prefill: PrefillPlan;
+  /** Tenant tapped "Change" on the verified mobile; a fresh OTP is now due. */
+  onUnlockPhone: () => void;
 }
 
 const label = { color: '#7A6F63', letterSpacing: '.05em' };
@@ -257,6 +262,8 @@ export function WelcomeIdentityStep({
   onExitToIntro,
   localPhase,
   setLocalPhase,
+  prefill,
+  onUnlockPhone,
 }: WelcomeIdentityStepProps) {
   const [busy, setBusy] = useState(false);
 
@@ -339,7 +346,11 @@ export function WelcomeIdentityStep({
       }
     };
     const isBusy = busy || submitting;
-    const canSubmit = showAccountFields ? otpSent && account.otp.length === 6 : true;
+    // Only demand a code when the server actually would — an already-verified
+    // number that the tenant has not touched needs nothing. `saveAccount()`
+    // applies the same rule; the old unconditional gate was stricter than the
+    // server for no reason.
+    const canSubmit = showAccountFields && prefill.otpRequired ? otpSent && account.otp.length === 6 : true;
 
     return (
       <form onSubmit={handleSubmit} style={{ animation: 'obFade .25s ease' }}>
@@ -397,60 +408,97 @@ export function WelcomeIdentityStep({
 
         {showAccountFields && (
           <>
-            <div className="mt-4">
-              <div className="text-[12.5px] font-bold" style={{ color: '#3A342E' }}>
-                Primary Mobile <span style={{ color: '#D0473A' }}>*</span>
+            <div className="mt-4 rounded-[13px] p-[14px_13px]" style={{ background: '#F6F1EA' }}>
+              <div className="text-[11px] font-extrabold uppercase" style={{ color: '#7A6F63', letterSpacing: '.05em' }}>
+                Your Stayo account
               </div>
-              <div className="mt-1.5">
+
+              {prefill.account.name && (
+                <div className="mt-2.5 flex items-center justify-between gap-2">
+                  <span className="text-[11.5px] font-semibold" style={{ color: '#8A7F75' }}>Full name</span>
+                  <span className="text-[12.5px] font-bold" style={{ color: '#2A2521' }}>{prefill.account.name}</span>
+                </div>
+              )}
+
+              <div className="mt-3">
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <span className="text-[11.5px] font-semibold" style={{ color: '#8A7F75' }}>Mobile</span>
+                  {prefill.account.phoneVerified && !prefill.otpRequired && (
+                    <button type="button" onClick={onUnlockPhone} className="text-[11px] font-bold" style={{ color: '#B46A55' }}>
+                      Change
+                    </button>
+                  )}
+                </div>
                 <PhoneField
                   value={account.phone}
                   onChange={(v) => setAccount({ ...account, phone: v })}
                   placeholder="10-digit mobile number"
-                  verified={accountVerified}
+                  verified={prefill.account.phoneVerified && !prefill.otpRequired}
+                  disabled={prefill.account.phoneVerified && !prefill.otpRequired}
                   onSend={onSendOtp}
                   sending={otpSending}
                   countdown={otpCountdown}
                   sent={otpSent}
                 />
+                {prefill.otpRequired && account.phone.length > 0 && account.phone.length < 10 && (
+                  <div className="mt-1.5 text-[11.5px] font-medium" style={{ color: '#8A7F75' }}>
+                    {10 - account.phone.length} more digit{10 - account.phone.length === 1 ? '' : 's'} to verify
+                  </div>
+                )}
+                {prefill.otpRequired && otpSent && (
+                  <OtpBlock
+                    phone={account.phone}
+                    otp={account.otp}
+                    setOtp={(v) => setAccount({ ...account, otp: v })}
+                    onResend={onSendOtp}
+                    sending={otpSending}
+                    countdown={otpCountdown}
+                    helperText="We sent a verification code to your mobile number."
+                    error={otpError}
+                  />
+                )}
               </div>
-              {account.phone.length > 0 && account.phone.length < 10 && (
-                <div className="mt-1.5 text-[11.5px] font-medium" style={{ color: '#8A7F75' }}>
-                  {10 - account.phone.length} more digit{10 - account.phone.length === 1 ? '' : 's'} to verify
-                </div>
-              )}
-              {otpSent && (
-                <OtpBlock
-                  phone={account.phone}
-                  otp={account.otp}
-                  setOtp={(v) => setAccount({ ...account, otp: v })}
-                  onResend={onSendOtp}
-                  sending={otpSending}
-                  countdown={otpCountdown}
-                  helperText="We sent a verification code to your mobile number."
-                  error={otpError}
-                />
-              )}
-            </div>
 
-            <div className="mt-3.5">
-              <div className="text-[12.5px] font-bold" style={{ color: '#3A342E' }}>
-                Gmail ID <span style={{ color: '#D0473A' }}>*</span>
-              </div>
-              <div className="mt-1.5" style={{ ...cardWrap, padding: '0 13px' }}>
-                <input
-                  type="email"
-                  value={account.email}
-                  onChange={(e) => setAccount({ ...account, email: e.target.value.trim() })}
-                  placeholder="yourname@gmail.com"
-                  className="text-sm font-medium"
-                  style={inputBase}
-                />
-              </div>
-              <div className="mt-1.5 text-[11.5px]" style={{ color: '#8A7F75' }}>
-                Used for account notifications and hostel communications.
+              <div className="mt-3">
+                <div className="mb-1.5 text-[11.5px] font-semibold" style={{ color: '#8A7F75' }}>Email</div>
+                <div style={{ ...cardWrap, padding: '0 13px' }}>
+                  <input
+                    type="email"
+                    value={account.email}
+                    onChange={(e) => setAccount({ ...account, email: e.target.value.trim() })}
+                    placeholder="you@example.com"
+                    className="text-sm font-medium"
+                    style={inputBase}
+                  />
+                </div>
+                <div className="mt-1.5 text-[11px]" style={{ color: '#9A8F84' }}>
+                  From your Stayo account. Used for notifications and hostel communications.
+                </div>
               </div>
             </div>
           </>
+        )}
+
+        {prefill.showKnownBlock && (
+          <div className="mt-4 rounded-[13px] p-[14px_13px]" style={{ background: '#F6F1EA' }}>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-3.5 w-3.5" style={{ color: '#1F7A52' }} strokeWidth={2.6} />
+              <span className="text-[11px] font-extrabold uppercase" style={{ color: '#7A6F63', letterSpacing: '.05em' }}>
+                We already know these
+              </span>
+            </div>
+            <div className="mt-2.5 flex flex-col gap-2">
+              {prefill.knownRows.map((row) => (
+                <div key={row.field} className="flex items-center justify-between gap-2">
+                  <span className="text-[11.5px] font-semibold" style={{ color: '#8A7F75' }}>{row.label}</span>
+                  <span className="text-[12.5px] font-bold" style={{ color: '#2A2521' }}>{row.display}</span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2.5 text-[11px] leading-relaxed" style={{ color: '#9A8F84' }}>
+              From your Stayo profile. Anything below can still be edited.
+            </div>
+          </div>
         )}
 
         <div className="mt-4 flex flex-col gap-3.5">

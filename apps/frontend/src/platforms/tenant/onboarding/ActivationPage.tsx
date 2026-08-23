@@ -25,6 +25,7 @@ import {
   readProfileDraft,
   writeProfileDraft,
 } from './activationTypes';
+import { buildPrefillPlan } from './onboardingPrefill';
 
 /**
  * Tenant activation flow, redesigned to match `Stayo Onboarding.dc.html`.
@@ -62,6 +63,8 @@ export function ActivationPage() {
   const [welcomeLocalPhase, setWelcomeLocalPhase] = useState<'welcome' | 'identity'>('welcome');
   /** Last ACCOUNT-submit failure, surfaced inline under the OTP box (design's `otpError` row). */
   const [accountOtpError, setAccountOtpError] = useState('');
+  /** The tenant tapped "Change" on the verified mobile — a fresh OTP is now due. */
+  const [phoneEdited, setPhoneEdited] = useState(false);
 
   const [account, setAccount] = useState({ password: '', confirm_password: '', phone: '', otp: '', email: '' });
   const [otpSent, setOtpSent] = useState(false);
@@ -127,13 +130,10 @@ export function ActivationPage() {
       setError('');
       setAccount((prev) => ({
         ...prev,
-        phone: prev.phone || phoneDigits(data.tenant?.phone_1 || data.profile?.phone),
-        // Pre-filled from whatever the owner captured at invite (which, for a
-        // lead-accepted tenant, traces back to the enquiry) — still editable,
-        // and submit's Gmail-format validation is unchanged, so a non-Gmail
-        // invite email just shows up ready to correct rather than retyped
-        // from scratch.
-        email: prev.email || String(data.profile?.email || ''),
+        // `known` is the person; `tenant`/`profile` is the tenancy snapshot the
+        // owner typed. Prefer the person.
+        phone: prev.phone || phoneDigits(data.known?.phone || data.tenant?.phone_1 || data.profile?.phone),
+        email: prev.email || String(data.known?.email || data.profile?.email || ''),
       }));
 
       const backendProfile: ProfileDraft = {
@@ -186,6 +186,11 @@ export function ActivationPage() {
   const completed = new Set(ctx?.completed_steps ?? ctx?.activation_state?.completed_steps ?? []);
   const activeStep = (visibleStep || currentStep) as ActivationStep | undefined;
   const isStudent = String(profile.profile_type || ctx?.tenant?.profile_type || 'STUDENT').toUpperCase() === 'STUDENT';
+  const prefillPlan = buildPrefillPlan({
+    known: ctx?.known,
+    profileType: isStudent ? 'STUDENT' : 'WORKING_PROFESSIONAL',
+    phoneEdited,
+  });
   const activationStageIndex = activationProgress < 40 ? 0 : activationProgress < 78 ? 1 : 2;
   const activationProgressWidth = `${Math.max(8, Math.round(activationProgress))}%`;
 
@@ -315,11 +320,14 @@ export function ActivationPage() {
     setAccountOtpError('');
     const emailVal = (account.email || '').trim().toLowerCase();
     if (!emailVal) {
-      setError('Gmail ID is required');
+      setError('An email address is required');
       return false;
     }
-    if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(emailVal)) {
-      setError('Please enter a valid Gmail ID (e.g. name@gmail.com)');
+    // Any real address, not just Gmail: the owner may well have invited this
+    // person on a college or work address, and rejecting it made them retype a
+    // perfectly good one.
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailVal)) {
+      setError('Please enter a valid email address');
       return false;
     }
     const ok = await submitStep('ACCOUNT', account);
@@ -580,6 +588,8 @@ export function ActivationPage() {
             onExitToIntro={() => setScreen('intro')}
             localPhase={welcomeLocalPhase}
             setLocalPhase={setWelcomeLocalPhase}
+            prefill={prefillPlan}
+            onUnlockPhone={() => setPhoneEdited(true)}
           />
         )}
 
