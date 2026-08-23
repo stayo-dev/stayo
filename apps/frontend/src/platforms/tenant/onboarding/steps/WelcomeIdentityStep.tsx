@@ -46,12 +46,8 @@ interface WelcomeIdentityStepProps {
   activeStep: 'ACCOUNT' | 'PROFILE';
   accountVerified: boolean;
   profileCompleted: boolean;
-  account: { phone: string; otp: string; email: string };
-  setAccount: (next: { phone: string; otp: string; email: string; password: string; confirm_password: string }) => void;
-  otpSent: boolean;
-  otpSending: boolean;
-  otpCountdown: number;
-  onSendOtp: () => void;
+  account: { phone: string; email: string };
+  setAccount: (next: { phone: string; email: string; password: string; confirm_password: string }) => void;
   paymentFrequency: string;
   setPaymentFrequency: (v: string) => void;
   profile: ProfileDraft;
@@ -77,8 +73,6 @@ interface WelcomeIdentityStepProps {
   goToStep: (step: ActivationStep) => void;
   /** Total visual stages — 4 when the hostel has `agreement_required: false`. */
   stageCount: number;
-  /** Inline OTP failure from the last ACCOUNT submit, shown under the code box. */
-  otpError?: string;
   /** Step 1's back tile leaves the wizard for the intro splash, per the design. */
   onExitToIntro: () => void;
   /**
@@ -225,10 +219,6 @@ export function WelcomeIdentityStep({
   profileCompleted,
   account,
   setAccount,
-  otpSent,
-  otpSending,
-  otpCountdown,
-  onSendOtp,
   paymentFrequency,
   setPaymentFrequency,
   profile,
@@ -253,7 +243,6 @@ export function WelcomeIdentityStep({
   onSubmitProfile,
   goToStep,
   stageCount,
-  otpError,
   onExitToIntro,
   localPhase,
   setLocalPhase,
@@ -339,7 +328,7 @@ export function WelcomeIdentityStep({
       }
     };
     const isBusy = busy || submitting;
-    const canSubmit = showAccountFields ? otpSent && account.otp.length === 6 : true;
+    const canSubmit = showAccountFields ? account.phone.length === 10 : true;
 
     return (
       <form onSubmit={handleSubmit} style={{ animation: 'obFade .25s ease' }}>
@@ -401,35 +390,29 @@ export function WelcomeIdentityStep({
               <div className="text-[12.5px] font-bold" style={{ color: '#3A342E' }}>
                 Primary Mobile <span style={{ color: '#D0473A' }}>*</span>
               </div>
-              <div className="mt-1.5">
-                <PhoneField
+              <div className="mt-1.5 flex items-center gap-2.5" style={{ ...cardWrap, border: `1.5px solid ${accountVerified ? '#1F9D57' : account.phone.length === 10 ? '#B46A55' : '#E7DDCE'}`, transition: 'border-color .2s' }}>
+                <span className="flex-none text-sm font-bold" style={{ color: '#8A7F75' }}>
+                  +91
+                </span>
+                <div className="h-5 w-px flex-none" style={{ background: '#E0D5C6' }} />
+                <input
+                  type="tel"
+                  inputMode="numeric"
                   value={account.phone}
-                  onChange={(v) => setAccount({ ...account, phone: v })}
+                  onChange={(e) => setAccount({ ...account, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
                   placeholder="10-digit mobile number"
-                  verified={accountVerified}
-                  onSend={onSendOtp}
-                  sending={otpSending}
-                  countdown={otpCountdown}
-                  sent={otpSent}
+                  className="min-w-0 flex-1 text-sm font-semibold"
+                  style={inputBase}
                 />
               </div>
               {account.phone.length > 0 && account.phone.length < 10 && (
                 <div className="mt-1.5 text-[11.5px] font-medium" style={{ color: '#8A7F75' }}>
-                  {10 - account.phone.length} more digit{10 - account.phone.length === 1 ? '' : 's'} to verify
+                  {10 - account.phone.length} more digit{10 - account.phone.length === 1 ? '' : 's'}
                 </div>
               )}
-              {otpSent && (
-                <OtpBlock
-                  phone={account.phone}
-                  otp={account.otp}
-                  setOtp={(v) => setAccount({ ...account, otp: v })}
-                  onResend={onSendOtp}
-                  sending={otpSending}
-                  countdown={otpCountdown}
-                  helperText="We sent a verification code to your mobile number."
-                  error={otpError}
-                />
-              )}
+              <div className="mt-1.5 text-[11.5px]" style={{ color: '#8A7F75' }}>
+                Used for hostel contact — no verification code needed.
+              </div>
             </div>
 
             <div className="mt-3.5">

@@ -1012,28 +1012,14 @@ export class ActivationWorkflowService {
     );
     if (!primaryPhone) throw new Error("VALIDATION_ERROR: Valid primary phone is required");
 
-    const isAlreadyVerified = Boolean(
-      (profile?.mobile_verified || profile?.phone_verified || tenant?.mobile_verified) &&
-      (profile?.phone === primaryPhone || tenant?.phone_1 === primaryPhone)
-    );
-
-    if (!isAlreadyVerified) {
-      const otp = String(data?.otp || "").trim();
-      if (!otp) {
-        throw new Error("VALIDATION_ERROR: Verification code is required to verify your mobile number");
-      }
-
-      try {
-        await authOtpService.verifyPhoneOtp({
-          phone: primaryPhone,
-          otp,
-          purpose: "Registration",
-          requestIp: null,
-        });
-      } catch (otpErr: any) {
-        throw new Error(`VALIDATION_ERROR: Mobile verification failed: ${otpErr.message || "Invalid or expired code"}`);
-      }
-    }
+    // The tenant's primary phone is contact information supplied by the owner
+    // at invite time, not an authentication factor — activation does not
+    // require the tenant to prove ownership of it (no OTP send/verify here).
+    // `mobile_verified`/`phone_verified` are still set true below; they gate
+    // `assertTransition()`'s activation-step-machine progression, not a real
+    // ownership proof (see `tenant-invitation-lifecycle-service.ts`'s
+    // `startActivation`, which already set these unconditionally with no
+    // OTP for first-time invitees before this change).
 
     if (!profile && invitation) {
       await tenantInvitationLifecycleService.startActivation(token, {

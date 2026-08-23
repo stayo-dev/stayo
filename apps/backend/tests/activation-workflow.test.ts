@@ -147,7 +147,7 @@ vi.mock("@/lib/services/event-log-service", () => ({
   },
 }));
 
-describe("ActivationWorkflowService OTP Hardening", () => {
+describe("ActivationWorkflowService — tenant primary-phone activation (no OTP required)", () => {
   let activationService: ActivationWorkflowService;
 
   beforeEach(() => {
@@ -155,45 +155,7 @@ describe("ActivationWorkflowService OTP Hardening", () => {
     activationService = new ActivationWorkflowService();
   });
 
-  it("should fail ACCOUNT step if no OTP is provided", async () => {
-    const mockTenant = { id: "tenant-1", status: "INVITED", phone_1: "918008046952", hostel_id: "hostel-1" };
-    const mockProfile = { id: "profile-1", phone: "918008046952" };
-    const mockInvitation = { id: "invite-1", email: "tenant@example.com", phone: "918008046952" };
-
-    vi.mocked(tenantInvitationLifecycleService.resolveByToken).mockResolvedValue({
-      source: "tenant_invitations",
-      invitation: mockInvitation,
-      profile: mockProfile,
-      tenant: mockTenant,
-      token: "test-token",
-    } as any);
-
-    await expect(
-      activationService.mutate("test-token", "ACCOUNT", { password: "Password123!", confirm_password: "Password123!" }, { ip: "127.0.0.1", userAgent: "test" })
-    ).rejects.toThrow("VALIDATION_ERROR: Verification code is required to verify your mobile number");
-  });
-
-  it("should fail ACCOUNT step if OTP verification throws error", async () => {
-    const mockTenant = { id: "tenant-1", status: "INVITED", phone_1: "918008046952", hostel_id: "hostel-1" };
-    const mockProfile = { id: "profile-1", phone: "918008046952" };
-    const mockInvitation = { id: "invite-1", email: "tenant@example.com", phone: "918008046952" };
-
-    vi.mocked(tenantInvitationLifecycleService.resolveByToken).mockResolvedValue({
-      source: "tenant_invitations",
-      invitation: mockInvitation,
-      profile: mockProfile,
-      tenant: mockTenant,
-      token: "test-token",
-    } as any);
-
-    vi.mocked(authOtpService.verifyPhoneOtp).mockRejectedValueOnce(new Error("Invalid code"));
-
-    await expect(
-      activationService.mutate("test-token", "ACCOUNT", { password: "Password123!", confirm_password: "Password123!", otp: "123456" }, { ip: "127.0.0.1", userAgent: "test" })
-    ).rejects.toThrow("VALIDATION_ERROR: Mobile verification failed: Invalid code");
-  });
-
-  it("should succeed ACCOUNT step if valid OTP is provided", async () => {
+  it("should succeed ACCOUNT step with no OTP field at all", async () => {
     const mockTenant = {
       id: "tenant-1",
       status: "INVITED",
@@ -230,17 +192,57 @@ describe("ActivationWorkflowService OTP Hardening", () => {
       content_snapshot: {},
     } as any);
 
-    vi.mocked(authOtpService.verifyPhoneOtp).mockResolvedValue(true as any);
-
-    // Run mutate and check that it doesn't throw
-    const res = await activationService.mutate("test-token", "ACCOUNT", { password: "Password123!", confirm_password: "Password123!", otp: "123456", email: "tenant@gmail.com" }, { ip: "127.0.0.1", userAgent: "test" });
+    // The tenant's primary phone is owner-supplied contact info, not an
+    // auth factor — no `otp` field is submitted, and activation must not
+    // call authOtpService for it (ADR: phone-OTP removed from tenant
+    // activation; guardian-phone OTP, a separate purpose, is unaffected).
+    const res = await activationService.mutate("test-token", "ACCOUNT", { password: "Password123!", confirm_password: "Password123!", email: "tenant@gmail.com" }, { ip: "127.0.0.1", userAgent: "test" });
     expect(res).toBeDefined();
-    expect(authOtpService.verifyPhoneOtp).toHaveBeenCalledWith({
-      phone: "+918008046952",
-      otp: "123456",
-      purpose: "Registration",
-      requestIp: null,
-    });
+    expect(authOtpService.verifyPhoneOtp).not.toHaveBeenCalled();
+  });
+
+  it("should succeed ACCOUNT step even if a stray otp field is submitted (ignored, not verified)", async () => {
+    const mockTenant = {
+      id: "tenant-1",
+      status: "INVITED",
+      phone_1: "918008046952",
+      hostel_id: "hostel-1",
+      hostels: { name: "Hostel 1", rent_cycle: "MONTHLY", auto_rent_day: 1, preferences: {} },
+      rule_acceptances: [],
+      agreements: [],
+      room_allocations: [],
+    };
+    const mockProfile = { id: "profile-1", phone: "918008046952" };
+    const mockInvitation = { id: "invite-1", email: "tenant@example.com", phone: "918008046952", reservations: [] };
+
+    vi.mocked(tenantInvitationLifecycleService.resolveByToken).mockResolvedValue({
+      source: "tenant_invitations",
+      invitation: mockInvitation,
+      profile: mockProfile,
+      tenant: mockTenant,
+      token: "test-token",
+    } as any);
+
+    vi.mocked(prisma.roomAllocation.count).mockResolvedValue(0);
+    vi.mocked(prisma.ruleVersion.findFirst).mockResolvedValue({ id: "rule-1", title: "Rules", content: {} } as any);
+    vi.mocked(prisma.agreementTemplate.findFirst).mockResolvedValue({
+      id: "template-1",
+      title: "Agreement",
+      custom_rules: [],
+      owner_name: "Owner",
+      owner_signature_url: "http://sig.com",
+    } as any);
+    vi.mocked(prisma.agreement.create).mockResolvedValue({
+      id: "agreement-1",
+      status: "DRAFT",
+      content_snapshot: {},
+    } as any);
+
+    // A leftover/garbage `otp` value (e.g. an older client) must not be
+    // verified or block activation — it's simply unused.
+    const res = await activationService.mutate("test-token", "ACCOUNT", { password: "Password123!", confirm_password: "Password123!", otp: "000000", email: "tenant@gmail.com" }, { ip: "127.0.0.1", userAgent: "test" });
+    expect(res).toBeDefined();
+    expect(authOtpService.verifyPhoneOtp).not.toHaveBeenCalled();
   });
 
   it("should succeed on ACCOUNT step even if no password is provided", async () => {
@@ -280,9 +282,7 @@ describe("ActivationWorkflowService OTP Hardening", () => {
       content_snapshot: {},
     } as any);
 
-    vi.mocked(authOtpService.verifyPhoneOtp).mockResolvedValue(true as any);
-
-    const res = await activationService.mutate("test-token", "ACCOUNT", { otp: "123456", email: "tenant@gmail.com" }, { ip: "127.0.0.1", userAgent: "test" });
+    const res = await activationService.mutate("test-token", "ACCOUNT", { email: "tenant@gmail.com" }, { ip: "127.0.0.1", userAgent: "test" });
     expect(res).toBeDefined();
   });
 
