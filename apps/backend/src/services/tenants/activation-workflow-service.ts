@@ -26,6 +26,8 @@ import {
   assertAgreementLifecycleComplete,
   buildOnboardingAgreementLifecycle,
 } from "./agreement-lifecycle-completeness";
+import { profileIdentityService } from "../profile/profile-identity-service";
+import { buildKnown } from "./onboarding-known";
 
 type ActivationStep = "ACCOUNT" | "RULES" | "AGREEMENT" | "PROFILE" | "ACTIVATE";
 type ResolvedInvitation = { profile: any | null; tenant: any; invitation?: any | null; token: string; source?: string };
@@ -579,6 +581,14 @@ export class ActivationWorkflowService {
       })
       : null;
 
+    // The portable profile (phase B). `resolveInvitation()` already gave us the
+    // profile, so this needs no session — which is what lets the public,
+    // token-authenticated activation route serve prefill at all. Failing soft:
+    // a person with no profile row still gets the form, just not pre-filled.
+    const identity = profile?.id
+      ? await profileIdentityService.getIdentity(profile.id).catch(() => null)
+      : null;
+
     return {
       token_status: "VALID",
       verification_status: {
@@ -597,6 +607,18 @@ export class ActivationWorkflowService {
         email: profile?.email || invitation?.email || null,
         phone: profile?.phone || invitation?.phone || tenant.phone_1 || null,
       },
+      /**
+       * What we already know about this person, so the form can ask only for
+       * what we don't. Additive: `profile` and `tenant` above keep their exact
+       * previous shape, because the frozen legacy activation page still reads
+       * them.
+       */
+      known: buildKnown({
+        profile,
+        tenant,
+        invitation,
+        identity,
+      }),
       tenant: {
         id: tenant.id,
         profile_type: tenant.profile_type,
