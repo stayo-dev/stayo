@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
 import { resolveError, toErrorLine } from '@shared/errors';
@@ -60,13 +60,8 @@ export function ActivationPage() {
   const [photoUploading, setPhotoUploading] = useState(false);
   const [paymentFrequency, setPaymentFrequency] = useState('MONTHLY');
   const [welcomeLocalPhase, setWelcomeLocalPhase] = useState<'welcome' | 'identity'>('welcome');
-  /** Last ACCOUNT-submit failure, surfaced inline under the OTP box (design's `otpError` row). */
-  const [accountOtpError, setAccountOtpError] = useState('');
 
-  const [account, setAccount] = useState({ password: '', confirm_password: '', phone: '', otp: '', email: '' });
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpSending, setOtpSending] = useState(false);
-  const [otpCountdown, setOtpCountdown] = useState(0);
+  const [account, setAccount] = useState({ password: '', confirm_password: '', phone: '', email: '' });
 
   const [guardianOtpSent, setGuardianOtpSent] = useState(false);
   const [guardianOtpSending, setGuardianOtpSending] = useState(false);
@@ -95,12 +90,6 @@ export function ActivationPage() {
   // legacy page navigated immediately, this adds the design's summary beat.
   const [activationResult, setActivationResult] = useState<{ session: any; redirect_to?: string } | null>(null);
   const [entering, setEntering] = useState(false);
-
-  useEffect(() => {
-    if (otpCountdown <= 0) return;
-    const timer = window.setTimeout(() => setOtpCountdown((c) => c - 1), 1000);
-    return () => window.clearTimeout(timer);
-  }, [otpCountdown]);
 
   useEffect(() => {
     if (guardianOtpCountdown <= 0) return;
@@ -234,12 +223,9 @@ export function ActivationPage() {
     }
   };
 
-  const lastStepErrorRef = useRef('');
-
   const submitStep = async (step: ActivationStep, data: Record<string, unknown>) => {
     setSubmitting(true);
     setError('');
-    lastStepErrorRef.current = '';
     try {
       const result = await tenantService.updateActivationWorkflow({ token, step, data });
       if (step === 'ACTIVATE') {
@@ -251,7 +237,6 @@ export function ActivationPage() {
       return true;
     } catch (err: unknown) {
       const message = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message || 'Could not save this step';
-      lastStepErrorRef.current = message;
       setError(message);
       return false;
     } finally {
@@ -295,24 +280,7 @@ export function ActivationPage() {
     navigate(activationResult?.redirect_to || '/login?signin=1', { replace: true });
   };
 
-  const handleSendOtp = async () => {
-    const phone = account.phone.trim();
-    if (!phone) return setError('Please enter your primary mobile number first.');
-    setOtpSending(true);
-    setError('');
-    try {
-      await tenantService.sendPhoneOtp({ phone, purpose: 'Registration' });
-      setOtpSent(true);
-      setOtpCountdown(60);
-    } catch (err: any) {
-      setError(toErrorLine(resolveError(err, 'activation')));
-    } finally {
-      setOtpSending(false);
-    }
-  };
-
   const submitAccount = async (): Promise<boolean> => {
-    setAccountOtpError('');
     const emailVal = (account.email || '').trim().toLowerCase();
     if (!emailVal) {
       setError('Gmail ID is required');
@@ -322,9 +290,7 @@ export function ActivationPage() {
       setError('Please enter a valid Gmail ID (e.g. name@gmail.com)');
       return false;
     }
-    const ok = await submitStep('ACCOUNT', account);
-    if (!ok) setAccountOtpError(lastStepErrorRef.current || 'Incorrect code — please try again');
-    return ok;
+    return submitStep('ACCOUNT', account);
   };
 
   const handleSendGuardianOtp = async () => {
@@ -548,10 +514,6 @@ export function ActivationPage() {
             profileCompleted={completed.has('PROFILE') || Boolean(ctx.activation_state?.profile_completed)}
             account={account}
             setAccount={setAccount}
-            otpSent={otpSent}
-            otpSending={otpSending}
-            otpCountdown={otpCountdown}
-            onSendOtp={handleSendOtp}
             paymentFrequency={paymentFrequency}
             setPaymentFrequency={setPaymentFrequency}
             profile={profile}
@@ -576,7 +538,6 @@ export function ActivationPage() {
             onSubmitProfile={submitProfile}
             goToStep={goToStep}
             stageCount={ctx.activation_state?.agreement_required === false ? 4 : 5}
-            otpError={accountOtpError}
             onExitToIntro={() => setScreen('intro')}
             localPhase={welcomeLocalPhase}
             setLocalPhase={setWelcomeLocalPhase}
