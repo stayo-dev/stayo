@@ -840,20 +840,35 @@ export class AdmissionsService {
     const name = cleanString(input.name, 200) || lead.student_name;
     const phone = input.phone ? normalizeIndianPhone(input.phone) || lead.student_phone : lead.student_phone;
 
-    const result: any = await invitationService.inviteTenant({
-      email,
-      name,
-      phone,
-      room_id: roomId,
-      monthly_rent: input.monthly_rent,
-      advance_amount: input.advance_amount,
-      maintenance_amount: input.maintenance_amount,
-      joining_date: input.joining_date,
-      maintenance_type: input.maintenance_type,
-      agreement_duration_months: input.agreement_duration_months,
-      agreement_start_date: input.agreement_start_date,
-      payment_frequency: input.payment_frequency,
-    }, ownerId);
+    let result: any;
+    try {
+      result = await invitationService.inviteTenant({
+        email,
+        name,
+        phone,
+        room_id: roomId,
+        monthly_rent: input.monthly_rent,
+        advance_amount: input.advance_amount,
+        maintenance_amount: input.maintenance_amount,
+        joining_date: input.joining_date,
+        maintenance_type: input.maintenance_type,
+        agreement_duration_months: input.agreement_duration_months,
+        agreement_start_date: input.agreement_start_date,
+        payment_frequency: input.payment_frequency,
+      }, ownerId);
+    } catch (error: any) {
+      // tenantInvitationLifecycleService throws plain `Error("VALIDATION_ERROR: ...")`
+      // (its own established convention, e.g. startActivation's email-conflict
+      // guard) — this route's ApiResponse.error only recognizes ApiError
+      // instances and a narrower "VALIDATION:" prefix, so an unwrapped
+      // VALIDATION_ERROR here would surface as a raw 500. Re-throw as a real
+      // ApiError so it reaches the owner as the clean 422 it already is.
+      const msg = typeof error?.message === "string" ? error.message : "";
+      if (msg.startsWith("VALIDATION_ERROR:")) {
+        throw ApiError.validationError(msg.replace("VALIDATION_ERROR:", "").trim());
+      }
+      throw error;
+    }
 
     const tenantId = result?.tenant_id || result?.tenant?.id || null;
     const updated = await prisma.visitorLead.update({

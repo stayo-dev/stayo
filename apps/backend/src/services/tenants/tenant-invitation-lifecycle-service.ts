@@ -30,6 +30,24 @@ function normalizeEmail(email: unknown) {
   return String(email || "").trim().toLowerCase();
 }
 
+/**
+ * Same guard as startActivation()'s email-conflict check below: a profile
+ * update must never silently reassign an email another profile already owns
+ * (`profile.email` is globally unique) — that's a raw Prisma P2002, not a
+ * validation error, if left unchecked. Takes `tx` so callers inside a
+ * transaction see a consistent snapshot; a normal `prisma` client works too.
+ */
+export async function assertEmailAvailableForProfile(
+  db: { profile: { findUnique: (args: { where: { email: string } }) => Promise<{ id: string } | null> } },
+  targetProfileId: string,
+  normalizedEmail: string,
+) {
+  const emailOwner = await db.profile.findUnique({ where: { email: normalizedEmail } });
+  if (emailOwner && emailOwner.id !== targetProfileId) {
+    throw new Error("VALIDATION_ERROR: An account with this email address already exists. Please use a different email address.");
+  }
+}
+
 function moneyNumber(value: unknown, fallback = 0) {
   const number = Number(value ?? fallback);
   return Number.isFinite(number) ? number : fallback;
@@ -551,12 +569,21 @@ export class TenantInvitationLifecycleService {
 
       // 4. Update profiles if profile_id exists
       if (invitation.tenant.profile_id) {
+        const normalizedEmail = email ? normalizeEmail(email) : undefined;
+        // A dangling invitation for this phone (found by the activeExisting
+        // lookup above) can carry a profile_id from an earlier, unrelated
+        // ACTIVATION_STARTED attempt — writing this invitation's email onto
+        // that profile would collide with whichever profile already owns it
+        // (e.g. the lead's own seeker_profile_id).
+        if (normalizedEmail) {
+          await assertEmailAvailableForProfile(tx, invitation.tenant.profile_id, normalizedEmail);
+        }
         await tx.profile.update({
           where: { id: invitation.tenant.profile_id },
           data: {
             ...(overrides?.name ? { name: String(overrides.name).trim() } : {}),
             ...(phone ? { phone: normalizeIndianPhone(phone) } : {}),
-            ...(email ? { email: normalizeEmail(email) } : {}),
+            ...(normalizedEmail ? { email: normalizedEmail } : {}),
             updated_at: new Date(),
           },
         });

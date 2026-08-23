@@ -51,6 +51,7 @@ vi.mock('@/src/services/tenants/invitation-service', () => ({
 }));
 
 import { AdmissionsService } from '@/src/services/admissions/admissions-service';
+import { ApiError } from '@/src/lib/api-error';
 
 function leadFixture(overrides: any = {}) {
   return {
@@ -248,5 +249,38 @@ describe('AdmissionsService.convertToInvitation', () => {
       expect.objectContaining({ name: 'Harsha Corrected', phone: '+919123456789' }),
       'owner-1'
     );
+  });
+
+  it('turns a VALIDATION_ERROR from invitationService into a clean 422 ApiError, not a raw 500', async () => {
+    // Reproduces the bug: resendInvitation's email-conflict guard (a plain
+    // Error("VALIDATION_ERROR: ...") — tenant-invitation-lifecycle-service.ts's
+    // own convention, same as startActivation's) must not leak past this
+    // boundary as an unhandled 500 via ApiResponse.error, which only
+    // recognizes real ApiError instances and a narrower "VALIDATION:" prefix.
+    mockPrisma.visitorLead.findFirst.mockResolvedValue(acceptedLead());
+    mockInviteTenant.mockRejectedValue(
+      new Error('VALIDATION_ERROR: An account with this email address already exists. Please use a different email address.')
+    );
+
+    const service = new AdmissionsService();
+    const attempt = service.convertToInvitation('lead-1', 'owner-1', { room_id: 'room-1' });
+
+    await expect(attempt).rejects.toBeInstanceOf(ApiError);
+    await attempt.catch((error: ApiError) => {
+      expect(error.statusCode).toBe(422);
+      expect(error.code).toBe('VALIDATION_ERROR');
+      expect(error.message).toBe('An account with this email address already exists. Please use a different email address.');
+      expect(error.message).not.toContain('VALIDATION_ERROR:');
+    });
+  });
+
+  it('passes through non-VALIDATION_ERROR failures from invitationService unchanged', async () => {
+    mockPrisma.visitorLead.findFirst.mockResolvedValue(acceptedLead());
+    mockInviteTenant.mockRejectedValue(new Error('CAPACITY_EXCEEDED: Room is full'));
+
+    const service = new AdmissionsService();
+    await expect(
+      service.convertToInvitation('lead-1', 'owner-1', { room_id: 'room-1' })
+    ).rejects.toThrow('CAPACITY_EXCEEDED: Room is full');
   });
 });
