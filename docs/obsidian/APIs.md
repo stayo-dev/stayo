@@ -209,6 +209,25 @@ Added 2026-08-23 ([[Decisions#ADR-090|ADR-090]]). The owner's view of money Stay
 
 Outstanding on the month block is **composed from `collectionQueueService.getQueue`**, not recomputed — so the strip and the dues list beneath it cannot disagree. See [[Business-Rules]].
 
+## Owner Money Exports (`/api/owner/exports*`)
+
+Added 2026-08-23 ([[Decisions#ADR-093|ADR-093]]). One export surface for the whole Money tab — collections, payouts and expenses.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/owner/exports?document=&preset=\|from=&to=&hostelId=` | Returns the finished file |
+| GET | `/api/owner/exports/preview?…` | `{count, total, noun, period}` — what would be in that file |
+
+`document` is one of `accountant` (xlsx) · `proof_of_income` (pdf) · `reconciliation` (xlsx) · `who_owes_me` (pdf). **The caller does not choose a format** — the document determines it ([[Decisions#ADR-093|ADR-093]]).
+
+**Periods are sent by name, not as dates.** `preset` is `this_month` | `last_month` | `this_fy` | `last_fy`, resolved server-side by `src/services/exports/financial-year.ts`, so "this financial year" always means **April–March** whatever a client believes a year is ([[Decisions#ADR-095|ADR-095]]). A custom range uses `from`/`to` and is **rejected** when reversed or malformed rather than silently repaired.
+
+Both routes share `parseExportRequest` from `src/services/exports/export-request.ts` — a preview that counted a different period than the file it previews would be worse than no preview. The helper lives outside the route modules because Next's App Router treats a route module's exports as handlers.
+
+Owner-scoped via `resolveOwnerScope`; `hostelId` is ownership-checked with `assertHostelBelongsToOwner` rather than trusted — it is the one caller-supplied value that could otherwise reach another owner's data. Rate-limited to **10 exports/minute**, matching `/api/expenses/export`.
+
+`/api/expenses/export` is unchanged and still live; the owner-facing *UI* for it was replaced (see [[Features]]).
+
 ## Owner — Misc
 
 `/api/owner/search` (navbar search), `/api/owner/integrity` (**no auth guard found in the file — flag**), `/api/owner/whatsapp/connections` (GET, DELETE `/[connectionId]`), `/api/owner/whatsapp/link-code`, `/api/owners/invitations` (**near-duplicate of `/api/tenants/invite`** — same underlying call, OWNER-only not ADMIN, unclear why both exist), `/api/profiles/unassigned/tenants`, `/api/profiles/[id]`, `/api/profile`, `/api/profile/me`.

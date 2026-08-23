@@ -77,6 +77,8 @@ export default defineConfig({
       'tests/settlement-run-computation.test.ts',
       'tests/owner-payout-promise.test.ts',
       'tests/owner-payout-month.test.ts',
+      'tests/owner-export-financial-year.test.ts',
+      'tests/owner-export-documents.test.ts',
       'tests/settlement-transitions.test.ts',
       'tests/payout-account.test.ts',
       'tests/enquiry-template-contracts.test.ts',

@@ -1443,3 +1443,39 @@ Related: [[Business-Rules]] · [[APIs]] · [[Features]] · ADR-076 · ADR-040
   - `items()` falls back to a promise-less query; the summary uses `Promise.allSettled` so one unreadable column cannot blank the other three sources.
   - This makes `src/services` a place that writes raw SQL, so the `no $queryRawUnsafe` invariant was **extended to scan `src/services`** — CLAUDE.md points new domain services there, meaning the newest financial code in the repo had been sitting entirely outside that rule.
 - **See:** [[Database]], [[Architecture]], [[Bugs]]
+
+### ADR-093 — An export asks who it is for, not what format you want (2026-08-23)
+
+- **Status:** Accepted
+- **Context:** The existing `ExportExpensesModal` asked for a *scope* (current view / this month / all time) with the format hardcoded to Excel — a data-dump model. But looking at what an owner actually does with an export, **every single use is handing the file to another person**: an accountant, a bank officer, a business partner, a hostel manager. Only bank reconciliation is for himself. He has no opinion about CSV versus XLSX; he knows it is for his CA.
+- **Decision:** The export sheet asks **what do you need it for** and offers four named documents — *For my accountant* (Excel), *Proof of income* (PDF), *Bank reconciliation* (Excel), *Who owes me* (PDF). Format, columns and period defaults are consequences of that answer, decided in code.
+- **Consequences:**
+  - **The settlements-versus-collections split dissolves.** The owner never picks a data domain; he picks what he is doing and the right rows follow. Four purposes span both, plus expenses.
+  - **Scope widened to include expenses**, because "for my accountant" is income *and* expenses — a CA cannot file from income alone. `ExportExpensesModal` is **deleted** rather than left as a second, inconsistent way to export from the same tab.
+  - The one capability dropped is the old modal's "Current view" scope — exporting exactly the filtered expense rows on screen. Purpose-first has no equivalent, and it was not re-added.
+  - The export entry point moved to the **Money tab header**, available from all three tabs, because the document rather than the tab is what is being chosen.
+- **See:** [[Features]], [[APIs]], [[Decisions#ADR-094|ADR-094]]
+
+### ADR-094 — A document handed to a lender never blends verified and self-reported money (2026-08-23)
+
+- **Status:** Accepted
+- **Context:** *Proof of income* exists so an owner can evidence his earnings to a bank — hostel income is famously undocumented, and this is genuinely the highest-value export in the set. But most of an owner's rent is cash or direct UPI **that he typed in himself**. Only gateway-collected money carries a payment-provider reference a third party can confirm.
+- **Decision:** The statement renders **two separate sections with their own subtotals** — *Verified by Stayo* ("collected through Stayo's payment gateway; each payment carries a payment-provider reference") and *Recorded by the owner* ("cash and direct UPI, entered by the owner. Stayo did not handle this money and cannot independently confirm it"). Never one blended figure with a footnote.
+- **Consequences:**
+  - A credit officer skims footnotes, so the **structure** has to carry the distinction rather than a note. Blending would present self-reported cash as third-party-verified income — the one way this feature could actively mislead someone.
+  - **Both sections always render, even when empty.** An absent section would quietly turn a mixed statement into one that reads as entirely verified.
+  - The rule is a pure function, `proofOfIncomeSections()`, not a string inside a PDF drawing call — a rule that only exists inside a renderer cannot be tested, and this one has to be.
+  - Excluding owner-recorded money entirely was rejected: it would understate real income badly and help nobody.
+- **See:** [[Business-Rules]], [[Features]], [[Decisions#ADR-093|ADR-093]]
+
+### ADR-095 — Financial-year presets resolve on the server (2026-08-23)
+
+- **Status:** Accepted
+- **Context:** India's financial year runs **1 April to 31 March**. A "this year" export running January to December is not slightly wrong for an accountant — it is useless, and the owner does not find out until his CA calls him in July. It is the single most likely way this feature fails silently.
+- **Decision:** Period presets are sent by **name** (`this_fy`, `last_fy`, `this_month`, `last_month`), never as resolved dates, and the server turns them into ranges via a pure, tested `financial-year.ts`. A custom range is **refused** if reversed or malformed rather than silently repaired.
+- **Consequences:**
+  - "This financial year" means April–March because the server says so, not because a browser agreed.
+  - The January case gets its own test: in January the *current* FY began in the previous calendar year, which a naive `year - 1` gets wrong.
+  - Silently repairing a reversed custom range would produce a document that looks right and covers the wrong period — worse than an error the owner can see and fix.
+- **See:** [[Business-Rules]], [[APIs]]
+

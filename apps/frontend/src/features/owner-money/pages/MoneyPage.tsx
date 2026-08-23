@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Upload } from 'lucide-react';
 import { QuickCollectModal } from '@features/owner-tenants/quick-collect/QuickCollectModal';
 import type { QuickCollectTenant } from '@features/owner-tenants/types';
 import type { MockExpense } from '@shared/mocks/expenses';
@@ -22,7 +22,7 @@ import { WhereItWentSection } from '../components/expenses/WhereItWentSection';
 import { ExpenseRow } from '../components/expenses/ExpenseRow';
 import { AddExpenseModal } from '../add-expense/AddExpenseModal';
 import { ExpenseFiltersModal, activeFilterCount } from '../filters/ExpenseFiltersModal';
-import { ExportExpensesModal } from '../export/ExportExpensesModal';
+import { ExportSheet } from '../export/ExportSheet';
 import { ExpenseDetailModal } from '../expense-detail/ExpenseDetailModal';
 
 function toQuickCollectTenant(t: MockTenant): QuickCollectTenant {
@@ -245,13 +245,25 @@ export function MoneyPage() {
             </select>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => (money.tab === 'expenses' ? handleOpenAddExpense() : money.openModal(null))}
-          className="rounded-xl bg-primary px-4 py-2.5 font-display text-[13px] font-bold text-primary-foreground"
-        >
-          {money.tab === 'expenses' ? '+ Add expense' : 'Collect rent'}
-        </button>
+        <div className="flex items-center gap-2">
+          {/* One export for the whole tab, not one per tab: the owner chooses a
+              document by who it is for, and the right rows follow. */}
+          <button
+            type="button"
+            onClick={() => money.openModal('export')}
+            aria-label="Export"
+            className="rounded-xl border border-border bg-card p-2.5 text-muted-foreground"
+          >
+            <Upload className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => (money.tab === 'expenses' ? handleOpenAddExpense() : money.openModal(null))}
+            className="rounded-xl bg-primary px-4 py-2.5 font-display text-[13px] font-bold text-primary-foreground"
+          >
+            {money.tab === 'expenses' ? '+ Add expense' : 'Collect rent'}
+          </button>
+        </div>
       </div>
 
       <div className="flex rounded-[11px] bg-[#EDE6DE] p-[3px]">
@@ -454,7 +466,14 @@ export function MoneyPage() {
         // preview the result rather than pretending to commit anything.
         resultCount={filteredExpenses.length}
       />
-      <ExportExpensesModal open={money.modal === 'export'} onClose={money.closeModal} filters={expenseFilters} search={expenseSearch} />
+      <ExportSheet
+        open={money.modal === 'export'}
+        onClose={money.closeModal}
+        hostels={real.hostelOptions}
+        // 'all' and 'business' are view sentinels, not hostel ids — the export
+        // takes a real id or nothing, so a sentinel can never reach a WHERE clause.
+        hostelId={hostelFilter === 'all' || hostelFilter === 'business' ? null : hostelFilter}
+      />
       <ExpenseDetailModal
         open={money.expenseDetail != null}
         expense={money.expenseDetail}

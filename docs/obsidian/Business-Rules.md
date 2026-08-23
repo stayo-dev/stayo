@@ -581,3 +581,15 @@ Conservation is structural: `settlement_item_transactions.transaction_id` is `UN
 The word **"settlement" never appears in owner-facing copy** — owners do not use it, the same reason Obligations were renamed to Charges. Internal identifiers stay `settlement_*`. `PENDING` and `PROCESSING` both read as "With Stayo": the difference is Stayo's workflow, not something an owner asked about. Every pending state is shown as a state **plus a date**, never "Processing".
 
 The strip's voice priority is **failed › paid today › pending › settled › never**. A failure outranks all good news, because an owner told only the pleasant half of the truth trusts the pleasant half less next time.
+
+## Money exports
+
+**Files:** `src/services/exports/financial-year.ts` (pure), `export-documents.ts` (pure — rendering, no I/O), `owner-money-export-service.ts` (gathering), `export-request.ts` (parsing). See [[Decisions#ADR-093|ADR-093]]–[[Decisions#ADR-095|ADR-095]].
+
+- **The financial year is April–March.** Presets resolve on the server; a January export's "this FY" began in the *previous* calendar year, which a naive `year - 1` gets wrong and which has its own test.
+- **A custom range is refused, not repaired.** Silently swapping reversed dates produces a document that looks right and covers the wrong period.
+- **Exports compose the read models the screens use** — `ownerPayoutReadModel.rentReceived` / `.payoutsForPeriod` and `collectionQueueService.getQueue`. Rent received uses the *same* definitions as the Money screen's month block (`payment_attempt_id IS NULL` for direct, captured `TENANT_RENT` for gateway), so an exported total and an on-screen total cannot disagree.
+- **Verified and owner-recorded money never merge into one figure** in proof of income — enforced by the pure `proofOfIncomeSections()`, which always returns both sections even when one is empty.
+- **The chase list is dated "as at generation", not to the export period.** An owner chasing rent wants who owes *today*; dating it to a past range would mislead him.
+- **Rendering is separated from gathering** so the risky half — pdf-lib throws outright on any glyph its font cannot encode — is testable with no database.
+

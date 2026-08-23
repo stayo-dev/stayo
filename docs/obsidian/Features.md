@@ -699,3 +699,29 @@ On a failed transfer the strip leads with it and carries a **one-tap route into 
 **Notifications** ([[Backend]] `payout-notifications.ts`) fire on three moments — a tenant paid, the payout is on its way (carrying the committed date), it reached the bank (carrying the UTR) — plus a failure message that states the cause and that the money is still safe. In-app only; the WhatsApp equivalents need Meta template approval and must not gate this.
 
 **Deferred:** statement export (PDF/CSV) for a CA or a working-capital loan application.
+
+## Money export — four documents, chosen by purpose (2026-08-23)
+
+One **Export** action in the Money tab header, available from all three tabs. It asks *what do you need it for*, not what format you want ([[Decisions#ADR-093|ADR-093]]):
+
+| He picks | He gets |
+|---|---|
+| **For my accountant** | Excel — *Report* / *Rent received* / *Expenses* / *Summary* sheets, month by month |
+| **Proof of income** | PDF — for a bank, landlord or partner |
+| **Bank reconciliation** | Excel — one row per payout with its reference, tenants indented underneath |
+| **Who owes me** | PDF — printable chase list, ordered by the collection queue's existing priority |
+
+Choosing the purpose **dissolves the collections-versus-payouts split** — the owner never picks a data domain. It also pulled expenses in, since a CA cannot file from income alone; the old scope-and-format `ExportExpensesModal` is deleted rather than left as a second way to export from the same tab.
+
+**Proof of income keeps verified and self-reported money in separate sections** with their own subtotals, always both present ([[Decisions#ADR-094|ADR-094]]).
+
+**Period presets are financial-year aware** — This month / Last month / This FY / Last FY / Custom, resolved server-side ([[Decisions#ADR-095|ADR-095]]).
+
+**Every document carries its own provenance**: period, hostels, row count, total, generated-at, and *"Figures as recorded in Stayo."* Nobody should have to trust that nothing got truncated.
+
+**A preflight line says what is in the file before it is built** — "1,247 payments · ₹14,80,000" — so an owner can tell it is the right thing without opening it. An empty period says so in words rather than showing "0 payments · ₹0", which reads like a fault.
+
+**Share uses the Web Share API** (`navigator.share({ files })`), which reaches WhatsApp through the OS sheet — a `wa.me` link cannot carry a file. Where unsupported, the button is not shown and Download stands alone rather than promising something it cannot deliver.
+
+**Two PDF constraints worth knowing:** pdf-lib's standard fonts are WinAnsi, so money is written `Rs.` and never `₹`, and tenant names are sanitised — a Telugu or Devanagari name would otherwise throw and fail the chase list for exactly the owners most likely to have one.
+

@@ -1,7 +1,11 @@
+import { Prisma } from "@prisma/client";
+import type { RentReceivedRow, PayoutWithTenants } from "@/src/services/exports/export-documents";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { collectionQueueService } from "@/lib/services/collection-queue/collection-queue-service";
 import { assembleMonth, type MonthBlock } from "./owner-payout-month";
+
+export type { RentReceivedRow, PayoutWithTenants };
 import { scorePromises, istDateOf, type PromiseRecord } from "./payout-promise";
 
 /**
@@ -503,6 +507,132 @@ export class OwnerPayoutReadModel {
       byHostel: byHostel.sort((a, b) => b.amount - a.amount),
       bank: await this.bank(ownerId),
     };
+  }
+
+  /**
+   * Every rupee of rent received in a period, tagged by how provable it is.
+   *
+   * The split is the whole point. `verified` money was captured by the payment
+   * gateway and carries a bank reference somebody else can confirm;
+   * `owner_recorded` is cash and direct UPI that the owner typed in himself. A
+   * document handed to a lender must keep those apart — blending them presents
+   * self-reported income as third-party-verified, which is the one way an
+   * export like this could actively mislead.
+   *
+   * Both halves use the SAME definitions as the Money screen's month block
+   * (`payment_attempt_id IS NULL` for direct, captured TENANT_RENT for gateway),
+   * so an exported total and an on-screen total cannot disagree.
+   */
+  async rentReceived(
+    ownerId: string,
+    period: { from: string; to: string },
+    hostelId: string | null,
+  ): Promise<RentReceivedRow[]> {
+    const hostelClause = hostelId ? Prisma.sql`AND p.hostel_id = ${hostelId}::uuid` : Prisma.empty;
+    const gwHostelClause = hostelId ? Prisma.sql`AND g.hostel_id = ${hostelId}::uuid` : Prisma.empty;
+
+    const [direct, gateway] = await Promise.all([
+      sql`
+        SELECT p.payment_date AS date, p.amount_paid AS amount, p.payment_method AS method,
+               p.reference_number AS reference,
+               COALESCE(pr.name, 'Unknown') AS tenant_name,
+               COALESCE(h.name, '') AS hostel_name
+        FROM payments p
+        LEFT JOIN tenants t   ON t.id = p.tenant_id
+        LEFT JOIN profiles pr ON pr.id = t.profile_id
+        LEFT JOIN hostels h   ON h.id = p.hostel_id
+        WHERE p.owner_id = ${ownerId}::uuid
+          AND p.payment_attempt_id IS NULL
+          AND p.payment_date >= ${period.from}::date
+          AND p.payment_date <= ${period.to}::date
+          ${hostelClause}
+        ORDER BY p.payment_date ASC`,
+      sql`
+        SELECT g.captured_at AS date, g.amount AS amount, 'Online' AS method,
+               g.provider_payment_id AS reference,
+               COALESCE(pr.name, 'Unknown') AS tenant_name,
+               COALESCE(h.name, '') AS hostel_name
+        FROM gateway_transactions g
+        LEFT JOIN tenants t   ON t.id = g.tenant_id
+        LEFT JOIN profiles pr ON pr.id = t.profile_id
+        LEFT JOIN hostels h   ON h.id = g.hostel_id
+        WHERE g.owner_id = ${ownerId}::uuid
+          AND g.purpose = 'TENANT_RENT'
+          AND g.status = 'CAPTURED'
+          AND g.captured_at >= ${period.from}::date
+          AND g.captured_at < (${period.to}::date + INTERVAL '1 day')
+          ${gwHostelClause}
+        ORDER BY g.captured_at ASC`,
+    ]);
+
+    const map = (rows: any[], source: RentReceivedRow["source"]): RentReceivedRow[] =>
+      rows.map((r) => ({
+        date: istDateOf(r.date),
+        tenantName: String(r.tenant_name),
+        hostelName: String(r.hostel_name ?? ""),
+        amount: num(r.amount),
+        method: String(r.method ?? ""),
+        reference: r.reference ? String(r.reference) : "",
+        source,
+      }));
+
+    return [...map(direct, "owner_recorded"), ...map(gateway, "verified")].sort((a, b) =>
+      a.date.localeCompare(b.date),
+    );
+  }
+
+  /**
+   * Payouts in a period, each with the tenants underneath it.
+   *
+   * Shaped for reconciliation against a passbook: one parent row per bank
+   * credit, children explaining it. One query rather than N+1 breakdown calls.
+   */
+  async payoutsForPeriod(
+    ownerId: string,
+    period: { from: string; to: string },
+  ): Promise<PayoutWithTenants[]> {
+    const rows = await sql`
+      SELECT si.id, si.amount, si.status, si.method, si.reference, si.paid_at,
+             g.amount AS txn_amount, g.captured_at,
+             COALESCE(pr.name, 'Unknown') AS tenant_name,
+             COALESCE(h.name, '') AS hostel_name
+      FROM settlement_items si
+      LEFT JOIN settlement_item_transactions sit ON sit.item_id = si.id
+      LEFT JOIN gateway_transactions g ON g.id = sit.transaction_id
+      LEFT JOIN tenants t   ON t.id = g.tenant_id
+      LEFT JOIN profiles pr ON pr.id = t.profile_id
+      LEFT JOIN hostels h   ON h.id = g.hostel_id
+      WHERE si.owner_id = ${ownerId}::uuid
+        AND COALESCE(si.paid_at, si.created_at) >= ${period.from}::date
+        AND COALESCE(si.paid_at, si.created_at) < (${period.to}::date + INTERVAL '1 day')
+      ORDER BY COALESCE(si.paid_at, si.created_at) DESC, g.captured_at ASC`;
+
+    const byId = new Map<string, PayoutWithTenants>();
+    for (const r of rows as any[]) {
+      const id = String(r.id);
+      let payout = byId.get(id);
+      if (!payout) {
+        payout = {
+          id,
+          amount: num(r.amount),
+          status: String(r.status),
+          method: r.method ?? null,
+          reference: r.reference ?? null,
+          paidAt: r.paid_at ? istDateOf(r.paid_at) : null,
+          tenants: [],
+        };
+        byId.set(id, payout);
+      }
+      if (r.tenant_name && r.txn_amount != null) {
+        payout.tenants.push({
+          name: String(r.tenant_name),
+          hostelName: String(r.hostel_name ?? ""),
+          amount: num(r.txn_amount),
+          date: r.captured_at ? istDateOf(r.captured_at) : "",
+        });
+      }
+    }
+    return Array.from(byId.values());
   }
 }
 
