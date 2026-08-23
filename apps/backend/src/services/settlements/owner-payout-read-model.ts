@@ -270,13 +270,29 @@ export class OwnerPayoutReadModel {
     }));
   }
 
+  /**
+   * The masked destination account, or null.
+   *
+   * Guarded, and it earns the guard: this is the least important field on the
+   * screen — four digits that help an owner match a payout to a passbook line —
+   * and an unguarded failure here took down the entire Money tab, amounts and
+   * all. Nothing decorative gets to fail a money screen.
+   */
   private async bank(ownerId: string) {
-    const profile = await prisma.profile.findUnique({
-      where: { id: ownerId },
-      select: { payout_bank_name: true, payout_account_no: true },
-    });
-    const masked = maskAccount(profile?.payout_account_no);
-    return masked ? { name: profile?.payout_bank_name ?? null, masked } : null;
+    try {
+      const profile = await prisma.profile.findUnique({
+        where: { id: ownerId },
+        select: { payout_bank_name: true, payout_account_no: true },
+      });
+      const masked = maskAccount(profile?.payout_account_no);
+      return masked ? { name: profile?.payout_bank_name ?? null, masked } : null;
+    } catch (error: any) {
+      logger.error("owner_payouts.bank_lookup_failed", {
+        owner_id: ownerId,
+        error: String(error?.message || error),
+      });
+      return null;
+    }
   }
 
   async getSummary(ownerId: string, now: Date = new Date()): Promise<OwnerPayoutSummary> {

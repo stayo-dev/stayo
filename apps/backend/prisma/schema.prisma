@@ -881,6 +881,19 @@ model profile {
   // no owner_id/hostel_id here, since this queue belongs to Stayo, not a hostel.
   platform_support_tickets                                          platform_support_tickets[]
 
+  /// Where this owner's settled rent is sent. Added to `profiles` by migration
+  /// 070 but never declared here — so `/api/owner/payout-account` and the admin
+  /// settlement console's payout destination both selected columns Prisma did
+  /// not know about and failed at runtime. Declaring them is safe (unlike the
+  /// 2026-08-22 `navigation` incident) precisely because 070 IS applied: the
+  /// danger is declaring a field whose column does not exist yet, not one whose
+  /// column already does.
+  payout_holder_name                                                String?
+  payout_account_no                                                 String?
+  payout_ifsc                                                       String?
+  payout_bank_name                                                  String?
+  payout_updated_at                                                 DateTime?             @db.Timestamptz(6)
+
   @@index([email])
   @@index([name])
   @@index([owner_id, created_at])
