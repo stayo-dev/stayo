@@ -319,6 +319,27 @@ The `PAYMENT_PENDING` / `RESERVED` / `MOVE_IN_READY` vocabulary is **deleted**. 
 
 Occupancy is a question about beds, not money: a room is occupied by every active allocation held by an `ACTIVE` tenant. It previously excluded anyone still `PAYMENT_PENDING`, which left a moved-in tenant's bed looking vacant and invitable.
 
+## A tenancy is a snapshot; `profile_identity` is the current truth (2026-08-23, [[Decisions#ADR-090|ADR-090]])
+
+The `tenants` row is deliberately **immutable once written for that stay** — agreements, obligation generation, renewals, and move-out settlement all key off what it said when the tenancy began, and there is no obligation-edit-style "just update it" escape hatch here either. `profile_identity` (see [[APIs]]'s Portable Profile section, [[Decisions#ADR-074|ADR-074]]) is the opposite: the person's current record, portable across every hostel they ever join.
+
+Onboarding writes **both**, and neither substitutes for the other:
+
+- `saveProfile()` writes the `tenants` snapshot inside its transaction, exactly as before.
+- After that transaction commits, it also calls the pre-existing `profileIdentityService.absorbFromTenancy()` — reading the just-saved tenancy row back from the DB (not the pre-transaction locals, so `compactObject`'s effect is reflected) — to fold whatever the tenant confirmed into `profile_identity`. This call is **non-fatal**: a failure to update the portable copy must never fail an activation the tenant already completed, and is logged rather than thrown.
+- `absorbFromTenancy()` ignores blanks, so a shorter form at a later hostel can never wipe a longer answer already on file.
+
+This is what makes a *second* hostel's onboarding open pre-filled: without the write-back, `getContext()`'s `known` block (see [[APIs]]) has nothing to compose for a fresh tenancy, since a brand-new `tenants` row starts empty by definition.
+
+## A phone OTP is required at activation only when the number is unverified or was just changed (2026-08-23, [[Decisions#ADR-090|ADR-090]])
+
+Stated once, applied in two places that must not drift apart:
+
+- **Server, `saveAccount()`:** `isAlreadyVerified` requires both that the profile/tenant already carries a verified flag (`mobile_verified || phone_verified`) **and** that the verified number matches the number being submitted. An OTP is demanded only when that's false.
+- **Frontend, `buildPrefillPlan()`** (`apps/frontend/src/platforms/tenant/onboarding/onboardingPrefill.ts`): `otpRequired = !account.phoneVerified || phoneEdited`, gating `WelcomeIdentityStep.tsx`'s submit button. Previously `canSubmit` demanded a fresh 6-digit OTP unconditionally, so an already-verified tenant was made to re-verify a number the server would have accepted without one — a false gate the server never enforced, now removed.
+
+Changing the mobile number in the Identity screen's "Your Stayo account" block re-locks it behind a fresh OTP, matching the server rule exactly rather than trusting a stale client-side verified flag.
+
 ## Food schedule generation is independent of voting (2026-08-08)
 
 Deliberate product decision, not a bugfix — see [[Decisions]]. The owner Food tab's weekly schedule is generated straight from the Food Library (all active items per meal type, alphabetically), never from tenant votes, and Generate is never gated on a voting period's status.

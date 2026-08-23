@@ -314,7 +314,23 @@ All routes share one visibility predicate, `DISCOVERABLE` in `src/services/disco
 | `/api/profile/documents/shares` | POST, DELETE | The tenant's own control over who can see their documents. POST grants a hostel access to every active document (idempotent — re-granting revives the existing share and **keeps its prior verdict**, rather than making an owner re-check a file they already checked). DELETE (`?hostel_id=`) sets `revoked_at` rather than deleting, so a past verifier stays attributable. **An owner cannot grant themselves access** — that asymmetry is what makes a shared vault safe |
 | `/api/owner/document-shares` | GET | **OWNER/ADMIN.** Vault documents shared with one of the caller's hostels. `hostel_id` is **required and never defaulted** — falling back to "the owner's first hostel" is the pattern `check:invariants` forbids, and here the wrong default would show a multi-hostel owner documents a tenant shared with a different property. Optional `profile_id` narrows to one person |
 | `/api/owner/document-shares/[shareId]/verdict` | PATCH | **OWNER/ADMIN.** `{verdict: VERIFIED\|REJECTED, rejection_reason?}`. Written to the **share**, so it applies to this hostel only — a tenant carrying the same file to their next hostel carries the file, not this decision. Rejection requires a reason. 403 if the caller does not own the share's hostel, 403 if revoked, 409 if the document has been replaced |
-| `/api/tenants/me/onboarding-prefill` | GET | **TENANT.** What the activation form should open with: account fields (`name`, `email`, `phone`, `emergency_contact`) plus the merged identity, and `has_prefill` so the UI can choose between a confirm step and a blank form. Requires no tenancy — activation calls it while the tenancy is still `INVITED` |
+| `/api/tenants/me/onboarding-prefill` | GET | **TENANT.** What the activation form should open with: account fields (`name`, `email`, `phone`, `emergency_contact`) plus the merged identity, and `has_prefill` so the UI can choose between a confirm step and a blank form. Requires no tenancy — activation calls it while the tenancy is still `INVITED`. **Since 2026-08-23:** reads through the same `buildKnown()` (`src/services/tenants/onboarding-known.ts`) as `GET /api/tenants/activate/context`'s `known` key below — kept as the logged-in preview case, but the two paths now cannot drift out of sync with each other |
+
+### Onboarding prefill on the activation context (2026-08-23, [[Decisions#ADR-090|ADR-090]])
+
+The public, token-authenticated `GET /api/tenants/activate/context` (see the Activation row above) gained an **additive** `known` key — the `profile`/`tenant` keys it already returned are unchanged, so the frozen legacy `src/portal/pages/ActivateAccountPage.tsx` (still calling this same route) keeps working untouched:
+
+```
+known: {
+  name, email, phone,
+  phone_verified,   // true only when the number offered is the number actually verified
+  identity: { …IDENTITY_FIELDS },
+  has_prefill,
+  source_of: { field → 'PROFILE' | 'TENANCY' | 'INVITE' }
+}
+```
+
+Built by the new pure `buildKnown()` (`apps/backend/src/services/tenants/onboarding-known.ts`) from `IDENTITY_FIELDS` (extracted into `apps/backend/src/services/profile/identity-fields.ts`, a zero-import leaf module so this stays pure and runnable under `test:pure`). `getContext()` already resolves the profile from the invite token via `resolveInvitation()`, so **no session is required** — this was the actual blocker on wiring the wizard to any prefill data at all, since `/api/tenants/me/onboarding-prefill` above needs a `TENANT` session that doesn't exist until activation completes. `source_of` is derived, not recomputed: a field is `TENANCY` when `getIdentity()`'s own `pending_backfill_fields` names it, `PROFILE` when the identity record supplied it directly, and `INVITE` when only the invitation carried it — so the UI can tell the person's own record from an owner's guess rather than presenting both with equal confidence. See [[Features]], [[Business-Rules]].
 
 ### Residency history (2026-08-15, [[Decisions#ADR-075|ADR-075]])
 

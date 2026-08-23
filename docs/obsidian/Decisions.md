@@ -1407,3 +1407,47 @@ services, which is what made adding a status cheap.
 
 Related: [[Business-Rules]] · [[APIs]] · [[Features]] · ADR-076 · ADR-040
 
+## ADR-090: Verified account fields lock behind a re-verifying Change; email is never shown as Verified
+
+**Date:** 2026-08-23 · **Status:** accepted
+
+**Context.** Onboarding's Identity screen asked an already-verified tenant to prove their own
+phone number again, unconditionally — `canSubmit` in `WelcomeIdentityStep.tsx` demanded a fresh
+6-digit OTP no matter what `saveAccount()` itself would have required server-side, where the real
+rule already was "only if the number is unverified or has changed." The same screen also asked
+free-text for an email the invite may have already carried, validated it against a Gmail-only
+regex, and offered no way for a returning Stayo user to see what the platform already knew about
+them — every second hostel's onboarding started from zero.
+
+**Decision.**
+
+1. **A verified account field is locked, not re-asked.** The Identity screen's "Your Stayo
+   account" block shows name, mobile (with a Verified tick), and email as read-only by default.
+   Mobile's "Change" unlocks the field **and** forces a fresh OTP before submit is accepted —
+   `buildPrefillPlan()`'s `otpRequired = !phoneVerified || phoneEdited`, deliberately the same
+   rule `saveAccount()` already enforced server-side (see [[Business-Rules]]). The frontend was
+   stricter than the server for no reason; this makes the two agree instead of picking one to
+   relax.
+2. **Email is labelled "From your Stayo account", but never gets a Verified tick — because
+   nothing in this system verifies email.** `profile` carries `phone_verified`/`mobile_verified`
+   and no `email_verified` column; `auth-otp-service.ts` is phone-only, and the only
+   email-verified signal anywhere is a claim inside a Supabase JWT that exists solely for the
+   Google sign-in path, unrelated to what this screen shows. Displaying a tick would assert a
+   check that never ran. A real email-verification flow is separate, later work, not a small
+   addition to this one.
+3. **The Gmail-only email regex is dropped**, both `saveAccount()` (backend) and
+   `ActivationPage.tsx` (frontend), replaced by `/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/`. It was
+   enforcing a guess about where people's addresses come from — owners routinely invite tenants
+   on college and work addresses — and rejected genuinely valid input for no correctness benefit.
+
+**Consequences.** The Identity screen gains a second tier, "We already know these" (DOB, gender,
+guardian, address, college/company — see [[Features]]), sourced from the new `known` block on
+`GET /api/tenants/activate/context` ([[APIs]]), each row's origin visible via `source_of` so a
+value the person entered themselves is never presented with the same confidence as a value an
+owner typed into an invite. Locking verified fields and dropping the false OTP gate both reduce
+friction without weakening any check that was actually real; declining to fake email verification
+keeps this vault's "never assert what was never checked" standard intact rather than trading it
+for a nicer-looking screen.
+
+Related: [[Business-Rules]] · [[APIs]] · [[Features]] · ADR-070 · ADR-074
+
