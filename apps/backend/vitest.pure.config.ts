@@ -86,6 +86,7 @@ export default defineConfig({
       'tests/admissions-lead-actions.test.ts',
       'tests/floor-room-plan.test.ts',
       'tests/hostel-deletion-plan.test.ts',
+      'tests/tenant-invitation-email-conflict.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),
