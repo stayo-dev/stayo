@@ -3,6 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { portfolioService } from '@features/dashboard/api';
 import { tenantService } from '@features/tenants/api';
 import { queryKeys } from '@lib/queryKeys';
+import { useState } from 'react';
+import { Archive } from 'lucide-react';
+import { ArchiveHostelModal } from '@features/owner-dashboard/components/ArchiveHostelModal';
 
 function formatLakh(value: number) {
   if (Math.abs(value) >= 100000) return `₹${(value / 100000).toFixed(1)}L`;
@@ -13,6 +16,7 @@ function formatLakh(value: number) {
 export function HostelOverviewPage() {
   const { hostelId } = useParams<{ hostelId: string }>();
   const navigate = useNavigate();
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   const portfolioQuery = useQuery({
     queryKey: queryKeys.portfolio.summary(),
@@ -38,6 +42,10 @@ export function HostelOverviewPage() {
   const collectedRevenue = card?.collected_revenue ?? 0;
   const overdueCount = card?.overdue_count ?? 0;
   const vacantBeds = Math.max(0, totalCapacity - activeTenants);
+  // `portfolioService.getSummary()` returns `name` (portfolio-service.ts);
+  // `hostel_name` is the shape the *performance* service uses, kept as a
+  // fallback rather than assumed.
+  const hostelName: string = card?.name ?? card?.hostel_name ?? '';
   const invitedCount = invitedQuery.data ?? 0;
 
   return (
@@ -110,6 +118,34 @@ export function HostelOverviewPage() {
         </div>
         <span className="flex-none rounded-lg border-[1.5px] border-primary px-3.5 py-2 font-display text-xs font-bold text-primary">Open tenants</span>
       </button>
+
+      {/* A second entry point to the archive flow the dashboard's hostel menu
+          already owns — the same `ArchiveHostelModal`, deliberately not a
+          second confirmation UI for one destructive action. Being able to
+          retire the hostel you are currently looking at is worth the extra
+          door; two different-looking doors would not be.
+
+          Last on the page on purpose, and held back until the name loads. */}
+      {hostelName && (
+        <>
+          <button
+            type="button"
+            onClick={() => setArchiveOpen(true)}
+            className="mt-1 inline-flex min-h-[44px] items-center justify-center gap-2 self-start rounded-xl px-2 font-display text-[12.5px] font-bold text-muted-foreground hover:text-destructive"
+          >
+            <Archive className="h-4 w-4" strokeWidth={2} />
+            Archive this hostel
+          </button>
+          <ArchiveHostelModal
+            open={archiveOpen}
+            onClose={() => setArchiveOpen(false)}
+            hostelId={hostelId}
+            hostelName={hostelName}
+            activeTenantsCount={activeTenants}
+            outstandingDuesValue={pendingDues}
+          />
+        </>
+      )}
     </div>
   );
 }

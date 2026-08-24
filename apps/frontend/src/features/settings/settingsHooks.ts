@@ -79,6 +79,24 @@ export function useArchiveHostel() {
   });
 }
 
+/**
+ * Deletes an archived hostel for good (`DELETE /hostels/:id/permanent`).
+ *
+ * Distinct from `useArchiveHostel` — that one archives and is reversible.
+ * This accepts only an already-archived hostel with no operational history,
+ * and there is no undo.
+ */
+export function useDeleteHostelPermanently() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (hostelId: string) => ownerService.deleteHostelPermanently(hostelId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.portfolio.summary() });
+      qc.invalidateQueries({ queryKey: ['owner', 'hostels'] });
+    },
+  });
+}
+
 /** Reactivates an archived hostel (`PATCH /hostels/:id` with `status: ACTIVE`). */
 export function useReactivateHostel() {
   const qc = useQueryClient();

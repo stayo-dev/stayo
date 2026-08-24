@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { getInitials } from '@features/tenants/utils/normalize';
+import { Trash2 } from 'lucide-react';
+import { canDeleteRoom } from '../propertyRemoval';
 import type { Floor, RoomWithOccupants } from '../types';
 
 interface RoomSheetModalProps {
@@ -15,14 +17,34 @@ interface RoomSheetModalProps {
   onAssign: () => void;
   onSaveDetails: (data: { room_no: string; base_rent: number; floor_id?: string }) => Promise<void>;
   isSaving?: boolean;
+  /**
+   * Delete this room for good. `DELETE /api/rooms/:id` is a real delete, not
+   * an archive — and it had no caller anywhere in the app until 2026-08-24,
+   * so a room added by mistake was permanent.
+   */
+  onDelete?: () => Promise<void>;
+  isDeleting?: boolean;
 }
 
 const labelStyle = 'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground';
 
 /** Tap an occupied/reserved room → rent/dues tiles + resident list + assign vacant beds, per Stayo App.dc.html. Real occupant data via `useHostelRooms`. "Edit room details" is a real `PATCH /rooms/:id` (number + rent + floor) — bed count isn't editable here since it can't safely go below occupied beds. Moving a room to a different floor happens here rather than by drag, since floors collapse independently (Rooms tab accordion) and can't both be open as drag targets at once. */
-export function RoomSheetModal({ open, room, floor, floors, onClose, onAssign, onSaveDetails, isSaving }: RoomSheetModalProps) {
+export function RoomSheetModal({
+  open,
+  room,
+  floor,
+  floors,
+  onClose,
+  onAssign,
+  onSaveDetails,
+  isSaving,
+  onDelete,
+  isDeleting,
+}: RoomSheetModalProps) {
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
+  /** Two taps to delete: the second one replaces the first in place. */
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [number, setNumber] = useState('');
   const [rent, setRent] = useState('');
   const [floorId, setFloorId] = useState('');
@@ -39,7 +61,10 @@ export function RoomSheetModal({ open, room, floor, floors, onClose, onAssign, o
   const [windows, setWindows] = useState('');
 
   useEffect(() => {
-    if (open) setEditing(false);
+    if (open) {
+      setEditing(false);
+      setConfirmingDelete(false);
+    }
   }, [open]);
 
   useEffect(() => {
@@ -87,6 +112,8 @@ export function RoomSheetModal({ open, room, floor, floors, onClose, onAssign, o
 
   const occupied = room.beds.filter((b) => b.status === 'occupied').length;
   const vacant = room.beds.filter((b) => b.status === 'vacant').length;
+  const reserved = room.beds.filter((b) => b.status === 'reserved').length;
+  const deleteBlocker = canDeleteRoom({ occupiedBeds: occupied, reservedBeds: reserved }).reason;
   const residents = room.occupants;
   const pendingDues = residents.reduce((sum, t) => sum + t.pending_dues, 0);
 
@@ -258,6 +285,53 @@ export function RoomSheetModal({ open, room, floor, floors, onClose, onAssign, o
             </label>
           )}
           <p className="text-[11px] text-muted-foreground">Bed count can't be changed here — it can't safely go below the {occupied} bed{occupied === 1 ? '' : 's'} currently occupied.</p>
+
+          {/* Deleting lives inside edit mode, behind two taps, and states its
+              own reason when it can't be done — the backend refuses an
+              occupied or reserved room, so the owner should not have to
+              discover that by pressing. */}
+          {onDelete && (
+            <div className="mt-1 border-t border-border pt-4">
+              {deleteBlocker ? (
+                <p className="text-[12px] leading-relaxed text-muted-foreground">
+                  <span className="font-semibold text-foreground">Can&apos;t delete this room. </span>
+                  {deleteBlocker}
+                </p>
+              ) : confirmingDelete ? (
+                <div className="flex items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDelete(false)}
+                    className="flex-1 rounded-xl border border-border px-4 py-3 font-display text-[13px] font-bold text-foreground"
+                  >
+                    Keep it
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={() => void onDelete()}
+                    className="flex-1 rounded-xl bg-destructive px-4 py-3 font-display text-[13px] font-bold text-destructive-foreground disabled:opacity-50"
+                  >
+                    {isDeleting ? 'Deleting…' : `Delete room ${room.number}`}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(true)}
+                  className="inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl border-[1.5px] border-destructive/40 px-4 font-display text-[13px] font-bold text-destructive hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-4 w-4" strokeWidth={2} />
+                  Delete this room
+                </button>
+              )}
+              {!deleteBlocker && confirmingDelete && (
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  This one is permanent — unlike removing a hostel, the room is not kept on file.
+                </p>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex flex-col gap-4">

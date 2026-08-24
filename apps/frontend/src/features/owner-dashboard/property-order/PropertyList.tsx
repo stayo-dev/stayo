@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Reorder, useDragControls } from 'motion/react';
-import { RefreshCw, Archive } from 'lucide-react';
+import { RefreshCw, Archive, Trash2 } from 'lucide-react';
 import { StatusPill } from '@shared/ui-patterns/StatusPill';
 import { DragHandle } from '@shared/ui-patterns/DragHandle';
 import { cn } from '@shared/lib/cn';
 import type { MockProperty } from '@shared/mocks/dashboard';
 import { PropertySortControl } from './PropertySortControl';
 import { ReactivateHostelModal } from '../components/ReactivateHostelModal';
+import { DeleteHostelModal } from '../components/DeleteHostelModal';
 import {
   sortHostels,
   isReorderable,
@@ -30,12 +31,15 @@ function PropertyCard({
   onSelect,
   onMenu,
   onReactivate,
+  onDelete,
 }: {
   property: MockProperty;
   draggable: boolean;
   onSelect?: () => void;
   onMenu?: () => void;
   onReactivate?: () => void;
+  /** Archived only: remove it for good. No undo, hence its own confirmation. */
+  onDelete?: () => void;
 }) {
   const controls = useDragControls();
   const isArchived = p.status === 'ARCHIVED';
@@ -104,18 +108,40 @@ function PropertyCard({
           </div>
         </div>
 
-        {isArchived && onReactivate && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onReactivate();
-            }}
-            className="mt-1 flex items-center justify-center gap-1.5 rounded-xl border border-primary/30 bg-primary/10 py-2 text-[12px] font-bold text-primary transition-colors hover:bg-primary/20"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Reactivate Property
-          </button>
+        {isArchived && (onReactivate || onDelete) && (
+          <div className="mt-1 flex items-center gap-2">
+            {onReactivate && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReactivate();
+                }}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-primary/30 bg-primary/10 py-2 text-[12px] font-bold text-primary transition-colors hover:bg-primary/20"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Reactivate Property
+              </button>
+            )}
+            {/* Reactivate used to be the only thing offered here, so a hostel
+                created by mistake could never leave the account. The server
+                accepts this only for one that never carried a tenant, a
+                payment or an agreement. */}
+            {onDelete && (
+              <button
+                type="button"
+                aria-label={`Delete ${p.name} permanently`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                className="flex min-h-[34px] flex-none items-center justify-center gap-1.5 rounded-xl border border-destructive/30 px-3 py-2 text-[12px] font-bold text-destructive transition-colors hover:bg-destructive/10"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -146,6 +172,7 @@ export function PropertyList({
   const [activeTab, setActiveTab] = useState<'ACTIVE' | 'ARCHIVED'>('ACTIVE');
   const [mode, setMode] = useState<HostelSortMode>(() => loadSortMode());
   const [reactivateTarget, setReactivateTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const activeProperties = useMemo(() => properties.filter((p) => p.status !== 'ARCHIVED'), [properties]);
   const archivedProperties = useMemo(() => properties.filter((p) => p.status === 'ARCHIVED'), [properties]);
@@ -205,6 +232,7 @@ export function PropertyList({
     onSelect: p.status !== 'ARCHIVED' && onSelectProperty ? () => onSelectProperty(p.id) : undefined,
     onMenu: onPropertyMenu ? () => onPropertyMenu(p.id) : undefined,
     onReactivate: () => setReactivateTarget({ id: p.id, name: p.name }),
+    onDelete: () => setDeleteTarget({ id: p.id, name: p.name }),
   });
 
   return (
@@ -243,6 +271,12 @@ export function PropertyList({
         onClose={() => setReactivateTarget(null)}
         hostelId={reactivateTarget?.id ?? null}
         hostelName={reactivateTarget?.name ?? ''}
+      />
+      <DeleteHostelModal
+        open={Boolean(deleteTarget)}
+        onClose={() => setDeleteTarget(null)}
+        hostelId={deleteTarget?.id ?? null}
+        hostelName={deleteTarget?.name ?? ''}
       />
     </section>
   );

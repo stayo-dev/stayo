@@ -13,6 +13,19 @@ import { AddRoomModal } from '../add-room/AddRoomModal';
 import { AddFloorModal } from '../add-floor/AddFloorModal';
 import type { RoomWithOccupants } from '../types';
 
+/**
+ * The server's reason, not a generic apology.
+ *
+ * Both delete endpoints refuse for reasons the owner can act on — a tenant
+ * still in the room, a live invitation reservation, rooms still on the floor —
+ * and those messages are worth more than "something went wrong".
+ */
+function removalError(error: unknown, fallback: string): string {
+  const data = (error as { response?: { data?: any } })?.response?.data;
+  const message = data?.error?.message ?? data?.error ?? (error as Error)?.message;
+  return typeof message === 'string' && message.trim() ? message : fallback;
+}
+
 /** Hostel Drill-down → Rooms sub-tab: floors as a collapsible list (Food
  * Library accordion pattern) — tap a floor to reveal its rooms. A dedicated
  * "Reorder" mode (ADR-064) swaps this browsing view for `RoomsReorderPanel`,
@@ -190,8 +203,12 @@ export function HostelRoomsPage() {
       ) : (
         <div className="flex flex-col gap-3">
           {layout.floors.map((floor) => {
-            const rooms = (layout.roomsByFloor.get(floor.id) ?? []).filter(matchesSearch);
-            if (rooms.length === 0) return null;
+            const all = layout.roomsByFloor.get(floor.id) ?? [];
+            const rooms = all.filter(matchesSearch);
+            // While searching, a floor with no match is noise. Otherwise an
+            // empty floor must still render: it used to return null, which
+            // made a deletable floor invisible and therefore undeletable.
+            if (searching && rooms.length === 0) return null;
             return (
               <FloorGroup
                 key={floor.id}
@@ -201,6 +218,15 @@ export function HostelRoomsPage() {
                 onToggle={() => toggleFloor(floor.id)}
                 onOpenRoom={setRoomSheetRoom}
                 onAssignRoom={() => setInviteOpen(true)}
+                isDeleting={layout.isDeletingFloor}
+                onDelete={async () => {
+                  try {
+                    await layout.deleteFloor(floor.id);
+                    stayoToast.success(`${floor.name} deleted.`);
+                  } catch (error) {
+                    stayoToast.error(removalError(error, 'Could not delete this floor.'));
+                  }
+                }}
               />
             );
           })}
@@ -236,6 +262,18 @@ export function HostelRoomsPage() {
         onSaveDetails={async (data) => {
           if (!roomSheetRoom) return;
           await layout.updateRoom({ roomId: roomSheetRoom.id, data });
+        }}
+        isDeleting={layout.isDeletingRoom}
+        onDelete={async () => {
+          if (!roomSheetRoom) return;
+          const label = roomSheetRoom.number;
+          try {
+            await layout.deleteRoom(roomSheetRoom.id);
+            setRoomSheetRoom(null);
+            stayoToast.success(`Room ${label} deleted.`);
+          } catch (error) {
+            stayoToast.error(removalError(error, 'Could not delete this room.'));
+          }
         }}
       />
       <AddRoomModal

@@ -187,6 +187,25 @@ export function useHostelRooms(hostelId: string) {
     onSuccess: invalidate,
   });
 
+  /**
+   * Real deletes, not archives — unlike a hostel, which is archived.
+   *
+   * Both endpoints existed with no caller anywhere in the app until
+   * 2026-08-24, so a room or floor added by mistake could never be removed.
+   * Both refuse rather than cascade: a room with a tenant or a live invitation
+   * reservation, and a floor with any active room, are rejected server-side —
+   * `propertyRemoval.ts` states those reasons in the UI first.
+   */
+  const deleteRoomMutation = useMutation({
+    mutationFn: (roomId: string) => roomService.delete(roomId),
+    onSuccess: invalidate,
+  });
+
+  const deleteFloorMutation = useMutation({
+    mutationFn: (floorId: string) => floorService.delete(floorId),
+    onSuccess: invalidate,
+  });
+
   return {
     floors,
     roomsByFloor,
@@ -205,5 +224,9 @@ export function useHostelRooms(hostelId: string) {
     isCreatingRoom: createRoomMutation.isPending,
     updateRoom: updateRoomMutation.mutateAsync,
     isUpdatingRoom: updateRoomMutation.isPending,
+    deleteRoom: deleteRoomMutation.mutateAsync,
+    isDeletingRoom: deleteRoomMutation.isPending,
+    deleteFloor: deleteFloorMutation.mutateAsync,
+    isDeletingFloor: deleteFloorMutation.isPending,
   };
 }

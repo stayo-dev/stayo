@@ -73,8 +73,34 @@ export const ownerService = {
         const response = await api.delete(endpoint);
         return response.data;
     },
+    /**
+     * Remove a hostel from the owner's account.
+     *
+     * `DELETE /api/hostels/:id` **archives** — `status: ARCHIVED` plus
+     * `archived_at`/`archived_by`/`archive_reason` — rather than deleting the
+     * row, so tenancy, payment and obligation history survives. It refuses
+     * outright while any tenant is still allocated a bed there.
+     *
+     * This wrapper sat here with no caller until 2026-08-24, when the hostel
+     * Overview screen finally offered the action; `reactivateHostel` below is
+     * still uncalled — an owner cannot see their archived hostels, so bringing
+     * one back is a support operation today.
+     */
     archiveHostel: async (hostelId, reason) => {
         const response = await api.delete(`/hostels/${hostelId}`, { data: { reason } });
+        return response.data;
+    },
+    /**
+     * Delete an archived hostel for good — `DELETE /hostels/:id/permanent`.
+     *
+     * A different endpoint from `archiveHostel` on purpose. Archiving is the
+     * ordinary "remove" and keeps everything; this one only accepts a hostel
+     * that is already archived and never carried a tenant, a payment or an
+     * agreement. It is what finally clears a test entry out of the Archived
+     * tab, where Reactivate used to be the only thing on offer.
+     */
+    deleteHostelPermanently: async (hostelId) => {
+        const response = await api.delete(`/hostels/${hostelId}/permanent`);
         return response.data;
     },
     reactivateHostel: async (hostelId) => {
