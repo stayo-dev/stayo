@@ -1,8 +1,20 @@
 import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import apiClient from '@lib/api-client';
 import { admissionsService } from '@features/admissions/api';
 import { queryKeys } from '@lib/queryKeys';
+import { ACTIONABLE_LEAD_STATUSES, SETTLED_LEAD_STATUSES } from '../leadInbox';
+
+/**
+ * The server caps `limit` at 50 (`listLeads`), so this is the largest page it
+ * will actually honour — asking for more would silently get 50 back.
+ */
+const LEAD_PAGE_LIMIT = 50;
+
+interface LeadPage {
+  items?: DynamicLead[];
+  pagination?: { page: number; limit: number; total: number; pages: number };
+}
 
 export type DynamicAlertCategory = 'leads' | 'admin' | 'renewals' | 'requests';
 
@@ -71,13 +83,54 @@ export function useAlerts() {
   // other three categories share — fetched via the shared admissions query
   // key, so Accept/Hold/Reject mutations in LeadDetailSheet can invalidate
   // it instead of this hook needing its own refetch plumbing.
-  const leadsQuery = useQuery({
-    queryKey: queryKeys.admissions.list({ limit: 20 }),
-    queryFn: () => admissionsService.list({ limit: 20 }) as Promise<{ items?: DynamicLead[] }>,
+  //
+  // Fetched in **two halves**, not one page of 20. `listLeads` orders by
+  // `lead_score desc`, and a brand-new enquiry scores low — so on a single
+  // page it sorts *below* settled high-score leads and can fall off the end
+  // entirely. An owner would simply never see it. Asking for the actionable
+  // statuses as their own page is what makes that impossible.
+  const actionableQuery = useQuery({
+    queryKey: queryKeys.admissions.list({ set: 'actionable' }),
+    queryFn: () =>
+      admissionsService.list({
+        statuses: ACTIONABLE_LEAD_STATUSES.join(','),
+        limit: LEAD_PAGE_LIMIT,
+      }) as Promise<LeadPage>,
     enabled: category === 'leads',
   });
-  const leads = leadsQuery.data?.items ?? [];
-  const leadsLoading = leadsQuery.isLoading;
+
+  /**
+   * Settled leads are collapsed in the UI, so only the most recent page loads
+   * up front and "Show older" fetches the next one.
+   *
+   * Paged rather than a growing `limit`: `listLeads` clamps `limit` to 50, so
+   * asking for 100 would silently return 50 again and the button would appear
+   * to do nothing.
+   */
+  const settledQuery = useInfiniteQuery({
+    queryKey: queryKeys.admissions.list({ set: 'settled' }),
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) =>
+      admissionsService.list({
+        statuses: SETTLED_LEAD_STATUSES.join(','),
+        limit: LEAD_PAGE_LIMIT,
+        page: pageParam,
+      }) as Promise<LeadPage>,
+    getNextPageParam: (last: LeadPage) => {
+      const { page = 1, pages = 1 } = last.pagination ?? {};
+      return page < pages ? page + 1 : undefined;
+    },
+    enabled: category === 'leads',
+  });
+
+  const actionableLeads = actionableQuery.data?.items ?? [];
+  const settledPages = settledQuery.data?.pages ?? [];
+  const settledLeads = settledPages.flatMap((page) => page.items ?? []);
+  const leads = [...actionableLeads, ...settledLeads];
+  const leadsLoading = actionableQuery.isLoading || settledQuery.isLoading;
+
+  const settledTotal = settledPages[0]?.pagination?.total ?? settledLeads.length;
+  const actionableTotal = actionableQuery.data?.pagination?.total ?? actionableLeads.length;
 
   const markRead = async (cat: DynamicAlertCategory, id: string) => {
     // Optimistic UI update
@@ -100,6 +153,17 @@ export function useAlerts() {
     requests,
     leads,
     leadsLoading,
+    /** How many settled leads exist beyond the ones loaded. */
+    settledNotLoaded: Math.max(0, settledTotal - settledLeads.length),
+    canLoadMoreSettled: Boolean(settledQuery.hasNextPage),
+    loadMoreSettled: () => settledQuery.fetchNextPage(),
+    isLoadingMoreSettled: settledQuery.isFetchingNextPage,
+    /**
+     * True when there are more actionable leads than one page holds. Very
+     * unlikely, and deliberately surfaced rather than silently truncated —
+     * this is the half where a hidden lead actually costs the owner money.
+     */
+    actionableTruncated: actionableTotal > actionableLeads.length,
     counts: {
       leads: leads.length,
       admin: adminMessages.length,
