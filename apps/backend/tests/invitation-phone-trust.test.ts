@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPhoneAlreadyProven } from "@/src/services/tenants/invitation-phone-trust";
+import { isPhoneAlreadyProven, samePhone } from "@/src/services/tenants/invitation-phone-trust";
 
 const PHONE = "919000000000";
 const OTHER = "918111111111";
@@ -101,5 +101,53 @@ describe("the fallback and every other uncertain path", () => {
         base({ submittedPhone: "", profile: { phone: "", phone_verified: true } }),
       ),
     ).toBe(false);
+  });
+});
+
+describe("the mixed phone formats that actually exist in production", () => {
+  // Found against live data on 2026-08-25, on the very tenancy this change was
+  // written for: `profiles.phone` held "7013216327" while
+  // `tenant_invitations.phone` held "+917013216327", and normalizeIndianPhone
+  // returns E.164. An `===` comparison is false for the *same* number, so the
+  // trust check failed closed and would have asked for an OTP anyway — quietly
+  // defeating the fix while every unit test still passed.
+  const BARE = "7013216327";
+  const E164 = "+917013216327";
+
+  it("treats a bare 10-digit number and its E.164 form as the same number", () => {
+    expect(samePhone(BARE, E164)).toBe(true);
+    expect(samePhone(E164, BARE)).toBe(true);
+  });
+
+  it("still tells genuinely different numbers apart", () => {
+    expect(samePhone(BARE, "+918111111111")).toBe(false);
+  });
+
+  it("does not match on a partial number", () => {
+    expect(samePhone("13216327", E164)).toBe(false);
+  });
+
+  it("trusts an account whose bare-format number matches an E.164 submission", () => {
+    expect(
+      isPhoneAlreadyProven({
+        submittedPhone: E164,
+        profile: { phone: BARE, phone_verified: true },
+        tenant: null,
+        invitationPhone: E164,
+        whatsappDeliveredAt: null,
+      }),
+    ).toBe(true);
+  });
+
+  it("trusts WhatsApp delivery across the same format mismatch", () => {
+    expect(
+      isPhoneAlreadyProven({
+        submittedPhone: BARE,
+        profile: null,
+        tenant: null,
+        invitationPhone: E164,
+        whatsappDeliveredAt: new Date(),
+      }),
+    ).toBe(true);
   });
 });

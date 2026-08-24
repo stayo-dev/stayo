@@ -9,6 +9,25 @@
  * number at enquiry time, long before the owner invited them, so their proof
  * does not depend on how the invitation happened to travel.
  */
+/**
+ * Compare two Indian numbers by their last 10 digits.
+ *
+ * Formats are genuinely mixed in the live data: `profiles.phone` holds bare
+ * 10-digit numbers (`7013216327`), `tenant_invitations.phone` holds E.164
+ * (`+917013216327`), and `normalizeIndianPhone` returns E.164. An `===`
+ * comparison across those is false for the *same* number — which would have
+ * made every one of these checks fail closed and asked for an OTP anyway,
+ * silently defeating the whole change.
+ *
+ * Last-10 is the right key because every one of these is an Indian mobile and
+ * the country code is the only part that varies.
+ */
+export function samePhone(a: unknown, b: unknown): boolean {
+  const left = String(a ?? "").replace(/\D/g, "").slice(-10);
+  const right = String(b ?? "").replace(/\D/g, "").slice(-10);
+  return left.length === 10 && left === right;
+}
+
 export function isPhoneAlreadyProven(input: {
   /** The number being submitted on the Identity screen, normalized. */
   submittedPhone: string;
@@ -22,16 +41,16 @@ export function isPhoneAlreadyProven(input: {
   whatsappDeliveredAt: Date | null;
 }): boolean {
   const { submittedPhone, profile, tenant, invitationPhone, whatsappDeliveredAt } = input;
-  if (!submittedPhone) return false;
+  if (String(submittedPhone ?? "").replace(/\D/g, "").length < 10) return false;
 
   const verifiedOnAccount = Boolean(
     (profile?.phone_verified || profile?.mobile_verified || tenant?.mobile_verified) &&
-    (profile?.phone === submittedPhone || tenant?.phone_1 === submittedPhone)
+    (samePhone(profile?.phone, submittedPhone) || samePhone(tenant?.phone_1, submittedPhone))
   );
   if (verifiedOnAccount) return true;
 
   // Delivery only vouches for the number it was actually sent to. Editing the
   // number on the Identity screen therefore drops this proof, which is the
   // intended behaviour: a changed number has to be verified.
-  return Boolean(whatsappDeliveredAt && invitationPhone && invitationPhone === submittedPhone);
+  return Boolean(whatsappDeliveredAt && invitationPhone && samePhone(invitationPhone, submittedPhone));
 }

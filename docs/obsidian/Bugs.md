@@ -98,6 +98,10 @@ Found by auditing all four builder screens after an owner reported "the fields t
 
 **Near-miss caught while building it.** Resolving the profile made `saveAccount`'s `if (!profile && invitation)` branch stop firing — and that branch is the *only* path that binds `tenants.profile_id`, which is what runs `assertCanStartNewTenancy`. Left as-is, tenancies would have activated unbound with the one-live-tenancy rule unchecked. The condition is now `!tenant.profile_id`: "is this tenancy bound" and "did we find an account" were the same question before this change and are not any more.
 
+**Follow-up the same day — the fix was inert, and only live data showed it.** Applying migration `20260825090000` and then inspecting the one real Discover tenancy (`speakcode01@gmail.com`, the tenancy from the original screenshot) revealed that **`profiles.phone` stores `7013216327` while `tenant_invitations.phone` stores `+917013216327`**, and `normalizeIndianPhone` returns E.164. Both `isPhoneAlreadyProven` and `canAdoptByContact` compared with `===`, so for the same number they returned false — the trust check failed closed and would have demanded an OTP exactly as before. **Every unit test passed throughout**, because the fixtures used one format consistently. Both now compare on the last 10 digits (`samePhone`), matching what the frontend's `isSamePhone` already did, with tests pinned to the two real production formats.
+
+**The lesson is the standing one:** unit tests written from the same assumption as the code cannot catch a wrong assumption about the *data*. The mismatch was invisible in code and obvious in one `psql` row.
+
 **Related:** [[Decisions#ADR-110|ADR-110]], [[Business-Rules]], [[APIs]], [[Database]], [[Changelog]]
 
 ## 2026-08-24 — An enquiry's phone number is gated only by the UI (fixed)

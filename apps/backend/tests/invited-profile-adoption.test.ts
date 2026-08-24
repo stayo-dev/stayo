@@ -50,3 +50,16 @@ describe("adopting an existing account matched only by email", () => {
     expect(canAdoptByContact(null, PHONE)).toBe(false);
   });
 });
+
+describe("mixed phone formats", () => {
+  // Same defect as invitation-phone-trust, found against live data: an `===`
+  // here would refuse every real adoption, because `profiles.phone` and
+  // `tenant_invitations.phone` store different formats for the same number.
+  it("adopts across the bare-vs-E.164 mismatch that exists in live data", () => {
+    expect(canAdoptByContact({ phone: '7013216327', phone_verified: true }, '+917013216327')).toBe(true);
+  });
+
+  it("still refuses a genuinely different number", () => {
+    expect(canAdoptByContact({ phone: '7013216327', phone_verified: true }, '+918111111111')).toBe(false);
+  });
+});

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { samePhone } from "./invitation-phone-trust";
 
 /**
  * Which existing Stayo account, if any, this invitation belongs to.
@@ -63,7 +64,8 @@ export function canAdoptByContact(
   invitationPhone: string | null,
 ): boolean {
   if (!profile || !invitationPhone) return false;
-  if (!profile.phone || profile.phone !== invitationPhone) return false;
+  // Last-10 comparison: these two columns store different formats. See samePhone.
+  if (!profile.phone || !samePhone(profile.phone, invitationPhone)) return false;
   return Boolean(profile.phone_verified || profile.mobile_verified);
 }
 
