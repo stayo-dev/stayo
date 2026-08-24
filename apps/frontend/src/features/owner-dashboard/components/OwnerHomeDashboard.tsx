@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Search, Plus, UtensilsCrossed, ChevronRight } from 'lucide-react';
+import { Bell, Search, Plus, UtensilsCrossed, ChevronRight, TrendingUp } from 'lucide-react';
 import { StatCard } from '@shared/ui-patterns/StatCard';
 import { DarkHeroCard } from '@shared/ui-patterns/DarkHeroCard';
 import { StatusPill } from '@shared/ui-patterns/StatusPill';
@@ -23,7 +23,23 @@ import {
 } from '@shared/mocks/dashboard';
 
 type ActionCenterData = typeof mockActionCenter;
-type CollectionData = typeof mockCollection;
+/**
+ * Stated rather than inferred from `mockCollection`, which predates the
+ * spending half of this card and would otherwise silently narrow the type back
+ * to collection-only.
+ *
+ * The spend fields are nullable on purpose: the month-spend query is composed
+ * into the dashboard response and deliberately allowed to fail on its own
+ * (`portfolio/summary/route.ts`), so the card renders collection alone rather
+ * than showing "Spent ₹0" — which would be a claim, not an absence.
+ */
+type CollectionData = typeof mockCollection & {
+  spent?: string | null;
+  left?: string | null;
+  leftLabel?: string;
+  overspent?: boolean;
+  spentShareOfCollected?: number;
+};
 
 interface OwnerHomeDashboardProps {
   ownerName?: string;
@@ -31,6 +47,12 @@ interface OwnerHomeDashboardProps {
   alertCount?: number;
   actionCenter?: ActionCenterData;
   collection?: CollectionData;
+  /**
+   * One category that rose sharply this month, or null in an ordinary month.
+   * Deliberately absent most of the time — the Action Center is for work, and
+   * spending being normal is not work. See `expense-anomaly.ts`.
+   */
+  spendAnomaly?: { category: string; changePct: number; riseAmount: string } | null;
   onSelectProperty?: (hostelId: string) => void;
   onOpenAlerts?: () => void;
   onOpenQuickActions?: () => void;
@@ -78,6 +100,7 @@ export function OwnerHomeDashboard({
   alertCount = mockAlertCount,
   actionCenter = mockActionCenter,
   collection = mockCollection,
+  spendAnomaly = null,
   onSelectProperty,
   onOpenAlerts,
   onOpenQuickActions,
@@ -179,6 +202,25 @@ export function OwnerHomeDashboard({
             <div className="mt-1 text-xs font-medium text-background/65">{actionCenter.collectRent.caption}</div>
           </DarkHeroCard>
         </button>
+        {/* Only in a month where something moved. `detectSpendAnomaly` holds a
+            much higher bar than the Money screen's per-row annotation — on
+            Home this is the single thing said about money going out, so a
+            false alarm costs trust in the whole surface. */}
+        {spendAnomaly && (
+          <button
+            type="button"
+            onClick={() => navigate('/owner/money?tab=expenses')}
+            className="flex min-h-[44px] items-center gap-2.5 rounded-[14px] border border-warning/30 bg-warning-bg/60 px-3.5 py-2.5 text-left"
+          >
+            <TrendingUp className="h-4 w-4 flex-none text-warning" strokeWidth={2} />
+            <span className="flex-1 text-[12.5px] leading-snug text-foreground">
+              <span className="font-semibold">{spendAnomaly.category}</span> up {spendAnomaly.changePct}% on
+              last month — {spendAnomaly.riseAmount} more
+            </span>
+            <ChevronRight className="h-4 w-4 flex-none text-muted-foreground" />
+          </button>
+        )}
+
         <div className="grid grid-cols-3 gap-2">
           {/* All were non-interactive: StatCard had no onClick prop at all,
               so they sat beside a tappable hero card doing nothing. Each now
@@ -233,18 +275,68 @@ export function OwnerHomeDashboard({
         </button>
       )}
 
+      {/* Money in *and* money out.
+          This card used to be collection-only — "₹16,000 of ₹57,000" — which
+          answers how much came in but never what the owner actually opens the
+          app to find out: am I ahead this month. ₹16,000 collected means one
+          thing against ₹4,200 of spending and quite another against ₹30,000.
+          See `monthCash.ts`. The figure is labelled "Left", never profit: it
+          is cash received minus cash spent, blind to unpaid dues and deposits
+          held, and this codebase does not dress a partial number as a whole
+          one. */}
       <section className="rounded-2xl border border-border bg-card p-4.5 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-display text-sm font-bold text-foreground">{collection.month} Collection</h2>
+          <h2 className="font-display text-sm font-bold text-foreground">{collection.month}</h2>
           <span className="rounded-full bg-success/10 px-2.5 py-1 font-display text-xs font-bold tabular-nums text-success">
-            {collection.percent}%
+            {collection.percent}% collected
           </span>
         </div>
-        <p className="mb-3 text-[13px] font-semibold tabular-nums text-foreground/70">
-          {collection.collected} <span className="font-normal text-muted-foreground">of</span> {collection.target}
-        </p>
-        <div className="h-2.5 overflow-hidden rounded-full bg-muted">
-          <div className="h-full rounded-full bg-success" style={{ width: `${collection.percent}%` }} />
+
+        <dl className="flex flex-col gap-1.5">
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-[12.5px] text-muted-foreground">Collected</dt>
+            <dd className="font-display text-[13.5px] font-bold tabular-nums text-foreground">
+              {collection.collected}
+              <span className="ml-1 font-normal text-muted-foreground">of {collection.target}</span>
+            </dd>
+          </div>
+
+          {collection.spent != null && (
+            <div className="flex items-baseline justify-between gap-3">
+              <dt className="text-[12.5px] text-muted-foreground">Spent</dt>
+              <dd className="font-display text-[13.5px] font-bold tabular-nums text-foreground">
+                {collection.spent}
+              </dd>
+            </div>
+          )}
+
+          {collection.left != null && (
+            <div className="mt-1 flex items-baseline justify-between gap-3 border-t border-border pt-2">
+              <dt className="font-display text-[13px] font-bold text-foreground">{collection.leftLabel ?? 'Left'}</dt>
+              <dd
+                className={`font-display text-lg font-extrabold tabular-nums ${
+                  collection.overspent ? 'text-destructive' : 'text-success'
+                }`}
+              >
+                {collection.left}
+              </dd>
+            </div>
+          )}
+        </dl>
+
+        {/* Collected fills the bar; what has already gone out is shown eaten
+            out of it, so the remaining colour is money still in hand. */}
+        <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-muted">
+          <div className="flex h-full" style={{ width: `${collection.percent}%` }}>
+            <div
+              className="h-full bg-success"
+              style={{ width: `${100 - (collection.spentShareOfCollected ?? 0)}%` }}
+            />
+            <div
+              className="h-full bg-warning/70"
+              style={{ width: `${collection.spentShareOfCollected ?? 0}%` }}
+            />
+          </div>
         </div>
       </section>
 

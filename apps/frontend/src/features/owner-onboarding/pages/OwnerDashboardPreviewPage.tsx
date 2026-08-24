@@ -104,6 +104,7 @@ export function OwnerDashboardPreviewPage() {
         alertCount={dash.alertCount}
         actionCenter={dash.actionCenter}
         collection={dash.collection}
+        spendAnomaly={dash.spendAnomaly}
         onSelectProperty={(hostelId) => navigate(`/owner/hostels/${hostelId}/overview`)}
         onOpenAlerts={() => navigate('/owner/alerts')}
         onOpenQuickActions={qa.openSheet}

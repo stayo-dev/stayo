@@ -8,6 +8,7 @@ import { useHostelPolicy } from '@features/settings/settingsHooks';
 import { useAlerts } from '@features/owner-alerts/hooks/useAlerts';
 import { queryKeys } from '@lib/queryKeys';
 import type { MockProperty } from '@shared/mocks/dashboard';
+import { leftLabel, monthCash } from '../monthCash';
 
 function formatINR(value: number) {
   return `₹${Math.round(value).toLocaleString('en-IN')}`;
@@ -165,12 +166,41 @@ export function useOwnerDashboard() {
 
   const collected = aggregate?.rent_collected_this_month ?? 0;
   const target = collected + (aggregate?.pending_dues ?? 0);
+
+  /**
+   * Money in *and* money out. Home used to show only what came in, which
+   * never answered the question an owner opens the app with — am I ahead this
+   * month? See `monthCash.ts`, and note the label is "Left", never "profit":
+   * this is cash received minus cash spent, blind to unpaid dues and deposits
+   * held.
+   */
+  const spend = (portfolioQuery.data as any)?.month_spend ?? null;
+  const cash = monthCash({ collected, spent: Number(spend?.this_month ?? 0), target });
   const collection = {
     month: new Date().toLocaleDateString('en-US', { month: 'long' }),
     percent: Math.round(aggregate?.collection_rate ?? 0),
     collected: formatINR(collected),
     target: formatINR(target),
+    /** Null until the spend call returns — the card renders in/out only when it has both. */
+    spent: spend ? formatINR(cash.spent) : null,
+    left: spend ? formatINR(Math.abs(cash.left)) : null,
+    leftLabel: leftLabel(cash),
+    overspent: cash.overspent,
+    spentShareOfCollected: cash.spentShareOfCollected,
   };
+
+  /**
+   * One line about spending, only in a month where something moved. Null the
+   * rest of the time — the Action Center is for work, and an ordinary spend
+   * month is not work.
+   */
+  const spendAnomaly = spend?.anomaly
+    ? {
+        category: String(spend.anomaly.category),
+        changePct: Number(spend.anomaly.changePct),
+        riseAmount: formatINR(Number(spend.anomaly.riseAmount)),
+      }
+    : null;
 
   const alerts = useAlerts();
   const alertCount = 
@@ -183,6 +213,7 @@ export function useOwnerDashboard() {
     properties,
     actionCenter,
     collection,
+    spendAnomaly,
     alertCount,
     /**
      * Raw figures behind the new-owner walkthrough. Exposed as numbers rather

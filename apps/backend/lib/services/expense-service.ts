@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { prisma } from "../db";
 import { buildMemoryEntry, sortMemory, priceChangeNote, type MemoryFacts, type MemoryEntry } from "./expenses/expense-memory";
+import { detectSpendAnomaly, type SpendAnomaly } from "./expenses/expense-anomaly";
 import { eventSystem } from "../events";
 
 const EXPENSE_CATEGORIES = [
@@ -264,6 +265,67 @@ export function resolveExpenseSort(sort?: string) {
 }
 
 export class ExpenseService {
+  /**
+   * This month's spending, for the owner home page.
+   *
+   * A deliberately small sibling of `getAllExpenses`, which fires roughly
+   * thirteen queries to build the Money screen's full analytics payload. Home
+   * needs two totals and one anomaly, and calling the big one for that would
+   * make the first screen of the app pay for a page it is not showing.
+   *
+   * Owner-wide, with no hostel filter: Home is the portfolio view.
+   *
+   * The categories are read only to decide whether one line is worth saying —
+   * `detectSpendAnomaly` picks at most one, on a much higher bar than the
+   * Money screen's per-row annotation. See that module for why.
+   */
+  async getMonthSpendSummary(ownerId: string): Promise<{
+    this_month: number;
+    last_month: number;
+    change_pct: number | null;
+    anomaly: SpendAnomaly | null;
+  }> {
+    const now = new Date();
+    const currentStart = startOfMonth(now);
+    const nextStart = endExclusiveMonth(now);
+    const previousStart = addMonths(currentStart, -1);
+
+    const currentWhere = { owner_id: ownerId, date: { gte: currentStart, lt: nextStart } };
+    const previousWhere = { owner_id: ownerId, date: { gte: previousStart, lt: currentStart } };
+
+    const [currentAgg, previousAgg, currentByCategory, previousByCategory] = await Promise.all([
+      prisma.expenses.aggregate({ where: currentWhere, _sum: { amount: true } }),
+      prisma.expenses.aggregate({ where: previousWhere, _sum: { amount: true } }),
+      prisma.expenses.groupBy({ by: ["category"], where: currentWhere, _sum: { amount: true } }),
+      prisma.expenses.groupBy({ by: ["category"], where: previousWhere, _sum: { amount: true } }),
+    ]);
+
+    const thisMonth = Number(currentAgg._sum.amount || 0);
+    const lastMonth = Number(previousAgg._sum.amount || 0);
+
+    const previousByName = new Map<string, number>();
+    for (const row of previousByCategory as any[]) {
+      previousByName.set(String(row.category), Number(row._sum.amount || 0));
+    }
+
+    const anomaly = detectSpendAnomaly(
+      (currentByCategory as any[]).map((row) => ({
+        category: String(row.category),
+        current: Number(row._sum.amount || 0),
+        previous: previousByName.get(String(row.category)) || 0,
+      })),
+    );
+
+    return {
+      this_month: thisMonth,
+      last_month: lastMonth,
+      // Null rather than 0 or Infinity when there is no baseline: "up 0%" and
+      // "up ∞%" are both lies about a first month of records.
+      change_pct: lastMonth > 0 ? Math.round(((thisMonth - lastMonth) / lastMonth) * 100) : null,
+      anomaly,
+    };
+  }
+
   async getAllExpenses(ownerId: string, filters: ExpenseFilters = {}) {
     const now = new Date();
     const currentMonthStart = startOfMonth(now);
