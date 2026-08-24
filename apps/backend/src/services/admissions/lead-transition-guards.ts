@@ -48,3 +48,53 @@ export function canTransitionLeadStatus(current: string, next: "ACCEPTED" | "ON_
 
   return { ok: false, reason: `Cannot change this enquiry's status from ${normalized}.` };
 }
+
+/**
+ * Whether a lead may be turned into a tenant invitation right now.
+ *
+ * **This used to be `status === "ACCEPTED"`, and that shape produced a real
+ * bug.** The owner's Accept button PATCHed the lead to ACCEPTED *and then*
+ * opened the Add Tenant wizard, because the conversion endpoint refused
+ * anything else. Closing that wizard without sending left the lead marked
+ * Accepted with no invitation behind it — an owner reading their Leads tab
+ * saw four "Accepted" enquiries that nobody had actually been invited to.
+ *
+ * Accepting and inviting are now one act: the button opens the wizard and the
+ * lead moves straight to INVITED when the invitation is really sent. So the
+ * question here is no longer "has it been accepted" but "is it still open to
+ * being converted at all".
+ *
+ * ACCEPTED stays allowed — leads parked in that state by the old flow (and by
+ * the sheet's "Continue to Add Tenant") must still be convertible.
+ *
+ * `ON_HOLD` is allowed too, which the old rule refused. Sending an invitation
+ * is a stronger commitment than accepting, so requiring an un-hold first would
+ * only be ceremony — and with the eager PATCH gone, an on-hold lead whose
+ * owner pressed Accept would otherwise dead-end at the wizard's submit.
+ */
+export function canConvertLeadToInvitation(
+  status: string,
+  alreadyConvertedTenantId?: string | null,
+): GuardResult {
+  if (alreadyConvertedTenantId) {
+    return { ok: false, reason: "This enquiry is already connected to a tenant invitation." };
+  }
+
+  const normalized = String(status || "").toUpperCase();
+
+  if (normalized === "REJECTED") {
+    return { ok: false, reason: "This enquiry was rejected, so it cannot be invited." };
+  }
+  if (normalized === "INVITED" || normalized === "JOINED") {
+    return { ok: false, reason: "This enquiry has already been converted to a tenant." };
+  }
+  if (normalized === "LOST") {
+    return { ok: false, reason: "This enquiry is marked as not proceeding." };
+  }
+
+  if (OPEN_STATUSES.includes(normalized) || normalized === "ON_HOLD" || normalized === "ACCEPTED") {
+    return { ok: true };
+  }
+
+  return { ok: false, reason: `Cannot invite this enquiry from status ${normalized}.` };
+}

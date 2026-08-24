@@ -5,7 +5,7 @@ import { checkFixedWindowLimit } from "@/lib/redis/rate-limit";
 import { redisKeys } from "@/lib/redis/keys";
 import { getOrSetJson, invalidateTag } from "@/lib/redis/cache";
 import { invitationService } from "@/src/services/tenants/invitation-service";
-import { canTransitionLeadStatus } from "@/src/services/admissions/lead-transition-guards";
+import { canTransitionLeadStatus, canConvertLeadToInvitation } from "@/src/services/admissions/lead-transition-guards";
 import { whatsAppTemplateDeliveryService } from "@/lib/services/notifications/whatsapp-template-delivery";
 import {
   buildTenantEnquiryRejected,
@@ -495,6 +495,27 @@ export class AdmissionsService {
     const where: any = { owner_id: ownerId };
     if (query.hostelId) where.hostel_id = String(query.hostelId);
     if (query.status) where.status = String(query.status);
+    /**
+     * `statuses=NEW,ACCEPTED,...` — a set, where `status` takes one value.
+     *
+     * The owner's Alerts inbox splits leads into work still owed and work
+     * finished, and needs those two halves fetched separately: this endpoint
+     * orders by `lead_score desc`, so a brand-new low-score enquiry sorts
+     * *below* settled high-score ones and could sit past the page limit
+     * entirely. Fetching the actionable set as its own page is what stops an
+     * owner never seeing a new enquiry.
+     *
+     * Unknown values are dropped rather than passed to Postgres, and a filter
+     * that names nothing valid is ignored instead of silently matching every
+     * lead.
+     */
+    if (query.statuses) {
+      const requested = String(query.statuses)
+        .split(",")
+        .map((value) => value.trim().toUpperCase())
+        .filter((value) => LEAD_STATUSES.includes(value));
+      if (requested.length > 0) where.status = { in: requested };
+    }
     if (query.search) {
       const search = String(query.search);
       where.OR = [
@@ -823,14 +844,15 @@ export class AdmissionsService {
   async convertToInvitation(leadId: string, ownerId: string, input: any) {
     const lead = await prisma.visitorLead.findFirst({ where: { id: leadId, owner_id: ownerId } });
     if (!lead) throw ApiError.notFound("Lead not found");
-    if (lead.converted_tenant_id) throw ApiError.conflict("Lead is already connected to a tenant invitation");
-    // Only reachable once the owner has Accepted the enquiry — mirrors
-    // canTransitionLeadStatus's ON_HOLD->ACCEPTED/open->ACCEPTED rules, so a
-    // lead can't be converted to a tenant while still sitting on hold or
-    // before the owner has made a decision.
-    if (lead.status !== "ACCEPTED") {
-      throw ApiError.conflict("Accept the enquiry before creating an invitation");
-    }
+
+    // This used to demand `status === "ACCEPTED"`, which forced the owner's
+    // Accept button to mark the lead accepted *before* opening the Add Tenant
+    // wizard — so closing that wizard left an "Accepted" lead with no
+    // invitation behind it. Accepting and inviting are one act now: the lead
+    // stays where it is until the invitation below actually succeeds, and
+    // only then moves to INVITED. See `canConvertLeadToInvitation`.
+    const guard = canConvertLeadToInvitation(lead.status, lead.converted_tenant_id);
+    if (!guard.ok) throw ApiError.conflict(guard.reason);
     const email = cleanString(input.email || lead.student_email, 180)?.toLowerCase();
     if (!email) throw ApiError.validationError("Email is required before sending an invitation");
     const roomId = String(input.room_id || "");

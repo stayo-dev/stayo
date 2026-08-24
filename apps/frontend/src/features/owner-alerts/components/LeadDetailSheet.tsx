@@ -51,15 +51,11 @@ export function LeadDetailSheet({ leadId, onClose }: LeadDetailSheetProps) {
   });
 
   const actionMutation = useMutation({
-    mutationFn: (payload: { status: 'ACCEPTED' | 'ON_HOLD' | 'REJECTED'; note?: string }) =>
+    mutationFn: (payload: { status: 'ON_HOLD' | 'REJECTED'; note?: string }) =>
       admissionsService.updateStatus(leadId as string, payload),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.admissions.all() });
-      if (variables.status === 'ACCEPTED') {
-        stayoToast.success('Enquiry accepted');
-        onClose();
-        navigate(`/owner/tenants?fromLead=${leadId}`);
-      } else if (variables.status === 'ON_HOLD') {
+      if (variables.status === 'ON_HOLD') {
         stayoToast.success('Enquiry put on hold');
         setMode('view');
         setHoldMessage('');
@@ -73,6 +69,20 @@ export function LeadDetailSheet({ leadId, onClose }: LeadDetailSheetProps) {
     },
   });
 
+  /**
+   * Accepting *is* inviting.
+   *
+   * This used to PATCH the lead to ACCEPTED and then open the Add Tenant
+   * wizard, because the conversion endpoint refused anything else. Closing
+   * that wizard without sending left the lead marked Accepted with no
+   * invitation behind it — an owner reading their Leads tab saw enquiries
+   * marked accepted that nobody had actually been invited to.
+   *
+   * Nothing is written here now. The lead advances to INVITED inside
+   * `POST /leads/:id/convert-to-invitation`, when the invitation really goes
+   * out; abandoning the wizard leaves the enquiry exactly as it was, still
+   * waiting for a decision.
+   */
   const goToAddTenant = () => {
     onClose();
     navigate(`/owner/tenants?fromLead=${leadId}`);
@@ -151,11 +161,11 @@ export function LeadDetailSheet({ leadId, onClose }: LeadDetailSheetProps) {
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => actionMutation.mutate({ status: 'ACCEPTED' })}
+                      onClick={goToAddTenant}
                       disabled={actionMutation.isPending}
                       className={actionBtn}
                     >
-                      {actionMutation.isPending ? 'Accepting…' : 'Accept'}
+                      Accept &amp; invite
                     </button>
                     <button type="button" onClick={() => setMode('hold')} disabled={actionMutation.isPending} className={sideBtn}>
                       Hold

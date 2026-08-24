@@ -12,6 +12,8 @@ const { mockPrisma, mockWhatsAppSend, mockInviteTenant } = vi.hoisted(() => {
       visitorLead: {
         findFirst: vi.fn(),
         update: vi.fn(),
+        findMany: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
       },
       leadActivity: {
         create: vi.fn(),
@@ -187,13 +189,31 @@ describe('AdmissionsService.convertToInvitation', () => {
     };
   }
 
-  it('refuses to convert a lead that has not been accepted', async () => {
+  // Reversed 2026-08-24. This used to demand ACCEPTED first, which forced the
+  // owner's Accept button to mark the lead accepted *before* opening the Add
+  // Tenant wizard — so closing that wizard left an "Accepted" lead with no
+  // invitation behind it. Accepting and inviting are one act now.
+  it('converts a lead that was never separately accepted', async () => {
     mockPrisma.visitorLead.findFirst.mockResolvedValue(acceptedLead({ status: 'NEW' }));
     const service = new AdmissionsService();
-    await expect(
-      service.convertToInvitation('lead-1', 'owner-1', { room_id: 'room-1' })
-    ).rejects.toThrow(/accept the enquiry/i);
-    expect(mockInviteTenant).not.toHaveBeenCalled();
+    await service.convertToInvitation('lead-1', 'owner-1', { room_id: 'room-1' });
+    expect(mockInviteTenant).toHaveBeenCalled();
+  });
+
+  it('refuses to convert a rejected or already-converted enquiry', async () => {
+    const service = new AdmissionsService();
+    for (const [status, pattern] of [
+      ['REJECTED', /was rejected/i],
+      ['INVITED', /already been converted/i],
+      ['LOST', /not proceeding/i],
+    ] as const) {
+      mockInviteTenant.mockClear();
+      mockPrisma.visitorLead.findFirst.mockResolvedValue(acceptedLead({ status }));
+      await expect(
+        service.convertToInvitation('lead-1', 'owner-1', { room_id: 'room-1' })
+      ).rejects.toThrow(pattern);
+      expect(mockInviteTenant).not.toHaveBeenCalled();
+    }
   });
 
   it('refuses to convert a lead already linked to a tenant (duplicate-tenant protection)', async () => {
@@ -282,5 +302,60 @@ describe('AdmissionsService.convertToInvitation', () => {
     await expect(
       service.convertToInvitation('lead-1', 'owner-1', { room_id: 'room-1' })
     ).rejects.toThrow('CAPACITY_EXCEEDED: Room is full');
+  });
+});
+
+/**
+ * The owner's Alerts inbox fetches leads in two halves — work still owed and
+ * work finished — because this query orders by `lead_score desc` and a
+ * brand-new enquiry scores low, so on one page it sorts below settled
+ * high-score leads and can fall off the end entirely.
+ */
+describe('AdmissionsService.listLeads — the statuses filter', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPrisma.visitorLead.findMany.mockResolvedValue([]);
+    mockPrisma.visitorLead.count.mockResolvedValue(0);
+  });
+
+  const whereFromLastCall = () => mockPrisma.visitorLead.findMany.mock.calls[0][0].where;
+
+  it('turns a comma list into an IN filter', async () => {
+    const service = new AdmissionsService();
+    await service.listLeads('owner-1', { statuses: 'NEW,ACCEPTED,ON_HOLD' });
+    expect(whereFromLastCall().status).toEqual({ in: ['NEW', 'ACCEPTED', 'ON_HOLD'] });
+  });
+
+  it('uppercases and trims what it was given', async () => {
+    const service = new AdmissionsService();
+    await service.listLeads('owner-1', { statuses: ' new , accepted ' });
+    expect(whereFromLastCall().status).toEqual({ in: ['NEW', 'ACCEPTED'] });
+  });
+
+  // Passing an unrecognised value straight to Postgres would either error or
+  // match nothing silently; dropping it keeps the rest of the filter working.
+  it('drops values that are not real statuses', async () => {
+    const service = new AdmissionsService();
+    await service.listLeads('owner-1', { statuses: 'NEW,DROP TABLE,ACCEPTED' });
+    expect(whereFromLastCall().status).toEqual({ in: ['NEW', 'ACCEPTED'] });
+  });
+
+  // A filter naming nothing valid must not quietly become "every lead".
+  it('ignores a filter with no valid status rather than matching everything', async () => {
+    const service = new AdmissionsService();
+    await service.listLeads('owner-1', { statuses: 'NONSENSE' });
+    expect(whereFromLastCall().status).toBeUndefined();
+  });
+
+  it('leaves the single-status filter alone', async () => {
+    const service = new AdmissionsService();
+    await service.listLeads('owner-1', { status: 'NEW' });
+    expect(whereFromLastCall().status).toBe('NEW');
+  });
+
+  it('always scopes to the owner', async () => {
+    const service = new AdmissionsService();
+    await service.listLeads('owner-1', { statuses: 'NEW' });
+    expect(whereFromLastCall().owner_id).toBe('owner-1');
   });
 });
