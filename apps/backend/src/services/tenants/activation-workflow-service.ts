@@ -28,7 +28,19 @@ import {
 } from "./agreement-lifecycle-completeness";
 
 type ActivationStep = "ACCOUNT" | "RULES" | "AGREEMENT" | "PROFILE" | "ACTIVATE";
-type ResolvedInvitation = { profile: any | null; tenant: any; invitation?: any | null; token: string; source?: string };
+type ResolvedInvitation = {
+  profile: any | null;
+  tenant: any;
+  invitation?: any | null;
+  token: string;
+  source?: string;
+  /** How `profile` was found — see invited-profile-resolver. */
+  profile_source?: string;
+  /** An account owns the invitation's email but could not be safely adopted. */
+  email_conflict?: { email: string } | null;
+  /** When the link was delivered over WhatsApp; null means we cannot vouch. */
+  whatsapp_delivered_at?: Date | null;
+};
 
 const REQUIRED_ACKNOWLEDGEMENTS = [
   "fee_refund_rules",
@@ -39,6 +51,8 @@ const REQUIRED_ACKNOWLEDGEMENTS = [
 ] as const;
 
 import { getActiveTenancy, selectCurrentTenancy } from "@/lib/tenancy/active-tenancy";
+import { isPhoneAlreadyProven } from "./invitation-phone-trust";
+import { resolveActivationEmail } from "./invited-profile-resolver";
 import {
   completedApplicableSteps,
   isAgreementRequired,
@@ -402,7 +416,8 @@ export class ActivationWorkflowService {
   }
 
   async getContext(token: string) {
-    const { profile, tenant, invitation } = await this.resolveInvitation(token, { markOpened: true });
+    const resolvedContext = await this.resolveInvitation(token, { markOpened: true });
+    const { profile, tenant, invitation } = resolvedContext;
     const hostel = tenant.hostels;
     if (!tenant.hostel_id || !hostel) throw new Error("INTERNAL_ERROR: Tenant hostel context unavailable");
     const ruleVersion = await this.getActiveRuleVersion(tenant.hostel_id);
@@ -597,6 +612,23 @@ export class ActivationWorkflowService {
         email: profile?.email || invitation?.email || null,
         phone: profile?.phone || invitation?.phone || tenant.phone_1 || null,
       },
+      /**
+       * The number the invitation was addressed to, and whether we can already
+       * vouch for it. The Identity screen uses these to decide whether to ask
+       * for an OTP at all: it does not, unless the invitee edits the number
+       * away from `phone` below. Computed here so one rule serves both the
+       * screen and the mutation that validates it.
+       */
+      phone_trust: {
+        phone: invitation?.phone ? normalizeIndianPhone(invitation.phone) : (tenant.phone_1 || null),
+        trusted: isPhoneAlreadyProven({
+          submittedPhone: (invitation?.phone ? normalizeIndianPhone(invitation.phone) : tenant.phone_1) || "",
+          profile,
+          tenant,
+          invitationPhone: invitation?.phone ? normalizeIndianPhone(invitation.phone) : null,
+          whatsappDeliveredAt: resolvedContext?.whatsapp_delivered_at ?? null,
+        }),
+      },
       tenant: {
         id: tenant.id,
         profile_type: tenant.profile_type,
@@ -689,7 +721,8 @@ export class ActivationWorkflowService {
     if (!["ACCOUNT", "RULES", "AGREEMENT", "PROFILE", "ACTIVATE"].includes(step)) {
       throw new Error("VALIDATION_ERROR: Unsupported activation step");
     }
-    const { profile, tenant, invitation } = await this.resolveInvitation(token);
+    const resolved = await this.resolveInvitation(token);
+    const { profile, tenant, invitation } = resolved;
     if (!tenant.hostel_id) throw new Error("INTERNAL_ERROR: Tenant hostel context unavailable");
     const ruleVersion = await this.getActiveRuleVersion(tenant.hostel_id);
 
@@ -728,7 +761,7 @@ export class ActivationWorkflowService {
     this.assertTransition(step, state);
 
     if (step === "ACCOUNT") {
-      await this.saveAccount(profile, tenant, data, token, invitation);
+      await this.saveAccount(profile, tenant, data, token, invitation, resolved);
     }
     if (step === "RULES") {
       await this.acceptRules(profile, tenant, data, context, invitation);
@@ -999,7 +1032,7 @@ export class ActivationWorkflowService {
     });
   }
 
-  private async saveAccount(profile: any | null, tenant: any, data: any, token: string, invitation?: any | null) {
+  private async saveAccount(profile: any | null, tenant: any, data: any, token: string, invitation?: any | null, resolved?: any) {
     const password = String(data?.password || "");
     const confirmPassword = String(data?.confirm_password || data?.confirmPassword || "");
 
@@ -1012,10 +1045,18 @@ export class ActivationWorkflowService {
     );
     if (!primaryPhone) throw new Error("VALIDATION_ERROR: Valid primary phone is required");
 
-    const isAlreadyVerified = Boolean(
-      (profile?.mobile_verified || profile?.phone_verified || tenant?.mobile_verified) &&
-      (profile?.phone === primaryPhone || tenant?.phone_1 === primaryPhone)
-    );
+    // Two independent proofs, either sufficient: the linked account already
+    // verified this exact number (every Discover seeker, who OTP'd it at
+    // enquiry time), or the invitation link was delivered to it over WhatsApp.
+    // Editing the number on the Identity screen drops both, which is what makes
+    // a changed number cost an OTP. See invitation-phone-trust.
+    const isAlreadyVerified = isPhoneAlreadyProven({
+      submittedPhone: primaryPhone,
+      profile,
+      tenant,
+      invitationPhone: invitation?.phone ? normalizeIndianPhone(invitation.phone) : null,
+      whatsappDeliveredAt: resolved?.whatsapp_delivered_at ?? null,
+    });
 
     if (!isAlreadyVerified) {
       const otp = String(data?.otp || "").trim();
@@ -1035,7 +1076,18 @@ export class ActivationWorkflowService {
       }
     }
 
-    if (!profile && invitation) {
+    // Keyed on whether the tenancy is *bound*, not on whether we found an
+    // account. Those used to be the same question; they are not any more, since
+    // the resolver now hands back the invitee's existing account before
+    // anything has been bound to this tenancy.
+    //
+    // `startActivation` is the only path that binds `tenants.profile_id`, and
+    // binding is what runs `assertCanStartNewTenancy` — the "one live tenancy
+    // per person" rule. Short-circuiting past it because a profile was found
+    // would leave the tenancy unbound and that rule unchecked. It updates an
+    // existing account in place rather than creating a second one, which is
+    // exactly what an invitee with an account needs.
+    if (!tenant.profile_id && invitation) {
       await tenantInvitationLifecycleService.startActivation(token, {
         ...data,
         phone: primaryPhone,
@@ -1044,16 +1096,18 @@ export class ActivationWorkflowService {
     }
     if (!profile) throw new Error("INVALID_TRANSITION: Complete account setup from a valid invitation");
 
-    const rawEmail = String(data?.email || "").trim().toLowerCase();
-    if (!rawEmail) {
-      throw new Error("VALIDATION_ERROR: Gmail ID is required");
+    // No longer collected on the Identity screen. `profiles.email` is this
+    // person's login, and a form that rewrites it mid-onboarding could only do
+    // harm: leaving it unchanged used to be rejected as "already registered",
+    // and changing it would silently alter how they sign in.
+    const normalizedEmail = resolveActivationEmail({ profile, invitation, phone: primaryPhone });
+    if (!normalizedEmail) {
+      throw new Error("VALIDATION_ERROR: This invitation is missing both an email address and a phone number");
     }
-    const gmailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
-    if (!gmailRegex.test(rawEmail)) {
-      throw new Error("VALIDATION_ERROR: Please enter a valid Gmail ID (e.g. name@gmail.com)");
-    }
-    const normalizedEmail = rawEmail;
 
+    // Kept, because this still writes an email onto a profile: it must never
+    // take an address another account already owns (`profiles.email` is unique,
+    // so an unchecked write is an opaque P2002).
     const existingWithEmail = await prisma.profile.findUnique({
       where: { email: normalizedEmail },
     });

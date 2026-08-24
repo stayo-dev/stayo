@@ -313,15 +313,10 @@ export function ActivationPage() {
 
   const submitAccount = async (): Promise<boolean> => {
     setAccountOtpError('');
-    const emailVal = (account.email || '').trim().toLowerCase();
-    if (!emailVal) {
-      setError('Gmail ID is required');
-      return false;
-    }
-    if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(emailVal)) {
-      setError('Please enter a valid Gmail ID (e.g. name@gmail.com)');
-      return false;
-    }
+    // The email is no longer collected here — the backend derives it from the
+    // account this invitation belongs to, or from the invitation itself. It was
+    // only ever a way to re-type an address we already had, and typing it
+    // correctly is what used to fail as "already registered".
     const ok = await submitStep('ACCOUNT', account);
     if (!ok) setAccountOtpError(lastStepErrorRef.current || 'Incorrect code — please try again');
     return ok;
@@ -545,6 +540,7 @@ export function ActivationPage() {
             ctx={ctx}
             activeStep={activeStep}
             accountVerified={Boolean(ctx.activation_state?.account_setup_completed)}
+            phoneTrust={ctx.phone_trust ?? null}
             profileCompleted={completed.has('PROFILE') || Boolean(ctx.activation_state?.profile_completed)}
             account={account}
             setAccount={setAccount}

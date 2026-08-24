@@ -1,4 +1,5 @@
 import { FormEvent, useState } from 'react';
+import { canSubmitIdentity, needsPhoneOtp, type PhoneTrust } from './identityVerification';
 import { AlertCircle, Camera, CheckCircle2, Receipt, Send } from 'lucide-react';
 import { StayoLoader } from '@shared/ui/brand';
 import type { ActivationContext, ActivationStep } from '../activationTypes';
@@ -72,6 +73,8 @@ interface WelcomeIdentityStepProps {
   photoUploading: boolean;
   onPhotoChange: (file?: File) => void;
   submitting: boolean;
+  /** What the invitation proved about the number, from the activation context. */
+  phoneTrust?: PhoneTrust | null;
   onSubmitAccount: () => Promise<boolean>;
   onSubmitProfile: () => Promise<boolean>;
   goToStep: (step: ActivationStep) => void;
@@ -222,6 +225,7 @@ export function WelcomeIdentityStep({
   ctx,
   activeStep,
   accountVerified,
+  phoneTrust,
   profileCompleted,
   account,
   setAccount,
@@ -339,7 +343,12 @@ export function WelcomeIdentityStep({
       }
     };
     const isBusy = busy || submitting;
-    const canSubmit = showAccountFields ? otpSent && account.otp.length === 6 : true;
+    // A number the invitation was delivered to needs no code; editing it
+    // re-arms verification. See identityVerification.
+    const otpRequired = showAccountFields && needsPhoneOtp({ enteredPhone: account.phone, trust: phoneTrust });
+    const canSubmit = showAccountFields
+      ? canSubmitIdentity({ enteredPhone: account.phone, trust: phoneTrust, otp: account.otp, otpSent })
+      : true;
 
     return (
       <form onSubmit={handleSubmit} style={{ animation: 'obFade .25s ease' }}>
@@ -406,19 +415,24 @@ export function WelcomeIdentityStep({
                   value={account.phone}
                   onChange={(v) => setAccount({ ...account, phone: v })}
                   placeholder="10-digit mobile number"
-                  verified={accountVerified}
+                  verified={accountVerified || !otpRequired}
                   onSend={onSendOtp}
                   sending={otpSending}
                   countdown={otpCountdown}
                   sent={otpSent}
                 />
               </div>
-              {account.phone.length > 0 && account.phone.length < 10 && (
+              {!otpRequired && (
+                <div className="mt-1.5 text-[11.5px] font-medium" style={{ color: '#8A7F75' }}>
+                  This is the number your invitation was sent to. Edit it and we'll send a code to confirm the new one.
+                </div>
+              )}
+              {otpRequired && account.phone.length > 0 && account.phone.length < 10 && (
                 <div className="mt-1.5 text-[11.5px] font-medium" style={{ color: '#8A7F75' }}>
                   {10 - account.phone.length} more digit{10 - account.phone.length === 1 ? '' : 's'} to verify
                 </div>
               )}
-              {otpSent && (
+              {otpRequired && otpSent && (
                 <OtpBlock
                   phone={account.phone}
                   otp={account.otp}
@@ -432,24 +446,14 @@ export function WelcomeIdentityStep({
               )}
             </div>
 
-            <div className="mt-3.5">
-              <div className="text-[12.5px] font-bold" style={{ color: '#3A342E' }}>
-                Gmail ID <span style={{ color: '#D0473A' }}>*</span>
-              </div>
-              <div className="mt-1.5" style={{ ...cardWrap, padding: '0 13px' }}>
-                <input
-                  type="email"
-                  value={account.email}
-                  onChange={(e) => setAccount({ ...account, email: e.target.value.trim() })}
-                  placeholder="yourname@gmail.com"
-                  className="text-sm font-medium"
-                  style={inputBase}
-                />
-              </div>
-              <div className="mt-1.5 text-[11.5px]" style={{ color: '#8A7F75' }}>
-                Used for account notifications and hostel communications.
-              </div>
-            </div>
+            {/*
+              The Gmail ID field was here. It asked for an address we already
+              hold — from the account this invitation belongs to, or from the
+              invitation itself — and writing it back over `profiles.email`
+              meant this screen could change the invitee's *login*. Leaving it
+              as it was is what produced "An account with this email address
+              already exists". The backend derives it now.
+            */}
           </>
         )}
 

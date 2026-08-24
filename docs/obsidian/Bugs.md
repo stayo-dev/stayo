@@ -8,6 +8,24 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-08-25 — "+ Add hostel" resumed an old hostel instead of adding one (fixed)
+
+**Reported as** the wizard skipping its first two steps: tapping **+ Add hostel** landed straight on the Rooms screen, already showing "Ground floor" and "First floor", without ever asking for a name.
+
+**It was not skipping steps.** It was not creating a hostel at all — it was *resuming* one. `onAddHostel` navigated to `/owner/hostels/:id/build` whenever `hostelInProgress` existed, and `hostelInProgress` is **any hostel in the account with zero rooms**. Resuming deliberately starts at the Rooms stage (`useHostelBuilder.ts:43`), because Name and Floors are already done — for that old hostel. The floor chips on screen were that abandoned hostel's real floors, read back from the server.
+
+**Not an edge case:** while any zero-room hostel existed, a new hostel could never be created from Home. The button was permanently hijacked. And zero-room hostels are exactly what the incremental-write builder leaves behind, so one bad build disabled the button for good.
+
+**Fix:** Add means add — `onAddHostel` always goes to `/owner/hostels/new`. Resuming keeps its honest home on the getting-started card, which says "finish setting up your hostel", and a half-built hostel is editable from its own Rooms tab either way.
+
+**Found alongside:** `hostelInProgress` is a **dead prop** on `OwnerHomeDashboard` — declared, destructured, never rendered. So the "continue building" card that would have made resume reachable does not exist, which is why the hijacked button was the only route to it. Left in place pending a decision on whether it becomes a real card or is deleted.
+
+**The real cure is [the draft-then-create spec](../superpowers/specs/2026-08-24-add-hostel-draft-then-create-design.md)** — with no half-built hostels on the server, this ambiguity cannot arise. This fix stops the bleeding until then.
+
+**Not verified in a browser.**
+
+**Related:** [[Features]], [[Decisions#ADR-108|ADR-108]]
+
 ## 2026-08-24 — The room-numbering picker renumbered nothing (fixed)
 
 **Found** auditing the Add Hostel Rooms step for layout, not for correctness.
@@ -66,7 +84,23 @@ Found by auditing all four builder screens after an owner reported "the fields t
 
 **Related:** [[Features]], [[APIs]], [[Business-Rules]]
 
-## 2026-08-24 — An enquiry's phone number is gated only by the UI (open)
+## 2026-08-25 — Onboarding met an invited tenant as a stranger and rejected their own email (fixed)
+
+**Reported** with a screenshot: the Identity step of `/activate/<token>`, an OTP box, a "Gmail ID" field, and a red banner reading *"An account with this email address already exists. Please use a different email address."* — on an address belonging to the person filling the form in. `PATCH /api/tenants/activate` 400.
+
+**The dropped link.** `admissionsService.convertToInvitation` reads the lead, forwards `email`/`name`/`phone`/`room_id`/money to `inviteTenant`, and **never passes `lead.seeker_profile_id`**; `createInvitation` then writes `profile_id: null`. So `resolveByToken` reported `profile: null` for someone who demonstrably had an account.
+
+**Everything downstream was correct, on wrong inputs.** `saveAccount`'s `isAlreadyVerified` already tested "has this account verified this number" — it returned false only because there was no account, so an OTP was demanded for a number the invitation had just been WhatsApp'd to. Then `startActivation` looked the email up, found the invitee's own profile, and — since none was attached to the tenancy — concluded it belonged to somebody else.
+
+**Worth stating plainly: the intended behaviour was already documented.** `authService.selfSignUpTenant`'s docblock ([[Decisions#ADR-035|ADR-035]]) says a marketplace account "become[s] a tenant *of a hostel* only when an owner invites them and they activate, **which reuses this same profile**". The reuse branch existed in `startActivation` and was unreachable, because nothing ever told it which profile.
+
+**Fix:** [[Decisions#ADR-110|ADR-110]] — resolve the invitee's account (bound → enquiry's `seeker_profile_id` → guarded contact match), trust a number already proven, stop collecting the email. No new column for the link: `visitor_leads.converted_tenant_id` was already written and already indexed.
+
+**Near-miss caught while building it.** Resolving the profile made `saveAccount`'s `if (!profile && invitation)` branch stop firing — and that branch is the *only* path that binds `tenants.profile_id`, which is what runs `assertCanStartNewTenancy`. Left as-is, tenancies would have activated unbound with the one-live-tenancy rule unchecked. The condition is now `!tenant.profile_id`: "is this tenancy bound" and "did we find an account" were the same question before this change and are not any more.
+
+**Related:** [[Decisions#ADR-110|ADR-110]], [[Business-Rules]], [[APIs]], [[Database]], [[Changelog]]
+
+## 2026-08-24 — An enquiry's phone number is gated only by the UI (fixed)
 
 **Found while** restoring email+password signup ([[Decisions#ADR-096|ADR-096]]) and tracing where a *verified* phone actually enters the system.
 
@@ -74,9 +108,13 @@ Found by auditing all four builder screens after an owner reported "the fields t
 
 **Not caused by, but exposed by, this change.** It has been reachable since [[Decisions#ADR-078|ADR-078]] made `phone: null` the normal shape of a new account (Google provisioning) — before that, every account had a phone by the time it existed, so the missing server-side check had nothing to catch.
 
-**Shape of the fix (not applied):** have `createEnquiry` refuse a seeker with no phone on file — matching the UI, including [[Decisions#ADR-034|ADR-034]]'s skipped-OTP case, by requiring `phone` present rather than `phone_verified` true, which would otherwise break the WhatsApp-undeliverable path the UI deliberately lets through.
+**Fix (applied 2026-08-24):** `createEnquiry` now refuses a seeker with no phone on file, before any database work, with a 422 `VALIDATION_ERROR` ("Add your mobile number before sending an enquiry"). It is placed in the **service**, not the route, so the single caller (`POST /api/discover/enquiries`) cannot be bypassed by a future second one. As predicted above the rule is **`phone` present, not `phone_verified` true** — [[Decisions#ADR-034|ADR-034]] lets signup through with a `SKIPPED` row when WhatsApp cannot deliver, and gating on the flag would refuse those seekers outright. The now-dead `seeker.phone ?? existing.student_phone` fallback on the re-enquiry path was removed with it.
 
-**Related:** [[Features]], [[APIs]], [[Business-Rules]]
+**Found while fixing it — `tests/discovery-service.test.ts` had not run in some time.** It is in the `test:pure` allowlist, but `discovery-service.ts` imports `whatsapp-template-delivery`, which constructs a `MetaWhatsAppProvider` at *module scope*; without `WHATSAPP_ACCESS_TOKEN` that throws `WhatsAppConfigError` at import, so the file failed to load and reported **zero tests** rather than failing loudly. Mocking that module restored it, which then exposed a second staleness — `hostel_marketing_revisions.findMany` (added to the service by `fillCoverPhotos`) was missing from the prisma mock, breaking 10 further tests. Both are fixed; the file went from 0 to 23 running tests.
+
+**Worth generalising:** a suite in the allowlist that dies at import is indistinguishable from a suite that passes, in any summary that only counts failures. Any service pulled into a pure test must be import-safe or mocked at the module boundary.
+
+**Related:** [[Features]], [[APIs]], [[Business-Rules]], [[Changelog]]
 
 ## 2026-08-22 — A one-field Prisma schema addition took down every listing detail page
 

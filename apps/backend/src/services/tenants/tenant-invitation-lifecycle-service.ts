@@ -9,6 +9,9 @@ import { hostelBillingPreferencesService, type MaintenanceType } from "../../../
 import { roomCapacityService } from "../../../lib/services/room-capacity-service";
 import { onboardingFinancialsService } from "../payments/onboarding-financials-service";
 import { selectCurrentTenancy } from "@/lib/tenancy/active-tenancy";
+import { recordWhatsAppDelivery, readWhatsAppDeliveredAt } from "./invitation-delivery-trust";
+import { isPhoneAlreadyProven } from "./invitation-phone-trust";
+import { resolveInvitedProfile, resolveActivationEmail } from "./invited-profile-resolver";
 import {
   TenancyEligibilityError,
   tenancyEligibilityService,
@@ -389,6 +392,11 @@ export class TenantInvitationLifecycleService {
       activationLink
     );
 
+    // A successful WhatsApp send is what later lets activation skip the OTP for
+    // this number — see invitation-delivery-trust. Recorded rather than
+    // inferred, and only on success.
+    await recordWhatsAppDelivery(created.invitation.id, delivery.whatsapp_sent);
+
     await eventLog.log("tenant_invited", ownerId, {
       tenant_id: created.tenant.id,
       invitation_id: created.invitation.id,
@@ -737,6 +745,10 @@ export class TenantInvitationLifecycleService {
       activationLink
     );
 
+    // A resend can change the phone number, so this both sets the proof on a
+    // successful send and clears a stale one from the previous number.
+    await recordWhatsAppDelivery(updated.updatedInvitation.id, delivery.whatsapp_sent);
+
     // Automatically write to activity/system event logs
     await eventLog.log("tenant_invitation_edited", updated.updatedInvitation.owner_id, {
       tenant_id: updated.updatedInvitation.tenant_id,
@@ -858,10 +870,19 @@ export class TenantInvitationLifecycleService {
       invitation.status = "OPENED";
     }
 
+    // The tenancy carries no `profile_id` until activation binds one, so this
+    // used to report `profile: null` for people who demonstrably have an
+    // account — every Stayo Discover seeker among them. Resolving it here means
+    // activation meets them as themselves. See invited-profile-resolver.
+    const resolvedProfile = await resolveInvitedProfile(invitation.tenant, invitation);
+
     return {
       source: "tenant_invitations",
       invitation,
-      profile: invitation.tenant.profiles || null,
+      profile: invitation.tenant.profiles || resolvedProfile.profile,
+      profile_source: resolvedProfile.source,
+      email_conflict: resolvedProfile.conflict || null,
+      whatsapp_delivered_at: await readWhatsAppDeliveredAt(invitation.id),
       tenant: invitation.tenant,
       token: normalizedToken,
     };
@@ -881,16 +902,27 @@ export class TenantInvitationLifecycleService {
       if (password !== confirmPassword) throw new Error("VALIDATION_ERROR: Passwords do not match");
     }
 
-    const rawEmail = String(data?.email || "").trim().toLowerCase();
-    if (!rawEmail) {
-      throw new Error("VALIDATION_ERROR: Gmail ID is required");
+    // An existing account owns this address but could not be safely adopted —
+    // its verified phone is not the one the invitation was sent to. Neither
+    // adopting nor creating is correct, and only the owner can fix it.
+    if ((resolved as any).email_conflict) {
+      throw new Error(
+        "VALIDATION_ERROR: This invitation's email address already belongs to another Stayo account. Ask the hostel to re-send the invitation with the correct email or phone number.",
+      );
     }
-    const gmailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
-    if (!gmailRegex.test(rawEmail)) {
-      throw new Error("VALIDATION_ERROR: Please enter a valid Gmail ID (e.g. name@gmail.com)");
-    }
-    const normalizedEmail = rawEmail;
 
+    // Not asked for on the Identity screen any more — see resolveActivationEmail.
+    const normalizedEmail = resolveActivationEmail({
+      profile: resolved.profile,
+      invitation,
+      phone: primaryPhone,
+    });
+    if (!normalizedEmail) {
+      throw new Error("VALIDATION_ERROR: This invitation is missing both an email address and a phone number");
+    }
+
+    // Still guarded, because this path can create a profile: the address must
+    // not already belong to somebody other than the account we resolved.
     const existingWithEmail = await prisma.profile.findUnique({
       where: { email: normalizedEmail },
     });

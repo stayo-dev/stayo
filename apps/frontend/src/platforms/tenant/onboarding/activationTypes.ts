@@ -35,6 +35,14 @@ export type ActivationContext = {
   current_step: ActivationStep;
   verification_status?: { guardian_verified?: boolean; emergency_verified?: boolean };
   profile: { name?: string; email?: string; phone?: string };
+  /**
+   * The number the invitation was addressed to, and whether the backend can
+   * already vouch for it — because the linked account verified it at enquiry
+   * time, or because the invitation link was delivered to it over WhatsApp.
+   * Optional: absent means "cannot vouch", and the Identity screen asks for an
+   * OTP, which is the safe default.
+   */
+  phone_trust?: { phone: string | null; trusted: boolean } | null;
   tenant: Record<string, string | number | null | undefined>;
   hostel: { name?: string; logo_url?: string; address?: string; phone?: string };
   room_summary: Record<string, string | number | boolean | string[] | null | undefined>;

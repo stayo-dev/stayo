@@ -194,6 +194,8 @@ Since ADR-031, new sessions are minted by Supabase (`signInWithSupabasePassword(
 |---|---|
 | Identity/auth | `profile`, `refresh_tokens` (legacy-transition-only, see below), `identity_tokens`, `login_attempts`, `PhoneVerificationOtp` |
 | Hostels/rooms | `hostels`, `rooms`, `floors`, `roomAllocation`, `room_activity_logs`, `hostel_daily_snapshots` |
+**`tenant_invitations.whatsapp_delivered_at`** (migration `20260825090000`, [[Decisions#ADR-110|ADR-110]]) — set only when the invitation link was successfully delivered over WhatsApp to `tenant_invitations.phone`; NULL means we cannot vouch for that number, and activation asks for an OTP. **Deliberately absent from `schema.prisma`**: ~52 reads of this table pass no explicit `select`, so declaring it would make all of them demand a column that does not exist until the migration is applied — the 2026-08-22 outage. Read and written by raw SQL in `src/services/tenants/invitation-delivery-trust.ts`, which degrades to NULL when the column is missing. Any query that needs it must therefore ask for it explicitly.
+
 | Tenants | `tenants`, `tenant_notes`, `tenant_invitations`, `tenant_invitation_reservations`, `tenant_behavior_scores`, `tenant_transfer_logs`, `reactivation_requests`, `bulk_import_batches`, `bulk_import_rows` |
 | Billing plans | `tenant_billing_plans`, `payment_frequency_change_requests` |
 | Admissions/CRM | `visitor_leads`, `lead_activities`, `lead_notes`, `room_reservations` |

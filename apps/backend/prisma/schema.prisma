@@ -1822,6 +1822,12 @@ model tenant_invitations {
   expires_at                DateTime                         @db.Timestamptz(6)
   status                    String                           @default("PENDING")
   opened_at                 DateTime?                        @db.Timestamptz(6)
+  // NOTE: `whatsapp_delivered_at` (migration 20260825090000) is deliberately
+  // NOT declared here. Declaring a field makes Prisma request it on all ~52
+  // unselected reads of this table, which 500s every one of them if the
+  // migration has not been applied yet — the 2026-08-22 outage. It is read and
+  // written by raw SQL in `invitation-delivery-trust.ts`, which degrades to
+  // "unknown" (and therefore to asking for an OTP) when the column is absent.
   activation_started_at     DateTime?                        @db.Timestamptz(6)
   activated_at              DateTime?                        @db.Timestamptz(6)
   cancelled_at              DateTime?                        @db.Timestamptz(6)
