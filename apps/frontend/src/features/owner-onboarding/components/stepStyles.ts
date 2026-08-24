@@ -6,8 +6,31 @@ export const eyebrow = 'mb-3.5 inline-block font-display text-[11px] font-bold t
 export const h1 = 'mb-2.5 font-display text-[clamp(28px,3.6vw,42px)] font-extrabold leading-[1.08] tracking-tight text-foreground';
 export const sub = 'mb-7 max-w-[430px] text-base leading-relaxed text-muted-foreground';
 export const fieldLabel = 'font-display text-xs font-bold tracking-wide text-primary';
+/**
+ * A field that looks like a field.
+ *
+ * This used to be a transparent box with a single `border-border` underline.
+ * That token is ~1.1:1 against the page — fainter than the decorative
+ * graph-paper grid behind these screens — so the inputs read as paragraphs of
+ * text and owners could not tell there was anything to type into. Now: a solid
+ * fill, a full `--field-border` edge at >=3:1, and a focus ring that states
+ * plainly which field is live.
+ *
+ * `placeholder:font-normal` matters as much as the border did. At the same
+ * weight as real input, "Sunrise Residency" reads as an answer already given
+ * rather than an example.
+ */
 export const textInput =
-  'mt-2 w-full border-0 border-b-2 border-border bg-transparent px-0.5 py-2.5 text-xl font-semibold text-foreground transition-colors focus:border-primary focus:outline-none';
+  'mt-2 w-full rounded-xl border-[1.5px] border-field-border bg-input-background px-3.5 py-3 text-lg font-semibold text-foreground transition-colors placeholder:font-normal placeholder:text-muted-foreground/70 focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/15';
+
+/** `textInput` when the field has something wrong with it. */
+export const textInputInvalid = 'border-destructive focus:border-destructive focus:ring-destructive/15';
+
+/** The message under an invalid field. */
+export const fieldError = 'mt-1.5 block text-[12.5px] font-semibold text-destructive';
+
+/** Quiet guidance under a field — what it is for, not what went wrong. */
+export const fieldHint = 'mt-1.5 block text-[12.5px] leading-relaxed text-muted-foreground';
 export const okNote = 'mt-1.5 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-success';
 /**
  * A labelled row with a control on the right.

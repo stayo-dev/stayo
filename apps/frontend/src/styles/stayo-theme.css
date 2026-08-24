@@ -43,6 +43,7 @@
   --color-research-foreground: var(--research-foreground);
   --color-research-bg: var(--research-bg);
   --color-research-border: var(--research-border);
+  --color-field-border: var(--field-border);
 }
 
 /*

@@ -143,12 +143,37 @@ export function useHostelBuilder(existingHostelId?: string) {
   });
 
   // ── Step 1: floors are real rows, created empty ──────────────────────────
+  /**
+   * Idempotent, because Back exists.
+   *
+   * This used to create every floor in the list on every press, so an owner
+   * who stepped back from Rooms to Floors and continued got a *second* set of
+   * floors. It now creates only the ones missing, renames the ones already
+   * there, and refuses to silently drop floors that exist — deleting a floor
+   * is the Rooms tab's job, where the consequences are visible.
+   */
   const createFloors = useMutation({
     mutationFn: async (names: string[]) => {
+      if (names.length < floors.length) {
+        throw new Error(
+          `This hostel already has ${floors.length} floors. You can remove one from the Rooms tab.`,
+        );
+      }
+
       const created: DraftFloor[] = [];
+
       // Sequential on purpose: `sort_order` must match the order the owner
       // arranged, and the endpoint takes one floor at a time.
       for (let i = 0; i < names.length; i += 1) {
+        const existingFloor = floors[i];
+        if (existingFloor) {
+          // Already a row — carry it through, renaming only if it changed.
+          if (existingFloor.name !== names[i]) {
+            await floorService.update(existingFloor.id, { name: names[i] });
+          }
+          created.push({ ...existingFloor, name: names[i] });
+          continue;
+        }
         const row: any = await floorService.create(hostelId, { name: names[i], sort_order: i + 1 });
         const floorRow = row?.data ?? row;
         created.push({
@@ -164,7 +189,11 @@ export function useHostelBuilder(existingHostelId?: string) {
     },
     onSuccess: (created) => {
       setFloors(created);
-      setActiveIndex(0);
+      // Land on the first floor still needing rooms rather than always the
+      // ground floor — coming back from Floors mid-build should not send the
+      // owner through work they have already done.
+      const next = buildProgress(created.map((f) => ({ name: f.name, roomCount: f.rooms.length })));
+      setActiveIndex(next.nextFloorIndex ?? 0);
       setStage('fill');
       invalidate();
     },
@@ -224,6 +253,25 @@ export function useHostelBuilder(existingHostelId?: string) {
     [activeIndex, floors],
   );
 
+  /**
+   * Drop one room from the active floor.
+   *
+   * The `−` stepper resizes from the end (`resizeFloorRooms`), so removing a
+   * room in the middle used to mean deleting every room after it and entering
+   * them again. Numbers are deliberately *not* regenerated: renumbering the
+   * survivors would rename rooms the owner has already labelled, and on a
+   * floor that has been saved once those numbers are now real rooms.
+   */
+  const removeRoom = useCallback(
+    (key: string) =>
+      setFloors((prev) =>
+        prev.map((floor, i) =>
+          i === activeIndex ? { ...floor, rooms: floor.rooms.filter((room) => room.key !== key) } : floor,
+        ),
+      ),
+    [activeIndex],
+  );
+
   const renameFloor = useCallback((index: number, name: string) => {
     setFloors((prev) => prev.map((floor, i) => (i === index ? { ...floor, name } : floor)));
   }, []);
@@ -278,6 +326,7 @@ export function useHostelBuilder(existingHostelId?: string) {
     setRoomCount,
     setFloorDefaults,
     updateRoom,
+    removeRoom,
     renameFloor,
     cloneToNext,
     advance,

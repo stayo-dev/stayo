@@ -1,5 +1,12 @@
 import { StayoLoader } from '@shared/ui/brand';
-import { eyebrow, h1, sub, fieldLabel, textInput } from '@features/owner-onboarding/components/stepStyles';
+import {
+  eyebrow,
+  h1,
+  sub,
+  fieldLabel,
+  fieldHint,
+  textInput,
+} from '@features/owner-onboarding/components/stepStyles';
 
 /**
  * The only thing asked before the hostel exists.
@@ -7,6 +14,9 @@ import { eyebrow, h1, sub, fieldLabel, textInput } from '@features/owner-onboard
  * A name is enough to create the `hostels` row, which is what makes every
  * later step resumable — address, pincode and phone are genuinely "later"
  * and are editable from the hostel's own settings.
+ *
+ * There is no `<form>` here: `HostelBuilderPage` wraps every step in one, so
+ * Enter submits from any field and the sticky footer button drives it.
  */
 export function NameStep({
   name,
@@ -35,25 +45,45 @@ export function NameStep({
       <div className={eyebrow}>YOUR PROPERTY</div>
       <h1 className={h1}>What&apos;s your hostel called?</h1>
       <p className={sub}>
-        That&apos;s all we need to get started. Floors and rooms come next, and everything stays editable
+        Just the name to get started — floors and rooms come next, and everything stays editable
         afterwards.
       </p>
 
-      <div className="flex max-w-[440px] flex-col gap-6">
+      <div className="flex max-w-[440px] flex-col gap-5">
         <label className="block">
           <span className={fieldLabel}>HOSTEL NAME</span>
           <input
-            autoFocus
+            // Only when there's no password field. Both carrying `autoFocus`
+            // meant React focused whichever mounted last, so the owner's
+            // cursor landed in a field they had not asked for.
+            autoFocus={!needsPassword}
             value={name}
             onChange={(e) => onNameChange(e.target.value)}
             placeholder="Sunrise Residency"
+            autoComplete="organization"
+            enterKeyHint="next"
+            maxLength={120}
+            aria-describedby="hostel-name-hint"
             className={textInput}
           />
+          <span id="hostel-name-hint" className={fieldHint}>
+            The name your tenants know it by. You can change it later.
+          </span>
         </label>
 
         <label className="block">
-          <span className={fieldLabel}>CITY (OPTIONAL)</span>
-          <input value={city} onChange={(e) => onCityChange(e.target.value)} placeholder="Hyderabad" className={textInput} />
+          <span className={fieldLabel}>
+            CITY <span className="font-medium normal-case tracking-normal text-muted-foreground">— optional</span>
+          </span>
+          <input
+            value={city}
+            onChange={(e) => onCityChange(e.target.value)}
+            placeholder="Hyderabad"
+            autoComplete="address-level2"
+            enterKeyHint="go"
+            maxLength={80}
+            className={textInput}
+          />
         </label>
 
         {needsPassword && (
@@ -65,11 +95,13 @@ export function NameStep({
               value={password}
               onChange={(e) => onPasswordChange(e.target.value)}
               placeholder="••••••••"
+              autoComplete="current-password"
+              enterKeyHint="go"
               className={textInput}
             />
             {/* Only from the second hostel onward — by then the account holds
                 real tenants and money worth protecting. */}
-            <span className="mt-2 block text-[12.5px] leading-relaxed text-muted-foreground">
+            <span className={fieldHint}>
               You already have a hostel on this account, so we ask for your password before adding another.
             </span>
           </label>

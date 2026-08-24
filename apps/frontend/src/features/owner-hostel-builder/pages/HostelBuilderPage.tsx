@@ -5,20 +5,15 @@ import { StayoLoader } from '@shared/ui/brand';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useHostelBuilder, type BuilderStage } from '../useHostelBuilder';
+import { builderJourney, continueBlocker } from '../builderJourney';
 import { defaultFloorName } from '../hostelBuilder';
 import { NameStep } from '../steps/NameStep';
 import { FloorsStep } from '../steps/FloorsStep';
 import { FillFloorStep } from '../steps/FillFloorStep';
 import { ReviewStep } from '../steps/ReviewStep';
 
-/** Matches onboarding's "Step 1 of 8 · Owner" journey label. */
-const STAGE_ORDER: BuilderStage[] = ['name', 'floors', 'fill', 'review'];
-const STAGE_LABELS: Record<BuilderStage, string> = {
-  name: 'Name',
-  floors: 'Floors',
-  fill: 'Rooms',
-  review: 'Done',
-};
+/** The form every step renders into, so the sticky footer button can submit it. */
+const STEP_FORM_ID = 'hostel-builder-step';
 
 function errorMessage(error: unknown, fallback: string) {
   const data = (error as { response?: { data?: { error?: { message?: string } } } })?.response?.data;
@@ -69,6 +64,7 @@ export function HostelBuilderPage() {
     setRoomCount,
     setFloorDefaults,
     updateRoom,
+    removeRoom,
     renameFloor,
     cloneToNext,
     advance,
@@ -87,6 +83,13 @@ export function HostelBuilderPage() {
       if (stage === 'name') {
         if (!hostelName.trim()) {
           stayoToast.error('Give your hostel a name to continue.');
+          return;
+        }
+        // Stepping back to this screen and continuing used to POST a *second*
+        // hostel and abandon the first, half-built, in the owner's account.
+        // Once the row exists this screen is a review of it, not a create.
+        if (builder.hostelId) {
+          setStage('floors');
           return;
         }
         await createHostel.mutateAsync({ name: hostelName, city, password: password || undefined });
@@ -108,7 +111,15 @@ export function HostelBuilderPage() {
 
   const handleBack = () => {
     if (stage === 'fill' && activeIndex > 0) return setActiveIndex(activeIndex - 1);
-    if (stage === 'fill') return setStage('floors');
+    if (stage === 'fill') {
+      // Re-seed the count and names from the floors that were actually
+      // created, so the step never shows a shape the hostel does not have.
+      if (floors.length > 0) {
+        setFloorCount(floors.length);
+        setFloorNames(floors.map((floor, i) => floor.name || defaultFloorName(i)));
+      }
+      return setStage('floors');
+    }
     if (stage === 'floors') return setStage('name');
     if (stage === 'review') return setStage('fill');
     navigate('/owner');
@@ -118,21 +129,32 @@ export function HostelBuilderPage() {
 
   const primaryLabel =
     stage === 'name'
-      ? 'Create hostel'
+      ? builder.hostelId
+        ? 'Continue'
+        : 'Create hostel'
       : stage === 'floors'
-        ? 'Raise the floors'
+        ? floors.length > 0
+          ? 'Continue'
+          : 'Raise the floors'
         : stage === 'fill'
           ? activeIndex + 1 < floors.length
             ? 'Save floor & continue'
             : 'Save floor & finish'
           : 'Open my hostel';
 
-  const canContinue =
-    stage === 'name'
-      ? Boolean(hostelName.trim()) && (!builder.needsPassword || password.trim().length > 0)
-      : stage === 'fill'
-        ? blocker === null
-        : true;
+  const whyBlocked = continueBlocker(stage, {
+    hostelName,
+    needsPassword: builder.needsPassword,
+    password,
+    floorBlocker: blocker,
+  });
+  const canContinue = whyBlocked === null;
+
+  const journey = builderJourney(stage, {
+    activeIndex,
+    floorCount: floors.length,
+    floorName: activeFloor?.name,
+  });
 
   return (
     // Mounted as a sibling of OwnerAppShell (a full-screen takeover, not a
@@ -159,7 +181,7 @@ export function HostelBuilderPage() {
     <div className="relative min-h-screen overflow-x-hidden bg-background [background-image:linear-gradient(#EBDCCF_1px,transparent_1px),linear-gradient(90deg,#EBDCCF_1px,transparent_1px)] [background-size:52px_52px]">
       <div className="relative flex min-h-screen flex-col">
         <header className="sticky top-0 z-40 border-b border-border/60 bg-background/72 backdrop-blur-md">
-          <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3.5 sm:px-7.5">
+          <div className="mx-auto flex max-w-[680px] items-center gap-3 px-4 py-3 sm:px-6">
             <button
               type="button"
               onClick={handleBack}
@@ -169,10 +191,6 @@ export function HostelBuilderPage() {
               Back
             </button>
             <div className="flex-1" />
-            <span className="font-display text-[12px] font-bold text-muted-foreground">
-              Step {STAGE_ORDER.indexOf(stage) + 1} of {STAGE_ORDER.length} · {STAGE_LABELS[stage]}
-              {stage === 'fill' && floors.length > 0 ? ` ${activeIndex + 1}/${floors.length}` : ''}
-            </span>
             <button
               type="button"
               onClick={() => navigate('/owner')}
@@ -181,9 +199,49 @@ export function HostelBuilderPage() {
               Finish later
             </button>
           </div>
+
+          {/* The bar tracks the real work — the Rooms phase advances floor by
+              floor — rather than dividing a five-floor building into "step 3
+              of 4". `aria-live` on the label because the phase changing is the
+              only announcement a screen reader gets: the step swap is a
+              re-render, not a navigation. */}
+          <div className="mx-auto max-w-[680px] px-4 pb-3 sm:px-6">
+            <div
+              role="progressbar"
+              aria-valuenow={journey.percent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="Setup progress"
+              className="h-1.5 w-full overflow-hidden rounded-full bg-border"
+            >
+              <div
+                className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
+                style={{ width: `${journey.percent}%` }}
+              />
+            </div>
+            <p aria-live="polite" className="mt-1.5 font-display text-[11.5px] font-bold tracking-wide text-muted-foreground">
+              {journey.phase.toUpperCase()} · {journey.label}
+            </p>
+          </div>
         </header>
 
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-7.5">
+        {/* Centred and capped. The steps render a ~440px column, which inside
+            a `max-w-6xl` page left two thirds of a desktop screen empty to the
+            right of the form and made the whole thing read as unfinished. */}
+        <main className="mx-auto w-full max-w-[680px] flex-1 px-4 py-8 sm:px-6 sm:py-10">
+          {/* One form around every step, rather than one per step. Enter now
+              submits from any field on any screen — on a two-field first
+              screen that was the obvious gesture and it did nothing — and the
+              sticky footer button drives it via `form={STEP_FORM_ID}`, which
+              works across the DOM distance between them. */}
+          <form
+            id={STEP_FORM_ID}
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (busy || !canContinue) return;
+              void handlePrimary();
+            }}
+          >
           {isRestoring ? (
             <div className="flex items-center gap-2 text-[13px] font-semibold text-muted-foreground">
               <StayoLoader size="sm" label={null} /> Picking up where you left off…
@@ -221,8 +279,8 @@ export function HostelBuilderPage() {
               onRoomCountChange={setRoomCount}
               onDefaultsChange={setFloorDefaults}
               onRoomChange={updateRoom}
+              onRoomRemove={removeRoom}
               onCloneToNext={cloneToNext}
-              blocker={blocker}
             />
           ) : (
             <ReviewStep
@@ -234,18 +292,25 @@ export function HostelBuilderPage() {
               }}
             />
           )}
+          </form>
         </main>
 
         <footer className="sticky bottom-0 border-t border-border/60 bg-background/80 px-4 py-3.5 backdrop-blur-md sm:px-7.5">
-          <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
-            <span className="text-[12.5px] font-semibold text-muted-foreground">
-              {stage === 'fill' || stage === 'review' ? progress.summary : ''}
+          <div className="mx-auto flex max-w-[680px] items-center justify-between gap-3">
+            {/* A dimmed button used to be the only signal, and the message
+                written for it lived inside a click handler a disabled button
+                never reaches. Now the reason sits beside it. */}
+            <span
+              aria-live="polite"
+              className={`text-[12.5px] font-semibold ${whyBlocked ? 'text-warning' : 'text-muted-foreground'}`}
+            >
+              {whyBlocked ?? (stage === 'fill' || stage === 'review' ? progress.summary : '')}
             </span>
             <button
-              type="button"
-              onClick={handlePrimary}
+              type="submit"
+              form={STEP_FORM_ID}
               disabled={busy || !canContinue}
-              className="inline-flex min-h-[48px] items-center gap-2 rounded-xl bg-primary px-6 font-display text-[14px] font-bold text-primary-foreground shadow-sm transition-transform active:scale-[0.98] disabled:opacity-50"
+              className="inline-flex min-h-[48px] flex-none items-center gap-2 rounded-xl bg-primary px-6 font-display text-[14px] font-bold text-primary-foreground shadow-sm transition-transform active:scale-[0.98] disabled:opacity-50"
             >
               {busy ? (
                 <>

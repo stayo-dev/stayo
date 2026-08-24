@@ -5,6 +5,8 @@ import crypto from "crypto";
 import { authOtpService } from "@/lib/services/auth/auth-otp-service";
 import { normalizeWhatsAppPhone } from "@/lib/services/notifications/providers/whatsapp";
 import { eventLog } from "@/lib/services/event-log-service";
+import { planFloorRoomSave } from "./property/floor-room-plan";
+import { planHostelDeletion } from "./property/hostel-deletion-plan";
 
 const ACTIVE_INVITE_STATUSES = ["PENDING", "OPENED", "ACTIVATION_STARTED"];
 
@@ -635,7 +637,7 @@ export class PropertyService {
   }
 
   /**
-   * Create a whole floor's rooms in one transaction.
+   * Save a floor's rooms — the whole floor, as it now stands.
    *
    * The hostel builder fills a floor at a time, and a floor is normally a
    * mix — three 4-sharing rooms and one 2-sharing, each with its own rent —
@@ -643,11 +645,23 @@ export class PropertyService {
    * `HostelProvisioningService` could not express: it multiplies one
    * `beds_per_room` and one `base_rent` across a uniform grid.
    *
-   * All-or-nothing on purpose. A floor half-created after a duplicate room
-   * number would leave the owner re-entering the rooms that did land, which
-   * is exactly the dead-end the provisioning service was written to remove.
+   * **This used to be create-only, and that made the builder's Review screen a
+   * dead end.** It offers an edit pencil on every floor; taking it led back to
+   * a "Save floor" button that re-posted rooms which already existed, so the
+   * owner was answered with `Room 101 already exists in this hostel` and had
+   * no way forward — the same for pressing Back into a floor already saved.
+   * Saving is now idempotent: send the floor as it should be and it is made to
+   * match, whether that is the first save or the fifth.
+   *
+   * All-or-nothing on purpose. The decision — what to create, update, revive
+   * or retire — is `planFloorRoomSave`, a pure function tested without a
+   * database; this method only executes it, in one transaction.
+   *
+   * Two things it refuses, both about people rather than data: removing a room
+   * someone lives in, and shrinking a room below the number of tenants
+   * allocated to it.
    */
-  async createRoomsForFloor(
+  async saveRoomsForFloor(
     floorId: string,
     ownerId: string,
     rooms: Array<{ room_no: string; capacity: number; base_rent?: number; room_type?: string }>,
@@ -663,53 +677,164 @@ export class PropertyService {
     const hostelId = floor.hostel.id;
     const numbers = rooms.map((room) => room.room_no.trim());
 
-    // Caught here rather than left to the unique index, so the owner is told
-    // which number repeats instead of reading a Postgres constraint name.
-    const duplicatesInRequest = numbers.filter((no, i) => numbers.indexOf(no) !== i);
-    if (duplicatesInRequest.length > 0) {
-      throw new Error(`VALIDATION: Room ${duplicatesInRequest[0]} is listed twice`);
-    }
-
-    const clashing = await prisma.rooms.findFirst({
-      where: { hostel_id: hostelId, room_no: { in: numbers }, is_active: true },
-      select: { room_no: true },
+    // Everything that could collide or be reused: this floor's rooms, plus any
+    // room anywhere in the hostel already holding one of these numbers.
+    // Inactive rooms are deliberately included — `@@unique([hostel_id,
+    // room_no])` covers them, so a retired room still owns its number and
+    // re-adding it has to revive that row rather than insert a second one.
+    const relevant = await prisma.rooms.findMany({
+      where: {
+        hostel_id: hostelId,
+        OR: [{ floor_id: floor.id }, { room_no: { in: numbers } }],
+      },
+      select: {
+        id: true,
+        room_no: true,
+        floor_id: true,
+        is_active: true,
+        capacity: true,
+        _count: { select: { room_allocations: { where: { is_active: true, end_date: null } } } },
+      },
     });
-    if (clashing) {
-      throw new Error(`CONFLICT: Room ${clashing.room_no} already exists in this hostel`);
-    }
 
-    // `floor` (the legacy Int column) is kept in step with `floor_id` because
-    // parts of the read path still order and group by it.
-    const created = await prisma.$transaction(async (tx: any) => {
-      await tx.rooms.createMany({
-        data: rooms.map((room, index) => ({
-          id: crypto.randomUUID(),
-          hostel_id: hostelId,
-          floor_id: floor.id,
-          floor: floor.sort_order || null,
-          room_no: room.room_no.trim(),
-          capacity: room.capacity,
-          base_rent: room.base_rent ?? null,
-          room_type: room.room_type ?? null,
-          sort_order: index,
-        })),
-      });
+    const plan = planFloorRoomSave(
+      floor.id,
+      rooms,
+      relevant.map((room: any) => ({
+        id: room.id,
+        room_no: room.room_no,
+        floor_id: room.floor_id,
+        is_active: room.is_active,
+        capacity: room.capacity,
+        active_allocations: room._count.room_allocations,
+      })),
+    );
+
+    if (!plan.ok) throw new Error(`${plan.code}: ${plan.reason}`);
+
+    const saved = await prisma.$transaction(async (tx: any) => {
+      if (plan.create.length > 0) {
+        await tx.rooms.createMany({
+          data: plan.create.map((room) => ({
+            id: crypto.randomUUID(),
+            hostel_id: hostelId,
+            floor_id: floor.id,
+            // `floor` (the legacy Int column) is kept in step with `floor_id`
+            // because parts of the read path still order and group by it.
+            floor: floor.sort_order || null,
+            room_no: room.room_no,
+            capacity: room.capacity,
+            base_rent: room.base_rent,
+            room_type: room.room_type,
+            sort_order: room.sort_order,
+          })),
+        });
+      }
+
+      for (const room of plan.update) {
+        await tx.rooms.update({
+          where: { id: room.id },
+          data: {
+            floor_id: floor.id,
+            floor: floor.sort_order || null,
+            room_no: room.room_no,
+            capacity: room.capacity,
+            base_rent: room.base_rent,
+            room_type: room.room_type,
+            sort_order: room.sort_order,
+            is_active: true,
+            updated_at: new Date(),
+          },
+        });
+      }
+
+      // Retired, never deleted: a room that once existed may be referenced by
+      // an old allocation, invitation or activity log.
+      if (plan.deactivate.length > 0) {
+        await tx.rooms.updateMany({
+          where: { id: { in: plan.deactivate } },
+          data: { is_active: false, updated_at: new Date() },
+        });
+      }
 
       return tx.rooms.findMany({
-        where: { floor_id: floor.id, room_no: { in: numbers } },
+        where: { floor_id: floor.id, is_active: true },
         orderBy: { sort_order: "asc" },
       });
     });
 
     await eventLog
-      .log("ROOMS_BULK_CREATED", ownerId, {
+      .log("ROOMS_FLOOR_SAVED", ownerId, {
         hostel_id: hostelId,
         floor_id: floor.id,
-        rooms_created: created.length,
+        rooms_created: plan.create.length,
+        rooms_updated: plan.update.length,
+        rooms_retired: plan.deactivate.length,
       })
       .catch(() => undefined);
 
-    return created;
+    return saved;
+  }
+
+  /**
+   * Delete an archived hostel for good.
+   *
+   * `updateHostel(status: ARCHIVED)` is the ordinary "remove" and always has
+   * been — right for a property that carried real tenancies, whose payments
+   * and agreements have to outlive it. But it left a junk hostel (a test
+   * entry, a typo, a duplicate) parked in the owner's Archived tab forever,
+   * where the only offered action is Reactivate. This is the second, narrower
+   * door.
+   *
+   * It opens only for a hostel that is **already archived** and has **no
+   * operational history at all** — `planHostelDeletion` decides, purely and
+   * under test. Nothing with a payment, an obligation, an agreement or even a
+   * past tenant can reach this path, so no financial record is ever destroyed
+   * by it.
+   *
+   * What is removed is only the structure the builder created: rooms, then
+   * floors, then the hostel. `rooms.hostel_id` and `floors.hostel_id` have no
+   * `onDelete: Cascade`, so they must go first and in that order.
+   */
+  async permanentlyDeleteHostel(hostelId: string, ownerId: string) {
+    const hostel = await prisma.hostels.findUnique({
+      where: { id: hostelId },
+      select: { id: true, name: true, owner_id: true, status: true },
+    });
+    if (!hostel || hostel.owner_id !== ownerId) throw new Error("NOT_FOUND: Hostel not found");
+
+    const where = { hostel_id: hostelId };
+    const [tenants, payments, obligations, allocations, agreements, receipts, expenses, leads] =
+      await Promise.all([
+        prisma.tenants.count({ where }),
+        prisma.payments.count({ where }),
+        prisma.rent_obligations.count({ where }),
+        prisma.roomAllocation.count({ where }),
+        prisma.agreement.count({ where }),
+        prisma.receipts.count({ where }),
+        prisma.expenses.count({ where }),
+        prisma.visitorLead.count({ where }),
+      ]);
+
+    const plan = planHostelDeletion({
+      status: hostel.status,
+      history: { tenants, payments, obligations, allocations, agreements, receipts, expenses, leads },
+    });
+    if (!plan.ok) throw new Error(`${plan.code}: ${plan.reason}`);
+
+    await prisma.$transaction(async (tx: any) => {
+      await tx.rooms.deleteMany({ where: { hostel_id: hostelId } });
+      await tx.floors.deleteMany({ where: { hostel_id: hostelId } });
+      await tx.hostels.delete({ where: { id: hostelId } });
+    });
+
+    // Logged after the fact rather than inside the transaction: the hostel row
+    // is gone, so the name is the only thing left that identifies it.
+    await eventLog
+      .log("HOSTEL_DELETED", ownerId, { hostel_id: hostelId, hostel_name: hostel.name })
+      .catch(() => undefined);
+
+    return { id: hostelId, name: hostel.name };
   }
 
   async getFloorsWithRooms(ownerId: string, hostelId: string) {

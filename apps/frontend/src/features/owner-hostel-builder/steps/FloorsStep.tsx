@@ -1,18 +1,21 @@
 import { Pencil } from 'lucide-react';
 import { useState } from 'react';
-import { eyebrow, h1, sub, fieldLabel, stepBtn } from '@features/owner-onboarding/components/stepStyles';
+import { eyebrow, h1, sub, fieldLabel, fieldHint, stepBtn } from '@features/owner-onboarding/components/stepStyles';
 import { defaultFloorName } from '../hostelBuilder';
-import { MAX_DRAWN_FLOORS } from '@shared/ui/brand';
 
 const MAX_FLOORS = 12;
 
 /**
  * How many floors, and what they're called.
  *
- * The building behind this screen gains a storey on every tap, which is the
- * whole point — the count is not an abstract number, it is the thing being
- * drawn. Floor names are editable here: the onboarding version rendered an
- * "Edit" affordance on each generated floor that did nothing at all.
+ * Floor names are editable here: the onboarding version rendered an "Edit"
+ * affordance on each generated floor that did nothing at all.
+ *
+ * This screen used to say "Watch it go up" and "(only 5 fit in the picture)",
+ * describing the animated building that sat behind it — which was removed from
+ * this page in Aug 2026 and now only appears in the onboarding wizard. The
+ * copy outlived the illustration, so the owner was told to watch something
+ * that was not on screen.
  */
 export function FloorsStep({
   count,
@@ -31,7 +34,7 @@ export function FloorsStep({
     <div>
       <div className={eyebrow}>RAISE THE FLOORS</div>
       <h1 className={h1}>How many floors?</h1>
-      <p className={sub}>Watch it go up. You can rename any floor, and add or remove floors later.</p>
+      <p className={sub}>Count the floors you rent out. Rename any of them below — and you can add or remove floors later from the Rooms tab.</p>
 
       <div className="mb-5 max-w-[440px]">
         <span className={fieldLabel}>NUMBER OF FLOORS</span>
@@ -48,12 +51,11 @@ export function FloorsStep({
           >
             +
           </button>
-          {count > MAX_DRAWN_FLOORS && (
-            <span className="text-[12px] font-medium text-muted-foreground">
-              (only {MAX_DRAWN_FLOORS} fit in the picture)
-            </span>
-          )}
+          <span className="text-[12px] font-medium text-muted-foreground">
+            {count === 1 ? 'floor' : 'floors'}
+          </span>
         </div>
+        <span className={fieldHint}>Include the ground floor if there are rooms on it.</span>
       </div>
 
       <ul className="flex max-w-[440px] flex-col gap-2">
@@ -69,8 +71,15 @@ export function FloorsStep({
                 value={name}
                 onChange={(e) => onRename(i, e.target.value)}
                 onBlur={() => setEditing(null)}
-                onKeyDown={(e) => e.key === 'Enter' && setEditing(null)}
-                className="min-w-0 flex-1 border-b-2 border-primary bg-transparent py-0.5 font-display text-[14.5px] font-bold text-foreground focus:outline-none"
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return;
+                  // Every step lives inside the page's form now, so a bare
+                  // Enter here would submit the wizard instead of finishing
+                  // the rename.
+                  e.preventDefault();
+                  setEditing(null);
+                }}
+                className="min-w-0 flex-1 rounded-lg border-[1.5px] border-primary bg-input-background px-2.5 py-1.5 font-display text-[14.5px] font-bold text-foreground focus:outline-none focus:ring-4 focus:ring-primary/15"
               />
             ) : (
               <>

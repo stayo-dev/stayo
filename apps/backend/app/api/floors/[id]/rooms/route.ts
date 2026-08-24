@@ -11,8 +11,8 @@ import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
 import { assertBodySize } from "@/lib/security/api-guard";
 
 /**
- * 🏢 FLOOR ROOMS — Bulk create
- * POST /api/floors/[id]/rooms — create a whole floor's rooms in one request
+ * 🏢 FLOOR ROOMS — Save the floor
+ * POST /api/floors/[id]/rooms — save a whole floor's rooms in one request
  *
  * Exists for the hostel builder, which fills one floor at a time. Posting a
  * floor of 10 rooms one at a time was 10 requests and 10 chances to leave a
@@ -22,6 +22,11 @@ import { assertBodySize } from "@/lib/security/api-guard";
  * because real floors mix sharing sizes and prices — the uniform
  * `rooms_per_floor` × `beds_per_room` × one-rent grid in
  * `POST /api/owner/hostels/provision` cannot express that.
+ *
+ * **Idempotent since 2026-08-24.** The body is the floor as it should be, not
+ * a list of additions: re-posting a floor updates it instead of answering
+ * `Room 101 already exists`. That 409 was what made the builder's Review-screen
+ * edit pencil a dead end. See `planFloorRoomSave`.
  */
 export async function POST(
   req: NextRequest,
@@ -46,7 +51,7 @@ export async function POST(
       );
     }
 
-    const rooms = await propertyService.createRoomsForFloor(
+    const rooms = await propertyService.saveRoomsForFloor(
       params.id,
       scope.owner_id,
       validated.data.rooms,
@@ -75,6 +80,6 @@ export async function POST(
       return ApiResponse.error(ApiError.validationError(message.split(": ")[1] ?? message));
     }
     console.error(`[floors.rooms.POST] Failed for floor ${params.id}:`, error);
-    return ApiResponse.error(ApiError.internal("Could not create rooms"));
+    return ApiResponse.error(ApiError.internal("Could not save this floor"));
   }
 }

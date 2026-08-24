@@ -1,6 +1,14 @@
 import { useState } from 'react';
-import { Copy, Info, Pencil } from 'lucide-react';
-import { eyebrow, h1, sub, fieldLabel, stepBtn } from '@features/owner-onboarding/components/stepStyles';
+import { Copy, Info, Pencil, Trash2 } from 'lucide-react';
+import {
+  eyebrow,
+  h1,
+  sub,
+  fieldLabel,
+  fieldHint,
+  stepBtn,
+  textInput,
+} from '@features/owner-onboarding/components/stepStyles';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { floorTally, previewNumbering, type DraftFloor, type DraftRoom, type NumberingPattern } from '../hostelBuilder';
 
@@ -12,6 +20,21 @@ const PATTERNS: Array<{ value: NumberingPattern; label: string }> = [
 ];
 
 const money = (value: number | null) => (value === null ? '—' : `₹${value.toLocaleString('en-IN')}`);
+
+/**
+ * Read a rupee amount out of whatever the owner typed.
+ *
+ * The rent fields accept text rather than `type="number"`, so "6,000" — the
+ * shape the placeholder itself shows, and the shape Indian owners write — has
+ * to survive. Anything with no digits left in it means "no rent decided",
+ * which is a real state: `base_rent` is nullable and an unpriced room reads
+ * "Price on request" rather than ₹0.
+ */
+function parseRupees(input: string): number | null {
+  const digits = input.replace(/[^\d]/g, '');
+  if (digits === '') return null;
+  return Number(digits);
+}
 
 /**
  * Fill one floor.
@@ -30,8 +53,8 @@ export function FillFloorStep({
   onRoomCountChange,
   onDefaultsChange,
   onRoomChange,
+  onRoomRemove,
   onCloneToNext,
-  blocker,
 }: {
   floor: DraftFloor;
   floorIndex: number;
@@ -41,8 +64,9 @@ export function FillFloorStep({
   onRoomCountChange: (count: number) => void;
   onDefaultsChange: (defaults: { capacity?: number; rent?: number | null }) => void;
   onRoomChange: (key: string, patch: Partial<Pick<DraftRoom, 'roomNo' | 'capacity' | 'rent'>>) => void;
+  /** Remove one room. Without it, `−` could only lop rooms off the end. */
+  onRoomRemove?: (key: string) => void;
   onCloneToNext: () => void;
-  blocker: string | null;
 }) {
   const [editingRoom, setEditingRoom] = useState<DraftRoom | null>(null);
   const tally = floorTally(floor);
@@ -71,6 +95,9 @@ export function FillFloorStep({
             <span className="min-w-[46px] text-center font-display text-3xl font-extrabold text-foreground">
               {floor.rooms.length}
             </span>
+            <span className="text-[12px] font-medium text-muted-foreground">
+              {floor.rooms.length === 1 ? 'room' : 'rooms'}
+            </span>
             <button
               type="button"
               aria-label="More rooms"
@@ -80,6 +107,11 @@ export function FillFloorStep({
               +
             </button>
           </div>
+          {floor.rooms.length === 0 && (
+            <span className={fieldHint}>
+              Tap + for each room on {floor.name.toLowerCase()}. We&apos;ll number them for you.
+            </span>
+          )}
         </div>
 
         <div className="rounded-2xl border border-border bg-card/90 p-4">
@@ -104,16 +136,19 @@ export function FillFloorStep({
 
           <label className="mt-4 flex items-center gap-3">
             <span className="text-[13px] font-semibold text-muted-foreground">Rent</span>
-            <span className="flex flex-1 items-center gap-1 border-b-2 border-border focus-within:border-primary">
+            {/* `type="text"` with a numeric keypad, not `type="number"`: the
+                number input silently changed the rent on a stray scroll while
+                focused, and rejected the very "6,000" its placeholder showed. */}
+            <span className="flex flex-1 items-center gap-1 rounded-xl border-[1.5px] border-field-border bg-input-background px-3 focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/15">
               <span className="font-display text-lg font-bold text-muted-foreground">₹</span>
               <input
-                type="number"
+                type="text"
                 inputMode="numeric"
-                min={0}
                 value={floor.defaultRent ?? ''}
-                onChange={(e) => onDefaultsChange({ rent: e.target.value === '' ? null : Number(e.target.value) })}
+                onChange={(e) => onDefaultsChange({ rent: parseRupees(e.target.value) })}
                 placeholder="6,000"
-                className="w-full bg-transparent py-1.5 font-display text-lg font-bold text-foreground focus:outline-none"
+                aria-label="Default monthly rent for these rooms"
+                className="w-full bg-transparent py-2 font-display text-lg font-bold text-foreground placeholder:font-normal placeholder:text-muted-foreground/70 focus:outline-none"
               />
               <span className="text-[12.5px] font-semibold text-muted-foreground">/mo</span>
             </span>
@@ -175,8 +210,6 @@ export function FillFloorStep({
           </ul>
         )}
 
-        {blocker && <p className="text-[13px] font-semibold text-warning">{blocker}</p>}
-
         {hasNextFloor && floor.rooms.length > 0 && (
           <button
             type="button"
@@ -196,6 +229,14 @@ export function FillFloorStep({
           if (editingRoom) onRoomChange(editingRoom.key, patch);
           setEditingRoom(null);
         }}
+        onRemove={
+          onRoomRemove
+            ? () => {
+                if (editingRoom) onRoomRemove(editingRoom.key);
+                setEditingRoom(null);
+              }
+            : undefined
+        }
       />
     </div>
   );
@@ -205,10 +246,12 @@ function RoomEditSheet({
   room,
   onClose,
   onSave,
+  onRemove,
 }: {
   room: DraftRoom | null;
   onClose: () => void;
   onSave: (patch: Partial<Pick<DraftRoom, 'roomNo' | 'capacity' | 'rent'>>) => void;
+  onRemove?: () => void;
 }) {
   const [roomNo, setRoomNo] = useState('');
   const [capacity, setCapacity] = useState(4);
@@ -232,7 +275,8 @@ function RoomEditSheet({
           <input
             value={roomNo}
             onChange={(e) => setRoomNo(e.target.value)}
-            className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 text-[16px] font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            placeholder="101"
+            className={textInput}
           />
         </label>
 
@@ -257,14 +301,14 @@ function RoomEditSheet({
         <label className="block">
           <span className={fieldLabel}>DEFAULT RENT</span>
           <input
-            type="number"
+            type="text"
             inputMode="numeric"
-            min={0}
             value={rent}
             onChange={(e) => setRent(e.target.value)}
-            placeholder="6000"
-            className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 text-[16px] font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            placeholder="6,000"
+            className={textInput}
           />
+          <span className={fieldHint}>Leave it empty if this room has no set price yet.</span>
         </label>
 
         <div className="flex gap-2.5">
@@ -277,14 +321,26 @@ function RoomEditSheet({
           </button>
           <button
             type="button"
-            onClick={() =>
-              onSave({ roomNo: roomNo.trim(), capacity, rent: rent === '' ? null : Number(rent) })
-            }
+            onClick={() => onSave({ roomNo: roomNo.trim(), capacity, rent: parseRupees(rent) })}
             className="min-h-[48px] flex-1 rounded-xl bg-primary font-display text-[14px] font-bold text-primary-foreground"
           >
             Done
           </button>
         </div>
+
+        {/* `−` on the floor only ever removed the last room, so deleting the
+            odd store cupboard in the middle meant deleting everything after
+            it and typing it all back. */}
+        {onRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl font-display text-[13px] font-bold text-destructive hover:bg-destructive/10"
+          >
+            <Trash2 className="h-4 w-4" strokeWidth={2} />
+            Remove this room
+          </button>
+        )}
       </div>
     </BottomSheet>
   );

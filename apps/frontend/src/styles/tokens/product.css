@@ -24,6 +24,17 @@
   --border: #efe6da;
   --input: transparent;
   --input-background: #fffdfb;
+  /* The visible edge of a form field.
+   *
+   * `--border` is ~1.1:1 against the page it sits on — fainter than the
+   * decorative graph-paper grid behind the owner surfaces (~1.2:1) — so a
+   * field drawn with it reads as body text, not as something to type into.
+   * That is the Add Hostel bug: owners could not tell the inputs were inputs.
+   * This is the same warm family, taken to >=3:1 against the page, the field
+   * fill and white, which is what WCAG asks of a control boundary. Use it for
+   * input edges; `--border` stays right for dividers and card outlines, where
+   * being quiet is the point. */
+  --field-border: #9f8768;
   --switch-background: #e2d5c7;
   --ring: #b46a55;
   --font-weight-medium: 700;
