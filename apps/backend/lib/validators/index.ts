@@ -34,12 +34,17 @@ export const OwnerSignupSchema = z.object({
  * Self-serve tenant signup — a marketplace account (browse/save/enquire), not
  * a tenant *of a hostel*. No `lead_token` equivalent: a tenant becomes a real
  * resident only via an owner's invitation + activation. See ADR-035.
+ *
+ * `phone` is optional (ADR-096): a marketplace account is name + email +
+ * password, and the number is collected and verified once, at the moment it is
+ * actually needed — sending an enquiry. When a caller does send one, the route
+ * still requires a fresh OTP for it, exactly as before.
  */
 export const TenantSignupSchema = z.object({
   email:    z.string().trim().email(),
   password: z.string().min(8).max(64),
-  name:     z.string().min(2),
-  phone:    z.string().min(8).max(20),
+  name:     z.string().trim().min(2),
+  phone:    z.string().min(8).max(20).optional(),
 });
 
 export const ChangePasswordSchema = z.object({

@@ -4,6 +4,12 @@ import { Eye, EyeOff, X } from 'lucide-react';
 import { cn } from '@shared/lib/cn';
 import { useAuth } from '@context/AuthContext';
 import { StayoLoader, StayoMark, StayoWordmark } from '@shared/ui/brand';
+import {
+  MIN_SIGNUP_PASSWORD_LENGTH,
+  toTenantSignupPayload,
+  validateTenantSignup,
+  type TenantSignupErrors,
+} from '@shared/lib/tenantSignupForm';
 
 export type LoginModalMode = 'owner' | 'tenant';
 
@@ -24,16 +30,21 @@ interface LoginModalProps {
 }
 
 interface LoginModalForm {
+  name: string;
   email: string;
   password: string;
+  confirmPassword: string;
 }
 
-const EMPTY_FORM: LoginModalForm = { email: '', password: '' };
+const EMPTY_FORM: LoginModalForm = { name: '', email: '', password: '', confirmPassword: '' };
 
 const inputClass =
   'w-full rounded-[11px] border-[1.5px] border-border bg-muted px-3.5 py-2.5 text-[14.5px] font-medium text-foreground transition-colors focus:border-primary focus:outline-none';
 
 const labelClass = 'mb-1.5 block font-display text-[10.5px] font-bold tracking-wider text-primary';
+
+/** Applied on top of `inputClass` when a field has something wrong with it. */
+const errorInputClass = 'border-destructive focus:border-destructive';
 
 /**
  * The single login/signup surface for Stayo (ADR-035). `/login` renders the
@@ -43,35 +54,44 @@ const labelClass = 'mb-1.5 block font-display text-[10.5px] font-bold tracking-w
  * Owner mode is login-only — owner accounts are created through the lead →
  * approval → onboarding funnel, never here.
  *
- * Tenant signup is Google-only as of 2026-08-16 (the password/phone-OTP
- * signup form is gone from this UI — `AuthContext.signUpTenant()` and
- * `POST /api/auth/tenant-signup` are untouched underneath, just no longer
- * wired to this component, in case anything else still depends on them).
- * "Continue with Google" now creates the account when the email is new
+ * Tenant signup offers both an email+password form (name, email, password,
+ * confirm password) and "Continue with Google" (ADR-096). It was Google-only
+ * between 2026-08-16 and this change, which dead-ended anyone without a
+ * Google account — or unwilling to hand one over to browse hostels — since
+ * Google was the *only* way to get an account at all.
+ *
+ * What did not come back is the phone/OTP step: ADR-078 moved phone
+ * verification out of signup to the moment it's actually needed (sending an
+ * enquiry, see `EnquiryPage`), and it stays there. So a password account is
+ * born the same shape a Google one is — `phone: null`, verified later.
+ *
+ * "Continue with Google" creates the account when the email is new
  * (`loginWithGoogleAllowProvision`) via a narrow, separately-gated backend
  * path (`lib/auth/supabase-provision.ts`) — the existing "Google never
- * auto-provisions" invariant on the plain login path is untouched. Phone
- * verification moved out of signup entirely — it happens once, at the
- * moment it's actually needed (sending an enquiry), see `EnquiryPage`.
- * The Login tab keeps email+password, for anyone with a password-based
- * account from before this change, plus the same Google button — since
- * there's no other way to create an account now, this tab's Google button
- * is provisioning-capable too, so a new visitor who starts here isn't
+ * auto-provisions" invariant on the plain login path is untouched. It appears
+ * on the Login tab too, so a new visitor who starts on the wrong tab isn't
  * dead-ended.
+ *
+ * Field validation lives in `@shared/lib/tenantSignupForm` rather than here:
+ * `apps/frontend` tests run without jsdom, so the rules are tested directly
+ * and this file stays a renderer.
  *
  * Built directly on `@radix-ui/react-dialog` rather than
  * `app/components/ui/dialog.tsx` — same reasoning as BottomSheet using
  * `vaul` directly: `shared/` can't import `app/` (scripts/check-architecture.mjs).
  */
 export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login' }: LoginModalProps) {
-  const { login, loginWithGoogle, loginWithGoogleAllowProvision } = useAuth();
+  const { login, loginWithGoogle, loginWithGoogleAllowProvision, signUpTenant } = useAuth();
 
   const [tab, setTab] = useState<'login' | 'signup'>(initialTab);
   const [form, setForm] = useState<LoginModalForm>(EMPTY_FORM);
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
   const [error, setError] = useState('');
+  /** Per-field signup messages, shown under the field they belong to. */
+  const [fieldErrors, setFieldErrors] = useState<TenantSignupErrors>({});
 
   const isOwner = mode === 'owner';
   const isLogin = isOwner || tab === 'login';
@@ -82,7 +102,9 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
     setTab(isOwner ? 'login' : initialTab);
     setForm(EMPTY_FORM);
     setShowPassword(false);
+    setShowConfirmPassword(false);
     setError('');
+    setFieldErrors({});
     setSubmitting(false);
     setGoogleSubmitting(false);
   }, [open, initialTab, isOwner]);
@@ -91,8 +113,12 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
     if (!next) onClose();
   };
 
-  const set = <K extends keyof LoginModalForm>(key: K, value: LoginModalForm[K]) =>
+  const set = <K extends keyof LoginModalForm>(key: K, value: LoginModalForm[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+    // Clear this field's complaint as soon as it's being addressed — leaving it
+    // up while someone fixes it reads as if the fix didn't register.
+    setFieldErrors((prev) => (prev[key as keyof TenantSignupErrors] ? { ...prev, [key]: undefined } : prev));
+  };
 
   const submitLogin = async () => {
     if (!form.email.trim() || !form.password.trim()) {
@@ -116,18 +142,44 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
     }
   };
 
+  const submitSignup = async () => {
+    const validation = validateTenantSignup(form);
+    if (!validation.valid) {
+      setFieldErrors(validation.errors);
+      setError('');
+      return;
+    }
+    setFieldErrors({});
+    setError('');
+    setSubmitting(true);
+    try {
+      const user = await signUpTenant(toTenantSignupPayload(form));
+      onSuccess({
+        role: String(user.role ?? ''),
+        name: user.name ?? form.name.trim(),
+        email: user.email ?? form.email.trim().toLowerCase(),
+        tenantId: (user as { tenant_id?: string | null }).tenant_id ?? null,
+      });
+    } catch (err) {
+      setError(getMessage(err, 'Could not create your account.'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    return submitLogin();
+    return isTenantSignup ? submitSignup() : submitLogin();
   };
 
   /**
-   * Tenant mode allows Google to create a new account (no other signup path
-   * exists here anymore); owner mode never does — owner accounts are only
-   * ever created through the onboarding funnel.
+   * Tenant mode allows Google to create a new account (alongside the password
+   * form); owner mode never does — owner accounts are only ever created
+   * through the onboarding funnel.
    */
   const submitGoogle = async () => {
     setError('');
+    setFieldErrors({});
     setGoogleSubmitting(true);
     try {
       if (isOwner) {
@@ -185,7 +237,7 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
                 {isLogin ? 'Welcome back' : 'Create your account'}
               </Dialog.Title>
               <Dialog.Description className="mb-4.5 text-sm leading-normal text-muted-foreground">
-                {isLogin ? 'Log in to continue.' : 'One tap to browse, save and enquire about stays.'}
+                {isLogin ? 'Log in to continue.' : 'Browse, save and enquire about stays.'}
               </Dialog.Description>
 
               <div className="relative mb-5 flex gap-0 rounded-[13px] border border-border bg-muted p-1.5">
@@ -217,26 +269,109 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
           )}
 
           {isTenantSignup ? (
-            <div className="flex flex-col gap-3.5">
-              <p className="text-[12.5px] leading-normal text-muted-foreground">
-                Your Google account becomes your Stayo account — no password to remember. We'll ask for your
-                phone number only when you're ready to send an enquiry.
-              </p>
-              {error && (
-                <div className="rounded-[9px] bg-destructive/10 px-3 py-2.5 text-[12.5px] font-semibold text-destructive">
-                  {error}
-                </div>
-              )}
+            <>
+              <form onSubmit={onSubmit} className="flex flex-col gap-3.5" noValidate>
+                <label className="block">
+                  <span className={labelClass}>FULL NAME</span>
+                  <input
+                    value={form.name}
+                    onChange={(e) => set('name', e.target.value)}
+                    placeholder="Riya Sharma"
+                    autoComplete="name"
+                    aria-invalid={Boolean(fieldErrors.name)}
+                    className={cn(inputClass, fieldErrors.name && errorInputClass)}
+                  />
+                  <FieldError message={fieldErrors.name} />
+                </label>
+
+                <label className="block">
+                  <span className={labelClass}>EMAIL</span>
+                  <input
+                    value={form.email}
+                    onChange={(e) => set('email', e.target.value)}
+                    placeholder="you@example.com"
+                    inputMode="email"
+                    autoComplete="email"
+                    aria-invalid={Boolean(fieldErrors.email)}
+                    className={cn(inputClass, fieldErrors.email && errorInputClass)}
+                  />
+                  <FieldError message={fieldErrors.email} />
+                </label>
+
+                <label className="block">
+                  <span className={labelClass}>PASSWORD</span>
+                  <div className="relative">
+                    <input
+                      value={form.password}
+                      onChange={(e) => set('password', e.target.value)}
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder={`At least ${MIN_SIGNUP_PASSWORD_LENGTH} characters`}
+                      autoComplete="new-password"
+                      aria-invalid={Boolean(fieldErrors.password)}
+                      className={cn(inputClass, 'pr-11', fieldErrors.password && errorInputClass)}
+                    />
+                    <RevealButton shown={showPassword} onToggle={() => setShowPassword((v) => !v)} />
+                  </div>
+                  <FieldError message={fieldErrors.password} />
+                </label>
+
+                <label className="block">
+                  <span className={labelClass}>CONFIRM PASSWORD</span>
+                  <div className="relative">
+                    <input
+                      value={form.confirmPassword}
+                      onChange={(e) => set('confirmPassword', e.target.value)}
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      placeholder="Type it again"
+                      autoComplete="new-password"
+                      aria-invalid={Boolean(fieldErrors.confirmPassword)}
+                      className={cn(inputClass, 'pr-11', fieldErrors.confirmPassword && errorInputClass)}
+                    />
+                    <RevealButton
+                      shown={showConfirmPassword}
+                      onToggle={() => setShowConfirmPassword((v) => !v)}
+                    />
+                  </div>
+                  <FieldError message={fieldErrors.confirmPassword} />
+                </label>
+
+                {error && (
+                  <div className="rounded-[9px] bg-destructive/10 px-3 py-2.5 text-[12.5px] font-semibold text-destructive">
+                    {error}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="mt-1 flex w-full items-center justify-center gap-2.5 rounded-xl bg-primary px-4 py-3.5 font-display text-[15px] font-bold text-primary-foreground shadow-[0_14px_28px_-14px_rgba(164,93,68,0.6)] disabled:opacity-75"
+                >
+                  {submitting && <StayoLoader size="sm" label={null} />}
+                  {submitting ? 'Creating your account…' : 'Create Account'}
+                </button>
+              </form>
+
+              <div className="my-4 flex items-center gap-3">
+                <span className="h-px flex-1 bg-border" />
+                <span className="font-display text-[11px] font-bold tracking-wider text-muted-foreground">OR</span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
               <button
                 type="button"
                 onClick={submitGoogle}
                 disabled={googleSubmitting}
-                className="flex w-full items-center justify-center gap-2.5 rounded-xl bg-primary px-4 py-3.5 font-display text-[15px] font-bold text-primary-foreground shadow-[0_14px_28px_-14px_rgba(164,93,68,0.6)] disabled:opacity-75"
+                className="flex w-full items-center justify-center gap-2.5 rounded-xl border-[1.5px] border-border bg-card px-4 py-3 font-display text-[14.5px] font-bold text-foreground transition-colors hover:border-primary disabled:opacity-75"
               >
-                {googleSubmitting ? <StayoLoader size="sm" label={null} /> : <GoogleMark light />}
+                {googleSubmitting ? <StayoLoader size="sm" label={null} /> : <GoogleMark />}
                 {googleSubmitting ? 'Please wait…' : 'Continue with Google'}
               </button>
-            </div>
+
+              {/* Said once, here, because it's the question this form raises:
+                  there's no phone field, and an enquiry obviously needs one. */}
+              <p className="mt-4 text-center text-[12px] leading-normal text-muted-foreground">
+                We'll ask for your phone number and verify it once — when you're ready to send an enquiry.
+              </p>
+            </>
           ) : (
             <>
               <form onSubmit={onSubmit} className="flex flex-col gap-3.5">
@@ -262,15 +397,7 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
                       autoComplete="current-password"
                       className={`${inputClass} pr-11`}
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((v) => !v)}
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                      aria-pressed={showPassword}
-                      className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted-foreground transition-colors hover:text-primary"
-                    >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
+                    <RevealButton shown={showPassword} onToggle={() => setShowPassword((v) => !v)} />
                   </div>
                 </label>
 
@@ -331,6 +458,25 @@ function getMessage(error: unknown, fallback: string) {
     ?.message;
   if (apiMessage) return apiMessage;
   return error instanceof Error ? error.message : fallback;
+}
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return <p className="mt-1.5 text-[11.5px] font-semibold text-destructive">{message}</p>;
+}
+
+function RevealButton({ shown, onToggle }: { shown: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={shown ? 'Hide password' : 'Show password'}
+      aria-pressed={shown}
+      className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted-foreground transition-colors hover:text-primary"
+    >
+      {shown ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+    </button>
+  );
 }
 
 function GoogleMark({ light }: { light?: boolean } = {}) {

@@ -143,6 +143,27 @@ describe("selfSignUpTenant — marketplace account", () => {
     expect((await supabaseAdmin()).createUser).not.toHaveBeenCalled();
   });
 
+  // ADR-096: the Sign Up tab asks for name, email and password only — the
+  // number is collected and verified at enquiry time, so the row is born the
+  // same shape a Google-provisioned one is.
+  it("creates an account with no phone at all", async () => {
+    const { phone, ...withoutPhone } = input;
+    const profile: any = await authService.selfSignUpTenant({ ...withoutPhone, phoneVerified: false });
+
+    expect(profile.phone).toBeNull();
+    expect(profile.phone_verified).toBe(false);
+    expect(profile.role).toBe("TENANT");
+  });
+
+  // `profiles.phone` is nullable AND unique: querying it with `null` would
+  // match the first phone-less account and reject every signup after it.
+  it("does not run the duplicate-phone lookup when there is no phone", async () => {
+    const { phone, ...withoutPhone } = input;
+    await authService.selfSignUpTenant({ ...withoutPhone, phoneVerified: false });
+
+    expect((prisma as any).profile.findFirst).not.toHaveBeenCalled();
+  });
+
   it("rejects a duplicate phone before touching Supabase", async () => {
     (prisma as any).profile.findFirst.mockResolvedValue({ id: "existing" });
 

@@ -718,8 +718,13 @@ export class AuthService {
     const existingEmail = await prisma.profile.findUnique({ where: { email: normalizedEmail } });
     if (existingEmail) throw new Error("ALREADY_EXISTS: Email already registered");
 
-    const existingPhone = await prisma.profile.findFirst({ where: { phone: data.phone } });
-    if (existingPhone) throw new Error("ALREADY_EXISTS: Phone number already registered");
+    // Only when one was supplied: `profiles.phone` is nullable *and* unique, so
+    // querying it with `null` would match the first phone-less account and
+    // reject every subsequent signup as a duplicate.
+    if (data.phone) {
+      const existingPhone = await prisma.profile.findFirst({ where: { phone: data.phone } });
+      if (existingPhone) throw new Error("ALREADY_EXISTS: Phone number already registered");
+    }
 
     // Born linked — same reasoning as registerOwner() above (ADR-031): no
     // silent local-UUID fallback.
@@ -771,14 +776,18 @@ export class AuthService {
    * account has no hostel to complete a profile for, and would otherwise be
    * trapped in a redirect loop by `ProtectedTenantRoute`.
    *
-   * Callers must verify the phone first (`resolveSignupPhoneVerification`),
-   * exactly as `/api/auth/owner-signup` does.
+   * `phone` is optional (ADR-096) — a marketplace account is name + email +
+   * password, and the number is collected and verified at enquiry time, so the
+   * row is born the same shape a Google-provisioned one is (`phone: null`, see
+   * `lib/auth/supabase-provision.ts`). When a caller *does* pass one it must
+   * have been verified first (`resolveSignupPhoneVerification`), exactly as
+   * `/api/auth/owner-signup` requires.
    */
   async selfSignUpTenant(data: {
     email: string;
     password: string;
     name: string;
-    phone: string;
+    phone?: string | null;
     phoneVerified: boolean;
   }) {
     const normalizedEmail = data.email.trim().toLowerCase();
@@ -786,8 +795,13 @@ export class AuthService {
     const existingEmail = await prisma.profile.findUnique({ where: { email: normalizedEmail } });
     if (existingEmail) throw new Error("ALREADY_EXISTS: Email already registered");
 
-    const existingPhone = await prisma.profile.findFirst({ where: { phone: data.phone } });
-    if (existingPhone) throw new Error("ALREADY_EXISTS: Phone number already registered");
+    // Only when one was supplied: `profiles.phone` is nullable *and* unique, so
+    // querying it with `null` would match the first phone-less account and
+    // reject every subsequent signup as a duplicate.
+    if (data.phone) {
+      const existingPhone = await prisma.profile.findFirst({ where: { phone: data.phone } });
+      if (existingPhone) throw new Error("ALREADY_EXISTS: Phone number already registered");
+    }
 
     // Born linked — same reasoning as selfSignUpOwner above (ADR-031).
     const { userId, adopted } = await this.provisionSupabaseIdentity(normalizedEmail, data.password);
@@ -801,7 +815,7 @@ export class AuthService {
           email: normalizedEmail,
           password_hash: hashedPassword,
           name: data.name,
-          phone: data.phone,
+          phone: data.phone ?? null,
           role: "TENANT",
           is_active: true,
           // No owner_id: this account belongs to no hostel until an owner

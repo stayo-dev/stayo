@@ -22,8 +22,15 @@ const OTP_PURPOSE = "PHONE_VERIFICATION";
  * Self-serve tenant signup (ADR-035) — creates a marketplace account
  * (browse/save/enquire), not a tenant of any hostel; see
  * `authService.selfSignUpTenant`'s doc comment for why no `tenants` row is
- * written. Deliberately mirrors /api/auth/owner-signup: same phone-verification
- * gate, same rate limiter, same session/cookie shape as /login.
+ * written. Same rate limiter and same session/cookie shape as /login.
+ *
+ * Unlike /api/auth/owner-signup, `phone` is optional here (ADR-096). A
+ * marketplace account is name + email + password; the number is collected and
+ * verified once, when it is actually needed — sending an enquiry — which is
+ * the same shape a Google-provisioned account already has (`phone: null`, see
+ * `lib/auth/supabase-provision.ts`). A caller that *does* send a phone still
+ * has to have verified it first: the OTP gate below is unchanged for that
+ * case, so this loosening cannot be used to attach an unverified number.
  */
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req) ?? undefined;
@@ -45,10 +52,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const normalizedPhone = normalizeWhatsAppPhone(phone);
-    const verification = await resolveSignupPhoneVerification(normalizedPhone, OTP_PURPOSE);
-    if (!verification.ok) {
-      return apiError("Phone verification is required before signing up", "PHONE_NOT_VERIFIED", 400);
+    // No phone supplied is the normal path now; a supplied one keeps the gate.
+    let normalizedPhone: string | null = null;
+    let phoneVerified = false;
+    if (phone) {
+      normalizedPhone = normalizeWhatsAppPhone(phone);
+      const verification = await resolveSignupPhoneVerification(normalizedPhone, OTP_PURPOSE);
+      if (!verification.ok) {
+        return apiError("Phone verification is required before signing up", "PHONE_NOT_VERIFIED", 400);
+      }
+      phoneVerified = verification.phoneVerified;
     }
 
     let profile;
@@ -58,7 +71,7 @@ export async function POST(req: NextRequest) {
         password,
         name,
         phone: normalizedPhone,
-        phoneVerified: verification.phoneVerified,
+        phoneVerified,
       });
     } catch (signupErr: any) {
       await rateLimitService.recordAttempt(

@@ -63,8 +63,12 @@ interface AuthContextValue {
    * because `shared/ui-patterns/LoginModal` is its caller and shared code
    * may not import `@features/*` (scripts/check-architecture.mjs), and
    * because minting a session is this context's job either way.
+   *
+   * `phone` is optional (ADR-096): the Sign Up tab asks for name, email and
+   * password only, and the number is collected and verified later, when an
+   * enquiry is actually sent.
    */
-  signUpTenant: (data: { name: string; email: string; phone: string; password: string }) => Promise<AuthUser>;
+  signUpTenant: (data: { name: string; email: string; password: string; phone?: string }) => Promise<AuthUser>;
   updateUser: (patch: Partial<AuthUser>) => void;
   logout: (redirect?: boolean, options?: LogoutOptions) => void | Promise<void>;
 }
@@ -292,18 +296,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUpTenant = async (data: {
     name: string;
     email: string;
-    phone: string;
     password: string;
+    phone?: string;
   }): Promise<AuthUser> => {
     try {
       const normalizedEmail = data.email.trim().toLowerCase();
+      const phone = data.phone?.trim();
       // Same response/cookie shape as /auth/login, so the session handling
       // below is deliberately identical to login()'s.
+      //
+      // `phone` is omitted entirely when there isn't one — sending `""` would
+      // fail the backend's min-length check, and sending an unverified number
+      // would trip its OTP gate.
       const response = await api.post('/auth/tenant-signup', {
         name: data.name.trim(),
         email: normalizedEmail,
-        phone: data.phone.trim(),
         password: data.password,
+        ...(phone ? { phone } : {}),
       });
       queryClient.clear();
       clearSessionScopedStorage();
