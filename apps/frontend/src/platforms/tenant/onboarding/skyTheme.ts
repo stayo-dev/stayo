@@ -31,6 +31,24 @@ export type SkyEnv = {
   greetAccent: string;
   cardBg: string;
   cardBorder: string;
+  /**
+   * Text that sits **directly on the sky gradient** rather than inside an opaque
+   * card — step titles, subtitles and the small uppercase field labels.
+   *
+   * The wizard body renders straight over `flowGradient` with no surface of its
+   * own (see ActivationLayout: "Body content renders directly over the
+   * gradient"), while the step components used fixed warm greys (#7A6F63,
+   * #8A7F75) chosen for the daytime cream. Those greys are close to invisible
+   * against the dusk and night gradients, so labels faded out at exactly the
+   * hours most people open the link.
+   *
+   * Text inside an opaque card keeps its own dark ink — only text over the sky
+   * uses these.
+   */
+  onSkyTitle: string;
+  onSkyBody: string;
+  onSkyLabel: string;
+  onSkyShadow: string;
 };
 
 export const THEME_CYCLE: (ThemePhase | null)[] = [null, 'day', 'dusk', 'night'];
@@ -67,6 +85,12 @@ export function skyEnv(hour: number, override: ThemePhase | null): SkyEnv {
       greetAccent: '#A45D44',
       cardBg: 'rgba(47,42,38,.32)',
       cardBorder: 'rgba(255,255,255,.4)',
+      // Daytime keeps the original warm greys: the gradient is cream here and
+      // dark ink is correct.
+      onSkyTitle: '#2A2521',
+      onSkyBody: '#6E635A',
+      onSkyLabel: '#7A6F63',
+      onSkyShadow: 'none',
     };
   }
   if (phase === 'dusk') {
@@ -92,6 +116,12 @@ export function skyEnv(hour: number, override: ThemePhase | null): SkyEnv {
       greetAccent: '#FFCF94',
       cardBg: 'rgba(255,255,255,.13)',
       cardBorder: 'rgba(255,255,255,.22)',
+      // Warm sky, so the body text is tinted rather than pure grey — pure grey
+      // reads as dirty against orange.
+      onSkyTitle: '#FFF6EC',
+      onSkyBody: 'rgba(255,244,232,.82)',
+      onSkyLabel: 'rgba(255,236,220,.78)',
+      onSkyShadow: '0 1px 8px rgba(60,26,10,.35)',
     };
   }
   return {
@@ -116,6 +146,10 @@ export function skyEnv(hour: number, override: ThemePhase | null): SkyEnv {
     greetAccent: '#F0C48A',
     cardBg: 'rgba(255,255,255,.13)',
     cardBorder: 'rgba(255,255,255,.22)',
+    onSkyTitle: '#FFFFFF',
+    onSkyBody: 'rgba(246,241,234,.80)',
+    onSkyLabel: 'rgba(238,230,220,.76)',
+    onSkyShadow: '0 1px 10px rgba(0,0,0,.45)',
   };
 }
 

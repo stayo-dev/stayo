@@ -1,5 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { canSubmitIdentity, needsPhoneOtp, type PhoneTrust } from './identityVerification';
+import DateOfBirthField from './DateOfBirthField';
+import { useSky } from '../skyContext';
 import { AlertCircle, Camera, CheckCircle2, Receipt, Send } from 'lucide-react';
 import { StayoLoader } from '@shared/ui/brand';
 import type { ActivationContext, ActivationStep } from '../activationTypes';
@@ -75,6 +77,12 @@ interface WelcomeIdentityStepProps {
   submitting: boolean;
   /** What the invitation proved about the number, from the activation context. */
   phoneTrust?: PhoneTrust | null;
+  /**
+   * Whether the gender selector must be rendered. False when the hostel's own
+   * type already establishes it (a boys'/girls' hostel answered the question by
+   * admitting the person) — resolved server-side, see identity-field-policy.
+   */
+  genderRequired?: boolean;
   onSubmitAccount: () => Promise<boolean>;
   onSubmitProfile: () => Promise<boolean>;
   goToStep: (step: ActivationStep) => void;
@@ -226,6 +234,7 @@ export function WelcomeIdentityStep({
   activeStep,
   accountVerified,
   phoneTrust,
+  genderRequired = true,
   profileCompleted,
   account,
   setAccount,
@@ -263,6 +272,10 @@ export function WelcomeIdentityStep({
   setLocalPhase,
 }: WelcomeIdentityStepProps) {
   const [busy, setBusy] = useState(false);
+  const sky = useSky();
+  // Shadows the module-level constant: these labels sit directly on the sky
+  // gradient, so their colour has to follow the hour rather than assume cream.
+  const label = { color: sky.onSkyLabel, letterSpacing: '.05em' };
 
   const allocation = [
     { label: 'Room', value: ctx.room_summary.room_number || 'Assigned' },
@@ -360,10 +373,13 @@ export function WelcomeIdentityStep({
             </svg>
           </div>
           <div>
-            <div className="font-display text-[18px] font-extrabold tracking-tight" style={{ color: '#1A1A1A' }}>
+            <div
+              className="font-display text-[18px] font-extrabold tracking-tight"
+              style={{ color: sky.onSkyTitle, textShadow: sky.onSkyShadow }}
+            >
               Identity Profile
             </div>
-            <div className="mt-1 text-xs leading-relaxed" style={{ color: '#6E6459' }}>
+            <div className="mt-1 text-xs leading-relaxed" style={{ color: sky.onSkyBody }}>
               Confirm your details to complete the admission record.
             </div>
           </div>
@@ -458,6 +474,7 @@ export function WelcomeIdentityStep({
         )}
 
         <div className="mt-4 flex flex-col gap-3.5">
+          {genderRequired && (
           <div>
             <div className="mb-1.5 text-[11px] font-bold uppercase" style={label}>
               Gender
@@ -479,20 +496,16 @@ export function WelcomeIdentityStep({
               })}
             </div>
           </div>
+          )}
 
           <div>
             <div className="mb-1.5 text-[11px] font-bold uppercase" style={label}>
               Date of Birth
             </div>
-            <div style={cardWrap}>
-              <input
-                type="date"
-                value={profile.date_of_birth}
-                onChange={(e) => setProfile({ ...profile, date_of_birth: e.target.value })}
-                className="text-sm font-medium [&::-webkit-calendar-picker-indicator]:opacity-0"
-                style={inputBase}
-              />
-            </div>
+            <DateOfBirthField
+              value={profile.date_of_birth}
+              onChange={(iso) => setProfile({ ...profile, date_of_birth: iso })}
+            />
           </div>
 
           <div>

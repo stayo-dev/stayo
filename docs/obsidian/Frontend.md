@@ -108,6 +108,12 @@ src/portal/utils/payableObligations.ts
 ```
 Every file currently on disk under `src/portal/` is on this allowlist (confirmed). The script also forbids raw `fetch()`/`axios` in non-allowlisted portal files. `QrCodeImage.tsx` and `payableObligations.ts` are the only two files here still reused by *non-tenant-portal* code (the owner-side Admissions QR feature and Quick Collect modal, respectively) — everything else is either a still-routed tenant page (see Router section above) or `README.md`.
 
+**Tenant onboarding — the Identity screen's field policy and theming (2026-08-25, [[Decisions#ADR-111|ADR-111]]).** Three things worth knowing before editing `platforms/tenant/onboarding/`:
+
+- **The body renders directly over the sky gradient**, with no card of its own (`ActivationLayout`: "Body content renders directly over the gradient"). Any text you add there must take its colour from `useSky()` (`skyContext.tsx`) — `onSkyTitle` / `onSkyBody` / `onSkyLabel` / `onSkyShadow` — **not** from a hardcoded grey. The old fixed `#7A6F63`/`#8A7F75` were chosen for the daytime cream and vanished at dusk and night. Text inside an opaque card keeps its dark ink.
+- **Which fields to render is decided by the server**, not the component: `GET /api/tenants/activate/context` returns `identity_fields`, and `phone_trust` decides the OTP. Adding a client-side rule for either would let the form and the validation that accepts it drift apart.
+- **Date of birth is `DateOfBirthField.tsx` over the pure `dateOfBirth.ts`**, not an `<input type="date">`. The logic (parsing without `new Date()`, leap years, day clamping, age, validation) lives in the `.ts` and is tested; the component is a renderer, per this app's node-only test setup.
+
 **`ActivateAccountPage.tsx` is on this allowlist but is `@deprecated` and no longer routed** (2026-08-12) — `PublicRoutes.tsx`'s `/activate`, `/activate/:token`, `/invite/:token` now mount `platforms/tenant/onboarding/ActivationPage.tsx` instead. This was the second and final slice of the `portal → platforms/tenant` extraction: `ActivationLayout.tsx`/`ActivationProgress.tsx` (the chrome) moved first; the step bodies moved in this change, redesigned to match `Stayo Onboarding.dc.html`. See [[Features]] and [[Changelog]]. Kept on disk/allowlist per the deprecate-don't-delete policy until confirmed safe to remove.
 
 ## `src/domains/` — migration-in-progress scaffold

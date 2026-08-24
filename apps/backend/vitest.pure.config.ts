@@ -90,6 +90,7 @@ export default defineConfig({
       'tests/tenant-invitation-email-conflict.test.ts',
       'tests/invitation-phone-trust.test.ts',
       'tests/invited-profile-adoption.test.ts',
+      'tests/identity-field-policy.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),

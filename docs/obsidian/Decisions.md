@@ -1663,3 +1663,22 @@ Related: [[Business-Rules]] · [[APIs]] · [[Features]] · ADR-076 · ADR-040
   - **The column is deliberately NOT declared in `schema.prisma`.** ~52 reads of `tenant_invitations` pass no explicit `select`, so declaring it would make every one of them demand a column that does not exist until the migration is applied — the [[Decisions#ADR-102|2026-08-22]] outage exactly. It is read and written by raw SQL in `invitation-delivery-trust.ts`, degrading to "unknown" when absent, which is also the safe answer.
   - **Fail-closed everywhere.** An absent `phone_trust` in the activation context, an unreadable column, an older backend — all mean "ask for the OTP".
 - **See:** [[Features]], [[Bugs]], [[Business-Rules]], [[APIs]], [[Database]], [[Changelog]], [[Decisions#ADR-034|ADR-034]], [[Decisions#ADR-070|ADR-070]], [[Decisions#ADR-096|ADR-096]]
+
+### ADR-111 — Onboarding does not ask what the hostel already answers, and the sky theme owns text contrast (2026-08-25)
+
+- **Status:** Accepted
+- **Context:** Three problems on the Identity screen, reported from screenshots. (1) It asked every invitee for their **gender**, when a boys'/girls' hostel has already answered that by admitting them. (2) The **date of birth** field was an `<input type="date">` carrying `[&::-webkit-calendar-picker-indicator]:opacity-0` — the picker affordance was hidden, so it rendered as a dead-looking `mm/dd/yyyy` with nothing to tap, in month-first order that is wrong for an Indian product. (3) The wizard body renders **directly over the time-of-day sky gradient** with no surface of its own, but the step components used fixed warm greys (`#7A6F63`, `#8A7F75`) chosen for the daytime cream — so field labels faded into the dusk and night gradients, at exactly the hours people open an invitation link.
+- **Decision:**
+  1. **Gender is derived when the hostel type states it, and asked otherwise.** `BOYS → Male`, `GIRLS → Female`, field not rendered. `CO_LIVING`, `WORKING_PROS` and an **unset** type all still ask. Resolved server-side (`identity-field-policy.ts`) and published on the activation context as `identity_fields`, so the form and the validation that accepts it cannot drift.
+  2. **The date of birth is a three-column day/month/year sheet, not a calendar.** For a birth date the current month is never the answer, so a month-paging calendar opens roughly 240 taps from where anyone needs to be.
+  3. **`skyEnv()` gains `onSkyTitle` / `onSkyBody` / `onSkyLabel` / `onSkyShadow`**, consumed through a new `SkyProvider` context. Text *over the gradient* follows the hour; text inside an opaque card keeps its dark ink.
+- **Consequences / guardrails:**
+  - **A recorded gender always beats a derived one.** Someone recorded as "Other" in a boys' hostel is not silently rewritten to "Male" on their next save.
+  - **Never guess from an unset type.** `hostels.hostel_type` is a nullable String and was **NULL on half the production hostels** when this shipped, so deriving a default would write a gender nobody supplied into a permanent tenant record. Today this means 1 of 4 live hostels hides the field; making the rest hide it is a **data cleanup, not a code change**.
+  - **The frontend fails safe:** an absent `identity_fields` means ask (`genderRequired = true`).
+  - **DOB parsing avoids `new Date()`** for `YYYY-MM-DD`, which applies the viewer's timezone and shifts the day west of UTC — the "birthday one day early" bug. Day/month/year are parsed as integers.
+  - **The picker paints its own opaque surface** rather than inheriting the sky, because a modal decision should not get harder to read at night.
+  - **`useSky()` falls back to the daytime palette** outside a provider, so a component rendered in isolation gets dark-on-cream rather than white-on-white.
+  - **`validateDateOfBirth` returns one flat shape, not a discriminated union** — this project's tsconfig is not strict, so `ok: true | false` does not narrow at call sites and every consumer would need a cast.
+- **Not done here:** capturing gender at *enquiry* time onto the profile (would need a `profiles.gender` column and an enquiry-side gate, and would let even co-living invitees skip the question). Deferred deliberately; the derive-or-ask rule needs no migration.
+- **See:** [[Features]], [[APIs]], [[Business-Rules]], [[Frontend]], [[Changelog]], [[Decisions#ADR-110|ADR-110]], [[Decisions#ADR-070|ADR-070]]

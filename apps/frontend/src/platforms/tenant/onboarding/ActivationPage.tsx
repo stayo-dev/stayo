@@ -138,7 +138,10 @@ export function ActivationPage() {
 
       const backendProfile: ProfileDraft = {
         phone: phoneDigits(data.tenant?.phone_1 || data.profile?.phone),
-        gender: String(data.tenant?.gender || ''),
+        // Falls back to what the hostel's own type establishes, so the progress
+        // avatar is right even though the Identity screen never asks. See
+        // identity-field-policy on the server.
+        gender: String(data.tenant?.gender || data.identity_fields?.value || ''),
         date_of_birth: String(data.tenant?.date_of_birth || ''),
         profile_type: String(data.tenant?.profile_type || 'STUDENT'),
         guardian_name: String(data.tenant?.guardian_name || data.agreement?.guardian_signature_name || ''),
@@ -541,6 +544,7 @@ export function ActivationPage() {
             activeStep={activeStep}
             accountVerified={Boolean(ctx.activation_state?.account_setup_completed)}
             phoneTrust={ctx.phone_trust ?? null}
+            genderRequired={ctx.identity_fields?.required ?? true}
             profileCompleted={completed.has('PROFILE') || Boolean(ctx.activation_state?.profile_completed)}
             account={account}
             setAccount={setAccount}

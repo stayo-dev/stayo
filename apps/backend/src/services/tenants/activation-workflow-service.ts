@@ -53,6 +53,7 @@ const REQUIRED_ACKNOWLEDGEMENTS = [
 import { getActiveTenancy, selectCurrentTenancy } from "@/lib/tenancy/active-tenancy";
 import { isPhoneAlreadyProven } from "./invitation-phone-trust";
 import { resolveActivationEmail } from "./invited-profile-resolver";
+import { resolveGenderRequirement } from "./identity-field-policy";
 import {
   completedApplicableSteps,
   isAgreementRequired,
@@ -619,6 +620,16 @@ export class ActivationWorkflowService {
        * away from `phone` below. Computed here so one rule serves both the
        * screen and the mutation that validates it.
        */
+      /**
+       * Which identity fields the screen still has to render. Gender is not
+       * asked when the hostel's own type already establishes it — see
+       * identity-field-policy. Computed server-side so the form and the
+       * validation that accepts it cannot drift apart.
+       */
+      identity_fields: resolveGenderRequirement({
+        tenantGender: tenant.gender,
+        hostelType: hostel?.hostel_type,
+      }),
       phone_trust: {
         phone: invitation?.phone ? normalizeIndianPhone(invitation.phone) : (tenant.phone_1 || null),
         trusted: isPhoneAlreadyProven({
@@ -1155,7 +1166,17 @@ export class ActivationWorkflowService {
   private async saveProfile(profile: any, tenant: any, data: any) {
     if (!profile) throw new Error("INVALID_TRANSITION: Complete account setup before profile completion");
     const phone = normalizeIndianPhone(data?.phone || data?.primary_phone || tenant.phone_1 || profile.phone);
-    const gender = data?.gender ? String(data.gender) : tenant.gender;
+    // A boys'/girls' hostel has already answered this by admitting the person,
+    // so the Identity screen does not render the field and sends nothing. Any
+    // other hostel type — including one whose type was never set — still asks,
+    // and this falls through to the submitted value. See identity-field-policy.
+    const gender =
+      (data?.gender ? String(data.gender) : "") ||
+      resolveGenderRequirement({
+        tenantGender: tenant.gender,
+        hostelType: tenant.hostels?.hostel_type,
+      }).value ||
+      tenant.gender;
     const dob = validDateOfBirth(data?.date_of_birth || tenant.date_of_birth);
     const guardianPhone = data?.guardian_phone || data?.phone_2
       ? normalizeIndianPhone(data?.guardian_phone || data?.phone_2)

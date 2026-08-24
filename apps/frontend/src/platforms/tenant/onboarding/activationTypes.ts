@@ -43,6 +43,12 @@ export type ActivationContext = {
    * OTP, which is the safe default.
    */
   phone_trust?: { phone: string | null; trusted: boolean } | null;
+  /**
+   * Which identity fields still have to be asked for. `required: false` means
+   * the hostel's own type already establishes the gender, so the selector is
+   * not rendered and the server derives it. Absent means ask — fail safe.
+   */
+  identity_fields?: { required: boolean; value: string | null; reason: string } | null;
   tenant: Record<string, string | number | null | undefined>;
   hostel: { name?: string; logo_url?: string; address?: string; phone?: string };
   room_summary: Record<string, string | number | boolean | string[] | null | undefined>;

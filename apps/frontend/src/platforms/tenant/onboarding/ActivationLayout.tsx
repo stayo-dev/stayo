@@ -3,6 +3,7 @@ import { AlertTriangle, X } from 'lucide-react';
 import './onboarding.css';
 import { ActivationProgress, type ActivationVisualStep } from './ActivationProgress';
 import { hostelInitials, skyEnv, THEME_CYCLE, type ThemePhase } from './skyTheme';
+import { SkyProvider } from './skyContext';
 
 interface ActivationLayoutProps {
   activeStep: ActivationVisualStep;
@@ -190,7 +191,9 @@ export function ActivationLayout({
         </div>
 
         <div className="relative z-[1]" style={{ padding: '14px 14px 108px' }}>
-          {children}
+          {/* Steps render straight over the gradient, so they need the phase to
+              pick legible text colours. See skyContext. */}
+          <SkyProvider value={sky}>{children}</SkyProvider>
         </div>
       </div>
     </div>
