@@ -8,6 +8,34 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-08-24 — Leads marked Accepted with no invitation behind them (fixed)
+
+**Reported** with a screenshot of the Alerts tab: four enquiries, all reading **Accepted**, none of whom had been invited.
+
+**Cause:** Accept was two writes pretending to be one act. The button PATCHed the lead to `ACCEPTED` and then navigated to the pre-filled Add Tenant wizard — it had to, because `convertToInvitation` hard-required `status === "ACCEPTED"`. If the owner closed the wizard instead of submitting, the first write stood alone. Nothing in the product distinguishes "accepted, invitation pending" from "accepted and invited", so the Leads tab read as four completed handovers that had never happened.
+
+**Fix:** Accept writes nothing — see [[Decisions#ADR-104|ADR-104]]. The lead advances to `INVITED` inside the conversion endpoint, when the invitation actually goes out.
+
+**The shape worth remembering:** a status that means "this thing happened" must be written by the code that makes it happen, not by the code that opens the screen where it might. The same pattern would bite any "mark X, then navigate somewhere the user can abandon".
+
+**Not verified in a browser** — no invitation was driven end to end against a running stack.
+
+**Related:** [[Decisions#ADR-104|ADR-104]], [[Decisions#ADR-087|ADR-087]], [[Features]]
+
+## 2026-08-24 — A signed-in resident was told to sign in to write a review (fixed)
+
+**Reported** with a screenshot: the Profile tab showed the account signed in, and the same session's listing page showed *"Lived at this hostel? Sign in to write a review"* with a Sign in button.
+
+**Cause:** `PUBLIC_ROUTES` in `middleware.ts` is prefix-matched, and its public branch **strips every identity header**. `/api/discover/hostels` is on that list, so `GET /api/discover/hostels/:slug/reviews` short-circuited there — `getSession()` saw nothing, `getSeeker()` returned null, and `reviewsService.eligibility(null, slug)` correctly answered `SIGNED_OUT`. The backend was right at every step; it was simply never told who was asking.
+
+**Why it went unnoticed:** the same trap had already been hit and fixed for the *write* (`requiresSessionDespitePublicPrefix`, added for `POST .../reviews`, whose own doc comment describes "a signed-in person submitting a review got 'Sign in to continue' with a perfectly good session in hand"). The read needed the opposite exception — accept a session if offered — and no category expressed that, so the fix for one half left the other half broken in the same way.
+
+**Fix:** a third category, `allowsOptionalIdentity` — see [[Decisions#ADR-101|ADR-101]]. Same verification as any authenticated route, including the revocation deny-list and idle timeout; only the *failure mode* changes, from 401 to "continue anonymously".
+
+**Not verified in a browser** — no signed-in session was driven against a running stack.
+
+**Related:** [[Decisions#ADR-101|ADR-101]], [[Decisions#ADR-086|ADR-086]], [[APIs]]
+
 ## 2026-08-24 — Add Hostel: four ways the wizard could not be completed or understood (fixed)
 
 Found by auditing all four builder screens after an owner reported "the fields to enter are not appearing".
