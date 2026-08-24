@@ -597,6 +597,20 @@ export class DiscoveryService {
     seeker: { id: string; name: string; email: string; phone: string | null },
     input: { slug: string; roomCapacity?: number; moveInDate?: string; durationMonths?: number; message?: string },
   ) {
+    // A lead with no phone is worse than no lead: the owner's whole reason for
+    // receiving one is being able to call back, and `student_phone` used to be
+    // written as whatever `seeker.phone` happened to be, including null. The
+    // gate lived only in `EnquiryPage`, so any request made outside that screen
+    // put an uncallable row in an owner's inbox.
+    //
+    // The rule is "a number is on file", not "phone_verified is true": ADR-034
+    // lets signup through with a SKIPPED row when WhatsApp cannot deliver, and
+    // the UI deliberately allows that path. Gating on the flag would refuse
+    // those seekers outright.
+    if (!seeker.phone) {
+      throw ApiError.validationError("Add your mobile number before sending an enquiry");
+    }
+
     const hostel = await prisma.hostels.findFirst({
       // Spread first — see getListing for why the order matters.
       where: { ...DISCOVERABLE, public_slug: input.slug },
@@ -624,7 +638,7 @@ export class DiscoveryService {
           data: {
             student_name: seeker.name,
             student_email: seeker.email,
-            student_phone: seeker.phone ?? existing.student_phone,
+            student_phone: seeker.phone,
             notes,
             last_activity_at: new Date(),
             updated_at: new Date(),

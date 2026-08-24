@@ -5,7 +5,11 @@ vi.mock("@/lib/db", () => ({
     hostels: { findFirst: vi.fn(), findMany: vi.fn() },
     visitorLead: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), findMany: vi.fn() },
     saved_hostels: { findMany: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn() },
-    hostel_marketing_revisions: { findFirst: vi.fn() },
+    // `findMany` backs fillCoverPhotos, which every card-projection path runs
+    // through. Defaulted to [] rather than a bare vi.fn() so a test that does
+    // not care about photos does not have to stub it; vi.clearAllMocks() keeps
+    // implementations, so this default survives between tests.
+    hostel_marketing_revisions: { findFirst: vi.fn(), findMany: vi.fn(async () => []) },
     profile: { findUnique: vi.fn() },
   },
   supabase: {},
@@ -30,6 +34,14 @@ vi.mock("@/src/services/admissions/admissions-service", () => ({
 
 vi.mock("@/lib/services/notification-service", () => ({
   notificationService: { createNotification: vi.fn(async () => undefined) },
+}));
+
+// `whatsapp-template-delivery` constructs a MetaWhatsAppProvider at module
+// scope, which throws WhatsAppConfigError when WHATSAPP_ACCESS_TOKEN is absent.
+// Importing discovery-service therefore blew up before a single test ran, and
+// this whole file has been silently failing at import rather than executing.
+vi.mock("@/lib/services/notifications/whatsapp-template-delivery", () => ({
+  whatsAppTemplateDeliveryService: { sendTemplate: vi.fn(async () => ({ ok: true })) },
 }));
 
 import { prisma } from "@/lib/db";
@@ -290,6 +302,53 @@ describe("enquiries", () => {
       /not listed on Stayo/i,
     );
     expect(leads().create).not.toHaveBeenCalled();
+  });
+
+  // The owner's whole reason for receiving a lead is being able to call back, so
+  // a phone-less lead is worse than no lead. `EnquiryPage` already gates this,
+  // but a request made outside that screen reached `visitor_leads` directly.
+  it("refuses an enquiry from a seeker with no phone on file", async () => {
+    const phoneless = { ...seeker, phone: null };
+
+    await expect(discoveryService.createEnquiry(phoneless, { slug: "sri-adithya" })).rejects.toThrow(
+      /mobile number/i,
+    );
+    expect(leads().create).not.toHaveBeenCalled();
+    expect(leads().update).not.toHaveBeenCalled();
+  });
+
+  it("refuses before touching the database, so no hostel lookup is spent on it", async () => {
+    const phoneless = { ...seeker, phone: null };
+
+    await expect(discoveryService.createEnquiry(phoneless, { slug: "sri-adithya" })).rejects.toThrow();
+    expect(hostels().findFirst).not.toHaveBeenCalled();
+  });
+
+  // ADR-034: WhatsApp can be undeliverable, in which case the UI deliberately
+  // lets signup through with a SKIPPED row. Gating on `phone_verified` here
+  // would break that path, so the rule is "a number is on file", not "a code
+  // was entered".
+  it("accepts a seeker whose number is on file but was never OTP-verified", async () => {
+    hostels().findFirst.mockResolvedValueOnce({ id: "h1", owner_id: "o1", name: "Sri Adithya" });
+    leads().findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: "l1",
+        status: "NEW",
+        notes: null,
+        created_at: new Date(),
+        last_activity_at: new Date(),
+        hostel: { id: "h1", name: "Sri Adithya", public_slug: "sri-adithya", city: "Hyderabad", address: "Adikmet", admission_photos: [] },
+      });
+    leads().create.mockResolvedValueOnce({ id: "l1" });
+
+    await discoveryService.createEnquiry(
+      { ...seeker, phone: "919000000000" },
+      { slug: "sri-adithya" },
+    );
+
+    expect(leads().create).toHaveBeenCalled();
+    expect(leads().create.mock.calls[0][0].data.student_phone).toBe("919000000000");
   });
 
   it("scopes a single enquiry read to its own seeker", async () => {
