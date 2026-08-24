@@ -6,14 +6,13 @@ describe('builderJourney', () => {
     expect(builderJourney('name').percent).toBeGreaterThan(0);
   });
 
-  it('names the floor being filled rather than a fraction of a step', () => {
-    const at = builderJourney('fill', { activeIndex: 1, floorCount: 3, floorName: 'First floor' });
-    expect(at.label).toBe('First floor · 2 of 3');
+  // It deliberately does not name the floor: the strip highlights it and the
+  // heading says it, and the screen used to state it five separate times.
+  it('gives the position without repeating the floor name', () => {
+    const at = builderJourney('fill', { activeIndex: 1, floorCount: 3 });
+    expect(at.label).toBe('2 of 3');
     expect(at.phase).toBe('Rooms');
-  });
-
-  it('falls back to a plain floor number when the floor has no name', () => {
-    expect(builderJourney('fill', { activeIndex: 0, floorCount: 2 }).label).toBe('Floor 1 of 2');
+    expect(at.label).not.toMatch(/floor/i);
   });
 
   // The old header divided the whole build into four steps, so a five-floor
@@ -44,7 +43,7 @@ describe('builderJourney', () => {
   });
 
   it('clamps an index past the end of the building', () => {
-    expect(builderJourney('fill', { activeIndex: 9, floorCount: 3 }).label).toBe('Floor 3 of 3');
+    expect(builderJourney('fill', { activeIndex: 9, floorCount: 3 }).label).toBe('3 of 3');
   });
 });
 

@@ -13,6 +13,7 @@ import {
   editRoom as editRoomIn,
   floorBlocker,
   rememberRent,
+  renumberBuilding,
   resizeFloorRooms,
   toRoomsPayload,
   type DraftFloor,
@@ -20,6 +21,7 @@ import {
   type NumberingPattern,
   type RentMemory,
 } from './hostelBuilder';
+import { primaryFloorAction, sweepBlocker, unsavedFloorIndexes } from './floorStrip';
 
 export type BuilderStage = 'name' | 'floors' | 'fill' | 'review';
 
@@ -287,15 +289,80 @@ export function useHostelBuilder(existingHostelId?: string) {
     );
   }, [activeIndex, floors.length, pattern]);
 
-  /** Save the current floor, then move on — or finish. */
+  /**
+   * Save the current floor, then move to the next one that still needs rooms
+   * — or finish, sweeping up everything left unsaved.
+   *
+   * Both halves changed when the floor switcher arrived. It used to step to
+   * `activeIndex + 1`, which with free navigation marches past floors already
+   * filled and stops short of ones that were skipped. And it used to be the
+   * *only* way past a floor, so every floor was necessarily written on the way
+   * through; now an owner can fill the ground floor, tap across to the second,
+   * and finish — so finishing has to write whatever the walk missed.
+   *
+   * The sweep is validated in full before it writes anything (`sweepBlocker`):
+   * writing two floors and then failing on a third is the worst outcome, and
+   * the owner would be looking at a screen that says neither.
+   */
   const advance = useCallback(async () => {
-    await saveFloor.mutateAsync(activeIndex);
-    if (activeIndex + 1 < floors.length) {
-      setActiveIndex(activeIndex + 1);
-    } else {
-      setStage('review');
+    const blocker = sweepBlocker(floors);
+    const action = primaryFloorAction(floors, activeIndex);
+
+    if (action.kind === 'continue') {
+      await saveFloor.mutateAsync(activeIndex);
+      setActiveIndex(action.nextIndex);
+      return;
     }
-  }, [activeIndex, floors.length, saveFloor]);
+
+    if (blocker) {
+      setActiveIndex(blocker.index);
+      throw new Error(blocker.reason);
+    }
+
+    // Sequential, not parallel: each save is its own request and a failure
+    // half-way should leave the earlier floors written rather than racing.
+    // Re-saving an already-saved floor is a no-op (ADR-097), so the active
+    // floor being in this list too is harmless.
+    for (const index of unsavedFloorIndexes(floors)) {
+      await saveFloor.mutateAsync(index);
+    }
+    setStage('review');
+  }, [activeIndex, floors, saveFloor]);
+
+  /**
+   * Change the numbering scheme, and actually apply it.
+   *
+   * `setPattern` was wired to the picker directly, so changing the scheme
+   * highlighted a chip and renumbered nothing: the pattern only ever reached
+   * `resizeFloorRooms`, which numbers rooms as it creates them. An owner who
+   * set the room count before picking a scheme saw a control that did not
+   * work.
+   *
+   * Applied across **every** floor, because the scheme is one decision for the
+   * property rather than a per-floor setting — changing it on the second floor
+   * used to leave the first on the old scheme, one building numbered two ways.
+   * Rooms the owner named by hand keep their names; see `renumberFloor`.
+   */
+  const changePattern = useCallback(
+    (next: NumberingPattern) => {
+      if (next === pattern) return;
+      // Read from the closure rather than a `setPattern` updater: a side
+      // effect inside an updater runs twice under StrictMode. `renumberBuilding`
+      // happens to be idempotent, but a state setter is not the place to find
+      // that out.
+      setFloors((prev) => renumberBuilding(prev, pattern, next));
+      setPattern(next);
+    },
+    [pattern],
+  );
+
+  /** Jump straight to a floor. Purely local — nothing is written on a switch. */
+  const goToFloor = useCallback(
+    (index: number) => {
+      if (index >= 0 && index < floors.length) setActiveIndex(index);
+    },
+    [floors.length],
+  );
 
   const progress = useMemo(
     () => buildProgress(floors.map((floor) => ({ name: floor.name, roomCount: floor.rooms.length }))),
@@ -314,7 +381,7 @@ export function useHostelBuilder(existingHostelId?: string) {
     setActiveIndex,
     activeFloor,
     pattern,
-    setPattern,
+    setPattern: changePattern,
     progress,
     tally: buildingTally(floors),
     blocker: activeFloor ? floorBlocker(activeFloor) : null,
@@ -330,6 +397,7 @@ export function useHostelBuilder(existingHostelId?: string) {
     renameFloor,
     cloneToNext,
     advance,
+    goToFloor,
   };
 }
 

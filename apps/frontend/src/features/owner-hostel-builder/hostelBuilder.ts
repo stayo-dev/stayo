@@ -93,6 +93,58 @@ export function previewNumbering(pattern: NumberingPattern, floorIndex = 0): str
     .concat('…');
 }
 
+/**
+ * Re-apply a numbering scheme to rooms that were auto-numbered.
+ *
+ * Changing the scheme used to do **nothing at all**: the picker was wired
+ * straight to `setPattern`, so the chip highlighted and the room list below it
+ * kept the numbers it already had. The pattern only ever reached
+ * `resizeFloorRooms`, which numbers rooms as it *creates* them — so it applied
+ * to rooms added after the change and to nothing else. An owner who set the
+ * count first and picked a scheme second saw a control that did not work, and
+ * one who changed it between floors ended up with a single building numbered
+ * two different ways.
+ *
+ * A room is renumbered only if its current number is exactly what the *old*
+ * scheme would have produced for its position. Anything else was typed by the
+ * owner, and their name for a room outranks a scheme. This tests the number
+ * rather than the `customised` flag on purpose: that flag is set by editing
+ * rent or sharing too, and someone who changed a room's price has not thereby
+ * claimed its name.
+ */
+export function renumberFloor(
+  floor: DraftFloor,
+  options: { from: NumberingPattern; to: NumberingPattern; floorIndex: number },
+): DraftFloor {
+  const { from, to, floorIndex } = options;
+  if (from === to) return floor;
+
+  return {
+    ...floor,
+    rooms: floor.rooms.map((room, position) => {
+      const auto = roomNumberFor(from, floorIndex, position);
+      if (room.roomNo !== auto) return room;
+      return { ...room, roomNo: roomNumberFor(to, floorIndex, position) };
+    }),
+  };
+}
+
+/**
+ * The same across the whole building.
+ *
+ * The scheme is one decision for the property, not per floor — it lives as a
+ * single value on the builder — so changing it has to reach the floors already
+ * filled, not just the one in front of the owner.
+ */
+export function renumberBuilding(
+  floors: DraftFloor[],
+  from: NumberingPattern,
+  to: NumberingPattern,
+): DraftFloor[] {
+  if (from === to) return floors;
+  return floors.map((floor, floorIndex) => renumberFloor(floor, { from, to, floorIndex }));
+}
+
 // ── Rent memory ────────────────────────────────────────────────────────────
 
 /** Remembered rent per sharing size, e.g. { 2: 9000, 4: 6000 }. */

@@ -8,6 +8,20 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-08-24 — The room-numbering picker renumbered nothing (fixed)
+
+**Found** auditing the Add Hostel Rooms step for layout, not for correctness.
+
+**The bug:** `onPatternChange` was `setPattern` — a bare state setter. The pattern only ever reached `resizeFloorRooms`, which assigns numbers *as it creates rooms*. So it applied to rooms added after the change and to nothing else. Set the count to 3 with `101, 102…` selected, tap `G-01, G-02…`, and the chip highlights while the list below keeps `101, 102, 103`. A control that appears broken.
+
+**The second-order bug:** the pattern is a single value on the builder, but rooms are numbered per floor at generation time. Changing the scheme on the second floor left the first floor on the old one — one building numbered two ways, no warning, and it would have been saved that way.
+
+**Fix:** `renumberBuilding` across every floor, renumbering only rooms whose current number is exactly what the old scheme would have produced for their position. A room the owner renamed keeps its name. See [[Decisions#ADR-109|ADR-109]].
+
+**Not verified in a browser** — the renumber is covered by pure tests only.
+
+**Related:** [[Decisions#ADR-109|ADR-109]], [[Features]]
+
 ## 2026-08-24 — Leads marked Accepted with no invitation behind them (fixed)
 
 **Reported** with a screenshot of the Alerts tab: four enquiries, all reading **Accepted**, none of whom had been invited.

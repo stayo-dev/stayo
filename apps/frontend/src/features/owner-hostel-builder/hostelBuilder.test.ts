@@ -10,6 +10,8 @@ import {
   floorTally,
   previewNumbering,
   recallRent,
+  renumberBuilding,
+  renumberFloor,
   rememberRent,
   resizeFloorRooms,
   roomNumberFor,
@@ -280,5 +282,124 @@ describe('floorBlocker', () => {
     let f = floor({ rooms: resizeFloorRooms(floor(), 1, { pattern: 'NUMERIC', floorIndex: 0 }) });
     f = editRoom(f, f.rooms[0].key, { capacity: 0 });
     expect(floorBlocker(f)).toBe('Room 101 needs a sharing size');
+  });
+});
+
+/**
+ * The picker used to be wired straight to `setPattern`, so changing the scheme
+ * highlighted a chip and renumbered nothing. These are the rules that make it
+ * actually do something.
+ */
+describe('renumbering when the scheme changes', () => {
+  const floorWith = (roomNos: string[]) => ({
+    id: 'f1',
+    name: 'Ground floor',
+    defaultCapacity: 4,
+    defaultRent: 6000,
+    saved: false,
+    rooms: roomNos.map((roomNo, i) => ({
+      key: `k${i}`,
+      roomNo,
+      capacity: 4,
+      rent: 6000,
+      customised: false,
+    })),
+  });
+
+  it('renumbers rooms the app numbered', () => {
+    const result = renumberFloor(floorWith(['101', '102', '103']), {
+      from: 'NUMERIC',
+      to: 'FLOOR_PREFIX',
+      floorIndex: 0,
+    });
+    expect(result.rooms.map((r) => r.roomNo)).toEqual(['G-01', 'G-02', 'G-03']);
+  });
+
+  // The owner's name for a room outranks a scheme.
+  it('leaves a room the owner named alone', () => {
+    const result = renumberFloor(floorWith(['101', 'Manager cabin', '103']), {
+      from: 'NUMERIC',
+      to: 'FLOOR_PREFIX',
+      floorIndex: 0,
+    });
+    expect(result.rooms.map((r) => r.roomNo)).toEqual(['G-01', 'Manager cabin', 'G-03']);
+  });
+
+  // `customised` is set by editing rent or sharing too, and changing a room's
+  // price is not a claim on its name.
+  it('renumbers a room customised in some other way', () => {
+    const floor = floorWith(['101']);
+    floor.rooms[0].customised = true;
+    floor.rooms[0].rent = 9999;
+    const result = renumberFloor(floor, { from: 'NUMERIC', to: 'BLOCK', floorIndex: 0 });
+    expect(result.rooms[0].roomNo).toBe('A-1');
+    expect(result.rooms[0].rent).toBe(9999);
+  });
+
+  it('does nothing when the scheme has not changed', () => {
+    const floor = floorWith(['101', '102']);
+    expect(renumberFloor(floor, { from: 'NUMERIC', to: 'NUMERIC', floorIndex: 0 })).toBe(floor);
+  });
+
+  it('keeps every other field of the room and the floor', () => {
+    const result = renumberFloor(floorWith(['101']), {
+      from: 'NUMERIC',
+      to: 'FLOOR_PREFIX',
+      floorIndex: 0,
+    });
+    expect(result.name).toBe('Ground floor');
+    expect(result.rooms[0]).toMatchObject({ key: 'k0', capacity: 4, rent: 6000 });
+  });
+
+  it('numbers by position, so it survives a floor that is not the ground one', () => {
+    const result = renumberFloor(floorWith(['201', '202']), {
+      from: 'NUMERIC',
+      to: 'FLOOR_PREFIX',
+      floorIndex: 1,
+    });
+    expect(result.rooms.map((r) => r.roomNo)).toEqual(['1-01', '1-02']);
+  });
+
+  it('handles a floor with no rooms', () => {
+    const empty = renumberFloor(floorWith([]), { from: 'NUMERIC', to: 'BLOCK', floorIndex: 0 });
+    expect(empty.rooms).toEqual([]);
+  });
+});
+
+// The scheme is one decision for the property, so changing it has to reach the
+// floors already filled — otherwise one building ends up numbered two ways.
+describe('renumberBuilding', () => {
+  const floor = (name: string, roomNos: string[]) => ({
+    id: `id-${name}`,
+    name,
+    defaultCapacity: 4,
+    defaultRent: 6000,
+    saved: false,
+    rooms: roomNos.map((roomNo, i) => ({
+      key: `${name}-${i}`,
+      roomNo,
+      capacity: 4,
+      rent: 6000,
+      customised: false,
+    })),
+  });
+
+  it('renumbers every floor, using its own floor index', () => {
+    const result = renumberBuilding(
+      [floor('Ground', ['101', '102']), floor('First', ['201'])],
+      'NUMERIC',
+      'FLOOR_PREFIX',
+    );
+    expect(result[0].rooms.map((r) => r.roomNo)).toEqual(['G-01', 'G-02']);
+    expect(result[1].rooms.map((r) => r.roomNo)).toEqual(['1-01']);
+  });
+
+  it('returns the same array when nothing changed', () => {
+    const floors = [floor('Ground', ['101'])];
+    expect(renumberBuilding(floors, 'BLOCK', 'BLOCK')).toBe(floors);
+  });
+
+  it('handles a building with no floors', () => {
+    expect(renumberBuilding([], 'NUMERIC', 'BLOCK')).toEqual([]);
   });
 });

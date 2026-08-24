@@ -35,9 +35,9 @@ const ROOMS_TO = 90;
 
 export function builderJourney(
   stage: BuilderStage,
-  options: { activeIndex?: number; floorCount?: number; floorName?: string } = {},
+  options: { activeIndex?: number; floorCount?: number } = {},
 ): JourneyPosition {
-  const { activeIndex = 0, floorCount = 0, floorName } = options;
+  const { activeIndex = 0, floorCount = 0 } = options;
   const phase = PHASES[stage];
 
   if (stage === 'name') {
@@ -54,7 +54,11 @@ export function builderJourney(
     const position = Math.min(Math.max(activeIndex, 0), total - 1);
     const done = position / total;
     return {
-      label: floorName ? `${floorName} · ${position + 1} of ${total}` : `Floor ${position + 1} of ${total}`,
+      // Deliberately does **not** name the floor. The floor strip highlights
+      // it and the step's heading says it, and before this the screen told the
+      // owner where they were five separate times — pushing the first control
+      // to 42% down a phone. See ADR-108's strip.
+      label: `${position + 1} of ${total}`,
       phase,
       percent: Math.round(ROOMS_FROM + (ROOMS_TO - ROOMS_FROM) * done),
     };

@@ -6,6 +6,7 @@ import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useHostelBuilder, type BuilderStage } from '../useHostelBuilder';
 import { builderJourney, continueBlocker } from '../builderJourney';
+import { primaryFloorAction, primaryFloorLabel } from '../floorStrip';
 import { defaultFloorName } from '../hostelBuilder';
 import { NameStep } from '../steps/NameStep';
 import { FloorsStep } from '../steps/FloorsStep';
@@ -68,6 +69,7 @@ export function HostelBuilderPage() {
     renameFloor,
     cloneToNext,
     advance,
+    goToFloor,
     isRestoring,
   } = builder;
 
@@ -137,9 +139,10 @@ export function HostelBuilderPage() {
           ? 'Continue'
           : 'Raise the floors'
         : stage === 'fill'
-          ? activeIndex + 1 < floors.length
-            ? 'Save floor & continue'
-            : 'Save floor & finish'
+          // Follows what the button will actually do — it continues to the
+          // next floor still needing rooms, not simply the next index, so the
+          // label has to be derived from the same rule. See `floorStrip.ts`.
+          ? primaryFloorLabel(primaryFloorAction(floors, activeIndex))
           : 'Open my hostel';
 
   const whyBlocked = continueBlocker(stage, {
@@ -153,7 +156,6 @@ export function HostelBuilderPage() {
   const journey = builderJourney(stage, {
     activeIndex,
     floorCount: floors.length,
-    floorName: activeFloor?.name,
   });
 
   return (
@@ -281,6 +283,8 @@ export function HostelBuilderPage() {
               onRoomChange={updateRoom}
               onRoomRemove={removeRoom}
               onCloneToNext={cloneToNext}
+              floors={floors}
+              onSelectFloor={goToFloor}
             />
           ) : (
             <ReviewStep

@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Copy, Info, Pencil, Trash2 } from 'lucide-react';
+import { Check, Copy, Info, Pencil, Trash2 } from 'lucide-react';
+import { cn } from '@shared/lib/cn';
+import { floorChipState } from '../floorStrip';
 import {
-  eyebrow,
   h1,
   sub,
   fieldLabel,
@@ -18,6 +19,13 @@ const PATTERNS: Array<{ value: NumberingPattern; label: string }> = [
   { value: 'FLOOR_PREFIX', label: previewNumbering('FLOOR_PREFIX') },
   { value: 'BLOCK', label: previewNumbering('BLOCK') },
 ];
+
+/**
+ * One section of the floor form. Each card is a question; the screen used to
+ * card only the middle one and leave the count, the numbering and the list
+ * bare, so nothing on it indicated which controls went together.
+ */
+const sectionCard = 'rounded-2xl border border-border bg-card/90 p-4';
 
 const money = (value: number | null) => (value === null ? '—' : `₹${value.toLocaleString('en-IN')}`);
 
@@ -55,6 +63,8 @@ export function FillFloorStep({
   onRoomChange,
   onRoomRemove,
   onCloneToNext,
+  floors,
+  onSelectFloor,
 }: {
   floor: DraftFloor;
   floorIndex: number;
@@ -67,6 +77,9 @@ export function FillFloorStep({
   /** Remove one room. Without it, `−` could only lop rooms off the end. */
   onRoomRemove?: (key: string) => void;
   onCloneToNext: () => void;
+  /** Every floor, for the switcher. */
+  floors: DraftFloor[];
+  onSelectFloor: (index: number) => void;
 }) {
   const [editingRoom, setEditingRoom] = useState<DraftRoom | null>(null);
   const tally = floorTally(floor);
@@ -74,14 +87,72 @@ export function FillFloorStep({
 
   return (
     <div>
-      <div className={eyebrow}>
-        {floor.name.toUpperCase()} · FLOOR {floorIndex + 1} OF {floorCount}
-      </div>
-      <h1 className={h1}>What&apos;s on this floor?</h1>
-      <p className={sub}>Set the usual room for this floor, then change the ones that differ.</p>
+      {/* The floor switcher.
+          Floors used to be walkable in one direction only — Back one, "Save
+          floor & continue" one — so fixing a room on the ground floor from
+          the second meant reversing through everything between. Each chip
+          also carries its own state, which is what makes free navigation
+          safe to look at: ✓ written, ● entered but not written yet, plain =
+          still needs rooms. See `floorStrip.ts` for why finishing sweeps. */}
+      {floors.length > 1 && (
+        <nav aria-label="Floors" className="mb-4 flex gap-1.5 overflow-x-auto pb-1">
+          {floors.map((f, i) => {
+            const state = floorChipState(f);
+            const active = i === floorIndex;
+            return (
+              <button
+                key={f.id || i}
+                type="button"
+                onClick={() => onSelectFloor(i)}
+                aria-current={active ? 'step' : undefined}
+                className={cn(
+                  'flex flex-none items-center gap-1.5 rounded-full border px-3.5 py-2 font-display text-[12.5px] font-bold transition-colors',
+                  active
+                    ? 'border-transparent bg-foreground text-background'
+                    : 'border-border bg-card text-muted-foreground hover:border-primary',
+                )}
+              >
+                {f.name}
+                {state === 'saved' && (
+                  <Check
+                    className={cn('h-3.5 w-3.5', active ? 'text-background' : 'text-success')}
+                    strokeWidth={3}
+                    aria-label="saved"
+                  />
+                )}
+                {state === 'draft' && (
+                  <span
+                    aria-label="not saved yet"
+                    className={cn(
+                      'h-1.5 w-1.5 rounded-full',
+                      active ? 'bg-background/70' : 'bg-warning',
+                    )}
+                  />
+                )}
+              </button>
+            );
+          })}
+        </nav>
+      )}
 
-      <div className="flex max-w-[460px] flex-col gap-5">
-        <div>
+      {/* The eyebrow that used to sit here said "GROUND FLOOR · FLOOR 1 OF 2",
+          which the strip above and the header's own journey label already
+          said. Five separate things told the owner where they were and the
+          first control sat 42% down a phone screen; this is one of the three
+          that went. */}
+      <h1 className={h1}>What&apos;s on {floor.name.toLowerCase()}?</h1>
+      {/* Instructional only while it is needed. On floor three the owner has
+          done this twice and the sentence is just occupying the screen. */}
+      {floor.rooms.length === 0 && (
+        <p className={sub}>Set the usual room for this floor, then change the ones that differ.</p>
+      )}
+
+      {/* Three cards, each answering one question in the order an owner asks
+          it: how many, what are they like, what are they called. Only the
+          middle one used to be carded, so the visual grouping said nothing
+          about which controls belonged together. */}
+      <div className="flex max-w-[460px] flex-col gap-3.5">
+        <div className={sectionCard}>
           <span className={fieldLabel}>HOW MANY ROOMS</span>
           <div className="mt-2 flex items-center gap-3.5">
             <button
@@ -107,15 +178,21 @@ export function FillFloorStep({
               +
             </button>
           </div>
-          {floor.rooms.length === 0 && (
+          {floor.rooms.length === 0 ? (
             <span className={fieldHint}>
               Tap + for each room on {floor.name.toLowerCase()}. We&apos;ll number them for you.
+            </span>
+          ) : (
+            <span className={fieldHint}>
+              {tally.rooms} {tally.rooms === 1 ? 'room' : 'rooms'} · {tally.beds} beds on this floor
             </span>
           )}
         </div>
 
-        <div className="rounded-2xl border border-border bg-card/90 p-4">
-          <span className={fieldLabel}>DEFAULT FOR THESE ROOMS</span>
+        <div className={sectionCard}>
+          {/* "Default for these rooms" described the mechanism. What the owner
+              is actually deciding is what a room here is like. */}
+          <span className={fieldLabel}>WHAT THESE ROOMS ARE LIKE</span>
 
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
             {SHARING_OPTIONS.map((size) => (
@@ -163,28 +240,41 @@ export function FillFloorStep({
           </p>
         </div>
 
-        <div>
-          <span className={fieldLabel}>ROOM NUMBERING</span>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {PATTERNS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => onPatternChange(option.value)}
-                className={`min-h-[38px] rounded-xl px-3.5 font-display text-[13px] font-bold transition-colors ${
-                  pattern === option.value
-                    ? 'bg-foreground text-background'
-                    : 'border border-border bg-card text-foreground hover:bg-muted'
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
+        {/* Numbering sits with the rooms it names rather than in a bare block
+            of its own between the defaults and the list — and it is a
+            building-wide choice, so it says so. Changing it now actually
+            renumbers (`renumberBuilding`); it used to highlight a chip and
+            leave every existing room on its old number. */}
         {floor.rooms.length > 0 && (
-          <ul className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border bg-card/90">
+          <div className={sectionCard}>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className={fieldLabel}>THE ROOMS</span>
+              <span className="text-[11.5px] font-medium text-muted-foreground">
+                {tally.rooms} {tally.rooms === 1 ? 'room' : 'rooms'} · {tally.beds} beds
+              </span>
+            </div>
+
+            <span className="mt-3 block text-[11.5px] font-medium text-muted-foreground">
+              Numbered across the whole building
+            </span>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {PATTERNS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => onPatternChange(option.value)}
+                  className={`min-h-[38px] rounded-xl px-3.5 font-display text-[13px] font-bold transition-colors ${
+                    pattern === option.value
+                      ? 'bg-foreground text-background'
+                      : 'border border-border bg-card text-foreground hover:bg-muted'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+          <ul className="mt-3 divide-y divide-border/60 overflow-hidden rounded-xl border border-border bg-card">
             {floor.rooms.map((room, i) => (
               <li key={room.key}>
                 <button
@@ -202,23 +292,22 @@ export function FillFloorStep({
                 </button>
               </li>
             ))}
-            <li className="flex items-center justify-between bg-muted/40 px-4 py-3">
-              <span className="text-[12.5px] font-bold text-foreground">
-                {tally.rooms} {tally.rooms === 1 ? 'room' : 'rooms'} · {tally.beds} beds
-              </span>
-            </li>
           </ul>
-        )}
 
-        {hasNextFloor && floor.rooms.length > 0 && (
-          <button
-            type="button"
-            onClick={onCloneToNext}
-            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 font-display text-[13px] font-bold text-foreground hover:bg-muted"
-          >
-            <Copy className="h-4 w-4 text-muted-foreground" strokeWidth={2} />
-            Make the next floor the same as this
-          </button>
+            {/* The biggest time-saver on the screen, and it used to float
+                unsectioned above the footer. It belongs with the rooms it
+                copies. */}
+            {hasNextFloor && (
+              <button
+                type="button"
+                onClick={onCloneToNext}
+                className="mt-3 inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 font-display text-[13px] font-bold text-primary hover:bg-primary/10"
+              >
+                <Copy className="h-4 w-4" strokeWidth={2} />
+                Copy these {tally.rooms} rooms to the next floor
+              </button>
+            )}
+          </div>
         )}
       </div>
 
