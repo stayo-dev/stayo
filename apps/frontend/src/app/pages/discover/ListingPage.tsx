@@ -1064,11 +1064,7 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
           </section>
 
           {/* ── Reviews ──────────────────────────────────────────────────── */}
-          <ReviewsSection
-            slug={slug}
-            hostelName={hostel.name}
-            onSignIn={() => openSignIn()}
-          />
+          <ReviewsSection slug={slug} hostelName={hostel.name} />
         </div>
 
         {/* Desktop-only: the decision column. Mirrors the sticky bar a phone

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requiresSessionDespitePublicPrefix } from "@/lib/auth/public-route-exceptions";
+import { requiresSessionDespitePublicPrefix, allowsOptionalIdentity } from "@/lib/auth/public-route-exceptions";
 import { verifyToken } from "./lib/auth-edge";
 import { verifySupabaseAccessToken } from "./lib/auth/supabase-jwt-edge";
 import { getCorsAllowOrigin } from "./lib/config/domains";
@@ -136,15 +136,32 @@ export async function middleware(req: NextRequest) {
 
   // 2. Allow public routes — except the handful of writes that live under a
   //    public prefix and still need an account (see the module for why).
-  if (
-    PUBLIC_ROUTES.some((route) => pathname.startsWith(route)) &&
-    !requiresSessionDespitePublicPrefix(pathname, req.method)
-  ) {
-    const requestHeaders = new Headers(req.headers);
-    stripIdentityHeaders(requestHeaders);
-    const response = NextResponse.next({ request: { headers: requestHeaders } });
+  const isPublicPrefix = PUBLIC_ROUTES.some((route) => pathname.startsWith(route));
+
+  /**
+   * Public, but identity-aware when a token is offered.
+   *
+   * These paths must stay reachable signed-out, so every 401 below is turned
+   * into "continue anonymously" for them. A stale token in someone's browser
+   * must not turn a public page into an error — and an invalid or revoked one
+   * must not be honoured either, which is why they go through the *same*
+   * verification as everything else rather than a lenient copy of it.
+   */
+  const identityOptional =
+    isPublicPrefix && !requiresSessionDespitePublicPrefix(pathname, req.method) &&
+    allowsOptionalIdentity(pathname, req.method);
+
+  /** Strip every identity header and let the request through as a visitor. */
+  const asAnonymous = () => {
+    const anonHeaders = new Headers(req.headers);
+    stripIdentityHeaders(anonHeaders);
+    const response = NextResponse.next({ request: { headers: anonHeaders } });
     Object.entries(corsHeaders).forEach(([k, v]) => response.headers.set(k, v));
     return response;
+  };
+
+  if (isPublicPrefix && !requiresSessionDespitePublicPrefix(pathname, req.method) && !identityOptional) {
+    return asAnonymous();
   }
 
   // Public form endpoints do not require a logged-in JWT, but they still
@@ -177,6 +194,9 @@ export async function middleware(req: NextRequest) {
   const token = headerToken || cookieToken || queryToken;
 
   if (!token) {
+    // No token on an identity-optional public route is the ordinary case: a
+    // signed-out visitor reading a listing.
+    if (identityOptional) return asAnonymous();
     return NextResponse.json(
       { error: { message: "Authentication required", code: "UNAUTHORIZED" } },
       { status: 401, headers: corsHeaders }
@@ -215,6 +235,7 @@ export async function middleware(req: NextRequest) {
   } else {
     const legacyPayload = await verifyToken(token);
     if (!legacyPayload) {
+      if (identityOptional) return asAnonymous();
       return NextResponse.json(
         { error: { message: "Invalid session", code: "UNAUTHORIZED" } },
         { status: 401, headers: corsHeaders }
@@ -236,6 +257,9 @@ export async function middleware(req: NextRequest) {
   try {
     const revocation = await checkSessionRevocationEdge({ sid, sub: revocationSubject, iat: revocationIat });
     if (!revocation.ok) {
+      // A revoked session is never honoured — but on a public page it reads
+      // as signed-out rather than as an error.
+      if (identityOptional) return asAnonymous();
       return NextResponse.json(
         { error: { message: "Your secure session has expired. Please sign in again.", code: "SESSION_REVOKED" } },
         { status: 401, headers: corsHeaders }
@@ -254,6 +278,7 @@ export async function middleware(req: NextRequest) {
     try {
       const idle = await checkIdleTimeoutEdge(sid);
       if (!idle.ok) {
+        if (identityOptional) return asAnonymous();
         return NextResponse.json(
           { error: { message: "You've been signed out due to inactivity.", code: "SESSION_INACTIVE" } },
           { status: 401, headers: corsHeaders }

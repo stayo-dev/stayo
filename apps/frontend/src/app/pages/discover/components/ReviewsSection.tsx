@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Clock, Lock, ShieldCheck, Star } from 'lucide-react';
+import { Clock, ShieldCheck, Star } from 'lucide-react';
 
 import { useHostelReviews, useSubmitReview } from '@features/discover/hooks/useDiscover';
 import type {
@@ -14,12 +14,19 @@ import { C, FONT } from '../discoverTheme';
 /**
  * Resident reviews on a hostel listing, and the box for writing one.
  *
- * Three rules this encodes:
+ * **The section is not rendered at all unless it has something to say.** If
+ * there are no published reviews and this reader cannot write one, there is no
+ * heading, no empty state and no explanation of the rules — a visitor browsing
+ * a new hostel is not owed a paragraph about Stayo's moderation policy in the
+ * place where reviews would be. It appears when there are reviews to read, or
+ * when the person looking is a resident who can add one.
+ *
+ * Three rules it still encodes:
  *
  * 1. **Only residents write.** Current or former tenants *of this hostel* —
  *    the server decides (`review-eligibility.ts`) and says so in the payload,
- *    so the box can explain itself before anyone types rather than refusing a
- *    finished review. An account is not an experience.
+ *    so the box appears only for someone who can actually use it. An account
+ *    is not an experience.
  * 2. **It never invents a score.** Below three reviews the listing shows the
  *    reviews and no average — the same rule that had Discovery returning
  *    `ratings_available: false` rather than a plausible number.
@@ -30,11 +37,9 @@ import { C, FONT } from '../discoverTheme';
 export function ReviewsSection({
   slug,
   hostelName,
-  onSignIn,
 }: {
   slug: string | undefined;
   hostelName: string;
-  onSignIn: () => void;
 }) {
   const { data, isLoading, isError } = useHostelReviews(slug);
   const submit = useSubmitReview(slug);
@@ -54,6 +59,26 @@ export function ReviewsSection({
   const eligibility: ReviewEligibility =
     data?.eligibility ?? ({ canReview: false, reason: 'SIGNED_OUT' } as const);
 
+  const canWrite = eligibility.canReview === true;
+  /**
+   * `'tenancy' in x` rather than a `canReview === true` check: this app
+   * compiles with `strict: false`, where TypeScript will not narrow a
+   * discriminated union on its boolean tag, so `eligibility.tenancy` is an
+   * error at every call site. An `in` guard narrows either way.
+   */
+  const tenancy = 'tenancy' in eligibility ? eligibility.tenancy : null;
+
+  /**
+   * Nothing to read and nothing this person can do about it — so nothing at
+   * all. Previously this space held an explanation of who may review and a
+   * sign-in button, which is a paragraph about Stayo's rules standing in for
+   * the reviews someone came to read.
+   *
+   * `isLoading` keeps it collapsed until the answer is known, rather than
+   * flashing a heading that then disappears.
+   */
+  if (isLoading || (reviews.length === 0 && !canWrite && !mine)) return null;
+
   return (
     <section className="mt-7">
       <div className="flex items-baseline justify-between gap-3">
@@ -72,27 +97,10 @@ export function ReviewsSection({
 
       {summary?.average != null && <ScoreBlock summary={summary} />}
 
-      {!isLoading && summary?.emptyReason === 'TOO_FEW' && (
+      {summary?.emptyReason === 'TOO_FEW' && (
         <p className="mt-2 text-[12px] leading-[1.55]" style={{ color: C.textMuted }}>
           Too few reviews to average yet — read them and judge for yourself.
         </p>
-      )}
-
-      {/* Why there is nothing here. A blank space reads as neglect; this reads
-          as a rule, which is what it is. */}
-      {!isLoading && summary?.emptyReason === 'NONE_YET' && (
-        <div
-          className="mt-3 rounded-2xl border p-4"
-          style={{ background: '#F6F0E8', borderColor: '#EADFCF' }}
-        >
-          <p className="text-[12.5px] font-bold" style={{ color: C.text }}>
-            No reviews yet
-          </p>
-          <p className="mt-1 text-[11.5px] leading-[1.6]" style={{ color: '#5A5147' }}>
-            Only people who have lived at {hostelName} can review it, and Stayo checks each one
-            before it appears — so this page shows real accounts of the place or nothing at all.
-          </p>
-        </div>
       )}
 
       {reviews.length > 0 && (
@@ -103,16 +111,19 @@ export function ReviewsSection({
         </div>
       )}
 
-      <ReviewBox
-        mine={mine}
-        eligibility={eligibility}
-        categories={categories}
-        hostelName={hostelName}
-        pending={submit.isPending}
-        error={(submit.error as any)?.response?.data?.message ?? null}
-        onSignIn={onSignIn}
-        onSubmit={(scores, body) => submit.mutate({ categories: scores, body })}
-      />
+      {/* Only for someone who can actually use it. A reader who has never
+          lived here is shown the reviews and nothing else — no locked box
+          explaining why they may not write one. */}
+      {(canWrite || mine) && (
+        <ReviewBox
+          mine={mine}
+          tenancy={tenancy}
+          categories={categories}
+          pending={submit.isPending}
+          error={(submit.error as any)?.response?.data?.message ?? null}
+          onSubmit={(scores, body) => submit.mutate({ categories: scores, body })}
+        />
+      )}
     </section>
   );
 }
@@ -223,30 +234,29 @@ function ReviewCard({ review }: { review: HostelReview }) {
 }
 
 /**
- * The write box, in four states: not signed in, signed in but never lived
- * here, eligible, and already written.
+ * The write box, in two states: eligible-and-writing, and already written.
  *
- * The "never lived here" state is a sentence, not a hidden form. Someone who
- * cannot review should be told why in the place they expected to write —
- * silence there reads as a broken page.
+ * It used to carry two more — "not signed in" and "signed in but never lived
+ * here" — each a card explaining the rule and, for the first, a Sign in
+ * button. Both are gone: `ReviewsSection` now renders this only for someone
+ * who can actually use it, so a visitor who has never lived here sees the
+ * reviews and nothing else rather than a locked box about why they may not
+ * write one.
  */
 function ReviewBox({
   mine,
-  eligibility,
+  tenancy,
   categories,
-  hostelName,
   pending,
   error,
-  onSignIn,
   onSubmit,
 }: {
   mine: MyReview | null;
-  eligibility: ReviewEligibility;
+  /** Whether they live here now or used to — the box says which. */
+  tenancy: 'ACTIVE' | 'FORMER' | null;
   categories: { key: string; label: string }[];
-  hostelName: string;
   pending: boolean;
   error: string | null;
-  onSignIn: () => void;
   onSubmit: (categories: Record<string, number>, body: string | null) => void;
 }) {
   const [scores, setScores] = useState<Record<string, number>>({});
@@ -259,35 +269,6 @@ function ReviewBox({
       setEditing(false);
     }
   }, [mine?.id, mine?.status, mine?.body]);
-
-  // `=== false` rather than `!`: an explicit literal comparison is what
-  // narrows this union reliably to its not-allowed member.
-  if (eligibility.canReview === false) {
-    const signedOut = eligibility.reason === 'SIGNED_OUT';
-    return (
-      <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: C.line, background: C.cardWarm }}>
-        <p className="flex items-center gap-1.5 text-[12.5px] font-bold" style={{ color: C.text }}>
-          {!signedOut && <Lock className="h-3.5 w-3.5" strokeWidth={2} style={{ color: C.textMuted }} />}
-          {signedOut ? 'Lived at this hostel?' : 'Only residents can review'}
-        </p>
-        <p className="mt-1 text-[11.5px] leading-[1.6]" style={{ color: C.textMuted }}>
-          {signedOut
-            ? `Sign in to write a review. Only current and former residents of ${hostelName} can review it.`
-            : `Reviews here come from people who have actually lived at ${hostelName} — current residents and those who have moved out. That is what makes them worth reading.`}
-        </p>
-        {signedOut && (
-          <button
-            type="button"
-            onClick={onSignIn}
-            className="mt-3 rounded-[11px] px-4 py-2.5 text-[12.5px] font-bold text-white"
-            style={{ background: C.clayDeep, fontFamily: FONT.display }}
-          >
-            Sign in
-          </button>
-        )}
-      </div>
-    );
-  }
 
   if (mine && !editing) {
     const statusText =
@@ -336,7 +317,7 @@ function ReviewBox({
         {mine ? 'Edit your review' : 'Rate your stay'}
       </p>
       <p className="mt-1 text-[11px]" style={{ color: C.textMuted }}>
-        {eligibility.tenancy === 'ACTIVE' ? 'You live here now.' : 'You lived here.'} Score each part —
+        {tenancy === 'ACTIVE' ? 'You live here now.' : 'You lived here.'} Score each part —
         the overall rating is worked out from these.
       </p>
 

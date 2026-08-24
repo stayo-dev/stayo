@@ -32,3 +32,37 @@ export function requiresSessionDespitePublicPrefix(pathname: string, method: str
     (rule) => rule.pattern.test(pathname) && rule.methods.has(verb),
   );
 }
+
+/**
+ * Paths under a public prefix that stay public but want to know *who* is
+ * asking when there is an answer.
+ *
+ * A third category, because the first two are not enough. `GET .../reviews`
+ * must serve published reviews to anyone — a signed-out visitor, a link
+ * crawler — so it cannot require a session. But it also returns the reader's
+ * own pending review and whether they may write one, and the public branch of
+ * `middleware.ts` strips every identity header. So a signed-in resident was
+ * told "Sign in to write a review" while holding a perfectly good session:
+ * `getSeeker()` saw nothing, and eligibility came back `SIGNED_OUT`.
+ *
+ * For these paths middleware verifies a token when one is present and passes
+ * the identity through — and when verification fails for any reason (expired,
+ * revoked, idle, malformed) it **continues anonymously instead of returning
+ * 401**. A stale token in someone's browser must never turn a public page into
+ * an error, and a revoked one must never be honoured.
+ */
+const IDENTITY_OPTIONAL_UNDER_PUBLIC: { pattern: RegExp; methods: Set<string> }[] = [
+  {
+    // Reading reviews: public, but tells a resident theirs is with Stayo and
+    // that they may write one.
+    pattern: /^\/api\/discover\/hostels\/[^/]+\/reviews\/?$/,
+    methods: new Set(["GET"]),
+  },
+];
+
+export function allowsOptionalIdentity(pathname: string, method: string): boolean {
+  const verb = String(method || "").toUpperCase();
+  return IDENTITY_OPTIONAL_UNDER_PUBLIC.some(
+    (rule) => rule.pattern.test(pathname) && rule.methods.has(verb),
+  );
+}
