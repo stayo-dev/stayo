@@ -58,16 +58,17 @@ export const foodService = {
     const response = await api.get('/food/schedules', { params: { hostelId, month } });
     return unwrap(response).schedule as any;
   },
-  generateSchedule: async (hostelId: string, month: string, votingPeriodId?: string, mode: 'BUILD' | 'FILL_GAPS' | 'START_OVER' = 'BUILD') => {
-    const response = await api.post('/food/schedules/generate', { hostelId, month, votingPeriodId, mode });
-    return unwrap(response);
+  /**
+   * "Ensure this month has a schedule row" — idempotent, no dish-selection
+   * logic (never automatic generation, see ADR-114). Returns the existing
+   * row (200) if one already exists, or a brand-new empty one (201).
+   */
+  createSchedule: async (hostelId: string, month: string) => {
+    const response = await api.post('/food/schedules', { hostelId, month });
+    return unwrap(response).schedule as any;
   },
-  updateScheduleMeal: async (scheduleId: string, mealId: string, menuItemId: string) => {
-    const response = await api.patch(`/food/schedules/${scheduleId}/meals/${mealId}`, { menuItemId });
-    return unwrap(response);
-  },
-  swapScheduleMeals: async (scheduleId: string, aMealId: string, bMealId: string) => {
-    const response = await api.post(`/food/schedules/${scheduleId}/meals/swap`, { aMealId, bMealId });
+  updateScheduleMeal: async (scheduleId: string, mealId: string, menuItemIds: string[], expectedUpdatedAt: string) => {
+    const response = await api.patch(`/food/schedules/${scheduleId}/meals/${mealId}`, { menuItemIds, expectedUpdatedAt });
     return unwrap(response);
   },
   publishSchedule: async (scheduleId: string) => {

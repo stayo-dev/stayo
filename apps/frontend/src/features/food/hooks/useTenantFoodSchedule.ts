@@ -3,6 +3,7 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import { foodService } from '@features/food/api';
 import { useTenantSession } from '@features/tenant-session/useTenantSession';
 import type { MealSlotKey } from '@shared/mocks/food';
+import type { WeekGridItem } from '@features/owner-food/weekGrid';
 
 export const DAY_ORDER = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'] as const;
 export type DayKey = (typeof DAY_ORDER)[number];
@@ -10,6 +11,9 @@ export type DayKey = (typeof DAY_ORDER)[number];
 interface ScheduleMealCell {
   day_of_week: DayKey;
   meal_type: string;
+  /** Ordered dishes, as returned by the API. */
+  food_schedule_meal_items: WeekGridItem[];
+  /** @deprecated legacy single-item snapshot — read `food_schedule_meal_items`/`formatCellItems` instead. */
   item_name: string;
 }
 

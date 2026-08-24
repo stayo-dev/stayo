@@ -2,7 +2,7 @@ import { UtensilsCrossed } from 'lucide-react';
 import { MEAL_CATEGORY_META, type MealSlotKey } from '@shared/mocks/food';
 import { currentAndNextMeal, formatTimeRange, type MealTimings } from '@features/food/mealTimings';
 import { mealIcon } from '../../mealIcons';
-import { cellAt, dayKeyFor, EMPTY_CELL_LABEL, isFilled, SLOT_ORDER, type WeekGrid } from '../../weekGrid';
+import { cellAt, dayKeyFor, EMPTY_CELL_LABEL, formatCellItems, isFilled, SLOT_ORDER, type WeekGrid } from '../../weekGrid';
 
 interface TodayCardProps {
   grid: WeekGrid;
@@ -78,7 +78,7 @@ export function TodayCard({ grid, isLoading, hasSchedule, onFix, mealTimings }: 
 
         {isFilled(currentCell) ? (
           <span className="mt-1 block font-display text-[30px] font-extrabold leading-tight tracking-tight text-foreground">
-            {currentCell!.item_name}
+            {formatCellItems(currentCell)}
           </span>
         ) : (
           <button
@@ -95,7 +95,7 @@ export function TodayCard({ grid, isLoading, hasSchedule, onFix, mealTimings }: 
           <span className="mt-2 block text-[12.5px] text-muted-foreground">
             Next · {MEAL_CATEGORY_META[next].label} {formatTimeRange(mealTimings[next])} —{' '}
             <span className={isFilled(nextCell) ? 'font-semibold text-foreground' : 'italic'}>
-              {isFilled(nextCell) ? nextCell!.item_name : EMPTY_CELL_LABEL}
+              {formatCellItems(nextCell)}
             </span>
           </span>
         )}
@@ -120,7 +120,7 @@ export function TodayCard({ grid, isLoading, hasSchedule, onFix, mealTimings }: 
               </span>
               <span className="text-[11px] text-muted-foreground/70">{formatTimeRange(mealTimings[slot])}</span>
               <span className={`ml-auto text-[13px] ${filled ? 'font-semibold text-foreground' : 'italic text-muted-foreground/60'}`}>
-                {filled ? cell!.item_name : EMPTY_CELL_LABEL}
+                {formatCellItems(cell)}
               </span>
               {!filled && (
                 <span className="flex-none rounded-lg bg-secondary px-2 py-1 text-[11px] font-bold text-primary">Fix</span>

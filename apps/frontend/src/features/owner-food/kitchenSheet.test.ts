@@ -2,15 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { buildKitchenMessage, whatsappShareUrl } from './kitchenSheet';
 import { toWeekGrid, EMPTY_CELL_LABEL } from './weekGrid';
 
-const cell = (day: string, meal: string, name: string, id: string | null = 'i1') => ({
-  id: `${day}-${meal}`, day_of_week: day, meal_type: meal, menu_item_id: id, item_name: name,
+let nextItemId = 0;
+function mealItem(name: string, menuItemId: string | null = 'i1', displayOrder = 0) {
+  return { id: `item-${nextItemId++}`, menu_item_id: menuItemId, item_name: name, display_order: displayOrder };
+}
+const cell = (day: string, meal: string, items: ReturnType<typeof mealItem>[]) => ({
+  id: `${day}-${meal}`, day_of_week: day, meal_type: meal, food_schedule_meal_items: items,
 });
 
 const grid = toWeekGrid([
-  cell('THURSDAY', 'BREAKFAST', 'Dosa'), cell('THURSDAY', 'LUNCH', 'Sambar Rice'),
-  cell('THURSDAY', 'SNACKS', 'Not set', null), cell('THURSDAY', 'DINNER', 'Chapati'),
-  cell('FRIDAY', 'BREAKFAST', 'Idli'), cell('FRIDAY', 'LUNCH', 'Curd Rice'),
-  cell('FRIDAY', 'SNACKS', 'Bajji'), cell('FRIDAY', 'DINNER', 'Paneer Curry'),
+  cell('THURSDAY', 'BREAKFAST', [mealItem('Dosa')]), cell('THURSDAY', 'LUNCH', [mealItem('Sambar Rice')]),
+  cell('THURSDAY', 'SNACKS', []), cell('THURSDAY', 'DINNER', [mealItem('Chapati')]),
+  cell('FRIDAY', 'BREAKFAST', [mealItem('Idli')]), cell('FRIDAY', 'LUNCH', [mealItem('Curd Rice')]),
+  cell('FRIDAY', 'SNACKS', [mealItem('Bajji')]), cell('FRIDAY', 'DINNER', [mealItem('Paneer Curry')]),
 ]);
 
 const THURSDAY = new Date('2026-08-06T09:00:00');
@@ -42,7 +46,7 @@ describe('buildKitchenMessage', () => {
   });
 
   it('wraps from Sunday to Monday for tomorrow', () => {
-    const sundayGrid = toWeekGrid([cell('SUNDAY', 'LUNCH', 'Biryani'), cell('MONDAY', 'LUNCH', 'Dal Rice')]);
+    const sundayGrid = toWeekGrid([cell('SUNDAY', 'LUNCH', [mealItem('Biryani')]), cell('MONDAY', 'LUNCH', [mealItem('Dal Rice')])]);
     const msg = buildKitchenMessage({ grid: sundayGrid, now: new Date('2026-08-09T09:00:00'), hostelName: 'H' });
     expect(msg).toContain('Dal Rice');
   });
@@ -50,6 +54,14 @@ describe('buildKitchenMessage', () => {
   it('handles an entirely empty grid without throwing', () => {
     const msg = buildKitchenMessage({ grid: [], now: THURSDAY, hostelName: 'H' });
     expect(msg).toContain(EMPTY_CELL_LABEL);
+  });
+
+  it('lists every dish of a multi-item meal, joined with the shared separator', () => {
+    const multiGrid = toWeekGrid([
+      cell('THURSDAY', 'LUNCH', [mealItem('Rice', 'r', 0), mealItem('Dal', 'd', 1), mealItem('Curry', 'c', 2), mealItem('Chutney', 'ch', 3)]),
+    ]);
+    const msg = buildKitchenMessage({ grid: multiGrid, now: THURSDAY, hostelName: 'H' });
+    expect(msg).toContain('Rice • Dal • Curry • Chutney');
   });
 });
 

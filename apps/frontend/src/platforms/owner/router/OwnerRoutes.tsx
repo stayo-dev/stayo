@@ -43,6 +43,7 @@ const FoodPage = lazy(() => import('@features/owner-food/pages/FoodPage').then((
 const KitchenSheetPage = lazy(() => import('@features/owner-food/pages/KitchenSheetPage').then((m) => ({ default: m.KitchenSheetPage })));
 const FoodPollsPage = lazy(() => import('@features/owner-food/pages/FoodPollsPage').then((m) => ({ default: m.FoodPollsPage })));
 const MealTimingsPage = lazy(() => import('@features/owner-food/pages/MealTimingsPage').then((m) => ({ default: m.MealTimingsPage })));
+const TimetablePage = lazy(() => import('@features/owner-food/pages/TimetablePage').then((m) => ({ default: m.TimetablePage })));
 const AlertsPage = lazy(() => import('@features/owner-alerts/pages/AlertsPage').then((m) => ({ default: m.AlertsPage })));
 const OwnerProfileRequestsPage = lazy(() =>
   import('@features/owner-profile-requests/pages/OwnerProfileRequestsPage').then((m) => ({ default: m.OwnerProfileRequestsPage })),
@@ -184,6 +185,7 @@ export function OwnerRoutes() {
         <Route path="/owner/food/kitchen" element={<KitchenSheetPage />} />
         <Route path="/owner/food/polls" element={<FoodPollsPage />} />
         <Route path="/owner/food/meal-timings" element={<MealTimingsPage />} />
+        <Route path="/owner/food/timetable" element={<TimetablePage />} />
         <Route path="/owner/alerts" element={<AlertsPage />} />
         <Route path="/owner/profile-requests" element={<OwnerProfileRequestsPage />} />
 

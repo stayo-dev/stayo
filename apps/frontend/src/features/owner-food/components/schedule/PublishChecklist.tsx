@@ -6,7 +6,14 @@ interface PublishChecklistProps {
   tenantCount: number | null;
 }
 
-/** Pre-flight readout above Publish. Informs; never blocks — no check disables the button. */
+/**
+ * Pre-flight readout above Publish. Variety and "runs" only ever inform —
+ * no check here disables the button on their account. Completeness is the
+ * one exception: the caller disables Publish while any cell is incomplete
+ * (see ADR-114) — the `complete` check's own summary line ("X of 28 meals
+ * filled") is enough to say why; this component does not also enumerate
+ * every empty cell, since a brand-new month means 28 identical lines.
+ */
 export function PublishChecklist({ checks, tenantCount }: PublishChecklistProps) {
   return (
     <div className="flex flex-col gap-2 rounded-[18px] border border-border bg-card p-4">

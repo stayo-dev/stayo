@@ -3016,17 +3016,18 @@ enum FoodScheduleSource {
 /// maintains this over time; items are deactivated (never hard-deleted) once
 /// referenced by a schedule, so past months' schedules stay intact.
 model food_menu_items {
-  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  hostel_id           String                @db.Uuid
-  owner_id            String                @db.Uuid
-  meal_type           FoodMealType
-  name                String
-  is_active           Boolean               @default(true)
-  created_at          DateTime              @default(now()) @db.Timestamptz(6)
-  updated_at          DateTime?             @db.Timestamptz(6)
-  hostels             hostels               @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
-  food_votes          food_votes[]
-  food_schedule_meals food_schedule_meals[]
+  id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hostel_id                 String                      @db.Uuid
+  owner_id                  String                      @db.Uuid
+  meal_type                 FoodMealType
+  name                      String
+  is_active                 Boolean                     @default(true)
+  created_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime?                   @db.Timestamptz(6)
+  hostels                   hostels                     @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
+  food_votes                food_votes[]
+  food_schedule_meals       food_schedule_meals[]
+  food_schedule_meal_items  food_schedule_meal_items[]
 
   @@unique([hostel_id, meal_type, name])
   @@index([hostel_id, meal_type])
@@ -3094,21 +3095,47 @@ model food_schedules {
   @@unique([hostel_id, month])
 }
 
-/// 7 days x 4 meal types = 28 rows per schedule. `item_name` is a denormalized
-/// snapshot at assignment time so history survives a later library-item edit/deactivation.
+/// 7 days x 4 meal types = 28 rows per schedule. `menu_item_id`/`item_name`
+/// are a legacy single-item snapshot, kept as an auto-maintained denormalized
+/// cache (first item's id, all item names comma-joined in display order) so
+/// the Discovery/marketing mess-menu importer — which reads `item_name`
+/// directly, see `src/services/marketing/mess-import.ts` — keeps working
+/// without modification. The real, ordered, multi-item content lives in
+/// `food_schedule_meal_items`.
 model food_schedule_meals {
-  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schedule_id     String           @db.Uuid
-  day_of_week     FoodDayOfWeek
-  meal_type       FoodMealType
-  menu_item_id    String?          @db.Uuid
-  item_name       String
-  created_at      DateTime         @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime?        @db.Timestamptz(6)
-  food_schedules  food_schedules   @relation(fields: [schedule_id], references: [id], onDelete: Cascade)
-  food_menu_items food_menu_items? @relation(fields: [menu_item_id], references: [id], onDelete: SetNull)
+  id                       String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schedule_id              String                      @db.Uuid
+  day_of_week              FoodDayOfWeek
+  meal_type                FoodMealType
+  menu_item_id             String?                     @db.Uuid
+  item_name                String
+  created_at               DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime?                   @db.Timestamptz(6)
+  food_schedules           food_schedules              @relation(fields: [schedule_id], references: [id], onDelete: Cascade)
+  food_menu_items          food_menu_items?            @relation(fields: [menu_item_id], references: [id], onDelete: SetNull)
+  food_schedule_meal_items food_schedule_meal_items[]
 
   @@unique([schedule_id, day_of_week, meal_type])
+}
+
+/// The ordered dishes within one `food_schedule_meals` cell — what makes
+/// "Monday Lunch" hold Rice + Dal + Curry + Chutney instead of one item.
+/// `menu_item_id` is nullable so a library item's later deletion doesn't
+/// break history; `item_name` is a denormalized snapshot at assignment time,
+/// same rationale as the parent's legacy field.
+model food_schedule_meal_items {
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schedule_meal_id    String              @db.Uuid
+  menu_item_id        String?             @db.Uuid
+  item_name           String
+  display_order       Int                 @default(0)
+  created_at          DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime?           @db.Timestamptz(6)
+  food_schedule_meals food_schedule_meals @relation(fields: [schedule_meal_id], references: [id], onDelete: Cascade)
+  food_menu_items     food_menu_items?    @relation(fields: [menu_item_id], references: [id], onDelete: SetNull)
+
+  @@unique([schedule_meal_id, display_order])
+  @@index([schedule_meal_id])
 }
 
 // ============================================================
