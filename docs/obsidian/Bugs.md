@@ -8,6 +8,34 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-08-24 — Add Hostel: four ways the wizard could not be completed or understood (fixed)
+
+Found by auditing all four builder screens after an owner reported "the fields to enter are not appearing".
+
+**1. The Review screen's edit pencil could never succeed.** It offers a pencil on every floor; taking it led back to "Save floor & finish", which re-posted rooms that already existed and got `CONFLICT: Room 101 already exists in this hostel`. Pressing Back into an already-saved floor did the same. **Every backward move past a saved floor dead-ended**, escapable only by abandoning the wizard. Fixed by making the save idempotent — [[Decisions#ADR-097|ADR-097]].
+
+**2. Back from Floors → "Create hostel" created a second hostel.** `createHostel` had no guard for an existing `hostelId`, so pressing the button again POSTed a fresh hostel and overwrote the id — leaving the first one in the account, floorless, forever. The same was true of "Raise the floors", which created a **duplicate set of floors** on every press. Both are now idempotent: the name step continues instead of creating, and floor creation makes only what is missing (renaming the rest, refusing to silently drop floors that exist).
+
+**3. The inputs were invisible as inputs.** `--border` is 1.12:1 against the page — fainter than the decorative graph-paper grid at 1.21:1 — so a transparent field with one underline read as body text. See [[Decisions#ADR-098|ADR-098]].
+
+**4. Copy described an illustration that had been deleted.** The Floors step said "Watch it go up" and "(only 5 fit in the picture)" — the animated building was removed from this page in Aug 2026 and now renders only in the onboarding wizard. The copy outlived it by nine months.
+
+**Also fixed in the same pass:** Enter did nothing on any step (no `<form>` anywhere); the Rooms step greeted the owner with an orange "Add at least one room" before they had done anything; the disabled primary button never said why (the message written for it lived inside a click handler a disabled button never reaches); floor names could not be renamed after creation (`renameFloor` was wired up in the page and passed to nothing); the rent field was `type="number"` with a placeholder — `6,000` — that the field itself rejected, and which a stray scroll would silently change; two `autoFocus` inputs fought on the Name step; and a single room could not be deleted, only lopped off the end.
+
+**Related:** [[Features]], [[APIs]], [[Business-Rules]]
+
+## 2026-08-24 — An enquiry's phone number is gated only by the UI (open)
+
+**Found while** restoring email+password signup ([[Decisions#ADR-096|ADR-096]]) and tracing where a *verified* phone actually enters the system.
+
+**The gap:** `POST /api/discover/enquiries` validates `{slug, room_capacity, move_in_date, duration_months, message}` and nothing else. `discoveryService.createEnquiry()` then writes `student_phone: seeker.phone` — whatever that happens to be, including `null`. The `phone_verified` gate lives entirely in `EnquiryPage` (`needsPhoneVerification()` → inline confirm → OTP → submit). A request made outside that screen creates a real `visitor_leads` row in an owner's inbox with **no phone**, and the owner's whole reason for receiving a lead is being able to call back.
+
+**Not caused by, but exposed by, this change.** It has been reachable since [[Decisions#ADR-078|ADR-078]] made `phone: null` the normal shape of a new account (Google provisioning) — before that, every account had a phone by the time it existed, so the missing server-side check had nothing to catch.
+
+**Shape of the fix (not applied):** have `createEnquiry` refuse a seeker with no phone on file — matching the UI, including [[Decisions#ADR-034|ADR-034]]'s skipped-OTP case, by requiring `phone` present rather than `phone_verified` true, which would otherwise break the WhatsApp-undeliverable path the UI deliberately lets through.
+
+**Related:** [[Features]], [[APIs]], [[Business-Rules]]
+
 ## 2026-08-22 — A one-field Prisma schema addition took down every listing detail page
 
 **Symptom.** `GET /api/discover/hostels/:slug` returned 500 in production with

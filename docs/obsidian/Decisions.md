@@ -1479,3 +1479,62 @@ Related: [[Business-Rules]] · [[APIs]] · [[Features]] · ADR-076 · ADR-040
   - Silently repairing a reversed custom range would produce a document that looks right and covers the wrong period — worse than an error the owner can see and fix.
 - **See:** [[Business-Rules]], [[APIs]]
 
+### ADR-096 — Signing up takes an email and a password again, and the phone stays at the enquiry (2026-08-24)
+
+- **Status:** Accepted
+- **Context:** [[Decisions#ADR-078|ADR-078]] made tenant signup **Google-only** — `LoginModal`'s Sign Up tab was reduced to a single "Continue with Google" button. That removed a form, but it also made a Google account a hard prerequisite for using Stayo Discover at all: someone without one, or unwilling to hand one over to browse hostels, had **no way to create an account**. `AuthContext.signUpTenant()` and `POST /api/auth/tenant-signup` were left in place but unwired, so the capability existed and was simply unreachable.
+- **Decision:** The Sign Up tab takes **name, email, password and confirm password**, submitting to the existing `/api/auth/tenant-signup`. "Continue with Google" stays, below an OR divider — two ways in, neither privileged.
+- **What deliberately did *not* come back is the phone/OTP step.** ADR-078 moved phone verification from signup-time to **enquiry-time**, where the number is actually needed and the person has a reason to prove it. That stays. So `phone` becomes **optional** on `TenantSignupSchema`, on `authService.selfSignUpTenant()` and on `AuthContext.signUpTenant()`, and a password-created account is born the **same shape a Google-provisioned one already is** — `phone: null`, `phone_verified: false` — and gets its verified number from `EnquiryPage`'s inline confirm → OTP → send flow (`enquiryPhoneVerification.ts`).
+- **Consequences / guardrails:**
+  - When a caller *does* send a phone, `/api/auth/tenant-signup` still requires a fresh verified-or-skipped OTP for it (`resolveSignupPhoneVerification`). The loosening cannot be used to attach an **unverified** number to an account; it only allows **no** number.
+  - `selfSignUpTenant` runs the duplicate-phone lookup **only when a phone was supplied**. `profiles.phone` is nullable *and* unique, so querying it with `null` would match the first phone-less account and reject every signup after it as a duplicate — the bug this guard exists to prevent.
+  - Field rules live in a pure `@shared/lib/tenantSignupForm` module (`apps/frontend` has no jsdom, so the modal must stay a renderer). They **mirror** the backend's zod schema rather than replacing it — the server is still the authority; the client-side copy exists so someone isn't told what they got wrong only after a round trip.
+  - The Google path is untouched, including the "plain login never auto-provisions" invariant of [[Decisions#ADR-031|ADR-031]].
+- **Known gap, not closed here:** `POST /api/discover/enquiries` does **not** re-check `phone_verified` server-side — `EnquiryPage` is the only gate, and `discoveryService.createEnquiry` writes `student_phone: seeker.phone` whatever that is. A direct API call can therefore create an owner-visible lead with a null phone. This predates this change (it has been true since ADR-078 made `phone: null` the normal account shape) and is recorded in [[Bugs]].
+- **See:** [[Features]], [[APIs]], [[Business-Rules]], [[Decisions#ADR-078|ADR-078]], [[Decisions#ADR-035|ADR-035]]
+
+### ADR-097 — Saving a floor's rooms is idempotent; the body is the floor, not a list of additions (2026-08-24)
+
+- **Status:** Accepted
+- **Context:** `POST /api/floors/:id/rooms` only ever *created*. The Add Hostel builder's Review screen offers an edit pencil on every floor, and taking it led back to a "Save floor & finish" button that re-posted rooms which already existed — answered with `CONFLICT: Room 101 already exists in this hostel`. Pressing Back into an already-saved floor did the same. **Every backward move past a saved floor was a dead end**, escapable only by abandoning the wizard.
+- **Decision:** The request body is now the floor *as it should be*. Rooms that don't exist are created, rooms that do are updated, rooms the owner dropped are retired, and a retired room whose number comes back is revived rather than inserted twice.
+- **Why revive rather than insert:** `@@unique([hostel_id, room_no])` covers inactive rows, so a retired room still owns its number. The old cross-hostel clash check filtered on `is_active: true` and would therefore have passed a number an inactive room held — then failed on the index with a raw Postgres error. That latent bug is closed by the same change.
+- **Retired, never deleted.** `is_active: false`, because an old allocation, invitation or activity log may still reference the room.
+- **Two refusals, both about people rather than data:** removing a room a tenant is allocated to, and shrinking a room below the number of tenants in it (which would leave someone allocated to a bed that no longer exists). Both name the room.
+- **The decision is a pure function, `planFloorRoomSave`** (`lib/services/property/floor-room-plan.ts`), separate from the writes. This repo has no provisioned test database, so rules that live only inside a Prisma transaction cannot be tested at all — 20 tests cover the planner with no database. Same shape as `buildSettlementPlan` and the frontend's `floorBlocker`.
+- **A live room on another floor is still a genuine conflict** and still 409s: two rooms claiming one number is something only the owner can resolve.
+- **See:** [[APIs]], [[Business-Rules]], [[Bugs]], [[Features]]
+
+### ADR-098 — A control boundary is not a divider: `--field-border` (2026-08-24)
+
+- **Status:** Accepted
+- **Context:** Reported as "the fields to enter are not appearing" on Add Hostel. They were rendering. `stepStyles.textInput` drew each input as a transparent box with one `--border` underline, and `--border` (`#efe6da`) is **1.12:1** against the page it sits on — **fainter than the decorative graph-paper grid behind it** (`#ebdccf`, 1.21:1). WCAG asks 3:1 of a control boundary. The placeholder compounded it: set at the same weight as real input, "Sunrise Residency" read as an answer already given rather than an example.
+- **Decision:** A new token, `--field-border: #9f8768`, for the visible edge of a form control — ≥3:1 against the page, the field fill and white, on both the product and marketing themes. `--border` stays as it is and stays correct for dividers and card outlines, where being quiet is the whole point. The two roles had been sharing one value and only one of them was being served.
+- **Fields are now filled boxes** (`--input-background`, which existed and was unused here) with a focus ring, and placeholders drop to `font-normal` so an example never reads as an answer.
+- **Consequence:** `muted-foreground` (3.54:1) and `warning` (3.28:1) are still under the 4.5:1 AA floor for body text across the product theme. Not changed here — that repaints every owner and tenant screen, and is its own piece of work. Recorded so it is not mistaken for settled.
+- **See:** [[Frontend]], [[Features]], [[Bugs]]
+
+### ADR-099 — A floor and a room can be deleted, and the copy says they are not coming back (2026-08-24)
+
+- **Status:** Accepted
+- **Context:** An owner could add a floor or a room and never remove it. `DELETE /api/floors/:id` and `DELETE /api/rooms/:id` both existed, fully guarded, with **no frontend caller anywhere**.
+- **Correction to an earlier draft of this ADR:** it also claimed `DELETE /api/hostels/:id` had no caller. **That was wrong.** Archiving a hostel has been wired to the owner dashboard for a long time — hostel card menu → `HostelOptionsSheet` → `ArchiveHostelModal` → `useArchiveHostel()` (`features/settings/settingsHooks.ts`). The claim came from grepping for `deleteHostel` and never for `archiveHostel`. No hostel gap existed, and a briefly-built second removal card on the hostel Overview screen was deleted as a duplicate; that screen now opens the **existing** `ArchiveHostelModal` instead, so one destructive action keeps one confirmation UI.
+- **Decision:** Delete affordances for floors and rooms, in the Rooms tab.
+  - **Room** — inside the room sheet's edit mode, behind two taps. `prisma.rooms.delete` is a **real** delete, unlike a hostel archive, and the confirmation says so in as many words.
+  - **Floor** — on an expanded floor, and **only when it is empty**, mirroring `deleteFloor`. Emptying it first is deliberate: deleting a floor must never become a way to delete rooms the owner has not looked at.
+- **Each refusal names the fix, not just the failure.** An occupied room says move them out; a *reserved* one says cancel the invite — a different problem with a different fix, so a different sentence. A floor with rooms says delete the rooms first. Eligibility is the pure `propertyRemoval.ts`; the server stays the authority and its own message is surfaced when it refuses anyway.
+- **This exposed a second bug:** the Rooms tab rendered `null` for a floor with no rooms, so the only floor that *could* be deleted was the one that could not be seen. Empty floors now render outside of search.
+- **See:** [[Features]], [[APIs]], [[Business-Rules]], [[Bugs]]
+
+### ADR-100 — A hostel that never carried anything can be deleted for good (2026-08-24)
+
+- **Status:** Accepted
+- **Context:** `DELETE /api/hostels/:id` archives, and the dashboard's Archived tab shows archived hostels with **Reactivate as their only action**. That is correct for a property that carried real tenancies — its payments and agreements must outlive it — but it meant a hostel created by mistake (a test entry, a typo, a duplicate) was parked in the owner's account **permanently, with no way out**. Reported by an owner looking at two junk hostels named "ABC Hostel" and "test".
+- **Second correction to my own earlier claims.** ADR-099's first draft said archiving had no frontend caller (wrong — it is wired to the dashboard hostel menu), and the notes around it also said "nothing shows an owner their archived hostels, so restoring is a support operation" — **also wrong**. `useOwnerDashboard` fetches with `includeArchived: true` and `PropertyList` renders an ARCHIVED tab with a working `ReactivateHostelModal`. Both claims came from grepping for names the code does not use. The vault's own `Features.md` already recorded the archive wiring; reading it first, as CLAUDE.md instructs, would have prevented all of this.
+- **Decision:** A second, narrower endpoint — `DELETE /api/hostels/:id/permanent`. A separate path rather than a `?permanent=true` flag, so it cannot be reached by accident and the archive route's contract is unchanged for every existing caller.
+- **Two conditions, both server-enforced by the pure `planHostelDeletion`:**
+  1. The hostel must **already be ARCHIVED**. Deletion is deliberately a two-step, so nothing live is destroyable in one press.
+  2. It must have **no operational history at all** — zero tenants, payments, rent obligations, room allocations, agreements, receipts, expenses and enquiries. The refusal names the first thing found and says the hostel *stays archived and its history stays intact*, so "cannot be deleted" never reads as "your data is at risk".
+- **Only structure is removed:** rooms, then floors, then the hostel, in that order inside one transaction — `rooms.hostel_id` and `floors.hostel_id` carry no `onDelete: Cascade`. `hostels` has 40+ child relations, so any FK this did not think to count surfaces as "still has records attached — it stays archived", never as a mystery 500.
+- **The only irreversible action in the owner app**, so it asks for the hostel's name to be typed and says there is no undo.
+- **See:** [[Features]], [[APIs]], [[Business-Rules]], [[Decisions#ADR-099|ADR-099]]

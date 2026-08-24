@@ -227,7 +227,7 @@ Phase 1 of the Business Recovery Platform (`docs/business-logic/business-recover
 Added 2026-07-31 ([[Decisions#ADR-035|ADR-035]]).
 
 1. **Owners** self-sign-up via `/api/auth/owner-signup`, normally reached through the lead → admin approval → activation-link funnel. `profiles.role = OWNER`, `owner_id = own id`.
-2. **Tenants** self-sign-up via `/api/auth/tenant-signup`, creating a **marketplace account**: `role: TENANT`, `owner_id` null, **no `tenants` row**. This account can browse and enquire; it is not a tenant of any hostel.
+2. **Tenants** self-sign-up via `/api/auth/tenant-signup`, creating a **marketplace account**: `role: TENANT`, `owner_id` null, **no `tenants` row**. This account can browse and enquire; it is not a tenant of any hostel. Two ways in, both producing the identical account: **email + password** (name, email, password, confirm password) or **Google**. **Neither collects a phone number** — as of [[Decisions#ADR-096|ADR-096]] `phone` is optional on this endpoint, so a marketplace account is born `phone: null, phone_verified: false` and the number is collected **and verified once, at the enquiry**, per [[Decisions#ADR-078|ADR-078]]. A phone sent to the signup endpoint anyway must still carry a fresh verified-or-skipped OTP; the rule permits *no* number, never an *unverified* one.
 3. **A tenant *of a hostel*** is only ever created by an owner's invitation + activation. That flow reuses an existing marketplace profile rather than creating a second one; whether it may do so is decided by the tenancy-eligibility rule below.
 4. **Admins** are never self-serve — first via `scripts/bootstrap-platform-admin.ts`, later by invitation.
 
@@ -593,3 +593,17 @@ The strip's voice priority is **failed › paid today › pending › settled �
 - **The chase list is dated "as at generation", not to the export period.** An owner chasing rent wants who owes *today*; dating it to a past range would mislead him.
 - **Rendering is separated from gathering** so the risky half — pdf-lib throws outright on any glyph its font cannot encode — is testable with no database.
 
+## Saving a floor's rooms, and removing a hostel (2026-08-24)
+
+**A floor save is a statement of what the floor is** ([[Decisions#ADR-097|ADR-097]]). `POST /api/floors/:id/rooms` takes the floor as it should be and makes it match, rather than only appending. Rules it enforces, all in the pure `planFloorRoomSave`:
+
+- A room number is unique per hostel, and the DB index covers **inactive** rooms — so a retired room still owns its number. Re-adding that number revives the row; it never inserts a second one.
+- A number held by a **live** room on another floor is a conflict, and stays a 409. Two rooms claiming one number is the owner's call, not the server's.
+- Rooms are **retired, never deleted** (`is_active: false`) — allocations, invitations and activity logs still point at them.
+- **A room a tenant is allocated to cannot be removed**, and **a room cannot be shrunk below the number of people in it** — that would leave a tenant allocated to a bed that no longer exists. Both refusals name the room.
+
+**A floor is deletable only when empty, and a room only when nobody holds a bed in it** ([[Decisions#ADR-099|ADR-099]]). Both are **real** deletes, unlike a hostel. `DELETE /api/rooms/:id` refuses an active allocation *and* an ACTIVE invitation reservation — a bed held for an invited tenant is as much a claim as an occupied one, and the owner is told which of the two it is, since one needs a move-out and the other needs the invite cancelled. `DELETE /api/floors/:id` refuses a floor with any active room: emptying it first is deliberate, so deleting a floor never becomes a way to delete rooms nobody looked at. Neither is possible on an ARCHIVED or INACTIVE hostel.
+
+**Removing a hostel archives it.** `DELETE /api/hostels/:id` sets `status: ARCHIVED` with `archived_at`/`archived_by`/`archive_reason`. Nothing about a tenancy, payment or obligation is destroyed — this system keeps financial history — so no surface may describe it as permanent deletion. The backend refuses while **any tenant is still allocated**; `ArchiveHostelModal` states that reason, blocks the action, and offers a route to check the tenants out. Restoring is possible via `PATCH {status: "ACTIVE"}` and is wired — the dashboard's ARCHIVED tab offers Reactivate on every archived card.
+
+**An archived hostel with no history at all can be deleted for good** ([[Decisions#ADR-100|ADR-100]], `DELETE /api/hostels/:id/permanent`). Two conditions, both server-enforced: it must **already be archived**, and it must have **zero** tenants, payments, rent obligations, room allocations, agreements, receipts, expenses and enquiries. Anything with history stays archived forever, and the refusal says so — a hostel that carried tenancies is never destroyable, because its money records have to outlive it. Only rooms, floors and the hostel row are removed. This is the one irreversible action in the owner app.
