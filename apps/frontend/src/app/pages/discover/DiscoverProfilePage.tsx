@@ -1,4 +1,4 @@
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Bell,
@@ -36,6 +36,8 @@ import {
 
 import { SignedOutPrompt } from './components/SignedOutPrompt';
 import { C, FONT } from './discoverTheme';
+import { currentStay, historySummaryLine, stayDuration, stayLine } from '@features/tenant-room/staySummary';
+import { MoveOutSheet } from '@features/tenant-room/components/MoveOutSheet';
 
 const dash = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
 const dateLabel = (v: unknown) => (v ? new Date(String(v)).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
@@ -114,6 +116,8 @@ export function DiscoverProfilePage() {
   const { data: enquiries } = useEnquiries();
   const { data: identity } = useProfileIdentity();
   const { data: history } = useResidencyHistory();
+  const stay = useMemo(() => currentStay(history), [history]);
+  const [moveOutOpen, setMoveOutOpen] = useState(false);
   const { data: disclosures } = useDisclosures();
   const liveTenancy = hasLiveTenancy(user);
   const tenantProfile = useTenantProfile();
@@ -380,6 +384,44 @@ export function DiscoverProfilePage() {
           </button>
         </section>
 
+        {/*
+          Where they live *now*. The hook was already here and the page only
+          ever linked out to history, so a profile could say where someone had
+          lived and never where they do.
+        */}
+        {stay && (
+          <section>
+            <h2 className="mb-2.5 pl-0.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: '#9C9186' }}>
+              Where you live
+            </h2>
+            <div className="rounded-2xl border bg-white px-4 py-3.5" style={{ borderColor: C.line, boxShadow: '0 1px 2px rgba(40,30,20,.04)' }}>
+              <div className="text-[14px] font-bold" style={{ color: C.inkSoft }}>
+                {stay.hostel_name ?? 'Your hostel'}
+              </div>
+              {stayLine(stay) && (
+                <div className="mt-0.5 text-[12px]" style={{ color: C.textFaint }}>
+                  {stayLine(stay)}
+                </div>
+              )}
+              {stayDuration(stay) && (
+                <div className="mt-0.5 text-[12px]" style={{ color: C.textFaint }}>
+                  {stayDuration(stay)}
+                </div>
+              )}
+              {/* Same component as the Room tab's, so the two cannot ask
+                  different questions or send different payloads. */}
+              <button
+                type="button"
+                onClick={() => setMoveOutOpen(true)}
+                className="mt-3 w-full rounded-xl border py-2.5 text-[12.5px] font-semibold"
+                style={{ borderColor: C.line, color: '#9A8F84' }}
+              >
+                Request to move out
+              </button>
+            </div>
+          </section>
+        )}
+
         {/* Stay history — with any pending request surfaced, since it needs an answer */}
         <section>
           <h2 className="mb-2.5 pl-0.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: '#9C9186' }}>
@@ -399,9 +441,8 @@ export function DiscoverProfilePage() {
                 Stay history
               </span>
               <span className="block truncate text-[11px]" style={{ color: C.textFaint }}>
-                {history
-                  ? `${history.total_stays} past stay${history.total_stays === 1 ? '' : 's'} · you choose who sees it`
-                  : 'Where you’ve stayed, and who can see it'}
+                {/* Counts the stay they are in, not only the ones they left. */}
+                {historySummaryLine(history)}
               </span>
             </span>
             {pendingCount > 0 && (
@@ -536,6 +577,7 @@ function Stat({ value, label }: { value: number; label: string }) {
       <p className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.04em]" style={{ color: '#8C8177' }}>
         {label}
       </p>
+      <MoveOutSheet open={moveOutOpen} onClose={() => setMoveOutOpen(false)} roomNo={stay?.room_no ?? null} />
     </div>
   );
 }
