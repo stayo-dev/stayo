@@ -1749,3 +1749,23 @@ Related: [[Business-Rules]] · [[APIs]] · [[Features]] · ADR-076 · ADR-040
   - Reviews written before this change have no `hostel_review_topics` rows (topics are computed only at submit/edit time, not backfilled) — the insights view will show fewer mentions for older comments until their authors next edit.
   - `stay_months` is a new snapshot column, same reasoning as the pre-existing `stayed_here`: computed once at submit time from whichever tenancy is most relevant (the active one, or else the most recently ended one), not live-joined — a stay's badge should not silently change after the review is written.
 - **See:** [[Business-Rules]], [[Database]], [[APIs]], [[Features]], [[Changelog]], [[Decisions#ADR-086|ADR-086]], [[Decisions#ADR-101|ADR-101]], [[Decisions#ADR-102|ADR-102]]
+
+### ADR-116 — The tenant Room tab shows facts or nothing, and facilities come from the owner (2026-08-26)
+
+- **Status:** Accepted
+- **Context:** The Room tab had five sections, and two of them were fiction. **Living status** (water/Wi-Fi/electricity/cleaning) read `hostel_utility_status` — a table with **0 rows product-wide** and **no owner UI that writes it** — so every screen rendered its `?? 'OK'` default: *"Available · Running normally"*, asserted about a hostel nobody had ever reported on. **Room facilities** were six hardcoded literals ("Hot water 6–10 AM · 6–10 PM", "Laundry · ground floor", "RO purifier · corridor"), lifted verbatim from the design mock and true of no hostel in particular; the config file said so out loud. Only Wi-Fi read data, and **0 of 70 production rooms** had a `wifi_name`, because no owner screen existed to set one. Every facility row also rendered the same Wi-Fi glyph.
+- **Decision:**
+  1. **Living status is deleted**, reads and all. The table and `/api/utility-status` are left in place but unreferenced — a wrong screen costs trust, an unused table costs nothing.
+  2. **Facilities come from the APPROVED marketing revision.** `AmenitySchema` gains optional free-text **`detail`** ("Attached bathroom") and **`schedule`** ("6–10 AM · 6–10 PM"). No migration — `content` is `jsonb`.
+  3. **Wi-Fi is per room, unreviewed and never public**, with a new owner editor on the room sheet.
+  4. **Reporting moves into the facility being reported.** The six-tile Room services grid is deleted.
+  5. **A vacant bed becomes an invitation**, sharing the hostel through the existing share sheet.
+  6. **Move-out gets a tenant UI** in the Room tab and on the profile's stay card.
+- **Consequences / guardrails:**
+  - **One source for tenant and Discover.** Both read the same approved revision, so they cannot disagree, and ADR-040 holds — an owner still cannot publish listing text unreviewed. **The tradeoff:** a tenant sees changed timings only after approval. One slow source beat two that drift.
+  - **Free text, not a picker.** Hot water is "6–10 AM and evenings" in plenty of real hostels; a time picker makes that unsayable and forces a blank or a lie.
+  - **Wi-Fi is deliberately not an amenity.** A password behind a review queue is absurd; a password on a public listing is worse.
+  - **Reports arrive pre-categorised** — one raised from the Hot water screen needs no triage. `tenant_service_requests` (9 real rows) keeps its endpoint; owner-side handling is out of scope.
+  - **An empty facilities list renders an empty state**, not six invented rows.
+  - **The build's branding check earned its keep**, rejecting a `SriAdithya_5G` placeholder before it shipped.
+- **See:** [[Features]], [[Bugs]], [[APIs]], [[Changelog]], [[Decisions#ADR-040|ADR-040]], [[Decisions#ADR-084|ADR-084]]

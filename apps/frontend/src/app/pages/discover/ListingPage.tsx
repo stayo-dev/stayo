@@ -854,14 +854,26 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
               <h2 className="text-[16px] font-extrabold tracking-[-0.01em]" style={{ fontFamily: FONT.display, color: C.text }}>
                 What this hostel offers
               </h2>
+              {/*
+                A chip carries a name; a seeker is choosing on the details.
+                "Hot water" answers less than "Hot water · 6–10 AM · 6–10 PM",
+                and both come from the same reviewed revision the tenant's Room
+                tab reads — so the two surfaces cannot disagree. Amenities with
+                nothing extra still render exactly as they did.
+              */}
               <div className="mt-3 flex flex-wrap gap-2">
-                {amenities.map((amenity) => (
+                {amenities.map((amenity: any) => (
                   <span
                     key={amenity.label}
                     className="rounded-[10px] px-3 py-2 text-[12.5px] font-semibold"
                     style={{ background: C.chipBg, color: '#6E6459' }}
                   >
                     {amenity.label}
+                    {(amenity.detail || amenity.schedule) && (
+                      <span className="ml-1.5 font-medium" style={{ color: '#9A8F84' }}>
+                        {[amenity.detail, amenity.schedule].filter(Boolean).join(' · ')}
+                      </span>
+                    )}
                   </span>
                 ))}
               </div>

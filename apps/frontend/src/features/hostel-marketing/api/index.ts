@@ -65,6 +65,10 @@ export interface MarketingAmenity {
   /** Hidden rather than deleted, so an owner can toggle without losing it. */
   enabled: boolean;
   icon?: string | null;
+  /** "Attached bathroom" — what it is. Free text; see the zod schema. */
+  detail?: string | null;
+  /** "6–10 AM · 6–10 PM" — when. Free text, because real timings are irregular. */
+  schedule?: string | null;
 }
 
 export interface MarketingPlace {

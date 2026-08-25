@@ -125,6 +125,22 @@ The tenant was hard-stuck: every step looked done, and the last one could never 
 
 **Related:** [[Decisions#ADR-110|ADR-110]], [[Business-Rules]], [[Changelog]]
 
+## 2026-08-26 — Two sections of the tenant Room tab were showing invented data (fixed)
+
+**Found while** redesigning the Room tab, by checking each section against production rather than reading the components.
+
+**Living status** — water, Wi-Fi, electricity, cleaning — read `hostel_utility_status`. That table has **0 rows across the entire product**, and the only frontend references to it are tenant-side *readers*: **no owner UI has ever written to it**. Every screen therefore fell through to its `?? 'OK'` default and told the tenant *"Available · Running normally"* about a hostel nobody had ever reported on. Not "hard for owners to maintain" — impossible, because there was no screen on which to maintain it.
+
+**Room facilities** were six hardcoded literals — "Hot water 6–10 AM · 6–10 PM", "Laundry · Shared · ground floor", "Drinking water · RO purifier · corridor" — written into the component. `roomDetailConfigs.ts` admitted it in a comment: *"content matches Stayo Tenant.dc.html verbatim"*. Design-mock copy, shipped as fact about every hostel on the platform.
+
+**Two smaller ones alongside:** every facility row rendered the **same Wi-Fi icon**, so Hot water and Laundry appeared with a wifi glyph; and `wifi_name` — the one real field — was unset on **all 70 production rooms**, because no owner screen existed to set it, so every tenant read "Ask the front desk".
+
+**Fix:** [[Decisions#ADR-116|ADR-116]]. Living status deleted; facilities sourced from the approved marketing revision with owner-written detail and timings; Wi-Fi given an owner editor; per-kind icons; an empty list renders an empty state rather than six invented rows.
+
+**The pattern worth naming:** all four were *plausible*. A screen full of green "Normal" badges and specific-sounding timings looks more finished than a blank one, which is exactly why nobody questioned it. **A default that renders as a fact is worse than a gap** — a gap prompts someone to fill it, and a confident default never does.
+
+**Related:** [[Decisions#ADR-116|ADR-116]], [[Features]], [[Changelog]]
+
 ## 2026-08-25 — Onboarding met an invited tenant as a stranger and rejected their own email (fixed)
 
 **Reported** with a screenshot: the Identity step of `/activate/<token>`, an OTP box, a "Gmail ID" field, and a red banner reading *"An account with this email address already exists. Please use a different email address."* — on an address belonging to the person filling the form in. `PATCH /api/tenants/activate` 400.

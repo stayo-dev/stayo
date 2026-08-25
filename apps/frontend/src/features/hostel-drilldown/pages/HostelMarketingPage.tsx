@@ -750,6 +750,68 @@ export function HostelMarketingPage() {
               </button>
             )}
           </div>
+
+          {/*
+            The chips say *what* you have; these say what a tenant actually
+            wants to know about it. "Hot water" answers less than "Hot water ·
+            Attached bathroom · 6–10 AM · 6–10 PM".
+
+            Free text on purpose: hot water is "6–10 AM and evenings" in plenty
+            of real hostels, and a time picker would make that unsayable —
+            forcing either a blank or a lie. Both fields are optional, and an
+            amenity with neither renders exactly as it does today.
+
+            Added below the chips rather than inside them so the tap-to-toggle
+            behaviour above is untouched.
+          */}
+          {content.amenities.some((amenity) => amenity.enabled) && (
+            <div className="mt-3.5 flex flex-col gap-2.5">
+              <p className="text-[11px] font-bold uppercase tracking-[.06em]" style={{ color: M.ghost }}>
+                Details · optional
+              </p>
+              {content.amenities.map((amenity, index) =>
+                amenity.enabled ? (
+                  <div key={`detail-${amenity.label}-${index}`} className="flex flex-col gap-1.5">
+                    <span className="text-[12px] font-semibold" style={{ color: '#4A433C' }}>
+                      {amenity.label}
+                    </span>
+                    <div className="flex gap-2">
+                      <input
+                        value={amenity.detail ?? ''}
+                        disabled={locked}
+                        onChange={(event) =>
+                          patch({
+                            amenities: content.amenities.map((entry, i) =>
+                              i === index ? { ...entry, detail: event.target.value } : entry,
+                            ),
+                          })
+                        }
+                        maxLength={80}
+                        placeholder="What it is — e.g. Attached bathroom"
+                        className="min-w-0 flex-1 rounded-[10px] bg-white px-3 py-2 text-[12px]"
+                        style={{ border: `1px solid ${M.inputLine}`, color: '#2A2521' }}
+                      />
+                      <input
+                        value={amenity.schedule ?? ''}
+                        disabled={locked}
+                        onChange={(event) =>
+                          patch({
+                            amenities: content.amenities.map((entry, i) =>
+                              i === index ? { ...entry, schedule: event.target.value } : entry,
+                            ),
+                          })
+                        }
+                        maxLength={40}
+                        placeholder="When — e.g. 6–10 AM · 6–10 PM"
+                        className="w-[42%] flex-none rounded-[10px] bg-white px-3 py-2 text-[12px]"
+                        style={{ border: `1px solid ${M.inputLine}`, color: '#2A2521' }}
+                      />
+                    </div>
+                  </div>
+                ) : null,
+              )}
+            </div>
+          )}
         </Card>
 
         {/* ── Getting around ───────────────────────────────────────────── */}

@@ -48,6 +48,9 @@ export function RoomSheetModal({
   const [number, setNumber] = useState('');
   const [rent, setRent] = useState('');
   const [floorId, setFloorId] = useState('');
+  // Per room, never reviewed, never public — see the tenant Room spec §4.
+  const [wifiName, setWifiName] = useState('');
+  const [wifiPassword, setWifiPassword] = useState('');
   /**
    * What the room is like to live in (migration 073). Two tape measurements
    * and three storage facts — the listing turns them into floor area per bed,
@@ -72,6 +75,8 @@ export function RoomSheetModal({
       setNumber(room.number);
       setRent(String(room.rent));
       setFloorId(room.floorId);
+      setWifiName((room as any)?.wifiName ?? (room as any)?.wifi_name ?? '');
+      setWifiPassword((room as any)?.wifiPassword ?? (room as any)?.wifi_password ?? '');
       const space = (room as any).space ?? {};
       setLengthFt(space.length_ft == null ? '' : String(space.length_ft));
       setWidthFt(space.width_ft == null ? '' : String(space.width_ft));
@@ -93,6 +98,10 @@ export function RoomSheetModal({
       await onSaveDetails({
         room_no: number.trim(),
         base_rent: Number(rent) || 0,
+        // Blank clears it rather than storing "", so the tenant screen falls
+        // back to "Ask the front desk" instead of showing an empty password.
+        wifi_name: wifiName.trim() || null,
+        wifi_password: wifiPassword.trim() || null,
         ...(floorId && floorId !== room.floorId ? { floor_id: floorId } : {}),
         // Empty means "not measured", which the listing shows as nothing at
         // all rather than as a zero.
@@ -169,6 +178,44 @@ export function RoomSheetModal({
               className="w-full rounded-[11px] border-[1.5px] border-primary bg-card px-3.5 py-3 text-sm font-semibold text-foreground focus:outline-none"
             />
           </label>
+          {/*
+            Wi-Fi, per room.
+
+            Every one of the 70 rooms in production had this blank when it was
+            added, because there was no screen on which to set it — so every
+            tenant's Room tab read "Ask the front desk". It is deliberately not
+            an amenity: amenities are reviewed and published, and a password
+            belongs on neither a review queue nor a public listing. Only this
+            room's tenants ever see it.
+          */}
+          <div className="rounded-[13px] border border-border bg-card p-3.5">
+            <p className="font-display text-[13px] font-bold text-foreground">Wi-Fi</p>
+            <p className="mt-0.5 text-[11.5px] leading-[1.5] text-muted-foreground">
+              Shown only to the tenants in this room, on their Room tab. Never appears on your public
+              listing. Leave blank and they are told to ask at the front desk.
+            </p>
+            <div className="mt-3 flex flex-col gap-2">
+              <label className="block">
+                <span className={labelStyle}>Network name</span>
+                <input
+                  value={wifiName}
+                  onChange={(e) => setWifiName(e.target.value)}
+                  placeholder="e.g. Hostel_5G"
+                  className="w-full rounded-[11px] border border-border bg-card px-3.5 py-2.5 text-sm text-foreground focus:outline-none"
+                />
+              </label>
+              <label className="block">
+                <span className={labelStyle}>Password</span>
+                <input
+                  value={wifiPassword}
+                  onChange={(e) => setWifiPassword(e.target.value)}
+                  placeholder="Leave blank if there is none"
+                  className="w-full rounded-[11px] border border-border bg-card px-3.5 py-2.5 text-sm text-foreground focus:outline-none"
+                />
+              </label>
+            </div>
+          </div>
+
           {/*
             The space block. Tenants ask "how big is it" and "where do my
             things go" more than anything after the rent, and no listing

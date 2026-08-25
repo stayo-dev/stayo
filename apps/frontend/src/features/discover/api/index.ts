@@ -104,7 +104,7 @@ export interface DiscoverListing {
    * a marketing revision approved — never a draft, never a submission.
    */
   bed_tiers: ListingBedTier[];
-  amenities: { label: string; icon?: string | null }[];
+  amenities: { label: string; icon?: string | null; detail?: string | null; schedule?: string | null }[];
   places: ListingPlace[];
   /** Null when this hostel does not provide meals. */
   mess: ListingMess | null;
