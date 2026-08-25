@@ -59,6 +59,27 @@ export type ActivationContext = {
     required_acknowledgements?: string[];
   };
   agreement: {
+    /**
+     * The term the owner set — stored on the agreement since it was drafted but
+     * only sent to the client from 2026-08-25 (ADR-112). Before that the
+     * Agreement screen could not state how long the stay was for, so people
+     * signed an eleven-month commitment without ever seeing the number.
+     */
+    term?: {
+      duration_months: number | null;
+      start_date: string | null;
+      end_date: string | null;
+      monthly_rent: number | null;
+      security_deposit: number | null;
+    } | null;
+    /** Present once the tenant has given their word; see agreement-commitment. */
+    commitment?: {
+      acknowledged_at: string;
+      duration_months: number | null;
+      start_date: string | null;
+      end_date: string | null;
+      statement: string;
+    } | null;
     id: string;
     status: string;
     signed_at?: string | null;

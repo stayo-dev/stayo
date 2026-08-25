@@ -91,6 +91,7 @@ export default defineConfig({
       'tests/invitation-phone-trust.test.ts',
       'tests/invited-profile-adoption.test.ts',
       'tests/identity-field-policy.test.ts',
+      'tests/agreement-commitment.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),

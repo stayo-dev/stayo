@@ -54,6 +54,7 @@ import { getActiveTenancy, selectCurrentTenancy } from "@/lib/tenancy/active-ten
 import { isPhoneAlreadyProven } from "./invitation-phone-trust";
 import { resolveActivationEmail } from "./invited-profile-resolver";
 import { resolveGenderRequirement } from "./identity-field-policy";
+import { buildCommitmentRecord } from "./agreement-commitment";
 import {
   completedApplicableSteps,
   isAgreementRequired,
@@ -711,6 +712,26 @@ export class ActivationWorkflowService {
         owner_signature_url: activeAgreement.owner_signature_url,
         owner_signature_name: activeAgreement.owner_signature_name,
         owner_signed_at: activeAgreement.owner_signed_at,
+        /**
+         * The term the owner set. Stored since the agreement was drafted but
+         * never sent to the tenant, so the Agreement screen asked people to
+         * sign an 11-month commitment without the words "11 months" appearing
+         * anywhere on it. Both sides of the deal ride here: what the tenant
+         * commits to (the term) and what the hostel commits to (a held bed at
+         * a rent that does not move, and a refundable deposit).
+         */
+        term: {
+          duration_months: activeAgreement.agreement_duration_months ?? null,
+          start_date: dateOnly(activeAgreement.agreement_start_date),
+          end_date: dateOnly(activeAgreement.agreement_end_date),
+          monthly_rent: activeAgreement.contract_rent != null ? Number(activeAgreement.contract_rent) : null,
+          security_deposit:
+            activeAgreement.contract_security_deposit != null
+              ? Number(activeAgreement.contract_security_deposit)
+              : null,
+        },
+        /** Present once the tenant has given their word — see signAgreement. */
+        commitment: (activeAgreement.content_snapshot as any)?.commitment ?? null,
       } : null,
       template: {
         id: activeTemplate.id,
@@ -936,6 +957,24 @@ export class ActivationWorkflowService {
     });
     assertAgreementLifecycleComplete({ ...draft, ...lifecycle }, { agreementId: draft.id });
 
+    // The tenant's explicit word on the term. Validated against the lifecycle
+    // just computed rather than anything the client sent, so the commitment is
+    // recorded against the real dates and not a length the browser proposed.
+    // Null when the agreement has no stateable duration — that hostel signs
+    // exactly as it did before. See agreement-commitment.
+    const commitment = buildCommitmentRecord({
+      hostelName: tenant.hostels?.name || "",
+      term: {
+        durationMonths: (lifecycle as any).agreement_duration_months ?? null,
+        startDate: dateOnly((lifecycle as any).agreement_start_date),
+        endDate: dateOnly((lifecycle as any).agreement_end_date),
+      },
+      acknowledgement: data?.commitment,
+      now,
+      ip: context.ip,
+      userAgent: context.userAgent,
+    });
+
     const variables = {
       TENANT_NAME: profile?.name || tenant.name || "Tenant",
       ROOM_NUMBER: room?.room_no ?? "N/A",
@@ -979,6 +1018,11 @@ export class ActivationWorkflowService {
 
           content_snapshot: {
             ...(draft.content_snapshot as any || {}),
+            // The tenant's word on the term, with the exact sentence they were
+            // shown. Lives in the snapshot rather than a new column: this Json
+            // is already "the resolved snapshot of everything", and migrations
+            // here are applied by hand.
+            ...(commitment ? { commitment } : {}),
             template_id: template.id,
             template_version_number: template.version_number,
             template_published_at: template.published_at,

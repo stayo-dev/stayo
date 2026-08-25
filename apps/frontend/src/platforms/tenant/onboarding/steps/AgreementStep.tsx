@@ -1,5 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import type { ActivationContext, ActivationStep } from '../activationTypes';
+import { CommitmentSheet, TheWordCard } from './CommitmentCeremony';
+import { hasStatableTerm, type AgreementTerm, type CommitmentChecks } from './commitmentTerm';
 import { SignatureSheet } from './SignatureSheet';
 import { BackButton, PrimaryActionButton, StepActionBar } from './shared';
 
@@ -88,6 +90,12 @@ export function AgreementStep({
   const [tenantSigName, setTenantSigName] = useState('');
   const [guardianSigBlob, setGuardianSigBlob] = useState<Blob | null>(null);
   const [busy, setBusy] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [commitmentGiven, setCommitmentGiven] = useState(false);
+  // The term the owner set, finally sent to the client (ADR-112). Null for an
+  // agreement with no stateable duration, which skips the ceremony.
+  const rawTerm = (agreement as any)?.term as AgreementTerm | undefined;
+  const commitmentTerm = hasStatableTerm(rawTerm) ? (rawTerm as AgreementTerm) : null;
 
   useEffect(() => {
     if (rulesAccepted) {
@@ -127,12 +135,37 @@ export function AgreementStep({
     }
     if (!allAcksChecked) return onError('Please confirm you understand the rules above.');
 
+    // Everything below this point is validation of what was filled in. Once it
+    // passes, the commitment sheet is the last step — the term is put to the
+    // tenant in words before anything is signed, rather than discovered later
+    // in a PDF. A hostel with no stateable duration skips it entirely and signs
+    // exactly as it did before.
+    if (commitmentTerm && !commitmentGiven) {
+      const problem = validateSignatures();
+      if (problem) return onError(problem);
+      setSheetOpen(true);
+      return;
+    }
+
+    await performSubmit(null);
+  };
+
+  const validateSignatures = (): string | null => {
     const tenantSignatureComplete = Boolean(tenantHasSignature && tenantSignatureName);
     const guardianSignatureComplete = Boolean(guardianHasSignature && guardianSignatureName && (guardianRelation || agreement.guardian_relation));
-    if (tenantHasSignature && !tenantSignatureName) return onError('Your typed full name signature is required');
-    if (guardianHasSignature && !guardianSignatureName) return onError('Parent/Guardian typed full name signature is required');
-    if (guardianHasSignature && !(guardianRelation || agreement.guardian_relation)) return onError('Please select parent/guardian relationship');
-    if (!tenantSignatureComplete && !guardianSignatureComplete) return onError('Add at least one signature: tenant or parent/guardian.');
+    if (tenantHasSignature && !tenantSignatureName) return 'Your typed full name signature is required';
+    if (guardianHasSignature && !guardianSignatureName) return 'Parent/Guardian typed full name signature is required';
+    if (guardianHasSignature && !(guardianRelation || agreement.guardian_relation)) return 'Please select parent/guardian relationship';
+    if (!tenantSignatureComplete && !guardianSignatureComplete) return 'Add at least one signature: tenant or parent/guardian.';
+    return null;
+  };
+
+  const performSubmit = async (checks: CommitmentChecks | null) => {
+
+    const tenantSignatureComplete = Boolean(tenantHasSignature && tenantSignatureName);
+    const guardianSignatureComplete = Boolean(guardianHasSignature && guardianSignatureName && (guardianRelation || agreement.guardian_relation));
+    const problem = validateSignatures();
+    if (problem) return onError(problem);
 
     setBusy(true);
     try {
@@ -158,10 +191,14 @@ export function AgreementStep({
         guardian_signature_url: guardianSignatureComplete ? guardianSigUrl : null,
         guardian_signature_name: guardianSignatureComplete ? guardianSignatureName : null,
         guardian_relation: guardianSignatureComplete ? guardianRelation || agreement.guardian_relation || null : null,
+        // Recorded against the agreement with the exact sentence shown — an
+        // acknowledgement the system does not keep gives the owner nothing.
+        ...(checks ? { commitment: { read_agreement: checks.readAgreement, accept_term: checks.acceptTerm } } : {}),
       });
       if (saved) {
         setTenantSigBlob(null);
         setGuardianSigBlob(null);
+        if (checks) setCommitmentGiven(true);
       }
     } catch (err: any) {
       onError(err?.message || 'Failed to submit agreement signature');
@@ -174,6 +211,30 @@ export function AgreementStep({
 
   return (
     <form onSubmit={handleSubmit} style={{ animation: 'obFade .25s ease' }}>
+      {/* The term, stated before anything is signed rather than discovered in
+          the PDF afterwards. */}
+      {commitmentTerm && !agreementSigned && (
+        <TheWordCard
+          hostelName={String(ctx.room_summary?.hostel_name || '')}
+          roomNumber={ctx.room_summary?.room_number != null ? String(ctx.room_summary.room_number) : null}
+          term={commitmentTerm}
+        />
+      )}
+
+      {commitmentTerm && sheetOpen && (
+        <CommitmentSheet
+          hostelName={String(ctx.room_summary?.hostel_name || '')}
+          term={commitmentTerm}
+          busy={busy}
+          given={commitmentGiven}
+          tenantName={ctx.profile?.name || ''}
+          ownerName={(ctx as any)?.template?.owner_name || ''}
+          onCancel={() => setSheetOpen(false)}
+          onConfirm={(checks) => { void performSubmit(checks); }}
+          onDone={() => { setSheetOpen(false); goToStep('ACTIVATE'); }}
+        />
+      )}
+
       <div className="flex items-start gap-[11px]">
         <div className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px]" style={{ background: '#F3E7E0', color: '#B46A55' }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
