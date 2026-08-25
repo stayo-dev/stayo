@@ -388,3 +388,32 @@ export function floorBlocker(floor: DraftFloor): string | null {
   if (noCapacity) return `Room ${noCapacity.roomNo} needs a sharing size`;
   return null;
 }
+
+/**
+ * Which step a resumed build should open on.
+ *
+ * Resuming used to *assume* `fill`: `useState(existingHostelId ? 'fill' : 'name')`,
+ * decided before a single byte had loaded. That was only ever right for a
+ * hostel that already had floors. An owner who had named a hostel and stopped
+ * — the exact state the dashboard's "finish setting up your hostel" card points
+ * at — was dropped onto "What's on ground floor?" with **no floors to fill**,
+ * and stepping back showed an empty name and an empty floor count, because
+ * neither had been loaded either.
+ *
+ * So the step is derived from what the hostel actually has, not from the fact
+ * that it exists:
+ *
+ * - **no floors yet** → `floors`, because that is genuinely the next question;
+ * - **floors, some empty** → `fill`, on the first unfilled one;
+ * - **every floor filled** → `review`.
+ */
+export function resumeStage(
+  floors: Array<{ name: string; roomCount: number }>,
+): { stage: 'floors' | 'fill' | 'review'; activeIndex: number } {
+  if (floors.length === 0) return { stage: 'floors', activeIndex: 0 };
+
+  const progress = buildProgress(floors);
+  if (progress.isComplete) return { stage: 'review', activeIndex: Math.max(0, floors.length - 1) };
+
+  return { stage: 'fill', activeIndex: progress.nextFloorIndex ?? 0 };
+}

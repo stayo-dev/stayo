@@ -15,6 +15,7 @@ import {
   rememberRent,
   renumberBuilding,
   resizeFloorRooms,
+  resumeStage,
   toRoomsPayload,
   type DraftFloor,
   type DraftRoom,
@@ -40,12 +41,19 @@ export function useHostelBuilder(existingHostelId?: string) {
 
   const [hostelId, setHostelId] = useState(existingHostelId ?? '');
   const [hostelName, setHostelName] = useState('');
-  const [stage, setStage] = useState<BuilderStage>(existingHostelId ? 'fill' : 'name');
+  // Resuming does NOT assume a stage. It used to start at 'fill' the moment an
+  // id was present — decided before any data loaded — which dropped an owner
+  // who had only named their hostel onto "What's on ground floor?" with no
+  // floors to fill. `resuming` holds the screen until the real answer is known;
+  // see resumeStage.
+  const [stage, setStage] = useState<BuilderStage>('name');
   const [floors, setFloors] = useState<DraftFloor[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [pattern, setPattern] = useState<NumberingPattern>('NUMERIC');
   const [rentMemory, setRentMemory] = useState<RentMemory>({});
   const [hydrated, setHydrated] = useState(false);
+  /** True while a resumed build is still loading — the step is not known yet. */
+  const resuming = Boolean(existingHostelId) && !hydrated;
   /**
    * Set when the server asks for a password before creating this hostel.
    * Step-up applies from the owner's *second* hostel onward, so this cannot
@@ -61,6 +69,31 @@ export function useHostelBuilder(existingHostelId?: string) {
     enabled: Boolean(hostelId) && Boolean(existingHostelId),
     staleTime: 0,
   });
+
+  /**
+   * The resume read (`roomService.getAll`) returns floors and rooms, not the
+   * hostel itself — so the name was never restored and stepping back to the
+   * Name step showed an empty field on a hostel that plainly had one. The
+   * owner's hostel list is the cheapest source and is usually already cached by
+   * the dashboard that linked here.
+   */
+  const existingHostel = useQuery({
+    queryKey: ['owner', 'hostels'],
+    queryFn: () => ownerService.getHostels(),
+    enabled: Boolean(existingHostelId),
+    staleTime: 30_000,
+  });
+
+  useEffect(() => {
+    if (!existingHostelId || hostelName) return;
+    const list: any[] = Array.isArray(existingHostel.data)
+      ? existingHostel.data
+      : Array.isArray((existingHostel.data as any)?.hostels)
+        ? (existingHostel.data as any).hostels
+        : [];
+    const match = list.find((row) => String(row?.id) === String(existingHostelId));
+    if (match?.name) setHostelName(String(match.name));
+  }, [existingHostel.data, existingHostelId, hostelName]);
 
   useEffect(() => {
     if (hydrated || !existingHostelId || !existing.data) return;
@@ -90,11 +123,15 @@ export function useHostelBuilder(existingHostelId?: string) {
         };
       });
 
+    // Derived in every case, including zero floors — the old code only set a
+    // stage inside `if (restored.length > 0)`, so a hostel with no floors kept
+    // the assumed 'fill' and showed a floor-filling screen with nothing to fill.
+    const resumed = resumeStage(restored.map((f) => ({ name: f.name, roomCount: f.rooms.length })));
+    setStage(resumed.stage);
+    setActiveIndex(resumed.activeIndex);
+
     if (restored.length > 0) {
       setFloors(restored);
-      const progress = buildProgress(restored.map((f) => ({ name: f.name, roomCount: f.rooms.length })));
-      setActiveIndex(progress.nextFloorIndex ?? 0);
-      setStage(progress.isComplete ? 'review' : 'fill');
       // Seed the rent memory from what is already priced, so continuing a
       // build behaves like never having left it.
       setRentMemory(
@@ -386,7 +423,11 @@ export function useHostelBuilder(existingHostelId?: string) {
     tally: buildingTally(floors),
     blocker: activeFloor ? floorBlocker(activeFloor) : null,
     defaultFloorName,
-    isRestoring: existing.isLoading,
+    // Not just `existing.isLoading`: that goes false one render *before* the
+    // hydration effect runs, and the old code rendered its assumed 'fill' stage
+    // in that gap. `resuming` stays true until the stage has actually been
+    // derived from the data.
+    isRestoring: resuming || existing.isLoading,
     createHostel,
     createFloors,
     saveFloor,

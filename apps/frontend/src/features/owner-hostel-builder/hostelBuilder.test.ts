@@ -10,6 +10,7 @@ import {
   floorTally,
   previewNumbering,
   recallRent,
+  resumeStage,
   renumberBuilding,
   renumberFloor,
   rememberRent,
@@ -401,5 +402,54 @@ describe('renumberBuilding', () => {
 
   it('handles a building with no floors', () => {
     expect(renumberBuilding([], 'NUMERIC', 'BLOCK')).toEqual([]);
+  });
+});
+
+describe('resuming a half-built hostel', () => {
+  // The reported bug: clicking "finish setting up your hostel" dropped the
+  // owner on "What's on ground floor?" for a hostel that had no floors at all,
+  // and stepping back showed an empty name and floor count. The step was
+  // assumed from `existingHostelId` before any data had loaded.
+  it('asks how many floors when the hostel has none yet', () => {
+    expect(resumeStage([])).toEqual({ stage: 'floors', activeIndex: 0 });
+  });
+
+  it('opens on the first floor that still has no rooms', () => {
+    expect(
+      resumeStage([
+        { name: 'Ground', roomCount: 3 },
+        { name: 'First', roomCount: 0 },
+        { name: 'Second', roomCount: 0 },
+      ]),
+    ).toEqual({ stage: 'fill', activeIndex: 1 });
+  });
+
+  it('opens on the ground floor when nothing has been filled', () => {
+    expect(
+      resumeStage([
+        { name: 'Ground', roomCount: 0 },
+        { name: 'First', roomCount: 0 },
+      ]),
+    ).toEqual({ stage: 'fill', activeIndex: 0 });
+  });
+
+  it('goes to review once every floor is filled', () => {
+    expect(
+      resumeStage([
+        { name: 'Ground', roomCount: 3 },
+        { name: 'First', roomCount: 2 },
+      ]),
+    ).toEqual({ stage: 'review', activeIndex: 1 });
+  });
+
+  it('skips a gap rather than stopping at the first filled floor', () => {
+    // A floor left empty in the middle is still the next thing to do.
+    expect(
+      resumeStage([
+        { name: 'Ground', roomCount: 3 },
+        { name: 'First', roomCount: 0 },
+        { name: 'Second', roomCount: 4 },
+      ]),
+    ).toEqual({ stage: 'fill', activeIndex: 1 });
   });
 });
