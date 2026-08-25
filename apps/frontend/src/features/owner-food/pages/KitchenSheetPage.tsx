@@ -6,7 +6,7 @@ import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { HostelSwitcher } from '../components/HostelSwitcher';
 import { useFoodSchedule } from '../hooks/useFoodSchedule';
 import { buildKitchenMessage, whatsappShareUrl } from '../kitchenSheet';
-import { cellAt, dayKeyFor, DAY_ORDER, EMPTY_CELL_LABEL, isFilled, SLOT_ORDER } from '../weekGrid';
+import { cellAt, dayKeyFor, DAY_ORDER, formatCellItems, isFilled, SLOT_ORDER } from '../weekGrid';
 
 /**
  * The cook's and kitchen staff's only surface. Deliberately the dumbest screen
@@ -61,7 +61,7 @@ export function KitchenSheetPage() {
                 {MEAL_CATEGORY_META[slot].label}
               </span>
               <span className={`font-display text-[24px] font-extrabold tracking-tight ${isFilled(cell) ? 'text-foreground' : 'italic text-muted-foreground/60'}`}>
-                {isFilled(cell) ? cell!.item_name : EMPTY_CELL_LABEL}
+                {formatCellItems(cell)}
               </span>
             </div>
           );
@@ -71,10 +71,7 @@ export function KitchenSheetPage() {
       <div className="rounded-2xl bg-muted/50 p-4">
         <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Tomorrow — prep tonight</span>
         <p className="mt-1 text-[14px] font-semibold text-foreground">
-          {SLOT_ORDER.map((slot) => {
-            const cell = cellAt(schedule.weekGrid, tomorrow, slot);
-            return isFilled(cell) ? cell!.item_name : EMPTY_CELL_LABEL;
-          }).join(' · ')}
+          {SLOT_ORDER.map((slot) => formatCellItems(cellAt(schedule.weekGrid, tomorrow, slot))).join(' · ')}
         </p>
       </div>
 

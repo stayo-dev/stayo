@@ -227,7 +227,7 @@ Phase 1 of the Business Recovery Platform (`docs/business-logic/business-recover
 Added 2026-07-31 ([[Decisions#ADR-035|ADR-035]]).
 
 1. **Owners** self-sign-up via `/api/auth/owner-signup`, normally reached through the lead → admin approval → activation-link funnel. `profiles.role = OWNER`, `owner_id = own id`.
-2. **Tenants** self-sign-up via `/api/auth/tenant-signup`, creating a **marketplace account**: `role: TENANT`, `owner_id` null, **no `tenants` row**. This account can browse and enquire; it is not a tenant of any hostel. Two ways in, both producing the identical account: **email + password** (name, email, password, confirm password) or **Google**. **Neither collects a phone number** — as of [[Decisions#ADR-096|ADR-096]] `phone` is optional on this endpoint, so a marketplace account is born `phone: null, phone_verified: false` and the number is collected **and verified once, at the enquiry**, per [[Decisions#ADR-078|ADR-078]]. A phone sent to the signup endpoint anyway must still carry a fresh verified-or-skipped OTP; the rule permits *no* number, never an *unverified* one.
+2. **Tenants** self-sign-up via `/api/auth/tenant-signup`, creating a **marketplace account**: `role: TENANT`, `owner_id` null, **no `tenants` row**. This account can browse and enquire; it is not a tenant of any hostel. Two ways in, both producing the identical account: **email + password** (name, email, password, confirm password) or **Google**. **Neither collects a phone number** — as of [[Decisions#ADR-113|ADR-113]] `phone` is optional on this endpoint, so a marketplace account is born `phone: null, phone_verified: false` and the number is collected **and verified once, at the enquiry**, per [[Decisions#ADR-078|ADR-078]]. A phone sent to the signup endpoint anyway must still carry a fresh verified-or-skipped OTP; the rule permits *no* number, never an *unverified* one.
 3. **A tenant *of a hostel*** is only ever created by an owner's invitation + activation. That flow reuses an existing marketplace profile rather than creating a second one; whether it may do so is decided by the tenancy-eligibility rule below.
 4. **Admins** are never self-serve — first via `scripts/bootstrap-platform-admin.ts`, later by invitation.
 
@@ -319,15 +319,30 @@ The `PAYMENT_PENDING` / `RESERVED` / `MOVE_IN_READY` vocabulary is **deleted**. 
 
 Occupancy is a question about beds, not money: a room is occupied by every active allocation held by an `ACTIVE` tenant. It previously excluded anyone still `PAYMENT_PENDING`, which left a moved-in tenant's bed looking vacant and invitable.
 
-## Food schedule generation is independent of voting (2026-08-08)
+## Food schedule generation is independent of voting (2026-08-08) — **superseded 2026-08-25**
 
-Deliberate product decision, not a bugfix — see [[Decisions]]. The owner Food tab's weekly schedule is generated straight from the Food Library (all active items per meal type, alphabetically), never from tenant votes, and Generate is never gated on a voting period's status.
+**Superseded by [[Decisions#ADR-114|ADR-114]]: automatic schedule generation was removed entirely, not merely decoupled from voting.** There is no `Generate`/`Rebuild`/`Fill gaps` action left to gate on anything — the owner builds every week by hand via the Timetable page. This entry is kept for the historical record of the 2026-08-08 decision; see "Manual-only food scheduling" below for the current rule, and [[Food]] §18.
 
-- `POST /api/food/schedules/generate` only ranks by votes when a caller explicitly passes `votingPeriodId` — it no longer auto-detects an existing voting period for the hostel+month. No current caller passes one.
+Deliberate product decision, not a bugfix — see [[Decisions]]. The owner Food tab's weekly schedule was generated straight from the Food Library (all active items per meal type, alphabetically), never from tenant votes, and Generate was never gated on a voting period's status.
+
+- `POST /api/food/schedules/generate` only ranked by votes when a caller explicitly passed `votingPeriodId` — it no longer auto-detected an existing voting period for the hostel+month. No caller ever passed one.
 - The owner-side Voting card and the tenant-side "Vote on this month's menu" section are both hidden.
-- Voting's schema (`food_voting_periods`, `food_votes`), API routes, and frontend hooks/components are all still present and functional, just unused by the current flow — reversible groundwork for a future, likely different, "polling" feature rather than the same voting model being wired back in as-is.
+- Voting's schema (`food_voting_periods`, `food_votes`), API routes, and frontend hooks/components are all still present and functional, just unused by the current flow — reversible groundwork for a future, likely different, "polling" feature rather than the same voting model being wired back in as-is. **This part is unaffected by the 2026-08-25 change** — the dormant voting system is still exactly as dormant as it was.
 
-See [[Food]] §10 for the full detail (what changed, what stayed, and what's still dormant infrastructure).
+See [[Food]] §10 for the full historical detail (what changed, what stayed, and what's still dormant infrastructure).
+
+## Manual-only food scheduling (2026-08-25)
+
+See [[Decisions#ADR-114|ADR-114]] and [[Food]] §18 for the full write-up. The owner builds the weekly Timetable entirely by hand — no algorithm ever chooses, ranks, or copies a dish. Concretely:
+
+- **No duplicate food within one meal slot.** Adding a library item already placed in that day+meal cell is a no-op (with an "Already added" indication), enforced once in a shared pure function so drag-add and tap-add can't drift apart. The same item is unaffected on a different day or a different meal type — those are separate cells.
+- **No maximum items per meal.** A section's chip list scrolls/wraps; nothing warns about or blocks how many dishes are placed in one cell.
+- **An incomplete week cannot be published.** Every individual empty day+meal cell blocks the Publish button until filled — the one exception to this module's general "publish checks only ever inform, never block" rule (§8's `variety`/`runs` checks still don't block; only emptiness does, since an empty cell is the literal placeholder tenants would otherwise see live, not a stylistic choice). The Ready-to-Publish panel itself stays a short summary line, not a per-cell enumeration.
+- **Every edit persists immediately — no Save button.** Add/remove/reorder each call the same PATCH endpoint directly, optimistically updated in the UI with rollback (and the existing error toast) on failure.
+- **Renaming a Food Library item updates its display on the Timetable without duplicating the item** — the Timetable resolves each placed dish's name live against the current library rather than trusting the cell's stored snapshot. Deleting a library item was, and remains, a soft-delete (`is_active=false`) — a historical or published schedule referencing it never breaks.
+- **Editing an already-published schedule is unchanged**: same row, live immediately, same undo toast — this rework changed how an edit is composed, not what happens once it's sent.
+- **Month navigation never seeds content.** A schedule row is created empty on demand (idempotent `POST /api/food/schedules`) the first time the owner opens a given month's Timetable; it never copies the previous month and never auto-selects a dish, regardless of how many times that month is revisited.
+- **A stale edit is rejected, not merged.** No realtime/multi-tab sync exists; the PATCH endpoint requires the client's last-known `updated_at` for the cell and refuses (`409`) if it doesn't match current, so a second tab's outdated click can't silently overwrite a newer one.
 
 ## Food Polls — ad-hoc, independent of the monthly voting window above (2026-08-08)
 
@@ -337,16 +352,29 @@ Real feature, `food_polls`/`food_poll_options`/`food_poll_votes` — deliberatel
 - `RATING`/`YES_NO` poll types still write to `food_poll_options` — the frontend resolves their fixed labels ("Yes"/"No", or "5 stars".."1 star") at creation time, so vote-counting logic never special-cases poll type.
 - `allow_multiple = true` polls toggle a tenant's vote per option (multi-select); `allow_multiple = false` polls replace — any other vote this tenant holds on the poll is removed first, and tapping the already-selected option unselects it.
 - `is_anonymous` is stored but has no current behavioral effect — no results view (owner or tenant) exposes a per-voter breakdown regardless of the flag, so there's nothing left to hide differently.
-- Auto-closes daily via the same cron that already closes the dormant voting window and carries schedules forward (`app/api/cron/food-carry-forward`), once `closes_at` passes.
+- Auto-closes daily via the same cron that already closes the dormant voting window (`app/api/cron/food-expiry`, renamed from `food-carry-forward` 2026-08-25 when its schedule-cloning responsibility was removed — [[Decisions#ADR-114|ADR-114]]), once `closes_at` passes.
 
 See [[Food]] §16 for full detail, including a documented minor inconsistency (the "Allow multiple selections" toggle is independent of the Poll Type selector, inherited unreconciled from the reference design).
+
+## A scheduled meal can hold more than one dish (2026-08-24)
+
+See [[Decisions#ADR-113|ADR-113]]. The weekly grain is unchanged — `food_schedule_meals` still keys exactly one row per `(schedule, day_of_week, meal_type)` — but that row's content is now an **ordered collection** of dishes, not one.
+
+- **The owner edits a cell's item list, one item at a time, persisted immediately** *(checklist-with-Save described below is 2026-08-25 history — see "Manual-only food scheduling" above; the Timetable adds/removes/reorders directly, no staged selection or Save button any more)*. There is no more "tap an item and it immediately overwrites the cell" either way — every edit is the cell's full ordered list.
+- **A meal may hold zero items.** An explicitly emptied cell is a valid, saved state, not an error — it renders like any other "Not set" cell everywhere it's read.
+- **Order is preserved and meaningful for display** ("Rice • Dal • Curry • Chutney"), but the publish-checklist's "same item dominates a meal type" / "repeats on consecutive days" warnings compare cells by their **set of dishes**, not display order — reordering a cell's items must not make an otherwise-identical repeat invisible to those checks.
+- ~~**"Move to another day" is disabled while a checklist edit is pending."**~~ *(Removed 2026-08-25 — cross-day swapping no longer exists in any form; see "Manual-only food scheduling" above.)*
+- **The Discovery-listing mess-menu importer is unaffected.** It reads a single denormalized text field per cell (comma-joined dish names, kept in sync automatically) for a one-time copy into the listing draft — see [[Decisions#ADR-077|ADR-077]] for why that's a separate, owner-reviewed copy rather than a live read of the schedule.
+- **The dormant monthly voting window (`food_votes`) is unrelated and untouched** — it already allowed a tenant to pick several items per meal type for *voting* purposes; this change is about what's actually served, not the vote.
+
+See [[Food]] for the full write-up.
 
 ## Meal Timings — permanent config, never re-entered into the weekly menu (2026-08-19)
 
 See [[Decisions#ADR-083|ADR-083]]. Two different things share the word "meal" and must stay separate:
 
 - **Meal Timings** (`preferences_config.meal_timings`) — *when* a meal is served. Owner-configured once per hostel, rarely changes.
-- **Weekly Menu** (`food_schedule_meals`) — *what* is served, per day. Changes every week; still has no time-of-day column and never will need one — a cell only ever holds a dish name.
+- **Weekly Menu** (`food_schedule_meals`) — *what* is served, per day. Changes every week; still has no time-of-day column and never will need one — a cell holds an ordered list of dishes (**since 2026-08-24**, see below), never a time.
 
 **Every reader composes the two rather than re-deriving a time.** The weekly schedule grid's meal-type header, the owner Today card, the tenant Next Serving card and Today's Meals list all read the same `meal_timings` and pair it with whichever day's `food_schedule_meals` row is relevant — none of them store or accept a time of their own.
 
@@ -508,6 +536,16 @@ See [[Decisions#ADR-077|ADR-077]]. Stayo stores a weekly menu twice, on purpose,
 - **`provided` defaults to false.** An unstated claim is false: silence renders as "Meals not provided", never as "meals included".
 - **The reviewer sees the whole week** before approving. Approving a menu you cannot read is not approval.
 
+## Resident reviews — the category set, and what "overall" means (2026-08-19, extended 2026-08-25)
+
+See [[Decisions#ADR-086|ADR-086]] and [[Decisions#ADR-115|ADR-115]]. See [[Database#hostel_reviews (migration 071 — 2026-08-19; confirmed applied to the dev Supabase project 2026-08-25)|hostel_reviews]] and [[APIs#Reviews|the Reviews API table]]. Who may write one, `stayed_here`/`stay_months`, and the identity-aware-but-public read path are covered by [[Decisions#ADR-086|ADR-086]] and [[Decisions#ADR-101|ADR-101]] — this section is about the review's own content, not who may submit it.
+
+- **The eight review categories** ([[Decisions#ADR-115|ADR-115]]) are Cleanliness, Maintenance, Food, Room Comfort, Amenities, Staff & Management, Safety, Wi-Fi — hostel-specific, not Airbnb's holiday-flat set (`value`/`location` were dropped). Food is the one category not always asked: a hostel with `food_included = false` is not scored on it.
+- **Overall Experience is a separate question, never an average of the categories** ([[Decisions#ADR-115|ADR-115]] reversed the original 2026-08-19 design here). The resident rates it directly; Discover's headline average is the mean of these standalone ratings, and each category has its own independent mean.
+- **Automatic topic/sentiment detection never gates moderation.** A comment's free text is classified into categories and sentiment (`hostel_review_topics`, via a deterministic keyword classifier) purely for the admin insights view — "what are residents talking about". A negative sentiment must never auto-reject a review, and the moderation decision path never reads this table. Legitimate negative feedback is exactly the feedback a hostel needs to see.
+- **Moderation is Stayo's, not the owner's.** `PUBLISH` / `REJECT` / `REQUEST_CHANGES` are admin-only actions, deliberately not delegated to the hostel's own owner — an owner choosing which reviews of their own hostel appear is a testimonial page, not a review system.
+- **No average below three published reviews** (`MIN_REVIEWS_FOR_AVERAGE`). Below the threshold the reviews themselves are shown and the score is not — a plausible-looking number computed from one or two accounts is worse than no number.
+
 ## Two tenant-ticket systems, kept deliberately separate (2026-08-16)
 
 See [[Decisions#ADR-079|ADR-079]]. Two different complaint/ticket paths exist and must never be merged or cross-linked at the data layer:
@@ -602,7 +640,7 @@ The strip's voice priority is **failed › paid today › pending › settled �
 
 ## Saving a floor's rooms, and removing a hostel (2026-08-24)
 
-**A floor save is a statement of what the floor is** ([[Decisions#ADR-097|ADR-097]]). `POST /api/floors/:id/rooms` takes the floor as it should be and makes it match, rather than only appending. Rules it enforces, all in the pure `planFloorRoomSave`:
+**A floor save is a statement of what the floor is** ([[Decisions#ADR-114|ADR-114]]). `POST /api/floors/:id/rooms` takes the floor as it should be and makes it match, rather than only appending. Rules it enforces, all in the pure `planFloorRoomSave`:
 
 - A room number is unique per hostel, and the DB index covers **inactive** rooms — so a retired room still owns its number. Re-adding that number revives the row; it never inserts a second one.
 - A number held by a **live** room on another floor is a conflict, and stays a 409. Two rooms claiming one number is the owner's call, not the server's.

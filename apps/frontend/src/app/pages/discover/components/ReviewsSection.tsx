@@ -1,5 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Clock, ShieldCheck, Star } from 'lucide-react';
+import {
+  Award,
+  Boxes,
+  Clock,
+  ShieldCheck,
+  ShowerHead,
+  Sparkles,
+  UtensilsCrossed,
+  Users,
+  Wifi,
+  Wrench,
+} from 'lucide-react';
 
 import { useHostelReviews, useSubmitReview } from '@features/discover/hooks/useDiscover';
 import type {
@@ -8,6 +19,7 @@ import type {
   ReviewEligibility,
   ReviewSummary,
 } from '@features/discover/api';
+import { StarRating } from '@shared/ui-patterns/StarRating';
 
 import { C, FONT } from '../discoverTheme';
 
@@ -19,7 +31,7 @@ import { C, FONT } from '../discoverTheme';
  * heading, no empty state and no explanation of the rules — a visitor browsing
  * a new hostel is not owed a paragraph about Stayo's moderation policy in the
  * place where reviews would be. It appears when there are reviews to read, or
- * when the person looking is a resident who can add one.
+ * when the person looking is a resident who can add one. See ADR-102.
  *
  * Three rules it still encodes:
  *
@@ -43,6 +55,7 @@ export function ReviewsSection({
 }) {
   const { data, isLoading, isError } = useHostelReviews(slug);
   const submit = useSubmitReview(slug);
+  const [showAll, setShowAll] = useState(false);
 
   /**
    * If the endpoint is unavailable, show nothing at all. A write box that
@@ -51,7 +64,8 @@ export function ReviewsSection({
   if (isError) return null;
 
   const summary = data?.summary;
-  const reviews = data?.reviews ?? [];
+  const allReviews = data?.reviews ?? [];
+  const reviews = showAll ? allReviews : allReviews.slice(0, 6);
   const mine = data?.mine ?? null;
   const categories = data?.categories ?? [];
   // `as const` keeps the fallback on the discriminated union rather than
@@ -70,14 +84,10 @@ export function ReviewsSection({
 
   /**
    * Nothing to read and nothing this person can do about it — so nothing at
-   * all. Previously this space held an explanation of who may review and a
-   * sign-in button, which is a paragraph about Stayo's rules standing in for
-   * the reviews someone came to read.
-   *
-   * `isLoading` keeps it collapsed until the answer is known, rather than
-   * flashing a heading that then disappears.
+   * all (ADR-102). `isLoading` keeps it collapsed until the answer is known,
+   * rather than flashing a heading that then disappears.
    */
-  if (isLoading || (reviews.length === 0 && !canWrite && !mine)) return null;
+  if (isLoading || (allReviews.length === 0 && !canWrite && !mine)) return null;
 
   return (
     <section className="mt-7">
@@ -111,6 +121,17 @@ export function ReviewsSection({
         </div>
       )}
 
+      {!showAll && allReviews.length > reviews.length && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="mt-3 rounded-[11px] border px-4 py-2.5 text-[12.5px] font-bold"
+          style={{ borderColor: C.line, color: C.text, fontFamily: FONT.display }}
+        >
+          Show all {allReviews.length} reviews
+        </button>
+      )}
+
       {/* Only for someone who can actually use it. A reader who has never
           lived here is shown the reviews and nothing else — no locked box
           explaining why they may not write one. */}
@@ -119,16 +140,41 @@ export function ReviewsSection({
           mine={mine}
           tenancy={tenancy}
           categories={categories}
+          hostelName={hostelName}
           pending={submit.isPending}
           error={(submit.error as any)?.response?.data?.message ?? null}
-          onSubmit={(scores, body) => submit.mutate({ categories: scores, body })}
+          onSubmit={(overall, scores, body) => submit.mutate({ overall, categories: scores, body })}
         />
       )}
     </section>
   );
 }
 
-/** The overall score and what it is made of — Airbnb's breakdown. */
+/** A small icon per category — decoration, not information, so a missing key just renders nothing. */
+const CATEGORY_ICONS: Record<string, typeof Sparkles> = {
+  cleanliness: Sparkles,
+  maintenance: Wrench,
+  food: UtensilsCrossed,
+  room_comfort: ShowerHead,
+  amenities: Boxes,
+  staff: Users,
+  safety: ShieldCheck,
+  wifi: Wifi,
+};
+
+/** Friendly tag for a highly-rated category — matches `deriveHighlights` on the backend. */
+const HIGHLIGHT_LABELS: Record<string, string> = {
+  cleanliness: 'Clean Rooms',
+  maintenance: 'Well Maintained',
+  food: 'Good Food',
+  room_comfort: 'Comfortable Rooms',
+  amenities: 'Good Amenities',
+  staff: 'Helpful Staff',
+  safety: 'Safe Environment',
+  wifi: 'Good Wi-Fi',
+};
+
+/** The overall score and what it is made of — Airbnb's breakdown, Stayo's categories. */
 function ScoreBlock({ summary }: { summary: ReviewSummary }) {
   return (
     <div className="mt-3">
@@ -139,59 +185,78 @@ function ScoreBlock({ summary }: { summary: ReviewSummary }) {
         >
           {summary.average!.toFixed(1)}
         </span>
-        <Stars value={Math.round(summary.average!)} size={16} />
+        <div className="flex flex-col gap-1">
+          <StarRating value={Math.round(summary.average!)} size={16} color={C.clay} emptyColor="#DFD5C9" />
+          {summary.isResidentFavourite && (
+            <span
+              className="flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold"
+              style={{ background: C.greenPale, color: C.green }}
+            >
+              <Award className="h-2.5 w-2.5" strokeWidth={2.4} />
+              RESIDENT FAVOURITE
+            </span>
+          )}
+        </div>
       </div>
 
       {summary.categories.length > 0 && (
         <div className="mt-3.5 grid gap-x-6 gap-y-2.5 sm:grid-cols-2">
-          {summary.categories.map((category) => (
-            <div key={category.key} className="flex items-center gap-3">
-              <span className="min-w-0 flex-1 truncate text-[12px]" style={{ color: C.textBody }}>
-                {category.label}
-              </span>
-              {/* A bar, not five stars: at this size a bar compares across rows
-                  at a glance and stars do not. */}
-              <span className="h-[3px] w-[72px] flex-none rounded-full" style={{ background: C.line }}>
+          {summary.categories.map((category) => {
+            const Icon = CATEGORY_ICONS[category.key];
+            return (
+              <div key={category.key} className="flex items-center gap-2">
+                {Icon && <Icon className="h-3 w-3 flex-none" strokeWidth={1.8} style={{ color: C.textGhost }} />}
+                <span className="min-w-0 flex-1 truncate text-[12px]" style={{ color: C.textBody }}>
+                  {category.label}
+                </span>
+                {/* A bar, not five stars: at this size a bar compares across rows
+                    at a glance and stars do not. */}
+                <span className="h-[3px] w-[72px] flex-none rounded-full" style={{ background: C.line }}>
+                  <span
+                    className="block h-full rounded-full"
+                    style={{ width: `${(category.average / 5) * 100}%`, background: C.clay }}
+                  />
+                </span>
                 <span
-                  className="block h-full rounded-full"
-                  style={{ width: `${(category.average / 5) * 100}%`, background: C.clay }}
-                />
-              </span>
+                  className="w-7 flex-none text-right text-[12px] font-bold tabular-nums"
+                  style={{ fontFamily: FONT.display, color: C.text }}
+                >
+                  {category.average.toFixed(1)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {summary.highlights.length > 0 && (
+        <div className="mt-4">
+          <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.textMuted }}>
+            Residents mention
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {summary.highlights.slice(0, 6).map((highlight) => (
               <span
-                className="w-7 flex-none text-right text-[12px] font-bold tabular-nums"
-                style={{ fontFamily: FONT.display, color: C.text }}
+                key={highlight.label}
+                className="rounded-[7px] px-2.5 py-1.5 text-[11px] font-semibold"
+                style={{ background: C.chipBg, color: '#6E6459' }}
               >
-                {category.average.toFixed(1)}
+                {highlight.label} · {highlight.count}
               </span>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-function Stars({ value, size = 14 }: { value: number; size?: number }) {
-  return (
-    <span className="flex items-center gap-0.5" aria-label={`${value} out of 5`}>
-      {[1, 2, 3, 4, 5].map((star) => (
-        <Star
-          key={star}
-          className="flex-none"
-          style={{
-            width: size,
-            height: size,
-            color: star <= value ? C.clay : '#DFD5C9',
-            fill: star <= value ? C.clay : 'transparent',
-          }}
-          strokeWidth={1.8}
-        />
-      ))}
-    </span>
-  );
-}
-
 function ReviewCard({ review }: { review: HostelReview }) {
+  const tags = review.categories
+    .filter((category) => category.rating != null && category.rating >= 4)
+    .map((category) => HIGHLIGHT_LABELS[category.key])
+    .filter(Boolean);
+
   return (
     <article className="rounded-2xl border bg-white p-4" style={{ borderColor: C.line }}>
       <div className="flex items-center justify-between gap-3">
@@ -204,10 +269,10 @@ function ReviewCard({ review }: { review: HostelReview }) {
             style={{ background: C.greenPale, color: C.green }}
           >
             <ShieldCheck className="h-2.5 w-2.5" strokeWidth={2.4} />
-            {review.stayed_here ? 'LIVED HERE' : 'RESIDENT'}
+            {review.stay_duration ? `VERIFIED RESIDENT · ${review.stay_duration.toUpperCase()}` : review.stayed_here ? 'LIVED HERE' : 'RESIDENT'}
           </span>
         </div>
-        <Stars value={review.rating} />
+        <StarRating value={review.rating} color={C.clay} emptyColor="#DFD5C9" />
       </div>
 
       {review.body && (
@@ -216,15 +281,15 @@ function ReviewCard({ review }: { review: HostelReview }) {
         </p>
       )}
 
-      {review.categories.length > 0 && (
+      {tags.length > 0 && (
         <div className="mt-2.5 flex flex-wrap gap-1.5">
-          {review.categories.map((category) => (
+          {tags.map((tag) => (
             <span
-              key={category.key}
+              key={tag}
               className="rounded-[7px] px-2 py-1 text-[10.5px] font-semibold"
               style={{ background: C.chipBg, color: '#6E6459' }}
             >
-              {category.label} {category.rating}
+              {tag}
             </span>
           ))}
         </div>
@@ -236,17 +301,15 @@ function ReviewCard({ review }: { review: HostelReview }) {
 /**
  * The write box, in two states: eligible-and-writing, and already written.
  *
- * It used to carry two more — "not signed in" and "signed in but never lived
- * here" — each a card explaining the rule and, for the first, a Sign in
- * button. Both are gone: `ReviewsSection` now renders this only for someone
- * who can actually use it, so a visitor who has never lived here sees the
- * reviews and nothing else rather than a locked box about why they may not
- * write one.
+ * `ReviewsSection` renders this only for someone who can actually use it, so
+ * a visitor who has never lived here sees the reviews and nothing else,
+ * never a locked box about why they may not write one (ADR-102).
  */
 function ReviewBox({
   mine,
   tenancy,
   categories,
+  hostelName,
   pending,
   error,
   onSubmit,
@@ -255,10 +318,12 @@ function ReviewBox({
   /** Whether they live here now or used to — the box says which. */
   tenancy: 'ACTIVE' | 'FORMER' | null;
   categories: { key: string; label: string }[];
+  hostelName: string;
   pending: boolean;
   error: string | null;
-  onSubmit: (categories: Record<string, number>, body: string | null) => void;
+  onSubmit: (overall: number, categories: Record<string, number>, body: string | null) => void;
 }) {
+  const [overall, setOverall] = useState(0);
   const [scores, setScores] = useState<Record<string, number>>({});
   const [body, setBody] = useState(mine?.body ?? '');
   const [editing, setEditing] = useState(false);
@@ -276,15 +341,17 @@ function ReviewBox({
         ? 'With Stayo for checking — it appears here once approved.'
         : mine.status === 'PUBLISHED'
           ? 'Published — this is live on the listing.'
-          : mine.moderation_note
-            ? `Not published. Stayo said: ${mine.moderation_note}`
-            : 'Not published.';
+          : mine.status === 'CHANGES_REQUESTED'
+            ? `Stayo asked for changes: ${mine.moderation_note ?? 'see the note below.'} Edit and resend.`
+            : mine.moderation_note
+              ? `Not published. Stayo said: ${mine.moderation_note}`
+              : 'Not published.';
 
     return (
       <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: C.line, background: C.cardWarm }}>
         <div className="flex items-center justify-between gap-3">
           <span className="text-[12.5px] font-bold" style={{ color: C.text }}>Your review</span>
-          <Stars value={mine.rating} />
+          <StarRating value={mine.rating} color={C.clay} emptyColor="#DFD5C9" />
         </div>
         {mine.body && (
           <p className="mt-2 text-[12.5px] leading-[1.65]" style={{ color: C.textBody }}>{mine.body}</p>
@@ -293,7 +360,9 @@ function ReviewBox({
           className="mt-2.5 flex items-center gap-1.5 text-[11px]"
           style={{ color: mine.status === 'PUBLISHED' ? C.green : C.textMuted }}
         >
-          {mine.status === 'PENDING' && <Clock className="h-3 w-3" strokeWidth={2} />}
+          {(mine.status === 'PENDING' || mine.status === 'CHANGES_REQUESTED') && (
+            <Clock className="h-3 w-3" strokeWidth={2} />
+          )}
           {statusText}
         </p>
         <button
@@ -309,7 +378,7 @@ function ReviewBox({
   }
 
   const answered = categories.filter((category) => scores[category.key]).length;
-  const complete = categories.length > 0 && answered === categories.length;
+  const complete = categories.length > 0 && answered === categories.length && overall > 0;
 
   return (
     <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: C.line, background: C.cardWarm }}>
@@ -317,39 +386,44 @@ function ReviewBox({
         {mine ? 'Edit your review' : 'Rate your stay'}
       </p>
       <p className="mt-1 text-[11px]" style={{ color: C.textMuted }}>
-        {tenancy === 'ACTIVE' ? 'You live here now.' : 'You lived here.'} Score each part —
-        the overall rating is worked out from these.
+        {tenancy === 'ACTIVE' ? 'You live here now.' : 'You lived here.'} Tell us about your overall
+        experience, then score each part of it.
       </p>
 
+      <div className="mt-3 flex items-center justify-between gap-3 border-b pb-3" style={{ borderColor: C.line }}>
+        <span className="text-[12.5px] font-bold" style={{ color: C.textBody }}>
+          Overall Experience
+        </span>
+        <StarRating
+          value={overall}
+          size={19}
+          color={C.clay}
+          emptyColor="#DFD5C9"
+          label="Overall Experience"
+          onRate={setOverall}
+        />
+      </div>
+
       <div className="mt-3 flex flex-col gap-2.5">
-        {categories.map((category) => (
-          <div key={category.key} className="flex items-center justify-between gap-3">
-            <span className="min-w-0 flex-1 truncate text-[12.5px]" style={{ color: C.textBody }}>
-              {category.label}
-            </span>
-            <span className="flex flex-none items-center gap-0.5">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button
-                  key={star}
-                  type="button"
-                  aria-label={`${category.label}: ${star} star${star > 1 ? 's' : ''}`}
-                  aria-pressed={scores[category.key] === star}
-                  onClick={() => setScores((current) => ({ ...current, [category.key]: star }))}
-                  className="p-0.5 transition-transform active:scale-90"
-                >
-                  <Star
-                    className="h-[19px] w-[19px]"
-                    strokeWidth={1.8}
-                    style={{
-                      color: star <= (scores[category.key] ?? 0) ? C.clay : '#DFD5C9',
-                      fill: star <= (scores[category.key] ?? 0) ? C.clay : 'transparent',
-                    }}
-                  />
-                </button>
-              ))}
-            </span>
-          </div>
-        ))}
+        {categories.map((category) => {
+          const Icon = CATEGORY_ICONS[category.key];
+          return (
+            <div key={category.key} className="flex items-center justify-between gap-3">
+              <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-[12.5px]" style={{ color: C.textBody }}>
+                {Icon && <Icon className="h-3.5 w-3.5 flex-none" strokeWidth={1.8} style={{ color: C.textGhost }} />}
+                {category.label}
+              </span>
+              <StarRating
+                value={scores[category.key] ?? 0}
+                size={19}
+                color={C.clay}
+                emptyColor="#DFD5C9"
+                label={category.label}
+                onRate={(star) => setScores((current) => ({ ...current, [category.key]: star }))}
+              />
+            </div>
+          );
+        })}
       </div>
 
       <textarea
@@ -357,7 +431,7 @@ function ReviewBox({
         onChange={(event) => setBody(event.target.value)}
         rows={4}
         maxLength={1500}
-        placeholder="What was it actually like to live here? The things you wish you had known."
+        placeholder="Tell us about your experience staying here"
         className="mt-3 w-full resize-none rounded-[12px] border bg-white p-3 text-[12.5px] leading-[1.6] outline-none"
         style={{ borderColor: C.lineInput, color: C.textBody }}
       />
@@ -375,7 +449,7 @@ function ReviewBox({
         <button
           type="button"
           disabled={!complete || pending}
-          onClick={() => onSubmit(scores, body.trim() || null)}
+          onClick={() => onSubmit(overall, scores, body.trim() || null)}
           className="rounded-[11px] px-4 py-2.5 text-[12.5px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
           style={{ background: C.clayDeep, fontFamily: FONT.display }}
         >
@@ -383,7 +457,7 @@ function ReviewBox({
         </button>
         {!complete && (
           <span className="text-[11px]" style={{ color: C.textMuted }}>
-            {answered} of {categories.length} rated
+            {overall === 0 ? 'Rate your overall experience' : `${answered} of ${categories.length} rated`}
           </span>
         )}
         {mine && complete && (

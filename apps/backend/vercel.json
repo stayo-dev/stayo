@@ -12,7 +12,7 @@
       "schedule": "0 2 * * *"
     },
     {
-      "path": "/api/cron/food-carry-forward",
+      "path": "/api/cron/food-expiry",
       "schedule": "0 1 * * *"
     },
     {

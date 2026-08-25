@@ -23,6 +23,9 @@ export interface DiscoverCard {
   name: string;
   city: string | null;
   address: string;
+  /** Owner-confirmed map pin. Null until the owner sets one — never 0,0. */
+  latitude: number | null;
+  longitude: number | null;
   hostel_type: HostelType | null;
   food_included: boolean;
   verified: boolean;
@@ -122,10 +125,13 @@ export interface ReviewCategoryScore {
 
 export interface HostelReview {
   id: string;
+  /** Overall Experience — given directly by the resident, not derived from categories. */
   rating: number;
   body: string | null;
   /** Every reviewer held a tenancy here — the badge marks a stay that ended. */
   stayed_here: boolean;
+  /** "Stayed 6 months" — null for reviews written before this was tracked. */
+  stay_duration: string | null;
   created_at: string;
   /** "Sharan K." — never a full name, an email or a phone number. */
   author: string;
@@ -140,6 +146,10 @@ export interface ReviewSummary {
   /** Per-category means; empty until the overall average is shown too. */
   categories: { key: string; label: string; average: number; count: number }[];
   emptyReason: 'NONE_YET' | 'TOO_FEW' | null;
+  /** Stayo's "Resident Favourite" label — high average, and enough reviews to trust it. */
+  isResidentFavourite: boolean;
+  /** "Residents mention" tags, most-common first. */
+  highlights: { label: string; count: number }[];
 }
 
 /** Whether the reader may write a review here, decided by the server. */
@@ -152,9 +162,10 @@ export interface MyReview {
   id: string;
   rating: number;
   body: string | null;
-  status: 'PENDING' | 'PUBLISHED' | 'REJECTED';
+  status: 'PENDING' | 'PUBLISHED' | 'REJECTED' | 'CHANGES_REQUESTED';
   moderation_note: string | null;
   created_at: string;
+  stay_duration: string | null;
 }
 
 export interface HostelReviewsPayload {
@@ -221,7 +232,10 @@ export const discoverService = {
    * Write or replace a review. Always lands as PENDING — nothing a visitor
    * writes reaches a listing without an admin publishing it.
    */
-  submitReview: async (slug: string, input: { categories: Record<string, number>; body?: string | null }) => {
+  submitReview: async (
+    slug: string,
+    input: { overall: number; categories: Record<string, number>; body?: string | null },
+  ) => {
     const response = await api.post(`/discover/hostels/${encodeURIComponent(slug)}/reviews`, input);
     return unwrap(response);
   },

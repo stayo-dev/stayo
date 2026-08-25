@@ -11,7 +11,7 @@ import { useNow } from '@features/food/hooks/useNow';
 import { formatTimeRange, mealStatusAt, nextServingAt } from '@features/food/mealTimings';
 import { NextServingCard } from '@features/food/components/NextServingCard';
 import { mealIcon } from '@features/owner-food/mealIcons';
-import { SLOT_ORDER } from '@features/owner-food/weekGrid';
+import { formatCellItems, SLOT_ORDER, type WeekGridItem } from '@features/owner-food/weekGrid';
 
 const card = 'rounded-[16px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]';
 const sectionLabel = 'text-[13px] font-bold uppercase tracking-wide text-muted-foreground';
@@ -27,6 +27,11 @@ const DAY_LABEL: Record<DayKey, string> = { MONDAY: 'Mon', TUESDAY: 'Tue', WEDNE
 function todayKey(): DayKey {
   const jsDay = new Date().getDay();
   return DAY_ORDER[(jsDay + 6) % 7];
+}
+
+/** `formatCellItems` for a tenant-schedule cell (which carries `food_schedule_meal_items` on the wire, not `items`). */
+function cellItems(cell: { food_schedule_meal_items: WeekGridItem[] } | null | undefined): string {
+  return formatCellItems(cell ? { items: cell.food_schedule_meal_items } : null);
 }
 
 function FoodLoadingSkeleton() {
@@ -59,8 +64,9 @@ export function TenantFoodPage() {
     : [];
 
   const upcoming = nextServingAt(mealTimings.mealTimings, now);
+  const upcomingCell = upcoming ? currentMonth?.grid[today]?.[upcoming.slot] : null;
   const nextServing = upcoming
-    ? { ...upcoming, itemName: currentMonth?.grid[today]?.[upcoming.slot]?.item_name ?? null }
+    ? { ...upcoming, itemName: upcomingCell ? cellItems(upcomingCell) : null }
     : null;
 
   const researchPoll = polls.polls[0] ?? null;
@@ -100,7 +106,7 @@ export function TenantFoodPage() {
                   <button
                     key={slot}
                     type="button"
-                    onClick={() => setOpenMeal({ name: cell!.item_name, slot })}
+                    onClick={() => setOpenMeal({ name: cellItems(cell), slot })}
                     className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-3 text-left ${i > 0 ? 'border-t border-border' : ''} ${status === 'SERVING_NOW' ? 'bg-secondary/40' : ''}`}
                   >
                     <span className="flex h-10 w-10 flex-none items-center justify-center rounded-[11px] bg-secondary text-primary">
@@ -110,7 +116,7 @@ export function TenantFoodPage() {
                       <div className={`text-[10px] font-semibold uppercase tracking-wide ${status === 'SERVING_NOW' ? 'text-success' : 'text-[#A2978B]'}`}>
                         {MEAL_CATEGORY_META[slot].label} · {formatTimeRange(entry)}
                       </div>
-                      <div className="mt-0.5 font-display text-[15.5px] font-bold tracking-[-0.01em] text-foreground">{cell!.item_name}</div>
+                      <div className="mt-0.5 font-display text-[15.5px] font-bold tracking-[-0.01em] text-foreground">{cellItems(cell)}</div>
                     </div>
                     <span className={`flex-none rounded-full px-2.5 py-1 text-[10px] font-bold ${pill.className}`}>{pill.label}</span>
                   </button>
@@ -177,8 +183,8 @@ export function TenantFoodPage() {
             </div>
             <div className={`${card} px-3.5 py-1`}>
               {DAY_ORDER.map((day, i) => {
-                const lunch = currentMonth.grid[day]?.lunch?.item_name;
-                const dinner = currentMonth.grid[day]?.dinner?.item_name;
+                const lunch = cellItems(currentMonth.grid[day]?.lunch);
+                const dinner = cellItems(currentMonth.grid[day]?.dinner);
                 const isToday = day === today;
                 return (
                   <div key={day} className={`flex items-center gap-3 py-[11px] ${i > 0 ? 'border-t border-border' : ''}`}>
@@ -186,8 +192,8 @@ export function TenantFoodPage() {
                       <span className={`text-[8.5px] font-bold uppercase tracking-wide ${isToday ? 'text-[#C9BFB4]' : 'text-[#A2978B]'}`}>{DAY_LABEL[day]}</span>
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate font-display text-[13.5px] font-bold tracking-[-0.01em] text-foreground">{lunch ?? 'Not set'}</div>
-                      <div className="mt-0.5 truncate text-[11.5px] font-medium text-muted-foreground">Dinner · {dinner ?? 'Not set'}</div>
+                      <div className="truncate font-display text-[13.5px] font-bold tracking-[-0.01em] text-foreground">{lunch}</div>
+                      <div className="mt-0.5 truncate text-[11.5px] font-medium text-muted-foreground">Dinner · {dinner}</div>
                     </div>
                     {isToday && <span className="flex-none rounded-full bg-success-bg px-2.5 py-1 text-[9.5px] font-bold text-success">Today</span>}
                   </div>

@@ -1579,24 +1579,29 @@ model hostel_reviews {
   hostel_id       String    @db.Uuid
   profile_id      String    @db.Uuid
 
-  /// 1–5, the mean of the categories below. Constrained in the database, not
-  /// only in the service.
+  /// 1–5, given directly by the resident as its own question (migration 076)
+  /// — not derived from the categories below. Constrained in the database,
+  /// not only in the service.
   rating          Int       @db.SmallInt
 
-  /// Per-category scores (migration 072), in Airbnb's shape. All nullable:
-  /// `food` does not apply to a hostel that serves no meals, and reviews
-  /// written before 072 have none of them. Averages skip what was not
-  /// answered rather than counting it as zero.
-  rating_cleanliness Int?   @db.SmallInt
-  rating_food        Int?   @db.SmallInt
-  rating_safety      Int?   @db.SmallInt
-  rating_staff       Int?   @db.SmallInt
-  rating_value       Int?   @db.SmallInt
-  rating_location    Int?   @db.SmallInt
+  /// Per-category scores, hostel-specific (migration 076 replaced Airbnb's
+  /// six with these eight). All nullable: `food` does not apply to a hostel
+  /// that serves no meals, and reviews written before their migration have
+  /// none of the columns added after it. Averages skip what was not answered
+  /// rather than counting it as zero.
+  rating_cleanliness  Int?   @db.SmallInt
+  rating_maintenance  Int?   @db.SmallInt
+  rating_food         Int?   @db.SmallInt
+  rating_room_comfort Int?   @db.SmallInt
+  rating_amenities    Int?   @db.SmallInt
+  /// Labelled "Staff & Management" in the app; column name predates that copy.
+  rating_staff        Int?   @db.SmallInt
+  rating_safety       Int?   @db.SmallInt
+  rating_wifi         Int?   @db.SmallInt
   body            String?
 
-  /// PENDING | PUBLISHED | REJECTED — a plain string, like the rest of this
-  /// schema's moderation columns.
+  /// PENDING | PUBLISHED | REJECTED | CHANGES_REQUESTED — a plain string,
+  /// like the rest of this schema's moderation columns.
   status          String    @default("PENDING")
 
   /// Whether this person has ever held a tenancy at this hostel, snapshotted
@@ -1604,9 +1609,15 @@ model hostel_reviews {
   /// on the published review — never a gate on who may write one.
   stayed_here     Boolean   @default(false)
 
+  /// Stay duration in months, snapshotted at submit time (migration 076) —
+  /// same reasoning as `stayed_here`: a live join against the tenancy would
+  /// drift as the tenancy changes after the review is written.
+  stay_months     Int?      @db.SmallInt
+
   moderated_at    DateTime? @db.Timestamptz(6)
   moderated_by    String?   @db.Uuid
-  /// Why it was rejected. Shown to the author, so a "no" arrives with a reason.
+  /// Why it was rejected or what changes were asked for. Shown to the author,
+  /// so a "no" arrives with a reason.
   moderation_note String?
 
   created_at      DateTime  @default(now()) @db.Timestamptz(6)
@@ -1614,6 +1625,7 @@ model hostel_reviews {
 
   hostel          hostels   @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
   profile         profile   @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+  topics          hostel_review_topics[]
 
   /// One review per person per hostel — an edit replaces it and returns to the
   /// queue, rather than stacking a second opinion from the same account.
@@ -1621,6 +1633,28 @@ model hostel_reviews {
   @@index([hostel_id, status], map: "idx_hostel_reviews_hostel_status")
   @@index([status, created_at(sort: Desc)], map: "idx_hostel_reviews_status_created")
   @@map("hostel_reviews")
+}
+
+/// Automatic topic + sentiment detection on a review's free-text body
+/// (migration 076) — distinct from the resident-given category stars on
+/// `hostel_reviews` above. A resident rates Wi-Fi with their thumb; this
+/// table is what the system inferred from what they typed, for admin
+/// insights. One review can produce several rows — a comment naming three
+/// topics is three rows. Never read by the moderation decision path:
+/// sentiment here is an insight signal, not a publish/reject gate.
+model hostel_review_topics {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  review_id   String   @db.Uuid
+  category    String
+  sentiment   String
+  confidence  Float    @default(0)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  review      hostel_reviews @relation(fields: [review_id], references: [id], onDelete: Cascade)
+
+  @@index([review_id], map: "idx_hostel_review_topics_review")
+  @@index([category, sentiment], map: "idx_hostel_review_topics_category_sentiment")
+  @@map("hostel_review_topics")
 }
 
 model lead_activities {
@@ -3016,17 +3050,18 @@ enum FoodScheduleSource {
 /// maintains this over time; items are deactivated (never hard-deleted) once
 /// referenced by a schedule, so past months' schedules stay intact.
 model food_menu_items {
-  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  hostel_id           String                @db.Uuid
-  owner_id            String                @db.Uuid
-  meal_type           FoodMealType
-  name                String
-  is_active           Boolean               @default(true)
-  created_at          DateTime              @default(now()) @db.Timestamptz(6)
-  updated_at          DateTime?             @db.Timestamptz(6)
-  hostels             hostels               @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
-  food_votes          food_votes[]
-  food_schedule_meals food_schedule_meals[]
+  id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hostel_id                 String                      @db.Uuid
+  owner_id                  String                      @db.Uuid
+  meal_type                 FoodMealType
+  name                      String
+  is_active                 Boolean                     @default(true)
+  created_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime?                   @db.Timestamptz(6)
+  hostels                   hostels                     @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
+  food_votes                food_votes[]
+  food_schedule_meals       food_schedule_meals[]
+  food_schedule_meal_items  food_schedule_meal_items[]
 
   @@unique([hostel_id, meal_type, name])
   @@index([hostel_id, meal_type])
@@ -3094,21 +3129,47 @@ model food_schedules {
   @@unique([hostel_id, month])
 }
 
-/// 7 days x 4 meal types = 28 rows per schedule. `item_name` is a denormalized
-/// snapshot at assignment time so history survives a later library-item edit/deactivation.
+/// 7 days x 4 meal types = 28 rows per schedule. `menu_item_id`/`item_name`
+/// are a legacy single-item snapshot, kept as an auto-maintained denormalized
+/// cache (first item's id, all item names comma-joined in display order) so
+/// the Discovery/marketing mess-menu importer — which reads `item_name`
+/// directly, see `src/services/marketing/mess-import.ts` — keeps working
+/// without modification. The real, ordered, multi-item content lives in
+/// `food_schedule_meal_items`.
 model food_schedule_meals {
-  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schedule_id     String           @db.Uuid
-  day_of_week     FoodDayOfWeek
-  meal_type       FoodMealType
-  menu_item_id    String?          @db.Uuid
-  item_name       String
-  created_at      DateTime         @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime?        @db.Timestamptz(6)
-  food_schedules  food_schedules   @relation(fields: [schedule_id], references: [id], onDelete: Cascade)
-  food_menu_items food_menu_items? @relation(fields: [menu_item_id], references: [id], onDelete: SetNull)
+  id                       String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schedule_id              String                      @db.Uuid
+  day_of_week              FoodDayOfWeek
+  meal_type                FoodMealType
+  menu_item_id             String?                     @db.Uuid
+  item_name                String
+  created_at               DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime?                   @db.Timestamptz(6)
+  food_schedules           food_schedules              @relation(fields: [schedule_id], references: [id], onDelete: Cascade)
+  food_menu_items          food_menu_items?            @relation(fields: [menu_item_id], references: [id], onDelete: SetNull)
+  food_schedule_meal_items food_schedule_meal_items[]
 
   @@unique([schedule_id, day_of_week, meal_type])
+}
+
+/// The ordered dishes within one `food_schedule_meals` cell — what makes
+/// "Monday Lunch" hold Rice + Dal + Curry + Chutney instead of one item.
+/// `menu_item_id` is nullable so a library item's later deletion doesn't
+/// break history; `item_name` is a denormalized snapshot at assignment time,
+/// same rationale as the parent's legacy field.
+model food_schedule_meal_items {
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schedule_meal_id    String              @db.Uuid
+  menu_item_id        String?             @db.Uuid
+  item_name           String
+  display_order       Int                 @default(0)
+  created_at          DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime?           @db.Timestamptz(6)
+  food_schedule_meals food_schedule_meals @relation(fields: [schedule_meal_id], references: [id], onDelete: Cascade)
+  food_menu_items     food_menu_items?    @relation(fields: [menu_item_id], references: [id], onDelete: SetNull)
+
+  @@unique([schedule_meal_id, display_order])
+  @@index([schedule_meal_id])
 }
 
 // ============================================================

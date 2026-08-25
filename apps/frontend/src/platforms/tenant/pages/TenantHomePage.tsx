@@ -8,6 +8,7 @@ import { useTenantMealTimings } from '@features/food/hooks/useTenantMealTimings'
 import { useNow } from '@features/food/hooks/useNow';
 import { nextServingAt } from '@features/food/mealTimings';
 import { NextServingCard } from '@features/food/components/NextServingCard';
+import { formatCellItems } from '@features/owner-food/weekGrid';
 import { PaySheet } from '@features/tenant-financials/components/PaySheet';
 import { ProfileCompletionNudge } from '../components/ProfileCompletionNudge';
 
@@ -46,8 +47,9 @@ export function TenantHomePage() {
   if (home.isLoading) return <LoadingSkeleton />;
 
   const upcomingMeal = nextServingAt(mealTimings.mealTimings, now);
+  const upcomingCell = upcomingMeal ? home.todaysMeals.find((m) => m.slot === upcomingMeal.slot)?.cell : null;
   const nextServing = upcomingMeal
-    ? { ...upcomingMeal, itemName: home.todaysMeals.find((m) => m.slot === upcomingMeal.slot)?.cell?.item_name ?? null }
+    ? { ...upcomingMeal, itemName: upcomingCell ? formatCellItems({ items: upcomingCell.food_schedule_meal_items }) : null }
     : null;
 
   const payableItems = (fin.readModel?.items ?? []).filter((i: any) => i.legacy_status !== 'UPCOMING');
