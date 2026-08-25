@@ -35,6 +35,9 @@ import { ReviewsSection } from './components/ReviewsSection';
 import { MediaLightbox } from './components/MediaLightbox';
 import { PhotoTour } from './components/PhotoTour';
 import { useShareHostel } from '@shared/hooks/useShareHostel';
+import ShareSheet from '@shared/ui-patterns/ShareSheet';
+import { buildShareSummary, buildShareUrl } from '@shared/lib/shareListing';
+import { copyToClipboard } from '@lib/share';
 
 const MESS_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 
@@ -118,6 +121,8 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
   const { data: saved } = useSavedHostels();
   const toggleSaved = useToggleSaved();
   const { share } = useShareHostel();
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
 
   const [selected, setSelected] = useState<number | null>(null);
   const [photoIndex, setPhotoIndex] = useState(0);
@@ -294,7 +299,7 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
             <div className="flex flex-none items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => share({ name: hostel.name, slug: slug as string, city: hostel.city })}
+                onClick={() => { setShareCopied(false); setShareOpen(true); }}
                 className="flex h-9 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-semibold underline-offset-4 transition-colors hover:bg-white hover:underline"
                 style={{ color: C.textBody }}
               >
@@ -602,7 +607,7 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
               <button
                 type="button"
                 aria-label={`Share ${hostel.name}`}
-                onClick={() => share({ name: hostel.name, slug: slug as string, city: hostel.city })}
+                onClick={() => { setShareCopied(false); setShareOpen(true); }}
                 className="flex h-9 items-center gap-1.5 rounded-full border px-3 transition-colors hover:bg-white"
                 style={{ borderColor: C.line, background: C.cardWarm }}
               >
@@ -989,7 +994,15 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
                     title={`Map showing ${hostel.name}`}
                     loading="lazy"
                     referrerPolicy="no-referrer-when-downgrade"
-                    className="block h-[240px] w-full"
+                    /*
+                      Google decides whether to show the place card — name,
+                      address, rating — or collapse to a bare "Open in Maps"
+                      chip, and it decides from the iframe's size. At 240px it
+                      collapses. Taller gives it room to show the card; the
+                      card is Google's call, not ours, so this is the lever we
+                      have rather than a guarantee.
+                    */
+                    className="block h-[320px] w-full sm:h-[380px]"
                     allowFullScreen
                     style={{ border: 0 }}
                   />
@@ -1202,6 +1215,33 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
           Enquire
         </PrimaryButton>
       </div>
+
+      <ShareSheet
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        hostel={{ name: hostel.name, slug: slug as string, city: hostel.city }}
+        url={buildShareUrl(slug as string, window.location.origin)}
+        photoUrl={(hostel.photos ?? [])[0] ?? null}
+        summary={buildShareSummary({
+          city: hostel.city,
+          hostelType: hostel.hostel_type,
+          startingPrice: hostel.starting_price ?? null,
+          rating: hostel.rating ?? null,
+          reviewCount: hostel.review_count ?? null,
+        })}
+        copied={shareCopied}
+        onCopy={async () => {
+          const ok = await copyToClipboard(buildShareUrl(slug as string, window.location.origin));
+          setShareCopied(ok);
+        }}
+        // Only offered where the OS sheet exists — it is the one route to
+        // Instagram and to recent contacts, so it is kept, not replaced.
+        onNativeShare={
+          typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+            ? () => share({ name: hostel.name, slug: slug as string, city: hostel.city })
+            : null
+        }
+      />
     </div>
   );
 }

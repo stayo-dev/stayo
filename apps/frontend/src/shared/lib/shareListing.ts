@@ -65,3 +65,110 @@ export function shouldFallbackAfterShareError(error: unknown): boolean {
   const name = (error as { name?: string } | null)?.name;
   return name !== "AbortError";
 }
+
+/**
+ * The targets offered in the share sheet.
+ *
+ * Chosen for who actually uses Stayo — students and parents in India — rather
+ * than copied from a US product's list. WhatsApp comes first because for this
+ * audience it *is* messaging; Messenger is omitted for the same reason, and
+ * because its web share needs a registered Facebook app id we do not have.
+ *
+ * Every one of these is a plain URL contract: no SDK, no app id, no key.
+ */
+export type ShareChannel = 'whatsapp' | 'telegram' | 'email' | 'sms' | 'facebook' | 'x';
+
+export interface ShareLink {
+  channel: ShareChannel;
+  label: string;
+  href: string;
+  /** Whether it should open in a new tab. `mailto:`/`sms:` must not. */
+  external: boolean;
+}
+
+/**
+ * Built from the same `url` and `text` the native sheet uses, so a link shared
+ * from the sheet and one shared from the OS are identical — the preview card
+ * (ADR-084) is what carries the photo and price either way.
+ */
+export function buildShareLinks(hostel: ShareTarget, url: string): ShareLink[] {
+  const text = buildShareText(hostel);
+  const encodedUrl = encodeURIComponent(url);
+  const encodedText = encodeURIComponent(text);
+  const withLink = encodeURIComponent(`${text}\n${url}`);
+
+  return [
+    {
+      channel: 'whatsapp',
+      label: 'WhatsApp',
+      href: `https://wa.me/?text=${withLink}`,
+      external: true,
+    },
+    {
+      channel: 'telegram',
+      label: 'Telegram',
+      href: `https://t.me/share/url?url=${encodedUrl}&text=${encodedText}`,
+      external: true,
+    },
+    {
+      channel: 'email',
+      label: 'Email',
+      // Subject carries the hostel; the body carries the link on its own line
+      // so it stays clickable in every mail client.
+      href: `mailto:?subject=${encodedText}&body=${withLink}`,
+      external: false,
+    },
+    {
+      channel: 'sms',
+      label: 'Messages',
+      // `?&body=` is the form both iOS and Android accept; `?body=` alone is
+      // dropped by some iOS versions.
+      href: `sms:?&body=${withLink}`,
+      external: false,
+    },
+    {
+      channel: 'facebook',
+      label: 'Facebook',
+      href: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
+      external: true,
+    },
+    {
+      channel: 'x',
+      label: 'X',
+      href: `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`,
+      external: true,
+    },
+  ];
+}
+
+/**
+ * The one-line summary under the hostel's name in the sheet, the way Airbnb
+ * shows "Villa in Baga · ★5.0 · 2 bedrooms".
+ *
+ * Only facts we actually hold. A rating is omitted entirely rather than shown
+ * as "0.0" or "No rating" — a share sheet is the moment someone vouches for a
+ * place to a friend, and a hollow number there reads worse than silence.
+ */
+export function buildShareSummary(input: {
+  city?: string | null;
+  hostelType?: string | null;
+  startingPrice?: number | null;
+  reviewCount?: number | null;
+  rating?: number | null;
+}): string {
+  const parts: string[] = [];
+
+  const type = String(input.hostelType ?? '').trim().toUpperCase();
+  const kind = type === 'BOYS' ? 'Boys hostel' : type === 'GIRLS' ? 'Girls hostel' : 'Hostel';
+  parts.push(input.city ? `${kind} in ${input.city}` : kind);
+
+  if (typeof input.rating === 'number' && input.rating > 0 && (input.reviewCount ?? 0) > 0) {
+    parts.push(`★${input.rating.toFixed(1)}`);
+  }
+
+  if (typeof input.startingPrice === 'number' && input.startingPrice > 0) {
+    parts.push(`from ₹${Math.round(input.startingPrice).toLocaleString('en-IN')}/mo`);
+  }
+
+  return parts.join(' · ');
+}
