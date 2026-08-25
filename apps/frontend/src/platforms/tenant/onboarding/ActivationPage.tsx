@@ -527,6 +527,8 @@ export function ActivationPage() {
               : activeStep || ctx.activation_state?.current_step || 'ACCOUNT') as ActivationVisualStep)
       }
       currentStep={activationResult ? 'MOVE_IN' : ((currentStep || 'ACCOUNT') as ActivationVisualStep)}
+      linkExpiresAt={ctx.link_expiry?.expires_at ?? null}
+      linkHeld={ctx.link_expiry?.held ?? false}
       completedSteps={new Set(activationResult ? ['ACCOUNT', 'RULES', 'AGREEMENT', 'PROFILE', 'ACTIVATE'] : ctx.activation_state?.completed_steps || [])}
       onStepClick={(step) => goToStep(step as ActivationStep)}
       agreementRequired={ctx.activation_state?.agreement_required !== false}

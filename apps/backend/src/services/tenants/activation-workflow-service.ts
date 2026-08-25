@@ -627,6 +627,17 @@ export class ActivationWorkflowService {
        * identity-field-policy. Computed server-side so the form and the
        * validation that accepts it cannot drift apart.
        */
+      /**
+       * When this link stops working, so the tenant can see it rather than
+       * discover it. `held` is the important half: `resolveByToken` skips the
+       * expiry check once the status is ACTIVATION_STARTED, so someone who has
+       * begun is not on a clock at all — showing them one would be a deadline
+       * that does not exist.
+       */
+      link_expiry: {
+        expires_at: invitation?.expires_at ? new Date(invitation.expires_at).toISOString() : null,
+        held: invitation?.status === "ACTIVATION_STARTED",
+      },
       identity_fields: resolveGenderRequirement({
         tenantGender: tenant.gender,
         hostelType: hostel?.hostel_type,

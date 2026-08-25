@@ -49,6 +49,12 @@ export type ActivationContext = {
    * not rendered and the server derives it. Absent means ask — fail safe.
    */
   identity_fields?: { required: boolean; value: string | null; reason: string } | null;
+  /**
+   * When the activation link stops working. `held` is true once activation has
+   * started, at which point `resolveByToken` no longer applies the expiry check
+   * at all — so there is genuinely no deadline to show.
+   */
+  link_expiry?: { expires_at: string | null; held: boolean } | null;
   tenant: Record<string, string | number | null | undefined>;
   hostel: { name?: string; logo_url?: string; address?: string; phone?: string };
   room_summary: Record<string, string | number | boolean | string[] | null | undefined>;

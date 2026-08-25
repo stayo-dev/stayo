@@ -4,6 +4,7 @@ import './onboarding.css';
 import { ActivationProgress, type ActivationVisualStep } from './ActivationProgress';
 import { hostelInitials, skyEnv, THEME_CYCLE, type ThemePhase } from './skyTheme';
 import { SkyProvider } from './skyContext';
+import LinkExpiryNotice from './LinkExpiryNotice';
 
 interface ActivationLayoutProps {
   activeStep: ActivationVisualStep;
@@ -17,6 +18,10 @@ interface ActivationLayoutProps {
   hostelLogoUrl?: string;
   /** Gender picked on the Identity step — re-skins the journey-track avatar. */
   gender?: string;
+  /** `link_expiry.expires_at` — ISO, or null for a legacy profile-token link. */
+  linkExpiresAt?: string | null;
+  /** True once activation has started, when the expiry check no longer applies. */
+  linkHeld?: boolean;
   /** Non-blocking banner; the caller owns dismissal. */
   error?: string;
   onDismissError?: () => void;
@@ -78,6 +83,8 @@ export function ActivationLayout({
   hostelName,
   hostelLogoUrl,
   gender,
+  linkExpiresAt,
+  linkHeld,
   error,
   onDismissError,
   children,
@@ -187,6 +194,8 @@ export function ActivationLayout({
               bored={bored}
               gender={gender}
             />
+            {/* How long the link has left — quiet until it matters. */}
+            <LinkExpiryNotice expiresAt={linkExpiresAt} held={linkHeld} />
           </div>
         </div>
 
