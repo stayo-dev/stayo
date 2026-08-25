@@ -254,7 +254,18 @@ export function AdminConsoleShell() {
           {/* Below 900px the sidebar is hidden; a compact nav strip keeps the
               console navigable on a laptop-in-tablet-mode without rebuilding
               the design's desktop-first layout. */}
-          <nav className="fixed inset-x-0 bottom-0 z-40 flex overflow-x-auto border-t border-[#E6DCD1] bg-[#201C18] px-2 py-1.5 min-[900px]:hidden">
+          <nav className="fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t border-[#E6DCD1] bg-[#201C18] px-2 py-1.5 min-[900px]:hidden">
+            {/*
+              The nav items scroll; sign-out does not.
+
+              It sits outside this overflow container on purpose. As a last child
+              of a scrolling row it would slide off the right edge as soon as the
+              console grew a few more sections, and an admin on a phone would
+              again have no way to end their session — the same failure the
+              sidebar button was added to prevent, just reintroduced by
+              overflow instead of by a breakpoint.
+            */}
+            <div className="flex min-w-0 flex-1 overflow-x-auto">
             {navGroups.flatMap((g) => g.items).map(({ to, label, icon: Icon, end }) => {
               const active = isNavItemActive(to, location.pathname, end);
               return (
@@ -271,6 +282,23 @@ export function AdminConsoleShell() {
                 </button>
               );
             })}
+            </div>
+
+            {/* Below 900px the sidebar — and with it the console's other
+                sign-out — is hidden entirely. Without this an admin on a phone
+                cannot end their session at all. Covered by
+                logoutIntegrity.test.ts. */}
+            <div className="ml-1 flex flex-none items-center border-l border-white/10 pl-1">
+              <button
+                type="button"
+                onClick={() => logout()}
+                aria-label="Sign out"
+                className="flex flex-col items-center gap-1 px-3 py-1.5 text-[10px] font-medium text-[#A79C90] transition-colors hover:text-[#EDE6DE]"
+              >
+                <LogOut className="h-4.5 w-4.5" strokeWidth={1.7} />
+                Sign out
+              </button>
+            </div>
           </nav>
 
           <AdminToast toast={toast} />

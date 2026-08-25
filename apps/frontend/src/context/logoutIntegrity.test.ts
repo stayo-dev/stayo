@@ -102,3 +102,48 @@ describe('every sign-out control actually ends the session', () => {
     },
   );
 });
+
+/**
+ * The admin console hides its sidebar below 900px, and the sidebar is where the
+ * sign-out button lived — so on a phone an admin had no way to end their
+ * session at all. That is the same failure the sidebar button was added to
+ * prevent ("without this the admin has no way out"), reintroduced by a
+ * breakpoint rather than by a deleted page.
+ *
+ * The test above cannot catch it: it proves a control *reaches* `logout`, not
+ * that one is *reachable* at a given viewport. There is no jsdom here, so this
+ * asserts the structural property instead — the console carries a sign-out on
+ * both sides of its own breakpoint.
+ */
+describe('the admin console can be signed out of at any width', () => {
+  const shell = fs.readFileSync(
+    path.join(SRC, 'platforms/admin/layout/AdminConsoleShell.tsx'),
+    'utf8',
+  );
+
+  it('hides its sidebar below 900px, which is the premise of this test', () => {
+    // If the layout stops being desktop-first this test's reasoning expires
+    // with it, and the failure should say so rather than quietly passing.
+    expect(shell).toMatch(/min-\[900px\]:flex/);
+  });
+
+  it('renders a sign-out in the desktop sidebar and again in the mobile strip', () => {
+    const controls = shell.match(/Sign out/g) ?? [];
+    // Two visible labels plus the mobile control's aria-label.
+    expect(controls.length).toBeGreaterThanOrEqual(2);
+    expect(shell).toMatch(/min-\[900px\]:hidden/);
+  });
+
+  it('keeps the mobile sign-out out of the scrolling nav row', () => {
+    // As the last child of an `overflow-x-auto` row it would slide off the
+    // right edge once the console grew a few more sections, which is the same
+    // bug wearing different clothes.
+    const strip = shell.slice(shell.indexOf('min-[900px]:hidden'));
+    const scrollRow = strip.indexOf('overflow-x-auto');
+    const signOut = strip.indexOf('aria-label="Sign out"');
+    expect(scrollRow).toBeGreaterThan(-1);
+    expect(signOut).toBeGreaterThan(scrollRow);
+    // The sign-out must sit after the scroll container has been closed.
+    expect(strip.slice(scrollRow, signOut)).toContain('</div>');
+  });
+});
