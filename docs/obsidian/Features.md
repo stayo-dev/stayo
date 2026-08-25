@@ -107,6 +107,15 @@ This is an inventory of features **confirmed implemented** (live route + live UI
 - **Notes:** Full governance rule, route list, and the reasoning for *not* reusing `ChangeManagementFacade` are in [[Business-Rules]] and [[Decisions]] ADR-069 (+ its same-day amendment) — read those before touching either direction of `change_requests`. Personal Information shows 5 identity rows + a "Government ID" section (Aadhaar routes to the document-upload flow instead of a text field; PAN is a plain text field). Emergency Contact now correctly uses `guardian_name`/`guardian_relation`/`guardian_phone`/`phone_3` instead of the earlier mislabeled `emergency_contact`-as-name bug. Document upload is a real inline `<input type="file">` (upload-icon pill) instead of a navigation away from the themed Profile tab. **Verified live end-to-end both passes**, not just via build: direct fields (name, DOB, gender, blood group, nationality, PAN, guardian details, academic fields) save immediately with no reason prompt; email/phone changes require a reason, show a pending-approval banner, and only take effect after the dev test owner approves via `/owner/profile-requests` (confirmed via UI re-check, not just a DB read, this pass). Two pre-existing bugs unrelated to this feature were found and fixed while verifying — see [[Bugs]].
 - See [[Changelog]].
 
+### Tenant activation — link expiry, visible and reminded (2026-08-25)
+
+An invitation lasts **7 days** from sending (`DEFAULT_INVITE_DAYS`; a resend resets the clock), and until now said nothing in between.
+
+- **In-app countdown.** `GET /api/tenants/activate/context` returns `link_expiry`, rendered as a quiet banner under the progress card. Escalates only when honest: a plain date beyond 3 days, days inside 72h, hours inside a day, minutes in the last hour (ticking only then). Once activation has **started** it reads "Your place is held" with no clock, because `resolveByToken` stops applying the expiry check for `ACTIVATION_STARTED`.
+- **WhatsApp reminder 24h before.** `stayo_tenant_invitation_expiry_reminder` via an hourly cron at `/api/cron/invitation-expiry-reminders` — hourly because invitations expire at whatever time of day they were created. Excludes `ACTIVATION_STARTED` and already-expired links. De-duplicated per **invitation** through `system_event_logs`, so a resend's fresh 7 days earns its own reminder and no migration is needed. **Awaiting Meta template approval** as of 2026-08-25; sends nothing until then.
+
+See [[APIs]], [[Changelog]].
+
 ## Public-facing (`apps/frontend` public routes)
 
 | Feature | Route | Backing |

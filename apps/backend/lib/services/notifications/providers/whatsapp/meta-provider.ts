@@ -13,6 +13,10 @@ import {
   invitationTemplateLanguage,
   invitationTemplateName,
 } from "./invitation-template-contract";
+import {
+  invitationExpiryReminderLanguage,
+  invitationExpiryReminderTemplateName,
+} from "./invitation-expiry-reminder-contract";
 import type {
   MetaWhatsAppErrorBody,
   WhatsAppProviderConfig,
@@ -743,6 +747,51 @@ export class MetaWhatsAppProvider {
    * (and always in dev, since no WhatsApp credentials are configured) this
    * throws and the caller falls back to email, same as sendInvitation.
    */
+  /**
+   * The 24-hour expiry reminder (`stayo_tenant_invitation_expiry_reminder`).
+   *
+   * Takes a prebuilt payload rather than raw fields, because the body/button
+   * shape is declared once in `invitation-expiry-reminder-contract.ts` and
+   * pinned by tests — a count mismatch here is Meta #132000 on every send.
+   */
+  async sendInvitationExpiryReminder(input: {
+    to: string;
+    payload: { components: any[] };
+  }): Promise<WhatsAppSendResult> {
+    const phone = normalizeWhatsAppPhone(input.to);
+    const templateName = invitationExpiryReminderTemplateName();
+    const languageCode = invitationExpiryReminderLanguage();
+    const url = `${this.config.baseUrl}/${this.config.phoneNumberId}/messages`;
+    const body = {
+      messaging_product: "whatsapp",
+      to: phone,
+      type: "template",
+      template: {
+        name: templateName,
+        language: { code: languageCode },
+        ...input.payload,
+      },
+    };
+
+    logger.info("whatsapp.invitation_expiry_reminder.send_started", {
+      phone: maskWhatsAppPhone(phone),
+      templateName,
+      languageCode,
+    });
+
+    const result = await this.post(url, body, 1);
+    const providerMessageId = Array.isArray((result as any)?.messages)
+      ? String((result as any).messages[0]?.id || "")
+      : "";
+
+    logger.info("whatsapp.invitation_expiry_reminder.send_success", {
+      phone: maskWhatsAppPhone(phone),
+      providerMessageId,
+    });
+
+    return { providerMessageId: providerMessageId || null, raw: result, attempts: 1 };
+  }
+
   async sendOwnerActivation(input: {
     to: string;
     ownerName: string;
