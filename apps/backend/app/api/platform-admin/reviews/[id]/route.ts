@@ -9,7 +9,7 @@ import { ApiResponse } from "@/src/lib/api-response";
 import { ApiError } from "@/src/lib/api-error";
 
 const ModerateSchema = z.object({
-  verdict: z.enum(["PUBLISH", "REJECT"]),
+  verdict: z.enum(["PUBLISH", "REJECT", "REQUEST_CHANGES"]),
   note: z.string().max(500).optional().nullable(),
 });
 
@@ -34,7 +34,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       parsed.data.verdict,
       parsed.data.note,
     );
-    return ApiResponse.success(result, parsed.data.verdict === "PUBLISH" ? "Published" : "Rejected");
+    const message =
+      parsed.data.verdict === "PUBLISH"
+        ? "Published"
+        : parsed.data.verdict === "REJECT"
+          ? "Rejected"
+          : "Changes requested";
+    return ApiResponse.success(result, message);
   } catch (error) {
     return ApiResponse.error(error);
   }

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { queryKeys } from '@lib/queryKeys';
-import { reviewModerationService } from '../api';
+import { reviewModerationService, type ReviewInsightsFilters } from '../api';
 
 export function useReviewQueue(status: string) {
   return useQuery({
@@ -13,11 +13,26 @@ export function useReviewQueue(status: string) {
 export function useModerateReview() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, verdict, note }: { id: string; verdict: 'PUBLISH' | 'REJECT'; note?: string | null }) =>
-      reviewModerationService.moderate(id, verdict, note),
+    mutationFn: ({
+      id,
+      verdict,
+      note,
+    }: {
+      id: string;
+      verdict: 'PUBLISH' | 'REJECT' | 'REQUEST_CHANGES';
+      note?: string | null;
+    }) => reviewModerationService.moderate(id, verdict, note),
     onSuccess: () => {
       // Every tab's counts move when one review is decided.
       queryClient.invalidateQueries({ queryKey: queryKeys.reviews.all() });
     },
+  });
+}
+
+/** "What are residents talking about" — the insights view, separate from the moderation queue. */
+export function useReviewInsights(filters: ReviewInsightsFilters) {
+  return useQuery({
+    queryKey: queryKeys.reviews.insights(filters),
+    queryFn: () => reviewModerationService.insights(filters),
   });
 }

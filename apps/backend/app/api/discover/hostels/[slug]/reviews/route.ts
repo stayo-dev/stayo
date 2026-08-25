@@ -9,12 +9,9 @@ import { ApiResponse } from "@/src/lib/api-response";
 import { ApiError } from "@/src/lib/api-error";
 
 const ReviewSchema = z.object({
-  /**
-   * Per-category scores, keyed by `REVIEW_CATEGORIES`. The overall star is
-   * derived from these server-side rather than accepted from the client —
-   * a card's number should not be something a caller can set independently
-   * of the judgements behind it.
-   */
+  /** Overall Experience — its own question, not derived from the categories (ADR-115). */
+  overall: z.number().int().min(1).max(5),
+  /** Per-category scores, keyed by `REVIEW_CATEGORIES`. */
   categories: z.record(z.string(), z.number().int().min(1).max(5)),
   body: z.string().max(1500).optional().nullable(),
 });

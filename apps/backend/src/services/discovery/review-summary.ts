@@ -12,24 +12,27 @@
  */
 
 /**
- * The things residents actually judge a hostel on.
+ * The things residents actually judge a hostel on (migration 076).
  *
- * Airbnb's six, translated: a hostel is a place you live for a year, so
- * "food" replaces "accuracy" (the mess is the single most argued-about part
- * of hostel life) and "staff" covers the warden and management rather than
- * a host's messaging.
+ * Hostel-specific, not Airbnb's holiday-flat categories: a resident lives
+ * here for a year and never once cares about "listing accuracy" or
+ * "location" the way a two-night guest does. Eight categories, each its own
+ * 1–5 question — never averaged into the overall star, which the resident
+ * gives separately (see `isValidOverall`).
  *
- * `appliesWhenNoFood: false` marks the one category that is not always asked —
- * a hostel that serves no meals cannot be scored on them, and asking anyway
+ * `foodOnly: true` marks the one category that is not always asked — a
+ * hostel that serves no meals cannot be scored on them, and asking anyway
  * produces a number that means nothing.
  */
 export const REVIEW_CATEGORIES = [
   { key: "cleanliness", label: "Cleanliness", column: "rating_cleanliness" },
-  { key: "food", label: "Food & mess", column: "rating_food", foodOnly: true },
+  { key: "maintenance", label: "Maintenance", column: "rating_maintenance" },
+  { key: "food", label: "Food", column: "rating_food", foodOnly: true },
+  { key: "room_comfort", label: "Room Comfort", column: "rating_room_comfort" },
+  { key: "amenities", label: "Amenities", column: "rating_amenities" },
+  { key: "staff", label: "Staff & Management", column: "rating_staff" },
   { key: "safety", label: "Safety", column: "rating_safety" },
-  { key: "staff", label: "Staff & support", column: "rating_staff" },
-  { key: "value", label: "Value for money", column: "rating_value" },
-  { key: "location", label: "Location", column: "rating_location" },
+  { key: "wifi", label: "Wi-Fi", column: "rating_wifi" },
 ] as const;
 
 export type ReviewCategoryKey = (typeof REVIEW_CATEGORIES)[number]["key"];
@@ -39,17 +42,19 @@ export function categoriesFor(foodIncluded: boolean) {
   return REVIEW_CATEGORIES.filter((category) => !("foodOnly" in category && category.foodOnly) || foodIncluded);
 }
 
-export type ReviewStatus = "PENDING" | "PUBLISHED" | "REJECTED";
+export type ReviewStatus = "PENDING" | "PUBLISHED" | "REJECTED" | "CHANGES_REQUESTED";
 
 export interface ReviewLike {
   rating: number;
   status?: string;
   rating_cleanliness?: number | null;
+  rating_maintenance?: number | null;
   rating_food?: number | null;
-  rating_safety?: number | null;
+  rating_room_comfort?: number | null;
+  rating_amenities?: number | null;
   rating_staff?: number | null;
-  rating_value?: number | null;
-  rating_location?: number | null;
+  rating_safety?: number | null;
+  rating_wifi?: number | null;
 }
 
 export interface ReviewSummary {
@@ -66,6 +71,10 @@ export interface ReviewSummary {
   categories: { key: ReviewCategoryKey; label: string; average: number; count: number }[];
   /** What the listing says when it cannot show a score. */
   emptyReason: "NONE_YET" | "TOO_FEW" | null;
+  /** Whether this hostel earns Stayo's "Resident Favourite" label. */
+  isResidentFavourite: boolean;
+  /** Top positive tags mentioned across published reviews, most-common first. */
+  highlights: { label: string; count: number }[];
 }
 
 /**
@@ -78,18 +87,86 @@ export interface ReviewSummary {
 export const MIN_REVIEWS_FOR_AVERAGE = 3;
 
 /**
- * The overall score from the categories someone answered.
+ * The overall star, validated on its own terms.
  *
- * The form asks for categories, not for an overall star on top of them —
- * asking a person to rate the same stay twice invites two different answers
- * and makes the card's number arbitrary. Rounded to a whole star because
- * `rating` is the integer a card renders.
+ * Given directly by the resident as its own question (migration 076), not
+ * derived from the eight categories — an alias for `isValidRating` kept
+ * distinct so call sites read as validating the standalone field, not a
+ * category.
  */
-export function overallFromCategories(values: (number | null | undefined)[]): number | null {
-  const answered = values.filter((value): value is number => isValidRating(value));
-  if (answered.length === 0) return null;
-  const mean = answered.reduce((total, value) => total + value, 0) / answered.length;
-  return Math.min(5, Math.max(1, Math.round(mean)));
+export const isValidOverall = isValidRating;
+
+/**
+ * A snapshotted stay, in words. "Stayed 6 months" / "Stayed 2 years" — never
+ * "Stayed 14 months", because nobody reads a stay in fractions of a year
+ * once it is over one.
+ */
+export function formatStayDuration(months: number | null | undefined): string | null {
+  if (months == null || !Number.isFinite(months) || months <= 0) return null;
+  if (months < 24) return `Stayed ${months} month${months === 1 ? "" : "s"}`;
+  const years = Math.round(months / 12);
+  return `Stayed ${years} year${years === 1 ? "" : "s"}`;
+}
+
+/**
+ * Whole months between two dates, floored — a stay that started and ended
+ * within the same calendar month is 0, not 1.
+ */
+export function monthsBetween(start: Date, end: Date): number {
+  const months =
+    (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+  return end.getDate() < start.getDate() ? Math.max(0, months - 1) : Math.max(0, months);
+}
+
+/**
+ * Stayo's own equivalent of "Guest favourite" — never Airbnb's wreath, but
+ * the same idea: a small badge that only fires once the average can be
+ * trusted (see `MIN_REVIEWS_FOR_AVERAGE`) and is genuinely high.
+ */
+export function isResidentFavourite(average: number | null, count: number): boolean {
+  return average != null && average >= 4.5 && count >= 5;
+}
+
+/**
+ * Friendly tag for a category rated highly on one review — "Cleanliness: 5"
+ * tells a browsing reader nothing; "Clean Rooms" does. Only categories rated
+ * 4 or 5 earn a tag; a mediocre score is not a highlight.
+ */
+const HIGHLIGHT_LABELS: Record<ReviewCategoryKey, string> = {
+  cleanliness: "Clean Rooms",
+  maintenance: "Well Maintained",
+  food: "Good Food",
+  room_comfort: "Comfortable Rooms",
+  amenities: "Good Amenities",
+  staff: "Helpful Staff",
+  safety: "Safe Environment",
+  wifi: "Good Wi-Fi",
+};
+
+const HIGHLIGHT_THRESHOLD = 4;
+
+/**
+ * The tags shown under a hostel's rating — "Residents mention" — tallied
+ * across every published review rather than resident-picked, per the rule
+ * that a tag is *derived*, not another form field to fill in.
+ */
+export function deriveHighlights(reviews: ReviewLike[]): { label: string; count: number }[] {
+  const published = reviews.filter(
+    (review) => review.status === undefined || review.status === "PUBLISHED",
+  );
+  const counts = new Map<string, number>();
+  for (const review of published) {
+    for (const category of REVIEW_CATEGORIES) {
+      const value = (review as any)[category.column];
+      if (isValidRating(value) && value >= HIGHLIGHT_THRESHOLD) {
+        const label = HIGHLIGHT_LABELS[category.key];
+        counts.set(label, (counts.get(label) ?? 0) + 1);
+      }
+    }
+  }
+  return Array.from(counts.entries())
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count);
 }
 
 export function summariseReviews(reviews: ReviewLike[]): ReviewSummary {
@@ -121,23 +198,42 @@ export function summariseReviews(reviews: ReviewLike[]): ReviewSummary {
   }).filter((category) => category.count > 0);
 
   if (ratings.length === 0) {
-    return { count: 0, average: null, distribution, categories: [], emptyReason: "NONE_YET" };
+    return {
+      count: 0,
+      average: null,
+      distribution,
+      categories: [],
+      emptyReason: "NONE_YET",
+      isResidentFavourite: false,
+      highlights: [],
+    };
   }
   if (ratings.length < MIN_REVIEWS_FOR_AVERAGE) {
     // Same rule as the overall score: too few to average is too few per
-    // category as well.
-    return { count: ratings.length, average: null, distribution, categories: [], emptyReason: "TOO_FEW" };
+    // category (and highlights) as well.
+    return {
+      count: ratings.length,
+      average: null,
+      distribution,
+      categories: [],
+      emptyReason: "TOO_FEW",
+      isResidentFavourite: false,
+      highlights: [],
+    };
   }
 
   const mean = ratings.reduce((total, rating) => total + rating, 0) / ratings.length;
+  // One decimal: the precision the data supports. 4.33 implies a sample size
+  // these listings will not have for a long time.
+  const average = Math.round(mean * 10) / 10;
   return {
     count: ratings.length,
-    // One decimal: the precision the data supports. 4.33 implies a sample size
-    // these listings will not have for a long time.
-    average: Math.round(mean * 10) / 10,
+    average,
     distribution,
     categories,
     emptyReason: null,
+    isResidentFavourite: isResidentFavourite(average, ratings.length),
+    highlights: deriveHighlights(published),
   };
 }
 
