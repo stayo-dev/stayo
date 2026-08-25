@@ -34,14 +34,27 @@ export async function GET(req: NextRequest) {
       return apiError("Tenant record not found", "NOT_FOUND", 404);
     }
 
-    const [utilityStatus, hostel] = await Promise.all([
-      prisma.hostel_utility_status.findMany({ where: { hostel_id: tenant.hostel_id! } }),
-      prisma.hostels.findUnique({ where: { id: tenant.hostel_id! }, select: { house_rules: true } }),
+    const [hostel, approvedRevision] = await Promise.all([
+      // `public_slug` so the tenant can share their own hostel — inviting a
+      // friend into the empty bed beside them is the one referral that needs
+      // no incentive scheme.
+      prisma.hostels.findUnique({ where: { id: tenant.hostel_id! }, select: { house_rules: true, name: true, public_slug: true } }),
+      /*
+       * The same APPROVED revision Discovery reads. One source for both, so a
+       * tenant and a prospective tenant can never be shown different facts
+       * about the same hostel — and an owner still cannot publish either
+       * without review (ADR-040).
+       */
+      prisma.hostel_marketing_revisions.findFirst({
+        where: { hostel_id: tenant.hostel_id!, status: "APPROVED" },
+        orderBy: { created_at: "desc" },
+        select: { content: true },
+      }),
     ]);
 
     const allocation = (tenant as any).room_allocations[0];
     if (!allocation) {
-      return apiResponse({ room: null, roommates: [], utilityStatus, houseRules: hostel?.house_rules ?? [] });
+      return apiResponse({ room: null, roommates: [], facilities: [], hostel: { name: hostel?.name ?? null, public_slug: hostel?.public_slug ?? null }, houseRules: hostel?.house_rules ?? [] });
     }
 
     const room = allocation.room;
@@ -57,9 +70,11 @@ export async function GET(req: NextRequest) {
       include: {
         tenant: {
           select: {
+            phone_1: true,
             profiles: {
               select: {
-                name: true
+                name: true,
+                phone: true
               }
             }
           }
@@ -67,8 +82,11 @@ export async function GET(req: NextRequest) {
       }
     });
 
+    // Name and phone only. Enough to knock on a door or call, and nothing a
+    // roommate would resent being handed to the person in the next bed.
     const roommates = occupants.map((occ: any) => ({
-      name: occ.tenant?.profiles?.name || "Unknown"
+      name: occ.tenant?.profiles?.name || "Unknown",
+      phone: occ.tenant?.profiles?.phone ?? occ.tenant?.phone_1 ?? null,
     }));
 
     return apiResponse({
@@ -82,7 +100,9 @@ export async function GET(req: NextRequest) {
         notes: room.notes ?? null,
       },
       roommates,
-      utilityStatus,
+      // Only enabled amenities, matching what Discovery publishes.
+      facilities: ((approvedRevision?.content as any)?.amenities ?? []).filter((a: any) => a?.enabled),
+      hostel: { name: hostel?.name ?? null, public_slug: hostel?.public_slug ?? null },
       houseRules: hostel?.house_rules ?? [],
     });
   } catch (error: any) {

@@ -95,6 +95,24 @@ const AmenitySchema = z.object({
   enabled: z.boolean().default(true),
   /** Optional icon key; unknown keys fall back to a generic glyph. */
   icon: z.string().trim().max(30).optional().nullable(),
+  /**
+   * What it actually is — "Attached bathroom", "RO purifier · corridor".
+   *
+   * The line a tenant reads under the name. Free text for the same reason
+   * `PlaceSchema.distance` is: owners describe their own building in their own
+   * words, and a fixed vocabulary would force them to pick the nearest wrong
+   * option.
+   */
+  detail: z.string().trim().max(80).optional().nullable(),
+  /**
+   * When it is available — "6–10 AM · 6–10 PM", "Daily", "24×7".
+   *
+   * Deliberately **not** a structured time range. Hot water is "6–10 AM and
+   * evenings" in a lot of real hostels, and a picker would make that
+   * unsayable — forcing either a lie or a blank. A blank is honest; a lie
+   * about hot water is the kind of thing a tenant remembers.
+   */
+  schedule: z.string().trim().max(40).optional().nullable(),
 });
 
 const PlaceSchema = z.object({
