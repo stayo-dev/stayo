@@ -12,11 +12,15 @@ import { invitationExpiryReminderService } from "@/src/services/tenants/invitati
  * link dies within 24 hours and who has not been reminded about that particular
  * invitation yet.
  *
- * Runs hourly rather than daily. An invitation expires at whatever time of day
- * it was created, so a once-a-day sweep would reach some people with 23 hours
- * left and others with barely one; hourly keeps the "expires in N hours" in the
- * message close to the truth. The de-duplication lives in the service, so
- * running often is safe — and re-running after a failure is the point.
+ * Runs **once daily**. Vercel's Hobby plan allows exactly one cron run per day
+ * and rejects anything more frequent **at deploy time** — an hourly schedule
+ * does not degrade, it fails the deployment outright. The reminder window is
+ * widened to 36 hours to suit that cadence (see REMINDER_WINDOW_HOURS), so
+ * every invitation is still seen with at least 12 hours left.
+ *
+ * The de-duplication lives in the service, keyed per invitation, so running
+ * more often — should the plan ever allow it — is safe and needs no change here
+ * beyond the schedule.
  *
  * Protected by CRON_SECRET bearer token, same as every other cron here.
  */

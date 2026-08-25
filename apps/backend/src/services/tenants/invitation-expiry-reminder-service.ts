@@ -10,6 +10,22 @@ const logger = getLogger("tenants.invitation-expiry-reminder");
 export const REMINDER_EVENT = "tenant_invitation_expiry_reminder_sent";
 
 /**
+ * How far ahead to look, in hours.
+ *
+ * Wider than the 24 hours the message is about, because the sweep runs **daily**
+ * (Vercel Hobby allows one cron run per day — an hourly schedule fails at deploy
+ * time outright). With a 24-hour window on a 24-hour cadence, someone whose link
+ * expires an hour after the sweep is reminded with an hour left, which is not a
+ * warning. At 36 hours every invitation is seen at least once with **12 hours or
+ * more** remaining, and the message states the real number rather than a fixed
+ * "24", so it is never wrong about what it found.
+ *
+ * De-duplication is per invitation, so the overlap between consecutive runs
+ * cannot produce a second message.
+ */
+export const REMINDER_WINDOW_HOURS = 36;
+
+/**
  * Reminds a tenant a day before their activation link dies.
  *
  * An invitation lasts seven days and said nothing in between, so the common
@@ -42,7 +58,7 @@ export const REMINDER_EVENT = "tenant_invitation_expiry_reminder_sent";
  */
 export class InvitationExpiryReminderService {
   /** Invitations whose link dies within `withinHours`, that nobody has reminded yet. */
-  async findDue(now: Date, withinHours = 24) {
+  async findDue(now: Date, withinHours = REMINDER_WINDOW_HOURS) {
     const horizon = new Date(now.getTime() + withinHours * 60 * 60 * 1000);
 
     const candidates = await prisma.tenant_invitations.findMany({
