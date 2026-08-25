@@ -1,4 +1,5 @@
 import api from '@lib/api-client';
+import type { OwnerAmenity } from '../facilities';
 
 function unwrap(response: { data: any }) {
   if (response.data && response.data.success !== undefined) {
@@ -18,6 +19,8 @@ export interface TenantRoom {
 
 export interface TenantRoommate {
   name: string;
+  /** Name and phone is all a roommate is shown of another roommate. */
+  phone?: string | null;
 }
 
 export interface UtilityStatusRow {
@@ -64,7 +67,9 @@ export const tenantRoomService = {
     return unwrap(response) as {
       room: TenantRoom | null;
       roommates: TenantRoommate[];
-      utilityStatus: UtilityStatusRow[];
+      /** APPROVED marketing amenities — the same list Discovery publishes. */
+      facilities: OwnerAmenity[];
+      hostel: { name: string | null; public_slug: string | null };
       houseRules: HouseRuleSection[];
     };
   },

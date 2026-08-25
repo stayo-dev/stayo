@@ -1,40 +1,98 @@
-import { Droplets, Wifi, Zap, Sparkles, Shirt, Flame, GlassWater, ShowerHead } from 'lucide-react';
 import { createElement } from 'react';
+import { Wifi, Droplets, Flame, Shirt, Sparkles, Zap, ShowerHead, UtensilsCrossed, Car, ShieldCheck, CircleDot, UserPlus } from 'lucide-react';
 import { stayoToast } from '@shared/ui-patterns/Toast';
-import type { TenantRoom, TenantRoommate, UtilityStatusRow, ServiceRequest } from '@features/tenant-room/api';
+import type { TenantRoom, TenantRoommate, ServiceRequest } from '@features/tenant-room/api';
+import { wifiCredentialLine, type Facility, type FacilityIcon } from '@features/tenant-room/facilities';
 import type { DetailConfig } from '../types';
 
-const UTILITY_STATUS_META: Record<string, { big: string; sub: string; tone: 'green' | 'yellow' | 'red' }> = {
-  OK: { big: 'Available', sub: 'Running normally', tone: 'green' },
-  ISSUE: { big: 'Minor issue', sub: 'Being looked into', tone: 'yellow' },
-  OUTAGE: { big: 'Outage', sub: 'Currently unavailable', tone: 'red' },
+/**
+ * The Room tab's drill-in screens.
+ *
+ * ## What changed, and why
+ *
+ * This file used to carry two kinds of fiction.
+ *
+ * **Live utility status** (water/wifi/electricity/cleaning) drove four screens
+ * off `hostel_utility_status` — a table with **zero rows product-wide** and no
+ * owner UI to write it. Every screen therefore rendered its `?? 'OK'` default:
+ * "Available · Running normally", asserted about a hostel nobody had reported
+ * on. Those screens are gone.
+ *
+ * **Hardcoded facility screens** (`fac_hotwater`, `fac_laundry`, …) carried
+ * timings and locations lifted verbatim from the design mock — "6 – 10 AM",
+ * "Ground floor", "RO purified · Corridor" — true of no hostel in particular.
+ * They are replaced by screens built from what the owner actually wrote and an
+ * admin approved.
+ *
+ * A tenant reading this tab now reads facts or nothing.
+ */
+
+const FACILITY_ICONS: Record<FacilityIcon, typeof Wifi> = {
+  wifi: Wifi,
+  water: Droplets,
+  'hot-water': Flame,
+  laundry: Shirt,
+  cleaning: Sparkles,
+  power: Zap,
+  bathroom: ShowerHead,
+  food: UtensilsCrossed,
+  parking: Car,
+  security: ShieldCheck,
+  generic: CircleDot,
 };
 
 interface RoomDetailContext {
   room: TenantRoom | null;
   roommates: TenantRoommate[];
-  utilityStatus: UtilityStatusRow[];
+  /** Owner-authored, admin-approved. See features/tenant-room/facilities.ts. */
+  facilities: Facility[];
   resolvedRequests: ServiceRequest[];
   push: (view: string) => void;
+  /** Opens the share sheet, so a tenant can fill an empty bed themselves. */
+  onInviteToRoom?: () => void;
 }
 
-function utilityConfig(key: string, icon: ReturnType<typeof createElement>, title: string, sub: string, ctx: RoomDetailContext): DetailConfig {
-  const row = ctx.utilityStatus.find((u) => u.utility === key);
-  const meta = UTILITY_STATUS_META[row?.status ?? 'OK'];
-  const config: DetailConfig = {
-    title,
-    sub,
-    sections: [
-      { kind: 'status', icon, big: meta.big, sub: meta.sub, tone: meta.tone },
-    ],
-  };
-  if (row?.note) {
-    config.sections.push({ kind: 'notices', title: 'Notice', notices: [{ title: row.note, meta: `Updated ${new Date(row.updated_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`, tone: meta.tone }] });
+/**
+ * Every facility gets the same screen: what the owner said, then a way to say
+ * it is broken.
+ *
+ * Reporting lives **here** rather than in a grid of service tiles, because a
+ * report raised from the Hot water screen arrives already knowing it is about
+ * hot water. Nothing has to be triaged into a category the tenant already
+ * chose by tapping.
+ */
+function facilityConfig(facility: Facility, ctx: RoomDetailContext): DetailConfig {
+  const icon = createElement(FACILITY_ICONS[facility.icon] ?? CircleDot, { className: 'h-5 w-5' });
+  const sections: DetailConfig['sections'] = [
+    {
+      kind: 'status',
+      icon,
+      big: facility.schedule ?? 'Available',
+      sub: facility.detail ?? 'Provided by your hostel',
+      tone: 'green',
+    },
+  ];
+
+  if (facility.wifi) {
+    const line = wifiCredentialLine(facility.wifi);
+    sections.push({
+      kind: 'rows',
+      title: 'Network',
+      rows: [
+        { label: 'Network name', value: line.ssid },
+        { label: 'Password', value: line.password },
+      ],
+    });
   }
-  return config;
+
+  sections.push({
+    kind: 'actions',
+    actions: [{ label: 'Report a problem', style: 'dark', onClick: () => ctx.push('maint_new') }],
+  });
+
+  return { title: facility.label, sub: facility.detail ?? 'Room facility', sections };
 }
 
-/** Static Room-drill-in destinations — Stayo Tenant.dc.html's DETAIL map, ported using real room/roommate/utility data where the backend tracks it. Ticket detail (`maint_ticket`, `tk_*`) is built separately (needs a live per-id events fetch) — see `buildServiceRequestDetailConfig`. */
 export function buildRoomDetailConfigs(ctx: RoomDetailContext): Record<string, DetailConfig> {
   const room = ctx.room;
   const configs: Record<string, DetailConfig> = {
@@ -59,28 +117,7 @@ export function buildRoomDetailConfigs(ctx: RoomDetailContext): Record<string, D
         },
       ],
     },
-    water: utilityConfig('WATER', createElement(Droplets, { className: 'h-5 w-5' }), 'Water supply', room ? `Live status · Room ${room.room_no}` : 'Live status', ctx),
-    wifi: {
-      title: 'Wi-Fi',
-      sub: room ? `Room ${room.room_no} network` : 'Network',
-      sections: [
-        { kind: 'status', icon: createElement(Wifi, { className: 'h-5 w-5' }), ...(() => { const row = ctx.utilityStatus.find((u) => u.utility === 'WIFI'); const meta = UTILITY_STATUS_META[row?.status ?? 'OK']; return { big: meta.big, sub: meta.sub, tone: meta.tone }; })() },
-        { kind: 'rows', title: 'Network', rows: [
-          { label: 'SSID', value: room?.wifi_name ?? 'Not set' },
-          { label: 'Password', value: room?.wifi_password ?? 'Ask the front desk', mono: true },
-        ] },
-        { kind: 'actions', actions: [{ label: 'Report a problem', style: 'dark', onClick: () => ctx.push('maint_new') }] },
-      ],
-    },
-    electricity: utilityConfig('ELECTRICITY', createElement(Zap, { className: 'h-5 w-5' }), 'Electricity', room ? `Room ${room.room_no} power` : 'Power', ctx),
-    cleaning: {
-      title: 'Cleaning',
-      sub: room ? `Room ${room.room_no} housekeeping` : 'Housekeeping',
-      sections: [
-        { kind: 'status', icon: createElement(Sparkles, { className: 'h-5 w-5' }), ...(() => { const row = ctx.utilityStatus.find((u) => u.utility === 'CLEANING'); const meta = UTILITY_STATUS_META[row?.status ?? 'OK']; return { big: meta.big, sub: meta.sub, tone: meta.tone }; })() },
-        { kind: 'actions', actions: [{ label: 'Request extra cleaning', style: 'primary', onClick: () => ctx.push('svc_cleaning') }] },
-      ],
-    },
+
     maint_history: {
       title: 'Ticket history',
       sub: room ? `Resolved requests · Room ${room.room_no}` : 'Resolved requests',
@@ -100,55 +137,63 @@ export function buildRoomDetailConfigs(ctx: RoomDetailContext): Record<string, D
             ]
           : [{ kind: 'empty', title: 'No resolved requests yet', body: 'Anything you raise and get resolved will show up here.' }],
     },
-    vacant: { title: 'Vacant bed', sub: room ? `Room ${room.room_no}` : 'This bed', sections: [{ kind: 'empty', title: 'This bed is currently vacant', body: 'A new tenant may be allocated soon. You’ll be notified when someone moves in.' }] },
-    // Facility amenity screens describe standard hostel policy/amenities, not
-    // per-tenant live sensor data (the backend only tracks live status for the
-    // 4 utilities above) — content matches Stayo Tenant.dc.html verbatim.
-    fac_hotwater: {
-      title: 'Hot water', sub: 'Attached bathroom',
+
+    /**
+     * An empty bed used to be a dead end: "a new tenant may be allocated soon",
+     * nothing to do. The person most motivated to fill it — and best placed to
+     * pick who they live with — is the tenant already in the room.
+     */
+    vacant: {
+      title: 'Invite a friend',
+      sub: room ? `Room ${room.room_no}` : 'This room',
       sections: [
-        { kind: 'status', icon: createElement(Flame, { className: 'h-5 w-5' }), big: 'Scheduled', sub: 'Available at set times', tone: 'yellow' },
-        { kind: 'rows', title: 'Schedule', rows: [{ label: 'Morning', value: '6 – 10 AM' }, { label: 'Evening', value: '6 – 10 PM' }] },
-      ],
-    },
-    fac_laundry: {
-      title: 'Laundry', sub: 'Shared facility',
-      sections: [
-        { kind: 'status', icon: createElement(Shirt, { className: 'h-5 w-5' }), big: 'Available', sub: 'Shared facility', tone: 'green' },
-        { kind: 'rows', title: 'Details', rows: [{ label: 'Location', value: 'Ground floor' }, { label: 'Timing', value: '7 AM – 9 PM' }] },
-        { kind: 'notices', title: 'Instructions', notices: [{ title: 'Collect tokens from the front desk', meta: 'Per-wash charge applies', tone: 'grey' }] },
-      ],
-    },
-    fac_drinking: {
-      title: 'Drinking water', sub: 'RO purifier',
-      sections: [
-        { kind: 'status', icon: createElement(GlassWater, { className: 'h-5 w-5' }), big: 'Available', sub: '24×7 access', tone: 'green' },
-        { kind: 'rows', title: 'Details', rows: [{ label: 'Type', value: 'RO purified' }, { label: 'Location', value: 'Corridor' }] },
-      ],
-    },
-    fac_housekeeping: {
-      title: 'Housekeeping', sub: 'Room cleaning service',
-      sections: [
-        { kind: 'status', icon: createElement(Sparkles, { className: 'h-5 w-5' }), big: 'Scheduled', sub: 'Regular housekeeping', tone: 'green' },
-        { kind: 'actions', actions: [{ label: 'Request extra cleaning', style: 'primary', onClick: () => ctx.push('svc_cleaning') }] },
-      ],
-    },
-    fac_bathroom: {
-      title: 'Attached bathroom', sub: room ? `Private to Room ${room.room_no}` : 'Private bathroom',
-      sections: [
-        { kind: 'status', icon: createElement(ShowerHead, { className: 'h-5 w-5' }), big: 'Private', sub: 'For your room only', tone: 'green' },
-        { kind: 'actions', actions: [{ label: 'Report an issue', style: 'dark', onClick: () => ctx.push('maint_new') }] },
+        {
+          kind: 'status',
+          icon: createElement(UserPlus, { className: 'h-5 w-5' }),
+          big: 'Bed available',
+          sub: 'Know someone looking for a place?',
+          tone: 'green',
+        },
+        {
+          kind: 'actions',
+          actions: [
+            {
+              label: 'Share this hostel',
+              style: 'primary',
+              onClick: () =>
+                ctx.onInviteToRoom
+                  ? ctx.onInviteToRoom()
+                  : stayoToast.info('Sharing is unavailable right now'),
+            },
+          ],
+        },
       ],
     },
   };
+
+  // One screen per facility the owner actually published.
+  ctx.facilities.forEach((facility) => {
+    configs[`facility:${facility.key}`] = facilityConfig(facility, ctx);
+  });
 
   ctx.roommates.forEach((mate, i) => {
     configs[`mate_${i}`] = {
       title: 'Roommate',
       sub: room ? `Shares Room ${room.room_no}` : 'Shares your room',
       sections: [
-        { kind: 'person', initial: mate.name.charAt(0).toUpperCase(), name: mate.name, role: 'Roommate', tag1: room ? `Room ${room.room_no}` : '', tag2: 'Current tenant' },
-        { kind: 'actions', actions: [{ label: 'Message · coming soon', style: 'ghost', onClick: () => stayoToast.info('Messaging arrives soon') }] },
+        {
+          kind: 'person',
+          initial: mate.name.charAt(0).toUpperCase(),
+          name: mate.name,
+          role: 'Roommate',
+          tag1: room ? `Room ${room.room_no}` : '',
+          tag2: 'Current tenant',
+        },
+        // Name and phone, nothing more. Enough to knock on a door or call, and
+        // nothing a roommate would resent being handed to the next bed.
+        ...(mate.phone
+          ? [{ kind: 'rows' as const, title: 'Contact', rows: [{ label: 'Phone', value: mate.phone }] }]
+          : []),
       ],
     };
   });

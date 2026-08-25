@@ -2,8 +2,14 @@ import { useMemo, useState } from 'react';
 import { TenantPageHeader } from '../components/TenantPageHeader';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Droplets, Wifi, Zap, Sparkles, Wrench, DoorOpen, KeyRound, UserPlus, BedDouble, ListChecks, MessageSquareWarning } from 'lucide-react';
+import { ChevronDown, ChevronRight, Droplets, Wifi, Zap, Sparkles, Wrench, DoorOpen, KeyRound, UserPlus, BedDouble, ListChecks, MessageSquareWarning, Flame, Shirt, ShowerHead, UtensilsCrossed, Car, ShieldCheck, CircleDot, LogOut } from 'lucide-react';
 import { useTenantRoom } from '@features/tenant-room/hooks/useTenantRoom';
+import { buildTenantFacilities, type FacilityIcon } from '@features/tenant-room/facilities';
+import ShareSheet from '@shared/ui-patterns/ShareSheet';
+import { MoveOutSheet } from '@features/tenant-room/components/MoveOutSheet';
+import { buildShareUrl } from '@shared/lib/shareListing';
+import { copyToClipboard } from '@lib/share';
+import { useShareHostel } from '@shared/hooks/useShareHostel';
 import { tenantRoomService, type ServiceRequestType } from '@features/tenant-room/api';
 import { useTenantProfile } from '@features/tenant-profile/hooks/useTenantProfile';
 import { useOverlayStack } from '../components/overlays/useOverlayStack';
@@ -17,13 +23,24 @@ import { TicketsListScreen } from '../components/overlays/TicketsListScreen';
 const card = 'rounded-[16px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_4px_14px_rgba(40,30,20,0.05)]';
 const sectionLabel = 'text-[13px] font-bold uppercase tracking-wide text-muted-foreground';
 
-const UTILITY_META: Record<string, { label: string; icon: typeof Wifi }> = {
-  WATER: { label: 'Water supply', icon: Droplets },
-  WIFI: { label: 'Wi-Fi', icon: Wifi },
-  ELECTRICITY: { label: 'Electricity', icon: Zap },
-  CLEANING: { label: 'Cleaning', icon: Sparkles },
+/**
+ * One glyph per kind of facility. Before this every row rendered the Wi-Fi
+ * icon, so Hot water and Laundry appeared with a wifi mark.
+ */
+const FACILITY_ICONS: Record<FacilityIcon, typeof Wifi> = {
+  wifi: Wifi,
+  water: Droplets,
+  'hot-water': Flame,
+  laundry: Shirt,
+  cleaning: Sparkles,
+  power: Zap,
+  bathroom: ShowerHead,
+  food: UtensilsCrossed,
+  parking: Car,
+  security: ShieldCheck,
+  generic: CircleDot,
 };
-const UTILITY_ORDER = ['WATER', 'WIFI', 'ELECTRICITY', 'CLEANING'];
+
 const UTILITY_DETAIL_KEY: Record<string, string> = { WATER: 'water', WIFI: 'wifi', ELECTRICITY: 'electricity', CLEANING: 'cleaning' };
 const STATUS_COLOR: Record<string, string> = { OK: 'bg-success', ISSUE: 'bg-warning', OUTAGE: 'bg-destructive' };
 const STATUS_LABEL: Record<string, string> = { OK: 'Normal', ISSUE: 'Minor issue', OUTAGE: 'Outage' };
@@ -33,15 +50,6 @@ const TICKET_STEPS: Array<{ key: string; label: string }> = [
   { key: 'ASSIGNED', label: 'Assigned' },
   { key: 'IN_PROGRESS', label: 'In progress' },
   { key: 'RESOLVED', label: 'Resolved' },
-];
-
-const SERVICES: Array<{ type: ServiceRequestType; formKey: string; title: string; sub: string; icon: typeof Wrench }> = [
-  { type: 'ROOM_CHANGE', formKey: 'svc_room_change', title: 'Room change', sub: 'Move room or bed', icon: DoorOpen },
-  { type: 'CLEANING', formKey: 'svc_cleaning', title: 'Cleaning request', sub: 'Extra housekeeping', icon: Sparkles },
-  { type: 'LOST_KEY', formKey: 'svc_lostkey', title: 'Lost key', sub: 'Report & replace', icon: KeyRound },
-  { type: 'VISITOR_PASS', formKey: 'svc_visitor', title: 'Visitor pass', sub: 'Register a guest', icon: UserPlus },
-  { type: 'EXTRA_MATTRESS', formKey: 'svc_mattress', title: 'Extra mattress', sub: 'Bedding request', icon: BedDouble },
-  { type: 'MAINTENANCE', formKey: 'maint_new', title: 'Maintenance', sub: 'Report an issue', icon: Wrench },
 ];
 
 function LoadingSkeleton() {
@@ -57,7 +65,16 @@ function LoadingSkeleton() {
 /** Tenant Room tab, per Stayo Tenant.dc.html. Drill-ins/forms use the shared overlay system (DetailScreen/FormPanel) rather than one-off screens — same architecture the design source itself uses. */
 export function TenantRoomPage() {
   const navigate = useNavigate();
+  const { share: shareHostel } = useShareHostel();
   const room = useTenantRoom();
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+  const [moveOutOpen, setMoveOutOpen] = useState(false);
+  // Owner-authored and admin-approved, plus this room's Wi-Fi. See facilities.ts.
+  const facilities = useMemo(
+    () => buildTenantFacilities({ amenities: room.facilities, room: room.room }),
+    [room.facilities, room.room],
+  );
   const profile = useTenantProfile();
   const overlay = useOverlayStack();
   const [openRuleSection, setOpenRuleSection] = useState<string | null>(null);
@@ -65,8 +82,8 @@ export function TenantRoomPage() {
   const resolvedRequests = useMemo(() => room.requests.filter((r) => r.status === 'RESOLVED'), [room.requests]);
 
   const detailConfigs = useMemo(
-    () => buildRoomDetailConfigs({ room: room.room, roommates: room.roommates, utilityStatus: room.utilityStatus, resolvedRequests, push: overlay.push }),
-    [room.room, room.roommates, room.utilityStatus, resolvedRequests, overlay.push],
+    () => buildRoomDetailConfigs({ room: room.room, roommates: room.roommates, facilities, resolvedRequests, push: overlay.push, onInviteToRoom: () => setShareOpen(true) }),
+    [room.room, room.roommates, facilities, resolvedRequests, overlay.push],
   );
   const formConfigs = useMemo(() => buildServiceRequestFormConfigs({ createRequest: room.createRequest }), [room.createRequest]);
 
@@ -136,43 +153,6 @@ export function TenantRoomPage() {
         </button>
 
         <div className="flex flex-col gap-2.5">
-          <span className={sectionLabel}>Living status</span>
-          <div className={`${card} p-3.5`}>
-            <div className="grid grid-cols-2 gap-2.5">
-              {UTILITY_ORDER.map((key) => {
-                const row = room.utilityStatus.find((u) => u.utility === key);
-                const meta = UTILITY_META[key];
-                const status = row?.status ?? 'OK';
-                return (
-                  <button key={key} type="button" onClick={() => overlay.push(UTILITY_DETAIL_KEY[key])} className="rounded-[13px] border border-[#EFE6DA] bg-background p-3 text-left">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-white shadow-[0_1px_3px_rgba(40,30,20,0.06)]">
-                      <meta.icon className="h-4 w-4 text-[#8A7F75]" />
-                    </span>
-                    <div className="mt-2.5 text-[12.5px] font-semibold text-[#2A2521]">{meta.label}</div>
-                    <div className="mt-0.5 flex items-center gap-1.5">
-                      <span className={`h-1.5 w-1.5 rounded-full ${STATUS_COLOR[status]}`} />
-                      <span className="text-[11.5px] font-semibold text-[#8A7F75]">{STATUS_LABEL[status]}</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-            {room.activeTicket && (
-              <button type="button" onClick={() => overlay.push('maint_ticket')} className="mt-2.5 flex w-full items-center gap-2.5 rounded-[13px] border border-[#F1E2C4] bg-warning-bg p-[12px_13px] text-left">
-                <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[9px] bg-white text-warning">
-                  <Wrench className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[12.5px] font-semibold text-[#2A2521]">Active maintenance</div>
-                  <div className="mt-0.5 text-[11px] font-medium text-[#9A8F84]">{room.activeTicket.category ?? 'Maintenance issue'} · {room.activeTicket.status.replace('_', ' ').toLowerCase()}</div>
-                </div>
-                <span className="flex-none rounded-full border border-[#F1E2C4] bg-white px-2.5 py-1 text-[10.5px] font-bold text-warning">1 active</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2.5">
           <span className={sectionLabel}>Roommates</span>
           <div className={`${card} divide-y divide-border px-4`}>
             <div className="flex items-center gap-3 py-3">
@@ -203,27 +183,50 @@ export function TenantRoomPage() {
 
         <div className="flex flex-col gap-2.5">
           <span className={sectionLabel}>Room facilities</span>
-          <div className={`${card} divide-y divide-border px-4`}>
-            {[
-              { key: 'wifi', name: 'Wi-Fi', meta: room.room?.wifi_name ? `${room.room.wifi_name}` : 'Ask the front desk', pill: 'Active', pillClass: 'bg-success-bg text-success' },
-              { key: 'fac_hotwater', name: 'Hot water', meta: 'Attached bathroom', pill: '6–10 AM · 6–10 PM', pillClass: 'bg-warning-bg text-warning' },
-              { key: 'fac_laundry', name: 'Laundry', meta: 'Shared · ground floor', pill: 'Available', pillClass: 'bg-success-bg text-success' },
-              { key: 'fac_drinking', name: 'Drinking water', meta: 'RO purifier · corridor', pill: '24×7', pillClass: 'bg-success-bg text-success' },
-              { key: 'fac_housekeeping', name: 'Housekeeping', meta: 'Room cleaning', pill: 'Daily', pillClass: 'bg-warning-bg text-warning' },
-              { key: 'fac_bathroom', name: 'Attached bathroom', meta: 'Private to your room', pill: 'Private', pillClass: 'bg-info-bg text-info' },
-            ].map((f) => (
-              <button key={f.key} type="button" onClick={() => overlay.push(f.key)} className="flex w-full items-center gap-3 py-3 text-left">
-                <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px] bg-[#F5E9E3] text-primary">
-                  <Wifi className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13.5px] font-semibold text-[#2A2521]">{f.name}</div>
-                  <div className="mt-0.5 text-[11.5px] font-medium text-[#9A8F84]">{f.meta}</div>
-                </div>
-                <span className={`flex-none rounded-full px-2.5 py-1 text-[10.5px] font-bold ${f.pillClass}`}>{f.pill}</span>
-              </button>
-            ))}
-          </div>
+          {facilities.length === 0 ? (
+            /*
+              Nothing invented. This section used to render six hardcoded rows —
+              hot-water timings, a laundry location, a housekeeping frequency —
+              that were true of no hostel in particular. An absent section is
+              honest; six confident lies are not.
+            */
+            <div className={`${card} px-4 py-5 text-center`}>
+              <div className="text-[13px] font-semibold text-[#6E635A]">Not listed yet</div>
+              <div className="mt-1 text-[11.5px] text-[#9A8F84]">
+                Your hostel hasn’t published its facilities. Ask at the front desk in the meantime.
+              </div>
+            </div>
+          ) : (
+            <div className={`${card} divide-y divide-border px-4`}>
+              {facilities.map((facility) => {
+                const Icon = FACILITY_ICONS[facility.icon] ?? FACILITY_ICONS.generic;
+                return (
+                  <button
+                    key={facility.key}
+                    type="button"
+                    onClick={() => overlay.push(`facility:${facility.key}`)}
+                    className="flex w-full items-center gap-3 py-3 text-left"
+                  >
+                    <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px] bg-[#F5E9E3] text-primary">
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[13.5px] font-semibold text-[#2A2521]">{facility.label}</div>
+                      {facility.detail && (
+                        <div className="mt-0.5 truncate text-[11.5px] font-medium text-[#9A8F84]">{facility.detail}</div>
+                      )}
+                    </div>
+                    {facility.schedule && (
+                      <span className="flex-none rounded-full bg-warning-bg px-2.5 py-1 text-[10.5px] font-bold text-warning">
+                        {facility.schedule}
+                      </span>
+                    )}
+                    <ChevronRight className="h-4 w-4 flex-none text-[#C9BFB4]" />
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {room.activeTicket && (
@@ -269,22 +272,6 @@ export function TenantRoomPage() {
           </div>
         )}
 
-        <div className="flex flex-col gap-2.5">
-          <span className={sectionLabel}>Room services</span>
-          <div className="grid grid-cols-2 gap-2.5">
-            {SERVICES.map(({ formKey, title, sub, icon: Icon }) => (
-              <button key={formKey} type="button" onClick={() => overlay.push(formKey)} className={`${card} flex flex-col gap-2.5 px-3.5 py-3.5 text-left`}>
-                <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] bg-secondary text-primary">
-                  <Icon className="h-4.5 w-4.5" />
-                </span>
-                <span>
-                  <span className="block truncate text-[13px] font-semibold leading-tight text-[#2A2521]">{title}</span>
-                  <span className="mt-0.5 block truncate text-[11px] leading-tight text-muted-foreground">{sub}</span>
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
 
         <button
           type="button"
@@ -333,6 +320,23 @@ export function TenantRoomPage() {
           </div>
         )}
 
+        {/*
+          Moving out sits last and stays quiet. It settles a deposit, frees the
+          bed and puts a request in front of the owner — consequential enough
+          that it should not compete with Facilities for a thumb, and permanent
+          enough that it should never be a tap away by accident.
+        */}
+        {room.room && (
+          <button
+            type="button"
+            onClick={() => setMoveOutOpen(true)}
+            className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl border border-border py-3 text-[12.5px] font-semibold text-[#9A8F84]"
+          >
+            <LogOut className="h-4 w-4" />
+            Request to move out
+          </button>
+        )}
+
         <p className="pt-0.5 text-center text-[11px] font-medium text-[#B7AC9F]">Stayo{profile.hostel?.name ? ` · ${profile.hostel.name}` : ''}</p>
       </div>
 
@@ -350,6 +354,26 @@ export function TenantRoomPage() {
       )}
       {!overlay.isHome && formConfigs[overlay.view] && (
         <FormPanel config={formConfigs[overlay.view]} onBack={overlay.back} onClose={overlay.close} />
+      )}
+
+      <MoveOutSheet open={moveOutOpen} onClose={() => setMoveOutOpen(false)} roomNo={room.room?.room_no ?? null} />
+
+      {room.hostel.public_slug && (
+        <ShareSheet
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          hostel={{ name: room.hostel.name ?? 'this hostel', slug: room.hostel.public_slug, city: null }}
+          url={buildShareUrl(room.hostel.public_slug, window.location.origin)}
+          copied={shareCopied}
+          onCopy={async () =>
+            setShareCopied(await copyToClipboard(buildShareUrl(room.hostel.public_slug as string, window.location.origin)))
+          }
+          onNativeShare={
+            typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+              ? () => shareHostel({ name: room.hostel.name ?? 'this hostel', slug: room.hostel.public_slug as string, city: null })
+              : null
+          }
+        />
       )}
     </div>
   );

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { tenantRoomService, type ServiceRequestType } from '@features/tenant-room/api';
 import { useTenantSession } from '@features/tenant-session/useTenantSession';
 
-/** Tenant Room tab — room/roommates/utility-status/house-rules + the tenant's own service requests. */
+/** Tenant Room tab — room/roommates/facilities/house-rules + the tenant's own service requests. */
 export function useTenantRoom() {
   const session = useTenantSession();
   const queryClient = useQueryClient();
@@ -44,7 +44,12 @@ export function useTenantRoom() {
     isLoading: roomQuery.isLoading || requestsQuery.isLoading,
     room: roomQuery.data?.room ?? null,
     roommates: roomQuery.data?.roommates ?? [],
-    utilityStatus: roomQuery.data?.utilityStatus ?? [],
+    /**
+     * The hostel's APPROVED marketing amenities — the same list Discovery
+     * publishes, so a tenant and a prospective tenant read the same facts.
+     */
+    facilities: roomQuery.data?.facilities ?? [],
+    hostel: roomQuery.data?.hostel ?? { name: null, public_slug: null },
     houseRules: roomQuery.data?.houseRules ?? [],
     requests: requestsQuery.data ?? [],
     openRequests,
