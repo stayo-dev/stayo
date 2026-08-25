@@ -4,6 +4,7 @@ import api from '@lib/api-client';
 import { supabase } from '@lib/supabaseClient';
 import { queryClient } from '@lib/queryClient';
 import { useIdleSessionTimeout } from '@shared/hooks/useIdleSessionTimeout';
+import { clearIntentionalSignOut, markIntentionalSignOut } from '@lib/sessionSignOutIntent';
 
 export interface AuthUser {
   email?: string;
@@ -171,6 +172,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
 
   const logout = async (redirect = true, options: LogoutOptions = {}) => {
+    // Before the request, not after: logout revokes the session server-side, so
+    // anything already in flight 401s as SESSION_REVOKED and would otherwise
+    // raise "Session expired for your security" on a sign-out the user chose.
+    markIntentionalSignOut();
     try {
       await api.post('/auth/logout');
     } catch {
@@ -249,6 +254,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string): Promise<AuthUser> => {
+    // A new session gets no leftover grace from the previous sign-out.
+    clearIntentionalSignOut();
     try {
       const normalizedEmail = (email || '').trim().toLowerCase();
       const response = await api.post('/auth/login', {

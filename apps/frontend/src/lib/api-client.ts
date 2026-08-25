@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { supabase } from './supabaseClient';
+import { shouldSuppressExpiryNotice } from './sessionSignOutIntent';
 
 // StayO requires an explicit API base URL in every environment (dev, staging,
 // production) via VITE_API_URL — no hardcoded host, no silent fallback. See
@@ -141,6 +142,12 @@ const getSessionExpiryNotice = (data?: any): SessionExpiryNotice => {
 
 const notifySessionExpired = (notice?: Partial<SessionExpiryNotice> | string) => {
   if (typeof window === 'undefined') return;
+  // A deliberate sign-out revokes the session, so requests still in flight come
+  // back 401 SESSION_REVOKED — indistinguishable here from a session revoked
+  // underneath the user. Announcing "Session expired for your security" to
+  // someone who just tapped Sign out is untrue and alarming. See
+  // sessionSignOutIntent for why this is time-boxed rather than a flag.
+  if (shouldSuppressExpiryNotice()) return;
   const normalizedNotice =
     typeof notice === 'string'
       ? { message: notice, reason: 'expired' as SessionExpiryReason }
