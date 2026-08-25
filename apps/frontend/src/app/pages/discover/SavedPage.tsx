@@ -8,6 +8,7 @@ import { HostelCard } from './components/HostelCard';
 import { DiscoverEmpty, PrimaryButton } from './components/DiscoverShell';
 import { SignedOutPrompt } from './components/SignedOutPrompt';
 import { C, FONT } from './discoverTheme';
+import { FootprintTrail } from './components/FootprintTrail';
 
 export function SavedPage() {
   const navigate = useNavigate();
@@ -33,7 +34,18 @@ export function SavedPage() {
   }
 
   return (
-    <div>
+    <div className="relative">
+      {/*
+        Same trail as Explore, and painted underneath the page for the same
+        reason: `FootprintTrail` is `fixed z-0` while the content below is
+        `relative z-[1]`, so a print lands on the graph-paper ground in the
+        margins between cards and never across a hostel's photo. The component
+        turns itself off on touch, under prefers-reduced-motion, and on narrow
+        viewports where there are no margins to land in.
+      */}
+      <FootprintTrail />
+
+      <div className="relative z-[1]">
       <header
         className="border-b px-5 pb-4 pt-[max(3.25rem,env(safe-area-inset-top))]"
         style={{ background: C.cardWarm, borderColor: C.line }}
@@ -71,6 +83,7 @@ export function SavedPage() {
           ))}
         </div>
       </section>
+      </div>
     </div>
   );
 }

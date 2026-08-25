@@ -12,6 +12,7 @@ import {
 
 import { useDiscoverAuth } from './DiscoverAuthContext';
 import { useShareHostel } from '@shared/hooks/useShareHostel';
+import { FootprintTrail } from './components/FootprintTrail';
 import { HostelCard } from './components/HostelCard';
 import { DiscoverEmpty, HostelCardSkeleton, PrimaryButton } from './components/DiscoverShell';
 import { AUDIENCE_LABEL, C, FONT, PAGE_SHELL, RESULTS_GRID, formatRupees } from './discoverTheme';
@@ -100,7 +101,17 @@ export function SearchPage() {
   };
 
   return (
-    <div className="flex min-h-[100dvh] flex-col">
+    <div className="relative">
+      {/*
+        Same trail as Explore, and painted underneath the page for the same
+        reason: `FootprintTrail` is `fixed z-0` while the content below is
+        `relative z-[1]`, so a print lands on the graph-paper ground in the
+        margins between cards and never across a hostel's photo. The component
+        turns itself off on touch, under prefers-reduced-motion, and on narrow
+        viewports where there are no margins to land in.
+      */}
+      <FootprintTrail />
+      <div className="relative z-[1] flex min-h-[100dvh] flex-col">
       {/* ── Search bar ─────────────────────────────────────────────────── */}
       <header
         className="sticky top-0 z-30 border-b pb-3 pt-[max(3.25rem,env(safe-area-inset-top))] lg:pt-4"
@@ -379,6 +390,7 @@ export function SearchPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
