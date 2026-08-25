@@ -49,6 +49,20 @@ export type SkyEnv = {
   onSkyBody: string;
   onSkyLabel: string;
   onSkyShadow: string;
+  /**
+   * The frosted progress panel's fill.
+   *
+   * Its contents are dark ink on translucent white, so legibility depends
+   * entirely on what shows through. At `.55` over the daytime gradient the panel
+   * resolves near-white and reads fine; over the night gradient it resolves to
+   * mid-grey and the muted labels ("3 steps left", the pending step names) fall
+   * to roughly 2.4:1. Raising the opacity after dark keeps the glass look while
+   * putting the text back on a light surface — the right fix for text on a
+   * panel, as opposed to the `onSky*` tokens which are for text on the sky
+   * itself.
+   */
+  panelBg: string;
+  panelBorder: string;
 };
 
 export const THEME_CYCLE: (ThemePhase | null)[] = [null, 'day', 'dusk', 'night'];
@@ -91,6 +105,8 @@ export function skyEnv(hour: number, override: ThemePhase | null): SkyEnv {
       onSkyBody: '#6E635A',
       onSkyLabel: '#7A6F63',
       onSkyShadow: 'none',
+      panelBg: 'rgba(255,255,255,.55)',
+      panelBorder: 'rgba(255,255,255,.6)',
     };
   }
   if (phase === 'dusk') {
@@ -122,6 +138,8 @@ export function skyEnv(hour: number, override: ThemePhase | null): SkyEnv {
       onSkyBody: 'rgba(255,244,232,.82)',
       onSkyLabel: 'rgba(255,236,220,.78)',
       onSkyShadow: '0 1px 8px rgba(60,26,10,.35)',
+      panelBg: 'rgba(255,250,244,.86)',
+      panelBorder: 'rgba(255,255,255,.7)',
     };
   }
   return {
@@ -150,6 +168,8 @@ export function skyEnv(hour: number, override: ThemePhase | null): SkyEnv {
     onSkyBody: 'rgba(246,241,234,.80)',
     onSkyLabel: 'rgba(238,230,220,.76)',
     onSkyShadow: '0 1px 10px rgba(0,0,0,.45)',
+    panelBg: 'rgba(252,248,242,.90)',
+    panelBorder: 'rgba(255,255,255,.6)',
   };
 }
 

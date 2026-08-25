@@ -314,7 +314,7 @@ export function WelcomeIdentityStep({
         <div className="flex h-7 w-7 flex-none items-center justify-center rounded-lg" style={{ background: '#F3E7E0', color: '#B46A55' }}>
           <Receipt className="h-3.5 w-3.5" />
         </div>
-        <span className="text-[12.5px] font-bold" style={{ color: '#3A342E' }}>
+        <span className="text-[12.5px] font-bold" style={{ color: sky.onSkyTitle }}>
           Select Billing Cycle <span style={{ color: '#D0473A' }}>*</span>
         </span>
       </div>
@@ -334,7 +334,7 @@ export function WelcomeIdentityStep({
           ⌄
         </span>
       </div>
-      <div className="mt-1.5 text-[11.5px] leading-relaxed" style={{ color: '#8A7F75' }}>
+      <div className="mt-1.5 text-[11.5px] leading-relaxed" style={{ color: sky.onSkyBody }}>
         Changing this later requires a change request to the hostel owner.
       </div>
     </div>
@@ -594,13 +594,16 @@ export function WelcomeIdentityStep({
   if (activeStep === 'ACCOUNT' && accountVerified) {
     return (
       <div style={{ animation: 'obFade .25s ease' }}>
-        <p className="font-display text-[10px] font-extrabold uppercase" style={{ color: '#B46A55', letterSpacing: '.1em' }}>
+        <p className="font-display text-[10px] font-extrabold uppercase" style={{ color: sky.greetAccent, letterSpacing: '.1em' }}>
           Step 1 of {stageCount}
         </p>
-        <h2 className="font-display mt-1.5 text-[19px] font-extrabold leading-tight tracking-tight" style={{ color: '#1A1A1A' }}>
+        <h2
+          className="font-display mt-1.5 text-[19px] font-extrabold leading-tight tracking-tight"
+          style={{ color: sky.onSkyTitle, textShadow: sky.onSkyShadow }}
+        >
           Welcome to Stayo
         </h2>
-        <p className="mt-1.5 text-xs leading-relaxed" style={{ color: '#6E6459' }}>
+        <p className="mt-1.5 text-xs leading-relaxed" style={{ color: sky.onSkyBody }}>
           Confirm your stay details and billing preference to begin.
         </p>
         {roomAllocationCard}
@@ -617,13 +620,16 @@ export function WelcomeIdentityStep({
   if (activeStep === 'ACCOUNT' && localPhase === 'welcome') {
     return (
       <div style={{ animation: 'obFade .25s ease' }}>
-        <p className="font-display text-[10px] font-extrabold uppercase" style={{ color: '#B46A55', letterSpacing: '.1em' }}>
+        <p className="font-display text-[10px] font-extrabold uppercase" style={{ color: sky.greetAccent, letterSpacing: '.1em' }}>
           Step 1 of {stageCount}
         </p>
-        <h2 className="font-display mt-1.5 text-[19px] font-extrabold leading-tight tracking-tight" style={{ color: '#1A1A1A' }}>
+        <h2
+          className="font-display mt-1.5 text-[19px] font-extrabold leading-tight tracking-tight"
+          style={{ color: sky.onSkyTitle, textShadow: sky.onSkyShadow }}
+        >
           Welcome to Stayo
         </h2>
-        <p className="mt-1.5 text-xs leading-relaxed" style={{ color: '#6E6459' }}>
+        <p className="mt-1.5 text-xs leading-relaxed" style={{ color: sky.onSkyBody }}>
           Confirm your stay details and billing preference to begin.
         </p>
         {roomAllocationCard}

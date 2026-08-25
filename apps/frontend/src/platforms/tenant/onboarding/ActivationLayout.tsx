@@ -177,10 +177,12 @@ export function ActivationLayout({
           <div
             className="rounded-2xl border"
             style={{
-              background: 'rgba(255,255,255,.55)',
+              // Phase-aware: the panel's contents are dark ink, so it has to stay
+              // a light surface at every hour. See panelBg in skyTheme.
+              background: sky.panelBg,
               backdropFilter: 'blur(16px) saturate(150%)',
               WebkitBackdropFilter: 'blur(16px) saturate(150%)',
-              borderColor: 'rgba(255,255,255,.6)',
+              borderColor: sky.panelBorder,
               boxShadow: '0 8px 26px rgba(20,16,13,.16)',
               padding: '11px 14px 12px',
             }}

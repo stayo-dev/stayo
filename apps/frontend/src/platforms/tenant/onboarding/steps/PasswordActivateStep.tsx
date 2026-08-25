@@ -4,6 +4,7 @@ import { StayoLoader } from '@shared/ui/brand';
 import type { ActivationStep } from '../activationTypes';
 import { passwordStrength } from './passwordPolicy';
 import { BackButton, PrimaryActionButton, StepActionBar } from './shared';
+import { useSky } from '../skyContext';
 
 /**
  * Step 4 — "Set Your Password", matching `Stayo Onboarding.dc.html`'s Step 4
@@ -56,6 +57,7 @@ export function PasswordActivateStep({
   goToStep,
   onActivate,
 }: PasswordActivateStepProps) {
+  const sky = useSky();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const strength = passwordStrength(password);
@@ -72,10 +74,13 @@ export function PasswordActivateStep({
           </svg>
         </div>
         <div>
-          <div className="font-display text-[18px] font-extrabold tracking-tight" style={{ color: '#1A1A1A' }}>
+          <div
+            className="font-display text-[18px] font-extrabold tracking-tight"
+            style={{ color: sky.onSkyTitle, textShadow: sky.onSkyShadow }}
+          >
             Set Your Password
           </div>
-          <div className="mt-1 text-xs leading-relaxed" style={{ color: '#6E6459' }}>
+          <div className="mt-1 text-xs leading-relaxed" style={{ color: sky.onSkyBody }}>
             Create a login password to secure your Stayo account.
           </div>
         </div>

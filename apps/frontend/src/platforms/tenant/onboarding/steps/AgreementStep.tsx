@@ -4,6 +4,7 @@ import { CommitmentSheet, TheWordCard } from './CommitmentCeremony';
 import { hasStatableTerm, type AgreementTerm, type CommitmentChecks } from './commitmentTerm';
 import { SignatureSheet } from './SignatureSheet';
 import { BackButton, PrimaryActionButton, StepActionBar } from './shared';
+import { useSky } from '../skyContext';
 
 /**
  * Step 3 — "Review & Sign Agreement" (moved after Identity, ADR-070).
@@ -89,6 +90,7 @@ export function AgreementStep({
   const [tenantSigBlob, setTenantSigBlob] = useState<Blob | null>(null);
   const [tenantSigName, setTenantSigName] = useState('');
   const [guardianSigBlob, setGuardianSigBlob] = useState<Blob | null>(null);
+  const sky = useSky();
   const [busy, setBusy] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [commitmentGiven, setCommitmentGiven] = useState(false);
@@ -243,10 +245,13 @@ export function AgreementStep({
           </svg>
         </div>
         <div>
-          <div className="font-display text-[18px] font-extrabold tracking-tight" style={{ color: '#1A1A1A' }}>
+          <div
+            className="font-display text-[18px] font-extrabold tracking-tight"
+            style={{ color: sky.onSkyTitle, textShadow: sky.onSkyShadow }}
+          >
             Review &amp; Sign Agreement
           </div>
-          <div className="mt-1 text-xs leading-relaxed" style={{ color: '#6E6459' }}>
+          <div className="mt-1 text-xs leading-relaxed" style={{ color: sky.onSkyBody }}>
             Review your stay terms and sign electronically below.
           </div>
         </div>
