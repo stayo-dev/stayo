@@ -17,8 +17,6 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
-    "//ignoreDeprecations": "TS5101 (baseUrl deprecated) is a FATAL config diagnostic: tsc reported it and aborted before checking any of the 446 files in src/, so `tsc --noEmit` passed while an undefined component sat in the bundle. Silence it until baseUrl is actually removed.",
-    "ignoreDeprecations": "6.0",
     "paths": {
       "@/*": ["./src/*"],
       "@lib/*": ["./src/lib/*"],
@@ -32,6 +30,7 @@
     }
   },
   "//": "vite.config.ts belongs to tsconfig.node.json (composite). Listing it here too made tsc raise TS6305 for an unbuilt reference output and bail BEFORE checking src/ — so `tsc --noEmit` silently checked nothing, and an undefined component reached production. Keep this include limited to src.",
+  "//ignoreDeprecations": "TS5101 (baseUrl deprecated) was a FATAL config diagnostic against whichever TypeScript version this note was written for — tsc reported it and aborted before checking any of the 446 files in src/, so `tsc --noEmit` passed while an undefined component sat in the bundle. An `ignoreDeprecations: \"6.0\"` compilerOption used to silence it, but that value is itself invalid (TS5103) against TypeScript 5.9.3 (2026-08-25, first time this project's own `typescript` devDependency — previously undeclared, `npm install --save-dev typescript` — was actually installed and run here) and baseUrl no longer aborts the build under 5.9.3 regardless, so the option was removed rather than reintroduced with a different value. If a future TypeScript upgrade brings the fatal diagnostic back, re-add `ignoreDeprecations` inside compilerOptions (not as a same-named `//`-prefixed key — see the historical TS5025/TS5103 note this replaced) with whatever value that version accepts.",
   "include": ["src"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

@@ -426,22 +426,40 @@ Applied to the live database on 2026-08-07. See [[APIs]] and [[Features]].
 
 Tenant/user → Stayo Admin support tickets — Profile → "Raise a Ticket". Modeled directly on `owner_documents`' shape (see above) but deliberately **has no `owner_id`/`hostel_id` and no relation to `tenants`** — the whole point is that this queue belongs to Stayo, not to a hostel, and stays fully independent of the tenant → owner complaint system (`tenant_service_requests`/`complaints`, both of which remain hostel/owner-bound and untouched by this change). Columns: `profile_id` (FK → `profiles`, `ON DELETE CASCADE`), `category` (`APP_BUG`|`ACCOUNT_ISSUE`|`PAYMENT_ISSUE`|`OTHER`, plain string), `subject`, `description`, `status` (`OPEN` default; only an admin resolution can move it to `RESOLVED` — never set by the reporter), `created_at`, `resolved_at`/`resolved_by`, `admin_note` (shown back to the reporter). Indexed on `(profile_id)` and `(status)`, same as `owner_documents`. Migration: `prisma/migrations/20260816120000_add_platform_support_tickets/migration.sql` (idempotent, applied to the dev database on 2026-08-16). See [[APIs]] and [[Features]].
 
-## `hostel_reviews` (migration 071 — 2026-08-19, **not yet applied outside dev**)
+## `hostel_reviews` (migration 071 — 2026-08-19; confirmed applied to the dev Supabase project 2026-08-25)
 
 Resident reviews of a hostel, shown on its Discovery listing.
+
+**2026-08-25 finding:** this page's earlier "not yet applied outside dev" flag undersold the gap — the dev Supabase project (`qsjrazcbtpmubclkevwi`) turned out to be missing migrations 066, 068 (its `hostels.listing_source`/`claimed_at`/`claimed_by` portion — the `hostel_marketing_revisions.review_flags` half was covered by re-applying 066 in full), 071, 072, 073, 074 and 076 all at once, not just 071 — the discover listing-detail endpoint 500'd on `hostels.listing_source`, then `hostel_marketing_revisions` not existing, then `rooms.length_ft`, in that order, each surfacing only after the previous one was fixed. All were applied live via the Supabase SQL editor while verifying [[Decisions#ADR-115|ADR-115]] end to end; `apps/backend/prisma/migrations_manual/` and the root `migrations/` numbered files remain the source of truth for what *should* be applied anywhere this project gets provisioned. Migration 073's `rooms.windows` needed a follow-up correction — applied from memory as `text` with no range check on the first attempt, then corrected to the real migration's `smallint (0–20)` once re-read from the actual file. Worth checking this database's overall migration currency again rather than assuming any single "confirmed applied" note here still holds by the time it's read.
 
 | Column | Notes |
 |---|---|
 | `hostel_id`, `profile_id` | Unique together — one review per account per hostel; an edit replaces it. |
-| `rating` | `smallint`, `CHECK (rating BETWEEN 1 AND 5)` — constrained in the database, not only in the service. |
+| `rating` | `smallint`, `CHECK (rating BETWEEN 1 AND 5)` — constrained in the database, not only in the service. **Given directly by the resident as its own "Overall Experience" question** (migration 076, [[Decisions#ADR-115|ADR-115]]), not derived from the categories below. |
 | `body` | Optional: a rating with no words is a valid review. |
-| `status` | `PENDING` \| `PUBLISHED` \| `REJECTED`, defaulting to PENDING. **Nothing is public until an admin publishes it** ([[Decisions#ADR-086|ADR-086]]). |
+| `status` | `PENDING` \| `PUBLISHED` \| `REJECTED` \| `CHANGES_REQUESTED` (fourth value added by migration 076), defaulting to PENDING. **Nothing is public until an admin publishes it** ([[Decisions#ADR-086|ADR-086]]). |
 | `stayed_here` | Snapshotted from a real tenancy at write time, so it stays true after move-out. A badge and a moderation signal, never a gate. |
-| `moderated_at/by`, `moderation_note` | The note is shown to the author, so a rejection arrives with a reason. |
+| `stay_months` | Nullable `smallint`, added migration 076. Stay duration snapshotted at submit time, same reasoning as `stayed_here` — a live join would drift as the tenancy changes after the review is written. Powers the "Verified Resident · Stayed 6 months" badge. |
+| `moderated_at/by`, `moderation_note` | The note is shown to the author, so a rejection or a change request arrives with a reason. |
 
 Indexes: `(hostel_id, status)` for the listing, `(status, created_at DESC)` for the moderation queue.
 
-**Migration 072 (applied 2026-08-19)** adds six nullable `rating_*` columns to `hostel_reviews` — cleanliness, food, safety, staff, value, location — under one `hostel_reviews_category_range` CHECK (each 1–5 or NULL). Nullable because `food` does not apply to a hostel serving no meals and reviews predating 072 have none; averages skip what was not answered rather than counting it as zero. `rating` is now **derived**: the mean of the answered categories.
+**Migration 072 (applied 2026-08-19, superseded by 076)** added six nullable `rating_*` columns to `hostel_reviews` — cleanliness, food, safety, staff, value, location (Airbnb's shape) — with `rating` derived as the mean of the answered categories.
+
+**Migration 076 ([[Decisions#ADR-115|ADR-115]])** replaces that category set with eight hostel-specific ones: `rating_cleanliness`, `rating_maintenance`, `rating_food`, `rating_room_comfort`, `rating_amenities`, `rating_staff` (labelled "Staff & Management" in the app), `rating_safety`, `rating_wifi`, under one `hostel_reviews_category_range_v2` CHECK. `rating_value` and `rating_location` are dropped — a hostel is lived in for a year, not compared like a holiday-flat booking. All eight remain nullable in the same all-or-nothing spirit: `food` only applies to a hostel that serves meals, and averages skip what was not answered rather than counting it as zero. `rating` **stops being derived** — see the table above.
+
+### `hostel_review_topics` (migration 076, [[Decisions#ADR-115|ADR-115]])
+
+Automatic topic + sentiment detection on a review's free-text `body`, distinct from the resident-given category stars on `hostel_reviews` above — a resident rates Wi-Fi with their thumb, this table is what a deterministic keyword classifier (`review-categorization.ts`) inferred from what they typed. One review can produce several rows (a comment naming three topics is three rows).
+
+| Column | Notes |
+|---|---|
+| `review_id` | FK → `hostel_reviews`, `ON DELETE CASCADE`. |
+| `category` | One of the eight `REVIEW_CATEGORIES` keys (`cleanliness`, `maintenance`, `food`, `room_comfort`, `amenities`, `staff`, `safety`, `wifi`). |
+| `sentiment` | `POSITIVE` \| `NEUTRAL` \| `NEGATIVE`. |
+| `confidence` | `real`, 0–1, scaled by how many sentiment-bearing words backed the reading. |
+
+**Never read by the moderation decision path** — `reviewsService.moderate()` does not query this table. It exists purely for the admin insights view (`GET /api/platform-admin/reviews/insights`): "what are residents talking about", kept structurally separate from "should this be published". Indexes: `(review_id)`, `(category, sentiment)` for the insights filter.
 
 **Migration 073 (applied 2026-08-20)** adds six nullable columns to `rooms` — `length_ft`, `width_ft` (numeric 5,1), `cupboard_per_bed` (bool), `under_bed_storage` (`NONE`|`CABIN_BAG`|`LARGE_SUITCASE`), `study_desk` (`NONE`|`SHARED`|`PER_BED`), `windows` — under one `rooms_space_check`. **Two dimensions, not one area**: a 6×20 room and an 11×11 room are the same area and completely different to live in. Nothing is backfilled; an unmeasured room shows nothing on the listing rather than a default. Derived reads live in `room-space.ts`.
 
