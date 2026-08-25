@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ImagePlus, Navigation, Trash2 } from 'lucide-react';
 import { platformAdminService } from '@features/platform-admin/api';
 import { useToast } from '../layout/toastContext';
+import { coordinatesHint, embedUrlHint, extractEmbedSrc, parseCoordinates } from './parseCoordinates';
 
 /**
  * Where an admin enters how to find this hostel's front door.
@@ -24,6 +25,9 @@ interface NavigationDraft {
   entrancePhoto: string | null;
   distanceFromReference: string;
   referenceName: string;
+  /** Kept as text so a half-typed coordinate is not silently coerced to 0. */
+  coordinates: string;
+  embedUrl: string;
 }
 
 const EMPTY: NavigationDraft = {
@@ -32,6 +36,8 @@ const EMPTY: NavigationDraft = {
   entrancePhoto: null,
   distanceFromReference: '',
   referenceName: 'SNIST',
+  coordinates: '',
+  embedUrl: '',
 };
 
 const FIELD =
@@ -62,6 +68,11 @@ export function NavigationBlock({ hostelId }: { hostelId: string }) {
             landmark: saved.landmark ?? '',
             entrancePhoto: saved.entrancePhoto ?? null,
             distanceFromReference: saved.distanceFromReference ?? '',
+            coordinates:
+              typeof saved.lat === 'number' && typeof saved.lng === 'number'
+                ? `${saved.lat}, ${saved.lng}`
+                : '',
+            embedUrl: saved.embedUrl ?? '',
             referenceName: saved.referenceName ?? 'SNIST',
           }
         : EMPTY,
@@ -80,6 +91,10 @@ export function NavigationBlock({ hostelId }: { hostelId: string }) {
               entrancePhoto: value.entrancePhoto,
               distanceFromReference: value.distanceFromReference.trim() || null,
               referenceName: value.referenceName.trim() || 'SNIST',
+              ...parseCoordinates(value.coordinates),
+              // Google's dialog copies the whole <iframe> tag, so normalise the
+              // paste to its src before the server's allowlist sees it.
+              embedUrl: extractEmbedSrc(value.embedUrl) || null,
             },
       ),
     onSuccess: () => {
@@ -154,6 +169,47 @@ export function NavigationBlock({ hostelId }: { hostelId: string }) {
             placeholder="Opposite SNIST Gate 2"
             className={FIELD}
           />
+        </div>
+
+        <div>
+          <label className={LABEL} htmlFor={`coords-${hostelId}`}>Map pin — latitude, longitude</label>
+          <input
+            id={`coords-${hostelId}`}
+            value={draft.coordinates}
+            onChange={(e) => setDraft((d) => ({ ...d, coordinates: e.target.value }))}
+            placeholder="17.4542678, 78.6628497"
+            className={FIELD}
+          />
+          {/*
+            Search the hostel on Google and copy the pair straight out of the
+            result. This is what draws the map on the listing; the Place ID above
+            is what opens directions. Optional — without it the listing shows the
+            landmark and entrance photo instead of an empty map frame.
+          */}
+          <p className="mt-1 text-[11px] text-[#8A7F75]">
+            {coordinatesHint(draft.coordinates) ?? 'Optional. Search the hostel on Google and paste the two numbers.'}
+          </p>
+        </div>
+
+        <div>
+          <label className={LABEL} htmlFor={`embed-${hostelId}`}>Google embed URL — optional</label>
+          <input
+            id={`embed-${hostelId}`}
+            value={draft.embedUrl}
+            onChange={(e) => setDraft((d) => ({ ...d, embedUrl: e.target.value }))}
+            placeholder='Paste the whole <iframe …> from Google Maps'
+            className={FIELD}
+          />
+          {/*
+            Google Maps → Share → Embed a map → copy the src out of the iframe.
+            This renders the place card (name, address, rating); the coordinates
+            above render a plain pin. Only Google embed URLs are accepted —
+            this value ends up in an iframe, so anything else is a phishing
+            surface rather than a map.
+          */}
+          <p className="mt-1 text-[11px] text-[#8A7F75]">
+            {embedUrlHint(draft.embedUrl) ?? 'Optional. Maps → Share → Embed a map → Copy HTML, and paste the whole thing. Shows the rating card.'}
+          </p>
         </div>
 
         <div className="flex gap-2.5">

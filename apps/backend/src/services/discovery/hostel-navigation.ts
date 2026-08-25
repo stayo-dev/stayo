@@ -42,6 +42,55 @@ export const NavigationSchema = z.object({
    */
   distanceFromReference: z.string().trim().max(40).nullable().default(null),
   referenceName: z.string().trim().min(1).max(60).default(DEFAULT_REFERENCE_NAME),
+  /**
+   * The pin, for the map on the listing.
+   *
+   * Separate from `placeId` on purpose: a Place ID gives Google a door to open,
+   * but rendering a map *in the page* needs coordinates, and reading them out of
+   * a Place ID requires a keyed Maps API this project does not have. An admin
+   * pastes these once, the same way they already paste the Place ID.
+   *
+   * Optional, and the listing degrades to the landmark/photo block without them,
+   * because most hostels will not have them on day one.
+   *
+   * Ranges are checked rather than assumed: a swapped lat/lng puts a Hyderabad
+   * hostel in the Indian Ocean, and silently drawing a confident pin in the wrong
+   * place is worse than drawing none.
+   */
+  lat: z.number().min(-90).max(90).nullable().default(null),
+  lng: z.number().min(-180).max(180).nullable().default(null),
+  /**
+   * A Google "Share → Embed a map" URL, which renders the place card — name,
+   * address, rating — that coordinates alone cannot produce.
+   *
+   * This is the **one** stored URL in navigation, and it is a deliberate
+   * exception to the rule stated at the top of this file. The `pb=` parameter
+   * encodes the place; there is no way to derive it from a Place ID without the
+   * keyed Embed API this project does not have. So it is stored, and the
+   * listing falls back to the derived coordinate map whenever it is absent or
+   * refused — meaning a stale value degrades rather than breaks.
+   *
+   * Validated as an **allowlist** because it ends up in an `iframe src`: exact
+   * host, exact path prefix, https only. `endsWith("google.com")` would accept
+   * `google.com.evil.tld`, which is precisely the attack. Enforced here as well
+   * as on the client, because the client is not an authority.
+   */
+  embedUrl: z
+    .string()
+    .trim()
+    .url()
+    .refine((value) => {
+      try {
+        const url = new URL(value);
+        if (url.protocol !== "https:") return false;
+        if (url.hostname !== "www.google.com" && url.hostname !== "maps.google.com") return false;
+        return url.pathname === "/maps/embed" || url.pathname.startsWith("/maps/embed/");
+      } catch {
+        return false;
+      }
+    }, "Paste the URL from Google Maps → Share → Embed a map")
+    .nullable()
+    .default(null),
 });
 
 export type HostelNavigation = z.infer<typeof NavigationSchema>;

@@ -16,6 +16,10 @@ const full = {
   entrancePhoto: "https://ik.imagekit.io/stayo/entrance.jpg",
   distanceFromReference: "400m",
   referenceName: "SNIST",
+  // The map pin (2026-08-25). Optional, so most hostels carry nulls here.
+  lat: null,
+  lng: null,
+  embedUrl: null,
 };
 
 describe("NavigationSchema", () => {
@@ -27,7 +31,43 @@ describe("NavigationSchema", () => {
       entrancePhoto: null,
       distanceFromReference: null,
       referenceName: DEFAULT_REFERENCE_NAME,
+      lat: null,
+      lng: null,
+      embedUrl: null,
     });
+  });
+
+  it("accepts a map pin, and keeps it as numbers", () => {
+    // Sri Adithya Boys Hostel, Yamnampet — the pair an admin pastes.
+    const parsed = NavigationSchema.parse({ placeId: PLACE_ID, lat: 17.4542678, lng: 78.6628497 });
+    expect(parsed.lat).toBe(17.4542678);
+    expect(parsed.lng).toBe(78.6628497);
+  });
+
+  it("rejects an out-of-range pin rather than mapping the wrong hemisphere", () => {
+    // A swapped lat/lng puts a Hyderabad hostel in the Indian Ocean. Drawing a
+    // confident pin in the wrong place is worse than drawing none, so the
+    // server refuses instead of storing it.
+    expect(NavigationSchema.safeParse({ placeId: PLACE_ID, lat: 178.66, lng: 17.45 }).success).toBe(false);
+    expect(NavigationSchema.safeParse({ placeId: PLACE_ID, lat: 17.45, lng: 200 }).success).toBe(false);
+  });
+
+  it("accepts a Google Share-to-embed URL", () => {
+    const url = "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3806";
+    expect(NavigationSchema.parse({ placeId: PLACE_ID, embedUrl: url }).embedUrl).toBe(url);
+  });
+
+  it("refuses an embed URL from anywhere but Google — it goes into an iframe", () => {
+    // `endsWith("google.com")` would accept the first of these, which is the
+    // whole attack: an arbitrary page framed inside a Stayo listing.
+    for (const bad of [
+      "https://www.google.com.evil.tld/maps/embed?pb=x",
+      "https://evil.tld/maps/embed?pb=x",
+      "http://www.google.com/maps/embed?pb=x",
+      "https://www.google.com/maps/place/Somewhere",
+    ]) {
+      expect(NavigationSchema.safeParse({ placeId: PLACE_ID, embedUrl: bad }).success).toBe(false);
+    }
   });
 
   it("rejects navigation with no Place ID — it is the whole point", () => {

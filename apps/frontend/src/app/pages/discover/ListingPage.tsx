@@ -30,7 +30,7 @@ import { useDiscoverAuth } from './DiscoverAuthContext';
 import { DiscoverEmpty, PrimaryButton } from './components/DiscoverShell';
 import { AUDIENCE_LABEL, C, FONT, PAGE_SHELL, PHOTO_FALLBACK, formatRupees } from './discoverTheme';
 import { photoIndexFromScroll } from './galleryScroll';
-import { directionsUrl, distanceLine, hasNavigation } from './hostelNavigation';
+import { directionsUrl, distanceLine, hasNavigation, mapEmbedUrl, whereYoullBe } from './hostelNavigation';
 import { ReviewsSection } from './components/ReviewsSection';
 import { MediaLightbox } from './components/MediaLightbox';
 import { PhotoTour } from './components/PhotoTour';
@@ -958,8 +958,43 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
           {(hasNavigation(navigation) || places.length > 0) && (
             <section className="mt-7">
               <h2 className="text-[16px] font-extrabold tracking-[-0.01em]" style={{ fontFamily: FONT.display, color: C.text }}>
-                Getting around
+                Where you'll be
               </h2>
+
+              {/*
+                The area first, because that is the question being asked. Someone
+                choosing between hostels is choosing between neighbourhoods, and
+                the street address below the fold answers a later question.
+              */}
+              {whereYoullBe({ city: hostel.city, state: hostel.state }) && (
+                <p className="mt-1.5 text-[13.5px]" style={{ color: C.muted }}>
+                  {whereYoullBe({ city: hostel.city, state: hostel.state })}
+                </p>
+              )}
+
+              {/*
+                Keyless map. Google's `output=embed` iframe needs no API key,
+                no SDK and no new dependency, and carries only Google's own small
+                logo rather than the attribution bar OSM paints across the frame.
+                Renders nothing at all until an admin has entered a pin, rather
+                than showing an empty box. See mapEmbedUrl for the caveat.
+              */}
+              {mapEmbedUrl(navigation) && (
+                <div
+                  className="mt-3 overflow-hidden rounded-2xl"
+                  style={{ border: `1px solid ${C.line}` }}
+                >
+                  <iframe
+                    src={mapEmbedUrl(navigation) as string}
+                    title={`Map showing ${hostel.name}`}
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                    className="block h-[240px] w-full"
+                    allowFullScreen
+                    style={{ border: 0 }}
+                  />
+                </div>
+              )}
 
               {/*
                 Finding the door.
