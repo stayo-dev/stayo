@@ -84,6 +84,47 @@ Found by auditing all four builder screens after an owner reported "the fields t
 
 **Related:** [[Features]], [[APIs]], [[Business-Rules]]
 
+## 2026-08-25 — Resuming a half-built hostel opened on "What's on ground floor?" with no floors (fixed)
+
+**Reported:** clicking through to Add Hostel landed on the floor-filling screen for a hostel whose name and floor count had never been set, and stepping back showed both fields empty.
+
+**Cause — the step was assumed, not derived.** `useHostelBuilder` did `useState<BuilderStage>(existingHostelId ? 'fill' : 'name')`: the presence of an id decided the step **before a single byte had loaded**. That is only right for a hostel that already has floors. Worse, the hydration effect set a stage **only inside `if (restored.length > 0)`**, so a hostel with zero floors kept the assumed `'fill'` forever and rendered a floor-filling screen with nothing to fill.
+
+**Two further gaps behind it:**
+
+- **The name was never restored.** The resume read is `roomService.getAll(hostelId, { grouped: true })`, which returns floors and rooms, not the hostel — so `hostelName` stayed `''` and the Name step looked blank on a hostel that plainly had one.
+- **`isRestoring` was `existing.isLoading`**, which goes false one render *before* the hydration effect runs. Even with data, the assumed stage rendered in that gap.
+
+**Confirmed against live data**, not just read from code: `Test1` had a **name and zero floors** — exactly the reported state — and `Test` had 2 floors with 0 rooms. Both are now ARCHIVED, which reads like the builds were abandoned because of this.
+
+**Fix:** a pure `resumeStage()` derives the step from what the hostel actually has (no floors → `floors`; floors with gaps → `fill` on the first unfilled one; all filled → `review`), called on **every** resume including the zero-floor case; the name is restored from the owner's hostel list; and `isRestoring` now holds until hydration has genuinely finished.
+
+**The design gap: a step counter derived from an id is not derived from anything.** The module's own docblock says progress is "derived from which floors have rooms rather than from a stored step counter that could disagree with the data" — the initial state was the one place that did not honour it.
+
+**Related:** [[Frontend]], [[Changelog]]
+
+## 2026-08-25 — "Activation link expired or already used" on a link that had not expired (fixed)
+
+**Reported** with a screenshot of the Set Password step and a toast reading *Activation link expired or already used*. The link had six days left.
+
+**It had not expired, and the message had nothing to do with expiry.** The invitation row was `OPENED`, `expires_at` 31 Aug, tenant `INVITED`; `GET /api/tenants/activate/context` returned **HTTP 200** with `token_status: VALID`. The string is `activate()`'s guard when it cannot find a tenancy *through the profile* — a wording that assumes the only reason for that is a dead link.
+
+**Cause — a regression from [[Decisions#ADR-110|ADR-110]], visible only against a real Discover tenant.** `computeState` derived `account_setup_completed` from `profile?.phone_verified && tenant.phone_1`. That was only ever correct because `profile` was **null** for an unbound tenancy, so it fell through to `tenant.mobile_verified`, which only `saveAccount` sets. ADR-110 made activation resolve the invitee's existing account — and a Discover seeker's account already carries `phone_verified: true` from their enquiry OTP. So the same expression began reporting account setup complete **before it had run**:
+
+1. `current_step` jumped to `ACTIVATE`.
+2. `startActivation` — the only code that writes `tenants.profile_id` — never ran.
+3. `activate()` looks the tenancy up via `profile.tenants`, found none, and threw.
+
+The tenant was hard-stuck: every step looked done, and the last one could never succeed.
+
+**Fix:** the rule now tests `tenant.profile_id` — matching a profile is a guess until it is written down — extracted to `activation-account-state.ts` with the regression pinned as a test. No data repair needed: affected tenancies simply return to the ACCOUNT step, where the phone is already trusted (no OTP) and one tap binds them.
+
+**The design gap worth remembering: a predicate can change meaning without being edited.** Those three lines were untouched; what changed was that one of their inputs stopped being null. Nothing failed in CI because every fixture shared the old assumption. **A rule whose correctness depends on another value being absent should say so, or test the thing it actually means.**
+
+**Second-order lesson: the error message cost more than the bug.** "Expired or already used" sent the investigation at the invitation table, which was healthy. `activate()`'s guard should name the real condition — an unbound tenancy — rather than guessing at a cause.
+
+**Related:** [[Decisions#ADR-110|ADR-110]], [[Business-Rules]], [[Changelog]]
+
 ## 2026-08-25 — Onboarding met an invited tenant as a stranger and rejected their own email (fixed)
 
 **Reported** with a screenshot: the Identity step of `/activate/<token>`, an OTP box, a "Gmail ID" field, and a red banner reading *"An account with this email address already exists. Please use a different email address."* — on an address belonging to the person filling the form in. `PATCH /api/tenants/activate` 400.

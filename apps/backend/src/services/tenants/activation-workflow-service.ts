@@ -55,6 +55,7 @@ import { isPhoneAlreadyProven } from "./invitation-phone-trust";
 import { resolveActivationEmail } from "./invited-profile-resolver";
 import { resolveGenderRequirement } from "./identity-field-policy";
 import { buildCommitmentRecord } from "./agreement-commitment";
+import { isAccountSetupComplete } from "./activation-account-state";
 import {
   completedApplicableSteps,
   isAgreementRequired,
@@ -256,10 +257,9 @@ export class ActivationWorkflowService {
    */
   private computeState(profile: any, tenant: any, ruleVersion: any, agreementRequired: boolean) {
     const latestAcceptance = (tenant.rule_acceptances || []).find((a: any) => a.rule_version_id === ruleVersion.id);
-    const accountSetupCompleted = Boolean(
-      (profile?.mobile_verified || profile?.phone_verified || tenant?.mobile_verified) &&
-      (tenant.phone_1 || profile?.phone)
-    );
+    // See activation-account-state for why this tests `profile_id` and not
+    // merely a verified number — it is the 2026-08-25 regression in one line.
+    const accountSetupCompleted = isAccountSetupComplete({ tenant, profile });
     const missingTier1: string[] = [];
     if (!(tenant.phone_1 || profile?.phone)) missingTier1.push("phone");
     if (!tenant.gender) missingTier1.push("gender");
