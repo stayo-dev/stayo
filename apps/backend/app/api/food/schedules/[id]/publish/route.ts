@@ -13,6 +13,12 @@ import { notificationService } from "@/lib/services/notification-service";
  * this same row is what tenants read, so a later edit just updates it in
  * place (see the meals PATCH route). Fans out one in-app notification per
  * active, activated tenant of the hostel.
+ *
+ * Only blocks when the schedule has zero meal-cell rows at all (shouldn't
+ * happen — `POST /api/food/schedules` always creates all 28). Per-cell
+ * completeness ("every day/meal filled in") is a client-side gate on the
+ * Publish button (see `buildPublishChecks`'s `incompleteCells`, ADR-114) —
+ * intentionally not duplicated here, since the button is the only caller.
  */
 export async function POST(
   req: NextRequest,

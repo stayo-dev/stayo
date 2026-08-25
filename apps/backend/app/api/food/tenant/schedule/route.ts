@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
 
     const schedule = await prisma.food_schedules.findFirst({
       where: { hostel_id: tenant.hostel_id, month: month!, status: "PUBLISHED" },
-      include: { food_schedule_meals: true },
+      include: { food_schedule_meals: { include: { food_schedule_meal_items: { orderBy: { display_order: "asc" } } } } },
     });
 
     return apiResponse({ schedule });

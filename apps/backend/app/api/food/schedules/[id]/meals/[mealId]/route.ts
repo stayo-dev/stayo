@@ -5,11 +5,12 @@ import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
 import { prisma } from "@/lib/db";
+import { validateMenuItemIds, deriveLegacyFields } from "@/lib/services/food/meal-items";
 
 /**
  * PATCH /api/food/schedules/[id]/meals/[mealId]
- * Owner edits one cell — swaps the item for that day+meal type.
- * Body: { menuItemId }
+ * Owner edits one cell — replaces its full item list for that day+meal type.
+ * Body: { menuItemIds: string[], expectedUpdatedAt: string } (ordered; [] clears the meal)
  *
  * Note the blast radius: a cell is keyed by (schedule, day_of_week, meal_type),
  * so this changes that weekday for the **whole month**, not one date. Per-date
@@ -18,6 +19,12 @@ import { prisma } from "@/lib/db";
  * If the schedule is already PUBLISHED this row is what tenants read, so the
  * edit is live immediately — the client surfaces that with an undo affordance
  * rather than a staging step.
+ *
+ * `expectedUpdatedAt` guards against a stale write from another tab/owner
+ * silently clobbering a newer edit — the same conditional-`updateMany`
+ * technique the (now-removed) meal-swap endpoint used, applied here to a
+ * single cell. A mismatch means someone else's edit landed first; the caller
+ * gets a 409 and is expected to refetch rather than retry blindly.
  */
 export async function PATCH(
   req: NextRequest,
@@ -33,10 +40,6 @@ export async function PATCH(
   try {
     const scope = resolveOwnerScope(session);
     const body = await req.json().catch(() => ({}));
-    const { menuItemId } = body;
-    if (!menuItemId || typeof menuItemId !== "string") {
-      return apiError("menuItemId is required", "VALIDATION_ERROR", 400);
-    }
 
     const schedule = await prisma.food_schedules.findFirst({
       where: { id: scheduleId, owner_id: scope.owner_id },
@@ -48,23 +51,68 @@ export async function PATCH(
     });
     if (!meal) return apiError("Meal cell not found", "NOT_FOUND", 404);
 
-    const item = await prisma.food_menu_items.findFirst({
-      where: { id: menuItemId, hostel_id: schedule.hostel_id, meal_type: meal.meal_type, is_active: true },
-    });
-    if (!item) return apiError("That item isn't available for this meal type", "VALIDATION_ERROR", 400);
-
-    const updated = await prisma.food_schedule_meals.update({
-      where: { id: mealId },
-      data: { menu_item_id: item.id, item_name: item.name, updated_at: new Date() },
+    const allowed = await prisma.food_menu_items.findMany({
+      where: { hostel_id: schedule.hostel_id, meal_type: meal.meal_type, is_active: true },
+      select: { id: true, name: true },
     });
 
-    await prisma.food_schedules.update({
-      where: { id: scheduleId },
-      data: { source: "MANUAL", updated_at: new Date() },
+    const validated = validateMenuItemIds(body.menuItemIds, allowed);
+    if (!validated.ok) return apiError(validated.reason, "VALIDATION_ERROR", 400);
+
+    if (typeof body.expectedUpdatedAt !== "string") {
+      return apiError("expectedUpdatedAt is required", "VALIDATION_ERROR", 400);
+    }
+    const expectedUpdatedAt = new Date(body.expectedUpdatedAt);
+    if (Number.isNaN(expectedUpdatedAt.getTime())) {
+      return apiError("expectedUpdatedAt is not a valid date", "VALIDATION_ERROR", 400);
+    }
+
+    const legacy = deriveLegacyFields(validated.items);
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const now = new Date();
+      // Conditional on the row's `updated_at` still matching what the caller
+      // last saw — the same optimistic-concurrency technique the (now-removed)
+      // meal-swap endpoint used, applied to a single cell. A mismatch means a
+      // newer edit already landed (another tab, another owner/admin); refuse
+      // rather than silently overwrite it.
+      const guard = await tx.food_schedule_meals.updateMany({
+        where: { id: mealId, updated_at: expectedUpdatedAt },
+        data: { ...legacy, updated_at: now },
+      });
+      if (guard.count !== 1) {
+        throw new Error("STALE_WRITE: This meal changed elsewhere — refresh and try again");
+      }
+
+      await tx.food_schedule_meal_items.deleteMany({ where: { schedule_meal_id: mealId } });
+      if (validated.items.length > 0) {
+        await tx.food_schedule_meal_items.createMany({
+          data: validated.items.map((item, index) => ({
+            schedule_meal_id: mealId,
+            menu_item_id: item.menu_item_id,
+            item_name: item.item_name,
+            display_order: index,
+          })),
+        });
+      }
+
+      const meal = await tx.food_schedule_meals.findUniqueOrThrow({
+        where: { id: mealId },
+        include: { food_schedule_meal_items: { orderBy: { display_order: "asc" } } },
+      });
+
+      await tx.food_schedules.update({
+        where: { id: scheduleId },
+        data: { source: "MANUAL", updated_at: now },
+      });
+
+      return meal;
     });
 
     return apiResponse(updated);
   } catch (error: any) {
-    return apiError(error?.message || "Failed to update meal");
+    const msg = String(error?.message || "Failed to update meal");
+    if (msg.startsWith("STALE_WRITE")) return apiError(msg.split(": ")[1] ?? msg, "STALE_WRITE", 409);
+    return apiError(msg);
   }
 }

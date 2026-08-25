@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ChefHat, Clock, Vote } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { CalendarDays, ChefHat, Clock, Vote } from 'lucide-react';
 import { FOOD_SLOTS, type MealSlotKey } from '@shared/mocks/food';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useFoodMenuItems } from '../hooks/useFoodMenuItems';
@@ -8,16 +8,15 @@ import { useFoodSchedule } from '../hooks/useFoodSchedule';
 import { useFoodScheduleHistory } from '../hooks/useFoodScheduleHistory';
 import { useMealTimings } from '../hooks/useMealTimings';
 import { FoodLibraryCard } from '../components/menu/FoodLibraryCard';
-import { WeeklyScheduleGrid } from '../components/schedule/WeeklyScheduleGrid';
-import { ScheduleMealPickerSheet } from '../components/schedule/ScheduleMealPickerSheet';
 import { MonthHistoryList } from '../components/schedule/MonthHistoryList';
 import { TodayCard } from '../components/today/TodayCard';
 import { HostelSwitcher } from '../components/HostelSwitcher';
-import { dayKeyFor, cellAt } from '../weekGrid';
+import { dayKeyFor } from '../weekGrid';
 
 /** Food tab. Thin orchestrator: each section's real work lives in its own hooks/components. */
 export function FoodPage() {
   const session = useOwnerSession();
+  const navigate = useNavigate();
   const [selectedHostelId, setSelectedHostelId] = useState<string | null>(null);
   const hostelId = selectedHostelId ?? session.primaryHostelId;
 
@@ -27,9 +26,12 @@ export function FoodPage() {
   const history = useFoodScheduleHistory(hostelId);
   const mealTimings = useMealTimings(hostelId);
 
+  // The Timetable page (not a picker sheet here any more) is where editing
+  // happens — "Fix" just lands the owner on today's day/slot already selected.
   const fixToday = (slot: MealSlotKey) => {
-    const cell = cellAt(schedule.weekGrid, dayKeyFor(new Date()), slot);
-    if (cell?.id) schedule.openPicker({ mealId: cell.id, slot });
+    const day = dayKeyFor(new Date());
+    const params = new URLSearchParams({ day, slot, ...(hostelId ? { hostelId } : {}) });
+    navigate(`/owner/food/timetable?${params.toString()}`);
   };
 
   return (
@@ -85,7 +87,20 @@ export function FoodPage() {
           </span>
         </Link>
 
-        <WeeklyScheduleGrid schedule={schedule} tenantCount={null} mealTimings={mealTimings.mealTimings} />
+        <Link
+          to={hostelId ? `/owner/food/timetable?hostelId=${encodeURIComponent(hostelId)}` : '/owner/food/timetable'}
+          className="flex min-h-[44px] items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]"
+        >
+          <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] bg-secondary text-primary">
+            <CalendarDays className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13px] font-semibold text-foreground">Weekly Timetable</span>
+            <span className="block text-[11px] text-muted-foreground">
+              {schedule.schedule?.status === 'PUBLISHED' ? 'Published — drag food into any day' : 'Build this month by dragging food into each day'}
+            </span>
+          </span>
+        </Link>
         <MonthHistoryList history={history} />
 
         {/* The hostel rides on the URL — the kitchen sheet has no switcher
@@ -98,18 +113,6 @@ export function FoodPage() {
           <ChefHat className="h-4 w-4" /> Send to kitchen
         </Link>
       </div>
-
-      <ScheduleMealPickerSheet
-        target={schedule.pickerTarget}
-        library={library.library}
-        onPick={schedule.pickItem}
-        onAddItem={library.createAndReturn}
-        onClose={schedule.closePicker}
-        isSaving={schedule.isUpdatingMeal}
-        moveTargets={schedule.moveTargets}
-        onMove={schedule.moveMeal}
-        isMoving={schedule.isSwapping}
-      />
     </div>
   );
 }

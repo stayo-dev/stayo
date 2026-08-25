@@ -3,6 +3,7 @@ import { MEAL_CATEGORY_META, type MealSlotKey } from '@shared/mocks/food';
 import { DAY_ORDER, type DayKey } from '../../hooks/useFoodSchedule';
 import type { useFoodScheduleHistory } from '../../hooks/useFoodScheduleHistory';
 import { mealIcon } from '../../mealIcons';
+import { formatCellItems } from '../../weekGrid';
 
 const DAY_LABEL: Record<DayKey, string> = {
   MONDAY: 'Mon', TUESDAY: 'Tue', WEDNESDAY: 'Wed', THURSDAY: 'Thu', FRIDAY: 'Fri', SATURDAY: 'Sat', SUNDAY: 'Sun',
@@ -51,7 +52,7 @@ export function MonthHistoryList({ history }: MonthHistoryListProps) {
                               return (
                                 <span key={slot} className="mr-3 inline-flex items-center gap-1">
                                   <I className="h-3 w-3 flex-none" strokeWidth={1.75} />
-                                  {cell?.item_name ?? '—'}
+                                  {cell ? formatCellItems({ items: cell.food_schedule_meal_items }) : '—'}
                                 </span>
                               );
                             })}
