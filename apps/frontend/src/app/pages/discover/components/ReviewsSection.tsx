@@ -5,20 +5,26 @@ import type { ReviewEligibility } from '@features/discover/api';
 
 import { C, FONT } from '../discoverTheme';
 import { getReviewPreview } from '../reviewsPreview';
+import { ReviewsCard } from './ReviewsCard';
 import { ReviewsCarousel } from './ReviewsCarousel';
+import { ReviewsScoreSummary } from './ReviewsScoreSummary';
 import { ReviewsWriteForm } from './ReviewsWriteForm';
 
 /**
  * The listing page's compact reviews preview, and the box for writing one.
  *
- * **Deliberately lightweight.** No score, no distribution, no category
- * breakdown, no mention filters, no search, no sort — those live only on the
- * dedicated Reviews page (`ReviewsPage.tsx`, `/discover/h/:slug/reviews`).
- * This section is exactly: a heading, a horizontal peeking-card carousel of
- * a few reviews, and a "Show all N reviews" button that *navigates* to that
- * page (no inline expansion, no modal). The write-review form stays here —
- * a resident revisiting the listing should still see their review's status
- * without an extra click.
+ * **Deliberately lightweight on mobile, richer on desktop.** Below `lg:`,
+ * this is exactly: a heading, a horizontal peeking-card carousel of a few
+ * reviews, and a "Show all N reviews" button. At `lg:` and up, there's room
+ * for more — the same score/distribution/category block used on the
+ * dedicated page renders inline, followed by a 2-column grid of the same
+ * preview reviews (no carousel there; nothing to scroll when it already
+ * fits). Neither variant has search, sort, or the complete list — those
+ * stay dedicated-page-only (`ReviewsPage.tsx`, `/discover/h/:slug/reviews`),
+ * reached the same way from both breakpoints via "Show all N reviews"
+ * (*navigates*, no inline expansion, no modal). The write-review form stays
+ * here at every width — a resident revisiting the listing should still see
+ * their review's status without an extra click.
  *
  * **The section is not rendered at all unless it has something to say.** If
  * there are no published reviews and this reader cannot write one, there is
@@ -34,10 +40,10 @@ import { ReviewsWriteForm } from './ReviewsWriteForm';
  *    the server decides (`review-eligibility.ts`) and says so in the payload,
  *    so the box appears only for someone who can actually use it. An account
  *    is not an experience.
- * 2. **It never invents a score.** The carousel shows the reviews themselves
- *    regardless of count — the average/distribution/category math (which
- *    does gate on `MIN_REVIEWS_FOR_AVERAGE`, see ADR-121) lives entirely on
- *    the dedicated page now, not here.
+ * 2. **It never invents a score.** The carousel (mobile) and the review grid
+ *    (desktop) show the reviews themselves regardless of count; the score
+ *    block only renders — here and on the dedicated page alike — when
+ *    `summary.average != null`, gated by `MIN_REVIEWS_FOR_AVERAGE` (ADR-121).
  * 3. **It never implies a review is live.** Everything written here goes to
  *    Stayo first; a submitted review is shown back to its author marked as
  *    waiting, not dropped into the public list.
@@ -119,11 +125,35 @@ export function ReviewsSection({
         </div>
       )}
 
+      {/* `MIN_REVIEWS_FOR_AVERAGE` is 1 (ADR-121), so this can't actually
+          fire today — kept for the same reason the backend keeps the
+          branch: a future change to that constant shouldn't need this
+          rebuilt, and it matches the dedicated page's own defensive copy. */}
+      {summary?.emptyReason === 'TOO_FEW' && (
+        <p className="mt-2 text-[12px] leading-[1.55]" style={{ color: C.textMuted }}>
+          Too few reviews to average yet — read them and judge for yourself.
+        </p>
+      )}
+
+      {/* Below `lg:`: the carousel only. At `lg:` and up: the same score
+          block as the dedicated page, then a 2-column grid of the same
+          preview reviews — no carousel there, nothing needs to scroll. */}
       {preview.length > 0 && (
-        <div className="mt-4">
+        <div className="mt-4 lg:hidden">
           <ReviewsCarousel reviews={preview} />
         </div>
       )}
+
+      <div className="hidden lg:block">
+        {summary?.average != null && <ReviewsScoreSummary summary={summary} />}
+        {preview.length > 0 && (
+          <div className="mt-5 grid grid-cols-2 gap-4">
+            {preview.map((review) => (
+              <ReviewsCard key={review.id} review={review} truncate />
+            ))}
+          </div>
+        )}
+      </div>
 
       {allReviews.length > 0 && (
         <button
