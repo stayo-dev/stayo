@@ -13,27 +13,24 @@ export const CURRENT_AGREEMENT_STATUSES = [
 ] as const;
 
 /**
- * Agreements whose rent an owner may still change.
+ * Agreements whose `contract_rent` should follow a rent change.
  *
- * Wider than CURRENT_AGREEMENT_STATUSES by exactly one status: **DRAFT**.
+ * Rent itself is anchored to `tenants.monthly_rent`, not to an agreement —
+ * see `rent-change-service.ts`. This set answers a narrower question: when a
+ * tenant's rent changes and they happen to hold an agreement, which one is
+ * still a live enough snapshot to keep in step?
  *
- * A hostel with `tenant_rules.agreement_required = false` (ADR-059) never has
- * its tenants sign, so their `Agreement` row stays DRAFT for the whole
- * tenancy. The row is still created deliberately — agreement signing "governs
- * the signing ceremony only", and `contract_rent` on that record is what rent
- * changes, obligation generation, renewals and move-out settlement key to. So
- * a DRAFT agreement governs real money even though nobody signed it, and
- * `POST /api/tenants/:id/change-rent` refusing it made rent unchangeable for
- * every tenant of every such hostel.
+ * Wider than CURRENT_AGREEMENT_STATUSES by exactly one status: **DRAFT**. A
+ * hostel with `tenant_rules.agreement_required = false` (ADR-059) never has
+ * its tenants sign, so their row stays DRAFT for the whole tenancy while still
+ * being the record renewals and settlement would read from.
  *
  * RENEWED and TERMINATED stay out: a later agreement governs, or none does,
- * and repricing either would rewrite a contract no longer in force.
+ * and rewriting a closed contract's rent would falsify history.
  *
  * Deliberately separate from CURRENT_AGREEMENT_STATUSES rather than widening
- * it — "may this agreement's rent change?" and "is this a signed, current
- * agreement?" are different questions, and `currentAgreementWhere()` drives
- * owner-facing "Active Contract" copy that must keep saying Pending for an
- * unsigned draft.
+ * it — `currentAgreementWhere()` drives owner-facing "Active Contract" copy
+ * that must keep saying Pending for an unsigned draft.
  */
 export const RENT_CHANGEABLE_AGREEMENT_STATUSES = [
   "DRAFT",

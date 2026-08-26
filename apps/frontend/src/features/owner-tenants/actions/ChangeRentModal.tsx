@@ -33,8 +33,11 @@ const labelStyle = 'text-[11px] font-bold uppercase tracking-wide text-muted-for
  * Real Change Rent flow: identity-confirmed (password re-entry, same
  * `POST /auth/confirm-identity` pattern as Quick Collect) then
  * `POST /tenants/:id/change-rent`, which reprices any not-yet-paid rent
- * obligations at or after the effective month. Requires an active agreement
- * on file — surfaces the backend's error directly if none exists.
+ * obligations at or after the effective month.
+ *
+ * Needs no agreement: rent is anchored to the tenant, not to a contract, since
+ * an owner can turn the agreement system off entirely (ADR-059). Where an
+ * agreement exists the backend keeps its contract rent in step.
  */
 export function ChangeRentModal({ open, onClose, tenantId, hostelId, tenantName, currentRent }: ChangeRentModalProps) {
   const queryClient = useQueryClient();

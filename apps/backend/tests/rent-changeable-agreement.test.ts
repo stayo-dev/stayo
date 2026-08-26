@@ -9,47 +9,45 @@ import {
 } from "@/src/services/tenants/agreement-status";
 
 /**
- * Which agreement a rent change may be applied to.
+ * Which agreement's `contract_rent` follows a rent change.
  *
- * `POST /api/tenants/:id/change-rent` looked for an agreement in the *current*
- * set — SIGNED / EXPIRING_SOON / AGREEMENT_EXPIRED — and 404'd with "No active
- * agreement found for this tenant" when it found none. A hostel with
- * `tenant_rules.agreement_required = false` (ADR-059) never has its tenants
- * sign, so their `Agreement` row stays **DRAFT** forever, and rent could never
- * be changed for any of them.
+ * Rent is anchored to `tenants.monthly_rent`; an agreement is an optional
+ * snapshot (ADR-059 lets an owner switch signing off entirely, and then none
+ * is ever signed). This set decides only which snapshot is live enough to keep
+ * in step when the tenant's rent moves — never whether the change is allowed.
  *
- * The row still exists, deliberately: per [[Business-Rules]], agreement
- * signing "governs the signing ceremony only — `Agreement` rows are created
- * either way, because `contract_rent` on that record is what rent changes,
- * obligation generation, renewals and move-out settlement key to."
+ * DRAFT counts, because a hostel that doesn't require signing leaves its
+ * tenants on a DRAFT row for the whole tenancy while renewals and settlement
+ * would still read from it. RENEWED and TERMINATED don't: a later agreement
+ * governs, or none does.
  *
- * So "may this agreement's rent change?" and "is this a signed, current
+ * So "should this agreement's rent follow?" and "is this a signed, current
  * agreement?" are two different questions, and this module answers both
  * separately rather than reusing one list for both.
  */
 
 describe("isRentChangeableAgreementStatus", () => {
-  it("allows a DRAFT agreement — the whole point of the fix", () => {
+  it("includes a DRAFT agreement — a never-signed row still drives renewals", () => {
     expect(isRentChangeableAgreementStatus("DRAFT")).toBe(true);
   });
 
-  it("allows every status that already counted as current", () => {
+  it("includes every status that already counted as current", () => {
     for (const status of CURRENT_AGREEMENT_STATUSES) {
       expect(isRentChangeableAgreementStatus(status)).toBe(true);
     }
   });
 
-  it("refuses a superseded agreement", () => {
+  it("excludes a superseded agreement", () => {
     // RENEWED means a later agreement governs; repricing this one would
     // rewrite a contract that is no longer in force.
     expect(isRentChangeableAgreementStatus("RENEWED")).toBe(false);
   });
 
-  it("refuses a terminated agreement", () => {
+  it("excludes a terminated agreement", () => {
     expect(isRentChangeableAgreementStatus("TERMINATED")).toBe(false);
   });
 
-  it("refuses an unrecognised status rather than defaulting open", () => {
+  it("excludes an unrecognised status rather than defaulting open", () => {
     expect(isRentChangeableAgreementStatus("SOMETHING_NEW")).toBe(false);
     expect(isRentChangeableAgreementStatus(null)).toBe(false);
     expect(isRentChangeableAgreementStatus(undefined)).toBe(false);
