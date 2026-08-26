@@ -85,11 +85,18 @@ export interface ReviewSummary {
 /**
  * Below this, a listing shows the reviews themselves but no average.
  *
- * Two reviews averaging 3.0 tells a reader nothing about a hostel and
- * everything about two people, while carrying all the authority of a number
- * printed next to a star.
+ * Originally 3 (ADR-086): "two reviews averaging 3.0 tells a reader nothing
+ * about a hostel and everything about two people, while carrying all the
+ * authority of a number printed next to a star." Lowered to 1 (ADR-121, at
+ * the product owner's explicit request, that tradeoff acknowledged) so a
+ * hostel's very first review already shows the full score/distribution/
+ * category view rather than waiting for a third opinion. `TOO_FEW` is kept
+ * as a distinct `emptyReason` rather than deleted — at 1 it can never fire
+ * (a hostel either has 0 reviews, `NONE_YET`, or ≥1, which now averages), but
+ * the branch exists so a future change to this constant doesn't need one
+ * rebuilt from scratch.
  */
-export const MIN_REVIEWS_FOR_AVERAGE = 3;
+export const MIN_REVIEWS_FOR_AVERAGE = 1;
 
 /**
  * The overall star, validated on its own terms.

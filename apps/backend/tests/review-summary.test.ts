@@ -27,13 +27,11 @@ describe("summariseReviews", () => {
     expect(summary.emptyReason).toBe("NONE_YET");
   });
 
-  it("refuses to average one or two reviews", () => {
-    // Two reviews averaging 3.0 says nothing about a hostel and everything
-    // about two people, while carrying the authority of a number by a star.
-    const summary = summariseReviews([review(5), review(1)]);
-    expect(summary.count).toBe(2);
-    expect(summary.average).toBeNull();
-    expect(summary.emptyReason).toBe("TOO_FEW");
+  it("averages even a single review (ADR-121 lowered the floor from 3 to 1)", () => {
+    const summary = summariseReviews([review(4)]);
+    expect(summary.count).toBe(1);
+    expect(summary.average).toBe(4);
+    expect(summary.emptyReason).toBeNull();
   });
 
   it("averages once there are enough, to one decimal", () => {
@@ -71,8 +69,8 @@ describe("summariseReviews", () => {
     expect(summary.count).toBe(3);
   });
 
-  it("needs three, and three is the documented threshold", () => {
-    expect(MIN_REVIEWS_FOR_AVERAGE).toBe(3);
+  it("needs one, and one is the documented threshold", () => {
+    expect(MIN_REVIEWS_FOR_AVERAGE).toBe(1);
     expect(summariseReviews(Array(MIN_REVIEWS_FOR_AVERAGE).fill(review(4))).average).toBe(4);
   });
 });
@@ -216,8 +214,12 @@ describe("summariseReviews — favourite label and highlights", () => {
     const mediocre = summariseReviews(Array(5).fill(review(3, "PUBLISHED")));
     expect(mediocre.isResidentFavourite).toBe(false);
 
-    const tooFew = summariseReviews(Array(2).fill(review(5, "PUBLISHED", { rating_cleanliness: 5 })));
-    expect(tooFew.isResidentFavourite).toBe(false);
-    expect(tooFew.highlights).toEqual([]);
+    // Resident Favourite has its own count>=5 floor, separate from
+    // MIN_REVIEWS_FOR_AVERAGE (ADR-121, now 1) — so a strong 2-review hostel
+    // averages and highlights normally, just without the favourite label.
+    const few = summariseReviews(Array(2).fill(review(5, "PUBLISHED", { rating_cleanliness: 5 })));
+    expect(few.average).toBe(5);
+    expect(few.isResidentFavourite).toBe(false);
+    expect(few.highlights).toEqual([{ label: "Clean Rooms", count: 2 }]);
   });
 });
