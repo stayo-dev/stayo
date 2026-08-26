@@ -439,8 +439,9 @@ to "first hostel").
   `identity_document_shares` rows is unknown. T13 is correct either way — the
   group renders only when shares exist — but it determines whether T13 is
   urgent or preparatory.
-- **Emergency contact source of truth.** `phone_3` and
-  `profile.emergency_contact` both exist and may disagree. `contactChannels.ts`
-  will prefer `phone_3` and fall back, but which is canonical is
-  **Unknown / needs clarification** — worth resolving with the team rather than
-  cementing the guess.
+- ~~**Emergency contact source of truth.**~~ **Resolved 2026-08-26:** the
+  emergency contact is **optional**. `contactChannels.ts` prefers `phone_3`,
+  falls back to `profile.emergency_contact`, and omits the row entirely when
+  neither is present or when the number duplicates the guardian's. No field is
+  required, nothing is inferred, and no "missing emergency contact" warning is
+  shown — its absence is a valid state, not an incomplete profile.
