@@ -8,6 +8,34 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-08-26 — Any owner could transfer any other owner's tenant (fixed)
+
+Found while wiring hostel transfer into the owner's Move flow, which is what made the endpoint reachable.
+
+`POST /api/tenants/transfer` gated on the session role alone:
+
+```ts
+if (!session || !["OWNER", "ADMIN"].includes(session.role)) return 403;
+```
+
+and `tenantTransferService.transferTenant` validated only that the **target room and the tenant share an owner**:
+
+```ts
+if (targetRoom.hostel.owner_id !== tenant.owner_id) throw FORBIDDEN;
+```
+
+Neither checked that this owner is the **caller**. So any authenticated owner could move any other owner's tenant between that owner's hostels — closing an allocation, opening another, rewriting `tenants.hostel_id` — and `tenant_transfer_logs.transferred_by` would record the caller's id, so an audit trail built precisely to answer "who did this" would name the wrong person while looking correct.
+
+`GET /api/tenants/transfer?tenantId=…` had the same shape: any owner could read any tenant's movement history between properties.
+
+**Why it went unnoticed:** nothing in the app called either handler. `grep` across `apps/frontend/src` returned zero callers, so the hole was real but unreachable through the UI.
+
+**Fix.** A new pure module, `tenant-transfer-authorization.ts`, exporting `assertTransferActorOwnsTenant(actorOwnerId, tenantOwnerId)`. The route passes `resolveOwnerScope(session).owner_id` for an OWNER and `undefined` for an ADMIN, who operates across owners by design. Both the POST and the GET now assert before doing anything.
+
+An **empty string** scope is refused rather than treated as an admin — a failed scope resolution must not become privilege escalation. That is a named test case.
+
+Kept as its own import-free module because the service it guards imports Prisma, and a security rule needs to be unit-testable without a database (see `vitest.pure.config.ts`).
+
 ## 2026-08-26 — A rent change never repriced cron-generated obligations (fixed)
 
 Found while fixing the DRAFT-agreement bug above, and the more consequential half of it.

@@ -27,6 +27,7 @@ import { eventLog } from "../../../lib/services/event-log-service";
 import { getLogger } from "../../../lib/logger";
 import { assertCapability } from "../../../lib/services/move-out-service";
 import { roomCapacityService } from "../../../lib/services/room-capacity-service";
+import { assertTransferActorOwnsTenant } from "./tenant-transfer-authorization";
 import crypto from "crypto";
 
 const logger = getLogger("tenant-transfer-service");
@@ -35,6 +36,12 @@ export interface TransferRequest {
   tenantId: string;
   targetRoomId: string;
   transferredBy: string; // owner/admin who authorized the transfer
+  /**
+   * The caller's resolved owner scope, or undefined for a platform admin.
+   * Required to stop one owner moving another owner's tenant — the
+   * same-owner check below compares the room to the tenant, not to the caller.
+   */
+  actorOwnerId?: string;
   reason?: string;
   notes?: string;
   transferDate?: Date;
@@ -60,7 +67,7 @@ export class TenantTransferService {
    * or create the audit trail.
    */
   async transferTenant(request: TransferRequest): Promise<TransferResult> {
-    const { tenantId, targetRoomId, transferredBy, reason, notes } = request;
+    const { tenantId, targetRoomId, transferredBy, actorOwnerId, reason, notes } = request;
     const transferDate = request.transferDate || new Date();
 
     await assertCapability(tenantId, "TRANSFER_ROOM");
@@ -89,6 +96,10 @@ export class TenantTransferService {
     if (tenant.status !== "ACTIVE") {
       throw new Error("VALIDATION_ERROR: Only active tenants can be transferred");
     }
+
+    // The caller must own this tenant. Rule 3 below only proves the room and
+    // the tenant share an owner — it says nothing about who is asking.
+    assertTransferActorOwnsTenant(actorOwnerId, tenant.owner_id);
 
     const currentAllocation = (tenant as any).room_allocations[0];
     const fromHostelId = currentAllocation.room.hostel_id;
@@ -150,7 +161,8 @@ export class TenantTransferService {
 
     const toHostelId = targetRoom.hostel_id;
 
-    // 3. Ownership validation — both hostels must belong to the same owner
+    // 3. Ownership validation — both hostels must belong to the same owner.
+    //    (Whether the *caller* is that owner is asserted above.)
     if (targetRoom.hostel.owner_id !== tenant.owner_id) {
       throw new Error("FORBIDDEN: Target room belongs to a different owner");
     }
@@ -260,7 +272,18 @@ export class TenantTransferService {
    * Get transfer history for a tenant.
    * Used by tenant detail view to show hostel movement history.
    */
-  async getTransferHistory(tenantId: string) {
+  /**
+   * `actorOwnerId` is the caller's owner scope, or undefined for an admin.
+   * Without it this returned any tenant's movement history to any owner.
+   */
+  async getTransferHistory(tenantId: string, actorOwnerId?: string) {
+    const tenant = await prisma.tenants.findUnique({
+      where: { id: tenantId },
+      select: { owner_id: true },
+    });
+    if (!tenant) throw new Error("NOT_FOUND: Tenant not found");
+    assertTransferActorOwnsTenant(actorOwnerId, tenant.owner_id);
+
     return prisma.tenant_transfer_logs.findMany({
       where: { tenant_id: tenantId },
       orderBy: { transferred_at: "desc" },

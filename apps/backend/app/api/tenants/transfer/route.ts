@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { tenantTransferService } from "@/src/services/tenants/tenant-transfer-service";
+import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
 
 /**
  * 🔄 POST /api/tenants/transfer
@@ -32,6 +33,8 @@ export async function POST(req: NextRequest) {
       tenantId,
       targetRoomId,
       transferredBy: session.sub,
+      // Undefined for ADMIN, who operates across owners by design.
+      actorOwnerId: session.role === "OWNER" ? resolveOwnerScope(session).owner_id : undefined,
       reason,
       notes,
     });
@@ -64,9 +67,15 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const history = await tenantTransferService.getTransferHistory(tenantId);
+    const history = await tenantTransferService.getTransferHistory(
+      tenantId,
+      session.role === "OWNER" ? resolveOwnerScope(session).owner_id : undefined,
+    );
     return apiResponse({ transfers: history });
   } catch (error: any) {
-    return apiError(error.message || "Failed to fetch transfer history");
+    const msg = error.message || "Failed to fetch transfer history";
+    if (msg.startsWith("FORBIDDEN:")) return apiError(msg, "FORBIDDEN", 403);
+    if (msg.startsWith("NOT_FOUND:")) return apiError(msg, "NOT_FOUND", 404);
+    return apiError(msg);
   }
 }
