@@ -1,10 +1,13 @@
 import { useMemo, useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import api from '@lib/api-client';
 import {
   ChevronRight,
   ClipboardList,
   FileText,
   GraduationCap,
+  Bell,
   Heart,
   History,
   Home,
@@ -36,6 +39,7 @@ import { SignedOutPrompt } from './components/SignedOutPrompt';
 import { C, FONT } from './discoverTheme';
 import { countMeta, gapHint, heroMode, stayMeta, totalGaps } from '@features/profile-hub/profileHub';
 import { ListGroup, ListRowItem, SectionHead } from '@features/stayo-ui/ListSection';
+import { unreadCount, type AlertRow } from '@features/tenant-alerts/alerts';
 import { currentStay, historySummaryLine, stayDuration, stayLine } from '@features/tenant-room/staySummary';
 import { MoveOutSheet } from '@features/tenant-room/components/MoveOutSheet';
 import { CloseAccountSheet } from '@features/account-closure/components/CloseAccountSheet';
@@ -82,6 +86,20 @@ export function DiscoverProfilePage() {
   const [moveOutOpen, setMoveOutOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
   const { data: disclosures } = useDisclosures();
+  /**
+   * 26 of these existed in production with no screen to read them. The count
+   * is the only reason anyone would look, so it goes on the row.
+   */
+  const { data: alerts } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: async () => {
+      const response = await api.get('/notifications');
+      const body = response.data?.data ?? response.data ?? {};
+      return (body.notifications ?? body ?? []) as AlertRow[];
+    },
+    enabled: isSeeker,
+    staleTime: 30_000,
+  });
   const liveTenancy = hasLiveTenancy(user);
   const tenantProfile = useTenantProfile();
   const overlay = useOverlayStack();
@@ -291,11 +309,18 @@ export function DiscoverProfilePage() {
           <SectionHead title="Your record" />
           <ListGroup>
             <ListRowItem
+              icon={Bell}
+              title="Alerts"
+              meta={unreadCount(alerts) > 0 ? `${unreadCount(alerts)} new` : null}
+              metaTone="warn"
+              first
+              onClick={() => navigate('/profile/alerts')}
+            />
+            <ListRowItem
               icon={FileText}
               title="Documents"
               meta={liveTenancy && tenantProfile.missingDocuments.length > 0 ? `${tenantProfile.missingDocuments.length} pending` : null}
               metaTone="warn"
-              first
               onClick={() => navigate('/profile/documents')}
             />
             <ListRowItem

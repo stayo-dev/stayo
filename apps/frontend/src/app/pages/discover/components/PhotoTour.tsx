@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { ChevronLeft, Play } from 'lucide-react';
 
 import { C, FONT, PAGE_SHELL, PHOTO_FALLBACK } from '../discoverTheme';
+import { mobileSpan, mosaicTiles } from '../photoMosaic';
 import { categoryLabel } from '@features/hostel-drilldown/marketing/photoCategories';
 import { MediaLightbox, type LightboxItem } from './MediaLightbox';
 
@@ -132,7 +133,9 @@ export function PhotoTour({
 
         {/* Each section in full. First photo large, the rest two-up — the shape
             that lets a room read at a glance and its details sit beneath. */}
-        {sections.map((section) => (
+        {sections.map((section) => {
+          const tiles = mosaicTiles(section.items.length);
+          return (
           <section key={section.key} id={`tour-${section.key}`} className="mt-10 scroll-mt-20 lg:grid lg:grid-cols-[200px_minmax(0,1fr)] lg:gap-8">
             <h2
               className="text-[17px] font-extrabold tracking-[-0.01em] lg:sticky lg:top-24 lg:self-start"
@@ -141,26 +144,38 @@ export function PhotoTour({
               {section.label}
             </h2>
 
-            <div className="mt-3 flex flex-col gap-3 lg:mt-0">
-              {section.items.map((item, index) => (
+            {/*
+              A 6-column mosaic. Spans come from `photoMosaic.ts`, whose every
+              row sums to 6 — which is what stops the ragged right-hand gap the
+              old `flex-col` + `w-[50%]` combination produced. Two-up on a
+              phone, where six columns of variety would be a contact sheet.
+            */}
+            <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-6 sm:gap-3 lg:mt-0">
+              {section.items.map((item, index) => {
+                const tile = tiles[index] ?? { span: 6, aspect: '4 / 3' };
+                return (
                 <button
                   key={item.url}
                   type="button"
                   onClick={() => openAt(item)}
-                  className={`group block overflow-hidden rounded-[14px] ${
-                    index === 0 ? '' : 'sm:inline-block sm:w-[calc(50%-6px)]'
-                  }`}
-                  style={PHOTO_FALLBACK}
+                  className="mosaic-tile group block overflow-hidden rounded-[14px]"
+                  style={{
+                    ...PHOTO_FALLBACK,
+                    gridColumn: `span ${mobileSpan(index)} / span ${mobileSpan(index)}`,
+                    aspectRatio: tile.aspect,
+                    ['--sm-span' as string]: tile.span,
+                  }}
+                  data-span={tile.span}
                 >
                   {item.kind === 'video' ? (
-                    <span className="relative block">
+                    <span className="relative block h-full">
                       <video
                         src={item.url}
                         poster={item.thumbnail_url ?? undefined}
                         muted
                         playsInline
                         preload="metadata"
-                        className="block w-full bg-black object-cover"
+                        className="block h-full w-full bg-black object-cover"
                       />
                       <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
                         <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55">
@@ -173,14 +188,16 @@ export function PhotoTour({
                       src={item.url}
                       alt={item.label ?? `${hostelName} — ${section.label}`}
                       loading="lazy"
-                      className="block w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                      className="block h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
                     />
                   )}
                 </button>
-              ))}
+                );
+              })}
             </div>
           </section>
-        ))}
+          );
+        })}
       </div>
 
       {lightbox !== null && lightbox >= 0 && (

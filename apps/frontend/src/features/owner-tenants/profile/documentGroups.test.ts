@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { toDocumentGroups } from './documentGroups';
+import type { ReviewDocument } from '../documents/kycDocuments';
 
 /**
  * The Documents tab presents two independent document systems plus the
@@ -13,7 +14,7 @@ import { toDocumentGroups } from './documentGroups';
  * same kind of document.
  */
 
-function kycDoc(overrides: Record<string, unknown> = {}) {
+function kycDoc(overrides: Record<string, unknown> = {}): ReviewDocument {
   return {
     id: 'doc-1',
     docType: 'AADHAAR',
@@ -24,7 +25,7 @@ function kycDoc(overrides: Record<string, unknown> = {}) {
     thread: [],
     uploadedAt: '2026-08-20T00:00:00.000Z',
     ...overrides,
-  };
+  } as ReviewDocument;
 }
 
 function share(overrides: Record<string, unknown> = {}) {
