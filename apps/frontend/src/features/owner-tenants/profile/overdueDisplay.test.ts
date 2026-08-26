@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toOverdueDisplay } from './overdueDisplay';
+import { nextPaymentDue, toOverdueDisplay } from './overdueDisplay';
 
 /**
  * The OVERDUE tile.
@@ -166,5 +166,80 @@ describe('toOverdueDisplay', () => {
     });
     expect(result.days).toBe(2);
     expect(result.unit).toBe('days');
+  });
+});
+
+describe('nextPaymentDue', () => {
+  it('finds the soonest unpaid charge', () => {
+    const result = nextPaymentDue(
+      [
+        { due_date: '2026-10-05', status: 'PENDING' },
+        { due_date: '2026-09-05', status: 'PENDING' },
+      ],
+      TODAY,
+    );
+    expect(result.dueDate).toBe('2026-09-05');
+  });
+
+  it('ignores charges that are already settled', () => {
+    const result = nextPaymentDue(
+      [
+        { due_date: '2026-08-27', status: 'PAID' },
+        { due_date: '2026-09-05', status: 'PENDING' },
+      ],
+      TODAY,
+    );
+    expect(result.dueDate).toBe('2026-09-05');
+  });
+
+  it('counts down to a future charge', () => {
+    const result = nextPaymentDue([{ due_date: '2026-08-30', status: 'PENDING' }], TODAY);
+    expect(result.daysAway).toBe(4);
+    expect(result.label).toBe('in 4 days');
+  });
+
+  it('says today rather than "in 0 days"', () => {
+    const result = nextPaymentDue([{ due_date: '2026-08-26', status: 'PENDING' }], TODAY);
+    expect(result.label).toBe('Due today');
+  });
+
+  it('reads an overdue charge as late, not as a countdown', () => {
+    const result = nextPaymentDue([{ due_date: '2026-08-17', status: 'PENDING' }], TODAY);
+    expect(result.daysAway).toBe(-9);
+    expect(result.isOverdue).toBe(true);
+    expect(result.label).toBe('9 days late');
+  });
+
+  it('prefers the overdue one when something is both late and upcoming', () => {
+    const result = nextPaymentDue(
+      [
+        { due_date: '2026-09-05', status: 'PENDING' },
+        { due_date: '2026-08-17', status: 'PENDING' },
+      ],
+      TODAY,
+    );
+    expect(result.isOverdue).toBe(true);
+  });
+
+  it('says so plainly when nothing is owed', () => {
+    const result = nextPaymentDue([], TODAY);
+    expect(result.dueDate).toBeNull();
+    expect(result.label).toBe('Nothing due');
+  });
+
+  it('phrases a single day in the singular', () => {
+    expect(nextPaymentDue([{ due_date: '2026-08-27', status: 'PENDING' }], TODAY).label).toBe('in 1 day');
+    expect(nextPaymentDue([{ due_date: '2026-08-25', status: 'PENDING' }], TODAY).label).toBe('1 day late');
+  });
+
+  it('skips a charge with an unusable date rather than throwing', () => {
+    const result = nextPaymentDue(
+      [
+        { due_date: 'not-a-date', status: 'PENDING' },
+        { due_date: '2026-09-05', status: 'PENDING' },
+      ],
+      TODAY,
+    );
+    expect(result.dueDate).toBe('2026-09-05');
   });
 });

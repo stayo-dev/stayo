@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { FileText, ChevronRight } from 'lucide-react';
 import { StatusPill } from '@shared/ui-patterns/StatusPill';
 import { TenantAvatar } from '@shared/ui/TenantAvatar';
+import { nextPaymentDue } from './overdueDisplay';
 import type { RealTenantDetail } from '../hooks/useTenantDetail';
 
 /**
@@ -13,14 +13,14 @@ import type { RealTenantDetail } from '../hooks/useTenantDetail';
  * when the image fails to load — a broken image icon in a profile header reads
  * as a broken product.
  *
- * The Agreement cell is a real control when an agreement exists, because
- * "Pending" with nothing to tap is where owners got stuck asking what the
- * tenant had actually signed.
+ * The two cells carry rent and the next payment. They replaced an Agreement
+ * status that restated what Risk & Compliance already showed and gave an owner
+ * nothing to act on; the agreement itself is still previewable from the
+ * Documents tab, where a document belongs.
  */
 
 interface ProfileHeaderProps {
   tenant: RealTenantDetail;
-  onOpenAgreement: () => void;
 }
 
 const STATUS_TONE = {
@@ -30,13 +30,12 @@ const STATUS_TONE = {
   'pending-docs': 'warning',
 } as const;
 
-export function ProfileHeader({ tenant, onOpenAgreement }: ProfileHeaderProps) {
+export function ProfileHeader({ tenant }: ProfileHeaderProps) {
   const [imageFailed, setImageFailed] = useState(false);
   const [zoomed, setZoomed] = useState(false);
 
   const showPhoto = Boolean(tenant.photoUrl) && !imageFailed;
-  const agreementSigned = tenant.agreementStatus === 'Signed';
-  const canOpenAgreement = agreementSigned && Boolean(tenant.agreement);
+  const next = nextPaymentDue(tenant.obligationDueDates, new Date());
 
   return (
     <>
@@ -71,44 +70,44 @@ export function ProfileHeader({ tenant, onOpenAgreement }: ProfileHeaderProps) {
                 {tenant.statusLabel}
               </StatusPill>
               <span className="text-[11.5px] text-muted-foreground">
-                Room <b className="font-bold text-foreground">{tenant.room}</b> · Joined{' '}
-                <b className="font-bold text-foreground">{tenant.joinedDate}</b>
+                {tenant.hostelName} · Room <b className="font-bold text-foreground">{tenant.room}</b>
+                {tenant.joinedDate ? (
+                  <>
+                    {' '}· Joined <b className="font-bold text-foreground">{tenant.joinedDate}</b>
+                  </>
+                ) : null}
               </span>
             </div>
           </div>
         </div>
 
+        {/* Rent and the next payment, because neither appears anywhere else on
+            this screen — rent was buried in the Stay tab and the next due date
+            was nowhere at all. This replaced an Agreement cell, which restated
+            a status already visible in Risk & Compliance and told an owner
+            nothing they could act on. */}
         <div className="mt-3.5 flex overflow-hidden rounded-[13px] border border-border">
           <div className="flex-1 border-r border-border px-3.5 py-2.5">
-            <div className="text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">Hostel</div>
-            <div className="mt-0.5 font-display text-[12.5px] font-bold text-foreground">{tenant.hostelName}</div>
-          </div>
-
-          {canOpenAgreement ? (
-            <button
-              type="button"
-              onClick={onOpenAgreement}
-              className="flex flex-1 items-center gap-1.5 px-3.5 py-2.5 text-left transition-colors hover:bg-muted/60"
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">
-                  Agreement
-                </span>
-                <span className="mt-0.5 flex items-center gap-1 font-display text-[12.5px] font-bold text-foreground">
-                  <FileText className="h-3.5 w-3.5 text-primary" strokeWidth={1.9} />
-                  Active Contract
-                </span>
-              </span>
-              <ChevronRight className="h-4 w-4 flex-none text-muted-foreground" strokeWidth={2} />
-            </button>
-          ) : (
-            <div className="flex-1 px-3.5 py-2.5">
-              <div className="text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">Agreement</div>
-              <div className="mt-0.5 font-display text-[12.5px] font-bold text-foreground">
-                {tenant.agreementStatus === 'Signed' ? 'Active Contract' : 'Not signed yet'}
-              </div>
+            <div className="text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">
+              Rent
             </div>
-          )}
+            <div className="mt-0.5 font-display text-[12.5px] font-bold tabular-nums text-foreground">
+              ₹{tenant.stay.monthlyRent.toLocaleString('en-IN')}
+              <span className="font-semibold text-muted-foreground"> / mo</span>
+            </div>
+          </div>
+          <div className="flex-1 px-3.5 py-2.5">
+            <div className="text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">
+              Next payment
+            </div>
+            <div
+              className={`mt-0.5 font-display text-[12.5px] font-bold ${
+                next.isOverdue ? 'text-destructive' : 'text-foreground'
+              }`}
+            >
+              {next.label}
+            </div>
+          </div>
         </div>
       </div>
 

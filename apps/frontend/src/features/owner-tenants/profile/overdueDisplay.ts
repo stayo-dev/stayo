@@ -98,3 +98,51 @@ export function toOverdueDisplay({
     tone: 'destructive',
   };
 }
+
+export interface NextPayment {
+  /** The `YYYY-MM-DD` of the soonest unsettled charge, or null when none. */
+  dueDate: string | null;
+  /** Negative when already late, positive when still ahead, null when nothing is due. */
+  daysAway: number | null;
+  isOverdue: boolean;
+  label: string;
+}
+
+/**
+ * When the tenant next owes something.
+ *
+ * The money strip answers *how much* is outstanding; nothing on the profile
+ * answered *when the next one lands*, which is what an owner planning a
+ * collection round actually needs. Picking the soonest unsettled charge means
+ * an overdue one naturally wins over an upcoming one — it is the earlier date.
+ */
+export function nextPaymentDue(
+  obligations: Array<Record<string, any>> | undefined | null,
+  today: string | Date,
+): NextPayment {
+  const todayStart = startOfDay(today);
+  const none: NextPayment = { dueDate: null, daysAway: null, isOverdue: false, label: 'Nothing due' };
+  if (!Array.isArray(obligations) || todayStart === null) return none;
+
+  let soonest: { day: number; raw: string } | null = null;
+  for (const obligation of obligations) {
+    if (isSettled(obligation?.status)) continue;
+    const raw = String(obligation?.due_date ?? obligation?.dueDate ?? '');
+    const day = startOfDay(raw);
+    if (day === null) continue;
+    if (soonest === null || day < soonest.day) soonest = { day, raw };
+  }
+
+  if (!soonest) return none;
+
+  const daysAway = Math.round((soonest.day - todayStart) / MS_PER_DAY);
+  const late = Math.abs(daysAway);
+  const unit = late === 1 ? 'day' : 'days';
+
+  return {
+    dueDate: soonest.raw.slice(0, 10),
+    daysAway,
+    isOverdue: daysAway < 0,
+    label: daysAway === 0 ? 'Due today' : daysAway < 0 ? `${late} ${unit} late` : `in ${late} ${unit}`,
+  };
+}

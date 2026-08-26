@@ -149,16 +149,7 @@ export function TenantDetailPage() {
         </div>
 
         <div className="flex flex-col gap-3.5 px-4 pb-10 sm:px-6">
-          <ProfileHeader
-            tenant={tenant}
-            onOpenAgreement={() =>
-              setPreviewDoc({
-                title: 'Rental agreement',
-                url: agreementDoc?.downloadUrl ?? null,
-                fileName: `agreement-${tenant.name.replace(/\s+/g, '-').toLowerCase()}.pdf`,
-              })
-            }
-          />
+          <ProfileHeader tenant={tenant} />
 
           <button
             type="button"
