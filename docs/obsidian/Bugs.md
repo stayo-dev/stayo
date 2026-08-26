@@ -8,6 +8,32 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-08-26 — Change rent was impossible for any hostel that doesn't require agreements (fixed)
+
+`POST /api/tenants/:id/change-rent` looked for the tenant's agreement in the **current** set:
+
+```ts
+status: { in: ["SIGNED", "EXPIRING_SOON", "AGREEMENT_EXPIRED"] }
+```
+
+and answered `404 "No active agreement found for this tenant"` when it found none.
+
+A hostel with `tenant_rules.agreement_required = false` ([[Decisions#ADR-059|ADR-059]]) never has its tenants sign — onboarding is `ACCOUNT → PROFILE → ACTIVATE`, and `AGREEMENT` is an invalid transition. The `Agreement` row is still created, deliberately, because as [[Business-Rules]] puts it, signing "governs the signing ceremony only — `Agreement` rows are created either way, because `contract_rent` on that record is what rent changes, obligation generation, renewals and move-out settlement key to." That row therefore stays **`DRAFT`** for the entire tenancy.
+
+`DRAFT` is in no "current" set. So rent could never be changed for **any** tenant of **any** such hostel — the endpoint's own precondition contradicted the rule that its agreement row is what rent changes key to.
+
+**Evidence.** On the live database, the tenant this was reported against (`Sri Adithya Boys Hostel`, `agreement_required: false`) is `ACTIVE` with a single `DRAFT` agreement. Across the whole database, `DRAFT` accounted for **8 of 10** agreements.
+
+**The failure was also reported late.** The owner fills in the new rent, the effective month and a reason, taps Continue, types their **account password**, and only then sees the error — `ChangeRentModal` renders `mutation.isError` in the password step, and the mutation is the first thing that touches the endpoint. So it read as "Change rent doesn't work" rather than "this tenant has no signed agreement".
+
+**Fix.** A new `RENT_CHANGEABLE_AGREEMENT_STATUSES` in `agreement-status.ts` — the current set **plus `DRAFT`** — with `rentChangeableAgreementWhere()` used by the change-rent route. `RENEWED` and `TERMINATED` stay excluded: a later agreement governs, or none does, and repricing either would rewrite a contract no longer in force.
+
+Kept deliberately separate from `CURRENT_AGREEMENT_STATUSES` rather than widening it. That constant drives `has_active_agreement` on the owner overview, the Documents tab's agreement card and the renewal queue; widening it would tell owners a never-signed draft is an "Active Contract". A test asserts `currentAgreementWhere()` still excludes `DRAFT`.
+
+`applyRentChangeInTx` already writes **both** `agreement.contract_rent` and `tenants.monthly_rent`, so the fix is complete for these tenants: rent generation reads `tenants.monthly_rent` for anyone without a signed-agreement schedule, and now sees the new figure.
+
+**Known remaining gap (not fixed here).** The repricing step filters unpaid obligations by `agreement_id`, and obligations generated for no-agreement hostels are written with `agreement_id = null` (1 of 23 `RENT` obligations on the live database). For such a tenant, a rent change updates the contract and future generation correctly but leaves *already-generated* unpaid obligations at the old amount. Tracked in [[TODO]].
+
 ## 2026-08-26 — The owner tenant profile rendered controls that did nothing (fixed)
 
 Five separate defects on `/owner/tenants/:tenantId`, one shared cause: the routed page (`features/owner-tenants/pages/TenantDetailPage.tsx`) was a Stayo-styled re-implementation of a second, *unrouted* tenant-profile tree (`features/tenants/components/profile/`, ~700 lines, zero importers) — and it copied the appearance of that tree's sections without their handlers. Work had landed in the dead tree; the live page looked finished.

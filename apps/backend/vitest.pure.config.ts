@@ -25,6 +25,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: [
+      "tests/advertised-starting-price.test.ts",
       'tests/settlement-planner.test.ts',
       'tests/settlement-planner-policy.test.ts',
       'tests/settlement-planner-overdue.test.ts',
@@ -94,6 +95,7 @@ export default defineConfig({
       'tests/activation-account-state.test.ts',
       'tests/invitation-expiry-reminder-contract.test.ts',
       'tests/move-out-quick-exit-plan.test.ts',
+      'tests/rent-changeable-agreement.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),

@@ -10,6 +10,7 @@ import { requireHostelBelongsToOwner } from "@/lib/security/scoped-query";
 import { prisma } from "@/lib/db";
 import { applyRentChangeInTx } from "@/src/services/payments/rent-change-service";
 import { verifyIdentityConfirmation, consumeIdentityTokenInTx } from "@/src/services/payments/identity-confirmation-guard";
+import { rentChangeableAgreementWhere } from "@/src/services/tenants/agreement-status";
 
 // Matches the (purpose, action) naming convention already used by
 // obligation cancel/waive (CANCEL_OBLIGATION/cancel_obligation,
@@ -54,15 +55,26 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const identity = await verifyIdentityConfirmation(identityToken, IDENTITY_PURPOSE, IDENTITY_ACTION, session.sub);
 
+    // Includes DRAFT. A hostel with `agreement_required = false` (ADR-059)
+    // never has its tenants sign, so their agreement stays DRAFT for the whole
+    // tenancy — and requiring a signed one here made rent unchangeable for
+    // every tenant of every such hostel. The row still governs the money
+    // either way; see `RENT_CHANGEABLE_AGREEMENT_STATUSES`.
     const agreement = await prisma.agreement.findFirst({
       where: {
         tenant_id: params.id,
         hostel_id: hostelId,
-        status: { in: ["SIGNED", "EXPIRING_SOON", "AGREEMENT_EXPIRED"] },
+        status: rentChangeableAgreementWhere(),
       },
       orderBy: { generated_at: "desc" },
     });
-    if (!agreement) return ApiResponse.error(ApiError.notFound("No active agreement found for this tenant"));
+    if (!agreement) {
+      return ApiResponse.error(
+        ApiError.notFound(
+          "No agreement on file for this tenant, so there is no rent to change. This usually means the tenant has not been fully set up yet.",
+        ),
+      );
+    }
 
     const result = await prisma.$transaction(async (tx: any) => {
       await consumeIdentityTokenInTx(tx, identity.jti);

@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 
 import { prisma } from "@/lib/db";
-import { listingPhotos, projectListing } from "./listing-projection";
+import { advertisedStartingPrice, listingPhotos, projectListing } from "./listing-projection";
 import { readNavigationSafely } from "./hostel-navigation";
 import { whatsAppTemplateDeliveryService } from "@/lib/services/notifications/whatsapp-template-delivery";
 import {
@@ -268,7 +268,9 @@ function toEnquiry(lead: any) {
  * Cards carry **one** photo — the cover. The card UI shows exactly one, and a
  * gallery of 24 URLs per result is payload nobody renders.
  */
-async function fillCoverPhotos(holders: { id: string; photos: string[] }[]): Promise<void> {
+async function fillCoverPhotos(
+  holders: { id: string; photos: string[]; starting_price?: number | null }[],
+): Promise<void> {
   const ids = Array.from(new Set(holders.map((holder) => holder.id)));
   if (ids.length === 0) return;
 
@@ -281,7 +283,12 @@ async function fillCoverPhotos(holders: { id: string; photos: string[] }[]): Pro
   const byHostel = new Map(revisions.map((revision: any) => [revision.hostel_id, revision.content]));
 
   for (const holder of holders) {
-    holder.photos = listingPhotos(byHostel.get(holder.id), holder.photos).slice(0, 1);
+    const content = byHostel.get(holder.id);
+    holder.photos = listingPhotos(content, holder.photos).slice(0, 1);
+    // The advertised price beats the operational one; see
+    // `advertisedStartingPrice`. Falls back rather than blanking the card.
+    const advertised = advertisedStartingPrice(content);
+    if (advertised !== null) (holder as any).starting_price = advertised;
   }
 }
 
@@ -444,15 +451,15 @@ export class DiscoveryService {
     if (!hostel) return null;
 
     const summary = summariseRooms(hostel.rooms || []);
+    const marketing = (hostel as any).marketing_revisions?.[0]?.content;
     return {
       name: hostel.name,
       slug: hostel.public_slug as string,
       city: hostel.city,
-      photos: listingPhotos(
-        (hostel as any).marketing_revisions?.[0]?.content,
-        asPhotoArray(hostel.admission_photos),
-      ),
-      startingPrice: summary.starting_price,
+      photos: listingPhotos(marketing, asPhotoArray(hostel.admission_photos)),
+      // Same rule as the search cards: what the listing advertises, not the
+      // operational rent. The two disagreed by ₹1,000 on the first real hostel.
+      startingPrice: advertisedStartingPrice(marketing) ?? summary.starting_price,
       sharing: summary.sharing,
       foodIncluded: Boolean(hostel.food_included),
       verified: hostel.verification_status === "VERIFIED",
