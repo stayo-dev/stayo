@@ -30,12 +30,12 @@ export function ReviewsScoreSummary({ summary }: { summary: ReviewSummary }) {
               style={{ background: C.greenPale, color: C.green }}
             >
               <Award className="h-3 w-3" strokeWidth={2.4} />
-              RESIDENT FAVOURITE
+              TENANT FAVOURITE
             </span>
           )}
           <p className="max-w-[38ch] text-[11.5px] leading-[1.5]" style={{ color: C.textMuted }}>
             Based on {summary.count} verified {summary.count === 1 ? 'review' : 'reviews'} from
-            residents who actually lived here.
+            tenants who actually lived here.
           </p>
         </div>
       </div>
@@ -62,22 +62,21 @@ export function ReviewsScoreSummary({ summary }: { summary: ReviewSummary }) {
         </div>
       )}
 
-      {/* Airbnb's own category row is label/number/icon stacked, laid out wide
-          across a full-bleed desktop page — this content column is much
-          narrower even on desktop, and gone entirely on mobile, so the
-          category breakdown is a desktop-only extra rather than something a
-          phone screen has room to earn its keep. The Overall rating block
-          above (score, stars, distribution) is the one thing every viewport
-          gets. */}
+      {/* Airbnb's own category row is label/number/icon stacked. This
+          component is now only mounted on the dedicated Reviews page, which
+          has room for it at every width — horizontal scroll on a phone
+          rather than wrapping to a second/third row or hiding outright,
+          matching the free-scroll chip-row convention already used for
+          filter rows elsewhere in Discover (ExplorePage/SearchPage). */}
       {summary.categories.length > 0 && (
         <div
-          className="mt-5 hidden flex-wrap justify-between gap-y-4 border-t pt-4 sm:flex"
+          className="mt-5 flex gap-x-8 gap-y-4 overflow-x-auto border-t pt-4 [scrollbar-width:none] lg:flex-wrap lg:overflow-visible [&::-webkit-scrollbar]:hidden"
           style={{ borderColor: C.lineSoft }}
         >
           {summary.categories.map((category) => {
             const Icon = CATEGORY_ICONS[category.key];
             return (
-              <div key={category.key} className="flex flex-col gap-1">
+              <div key={category.key} className="flex flex-none flex-col gap-1">
                 <span className="text-[11.5px] font-semibold" style={{ color: C.textBody }}>
                   {category.label}
                 </span>
