@@ -75,6 +75,13 @@ export interface RealTenantDetail {
   riskScore: number;
   riskLabel: string;
   riskInsight: string;
+  /**
+   * Every insight the score service produced, not just the first.
+   * `suggestions` is deliberately not carried: that array is written in the
+   * second person addressed to the tenant ("Pay before due date to improve
+   * your score") because the same service backs `/api/tenants/me/score`.
+   */
+  riskInsights: string[];
   riskTrend: string;
   kycStatus: string;
   outstanding: number;
@@ -324,7 +331,8 @@ export function useTenantDetail(tenantId: string | undefined) {
       guardian,
       riskScore: Number(score?.score ?? 0),
       riskLabel: GRADE_LABEL[grade] ?? '—',
-      riskInsight: score?.insights?.[0] ?? score?.suggestions?.[0] ?? 'No insights yet.',
+      riskInsight: score?.insights?.[0] ?? 'No insights yet.',
+      riskInsights: Array.isArray(score?.insights) ? score.insights.map(String) : [],
       riskTrend: TREND_LABEL[String(score?.trend ?? '')] ?? '—',
       kycStatus: documentVerified ? 'Verified' : 'Pending',
       outstanding,

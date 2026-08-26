@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, FileText, ShieldCheck, Clock, ArrowRight, LogOut, BedDouble } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BedDouble, Clock, FileText, LogOut } from 'lucide-react';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { StatusPill } from '@shared/ui-patterns/StatusPill';
 import { EmptyState } from '@shared/ui-patterns/EmptyState';
@@ -26,6 +26,8 @@ import { DocumentPreviewSheet } from '../profile/DocumentPreviewSheet';
 import { toDocumentGroups } from '../profile/documentGroups';
 import { ReviewRequestCard } from '../profile/ReviewRequestCard';
 import { DocumentThread } from '../profile/DocumentThread';
+import { RiskCard } from '../profile/RiskCard';
+import { TenantRequestsCard } from '../profile/TenantRequestsCard';
 import { useDocumentShares } from '../hooks/useDocumentShares';
 import { AmendAgreementSheet } from '../profile/AmendAgreementSheet';
 import { PendingChangeCard } from '../profile/PendingChangeCard';
@@ -172,33 +174,7 @@ export function TenantDetailPage() {
             history={contactHistory}
           />
 
-          {/* risk & compliance */}
-          <div className="flex flex-col gap-3 rounded-[18px] border border-border bg-card p-4 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-9.5 w-9.5 flex-none items-center justify-center rounded-[11px] bg-success/10">
-                <ShieldCheck className="h-4.5 w-4.5 text-success" strokeWidth={1.8} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">Risk &amp; Compliance</div>
-                <div className="font-display text-lg font-extrabold tabular-nums text-foreground">
-                  {tenant.riskScore}
-                  <span className="text-[11px] font-semibold text-muted-foreground">/100</span>
-                </div>
-              </div>
-              <StatusPill tone={tenant.riskScore >= 70 ? 'success' : tenant.riskScore >= 40 ? 'warning' : 'destructive'} variant="filter">
-                {tenant.riskLabel}
-              </StatusPill>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <RiskTile label="Trend" value={tenant.riskTrend} />
-              <RiskTile label="Agreement" value={tenant.agreementStatus} />
-              <RiskTile label="KYC Verify" value={tenant.kycStatus} />
-            </div>
-            <div className="flex items-start gap-2 rounded-xl bg-success/10 p-3">
-              <Clock className="mt-0.5 h-4 w-4 flex-none text-success" strokeWidth={1.8} />
-              <p className="text-[12px] font-semibold leading-relaxed text-success">{tenant.riskInsight}</p>
-            </div>
-          </div>
+          <RiskCard tenant={tenant} />
 
           <PrivateNotesCard tenantId={tenant.id} />
 
@@ -441,6 +417,8 @@ export function TenantDetailPage() {
                   distinguishable to the owner without leaking either. */}
               <ComplianceCard tenant={tenant} />
 
+              <TenantRequestsCard hostelId={tenant.hostelId} tenantId={tenant.id} />
+
               <TenantHistoryPanel tenantId={tenantId} />
               <div className="flex gap-2.5">
                 <button
@@ -561,15 +539,6 @@ export function TenantDetailPage() {
         }}
       />
     </ThemeProvider>
-  );
-}
-
-function RiskTile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col items-center gap-1 rounded-xl bg-muted/50 p-2.5 text-center">
-      <span className="font-display text-[11px] font-bold text-foreground">{label}</span>
-      <span className="text-[10.5px] text-muted-foreground">{value}</span>
-    </div>
   );
 }
 
