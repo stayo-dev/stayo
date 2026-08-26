@@ -65,10 +65,12 @@ export interface MarketingAmenity {
   /** Hidden rather than deleted, so an owner can toggle without losing it. */
   enabled: boolean;
   icon?: string | null;
-  /** "Attached bathroom" — what it is. Free text; see the zod schema. */
-  detail?: string | null;
-  /** "6–10 AM · 6–10 PM" — when. Free text, because real timings are irregular. */
-  schedule?: string | null;
+  /** How it is available, when that is worth saying. See amenityAvailability. */
+  availability?: 'ALWAYS' | 'HOURS' | 'NOTE' | null;
+  /** The note; ALWAYS carries none and HOURS uses slots. */
+  availabilityValue?: string | null;
+  /** The blocks a HOURS amenity runs in, as 24-hour HH:MM. */
+  availabilitySlots?: { start: string; end: string }[] | null;
 }
 
 export interface MarketingPlace {

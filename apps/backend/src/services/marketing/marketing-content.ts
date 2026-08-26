@@ -96,23 +96,42 @@ const AmenitySchema = z.object({
   /** Optional icon key; unknown keys fall back to a generic glyph. */
   icon: z.string().trim().max(30).optional().nullable(),
   /**
-   * What it actually is — "Attached bathroom", "RO purifier · corridor".
+   * How this amenity is available, when that is worth saying at all.
    *
-   * The line a tenant reads under the name. Free text for the same reason
-   * `PlaceSchema.distance` is: owners describe their own building in their own
-   * words, and a fixed vocabulary would force them to pick the nearest wrong
-   * option.
+   * Replaced a "what it is" plus "when" pair, which asked every amenity two
+   * questions and gave most of them nothing to answer — the label already says
+   * "CCTV security". Amenities differ in *what kind* of answer they need:
+   *
+   * - `HOURS` — "3 meals / day" wants mess timings;
+   * - `NOTE`  — "Power backup" wants "runs whenever the power goes off", which
+   *             is not a time range and never will be;
+   * - `ALWAYS` — RO water is simply 24×7;
+   * - `null`  — and most amenities need nothing, which costs no typing.
    */
-  detail: z.string().trim().max(80).optional().nullable(),
+  availability: z.enum(["ALWAYS", "HOURS", "NOTE"]).optional().nullable(),
+  /** The note. `NOTE` only — `ALWAYS` needs no words and `HOURS` uses slots. */
+  availabilityValue: z.string().trim().max(120).optional().nullable(),
   /**
-   * When it is available — "6–10 AM · 6–10 PM", "Daily", "24×7".
+   * The blocks a `HOURS` amenity runs in, as 24-hour `HH:MM`.
    *
-   * Deliberately **not** a structured time range. Hot water is "6–10 AM and
-   * evenings" in a lot of real hostels, and a picker would make that
-   * unsayable — forcing either a lie or a blank. A blank is honest; a lie
-   * about hot water is the kind of thing a tenant remembers.
+   * Structured rather than the typed string this started as, so the owner picks
+   * from a clock instead of inventing a format, every hostel's timings render
+   * identically, and the data can later answer "is the mess open right now?" —
+   * which "7–9 AM · 12–2 PM" never could.
+   *
+   * Capped at four because that is a hostel's day: meals are three, hot water
+   * two, laundry one.
    */
-  schedule: z.string().trim().max(40).optional().nullable(),
+  availabilitySlots: z
+    .array(
+      z.object({
+        start: z.string().regex(/^\d{2}:\d{2}$/),
+        end: z.string().regex(/^\d{2}:\d{2}$/),
+      }),
+    )
+    .max(4)
+    .optional()
+    .nullable(),
 });
 
 const PlaceSchema = z.object({

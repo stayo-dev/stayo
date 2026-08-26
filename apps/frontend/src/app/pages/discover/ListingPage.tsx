@@ -28,6 +28,7 @@ import {
 
 import { useDiscoverAuth } from './DiscoverAuthContext';
 import { DiscoverEmpty, PrimaryButton } from './components/DiscoverShell';
+import { describeAvailability } from '@shared/lib/amenityAvailability';
 import { AUDIENCE_LABEL, C, FONT, PAGE_SHELL, PHOTO_FALLBACK, formatRupees } from './discoverTheme';
 import { photoIndexFromScroll } from './galleryScroll';
 import { directionsUrl, distanceLine, hasNavigation, mapEmbedUrl, whereYoullBe } from './hostelNavigation';
@@ -869,11 +870,15 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
                     style={{ background: C.chipBg, color: '#6E6459' }}
                   >
                     {amenity.label}
-                    {(amenity.detail || amenity.schedule) && (
-                      <span className="ml-1.5 font-medium" style={{ color: '#9A8F84' }}>
-                        {[amenity.detail, amenity.schedule].filter(Boolean).join(' · ')}
-                      </span>
-                    )}
+                    {(() => {
+                      const { pill, line } = describeAvailability(amenity);
+                      const extra = pill ?? line;
+                      return extra ? (
+                        <span className="ml-1.5 font-medium" style={{ color: '#9A8F84' }}>
+                          {extra}
+                        </span>
+                      ) : null;
+                    })()}
                   </span>
                 ))}
               </div>
@@ -984,7 +989,7 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
                 the street address below the fold answers a later question.
               */}
               {whereYoullBe({ city: hostel.city, state: hostel.state }) && (
-                <p className="mt-1.5 text-[13.5px]" style={{ color: C.muted }}>
+                <p className="mt-1.5 text-[13.5px]" style={{ color: C.textMuted }}>
                   {whereYoullBe({ city: hostel.city, state: hostel.state })}
                 </p>
               )}

@@ -18,12 +18,15 @@
  * PURE — no DOM, no network. The components are renderers over this.
  */
 
+import { describeAvailability } from '@shared/lib/amenityAvailability';
+
 export interface OwnerAmenity {
   label: string;
   enabled?: boolean;
   icon?: string | null;
-  detail?: string | null;
-  schedule?: string | null;
+  availability?: 'ALWAYS' | 'HOURS' | 'NOTE' | null;
+  availabilityValue?: string | null;
+  availabilitySlots?: { start: string; end: string }[] | null;
 }
 
 export interface RoomWifi {
@@ -35,7 +38,7 @@ export interface RoomWifi {
 export interface Facility {
   key: string;
   label: string;
-  /** The line underneath — what it is, or where. */
+  /** The line underneath — a note, when the owner wrote one. */
   detail: string | null;
   /** The pill — when it is available. */
   schedule: string | null;
@@ -116,8 +119,10 @@ export function buildTenantFacilities(input: {
     const row: Facility = {
       key: keyFor(amenity.label, index),
       label: String(amenity.label).trim(),
-      detail: emptyToNull(amenity.detail),
-      schedule: emptyToNull(amenity.schedule),
+      // One structured choice, rendered two ways: a scannable pill for a time
+      // range, a sentence beneath for a note. See amenityAvailability.
+      detail: describeAvailability(amenity).line,
+      schedule: describeAvailability(amenity).pill,
       icon,
     };
     if (icon === 'wifi') row.wifi = readWifi(input.room);

@@ -34,6 +34,8 @@ import { PreviewScreen } from '../marketing/PreviewScreen';
 import { TemplateSheet } from '../marketing/TemplateSheet';
 import { amenityIcon } from '../marketing/amenityIcons';
 import { CARD_SHADOW, M, MESS_DAY_LABELS } from '../marketing/marketingTheme';
+import { AvailabilitySheet } from '../marketing/AvailabilitySheet';
+import { summariseAvailability } from '@shared/lib/amenityAvailability';
 
 /**
  * Hostel Drill-down → Marketing, rebuilt from the `HOSTEL: MARKETING` section
@@ -74,6 +76,7 @@ type Sheet =
   | { kind: 'template' }
   | { kind: 'basics'; field: 'tagline' | 'about' }
   | { kind: 'amenity' }
+  | { kind: 'availability'; index: number }
   | { kind: 'bed'; index: number }
   | { kind: 'place'; index: number }
   | { kind: 'mess' }
@@ -749,67 +752,70 @@ export function HostelMarketingPage() {
                 Add amenity
               </button>
             )}
+
+            {/*
+              While a revision is in review the whole editor is locked, and every
+              control simply disappears. The banner explaining that sits at the
+              top of a long page, so an owner scrolled down to the amenities
+              reads it as "I cannot add amenities" rather than "this is under
+              review" — the reason is real, it was just nowhere near the
+              frustration. Withdrawing is the way out, so the way out is here.
+            */}
+            {locked && (
+              <button
+                type="button"
+                onClick={() => withdraw.mutate()}
+                className="flex items-center gap-1.5 rounded-[10px] px-[11px] py-2 text-[12px] font-semibold"
+                style={{ background: '#FEF6E7', border: '1px dashed #E4C07A', color: '#8A6320' }}
+              >
+                <Clock className="h-3.5 w-3.5" strokeWidth={2} />
+                In review — withdraw to edit
+              </button>
+            )}
           </div>
 
           {/*
-            The chips say *what* you have; these say what a tenant actually
-            wants to know about it. "Hot water" answers less than "Hot water ·
-            Attached bathroom · 6–10 AM · 6–10 PM".
+            One row per amenity, not two text boxes per amenity.
 
-            Free text on purpose: hot water is "6–10 AM and evenings" in plenty
-            of real hostels, and a time picker would make that unsayable —
-            forcing either a blank or a lie. Both fields are optional, and an
-            amenity with neither renders exactly as it does today.
-
-            Added below the chips rather than inside them so the tap-to-toggle
-            behaviour above is untouched.
+            The first version asked every amenity "what is it" and "when" —
+            sixteen empty inputs for eight amenities, most with no sensible
+            answer, because the chip already says "CCTV security". Amenities
+            differ in what *kind* of answer they need, so the owner picks the
+            kind and only then types. The common answer is nothing, and it
+            costs no typing.
           */}
           {content.amenities.some((amenity) => amenity.enabled) && (
-            <div className="mt-3.5 flex flex-col gap-2.5">
+            <div className="mt-4">
               <p className="text-[11px] font-bold uppercase tracking-[.06em]" style={{ color: M.ghost }}>
-                Details · optional
+                Timings & notes · optional
               </p>
-              {content.amenities.map((amenity, index) =>
-                amenity.enabled ? (
-                  <div key={`detail-${amenity.label}-${index}`} className="flex flex-col gap-1.5">
-                    <span className="text-[12px] font-semibold" style={{ color: '#4A433C' }}>
-                      {amenity.label}
-                    </span>
-                    <div className="flex gap-2">
-                      <input
-                        value={amenity.detail ?? ''}
-                        disabled={locked}
-                        onChange={(event) =>
-                          patch({
-                            amenities: content.amenities.map((entry, i) =>
-                              i === index ? { ...entry, detail: event.target.value } : entry,
-                            ),
-                          })
-                        }
-                        maxLength={80}
-                        placeholder="What it is — e.g. Attached bathroom"
-                        className="min-w-0 flex-1 rounded-[10px] bg-white px-3 py-2 text-[12px]"
-                        style={{ border: `1px solid ${M.inputLine}`, color: '#2A2521' }}
-                      />
-                      <input
-                        value={amenity.schedule ?? ''}
-                        disabled={locked}
-                        onChange={(event) =>
-                          patch({
-                            amenities: content.amenities.map((entry, i) =>
-                              i === index ? { ...entry, schedule: event.target.value } : entry,
-                            ),
-                          })
-                        }
-                        maxLength={40}
-                        placeholder="When — e.g. 6–10 AM · 6–10 PM"
-                        className="w-[42%] flex-none rounded-[10px] bg-white px-3 py-2 text-[12px]"
-                        style={{ border: `1px solid ${M.inputLine}`, color: '#2A2521' }}
-                      />
-                    </div>
-                  </div>
-                ) : null,
-              )}
+              <div className="mt-2 overflow-hidden rounded-[13px]" style={{ border: `1px solid ${M.inputLine}` }}>
+                {content.amenities.map((amenity, index) => {
+                  if (!amenity.enabled) return null;
+                  const summary = summariseAvailability(amenity);
+                  return (
+                    <button
+                      key={`avail-${amenity.label}-${index}`}
+                      type="button"
+                      disabled={locked}
+                      onClick={() => setSheet({ kind: 'availability', index })}
+                      className="flex w-full items-center gap-3 border-b bg-white px-3.5 py-3 text-left last:border-b-0"
+                      style={{ borderColor: M.inputLine }}
+                    >
+                      <span className="min-w-0 flex-1 text-[12.5px] font-semibold" style={{ color: '#4A433C' }}>
+                        {amenity.label}
+                      </span>
+                      <span
+                        className="max-w-[52%] truncate text-[12px]"
+                        style={{ color: summary.set ? '#4A433C' : M.ghost, fontWeight: summary.set ? 600 : 400 }}
+                      >
+                        {summary.text}
+                      </span>
+                      <ChevronRight className="h-4 w-4 flex-none" style={{ color: M.ghost }} />
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
         </Card>
@@ -953,6 +959,21 @@ export function HostelMarketingPage() {
           closeSheet();
         }}
       />
+
+      {sheet.kind === 'availability' && content.amenities[sheet.index] && (
+        <AvailabilitySheet
+          label={content.amenities[sheet.index].label}
+          value={content.amenities[sheet.index]}
+          onCancel={closeSheet}
+          onSave={(next) => {
+            const target = sheet.index;
+            patch({
+              amenities: content.amenities.map((entry, i) => (i === target ? { ...entry, ...next } : entry)),
+            });
+            closeSheet();
+          }}
+        />
+      )}
 
       <AmenitySheet
         open={sheet.kind === 'amenity'}
