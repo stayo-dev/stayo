@@ -8,6 +8,26 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-08-26 — Every brand-new Meal Plan cell 400'd on its first-ever edit, invisibly (fixed)
+
+**Found** while live-verifying [[Decisions#ADR-121|ADR-121]]'s multi-zone grid against the real dev backend — a tap-to-add that visibly placed a dish and never reverted, yet a direct database check moments later showed the cell untouched (`updated_at: null`, no items). Not a symptom anyone had reported; the optimistic UI hid it completely.
+
+**Area:** [[APIs]] — `PATCH /api/food/schedules/[id]/meals/[mealId]` (`apps/backend/app/api/food/schedules/[id]/meals/[mealId]/route.ts`), plus the frontend types that had been quietly lying about it (`useFoodSchedule.ts`'s `ScheduleMealCell.updated_at`, `features/food/api/index.ts`'s `updateScheduleMeal`).
+
+**Root cause:** the route's optimistic-concurrency guard ([[Decisions#ADR-114|ADR-114]]) required `typeof body.expectedUpdatedAt === "string"`, rejecting anything else with `400 VALIDATION_ERROR`. But `food_schedule_meals.updated_at` is `null` until a cell's first-ever edit — every one of the 28 cells `POST /api/food/schedules` creates starts that way — so the honest, correct payload for a first edit is `expectedUpdatedAt: null`, and the route refused it every time. **Every first edit to any never-before-touched cell, in any newly-created schedule, has 400'd since the day this guard shipped.**
+
+**Why it was invisible:** `useFoodSchedule.ts`'s `setCellItems` is optimistic — `onMutate` writes the new selection into the React Query cache *before* the request resolves, so the dish appeared instantly regardless of what the server said. The frontend types claimed `updated_at: string` (non-nullable) everywhere this value is threaded through, so nothing here — not `tsc`, not a code review — would have flagged the mismatch between what the type promised and what the API actually returns. The rollback path (`onError`) is real and does correctly revert on a genuine `400`/`409`, but only after the round trip completes; a screenshot or a `waitForTimeout` shorter than that window reads as a clean success.
+
+**Live cost:** this is the underlying "add a dish" mechanism [[Food]] §18's Timetable and §19's Meal Plan both use — meaning it was very likely already broken in production for exactly the case that matters most: a hostel owner opening a fresh month for the first time and adding its very first dish. It would only ever have appeared to work once a cell had somehow already been edited once (impossible from a clean state, since that edit is the thing being blocked).
+
+**Fix:** the guard now accepts `null` explicitly (`body.expectedUpdatedAt !== null && typeof body.expectedUpdatedAt !== "string"`), and the conditional `updateMany`'s `where: { updated_at: expectedUpdatedAt }` already handles a `null` comparison correctly via Prisma (translates to `IS NULL`) — no change needed there. `ScheduleMealCell.updated_at` and `updateScheduleMeal`'s parameter are now correctly typed `string | null`, closing the type-level lie that let this hide.
+
+**Verified:** a real tap-to-add against the running dev backend, confirmed via direct query against the schedule row before and after — `updated_at` moved from `null` to a real timestamp, `food_schedule_meal_items` populated correctly. Frontend suite 90/90 files, 1410/1410 tests passing after the type fix (backend pure suite verification in progress at time of writing — see [[Changelog]]).
+
+**Lesson:** an optimistic mutation's `onMutate` can make a completely-failing write look successful for as long as anyone's watching a screenshot instead of a network tab — and a type annotation that's wrong in the "value is never actually null" direction is exactly the kind of lie `tsc` can't catch, because nothing contradicts it until the real API response does.
+
+**See:** [[Decisions#ADR-121|ADR-121]], [[Decisions#ADR-114|ADR-114]], [[Food]] §19, [[APIs]], [[Changelog]]
+
 ## 2026-08-25 — "+ Add hostel" resumed an old hostel instead of adding one (fixed)
 
 **Reported as** the wizard skipping its first two steps: tapping **+ Add hostel** landed straight on the Rooms screen, already showing "Ground floor" and "First floor", without ever asking for a name.

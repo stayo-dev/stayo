@@ -17,6 +17,9 @@ export interface PublishCheckResult {
   checks: PublishCheck[];
   /** Every individual day+meal cell with no dish in it — the completeness gate reads this to disable Publish (ADR-114). Empty when the week is fully filled. */
   incompleteCells: IncompleteCell[];
+  /** `TOTAL_CELLS - incompleteCells.length` — exported so the Meal Plan header's "X / 28 meals planned" (ADR-121) reads the same number the gate itself uses, rather than a second, possibly-drifting computation. */
+  filledCount: number;
+  totalCells: number;
 }
 
 export interface PublishCheckInput {
@@ -129,5 +132,5 @@ export function buildPublishChecks({ grid }: PublishCheckInput): PublishCheckRes
     ? { id: 'runs', status: 'WARN', label: 'Some meals repeat on back-to-back days' }
     : { id: 'runs', status: 'PASS', label: 'Nothing repeats two days running' };
 
-  return { checks: [complete, variety, runs], incompleteCells };
+  return { checks: [complete, variety, runs], incompleteCells, filledCount: filled, totalCells: TOTAL_CELLS };
 }

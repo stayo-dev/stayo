@@ -40,10 +40,10 @@ const HostelMarketingPage = lazy(() =>
 const MoneyPage = lazy(() => import('@features/owner-money/pages/MoneyPage').then((m) => ({ default: m.MoneyPage })));
 const MoneyInPage = lazy(() => import('@features/owner-money/pages/MoneyInPage').then((m) => ({ default: m.MoneyInPage })));
 const FoodPage = lazy(() => import('@features/owner-food/pages/FoodPage').then((m) => ({ default: m.FoodPage })));
+const MealPlanPage = lazy(() => import('@features/owner-food/pages/MealPlanPage').then((m) => ({ default: m.MealPlanPage })));
+const RetiredToMealPlan = lazy(() => import('@features/owner-food/pages/RetiredFoodRoutes').then((m) => ({ default: m.RetiredToMealPlan })));
 const KitchenSheetPage = lazy(() => import('@features/owner-food/pages/KitchenSheetPage').then((m) => ({ default: m.KitchenSheetPage })));
 const FoodPollsPage = lazy(() => import('@features/owner-food/pages/FoodPollsPage').then((m) => ({ default: m.FoodPollsPage })));
-const MealTimingsPage = lazy(() => import('@features/owner-food/pages/MealTimingsPage').then((m) => ({ default: m.MealTimingsPage })));
-const TimetablePage = lazy(() => import('@features/owner-food/pages/TimetablePage').then((m) => ({ default: m.TimetablePage })));
 const AlertsPage = lazy(() => import('@features/owner-alerts/pages/AlertsPage').then((m) => ({ default: m.AlertsPage })));
 const MoreSettingsPage = lazy(() => import('@features/owner-more/pages/MoreSettingsPage').then((m) => ({ default: m.MoreSettingsPage })));
 const MoreProfilePage = lazy(() => import('@features/owner-more/pages/MoreProfilePage').then((m) => ({ default: m.MoreProfilePage })));
@@ -179,10 +179,15 @@ export function OwnerRoutes() {
 
         <Route path="/owner/money" element={<MoneyPage />} />
         <Route path="/owner/food" element={<FoodPage />} />
+        <Route path="/owner/food/meal-plan" element={<MealPlanPage />} />
         <Route path="/owner/food/kitchen" element={<KitchenSheetPage />} />
         <Route path="/owner/food/polls" element={<FoodPollsPage />} />
-        <Route path="/owner/food/meal-timings" element={<MealTimingsPage />} />
-        <Route path="/owner/food/timetable" element={<TimetablePage />} />
+        {/* Meal Timings and the Weekly Timetable were merged into one Meal
+            Plan page (ADR-121) — these two routes redirect so old
+            links/bookmarks (and the Today card's "Fix" deep link) still land
+            somewhere real, querystring forwarded. */}
+        <Route path="/owner/food/meal-timings" element={<RetiredToMealPlan />} />
+        <Route path="/owner/food/timetable" element={<RetiredToMealPlan />} />
         <Route path="/owner/alerts" element={<AlertsPage />} />
 
         <Route path="/owner/more" element={<MoreConfigurationHubPage />} />

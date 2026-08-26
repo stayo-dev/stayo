@@ -67,7 +67,7 @@ export const foodService = {
     const response = await api.post('/food/schedules', { hostelId, month });
     return unwrap(response).schedule as any;
   },
-  updateScheduleMeal: async (scheduleId: string, mealId: string, menuItemIds: string[], expectedUpdatedAt: string) => {
+  updateScheduleMeal: async (scheduleId: string, mealId: string, menuItemIds: string[], expectedUpdatedAt: string | null) => {
     const response = await api.patch(`/food/schedules/${scheduleId}/meals/${mealId}`, { menuItemIds, expectedUpdatedAt });
     return unwrap(response);
   },

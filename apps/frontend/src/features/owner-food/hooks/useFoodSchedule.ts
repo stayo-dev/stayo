@@ -18,7 +18,8 @@ export interface ScheduleMealCell {
   id: string;
   day_of_week: DayKey;
   meal_type: string;
-  updated_at: string;
+  /** `null` until this cell's first-ever edit — a brand-new schedule's 28 cells all start this way. */
+  updated_at: string | null;
   /** Ordered dishes, as returned by the API — matches `WeekGridItem`'s shape exactly. */
   food_schedule_meal_items: { id: string; menu_item_id: string | null; item_name: string; display_order: number }[];
   /** @deprecated legacy single-item snapshot — read `food_schedule_meal_items`/`formatCellItems` instead. */
@@ -77,7 +78,7 @@ export function useFoodSchedule(hostelId: string | undefined, month: string) {
   });
 
   const updateMealMutation = useMutation({
-    mutationFn: ({ mealId, menuItemIds, expectedUpdatedAt }: { mealId: string; menuItemIds: string[]; expectedUpdatedAt: string }) =>
+    mutationFn: ({ mealId, menuItemIds, expectedUpdatedAt }: { mealId: string; menuItemIds: string[]; expectedUpdatedAt: string | null }) =>
       foodService.updateScheduleMeal(schedule!.id, mealId, menuItemIds, expectedUpdatedAt),
     // Optimistic: the drag/tap gesture that triggered this should look
     // instant, not wait a network round trip — but a failure must leave
