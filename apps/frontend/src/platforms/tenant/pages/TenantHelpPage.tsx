@@ -1,11 +1,22 @@
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, Phone, MessageCircle, Wrench } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Phone, MessageCircle, Wrench, LifeBuoy } from 'lucide-react';
 import { tenantPortalApi } from '@features/tenant-portal/api';
 
 const card = 'overflow-hidden rounded-[20px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]';
 
-/** Tenant Profile → Help & support. Real hostel/owner contact via `tenantPortalApi.getMyProfile()` — no ticketing system, just direct call/WhatsApp, matching what the design's stub row implied. */
+/**
+ * Tenant Profile → Help & support — the **hostel** side of help.
+ *
+ * Real hostel/owner contact via `tenantPortalApi.getMyProfile()`: call,
+ * WhatsApp, or raise a maintenance request. All of it belongs to the hostel
+ * team; Stayo carries the requests so the owner has one list and never answers
+ * them itself.
+ *
+ * The last row is the door to the other inbox. Someone whose problem is the
+ * *app* rather than the building would otherwise call their hostel owner about
+ * a login bug, which helps nobody.
+ */
 export function TenantHelpPage() {
   const navigate = useNavigate();
   const profileQuery = useQuery({
@@ -69,7 +80,22 @@ export function TenantHelpPage() {
         </span>
         <div className="min-w-0 flex-1">
           <div className="text-[14px] font-semibold text-foreground">Raise a maintenance request</div>
-          <div className="mt-0.5 text-[11.5px] text-muted-foreground">Report an issue or request room services</div>
+          <div className="mt-0.5 text-[11.5px] text-muted-foreground">Repairs, cleaning, food — your hostel handles these</div>
+        </div>
+        <ChevronRight className="h-4 w-4 flex-none text-muted-foreground" />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => navigate('/profile/tickets')}
+        className={`${card} flex items-center gap-3 p-4 text-left`}
+      >
+        <span className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px] bg-secondary text-primary">
+          <LifeBuoy className="h-4.5 w-4.5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-[14px] font-semibold text-foreground">Problem with the Stayo app?</div>
+          <div className="mt-0.5 text-[11.5px] text-muted-foreground">Payments, login, anything on screen — that one is ours</div>
         </div>
         <ChevronRight className="h-4 w-4 flex-none text-muted-foreground" />
       </button>

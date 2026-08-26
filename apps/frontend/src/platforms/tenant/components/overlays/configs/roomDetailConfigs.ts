@@ -119,7 +119,7 @@ export function buildRoomDetailConfigs(ctx: RoomDetailContext): Record<string, D
     },
 
     maint_history: {
-      title: 'Ticket history',
+      title: 'Complaint history',
       sub: room ? `Resolved requests · Room ${room.room_no}` : 'Resolved requests',
       sections:
         ctx.resolvedRequests.length > 0

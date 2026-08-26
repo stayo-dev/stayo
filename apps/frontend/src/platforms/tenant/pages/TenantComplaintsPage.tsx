@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Bug, ChevronLeft, MessageSquareWarning } from 'lucide-react';
+import { ChevronLeft, LifeBuoy, MessageSquareWarning, Plus } from 'lucide-react';
 import { useTenantRoom } from '@features/tenant-room/hooks/useTenantRoom';
 import { tenantRoomService } from '@features/tenant-room/api';
 import { useOverlayStack } from '../components/overlays/useOverlayStack';
@@ -30,13 +30,21 @@ function LoadingSkeleton() {
  * full-screen takeover with its own back button, same "outside the shell"
  * pattern as `/tenant/move-out`. Deliberately kept separate from the
  * Stayo-Admin-bound Profile → "Raise a Ticket" system (ADR-079) — this page
- * still only ever writes to `tenant_service_requests`, unchanged. Ticket
- * UI/copy carried over from the old `TenantProfilePage`'s "Tickets & bug
- * reports" section (deleted as part of an earlier change, dissolved into the
- * shared Profile hub and here) rather than rebuilt — same
- * `tenant_service_requests` data via `useTenantRoom()`, same overlay system
- * Room's own service-request tiles already use (`buildServiceRequestFormConfigs`
- * produces both sets of keys from one function; Room's tiles are unaffected).
+ * still only ever writes to `tenant_service_requests`, unchanged.
+ *
+ * **The "Report a bug" button used to live here and was a wrong-inbox bug of
+ * its own.** Its copy said "Help us improve the app" and "our team will
+ * investigate", but it wrote a `MAINTENANCE` row to `tenant_service_requests`
+ * — so a tenant reporting a Stayo payments bug filed a maintenance job with
+ * their *hostel owner*, who could do nothing about it. Five of the nine live
+ * rows arrived this way, categorised "Payments", "Food ordering" and "Room
+ * services". Both the button and its form config are gone; app problems go to
+ * the Help Centre, which is the Stayo inbox ([[ADR-117]]).
+ *
+ * One page, one action, one vocabulary: a resident raises **complaints** with
+ * their hostel and sends **reports** to Stayo. The word "ticket" — inherited
+ * from the old `TenantProfilePage`'s "Tickets & bug reports" section — meant
+ * both and so distinguished neither.
  */
 export function TenantComplaintsPage() {
   const navigate = useNavigate();
@@ -71,38 +79,32 @@ export function TenantComplaintsPage() {
           </button>
           <div>
             <h1 className="font-display text-[24px] font-extrabold tracking-[-0.03em] text-foreground">Complaints</h1>
-            <p className="mt-0.5 text-[12px] font-medium text-muted-foreground">Raise a ticket, report a bug, or track what's open</p>
+            <p className="mt-0.5 text-[12px] font-medium text-muted-foreground">Tell your hostel what needs fixing, and follow it here</p>
           </div>
         </div>
 
         <div className="flex flex-col gap-2.5">
           <div className="flex items-baseline justify-between">
-            <span className={sectionLabel}>Tickets &amp; bug reports</span>
+            <span className={sectionLabel}>Your complaints</span>
             {openTickets.length > 0 && <span className="rounded-full bg-warning-bg px-2.5 py-[3px] text-[10px] font-bold text-warning">{openTickets.length} open</span>}
           </div>
           <div className={`${card} p-4`}>
-            <div className="flex gap-2.5">
-              <button
-                type="button"
-                onClick={() => overlay.push('raise_ticket')}
-                className="flex flex-1 flex-col items-center gap-2 rounded-[14px] p-[15px_10px] text-white shadow-[0_8px_18px_rgba(164,93,68,0.24)]"
-                style={{ background: 'linear-gradient(135deg, #B46A55, #C97E5F)' }}
-              >
-                <MessageSquareWarning className="h-[21px] w-[21px]" strokeWidth={1.9} />
-                <span className="font-display text-[12.5px] font-bold">Raise a ticket</span>
-              </button>
-              <button type="button" onClick={() => overlay.push('report_bug')} className="flex flex-1 flex-col items-center gap-2 rounded-[14px] border border-[#F0E7DC] bg-[#F8F2EC] p-[15px_10px] text-[#8A5A48]">
-                <Bug className="h-5 w-5 text-primary" strokeWidth={1.8} />
-                <span className="font-display text-[12.5px] font-bold">Report a bug</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => overlay.push('raise_ticket')}
+              className="flex w-full items-center justify-center gap-2 rounded-[14px] px-4 py-3.5 text-white shadow-[0_8px_18px_rgba(164,93,68,0.24)]"
+              style={{ background: 'linear-gradient(135deg, #B46A55, #C97E5F)' }}
+            >
+              <Plus className="h-[18px] w-[18px]" strokeWidth={2.4} />
+              <span className="font-display text-[13px] font-bold">Raise a complaint</span>
+            </button>
             {room.requests.length > 0 && (
               <>
                 <div className="mt-1 divide-y divide-[#F2ECE5]">
                   {room.requests.slice(0, 5).map((t) => (
                     <button key={t.id} type="button" onClick={() => overlay.push(`tk_${t.id}`)} className="flex w-full items-center gap-3 py-3.5 text-left">
                       <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px] bg-[#F5E9E3] text-primary">
-                        {t.category?.toLowerCase().includes('bug') ? <Bug className="h-4 w-4" /> : <MessageSquareWarning className="h-4 w-4" />}
+                        <MessageSquareWarning className="h-4 w-4" />
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-[13px] font-semibold text-[#2A2521]">{t.category ?? t.type.replace('_', ' ')}</div>
@@ -123,6 +125,27 @@ export function TenantComplaintsPage() {
             )}
           </div>
         </div>
+
+        {/*
+          The door to the other inbox, kept plainly separate rather than sitting
+          beside "Raise a complaint" as an equal choice — which is what let five
+          real app bugs be filed against a hostel owner who could not fix them.
+        */}
+        <button
+          type="button"
+          onClick={() => navigate('/profile/tickets')}
+          className={`${card} flex items-center gap-3 p-4 text-left`}
+        >
+          <span className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px] bg-[#F5E9E3] text-primary">
+            <LifeBuoy className="h-[18px] w-[18px]" strokeWidth={1.9} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[13.5px] font-semibold text-foreground">Something wrong with the app?</div>
+            <div className="mt-0.5 text-[11.5px] leading-snug text-muted-foreground">
+              Payments, login, a screen that won&rsquo;t load — that one is Stayo&rsquo;s to fix, not your hostel&rsquo;s
+            </div>
+          </div>
+        </button>
       </div>
 
       {activeTicket && (

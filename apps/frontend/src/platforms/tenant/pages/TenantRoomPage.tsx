@@ -232,7 +232,7 @@ export function TenantRoomPage() {
         {room.activeTicket && (
           <div className="flex flex-col gap-2.5">
             <div className="flex items-baseline justify-between">
-              <span className={sectionLabel}>Tickets</span>
+              <span className={sectionLabel}>Complaints</span>
               {room.openRequests.length > 1 && (
                 <button type="button" onClick={() => overlay.push('all_tickets')} className="text-[12px] font-semibold text-primary">
                   {room.openRequests.length} open · view all
@@ -356,7 +356,12 @@ export function TenantRoomPage() {
         <FormPanel config={formConfigs[overlay.view]} onBack={overlay.back} onClose={overlay.close} />
       )}
 
-      <MoveOutSheet open={moveOutOpen} onClose={() => setMoveOutOpen(false)} roomNo={room.room?.room_no ?? null} />
+      <MoveOutSheet
+        open={moveOutOpen}
+        onClose={() => setMoveOutOpen(false)}
+        roomNo={room.room?.room_no ?? null}
+        hostelName={room.hostel.name}
+      />
 
       {room.hostel.public_slug && (
         <ShareSheet

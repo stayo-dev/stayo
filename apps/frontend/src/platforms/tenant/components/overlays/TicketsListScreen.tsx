@@ -42,8 +42,8 @@ const TABS: Array<{ key: TicketBucket; label: string }> = [
 
 const EMPTY_COPY: Record<TicketBucket, string> = {
   track: 'Nothing waiting on assignment right now.',
-  assigned: 'No ticket currently has staff assigned.',
-  completed: 'No completed tickets yet.',
+  assigned: 'Nothing currently has staff assigned.',
+  completed: 'Nothing resolved yet.',
 };
 
 interface TicketsListScreenProps {
@@ -75,7 +75,7 @@ export function TicketsListScreen({ requests, onBack, onOpenTicket, onNewTicket 
           <ChevronLeft className="h-[18px] w-[18px] text-[#4A433C]" strokeWidth={2} />
         </button>
         <div className="min-w-0 flex-1">
-          <div className="font-display text-[18px] font-extrabold tracking-[-0.02em] text-foreground">My tickets</div>
+          <div className="font-display text-[18px] font-extrabold tracking-[-0.02em] text-foreground">My complaints</div>
           <div className="text-[11.5px] font-medium text-[#8A7F75]">{requests.length} total</div>
         </div>
         <button
