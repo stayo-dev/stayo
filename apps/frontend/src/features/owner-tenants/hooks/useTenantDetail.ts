@@ -36,26 +36,6 @@ export interface RealTenantInvitation {
   agreementStartDate: string | null;
 }
 
-/** What the tenant is, beyond a name and a room. Every field is optional — an
- * INVITED tenant has almost none of it, and a blank must render as absent
- * rather than as an empty row. */
-export interface RealTenantIdentity {
-  email: string;
-  profileType: string;
-  gender: string;
-  dateOfBirth: string;
-  collegeName: string;
-  course: string;
-  yearOfStudy: string;
-  branch: string;
-  rollNumber: string;
-  officeName: string;
-  jobRole: string;
-  permanentAddress: string;
-  temporaryAddress: string;
-  phoneVerified: boolean;
-}
-
 /** Onboarding obligations the tenant has or hasn't discharged. */
 export interface RealTenantCompliance {
   profileCompleted: boolean;
@@ -108,7 +88,6 @@ export interface RealTenantDetail {
   obligationDueDates: Array<{ due_date: string | null; status: string }>;
   activity: TenantActivityItem[];
   documents: RealTenantDocument[];
-  identity: RealTenantIdentity;
   compliance: RealTenantCompliance;
   agreement: RealTenantAgreement | null;
   /** Needed by any room-scoped action; without it the room picker can't exclude the current room. */
@@ -356,22 +335,6 @@ export function useTenantDetail(tenantId: string | undefined) {
       obligationDueDates,
       activity,
       documents,
-      identity: {
-        email: str(o.email ?? profileRaw.email),
-        profileType: str(o.profile_type),
-        gender: str(o.gender),
-        dateOfBirth: formatDate(o.date_of_birth),
-        collegeName: str(o.college_name),
-        course: str(o.course),
-        yearOfStudy: str(o.year_of_study),
-        branch: str(o.branch),
-        rollNumber: str(o.roll_number),
-        officeName: str(tenantRaw.office_name),
-        jobRole: str(tenantRaw.job_role),
-        permanentAddress: str(o.permanent_address),
-        temporaryAddress: str(o.temporary_address),
-        phoneVerified: profileRaw.phone_verified === true,
-      },
       compliance: {
         profileCompleted: Boolean(complianceRaw.profile_completed ?? o.profile_completed),
         rulesAccepted: Boolean(complianceRaw.rules_accepted),

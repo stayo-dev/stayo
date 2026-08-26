@@ -27,7 +27,7 @@ import { DocumentPreviewSheet } from '../profile/DocumentPreviewSheet';
 import { toDocumentGroups } from '../profile/documentGroups';
 import { AmendAgreementSheet } from '../profile/AmendAgreementSheet';
 import { PendingChangeCard } from '../profile/PendingChangeCard';
-import { IdentityCard } from '../profile/IdentityCard';
+import { ComplianceCard } from '../profile/ComplianceCard';
 import { ChangeRentModal } from '../actions/ChangeRentModal';
 import { MoveOutSheet } from '../actions/MoveOutSheet';
 import { QuickCollectModal } from '../quick-collect/QuickCollectModal';
@@ -399,7 +399,7 @@ export function TenantDetailPage() {
                   "not shared with you" rather than hiding itself, so the
                   absence of history and the absence of consent stay
                   distinguishable to the owner without leaking either. */}
-              <IdentityCard tenant={tenant} />
+              <ComplianceCard tenant={tenant} />
 
               <TenantHistoryPanel tenantId={tenantId} />
               <div className="flex gap-2.5">
