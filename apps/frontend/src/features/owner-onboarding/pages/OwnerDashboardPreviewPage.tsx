@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { OwnerHomeDashboard } from '@features/owner-dashboard/components/OwnerHomeDashboard';
+import { findHostelInProgress } from '@features/owner-dashboard/hostelInProgress';
 import { HostelOptionsSheet } from '@features/owner-dashboard/components/HostelOptionsSheet';
 import { useOwnerDashboard } from '@features/owner-dashboard/hooks/useOwnerDashboard';
 import { useHostelOrder } from '@features/owner-dashboard/property-order/useHostelOrder';
@@ -54,11 +55,17 @@ export function OwnerDashboardPreviewPage() {
   const actionCenterRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLButtonElement>(null);
 
-  // A hostel whose build was left unfinished. Derived from the data itself —
-  // a hostel with no rooms is one still being built — rather than a stored
-  // "onboarding step", which would drift the moment an owner adds or deletes
-  // rooms from the Rooms tab.
-  const unfinished = dash.properties.find((p) => (p.totalCapacity ?? 0) === 0);
+  // A hostel whose build was left unfinished — derived from the data itself
+  // rather than a stored "onboarding step", which would drift the moment an
+  // owner adds or deletes rooms from the Rooms tab.
+  //
+  // `findHostelInProgress` also requires the hostel to be ACTIVE, and that
+  // half is load-bearing: this list is fetched with `include_archived: true`
+  // so the ARCHIVED tab has rows, and an archived hostel reports no active
+  // rooms — so it used to be indistinguishable from an unfinished build.
+  // Owners were sent into the builder on an archived hostel and hit
+  // "Cannot modify rooms/floors of an archived hostel" on saving a floor.
+  const unfinished = findHostelInProgress(dash.properties);
   const hostelInProgress = unfinished
     ? { id: unfinished.id, name: unfinished.name, summary: 'No rooms added yet' }
     : null;
@@ -110,7 +117,14 @@ export function OwnerDashboardPreviewPage() {
         onOpenQuickActions={qa.openSheet}
         onViewAllActions={qa.openAllActions}
         onPropertyMenu={(hostelId) => setHostelMenuFor(hostelId)}
-        onAddHostel={() => navigate(hostelInProgress ? `/owner/hostels/${hostelInProgress.id}/build` : '/owner/hostels/new')}
+        // Add means add. This used to resume `hostelInProgress` — any hostel
+        // in the account with zero rooms — so while one of those existed the
+        // button could never create a new hostel: it handed the builder an
+        // existing id, and resuming starts at the Rooms stage, which looked
+        // like the wizard skipping its first two steps. Resuming lives on the
+        // getting-started card, which says "finish setting up your hostel";
+        // a half-built hostel is also editable from its own Rooms tab.
+        onAddHostel={() => navigate('/owner/hostels/new')}
         hostelInProgress={hostelInProgress}
         gettingStartedRef={gettingStartedRef}
         actionCenterRef={actionCenterRef}
