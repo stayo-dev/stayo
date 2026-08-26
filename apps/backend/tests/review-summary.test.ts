@@ -116,13 +116,12 @@ describe("reviewerDisplayName", () => {
 });
 
 describe("REVIEW_CATEGORIES", () => {
-  it("is the eight hostel-specific categories, not Airbnb's six", () => {
+  it("is the seven hostel-specific categories, not Airbnb's six", () => {
     expect(REVIEW_CATEGORIES.map((category) => category.key)).toEqual([
       "cleanliness",
       "maintenance",
       "food",
       "room_comfort",
-      "amenities",
       "staff",
       "safety",
       "wifi",
@@ -130,6 +129,8 @@ describe("REVIEW_CATEGORIES", () => {
     // Value and Location were dropped — a hostel is not a holiday flat.
     expect(REVIEW_CATEGORIES.some((category) => category.key === "value")).toBe(false);
     expect(REVIEW_CATEGORIES.some((category) => category.key === "location")).toBe(false);
+    // Amenities was dropped as a rating question too.
+    expect(REVIEW_CATEGORIES.some((category) => category.key === "amenities")).toBe(false);
   });
 
   it("only Food is conditional on the hostel serving meals", () => {
