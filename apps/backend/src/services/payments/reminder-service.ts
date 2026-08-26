@@ -12,6 +12,7 @@ import { financialLifecycleService } from "./financial-lifecycle-service";
 import { selectReminderForOverdueDay } from "@/lib/services/collection-strategy-service";
 import { whatsappReminderDeliveryService } from "@/lib/services/notifications/whatsapp-reminder-delivery";
 import { getLogger } from "@/lib/logger";
+import { resolveTenantName, resolveTenantPhone } from "@/lib/tenants/tenant-identity";
 
 const logger = getLogger("reminder-service");
 
@@ -353,6 +354,9 @@ export class ReminderService {
         personal_email: true,
         owner_id: true,
         hostel_id: true,
+        display_name: true,
+        phone_1: true,
+        access_mode: true,
         profiles: { select: { name: true, phone: true } },
       },
     });
@@ -372,7 +376,7 @@ export class ReminderService {
       orderBy: { due_date: "asc" },
     });
 
-    if (!obligation) return { sent: 0, tenant_name: tenant.profiles?.name ?? "Tenant" };
+    if (!obligation) return { sent: 0, tenant_name: resolveTenantName(tenant) };
 
     const context = await getTenantOperationalContext(tenantId, ownerId, tenant.hostel_id);
     const config = context.prefs;
@@ -401,12 +405,15 @@ export class ReminderService {
       ? 1
       : 0;
 
-    return { sent, tenant_name: tenant.profiles?.name ?? "Tenant", channels };
+    return { sent, tenant_name: resolveTenantName(tenant), channels };
   }
 
   private async triggerNotification(obligation: any, type: string, config: any): Promise<NotificationDeliveryResult> {
     const tenant = obligation.tenant;
     const ownerId = tenant.owner_id;
+    const tenantName = resolveTenantName(tenant);
+    const tenantPhone = resolveTenantPhone(tenant);
+    const isOwnerManaged = tenant.access_mode === "OWNER_MANAGED";
     const result: NotificationDeliveryResult = {
       credited: false,
       in_app: emptyChannel(),
@@ -443,7 +450,7 @@ export class ReminderService {
       try {
         const mailData = {
           toEmail: tenant.personal_email,
-          name: tenant.profiles?.name || "Tenant",
+          name: tenantName,
           amount: Number(obligation.amount),
           rentMonth: formatMonthYear(obligation.rent_month, config),
           dueDate: formatDate(obligation.due_date, config),
@@ -479,7 +486,7 @@ export class ReminderService {
       result.whatsapp = { attempted: false, sent: false, skipped: true, reason: "WHATSAPP_DISABLED" };
     } else if (!ownerId) {
       result.whatsapp = { attempted: false, sent: false, skipped: true, reason: "OWNER_MISSING" };
-    } else if (!tenant.profiles?.phone) {
+    } else if (!tenantPhone) {
       result.whatsapp = { attempted: false, sent: false, skipped: true, reason: "TENANT_PHONE_MISSING" };
     } else {
       result.whatsapp.attempted = true;
@@ -502,8 +509,8 @@ export class ReminderService {
             tenantId: tenant.id,
             hostelId: obligation.hostel_id,
             obligationId: obligation.id,
-            phone: tenant.profiles.phone,
-            tenantName: tenant.profiles?.name || "Tenant",
+            phone: tenantPhone,
+            tenantName,
             hostelName: obligation.hostel_name || "Your Hostel",
             amount: Number(obligation.amount),
             rentMonth: obligation.rent_month,
