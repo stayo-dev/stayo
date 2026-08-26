@@ -13,8 +13,6 @@ import { useTenantDetail } from '../hooks/useTenantDetail';
 import { useDocumentVerification } from '../hooks/useDocumentVerification';
 import { DocumentReviewCard } from '../documents/DocumentReviewCard';
 import { documentTypeLabel, type ReviewDocument } from '../documents/kycDocuments';
-import { ActivationStepTracker } from '../activation/ActivationStepTracker';
-import { useActivationState } from '../hooks/useActivationState';
 import { RejectDocumentSheet } from '../documents/RejectDocumentSheet';
 import type { TenantDetailTab } from '../types';
 import { InvitedTenantProfileView } from '../components/InvitedTenantProfileView';
@@ -73,7 +71,6 @@ export function TenantDetailPage() {
 
   const tenantActions = useTenantActions(tenant?.hostelId ?? '');
   const verification = useDocumentVerification(tenantId);
-  const activation = useActivationState(tenantId, tenant?.status === 'invited');
 
   /**
    * Reminders already arrive on the overview response as `recent_activity`
@@ -497,6 +494,23 @@ export function TenantDetailPage() {
         onClose={() => setAmendAgreementOpen(false)}
         tenant={tenant}
         onChangeRent={() => setChangeRentOpen(true)}
+      />
+      <ChangeRoomSheet
+        open={changeRoomOpen}
+        onClose={() => setChangeRoomOpen(false)}
+        tenantId={tenant.id}
+        tenantName={tenant.name}
+        hostelId={tenant.hostelId}
+        currentRoomId={tenant.currentRoomId}
+        currentRoomNo={tenant.room}
+        currentRent={tenant.stay.monthlyRent}
+      />
+      <DocumentPreviewSheet
+        open={previewDoc != null}
+        onClose={() => setPreviewDoc(null)}
+        title={previewDoc?.title ?? ''}
+        url={previewDoc?.url ?? null}
+        fileName={previewDoc?.fileName ?? 'document'}
       />
       <RejectDocumentSheet
         open={rejectingDoc != null}
