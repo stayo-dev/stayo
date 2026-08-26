@@ -62,37 +62,35 @@ export function ReviewsScoreSummary({ summary }: { summary: ReviewSummary }) {
         </div>
       )}
 
+      {/* Airbnb's own category row is label/number/icon stacked, laid out wide
+          across a full-bleed desktop page — this content column is much
+          narrower even on desktop, and gone entirely on mobile, so the
+          category breakdown is a desktop-only extra rather than something a
+          phone screen has room to earn its keep. The Overall rating block
+          above (score, stars, distribution) is the one thing every viewport
+          gets. */}
       {summary.categories.length > 0 && (
-        <div className="mt-5 border-t pt-4" style={{ borderColor: C.lineSoft }}>
-          <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.textMuted }}>
-            Rating breakdown
-          </p>
-          <div className="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
-            {summary.categories.map((category) => {
-              const Icon = CATEGORY_ICONS[category.key];
-              return (
-                <div key={category.key} className="flex items-center gap-2.5">
-                  {Icon && (
-                    <span
-                      className="flex h-7 w-7 flex-none items-center justify-center rounded-full"
-                      style={{ background: C.chipBg }}
-                    >
-                      <Icon className="h-3.5 w-3.5" strokeWidth={1.8} style={{ color: C.clay }} />
-                    </span>
-                  )}
-                  <span className="min-w-0 flex-1 truncate text-[12px] font-semibold" style={{ color: C.textBody }}>
-                    {category.label}
-                  </span>
-                  <span
-                    className="w-7 flex-none text-right text-[12.5px] font-bold tabular-nums"
-                    style={{ fontFamily: FONT.display, color: C.text }}
-                  >
-                    {category.average.toFixed(1)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+        <div
+          className="mt-5 hidden flex-wrap gap-x-8 gap-y-4 border-t pt-4 sm:flex"
+          style={{ borderColor: C.lineSoft }}
+        >
+          {summary.categories.map((category) => {
+            const Icon = CATEGORY_ICONS[category.key];
+            return (
+              <div key={category.key} className="flex flex-col gap-1">
+                <span className="text-[11.5px] font-semibold" style={{ color: C.textBody }}>
+                  {category.label}
+                </span>
+                <span
+                  className="text-[15px] font-extrabold tabular-nums"
+                  style={{ fontFamily: FONT.display, color: C.text }}
+                >
+                  {category.average.toFixed(1)}
+                </span>
+                {Icon && <Icon className="h-4 w-4" strokeWidth={1.8} style={{ color: C.textGhost }} />}
+              </div>
+            );
+          })}
         </div>
       )}
 
