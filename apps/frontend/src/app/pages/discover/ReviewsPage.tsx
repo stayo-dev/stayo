@@ -6,10 +6,8 @@ import { useHostelReviews } from '@features/discover/hooks/useDiscover';
 
 import { C, FONT, PAGE_SHELL } from './discoverTheme';
 import { ReviewsCard } from './components/ReviewsCard';
-import { ReviewMentionFilters } from './components/ReviewMentionFilters';
 import { ReviewsScoreSummary } from './components/ReviewsScoreSummary';
 import { ReviewsSortControl } from './components/ReviewsSortControl';
-import { buildMentionChips, filterReviewsByMention } from './reviewMentionFilter';
 import { searchReviews } from './reviewSearch';
 import { sortReviews, type ReviewSortMode } from './reviewSort';
 
@@ -17,9 +15,9 @@ import { sortReviews, type ReviewSortMode } from './reviewSort';
  * The dedicated Reviews page — the complete review experience, reached only
  * from the listing page's "Show all N reviews" button. Everything the
  * listing's compact preview deliberately leaves out lives here: the trust
- * score, the distribution/category breakdown, interactive mention filters,
- * sort, search, and the full untruncated list. See `ReviewsSection.tsx` for
- * what stays on the listing page instead.
+ * score, the distribution/category breakdown, sort, search, and the full
+ * untruncated list. See `ReviewsSection.tsx` for what stays on the listing
+ * page instead.
  */
 export function ReviewsPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -31,7 +29,6 @@ export function ReviewsPage() {
   const hostelName = seeded.hostelName ?? 'this hostel';
 
   const [sortMode, setSortMode] = useState<ReviewSortMode>('relevant');
-  const [activeMention, setActiveMention] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
 
@@ -43,13 +40,10 @@ export function ReviewsPage() {
   const summary = data?.summary;
   const allReviews = data?.reviews ?? [];
 
-  const mentionChips = useMemo(() => buildMentionChips(summary?.highlights ?? []), [summary]);
-
   const visibleReviews = useMemo(() => {
-    const byMention = filterReviewsByMention(allReviews, activeMention);
-    const bySearch = searchReviews(byMention, debouncedQuery);
+    const bySearch = searchReviews(allReviews, debouncedQuery);
     return sortReviews(bySearch, sortMode);
-  }, [allReviews, activeMention, debouncedQuery, sortMode]);
+  }, [allReviews, debouncedQuery, sortMode]);
 
   /**
    * A Reviews page URL is plausible to bookmark, share, or open in a new
@@ -96,17 +90,6 @@ export function ReviewsPage() {
           <p className="mt-2 text-[12px] leading-[1.55]" style={{ color: C.textMuted }}>
             Too few reviews to average yet — read them and judge for yourself.
           </p>
-        )}
-
-        {mentionChips.length > 0 && (
-          <div className="mt-6 border-t pt-5" style={{ borderColor: C.lineSoft }}>
-            <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.textMuted }}>
-              Tenants mention
-            </p>
-            <div className="mt-2.5">
-              <ReviewMentionFilters chips={mentionChips} active={activeMention} onChange={setActiveMention} />
-            </div>
-          </div>
         )}
 
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t pt-5" style={{ borderColor: C.lineSoft }}>
