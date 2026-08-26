@@ -93,7 +93,12 @@ export interface RealTenantDetail {
   obligations: TenantObligation[];
   /** Raw due date + status per obligation, so days-overdue is derivable. */
   obligationDueDates: Array<{ due_date: string | null; status: string }>;
-  activity: TenantActivityItem[];
+  /**
+   * `type` is carried alongside the display fields so a payment row can offer
+   * the correction flow. For `type: 'payment'` the item's `id` **is** the
+   * payment id — see `recent_activity` in `getOwnerTenantOverview`.
+   */
+  activity: Array<TenantActivityItem & { type: string }>;
   documents: RealTenantDocument[];
   compliance: RealTenantCompliance;
   agreement: RealTenantAgreement | null;
@@ -207,9 +212,10 @@ export function useTenantDetail(tenantId: string | undefined) {
       : undefined;
 
     const grade = score?.grade ? String(score.grade) : '';
-    const activity: TenantActivityItem[] = Array.isArray(o.recent_activity)
+    const activity: Array<TenantActivityItem & { type: string }> = Array.isArray(o.recent_activity)
       ? o.recent_activity.map((a: any) => ({
           id: String(a.id),
+          type: String(a.type ?? ''),
           title: String(a.title ?? ''),
           sub: String(a.detail ?? ''),
           date: formatDate(a.date),

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowRight, BedDouble, Clock, FileText, LogOut } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BedDouble, Clock, FileText, LogOut, Undo2 } from 'lucide-react';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { StatusPill } from '@shared/ui-patterns/StatusPill';
 import { EmptyState } from '@shared/ui-patterns/EmptyState';
@@ -28,6 +28,7 @@ import { ReviewRequestCard } from '../profile/ReviewRequestCard';
 import { DocumentThread } from '../profile/DocumentThread';
 import { RiskCard } from '../profile/RiskCard';
 import { TenantRequestsCard } from '../profile/TenantRequestsCard';
+import { CorrectPaymentModal } from '@/app/components/modals/CorrectPaymentModal';
 import { useDocumentShares } from '../hooks/useDocumentShares';
 import { AmendAgreementSheet } from '../profile/AmendAgreementSheet';
 import { PendingChangeCard } from '../profile/PendingChangeCard';
@@ -71,6 +72,7 @@ export function TenantDetailPage() {
   const [changeBillingOpen, setChangeBillingOpen] = useState(false);
   const [amendAgreementOpen, setAmendAgreementOpen] = useState(false);
   const [changeRoomOpen, setChangeRoomOpen] = useState(false);
+  const [correctingPaymentId, setCorrectingPaymentId] = useState<string | null>(null);
   const [rejectingDoc, setRejectingDoc] = useState<ReviewDocument | null>(null);
   const [previewDoc, setPreviewDoc] = useState<{
     title: string;
@@ -275,18 +277,34 @@ export function TenantDetailPage() {
               <div className="mb-3 font-display text-[15px] font-bold text-foreground">Activity</div>
               <div className="flex flex-col gap-2">
                 {tenant.activity.map((a) => (
-                  <div key={a.id} className="flex items-start gap-2.5 rounded-xl bg-muted/50 p-3">
-                    <span
-                      className={`mt-0.5 h-2 w-2 flex-none rounded-full ${
-                        a.tone === 'positive' ? 'bg-success' : a.tone === 'negative' ? 'bg-destructive' : 'bg-muted-foreground'
-                      }`}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[12.5px] font-bold leading-tight text-foreground">{a.title}</div>
-                      <div className="mt-0.5 text-[11px] text-muted-foreground">{a.sub}</div>
+                  <div key={a.id} className="flex flex-col gap-2 rounded-xl bg-muted/50 p-3">
+                    <div className="flex items-start gap-2.5">
+                      <span
+                        className={`mt-0.5 h-2 w-2 flex-none rounded-full ${
+                          a.tone === 'positive' ? 'bg-success' : a.tone === 'negative' ? 'bg-destructive' : 'bg-muted-foreground'
+                        }`}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[12.5px] font-bold leading-tight text-foreground">{a.title}</div>
+                        <div className="mt-0.5 text-[11px] text-muted-foreground">{a.sub}</div>
+                      </div>
+                      {a.amount != null && <div className="flex-none font-display text-[13px] font-extrabold tabular-nums text-foreground">₹{a.amount.toLocaleString('en-IN')}</div>}
+                      <div className="flex-none text-[10px] text-muted-foreground">{a.date}</div>
                     </div>
-                    {a.amount != null && <div className="flex-none font-display text-[13px] font-extrabold tabular-nums text-foreground">₹{a.amount.toLocaleString('en-IN')}</div>}
-                    <div className="flex-none text-[10px] text-muted-foreground">{a.date}</div>
+                    {/* A recorded payment can be reversed or moved to the tenant
+                        it should have been credited to. The whole
+                        /api/recovery/cases/* platform was unreachable from the
+                        app until this button existed. */}
+                    {a.type === 'payment' && (
+                      <button
+                        type="button"
+                        onClick={() => setCorrectingPaymentId(a.id)}
+                        className="flex items-center justify-center gap-1.5 self-start rounded-lg border border-border bg-card px-2.5 py-1.5 font-display text-[11px] font-bold text-foreground"
+                      >
+                        <Undo2 className="h-3 w-3" strokeWidth={2} />
+                        Correct this payment
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -526,6 +544,20 @@ export function TenantDetailPage() {
       >
         {previewDoc?.doc && <DocumentThread tenantId={tenant.id} doc={previewDoc.doc} />}
       </DocumentPreviewSheet>
+      {correctingPaymentId && (
+        <CorrectPaymentModal
+          paymentId={correctingPaymentId}
+          hostelId={tenant.hostelId}
+          tenantId={tenant.id}
+          onClose={() => setCorrectingPaymentId(null)}
+          onSuccessReverse={() => {
+            // Reverse the wrong entry, then land straight in the flow that
+            // records the right one — the loop the deleted page closed too.
+            queryClient.invalidateQueries({ queryKey: ['owner', 'tenant', tenant.id, 'detail'] });
+            setTimeout(() => setQuickCollectOpen(true), 400);
+          }}
+        />
+      )}
       <RejectDocumentSheet
         open={rejectingDoc != null}
         docType={rejectingDoc?.docType ?? ''}
