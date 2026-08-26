@@ -1,50 +1,43 @@
 import type { DynamicLead } from './hooks/useAlerts';
 
 /**
- * The Leads list, arranged by what the owner still has to do about each one.
+ * The Leads list, filtered by what the owner still has to do about each one.
  *
- * It used to be one flat list in arrival order, every card styled the same.
- * An owner with four settled enquiries and one new one had to read all five
- * to find the one that needed them — and a new enquiry landed *among* the
- * settled ones rather than above them. The screenshot that prompted this
- * showed four "Accepted" cards filling the screen, each offering Call and
- * WhatsApp as though there were still a conversation to have.
+ * Six tabs — All, New, Hold, Accepted, Invited, Rejected — replace an earlier
+ * five-group collapsible layout (ADR-104/106). "Accepted" here means the
+ * tenant actually completed onboarding (backend status `JOINED`), not the
+ * raw `ACCEPTED` status — see [[Decisions#ADR-122|ADR-122]]. `ACCEPTED`
+ * itself ("owner said yes, invitation not sent yet") is now a vestigial
+ * status the main "Accept & invite" flow skips past, so those leads fold
+ * into New rather than getting their own tab; the existing per-lead status
+ * pill on `LeadCard` already reads "Accepted" for them, which is enough to
+ * tell them apart from a brand-new enquiry. `LOST` is excluded from every
+ * tab, same as before — nothing in this app's UI has ever set it.
  *
- * So: five groups, ordered by urgency, each stating what it is for. The two
- * that need the owner are open by default; the three that are finished or
- * parked are collapsed to a single line with a count. An empty group does not
- * render at all.
- *
- * `awaiting_invite` is deliberately its own group rather than being filed
- * under "done". A lead marked ACCEPTED with no invitation sent is **half
- * finished**, and the old UI's "Accepted" pill made it look complete — that is
- * the exact confusion that produced [[Decisions#ADR-104|ADR-104]]. Naming the
- * group after the missing step is the point.
- *
- * PURE MODULE — `apps/frontend` tests run without a DOM, and ordering that
- * silently regresses is the kind of thing nobody notices until an owner misses
- * an enquiry.
+ * PURE MODULE — `apps/frontend` tests run without a DOM, and filtering that
+ * silently drops a lead is the kind of thing nobody notices until an owner
+ * misses an enquiry.
  */
 
-export type LeadGroupId = 'needs_action' | 'awaiting_invite' | 'on_hold' | 'converted' | 'closed';
+export type LeadFilter = 'all' | 'new' | 'hold' | 'accepted' | 'invited' | 'rejected';
 
-export interface LeadGroup {
-  id: LeadGroupId;
-  /** Section heading. */
-  label: string;
-  /** One line under the heading, only shown when the group is open. */
-  hint: string;
-  leads: DynamicLead[];
-  /** Whether it starts expanded. Finished work does not. */
-  defaultOpen: boolean;
-}
+export const LEAD_FILTER_ORDER: LeadFilter[] = ['all', 'new', 'hold', 'invited', 'accepted', 'rejected'];
+
+export const LEAD_FILTER_LABEL: Record<LeadFilter, string> = {
+  all: 'All',
+  new: 'New',
+  hold: 'Hold',
+  accepted: 'Accepted',
+  invited: 'Invited',
+  rejected: 'Rejected',
+};
 
 /** Still under consideration — the owner has not decided. */
-const OPEN_STATUSES = ['NEW', 'INTERESTED', 'ROOM_VISITED', 'DECISION_PENDING', 'READY_TO_JOIN'];
+export const OPEN_STATUSES = ['NEW', 'INTERESTED', 'ROOM_VISITED', 'DECISION_PENDING', 'READY_TO_JOIN'];
 
 /**
  * The two halves the inbox is fetched in, derived from the same lists that
- * drive the grouping so the two can never disagree.
+ * drive filtering so the two can never disagree.
  *
  * They are fetched separately because `listLeads` orders by `lead_score desc`:
  * a brand-new enquiry has a low score, so with one page of 20 it sorts *below*
@@ -55,48 +48,30 @@ const OPEN_STATUSES = ['NEW', 'INTERESTED', 'ROOM_VISITED', 'DECISION_PENDING', 
 export const ACTIONABLE_LEAD_STATUSES = [...OPEN_STATUSES, 'ACCEPTED', 'ON_HOLD'];
 export const SETTLED_LEAD_STATUSES = ['INVITED', 'JOINED', 'REJECTED', 'LOST'];
 
-export function groupIdFor(status: string | null | undefined): LeadGroupId {
+/** Which tabs can hold a settled lead — drives the "Show older" pagination button's visibility. */
+export const SETTLED_INCLUDING_FILTERS: LeadFilter[] = ['all', 'accepted', 'invited', 'rejected'];
+
+/**
+ * Raw status → which tab it belongs to. `ACCEPTED` folds into `'new'`
+ * (deliberately, see the module doc above); an unrecognised status or `LOST`
+ * also falls into `'new'` rather than vanishing, though `LOST` is never
+ * actually fetched (excluded from both status sets above) so this is a
+ * defensive default rather than a live path.
+ */
+export function leadFilterFor(status: string | null | undefined): Exclude<LeadFilter, 'all'> {
   const s = String(status ?? '').toUpperCase();
-  if (OPEN_STATUSES.includes(s)) return 'needs_action';
-  if (s === 'ACCEPTED') return 'awaiting_invite';
-  if (s === 'ON_HOLD') return 'on_hold';
-  if (s === 'INVITED' || s === 'JOINED') return 'converted';
-  if (s === 'REJECTED' || s === 'LOST') return 'closed';
-  // An unrecognised status is a decision nobody has made, so it surfaces
-  // rather than disappearing into a collapsed group.
-  return 'needs_action';
+  if (OPEN_STATUSES.includes(s) || s === 'ACCEPTED') return 'new';
+  if (s === 'ON_HOLD') return 'hold';
+  if (s === 'JOINED') return 'accepted';
+  if (s === 'INVITED') return 'invited';
+  if (s === 'REJECTED') return 'rejected';
+  return 'new';
 }
 
-const GROUP_ORDER: LeadGroupId[] = ['needs_action', 'awaiting_invite', 'on_hold', 'converted', 'closed'];
-
-const GROUP_META: Record<LeadGroupId, { label: string; hint: string; defaultOpen: boolean }> = {
-  needs_action: {
-    label: 'Needs you',
-    hint: 'New enquiries waiting on a decision.',
-    defaultOpen: true,
-  },
-  awaiting_invite: {
-    // Named after the missing step, not the status. "Accepted" read as done.
-    label: 'Accepted — invitation not sent',
-    hint: 'You said yes to these. They are not tenants until the invitation goes out.',
-    defaultOpen: true,
-  },
-  on_hold: {
-    label: 'On hold',
-    hint: 'Parked with a note. Pick them up when the reason clears.',
-    defaultOpen: false,
-  },
-  converted: {
-    label: 'Invited & joined',
-    hint: 'Already tenants, or on their way in.',
-    defaultOpen: false,
-  },
-  closed: {
-    label: 'Closed',
-    hint: 'Rejected, or not proceeding.',
-    defaultOpen: false,
-  },
-};
+export function leadMatchesFilter(lead: DynamicLead, filter: LeadFilter): boolean {
+  if (filter === 'all') return true;
+  return leadFilterFor(lead.status) === filter;
+}
 
 const time = (value: unknown): number => {
   const parsed = Date.parse(String(value ?? ''));
@@ -104,14 +79,14 @@ const time = (value: unknown): number => {
 };
 
 /**
- * Within "Needs you", the hottest lead comes first.
+ * Within New, the hottest lead comes first.
  *
  * `lead_score` is the funnel's own signal (a room visit and a join request
  * both move it), so ordering by it puts the person most likely to take a bed
  * at the top instead of whoever happened to enquire most recently. Ties fall
  * back to recency, and then to id so the order never wobbles between renders.
  *
- * Every other group is plain recency: nothing there is being ranked, it is
+ * Every other tab is plain recency: nothing there is being ranked, it is
  * being looked up.
  */
 export function compareLeads(a: DynamicLead, b: DynamicLead, byScore: boolean): number {
@@ -125,31 +100,32 @@ export function compareLeads(a: DynamicLead, b: DynamicLead, byScore: boolean): 
   return String(a.id).localeCompare(String(b.id));
 }
 
-export function groupLeads(leads: DynamicLead[]): LeadGroup[] {
-  const buckets = new Map<LeadGroupId, DynamicLead[]>();
-  for (const id of GROUP_ORDER) buckets.set(id, []);
-  for (const lead of leads) buckets.get(groupIdFor(lead.status))!.push(lead);
+/** Filters to the given tab, then sorts (New by score, everything else by recency). Does not mutate its input. */
+export function filterLeads(leads: DynamicLead[], filter: LeadFilter): DynamicLead[] {
+  const matched = leads.filter((l) => leadMatchesFilter(l, filter));
+  return matched.slice().sort((a, b) => compareLeads(a, b, filter === 'new'));
+}
 
-  return GROUP_ORDER.map((id) => {
-    const meta = GROUP_META[id];
-    const bucket = buckets.get(id)!.slice().sort((a, b) => compareLeads(a, b, id === 'needs_action'));
-    return { id, label: meta.label, hint: meta.hint, leads: bucket, defaultOpen: meta.defaultOpen };
-  }).filter((group) => group.leads.length > 0);
+/** One count per tab, computed from the same list that gets rendered, so they can never disagree. */
+export function countLeadsByFilter(leads: DynamicLead[]): Record<LeadFilter, number> {
+  const counts: Record<LeadFilter, number> = { all: leads.length, new: 0, hold: 0, accepted: 0, invited: 0, rejected: 0 };
+  for (const lead of leads) counts[leadFilterFor(lead.status)]++;
+  return counts;
 }
 
 /**
- * What the dark button on a card should do, per group.
- *
- * The old list gave every lead the same WhatsApp button, including ones with
- * nothing left to discuss. The primary action should be the next step, and a
- * lead that has no next step should not have a primary button at all.
+ * What the dark button on a card should do, derived from the lead's own
+ * status — not from which tab it happens to be viewed in, since New can now
+ * hold both brand-new leads (need "Accept & invite") and legacy-ACCEPTED
+ * leads (need "Send invitation") side by side.
  */
 export type LeadPrimaryAction = 'accept_invite' | 'finish_invite' | 'review' | null;
 
-export function primaryActionFor(group: LeadGroupId): LeadPrimaryAction {
-  if (group === 'needs_action') return 'accept_invite';
-  if (group === 'awaiting_invite') return 'finish_invite';
-  if (group === 'on_hold') return 'review';
+export function primaryActionForStatus(status: string | null | undefined): LeadPrimaryAction {
+  const s = String(status ?? '').toUpperCase();
+  if (s === 'ACCEPTED') return 'finish_invite';
+  if (OPEN_STATUSES.includes(s)) return 'accept_invite';
+  if (s === 'ON_HOLD') return 'review';
   return null;
 }
 
@@ -158,21 +134,3 @@ export const PRIMARY_ACTION_LABEL: Record<Exclude<LeadPrimaryAction, null>, stri
   finish_invite: 'Send invitation',
   review: 'Review',
 };
-
-/**
- * Whether a group should be shown expanded right now.
- *
- * A collapsed group that contains search matches would make the search look
- * broken — you type a name, the count says 1, and the row is behind a chevron
- * you did not know to open. So an active query overrides the default.
- */
-export function isGroupOpen(
-  group: LeadGroup,
-  toggled: Partial<Record<LeadGroupId, boolean>>,
-  searchActive: boolean,
-): boolean {
-  const manual = toggled[group.id];
-  if (manual !== undefined) return manual;
-  if (searchActive) return true;
-  return group.defaultOpen;
-}

@@ -12,6 +12,7 @@ const { mockPrisma, mockWhatsAppSend, mockInviteTenant } = vi.hoisted(() => {
       visitorLead: {
         findFirst: vi.fn(),
         update: vi.fn(),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         findMany: vi.fn().mockResolvedValue([]),
         count: vi.fn().mockResolvedValue(0),
       },
@@ -357,5 +358,38 @@ describe('AdmissionsService.listLeads — the statuses filter', () => {
     const service = new AdmissionsService();
     await service.listLeads('owner-1', { statuses: 'NEW' });
     expect(whereFromLastCall().owner_id).toBe('owner-1');
+  });
+});
+
+describe('AdmissionsService.markJoinedForTenant', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // No second argument: falls back to the module-level `prisma`, exercised
+  // via the mocked @/lib/db import above.
+  it('marks every lead converted into this tenant JOINED, via the module prisma by default', async () => {
+    const service = new AdmissionsService();
+    await service.markJoinedForTenant('tenant-1');
+
+    expect(mockPrisma.visitorLead.updateMany).toHaveBeenCalledTimes(1);
+    const [args] = mockPrisma.visitorLead.updateMany.mock.calls[0];
+    expect(args.where).toEqual({ converted_tenant_id: 'tenant-1' });
+    expect(args.data.status).toBe('JOINED');
+    expect(args.data.updated_at).toBeInstanceOf(Date);
+  });
+
+  // completeActivation passes its own `tx` so this write shares its
+  // transaction — proving the fallback actually branches, not just that it
+  // has a default.
+  it('routes through a passed-in transaction client instead of the module prisma', async () => {
+    const fakeTx = { visitorLead: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) } };
+    const service = new AdmissionsService();
+
+    await service.markJoinedForTenant('tenant-1', fakeTx as any);
+
+    expect(fakeTx.visitorLead.updateMany).toHaveBeenCalledTimes(1);
+    expect(fakeTx.visitorLead.updateMany.mock.calls[0][0].where).toEqual({ converted_tenant_id: 'tenant-1' });
+    expect(mockPrisma.visitorLead.updateMany).not.toHaveBeenCalled();
   });
 });

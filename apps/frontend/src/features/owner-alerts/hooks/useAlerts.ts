@@ -54,8 +54,8 @@ export interface DynamicLead {
   seeker_profile_id: string | null;
 }
 
-export function useAlerts() {
-  const [category, setCategory] = useState<DynamicAlertCategory>('leads');
+export function useAlerts(options?: { includeLeads?: boolean }) {
+  const includeLeads = options?.includeLeads ?? false;
   const [adminMessages, setAdminMessages] = useState<DynamicAdminMessage[]>([]);
   const [renewals, setRenewals] = useState<DynamicRenewal[]>([]);
   const [requests, setRequests] = useState<DynamicRequest[]>([]);
@@ -96,7 +96,7 @@ export function useAlerts() {
         statuses: ACTIONABLE_LEAD_STATUSES.join(','),
         limit: LEAD_PAGE_LIMIT,
       }) as Promise<LeadPage>,
-    enabled: category === 'leads',
+    enabled: includeLeads,
   });
 
   /**
@@ -120,7 +120,7 @@ export function useAlerts() {
       const { page = 1, pages = 1 } = last.pagination ?? {};
       return page < pages ? page + 1 : undefined;
     },
-    enabled: category === 'leads',
+    enabled: includeLeads,
   });
 
   const actionableLeads = actionableQuery.data?.items ?? [];
@@ -146,8 +146,6 @@ export function useAlerts() {
   };
 
   return {
-    category,
-    setCategory,
     adminMessages,
     renewals,
     requests,
@@ -164,12 +162,6 @@ export function useAlerts() {
      * this is the half where a hidden lead actually costs the owner money.
      */
     actionableTruncated: actionableTotal > actionableLeads.length,
-    counts: {
-      leads: leads.length,
-      admin: adminMessages.length,
-      renewals: renewals.length,
-      requests: requests.length,
-    },
     markRead,
     loading
   };
