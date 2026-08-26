@@ -1,6 +1,13 @@
 import api from '@lib/api-client';
 
 /**
+ * The API client's own normalized base, for deciding whether a document URL
+ * belongs to us. Read off the instance rather than re-deriving it from
+ * `VITE_API_URL`, so the two can never disagree.
+ */
+export const apiBaseUrl = String(api.defaults.baseURL ?? '');
+
+/**
  * Fetching a tenant document's bytes, authenticated.
  *
  * `GET /api/tenants/:id/documents/:docId/download` is session-guarded like any

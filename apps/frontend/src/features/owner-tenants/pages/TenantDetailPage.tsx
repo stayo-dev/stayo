@@ -24,6 +24,8 @@ import { MoneyStrip } from '../profile/MoneyStrip';
 import { ChangeRoomSheet } from '../profile/ChangeRoomSheet';
 import { DocumentPreviewSheet } from '../profile/DocumentPreviewSheet';
 import { toDocumentGroups } from '../profile/documentGroups';
+import { ReviewRequestCard } from '../profile/ReviewRequestCard';
+import { useDocumentShares } from '../hooks/useDocumentShares';
 import { AmendAgreementSheet } from '../profile/AmendAgreementSheet';
 import { PendingChangeCard } from '../profile/PendingChangeCard';
 import { ComplianceCard } from '../profile/ComplianceCard';
@@ -71,6 +73,9 @@ export function TenantDetailPage() {
 
   const tenantActions = useTenantActions(tenant?.hostelId ?? '');
   const verification = useDocumentVerification(tenantId);
+  // Vault review requests. Additive — a hostel that has never used vault
+  // sharing gets an empty list and the tab looks exactly as it did.
+  const shares = useDocumentShares(tenant?.hostelId, tenant?.raw?.profile?.id);
 
   /**
    * Reminders already arrive on the overview response as `recent_activity`
@@ -84,9 +89,7 @@ export function TenantDetailPage() {
 
   const documentGroups = toDocumentGroups({
     documents: tenant?.documents,
-    // Vault review requests land in slice 2 (T13); the grouping already
-    // accommodates them, and an empty list is a tested case, not a stub.
-    shares: [],
+    shares: shares.shares,
     agreement: tenant?.raw?.current_agreement ?? null,
   });
   const agreementDoc = (tenant?.documents ?? []).find((d) => d.docType === 'RENTAL_AGREEMENT') ?? null;
@@ -326,6 +329,35 @@ export function TenantDetailPage() {
                 />
               ) : (
                 <>
+                  {documentGroups.reviewRequests.length > 0 && (
+                    <>
+                      <span className="px-0.5 pt-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                        Shared with you for review
+                      </span>
+                      {shares.shares
+                        .filter((share) => share.status === 'PENDING')
+                        .map((share) => (
+                          <ReviewRequestCard
+                            key={share.share_id}
+                            share={share}
+                            isBusy={shares.decide.isPending}
+                            onPreview={(s) =>
+                              setPreviewDoc({
+                                title: documentTypeLabel(s.document.doc_type),
+                                url: s.document.file_url,
+                                fileName: `${s.document.doc_type.toLowerCase()}-${tenant.name.replace(/\s+/g, '-').toLowerCase()}`,
+                              })
+                            }
+                            onDecide={(verdict, reason) =>
+                              shares.decide.mutate({ shareId: share.share_id, verdict, reason })
+                            }
+                          />
+                        ))}
+                      <span className="px-0.5 pt-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                        KYC documents
+                      </span>
+                    </>
+                  )}
                   {documentGroups.kyc.map((doc) => (
                     <DocumentReviewCard
                       key={doc.id}

@@ -1,7 +1,8 @@
-import { AlertCircle, Download } from 'lucide-react';
+import { AlertCircle, Download, ExternalLink } from 'lucide-react';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { StayoLoader } from '@shared/ui/brand';
 import { useDocumentBlob } from './useDocumentBlob';
+import { looksLikePdf } from './documentSource';
 
 /**
  * Look at a document without leaving the app.
@@ -35,12 +36,23 @@ export function DocumentPreviewSheet({
   fileName,
   children,
 }: DocumentPreviewSheetProps) {
-  const { objectUrl, contentType, status, error } = useDocumentBlob(open ? url : null);
+  const { objectUrl, contentType, status, error, mode } = useDocumentBlob(open ? url : null);
 
-  const isPdf = (contentType ?? '').includes('pdf');
+  const isPdf = objectUrl ? looksLikePdf(objectUrl, contentType) : false;
 
-  const download = () => {
+  /**
+   * A blob can be saved with `<a download>`; a direct third-party URL cannot —
+   * browsers ignore `download` cross-origin and navigate instead. Opening it
+   * in a tab is the honest action there, and the button says so.
+   */
+  const isDirect = mode === 'direct';
+
+  const save = () => {
     if (!objectUrl) return;
+    if (isDirect) {
+      window.open(objectUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
     const anchor = document.createElement('a');
     anchor.href = objectUrl;
     anchor.download = fileName;
@@ -73,10 +85,10 @@ export function DocumentPreviewSheet({
                   </p>
                   <button
                     type="button"
-                    onClick={download}
+                    onClick={save}
                     className="rounded-xl bg-primary px-4 py-2 font-display text-[12.5px] font-bold text-primary-foreground"
                   >
-                    Download to view
+                    {isDirect ? 'Open to view' : 'Download to view'}
                   </button>
                 </div>
               </object>
@@ -95,11 +107,20 @@ export function DocumentPreviewSheet({
         {status === 'ready' && (
           <button
             type="button"
-            onClick={download}
+            onClick={save}
             className="flex items-center justify-center gap-1.5 rounded-xl border border-border bg-card py-2.5 font-display text-[12.5px] font-bold text-foreground"
           >
-            <Download className="h-3.5 w-3.5" strokeWidth={1.9} />
-            Download
+            {isDirect ? (
+              <>
+                <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.9} />
+                Open in new tab
+              </>
+            ) : (
+              <>
+                <Download className="h-3.5 w-3.5" strokeWidth={1.9} />
+                Download
+              </>
+            )}
           </button>
         )}
 
