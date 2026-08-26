@@ -332,6 +332,7 @@ model hostels {
   identity_document_shares       identity_document_shares[]
   history_disclosures            residency_history_disclosures[]
   marketing_revisions            hostel_marketing_revisions[]
+  tenant_owner_attestations      tenant_owner_attestations[]
 }
 
 model identity_tokens {
@@ -1787,6 +1788,8 @@ model tenants {
   hostel_id                         String                              @db.Uuid
   mobile_verified                   Boolean                             @default(false)
   document_verified                 Boolean                             @default(false)
+  access_mode                       TenantAccessMode                    @default(SELF_SERVE)
+  display_name                      String?
   complaints                        complaints[]
   rule_acceptances                  TenantPolicyAcceptance[]
   payment_attempts                  paymentAttempt[]
@@ -1818,6 +1821,7 @@ model tenants {
   renewal_offers                    RenewalOffer[]
   renewal_decisions                 RenewalDecision[]
   tenant_notes                      tenant_notes[]
+  owner_attestations                tenant_owner_attestations[]
   change_requests                   change_requests[]
   renewal_timeline_events           RenewalTimelineEvent[]
   food_votes                        food_votes[]
@@ -1840,6 +1844,28 @@ model tenant_notes {
 
   @@index([tenant_id, created_at(sort: Desc)])
   @@index([owner_id])
+}
+
+/// An owner asserting that a tenancy is managed offline. Deliberately NOT a
+/// `TenantPolicyAcceptance`: the tenant never accepted anything, and recording
+/// the owner's click as a tenant signature would make the audit trail false in
+/// exactly the situation that tests it — a deposit dispute.
+model tenant_owner_attestations {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id     String   @db.Uuid
+  hostel_id     String   @db.Uuid
+  attested_by   String   @db.Uuid
+  attested_at   DateTime @default(now()) @db.Timestamptz(6)
+  attested_ip   String?
+  rules_version String?
+  note          String?
+
+  tenant tenants @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  hostel hostels @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([hostel_id])
+  @@map("tenant_owner_attestations")
 }
 
 model tenant_invitations {
@@ -2133,6 +2159,11 @@ enum TenantStatus {
   FORMER_TENANT
   EXPIRED
   CANCELLED
+}
+
+enum TenantAccessMode {
+  SELF_SERVE
+  OWNER_MANAGED
 }
 
 enum MoveOutStatus {
