@@ -158,6 +158,11 @@ weakening it globally would let genuine self-serve bugs through unnoticed.
 | **Revoke** | Owner: tenant stopped using the app | `SELF_SERVE → OWNER_MANAGED`. Row and history untouched; session revoked via the Redis deny-list; login stops working. |
 | **Claim** | Tenant OTP-verifies their number, any time later | `OWNER_MANAGED → SELF_SERVE`, profile created and linked, `profile_id` set. **Same row.** |
 
+**Revoke does not touch money.** Obligations keep generating, payments keep
+being recordable, the ledger is untouched — only the way in closes. Revoking a
+tenant who is actively using the app is permitted but must warn the owner
+plainly, because it signs them out; it is not a silent setting.
+
 **Adopt does not cancel the invitation.** If the tenant clicks that month-old
 link after the owner has adopted them, that is a *claim*, not an error — the link
 resolves to exactly the tenancy the owner has been keeping. Treating a stale
@@ -253,7 +258,30 @@ receipts deliver via the existing `whatsAppTemplateDeliveryService`. Messages to
 owner-managed tenants must carry a claim link, making every reminder a soft,
 zero-pressure invitation to self-serve.
 
-## 9. Testing
+## 9. Delivery phases
+
+Both halves were explicitly requested and both ship; they sequence cleanly
+because Phase 1 has no dependency on Phase 2.
+
+**Phase 1 — the owner stops being blocked.** The `access_mode` /
+`display_name` migration, `resolveTenantName`, the extracted
+reservation→allocation helper, Adopt and Add-directly, the conditional
+invariants, and the owner UX in §8 excluding WhatsApp. At the end of this
+phase an ignored invite can be adopted and rent, reminders, occupancy and
+analytics all become correct. This alone resolves the originating problem.
+
+**Phase 2 — the tenant can continue.** The canonical backend phone normalizer
+(a hard prerequisite — see §7), OTP-gated claim, the confirmation card, the
+multi-match picker, marketplace-profile reuse, Revoke, and owner notification.
+
+**Phase 3 — reach.** WhatsApp reminders and receipts to owner-managed tenants,
+each carrying a claim link so every reminder doubles as a zero-pressure
+invitation.
+
+The Phase 1 migration carries the outage risk noted in §4 and must be applied
+before the declaring code ships, in its own deploy step.
+
+## 10. Testing
 
 Per the repo's constraints: `apps/frontend` tests are node-environment only, so
 decision logic goes in pure `.ts` with colocated `.test.ts` and components stay
@@ -270,7 +298,7 @@ thin renderers. `apps/backend` pure tests must be added to
 - Integration: stale invite link after adopt routes to claim, not to an error
 - Invariant scripts extended per §5
 
-## 10. Documentation
+## 11. Documentation
 
 Same-change updates required: [[Database]] (new columns, enum, attestation
 table), [[APIs]] (adopt / revoke / claim endpoints), [[Business-Rules]] (the two
