@@ -17,7 +17,26 @@ import {
 // itself has no equivalent for (immediate kill of a stateless access
 // token before its `exp`).
 export const ACCESS_TOKEN_MAX_AGE_SECONDS = 12 * 60 * 60;
-export const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+/**
+ * How long a session may sit idle before it is ended.
+ *
+ * **Seven days, not thirty minutes.** Thirty minutes meant an owner signing in
+ * ten to twenty times a day — they run a hostel, they are not sitting at a desk
+ * — and that friction bought less than it looked like it did.
+ *
+ * What the idle timeout actually protects is a *walked-away screen showing
+ * tenant details*. It is **not** what protects the dangerous actions: changing
+ * rent, changing payment frequency, and cancelling or waiving an obligation all
+ * require a fresh `confirm-identity` step-up token with a two-minute life, so a
+ * live session cannot move money without re-proving who is holding it.
+ *
+ * The other two bounds are unchanged and are what keep this honest:
+ * - the **30-day absolute cap** (Supabase session settings) still ends every
+ *   session regardless of activity;
+ * - **logout and password reset still revoke immediately** via the Redis
+ *   deny-list, so a session a person wants gone is gone at once.
+ */
+export const INACTIVITY_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1000;
 export const WARNING_AFTER_MS = 25 * 60 * 1000;
 export const TENANT_REFRESH_DAYS = 30;
 export const OWNER_ABSOLUTE_MS = 30 * 24 * 60 * 60 * 1000;

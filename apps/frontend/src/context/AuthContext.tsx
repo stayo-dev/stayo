@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { LogIn } from 'lucide-react';
 import api from '@lib/api-client';
 import { supabase } from '@lib/supabaseClient';
 import { queryClient } from '@lib/queryClient';
@@ -117,7 +118,7 @@ const getApiErrorMessage = (error: unknown): string | null => {
 
 const SESSION_EXPIRY_NOTICE_KEY = 'hms_session_expiry_notice';
 const INACTIVITY_EXPIRED_MESSAGE =
-  'You were signed out because your account was inactive for more than 30 minutes.';
+  'You were signed out after a long time away. Sign in again to pick up where you left off.';
 
 const persistSessionExpiryNotice = (
   message: string,
@@ -398,12 +399,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       {children}
       {showIdleWarning && user && (
         <SessionSecurityModal
-          title="You’ll be signed out soon"
-          message="You have been inactive for a while. For your security, this session will end in 5 minutes."
+          title="Still there?"
+          message="You’ve been away a while. This session will end in 5 minutes — stay signed in to keep going."
           details={[
-            'This helps protect payment information.',
-            'Tenant records stay protected on shared devices.',
-            'Financial activity requires an active session.',
+            'Nothing is lost — stay signed in and carry on.',
+            'This only happens after a long time away.',
           ]}
           primaryLabel="Stay signed in"
           secondaryLabel="Sign out"
@@ -413,12 +413,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       )}
       {expiredMessage && !user && (
         <SessionSecurityModal
-          title="Session expired for your security"
+          title="Welcome back"
           message={expiredMessage}
           details={[
-            'This helps protect payment information.',
-            'Tenant records stay private.',
-            'Financial activity stays secure.',
+            'Your data is exactly where you left it.',
+            'Signing in again takes a moment.',
           ]}
           primaryLabel="Sign in again"
           secondaryLabel="Return to homepage"
@@ -457,30 +456,67 @@ function SessionSecurityModal({
   onSecondary: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 px-4 pb-4 sm:items-center sm:pb-0">
-      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-xl">
-        <h2 className="text-lg font-bold text-foreground">{title}</h2>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">{message}</p>
-        <div className="mt-4 space-y-2 rounded-xl bg-muted/40 p-3">
+    /*
+      Stayo's own language — the warm cream surface, terracotta primary and
+      display face used across onboarding and Discover — rather than the
+      generic bordered box this was.
+      
+      The tone changed with it. "Session expired for your security" and three
+      bullets about payment protection read like a bank telling someone off for
+      stepping away. Nothing was wrong and nothing was at risk; they were simply
+      gone a while. The primary action is now the friendly one and it is on the
+      right, where the thumb already is.
+    */
+    <div
+      className="fixed inset-0 z-[100] flex items-end justify-center px-4 pb-4 sm:items-center sm:pb-0"
+      style={{ background: 'rgba(20,16,13,.5)' }}
+    >
+      <div
+        className="w-full max-w-[420px] rounded-[22px] sm:rounded-[22px]"
+        style={{
+          background: '#FBF7F1',
+          border: '1px solid #EFE6DA',
+          boxShadow: '0 20px 45px -20px rgba(40,30,20,.35)',
+          padding: '20px 20px calc(20px + env(safe-area-inset-bottom))',
+        }}
+      >
+        <div
+          className="mb-3.5 flex h-11 w-11 items-center justify-center rounded-[14px]"
+          style={{ background: 'rgba(180,106,85,.12)' }}
+        >
+          <LogIn className="h-[21px] w-[21px]" strokeWidth={1.9} style={{ color: '#B46A55' }} />
+        </div>
+
+        <h2 className="font-display text-[19px] font-extrabold tracking-tight" style={{ color: '#221E1A' }}>
+          {title}
+        </h2>
+        <p className="mt-1.5 text-[13px] leading-relaxed" style={{ color: '#7A6F63' }}>
+          {message}
+        </p>
+
+        <div className="mt-3.5 flex flex-col gap-1.5 rounded-xl px-3.5 py-3" style={{ background: '#F3EEE7' }}>
           {details.map((detail) => (
-            <div key={detail} className="flex gap-2 text-xs text-foreground">
-              <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+            <div key={detail} className="flex gap-2 text-[12px] leading-snug" style={{ color: '#5A5147' }}>
+              <span className="mt-[7px] h-1 w-1 flex-none rounded-full" style={{ background: '#B46A55' }} />
               <span>{detail}</span>
             </div>
           ))}
         </div>
-        <div className="mt-5 grid grid-cols-2 gap-3">
+
+        <div className="mt-4 flex gap-2.5">
           <button
             type="button"
             onClick={onSecondary}
-            className="rounded-xl border border-border px-4 py-3 text-sm font-semibold text-foreground"
+            className="rounded-xl px-4 py-3 text-[13.5px] font-bold"
+            style={{ background: '#FFFFFF', border: '1px solid #E7DDD1', color: '#221E1A' }}
           >
             {secondaryLabel}
           </button>
           <button
             type="button"
             onClick={onPrimary}
-            className="rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-accent-foreground"
+            className="flex-1 rounded-xl py-3 text-[13.5px] font-bold text-white"
+            style={{ background: '#B46A55', boxShadow: '0 6px 16px rgba(180,106,85,.3)' }}
           >
             {primaryLabel}
           </button>

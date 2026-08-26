@@ -93,7 +93,7 @@ export async function checkSessionRevocationEdge(payload: {
 // Duplicated from session-lifecycle-service.ts's INACTIVITY_TIMEOUT_MS
 // rather than imported — that file is Node-only (Prisma), this one must
 // stay Edge-bundleable. Keep the two values in sync.
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+const IDLE_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type IdleTimeoutCheck = { ok: true } | { ok: false; reason: "inactive" };
 

@@ -1,8 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '@lib/api-client';
 
-const SESSION_WARNING_MS = 25 * 60 * 1000;
-const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
+/**
+ * Seven days idle, not thirty minutes — and the warning five minutes before it.
+ *
+ * Thirty minutes meant an owner signing in ten to twenty times a day. They run
+ * a hostel; they are not sitting at a desk. The friction was constant and what
+ * it bought was small, because the idle timeout is **not** what guards the
+ * dangerous actions: changing rent, changing payment frequency, and cancelling
+ * or waiving an obligation each require a fresh two-minute step-up token, so a
+ * live session cannot move money on its own.
+ *
+ * Must stay in step with the server, which enforces the real rule in
+ * `middleware.ts` — this hook only decides when to *warn*. A client that
+ * expired later than the server would show a working screen that 401s on the
+ * next request.
+ */
+const SESSION_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1000;
+const SESSION_WARNING_MS = SESSION_TIMEOUT_MS - 5 * 60 * 1000;
 const ACTIVITY_PING_MS = 4 * 60 * 1000;
 
 interface UseIdleSessionTimeoutOptions {
