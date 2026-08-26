@@ -9,6 +9,75 @@
  * PURE — the sheet is a renderer over this.
  */
 
+/**
+ * Which reasons the hostel could still do something about.
+ *
+ * This is the whole point of asking *why* before asking *when*. Someone leaving
+ * because their course ended is not a problem to solve — wishing them well is
+ * the only correct response, and putting an obstacle in front of them would be
+ * insulting. Someone leaving over a broken geyser, a roommate, or the food is
+ * describing a fixable thing that nobody has been told about, and they will
+ * usually not raise it themselves: leaving is easier than complaining.
+ *
+ * So the flow offers to raise it — once, without nagging — and moving out stays
+ * one tap away either way. A retention prompt that makes leaving *harder* is a
+ * dark pattern; one that makes being heard *easier* is a service.
+ */
+export const ADDRESSABLE_REASONS = [
+  'POOR_MAINTENANCE',
+  'FOOD_QUALITY',
+  'ROOMMATE_ISSUES',
+  'SAFETY_CONCERNS',
+  'RULES_TOO_STRICT',
+  'TOO_EXPENSIVE',
+] as const;
+
+/** Whether the hostel can plausibly act on this, given the chance. */
+export function isAddressable(reason: string): boolean {
+  return (ADDRESSABLE_REASONS as readonly string[]).includes(reason);
+}
+
+/**
+ * What to offer when a reason is addressable — specific to the reason, because
+ * "we'd like to help" is noise and "we'll ask them to look at the hot water
+ * this week" is not.
+ */
+export function retentionOffer(reason: string): { headline: string; body: string; action: string } | null {
+  const offers: Record<string, { headline: string; body: string; action: string }> = {
+    POOR_MAINTENANCE: {
+      headline: 'Let us get it fixed first',
+      body: 'Raise it with your hostel and give them a few days. If nothing changes, moving out is still right here.',
+      action: 'Report the problem instead',
+    },
+    FOOD_QUALITY: {
+      headline: 'Your hostel can change the menu',
+      body: 'Food is the thing owners change most often when someone actually tells them. Worth one message first.',
+      action: 'Tell them about the food',
+    },
+    ROOMMATE_ISSUES: {
+      headline: 'A room change might be enough',
+      body: 'You do not have to leave the hostel to leave the room. Ask about moving beds first.',
+      action: 'Ask for a room change',
+    },
+    SAFETY_CONCERNS: {
+      headline: 'Tell us what happened',
+      body: 'Safety is not something to move quietly away from. Your hostel and Stayo should both know.',
+      action: 'Report it',
+    },
+    RULES_TOO_STRICT: {
+      headline: 'Worth asking before you go',
+      body: 'Some rules are firm and some are habit. Owners often do not know which ones are pushing people out.',
+      action: 'Raise it with them',
+    },
+    TOO_EXPENSIVE: {
+      headline: 'Talk to your hostel first',
+      body: 'Rent, sharing and room type are sometimes negotiable — especially for someone who has already stayed a while.',
+      action: 'Ask about options',
+    },
+  };
+  return offers[reason] ?? null;
+}
+
 /** Mirrors the `MoveOutReason` enum. Order is the order a tenant reads them. */
 export const MOVE_OUT_REASONS = [
   { value: 'COURSE_COMPLETED', label: 'My course finished' },
@@ -81,4 +150,95 @@ export function moveOutConsequences(): string[] {
     'Your deposit and any dues are settled after you leave.',
     'Your bed becomes available for someone else from that date.',
   ];
+}
+
+/**
+ * The parting feedback.
+ *
+ * Someone leaving is the most honest reviewer a hostel will ever have — they
+ * have nothing left to lose and no reason to flatter. It is also the last
+ * moment they will ever be asked, so asking badly means never knowing.
+ *
+ * Kept to two questions and both optional. A move-out that is *blocked* on a
+ * survey is a survey nobody finishes and a move-out that turns into a support
+ * ticket.
+ */
+export interface MoveOutFeedback {
+  /** 1–5 for the stay overall. 0 means they skipped it. */
+  rating: number;
+  /** What would have made them stay. Free text, and often the only useful part. */
+  note: string;
+}
+
+export function hasFeedback(feedback: MoveOutFeedback): boolean {
+  return feedback.rating > 0 || feedback.note.trim().length > 0;
+}
+
+/**
+ * Where a rating lands.
+ *
+ * A leaving tenant's rating is a **hostel review** — the same
+ * `hostel_reviews` record any resident can leave — not a private note to the
+ * owner. Two rating systems for one hostel would disagree within a week, and
+ * the one nobody can see is the one that gets ignored.
+ *
+ * The written note is different: it goes to the hostel and to Stayo, unpublished,
+ * because "the third-floor bathroom has been broken since June" is operational,
+ * not a review, and a person on their way out should be able to say it without
+ * publishing it under their name.
+ */
+export function feedbackDestinations(feedback: MoveOutFeedback): { review: boolean; privateNote: boolean } {
+  return {
+    review: feedback.rating > 0,
+    privateNote: feedback.note.trim().length > 0,
+  };
+}
+
+/**
+ * Where a "raise it instead" actually files.
+ *
+ * `ServiceRequestType` is a Postgres enum with six values and no general
+ * complaint among them, and adding one needs a hand-applied migration. So the
+ * type is the closest honest fit and `category` — free text the owner reads —
+ * carries the real subject.
+ *
+ * **The imprecision is real and worth naming:** a complaint about food or rent
+ * files as `MAINTENANCE`, because that is the only bucket wide enough. The
+ * category is what makes it legible; a `COMPLAINT` enum value would make it
+ * correct, and that is a migration nobody has run.
+ */
+export function raiseTarget(reason: string): { type: string; category: string; prompt: string } | null {
+  const targets: Record<string, { type: string; category: string; prompt: string }> = {
+    POOR_MAINTENANCE: {
+      type: 'MAINTENANCE',
+      category: 'Maintenance',
+      prompt: 'What is broken, and how long has it been like that?',
+    },
+    SAFETY_CONCERNS: {
+      type: 'MAINTENANCE',
+      category: 'Safety concern',
+      prompt: 'What happened? Include when and where if you can.',
+    },
+    ROOMMATE_ISSUES: {
+      type: 'ROOM_CHANGE',
+      category: 'Roommate issue',
+      prompt: 'What is going on, and would a different room help?',
+    },
+    FOOD_QUALITY: {
+      type: 'MAINTENANCE',
+      category: 'Food quality',
+      prompt: 'Which meals, and what would you change about them?',
+    },
+    RULES_TOO_STRICT: {
+      type: 'MAINTENANCE',
+      category: 'House rules',
+      prompt: 'Which rule, and what would work better for you?',
+    },
+    TOO_EXPENSIVE: {
+      type: 'MAINTENANCE',
+      category: 'Rent',
+      prompt: 'What would make it workable — a different room, or a different rate?',
+    },
+  };
+  return targets[reason] ?? null;
 }

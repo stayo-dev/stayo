@@ -74,12 +74,23 @@ export async function POST(req: NextRequest) {
 
     if (session.role === "TENANT") {
       // Tenant self-service
-      const { prisma } = await import("@/lib/db");
-      const tenant = await prisma.tenants.findUnique({
-        where: { profile_id: session.sub },
-        select: { id: true, hostel_id: true, owner_id: true },
-      });
-      if (!tenant) return apiError("Tenant not found", "NOT_FOUND", 404);
+      /*
+       * `findUnique({ where: { profile_id } })` used to be here, and
+       * `profile_id` is not a unique index on `tenants` — Prisma rejects that
+       * outright, so this branch threw on every call and no tenant has ever
+       * been able to file a move-out. It was invisible because nothing on the
+       * tenant side called it until now.
+       *
+       * A profile also has one row per *stay*, so even a working lookup could
+       * pick a tenancy the person left years ago. `getActiveTenancy` is the
+       * shared helper that resolves the live one, and using it here keeps this
+       * route agreeing with the rest of the app about which stay is current.
+       */
+      const { getActiveTenancy } = await import("@/lib/tenancy/active-tenancy");
+      // Returns the whole row; `selectLiveTenancy`'s signature narrows the
+      // inferred type, so widen it back rather than re-querying.
+      const tenant: any = await getActiveTenancy(session.sub);
+      if (!tenant) return apiError("No active tenancy found for this account", "NOT_FOUND", 404);
       resolvedTenantId = tenant.id;
       resolvedHostelId = tenant.hostel_id;
       resolvedOwnerId = tenant.owner_id!;
