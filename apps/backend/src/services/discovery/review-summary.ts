@@ -16,20 +16,25 @@
  *
  * Hostel-specific, not Airbnb's holiday-flat categories: a resident lives
  * here for a year and never once cares about "listing accuracy" or
- * "location" the way a two-night guest does. Eight categories, each its own
+ * "location" the way a two-night guest does. Seven categories, each its own
  * 1–5 question — never averaged into the overall star, which the resident
  * gives separately (see `isValidOverall`).
  *
  * `foodOnly: true` marks the one category that is not always asked — a
  * hostel that serves no meals cannot be scored on them, and asking anyway
  * produces a number that means nothing.
+ *
+ * `rating_amenities` (migration 076) is intentionally unreferenced here —
+ * "Amenities" was dropped as a rating question; the column stays in the
+ * database unused rather than triggering another production migration, the
+ * same way `rating_value`/`rating_location` sat unused before 076 dropped
+ * them outright.
  */
 export const REVIEW_CATEGORIES = [
   { key: "cleanliness", label: "Cleanliness", column: "rating_cleanliness" },
   { key: "maintenance", label: "Maintenance", column: "rating_maintenance" },
   { key: "food", label: "Food", column: "rating_food", foodOnly: true },
   { key: "room_comfort", label: "Room Comfort", column: "rating_room_comfort" },
-  { key: "amenities", label: "Amenities", column: "rating_amenities" },
   { key: "staff", label: "Staff & Management", column: "rating_staff" },
   { key: "safety", label: "Safety", column: "rating_safety" },
   { key: "wifi", label: "Wi-Fi", column: "rating_wifi" },
@@ -80,11 +85,18 @@ export interface ReviewSummary {
 /**
  * Below this, a listing shows the reviews themselves but no average.
  *
- * Two reviews averaging 3.0 tells a reader nothing about a hostel and
- * everything about two people, while carrying all the authority of a number
- * printed next to a star.
+ * Originally 3 (ADR-086): "two reviews averaging 3.0 tells a reader nothing
+ * about a hostel and everything about two people, while carrying all the
+ * authority of a number printed next to a star." Lowered to 1 (ADR-121, at
+ * the product owner's explicit request, that tradeoff acknowledged) so a
+ * hostel's very first review already shows the full score/distribution/
+ * category view rather than waiting for a third opinion. `TOO_FEW` is kept
+ * as a distinct `emptyReason` rather than deleted — at 1 it can never fire
+ * (a hostel either has 0 reviews, `NONE_YET`, or ≥1, which now averages), but
+ * the branch exists so a future change to this constant doesn't need one
+ * rebuilt from scratch.
  */
-export const MIN_REVIEWS_FOR_AVERAGE = 3;
+export const MIN_REVIEWS_FOR_AVERAGE = 1;
 
 /**
  * The overall star, validated on its own terms.
@@ -137,7 +149,6 @@ const HIGHLIGHT_LABELS: Record<ReviewCategoryKey, string> = {
   maintenance: "Well Maintained",
   food: "Good Food",
   room_comfort: "Comfortable Rooms",
-  amenities: "Good Amenities",
   staff: "Helpful Staff",
   safety: "Safe Environment",
   wifi: "Good Wi-Fi",
