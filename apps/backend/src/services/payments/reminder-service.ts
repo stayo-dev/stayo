@@ -426,19 +426,11 @@ export class ReminderService {
     const canEmail = config.reminder_email ?? true;
     const canInApp = config.reminder_in_app ?? true;
 
-    // 1️⃣ In-App Notification (Always log an audit entry at minimum)
-    if (canInApp) {
+    // 1️⃣ In-App Notification
+    if (isOwnerManaged) {
+      result.in_app = { attempted: false, sent: false, skipped: true, reason: "NO_TENANT_ACCOUNT" };
+    } else if (canInApp) {
       result.in_app.attempted = true;
-      await prisma.reminder_logs.create({
-        data: {
-          id: randomUUID(),
-          obligation_id: obligation.id,
-          tenant_id: obligation.tenant.id,
-          reminder_type: type,
-          channel: "IN_APP",
-          hostel_id: obligation.hostel_id,
-        }
-      });
       result.in_app.sent = true;
     } else {
       result.in_app = { attempted: false, sent: false, skipped: true, reason: "IN_APP_DISABLED" };
@@ -565,6 +557,31 @@ export class ReminderService {
         provider_message_id: result.whatsapp.provider_message_id,
       },
     });
+
+    // `reminder_logs` is escalation state, not just an audit trail: the next
+    // reminder's type is chosen from the last row here. Writing one when every
+    // channel was skipped would march an unreachable tenant up to FINAL_NOTICE
+    // and then silence them forever. Only a delivery counts.
+    const deliveredChannel = result.in_app.sent
+      ? "IN_APP"
+      : result.whatsapp.sent
+        ? "WHATSAPP"
+        : result.email.sent
+          ? "EMAIL"
+          : null;
+
+    if (deliveredChannel) {
+      await prisma.reminder_logs.create({
+        data: {
+          id: randomUUID(),
+          obligation_id: obligation.id,
+          tenant_id: tenant.id,
+          reminder_type: type,
+          channel: deliveredChannel,
+          hostel_id: obligation.hostel_id,
+        },
+      });
+    }
 
     return result;
   }

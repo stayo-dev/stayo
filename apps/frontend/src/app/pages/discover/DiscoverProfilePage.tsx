@@ -1,25 +1,8 @@
 import { useMemo, useEffect, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '@lib/api-client';
-import {
-  ChevronRight,
-  ClipboardList,
-  FileText,
-  GraduationCap,
-  Bell,
-  Heart,
-  History,
-  Home,
-  LifeBuoy,
-  Lock,
-  LogOut,
-  Luggage,
-  Phone,
-  ShieldAlert,
-  ShieldCheck,
-  User,
-} from 'lucide-react';
+import { ArrowLeft, Bell, ChevronRight, ClipboardList, FileText, GraduationCap, Heart, History, Home, LifeBuoy, Lock, LogOut, Luggage, Phone, ShieldAlert, ShieldCheck, User } from 'lucide-react';
 
 import { useAuth } from '@context/AuthContext';
 import { hasLiveTenancy } from '@/app/nav/useAppNav';
@@ -76,6 +59,13 @@ function initials(name: string | undefined): string {
 
 export function DiscoverProfilePage() {
   const navigate = useNavigate();
+  /**
+   * Where the viewer came from, when they came from somewhere that cannot be
+   * returned to. This tree renders with no shell — no bottom nav — and this
+   * hub has no back control of its own, so a tenant arriving from the
+   * Dashboard's "Complete your profile" nudge was stranded here.
+   */
+  const returnTo = (useLocation().state as { returnTo?: string } | null)?.returnTo ?? null;
   const { user, logout } = useAuth();
   const { isSeeker, loading } = useIsSeeker();
   const { data: saved } = useSavedHostels();
@@ -169,6 +159,19 @@ export function DiscoverProfilePage() {
         className="sticky top-0 z-20 px-5 pb-3.5 pt-[max(2.5rem,env(safe-area-inset-top))] backdrop-blur-md"
         style={{ background: 'rgba(247,243,239,.88)', borderBottom: `1px solid ${C.line}` }}
       >
+        {/* Only when the viewer arrived from somewhere with no way back. This
+            hub is normally a bottom-nav destination and needs no back control;
+            a tenant sent here from their Dashboard has no nav at all. */}
+        {returnTo && (
+          <button
+            type="button"
+            onClick={() => navigate(returnTo)}
+            className="mb-2.5 flex items-center gap-1.5 text-[13px] font-semibold text-muted-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" strokeWidth={1.9} />
+            Back
+          </button>
+        )}
         <div className="flex items-center gap-3.5">
           <span
             className="flex h-14 w-14 flex-none items-center justify-center rounded-2xl text-[19px] font-extrabold"
@@ -263,7 +266,7 @@ export function DiscoverProfilePage() {
             </div>
             <button
               type="button"
-              onClick={() => navigate('/profile/details')}
+              onClick={() => navigate('/profile/details', returnTo ? { state: { returnTo } } : undefined)}
               className="relative mt-3 w-full rounded-[11px] py-2.5 text-[12.5px] font-extrabold"
               style={{ fontFamily: FONT.display, background: C.clayLight, color: C.ink }}
             >
