@@ -1769,3 +1769,90 @@ Related: [[Business-Rules]] · [[APIs]] · [[Features]] · ADR-076 · ADR-040
   - **An empty facilities list renders an empty state**, not six invented rows.
   - **The build's branding check earned its keep**, rejecting a `SriAdithya_5G` placeholder before it shipped.
 - **See:** [[Features]], [[Bugs]], [[APIs]], [[Changelog]], [[Decisions#ADR-040|ADR-040]], [[Decisions#ADR-084|ADR-084]]
+
+### ADR-117 — Two inboxes: hostel complaints are the hostel's, platform bugs are ours (2026-08-26)
+
+- **Status:** Accepted
+- **Context:** Two report channels already existed and were never told apart in the product.
+  - `tenant_service_requests` (**9 live rows**) — a resident's problem with the *building*: repairs, cleaning, food, roommates. The hostel team resolves these. Stayo stores them so the owner has one list; we do not answer them.
+  - `platform_support_tickets` (**0 rows, ever**) — a problem with *Stayo*: the app, an account, a payment at the gateway. Admin-managed, with `admin_note` designed to be shown back to the reporter.
+
+  The second had a complete pipeline — `POST /api/profile/support-tickets`, an admin queue at `/admin/reports`, a resolve endpoint, an open-count badge in the admin shell — and had never received a single report. Two reasons, both in the frontend:
+  1. **The owner could not file at all.** More → Help's "Report a Bug" row called `stayoToast.info('Coming soon')`. The endpoint had been role-agnostic since it was written ("available to any signed-in profile regardless of role or tenancy"); only the button was missing.
+  2. **There was no guidance layer.** The page opened straight into a form, and the owner's FAQs were `mockFaqs` — placeholder data. Someone who merely could not find a screen had a choice between filing a ticket and giving up.
+- **Decision:**
+  - **Keep the two tables and the two words, and make the boundary visible.** "Complaints" go to the hostel; "reports" come to Stayo. Neither surface stays silent about the other any more: the tenant's hostel-contact page gained a row to the Stayo channel, and the Stayo channel routes hostel problems back.
+  - **`classifyProblem()` enforces the wall while someone types**, not after they have filed. A geyser sent to Stayo waits on an admin who cannot fix geysers; a login bug sent to the hostel waits on an owner who cannot fix logins.
+  - **The nudge never blocks.** The classifier is a keyword guess, so someone certain their problem is ours can always send it. A wrong verdict costs a redirect card; a *block* on a wrong verdict would cost someone their only way to reach us.
+  - **When both kinds of word appear, Stayo wins.** "The app won't let me report my geyser" is a bug in our software; the geyser is incidental to what actually failed.
+  - **Guidance before a form, and the guidance is a link.** Every catalogue entry that resolves by going somewhere carries the button. Telling someone to open the Payments tab when you could open it for them is a worse answer — the same correction already applied to move-out.
+  - **One component for both audiences.** Owner and tenant have the same problem shape; building it twice is how two halves drift. Only the catalogue and the hostel-channel link differ, and both come from `helpCenter.ts`.
+  - **The acknowledgement stays on the page.** A toast that vanishes before it is read is not being heard. Filing shows a persistent panel, and the report joins a list carrying its status and the admin's reply.
+- **Consequences:**
+  - Owners can reach Stayo support for the first time. Expect the first real rows in `platform_support_tickets`, and an admin queue that now needs watching.
+  - Deep links are pinned by a test against a transcribed copy of the router's table — a renamed route breaks the suite rather than quietly shipping a 404 to someone already stuck.
+  - The catalogue is hardcoded, deliberately: 18 entries are cheap to edit in code and would be premature as a table with no admin editor behind it. Revisit if it outgrows browsing.
+  - `mockFaqs` is now unreferenced.
+- **Found while doing this:** `/tenant/complaints` had shipped a **"Report a bug" button that wrote to `tenant_service_requests`** — promising "our team will investigate" while filing a `MAINTENANCE` job with the hostel owner. **5 of the 9 live rows** came in that way. Deleted; the page now has one action and one vocabulary. See [[Bugs]].
+- **Vocabulary:** a resident raises **complaints** with their hostel and sends **reports** to Stayo. The inherited word "ticket" meant both and so distinguished neither; it is gone from every user-facing string. Internal identifiers keep it — renaming those changes nothing anyone sees.
+- **Rejected:** merging the two tables behind one form with a "type" field — it puts the routing decision on the person least able to make it, and would have let hostel complaints into an admin queue that cannot act on them.
+- **See:** [[Features]], [[APIs]], [[Changelog]], [[Business-Rules]], [[Decisions#ADR-079|ADR-079]], [[Decisions#ADR-116|ADR-116]]
+
+### ADR-118 — A profile shows what is missing, not what you already know (2026-08-26)
+
+- **Status:** Accepted
+- **Context:** The tenant/seeker profile hub had grown to ~2,000px — roughly three phone screens — across **8 uppercase section headings** for 12 destinations. Auditing it against a live account (`speakcode`, Room 105) turned up six distinct problems, most of them additive rather than wrong:
+  - **The same counts twice.** Enquiries and Saved appeared as header figures *and* as two large tiles immediately below — ~230px to say `1` and `0` twice.
+  - **The same identity three times.** Name and email in the header, name again under *Personal information*, email again under *Contact details*.
+  - **Four detail cards printing back what the reader already knows.** Each card carried a title, an icon, a divider and two key-value rows — ~470px to state someone's own name and birthday, and, for *Academic details*, two em-dashes.
+  - **Three rows all called "Help"**, going to the Help Centre, the *public marketing* `/contact` page, and the hostel chat respectively.
+  - **Three of four settings rows were `stayoToast.info('coming soon')`.** No notification-preferences screen and no password-change screen exists anywhere in the app.
+  - **A heading per row.** Documents, Stayo support, Where you live and Your record were four headings over four single rows. A heading is a grouping device; over one item it is only height.
+- **Decision:**
+  - **Detail rows carry no values — only gaps.** The right-hand side shows `Add college & course`, or nothing. **The silence is load-bearing:** "nothing on the right" can only mean "nothing to do here" because a filled field is never mentioned. Two gaps are named rather than counted, since "2 missing" forces the tap the row exists to avoid; three or more do count.
+  - **One hero, chosen by `heroMode`.** A resident with a live tenancy sees where they live; a seeker sees the portable-profile pitch; a seeker who has finished it sees neither. Never both — someone in Room 105 does not need 200px arguing for an offer they already took.
+  - **8 sections → 3 plus the hero**, each with 2–4 rows. One rounded container per group with hairline dividers, not a card per row.
+  - **A working professional is never told to add a college.** `detailFields` branches on `profile_type`.
+  - **Dead rows are deleted, not kept as furniture.** Notifications, Language and Privacy & security come back when they exist.
+  - **One Help.** The hostel channel belongs on Room, where the complaint is; a signed-in resident is not sent to the marketing site for help ([[Decisions#ADR-117|ADR-117]]).
+- **Consequences:**
+  - ~2,000px → ~700px; roughly one screen instead of three.
+  - Settings genuinely has nowhere to live now. When notification preferences or password change ship, they need a section rebuilt — deliberately, rather than inheriting three placeholder rows.
+  - The gap logic is pure and tested (`profileHub.ts`, 16 tests) against the real `speakcode` record, so "All filled" is a claim the suite checks rather than a hope.
+- **Rejected:** collapsing the four detail groups behind a single "Your details ›" row. It would have been shorter still, but it puts every field two taps away and hides the gaps that are the section's whole purpose.
+- **See:** [[Features]], [[Frontend]], [[Bugs]], [[Changelog]], [[Decisions#ADR-117|ADR-117]]
+
+### ADR-119 — People own their own details, and can leave (2026-08-26)
+
+- **Status:** Accepted
+- **Context:** Two gaps, opposite in kind.
+  - **Changing your own phone or email needed your hostel owner's permission.** `GOVERNED_PROFILE_FIELDS = ['phone_1', 'personal_email']` routed those two through `change_requests` and an owner review queue. The table had **0 rows, ever** — the queue had never approved anything, it had only ever been a wall. A resident locked out of their own contact details is a resident who cannot receive the WhatsApp messages the product runs on.
+  - **There was no way to delete an account.** No endpoint, no UI, nothing named anything close, in either app.
+- **Decision — editing:**
+  - **Every profile field saves directly.** The approval path, the reason box, the "awaiting owner approval" banners and the padlock glyphs are gone from the tenant side.
+  - **A changed phone must still be proved**, by a code sent to the *new* number over WhatsApp — reusing `send-phone-otp`/`verify-phone-otp` and the trust rule from [[Decisions#ADR-110|ADR-110]]: a number we already reached needs nothing, a number you are changing to needs a code. Verification is the person's own job and takes one code; it is not somebody else's decision.
+  - **Where WhatsApp cannot deliver, the edit saves anyway** — `verification_required: false` ([[Decisions#ADR-034|ADR-034]]) means no code is coming, and waiting for one would strand the change.
+  - **Email is proved the same way**, by a code sent to the new address. There was no email OTP leg — `phone_verification_otps` is phone-shaped and a new table would need a hand-applied migration — so email codes live in **Redis** with a 10-minute TTL, which is the right store for a secret meant to expire anyway. `profiles.email` (the Supabase login identity, [[Decisions#ADR-031|ADR-031]]) is untouched; this governs `personal_email`, the contact field.
+  - **Three owner gates were found in `updateTenantSelfProfile`, not one.** Beyond `GOVERNED_FIELDS` — which rejected `phone_1`/`phone`/`personal_email` outright with "require owner approval" — an `allow_tenant_edits` preference let an owner **switch off a resident's ability to edit their own profile at all**. Both are gone. `assertCapability(…, "EDIT_PROFILE")` stays: it is a move-out *state* rule, not an owner permission.
+  - **The proof is re-checked server-side on the PATCH**, not merely at the verify call, so skipping the verify request skips nothing.
+  - **Unchanged values are never re-proved.** Saving a form without touching the phone costs nothing, and `samePhoneValue` compares on the last 10 digits — the `7013216327` vs `+917013216327` mismatch that made [[Decisions#ADR-110|ADR-110]] inert once already.
+  - **The request system is deleted, not just unwired**: `POST /api/tenants/me/profile-requests`, the owner's `/api/owner/profile-requests` approve/reject routes, the `owner-profile-requests` feature, its route and the owner Alerts card. The shared `change_requests` table and the owner-proposes-tenant-approves facade are **untouched** — that direction is live.
+- **Decision — leaving:**
+  - **Friction made of information, not obstruction.** The brief was to make someone think twice. The dishonest version hides the button, adds contentless steps, or refuses; it does not change minds, it manufactures resentment, and under the DPDP Act erasure is not ours to withhold. So every step *tells* them something: what specifically they lose in their own numbers, what we cannot delete and why, and the smaller fix where one honestly exists. Read it all and still mean it, and you are out in three taps. The entry sits under Log out — quiet, never hidden.
+  - **`retentionOffer` returns `null` for most reasons.** Someone who has moved home will not be argued out of it. Roughly half the reasons get no offer, and that is what keeps the other half credible.
+  - **A reason is required; the note is not.** Forcing prose on the way out yields "asdf" and teaches nothing.
+  - **Anonymise, do not erase.** A profile is referenced by obligations, payments and agreements — a hostel's ledger is not solely the leaver's to rewrite. The row survives with nothing identifying on it; `is_active` goes false. **The flag is not the lock:** nothing in the login path reads `is_active` (verified), so the actual lock is deleting the Supabase auth user plus a Redis revocation marker.
+  - **Blockers are not retention devices.** Dues, then a settlement in flight, then a live tenancy — checked server-side, because the client is where a guard would be removed. At most one is shown: three obstacles read as a wall.
+- **Consequences:**
+  - No migration. `system_event_logs.metadata` is jsonb, so closure feedback lands there; `profiles.is_active` already existed.
+  - `/api/tenants/me/profile-requests` and the owner's profile-request queue are now unreachable from the tenant UI. Left in place rather than deleted — `change_requests` is shared with the owner-proposes-tenant-approves facade, which is live.
+  - Closure is **irreversible and has never been run against a real account.** Verified by typecheck and the pure suite only.
+- **See:** [[Features]], [[APIs]], [[Business-Rules]], [[Changelog]], [[Decisions#ADR-118|ADR-118]]
+
+### ADR-120 — One list vocabulary for Discover-palette screens (2026-08-26)
+
+- **Status:** Accepted
+- **Context:** The Help Centre ([[Decisions#ADR-117|ADR-117]]) and the rebuilt profile hub ([[Decisions#ADR-118|ADR-118]]) were written days apart and drifted: 36px icons in `px-4 py-3.5` rows against 30px icons in `px-3.5 py-3`, and sticky headers with different top padding. Neither was wrong — they were written twice, which is all it takes.
+- **Decision:** `features/stayo-ui/ListSection.tsx` holds `SectionHead`, `ListGroup`, `ListRowItem`, `ScreenTitle` and the screen-header metrics; both screens render it. Aligning the two by hand would only postpone the next drift.
+- **Why `features/` and not `shared/ui`:** these carry the Discover palette, and `check-architecture.mjs` forbids `shared/` from importing `app/`. Keeping the terracotta in one module is the same reason `discoverTheme` exists.
+- **See:** [[Frontend]], [[Changelog]]

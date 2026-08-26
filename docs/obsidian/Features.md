@@ -838,3 +838,91 @@ Choosing the purpose **dissolves the collections-versus-payouts split** — the 
 
 **Two PDF constraints worth knowing:** pdf-lib's standard fonts are WinAnsi, so money is written `Rs.` and never `₹`, and tenant names are sanitised — a Telugu or Devanagari name would otherwise throw and fail the chase list for exactly the owners most likely to have one.
 
+
+## Help — two inboxes, guidance first (2026-08-26)
+
+**What it is.** One Help Centre, rendered for whoever opened it, that answers a
+problem before it becomes anyone's ticket — and routes it to the right
+organisation when it does. See [[Decisions#ADR-117|ADR-117]].
+
+**The two channels, and the wall between them.**
+
+| | Hostel complaints | Stayo reports |
+|---|---|---|
+| Table | `tenant_service_requests` (9 live rows) | `platform_support_tickets` (0 rows before this) |
+| Covers | Repairs, cleaning, food, roommates, rent amounts | The app, an account, a payment at the gateway |
+| Resolved by | The hostel team | Stayo admin, at `/admin/reports` |
+| Stayo's role | Carries them so the owner has one list — **we do not answer them** | Ours to answer |
+| Tenant reaches it at | `/tenant/complaints` | `/profile/tickets` |
+| Owner reaches it at | `/owner/more/service-requests` | `/owner/more/help` |
+
+**Shape of the screen** — search, answers, then a form, in that order.
+
+- **Search** takes the problem in the person's own words.
+- **The catalogue** (18 entries, `HELP_GUIDES`) is filtered by audience and
+  ranked keyword-first. **Every answer that resolves by going somewhere carries
+  the button**, rather than naming a tab and leaving the walk to the reader.
+- **`classifyProblem()`** watches what is typed and offers the *other* inbox
+  when the words belong to it. It **never blocks** — it is a keyword guess, and
+  someone certain their problem is ours must always be able to say so. Where
+  both kinds of word appear, Stayo wins: "the app won't let me report my
+  geyser" is a bug in our software.
+- **The form** is reached only after that, pre-filled with what was typed and
+  with a category already suggested (`suggestCategory()`, always overridable).
+- **The acknowledgement stays on the page** — a toast that vanishes before it is
+  read is not being heard — and the report joins a list showing its status and
+  the admin's reply.
+
+**Files.** `features/help-center/helpCenter.ts` (pure, 24 tests) ·
+`features/help-center/components/HelpCenter.tsx` (`chrome="page"` for Discover,
+`"embedded"` for the owner shell) · hosted by `MoreHelpPage.tsx` and
+`SupportTicketsPage.tsx`.
+
+**Notable.** No backend change was needed: `POST /api/profile/support-tickets`
+had been role-agnostic since it was written, so the owner's inability to file
+was a `stayoToast.info('Coming soon')` and nothing more. Guide deep links are
+pinned by a test against a transcribed copy of the router's table.
+
+**Unknown / needs clarification.** No report has been filed end to end against
+a live admin queue yet — `platform_support_tickets` is still empty, so the
+resolve-and-reply half is verified only by reading `ReportsPage.tsx`.
+
+See [[APIs]], [[Changelog]], [[Business-Rules]], [[Decisions#ADR-079|ADR-079]].
+
+## Profile hub — gaps, not recitals (2026-08-26)
+
+**What it is.** The tenant/seeker profile at `/profile`
+(`DiscoverProfilePage.tsx`), rebuilt around one rule: **a profile shows what is
+missing, not what you already know.** See [[Decisions#ADR-118|ADR-118]].
+
+**Shape.** A sticky identity header, then one hero, then three groups.
+
+| | Rows |
+|---|---|
+| *hero* | Where you live (resident) **or** the portable-profile card (seeker) — never both |
+| `YOUR DETAILS` | Personal information · Contact details · Emergency contact · Academic details |
+| `YOUR RECORD` | Documents · Stay history · Saved hostels · Enquiries |
+| `STAYO` | Help · Safety & trust |
+
+**The gap rule.** Detail rows carry no values. The right-hand side shows only
+what is still blank — `Add college & course` — and **nothing when the group is
+complete**. That silence is what makes a hint mean something. Two gaps are
+named rather than counted, since "2 missing" forces the tap the row exists to
+avoid; three or more do count. `profileHub.ts` holds all of it, pure and
+tested.
+
+**Audience.** `heroMode()` picks the lead card. `detailFields()` branches on
+`profile_type`, so a working professional is asked for a company and a role,
+never a college.
+
+**Deliberately absent.** Notifications, Language and Privacy & security were
+removed rather than left as `coming soon` rows — no preferences screen and no
+password-change screen exists to link to. They return when they are real. The
+duplicate Enquiries/Saved tiles are gone (the counts live on their rows), and
+of the three rows that said "Help", one remains.
+
+**Unknown / needs clarification.** The rebuilt hub has not been opened in a
+browser at either audience — verification is `tsc`, the pure suite and the
+production build.
+
+See [[Frontend]], [[Changelog]], [[Bugs]].

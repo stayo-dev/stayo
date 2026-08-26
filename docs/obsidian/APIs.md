@@ -485,3 +485,26 @@ No migration — `hostel_marketing_revisions.content` is a JSON column and this 
 | `/api/platform-admin/owner-documents` | GET | **Added 2026-08-07.** Admin-only. Owner KYC review queue, `?status=PENDING\|VERIFIED\|REJECTED` (defaults PENDING), oldest first so nobody waits longest. Returns the document plus the owning profile. Exists because uploads had been landing in `owner_documents` since ADR-038 with **no admin surface at all** — the uploader deliberately cannot set status, so `VERIFIED` was unreachable in practice. |
 | `/api/platform-admin/owner-documents/[id]/review` | POST | **Added 2026-08-07.** Admin-only. `{ decision: VERIFIED\|REJECTED, note? }`. The only thing that can move a document out of PENDING. A rejection **requires** a reason (stored in `review_note`, shown to the owner) — rejecting without one just produces the same upload again. Re-reviewing an already-decided document is refused rather than silently overwriting an earlier admin's call; reversing means the owner re-uploads. Guards are pure and tested in `tests/owner-document-review.test.ts`. |
 | `/api/owner/kyc-documents` | GET | **2026-08-07:** now also returns `review_note`, so a rejected document can tell the owner what to fix. |
+
+### `POST /api/profile/close-account` (2026-08-26)
+
+The user closes their own account. Any signed-in profile, owner or tenant.
+
+**Body:** `{ confirm: "DELETE", reason: string, note?: string }` — the phrase is
+required *server-side* as well as in the UI: an irreversible call must not be
+one stray fetch away, and the client is where a guard would be removed.
+
+**Blocked with `409`** and the blocker kind as the error code — `OUTSTANDING_DUES`,
+`PENDING_MOVE_OUT`, `LIVE_TENANCY` — checked in that order. Not `403`: nothing
+is forbidden, something has to happen first.
+
+**On success:** feedback is written to `system_event_logs` (`ACCOUNT_CLOSED`)
+*before* anything is scrubbed, the profile is anonymised (`is_active: false`,
+name/email/phone replaced, `auth_user_id` cleared), the Supabase auth user is
+deleted, and every live session is revoked in Redis. See
+[[Decisions#ADR-119|ADR-119]].
+
+**Removed from the tenant UI (routes left in place):**
+`POST /api/tenants/me/profile-requests` and the owner's profile-request queue.
+Profile fields now save through `PATCH /api/tenants/me/profile` directly; a
+changed phone is proved with `send-phone-otp` / `verify-phone-otp` first.
