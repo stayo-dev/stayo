@@ -1,19 +1,17 @@
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo, useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Bell,
   ChevronRight,
   ClipboardList,
   FileText,
   GraduationCap,
-  Globe,
   Heart,
   History,
+  Home,
   LifeBuoy,
   Lock,
   LogOut,
   Luggage,
-  MessageSquareWarning,
   Phone,
   ShieldAlert,
   ShieldCheck,
@@ -36,11 +34,12 @@ import {
 
 import { SignedOutPrompt } from './components/SignedOutPrompt';
 import { C, FONT } from './discoverTheme';
+import { countMeta, gapHint, heroMode, stayMeta, totalGaps } from '@features/profile-hub/profileHub';
+import { ListGroup, ListRowItem, SectionHead } from '@features/stayo-ui/ListSection';
 import { currentStay, historySummaryLine, stayDuration, stayLine } from '@features/tenant-room/staySummary';
 import { MoveOutSheet } from '@features/tenant-room/components/MoveOutSheet';
+import { CloseAccountSheet } from '@features/account-closure/components/CloseAccountSheet';
 
-const dash = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
-const dateLabel = (v: unknown) => (v ? new Date(String(v)).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 
 /**
  * The tenancy-scoped detail groups a live-tenancy user edits here (governed
@@ -52,50 +51,13 @@ const dateLabel = (v: unknown) => (v ? new Date(String(v)).toLocaleDateString('e
  * card above, which stay directly editable regardless of tenancy.
  */
 const TENANCY_DETAIL_GROUPS = [
-  {
-    key: 'personal_info',
-    title: 'Personal information',
-    icon: User,
-    preview: (t: any, p: any) => [
-      { k: 'Full name', v: dash(p?.name) },
-      { k: 'Date of birth', v: dateLabel(t?.date_of_birth) },
-    ],
-  },
-  {
-    key: 'contact_info',
-    title: 'Contact details',
-    icon: Phone,
-    preview: (t: any, p: any, c: any) => [
-      { k: 'Phone', v: dash(c?.tenant_phone?.value ?? p?.phone) },
-      { k: 'Email', v: dash(p?.email ?? p?.account_email) },
-    ],
-  },
-  {
-    key: 'emergency_info',
-    title: 'Emergency contact',
-    icon: ShieldAlert,
-    preview: (t: any, p: any, c: any) => [
-      { k: 'Guardian', v: dash(t?.guardian_name) },
-      { k: 'Phone', v: dash(c?.guardian_phone?.value ?? t?.guardian_phone ?? t?.phone_2) },
-    ],
-  },
-  {
-    key: 'academic_info',
-    title: 'Academic details',
-    icon: GraduationCap,
-    preview: (t: any) =>
-      t?.profile_type === 'WORKING_PROFESSIONAL'
-        ? [{ k: 'Company', v: dash(t?.office_name) }, { k: 'Role', v: dash(t?.job_role) }]
-        : [{ k: 'College', v: dash(t?.college_name) }, { k: 'Course', v: dash(t?.course) }],
-  },
+  { key: 'personal_info', title: 'Personal information', icon: User },
+  { key: 'contact_info', title: 'Contact details', icon: Phone },
+  { key: 'emergency_info', title: 'Emergency contact', icon: ShieldAlert },
+  { key: 'academic_info', title: 'Academic details', icon: GraduationCap },
 ];
 
-const SUPPORT_ITEMS = [
-  { title: 'Help & support', sub: 'Chat with the hostel team', to: '/tenant/profile/help' as const },
-  { title: 'Notifications', sub: 'Manage alerts & reminders', icon: Bell },
-  { title: 'Language', sub: 'English (India)', icon: Globe },
-  { title: 'Privacy & security', sub: 'Password & login', icon: Lock },
-];
+const DETAIL_KEYS = TENANCY_DETAIL_GROUPS.map((group) => group.key);
 
 function initials(name: string | undefined): string {
   if (!name) return 'S';
@@ -118,6 +80,7 @@ export function DiscoverProfilePage() {
   const { data: history } = useResidencyHistory();
   const stay = useMemo(() => currentStay(history), [history]);
   const [moveOutOpen, setMoveOutOpen] = useState(false);
+  const [closeOpen, setCloseOpen] = useState(false);
   const { data: disclosures } = useDisclosures();
   const liveTenancy = hasLiveTenancy(user);
   const tenantProfile = useTenantProfile();
@@ -129,6 +92,16 @@ export function DiscoverProfilePage() {
   );
 
   const pendingCount = disclosures?.pending_requests.length ?? 0;
+
+  /** The three records every "what's missing" answer is read from. */
+  const detailSources = useMemo(
+    () => ({ tenant: tenantProfile.tenant, profile: tenantProfile.profile, contacts: tenantProfile.contacts }),
+    [tenantProfile.tenant, tenantProfile.profile, tenantProfile.contacts],
+  );
+  const gaps = liveTenancy ? totalGaps(DETAIL_KEYS, detailSources) : 0;
+  const hero = heroMode({ hasLiveStay: Boolean(stay), identityComplete: identity?.is_complete ?? null });
+  /** `total_stays` counts the ones they left; the current stay is one more. */
+  const totalStays = (history?.total_stays ?? 0) + (stay ? 1 : 0);
 
   useEffect(() => {
     document.title = 'Your Stayo account';
@@ -196,327 +169,246 @@ export function DiscoverProfilePage() {
               {user?.email}
             </p>
           </div>
-          <div className="flex flex-none items-center gap-4 pr-0.5 text-right">
-            <MiniStat value={enquiries?.length ?? 0} label="Enquiries" />
-            <span className="h-7 w-px" style={{ background: C.line }} />
-            <MiniStat value={saved?.length ?? 0} label="Saved" />
           </div>
-        </div>
       </header>
 
-      <div className="space-y-6 px-5 pb-10 pt-5">
-        {/* Activity */}
-        <section>
-          <h2 className="mb-2.5 pl-0.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: '#9C9186' }}>
-            Your activity
-          </h2>
-          <div className="flex gap-2.5">
-            <ActivityTile
-              icon={Heart}
-              count={saved?.length ?? 0}
-              label="Saved hostels"
-              tint="#FBEFE9"
-              iconColor={C.clayLight}
-              onClick={() => navigate('/profile/saved')}
-            />
-            <ActivityTile
-              icon={ClipboardList}
-              count={enquiries?.length ?? 0}
-              label="Enquiries"
-              tint="#F0E8DF"
-              iconColor={C.textMuted}
-              onClick={() => navigate('/profile/enquiries')}
-            />
-          </div>
-        </section>
-
-        {/* The portable profile — now real, so it describes what it does. */}
-        <section
-          className="relative overflow-hidden rounded-[18px] p-5"
-          style={{
-            background: 'linear-gradient(135deg,#2A2521,#3B322B)',
-            boxShadow: '0 8px 22px rgba(34,30,26,.22)',
-          }}
-        >
-          <div
-            className="pointer-events-none absolute -bottom-9 -right-8 h-32 w-32 rounded-full"
-            style={{ background: 'radial-gradient(circle,rgba(217,144,111,.28),transparent 70%)' }}
-          />
-          <div className="relative flex items-start gap-3">
-            <span
-              className="flex h-10 w-10 flex-none items-center justify-center rounded-xl"
-              style={{ background: 'rgba(217,144,111,.18)' }}
-            >
-              <Luggage className="h-5 w-5" strokeWidth={1.7} style={{ color: C.clayPale }} />
-            </span>
-            <div className="min-w-0">
-              <p className="text-[14.5px] font-extrabold tracking-[-0.01em] text-white" style={{ fontFamily: FONT.display }}>
-                Your details travel with you
-              </p>
-              <p className="mt-1 text-[12px] leading-[1.5]" style={{ color: '#B6ABA0' }}>
-                {identity?.is_complete
-                  ? 'Filled in. Every hostel you join will open its onboarding with these already there.'
-                  : 'Fill these in once — before you even enquire — and every hostel you join opens its onboarding already filled.'}
-              </p>
-            </div>
-          </div>
-
-          {/* Progress is stated only when we actually know it. */}
-          {identity && (
-            <div className="relative mt-3.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold" style={{ color: '#B6ABA0' }}>Profile completeness</span>
-                <span className="font-display text-[12px] font-extrabold" style={{ color: C.clayPale }}>{identity.completion_percent}%</span>
-              </div>
-              <div className="mt-1.5 h-[6px] overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,.08)' }}>
-                <div className="h-full rounded-full" style={{ width: `${identity.completion_percent}%`, background: `linear-gradient(90deg, ${C.clayDeep}, ${C.clayPale})` }} />
-              </div>
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={() => navigate('/profile/details')}
-            className="relative mt-3.5 w-full rounded-[11px] py-3 text-[13px] font-extrabold"
-            style={{ fontFamily: FONT.display, background: C.clayLight, color: C.ink }}
+      <div className="space-y-5 px-5 pb-10 pt-4">
+        {/*
+          ONE hero, chosen by `heroMode`. The page used to stack the portable-
+          profile pitch on top of the card naming the room someone already
+          lives in — 200px of the app arguing for something already accepted.
+        */}
+        {hero === 'stay' && stay && (
+          <section
+            className="rounded-[18px] border bg-white px-4 py-4"
+            style={{ borderColor: C.line, boxShadow: '0 1px 2px rgba(40,30,20,.04)' }}
           >
-            {identity?.is_complete ? 'Review your details' : 'Complete your details'}
-          </button>
-        </section>
-
-        {/* Tenancy-scoped details — only meaningful with a live tenancy, since
-            phone/email here save through this hostel's owner-approval flow
-            (GOVERNED_PROFILE_FIELDS), distinct from the portable card above. */}
-        {liveTenancy && (
-          <section>
-            <h2 className="mb-2.5 pl-0.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: '#9C9186' }}>
-              Your details (this stay)
-            </h2>
-            {tenantProfile.pendingProfileRequest && (
-              <div
-                className="mb-2.5 flex items-center gap-2.5 rounded-2xl border px-4 py-3"
-                style={{ borderColor: '#F1E2C4', background: '#FBF1DE' }}
+            <div className="flex items-start gap-3">
+              <span
+                className="flex h-10 w-10 flex-none items-center justify-center rounded-xl"
+                style={{ background: C.clayPaleBg, color: C.clay }}
               >
-                <Lock className="h-4 w-4 flex-none" style={{ color: C.amber }} />
-                <p className="flex-1 text-[12px] font-semibold" style={{ color: '#7A5A24' }}>A change you requested is awaiting owner approval.</p>
+                <Home className="h-5 w-5" strokeWidth={1.8} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: C.textGhost }}>
+                  Where you live
+                </div>
+                <div className="mt-0.5 truncate text-[15px] font-extrabold" style={{ fontFamily: FONT.display, color: C.text }}>
+                  {stay.hostel_name ?? 'Your hostel'}
+                </div>
+                <div className="mt-0.5 text-[12px]" style={{ color: C.textFaint }}>
+                  {[stayLine(stay), stayDuration(stay)].filter(Boolean).join(' · ')}
+                </div>
               </div>
-            )}
-            <div className="flex flex-col gap-2.5">
-              {TENANCY_DETAIL_GROUPS.map(({ key, title, icon: Icon, preview }) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => overlay.push(key)}
-                  className="rounded-2xl border bg-white p-[15px_16px] text-left"
-                  style={{ borderColor: C.line, boxShadow: '0 1px 2px rgba(40,30,20,.04)' }}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px]" style={{ background: '#F5E9E3', color: C.clay }}>
-                      <Icon className="h-[18px] w-[18px]" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[14px] font-semibold" style={{ color: C.inkSoft }}>{title}</div>
-                    </div>
-                    <ChevronRight className="h-4 w-4 flex-none" style={{ color: '#C9BFB4' }} />
-                  </div>
-                  <div className="mt-3 flex flex-col gap-2 border-t pt-[11px]" style={{ borderColor: C.lineSoft }}>
-                    {preview(tenantProfile.tenant, tenantProfile.profile, tenantProfile.contacts).map((row) => (
-                      <div key={row.k} className="flex items-center justify-between gap-3">
-                        <span className="text-[12px] font-medium" style={{ color: C.textMuted }}>{row.k}</span>
-                        <span className="text-right text-[12.5px] font-semibold" style={{ color: C.inkSoft }}>{row.v}</span>
-                      </div>
-                    ))}
-                  </div>
-                </button>
-              ))}
             </div>
+            <button
+              type="button"
+              onClick={() => setMoveOutOpen(true)}
+              className="mt-3 w-full rounded-xl border py-2.5 text-[12.5px] font-semibold"
+              style={{ borderColor: C.line, color: '#9A8F84' }}
+            >
+              Request to move out
+            </button>
           </section>
         )}
 
-        {/* Documents — the portable vault always; this hostel's KYC only with a live tenancy (see ProfileDocumentsPage). */}
-        <section>
-          <h2 className="mb-2.5 pl-0.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: '#9C9186' }}>
-            Documents
-          </h2>
-          <button
-            type="button"
-            onClick={() => navigate('/profile/documents')}
-            className="flex w-full items-center gap-3.5 rounded-2xl border bg-white px-4 py-3.5 text-left"
-            style={{ borderColor: C.line, boxShadow: '0 1px 2px rgba(40,30,20,.04)' }}
+        {hero === 'portable' && (
+          <section
+            className="relative overflow-hidden rounded-[18px] p-4"
+            style={{ background: 'linear-gradient(135deg,#2A2521,#3B322B)', boxShadow: '0 8px 22px rgba(34,30,26,.22)' }}
           >
-            <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px]" style={{ background: '#F4EEE7' }}>
-              <FileText className="h-[17px] w-[17px]" strokeWidth={1.8} style={{ color: C.textMuted }} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[13.5px] font-semibold" style={{ color: C.inkSoft }}>Documents</span>
-              <span className="block truncate text-[11px]" style={{ color: C.textFaint }}>Your vault{liveTenancy ? ' & this hostel’s verification' : ''}</span>
-            </span>
-            {liveTenancy && tenantProfile.missingDocuments.length > 0 && (
-              <span className="flex-none rounded-full px-2.5 py-1 text-[10.5px] font-bold" style={{ background: '#FBF1DE', color: C.amber }}>
-                {tenantProfile.missingDocuments.length} pending
+            <div
+              className="pointer-events-none absolute -bottom-9 -right-8 h-32 w-32 rounded-full"
+              style={{ background: 'radial-gradient(circle,rgba(217,144,111,.28),transparent 70%)' }}
+            />
+            <div className="relative flex items-start gap-3">
+              <span
+                className="flex h-10 w-10 flex-none items-center justify-center rounded-xl"
+                style={{ background: 'rgba(217,144,111,.18)' }}
+              >
+                <Luggage className="h-5 w-5" strokeWidth={1.7} style={{ color: C.clayPale }} />
               </span>
-            )}
-            <ChevronRight className="h-4 w-4 flex-none" style={{ color: '#C9BFB4' }} />
-          </button>
-        </section>
+              <div className="min-w-0 flex-1">
+                <p className="text-[14px] font-extrabold tracking-[-0.01em] text-white" style={{ fontFamily: FONT.display }}>
+                  Your details travel with you
+                </p>
+                <p className="mt-1 text-[11.5px] leading-[1.5]" style={{ color: '#B6ABA0' }}>
+                  Fill these in once and every hostel you join opens its onboarding already filled.
+                </p>
+              </div>
+              {identity && (
+                <span className="flex-none font-display text-[13px] font-extrabold" style={{ color: C.clayPale }}>
+                  {identity.completion_percent}%
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/profile/details')}
+              className="relative mt-3 w-full rounded-[11px] py-2.5 text-[12.5px] font-extrabold"
+              style={{ fontFamily: FONT.display, background: C.clayLight, color: C.ink }}
+            >
+              Complete your details
+            </button>
+          </section>
+        )}
 
-        {/* Raise a Ticket — tenant/user → Stayo Admin (ADR-079). Its own
-            section, deliberately not folded into Support & settings below or
-            /tenant/complaints (which stays the tenant → owner channel). */}
+        {/*
+          Details as rows, not preview cards.
+
+          Each card used to print two key-value pairs — someone's own name, own
+          birthday, and two em-dashes where a college would be. The value is
+          one tap away and they already know it; what they cannot know without
+          looking is what is still *missing*, so that is the only thing on the
+          right. See `profileHub.ts`.
+        */}
+        {liveTenancy && (
+          <section>
+            <SectionHead
+              title="Your details"
+              meta={gaps > 0 ? `${gaps} to add` : 'All filled'}
+              tone={gaps > 0 ? 'warn' : 'calm'}
+            />
+            <ListGroup>
+              {TENANCY_DETAIL_GROUPS.map((group, index) => (
+                <ListRowItem
+                  key={group.key}
+                  icon={group.icon}
+                  title={group.title}
+                  meta={gapHint(group.key, detailSources)}
+                  metaTone="warn"
+                  first={index === 0}
+                  onClick={() => overlay.push(group.key)}
+                />
+              ))}
+            </ListGroup>
+          </section>
+        )}
+
+        {/* Everything attached to the account, under one heading instead of four. */}
         <section>
-          <h2 className="mb-2.5 pl-0.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: '#9C9186' }}>
-            Stayo support
-          </h2>
-          <button
-            type="button"
-            onClick={() => navigate('/profile/tickets')}
-            className="flex w-full items-center gap-3.5 rounded-2xl border bg-white px-4 py-3.5 text-left"
-            style={{ borderColor: C.line, boxShadow: '0 1px 2px rgba(40,30,20,.04)' }}
-          >
-            <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px]" style={{ background: '#F4EEE7' }}>
-              <MessageSquareWarning className="h-[17px] w-[17px]" strokeWidth={1.8} style={{ color: C.textMuted }} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[13.5px] font-semibold" style={{ color: C.inkSoft }}>Raise a ticket</span>
-              <span className="block truncate text-[11px]" style={{ color: C.textFaint }}>Report a Stayo app or website problem</span>
-            </span>
-            <ChevronRight className="h-4 w-4 flex-none" style={{ color: '#C9BFB4' }} />
-          </button>
+          <SectionHead title="Your record" />
+          <ListGroup>
+            <ListRowItem
+              icon={FileText}
+              title="Documents"
+              meta={liveTenancy && tenantProfile.missingDocuments.length > 0 ? `${tenantProfile.missingDocuments.length} pending` : null}
+              metaTone="warn"
+              first
+              onClick={() => navigate('/profile/documents')}
+            />
+            <ListRowItem
+              icon={History}
+              title="Stay history"
+              meta={pendingCount > 0 ? `${pendingCount} to answer` : stayMeta(totalStays)}
+              metaTone={pendingCount > 0 ? 'warn' : 'quiet'}
+              onClick={() => navigate('/profile/history')}
+            />
+            <ListRowItem
+              icon={Heart}
+              title="Saved hostels"
+              meta={countMeta(saved?.length)}
+              metaTone="quiet"
+              onClick={() => navigate('/profile/saved')}
+            />
+            <ListRowItem
+              icon={ClipboardList}
+              title="Enquiries"
+              meta={countMeta(enquiries?.length)}
+              metaTone="quiet"
+              onClick={() => navigate('/profile/enquiries')}
+            />
+          </ListGroup>
         </section>
 
         {/*
-          Where they live *now*. The hook was already here and the page only
-          ever linked out to history, so a profile could say where someone had
-          lived and never where they do.
+          One Help, not three. This page carried "Help" (the Help Centre),
+          "Help & contact" (the public marketing page) and "Help & support"
+          (the hostel chat) in three separate sections. The hostel channel
+          belongs on Room, where the complaint is; the marketing page is not
+          somewhere a signed-in resident should be sent for help.
         */}
-        {stay && (
-          <section>
-            <h2 className="mb-2.5 pl-0.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: '#9C9186' }}>
-              Where you live
-            </h2>
-            <div className="rounded-2xl border bg-white px-4 py-3.5" style={{ borderColor: C.line, boxShadow: '0 1px 2px rgba(40,30,20,.04)' }}>
-              <div className="text-[14px] font-bold" style={{ color: C.inkSoft }}>
-                {stay.hostel_name ?? 'Your hostel'}
-              </div>
-              {stayLine(stay) && (
-                <div className="mt-0.5 text-[12px]" style={{ color: C.textFaint }}>
-                  {stayLine(stay)}
-                </div>
-              )}
-              {stayDuration(stay) && (
-                <div className="mt-0.5 text-[12px]" style={{ color: C.textFaint }}>
-                  {stayDuration(stay)}
-                </div>
-              )}
-              {/* Same component as the Room tab's, so the two cannot ask
-                  different questions or send different payloads. */}
-              <button
-                type="button"
-                onClick={() => setMoveOutOpen(true)}
-                className="mt-3 w-full rounded-xl border py-2.5 text-[12.5px] font-semibold"
-                style={{ borderColor: C.line, color: '#9A8F84' }}
-              >
-                Request to move out
-              </button>
-            </div>
-          </section>
-        )}
-
-        {/* Stay history — with any pending request surfaced, since it needs an answer */}
         <section>
-          <h2 className="mb-2.5 pl-0.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: '#9C9186' }}>
-            Your record
-          </h2>
-          <button
-            type="button"
-            onClick={() => navigate('/profile/history')}
-            className="flex w-full items-center gap-3.5 rounded-2xl border bg-white px-4 py-3.5 text-left"
-            style={{ borderColor: pendingCount > 0 ? C.clay : C.line, boxShadow: '0 1px 2px rgba(40,30,20,.04)' }}
-          >
-            <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px]" style={{ background: '#F4EEE7' }}>
-              <History className="h-[17px] w-[17px]" strokeWidth={1.8} style={{ color: C.textMuted }} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[13.5px] font-semibold" style={{ color: C.inkSoft }}>
-                Stay history
-              </span>
-              <span className="block truncate text-[11px]" style={{ color: C.textFaint }}>
-                {/* Counts the stay they are in, not only the ones they left. */}
-                {historySummaryLine(history)}
-              </span>
-            </span>
-            {pendingCount > 0 && (
-              <span
-                className="flex-none rounded-full px-2.5 py-1 text-[10.5px] font-bold"
-                style={{ background: C.clayPaleBg, color: '#A4482F' }}
-              >
-                {pendingCount} to answer
-              </span>
-            )}
-            <ChevronRight className="h-4 w-4 flex-none" style={{ color: '#C9BFB4' }} />
-          </button>
-        </section>
-
-        {/* Links */}
-        <section>
-          <h2 className="mb-2.5 pl-0.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: '#9C9186' }}>
-            Account
-          </h2>
-          <div
-            className="overflow-hidden rounded-2xl border bg-white"
-            style={{ borderColor: C.line, boxShadow: '0 1px 2px rgba(40,30,20,.04)' }}
-          >
-            <Row
+          <SectionHead title="Stayo" />
+          <ListGroup>
+            <ListRowItem
+              icon={LifeBuoy}
+              title="Help"
+              sub="Answers, or report a problem to Stayo"
+              first
+              onClick={() => navigate('/profile/tickets')}
+            />
+            <ListRowItem
               icon={ShieldCheck}
               title="Safety & trust"
               sub="How Stayo verifies the hostels it lists"
               onClick={() => navigate('/about')}
-              first
             />
-            <Row
-              icon={LifeBuoy}
-              title="Help & contact"
-              sub="Questions about a hostel or your account"
-              onClick={() => navigate('/contact')}
-            />
-          </div>
+          </ListGroup>
         </section>
 
-        <section>
-          <h2 className="mb-2.5 pl-0.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: '#9C9186' }}>
-            Support &amp; settings
-          </h2>
-          <div
-            className="overflow-hidden rounded-2xl border bg-white divide-y"
-            style={{ borderColor: C.line, boxShadow: '0 1px 2px rgba(40,30,20,.04)' }}
+        {/*
+          Notifications, Language and Privacy & security used to sit here and
+          every one of them raised "coming soon" — no preferences screen and no
+          password-change screen exists in the app. Furniture that does nothing
+          is worse than an absence, so they are gone until they are real.
+        */}
+        <div className="flex flex-col items-center gap-1 pt-1">
+          <button
+            type="button"
+            onClick={() => logout(true)}
+            className="flex w-full items-center justify-center gap-2 py-2 text-center text-[13.5px] font-bold"
+            style={{ fontFamily: FONT.display, color: '#B3402F' }}
           >
-            {SUPPORT_ITEMS.map((item) => (
-              <button
-                key={item.title}
-                type="button"
-                onClick={() => ('to' in item && item.to ? navigate(item.to) : stayoToast.info(`${item.title} — coming soon`))}
-                className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
-                style={{ borderColor: C.lineSoft }}
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13.5px] font-semibold" style={{ color: C.inkSoft }}>{item.title}</div>
-                  <div className="mt-0.5 text-[11.5px]" style={{ color: C.textFaint }}>{item.sub}</div>
-                </div>
-                <ChevronRight className="h-4 w-4 flex-none" style={{ color: '#C9BFB4' }} />
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <button
-          type="button"
-          onClick={() => logout(true)}
-          className="flex w-full items-center justify-center gap-2 py-2 text-center text-[13.5px] font-bold"
-          style={{ fontFamily: FONT.display, color: '#B3402F' }}
-        >
-          <LogOut className="h-4 w-4" /> Log out
-        </button>
+            <LogOut className="h-4 w-4" /> Log out
+          </button>
+          {/*
+            Quiet, but never hidden. Burying this is the dark-pattern version of
+            "make them think twice"; the thinking happens inside the flow, where
+            it is made of information rather than of a search for the button.
+          */}
+          <button
+            type="button"
+            onClick={() => setCloseOpen(true)}
+            className="py-1.5 text-[12px] font-semibold underline"
+            style={{ color: C.textGhost }}
+          >
+            Close my account
+          </button>
+        </div>
       </div>
+
+      {/*
+        Lives here, at the page root. It previously sat inside `Stat` — a
+        component nothing ever rendered — so the button above set state that
+        opened nothing at all. `vite build` uses esbuild and does not
+        typecheck, so the out-of-scope references never failed a build.
+      */}
+      <CloseAccountSheet
+        open={closeOpen}
+        onClose={() => setCloseOpen(false)}
+        context={{
+          hasLiveTenancy: Boolean(liveTenancy),
+          outstandingPaise: 0,
+          moveOutPending: false,
+          hostelName: stay?.hostel_name ?? null,
+        }}
+        losses={{
+          stays: totalStays,
+          months: history?.total_months ?? 0,
+          savedHostels: saved?.length ?? 0,
+          documents: tenantProfile.documents?.length ?? 0,
+          enquiries: enquiries?.length ?? 0,
+        }}
+      />
+
+      <MoveOutSheet
+        open={moveOutOpen}
+        onClose={() => setMoveOutOpen(false)}
+        roomNo={stay?.room_no ?? null}
+        hostelName={stay?.hostel_name ?? null}
+      />
 
       {!overlay.isHome && editConfigs[overlay.view] && (
         <ProfileEditScreen
@@ -527,8 +419,7 @@ export function DiscoverProfilePage() {
           pillTone={editConfigs[overlay.view].pillTone}
           editButtonLabel={editConfigs[overlay.view].editButtonLabel}
           sections={editConfigs[overlay.view].sections}
-          pendingRequest={tenantProfile.pendingProfileRequest}
-          isSaving={tenantProfile.isUpdating || tenantProfile.isSubmittingChangeRequest}
+          isSaving={tenantProfile.isUpdating}
           onBack={overlay.back}
           onSaveDirect={async (patch) => {
             try {
@@ -539,110 +430,9 @@ export function DiscoverProfilePage() {
               throw err;
             }
           }}
-          onSubmitGoverned={async (fields, reason) => {
-            try {
-              await tenantProfile.submitChangeRequest({ fields: fields as any, reason });
-              stayoToast.success('Submitted for owner approval');
-            } catch (err: any) {
-              stayoToast.error(err?.response?.data?.error?.message || 'Could not submit — please try again');
-              throw err;
-            }
-          }}
           onUploadDocument={triggerDocumentUpload}
         />
       )}
     </div>
-  );
-}
-
-function MiniStat({ value, label }: { value: number; label: string }) {
-  return (
-    <div>
-      <div className="text-[15px] font-extrabold tabular-nums" style={{ fontFamily: FONT.display, color: C.text }}>
-        {value}
-      </div>
-      <div className="text-[9.5px] font-bold uppercase tracking-[0.06em]" style={{ color: C.textGhost }}>
-        {label}
-      </div>
-    </div>
-  );
-}
-
-function Stat({ value, label }: { value: number; label: string }) {
-  return (
-    <div className="flex-1 px-2.5 py-3.5 text-center">
-      <p className="text-[19px] font-extrabold text-white" style={{ fontFamily: FONT.display }}>
-        {value}
-      </p>
-      <p className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.04em]" style={{ color: '#8C8177' }}>
-        {label}
-      </p>
-      <MoveOutSheet open={moveOutOpen} onClose={() => setMoveOutOpen(false)} roomNo={stay?.room_no ?? null} />
-    </div>
-  );
-}
-
-function ActivityTile({
-  icon: Icon,
-  count,
-  label,
-  tint,
-  iconColor,
-  onClick,
-}: {
-  icon: typeof Heart;
-  count: number;
-  label: string;
-  tint: string;
-  iconColor: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex-1 rounded-2xl border bg-white p-3.5 text-left"
-      style={{ borderColor: C.line, boxShadow: '0 1px 2px rgba(40,30,20,.04),0 6px 16px rgba(40,30,20,.05)' }}
-    >
-      <span className="flex h-8 w-8 items-center justify-center rounded-[10px]" style={{ background: tint }}>
-        <Icon className="h-[17px] w-[17px]" strokeWidth={1.8} style={{ color: iconColor }} />
-      </span>
-      <span className="mt-2.5 block text-[20px] font-extrabold" style={{ fontFamily: FONT.display, color: C.text }}>
-        {count}
-      </span>
-      <span className="block text-[11.5px]" style={{ color: C.textMuted }}>{label}</span>
-    </button>
-  );
-}
-
-function Row({
-  icon: Icon,
-  title,
-  sub,
-  onClick,
-  first,
-}: {
-  icon: typeof Heart;
-  title: string;
-  sub: string;
-  onClick: () => void;
-  first?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center gap-3.5 px-4 py-3.5 text-left"
-      style={{ borderTop: first ? 'none' : `1px solid ${C.lineSoft}` }}
-    >
-      <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px]" style={{ background: '#F4EEE7' }}>
-        <Icon className="h-[17px] w-[17px]" strokeWidth={1.8} style={{ color: C.textMuted }} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-[13.5px] font-semibold" style={{ color: C.inkSoft }}>{title}</span>
-        <span className="block truncate text-[11px]" style={{ color: C.textFaint }}>{sub}</span>
-      </span>
-      <ChevronRight className="h-4 w-4 flex-none" style={{ color: '#C9BFB4' }} />
-    </button>
   );
 }
