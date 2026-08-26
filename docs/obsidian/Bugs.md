@@ -8,7 +8,22 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
-## 2026-08-27 — Create Charge asked for a password that protected nothing (fixed)
+## 2026-08-27 — An owner-managed tenant was adopted, then invisible to the system that was supposed to chase them (fixed)
+
+An owner can now adopt a tenant who ignored their invitation (`POST /api/tenants/:id/adopt`, `ownerManagedTenancyService.adopt` — this capability's own [[Features]]/[[APIs]] entry is still pending as of this fix): the tenancy flips to `ACTIVE` with `access_mode = 'OWNER_MANAGED'` and `profile_id = NULL` — the person has no login, no `profiles` row, and their name/phone live on `tenants.display_name`/`tenants.phone_1` instead. The entire point of adopting them is that the system keeps chasing rent on their behalf, exactly as it would for a self-serve tenant.
+
+It did not. Four raw-SQL queries across the operational/reporting surface joined `tenants` to `profiles` with an **inner join** (`JOIN profiles p ON p.id = t.profile_id`) purely to read the tenant's name/phone for display — and an inner join silently drops any row where that join can't match, which is every owner-managed tenant, unconditionally:
+
+- `billingRepository.getOperationalOverdueObligations` (`apps/backend/src/repositories/billingRepository.ts`) — the query behind `processDailyReminders`. An owner-managed tenant's overdue rent obligations never appeared in the sweep, so they got **no automated reminders**, and since the late-fee engine rides the same loop (`reminder-service.ts`), **no late fees ever accrued** either. This is the one that matters most — it defeated the feature's stated purpose.
+- `billingRepository.getOperationalDefaulters` — the owner dashboard's top-defaulters widget. Owner-managed tenants could never appear in it, however overdue.
+- `lib/services/analytics-service.ts`'s risky-tenants query (`getTenantIntelligenceDashboard`) — owner-managed tenants were invisible to owner analytics, undercutting the promise that occupancy/revenue dashboards read true.
+- `app/api/dashboard/portfolio-shell/route.ts`'s `getOverduePreview` — the dashboard's overdue-preview widget, same pattern, found in a follow-up review pass rather than the original fix.
+
+**Fix.** All four became `LEFT JOIN profiles p ON p.id = t.profile_id`, following the idiom already established at `dashboard-service.ts:669/693/707` for this exact relationship. Every `p.*` column is now read through `CASE WHEN t.profile_id IS NULL THEN <tenant-owned fallback> ELSE p.<column> END` rather than a bare `COALESCE(p.col, fallback)` — the stricter guarded form matters because `profiles.phone` is nullable, so a plain `COALESCE` could have changed an *existing* self-serve tenant's output (null → `tenants.phone_1`, which is a general-purpose field populated during ordinary onboarding, not exclusive to owner-managed tenants) rather than only adding rows. The guarded CASE instead guarantees the `p.<column>` branch fires unconditionally for every row that matched before (`t.profile_id IS NOT NULL`), so no existing row's name, phone, amount, ordering, or grouping changes — proved column-by-column, not asserted.
+
+**A follow-on, deliberate, non-bug consequence:** three of the four queries (`getOperationalDefaulters`, the analytics risky-tenants query, and `getOverduePreview`) are ranked and `LIMIT`-bound. Newly-visible owner-managed tenants can now displace a self-serve tenant out of a fixed-size window if they rank higher (worse overdue amount / risk score) — not because the displaced tenant's own numbers changed, but because the candidate pool grew. Intended. The unlimited sweep query (`getOperationalOverdueObligations`, the one that actually drives late fees) has no such window, so no row can be displaced there at all.
+
+See [[Business-Rules]] for the domain model this closes a gap in (Obligation as source of truth, `access_mode`), [[Changelog]] for the shipped entry, and [[Database]] for `tenants.access_mode`/`display_name`/`phone_1`.
 
 `CreateObligationModal` required the owner's login password on every manual charge. It called `identityService.confirmIdentity(password)`, read the returned `identity_token` — and then never sent it. The request it made was:
 
