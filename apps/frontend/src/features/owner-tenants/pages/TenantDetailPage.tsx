@@ -9,7 +9,6 @@ import { queryKeys } from '@lib/queryKeys';
 import { useTenantActions } from '@features/tenants/hooks/useTenantActions';
 import { CreateObligationModal } from '@features/tenants/components/financial/CreateObligationModal';
 import { ChangeFrequencyModal } from '@/app/components/modals/ChangeFrequencyModal';
-import { ChangeRequestDrawer } from '@features/change-management';
 import { useTenantDetail } from '../hooks/useTenantDetail';
 import { useDocumentVerification } from '../hooks/useDocumentVerification';
 import { DocumentReviewCard } from '../documents/DocumentReviewCard';
@@ -28,6 +27,9 @@ import { MoneyStrip } from '../profile/MoneyStrip';
 import { ChangeRoomSheet } from '../profile/ChangeRoomSheet';
 import { DocumentPreviewSheet } from '../profile/DocumentPreviewSheet';
 import { toDocumentGroups } from '../profile/documentGroups';
+import { AmendAgreementSheet } from '../profile/AmendAgreementSheet';
+import { PendingChangeCard } from '../profile/PendingChangeCard';
+import { IdentityCard } from '../profile/IdentityCard';
 import { ChangeRentModal } from '../actions/ChangeRentModal';
 import { MoveOutSheet } from '../actions/MoveOutSheet';
 import { QuickCollectModal } from '../quick-collect/QuickCollectModal';
@@ -64,7 +66,7 @@ export function TenantDetailPage() {
   const [moveOutOpen, setMoveOutOpen] = useState(false);
   const [createChargeOpen, setCreateChargeOpen] = useState(false);
   const [changeBillingOpen, setChangeBillingOpen] = useState(false);
-  const [requestChangeOpen, setRequestChangeOpen] = useState(false);
+  const [amendAgreementOpen, setAmendAgreementOpen] = useState(false);
   const [changeRoomOpen, setChangeRoomOpen] = useState(false);
   const [rejectingDoc, setRejectingDoc] = useState<ReviewDocument | null>(null);
   const [previewDoc, setPreviewDoc] = useState<{ title: string; url: string | null; fileName: string } | null>(null);
@@ -192,6 +194,8 @@ export function TenantDetailPage() {
           </div>
 
           <PrivateNotesCard tenantId={tenant.id} />
+
+          <PendingChangeCard tenantId={tenant.id} />
 
           {tenant.hasOpenMoveOut && (
             <div className="flex items-center gap-2.5 rounded-[18px] border border-warning/25 bg-warning/8 p-3.5">
@@ -398,6 +402,8 @@ export function TenantDetailPage() {
                   "not shared with you" rather than hiding itself, so the
                   absence of history and the absence of consent stay
                   distinguishable to the owner without leaking either. */}
+              <IdentityCard tenant={tenant} />
+
               <TenantHistoryPanel tenantId={tenantId} />
               <div className="flex gap-2.5">
                 <button
@@ -426,7 +432,7 @@ export function TenantDetailPage() {
         onShareLink={() => tenantActions.sharePaymentLink(tenant.id, tenant.phone, tenant.outstanding || undefined)}
         onCreateCharge={() => setCreateChargeOpen(true)}
         onViewReceipts={() => setActiveTab('activity')}
-        onRequestChange={() => setRequestChangeOpen(true)}
+        onRequestChange={() => setAmendAgreementOpen(true)}
         onChangeBilling={() => setChangeBillingOpen(true)}
         onChangeRoom={() => setChangeRoomOpen(true)}
       />
@@ -486,35 +492,11 @@ export function TenantDetailPage() {
           }}
         />
       )}
-      <ChangeRequestDrawer
-        open={requestChangeOpen}
-        onClose={() => setRequestChangeOpen(false)}
-        tenantId={tenant.id}
-        hostelId={tenant.hostelId}
-        tenantData={{
-          name: tenant.name,
-          phone_1: tenant.phone,
-          monthly_rent: tenant.stay.monthlyRent,
-          security_deposit: tenant.stay.deposit,
-        }}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['owner', 'tenant', tenant.id, 'detail'] })}
-      />
-      <ChangeRoomSheet
-        open={changeRoomOpen}
-        onClose={() => setChangeRoomOpen(false)}
-        tenantId={tenant.id}
-        tenantName={tenant.name}
-        hostelId={tenant.hostelId}
-        currentRoomId={tenant.currentRoomId}
-        currentRoomNo={tenant.room}
-        currentRent={tenant.stay.monthlyRent}
-      />
-      <DocumentPreviewSheet
-        open={previewDoc != null}
-        onClose={() => setPreviewDoc(null)}
-        title={previewDoc?.title ?? ''}
-        url={previewDoc?.url ?? null}
-        fileName={previewDoc?.fileName ?? 'document'}
+      <AmendAgreementSheet
+        open={amendAgreementOpen}
+        onClose={() => setAmendAgreementOpen(false)}
+        tenant={tenant}
+        onChangeRent={() => setChangeRentOpen(true)}
       />
       <RejectDocumentSheet
         open={rejectingDoc != null}

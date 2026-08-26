@@ -50,7 +50,7 @@ const GROUPS: {
   {
     label: 'Agreement',
     rows: [
-      { icon: RotateCcw, title: 'Request Change', sub: "Ask tenant to re-sign terms", key: 'request-change' },
+      { icon: RotateCcw, title: 'Amend Agreement', sub: 'Duration, deposit, maintenance', key: 'request-change' },
       { icon: ArrowLeftRight, title: 'Change Rent', sub: 'Revise monthly rent amount', key: 'change-rent' },
       { icon: CalendarClock, title: 'Change Billing Frequency', sub: 'Monthly, quarterly or yearly', key: 'change-billing' },
     ],
