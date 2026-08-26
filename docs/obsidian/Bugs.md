@@ -8,6 +8,38 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-08-26 — The owner tenant profile rendered controls that did nothing (fixed)
+
+Five separate defects on `/owner/tenants/:tenantId`, one shared cause: the routed page (`features/owner-tenants/pages/TenantDetailPage.tsx`) was a Stayo-styled re-implementation of a second, *unrouted* tenant-profile tree (`features/tenants/components/profile/`, ~700 lines, zero importers) — and it copied the appearance of that tree's sections without their handlers. Work had landed in the dead tree; the live page looked finished.
+
+- **The Communication Center was decorative.** `CommRowActions()` rendered four `<span>` elements — not buttons, no `onClick`, no `aria-label`. One of the four (a document icon) mapped to no action in either tree. Meanwhile the wired `CommunicationCenter`, with call/WhatsApp/copy/history, rendered nowhere. Emergency contact was never shown at all despite `phone_3` and `profile.emergency_contact` being on the response.
+- **Private Notes discarded what the owner typed.** `useTenantNotes` (GET/POST/DELETE `/api/tenants/:id/notes`) was fully wired and called only by `InvitedTenantProfileView`. On this page the `+` button had no `onClick` and *"No private notes yet."* was a hardcoded string beneath it.
+- **Room change was impossible.** The Stay tab's "Change room" called `setActionsOpen(true)`, and the Actions sheet had no room row. The only other route was Request Change → Transfer Room, whose room field was `{ key: 'room_id', type: 'text' }` — a free-text box for a UUID — submitted through the change-management facade, which drops it, because `room_id` is not a `tenant_profile` field. Three working backends existed and none were reachable: `POST /api/allocations/shift`, `POST /api/tenants/transfer`, and a wired-but-dead `TransferRoomSheet`.
+- **"+ Add Charge" had no `onClick`.** `CreateObligationModal` was mounted and reachable only from the Actions sheet.
+- **A change request awaiting tenant approval was reported as applied.** `PUT /api/tenants/:id` answers **200 + the tenant** when a change applies and **202 + the change request** when it needs tenant consent. Neither body carries an `applied` field, and `ChangeRequestDrawer` inferred one with `data?.applied !== false` — `undefined !== false` is `true`, so *both* outcomes rendered "Changes applied successfully." An owner who submitted a Category C contractual change was told it was done and had no reason to follow it up.
+
+**Fix.** The pieces the dead tree got right were rebuilt as tested pure modules (`contactChannels`, `roomOptions`, `documentGroups`, `overdueDisplay`, `amendmentOutcome`) with thin components over them, and the dead tree was deleted — 13 files under `features/tenants/components/{profile,allocation}`, plus `ChangeRequestDrawer`/`ChangePreview`/`PendingBanner`. Room change is now a two-tap sheet on `/api/allocations/shift`. See [[Decisions#ADR-123|ADR-123]], [[Decisions#ADR-124|ADR-124]], [[Features]], [[Changelog]].
+
+## 2026-08-26 — The OVERDUE tile showed a boolean wearing a unit (fixed)
+
+`useTenantDetail` computed `overdueMonths: Number(o.overdue_amount ?? 0) > 0 ? 1 : 0` and the profile rendered it as `{tenant.overdueMonths} days`. The value was neither months nor days: a tenant one day late and a tenant three months late both read **"1 days"**, and everyone else read **"0 days"** — a number that looked precise, was never right, and gave an owner no way to tell an urgent case from a routine one.
+
+The field name said months, the label said days, and the value was a flag. Nothing in between checked.
+
+**Fix.** `overdueDisplay.ts` derives real days from the oldest still-unpaid obligation's due date, keeping `overdue_amount` (from `FinancialReadModelService`) as the authority on *whether* the tenant is overdue and using due dates only for *how long*. When no due date can answer, the tile shows the tone and label with no number rather than inventing one. 13 tests, including the original bug as a named case.
+
+Related: `advance_balance` (rent paid ahead) was computed on every response and dropped by the same mapper — now a Future credit tile.
+
+## 2026-08-26 — Document View and Download sent no authentication (fixed)
+
+`DocumentReviewCard` opened a tenant's KYC document with `window.open(doc.downloadUrl)` and offered `<a href={downloadUrl} download>`. Both are bare cross-origin browser requests carrying **no `Authorization` header**. `middleware.ts` accepts a bearer token, then the `hms_session` cookie, then a query token (SSE only) — so these fell through to the cookie, which is written once at `/api/auth/login` and **never refreshed** (under ADR-031 Supabase refreshes into localStorage, not that cookie). The links therefore work for roughly one access-token lifetime after sign-in and 401 afterwards; under Safari/ITP cross-site cookie blocking, never. The failure is silent — a blank tab.
+
+Independently, `<a download>` is ignored by browsers for cross-origin URLs: it navigates instead of downloading.
+
+**Fix.** `useDocumentBlob` fetches through the authenticated API client (`responseType: 'blob'`), so the request carries the same live token as every other call, and `DocumentPreviewSheet` renders the document in-app — images inline, PDFs in an `<object>` with a download fallback for browsers that refuse to embed them. Download is a blob-anchor click, which works cross-origin. Failures are distinguished and named: 401/403 as an expired session, 404 as a missing document, 502 as an unreachable stored file.
+
+> **Not reproduced against a running instance.** The mechanism is traced from `middleware.ts`, `lib/auth.ts` and the login route; no session was exercised to confirm the exact expiry behaviour. The fix is correct regardless — it removes the cookie dependency and adds the in-app preview — but the severity of the original defect is inferred, not measured.
+
 ## 2026-08-25 — "+ Add hostel" resumed an old hostel instead of adding one (fixed)
 
 **Reported as** the wizard skipping its first two steps: tapping **+ Add hostel** landed straight on the Rooms screen, already showing "Ground floor" and "First floor", without ever asking for a name.

@@ -65,3 +65,14 @@ The other three funnel templates (`lead_received`, `invitation`, `lead_rejected`
 Changing the category requires resubmitting the template for Meta review, which is why it is deferred: the risk is silent non-delivery to a subset of owners, not a broken flow, and re-review would stall launch.
 
 When picked up: edit the category in WhatsApp Manager, wait for approval, then run `npm run check:whatsapp-template` to confirm shape and language still match. See [[Business-Rules]] for the full verified template table.
+
+## Owner tenant profile — slice 2 and adjacent gaps (raised 2026-08-26)
+
+Spec: `docs/superpowers/specs/2026-08-26-owner-tenant-profile-design.md`.
+
+- **Vault document-share review has no owner UI.** `GET /api/owner/document-shares` and `PATCH /api/owner/document-shares/:shareId/verdict` (the identity vault, ADR-110/111/112) have **zero frontend callers**. A tenant who shares a vault document with a hostel creates a review request no owner can see or act on. `documentGroups.ts` already accommodates the group and is called with an empty share list until this lands.
+- **The owner↔tenant document conversation is read-only.** `POST /api/tenants/:id/documents/:docId/message` exists, `tenantService.postDocumentMessage` wraps it, and `parseRejectionThread` already parses the thread — but the review card shows only the owner's latest rejection line. The tenant's replies are fetched and discarded.
+- **`CorrectPaymentModal` has no mount point.** Payment reversal and transfer (`/api/recovery/cases/*`, a real, built backend) are unreachable from anywhere in the app — its only mount was the zero-importer `TenantProfilePage`. Wire it into `TenantDetailPage`'s Activity tab, per the pattern the deleted page used (`onCorrectPayment` threaded through the payment rows).
+- **Per-tenant service requests.** The owner sees complaints hostel-wide at `/owner/more/service-requests` only; there is no way to ask what *this* tenant has raised from their profile.
+- **Risk score detail.** `/api/tenants/:id/score` returns `insights[]` and `suggestions[]`; the card renders `[0]` of one of them, with no link to the payments driving the score.
+- **Unverified:** the document-download 401 described in [[Bugs]] was traced from source but never reproduced against a running instance. Worth confirming the `hms_session` cookie's real lifetime before assuming the same failure mode exists elsewhere (receipts, exports) that also open backend URLs directly.
