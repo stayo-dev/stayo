@@ -46,6 +46,9 @@ are correct — the work is to *unlock* them, not to reimplement:
   `hostel_id` at invite time, with `profile_id: null` by design. An ignored
   invite is a **complete tenancy that has been switched off**, not a stub.
 - **OTP infrastructure.** `/api/auth/send-phone-otp`, `/api/auth/verify-phone-otp`.
+- **WhatsApp reminder delivery.** `whatsappReminderDeliveryService.sendRentReminder`,
+  with provider handling, idempotency keys and delivery logs already isolated
+  from the business orchestrator. Reused as-is; only its *inputs* change.
 - **Canonical phone normalization (frontend).** `src/shared/lib/phone.ts` —
   `canonicalPhone()` produces E.164 `+91XXXXXXXXXX`.
 - **Just-in-time identity linking.** ADR-031 / `lib/auth/supabase-identity.ts`
@@ -224,7 +227,45 @@ Edge cases:
 - **Room at capacity at adopt time** — the existing guard throws
   `CAPACITY_EXCEEDED`; surfaced as a room picker, not a dead end.
 
-## 8. Owner UX
+## 8. Reaching a tenant who has no account
+
+Adoption alone does **not** deliver automated messages, and this is core to the
+requirement rather than a later refinement. `reminder-service.ts:482` resolves
+the recipient as `tenant.profiles?.phone`, and the name as
+`tenant.profiles?.name`. An owner-managed tenant has `profile_id: null`, so
+**every WhatsApp reminder is skipped with `TENANT_PHONE_MISSING`** and email
+addresses them as "Tenant".
+
+This is §1's root cause one layer down: the notification layer assumes a
+tenant's contact details live on their *account*. For an owner-managed tenant
+they live on `tenants.phone_1` and `display_name`.
+
+**Required changes:**
+
+1. `resolveTenantPhone(tenant)` alongside `resolveTenantName(tenant)`, falling
+   back `profile.phone → tenants.phone_1`, both returning canonical E.164.
+   `triggerNotification` uses them instead of reaching into `profiles`.
+2. **WhatsApp is the only channel that reaches an owner-managed tenant** — they
+   have no app, and often no email. `config.reminder_whatsapp` defaults to
+   `false` per hostel, which would silently mean "no messages at all" for
+   exactly the tenants who need them most. Adopting a tenant must therefore
+   surface this to the owner rather than failing quietly.
+3. **Escalation must not advance on channels that reached nobody.** Today the
+   in-app channel writes a `reminder_logs` row unconditionally, and escalation
+   reads those rows: `DUE_SOON → WARNING → FINAL_NOTICE`, never repeating a
+   type, terminal after `FINAL_NOTICE`. An owner-managed tenant would burn the
+   entire ladder without a single message arriving, then go permanently silent,
+   while the owner sees "final notice sent" against someone never contacted.
+   In-app must count as `skipped: true, reason: "NO_TENANT_ACCOUNT"` for
+   `OWNER_MANAGED` tenants, and escalation must key on a reminder that actually
+   reached a channel.
+4. Every message to an owner-managed tenant carries a **claim link**, making
+   each reminder a zero-pressure invitation to self-serve.
+
+Receiving a WhatsApp message is not "using a platform" — this is the one form of
+reach that works for a tenant who will never install anything.
+
+## 9. Owner UX
 
 The governing principle: **nothing in the owner's workflow may ever be gated on
 tenant action.** An owner-managed tenant must read as a *full* tenant, never a
@@ -258,30 +299,32 @@ receipts deliver via the existing `whatsAppTemplateDeliveryService`. Messages to
 owner-managed tenants must carry a claim link, making every reminder a soft,
 zero-pressure invitation to self-serve.
 
-## 9. Delivery phases
+## 10. Delivery phases
 
 Both halves were explicitly requested and both ship; they sequence cleanly
 because Phase 1 has no dependency on Phase 2.
 
-**Phase 1 — the owner stops being blocked.** The `access_mode` /
-`display_name` migration, `resolveTenantName`, the extracted
+**Phase 1 — the owner manages, and the tenant still hears from us.** The
+`access_mode` / `display_name` migration, `resolveTenantName` and
+`resolveTenantPhone`, the canonical backend phone normalizer, the extracted
 reservation→allocation helper, Adopt and Add-directly, the conditional
-invariants, and the owner UX in §8 excluding WhatsApp. At the end of this
-phase an ignored invite can be adopted and rent, reminders, occupancy and
-analytics all become correct. This alone resolves the originating problem.
+invariants, the owner UX in §9, **and all of §8**. At the end of this phase an
+ignored invite can be adopted; rent, occupancy and analytics become correct;
+and automated WhatsApp reminders reach a tenant who never activated.
 
-**Phase 2 — the tenant can continue.** The canonical backend phone normalizer
-(a hard prerequisite — see §7), OTP-gated claim, the confirmation card, the
-multi-match picker, marketplace-profile reuse, Revoke, and owner notification.
+§8 is in Phase 1 deliberately. Splitting it out would ship a state where
+reminders appear to fire, log as sent, escalate to final notice and stop — with
+nothing having reached the tenant. That is worse than not sending at all,
+because it looks like it worked.
 
-**Phase 3 — reach.** WhatsApp reminders and receipts to owner-managed tenants,
-each carrying a claim link so every reminder doubles as a zero-pressure
-invitation.
+**Phase 2 — the tenant can continue.** OTP-gated claim, the confirmation card,
+the multi-match picker, marketplace-profile reuse, Revoke, and owner
+notification. The claim link embedded in Phase 1's messages activates here.
 
 The Phase 1 migration carries the outage risk noted in §4 and must be applied
 before the declaring code ships, in its own deploy step.
 
-## 10. Testing
+## 11. Testing
 
 Per the repo's constraints: `apps/frontend` tests are node-environment only, so
 decision logic goes in pure `.ts` with colocated `.test.ts` and components stay
@@ -296,9 +339,13 @@ thin renderers. `apps/backend` pure tests must be added to
 - Integration: claim preserves obligations, payments and receipts on the same row
 - Integration: claim without OTP is refused
 - Integration: stale invite link after adopt routes to claim, not to an error
+- Pure: `resolveTenantPhone` fallback order, canonical output
+- Integration: an adopted tenant with no profile receives a WhatsApp reminder
+- Integration: in-app is skipped (not logged as sent) for `OWNER_MANAGED`
+- Integration: escalation does not advance when no channel actually delivered
 - Invariant scripts extended per §5
 
-## 11. Documentation
+## 12. Documentation
 
 Same-change updates required: [[Database]] (new columns, enum, attestation
 table), [[APIs]] (adopt / revoke / claim endpoints), [[Business-Rules]] (the two
