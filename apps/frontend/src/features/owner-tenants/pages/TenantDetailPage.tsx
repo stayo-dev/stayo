@@ -7,7 +7,6 @@ import { StatusPill } from '@shared/ui-patterns/StatusPill';
 import { EmptyState } from '@shared/ui-patterns/EmptyState';
 import { queryKeys } from '@lib/queryKeys';
 import { useTenantActions } from '@features/tenants/hooks/useTenantActions';
-import { CreateObligationModal } from '@features/tenants/components/financial/CreateObligationModal';
 import { ChangeFrequencyModal } from '@/app/components/modals/ChangeFrequencyModal';
 import { useTenantDetail } from '../hooks/useTenantDetail';
 import { useDocumentVerification } from '../hooks/useDocumentVerification';
@@ -28,6 +27,7 @@ import { toDocumentGroups } from '../profile/documentGroups';
 import { AmendAgreementSheet } from '../profile/AmendAgreementSheet';
 import { PendingChangeCard } from '../profile/PendingChangeCard';
 import { ComplianceCard } from '../profile/ComplianceCard';
+import { CreateChargeSheet } from '../profile/CreateChargeSheet';
 import { ChangeRentModal } from '../actions/ChangeRentModal';
 import { MoveOutSheet } from '../actions/MoveOutSheet';
 import { QuickCollectModal } from '../quick-collect/QuickCollectModal';
@@ -465,19 +465,13 @@ export function TenantDetailPage() {
         tenantName={tenant.name}
         roomNo={tenant.room}
       />
-      {createChargeOpen && (
-        <CreateObligationModal
-          isOpen={createChargeOpen}
-          onClose={() => setCreateChargeOpen(false)}
-          tenantId={tenant.id}
-          hostelId={tenant.hostelId}
-          onSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: ['owner', 'tenant', tenant.id, 'detail'] });
-            queryClient.invalidateQueries({ queryKey: queryKeys.payments.all(tenant.hostelId) });
-            queryClient.invalidateQueries({ queryKey: queryKeys.portfolio.all() });
-          }}
-        />
-      )}
+      <CreateChargeSheet
+        open={createChargeOpen}
+        onClose={() => setCreateChargeOpen(false)}
+        tenantId={tenant.id}
+        tenantName={tenant.name}
+        hostelId={tenant.hostelId}
+      />
       {changeBillingOpen && (
         <ChangeFrequencyModal
           tenantId={tenant.id}

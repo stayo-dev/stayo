@@ -8,6 +8,28 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-08-27 — Create Charge asked for a password that protected nothing (fixed)
+
+`CreateObligationModal` required the owner's login password on every manual charge. It called `identityService.confirmIdentity(password)`, read the returned `identity_token` — and then never sent it. The request it made was:
+
+```ts
+await api.post('/payments/obligations', {
+  tenant_id, obligation_type, amount, due_date, rent_month, description, notes,
+});
+```
+
+No token. `POST /api/payments/obligations` accepts none: it is owner-scoped by session (`tenant.owner_id !== ownerId` → 403) and has no identity guard. So the prompt added a step to a routine action and guarded nothing — anyone holding the session could post directly without it.
+
+Worse, `confirmIdentity` was called with **no purpose**, so it defaulted to `OFFLINE_PAYMENT` — minting a single-use token bound to *recording a payment* as a side effect of filling in a charge form, then abandoning it to expire in `identity_tokens`.
+
+The contrast is in the same directory: `CancelObligationModal` and `WaiveObligationModal` both pass their token through to `onConfirm` and on to the backend, which does verify it. Those two forgive money; creating a charge raises a debt and is undone by cancelling it. Only the first kind warrants the step.
+
+**Fix.** The password field is gone. `CreateChargeSheet` posts the charge directly. Cancel and Waive are untouched.
+
+**Second defect in the same form: the type defaulted to `RENT`.** Rent is generated every month by `rentGenerationService`, so a manual rent installment double-bills the tenant for a month they already owe — and it was the preselected value, reachable by an owner who filled in an amount and a date without touching the dropdown. There is no default now; the type is an explicit choice, `RENT` is ordered away from the top, and choosing it shows a caution saying why.
+
+**Third: the billing month drifted west of UTC.** `new Date(dueDate)` parsed `YYYY-MM-DD` as a UTC instant, then `.getFullYear()`/`.getMonth()` read it in local time — so a charge due on the 1st filed under the *previous* month for any viewer in a negative offset. `resolveBillingMonth` computes entirely in UTC and is tested for that case.
+
 ## 2026-08-26 — Any owner could transfer any other owner's tenant (fixed)
 
 Found while wiring hostel transfer into the owner's Move flow, which is what made the endpoint reachable.
