@@ -36,7 +36,12 @@ export function TenantAvatar({
 
   if (photoUrl && !failed) {
     return (
-      <span className={`flex-none overflow-hidden border border-border ${radius} ${className}`}>
+      /* `block` is load-bearing. `flex-none` only sets flex-grow/shrink — it
+         does not set a display mode — and width/height are ignored on a
+         `display: inline` element, so without this the box collapses,
+         `overflow-hidden` clips nothing, and the image renders at its natural
+         size and blows the layout apart. */
+      <span className={`block flex-none overflow-hidden border border-border ${radius} ${className}`}>
         <img
           src={photoUrl}
           alt={name}
