@@ -25,6 +25,7 @@ import { ChangeRoomSheet } from '../profile/ChangeRoomSheet';
 import { DocumentPreviewSheet } from '../profile/DocumentPreviewSheet';
 import { toDocumentGroups } from '../profile/documentGroups';
 import { ReviewRequestCard } from '../profile/ReviewRequestCard';
+import { DocumentThread } from '../profile/DocumentThread';
 import { useDocumentShares } from '../hooks/useDocumentShares';
 import { AmendAgreementSheet } from '../profile/AmendAgreementSheet';
 import { PendingChangeCard } from '../profile/PendingChangeCard';
@@ -69,7 +70,13 @@ export function TenantDetailPage() {
   const [amendAgreementOpen, setAmendAgreementOpen] = useState(false);
   const [changeRoomOpen, setChangeRoomOpen] = useState(false);
   const [rejectingDoc, setRejectingDoc] = useState<ReviewDocument | null>(null);
-  const [previewDoc, setPreviewDoc] = useState<{ title: string; url: string | null; fileName: string } | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<{
+    title: string;
+    url: string | null;
+    fileName: string;
+    /** Set only for KYC documents, which are the ones that carry a thread. */
+    doc?: ReviewDocument;
+  } | null>(null);
 
   const tenantActions = useTenantActions(tenant?.hostelId ?? '');
   const verification = useDocumentVerification(tenantId);
@@ -370,6 +377,7 @@ export function TenantDetailPage() {
                           title: documentTypeLabel(d.docType),
                           url: d.downloadUrl,
                           fileName: `${d.docType.toLowerCase()}-${tenant.name.replace(/\s+/g, '-').toLowerCase()}`,
+                          doc: d,
                         })
                       }
                     />
@@ -537,7 +545,9 @@ export function TenantDetailPage() {
         title={previewDoc?.title ?? ''}
         url={previewDoc?.url ?? null}
         fileName={previewDoc?.fileName ?? 'document'}
-      />
+      >
+        {previewDoc?.doc && <DocumentThread tenantId={tenant.id} doc={previewDoc.doc} />}
+      </DocumentPreviewSheet>
       <RejectDocumentSheet
         open={rejectingDoc != null}
         docType={rejectingDoc?.docType ?? ''}
