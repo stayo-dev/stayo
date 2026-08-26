@@ -192,14 +192,21 @@ proof — the owner asserting "this is Rakesh's number" is not evidence that the
 person holding the handset is Rakesh. A single fat-fingered digit is otherwise a
 data breach waiting a month to happen.
 
-**Prerequisite — one canonical normalizer.** The backend currently has at least
-three phone normalizers: `lib/services/search/ranking.ts:41`, a private one in
-`lib/services/bulk-import-validation-service.ts:369`, and the invite path's own.
-Today that is cosmetic. Once phone is the identity key, two normalizers
-disagreeing means a tenant verifies `+91 98765 43210`, lookup misses
-`9876543210`, and a **second tenancy is silently created** — the exact duplicate
-this design exists to prevent. One normalizer matching `shared/lib/phone.ts`'s
-E.164 output, used by both write and lookup, ships first.
+**Prerequisite — one canonical normalizer.** Corrected after checking: the
+canonical normalizer already exists. `lib/utils/phone-utils.ts::normalizeIndianPhone`
+emits exactly `+91XXXXXXXXXX`, byte-identical to the frontend's
+`shared/lib/phone.ts::canonicalPhone`, and the invite path already uses it. The
+other two functions found in the backend —
+`lib/services/search/ranking.ts:41` and the private one in
+`lib/services/bulk-import-validation-service.ts:369` — return bare digits and
+are used for *fuzzy matching*, not for storage or identity.
+
+So this reduces to a standing rule plus a test, not a build: **every identity
+write and every identity lookup goes through `normalizeIndianPhone`**, and a
+parity test pins its output against the frontend's contract. Were the two to
+drift, a tenant would verify `+91 98765 43210`, lookup would miss
+`9876543210`, and a **second tenancy would be silently created** — the exact
+duplicate this design exists to prevent.
 
 Flow:
 
@@ -306,7 +313,7 @@ because Phase 1 has no dependency on Phase 2.
 
 **Phase 1 — the owner manages, and the tenant still hears from us.** The
 `access_mode` / `display_name` migration, `resolveTenantName` and
-`resolveTenantPhone`, the canonical backend phone normalizer, the extracted
+`resolveTenantPhone` (with the normalizer parity test of §7), the extracted
 reservation→allocation helper, Adopt and Add-directly, the conditional
 invariants, the owner UX in §9, **and all of §8**. At the end of this phase an
 ignored invite can be adopted; rent, occupancy and analytics become correct;
@@ -333,7 +340,7 @@ thin renderers. `apps/backend` pure tests must be added to
 
 - Pure: transition state machine (legal/illegal transitions per axis pair)
 - Pure: `resolveTenantName` fallback order
-- Pure: phone normalizer parity between backend and `shared/lib/phone.ts`
+- Pure: `normalizeIndianPhone` output parity with `shared/lib/phone.ts::canonicalPhone`
 - Integration: adopt generates obligations on the next rent run
 - Integration: adopt counts toward room capacity and analytics
 - Integration: claim preserves obligations, payments and receipts on the same row
