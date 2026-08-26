@@ -7,6 +7,7 @@ import { EmailService } from "../../../lib/services/email-service";
 import { eventLog } from "../../../lib/services/event-log-service";
 import { hostelBillingPreferencesService, type MaintenanceType } from "../../../lib/services/hostel-billing-preferences-service";
 import { roomCapacityService } from "../../../lib/services/room-capacity-service";
+import { ensureActiveAllocation } from "./tenancy-allocation";
 import { onboardingFinancialsService } from "../payments/onboarding-financials-service";
 import { selectCurrentTenancy } from "@/lib/tenancy/active-tenancy";
 import { recordWhatsAppDelivery, readWhatsAppDeliveredAt } from "./invitation-delivery-trust";
@@ -1140,27 +1141,12 @@ export class TenantInvitationLifecycleService {
       // owners on the platform collect them on their own terms. The capacity check
       // below stays, because that is overbooking protection, not a payment gate.
       await tx.$executeRaw`SELECT id FROM rooms WHERE id = ${reservation.room_id}::uuid FOR UPDATE`;
-      const capacity = await this.getRoomCapacitySnapshot(tx, reservation.room_id);
-      if (capacity.occupied >= Number(capacity.room.capacity || 0)) {
-        throw new Error("CAPACITY_EXCEEDED: Reserved room no longer has available capacity");
-      }
-
-      // Check if there is already an active room allocation
-      const existingAllocation = await tx.roomAllocation.findFirst({
-        where: { tenant_id: tenant.id, is_active: true, end_date: null }
+      await ensureActiveAllocation(tx, {
+        tenantId: tenant.id,
+        roomId: reservation.room_id,
+        hostelId: reservation.hostel_id,
+        startDate: tenantRow[0].joined_on || startOfToday(),
       });
-      if (!existingAllocation) {
-        await tx.roomAllocation.create({
-          data: {
-            id: crypto.randomUUID(),
-            tenant_id: tenant.id,
-            room_id: reservation.room_id,
-            hostel_id: reservation.hostel_id,
-            start_date: tenantRow[0].joined_on || startOfToday(),
-            is_active: true,
-          },
-        });
-      }
 
       await tx.tenant_invitation_reservations.update({
         where: { id: reservation.id },
