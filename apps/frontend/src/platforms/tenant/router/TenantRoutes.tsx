@@ -2,6 +2,7 @@ import { lazy, type ReactNode } from 'react';
 import { Navigate, Route, useNavigate } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import { TenantProviderShell } from './TenantProviderShell';
+import { ProtectedFarewellRoute } from '@/app/components/ProtectedFarewellRoute';
 
 const TenantAppShell = lazy(() =>
   import('@/app/layouts/TenantAppShell').then((m) => ({ default: m.TenantAppShell })),
@@ -17,6 +18,7 @@ const TenantProfilePortalPage = lazy(() =>
 );
 const TenantMoveOutPage = lazy(() => import('@/portal/pages/TenantMoveOutPage').then((m) => ({ default: m.TenantMoveOutPage })));
 const TenantRenewalPage = lazy(() => import('../pages/TenantRenewalPage').then((m) => ({ default: m.TenantRenewalPage })));
+const TenantFarewellPage = lazy(() => import('../pages/TenantFarewellPage').then((m) => ({ default: m.TenantFarewellPage })));
 const TenantPaymentReturnPage = lazy(() =>
   import('@/portal/pages/TenantPaymentReturnPage').then((m) => ({ default: m.TenantPaymentReturnPage })),
 );
@@ -67,6 +69,24 @@ function TenantSubPage({ title, backTo, children }: { title: string; backTo: str
  * remount.
  */
 export function TenantRoutes() {
+  return (
+    <>
+      {/*
+        * Deliberately OUTSIDE `TenantProviderShell`. That shell is
+        * `ProtectedTenantRoute`, which sends an EXITED tenant here — nesting
+        * the farewell route inside it would redirect the screen to itself,
+        * forever. It has its own, weaker gate: signed in, and has a tenancy
+        * behind them. (ADR-122)
+        */}
+      <Route path="/tenant/farewell" element={<ProtectedFarewellRoute />}>
+        <Route index element={<TenantFarewellPage />} />
+      </Route>
+      {tenantAppRoutes()}
+    </>
+  );
+}
+
+function tenantAppRoutes() {
   return (
     <Route element={<TenantProviderShell />}>
       <Route path="/payment-return" element={<TenantPaymentReturnPage />} />

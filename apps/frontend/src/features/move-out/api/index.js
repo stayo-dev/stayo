@@ -72,6 +72,18 @@ export const moveOutService = {
     const response = await api.post(`/move-out/requests/${requestId}/reject`, payload);
     return unwrap(response);
   },
+  /**
+   * Close a whole move-out in one owner action (ADR-122).
+   *
+   * `expectedNet`/`expectedDirection` are the figures the sheet had on
+   * screen. The server recomputes and rejects with 409 STALE_PREVIEW if the
+   * settlement moved — so the owner can never one-tap an outcome different
+   * from the one they read.
+   */
+  quickExit: async (payload) => {
+    const response = await api.post('/move-out/quick-exit', payload);
+    return unwrap(response);
+  },
   getAnalytics: async (hostelId) => {
     const response = await api.get('/move-out/analytics', { params: { hostelId } });
     return unwrap(response);

@@ -34,6 +34,45 @@ async function supabaseRejection(req: NextRequest) {
   return result.ok ? null : result;
 }
 
+/**
+ * Which tenancy speaks for a person who has more than one.
+ *
+ * This used to be a bare `findFirst({ where: { profile_id } })` — no
+ * `orderBy`, no status filter — so Postgres returned whichever row it liked.
+ * Someone re-admitted after a previous stay could be handed the OLD,
+ * `FORMER_TENANT` row, and every `hasLiveTenancy` gate downstream then locked
+ * them out of the hostel they had just joined.
+ *
+ * The precedence is the same one `profile-identity-service.ts` already uses
+ * (`selectFallbackTenancy`): the live tenancy wins, else the most recently
+ * created one. Deliberately NOT `orderBy: { status: 'asc' }` — `TenantStatus`
+ * declares `INVITED` before `ACTIVE`, so sorting on the enum would prefer a
+ * tenancy the person never activated over the one they actually live in.
+ */
+async function selectRepresentativeTenancy(profileId: string) {
+  const withRoom = {
+    room_allocations: {
+      where: { is_active: true },
+      orderBy: { created_at: "desc" as const },
+      take: 1,
+      include: { room: true },
+    },
+  };
+
+  const live = await prisma.tenants.findFirst({
+    where: { profile_id: profileId, status: { in: ["INVITED", "ACTIVE"] } },
+    orderBy: { created_at: "desc" },
+    include: withRoom,
+  });
+  if (live) return live;
+
+  return prisma.tenants.findFirst({
+    where: { profile_id: profileId },
+    orderBy: { created_at: "desc" },
+    include: withRoom,
+  });
+}
+
 export async function GET(req: NextRequest) {
   const session = await getSession(req);
   if (!session) {
@@ -79,17 +118,7 @@ export async function GET(req: NextRequest) {
     let tenantId: string | null = null;
 
     if (profile.role === "TENANT") {
-      const tenant = await prisma.tenants.findFirst({
-        where: { profile_id: profile.id },
-        include: {
-          room_allocations: {
-            where: { is_active: true },
-            orderBy: { created_at: "desc" },
-            take: 1,
-            include: { room: true }
-          }
-        }
-      });
+      const tenant = await selectRepresentativeTenancy(profile.id);
 
       if (tenant) {
         tenantId = tenant.id;
@@ -103,6 +132,42 @@ export async function GET(req: NextRequest) {
           extra.room_no = activeAlloc.room.room_no;
           extra.room_capacity = activeAlloc.room.capacity;
         }
+
+        /*
+         * Exit state, for the tenant app's read-only window (ADR-122).
+         *
+         * `tenant_status` alone cannot answer "may this person still open
+         * their dashboard?". A FORMER_TENANT whose settlement is still open
+         * has money in flight and MUST keep read access — locking them out
+         * the moment the bed is released (which is what `vacate` does, a
+         * whole step before the money settles) evicted people from the app
+         * while they were still owed a refund.
+         *
+         * So the frontend gets a third value instead of a boolean: LIVE /
+         * EXITING / EXITED. `exit_request_id` lets the farewell screen and
+         * the read-only dashboard fetch the settlement without first
+         * listing every request in the hostel.
+         */
+        const openExit = await prisma.move_out_requests.findFirst({
+          where: { tenant_id: tenant.id, status: { notIn: ["COMPLETED", "REJECTED"] } },
+          orderBy: { created_at: "desc" },
+          select: { id: true, status: true },
+        });
+
+        const isLive = tenant.status === "INVITED" || tenant.status === "ACTIVE";
+        extra.tenancy_state = isLive ? "LIVE" : openExit ? "EXITING" : "EXITED";
+        extra.exit_request_id = openExit?.id ?? null;
+
+        if (!openExit && !isLive) {
+          // Settled and gone — the farewell screen needs the last completed
+          // request to show the receipt, not just the fact that they left.
+          const lastExit = await prisma.move_out_requests.findFirst({
+            where: { tenant_id: tenant.id, status: "COMPLETED" },
+            orderBy: { completed_at: "desc" },
+            select: { id: true },
+          });
+          extra.exit_request_id = lastExit?.id ?? null;
+        }
       } else {
         // A TENANT with no tenancy is a Stayo Discover account — someone who
         // signed up to browse and enquire but has not moved in anywhere
@@ -112,6 +177,8 @@ export async function GET(req: NextRequest) {
         // /complete-profile on reload. See Bugs.md.
         extra.is_profile_completed = profile.is_profile_completed;
         extra.tenant_status = null;
+        extra.tenancy_state = "NONE";
+        extra.exit_request_id = null;
       }
     } else {
       extra.is_profile_completed = profile.is_profile_completed;

@@ -50,6 +50,42 @@ export const ACTIVE_TENANT_TABS: AppNavTab[] = [
 /** A tenancy is "live" for nav purposes if it hasn't ended or fallen through. */
 export const LIVE_TENANCY_STATUSES = new Set(['INVITED', 'ACTIVE']);
 
+/**
+ * Where a person stands with their tenancy — three states, not two.
+ *
+ * `tenant_status` alone could not answer "may they still open the
+ * dashboard?", because the answer changes twice at move-out and the two
+ * moments are a whole step apart. `vacate` flips a tenant to FORMER_TENANT
+ * the instant the bed is released; the money settles later, at `complete`.
+ * Keying access off the status alone locked people out of the app while they
+ * were still owed a refund, and dropped them on Discover with no explanation
+ * — as though they had never lived anywhere.
+ *
+ * - LIVE    — INVITED/ACTIVE. Full dashboard.
+ * - EXITING — left, settlement still open. Read-only dashboard: they can
+ *             watch the refund land, and can't be charged or act further.
+ * - EXITED  — left and settled. Farewell screen, and their receipt, forever.
+ *
+ * Computed by the backend in `/api/auth/me` (it knows whether an unsettled
+ * move-out exists); this file only names the values. See ADR-122.
+ */
+export type TenancyState = 'LIVE' | 'EXITING' | 'EXITED' | 'NONE';
+
+/** Dashboard routes open at all — full for LIVE, read-only for EXITING. */
+export function canOpenDashboard(state: TenancyState | null | undefined): boolean {
+  return state === 'LIVE' || state === 'EXITING';
+}
+
+/** Dashboard opens, but every action in it is disabled. */
+export function isDashboardReadOnly(state: TenancyState | null | undefined): boolean {
+  return state === 'EXITING';
+}
+
+/** They have a tenancy behind them and a farewell/receipt to see. */
+export function hasFarewell(state: TenancyState | null | undefined): boolean {
+  return state === 'EXITING' || state === 'EXITED';
+}
+
 
 /**
  * The outer bar, with the account tab named for what the person actually has.
@@ -70,10 +106,22 @@ export const LIVE_TENANCY_STATUSES = new Set(['INVITED', 'ACTIVE']);
  * PURE — runs under vitest's node environment.
  */
 export function buildOuterTabs(
-  { signedIn, liveTenancy }: { signedIn: boolean; liveTenancy: boolean },
+  { signedIn, liveTenancy, tenancyState }: {
+    signedIn: boolean;
+    liveTenancy: boolean;
+    tenancyState?: TenancyState | null;
+  },
 ): AppNavTab[] {
   // A live tenancy implies a signed-in account, so that bar is never relabelled.
   if (liveTenancy) return ACTIVE_TENANT_TABS;
+  /*
+   * Someone mid-exit keeps the dashboard tabs. The bar used to change shape
+   * the moment their bed was released — Home, Room, Food and Payments simply
+   * vanished — which is how a person with an unpaid refund lost the only
+   * screen that showed it. The read-only banner tells them what changed;
+   * deleting their navigation does not.
+   */
+  if (tenancyState === 'EXITING') return ACTIVE_TENANT_TABS;
   if (signedIn) return EXPLORE_PROFILE_TABS;
 
   return EXPLORE_PROFILE_TABS.map((tab) =>

@@ -1,11 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check, ChevronDown } from 'lucide-react';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { PAYMENT_MODES, type PaymentMode } from '@shared/mocks/payments';
 import { moveOutService } from '@features/move-out/api';
-import { canonicalMoveOutStatus } from '@shared/types/moveout';
 import { queryKeys } from '@lib/queryKeys';
+import {
+  buildConsequences,
+  canonicalStatus,
+  completionLabel,
+  decideLane,
+  exitProgress,
+  resolveActiveRequest,
+  summariseSettlement,
+  type DuesDisposition,
+  type SettlementPreview,
+} from './moveOutPlan';
 
 interface MoveOutSheetProps {
   open: boolean;
@@ -13,39 +23,65 @@ interface MoveOutSheetProps {
   tenantId: string;
   hostelId: string;
   tenantName: string;
+  roomNo?: string | null;
 }
+
+/**
+ * Owner-side move-out.
+ *
+ * Two lanes over one state machine (ADR-122). The common exit — a tenant
+ * whose course ended and who has already gone — is one screen and one tap:
+ * the settlement, the consequences, and a button that states what it is about
+ * to do. Anything needing judgement (damage to assess) or carrying a
+ * disagreement (an open dispute) falls into the staged flow, which is the
+ * pipeline that was always here, now with the money visible on every step
+ * instead of only on the third one.
+ *
+ * Every decision this file makes lives in `moveOutPlan.ts` and is tested
+ * there. This component renders; it does not decide.
+ *
+ * Replaces both the previous version of this sheet and
+ * `features/tenants/components/profile/ExitWorkflowSection.tsx`, which were
+ * two divergent implementations of the same flow.
+ */
 
 const REASON_LABEL: Record<string, string> = {
   COURSE_COMPLETED: 'Course completed',
   JOB_RELOCATION: 'Job relocation',
+  PERSONAL_REASONS: 'Personal reasons',
+  MOVING_CLOSER: 'Moving closer to work/college',
+  BETTER_HOSTEL: 'Found a better hostel',
   TOO_EXPENSIVE: 'Too expensive',
   POOR_MAINTENANCE: 'Poor maintenance',
   FOOD_QUALITY: 'Food quality',
   ROOMMATE_ISSUES: 'Roommate issues',
-  BETTER_HOSTEL: 'Found a better hostel',
-  PERSONAL_REASONS: 'Personal reasons',
   SAFETY_CONCERNS: 'Safety concerns',
   RULES_TOO_STRICT: 'Rules too strict',
-  MOVING_CLOSER: 'Moving closer to work/college',
   OTHER: 'Other',
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  REQUESTED: 'Requested — awaiting inspection',
-  SETTLEMENT_PENDING: 'Inspection done — settlement pending approval',
-  SETTLEMENT_APPROVED: 'Settlement approved — awaiting vacate',
-  PHYSICALLY_VACATED: 'Vacated — awaiting payment confirmation',
-  SETTLEMENT_PENDING_PAYMENT: 'Awaiting payment confirmation',
-  COMPLETED: 'Move-out completed',
-  REJECTED: 'Request rejected',
-};
+/**
+ * Owner-shaped reasons first.
+ *
+ * The old list opened on "Personal reasons" and offered only tenant motives
+ * ("Too expensive", "Roommate issues"), so an owner recording a routine
+ * end-of-course exit had to attribute a grievance to the tenant. Most records
+ * ended up saying "Personal reasons" regardless of truth, which made
+ * `/move-out/analytics` worse than useless.
+ */
+const OWNER_REASONS = ['COURSE_COMPLETED', 'JOB_RELOCATION', 'MOVING_CLOSER', 'PERSONAL_REASONS', 'OTHER'];
+const OTHER_REASONS = Object.keys(REASON_LABEL).filter((r) => !OWNER_REASONS.includes(r));
 
 const labelStyle = 'text-[11px] font-bold uppercase tracking-wide text-muted-foreground';
-const inputStyle = 'mt-1.5 w-full rounded-[11px] border border-border bg-card px-3.5 py-3 text-sm font-semibold text-foreground focus:border-primary focus:outline-none';
+const inputStyle =
+  'mt-1.5 w-full rounded-[11px] border border-border bg-card px-3.5 py-3 text-sm font-semibold text-foreground focus:border-primary focus:outline-none';
+const areaStyle =
+  'mt-1.5 min-h-[56px] w-full resize-none rounded-[11px] border border-border bg-card px-3.5 py-3 text-sm text-foreground focus:border-primary focus:outline-none';
 
-function todayValue() {
-  return new Date().toISOString().slice(0, 10);
-}
+const rupees = (n: number) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`;
+const todayValue = () => new Date().toISOString().slice(0, 10);
+const prettyDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
 function getErrorMessage(error: unknown, fallback: string) {
   const data = (error as { response?: { data?: { error?: { message?: string } } } })?.response?.data;
@@ -54,39 +90,29 @@ function getErrorMessage(error: unknown, fallback: string) {
 
 interface MoveOutRequest {
   id: string;
+  tenant_id: string;
   status: string;
   planned_exit_date: string;
   reason: string;
   reason_text: string | null;
-  settlement_preview: {
-    net_settlement_amount: number;
-    settlement_direction: 'OWNER_OWES_TENANT' | 'TENANT_OWES_OWNER' | 'SETTLED';
-    total_dues: number;
-    total_deductions: number;
-    security_deposit_amount: number;
-    advance_balance: number;
-  } | null;
+  settlement_preview: SettlementPreview | null;
   disputes: { id: string; status: string }[];
 }
 
-/**
- * Real Move-out / Checkout flow: looks up whether the tenant already has a
- * request, and if not offers "Initiate Move Out"; if so, drives the real
- * `moveOutService` state machine one stage at a time (REQUESTED → inspect →
- * SETTLEMENT_PENDING → settle → SETTLEMENT_APPROVED → vacate →
- * PHYSICALLY_VACATED → complete → COMPLETED), matching the pipeline in
- * `MoveOutStepper`/the (orphaned) `MoveOutsView.tsx`. Open disputes are
- * flagged but not resolved here — that's a separate, rarer flow, deferred.
- */
-export function MoveOutSheet({ open, onClose, tenantId, hostelId, tenantName }: MoveOutSheetProps) {
+export function MoveOutSheet({ open, onClose, tenantId, hostelId, tenantName, roomNo }: MoveOutSheetProps) {
   const queryClient = useQueryClient();
 
-  // -- new-request form state --
-  const [plannedExitDate, setPlannedExitDate] = useState(todayValue());
-  const [reason, setReason] = useState('PERSONAL_REASONS');
+  const [exitDate, setExitDate] = useState(todayValue());
+  const [reason, setReason] = useState('COURSE_COMPLETED');
   const [reasonText, setReasonText] = useState('');
+  const [showAllReasons, setShowAllReasons] = useState(false);
 
-  // -- inspection form state --
+  const [suspectsDamage, setSuspectsDamage] = useState(false);
+  const [duesDisposition, setDuesDisposition] = useState<DuesDisposition>('RECOVERABLE');
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>('Cash');
+  const [paymentReference, setPaymentReference] = useState('');
+
+  // Full-lane only.
   const [roomCondition, setRoomCondition] = useState<'GOOD' | 'FAIR' | 'POOR'>('GOOD');
   const [cleaningStatus, setCleaningStatus] = useState<'CLEAN' | 'NEEDS_CLEANING'>('CLEAN');
   const [damagesAmount, setDamagesAmount] = useState('0');
@@ -95,49 +121,45 @@ export function MoveOutSheet({ open, onClose, tenantId, hostelId, tenantName }: 
   const [otherDeductions, setOtherDeductions] = useState('0');
   const [deductionNotes, setDeductionNotes] = useState('');
 
-  // -- settle / vacate / complete state --
-  const [reviewNotes, setReviewNotes] = useState('');
-  const [physicalExitDate, setPhysicalExitDate] = useState(todayValue());
-  const [paymentMode, setPaymentMode] = useState<PaymentMode>('Cash');
-  const [paymentReference, setPaymentReference] = useState('');
-  const [paymentNotes, setPaymentNotes] = useState('');
-
   useEffect(() => {
-    if (open) {
-      setPlannedExitDate(todayValue());
-      setReason('PERSONAL_REASONS');
-      setReasonText('');
-      setRoomCondition('GOOD');
-      setCleaningStatus('CLEAN');
-      setDamagesAmount('0');
-      setCleaningFee('0');
-      setMissingItemsFee('0');
-      setOtherDeductions('0');
-      setDeductionNotes('');
-      setReviewNotes('');
-      setPhysicalExitDate(todayValue());
-      setPaymentMode('Cash');
-      setPaymentReference('');
-      setPaymentNotes('');
-    }
+    if (!open) return;
+    setExitDate(todayValue());
+    setReason('COURSE_COMPLETED');
+    setReasonText('');
+    setShowAllReasons(false);
+    setSuspectsDamage(false);
+    setDuesDisposition('RECOVERABLE');
+    setPaymentMode('Cash');
+    setPaymentReference('');
+    setRoomCondition('GOOD');
+    setCleaningStatus('CLEAN');
+    setDamagesAmount('0');
+    setCleaningFee('0');
+    setMissingItemsFee('0');
+    setOtherDeductions('0');
+    setDeductionNotes('');
   }, [open]);
 
   const listQuery = useQuery({
     queryKey: queryKeys.tenants.moveOut(hostelId, tenantId),
-    queryFn: () => moveOutService.listRequests(hostelId, { limit: 50 }) as Promise<{ requests: Array<{ id: string; tenant_id: string; status: string }> }>,
+    queryFn: () =>
+      moveOutService.listRequests(hostelId, { limit: 50 }) as Promise<{
+        requests: Array<{ id: string; tenant_id: string; status: string }>;
+      }>,
     enabled: open,
     staleTime: 15_000,
   });
 
-  const existingRequestId = useMemo(
-    () => listQuery.data?.requests.find((r) => r.tenant_id === tenantId)?.id,
+  const { active, lastCompleted } = useMemo(
+    () => resolveActiveRequest(listQuery.data?.requests, tenantId),
     [listQuery.data, tenantId],
   );
+  const detailId = active?.id ?? lastCompleted?.id;
 
   const detailQuery = useQuery({
-    queryKey: ['owner', 'move-out', 'detail', existingRequestId],
-    queryFn: () => moveOutService.getRequest(existingRequestId!) as Promise<MoveOutRequest>,
-    enabled: Boolean(existingRequestId),
+    queryKey: ['owner', 'move-out', 'detail', detailId],
+    queryFn: () => moveOutService.getRequest(detailId!) as Promise<MoveOutRequest>,
+    enabled: Boolean(detailId),
     staleTime: 10_000,
   });
 
@@ -149,14 +171,64 @@ export function MoveOutSheet({ open, onClose, tenantId, hostelId, tenantName }: 
     queryClient.invalidateQueries({ queryKey: queryKeys.portfolio.all() });
   };
 
+  const request = detailQuery.data;
+  const status = active ? canonicalStatus(active.status) : null;
+  const preview = request?.settlement_preview ?? null;
+  const hasOpenDispute = (request?.disputes ?? []).some(
+    (d) => d.status !== 'RESOLVED' && d.status !== 'REJECTED',
+  );
+
+  const lane = decideLane({ preview, hasOpenDispute, suspectsDamage });
+  const summary = summariseSettlement(preview);
+  const outstandingDues = Number(preview?.total_dues ?? 0);
+  const exitIsFuture = new Date(exitDate) > new Date(todayValue());
+
+  const consequences = buildConsequences({
+    tenantName,
+    roomNo,
+    summary,
+    outstandingDues,
+    duesDisposition,
+    exitDateLabel: prettyDate(exitDate),
+    exitIsFuture,
+  });
+
+  const quickExitMutation = useMutation({
+    mutationFn: () =>
+      moveOutService.quickExit({
+        hostelId,
+        tenantId,
+        reason,
+        reasonText: reasonText.trim() || undefined,
+        plannedExitDate: exitDate,
+        physicalExitDate: exitDate,
+        paymentMethod: summary.amount > 0 ? paymentMode.toUpperCase().replace(' ', '_') : undefined,
+        paymentReference: paymentReference.trim() || undefined,
+        duesDisposition,
+        expectedNet: Number(preview?.net_settlement_amount ?? 0),
+        expectedDirection: summary.direction,
+      }),
+    onSuccess: () => {
+      invalidate();
+      onClose();
+    },
+  });
+
   const submitMutation = useMutation({
-    mutationFn: () => moveOutService.submitRequest({ hostelId, tenantId, reason, reasonText: reasonText.trim() || undefined, plannedExitDate }),
+    mutationFn: () =>
+      moveOutService.submitRequest({
+        hostelId,
+        tenantId,
+        reason,
+        reasonText: reasonText.trim() || undefined,
+        plannedExitDate: exitDate,
+      }),
     onSuccess: invalidate,
   });
 
   const inspectMutation = useMutation({
     mutationFn: () =>
-      moveOutService.inspect(existingRequestId!, {
+      moveOutService.inspect(active!.id, {
         roomCondition,
         cleaningStatus,
         damagesAmount: Number(damagesAmount) || 0,
@@ -168,107 +240,193 @@ export function MoveOutSheet({ open, onClose, tenantId, hostelId, tenantName }: 
     onSuccess: invalidate,
   });
 
-  const rejectMutation = useMutation({
-    mutationFn: () => moveOutService.reject(existingRequestId!, { reason: 'Owner declined the move-out request' }),
+  const settleMutation = useMutation({
+    mutationFn: () => moveOutService.settle(active!.id, {}),
+    onSuccess: invalidate,
+  });
+
+  const vacateMutation = useMutation({
+    mutationFn: () => moveOutService.vacate(active!.id, { physicalExitDate: exitDate }),
+    onSuccess: invalidate,
+  });
+
+  const completeMutation = useMutation({
+    mutationFn: () =>
+      moveOutService.complete(active!.id, {
+        paymentMethod: paymentMode.toUpperCase().replace(' ', '_'),
+        paymentReference: paymentReference.trim() || undefined,
+        duesDisposition,
+      }),
     onSuccess: () => {
       invalidate();
       onClose();
     },
   });
 
-  const settleMutation = useMutation({
-    mutationFn: () => moveOutService.settle(existingRequestId!, { reviewNotes: reviewNotes.trim() || undefined }),
-    onSuccess: invalidate,
+  const rejectMutation = useMutation({
+    mutationFn: () => moveOutService.reject(active!.id, { reason: 'Owner cancelled the exit' }),
+    onSuccess: () => {
+      invalidate();
+      onClose();
+    },
   });
 
-  const vacateMutation = useMutation({
-    mutationFn: () => moveOutService.vacate(existingRequestId!, { physicalExitDate }),
-    onSuccess: invalidate,
-  });
+  const isLoading = listQuery.isLoading || (Boolean(detailId) && detailQuery.isLoading);
+  const busy =
+    quickExitMutation.isPending ||
+    submitMutation.isPending ||
+    inspectMutation.isPending ||
+    settleMutation.isPending ||
+    vacateMutation.isPending ||
+    completeMutation.isPending ||
+    rejectMutation.isPending;
 
-  const completeMutation = useMutation({
-    mutationFn: () =>
-      moveOutService.complete(existingRequestId!, {
-        paymentMethod: paymentMode.toUpperCase().replace(' ', '_'),
-        paymentReference: paymentReference.trim() || undefined,
-        paymentNotes: paymentNotes.trim() || undefined,
-      }),
-    onSuccess: invalidate,
-  });
+  const activeError =
+    quickExitMutation.error ??
+    submitMutation.error ??
+    inspectMutation.error ??
+    settleMutation.error ??
+    vacateMutation.error ??
+    completeMutation.error ??
+    rejectMutation.error;
 
-  const isLoading = listQuery.isLoading || (Boolean(existingRequestId) && detailQuery.isLoading);
-  const request = detailQuery.data;
-  const status = request ? canonicalMoveOutStatus(request.status) : null;
-  const hasOpenDispute = (request?.disputes ?? []).some((d) => d.status !== 'RESOLVED' && d.status !== 'REJECTED');
-
-  const activeError = submitMutation.error ?? inspectMutation.error ?? rejectMutation.error ?? settleMutation.error ?? vacateMutation.error ?? completeMutation.error;
+  /* A completed exit is a receipt, not a workflow. */
+  const showReceipt = !active && Boolean(lastCompleted);
 
   return (
-    <BottomSheet open={open} onOpenChange={(v) => !v && onClose()} title={`Move Out · ${tenantName}`}>
-      <div className="flex flex-col gap-4">
-        {activeError ? (
+    <BottomSheet open={open} onOpenChange={(v) => !v && onClose()} title={`Move out · ${tenantName}`}>
+      <div className="flex flex-col gap-4 pb-2">
+        {activeError && (
           <p className="rounded-xl border border-destructive/25 bg-destructive/10 px-3.5 py-2.5 text-[12.5px] font-semibold text-destructive">
-            {getErrorMessage(activeError, 'Something went wrong. Please try again.')}
+            {getErrorMessage(activeError, 'Something went wrong. Nothing was changed.')}
           </p>
-        ) : null}
+        )}
 
         {isLoading && <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>}
 
-        {!isLoading && !existingRequestId && (
-          <>
-            <p className="text-[12.5px] text-muted-foreground">No move-out request exists yet for {tenantName}. Starting one begins the checkout & settlement process.</p>
-            <label className="block">
-              <span className={labelStyle}>Planned Exit Date *</span>
-              <input type="date" value={plannedExitDate} onChange={(e) => setPlannedExitDate(e.target.value)} className={inputStyle} />
-            </label>
-            <label className="block">
-              <span className={labelStyle}>Reason *</span>
-              <select value={reason} onChange={(e) => setReason(e.target.value)} className={inputStyle}>
-                {Object.entries(REASON_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </label>
-            <label className="block">
-              <span className={labelStyle}>Notes (optional)</span>
-              <textarea
-                value={reasonText}
-                onChange={(e) => setReasonText(e.target.value)}
-                className="mt-1.5 min-h-[64px] w-full resize-none rounded-[11px] border border-border bg-card px-3.5 py-3 text-sm text-foreground focus:border-primary focus:outline-none"
-              />
-            </label>
-            <button
-              type="button"
-              disabled={submitMutation.isPending || !plannedExitDate}
-              onClick={() => submitMutation.mutate()}
-              className="rounded-xl bg-primary py-3.5 text-center font-display text-sm font-bold text-primary-foreground disabled:opacity-50"
-            >
-              {submitMutation.isPending ? 'Submitting…' : 'Initiate Move Out'}
-            </button>
-          </>
-        )}
+        {!isLoading && showReceipt && <Receipt requestId={lastCompleted!.id} />}
 
-        {!isLoading && request && status && (
+        {!isLoading && !showReceipt && (
           <>
-            <div className="rounded-2xl border border-border bg-card p-3.5">
-              <div className={labelStyle}>Status</div>
-              <div className="mt-1 font-display text-[14px] font-bold text-foreground">{STATUS_LABEL[status] ?? status}</div>
-              <div className="mt-1.5 text-[11.5px] text-muted-foreground">
-                Planned exit: {request.planned_exit_date?.slice(0, 10)} · Reason: {REASON_LABEL[request.reason] ?? request.reason}
+            {/* The money, on every screen — not just the third one. */}
+            <SettlementStrip
+              preview={preview}
+              summary={summary}
+              pending={!active && !preview}
+            />
+
+            {active && (
+              <div className="flex items-center gap-2 text-[11.5px] font-semibold text-muted-foreground">
+                <span className="rounded-md bg-secondary px-1.5 py-0.5 tabular-nums">
+                  Step {exitProgress(active.status).step} of {exitProgress(active.status).total}
+                </span>
+                <span>{exitProgress(active.status).label}</span>
               </div>
-            </div>
+            )}
 
             {hasOpenDispute && (
-              <p className="rounded-xl border border-warning/30 bg-warning/10 p-3 text-[12px] font-semibold text-warning">
-                This move-out has an open dispute. Resolve it before continuing (not available in this view yet).
+              <p className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 p-3 text-[12px] font-semibold text-warning">
+                <AlertTriangle className="mt-px h-4 w-4 shrink-0" />
+                An open dispute has to be resolved before this exit can close.
               </p>
             )}
 
-            {!hasOpenDispute && status === 'REQUESTED' && (
+            {/* ── FAST LANE: no request yet, nothing to judge ── */}
+            {!active && lane.lane === 'FAST' && (
+              <>
+                <ExitBasics
+                  exitDate={exitDate}
+                  setExitDate={setExitDate}
+                  reason={reason}
+                  setReason={setReason}
+                  reasonText={reasonText}
+                  setReasonText={setReasonText}
+                  showAllReasons={showAllReasons}
+                  setShowAllReasons={setShowAllReasons}
+                />
+
+                {summary.amount > 0 && (
+                  <PaymentModeRow
+                    label={summary.ownerPays ? 'How are you refunding them?' : 'How was this settled?'}
+                    paymentMode={paymentMode}
+                    setPaymentMode={setPaymentMode}
+                    paymentReference={paymentReference}
+                    setPaymentReference={setPaymentReference}
+                  />
+                )}
+
+                {outstandingDues > 0.01 && (
+                  <DuesChoice
+                    outstandingDues={outstandingDues}
+                    duesDisposition={duesDisposition}
+                    setDuesDisposition={setDuesDisposition}
+                  />
+                )}
+
+                <ConsequenceList lines={consequences} />
+
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => quickExitMutation.mutate()}
+                  className="rounded-xl bg-primary py-3.5 text-center font-display text-sm font-bold text-primary-foreground disabled:opacity-50"
+                >
+                  {quickExitMutation.isPending
+                    ? 'Closing…'
+                    : completionLabel(summary, duesDisposition, outstandingDues)}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSuspectsDamage(true)}
+                  className="text-center text-[12.5px] font-semibold text-muted-foreground underline underline-offset-2"
+                >
+                  Room needs checking, or there are charges to add
+                </button>
+              </>
+            )}
+
+            {/* ── FULL LANE, entry: create the request, then inspect ── */}
+            {!active && lane.lane === 'FULL' && (
+              <>
+                <LaneReasons blockers={lane.blockers} />
+                <ExitBasics
+                  exitDate={exitDate}
+                  setExitDate={setExitDate}
+                  reason={reason}
+                  setReason={setReason}
+                  reasonText={reasonText}
+                  setReasonText={setReasonText}
+                  showAllReasons={showAllReasons}
+                  setShowAllReasons={setShowAllReasons}
+                />
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => submitMutation.mutate()}
+                  className="flex items-center justify-center gap-1.5 rounded-xl bg-primary py-3.5 font-display text-sm font-bold text-primary-foreground disabled:opacity-50"
+                >
+                  {submitMutation.isPending ? 'Starting…' : 'Start exit & check the room'}
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+                {suspectsDamage && (
+                  <button
+                    type="button"
+                    onClick={() => setSuspectsDamage(false)}
+                    className="text-center text-[12.5px] font-semibold text-muted-foreground underline underline-offset-2"
+                  >
+                    Nothing to charge after all — close it in one step
+                  </button>
+                )}
+              </>
+            )}
+
+            {/* ── FULL LANE, staged ── */}
+            {active && status === 'REQUESTED' && !hasOpenDispute && (
               <>
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block">
-                    <span className={labelStyle}>Room Condition</span>
+                    <span className={labelStyle}>Room condition</span>
                     <select value={roomCondition} onChange={(e) => setRoomCondition(e.target.value as typeof roomCondition)} className={inputStyle}>
                       <option value="GOOD">Good</option>
                       <option value="FAIR">Fair</option>
@@ -284,138 +442,102 @@ export function MoveOutSheet({ open, onClose, tenantId, hostelId, tenantName }: 
                   </label>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <label className="block">
-                    <span className={labelStyle}>Damages (₹)</span>
-                    <input value={damagesAmount} onChange={(e) => setDamagesAmount(e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" className={inputStyle} />
-                  </label>
-                  <label className="block">
-                    <span className={labelStyle}>Cleaning Fee (₹)</span>
-                    <input value={cleaningFee} onChange={(e) => setCleaningFee(e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" className={inputStyle} />
-                  </label>
-                  <label className="block">
-                    <span className={labelStyle}>Missing Items (₹)</span>
-                    <input value={missingItemsFee} onChange={(e) => setMissingItemsFee(e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" className={inputStyle} />
-                  </label>
-                  <label className="block">
-                    <span className={labelStyle}>Other Deductions (₹)</span>
-                    <input value={otherDeductions} onChange={(e) => setOtherDeductions(e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" className={inputStyle} />
-                  </label>
+                  <MoneyField label="Damages" value={damagesAmount} onChange={setDamagesAmount} />
+                  <MoneyField label="Cleaning fee" value={cleaningFee} onChange={setCleaningFee} />
+                  <MoneyField label="Missing items" value={missingItemsFee} onChange={setMissingItemsFee} />
+                  <MoneyField label="Other" value={otherDeductions} onChange={setOtherDeductions} />
                 </div>
+                <RunningDeductions
+                  values={[damagesAmount, cleaningFee, missingItemsFee, otherDeductions]}
+                  depositHeld={Number(preview?.security_deposit_amount ?? 0)}
+                />
                 <label className="block">
-                  <span className={labelStyle}>Deduction Notes (optional)</span>
-                  <textarea value={deductionNotes} onChange={(e) => setDeductionNotes(e.target.value)} className="mt-1.5 min-h-[56px] w-full resize-none rounded-[11px] border border-border bg-card px-3.5 py-3 text-sm text-foreground focus:border-primary focus:outline-none" />
+                  <span className={labelStyle}>Notes (optional)</span>
+                  <textarea value={deductionNotes} onChange={(e) => setDeductionNotes(e.target.value)} className={areaStyle} />
                 </label>
                 <div className="flex gap-2.5">
                   <button
                     type="button"
-                    disabled={rejectMutation.isPending || inspectMutation.isPending}
+                    disabled={busy}
                     onClick={() => rejectMutation.mutate()}
-                    className="flex-1 rounded-xl border border-destructive/25 py-3.5 text-center font-display text-sm font-bold text-destructive disabled:opacity-50"
+                    className="flex-1 rounded-xl border border-destructive/25 py-3.5 font-display text-sm font-bold text-destructive disabled:opacity-50"
                   >
-                    {rejectMutation.isPending ? 'Rejecting…' : 'Reject request'}
+                    Cancel exit
                   </button>
                   <button
                     type="button"
-                    disabled={inspectMutation.isPending}
+                    disabled={busy}
                     onClick={() => inspectMutation.mutate()}
-                    className="flex-1 rounded-xl bg-primary py-3.5 text-center font-display text-sm font-bold text-primary-foreground disabled:opacity-50"
+                    className="flex-1 rounded-xl bg-primary py-3.5 font-display text-sm font-bold text-primary-foreground disabled:opacity-50"
                   >
-                    {inspectMutation.isPending ? 'Saving…' : 'Submit Inspection'}
+                    {inspectMutation.isPending ? 'Saving…' : 'Save & see settlement'}
                   </button>
                 </div>
               </>
             )}
 
-            {!hasOpenDispute && status === 'SETTLEMENT_PENDING' && request.settlement_preview && (
+            {active && status === 'SETTLEMENT_PENDING' && !hasOpenDispute && (
               <>
-                <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-3.5">
-                  <Row label="Total dues" value={`₹${request.settlement_preview.total_dues.toLocaleString('en-IN')}`} />
-                  <Row label="Deductions" value={`₹${request.settlement_preview.total_deductions.toLocaleString('en-IN')}`} />
-                  <Row label="Security deposit held" value={`₹${request.settlement_preview.security_deposit_amount.toLocaleString('en-IN')}`} />
-                  <div className="mt-1 flex justify-between border-t border-border pt-2">
-                    <span className="font-display text-[13px] font-bold text-foreground">
-                      {request.settlement_preview.settlement_direction === 'OWNER_OWES_TENANT' ? 'Refund to tenant' : request.settlement_preview.settlement_direction === 'TENANT_OWES_OWNER' ? 'Owed by tenant' : 'Settled'}
-                    </span>
-                    <span className="font-display text-[15px] font-extrabold tabular-nums text-primary">
-                      ₹{Math.abs(request.settlement_preview.net_settlement_amount).toLocaleString('en-IN')}
-                    </span>
-                  </div>
-                </div>
-                <label className="block">
-                  <span className={labelStyle}>Review Notes (optional)</span>
-                  <textarea value={reviewNotes} onChange={(e) => setReviewNotes(e.target.value)} className="mt-1.5 min-h-[56px] w-full resize-none rounded-[11px] border border-border bg-card px-3.5 py-3 text-sm text-foreground focus:border-primary focus:outline-none" />
-                </label>
+                <ConsequenceList lines={consequences} />
                 <button
                   type="button"
-                  disabled={settleMutation.isPending}
+                  disabled={busy}
                   onClick={() => settleMutation.mutate()}
-                  className="rounded-xl bg-primary py-3.5 text-center font-display text-sm font-bold text-primary-foreground disabled:opacity-50"
+                  className="rounded-xl bg-primary py-3.5 font-display text-sm font-bold text-primary-foreground disabled:opacity-50"
                 >
-                  {settleMutation.isPending ? 'Approving…' : 'Approve Settlement'}
+                  {settleMutation.isPending ? 'Confirming…' : 'Confirm these figures'}
                 </button>
               </>
             )}
 
-            {!hasOpenDispute && status === 'SETTLEMENT_APPROVED' && (
+            {active && status === 'SETTLEMENT_APPROVED' && !hasOpenDispute && (
               <>
                 <label className="block">
-                  <span className={labelStyle}>Physical Exit Date *</span>
-                  <input type="date" value={physicalExitDate} onChange={(e) => setPhysicalExitDate(e.target.value)} className={inputStyle} />
+                  <span className={labelStyle}>Date they actually left</span>
+                  <input type="date" value={exitDate} onChange={(e) => setExitDate(e.target.value)} className={inputStyle} />
                 </label>
+                <ConsequenceList lines={consequences.slice(0, 2)} />
                 <button
                   type="button"
-                  disabled={vacateMutation.isPending}
+                  disabled={busy}
                   onClick={() => vacateMutation.mutate()}
-                  className="rounded-xl bg-primary py-3.5 text-center font-display text-sm font-bold text-primary-foreground disabled:opacity-50"
+                  className="rounded-xl bg-primary py-3.5 font-display text-sm font-bold text-primary-foreground disabled:opacity-50"
                 >
-                  {vacateMutation.isPending ? 'Saving…' : 'Vacate & Release Bed'}
+                  {vacateMutation.isPending ? 'Releasing…' : 'Release the bed'}
                 </button>
               </>
             )}
 
-            {!hasOpenDispute && (status === 'PHYSICALLY_VACATED' || status === 'SETTLEMENT_PENDING_PAYMENT') && (
+            {active && (status === 'PHYSICALLY_VACATED' || status === 'SETTLEMENT_PENDING_PAYMENT') && !hasOpenDispute && (
               <>
-                <label className="block">
-                  <span className={labelStyle}>Payment Mode *</span>
-                  <div className="mt-1.5 flex gap-2">
-                    {PAYMENT_MODES.map((m) => (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => setPaymentMode(m)}
-                        className={`flex-1 rounded-xl border-[1.5px] py-2.5 text-center font-display text-[12.5px] font-bold ${paymentMode === m ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-foreground'}`}
-                      >
-                        {m}
-                      </button>
-                    ))}
-                  </div>
-                </label>
-                <label className="block">
-                  <span className={labelStyle}>Reference (optional)</span>
-                  <input value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} className={inputStyle} />
-                </label>
-                <label className="block">
-                  <span className={labelStyle}>Notes (optional)</span>
-                  <textarea value={paymentNotes} onChange={(e) => setPaymentNotes(e.target.value)} className="mt-1.5 min-h-[56px] w-full resize-none rounded-[11px] border border-border bg-card px-3.5 py-3 text-sm text-foreground focus:border-primary focus:outline-none" />
-                </label>
+                {summary.amount > 0 && (
+                  <PaymentModeRow
+                    label={summary.ownerPays ? 'How are you refunding them?' : 'How was this settled?'}
+                    paymentMode={paymentMode}
+                    setPaymentMode={setPaymentMode}
+                    paymentReference={paymentReference}
+                    setPaymentReference={setPaymentReference}
+                  />
+                )}
+                {outstandingDues > 0.01 && (
+                  <DuesChoice
+                    outstandingDues={outstandingDues}
+                    duesDisposition={duesDisposition}
+                    setDuesDisposition={setDuesDisposition}
+                  />
+                )}
+                <ConsequenceList lines={consequences} />
                 <button
                   type="button"
-                  disabled={completeMutation.isPending}
+                  disabled={busy}
                   onClick={() => completeMutation.mutate()}
-                  className="rounded-xl bg-primary py-3.5 text-center font-display text-sm font-bold text-primary-foreground disabled:opacity-50"
+                  className="rounded-xl bg-primary py-3.5 font-display text-sm font-bold text-primary-foreground disabled:opacity-50"
                 >
-                  {completeMutation.isPending ? 'Confirming…' : 'Confirm Refund & Complete'}
+                  {completeMutation.isPending
+                    ? 'Closing…'
+                    : completionLabel(summary, duesDisposition, outstandingDues)}
                 </button>
               </>
-            )}
-
-            {(status === 'COMPLETED' || status === 'REJECTED') && (
-              <div className="flex flex-col items-center gap-3 py-4 text-center">
-                <span className={`flex h-14 w-14 items-center justify-center rounded-full ${status === 'COMPLETED' ? 'bg-success/15' : 'bg-destructive/15'}`}>
-                  <Check className={`h-6 w-6 ${status === 'COMPLETED' ? 'text-success' : 'text-destructive'}`} strokeWidth={3} />
-                </span>
-                <p className="font-display text-base font-extrabold text-foreground">{STATUS_LABEL[status]}</p>
-              </div>
             )}
           </>
         )}
@@ -424,11 +546,289 @@ export function MoveOutSheet({ open, onClose, tenantId, hostelId, tenantName }: 
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+/* ── pieces ───────────────────────────────────────────────── */
+
+function SettlementStrip({
+  preview,
+  summary,
+  pending,
+}: {
+  preview: SettlementPreview | null;
+  summary: ReturnType<typeof summariseSettlement>;
+  pending: boolean;
+}) {
+  if (pending) {
+    return (
+      <div className="rounded-2xl border border-border bg-secondary/25 p-3.5 text-[12.5px] text-muted-foreground">
+        The final settlement is worked out once the exit starts.
+      </div>
+    );
+  }
+
+  const deposit = Number(preview?.security_deposit_amount ?? 0);
+  const advance = Number(preview?.advance_balance ?? 0);
+  const dues = Number(preview?.total_dues ?? 0);
+  const deductions = Number(preview?.total_deductions ?? 0);
+
+  return (
+    <div className="rounded-2xl border border-border bg-secondary/25 p-3.5">
+      <div className="flex flex-col gap-1.5">
+        <Row label="Deposit held" value={rupees(deposit)} muted={deposit === 0} />
+        {advance > 0 && <Row label="Advance balance" value={rupees(advance)} />}
+        <Row label="Unpaid rent & fees" value={rupees(dues)} muted={dues === 0} />
+        {deductions > 0 && <Row label="Deductions" value={`− ${rupees(deductions)}`} />}
+      </div>
+      <div className="mt-2.5 flex items-baseline justify-between border-t border-border pt-2.5">
+        <span className="font-display text-[13px] font-bold text-foreground">{summary.headline}</span>
+        <span className="font-display text-[17px] font-extrabold tabular-nums text-primary">
+          {summary.amount > 0 ? rupees(summary.amount) : '₹0'}
+        </span>
+      </div>
+      {deposit === 0 && dues > 0 && (
+        // An unexplained ₹0 next to a live figure reads as a bug and costs
+        // more trust than the number is worth.
+        <p className="mt-2 text-[11.5px] leading-snug text-muted-foreground">
+          No deposit is on record for this tenant, so there is nothing to set the unpaid rent against.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function Row({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
   return (
     <div className="flex justify-between text-[12.5px]">
       <span className="text-muted-foreground">{label}</span>
-      <span className="font-bold tabular-nums text-foreground">{value}</span>
+      <span className={`font-bold tabular-nums ${muted ? 'text-muted-foreground' : 'text-foreground'}`}>{value}</span>
+    </div>
+  );
+}
+
+function ExitBasics(props: {
+  exitDate: string;
+  setExitDate: (v: string) => void;
+  reason: string;
+  setReason: (v: string) => void;
+  reasonText: string;
+  setReasonText: (v: string) => void;
+  showAllReasons: boolean;
+  setShowAllReasons: (v: boolean) => void;
+}) {
+  return (
+    <>
+      <label className="block">
+        <span className={labelStyle}>Date they leave (or left)</span>
+        <input type="date" value={props.exitDate} onChange={(e) => props.setExitDate(e.target.value)} className={inputStyle} />
+      </label>
+      <label className="block">
+        <span className={labelStyle}>Reason</span>
+        <select value={props.reason} onChange={(e) => props.setReason(e.target.value)} className={inputStyle}>
+          {OWNER_REASONS.map((r) => (
+            <option key={r} value={r}>{REASON_LABEL[r]}</option>
+          ))}
+          {props.showAllReasons &&
+            OTHER_REASONS.map((r) => (
+              <option key={r} value={r}>{REASON_LABEL[r]}</option>
+            ))}
+        </select>
+      </label>
+      {!props.showAllReasons && (
+        <button
+          type="button"
+          onClick={() => props.setShowAllReasons(true)}
+          className="-mt-2 flex items-center gap-1 self-start text-[12px] font-semibold text-muted-foreground"
+        >
+          <ChevronDown className="h-3.5 w-3.5" />
+          They told you why they’re leaving
+        </button>
+      )}
+      <label className="block">
+        <span className={labelStyle}>Notes (optional)</span>
+        <textarea value={props.reasonText} onChange={(e) => props.setReasonText(e.target.value)} className={areaStyle} />
+      </label>
+    </>
+  );
+}
+
+function PaymentModeRow(props: {
+  label: string;
+  paymentMode: PaymentMode;
+  setPaymentMode: (m: PaymentMode) => void;
+  paymentReference: string;
+  setPaymentReference: (v: string) => void;
+}) {
+  return (
+    <div>
+      <span className={labelStyle}>{props.label}</span>
+      <div className="mt-1.5 flex gap-2">
+        {PAYMENT_MODES.map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => props.setPaymentMode(m)}
+            className={`flex-1 rounded-xl border-[1.5px] py-2.5 font-display text-[12.5px] font-bold ${
+              props.paymentMode === m ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-foreground'
+            }`}
+          >
+            {m}
+          </button>
+        ))}
+      </div>
+      <input
+        value={props.paymentReference}
+        onChange={(e) => props.setPaymentReference(e.target.value)}
+        placeholder="Reference (optional)"
+        className={inputStyle}
+      />
+    </div>
+  );
+}
+
+/**
+ * The fork that used to happen silently.
+ *
+ * Completing a move-out waived every outstanding obligation with no mention
+ * of it, behind a button that said "Confirm Refund & Complete". The owner is
+ * now asked, and the default keeps their money.
+ */
+function DuesChoice({
+  outstandingDues,
+  duesDisposition,
+  setDuesDisposition,
+}: {
+  outstandingDues: number;
+  duesDisposition: DuesDisposition;
+  setDuesDisposition: (d: DuesDisposition) => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-3.5">
+      <p className="font-display text-[13px] font-bold text-foreground">
+        {rupees(outstandingDues)} is still unpaid
+      </p>
+      <div className="mt-2.5 flex flex-col gap-2">
+        {(
+          [
+            ['RECOVERABLE', 'Keep it on their account', 'You can still collect it. Nothing further is added.'],
+            ['WAIVE', 'Write it off', 'The money is gone. This cannot be undone.'],
+          ] as const
+        ).map(([value, title, detail]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setDuesDisposition(value)}
+            className={`rounded-xl border-[1.5px] px-3 py-2.5 text-left ${
+              duesDisposition === value ? 'border-primary bg-primary/5' : 'border-border'
+            }`}
+          >
+            <span className="block font-display text-[12.5px] font-bold text-foreground">{title}</span>
+            <span className="block text-[11.5px] leading-snug text-muted-foreground">{detail}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ConsequenceList({ lines }: { lines: string[] }) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-3.5">
+      <p className={labelStyle}>What happens next</p>
+      <ul className="mt-2 flex flex-col gap-1.5">
+        {lines.map((line) => (
+          <li key={line} className="flex gap-2 text-[12.5px] leading-snug text-foreground">
+            <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-muted-foreground" />
+            {line}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function LaneReasons({ blockers }: { blockers: string[] }) {
+  return (
+    <div className="rounded-xl border border-border bg-secondary/25 p-3 text-[12px] leading-snug text-muted-foreground">
+      {blockers.map((b) => (
+        <p key={b}>{b}</p>
+      ))}
+    </div>
+  );
+}
+
+function MoneyField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="block">
+      <span className={labelStyle}>{label} (₹)</span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, ''))}
+        inputMode="numeric"
+        className={inputStyle}
+      />
+    </label>
+  );
+}
+
+/** Deductions add up against something — show what, while they're being typed. */
+function RunningDeductions({ values, depositHeld }: { values: string[]; depositHeld: number }) {
+  const total = values.reduce((sum, v) => sum + (Number(v) || 0), 0);
+  if (total <= 0) return null;
+  const exceeds = total > depositHeld;
+  return (
+    <p className={`text-[12px] font-semibold ${exceeds ? 'text-warning' : 'text-muted-foreground'}`}>
+      {rupees(total)} in charges against {rupees(depositHeld)} of deposit
+      {exceeds ? ' — the excess will be owed by the tenant.' : '.'}
+    </p>
+  );
+}
+
+function Receipt({ requestId }: { requestId: string }) {
+  const { data } = useQuery({
+    queryKey: ['owner', 'move-out', 'detail', requestId],
+    queryFn: () => moveOutService.getRequest(requestId) as Promise<any>,
+    staleTime: 60_000,
+  });
+
+  const settlement = data?.settlement;
+  const inspection = data?.inspection;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col items-center gap-2 py-2 text-center">
+        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-success/15">
+          <Check className="h-5 w-5 text-success" strokeWidth={3} />
+        </span>
+        <p className="font-display text-base font-extrabold text-foreground">Move-out complete</p>
+      </div>
+
+      {/* The owner has to be able to re-read what they settled. The previous
+          sheet showed a tick and nothing else, so this was unrecoverable. */}
+      <div className="rounded-2xl border border-border bg-card p-3.5">
+        <p className={labelStyle}>Settlement</p>
+        <div className="mt-2 flex flex-col gap-1.5">
+          <Row label="Left on" value={data?.physical_exit_date ? prettyDate(data.physical_exit_date) : '—'} />
+          <Row label="Closed on" value={data?.completed_at ? prettyDate(data.completed_at) : '—'} />
+          {settlement && (
+            <>
+              <Row
+                label="Outcome"
+                value={
+                  settlement.settlement_direction === 'OWNER_OWES_TENANT'
+                    ? `Refunded ${rupees(settlement.confirmed_settlement_amount ?? 0)}`
+                    : settlement.settlement_direction === 'TENANT_OWES_OWNER'
+                      ? `Settled ${rupees(settlement.confirmed_settlement_amount ?? 0)}`
+                      : 'Nothing owed'
+                }
+              />
+              <Row label="Paid by" value={settlement.payment_method || '—'} />
+              {settlement.payment_reference && <Row label="Reference" value={settlement.payment_reference} />}
+            </>
+          )}
+          {inspection && Number(inspection.total_deductions) > 0 && (
+            <Row label="Deductions" value={rupees(inspection.total_deductions)} />
+          )}
+        </div>
+      </div>
     </div>
   );
 }

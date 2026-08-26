@@ -23,7 +23,7 @@ import { PrimaryActionsBar } from '@features/tenants/components/financial/Primar
 import { UnifiedActivityTimeline } from '@features/tenants/components/profile/UnifiedActivityTimeline';
 import { DocumentsTab } from '@features/tenants/components/profile/DocumentsTab';
 import { AllocationHistoryTimeline } from '@features/tenants/components/allocation/AllocationHistoryTimeline';
-import { ExitWorkflowSection } from '@features/tenants/components/profile/ExitWorkflowSection';
+import { MoveOutSheet } from '@features/owner-tenants/actions/MoveOutSheet';
 import { getInitials } from '@features/tenants/utils/normalize';
 import { RecordPaymentModal } from '@/app/components/modals/RecordPaymentModal';
 import { CorrectPaymentModal } from '@/app/components/modals/CorrectPaymentModal';
@@ -114,6 +114,7 @@ export function TenantProfilePage({ hostelIdProp, tenantIdProp, onBack }: Tenant
   const [activeTab, setActiveTab] = useState<TabId>('obligations');
   const [correctingPaymentId, setCorrectingPaymentId] = useState<string | null>(null);
   const [showChangeRent, setShowChangeRent] = useState(false);
+  const [showMoveOut, setShowMoveOut] = useState(false);
   const [showChangeFrequency, setShowChangeFrequency] = useState(false);
 
   const { overview, allocations, dues, advance, full, financialTimeline, isLoading, isError, refetch } =
@@ -490,12 +491,25 @@ export function TenantProfilePage({ hostelIdProp, tenantIdProp, onBack }: Tenant
         currentRoom={currentRoom}
         onChanged={refetch}
       />
+      {/*
+        * One move-out implementation, not two. This used to render
+        * `ExitWorkflowSection`, a second copy of the same pipeline that had
+        * already drifted from the sheet — it let the owner overwrite the
+        * settlement amount and direction by hand, which the sheet never did.
+        * Both are now the same `MoveOutSheet`.
+        */}
       <div className="border-t border-border/60 pt-5">
         <h4 className="text-xs font-bold text-foreground mb-3 flex items-center gap-1.5 uppercase tracking-wider text-muted-foreground">
           <LogOut className="w-4 h-4 text-rose-500" />
-          Move-Out Settlement Workflow
+          Move Out
         </h4>
-        <ExitWorkflowSection hostelId={hostelId} tenantId={tenantId} status={status} />
+        <button
+          type="button"
+          onClick={() => setShowMoveOut(true)}
+          className="w-full rounded-xl border border-border bg-card py-3 font-display text-sm font-bold text-foreground"
+        >
+          Open move-out
+        </button>
       </div>
     </div>
   );
@@ -870,6 +884,18 @@ export function TenantProfilePage({ hostelIdProp, tenantIdProp, onBack }: Tenant
           onSuccess={obligationModal?.mode === 'edit' ? handleEditObligationSuccess : () => refetch()}
         />
       )}
+
+      <MoveOutSheet
+        open={showMoveOut}
+        onClose={() => {
+          setShowMoveOut(false);
+          refetch();
+        }}
+        tenantId={tenantId}
+        hostelId={hostelId}
+        tenantName={name}
+        roomNo={displayedRoomNo}
+      />
     </div>
   );
 }

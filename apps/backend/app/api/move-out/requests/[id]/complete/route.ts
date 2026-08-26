@@ -16,12 +16,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   try {
     const body = await req.json().catch(() => ({}));
+
+    // Default RECOVERABLE, never WAIVE — writing off a former tenant's dues
+    // has to be something the caller asked for in words. See ADR-122 and the
+    // `duesDisposition` note on `confirmPaymentAndComplete`.
+    const duesDisposition = body.duesDisposition === "WAIVE" ? "WAIVE" : "RECOVERABLE";
+
     const result = await moveOutService.confirmPaymentAndComplete({
       requestId: params.id,
       actor: moveOutActorFromSession(session),
       paymentMethod: body.paymentMethod,
       paymentReference: body.paymentReference,
       paymentNotes: body.paymentNotes,
+      duesDisposition,
     });
     return apiResponse(result);
   } catch (error: any) {

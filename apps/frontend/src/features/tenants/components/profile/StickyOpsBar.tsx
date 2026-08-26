@@ -43,7 +43,10 @@ export function StickyOpsBar({
   const actions = useTenantActions(tenantId);
   const isInvited = status === 'INVITED';
   const isMoveOutRequested = status === 'MOVE_OUT_REQUESTED';
-  const isInactive = ['LEFT', 'CANCELLED', 'EXPIRED'].includes(status);
+  // FORMER_TENANT belongs here and was missing, so a tenant who had already
+  // moved out still got the full action set — including "Move Out" a second
+  // time, and payment/reminder actions against a closed tenancy.
+  const isInactive = ['LEFT', 'CANCELLED', 'EXPIRED', 'FORMER_TENANT'].includes(status);
 
   if (isInactive) return null;
 

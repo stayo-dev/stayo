@@ -1486,6 +1486,38 @@ Copy this block for each new entry:
 
 
 
+## 2026-08-26 — Completing a move-out silently wrote off everything the tenant owed
+
+`confirmPaymentAndComplete` ended with an unconditional `obligationEngine.bulkWaiveInTx` over every `PENDING`/`PARTIAL` obligation, reason `"Move-out settlement confirmed — outstanding rent waived"`. The owner app's button for that call read **"Confirm Refund & Complete"** — on a sheet that had, one step earlier, displayed *Owed by tenant ₹25,000*.
+
+So the owner tapped a button that said *refund*, and forgave ₹25,000 owed **to them**. Nothing on screen mentioned a write-off, and nothing asked. The label was wrong in the other direction too: `summariseSettlement` now derives direction once and every label reads from it.
+
+**Fix:** `duesDisposition` on the service and the route, defaulting to `RECOVERABLE`; `WAIVE` is opt-in and the button then says *"Write off ₹25,000 & close"*. See [[Decisions#ADR-122|ADR-122]], [[Business-Rules]].
+
+## 2026-08-26 — `/api/auth/me` picked an arbitrary tenancy, locking re-admitted tenants out
+
+The tenant lookup was `prisma.tenants.findFirst({ where: { profile_id } })` — **no `orderBy`, no status filter**. For anyone with more than one tenancy row (a previous stay plus a current one) Postgres returned whichever it liked, so `tenant_status` could come back `FORMER_TENANT` for someone who had just moved into a new hostel. Every `hasLiveTenancy` gate downstream then refused them their own dashboard.
+
+`profile-identity-service.ts::selectFallbackTenancy` had already solved exactly this — live tenancy first, else most recently created, with a comment explaining why `orderBy: { status: 'asc' }` is wrong (`TenantStatus` declares `INVITED` before `ACTIVE`, so enum sorting prefers a tenancy the person never activated). `/auth/me` never got the fix. It now uses the same precedence.
+
+## 2026-08-26 — A tenant who moved out was deleted from the app without a word
+
+`hasLiveTenancy` is `INVITED|ACTIVE`, so a `FORMER_TENANT` failed `ProtectedTenantRoute` and hit `<Navigate to="/discover" replace />`: no message, no explanation, and `buildOuterTabs` silently swapped the six dashboard tabs for Explore/Profile. Someone opening the app to check whether their deposit had come back landed on a marketing browse page as though they had never lived anywhere — and their settlement record, which lives inside the tenant dashboard tree, became permanently unreachable from their side.
+
+The timing made it worse: `tenants.status` flips to `FORMER_TENANT` in **`vacate`**, when the bed is released, which is a whole step before `complete` settles the money. People were locked out of the app *while still owed a refund*.
+
+**Fix:** three tenancy states instead of two. `EXITING` keeps the dashboard read-only until the settlement closes; `EXITED` lands on `/tenant/farewell` with the receipt and a door into Discover. See [[Decisions#ADR-122|ADR-122]].
+
+## 2026-08-26 — Two owner action bars never learned about `FORMER_TENANT`
+
+`FloatingActionMenu.tsx` and `StickyOpsBar.tsx` both gated on `['LEFT', 'CANCELLED', 'EXPIRED']`. `FORMER_TENANT` — the status the move-out flow actually writes — was in neither list, so a tenant who had already moved out still got the full action set on their profile: Receive Payment, Send Reminder, and **Move Out** a second time. `INACTIVE_STATUSES` in `features/tenants/utils/normalize.ts` had it right all along, which is why the tenant *list* behaved correctly and only the profile did not.
+
+## 2026-08-26 — The move-out sheet latched onto a tenant's old completed exit
+
+`MoveOutSheet` resolved its request with `requests.find(r => r.tenant_id === tenantId)` over one 50-row page ordered `created_at desc`, **with no status filter**. Two consequences: a re-admitted tenant matched their previous `COMPLETED` request, so the sheet showed "Move-out completed" forever with no way to start a new one; and past 50 requests in a hostel an in-flight request could fall off the page entirely, leaving the sheet offering "Initiate Move Out" to someone who already had one open — which `createRequest` then rejects with `VALIDATION: Active move-out request already exists`.
+
+`resolveActiveRequest` now prefers a non-terminal request regardless of list order, and returns the last completed one separately so a finished exit can still show its receipt without being mistaken for work outstanding.
+
 ## 2026-08-19 — A signed-in user was told to sign in when posting a review
 
 **Symptom:** `POST /api/discover/hostels/[slug]/reviews` returned `UNAUTHORIZED — "Sign in to continue"` for a user with a valid session.

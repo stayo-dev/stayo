@@ -438,6 +438,7 @@ export function TenantDetailPage() {
         tenantId={tenant.id}
         hostelId={tenant.hostelId}
         tenantName={tenant.name}
+        roomNo={tenant.room}
       />
       {createChargeOpen && (
         <CreateObligationModal
