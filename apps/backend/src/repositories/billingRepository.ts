@@ -123,12 +123,12 @@ export class BillingRepository {
       WITH overdue AS (
         SELECT
           o.tenant_id,
-          p.name,
+          CASE WHEN t.profile_id IS NULL THEN COALESCE(t.display_name, 'Tenant') ELSE p.name END AS name,
           SUM(o.total_amount - COALESCE(pay_agg.total_paid, 0))::float AS pending_amount,
           MIN(o.due_date)                                         AS earliest_due
         FROM rent_obligations o
         JOIN tenants t ON t.id = o.tenant_id
-        JOIN profiles p ON p.id = t.profile_id
+        LEFT JOIN profiles p ON p.id = t.profile_id
         LEFT JOIN (
           SELECT obligation_id, SUM(amount_paid)::float AS total_paid
           FROM payments
@@ -139,7 +139,7 @@ export class BillingRepository {
           AND o.due_date < CURRENT_DATE
           AND o.total_amount - COALESCE(pay_agg.total_paid, 0) > 0
           ${hostelFilter}
-        GROUP BY o.tenant_id, p.name
+        GROUP BY o.tenant_id, t.profile_id, t.display_name, p.name
       )
       SELECT
         tenant_id,
@@ -193,12 +193,12 @@ export class BillingRepository {
         o.late_fee::float                                   AS late_fee,
         o.total_amount::float                               AS total_amount,
         (o.total_amount - COALESCE(pay_agg.total_paid, 0))::float AS remaining_amount,
-        p.name                                              AS tenant_name,
+        CASE WHEN t.profile_id IS NULL THEN t.display_name ELSE p.name END  AS tenant_name,
         t.personal_email,
-        p.phone                                             AS phone
+        CASE WHEN t.profile_id IS NULL THEN t.phone_1 ELSE p.phone END      AS phone
       FROM rent_obligations o
       JOIN tenants t ON t.id = o.tenant_id
-      JOIN profiles p ON p.id = t.profile_id
+      LEFT JOIN profiles p ON p.id = t.profile_id
       LEFT JOIN room_allocations ra ON ra.id = o.allocation_id
       LEFT JOIN rooms r ON r.id = ra.room_id
       LEFT JOIN (
