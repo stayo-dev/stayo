@@ -98,6 +98,8 @@ export default defineConfig({
       'tests/rent-changeable-agreement.test.ts',
       'tests/rent-change-repricing.test.ts',
       'tests/tenant-transfer-authorization.test.ts',
+      'tests/tenant-score-model.test.ts',
+      'tests/tenant-identity.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),
