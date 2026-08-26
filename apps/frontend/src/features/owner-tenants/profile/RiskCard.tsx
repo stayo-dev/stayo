@@ -30,8 +30,14 @@ const TONE_STYLES = {
 
 export function RiskCard({ tenant }: { tenant: RealTenantDetail }) {
   const insights = tenant.riskInsights.length > 0 ? tenant.riskInsights : [tenant.riskInsight];
-  const tone: keyof typeof TONE_STYLES =
-    tenant.riskScore >= 70 ? 'success' : tenant.riskScore >= 40 ? 'warning' : 'destructive';
+  const scored = tenant.riskScore != null;
+  const tone: keyof typeof TONE_STYLES = !scored
+    ? 'warning'
+    : tenant.riskScore! >= 70
+      ? 'success'
+      : tenant.riskScore! >= 40
+        ? 'warning'
+        : 'destructive';
   const styles = TONE_STYLES[tone];
 
   return (
@@ -44,14 +50,25 @@ export function RiskCard({ tenant }: { tenant: RealTenantDetail }) {
           <div className="text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">
             Risk &amp; Compliance
           </div>
-          <div className="font-display text-lg font-extrabold tabular-nums text-foreground">
-            {tenant.riskScore}
-            <span className="text-[11px] font-semibold text-muted-foreground">/100</span>
-          </div>
+          {scored ? (
+            <div className="font-display text-lg font-extrabold tabular-nums text-foreground">
+              {tenant.riskScore}
+              <span className="text-[11px] font-semibold text-muted-foreground">/100</span>
+            </div>
+          ) : (
+            /* No number rather than a confident one derived from nothing. The
+               previous model showed 100/EXCELLENT for a tenant who had never
+               paid anything. */
+            <div className="font-display text-[13px] font-bold text-foreground">
+              Not enough history yet
+            </div>
+          )}
         </div>
-        <StatusPill tone={tone} variant="filter">
-          {tenant.riskLabel}
-        </StatusPill>
+        {scored && (
+          <StatusPill tone={tone} variant="filter">
+            {tenant.riskLabel}
+          </StatusPill>
+        )}
       </div>
 
       <div className="grid grid-cols-3 gap-2">
@@ -61,7 +78,17 @@ export function RiskCard({ tenant }: { tenant: RealTenantDetail }) {
       </div>
 
       <ul className={`flex flex-col gap-1.5 rounded-xl p-3 ${styles.panel}`}>
-        {insights.map((insight, i) => (
+        {!scored && (
+          <li className="flex items-start gap-2">
+            <Clock className={`mt-0.5 h-3.5 w-3.5 flex-none ${styles.icon}`} strokeWidth={1.9} />
+            <p className={`text-[12px] font-semibold leading-relaxed ${styles.text}`}>
+              {tenant.riskCyclesNeeded > 0
+                ? `${tenant.riskCyclesNeeded} more paid cycle${tenant.riskCyclesNeeded === 1 ? '' : 's'} before a score means anything.`
+                : 'Not enough payment history to score yet.'}
+            </p>
+          </li>
+        )}
+        {scored && insights.map((insight, i) => (
           <li key={i} className="flex items-start gap-2">
             <Clock className={`mt-0.5 h-3.5 w-3.5 flex-none ${styles.icon}`} strokeWidth={1.9} />
             <p className={`text-[12px] font-semibold leading-relaxed ${styles.text}`}>

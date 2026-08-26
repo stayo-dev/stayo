@@ -72,7 +72,10 @@ export interface RealTenantDetail {
   hostelName: string;
   agreementStatus: string;
   guardian?: MockGuardian;
-  riskScore: number;
+  /** Null when there isn't enough history to judge — never a fabricated 100. */
+  riskScore: number | null;
+  /** How many more paid cycles before a score means anything. */
+  riskCyclesNeeded: number;
   riskLabel: string;
   riskInsight: string;
   /**
@@ -335,7 +338,8 @@ export function useTenantDetail(tenantId: string | undefined) {
       hostelName,
       agreementStatus: o.has_active_agreement ? 'Signed' : 'Pending',
       guardian,
-      riskScore: Number(score?.score ?? 0),
+      riskScore: score?.score == null ? null : Number(score.score),
+      riskCyclesNeeded: Number(score?.cycles_needed ?? 0),
       riskLabel: GRADE_LABEL[grade] ?? '—',
       riskInsight: score?.insights?.[0] ?? 'No insights yet.',
       riskInsights: Array.isArray(score?.insights) ? score.insights.map(String) : [],

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { FileText, ChevronRight } from 'lucide-react';
 import { StatusPill } from '@shared/ui-patterns/StatusPill';
+import { TenantAvatar } from '@shared/ui/TenantAvatar';
 import type { RealTenantDetail } from '../hooks/useTenantDetail';
 
 /**
@@ -46,19 +47,21 @@ export function ProfileHeader({ tenant, onOpenAgreement }: ProfileHeaderProps) {
               type="button"
               onClick={() => setZoomed(true)}
               aria-label={`View ${tenant.name}'s photo`}
-              className="h-16 w-16 flex-none overflow-hidden rounded-2xl border border-border"
+              className="flex-none"
             >
-              <img
-                src={tenant.photoUrl!}
-                alt={tenant.name}
-                onError={() => setImageFailed(true)}
-                className="h-full w-full object-cover"
+              <TenantAvatar
+                name={tenant.name}
+                initials={tenant.initials}
+                photoUrl={tenant.photoUrl}
+                className="h-16 w-16 text-xl"
               />
             </button>
           ) : (
-            <span className="flex h-16 w-16 flex-none items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-foreground font-display text-xl font-extrabold text-primary-foreground">
-              {tenant.initials}
-            </span>
+            <TenantAvatar
+              name={tenant.name}
+              initials={tenant.initials}
+              className="h-16 w-16 text-xl"
+            />
           )}
 
           <div className="min-w-0 flex-1">

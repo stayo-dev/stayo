@@ -55,6 +55,8 @@ export interface MockTenant {
   id: string;
   name: string;
   initials: string;
+  /** Uploaded at onboarding. Owners recognise faces before names. */
+  photoUrl?: string | null;
   phone: string;
   hostelId: string;
   hostelName: string;

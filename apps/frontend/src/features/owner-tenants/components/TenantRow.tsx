@@ -1,5 +1,6 @@
 import { StatusPill, type StatusTone } from '@shared/ui-patterns/StatusPill';
 import type { MockTenant } from '@shared/mocks/tenants';
+import { TenantAvatar } from '@shared/ui/TenantAvatar';
 
 const TONE_BY_STATUS: Record<MockTenant['status'], StatusTone> = {
   active: 'success',
@@ -26,13 +27,25 @@ export function TenantRow({ tenant, onClick, showHostel }: TenantRowProps) {
       onClick={onClick}
       className="flex w-full items-center gap-3 rounded-[18px] border border-border bg-card p-3.5 text-left shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]"
     >
-      <span
-        className={`flex h-10 w-10 flex-none items-center justify-center rounded-full font-display text-[13px] font-bold ${
-          tenant.status === 'invited' ? 'border-[1.5px] border-dashed border-[#D9A891] bg-[#F5E9E3] text-primary' : 'bg-secondary text-primary'
-        }`}
-      >
-        {tenant.initials}
-      </span>
+      {/* An invited tenant has no photo yet, and the dashed ring is what marks
+          them as not-yet-arrived — so that treatment stays. */}
+      {tenant.status === 'invited' || !tenant.photoUrl ? (
+        <span
+          className={`flex h-10 w-10 flex-none items-center justify-center rounded-full font-display text-[13px] font-bold ${
+            tenant.status === 'invited' ? 'border-[1.5px] border-dashed border-[#D9A891] bg-[#F5E9E3] text-primary' : 'bg-secondary text-primary'
+          }`}
+        >
+          {tenant.initials}
+        </span>
+      ) : (
+        <TenantAvatar
+          name={tenant.name}
+          initials={tenant.initials}
+          photoUrl={tenant.photoUrl}
+          shape="circle"
+          className="h-10 w-10 text-[13px]"
+        />
+      )}
       <div className="min-w-0 flex-1">
         {showHostel && (
           <div className="truncate text-[10px] font-bold uppercase tracking-wide text-primary/70">{tenant.hostelName}</div>
