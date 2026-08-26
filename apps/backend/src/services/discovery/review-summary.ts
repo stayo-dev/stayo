@@ -16,20 +16,25 @@
  *
  * Hostel-specific, not Airbnb's holiday-flat categories: a resident lives
  * here for a year and never once cares about "listing accuracy" or
- * "location" the way a two-night guest does. Eight categories, each its own
+ * "location" the way a two-night guest does. Seven categories, each its own
  * 1–5 question — never averaged into the overall star, which the resident
  * gives separately (see `isValidOverall`).
  *
  * `foodOnly: true` marks the one category that is not always asked — a
  * hostel that serves no meals cannot be scored on them, and asking anyway
  * produces a number that means nothing.
+ *
+ * `rating_amenities` (migration 076) is intentionally unreferenced here —
+ * "Amenities" was dropped as a rating question; the column stays in the
+ * database unused rather than triggering another production migration, the
+ * same way `rating_value`/`rating_location` sat unused before 076 dropped
+ * them outright.
  */
 export const REVIEW_CATEGORIES = [
   { key: "cleanliness", label: "Cleanliness", column: "rating_cleanliness" },
   { key: "maintenance", label: "Maintenance", column: "rating_maintenance" },
   { key: "food", label: "Food", column: "rating_food", foodOnly: true },
   { key: "room_comfort", label: "Room Comfort", column: "rating_room_comfort" },
-  { key: "amenities", label: "Amenities", column: "rating_amenities" },
   { key: "staff", label: "Staff & Management", column: "rating_staff" },
   { key: "safety", label: "Safety", column: "rating_safety" },
   { key: "wifi", label: "Wi-Fi", column: "rating_wifi" },
@@ -137,7 +142,6 @@ const HIGHLIGHT_LABELS: Record<ReviewCategoryKey, string> = {
   maintenance: "Well Maintained",
   food: "Good Food",
   room_comfort: "Comfortable Rooms",
-  amenities: "Good Amenities",
   staff: "Helpful Staff",
   safety: "Safe Environment",
   wifi: "Good Wi-Fi",
