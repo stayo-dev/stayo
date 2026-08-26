@@ -7,10 +7,10 @@ import { C, FONT } from '../discoverTheme';
 import { CATEGORY_ICONS } from './reviewCategoryMeta';
 
 /**
- * The trust header, the star-distribution breakdown, the category grid and
- * the "Residents mention" pills — everything above the review cards
- * themselves. Only ever rendered when `summary.average != null`: it never
- * invents a score, so a caller must gate on that before mounting this.
+ * The trust header, the star-distribution breakdown and the category grid —
+ * everything above the review cards themselves. Only ever rendered when
+ * `summary.average != null`: it never invents a score, so a caller must gate
+ * on that before mounting this.
  */
 export function ReviewsScoreSummary({ summary }: { summary: ReviewSummary }) {
   return (
@@ -71,7 +71,7 @@ export function ReviewsScoreSummary({ summary }: { summary: ReviewSummary }) {
           gets. */}
       {summary.categories.length > 0 && (
         <div
-          className="mt-5 hidden flex-wrap gap-x-8 gap-y-4 border-t pt-4 sm:flex"
+          className="mt-5 hidden flex-wrap justify-between gap-y-4 border-t pt-4 sm:flex"
           style={{ borderColor: C.lineSoft }}
         >
           {summary.categories.map((category) => {
@@ -91,25 +91,6 @@ export function ReviewsScoreSummary({ summary }: { summary: ReviewSummary }) {
               </div>
             );
           })}
-        </div>
-      )}
-
-      {summary.highlights.length > 0 && (
-        <div className="mt-5 border-t pt-4" style={{ borderColor: C.lineSoft }}>
-          <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.textMuted }}>
-            Residents mention
-          </p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {summary.highlights.slice(0, 6).map((highlight) => (
-              <span
-                key={highlight.label}
-                className="rounded-[10px] px-3 py-1.5 text-[11.5px] font-semibold"
-                style={{ background: C.chipBg, color: '#6E6459' }}
-              >
-                {highlight.label} · {highlight.count}
-              </span>
-            ))}
-          </div>
         </div>
       )}
     </div>
