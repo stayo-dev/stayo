@@ -6,10 +6,14 @@ async function main() {
     activeMissingAcceptance,
     invitedCompleted,
     cancelledOrExpiredAuthenticatable,
+    ownerManagedMissingContact,
+    ownerManagedMissingAttestation,
+    ownerManagedWithAuthIdentity,
   ] = await Promise.all([
     prisma.tenants.findMany({
       where: {
         status: "ACTIVE",
+        access_mode: "SELF_SERVE",
         OR: [
           { profile_completed: false },
           { profiles: { is_profile_completed: false } },
@@ -21,6 +25,7 @@ async function main() {
     prisma.tenants.findMany({
       where: {
         status: "ACTIVE",
+        access_mode: "SELF_SERVE",
         rule_acceptances: { none: {} },
       },
       select: { id: true, profile_id: true },
@@ -42,6 +47,32 @@ async function main() {
       select: { id: true, profile_id: true, status: true },
       take: 25,
     }),
+    prisma.tenants.findMany({
+      where: {
+        status: "ACTIVE",
+        access_mode: "OWNER_MANAGED",
+        OR: [{ display_name: null }, { display_name: "" }, { phone_1: null }],
+      },
+      select: { id: true, display_name: true, phone_1: true },
+      take: 25,
+    }),
+    prisma.tenants.findMany({
+      where: {
+        status: "ACTIVE",
+        access_mode: "OWNER_MANAGED",
+        owner_attestations: { none: {} },
+      },
+      select: { id: true },
+      take: 25,
+    }),
+    prisma.tenants.findMany({
+      where: {
+        access_mode: "OWNER_MANAGED",
+        profiles: { auth_user_id: { not: null } },
+      },
+      select: { id: true, profile_id: true },
+      take: 25,
+    }),
   ]);
 
   const failures = [
@@ -49,6 +80,9 @@ async function main() {
     ["ACTIVE tenant must have accepted rules", activeMissingAcceptance],
     ["INVITED tenant must not have activation_completed_at", invitedCompleted],
     ["CANCELLED/EXPIRED tenant must not authenticate", cancelledOrExpiredAuthenticatable],
+    ["OWNER_MANAGED ACTIVE tenant must have a display name and phone", ownerManagedMissingContact],
+    ["OWNER_MANAGED ACTIVE tenant must have an owner attestation", ownerManagedMissingAttestation],
+    ["OWNER_MANAGED tenant must not hold a linked auth identity", ownerManagedWithAuthIdentity],
   ].filter(([, rows]) => (rows as any[]).length > 0);
 
   if (failures.length > 0) {
