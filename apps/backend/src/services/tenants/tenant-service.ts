@@ -16,6 +16,14 @@ import { currentAgreementWhere } from "./agreement-status";
 import { eventLog } from "../../../lib/services/event-log-service";
 import { imagekit } from "../../../lib/imagekit";
 import { tenantRepository } from "../../repositories/tenantRepository";
+/** `7013216327` and `+917013216327` are the same number — the mismatch that made ADR-110 inert once already. */
+function samePhoneValue(a: unknown, b: unknown): boolean {
+  const digits = (v: unknown) => String(v ?? "").replace(/\D/g, "").slice(-10);
+  const left = digits(a);
+  return left.length === 10 && left === digits(b);
+}
+
+import { isEmailProven, isPhoneProven } from "@/lib/services/auth/contact-verification-service";
 import { assertCapability } from "../../../lib/services/move-out-service";
 import {
   partitionFieldsByCategory,
@@ -387,37 +395,49 @@ export class TenantService {
 
     await assertCapability(tenantCheck.id, "EDIT_PROFILE");
 
-    // ── Enforce allow_tenant_edits preference ──
-    if (tenantCheck.owner_id) {
-      // Phase 2: resolve from tenant's hostel, not findFirst(owner_id)
-      const { prefs } = await getTenantOperationalContext(tenantCheck.id, tenantCheck.owner_id, tenantCheck.hostel_id);
-      if (prefs.allow_tenant_edits === false) {
-        throw new Error("FORBIDDEN: Profile editing is currently disabled by the hostel owner");
+    /**
+     * No owner gate, and no admin gate — a person's own contact details are
+     * theirs to change (ADR-119).
+     *
+     * Two gates used to stand here and both are gone. `allow_tenant_edits`
+     * let an owner switch off a resident's ability to edit their own profile
+     * at all. And `GOVERNED_FIELDS` rejected `phone_1`/`phone`/`personal_email`
+     * outright, telling the caller to file at
+     * `POST /api/tenants/me/profile-requests` for owner approval — a queue
+     * that held **0 rows, ever**.
+     *
+     * What survives is the part that was actually doing work: a contact detail
+     * we hold should be one that reaches you. So a *changed* phone or email
+     * must be proved by the person changing it, with a code sent to the new
+     * value. That is not a permission — nobody decides whether you may change
+     * your number; you just show us it is yours. Unchanged values are never
+     * re-proved, so saving a form without touching them costs nothing.
+     */
+    const currentContact = await tenantRepository.findFirst({
+      where: { id: tenantCheck.id },
+      select: { phone_1: true, personal_email: true },
+    });
+
+    const changedPhone = ["phone_1", "phone"].some(
+      (key) => key in data && !samePhoneValue(data[key], currentContact?.phone_1),
+    );
+    if (changedPhone) {
+      const target = data.phone_1 ?? data.phone;
+      if (!(await isPhoneProven(String(target ?? "")))) {
+        throw new Error(
+          "PHONE_NOT_VERIFIED: Verify the new number with the code we sent before saving it",
+        );
       }
     }
 
-    // Primary phone and personal email are governed (2026-08-14 product
-    // decision, narrowed 2026-08-14 same day) — a tenant can no longer save
-    // these directly here; they must go through
-    // `POST /api/tenants/me/profile-requests` for owner approval instead.
-    // `phone` is blocked alongside `phone_1` — they're synced duplicates of
-    // the same primary-contact-number concept (see the sync block below),
-    // not a separate field; blocking only one would leave the other as a
-    // bypass. `profile.email`/`account_email` (the Supabase-login identity)
-    // is untouched by this method already (never was a self-edit field) and
-    // stays that way — the tenant-facing "email" this governs is
-    // `personal_email`, the contact field this Profile tab actually exposes.
-    // Address (city/state/pincode) and date of birth were briefly governed
-    // earlier the same day but that was reverted — the final product
-    // decision is that only phone and email need owner approval; everything
-    // else (address, DOB, guardian details, academic fields, blood group,
-    // nationality, PAN) saves directly.
-    const GOVERNED_FIELDS = ["phone_1", "phone", "personal_email"];
-    const attemptedGoverned = Object.keys(data).filter((k) => GOVERNED_FIELDS.includes(k));
-    if (attemptedGoverned.length > 0) {
-      throw new Error(
-        `VALIDATION_ERROR: ${attemptedGoverned.join(", ")} require owner approval — submit via POST /api/tenants/me/profile-requests instead of updating directly`,
-      );
+    if ("personal_email" in data) {
+      const next = String(data.personal_email ?? "").trim().toLowerCase();
+      const previous = String(currentContact?.personal_email ?? "").trim().toLowerCase();
+      if (next && next !== previous && !(await isEmailProven(profileId, next))) {
+        throw new Error(
+          "EMAIL_NOT_VERIFIED: Verify the new email with the code we sent before saving it",
+        );
+      }
     }
 
     const profileFields = ["name", "emergency_contact", "city", "state", "pincode"];

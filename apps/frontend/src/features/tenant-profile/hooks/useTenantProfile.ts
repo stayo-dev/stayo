@@ -6,11 +6,18 @@ import { useTenantSession } from '@features/tenant-session/useTenantSession';
 
 const QUERY_KEY = ['tenant', 'portal-profile'] as const;
 const DOCUMENTS_QUERY_KEY = ['tenant', 'documents-with-required'] as const;
-const PROFILE_REQUESTS_QUERY_KEY = ['tenant', 'profile-requests'] as const;
 
-/** Fields that need owner approval before they take effect — see `updateTenantSelfProfile` on the backend, which enforces this server-side too. Only phone and email are governed (2026-08-14 product decision, narrowed same day) — everything else saves directly. */
-export const GOVERNED_PROFILE_FIELDS = ['phone_1', 'personal_email'] as const;
-export type GovernedProfileField = (typeof GOVERNED_PROFILE_FIELDS)[number];
+/**
+ * The two contact details a change has to be *proved* for — by the person
+ * changing them, with a code sent to the new value.
+ *
+ * They used to be "governed": editable only with the hostel owner's approval,
+ * through a queue that held 0 rows, ever. Nobody approves these now. The code
+ * is not a permission — it is how we know the detail still reaches you
+ * (ADR-119).
+ */
+export const VERIFIED_PROFILE_FIELDS = ['phone_1', 'personal_email'] as const;
+export type VerifiedProfileField = (typeof VERIFIED_PROFILE_FIELDS)[number];
 
 const DOC_TYPE_LABEL: Record<string, string> = {
   AADHAAR: 'Aadhaar card',
@@ -68,26 +75,6 @@ export function useTenantProfile() {
     },
   });
 
-  /** Pending/recent change requests the tenant has submitted for governed fields (`GOVERNED_PROFILE_FIELDS`) — surfaced so the Profile tab can show "awaiting owner approval" instead of silently accepting a second edit. */
-  const profileRequestsQuery = useQuery({
-    queryKey: PROFILE_REQUESTS_QUERY_KEY,
-    queryFn: async () => {
-      const response = await api.get('/tenants/me/profile-requests');
-      const body = response.data?.data ?? response.data ?? {};
-      return body.requests ?? [];
-    },
-    enabled: session.isAuthenticated,
-    staleTime: 15_000,
-  });
-
-  const changeRequestMutation = useMutation({
-    mutationFn: async ({ fields, reason }: { fields: Partial<Record<GovernedProfileField, string>>; reason: string }) => {
-      const response = await api.post('/tenants/me/profile-requests', { fields, reason });
-      return response.data?.data ?? response.data;
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: PROFILE_REQUESTS_QUERY_KEY }),
-  });
-
   const data = query.data ?? {};
   const uploadedDocuments = documentsQuery.data?.documents ?? [];
   const requiredDocuments: string[] = documentsQuery.data?.requiredDocuments ?? [];
@@ -116,8 +103,5 @@ export function useTenantProfile() {
     isUploadingPhoto: photoMutation.isPending,
     uploadDocument: (args: { docType: string; file: File; docNumber?: string }) => documentMutation.mutateAsync(args),
     isUploadingDocument: documentMutation.isPending,
-    pendingProfileRequest: (profileRequestsQuery.data ?? []).find((r: any) => r.status === 'PENDING') ?? null,
-    submitChangeRequest: (args: { fields: Partial<Record<GovernedProfileField, string>>; reason: string }) => changeRequestMutation.mutateAsync(args),
-    isSubmittingChangeRequest: changeRequestMutation.isPending,
   };
 }

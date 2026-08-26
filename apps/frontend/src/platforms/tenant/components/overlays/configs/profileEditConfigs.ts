@@ -36,9 +36,9 @@ export interface ProfileEditConfig {
  * Config for the Profile tab's "Your details" screens, per Stayo Tenant.dc.html's
  * Personal/Contact/Emergency/Academic DETAIL entries. `viewSections` renders the
  * read-only card exactly as designed; `sections` is the editable form shown once
- * the tenant taps the bottom button. `governed: true` fields (phone, email only —
+ * the tenant taps the bottom button. `verify: 'PHONE'` fields (the phone only —
  * 2026-08-14 product decision) save via a change-request instead of directly (see
- * `useTenantProfile`'s `submitChangeRequest`, backed by `POST /api/tenants/me/profile-requests`).
+ * directly — the owner-approval queue this used to pass through is gone, see ADR-119).
  */
 export function buildProfileEditConfigs(
   tenant: any,
@@ -64,10 +64,10 @@ export function buildProfileEditConfigs(
   return {
     personal_info: {
       title: 'Personal information',
-      sub: 'Your identity on file',
+      sub: 'Yours to change, any time',
       headPill: isVerified ? 'Verified' : undefined,
       pillTone: 'green',
-      editButtonLabel: 'Request a correction',
+      editButtonLabel: 'Edit details',
       viewSections: [
         {
           kind: 'rows',
@@ -95,14 +95,14 @@ export function buildProfileEditConfigs(
             { key: 'name', label: 'Full name', type: 'text', value: p.name ?? '' },
             { key: 'date_of_birth', label: 'Date of birth', type: 'date', value: iso(t.date_of_birth) },
             { key: 'gender', label: 'Gender', type: 'select', options: GENDER_OPTIONS, value: t.gender ?? '' },
-            { key: 'nationality', label: 'Nationality', type: 'text', value: t.nationality ?? '' },
+            { key: 'nationality', label: 'Nationality', type: 'text', value: t.nationality ?? '', placeholder: 'Indian', optional: true },
           ] as ProfileEditField[],
         },
         {
           title: 'Government ID',
           fields: [
             { key: 'aadhaar', label: 'Aadhaar', type: 'document', docType: 'AADHAAR', value: aadhaarMasked === 'Not uploaded' ? '' : aadhaarMasked },
-            { key: 'pan_number', label: 'PAN', type: 'text', value: t.pan_number ?? '' },
+            { key: 'pan_number', label: 'PAN', type: 'text', value: t.pan_number ?? '', placeholder: 'ABCDE1234F', optional: true },
           ] as ProfileEditField[],
         },
       ],
@@ -135,8 +135,8 @@ export function buildProfileEditConfigs(
         {
           title: 'Contact',
           fields: [
-            { key: 'phone_1', label: 'Phone', type: 'text', value: phoneValue, governed: true },
-            { key: 'personal_email', label: 'Email', type: 'text', value: emailValue, governed: true },
+            { key: 'phone_1', label: 'Phone', type: 'text', value: phoneValue, verify: 'PHONE' },
+            { key: 'personal_email', label: 'Email', type: 'text', value: emailValue, verify: 'EMAIL' },
           ] as ProfileEditField[],
         },
         {
@@ -189,7 +189,7 @@ export function buildProfileEditConfigs(
         ? {
             title: 'Work details',
             sub: 'Employer & role',
-            editButtonLabel: 'Request an update',
+            editButtonLabel: 'Edit details',
             viewSections: [
               {
                 kind: 'rows',
@@ -205,8 +205,8 @@ export function buildProfileEditConfigs(
               {
                 title: 'Work',
                 fields: [
-                  { key: 'office_name', label: 'Company', type: 'text', value: t.office_name ?? '' },
-                  { key: 'job_role', label: 'Role', type: 'text', value: t.job_role ?? '' },
+                  { key: 'office_name', label: 'Company', type: 'text', value: t.office_name ?? '', placeholder: 'Where do you work?' },
+                  { key: 'job_role', label: 'Role', type: 'text', value: t.job_role ?? '', placeholder: 'What do you do there?' },
                   { key: 'office_location', label: 'Location', type: 'text', value: t.office_location ?? '' },
                 ] as ProfileEditField[],
               },
@@ -215,7 +215,7 @@ export function buildProfileEditConfigs(
         : {
             title: 'Academic details',
             sub: 'College & course',
-            editButtonLabel: 'Request an update',
+            editButtonLabel: 'Edit details',
             viewSections: [
               {
                 kind: 'rows',
@@ -240,8 +240,8 @@ export function buildProfileEditConfigs(
               {
                 title: 'Institution',
                 fields: [
-                  { key: 'college_name', label: 'College', type: 'text', value: t.college_name ?? '' },
-                  { key: 'course', label: 'Course', type: 'text', value: t.course ?? '' },
+                  { key: 'college_name', label: 'College', type: 'text', value: t.college_name ?? '', placeholder: 'Which college?' },
+                  { key: 'course', label: 'Course', type: 'text', value: t.course ?? '', placeholder: 'Which course?' },
                   { key: 'branch', label: 'Branch', type: 'text', value: t.branch ?? '' },
                   { key: 'year_of_study', label: 'Year', type: 'text', value: t.year_of_study != null ? String(t.year_of_study) : '' },
                   { key: 'roll_number', label: 'Roll number', type: 'text', value: t.roll_number ?? '' },

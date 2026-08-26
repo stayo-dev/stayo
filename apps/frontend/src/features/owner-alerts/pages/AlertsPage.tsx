@@ -5,7 +5,6 @@ import { stayoToast } from '@shared/ui-patterns/Toast';
 import { EmptyState } from '@shared/ui-patterns/EmptyState';
 import { openWhatsAppShare } from '@lib/share';
 import { useAlerts, DynamicAlertCategory } from '../hooks/useAlerts';
-import { useOwnerProfileRequests } from '@features/owner-profile-requests/hooks/useOwnerProfileRequests';
 import { LeadDetailSheet } from '../components/LeadDetailSheet';
 import { LEAD_SOURCE_LABEL, leadStatusLabel, leadStatusToneClass } from '../leadConstants';
 import { matchesElsewhere, searchAlerts } from '../alertsSearch';
@@ -57,7 +56,6 @@ const soon = () => stayoToast.info('Coming soon');
 export function AlertsPage() {
   const navigate = useNavigate();
   const alerts = useAlerts();
-  const profileRequests = useOwnerProfileRequests();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
 
@@ -298,21 +296,8 @@ export function AlertsPage() {
                 ))
               ))}
 
-            {alerts.category === 'requests' && !found.active && profileRequests.requests.length > 0 && (
-              <button type="button" onClick={() => navigate('/owner/profile-requests')} className={`${rowCard} flex-row items-center gap-3`}>
-                <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-warning/10 text-warning">
-                  <UserCog className="h-4.5 w-4.5" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="font-display text-[13px] font-bold text-foreground">Profile change requests</div>
-                  <div className="text-xs text-muted-foreground">{profileRequests.requests.length} tenant{profileRequests.requests.length === 1 ? '' : 's'} awaiting your approval</div>
-                </div>
-                <ChevronRight className="h-4 w-4 flex-none text-muted-foreground" />
-              </button>
-            )}
-
             {alerts.category === 'requests' &&
-              (found.requests.length === 0 && profileRequests.requests.length === 0 ? (
+              (found.requests.length === 0 ? (
                 <EmptyState
                   icon={<Inbox className="h-5 w-5" />}
                   title={found.active ? `No requests match "${query.trim()}"` : 'No requests'}
