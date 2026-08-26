@@ -1114,20 +1114,6 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
             </section>
           )}
 
-          {/* Still honest about what genuinely isn't here — but only about the
-              things that are actually missing for *this* hostel. */}
-          <section
-            className="mt-6 flex gap-3 rounded-2xl border p-4"
-            style={{ background: '#F6F0E8', borderColor: '#EADFCF' }}
-          >
-            <Info className="h-4 w-4 flex-none" strokeWidth={2} style={{ color: C.clay }} />
-            <p className="text-[11.5px] leading-[1.55]" style={{ color: '#5A5147' }}>
-              {data?.marketing_published
-                ? 'This listing was written by the owner and checked by Stayo. Live availability comes from their real rooms. Resident reviews are coming.'
-                : 'Photos, room types and live availability come straight from the owner. Amenity lists and distances appear once this hostel publishes its listing.'}
-            </p>
-          </section>
-
           {/* ── Reviews ──────────────────────────────────────────────────── */}
           <ReviewsSection slug={slug} hostelName={hostel.name} />
         </div>
