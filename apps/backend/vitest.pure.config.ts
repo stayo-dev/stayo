@@ -96,6 +96,7 @@ export default defineConfig({
       'tests/invitation-expiry-reminder-contract.test.ts',
       'tests/move-out-quick-exit-plan.test.ts',
       'tests/rent-changeable-agreement.test.ts',
+      'tests/rent-change-repricing.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),

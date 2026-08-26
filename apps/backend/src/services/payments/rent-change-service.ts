@@ -55,9 +55,34 @@ export async function applyRentChangeInTx(
 
   const oldRentAmount = money(agreement.contract_rent);
 
+  /**
+   * Two generation paths write rent obligations and only one sets
+   * `agreement_id`:
+   *
+   *  - `agreement-rent-schedule-service` fires on signing and writes the whole
+   *    installment schedule with the agreement linked.
+   *  - `rentGenerationService.generateMonthlyRent` — the monthly cron — writes
+   *    its rows with no `agreement_id` field at all.
+   *
+   * A hostel with `agreement_required = false` (ADR-059) never signs, so its
+   * tenants are fed entirely by the cron and every obligation they hold is
+   * unlinked. Matching on `agreement_id` alone meant a rent change updated the
+   * contract and `tenants.monthly_rent` — correct for future months — while
+   * every already-generated unpaid obligation silently kept the old amount.
+   *
+   * The unlinked branch is scoped by tenant *and* hostel, because an unlinked
+   * row carries no agreement and those two columns are the only thing keeping
+   * one tenant's rent change out of another's charges, or out of the charges
+   * this tenant ran up at a hostel they have since transferred away from. A
+   * legacy row with no `hostel_id` is therefore skipped rather than guessed at
+   * — under-repricing is the safe direction to fail for money.
+   */
   const candidates = await tx.rent_obligations.findMany({
     where: {
-      agreement_id: agreementId,
+      OR: [
+        { agreement_id: agreementId },
+        { agreement_id: null, tenant_id: agreement.tenant_id, hostel_id: hostelId },
+      ],
       obligation_type: "RENT",
       is_superseded: false,
       lifecycle_status: "ACTIVE",

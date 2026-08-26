@@ -8,6 +8,38 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-08-26 — A rent change never repriced cron-generated obligations (fixed)
+
+Found while fixing the DRAFT-agreement bug above, and the more consequential half of it.
+
+`applyRentChangeInTx` selected the obligations to reprice with `agreement_id: agreementId`. **Two paths generate rent obligations and only one sets that column:**
+
+| Path | Sets `agreement_id`? | Fires when |
+|---|---|---|
+| `agreement-rent-schedule-service` | **yes** | an agreement is signed — writes the whole installment schedule |
+| `rentGenerationService.generateMonthlyRent` (the monthly cron) | **no** — the field is absent from `rentRows`/`maintRows` entirely | every month, for every active allocation |
+
+A hostel with `agreement_required = false` ([[Decisions#ADR-059|ADR-059]]) never signs, so its tenants are fed entirely by the cron and **every obligation they hold is unlinked**. Changing their rent updated `agreement.contract_rent` and `tenants.monthly_rent` — so future months generated correctly — while every already-generated unpaid obligation silently kept the old amount. The owner sees "Rent updated", the charges say otherwise.
+
+The live database showed the split exactly: the two tenants with `SIGNED` agreements had 11 linked obligations each (all carrying `installment_sequence`, the schedule service's signature); the one on a `DRAFT` agreement had a single unlinked row with no sequence.
+
+**Fix.** The selector gains a second branch:
+
+```ts
+OR: [
+  { agreement_id: agreementId },
+  { agreement_id: null, tenant_id: agreement.tenant_id, hostel_id: hostelId },
+]
+```
+
+The unlinked branch is scoped by tenant **and** hostel, because an unlinked row carries no agreement and those two columns are the only thing keeping one tenant's rent change out of another's charges — or out of charges this tenant ran up at a hostel they have since transferred away from. A legacy row with no `hostel_id` is skipped rather than guessed at: for a rent change, under-repricing is the safe direction to fail.
+
+**Why not link `agreement_id` at generation time instead** (the other option considered): the cron would have to attach the tenant's `DRAFT` agreement, and `@@unique([agreement_id, rent_month, obligation_type])` would then collide with the schedule service's rows if that tenant later signs — the same `Agreement` row flips `DRAFT → SIGNED` and `createMany({ skipDuplicates: true })` would **silently skip** creating the real installment schedule. Widening the read is reversible and touches no write path; changing the cron is neither. It also fixes existing rows with no migration.
+
+Tested against a stub transaction (10 cases, `test:pure`) covering both kinds together, the cross-tenant and cross-hostel refusals, the missing-hostel skip, and the pre-existing guards — zero-payment-only, month scoping, lifecycle/settlement filters, and the contract/tenant rent sync.
+
+> **The integration tests for this service were not run.** `tests/integration/rent-change-service.test.ts` requires `DATABASE_URL_TEST`, which is not provisioned (ADR-043). Reading them, all three build their obligations *with* `agreement_id` set, so the added OR branch cannot change their outcomes — but that is inspection, not execution.
+
 ## 2026-08-26 — Change rent was impossible for any hostel that doesn't require agreements (fixed)
 
 `POST /api/tenants/:id/change-rent` looked for the tenant's agreement in the **current** set:
@@ -32,7 +64,7 @@ Kept deliberately separate from `CURRENT_AGREEMENT_STATUSES` rather than widenin
 
 `applyRentChangeInTx` already writes **both** `agreement.contract_rent` and `tenants.monthly_rent`, so the fix is complete for these tenants: rent generation reads `tenants.monthly_rent` for anyone without a signed-agreement schedule, and now sees the new figure.
 
-**Known remaining gap (not fixed here).** The repricing step filters unpaid obligations by `agreement_id`, and obligations generated for no-agreement hostels are written with `agreement_id = null` (1 of 23 `RENT` obligations on the live database). For such a tenant, a rent change updates the contract and future generation correctly but leaves *already-generated* unpaid obligations at the old amount. Tracked in [[TODO]].
+**Follow-up, fixed the same day — see the next entry.** The repricing step filtered unpaid obligations by `agreement_id`, which the monthly cron never sets.
 
 ## 2026-08-26 — The owner tenant profile rendered controls that did nothing (fixed)
 
