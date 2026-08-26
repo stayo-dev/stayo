@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { addItem, filterByName, isOverDropZone, moveItem, removeItem, reorderIndexAt, resolveDisplayName } from './timetableDnd';
+import { formatCellItems } from './weekGrid';
 
 describe('isOverDropZone', () => {
   const zone = { left: 0, top: 0, right: 100, bottom: 100 };
@@ -138,5 +139,26 @@ describe('resolveDisplayName', () => {
   it('falls back to the stored snapshot when menu_item_id is null', () => {
     const liveNameById = new Map([['item-1', 'Chicken Curry Special']]);
     expect(resolveDisplayName({ menu_item_id: null, item_name: 'Orphaned Dish' }, liveNameById)).toBe('Orphaned Dish');
+  });
+
+  /**
+   * Published-snapshot immutability (ADR-121): once a library item is
+   * renamed, a *closed/past* month's stored records must keep showing what
+   * was actually served, while the Meal Plan editor currently open live-
+   * resolves the new name (ADR-114's deliberate call). These two functions
+   * are exactly the two surfaces that need to diverge here — `formatCellItems`
+   * (what `MonthHistoryList`/`KitchenSheetPage`/the tenant view render, reads
+   * the raw stored `item_name`) and `resolveDisplayName` (what only the
+   * currently-open editor renders, prefers the live library name).
+   */
+  it('the stored snapshot and the live-resolved name diverge correctly after a rename', () => {
+    const cellItem = { id: 'row-1', menu_item_id: 'item-1', item_name: 'Chicken Curry', display_order: 0 };
+    const liveNameById = new Map([['item-1', 'Chicken Curry Special']]); // renamed since the cell was last written
+
+    // A closed month's own record (MonthHistoryList/KitchenSheetPage/tenant view) — unaffected by the rename.
+    expect(formatCellItems({ items: [cellItem] })).toBe('Chicken Curry');
+
+    // The currently-open Meal Plan editor — reflects the rename immediately.
+    expect(resolveDisplayName(cellItem, liveNameById)).toBe('Chicken Curry Special');
   });
 });

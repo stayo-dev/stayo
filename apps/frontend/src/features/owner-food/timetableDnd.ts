@@ -1,8 +1,10 @@
 /**
- * Pure logic for the Timetable page's drag/tap interaction — no DOM, no
- * React. Deliberately simpler than the deleted `dragSwap.ts`: only one drop
- * zone (the active meal section) is ever live at a time, so there is no
- * 28-cell disambiguation, just "is the point inside this one rect."
+ * Pure logic for the Meal Plan page's drag/tap interaction — no DOM, no
+ * React. Per-cell operations only (add/remove/reorder/search/display-name
+ * within one cell's own ids array) — "which of many simultaneously-live
+ * cells did this drop land on" is `gridDnd.ts`'s `findDropTarget`, layered on
+ * top of `isOverDropZone` here (see ADR-121; this module predates the
+ * multi-zone grid and originally assumed a single active drop zone).
  */
 
 export interface Rect {
