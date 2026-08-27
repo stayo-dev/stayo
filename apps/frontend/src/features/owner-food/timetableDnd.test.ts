@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { addItem, filterByName, isOverDropZone, moveItem, removeItem, reorderIndexAt, resolveDisplayName } from './timetableDnd';
+import { addItem, filterByName, isOverDropZone, moveItem, removeItem, reorderIndexAt, resolveChipDrop, resolveDisplayName } from './timetableDnd';
+import { formatCellItems } from './weekGrid';
 
 describe('isOverDropZone', () => {
   const zone = { left: 0, top: 0, right: 100, bottom: 100 };
@@ -81,6 +82,31 @@ describe('reorderIndexAt', () => {
   });
 });
 
+describe('resolveChipDrop', () => {
+  const trashRect = { left: 200, top: 200, right: 240, bottom: 240 };
+  const siblingRects = [
+    { left: 0, top: 0, right: 100, bottom: 40 },
+    { left: 0, top: 40, right: 100, bottom: 80 },
+  ];
+
+  it('resolves to trash when the point is over the trash zone', () => {
+    expect(resolveChipDrop({ x: 220, y: 220 }, trashRect, siblingRects, 0)).toEqual({ kind: 'trash' });
+  });
+
+  it('falls through to a reorder when the point is outside the trash zone', () => {
+    expect(resolveChipDrop({ x: 50, y: 60 }, trashRect, siblingRects, 0)).toEqual({ kind: 'reorder', toIndex: 1 });
+  });
+
+  it('falls through to a reorder when there is no trash rect yet', () => {
+    expect(resolveChipDrop({ x: 50, y: 60 }, null, siblingRects, 0)).toEqual({ kind: 'reorder', toIndex: 1 });
+  });
+
+  it('trash wins even when the point also overlaps a sibling rect', () => {
+    const overlappingTrash = { left: 0, top: 0, right: 100, bottom: 40 };
+    expect(resolveChipDrop({ x: 50, y: 20 }, overlappingTrash, siblingRects, 0)).toEqual({ kind: 'trash' });
+  });
+});
+
 describe('moveItem', () => {
   it('moves an item from the start to the end', () => {
     expect(moveItem(['a', 'b', 'c'], 0, 2)).toEqual(['b', 'c', 'a']);
@@ -138,5 +164,26 @@ describe('resolveDisplayName', () => {
   it('falls back to the stored snapshot when menu_item_id is null', () => {
     const liveNameById = new Map([['item-1', 'Chicken Curry Special']]);
     expect(resolveDisplayName({ menu_item_id: null, item_name: 'Orphaned Dish' }, liveNameById)).toBe('Orphaned Dish');
+  });
+
+  /**
+   * Published-snapshot immutability (ADR-121): once a library item is
+   * renamed, a *closed/past* month's stored records must keep showing what
+   * was actually served, while the Meal Plan editor currently open live-
+   * resolves the new name (ADR-114's deliberate call). These two functions
+   * are exactly the two surfaces that need to diverge here — `formatCellItems`
+   * (what `MonthHistoryList`/`KitchenSheetPage`/the tenant view render, reads
+   * the raw stored `item_name`) and `resolveDisplayName` (what only the
+   * currently-open editor renders, prefers the live library name).
+   */
+  it('the stored snapshot and the live-resolved name diverge correctly after a rename', () => {
+    const cellItem = { id: 'row-1', menu_item_id: 'item-1', item_name: 'Chicken Curry', display_order: 0 };
+    const liveNameById = new Map([['item-1', 'Chicken Curry Special']]); // renamed since the cell was last written
+
+    // A closed month's own record (MonthHistoryList/KitchenSheetPage/tenant view) — unaffected by the rename.
+    expect(formatCellItems({ items: [cellItem] })).toBe('Chicken Curry');
+
+    // The currently-open Meal Plan editor — reflects the rename immediately.
+    expect(resolveDisplayName(cellItem, liveNameById)).toBe('Chicken Curry Special');
   });
 });

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, Plus, Vote } from 'lucide-react';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
@@ -9,12 +9,28 @@ import { CreatePollModal } from '../create-poll/CreatePollModal';
 import { PollResultsSheet } from '../poll-results/PollResultsSheet';
 import { useFoodPolls } from '../hooks/useFoodPolls';
 import { useFoodMenuItems } from '../hooks/useFoodMenuItems';
-import type { PollStatus } from '../polls/pollTypes';
+import type { PollRow } from '../polls/pollTypes';
 
-const TABS: { key: PollStatus; label: string }[] = [
-  { key: 'OPEN', label: 'Active' },
-  { key: 'CLOSED', label: 'Closed' },
-];
+function monthKey(dateStr: string): string {
+  return dateStr.slice(0, 7); // YYYY-MM
+}
+
+/** Groups polls by the month of `poll_date`, most recent month first, dates ascending within a month — a calendar-style read of the list rather than an Active/Closed split. */
+function groupByMonth(polls: PollRow[]): { key: string; label: string; polls: PollRow[] }[] {
+  const groups = new Map<string, PollRow[]>();
+  for (const poll of polls) {
+    const key = monthKey(poll.poll_date);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(poll);
+  }
+  return Array.from(groups.entries())
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([key, groupPolls]) => ({
+      key,
+      label: new Date(`${key}-01T00:00:00Z`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' }),
+      polls: [...groupPolls].sort((a, b) => new Date(a.poll_date).getTime() - new Date(b.poll_date).getTime()),
+    }));
+}
 
 /**
  * Food Polls — ad-hoc, owner-created, independent of the dormant monthly
@@ -27,8 +43,10 @@ export function FoodPollsPage() {
   const hostelId = searchParams.get('hostelId') ?? session.primaryHostelId ?? undefined;
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [editingPoll, setEditingPoll] = useState<PollRow | null>(null);
   const polls = useFoodPolls(hostelId);
   const library = useFoodMenuItems(hostelId);
+  const monthGroups = useMemo(() => groupByMonth(polls.polls), [polls.polls]);
 
   const resultsPoll = polls.polls.find((p) => p.id === polls.resultsPollId) ?? null;
   const resultsPollMeta = resultsPoll ? { title: resultsPoll.title, meal_type: resultsPoll.meal_type, poll_date: resultsPoll.poll_date } : null;
@@ -63,19 +81,7 @@ export function FoodPollsPage() {
         <HostelSwitcher hostels={session.hostels} selectedId={hostelId ?? null} onSelect={(id) => setSearchParams({ hostelId: id }, { replace: true })} />
       </div>
 
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex gap-1 rounded-xl bg-muted p-1">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => polls.setTab(t.key)}
-              className={`rounded-lg px-3.5 py-1.5 text-[12.5px] font-bold ${polls.tab === t.key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'}`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+      <div className="flex items-center justify-end gap-2">
         <button
           type="button"
           onClick={() => setCreateOpen(true)}
@@ -90,22 +96,40 @@ export function FoodPollsPage() {
       ) : polls.polls.length === 0 ? (
         <div className="flex flex-col items-center gap-2.5 rounded-[20px] border border-border bg-card px-6 py-10 text-center shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]">
           <span className="flex h-[60px] w-[60px] items-center justify-center rounded-[18px] bg-secondary"><Vote className="h-7 w-7 text-muted-foreground" strokeWidth={1.5} /></span>
-          <span className="font-display text-[15px] font-bold text-foreground">
-            {polls.tab === 'OPEN' ? 'No active polls' : 'No closed polls yet'}
-          </span>
-          <p className="max-w-[250px] text-[12.5px] leading-relaxed text-muted-foreground">
-            {polls.tab === 'OPEN' ? 'Ask tenants what they want for a specific meal.' : "Polls show up here once they've closed."}
-          </p>
+          <span className="font-display text-[15px] font-bold text-foreground">No polls yet</span>
+          <p className="max-w-[250px] text-[12.5px] leading-relaxed text-muted-foreground">Ask tenants what they want for a specific meal.</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          {polls.polls.map((poll) => (
-            <PollCard key={poll.id} poll={poll} onViewResults={() => polls.openResults(poll.id)} onClose={() => polls.closePoll(poll.id)} />
+        <div className="flex flex-col gap-5">
+          {monthGroups.map((group) => (
+            <div key={group.key} className="flex flex-col gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{group.label}</span>
+              <div className="flex flex-col gap-3">
+                {group.polls.map((poll) => (
+                  <PollCard
+                    key={poll.id}
+                    poll={poll}
+                    onViewResults={() => polls.openResults(poll.id)}
+                    onClose={() => polls.closePoll(poll.id)}
+                    onEdit={() => setEditingPoll(poll)}
+                  />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       )}
 
-      <CreatePollModal open={createOpen} onClose={() => setCreateOpen(false)} onPublish={(poll) => polls.publishPoll(poll)} />
+      <CreatePollModal
+        open={createOpen || Boolean(editingPoll)}
+        onClose={() => {
+          setCreateOpen(false);
+          setEditingPoll(null);
+        }}
+        onPublish={(poll) => polls.publishPoll(poll)}
+        editingPoll={editingPoll}
+        onSave={(pollId, patch) => polls.updatePoll(pollId, patch)}
+      />
 
       <PollResultsSheet
         poll={resultsPollMeta}

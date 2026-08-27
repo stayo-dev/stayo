@@ -13,10 +13,10 @@
  * OWNER | TENANT | ADMIN, and there is no staff table to resolve against.
  * It exists so the union and the permission tables are ready when one lands.
  */
-export type SenderRole = "OWNER" | "TENANT" | "STAFF" | "ADMIN" | "UNKNOWN";
+export type SenderRole = "OWNER" | "TENANT" | "GUARDIAN" | "STAFF" | "ADMIN" | "UNKNOWN";
 
 /** Every known role — the permission list for intents anyone recognised may use. */
-export const KNOWN_ROLES: SenderRole[] = ["OWNER", "TENANT", "STAFF", "ADMIN"];
+export const KNOWN_ROLES: SenderRole[] = ["OWNER", "TENANT", "GUARDIAN", "STAFF", "ADMIN"];
 
 /** Including UNKNOWN — for intents that must work before we know who is calling. */
 export const ANY_ROLE: SenderRole[] = [...KNOWN_ROLES, "UNKNOWN"];
@@ -67,6 +67,24 @@ export const ROLE_PERMISSIONS: Record<SenderRole, Permission[]> = {
     PERMISSIONS.PAYMENT_INITIATE,
     PERMISSIONS.RESIDENT_SWITCH,
   ],
+  /**
+   * A parent or guardian, recognised through `tenants.guardian_phone`. They
+   * may read the money and start a payment — that is the entire reason the
+   * channel exists for them — but they hold no `RESIDENT_SWITCH`, because the
+   * mode that permission escaped no longer exists: which resident an action
+   * is about now travels inside the interactive payload.
+   *
+   * Note what is *absent*. The guardian command surface is RENT, PAY, PLAN,
+   * RECEIPT and HELP, and none of them reads a move-out request, a document,
+   * or a KYC field. The scope decision ("money and stay basics, not the whole
+   * tenancy") is enforced by the command set itself, not by copy discipline.
+   * See [[Business-Rules]] § Guardian access.
+   */
+  GUARDIAN: [
+    PERMISSIONS.SELF_SERVICE,
+    PERMISSIONS.BILLING_READ,
+    PERMISSIONS.PAYMENT_INITIATE,
+  ],
   // Inert until a staff record exists — deliberately read-only on money.
   STAFF: [PERMISSIONS.SELF_SERVICE, PERMISSIONS.BILLING_READ],
   UNKNOWN: [PERMISSIONS.SELF_SERVICE],
@@ -115,6 +133,12 @@ export type SenderIdentity = {
   hostelIds: string[];
   /** Full resolved context, so handlers need not re-query for it. */
   residents: ResolvedResident[];
+  /**
+   * The subset of `residents` this phone reached as a *guardian* rather than
+   * as the resident themselves. Non-empty means the guardian verification gate
+   * applies before any financial answer — see `command-center/guardian-access`.
+   */
+  guardianResidents: ResolvedResident[];
 
   profileId: string | null;
   displayName: string | null;

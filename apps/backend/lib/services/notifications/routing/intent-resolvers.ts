@@ -1,55 +1,25 @@
-import { getSelectionState } from "../whatsapp-selection-state";
 import { Intent, IntentResolutionInput, IntentResolver } from "./types";
+import { resolveCommand } from "../command-center/commands";
+import { looksLikeOtp } from "../command-center/guardian-access";
+import { decodePayload } from "../command-center/menu";
 
 /** Registry keys, so resolvers and the registry can't drift apart on strings. */
 export const INTENTS = {
-  BALANCE: "BALANCE",
-  DUES: "DUES",
-  PAY: "PAY",
-  STATUS: "STATUS",
-  SWITCH: "SWITCH",
-  HELP: "HELP",
+  /**
+   * Everything a resident or guardian can ask for. One key, because the five
+   * it replaces (BALANCE, DUES, PAY, STATUS, SWITCH) were never five separate
+   * things — see `command-center/commands.ts`.
+   */
+  COMMAND_CENTER: "COMMAND_CENTER",
+  GUARDIAN_VERIFICATION: "GUARDIAN_VERIFICATION",
   INTERACTIVE_REPLY: "INTERACTIVE_REPLY",
-  CONTINUE_SELECTION: "CONTINUE_SELECTION",
   OWNER_ASSISTANT: "OWNER_ASSISTANT",
 } as const;
 
-const KEYWORD_TO_INTENT: Record<string, string> = {
-  BAL: INTENTS.BALANCE,
-  BALANCE: INTENTS.BALANCE,
-  DUES: INTENTS.DUES,
-  PAY: INTENTS.PAY,
-  STATUS: INTENTS.STATUS,
-  SWITCH: INTENTS.SWITCH,
-  HELP: INTENTS.HELP,
-};
-
 /**
- * Map free text onto a command keyword, tolerating how people actually type.
- * Order: whole message → first word → the single known keyword anywhere in it.
- * The last step needs exactly one distinct match, so "should I pay or check
- * dues" stays ambiguous instead of being guessed; a message that *opens* with
- * a keyword honours it ("pay or dues?" → PAY).
+ * A button or list reply the user tapped — the highest-confidence signal there
+ * is, since the payload was minted by a message we sent to this number.
  */
-export function resolveCommandKey(body: string): string | null {
-  const normalized = String(body || "").trim().replace(/\s+/g, " ").toUpperCase();
-  if (!normalized) return null;
-
-  const known = new Set(Object.keys(KEYWORD_TO_INTENT));
-  if (known.has(normalized)) return normalized;
-
-  const tokens = normalized
-    .split(" ")
-    .map((token) => token.replace(/[^A-Z0-9]/g, ""))
-    .filter(Boolean);
-  if (tokens.length === 0) return null;
-  if (known.has(tokens[0])) return tokens[0];
-
-  const matched = Array.from(new Set(tokens.filter((token) => known.has(token))));
-  return matched.length === 1 ? matched[0] : null;
-}
-
-/** A button or list reply the user tapped — the highest-confidence signal there is. */
 export const interactiveIntentResolver: IntentResolver = {
   name: "interactive",
   async resolve({ message }: IntentResolutionInput): Promise<Intent[]> {
@@ -60,25 +30,30 @@ export const interactiveIntentResolver: IntentResolver = {
         source: "INTERACTIVE",
         confidence: 1,
         slots: { payloadId: message.body, interactiveType: message.interactiveType },
-        metadata: { resolver: "interactive" },
+        metadata: { resolver: "interactive", commandCenter: Boolean(decodePayload(message.body)) },
       },
     ];
   },
 };
 
-/** The message is an answer to a prompt we sent (e.g. "which resident?"). */
-export const selectionStateIntentResolver: IntentResolver = {
-  name: "selection-state",
-  async resolve({ message }: IntentResolutionInput): Promise<Intent[]> {
-    const state = await getSelectionState(message.from);
-    if (!state || state.action !== "BALANCE_SELECTION") return [];
+/**
+ * A bare six-digit code from a phone we recognise as somebody's guardian
+ * contact. Ranked above the command vocabulary so a code is never mistaken for
+ * anything else, and resolved only for guardians so a stray six-digit message
+ * from a resident falls through to the normal path.
+ */
+export const guardianVerificationIntentResolver: IntentResolver = {
+  name: "guardian-verification",
+  async resolve({ message, identity }: IntentResolutionInput): Promise<Intent[]> {
+    if (message.messageType !== "text") return [];
+    if (!looksLikeOtp(message.body)) return [];
+    if (identity.guardianResidents.length === 0) return [];
     return [
       {
-        name: INTENTS.CONTINUE_SELECTION,
-        source: "SELECTION_STATE",
-        confidence: 0.9,
-        slots: { state },
-        metadata: { resolver: "selection-state" },
+        name: INTENTS.GUARDIAN_VERIFICATION,
+        source: "KEYWORD",
+        confidence: 0.95,
+        metadata: { resolver: "guardian-verification" },
       },
     ];
   },
@@ -86,8 +61,9 @@ export const selectionStateIntentResolver: IntentResolver = {
 
 /**
  * A verified owner's messages go to the owner assistant first — it owns a much
- * richer command surface (menus, invites, briefings) than the tenant keywords.
- * It may decline, in which case the router falls through to the keyword intent.
+ * richer command surface (menus, invites, briefings) than the resident
+ * vocabulary. It may decline, in which case the router falls through to the
+ * command center.
  */
 export const ownerAssistantIntentResolver: IntentResolver = {
   name: "owner-assistant",
@@ -127,18 +103,24 @@ export const linkIntentResolver: IntentResolver = {
   },
 };
 
-export const keywordIntentResolver: IntentResolver = {
-  name: "keyword",
+/**
+ * The resident/guardian vocabulary. Tolerates retired words (`BAL`, `DUES`,
+ * `STATUS`, `SWITCH`) so nobody who learned the old surface hits a wall, and
+ * refuses to guess when two commands appear and neither leads — guessing wrong
+ * on a money command is worse than asking.
+ */
+export const commandCenterIntentResolver: IntentResolver = {
+  name: "command-center",
   async resolve({ message }: IntentResolutionInput): Promise<Intent[]> {
-    const key = resolveCommandKey(message.body);
-    if (!key) return [];
+    const command = resolveCommand(message.body);
+    if (!command) return [];
     return [
       {
-        name: KEYWORD_TO_INTENT[key],
+        name: INTENTS.COMMAND_CENTER,
         source: "KEYWORD",
         confidence: 0.7,
-        slots: { keyword: key },
-        metadata: { resolver: "keyword" },
+        slots: { command },
+        metadata: { resolver: "command-center" },
       },
     ];
   },
@@ -170,11 +152,14 @@ export function createCompositeIntentResolver(resolvers: IntentResolver[]): Inte
   };
 }
 
-/** The default chain: tapped buttons, then pending prompts, then owner, then keywords. */
+/**
+ * The default chain: tapped buttons, then a guardian's verification code, then
+ * owner paths, then the resident/guardian vocabulary.
+ */
 export const defaultIntentResolver = createCompositeIntentResolver([
   interactiveIntentResolver,
-  selectionStateIntentResolver,
+  guardianVerificationIntentResolver,
   linkIntentResolver,
   ownerAssistantIntentResolver,
-  keywordIntentResolver,
+  commandCenterIntentResolver,
 ]);

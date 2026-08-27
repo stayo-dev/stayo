@@ -36,6 +36,7 @@ export function FormPanel({ config, onBack, onClose }: FormPanelProps) {
 
   const missingOption = Boolean(config.needsOption && !optionId);
   const missingName = Boolean(config.needsName && !(inputs.name ?? '').trim());
+  const missingNote = Boolean(config.needsNote && !note.trim());
 
   const handleSubmit = async () => {
     if (missingOption) {
@@ -44,6 +45,10 @@ export function FormPanel({ config, onBack, onClose }: FormPanelProps) {
     }
     if (missingName) {
       stayoToast.info('Enter visitor name');
+      return;
+    }
+    if (missingNote) {
+      stayoToast.info('Please describe why you’d like to change rooms');
       return;
     }
     setSubmitting(true);

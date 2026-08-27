@@ -67,7 +67,7 @@ export const foodService = {
     const response = await api.post('/food/schedules', { hostelId, month });
     return unwrap(response).schedule as any;
   },
-  updateScheduleMeal: async (scheduleId: string, mealId: string, menuItemIds: string[], expectedUpdatedAt: string) => {
+  updateScheduleMeal: async (scheduleId: string, mealId: string, menuItemIds: string[], expectedUpdatedAt: string | null) => {
     const response = await api.patch(`/food/schedules/${scheduleId}/meals/${mealId}`, { menuItemIds, expectedUpdatedAt });
     return unwrap(response);
   },
@@ -112,6 +112,20 @@ export const foodService = {
   },
   closePoll: async (pollId: string) => {
     const response = await api.post(`/food/polls/${pollId}/close`);
+    return unwrap(response);
+  },
+  updatePoll: async (
+    pollId: string,
+    patch: Partial<{
+      title: string;
+      pollDate: string;
+      closesAt: string;
+      isAnonymous: boolean;
+      allowMultiple: boolean;
+      options: { id?: string; label: string }[];
+    }>,
+  ) => {
+    const response = await api.patch(`/food/polls/${pollId}`, patch);
     return unwrap(response);
   },
   getPollResults: async (pollId: string) => {

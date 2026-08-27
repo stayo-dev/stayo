@@ -1,4 +1,5 @@
 import type { InviteWizardData } from '../../types';
+import type { TenancyConflict } from '@features/tenants/tenancyConflict';
 import {
   sanitizeIndianPhone,
   isValidIndianPhone,
@@ -9,13 +10,23 @@ import {
 interface TenantStepProps {
   data: InviteWizardData;
   setD: (patch: Partial<InviteWizardData>) => void;
+  /** Pre-submit tenancy-eligibility check on the phone field — see useInviteWizard. */
+  isCheckingEligibility?: boolean;
+  eligibilityConflict?: TenancyConflict | null;
+  hasExistingAccount?: boolean;
 }
 
 const labelStyle = 'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground';
 const inputStyle = 'w-full rounded-[11px] border border-border bg-card px-3.5 py-3 text-sm font-semibold text-foreground focus:border-primary focus:outline-none';
 
 /** Step 1/4 of the Invite Tenant wizard — who's moving in. */
-export function TenantStep({ data, setD }: TenantStepProps) {
+export function TenantStep({
+  data,
+  setD,
+  isCheckingEligibility = false,
+  eligibilityConflict = null,
+  hasExistingAccount = false,
+}: TenantStepProps) {
   const rawPhone = data.tenantPhone;
   const cleanedPhone = sanitizeIndianPhone(rawPhone);
 
@@ -72,6 +83,30 @@ export function TenantStep({ data, setD }: TenantStepProps) {
           <span className="mt-1 block text-[11.5px] font-medium text-destructive">
             {phoneHelpText}
           </span>
+        )}
+        {!showPhoneError && isCheckingEligibility && (
+          <span className="mt-1.5 block text-[11.5px] font-medium text-muted-foreground">
+            Checking this number…
+          </span>
+        )}
+        {!showPhoneError && !isCheckingEligibility && eligibilityConflict && (
+          <div className="mt-2 rounded-xl border border-destructive/25 bg-destructive/10 px-3.5 py-2.5 text-[12.5px] font-semibold text-destructive">
+            <p className="mb-0.5 font-bold">{eligibilityConflict.title}</p>
+            <p className="font-medium">{eligibilityConflict.body}</p>
+          </div>
+        )}
+        {/*
+         * State B (existing account, currently eligible): deliberately no
+         * hostel name, history, or score here — hostel_id isn't chosen until
+         * the Stay step, and ADR-075 never intended history disclosure at
+         * invite-composition time. The "ask them to share their history"
+         * affordance (tenantHistoryService.request) is built but needs a
+         * hostel_id this step doesn't have, so it's not wired in here.
+         */}
+        {!showPhoneError && !isCheckingEligibility && !eligibilityConflict && hasExistingAccount && (
+          <p className="mt-1.5 block text-[11.5px] leading-relaxed text-muted-foreground">
+            This phone number already has a Stayo account. You&apos;ll be inviting an existing user, not creating a new one.
+          </p>
         )}
       </label>
 

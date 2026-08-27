@@ -33,6 +33,11 @@ export const SLOT_TO_MEAL_TYPE: Record<MealSlotKey, string> = {
 
 export const TITLE_SUGGESTIONS = ['Saturday Lunch Menu', 'Sunday Dinner', 'New Breakfast Items', "Are you satisfied with today's lunch?"];
 
+/** Combines a `<input type="date">` + `<input type="time">` local wall-clock pair into an ISO instant. Shared by create and edit. */
+export function toClosesAtIso(date: string, time: string): string {
+  return new Date(`${date}T${time}:00`).toISOString();
+}
+
 export interface PollOptionRow {
   id: string;
   label: string;

@@ -17,6 +17,7 @@ import {
   TenancyEligibilityError,
   tenancyEligibilityService,
 } from "./tenancy-eligibility-service";
+import { markLeadJoinedForTenant } from "@/src/services/admissions/lead-joined-transition";
 
 type InvitationStatus = "PENDING" | "OPENED" | "ACTIVATION_STARTED" | "ACTIVATED" | "EXPIRED" | "CANCELLED";
 type ReservationReleaseReason =
@@ -1242,6 +1243,11 @@ export class TenantInvitationLifecycleService {
           ...(paymentFrequency ? { payment_frequency: paymentFrequency } : {}),
         },
       });
+
+      // The lead that led to this tenant is done — see markLeadJoinedForTenant's
+      // doc comment for why this must share the transaction rather than run
+      // after commit.
+      await markLeadJoinedForTenant(tenant.id, tx);
 
       voidedInvitations = await this.voidCompetingInvitations(tx, {
         profileId: profile.id,

@@ -1344,6 +1344,28 @@ export class ActivationWorkflowService {
       });
     });
     await eventLog.log("profile_completed", tenant.owner_id || null, { tenant_id: tenant.id, hostel_id: tenant.hostel_id }, tenant.id);
+
+    // The guardian's number has just been proved (`ParentVerify`, above) and
+    // written. Tell the guardian what that number can now do — until this, the
+    // verification produced a database row and total silence, and the first
+    // message a guardian ever received was a rent reminder weeks later.
+    //
+    // After the transaction, deliberately: the send reads `guardian_name`,
+    // `guardian_phone` and the hostel back from the committed row rather than
+    // re-deriving them here, so it cannot describe a tenancy that rolled back.
+    // Non-blocking — onboarding never fails because WhatsApp did.
+    if (guardianPhone) {
+      try {
+        const { sendGuardianActivation } = await import(
+          "@/lib/services/notifications/command-center/guardian-activation"
+        );
+        await sendGuardianActivation(tenant.id);
+      } catch (error: any) {
+        // `sendGuardianActivation` already swallows its own failures; this
+        // catch only covers the dynamic import itself.
+        console.error("Guardian activation notice failed:", error);
+      }
+    }
   }
 
   private async acceptRules(profile: any, tenant: any, data: any, context: { ip: string; userAgent: string }, invitation?: any | null) {

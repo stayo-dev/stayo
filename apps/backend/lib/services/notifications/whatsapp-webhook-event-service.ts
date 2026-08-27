@@ -2,30 +2,9 @@ import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { getLogger } from "@/lib/logger";
 import { incrementOtpDeliveryStatus } from "@/lib/metrics";
-import { formatDate, formatShortMonth, formatShortDate } from "@/lib/format";
-import { financialService } from "@/src/services/payments/financial-service";
 import { rateLimitService } from "@/lib/services/rate-limit-service";
 import { MetaWhatsAppProvider, maskWhatsAppPhone } from "./providers/whatsapp/meta-provider";
 import { ownerWhatsAppAssistantService } from "./owner-whatsapp-assistant";
-import {
-  setSelectionState,
-  deleteSelectionState,
-  BalanceSelectionState,
-  ResidentContextState,
-} from "./whatsapp-selection-state";
-import {
-  resolveActiveResident,
-  setActiveResident,
-  refreshResidentContext,
-  clearActiveResident,
-  ResolvedResident,
-} from "./whatsapp-resident-context";
-import {
-  getNextBillingInfo,
-  getPaymentHealth,
-} from "./whatsapp-billing-intelligence";
-import { formatBalanceResponse } from "./whatsapp-balance-formatter";
-import { getFrontendUrl } from "@/lib/config/domains";
 import { routeInboundMessage } from "./routing/message-router";
 import { resolveSenderIdentity } from "./routing/identity-resolver";
 import { INTENTS, defaultIntentResolver } from "./routing/intent-resolvers";
@@ -33,38 +12,13 @@ import {
   ANY_ROLE,
   Intent,
   IntentDefinition,
-  KNOWN_ROLES,
   PERMISSIONS,
   SenderIdentity,
 } from "./routing/types";
+import { commandCenterService } from "./command-center/service";
+import { unknownSenderMessage } from "./command-center/menu";
 
 const logger = getLogger("whatsapp.webhook-event");
-
-function getPhoneCandidates(rawPhone: string): string[] {
-  const digits = rawPhone.replace(/\D/g, "");
-  if (!digits) return [];
-  const candidates = [digits, rawPhone];
-  if (digits.length === 12 && digits.startsWith("91")) {
-    const tenDigits = digits.slice(2);
-    candidates.push(tenDigits);
-    candidates.push(`+91${tenDigits}`);
-    candidates.push(`0${tenDigits}`);
-  } else if (digits.length === 10) {
-    candidates.push(`91${digits}`);
-    candidates.push(`+91${digits}`);
-    candidates.push(`0${digits}`);
-  }
-  return Array.from(new Set(candidates));
-}
-
-function formatAmountWithoutSymbol(amount: number): string {
-  const value = Number(amount);
-  if (!Number.isFinite(value)) return "0";
-  return new Intl.NumberFormat("en-IN", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(value);
-}
 
 type MetaWebhookPayload = {
   object?: string;
@@ -258,6 +212,31 @@ export function extractMessageEvents(payload: unknown): ExtractedMessageEvent[] 
             messageType: "interactive",
             interactiveType: "list_reply",
           });
+          continue;
+        }
+
+        // A quick-reply button on an approved *template* — not the same shape
+        // as an interactive reply: Meta delivers `type: "button"` with a
+        // `button.payload` we chose at template-creation time.
+        //
+        // This arrives as **text**, deliberately. A template quick reply is the
+        // reader saying that word ("Help"), and its payload is a plain keyword
+        // rather than one of our `CC:` ids — so it must resolve through the
+        // ordinary command vocabulary, not through `decodePayload`.
+        //
+        // Until `stayo_guardian_whatsapp_activated` shipped its [Help] button,
+        // this type was in `findUnhandledMessageTypes`' deliberately-dropped
+        // list. A guardian's very first interaction is that tap; dropping it
+        // would have answered the product's most important introduction with
+        // silence.
+        if (item.type === "button" && (item.button?.payload || item.button?.text)) {
+          events.push({
+            from: item.from,
+            messageId: item.id,
+            timestamp: item.timestamp,
+            body: String(item.button.payload || item.button.text),
+            messageType: "text",
+          });
         }
       }
     }
@@ -268,7 +247,8 @@ export function extractMessageEvents(payload: unknown): ExtractedMessageEvent[] 
 
 /**
  * Message types the extractor above deliberately does not handle (media,
- * stickers, reactions, location, template quick-reply `button`, system…).
+ * stickers, reactions, location, system…). Template quick-reply `button` used
+ * to be on this list and is now handled — see the note in the extractor.
  * Returned so the caller can say so out loud — a payload that arrives, matches
  * nothing, and is marked PROCESSED with zero events is otherwise invisible.
  */
@@ -289,50 +269,11 @@ export function findUnhandledMessageTypes(payload: unknown, extracted: Extracted
   return unhandled;
 }
 
-// Command-keyword matching now lives with the intent resolvers; re-exported so
-// existing callers/tests keep one import site.
-export { resolveCommandKey } from "./routing/intent-resolvers";
-
-/** Shared by HELP and by the unrecognised-message fallback, so they can't drift. */
-export function buildHelpText(resident: { residentName: string; residentRoom: string } | null) {
-  if (resident) {
-    return [
-      `Active Resident: ${resident.residentName} (Room ${resident.residentRoom})`,
-      "",
-      "Available commands:",
-      "BAL — Balance summary",
-      "DUES — View pending dues",
-      "PAY — Pay now",
-      "STATUS — Agreement status",
-      "SWITCH — Change resident",
-      "HELP — Show this menu",
-    ].join("\n");
-  }
-
-  return [
-    "Welcome to Stayo",
-    "",
-    "Send BAL to view your balance and select a resident.",
-    "",
-    "After selecting a resident, you can use:",
-    "BAL, DUES, PAY, STATUS, SWITCH, HELP",
-  ].join("\n");
-}
+// Command matching lives with the command center's own vocabulary. The old
+// `resolveCommandKey` / `buildHelpText` exports are gone with the five resident
+// commands they served — see `command-center/commands.ts`.
 
 export class WhatsAppWebhookEventService {
-  private static readonly COMMAND_HANDLERS: Record<
-    string,
-    (service: WhatsAppWebhookEventService, msg: ExtractedMessageEvent) => Promise<any>
-  > = {
-    BAL: (service, msg) => service.handleBalanceCommand(msg),
-    BALANCE: (service, msg) => service.handleBalanceCommand(msg),
-    SWITCH: (service, msg) => service.handleSwitchCommand(msg),
-    DUES: (service, msg) => service.handleDuesCommand(msg),
-    PAY: (service, msg) => service.handlePayCommand(msg),
-    STATUS: (service, msg) => service.handleStatusCommand(msg),
-    HELP: (service, msg) => service.handleHelpCommand(msg),
-  };
-
   async recordReceived(input: RecordReceivedInput): Promise<RecordReceivedResult> {
     const eventHash = computeWhatsAppWebhookEventHash(input.rawBody);
     const payload = parseJson(input.rawBody);
@@ -557,791 +498,6 @@ export class WhatsAppWebhookEventService {
     return result;
   }
 
-  private async handleBalanceCommand(msg: ExtractedMessageEvent) {
-    const phone = msg.from;
-    const command = msg.body.trim().toUpperCase();
-
-    // 1. Per-sender Rate Limiting (1 request/minute)
-    const rateLimitResult = await rateLimitService.checkStatelessLimit({
-      scope: "whatsapp_command:BAL",
-      identifier: phone,
-      maxAttempts: 1,
-      windowSeconds: 60,
-    });
-
-    if (!rateLimitResult.allowed) {
-      logger.warn("whatsapp.command.rate_limited", { phone });
-
-      const provider = new MetaWhatsAppProvider();
-      let providerMessageId: string | null = null;
-      let providerResponse: any = null;
-      let success = false;
-      let errorMsg: string | null = null;
-
-      try {
-        const sendResult = await provider.sendTextMessage(
-          phone,
-          "You are requesting updates too frequently. Please wait 1 minute before sending another request."
-        );
-        providerMessageId = sendResult.providerMessageId;
-        providerResponse = sendResult.raw;
-        success = true;
-      } catch (err: any) {
-        errorMsg = err.message || String(err);
-      }
-
-      const auditLog = {
-        command,
-        sender_role: "UNKNOWN",
-        success,
-        template_used: "text",
-        failure_reason: "Rate limit exceeded" + (errorMsg ? `: ${errorMsg}` : ""),
-      };
-
-      await prisma.$executeRaw`
-        INSERT INTO whatsapp_logs (
-          id,
-          phone,
-          template,
-          template_name,
-          status,
-          delivery_status,
-          attempt_count,
-          provider_message_id,
-          provider_response,
-          error_message
-        )
-        VALUES (
-          gen_random_uuid(),
-          ${phone},
-          'text',
-          'BAL',
-          'RATE_LIMITED',
-          'RATE_LIMITED',
-          1,
-          ${providerMessageId},
-          ${JSON.stringify(auditLog)}::jsonb,
-          ${errorMsg}
-        )
-      `;
-
-      return { phone, command, success: false, reason: "RATE_LIMITED" };
-    }
-
-    // V2: Check for active resident context first — skip selection entirely
-    const cachedResident = await resolveActiveResident(phone);
-    if (cachedResident) {
-      await refreshResidentContext(phone);
-      const tenant = await prisma.tenants.findFirst({
-        where: { id: cachedResident.residentId, status: { in: ["ACTIVE", "INVITED"] } },
-        include: { profiles: true },
-      });
-      if (tenant) {
-        const candidates = getPhoneCandidates(phone);
-        let senderRole: "TENANT" | "GUARDIAN" = "TENANT";
-        const guardianPhones = tenant.guardian_phone ? getPhoneCandidates(tenant.guardian_phone) : [];
-        if (guardianPhones.some((p) => candidates.includes(p))) senderRole = "GUARDIAN";
-        return this.sendV2BalanceForTenant(tenant, phone, command, senderRole);
-      }
-      // Tenant no longer active — clear stale context and continue
-      await clearActiveResident(phone);
-    }
-
-    // 2. Resolve Phone to Active/Invited Tenants
-    const candidates = getPhoneCandidates(phone);
-    const matchingTenants = await prisma.tenants.findMany({
-      where: {
-        OR: [
-          { phone_1: { in: candidates } },
-          { phone_2: { in: candidates } },
-          { phone_3: { in: candidates } },
-          { guardian_phone: { in: candidates } },
-          {
-            profiles: {
-              phone: { in: candidates }
-            }
-          }
-        ]
-      },
-      include: {
-        profiles: true,
-      }
-    });
-
-    // Filter by active status
-    const activeTenants = matchingTenants.filter(
-      (t) => t.status === "ACTIVE" || t.status === "INVITED"
-    );
-
-    // Sort activeTenants alphabetically by name to make the selection list deterministic
-    activeTenants.sort((a, b) => {
-      const nameA = a.profiles?.name || a.guardian_name || "";
-      const nameB = b.profiles?.name || b.guardian_name || "";
-      return nameA.localeCompare(nameB);
-    });
-
-    // Fail-safe denial for no matches
-    if (activeTenants.length === 0) {
-      const failureReason = "No active tenant found";
-
-      logger.warn("whatsapp.command.unauthorized", {
-        phone,
-        reason: failureReason,
-        matches_found: activeTenants.length,
-      });
-
-      const provider = new MetaWhatsAppProvider();
-      let providerMessageId: string | null = null;
-      let providerResponse: any = null;
-      let success = false;
-      let errorMsg: string | null = null;
-
-      try {
-        const sendResult = await provider.sendTextMessage(
-          phone,
-          "Sorry, this number is not linked to an active resident account."
-        );
-        providerMessageId = sendResult.providerMessageId;
-        providerResponse = sendResult.raw;
-        success = true;
-      } catch (err: any) {
-        errorMsg = err.message || String(err);
-      }
-
-      const auditLog = {
-        command,
-        sender_role: "UNKNOWN",
-        success,
-        template_used: "text",
-        failure_reason: failureReason + (errorMsg ? `: ${errorMsg}` : ""),
-      };
-
-      await prisma.$executeRaw`
-        INSERT INTO whatsapp_logs (
-          id,
-          phone,
-          template,
-          template_name,
-          status,
-          delivery_status,
-          attempt_count,
-          provider_message_id,
-          provider_response,
-          error_message
-        )
-        VALUES (
-          gen_random_uuid(),
-          ${phone},
-          'text',
-          'BAL',
-          'UNAUTHORIZED',
-          'UNAUTHORIZED',
-          1,
-          ${providerMessageId},
-          ${JSON.stringify(auditLog)}::jsonb,
-          ${errorMsg}
-        )
-      `;
-
-      return { phone, command, success: false, reason: "UNAUTHORIZED", matches: activeTenants.length };
-    }
-
-    // If multiple active tenants match, trigger interactive selection
-    if (activeTenants.length > 1) {
-      // Fetch allocations to display room numbers
-      const allocations = await prisma.roomAllocation.findMany({
-        where: { tenant_id: { in: activeTenants.map((t) => t.id) } },
-        orderBy: { created_at: "desc" },
-        include: { room: true },
-      });
-
-      const roomMap = new Map<string, string>();
-      for (const alloc of allocations) {
-        if (!roomMap.has(alloc.tenant_id) && alloc.room?.room_no) {
-          roomMap.set(alloc.tenant_id, alloc.room.room_no);
-        }
-      }
-
-      // Save selection state for text fallback (backward compat)
-      await setSelectionState(phone, {
-        phone,
-        action: "BALANCE_SELECTION",
-        tenantIds: activeTenants.map((t) => t.id),
-      });
-
-      const provider = new MetaWhatsAppProvider();
-      let providerMessageId: string | null = null;
-      let errorMsg: string | null = null;
-      let success = false;
-
-      try {
-        const bodyText = "Your number is linked to multiple residents.\n\nSelect a resident:";
-
-        if (activeTenants.length <= 3) {
-          // V2: WhatsApp Interactive Buttons (≤3 residents)
-          const buttons = activeTenants.map((t) => {
-            const name = t.profiles?.name || t.guardian_name || "Resident";
-            const roomNo = roomMap.get(t.id);
-            const title = roomNo ? `${name}`.slice(0, 20) : name.slice(0, 20);
-            return { id: `SELECT_RESIDENT:${t.id}`, title };
-          });
-
-          const sendResult = await provider.sendButtonMessage(phone, bodyText, buttons);
-          providerMessageId = sendResult.providerMessageId;
-        } else {
-          // V2: WhatsApp Interactive List (>3 residents)
-          const rows = activeTenants.map((t) => {
-            const name = t.profiles?.name || t.guardian_name || "Resident";
-            const roomNo = roomMap.get(t.id);
-            return {
-              id: `SELECT_RESIDENT:${t.id}`,
-              title: name.slice(0, 24),
-              description: roomNo ? `Room ${roomNo}` : undefined,
-            };
-          });
-
-          const sendResult = await provider.sendListMessage(
-            phone,
-            bodyText,
-            [{ title: "Residents", rows }],
-            "Select Resident"
-          );
-          providerMessageId = sendResult.providerMessageId;
-        }
-        success = true;
-      } catch (err: any) {
-        errorMsg = err.message || String(err);
-      }
-
-      const auditLog = {
-        command,
-        sender_role: "GUARDIAN",
-        success,
-        template_used: "interactive",
-        state: "selection_pending",
-        failure_reason: errorMsg,
-      };
-
-      await prisma.$executeRaw`
-        INSERT INTO whatsapp_logs (
-          id, phone, template, template_name, status, delivery_status,
-          attempt_count, provider_message_id, provider_response, error_message
-        )
-        VALUES (
-          gen_random_uuid(), ${phone}, 'interactive', 'BAL',
-          'MULTIPLE_MATCHES', 'SENT', 1, ${providerMessageId},
-          ${JSON.stringify(auditLog)}::jsonb, ${errorMsg}
-        )
-      `;
-
-      return { phone, command, success: true, reason: "MULTIPLE_MATCHES", matches: activeTenants.length };
-    }
-
-    // Exactly 1 active tenant — set context and respond
-    const tenant = activeTenants[0];
-
-    // Determine sender role (Tenant vs Guardian)
-    let senderRole: "TENANT" | "GUARDIAN" = "TENANT";
-    const guardianPhones = tenant.guardian_phone ? getPhoneCandidates(tenant.guardian_phone) : [];
-    if (guardianPhones.some((p) => candidates.includes(p))) {
-      senderRole = "GUARDIAN";
-    }
-
-    // Set resident context for future commands
-    const allocation = await prisma.roomAllocation.findFirst({
-      where: { tenant_id: tenant.id },
-      orderBy: { created_at: "desc" },
-      include: { room: true },
-    });
-    await setActiveResident(phone, {
-      residentId: tenant.id,
-      residentName: tenant.profiles?.name || tenant.guardian_name || "Resident",
-      residentRoom: allocation?.room?.room_no || "N/A",
-      hostelId: tenant.hostel_id,
-      ownerId: tenant.owner_id,
-    });
-
-    return this.sendV2BalanceForTenant(tenant, phone, command, senderRole);
-  }
-
-  private async sendBalanceTemplateForTenant(
-    tenant: any,
-    phone: string,
-    command: string,
-    senderRole: "TENANT" | "GUARDIAN"
-  ) {
-    let success = false;
-    let providerMessageId: string | null = null;
-    let errorMsg: string | null = null;
-
-    try {
-      const obligations = await prisma.rent_obligations.findMany({
-        where: {
-          tenant_id: tenant.id,
-          status: { not: "WAIVED" },
-          is_superseded: false,
-        },
-        include: {
-          payments: {
-            select: {
-              amount_paid: true,
-              payment_date: true,
-            }
-          }
-        }
-      });
-
-      const summary = financialService.getTenantPaymentSummary(tenant.id, obligations);
-
-      const nextUnpaid = await prisma.rent_obligations.findFirst({
-        where: {
-          tenant_id: tenant.id,
-          status: { in: ["PENDING", "PARTIAL"] },
-          is_superseded: false,
-        },
-        orderBy: { due_date: "asc" },
-      });
-
-      const activeAllocation = await prisma.roomAllocation.findFirst({
-        where: {
-          tenant_id: tenant.id,
-          is_active: true,
-          end_date: null,
-        }
-      });
-
-      const allocation = activeAllocation || await prisma.roomAllocation.findFirst({
-        where: { tenant_id: tenant.id },
-        orderBy: { created_at: "desc" }
-      });
-
-      const tenantName = tenant.profiles?.name || tenant.guardian_name || "Resident";
-      const ayStart = allocation
-        ? new Date(allocation.start_date).getFullYear().toString()
-        : (tenant.joined_on ? new Date(tenant.joined_on).getFullYear().toString() : new Date().getFullYear().toString());
-
-      const ayEnd = allocation?.end_date
-        ? new Date(allocation.end_date).getFullYear().toString()
-        : (allocation
-          ? (new Date(allocation.start_date).getFullYear() + 1).toString()
-          : (tenant.joined_on ? (new Date(tenant.joined_on).getFullYear() + 1).toString() : (new Date().getFullYear() + 1).toString()));
-
-      const contractStart = allocation
-        ? formatDate(allocation.start_date)
-        : (tenant.joined_on ? formatDate(tenant.joined_on) : "N/A");
-
-      const contractEnd = allocation?.end_date
-        ? formatDate(allocation.end_date)
-        : "N/A";
-
-      const totalContract = formatAmountWithoutSymbol(summary.total_billed);
-      const totalPaidStr = formatAmountWithoutSymbol(summary.total_paid);
-      const balanceRemaining = formatAmountWithoutSymbol(summary.pending_amount);
-      const lastPaymentAmount = formatAmountWithoutSymbol(summary.last_payment_amount);
-      const lastPaymentDate = summary.last_paid_at ? formatShortMonth(summary.last_paid_at) : "N/A";
-      const nextDueMonth = nextUnpaid ? formatShortMonth(nextUnpaid.due_date) : "N/A";
-
-      const bodyParameters = [
-        tenantName,       // {{1}}
-        ayStart,          // {{2}}
-        ayEnd,            // {{3}}
-        contractStart,    // {{4}}
-        contractEnd,      // {{5}}
-        totalContract,    // {{6}}
-        totalPaidStr,     // {{7}}
-        balanceRemaining, // {{8}}
-        lastPaymentAmount,// {{9}}
-        lastPaymentDate,  // {{10}}
-        nextDueMonth      // {{11}}
-      ];
-
-      const provider = new MetaWhatsAppProvider();
-      const sendResult = await provider.sendTemplate({
-        to: phone,
-        templateName: "rent_balance_summary_v1",
-        language: { code: "en" },
-        bodyParameters,
-      });
-
-      providerMessageId = sendResult.providerMessageId;
-      success = true;
-
-      const auditLog = {
-        command,
-        sender_role: senderRole,
-        success: true,
-        template_used: "rent_balance_summary_v1",
-        failure_reason: null,
-      };
-
-      await prisma.$executeRaw`
-        INSERT INTO whatsapp_logs (
-          id,
-          phone,
-          template,
-          template_name,
-          status,
-          delivery_status,
-          attempt_count,
-          provider_message_id,
-          provider_response,
-          tenant_id,
-          owner_id,
-          hostel_id
-        )
-        VALUES (
-          gen_random_uuid(),
-          ${phone},
-          'rent_balance_summary_v1',
-          'BAL',
-          'SENT',
-          'SENT',
-          1,
-          ${providerMessageId},
-          ${JSON.stringify(auditLog)}::jsonb,
-          ${tenant.id}::uuid,
-          ${tenant.owner_id}::uuid,
-          ${tenant.hostel_id}::uuid
-        )
-      `;
-
-      return { phone, command, success: true, tenant_id: tenant.id };
-    } catch (err: any) {
-      errorMsg = err.message || String(err);
-      logger.error("whatsapp.command.failed", { phone, error: errorMsg });
-
-      const auditLog = {
-        command,
-        sender_role: senderRole,
-        success: false,
-        template_used: "rent_balance_summary_v1",
-        failure_reason: errorMsg,
-      };
-
-      await prisma.$executeRaw`
-        INSERT INTO whatsapp_logs (
-          id,
-          phone,
-          template,
-          template_name,
-          status,
-          delivery_status,
-          attempt_count,
-          provider_response,
-          error_message,
-          tenant_id,
-          owner_id,
-          hostel_id
-        )
-        VALUES (
-          gen_random_uuid(),
-          ${phone},
-          'rent_balance_summary_v1',
-          'BAL',
-          'FAILED',
-          'FAILED',
-          1,
-          ${JSON.stringify(auditLog)}::jsonb,
-          ${errorMsg},
-          ${tenant.id}::uuid,
-          ${tenant.owner_id}::uuid,
-          ${tenant.hostel_id}::uuid
-        )
-      `;
-
-      throw err;
-    }
-  }
-
-  private async handleSelectionReply(msg: ExtractedMessageEvent, state: BalanceSelectionState) {
-    const phone = msg.from;
-    const cleanReply = msg.body.trim().toLowerCase();
-
-    // 1. Check if expired
-    if (new Date(state.expiresAt).getTime() < Date.now()) {
-      await deleteSelectionState(phone);
-
-      const provider = new MetaWhatsAppProvider();
-      let providerMessageId: string | null = null;
-      let errorMsg: string | null = null;
-      let success = false;
-
-      try {
-        const sendResult = await provider.sendTextMessage(
-          phone,
-          "Selection expired.\n\nSend BAL again to view a payment summary."
-        );
-        providerMessageId = sendResult.providerMessageId;
-        success = true;
-      } catch (err: any) {
-        errorMsg = err.message || String(err);
-      }
-
-      const auditLog = {
-        event: "WHATSAPP_BALANCE_SELECTION",
-        guardianPhone: phone,
-        selectedTenantId: null,
-        success: false,
-        reason: "expired_selection",
-        error: errorMsg,
-      };
-
-      await prisma.$executeRaw`
-        INSERT INTO whatsapp_logs (
-          id,
-          phone,
-          template,
-          template_name,
-          status,
-          delivery_status,
-          attempt_count,
-          provider_message_id,
-          provider_response,
-          error_message
-        )
-        VALUES (
-          gen_random_uuid(),
-          ${phone},
-          'text',
-          'BAL',
-          'EXPIRED_SELECTION',
-          'SENT',
-          1,
-          ${providerMessageId},
-          ${JSON.stringify(auditLog)}::jsonb,
-          ${errorMsg}
-        )
-      `;
-
-      return { phone, success: false, reason: "EXPIRED_SELECTION" };
-    }
-
-    // 2. Fetch tenants and active allocations in the selection list
-    const tenants = await prisma.tenants.findMany({
-      where: {
-        id: { in: state.tenantIds },
-        status: { in: ["ACTIVE", "INVITED"] },
-      },
-      include: {
-        profiles: true,
-      },
-    });
-
-    const allocations = await prisma.roomAllocation.findMany({
-      where: {
-        tenant_id: { in: state.tenantIds },
-      },
-      orderBy: {
-        created_at: "desc",
-      },
-      include: {
-        room: true,
-      },
-    });
-
-    const roomMap = new Map<string, string>();
-    for (const alloc of allocations) {
-      if (!roomMap.has(alloc.tenant_id) && alloc.room?.room_no) {
-        roomMap.set(alloc.tenant_id, alloc.room.room_no);
-      }
-    }
-
-    // 3. Match reply against candidates
-    const matchedTenants = tenants.filter((t) => {
-      const name = t.profiles?.name || t.guardian_name || "Resident";
-      const roomNo = roomMap.get(t.id) || "";
-      const primary = name.trim().toLowerCase();
-      const secondary = `${name} (room ${roomNo})`.trim().toLowerCase();
-      return cleanReply === primary || (roomNo && cleanReply === secondary);
-    });
-
-    const provider = new MetaWhatsAppProvider();
-
-    // Case A: Exactly 1 matched tenant
-    if (matchedTenants.length === 1) {
-      const tenant = matchedTenants[0];
-      await deleteSelectionState(phone);
-
-      // Log success audit
-      const auditLog = {
-        event: "WHATSAPP_BALANCE_SELECTION",
-        guardianPhone: phone,
-        selectedTenantId: tenant.id,
-        success: true,
-      };
-
-      await prisma.$executeRaw`
-        INSERT INTO whatsapp_logs (
-          id,
-          phone,
-          template,
-          template_name,
-          status,
-          delivery_status,
-          attempt_count,
-          provider_response,
-          tenant_id,
-          owner_id,
-          hostel_id
-        )
-        VALUES (
-          gen_random_uuid(),
-          ${phone},
-          'text',
-          'BAL',
-          'SELECTION_SUCCESS',
-          'SENT',
-          1,
-          ${JSON.stringify(auditLog)}::jsonb,
-          ${tenant.id}::uuid,
-          ${tenant.owner_id}::uuid,
-          ${tenant.hostel_id}::uuid
-        )
-      `;
-
-      // Determine sender role
-      let senderRole: "TENANT" | "GUARDIAN" = "TENANT";
-      const candidates = getPhoneCandidates(phone);
-      const guardianPhones = tenant.guardian_phone ? getPhoneCandidates(tenant.guardian_phone) : [];
-      if (guardianPhones.some((p) => candidates.includes(p))) {
-        senderRole = "GUARDIAN";
-      }
-
-      return this.sendBalanceTemplateForTenant(tenant, phone, "BAL", senderRole);
-    }
-
-    // Case B: Ambiguous matches (multiple tenants share this name/reply)
-    if (matchedTenants.length > 1) {
-      const options = matchedTenants.map((t) => {
-        const name = t.profiles?.name || t.guardian_name || "Resident";
-        const roomNo = roomMap.get(t.id) || "No Room";
-        return `${name} (Room ${roomNo})`;
-      });
-
-      const replyText = `Multiple residents share this name.\n\nReply with:\n\n${options.join("\n\nor\n\n")}`;
-
-      let providerMessageId: string | null = null;
-      let errorMsg: string | null = null;
-      let success = false;
-
-      try {
-        const sendResult = await provider.sendTextMessage(phone, replyText);
-        providerMessageId = sendResult.providerMessageId;
-        success = true;
-      } catch (err: any) {
-        errorMsg = err.message || String(err);
-      }
-
-      // Save a new pending selection state containing only the ambiguous records
-      await setSelectionState(phone, {
-        phone,
-        action: "BALANCE_SELECTION",
-        tenantIds: matchedTenants.map((t) => t.id),
-      });
-
-      const auditLog = {
-        event: "WHATSAPP_BALANCE_SELECTION",
-        guardianPhone: phone,
-        selectedTenantId: null,
-        success: false,
-        reason: "ambiguous_selection",
-        error: errorMsg,
-      };
-
-      await prisma.$executeRaw`
-        INSERT INTO whatsapp_logs (
-          id,
-          phone,
-          template,
-          template_name,
-          status,
-          delivery_status,
-          attempt_count,
-          provider_message_id,
-          provider_response,
-          error_message
-        )
-        VALUES (
-          gen_random_uuid(),
-          ${phone},
-          'text',
-          'BAL',
-          'AMBIGUOUS_SELECTION',
-          'SENT',
-          1,
-          ${providerMessageId},
-          ${JSON.stringify(auditLog)}::jsonb,
-          ${errorMsg}
-        )
-      `;
-
-      return { phone, success: false, reason: "AMBIGUOUS_SELECTION", matches: matchedTenants.length };
-    }
-
-    // Case C: Invalid selection (Zero matches)
-    const originalLines = tenants
-      .map((t, idx) => {
-        const name = t.profiles?.name || t.guardian_name || "Resident";
-        const roomNo = roomMap.get(t.id);
-        return `${idx + 1}. ${name}${roomNo ? ` (Room ${roomNo})` : ""}`;
-      })
-      .join("\n");
-
-    const replyText = `Resident not found.\n\nReply with one of the following names:\n\n${originalLines}\n\nThis selection expires in 10 minutes.`;
-
-    let providerMessageId: string | null = null;
-    let errorMsg: string | null = null;
-    let success = false;
-
-    try {
-      const sendResult = await provider.sendTextMessage(phone, replyText);
-      providerMessageId = sendResult.providerMessageId;
-      success = true;
-    } catch (err: any) {
-      errorMsg = err.message || String(err);
-    }
-
-    // We do NOT delete the pending state so they can try again.
-
-    const auditLog = {
-      event: "WHATSAPP_BALANCE_SELECTION",
-      guardianPhone: phone,
-      selectedTenantId: null,
-      success: false,
-      reason: "invalid_selection",
-      error: errorMsg,
-    };
-
-    await prisma.$executeRaw`
-      INSERT INTO whatsapp_logs (
-        id,
-        phone,
-        template,
-        template_name,
-        status,
-        delivery_status,
-        attempt_count,
-        provider_message_id,
-        provider_response,
-        error_message
-      )
-      VALUES (
-        gen_random_uuid(),
-        ${phone},
-        'text',
-        'BAL',
-        'INVALID_SELECTION',
-        'SENT',
-        1,
-        ${providerMessageId},
-        ${JSON.stringify(auditLog)}::jsonb,
-        ${errorMsg}
-      )
-    `;
-
-    return { phone, success: false, reason: "INVALID_SELECTION" };
-  }
-
   async markFailed(eventId: string, error: string, status = "FAILED") {
     await prisma.$executeRaw`
       UPDATE whatsapp_webhook_events
@@ -1460,414 +616,20 @@ export class WhatsAppWebhookEventService {
     }
   }
 
-  // ─── V2 Balance Response (replaces sendBalanceTemplateForTenant) ───
-
-  private async sendV2BalanceForTenant(
-    tenant: any,
-    phone: string,
-    command: string,
-    senderRole: "TENANT" | "GUARDIAN"
-  ) {
-    let success = false;
-    let providerMessageId: string | null = null;
-    let errorMsg: string | null = null;
-
-    try {
-      const obligations = await prisma.rent_obligations.findMany({
-        where: { tenant_id: tenant.id, status: { not: "WAIVED" }, is_superseded: false },
-        include: { payments: { select: { amount_paid: true, payment_date: true } } },
-      });
-
-      const summary = financialService.getTenantPaymentSummary(tenant.id, obligations);
-      const [status, health] = await Promise.all([
-        financialService.getTenantFinancialStatus(tenant.id),
-        getPaymentHealth(tenant.id),
-      ]);
-
-      const activeAllocation = await prisma.roomAllocation.findFirst({
-        where: { tenant_id: tenant.id, is_active: true },
-        orderBy: { created_at: "desc" },
-        include: { room: true },
-      });
-      const allocation = activeAllocation || await prisma.roomAllocation.findFirst({
-        where: { tenant_id: tenant.id },
-        orderBy: { created_at: "desc" },
-        include: { room: true },
-      });
-
-      const tenantName = tenant.profiles?.name || tenant.guardian_name || "Resident";
-      const roomNo = allocation?.room?.room_no || "N/A";
-
-      // Check for move-out
-      let moveOutDate: Date | null = null;
-      if (tenant.status === "ACTIVE") {
-        const moveOut = await prisma.move_out_requests.findFirst({
-          where: {
-            tenant_id: tenant.id,
-            status: { notIn: ["COMPLETED", "REJECTED"] }
-          },
-          orderBy: { created_at: "desc" },
-          select: { planned_exit_date: true }
-        });
-        if (moveOut) moveOutDate = moveOut.planned_exit_date;
-      }
-
-      const balanceText = formatBalanceResponse({
-        residentName: tenantName,
-        roomNumber: roomNo,
-        health,
-        totalBilled: status.payable_now + status.future_outstanding + summary.total_paid,
-        totalPaid: summary.total_paid,
-        payableNow: status.payable_now,
-        futureOutstanding: status.future_outstanding,
-        lastPaymentAmount: summary.last_payment_amount,
-        lastPaymentDate: summary.last_paid_at,
-        nextGenerationDate: status.next_generation_date,
-        nextDueDate: status.next_due_date,
-        expectedAmount: status.expected_amount,
-        fullySettled: status.fully_settled,
-        agreement: {
-          startDate: allocation?.start_date || tenant.joined_on || null,
-          endDate: allocation?.end_date || null,
-          billingFrequency: null,
-          moveOutDate,
-        },
-      });
-
-      const provider = new MetaWhatsAppProvider();
-      const sendResult = await provider.sendTextMessage(phone, balanceText);
-      providerMessageId = sendResult.providerMessageId;
-      success = true;
-
-      // Send quick action buttons
-      await this.sendQuickActions(provider, phone);
-
-      const auditLog = {
-        command,
-        sender_role: senderRole,
-        success: true,
-        template_used: "v2_balance_text",
-        failure_reason: null,
-      };
-
-      await prisma.$executeRaw`
-        INSERT INTO whatsapp_logs (
-          id, phone, template, template_name, status, delivery_status,
-          attempt_count, provider_message_id, provider_response,
-          tenant_id, owner_id, hostel_id
-        )
-        VALUES (
-          gen_random_uuid(), ${phone}, 'v2_balance_text', 'BAL',
-          'SENT', 'SENT', 1, ${providerMessageId},
-          ${JSON.stringify(auditLog)}::jsonb,
-          ${tenant.id}::uuid, ${tenant.owner_id}::uuid, ${tenant.hostel_id}::uuid
-        )
-      `;
-
-      return { phone, command, success: true, tenant_id: tenant.id };
-    } catch (err: any) {
-      errorMsg = err.message || String(err);
-      logger.error("whatsapp.command.failed", { phone, error: errorMsg });
-
-      const auditLog = {
-        command,
-        sender_role: senderRole,
-        success: false,
-        template_used: "v2_balance_text",
-        failure_reason: errorMsg,
-      };
-
-      await prisma.$executeRaw`
-        INSERT INTO whatsapp_logs (
-          id, phone, template, template_name, status, delivery_status,
-          attempt_count, provider_response, error_message,
-          tenant_id, owner_id, hostel_id
-        )
-        VALUES (
-          gen_random_uuid(), ${phone}, 'v2_balance_text', 'BAL',
-          'FAILED', 'FAILED', 1,
-          ${JSON.stringify(auditLog)}::jsonb, ${errorMsg},
-          ${tenant.id}::uuid, ${tenant.owner_id}::uuid, ${tenant.hostel_id}::uuid
-        )
-      `;
-
-      throw err;
-    }
-  }
-
-  // ─── V2 Interactive Reply Handler ───
-
-  private async handleInteractiveReply(msg: ExtractedMessageEvent): Promise<any | null> {
-    const phone = msg.from;
-    const replyId = msg.body.trim();
-
-    // Handle SELECT_RESIDENT:{tenantId} from buttons/list
-    if (replyId.startsWith("SELECT_RESIDENT:")) {
-      const tenantId = replyId.replace("SELECT_RESIDENT:", "");
-      const tenant = await prisma.tenants.findFirst({
-        where: { id: tenantId, status: { in: ["ACTIVE", "INVITED"] } },
-        include: { profiles: true },
-      });
-
-      if (!tenant) {
-        const provider = new MetaWhatsAppProvider();
-        await provider.sendTextMessage(phone, "Resident not found or no longer active. Send BAL to try again.");
-        return { phone, success: false, reason: "TENANT_NOT_FOUND" };
-      }
-
-      // Set resident context
-      const allocation = await prisma.roomAllocation.findFirst({
-        where: { tenant_id: tenant.id },
-        orderBy: { created_at: "desc" },
-        include: { room: true },
-      });
-
-      await setActiveResident(phone, {
-        residentId: tenant.id,
-        residentName: tenant.profiles?.name || tenant.guardian_name || "Resident",
-        residentRoom: allocation?.room?.room_no || "N/A",
-        hostelId: tenant.hostel_id,
-        ownerId: tenant.owner_id,
-      });
-
-      // Clear old balance selection state
-      await deleteSelectionState(phone);
-      // Re-set the resident context (deleteSelectionState cleared it)
-      await setActiveResident(phone, {
-        residentId: tenant.id,
-        residentName: tenant.profiles?.name || tenant.guardian_name || "Resident",
-        residentRoom: allocation?.room?.room_no || "N/A",
-        hostelId: tenant.hostel_id,
-        ownerId: tenant.owner_id,
-      });
-
-      // Confirm selection
-      const provider = new MetaWhatsAppProvider();
-      const confirmText = `✅ Active Resident: ${tenant.profiles?.name || tenant.guardian_name || "Resident"} (Room ${allocation?.room?.room_no || "N/A"})\n\nYou can now use:\nBAL — Balance summary\nDUES — View dues\nPAY — Pay now\nSTATUS — Agreement status\nSWITCH — Change resident`;
-      await provider.sendTextMessage(phone, confirmText);
-
-      // Determine role and send balance
-      const candidates = getPhoneCandidates(phone);
-      let senderRole: "TENANT" | "GUARDIAN" = "TENANT";
-      const guardianPhones = tenant.guardian_phone ? getPhoneCandidates(tenant.guardian_phone) : [];
-      if (guardianPhones.some((p) => candidates.includes(p))) senderRole = "GUARDIAN";
-
-      return this.sendV2BalanceForTenant(tenant, phone, "BAL", senderRole);
-    }
-
-    // Handle CMD:* quick action buttons
-    if (replyId.startsWith("CMD:")) {
-      const cmd = replyId.replace("CMD:", "").toUpperCase();
-      const syntheticMsg: ExtractedMessageEvent = {
-        ...msg,
-        body: cmd,
-        messageType: "text",
-      };
-      const handler = WhatsAppWebhookEventService.COMMAND_HANDLERS[cmd];
-      if (handler) return handler(this, syntheticMsg);
-    }
-
-    return null;
-  }
-
-  // ─── V2 SWITCH Command ───
-
-  private async handleSwitchCommand(msg: ExtractedMessageEvent) {
-    const phone = msg.from;
-    await clearActiveResident(phone);
-
-    // Re-trigger balance command which will show selection
-    return this.handleBalanceCommand(msg);
-  }
-
-  // ─── V2 DUES Command ───
-
-  private async handleDuesCommand(msg: ExtractedMessageEvent) {
-    const phone = msg.from;
-    const resident = await this.resolveResidentOrPromptSelection(phone, "DUES");
-    if (!resident) return { phone, command: "DUES", success: false, reason: "NO_CONTEXT" };
-
-    const tenant = await prisma.tenants.findFirst({
-      where: { id: resident.residentId, status: { in: ["ACTIVE", "INVITED"] } },
-    });
-    if (!tenant) {
-      await clearActiveResident(phone);
-      return { phone, command: "DUES", success: false, reason: "TENANT_NOT_FOUND" };
-    }
-
-    const status = await financialService.getTenantFinancialStatus(tenant.id);
-    await refreshResidentContext(phone);
-
-    const provider = new MetaWhatsAppProvider();
-    if (status.payable_now === 0) {
-      if (status.fully_settled) {
-        await provider.sendTextMessage(
-          phone,
-          `✅ ${resident.residentName} (Room ${resident.residentRoom})\n\nFully Settled. No pending dues or future contract obligations!`
-        );
-      } else {
-        const nextGenStr = status.next_generation_date ? formatShortDate(status.next_generation_date) : "N/A";
-        const amtStr = status.expected_amount ? `₹${formatAmountWithoutSymbol(status.expected_amount)}` : "TBD";
-        await provider.sendTextMessage(
-          phone,
-          `✅ ${resident.residentName} (Room ${resident.residentRoom})\n\nNo dues payable right now. Next billing of ${amtStr} is scheduled for ${nextGenStr}.`
-        );
-      }
-      await this.sendQuickActions(provider, phone);
-      return { phone, command: "DUES", success: true, items: 0 };
-    }
-
-    const dues = await financialService.getTenantDues(tenant.id, tenant.owner_id, tenant.hostel_id);
-    const lines = [`📋 Dues — ${resident.residentName} (Room ${resident.residentRoom})\n`];
-    for (const item of dues.items.slice(0, 10)) {
-      const typeLabel = item.type === "RENT" ? "Rent" : item.type === "SECURITY_DEPOSIT" ? "Deposit" : item.type === "MAINTENANCE" ? "Maintenance" : item.type;
-      const dueStr = formatShortDate(item.due_date);
-      lines.push(`• ${typeLabel} — ₹${formatAmountWithoutSymbol(item.outstanding)} (Due: ${dueStr})`);
-    }
-    lines.push(`\nTotal Due: ₹${formatAmountWithoutSymbol(dues.total_due)}`);
-
-    await provider.sendTextMessage(phone, lines.join("\n"));
-    await this.sendQuickActions(provider, phone);
-
-    return { phone, command: "DUES", success: true, items: dues.items.length };
-  }
-
-  // ─── V2 PAY Command ───
-
-  private async handlePayCommand(msg: ExtractedMessageEvent) {
-    const phone = msg.from;
-    const resident = await this.resolveResidentOrPromptSelection(phone, "PAY");
-    if (!resident) return { phone, command: "PAY", success: false, reason: "NO_CONTEXT" };
-
-    const tenant = await prisma.tenants.findFirst({
-      where: { id: resident.residentId, status: { in: ["ACTIVE", "INVITED"] } },
-    });
-    if (!tenant) {
-      await clearActiveResident(phone);
-      return { phone, command: "PAY", success: false, reason: "TENANT_NOT_FOUND" };
-    }
-
-    const status = await financialService.getTenantFinancialStatus(tenant.id);
-    await refreshResidentContext(phone);
-
-    const provider = new MetaWhatsAppProvider();
-
-    if (status.payable_now === 0) {
-      if (status.fully_settled) {
-        await provider.sendTextMessage(
-          phone,
-          `✅ ${resident.residentName} (Room ${resident.residentRoom})\n\nFully Settled. No payments are outstanding.`
-        );
-      } else {
-        const nextGenStr = status.next_generation_date ? formatShortDate(status.next_generation_date) : "N/A";
-        const amtStr = status.expected_amount ? `₹${formatAmountWithoutSymbol(status.expected_amount)}` : "TBD";
-        await provider.sendTextMessage(
-          phone,
-          `✅ ${resident.residentName} (Room ${resident.residentRoom})\n\nNo dues payable right now. Next billing of ${amtStr} is scheduled for ${nextGenStr}.`
-        );
-      }
-      return { phone, command: "PAY", success: true, reason: "NO_DUES" };
-    }
-
-    const nextBilling = await getNextBillingInfo(tenant.id);
-    if (!nextBilling) {
-      await provider.sendTextMessage(phone, `✅ ${resident.residentName} (Room ${resident.residentRoom})\n\nNo pending dues to pay!`);
-      return { phone, command: "PAY", success: true, reason: "NO_DUES" };
-    }
-
-    // Generate payment link
-    let paymentUrl: string | null = null;
-    try {
-      const token = await prisma.payment_link_tokens.create({
-        data: {
-          obligation_id: nextBilling.obligationId,
-          tenant_id: tenant.id,
-          hostel_id: tenant.hostel_id,
-          owner_id: tenant.owner_id,
-          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        },
-        select: { token: true },
-      });
-      const appUrl = getFrontendUrl().replace(/\/+$/, "");
-      paymentUrl = `${appUrl}/pay/${token.token}`;
-    } catch (err: any) {
-      logger.warn("whatsapp.pay.link_generation_failed", { error: err.message });
-    }
-
-    const lines = [
-      `💳 Secure Payment`,
-      ``,
-      `Resident: ${resident.residentName} (Room ${resident.residentRoom})`,
-      `Amount Due: ₹${formatAmountWithoutSymbol(nextBilling.remainingAmount)}`,
-      `Due Date: ${formatShortDate(nextBilling.dueDate)}`,
-    ];
-
-    if (paymentUrl) {
-      lines.push("", `Pay securely: ${paymentUrl}`);
-    }
-
-    await provider.sendTextMessage(phone, lines.join("\n"));
-    return { phone, command: "PAY", success: true, tenant_id: tenant.id };
-  }
-
-  // ─── V2 STATUS Command ───
-
-  private async handleStatusCommand(msg: ExtractedMessageEvent) {
-    const phone = msg.from;
-    const resident = await this.resolveResidentOrPromptSelection(phone, "STATUS");
-    if (!resident) return { phone, command: "STATUS", success: false, reason: "NO_CONTEXT" };
-
-    const tenant = await prisma.tenants.findFirst({
-      where: { id: resident.residentId, status: { in: ["ACTIVE", "INVITED"] } },
-    });
-    if (!tenant) {
-      await clearActiveResident(phone);
-      return { phone, command: "STATUS", success: false, reason: "TENANT_NOT_FOUND" };
-    }
-
-    const allocation = await prisma.roomAllocation.findFirst({
-      where: { tenant_id: tenant.id },
-      orderBy: { created_at: "desc" },
-      include: { room: true },
-    });
-
-    let moveOutDate: Date | null = null;
-    const moveOut = await prisma.move_out_requests.findFirst({
-      where: {
-        tenant_id: tenant.id,
-        status: { notIn: ["COMPLETED", "REJECTED"] }
-      },
-      orderBy: { created_at: "desc" },
-      select: { planned_exit_date: true }
-    });
-    if (moveOut) moveOutDate = moveOut.planned_exit_date;
-
-    const { formatAgreementStatus } = await import("./whatsapp-agreement-formatter");
-    const agreement = formatAgreementStatus({
-      startDate: allocation?.start_date || tenant.joined_on || null,
-      endDate: allocation?.end_date || null,
-      billingFrequency: null,
-      moveOutDate,
-    });
-
-    await refreshResidentContext(phone);
-    const provider = new MetaWhatsAppProvider();
-    const text = `📄 Agreement Status\n${resident.residentName} (Room ${resident.residentRoom})\n\n${agreement.text}`;
-    await provider.sendTextMessage(phone, text);
-    await this.sendQuickActions(provider, phone);
-
-    return { phone, command: "STATUS", success: true, tenant_id: tenant.id };
-  }
-
-  // ─── V2 HELP Command ───
-
-  private async handleHelpCommand(msg: ExtractedMessageEvent) {
-    const phone = msg.from;
-    const provider = new MetaWhatsAppProvider();
-    const cached = await resolveActiveResident(phone);
-
-    await provider.sendTextMessage(phone, buildHelpText(cached));
-    return { phone, command: "HELP", success: true };
+  /**
+   * A tapped button or list row.
+   *
+   * `CC:*` payloads carry both the command and the resident it concerns, which
+   * is what let the invisible 30-minute "active resident" mode be deleted
+   * outright. Anything else is offered to the owner assistant, which owns its
+   * own payload vocabulary.
+   */
+  private async handleInteractiveReply(
+    msg: ExtractedMessageEvent,
+    identity: SenderIdentity
+  ): Promise<any | null> {
+    const result = await commandCenterService.handleInteractive(msg.from, msg.body.trim(), identity);
+    return result.handled ? result : null;
   }
 
   /**
@@ -1876,65 +638,45 @@ export class WhatsAppWebhookEventService {
    * This is the only place authorization is expressed. Adding a role means
    * adding it to `allowedRoles` here; adding an LLM-resolved intent means
    * adding a row. Neither touches the router.
+   *
+   * The five separate resident intents that used to live here — BALANCE, DUES,
+   * PAY, STATUS and SWITCH — are one row now. They were never five questions:
+   * four of them read the same obligations and printed different shapes of the
+   * same answer, and SWITCH existed only to escape a mode that no longer
+   * exists. See `command-center/commands.ts` for what replaced them.
    */
   private buildIntentRegistry(): Record<string, IntentDefinition> {
-    const balanceRoles = KNOWN_ROLES; // anyone we can actually match to records
     return {
-      [INTENTS.HELP]: {
-        name: INTENTS.HELP,
-        description: "Show the list of available commands.",
+      [INTENTS.COMMAND_CENTER]: {
+        name: INTENTS.COMMAND_CENTER,
+        description:
+          "Resident and guardian self-service: what rent is due, a payment link for it, " +
+          "instalment progress, the last receipt, and the menu.",
+        // GUARDIAN is a first-class role here, not a tenant with a caveat. The
+        // permission it lacks (RESIDENT_SWITCH) is one nobody needs any more.
+        allowedRoles: ["TENANT", "GUARDIAN", "OWNER", "ADMIN", "STAFF"],
+        requiredPermissions: [PERMISSIONS.BILLING_READ],
+        handler: ({ message, identity }) =>
+          commandCenterService.handleText(message.from, message.body, identity),
+      },
+      [INTENTS.GUARDIAN_VERIFICATION]: {
+        name: INTENTS.GUARDIAN_VERIFICATION,
+        description: "A six-digit code answering a guardian verification challenge.",
+        // Deliberately open on roles: the sender is a guardian by phone match,
+        // and the code itself is the authorization. `handleText` still refuses
+        // any number we are not actually challenging.
         allowedRoles: ANY_ROLE,
-        handler: ({ message }) => this.handleHelpCommand(message),
-      },
-      [INTENTS.BALANCE]: {
-        name: INTENTS.BALANCE,
-        description: "Summarise the resident's balance, prompting for a resident when ambiguous.",
-        allowedRoles: balanceRoles,
-        requiredPermissions: [PERMISSIONS.BILLING_READ],
-        handler: ({ message }) => this.handleBalanceCommand(message),
-      },
-      [INTENTS.DUES]: {
-        name: INTENTS.DUES,
-        description: "List the resident's pending dues.",
-        allowedRoles: balanceRoles,
-        requiredPermissions: [PERMISSIONS.BILLING_READ],
-        handler: ({ message }) => this.handleDuesCommand(message),
-      },
-      [INTENTS.PAY]: {
-        name: INTENTS.PAY,
-        description: "Send a payment link for the resident's outstanding dues.",
-        allowedRoles: balanceRoles,
-        requiredPermissions: [PERMISSIONS.PAYMENT_INITIATE],
-        handler: ({ message }) => this.handlePayCommand(message),
-      },
-      [INTENTS.STATUS]: {
-        name: INTENTS.STATUS,
-        description: "Report the resident's agreement status.",
-        allowedRoles: balanceRoles,
-        requiredPermissions: [PERMISSIONS.BILLING_READ],
-        handler: ({ message }) => this.handleStatusCommand(message),
-      },
-      [INTENTS.SWITCH]: {
-        name: INTENTS.SWITCH,
-        description: "Change which resident this phone number is acting for.",
-        allowedRoles: balanceRoles,
-        requiredPermissions: [PERMISSIONS.RESIDENT_SWITCH],
-        handler: ({ message }) => this.handleSwitchCommand(message),
+        handler: ({ message, identity }) =>
+          commandCenterService.handleText(message.from, message.body, identity),
       },
       [INTENTS.INTERACTIVE_REPLY]: {
         name: INTENTS.INTERACTIVE_REPLY,
         description: "Handle a tapped button or list selection.",
         // The payload was minted by a message we sent to this number, so the
-        // authorization already happened when we sent it.
+        // authorization already happened when we sent it. `dispatch` still
+        // re-checks that the resident named in the payload is one of theirs.
         allowedRoles: ANY_ROLE,
-        handler: ({ message }) => this.handleInteractiveReply(message),
-      },
-      [INTENTS.CONTINUE_SELECTION]: {
-        name: INTENTS.CONTINUE_SELECTION,
-        description: "Continue a pending resident-selection prompt.",
-        allowedRoles: ANY_ROLE,
-        handler: ({ message, intent }) =>
-          this.handleSelectionReply(message, (intent.slots as any)?.state),
+        handler: ({ message, identity }) => this.handleInteractiveReply(message, identity),
       },
       [INTENTS.OWNER_ASSISTANT]: {
         name: INTENTS.OWNER_ASSISTANT,
@@ -1979,12 +721,7 @@ export class WhatsAppWebhookEventService {
     const provider = new MetaWhatsAppProvider();
     await provider.sendTextMessage(
       msg.from,
-      [
-        "This number isn't linked to a Stayo account yet, so we can't look that up.",
-        "",
-        "If you're a resident, ask your hostel owner to add this number to your profile.",
-        "If you're an owner, send LINK followed by the code from your dashboard.",
-      ].join("\n")
+      unknownSenderMessage()
     );
 
     return { phone: msg.from, channel: "DENIED", success: true, intent: intent.name };
@@ -2022,15 +759,13 @@ export class WhatsAppWebhookEventService {
       body_preview: msg.body.slice(0, 80),
     });
 
-    const provider = new MetaWhatsAppProvider();
-    const cached = await resolveActiveResident(phone);
-    const text = [
-      "Sorry — I didn't understand that.",
-      "",
-      buildHelpText(cached),
-    ].join("\n");
+    const identity = await resolveSenderIdentity(phone);
+    if (identity.residents.length === 0) {
+      await new MetaWhatsAppProvider().sendTextMessage(phone, unknownSenderMessage());
+      return { phone, channel: "FALLBACK", success: true, reason: "UNKNOWN_SENDER" };
+    }
 
-    await provider.sendTextMessage(phone, text);
+    await commandCenterService.sendUnrecognised(phone, identity);
     return { phone, channel: "FALLBACK", success: true };
   }
 
@@ -2047,46 +782,14 @@ export class WhatsAppWebhookEventService {
     const provider = new MetaWhatsAppProvider();
     await provider.sendTextMessage(
       msg.from,
-      "Something went wrong on our side and we couldn't complete that request. Please try again in a few minutes."
+      [
+        "That request did not go through.",
+        "",
+        "Nothing was charged and nothing was changed. Please try again in a few minutes, or contact the hostel directly.",
+      ].join("\n")
     );
   }
 
-  // ─── V2 Quick Actions ───
-
-  private async sendQuickActions(provider: MetaWhatsAppProvider, phone: string) {
-    try {
-      await provider.sendButtonMessage(
-        phone,
-        "What would you like to do?",
-        [
-          { id: "CMD:DUES", title: "View Dues" },
-          { id: "CMD:PAY", title: "Pay Now" },
-          { id: "CMD:SWITCH", title: "Switch Resident" },
-        ]
-      );
-    } catch (err: any) {
-      // Non-critical — log and continue
-      logger.warn("whatsapp.quick_actions.failed", { phone, error: err.message });
-    }
-  }
-
-  // ─── V2 Resident Resolution Helper ───
-
-  private async resolveResidentOrPromptSelection(
-    phone: string,
-    command: string
-  ): Promise<ResolvedResident | null> {
-    const cached = await resolveActiveResident(phone);
-    if (cached) return cached;
-
-    // No context — prompt them to use BAL first
-    const provider = new MetaWhatsAppProvider();
-    await provider.sendTextMessage(
-      phone,
-      `No active resident selected.\n\nSend BAL to select a resident first.`
-    );
-    return null;
-  }
 }
 
 function inferEventType(payload: unknown) {

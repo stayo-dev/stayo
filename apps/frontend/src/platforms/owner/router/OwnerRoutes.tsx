@@ -40,11 +40,17 @@ const HostelMarketingPage = lazy(() =>
 const MoneyPage = lazy(() => import('@features/owner-money/pages/MoneyPage').then((m) => ({ default: m.MoneyPage })));
 const MoneyInPage = lazy(() => import('@features/owner-money/pages/MoneyInPage').then((m) => ({ default: m.MoneyInPage })));
 const FoodPage = lazy(() => import('@features/owner-food/pages/FoodPage').then((m) => ({ default: m.FoodPage })));
+const MealPlanPage = lazy(() => import('@features/owner-food/pages/MealPlanPage').then((m) => ({ default: m.MealPlanPage })));
+const RetiredToMealPlan = lazy(() => import('@features/owner-food/pages/RetiredFoodRoutes').then((m) => ({ default: m.RetiredToMealPlan })));
 const KitchenSheetPage = lazy(() => import('@features/owner-food/pages/KitchenSheetPage').then((m) => ({ default: m.KitchenSheetPage })));
 const FoodPollsPage = lazy(() => import('@features/owner-food/pages/FoodPollsPage').then((m) => ({ default: m.FoodPollsPage })));
-const MealTimingsPage = lazy(() => import('@features/owner-food/pages/MealTimingsPage').then((m) => ({ default: m.MealTimingsPage })));
-const TimetablePage = lazy(() => import('@features/owner-food/pages/TimetablePage').then((m) => ({ default: m.TimetablePage })));
 const AlertsPage = lazy(() => import('@features/owner-alerts/pages/AlertsPage').then((m) => ({ default: m.AlertsPage })));
+const AlertsLeadsPage = lazy(() => import('@features/owner-alerts/pages/AlertsLeadsPage').then((m) => ({ default: m.AlertsLeadsPage })));
+const AlertsAnnouncementsPage = lazy(() =>
+  import('@features/owner-alerts/pages/AlertsAnnouncementsPage').then((m) => ({ default: m.AlertsAnnouncementsPage })),
+);
+const AlertsRenewalsPage = lazy(() => import('@features/owner-alerts/pages/AlertsRenewalsPage').then((m) => ({ default: m.AlertsRenewalsPage })));
+const AlertsRequestsPage = lazy(() => import('@features/owner-alerts/pages/AlertsRequestsPage').then((m) => ({ default: m.AlertsRequestsPage })));
 const MoreSettingsPage = lazy(() => import('@features/owner-more/pages/MoreSettingsPage').then((m) => ({ default: m.MoreSettingsPage })));
 const MoreProfilePage = lazy(() => import('@features/owner-more/pages/MoreProfilePage').then((m) => ({ default: m.MoreProfilePage })));
 const MoreHostelIdentityPage = lazy(() =>
@@ -179,10 +185,15 @@ export function OwnerRoutes() {
 
         <Route path="/owner/money" element={<MoneyPage />} />
         <Route path="/owner/food" element={<FoodPage />} />
+        <Route path="/owner/food/meal-plan" element={<MealPlanPage />} />
         <Route path="/owner/food/kitchen" element={<KitchenSheetPage />} />
         <Route path="/owner/food/polls" element={<FoodPollsPage />} />
-        <Route path="/owner/food/meal-timings" element={<MealTimingsPage />} />
-        <Route path="/owner/food/timetable" element={<TimetablePage />} />
+        {/* Meal Timings and the Weekly Timetable were merged into one Meal
+            Plan page (ADR-121) — these two routes redirect so old
+            links/bookmarks (and the Today card's "Fix" deep link) still land
+            somewhere real, querystring forwarded. */}
+        <Route path="/owner/food/meal-timings" element={<RetiredToMealPlan />} />
+        <Route path="/owner/food/timetable" element={<RetiredToMealPlan />} />
         <Route path="/owner/alerts" element={<AlertsPage />} />
 
         <Route path="/owner/more" element={<MoreConfigurationHubPage />} />
@@ -228,6 +239,17 @@ export function OwnerRoutes() {
       <Route path="/owner/tenants/verifications" element={<PendingVerificationsPage />} />
       <Route path="/owner/tenants/activations" element={<PendingActivationsPage />} />
       <Route path="/owner/tenants/:tenantId" element={<TenantDetailPage />} />
+
+      {/* Alerts categories — full-screen takeovers with their own back
+          button, same treatment as Tenant Detail. Static per-category routes
+          rather than a single `/owner/alerts/:category`: Leads has grouping
+          + a detail sheet + pagination while the other three are simple flat
+          lists, so a shared dynamic page would need the same internal
+          branching anyway. */}
+      <Route path="/owner/alerts/leads" element={<AlertsLeadsPage />} />
+      <Route path="/owner/alerts/announcements" element={<AlertsAnnouncementsPage />} />
+      <Route path="/owner/alerts/renewals" element={<AlertsRenewalsPage />} />
+      <Route path="/owner/alerts/requests" element={<AlertsRequestsPage />} />
 
       {/* Add Hostel — a full-screen build flow, not a drilldown tab. Declared
           before the drilldown so `/owner/hostels/new` is not read as a hostel

@@ -1,37 +1,45 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { CalendarDays, ChefHat, Clock, Vote } from 'lucide-react';
-import { FOOD_SLOTS, type MealSlotKey } from '@shared/mocks/food';
+import { CalendarRange, ChefHat, Vote } from 'lucide-react';
+import type { MealSlotKey } from '@shared/mocks/food';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
-import { useFoodMenuItems } from '../hooks/useFoodMenuItems';
 import { useFoodSchedule } from '../hooks/useFoodSchedule';
 import { useFoodScheduleHistory } from '../hooks/useFoodScheduleHistory';
 import { useMealTimings } from '../hooks/useMealTimings';
-import { FoodLibraryCard } from '../components/menu/FoodLibraryCard';
 import { MonthHistoryList } from '../components/schedule/MonthHistoryList';
 import { TodayCard } from '../components/today/TodayCard';
 import { HostelSwitcher } from '../components/HostelSwitcher';
+import { buildPublishChecks } from '../publishChecks';
 import { dayKeyFor } from '../weekGrid';
 
-/** Food tab. Thin orchestrator: each section's real work lives in its own hooks/components. */
+/**
+ * Food tab. Thin orchestrator: each section's real work lives in its own
+ * hooks/components. Used to also render the Food Library inline (ADR-121
+ * correction) — removed (ADR-123): it duplicated the same data the Meal
+ * Plan editor's Add Food popover now reads on demand, and this landing
+ * page's job is "what's serving / what's the state of this month," which the
+ * new status row below covers instead. The only other navigation change on
+ * this page is Meal Timings + Weekly Timetable collapsing into one Meal Plan
+ * destination.
+ */
 export function FoodPage() {
   const session = useOwnerSession();
   const navigate = useNavigate();
   const [selectedHostelId, setSelectedHostelId] = useState<string | null>(null);
   const hostelId = selectedHostelId ?? session.primaryHostelId;
 
-  const library = useFoodMenuItems(hostelId);
   const currentMonth = useMemo(() => new Date().toISOString().slice(0, 7), []);
   const schedule = useFoodSchedule(hostelId, currentMonth);
   const history = useFoodScheduleHistory(hostelId);
   const mealTimings = useMealTimings(hostelId);
+  const publishResult = useMemo(() => buildPublishChecks({ grid: schedule.weekGrid }), [schedule.weekGrid]);
 
-  // The Timetable page (not a picker sheet here any more) is where editing
-  // happens — "Fix" just lands the owner on today's day/slot already selected.
+  // Meal Plan (not a picker sheet here any more) is where editing happens —
+  // "Fix" just lands the owner on today's day/slot already selected (ADR-121).
   const fixToday = (slot: MealSlotKey) => {
     const day = dayKeyFor(new Date());
     const params = new URLSearchParams({ day, slot, ...(hostelId ? { hostelId } : {}) });
-    navigate(`/owner/food/timetable?${params.toString()}`);
+    navigate(`/owner/food/meal-plan?${params.toString()}`);
   };
 
   return (
@@ -62,45 +70,44 @@ export function FoodPage() {
           mealTimings={mealTimings.mealTimings}
         />
 
-        <div className="flex flex-col gap-3">
-          <div className="flex items-baseline justify-between">
-            <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Food Library</span>
-            <span className="text-[11.5px] text-muted-foreground/70">Tap to expand</span>
-          </div>
-          <div className="flex flex-col gap-2.5">
-            {FOOD_SLOTS.map((slotMeta) => (
-              <FoodLibraryCard key={slotMeta.key} slotMeta={slotMeta} items={library.library[slotMeta.key]} library={library} />
-            ))}
-          </div>
-        </div>
-
-        <Link
-          to={hostelId ? `/owner/food/meal-timings?hostelId=${encodeURIComponent(hostelId)}` : '/owner/food/meal-timings'}
-          className="flex min-h-[44px] items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]"
-        >
-          <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] bg-secondary text-primary">
-            <Clock className="h-4 w-4" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[13px] font-semibold text-foreground">Meal Timings</span>
-            <span className="block text-[11px] text-muted-foreground">Edit your hostel's serving hours</span>
-          </span>
-        </Link>
-
-        <Link
-          to={hostelId ? `/owner/food/timetable?hostelId=${encodeURIComponent(hostelId)}` : '/owner/food/timetable'}
-          className="flex min-h-[44px] items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]"
-        >
-          <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] bg-secondary text-primary">
-            <CalendarDays className="h-4 w-4" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[13px] font-semibold text-foreground">Weekly Timetable</span>
-            <span className="block text-[11px] text-muted-foreground">
-              {schedule.schedule?.status === 'PUBLISHED' ? 'Published — drag food into any day' : 'Build this month by dragging food into each day'}
+        {!schedule.isLoading && (
+          <Link
+            to={hostelId ? `/owner/food/meal-plan?hostelId=${encodeURIComponent(hostelId)}` : '/owner/food/meal-plan'}
+            className="flex items-center justify-between gap-2 rounded-xl border border-border bg-card px-3.5 py-3"
+          >
+            <span className="flex items-center gap-2">
+              <span
+                className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                  schedule.schedule?.status === 'PUBLISHED' ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                {schedule.schedule?.status === 'PUBLISHED' ? 'Published' : 'Draft'}
+              </span>
+              <span className="text-[12px] font-semibold text-foreground">
+                {schedule.schedule?.status === 'PUBLISHED'
+                  ? schedule.schedule.published_at
+                    ? `Published ${new Date(schedule.schedule.published_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`
+                    : 'Published'
+                  : `${publishResult.filledCount}/${publishResult.totalCells} meals planned`}
+              </span>
             </span>
+            <span className="text-[11px] text-muted-foreground">This month ›</span>
+          </Link>
+        )}
+
+        <Link
+          to={hostelId ? `/owner/food/meal-plan?hostelId=${encodeURIComponent(hostelId)}` : '/owner/food/meal-plan'}
+          className="flex min-h-[44px] items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]"
+        >
+          <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] bg-secondary text-primary">
+            <CalendarRange className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13px] font-semibold text-foreground">Meal Plan</span>
+            <span className="block text-[11px] text-muted-foreground">Set meal timings and arrange your weekly menu</span>
           </span>
         </Link>
+
         <MonthHistoryList history={history} />
 
         {/* The hostel rides on the URL — the kitchen sheet has no switcher

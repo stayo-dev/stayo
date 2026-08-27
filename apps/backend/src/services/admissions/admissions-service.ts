@@ -6,6 +6,7 @@ import { redisKeys } from "@/lib/redis/keys";
 import { getOrSetJson, invalidateTag } from "@/lib/redis/cache";
 import { invitationService } from "@/src/services/tenants/invitation-service";
 import { canTransitionLeadStatus, canConvertLeadToInvitation } from "@/src/services/admissions/lead-transition-guards";
+import { markLeadJoinedForTenant } from "@/src/services/admissions/lead-joined-transition";
 import { whatsAppTemplateDeliveryService } from "@/lib/services/notifications/whatsapp-template-delivery";
 import {
   buildTenantEnquiryRejected,
@@ -918,11 +919,8 @@ export class AdmissionsService {
     return { invitation: result, lead: this.shapeLead(updated) };
   }
 
-  async markJoinedForTenant(tenantId: string) {
-    await prisma.visitorLead.updateMany({
-      where: { converted_tenant_id: tenantId },
-      data: { status: "JOINED", updated_at: new Date() },
-    });
+  async markJoinedForTenant(tenantId: string, db?: Parameters<typeof markLeadJoinedForTenant>[1]) {
+    await markLeadJoinedForTenant(tenantId, db);
   }
 
   async analytics(ownerId: string, query: any) {

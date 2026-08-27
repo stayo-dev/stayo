@@ -4,8 +4,8 @@ import { Reorder, useDragControls } from 'motion/react';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { DragHandle } from '@shared/ui-patterns/DragHandle';
 import { MEAL_CATEGORY_META, type MealSlotKey } from '@shared/mocks/food';
-import { needsOwnerOptions, POLL_TYPE_META, TITLE_SUGGESTIONS, type PollType } from '../polls/pollTypes';
-import { useCreatePollDraft, type CreatePollOption, type BuiltPoll } from '../hooks/useCreatePollDraft';
+import { needsOwnerOptions, POLL_TYPE_META, TITLE_SUGGESTIONS, type PollRow, type PollType } from '../polls/pollTypes';
+import { useCreatePollDraft, type CreatePollOption, type BuiltPoll, type PollPatch } from '../hooks/useCreatePollDraft';
 import { Toggle } from '../components/Toggle';
 import { mealIcon } from '../mealIcons';
 
@@ -13,6 +13,9 @@ interface CreatePollModalProps {
   open: boolean;
   onClose: () => void;
   onPublish: (poll: BuiltPoll) => void;
+  /** Present = editing this already-published poll instead of creating a new one. */
+  editingPoll?: PollRow | null;
+  onSave?: (pollId: string, patch: PollPatch) => void;
 }
 
 const POLL_TYPES: PollType[] = ['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'RATING', 'YES_NO'];
@@ -36,6 +39,7 @@ function OptionRow({
   onDelete: () => void;
 }) {
   const controls = useDragControls();
+  const locked = (option.votes ?? 0) > 0;
 
   return (
     <Reorder.Item
@@ -61,30 +65,51 @@ function OptionRow({
         <>
           <DragHandle onDragStart={(e) => controls.start(e)} label={`Reorder ${option.name}`} />
           <span className="flex-1 text-[13px] font-semibold text-foreground">{option.name}</span>
+          {locked && (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+              {option.votes} vote{option.votes === 1 ? '' : 's'}
+            </span>
+          )}
           <button type="button" onClick={onStartEdit} className="flex h-[26px] w-[26px] items-center justify-center rounded-lg bg-muted text-muted-foreground">
             <Pencil className="h-3.5 w-3.5" />
           </button>
-          <button type="button" onClick={onDelete} className="flex h-[26px] w-[26px] items-center justify-center rounded-lg bg-destructive/10 text-destructive">
-            <X className="h-3.5 w-3.5" />
-          </button>
+          {locked ? (
+            <span title="Can't remove — this option already has votes" className="flex h-[26px] w-[26px] items-center justify-center rounded-lg bg-muted text-muted-foreground/40">
+              <X className="h-3.5 w-3.5" />
+            </span>
+          ) : (
+            <button type="button" onClick={onDelete} className="flex h-[26px] w-[26px] items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
         </>
       )}
     </Reorder.Item>
   );
 }
 
-/** Create Food Poll sheet — title, poll type, options (single/multi only), meal category, date/closing-time, 3 toggles. Rebuilt on real data 2026-08-08; see docs/obsidian/Food.md. */
-export function CreatePollModal({ open, onClose, onPublish }: CreatePollModalProps) {
+/** Create/Edit Food Poll sheet — title, poll type, options (single/multi only), meal category, date/closing-time, toggles. Rebuilt on real data 2026-08-08; edit mode added 2026-08-27, closing the gap ADR-057/Food.md §16 flagged. See docs/obsidian/Food.md. */
+export function CreatePollModal({ open, onClose, onPublish, editingPoll, onSave }: CreatePollModalProps) {
   const draft = useCreatePollDraft();
+  const isEditing = Boolean(editingPoll);
 
   useEffect(() => {
-    if (open) draft.reset();
+    if (!open) return;
+    if (editingPoll) draft.seedFrom(editingPoll);
+    else draft.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, editingPoll]);
 
   const showOptions = needsOwnerOptions(draft.draft.type);
 
   const handlePublish = () => {
+    if (isEditing && editingPoll) {
+      const patch = draft.buildPatch();
+      if (!patch) return;
+      onClose();
+      onSave?.(editingPoll.id, patch);
+      return;
+    }
     const poll = draft.buildPoll();
     if (!poll) return;
     onClose();
@@ -95,10 +120,10 @@ export function CreatePollModal({ open, onClose, onPublish }: CreatePollModalPro
     <BottomSheet
       open={open}
       onOpenChange={(v) => !v && onClose()}
-      title="Create Food Poll"
+      title={isEditing ? 'Edit Food Poll' : 'Create Food Poll'}
       footer={
         <button type="button" onClick={handlePublish} className="w-full rounded-xl bg-primary py-3.5 text-center font-display text-[14.5px] font-bold text-primary-foreground">
-          Publish Poll
+          {isEditing ? 'Save Changes' : 'Publish Poll'}
         </button>
       }
     >
@@ -123,7 +148,9 @@ export function CreatePollModal({ open, onClose, onPublish }: CreatePollModalPro
         </div>
 
         <div>
-          <span className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Poll type</span>
+          <span className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+            Poll type{isEditing && <span className="ml-1.5 font-medium normal-case text-muted-foreground/70">(can't change after publishing)</span>}
+          </span>
           <div className="grid grid-cols-2 gap-2">
             {POLL_TYPES.map((t) => {
               const on = draft.draft.type === t;
@@ -131,8 +158,9 @@ export function CreatePollModal({ open, onClose, onPublish }: CreatePollModalPro
                 <button
                   key={t}
                   type="button"
+                  disabled={isEditing}
                   onClick={() => draft.setType(t)}
-                  className={`rounded-xl border py-3 text-center text-[12.5px] font-semibold ${on ? 'border-[1.5px] border-primary bg-secondary text-primary' : 'border-border bg-card text-foreground'}`}
+                  className={`rounded-xl border py-3 text-center text-[12.5px] font-semibold disabled:opacity-50 ${on ? 'border-[1.5px] border-primary bg-secondary text-primary' : 'border-border bg-card text-foreground'}`}
                 >
                   {POLL_TYPE_META[t].label}
                 </button>
@@ -220,7 +248,9 @@ export function CreatePollModal({ open, onClose, onPublish }: CreatePollModalPro
           {showOptions && (
             <Toggle checked={draft.draft.multi} onChange={() => draft.toggle('multi')} label="Allow multiple selections" sub="Tenants can pick more than one" />
           )}
-          <Toggle checked={draft.draft.notify} onChange={() => draft.toggle('notify')} label="Notify tenants now" sub="Send an in-app alert on publish" />
+          {!isEditing && (
+            <Toggle checked={draft.draft.notify} onChange={() => draft.toggle('notify')} label="Notify tenants now" sub="Send an in-app alert on publish" />
+          )}
         </div>
       </div>
     </BottomSheet>

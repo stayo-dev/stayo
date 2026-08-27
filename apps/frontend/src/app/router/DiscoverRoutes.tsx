@@ -7,6 +7,7 @@ const ExplorePage = lazy(() => import('@/app/pages/discover/ExplorePage').then((
 const SearchPage = lazy(() => import('@/app/pages/discover/SearchPage').then((m) => ({ default: m.SearchPage })));
 const ListingPage = lazy(() => import('@/app/pages/discover/ListingPage').then((m) => ({ default: m.ListingPage })));
 const EnquiryPage = lazy(() => import('@/app/pages/discover/EnquiryPage').then((m) => ({ default: m.EnquiryPage })));
+const ReviewsPage = lazy(() => import('@/app/pages/discover/ReviewsPage').then((m) => ({ default: m.ReviewsPage })));
 
 /**
  * Stayo Discover — the public marketplace (ADR-073).
@@ -32,6 +33,7 @@ export function DiscoverRoutes() {
       <Route path="/discover/search" element={<SearchPage />} />
       <Route path="/discover/h/:slug" element={<ListingPage />} />
       <Route path="/discover/h/:slug/enquire" element={<EnquiryPage />} />
+      <Route path="/discover/h/:slug/reviews" element={<ReviewsPage />} />
       {/* Saved/Enquiries/Profile moved to `/profile/*` — the common Stayo
           Profile is a shared, app-wide tab now, not Discover-specific. */}
       {ProfileRoutes()}

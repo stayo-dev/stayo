@@ -63,12 +63,34 @@ export interface ResidentContextState {
   expiresAt: string;
 }
 
+/**
+ * What a guardian asked for while they were being verified.
+ *
+ * This is the *only* ambient state the command center keeps, and it is
+ * deliberately trivial: which command to replay once a six-digit code comes
+ * back. Everything else — above all which resident an action is about — rides
+ * in the interactive payload instead, because the mode this replaces
+ * (`RESIDENT_CONTEXT`, a 30-minute invisible "active resident") could answer a
+ * guardian's question about the wrong child without either side noticing.
+ * Losing this state costs one re-typed word; losing that one cost correctness.
+ */
+export interface CommandCenterPendingState {
+  phone: string;
+  action: "COMMAND_CENTER_PENDING";
+  /** A `CommandName` from `command-center/commands`. */
+  command: string;
+  tenantId: string | null;
+  createdAt: string;
+  expiresAt: string;
+}
+
 export type WhatsAppSessionState =
   | BalanceSelectionState
   | InviteTenantSessionState
   | OwnerEntitySearchState
   | OwnerMoveOutDateState
-  | ResidentContextState;
+  | ResidentContextState
+  | CommandCenterPendingState;
 
 const memoryState = new Map<string, { state: WhatsAppSessionState; expiresAt: number }>();
 
@@ -109,7 +131,8 @@ export async function setSelectionState(
     | Omit<InviteTenantSessionState, "createdAt" | "expiresAt">
     | Omit<OwnerEntitySearchState, "createdAt" | "expiresAt">
     | Omit<OwnerMoveOutDateState, "createdAt" | "expiresAt">
-    | Omit<ResidentContextState, "createdAt" | "expiresAt">,
+    | Omit<ResidentContextState, "createdAt" | "expiresAt">
+    | Omit<CommandCenterPendingState, "createdAt" | "expiresAt">,
   ttlSeconds = 600
 ): Promise<void> {
   const now = new Date();

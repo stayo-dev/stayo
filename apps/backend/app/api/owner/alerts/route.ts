@@ -95,6 +95,7 @@ export async function GET(req: NextRequest) {
       name: r.tenants?.profiles?.name || 'Unknown Tenant',
       detail: r.description || 'No description provided',
       type: r.type || 'General',
+      status: r.status,
       read: false, // Service requests don't have an owner read state
     }));
 

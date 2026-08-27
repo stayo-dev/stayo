@@ -1,4 +1,4 @@
-import { Clock3, Trophy } from 'lucide-react';
+import { Clock3, Pencil, Trophy } from 'lucide-react';
 import { MEAL_CATEGORY_META, type MealSlotKey } from '@shared/mocks/food';
 import { getPollWinner, optionPercent, POLL_TYPE_META, type PollRow } from '../../polls/pollTypes';
 import { mealIcon } from '../../mealIcons';
@@ -21,10 +21,11 @@ interface PollCardProps {
   poll: PollRow;
   onViewResults: () => void;
   onClose: () => void;
+  onEdit: () => void;
 }
 
-/** One Food Poll card — stats, status badge, winner banner if closed, footer actions gated by status. */
-export function PollCard({ poll, onViewResults, onClose }: PollCardProps) {
+/** One Food Poll card — stats, status badge, winner banner if closed, footer actions gated by status. Editing (via `onEdit`) is only offered while OPEN. */
+export function PollCard({ poll, onViewResults, onClose, onEdit }: PollCardProps) {
   const mealMeta = MEAL_CATEGORY_META[slotOf(poll.meal_type)];
   const winner = getPollWinner(poll.options);
   const participation = poll.eligibleCount ? Math.round((poll.voterCount / poll.eligibleCount) * 100) : 0;
@@ -76,9 +77,14 @@ export function PollCard({ poll, onViewResults, onClose }: PollCardProps) {
           View Results
         </button>
         {poll.status === 'OPEN' && (
-          <button type="button" onClick={onClose} className="flex-1 border-l border-border py-3 text-center font-display text-[12.5px] font-bold text-destructive">
-            Close Poll
-          </button>
+          <>
+            <button type="button" onClick={onEdit} className="flex flex-1 items-center justify-center gap-1.5 border-l border-border py-3 text-center font-display text-[12.5px] font-bold text-foreground">
+              <Pencil className="h-3.5 w-3.5" /> Edit Poll
+            </button>
+            <button type="button" onClick={onClose} className="flex-1 border-l border-border py-3 text-center font-display text-[12.5px] font-bold text-destructive">
+              Close Poll
+            </button>
+          </>
         )}
       </div>
     </div>

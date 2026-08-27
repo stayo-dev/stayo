@@ -2,27 +2,23 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { foodService } from '@features/food/api';
 import { stayoToast } from '@shared/ui-patterns/Toast';
-import { SLOT_TO_MEAL_TYPE, type PollRow, type PollStatus } from '../polls/pollTypes';
+import { SLOT_TO_MEAL_TYPE, toClosesAtIso, type PollRow } from '../polls/pollTypes';
 import type { BuiltPoll } from './useCreatePollDraft';
 
 function queryKey(hostelId: string | undefined) {
   return ['owner', 'food', 'polls', hostelId] as const;
 }
 
-function toClosesAtIso(date: string, time: string): string {
-  // Both are local wall-clock inputs from <input type="date">/<input type="time">; combine as local time.
-  return new Date(`${date}T${time}:00`).toISOString();
-}
-
 /**
- * Real Food Polls list + create/close/results-sheet selection —
- * `GET/POST /api/food/polls`, `POST /api/food/polls/:id/close`,
+ * Real Food Polls list + create/edit/close/results-sheet selection —
+ * `GET/POST /api/food/polls`, `PATCH/POST .../:id`(edit)/`:id/close`,
  * `GET /api/food/polls/:id/results`. Independent of `useFoodVoting`
- * (dormant, see ADR-056) — see docs/obsidian/Food.md.
+ * (dormant, see ADR-056) — see docs/obsidian/Food.md. Returns every poll,
+ * newest-first — `FoodPollsPage` groups them by month rather than filtering
+ * by an Active/Closed tab.
  */
 export function useFoodPolls(hostelId: string | undefined) {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<PollStatus>('OPEN');
   const [resultsPollId, setResultsPollId] = useState<string | null>(null);
 
   const pollsQuery = useQuery({
@@ -32,7 +28,6 @@ export function useFoodPolls(hostelId: string | undefined) {
     staleTime: 15_000,
   });
   const polls = pollsQuery.data ?? [];
-  const filtered = polls.filter((p) => p.status === tab);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: queryKey(hostelId) });
 
@@ -52,7 +47,6 @@ export function useFoodPolls(hostelId: string | undefined) {
       }),
     onSuccess: (_data, poll) => {
       invalidate();
-      setTab('OPEN');
       stayoToast.success(poll.notify ? 'Poll published · tenants notified' : 'Poll published');
     },
     onError: (error: any) => {
@@ -68,6 +62,18 @@ export function useFoodPolls(hostelId: string | undefined) {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ pollId, patch }: { pollId: string; patch: Parameters<typeof foodService.updatePoll>[1] }) =>
+      foodService.updatePoll(pollId, patch),
+    onSuccess: () => {
+      invalidate();
+      stayoToast.success('Poll updated');
+    },
+    onError: (error: any) => {
+      stayoToast.error(error?.response?.data?.error?.message || 'Could not update poll');
+    },
+  });
+
   const resultsQuery = useQuery({
     queryKey: ['owner', 'food', 'poll-results', resultsPollId],
     queryFn: () => foodService.getPollResults(resultsPollId!),
@@ -77,13 +83,13 @@ export function useFoodPolls(hostelId: string | undefined) {
 
   return {
     isLoading: pollsQuery.isLoading,
-    polls: filtered,
-    tab,
-    setTab,
+    polls,
     publishPoll: (poll: BuiltPoll) => createMutation.mutate(poll),
     isPublishing: createMutation.isPending,
     closePoll: (pollId: string) => closeMutation.mutate(pollId),
     isClosing: closeMutation.isPending,
+    updatePoll: (pollId: string, patch: Parameters<typeof foodService.updatePoll>[1]) => updateMutation.mutate({ pollId, patch }),
+    isUpdating: updateMutation.isPending,
     resultsPollId,
     openResults: (id: string) => setResultsPollId(id),
     closeResults: () => setResultsPollId(null),

@@ -33,7 +33,7 @@ Same feature, an earlier link in the same chain: before an owner-managed tenant 
 
 **Fix.** Two changes to `triggerNotification` (`apps/backend/src/services/payments/reminder-service.ts`): (1) the in-app channel now marks itself `{ attempted: false, sent: false, skipped: true, reason: "NO_TENANT_ACCOUNT" }` for an `OWNER_MANAGED` tenant, before the ordinary on/off preference check even runs — there is nothing for them to open. (2) A `reminder_logs` row is now written **only when a channel actually delivered** — `deliveredChannel` resolves to `IN_APP` if `result.in_app.sent`, else `WHATSAPP` if `result.whatsapp.sent`, else `EMAIL` if `result.email.sent`, else `null`, and the write is skipped entirely when `null`. Escalation therefore only ever advances on a reminder that actually reached somewhere, for every tenant, not just owner-managed ones.
 
-See [[Business-Rules#Notification triggers|Business-Rules]] for the escalation rule this now enforces, [[Decisions#ADR-127|ADR-127]] for the design decision, and the entry above for the related inner-join defect this feature also had to fix before an owner-managed tenant's obligations were even visible to the sweep that calls this function.
+See [[Business-Rules#Notification triggers|Business-Rules]] for the escalation rule this now enforces, [[Decisions#ADR-133|ADR-133]] for the design decision, and the entry above for the related inner-join defect this feature also had to fix before an owner-managed tenant's obligations were even visible to the sweep that calls this function.
 
 ## 2026-08-27 — Create Charge asked for a password that protected nothing (fixed)
 
@@ -153,7 +153,7 @@ Five separate defects on `/owner/tenants/:tenantId`, one shared cause: the route
 - **"+ Add Charge" had no `onClick`.** `CreateObligationModal` was mounted and reachable only from the Actions sheet.
 - **A change request awaiting tenant approval was reported as applied.** `PUT /api/tenants/:id` answers **200 + the tenant** when a change applies and **202 + the change request** when it needs tenant consent. Neither body carries an `applied` field, and `ChangeRequestDrawer` inferred one with `data?.applied !== false` — `undefined !== false` is `true`, so *both* outcomes rendered "Changes applied successfully." An owner who submitted a Category C contractual change was told it was done and had no reason to follow it up.
 
-**Fix.** The pieces the dead tree got right were rebuilt as tested pure modules (`contactChannels`, `roomOptions`, `documentGroups`, `overdueDisplay`, `amendmentOutcome`) with thin components over them, and the dead tree was deleted — 13 files under `features/tenants/components/{profile,allocation}`, plus `ChangeRequestDrawer`/`ChangePreview`/`PendingBanner`. Room change is now a two-tap sheet on `/api/allocations/shift`. See [[Decisions#ADR-123|ADR-123]], [[Decisions#ADR-124|ADR-124]], [[Features]], [[Changelog]].
+**Fix.** The pieces the dead tree got right were rebuilt as tested pure modules (`contactChannels`, `roomOptions`, `documentGroups`, `overdueDisplay`, `amendmentOutcome`) with thin components over them, and the dead tree was deleted — 13 files under `features/tenants/components/{profile,allocation}`, plus `ChangeRequestDrawer`/`ChangePreview`/`PendingBanner`. Room change is now a two-tap sheet on `/api/allocations/shift`. See [[Decisions#ADR-131|ADR-131]], [[Decisions#ADR-132|ADR-132]], [[Features]], [[Changelog]].
 
 ## 2026-08-26 — The OVERDUE tile showed a boolean wearing a unit (fixed)
 
@@ -174,6 +174,111 @@ Independently, `<a download>` is ignored by browsers for cross-origin URLs: it n
 **Fix.** `useDocumentBlob` fetches through the authenticated API client (`responseType: 'blob'`), so the request carries the same live token as every other call, and `DocumentPreviewSheet` renders the document in-app — images inline, PDFs in an `<object>` with a download fallback for browsers that refuse to embed them. Download is a blob-anchor click, which works cross-origin. Failures are distinguished and named: 401/403 as an expired session, 404 as a missing document, 502 as an unreachable stored file.
 
 > **Not reproduced against a running instance.** The mechanism is traced from `middleware.ts`, `lib/auth.ts` and the login route; no session was exercised to confirm the exact expiry behaviour. The fix is correct regardless — it removes the cookie dependency and adds the in-app preview — but the severity of the original defect is inferred, not measured.
+
+## 2026-08-27 — Template quick-reply buttons were dropped on the floor (fixed)
+
+**Symptom.** Any quick-reply button on an approved template would do nothing when tapped. Surfaced while wiring `stayo_guardian_whatsapp_activated`, whose **[Help]** button is a guardian's very first interaction with the product.
+
+**Cause.** `extractMessageEvents` handled `text`, `interactive.button_reply` and `interactive.list_reply` — but a *template* quick reply is none of those. Meta delivers it as `type: "button"` with `button.payload`, and that type sat on `findUnhandledMessageTypes`' deliberately-dropped list, complete with a comment naming it. The webhook was marked PROCESSED with zero events and the sender heard nothing back.
+
+**Fix.** Extracted as **text** carrying the payload word, so it resolves through the ordinary command vocabulary — a template quick reply is semantically the reader *saying* that word, and its payload is a plain keyword (`Help`) rather than one of our `CC:` payload ids. A stale assertion in `whatsapp-webhook-interactive.test.ts` that expected `button` to be *unhandled* was updated, and positive coverage added.
+
+## 2026-08-27 — WhatsApp quoted a guardian two different debts, seconds apart (fixed)
+
+**Symptom.** A guardian sent `DUES` and read `Total Due: ₹24,000`. They sent `PAY` and were offered a link for `₹8,000`, with no explanation.
+
+**Cause.** The two commands answered from different sources. `handleDuesCommand` summed up to ten outstanding items from `financialService.getTenantDues()`. `handlePayCommand` called `getNextBillingInfo()` — which returns the **single oldest unpaid obligation** — and minted a `payment_link_tokens` row bound to it, bypassing `PaymentLinkService` entirely.
+
+**Why it mattered.** This is a rent-collection channel. The one moment it has to be trustworthy is the moment it asks for money, and it contradicted itself there. A parent reasonably concludes the system does not know what they owe.
+
+**Fix.** `RENT` and `PAY` both read `current_payable_amount` from `financialReadModelService`, and `PAY` issues a **tenant-scoped** token through `PaymentLinkService.getOrCreateToken({ tenantId })` — which prices the account at payment time and FIFO-allocates across it. Where the payable sum has more than one component, the message itemises it. See [[Decisions#ADR-128|ADR-128]].
+
+## 2026-08-27 — A 30-minute invisible mode could answer a guardian about the wrong child (fixed)
+
+**Symptom.** A guardian with two children in the same hostel asked about one, waited half an hour, asked again — and got the other child's figures, correctly formatted, with no indication anything had changed.
+
+**Cause.** `whatsapp-resident-context.ts` stored an "active resident" in Redis with a 30-minute TTL that every successful command silently refreshed. The sender could not see which resident they were in, and `SWITCH` — a command whose entire purpose was escaping this — was the only way out. Same failure class as the "first hostel as fallback" bug `architectural-invariants-check.ts` exists to catch: a silent wrong-subject answer.
+
+**Fix.** The mode is deleted rather than fixed. Which resident an action concerns rides in the interactive payload (`CC:<COMMAND>:<tenantId>`), re-authorised against the sender's own residents on arrival; every answer names the resident in its first line. `SWITCH` went with it. See [[Decisions#ADR-128|ADR-128]].
+
+## 2026-08-27 — Every live rent template was signed by a product that no longer exists (open — needs Meta approval)
+
+**Symptom.** All three approved rent templates end `- HMS`, and `rent_due_today_v1` instructs the reader to *"pay using the app"*.
+
+**Why it mattered.** A message about money, from an unrecognised number, signed by an unrecognised brand, asking the reader to tap a payment link, is indistinguishable from a scam — and guardians, the readers most likely to be paying, have no app to pay in.
+
+**Status.** *Partially fixed, blocked on Meta.* A template's body is approved server-side at Meta; `templateBody` in `templates.ts` is a local preview only, so this cannot be fixed by editing a string. `providers/whatsapp/rent-reminder-template-contract.ts` now defines **generation 2** — `stayo_rent_due_soon`, `stayo_rent_due_today`, `stayo_rent_overdue` — each naming the **hostel** in the body, footed `Sent via Stayo on behalf of your hostel`, with no app instruction. Rollout is per-template and env-driven (`WHATSAPP_RENT_DUE_SOON_TEMPLATE`, `WHATSAPP_RENT_DUE_TODAY_TEMPLATE`, `WHATSAPP_RENT_OVERDUE_TEMPLATE`): name, language **and** parameter shape switch together, so an approval landing alone can never send v2 parameters at a v1 template. **Until the three are submitted and approved, v1 keeps sending and readers still see `- HMS`.** Tracked in [[TODO]].
+
+## 2026-08-27 — The guardian role was computed four times and used for nothing (fixed)
+
+**Symptom.** No guardian anywhere ever received guardian-appropriate treatment, despite the system knowing exactly who was a guardian.
+
+**Cause.** `whatsapp-webhook-event-service.ts` derived `senderRole: "TENANT" | "GUARDIAN"` at four separate call sites (`:641`, `:844`, `:1203`, `:1651`) and passed it to `sendV2BalanceForTenant`, which used it **solely as an audit-log column value**. `identity-resolver.ts` likewise classified `GUARDIAN_PHONE` matches and dropped the distinction into a `TENANT` role. Guardians were addressed as though the debt were their own, and — per the reminder rule below — contacted only once it was three days late.
+
+**Fix.** `GUARDIAN` is a real `SenderRole` with its own permissions, OTP verification, third-person copy, and a reminder schedule that reaches them **before** the due date. See [[Decisions#ADR-127|ADR-127]] and [[Business-Rules#Guardian reminder escalation|Business-Rules]].
+## 2026-08-26 — `visitor_leads.status` could never actually reach JOINED (fixed)
+
+**Found** during a UI redesign of the Leads tab's filter tabs — defining a new "Accepted" tab meaning "tenant joined" required tracing what actually sets that status, and the answer was nothing. `admissionsService.markJoinedForTenant(tenantId)` existed (`admissions-service.ts`) with a correct, tested-looking implementation, but grepping the entire codebase turned up zero callers.
+
+**Area:** [[Backend]] — `apps/backend/src/services/admissions/admissions-service.ts`, `apps/backend/src/services/tenants/tenant-invitation-lifecycle-service.ts`
+
+**Root cause:** several places already read `visitor_leads.status === "JOINED"` as if it were a real, populated value — funnel/stats aggregations in `admissions-service.ts` (today's-joins counter, QR-source revenue, per-source funnel breakdown), `lead-transition-guards.ts`'s terminal-status check (refuses re-accepting/holding/rejecting a `JOINED` lead), and `discovery-service.ts`'s seeker-facing `toEnquiryStage()` (maps `JOINED`/`INVITED` to `"ACCEPTED"` for the enquirer's own 3-step view). None of them ever wrote it. The tenant-activation-completion flow (`TenantInvitationLifecycleService.completeActivation()`) flips the tenant's own status to `ACTIVE` but never touched the lead that led to that tenant — `markJoinedForTenant` had presumably been written in anticipation of a call site that was never added.
+
+**Fix:** wired `completeActivation()` to call the (renamed/relocated) `markLeadJoinedForTenant(tenant.id, tx)` inside its own `prisma.$transaction`, immediately after the tenant's `ACTIVE` flip, so a lead's `JOINED` status and its tenant's `ACTIVE` status can never diverge across a crash between the two writes. Moved to a small leaf module (`lead-joined-transition.ts`) rather than called directly from `admissions-service.ts`, to avoid a real import cycle (`admissions-service.ts` → `invitation-service.ts` → `tenant-invitation-lifecycle-service.ts` → back to `admissions-service.ts`) that a naive direct call would have created — see [[Decisions#ADR-122|ADR-122]].
+
+**Lesson:** several independent readers agreeing on what a status *should* mean is not evidence anything writes it — the only way this surfaced was tracing the producer/consumer relationship directly (grep for callers), not by reading any one call site in isolation. Worth grepping for zero-caller service methods generally when a status enum has a value nothing seems to reach in practice.
+
+**See:** [[Business-Rules]], [[Features]], [[Decisions#ADR-122|ADR-122]], [[Changelog]]
+
+## 2026-08-26 — Discover listing's "Starting from" price could show a number matching none of the bed tiers below it (fixed)
+
+**Found** live-testing the same Discover listing page (`Sri Adithya Boys Hostel`, hostel id `79ba709b-fc27-42bd-9d7b-02bac79431b5`) while verifying an unrelated layout change — the sticky price card read "Starting from ₹8,000" while "Choose your bed" below listed tiers at ₹12,000, ₹7,000, and ₹8,500. None of the three matched the advertised "starting" price, and the true minimum (₹7,000) was understated by ₹1,000.
+
+**Area:** [[Frontend]] — `apps/frontend/src/app/pages/discover/ListingPage.tsx` (`displayPrice` computation, read by both the desktop `<aside>` and the mobile sticky bar)
+
+**Root cause:** `displayPrice` fell back to `hostel.starting_price` — a separate field returned by the Discover search/detail API — whenever no bed tier was explicitly selected (the default, unselected state most visitors see). Nothing cross-checked that field against `bedOptions`, the same array "Choose your bed" renders from, so the two could disagree with no code path forcing them back into sync.
+
+**Fix:** `displayPrice` now computes `Math.min()` over `bedOptions` directly — preferring tiers with `availableBeds > 0` (so the advertised price is never one a visitor can't actually book), falling back to the true minimum only if every tier is full, and to `hostel.starting_price` only if `bedOptions` has no priced tiers at all. Both surfaces that read `displayPrice` (desktop aside, mobile sticky bar) picked up the fix automatically since neither computes price independently.
+
+**Lesson:** the same "two surfaces derive the same number independently and drift" pattern documented for financial data in [[Business-Rules]] (`financial-read-model-service.ts`'s compose-don't-recalculate rule) applies just as much to marketing/pricing fields — `starting_price` and `bedOptions` are two paths to the same fact with no shared source, and only one of them is the one already rendered on screen.
+
+**See:** [[Frontend]], [[Changelog]]
+
+## 2026-08-26 — Two same-capacity bed tiers on the Discover listing page couldn't be told apart (fixed)
+
+**Found** live-testing the Discover listing page against production data (`Sri Adithya Boys Hostel`, hostel id `79ba709b-fc27-42bd-9d7b-02bac79431b5`) — the browser console logged "Encountered two children with the same key, `4`" on page load, which turned out to be the visible edge of a real selection bug, not just a lint-level warning.
+
+**Area:** [[Frontend]] — `apps/frontend/src/app/pages/discover/ListingPage.tsx` (`bedOptions` derivation, the "Choose your bed" section)
+
+**Symptom:** The hostel had published three marketing bed tiers via `data.bed_tiers` — "2-bed", "4 Sharing" (₹7,000), and "Ground floor 4-bed" (₹8,500) — the latter two both `sharing: 4`. Both buttons rendered fine individually, but clicking either one lit up **both** as active simultaneously, and the resolved `selectedOption` (price, label) always came from whichever of the two came first in the array — the ₹8,500 tier was functionally unselectable.
+
+**Root cause:** `bedOptions` derived from `bed_tiers` mapped each tier to `{ capacity: tier.sharing, ... }`, and the JSX keyed/selected buttons purely by `option.capacity` (`key={option.capacity}`, `selected: number | null` holding the capacity, `bedOptions.find(option => option.capacity === selected)`). `capacity` alone was never a unique identity — the bug only surfaces on a hostel with two real tiers of the same bed count, which no dev/test fixture happened to have.
+
+**Fix:** Selection changed from "by capacity" to "by array position": `selected` now holds the tier's index into `bedOptions`, the button key is `` `${option.capacity}-${index}` ``, and `selectedOption` is a direct `bedOptions[selected]` lookup instead of a `.find()` by capacity. Downstream consumers (`selectedOption.price/label/capacity`, the enquiry navigation state) were untouched since they already read off the resolved `selectedOption` object, not the index.
+
+**Lesson:** a derived list's "obvious" natural key (here, bed count) is only safe when the source guarantees uniqueness — the backend never promised distinct `sharing` values across tiers, and nothing before now had exercised a hostel that used that freedom.
+
+**See:** [[Frontend]], [[Changelog]]
+
+## 2026-08-26 — Every brand-new Meal Plan cell 400'd on its first-ever edit, invisibly (fixed)
+
+**Found** while live-verifying [[Decisions#ADR-121|ADR-121]]'s multi-zone grid against the real dev backend — a tap-to-add that visibly placed a dish and never reverted, yet a direct database check moments later showed the cell untouched (`updated_at: null`, no items). Not a symptom anyone had reported; the optimistic UI hid it completely.
+
+**Area:** [[APIs]] — `PATCH /api/food/schedules/[id]/meals/[mealId]` (`apps/backend/app/api/food/schedules/[id]/meals/[mealId]/route.ts`), plus the frontend types that had been quietly lying about it (`useFoodSchedule.ts`'s `ScheduleMealCell.updated_at`, `features/food/api/index.ts`'s `updateScheduleMeal`).
+
+**Root cause:** the route's optimistic-concurrency guard ([[Decisions#ADR-114|ADR-114]]) required `typeof body.expectedUpdatedAt === "string"`, rejecting anything else with `400 VALIDATION_ERROR`. But `food_schedule_meals.updated_at` is `null` until a cell's first-ever edit — every one of the 28 cells `POST /api/food/schedules` creates starts that way — so the honest, correct payload for a first edit is `expectedUpdatedAt: null`, and the route refused it every time. **Every first edit to any never-before-touched cell, in any newly-created schedule, has 400'd since the day this guard shipped.**
+
+**Why it was invisible:** `useFoodSchedule.ts`'s `setCellItems` is optimistic — `onMutate` writes the new selection into the React Query cache *before* the request resolves, so the dish appeared instantly regardless of what the server said. The frontend types claimed `updated_at: string` (non-nullable) everywhere this value is threaded through, so nothing here — not `tsc`, not a code review — would have flagged the mismatch between what the type promised and what the API actually returns. The rollback path (`onError`) is real and does correctly revert on a genuine `400`/`409`, but only after the round trip completes; a screenshot or a `waitForTimeout` shorter than that window reads as a clean success.
+
+**Live cost:** this is the underlying "add a dish" mechanism [[Food]] §18's Timetable and §19's Meal Plan both use — meaning it was very likely already broken in production for exactly the case that matters most: a hostel owner opening a fresh month for the first time and adding its very first dish. It would only ever have appeared to work once a cell had somehow already been edited once (impossible from a clean state, since that edit is the thing being blocked).
+
+**Fix:** the guard now accepts `null` explicitly (`body.expectedUpdatedAt !== null && typeof body.expectedUpdatedAt !== "string"`), and the conditional `updateMany`'s `where: { updated_at: expectedUpdatedAt }` already handles a `null` comparison correctly via Prisma (translates to `IS NULL`) — no change needed there. `ScheduleMealCell.updated_at` and `updateScheduleMeal`'s parameter are now correctly typed `string | null`, closing the type-level lie that let this hide.
+
+**Verified:** a real tap-to-add against the running dev backend, confirmed via direct query against the schedule row before and after — `updated_at` moved from `null` to a real timestamp, `food_schedule_meal_items` populated correctly. Frontend suite 90/90 files, 1410/1410 tests passing after the type fix (backend pure suite verification in progress at time of writing — see [[Changelog]]).
+
+**Lesson:** an optimistic mutation's `onMutate` can make a completely-failing write look successful for as long as anyone's watching a screenshot instead of a network tab — and a type annotation that's wrong in the "value is never actually null" direction is exactly the kind of lie `tsc` can't catch, because nothing contradicts it until the real API response does.
+
+**See:** [[Decisions#ADR-121|ADR-121]], [[Decisions#ADR-114|ADR-114]], [[Food]] §19, [[APIs]], [[Changelog]]
 
 ## 2026-08-25 — "+ Add hostel" resumed an old hostel instead of adding one (fixed)
 
@@ -1659,7 +1764,7 @@ Copy this block for each new entry:
 
 So the owner tapped a button that said *refund*, and forgave ₹25,000 owed **to them**. Nothing on screen mentioned a write-off, and nothing asked. The label was wrong in the other direction too: `summariseSettlement` now derives direction once and every label reads from it.
 
-**Fix:** `duesDisposition` on the service and the route, defaulting to `RECOVERABLE`; `WAIVE` is opt-in and the button then says *"Write off ₹25,000 & close"*. See [[Decisions#ADR-122|ADR-122]], [[Business-Rules]].
+**Fix:** `duesDisposition` on the service and the route, defaulting to `RECOVERABLE`; `WAIVE` is opt-in and the button then says *"Write off ₹25,000 & close"*. See [[Decisions#ADR-130|ADR-130]], [[Business-Rules]].
 
 ## 2026-08-26 — `/api/auth/me` picked an arbitrary tenancy, locking re-admitted tenants out
 
@@ -1673,7 +1778,7 @@ The tenant lookup was `prisma.tenants.findFirst({ where: { profile_id } })` — 
 
 The timing made it worse: `tenants.status` flips to `FORMER_TENANT` in **`vacate`**, when the bed is released, which is a whole step before `complete` settles the money. People were locked out of the app *while still owed a refund*.
 
-**Fix:** three tenancy states instead of two. `EXITING` keeps the dashboard read-only until the settlement closes; `EXITED` lands on `/tenant/farewell` with the receipt and a door into Discover. See [[Decisions#ADR-122|ADR-122]].
+**Fix:** three tenancy states instead of two. `EXITING` keeps the dashboard read-only until the settlement closes; `EXITED` lands on `/tenant/farewell` with the receipt and a door into Discover. See [[Decisions#ADR-130|ADR-130]].
 
 ## 2026-08-26 — Two owner action bars never learned about `FORMER_TENANT`
 

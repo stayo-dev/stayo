@@ -13,6 +13,7 @@ import {
   selectRentReminderTemplate,
   WhatsAppRentReminderTemplate,
 } from "./providers/whatsapp";
+import { decideGuardianReminder } from "./command-center/guardian-reminder-policy";
 
 const logger = getLogger("whatsapp.reminder-delivery");
 
@@ -92,9 +93,24 @@ export class WhatsAppReminderDeliveryService {
       throw tenantErr;
     }
 
-    // Escalation rule: Overdue (starting 3 days overdue) goes to Tenant + Guardian
-    const isOverdueEscalation = input.daysOverdue >= 3;
-    if (isOverdueEscalation && tenant?.guardian_phone) {
+    // Who else hears about this, and when. See `guardian-reminder-policy` for
+    // why a guardian is now reached *before* the due date rather than only
+    // once the money is three days late.
+    const guardianDecision = decideGuardianReminder({
+      daysOverdue: input.daysOverdue,
+      guardianPhone: tenant?.guardian_phone,
+      residentPhone: input.phone,
+      normalise: normalizeWhatsAppPhone,
+    });
+
+    logger.info("whatsapp.reminder.guardian_decision", {
+      obligation_id: input.obligationId,
+      days_overdue: input.daysOverdue,
+      notify: guardianDecision.notify,
+      reason: guardianDecision.reason,
+    });
+
+    if (guardianDecision.notify && tenant?.guardian_phone) {
       try {
         await this.sendReminderToRecipient(
           input,
@@ -107,9 +123,11 @@ export class WhatsAppReminderDeliveryService {
         logger.error("whatsapp.reminder.guardian_failed", {
           obligation_id: input.obligationId,
           phone: maskWhatsAppPhone(tenant.guardian_phone),
+          reason: guardianDecision.reason,
           error: String(guardianErr),
         });
-        // We log the guardian failure, but we do not block the method since tenant reminder succeeded
+        // Logged, not rethrown: the resident's own reminder already landed, and
+        // failing the whole send would retry that one too.
       }
     }
 

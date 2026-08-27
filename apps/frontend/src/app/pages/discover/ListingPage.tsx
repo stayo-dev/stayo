@@ -227,8 +227,26 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
       : (hostel.photos ?? []).map((url: string) => ({ url, kind: 'image' as const }));
   const photos: string[] = media.map((item) => item.url);
   const audience = hostel.hostel_type ? AUDIENCE_LABEL[hostel.hostel_type] : null;
-  const selectedOption = bedOptions.find((option) => option.capacity === selected) ?? null;
-  const displayPrice = selectedOption?.price ?? hostel.starting_price ?? null;
+  /**
+   * Selection is by array position, not `capacity` — an owner can publish two
+   * marketing tiers of the same bed count at different prices (e.g. "4
+   * Sharing" vs "Ground floor 4-bed"), and keying/looking up by capacity alone
+   * made them indistinguishable: both buttons lit up together and `.find()`
+   * always resolved to whichever tier came first.
+   */
+  const selectedOption = selected != null ? (bedOptions[selected] ?? null) : null;
+  /**
+   * "Starting from" tracks the cheapest bed actually on offer in "Choose your
+   * bed" below, rather than the separate `starting_price` field, which can
+   * drift out of sync with the real tiers. Prefer a tier with open beds; only
+   * price a full tier if nothing is open.
+   */
+  const pricedOptions = bedOptions.filter((option) => option.price != null);
+  const openOptions = pricedOptions.filter((option) => option.availableBeds > 0);
+  const cheapestPool = openOptions.length > 0 ? openOptions : pricedOptions;
+  const minBedPrice =
+    cheapestPool.length > 0 ? Math.min(...cheapestPool.map((option) => option.price as number)) : null;
+  const displayPrice = selectedOption?.price ?? minBedPrice ?? hostel.starting_price ?? null;
 
   const handleSave = () => {
     if (!isSeeker) {
@@ -563,7 +581,7 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
         */}
         <div className="relative mx-auto -mt-6 w-full max-w-[860px] lg:mt-8 lg:grid lg:max-w-[1180px] lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-7 lg:px-8">
         <div
-          className="rounded-t-[24px] px-5 pb-8 pt-5 lg:rounded-[24px] lg:px-8"
+          className="rounded-[24px] px-5 pb-8 pt-5 lg:px-8"
           style={{ background: C.paper }}
         >
           <div className="flex flex-wrap items-center gap-2">
@@ -659,7 +677,7 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
           {(data?.host?.name || data?.host?.listed_since) && (
             <div
               className="mt-5 flex items-center gap-3 border-t pt-5"
-              style={{ borderColor: C.lineSoft }}
+              style={{ borderColor: C.line }}
             >
               <span
                 className="flex h-11 w-11 flex-none items-center justify-center rounded-full text-[15px] font-extrabold"
@@ -688,7 +706,7 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
           {/* The owner's own three things worth knowing, reviewed like the
               rest of the listing. They were collected and never displayed. */}
           {(hostel.highlights?.length ?? 0) > 0 && (
-            <section className="mt-5 border-t pt-5" style={{ borderColor: C.lineSoft }}>
+            <section className="mt-5 border-t pt-5" style={{ borderColor: C.line }}>
               <div className="flex flex-col gap-3">
                 {hostel.highlights.slice(0, 6).map((highlight: string) => (
                   <div key={highlight} className="flex items-start gap-3">
@@ -702,7 +720,7 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
 
           {/* ── About ──────────────────────────────────────────────────── */}
           {hostel.about && (
-            <section className="mt-5 border-t pt-5" style={{ borderColor: C.lineSoft }}>
+            <section className="mt-5 border-t pt-5" style={{ borderColor: C.line }}>
               <h2 className="text-[16px] font-extrabold tracking-[-0.01em]" style={{ fontFamily: FONT.display, color: C.text }}>
                 About this hostel
               </h2>
@@ -726,7 +744,7 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
           )}
 
           {/* ── Beds ───────────────────────────────────────────────────── */}
-          <section className="mt-7">
+          <section className="mt-7 border-t pt-5" style={{ borderColor: C.line }}>
             <h2 className="text-[16px] font-extrabold tracking-[-0.01em]" style={{ fontFamily: FONT.display, color: C.text }}>
               Choose your bed
             </h2>
@@ -743,15 +761,15 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
               </p>
             ) : (
               <div className="mt-3 flex flex-col gap-2.5">
-                {bedOptions.map((option) => {
-                  const active = selected === option.capacity;
+                {bedOptions.map((option, index) => {
+                  const active = selected === index;
                   const soldOut = option.availableBeds === 0;
                   return (
                     <button
-                      key={option.capacity}
+                      key={`${option.capacity}-${index}`}
                       type="button"
                       disabled={soldOut}
-                      onClick={() => setSelected(option.capacity)}
+                      onClick={() => setSelected(index)}
                       aria-pressed={active}
                       className="flex items-center gap-3.5 rounded-2xl bg-white p-4 text-left transition-colors disabled:opacity-55"
                       style={{
@@ -851,7 +869,7 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
 
           {/* ── What this hostel offers ──────────────────────────────── */}
           {amenities.length > 0 && (
-            <section className="mt-7">
+            <section className="mt-7 border-t pt-5" style={{ borderColor: C.line }}>
               <h2 className="text-[16px] font-extrabold tracking-[-0.01em]" style={{ fontFamily: FONT.display, color: C.text }}>
                 What this hostel offers
               </h2>
@@ -890,7 +908,7 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
               menu is reviewed marketing content, not the operational food
               schedule — see ADR-077. */}
           {mess && mess.meals.length > 0 && (
-            <section className="mt-7">
+            <section className="mt-7 border-t pt-5" style={{ borderColor: C.line }}>
               <div className="flex items-center justify-between">
                 <h2 className="text-[16px] font-extrabold tracking-[-0.01em]" style={{ fontFamily: FONT.display, color: C.text }}>
                   Food &amp; mess
@@ -978,7 +996,7 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
 
           {/* ── Getting around ───────────────────────────────────────── */}
           {(hasNavigation(navigation) || places.length > 0) && (
-            <section className="mt-7">
+            <section className="mt-7 border-t pt-5" style={{ borderColor: C.line }}>
               <h2 className="text-[16px] font-extrabold tracking-[-0.01em]" style={{ fontFamily: FONT.display, color: C.text }}>
                 Where you'll be
               </h2>
@@ -1113,14 +1131,14 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
               )}
             </section>
           )}
-
-          {/* ── Reviews ──────────────────────────────────────────────────── */}
-          <ReviewsSection slug={slug} hostelName={hostel.name} />
         </div>
 
         {/* Desktop-only: the decision column. Mirrors the sticky bar a phone
             gets, which is hidden at this width so there is only ever one
-            price and one Enquire button on screen. */}
+            price and one Enquire button on screen. Deliberately paired only
+            with the content above (through Map) — this grid ends there, so
+            the sticky card stops following scroll once Reviews begins rather
+            than tracking the whole rest of the page. */}
         <aside className="hidden lg:block lg:sticky lg:top-6">
           <div
             className="rounded-[20px] border p-5"
@@ -1169,6 +1187,18 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
             </p>
           </div>
         </aside>
+        </div>
+
+        {/* ── Reviews ──────────────────────────────────────────────────────
+            Deliberately outside the two-column grid above: it needs the
+            full page width (not the narrower column shared with the sticky
+            sidebar), and keeping it out of that grid is what lets the
+            sticky price card stop following scroll once Map ends instead of
+            tracking through this section too. */}
+        <div className="mx-auto mt-4 w-full max-w-[860px] lg:mt-6 lg:max-w-[1180px] lg:px-8">
+          <div className="rounded-[24px] px-5 py-6 lg:px-8" style={{ background: C.paper }}>
+            <ReviewsSection slug={slug} hostelName={hostel.name} />
+          </div>
         </div>
       </div>
 

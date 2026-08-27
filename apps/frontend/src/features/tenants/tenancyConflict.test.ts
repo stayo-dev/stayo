@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseTenancyConflict } from './tenancyConflict';
+import { buildTenancyConflictCopy, parseTenancyConflict } from './tenancyConflict';
 
 function axiosError(code: string, details?: unknown) {
   return { response: { data: { error: { code, message: 'nope', details } } } };
@@ -80,5 +80,23 @@ describe('parseTenancyConflict', () => {
     const conflict = parseTenancyConflict(axiosError('TENANT_HAS_ACTIVE_TENANCY'));
     expect(conflict?.title).toBe('Already a tenant');
     expect(conflict?.tenantId).toBeNull();
+  });
+
+  it('builds identical copy from a raw code+disclosure as it does from a 409 error', () => {
+    // Regression guard on the extraction of buildTenancyConflictCopy: the
+    // pre-submit eligibility check (a 200 response) must render the exact
+    // same card as the 409 safety net does for the same underlying data.
+    const disclosure = {
+      scope: 'OWN' as const,
+      hostelName: 'Sunrise Residency',
+      roomNumber: '204',
+      tenantId: 'tenant-1',
+    };
+    expect(buildTenancyConflictCopy('TENANT_HAS_ACTIVE_TENANCY', disclosure)).toEqual(
+      parseTenancyConflict(axiosError('TENANT_HAS_ACTIVE_TENANCY', disclosure))
+    );
+    expect(buildTenancyConflictCopy('PREVIOUS_TENANCY_NOT_SETTLED', { scope: 'OTHER' })).toEqual(
+      parseTenancyConflict(axiosError('PREVIOUS_TENANCY_NOT_SETTLED', { scope: 'OTHER' }))
+    );
   });
 });

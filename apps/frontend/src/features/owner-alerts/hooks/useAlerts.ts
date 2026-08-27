@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import apiClient from '@lib/api-client';
 import { admissionsService } from '@features/admissions/api';
@@ -39,6 +39,7 @@ export interface DynamicRequest {
   name: string;
   detail: string;
   type: string;
+  status: string;
   read: boolean;
 }
 
@@ -54,30 +55,31 @@ export interface DynamicLead {
   seeker_profile_id: string | null;
 }
 
-export function useAlerts() {
-  const [category, setCategory] = useState<DynamicAlertCategory>('leads');
+export function useAlerts(options?: { includeLeads?: boolean }) {
+  const includeLeads = options?.includeLeads ?? false;
   const [adminMessages, setAdminMessages] = useState<DynamicAdminMessage[]>([]);
   const [renewals, setRenewals] = useState<DynamicRenewal[]>([]);
   const [requests, setRequests] = useState<DynamicRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetchAlerts() {
-      try {
-        const response = await apiClient.get('/owner/alerts');
-        setAdminMessages(response.data.adminMessages || []);
-        setRenewals(response.data.renewals || []);
-        setRequests(response.data.requests || []);
-      } catch (err) {
-        console.error('Failed to fetch alerts', err);
-      } finally {
-        setLoading(false);
-      }
+  const fetchAlerts = useCallback(async () => {
+    try {
+      const response = await apiClient.get('/owner/alerts');
+      setAdminMessages(response.data.adminMessages || []);
+      setRenewals(response.data.renewals || []);
+      setRequests(response.data.requests || []);
+    } catch (err) {
+      console.error('Failed to fetch alerts', err);
+    } finally {
+      setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
     fetchAlerts();
     const interval = setInterval(fetchAlerts, 60_000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchAlerts]);
 
   // Leads have their own funnel elsewhere and don't need the 60s poll the
   // other three categories share — fetched via the shared admissions query
@@ -96,7 +98,7 @@ export function useAlerts() {
         statuses: ACTIONABLE_LEAD_STATUSES.join(','),
         limit: LEAD_PAGE_LIMIT,
       }) as Promise<LeadPage>,
-    enabled: category === 'leads',
+    enabled: includeLeads,
   });
 
   /**
@@ -120,7 +122,7 @@ export function useAlerts() {
       const { page = 1, pages = 1 } = last.pagination ?? {};
       return page < pages ? page + 1 : undefined;
     },
-    enabled: category === 'leads',
+    enabled: includeLeads,
   });
 
   const actionableLeads = actionableQuery.data?.items ?? [];
@@ -146,8 +148,6 @@ export function useAlerts() {
   };
 
   return {
-    category,
-    setCategory,
     adminMessages,
     renewals,
     requests,
@@ -164,13 +164,8 @@ export function useAlerts() {
      * this is the half where a hidden lead actually costs the owner money.
      */
     actionableTruncated: actionableTotal > actionableLeads.length,
-    counts: {
-      leads: leads.length,
-      admin: adminMessages.length,
-      renewals: renewals.length,
-      requests: requests.length,
-    },
     markRead,
-    loading
+    loading,
+    refetch: fetchAlerts,
   };
 }

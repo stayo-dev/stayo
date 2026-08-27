@@ -36,6 +36,7 @@ export default defineConfig({
       'tests/food-voting-expiry.test.ts',
       'tests/food-meal-items.test.ts',
       'tests/food-meal-timings.test.ts',
+      'tests/food-poll-edit-validation.test.ts',
       'tests/platform-lead-templates.test.ts',
       'tests/platform-lead-stage-mapper.test.ts',
       'tests/owner-document-review.test.ts',
@@ -44,6 +45,7 @@ export default defineConfig({
       'tests/redis-key-parity.test.ts',
       'tests/activation-enforcement-coverage.test.ts',
       'tests/tenancy-eligibility-service.test.ts',
+      'tests/tenancy-eligibility-preview.test.ts',
       'tests/reset-token-channel.test.ts',
       'tests/config-change-labels.test.ts',
       'tests/email-delivery-classification.test.ts',
@@ -84,6 +86,7 @@ export default defineConfig({
       'tests/enquiry-template-contracts.test.ts',
       'tests/admissions-lead-transition-guards.test.ts',
       'tests/admissions-lead-actions.test.ts',
+      'tests/tenant-invitation-lifecycle-service.test.ts',
       'tests/floor-room-plan.test.ts',
       'tests/hostel-deletion-plan.test.ts',
       'tests/expense-anomaly.test.ts',
@@ -102,6 +105,14 @@ export default defineConfig({
       'tests/tenant-identity.test.ts',
       'tests/claim-eligibility.test.ts',
       'tests/tenancy-claim-service.test.ts',
+      // The resident/guardian command center. Its formatters, vocabulary and
+      // reminder policy take plain arguments and touch nothing external —
+      // which is the design, not a coincidence: decision logic lives in pure
+      // modules so it can be verified without a database.
+      'tests/whatsapp-command-center-vocabulary.test.ts',
+      'tests/whatsapp-command-center-formatting.test.ts',
+      'tests/whatsapp-guardian-reminders.test.ts',
+      'tests/whatsapp-guardian-activation-template.test.ts',
     ],
     alias: {
       // More specific than the catch-all `@` entry below, and must come

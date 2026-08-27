@@ -59,11 +59,18 @@ export async function PATCH(
     const validated = validateMenuItemIds(body.menuItemIds, allowed);
     if (!validated.ok) return apiError(validated.reason, "VALIDATION_ERROR", 400);
 
-    if (typeof body.expectedUpdatedAt !== "string") {
+    // `null` is a legitimate value here, not a missing one: a cell created by
+    // `POST /api/food/schedules` and never yet edited has `updated_at: null`
+    // in the database, so the caller's *honest* "what I last saw" is null too.
+    // Rejecting that made the very first edit to any brand-new cell 400
+    // forever (masked client-side by the optimistic update, which is why this
+    // went unnoticed) — every one of the 28 cells in every newly-created
+    // schedule was unreachable until it had somehow already been edited once.
+    if (body.expectedUpdatedAt !== null && typeof body.expectedUpdatedAt !== "string") {
       return apiError("expectedUpdatedAt is required", "VALIDATION_ERROR", 400);
     }
-    const expectedUpdatedAt = new Date(body.expectedUpdatedAt);
-    if (Number.isNaN(expectedUpdatedAt.getTime())) {
+    const expectedUpdatedAt = body.expectedUpdatedAt === null ? null : new Date(body.expectedUpdatedAt);
+    if (expectedUpdatedAt !== null && Number.isNaN(expectedUpdatedAt.getTime())) {
       return apiError("expectedUpdatedAt is not a valid date", "VALIDATION_ERROR", 400);
     }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { useHostelReviews, useSubmitReview } from '@features/discover/hooks/useDiscover';
 import type { ReviewEligibility } from '@features/discover/api';
@@ -6,18 +6,33 @@ import type { ReviewEligibility } from '@features/discover/api';
 import { C, FONT } from '../discoverTheme';
 import { getReviewPreview } from '../reviewsPreview';
 import { ReviewsCard } from './ReviewsCard';
+import { ReviewsCarousel } from './ReviewsCarousel';
 import { ReviewsScoreSummary } from './ReviewsScoreSummary';
 import { ReviewsWriteForm } from './ReviewsWriteForm';
 
 /**
- * Resident reviews on a hostel listing, and the box for writing one.
+ * The listing page's compact reviews preview, and the box for writing one.
+ *
+ * **Deliberately lightweight on mobile, richer on desktop.** Below `lg:`,
+ * this is exactly: a heading, a horizontal peeking-card carousel of a few
+ * reviews, and a "Show all N reviews" button. At `lg:` and up, there's room
+ * for more — the same score/distribution/category block used on the
+ * dedicated page renders inline, followed by a 2-column grid of the same
+ * preview reviews (no carousel there; nothing to scroll when it already
+ * fits). Neither variant has search, sort, or the complete list — those
+ * stay dedicated-page-only (`ReviewsPage.tsx`, `/discover/h/:slug/reviews`),
+ * reached the same way from both breakpoints via "Show all N reviews"
+ * (*navigates*, no inline expansion, no modal). The write-review form stays
+ * here at every width — a resident revisiting the listing should still see
+ * their review's status without an extra click.
  *
  * **The section is not rendered at all unless it has something to say.** If
- * there are no published reviews and this reader cannot write one, there is no
- * heading, no empty state and no explanation of the rules — a visitor browsing
- * a new hostel is not owed a paragraph about Stayo's moderation policy in the
- * place where reviews would be. It appears when there are reviews to read, or
- * when the person looking is a resident who can add one. See ADR-102.
+ * there are no published reviews and this reader cannot write one, there is
+ * no heading, no empty state and no explanation of the rules — a visitor
+ * browsing a new hostel is not owed a paragraph about Stayo's moderation
+ * policy in the place where reviews would be. It appears when there are
+ * reviews to read, or when the person looking is a resident who can add
+ * one. See ADR-102.
  *
  * Three rules it still encodes:
  *
@@ -25,9 +40,10 @@ import { ReviewsWriteForm } from './ReviewsWriteForm';
  *    the server decides (`review-eligibility.ts`) and says so in the payload,
  *    so the box appears only for someone who can actually use it. An account
  *    is not an experience.
- * 2. **It never invents a score.** Below three reviews the listing shows the
- *    reviews and no average — the same rule that had Discovery returning
- *    `ratings_available: false` rather than a plausible number.
+ * 2. **It never invents a score.** The carousel (mobile) and the review grid
+ *    (desktop) show the reviews themselves regardless of count; the score
+ *    block only renders — here and on the dedicated page alike — when
+ *    `summary.average != null`, gated by `MIN_REVIEWS_FOR_AVERAGE` (ADR-121).
  * 3. **It never implies a review is live.** Everything written here goes to
  *    Stayo first; a submitted review is shown back to its author marked as
  *    waiting, not dropped into the public list.
@@ -39,9 +55,9 @@ export function ReviewsSection({
   slug: string | undefined;
   hostelName: string;
 }) {
+  const navigate = useNavigate();
   const { data, isLoading, isError } = useHostelReviews(slug);
   const submit = useSubmitReview(slug);
-  const [showAll, setShowAll] = useState(false);
 
   /**
    * If the endpoint is unavailable, show nothing at all. A write box that
@@ -51,7 +67,7 @@ export function ReviewsSection({
 
   const summary = data?.summary;
   const allReviews = data?.reviews ?? [];
-  const preview = getReviewPreview(allReviews, showAll);
+  const preview = getReviewPreview(allReviews, false);
   const mine = data?.mine ?? null;
   const categories = data?.categories ?? [];
   // `as const` keeps the fallback on the discriminated union rather than
@@ -76,13 +92,13 @@ export function ReviewsSection({
   if (isLoading || (allReviews.length === 0 && !canWrite && !mine)) return null;
 
   return (
-    <section className="mt-7">
+    <section>
       <div className="flex items-baseline justify-between gap-3">
         <h2
           className="text-[16px] font-extrabold tracking-[-0.01em]"
           style={{ fontFamily: FONT.display, color: C.text }}
         >
-          Reviews
+          Tenant reviews
         </h2>
         {summary && summary.count > 0 && (
           <span className="text-[12px]" style={{ color: C.textMuted }}>
@@ -90,14 +106,6 @@ export function ReviewsSection({
           </span>
         )}
       </div>
-
-      {summary?.average != null && <ReviewsScoreSummary summary={summary} />}
-
-      {summary?.emptyReason === 'TOO_FEW' && (
-        <p className="mt-2 text-[12px] leading-[1.55]" style={{ color: C.textMuted }}>
-          Too few reviews to average yet — read them and judge for yourself.
-        </p>
-      )}
 
       {/* Only reachable when the top gate already let the section through —
           an eligible resident or someone with a review already in flight —
@@ -117,18 +125,42 @@ export function ReviewsSection({
         </div>
       )}
 
+      {/* `MIN_REVIEWS_FOR_AVERAGE` is 1 (ADR-121), so this can't actually
+          fire today — kept for the same reason the backend keeps the
+          branch: a future change to that constant shouldn't need this
+          rebuilt, and it matches the dedicated page's own defensive copy. */}
+      {summary?.emptyReason === 'TOO_FEW' && (
+        <p className="mt-2 text-[12px] leading-[1.55]" style={{ color: C.textMuted }}>
+          Too few reviews to average yet — read them and judge for yourself.
+        </p>
+      )}
+
+      {/* The score header (number, footprints, "How reviews work") shows on
+          every viewport — a phone scan still needs the number the decision
+          hinges on, even though its own category breakdown stays desktop-only
+          (see `ReviewsScoreSummary`). Below `lg:`: the carousel only. At
+          `lg:` and up: a 2-column grid of the same preview reviews instead —
+          no carousel there, nothing needs to scroll. */}
+      {summary?.average != null && <ReviewsScoreSummary summary={summary} />}
+
       {preview.length > 0 && (
-        <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="mt-4 lg:hidden">
+          <ReviewsCarousel reviews={preview} />
+        </div>
+      )}
+
+      {preview.length > 0 && (
+        <div className="mt-5 hidden gap-4 lg:grid lg:grid-cols-2">
           {preview.map((review) => (
-            <ReviewsCard key={review.id} review={review} />
+            <ReviewsCard key={review.id} review={review} truncate />
           ))}
         </div>
       )}
 
-      {!showAll && allReviews.length > preview.length && (
+      {allReviews.length > 0 && (
         <button
           type="button"
-          onClick={() => setShowAll(true)}
+          onClick={() => navigate(`/discover/h/${slug}/reviews`, { state: { hostelName } })}
           className="mt-3 rounded-[11px] border px-4 py-2.5 text-[12.5px] font-bold"
           style={{ borderColor: C.line, color: C.text, fontFamily: FONT.display }}
         >

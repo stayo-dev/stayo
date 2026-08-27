@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   MIN_ALERTS_QUERY_LENGTH,
-  matchesElsewhere,
   matchesTokens,
   normaliseQuery,
   searchAlerts,
@@ -35,7 +34,7 @@ const LISTS: AlertsLists = {
     { id: 'm1', title: 'Payout sent', body: 'Rs 18,500 reached your bank', time: '2026-08-01', read: false },
   ],
   renewals: [{ id: 'r1', name: 'Riya Sharma', detail: 'Agreement ends 30 Sep', days: 12, read: false }],
-  requests: [{ id: 'q1', name: 'Kavya Menon', detail: 'Wants to change room', type: 'ROOM_CHANGE', read: false }],
+  requests: [{ id: 'q1', name: 'Kavya Menon', detail: 'Wants to change room', type: 'ROOM_CHANGE', status: 'RAISED', read: false }],
 };
 
 describe('normaliseQuery', () => {
@@ -149,27 +148,5 @@ describe('searchAlerts', () => {
     const result = searchAlerts('zzzz', LISTS);
     expect(result.total).toBe(0);
     expect(result.leads).toHaveLength(0);
-  });
-});
-
-// The reason this searches all four lists instead of just the open one.
-describe('matchesElsewhere', () => {
-  it('names the other categories that matched, so an empty tab is not a dead end', () => {
-    const result = searchAlerts('riya', LISTS);
-    expect(matchesElsewhere(result, 'leads')).toEqual([{ category: 'renewals', count: 1 }]);
-    expect(matchesElsewhere(result, 'renewals')).toEqual([{ category: 'leads', count: 1 }]);
-  });
-
-  it('never points at the category already being viewed', () => {
-    const result = searchAlerts('riya', LISTS);
-    expect(matchesElsewhere(result, 'leads').some((m) => m.category === 'leads')).toBe(false);
-  });
-
-  it('says nothing when no query is active', () => {
-    expect(matchesElsewhere(searchAlerts('', LISTS), 'leads')).toEqual([]);
-  });
-
-  it('says nothing when the query matched only the current category', () => {
-    expect(matchesElsewhere(searchAlerts('arjun', LISTS), 'leads')).toEqual([]);
   });
 });

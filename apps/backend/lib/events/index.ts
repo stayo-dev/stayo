@@ -136,6 +136,18 @@ eventSystem.on("payment_recorded", async (data) => {
       // Rule 5: WhatsApp failure must never break onboarding or payment recording
       console.error("[Event] payment_recorded onboarding notification check failed:", error);
     }
+
+    // Acknowledge the payment in the thread that asked for it. Before this,
+    // the channel went silent at the exact moment it had earned some trust —
+    // and the next reminder then read as though nobody had noticed the money.
+    try {
+      const { sendPaymentConfirmation } = await import(
+        "../services/notifications/command-center/payment-confirmation"
+      );
+      await sendPaymentConfirmation(data.tenant_id);
+    } catch (error) {
+      console.error("[Event] payment_recorded WhatsApp confirmation failed:", error);
+    }
   }
 });
 

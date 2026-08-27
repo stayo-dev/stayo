@@ -175,6 +175,9 @@ export function otpPurposeLabel(purpose: string): string {
     LOGIN: "login",
     SIGNUP: "sign up",
     PASSWORD_RESET: "password reset",
+    // Exactly 15 characters — at the ceiling, deliberately: a guardian reading
+    // this code needs to know it unlocks rent access, not a login.
+    GUARDIAN_ACCESS: "guardian access",
   };
 
   const mapped = known[raw.toUpperCase().replace(/[\s-]+/g, "_")];

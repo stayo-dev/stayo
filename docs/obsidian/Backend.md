@@ -51,7 +51,11 @@ Header comment literally states this is "THE canonical implementation of all bil
 
 Two structurally separate WhatsApp systems:
 - **`owner-whatsapp-assistant.ts`** (7180 lines — the largest file in the entire services tree) — owner-facing conversational assistant, ID-based interactive menus rather than flat keyword commands.
-- **`whatsapp-webhook-event-service.ts`** — tenant-facing entry point. Flat text-command router (`BAL`/`BALANCE`, `SWITCH`, `DUES`, `PAY`, `STATUS`, `HELP`) plus interactive button-reply handling. See [[Business-Rules]] for the exact command table. Also owns webhook persistence/idempotency: `recordReceived()` (hash of the raw body, `ON CONFLICT DO NOTHING`) and `claimForProcessing()` (atomic claim — one delivery wins, stale `PROCESSING` reclaimable after 10 min).
+- **`whatsapp-webhook-event-service.ts`** — inbound entry point. Since 2026-08-27 it no longer *contains* the resident command handlers (~1,100 lines removed): it owns webhook persistence/idempotency — `recordReceived()` (hash of the raw body, `ON CONFLICT DO NOTHING`) and `claimForProcessing()` (atomic claim — one delivery wins, stale `PROCESSING` reclaimable after 10 min) — plus the intent registry, the denial/fallback/error replies, and status-event handling. Resident and guardian commands are delegated to `command-center/service.ts`.
+- **`command-center/`** — the resident & guardian surface ([[Decisions#ADR-128|ADR-128]]). Split so that decision logic is pure and testable without a database, per [[Decisions#ADR-043|ADR-043]]:
+  - **Pure** (no I/O, all in `vitest.pure.config.ts`): `commands.ts` (the vocabulary and its retired aliases), `voice.ts` (the copy rules — person, money, dates, hostel attribution), `rent-summary.ts`, `installment-plan.ts`, `receipt.ts`, `menu.ts` (buttons, picker, payload encode/decode), `guardian-reminder-policy.ts`.
+  - **I/O**: `context.ts` (composes `financialReadModelService` — never re-sums obligations), `service.ts` (dispatch, resident resolution, guardian gate, sending), `guardian-access.ts` (OTP challenge over `authOtpService`), `payment-confirmation.ts` (the `payment_recorded` listener).
+- **Dead as of 2026-08-27**: `whatsapp-resident-context.ts` (the deleted 30-minute "active resident" mode) and `whatsapp-balance-formatter.ts` (the six-section balance wall). Neither has a live caller; both are left in place pending removal — see [[TODO]].
 
 **Neither is the entry point.** Since [[Decisions#ADR-039|ADR-039]] inbound messages go through `lib/services/notifications/routing/`, a four-part pipeline:
 
@@ -66,7 +70,7 @@ Authorization lives **only** in the registry's `allowedRoles` (built in `whatsap
 
 Both mounts are reached through **one** webhook handler, `whatsapp-webhook-handler.ts` — signature verification, the GET challenge, and acknowledge-then-process live there, and the two route files (`/api/webhooks/whatsapp` canonical, `/api/webhooks/notifications/whatsapp` legacy) only delegate to it. Don't add a third entry point; see [[Decisions#ADR-037|ADR-037]] and [[APIs#Notifications & WhatsApp|APIs]].
 
-Plus: `briefing-engine.ts` (owner daily briefing cards), `whatsapp-reminder-delivery.ts`, `whatsapp-billing-intelligence.ts`, `whatsapp-selection-state.ts` (conversational state machine, Redis-backed), `whatsapp-resident-context.ts` (tracks which tenant a phone number is "acting as" in a shared household), `providers/whatsapp/meta-provider.ts` (the actual Meta Cloud API client).
+Plus: `briefing-engine.ts` (owner daily briefing cards), `whatsapp-reminder-delivery.ts`, `whatsapp-billing-intelligence.ts`, `whatsapp-selection-state.ts` (conversational state machine, Redis-backed — now holding only a guardian's pending command during OTP verification, on the resident side), `providers/whatsapp/meta-provider.ts` (the actual Meta Cloud API client).
 
 ## Commands
 

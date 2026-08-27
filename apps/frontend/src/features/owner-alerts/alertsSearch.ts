@@ -9,17 +9,15 @@ import type {
 } from './hooks/useAlerts';
 
 /**
- * Searching the Alerts tab.
+ * Searching the Alerts menu.
  *
- * Four lists live behind four chips — Leads, Messages, Renewals, Requests —
- * and an owner looking for one person has no idea which of them they are
- * filed under. A plain filter on the open tab is the wrong tool for that: type
- * "Riya" while standing on Leads, get "no results", and conclude Riya is not
- * in Stayo at all when she is sitting in Renewals one chip away.
+ * Leads, Announcements, Renewals and Requests each live on their own page
+ * now, reached by tapping a category card on the Alerts menu. The search box
+ * lives on that menu, not on the category pages — typing here updates the
+ * count shown on each of the four cards, all at once, before the owner has
+ * committed to opening any one of them.
  *
- * So this searches **all four**, shows the matches for the chip you are on,
- * and reports what the same query found in the others so the page can offer
- * them. Nothing is hidden by which tab happened to be open.
+ * So this searches **all four** in one pass and returns a count per category.
  *
  * Matching, in order of what actually gets typed:
  *
@@ -160,21 +158,4 @@ export function searchAlerts(query: string, lists: AlertsLists): AlertsSearchRes
     counts,
     total: counts.leads + counts.admin + counts.renewals + counts.requests,
   };
-}
-
-/**
- * The categories a search hit that the owner is not currently looking at.
- *
- * This is the whole point of searching all four: standing on an empty Leads
- * tab, "2 in Renewals" is the difference between finding someone and deciding
- * they are not in Stayo.
- */
-export function matchesElsewhere(
-  result: AlertsSearchResult,
-  current: DynamicAlertCategory,
-): Array<{ category: DynamicAlertCategory; count: number }> {
-  if (!result.active) return [];
-  return (['leads', 'admin', 'renewals', 'requests'] as DynamicAlertCategory[])
-    .filter((category) => category !== current && result.counts[category] > 0)
-    .map((category) => ({ category, count: result.counts[category] }));
 }

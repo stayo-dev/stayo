@@ -1,4 +1,10 @@
 import { onboardingTemplateName as onboardingTemplateNameValue } from "./onboarding-template-contract";
+import {
+  RentReminderKind,
+  rentReminderGeneration,
+  rentReminderTemplateLanguage,
+  rentReminderTemplateName,
+} from "./rent-reminder-template-contract";
 import { formatDate, formatMonthYear, formatShortDate } from "@/lib/format";
 import type { HostelPreferences } from "@/lib/preferences";
 
@@ -11,6 +17,7 @@ export enum WhatsAppRentReminderTemplate {
 export type RentReminderTemplateVariables = {
   obligationId: string;
   tenantName: string;
+  /** Generation 2 puts this in the body — it is the reader's trust anchor. */
   hostelName: string;
   amount: number;
   rentMonth: Date | string;
@@ -24,6 +31,45 @@ type TemplateDefinition = {
   languageCode: string;
   templateBody: string;
   buildParameters: (data: RentReminderTemplateVariables) => string[];
+};
+
+/** Maps the local enum onto the contract's kinds. One concept, two spellings. */
+const TEMPLATE_KIND: Record<WhatsAppRentReminderTemplate, RentReminderKind> = {
+  [WhatsAppRentReminderTemplate.RENT_DUE_REMINDER]: "DUE_SOON",
+  [WhatsAppRentReminderTemplate.RENT_DUE_TODAY]: "DUE_TODAY",
+  [WhatsAppRentReminderTemplate.RENT_OVERDUE_REMINDER]: "OVERDUE",
+};
+
+/**
+ * Generation-2 parameter builders.
+ *
+ * These differ from v1 in more than wording — each one inserts the hostel's
+ * name, which is what makes a message about money recognisable rather than
+ * suspicious. They are only ever reached when the matching env var names the
+ * approved v2 template, so name and parameter shape can never disagree.
+ * See `rent-reminder-template-contract.ts`.
+ */
+const V2_PARAMETERS: Record<WhatsAppRentReminderTemplate, (data: RentReminderTemplateVariables) => string[]> = {
+  [WhatsAppRentReminderTemplate.RENT_DUE_REMINDER]: (data) => [
+    data.tenantName || "Resident",
+    data.hostelName || "your hostel",
+    formatTemplateAmount(data.amount),
+    formatMonthYear(data.rentMonth, data.prefs),
+    formatDate(data.dueDate, data.prefs),
+  ],
+  [WhatsAppRentReminderTemplate.RENT_DUE_TODAY]: (data) => [
+    data.tenantName || "Resident",
+    data.hostelName || "your hostel",
+    formatTemplateAmount(data.amount),
+    formatMonthYear(data.rentMonth, data.prefs),
+  ],
+  [WhatsAppRentReminderTemplate.RENT_OVERDUE_REMINDER]: (data) => [
+    data.tenantName || "Resident",
+    data.hostelName || "your hostel",
+    formatTemplateAmount(data.amount),
+    formatMonthYear(data.rentMonth, data.prefs),
+    String(Math.max(1, Math.floor(data.daysOverdue))),
+  ],
 };
 
 function formatTemplateAmount(amount: number): string {
@@ -94,21 +140,26 @@ export function selectRentReminderTemplate(daysOverdue: number): WhatsAppRentRem
 }
 
 export function getMetaTemplateName(template: WhatsAppRentReminderTemplate): string {
-  return TEMPLATE_REGISTRY[template].metaName;
+  return rentReminderTemplateName(TEMPLATE_KIND[template]);
 }
 
 export function getMetaTemplateLanguage(template: WhatsAppRentReminderTemplate): string {
-  return TEMPLATE_REGISTRY[template].languageCode;
+  return rentReminderTemplateLanguage(TEMPLATE_KIND[template]);
 }
 
 export function buildRentReminderBodyParameters(data: RentReminderTemplateVariables): string[] {
   const template = selectRentReminderTemplate(data.daysOverdue);
-  const params = TEMPLATE_REGISTRY[template]
-    .buildParameters(data)
-    .map((value) => String(value).trim());
+  const generation = rentReminderGeneration(TEMPLATE_KIND[template]);
 
+  const build =
+    generation === "v2" ? V2_PARAMETERS[template] : TEMPLATE_REGISTRY[template].buildParameters;
+
+  const params = build(data).map((value) => String(value).trim());
+
+  // An empty parameter is a 400 from Meta, and a reminder that never arrives.
+  // Fail here, where the obligation id is still in hand to log against.
   if (params.some((value) => !value)) {
-    throw new Error(`Invalid WhatsApp template variables for ${template}`);
+    throw new Error(`Invalid WhatsApp template variables for ${template} (${generation})`);
   }
 
   return params;

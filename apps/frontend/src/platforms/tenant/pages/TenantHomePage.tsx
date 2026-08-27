@@ -5,9 +5,11 @@ import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useTenantHome } from '@features/tenant-home/hooks/useTenantHome';
 import { useTenantFinancials } from '@features/tenant-financials/hooks/useTenantFinancials';
 import { useTenantMealTimings } from '@features/food/hooks/useTenantMealTimings';
+import { useTenantFoodPolls } from '@features/food/hooks/useTenantFoodPolls';
 import { useNow } from '@features/food/hooks/useNow';
 import { nextServingAt } from '@features/food/mealTimings';
 import { NextServingCard } from '@features/food/components/NextServingCard';
+import { ActivePollCard } from '@features/food/components/ActivePollCard';
 import { formatCellItems } from '@features/owner-food/weekGrid';
 import { PaySheet } from '@features/tenant-financials/components/PaySheet';
 import { ProfileCompletionNudge } from '../components/ProfileCompletionNudge';
@@ -42,9 +44,12 @@ export function TenantHomePage() {
   const home = useTenantHome();
   const fin = useTenantFinancials();
   const mealTimings = useTenantMealTimings();
+  const polls = useTenantFoodPolls();
   const now = useNow();
 
   if (home.isLoading) return <LoadingSkeleton />;
+
+  const activePoll = polls.polls[0] ?? null;
 
   const upcomingMeal = nextServingAt(mealTimings.mealTimings, now);
   const upcomingCell = upcomingMeal ? home.todaysMeals.find((m) => m.slot === upcomingMeal.slot)?.cell : null;
@@ -161,32 +166,10 @@ export function TenantHomePage() {
         </div>
       )}
 
-      {home.pollAvailable && (
+      {activePoll && (
         <div className="flex flex-col gap-2.5">
           <span className={sectionLabel}>Active food poll</span>
-          <div className={`${card} p-4`}>
-            <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-[10px] font-bold text-success">
-                <span className="h-1.5 w-1.5 rounded-full bg-success" />Voting open
-              </span>
-            </div>
-            {home.pollPreview.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {home.pollPreview.map((name) => (
-                  <span key={name} className="rounded-[10px] bg-secondary/60 px-3 py-1.5 text-[12px] font-semibold text-muted-foreground">
-                    {name}
-                  </span>
-                ))}
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => navigate('/tenant/food')}
-              className="mt-3.5 w-full rounded-xl bg-foreground py-3 text-center font-display text-sm font-bold text-background"
-            >
-              Vote now
-            </button>
-          </div>
+          <ActivePollCard poll={activePoll} onToggleVote={(optionId) => polls.toggleVote(activePoll.id, optionId)} isVoting={polls.isVoting} />
         </div>
       )}
 

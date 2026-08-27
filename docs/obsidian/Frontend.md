@@ -100,7 +100,7 @@ Structure, top to bottom:
 
 Sheets mounted by the page: `TenantActionsSheet`, `QuickCollectModal`, `ChangeRentModal`, `MoveOutSheet`, `CreateObligationModal`, `ChangeFrequencyModal`, `ChangeRoomSheet`, `AmendAgreementSheet`, `DocumentPreviewSheet`, `RejectDocumentSheet`. An `INVITED` tenant short-circuits to `InvitedTenantProfileView` before any of this renders.
 
-See [[Features]] for the file list and what is deferred to slice 2, and [[Decisions#ADR-123|ADR-123]] / [[Decisions#ADR-124|ADR-124]] for what the owner may and may not edit.
+See [[Features]] for the file list and what is deferred to slice 2, and [[Decisions#ADR-131|ADR-131]] / [[Decisions#ADR-132|ADR-132]] for what the owner may and may not edit.
 
 ## `src/portal/` — frozen legacy tenant portal
 

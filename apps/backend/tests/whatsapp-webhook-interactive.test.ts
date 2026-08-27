@@ -116,14 +116,13 @@ describe("WhatsApp webhook interactive extraction", () => {
 describe("Unhandled inbound message types", () => {
   const payload = (messages: any[]) => ({ entry: [{ changes: [{ field: "messages", value: { messages } }] }] });
 
-  it("reports media/sticker/reaction/button messages the extractor drops", async () => {
+  it("reports media/sticker/reaction messages the extractor drops", async () => {
     const { extractMessageEvents, findUnhandledMessageTypes } = await import(
       "@/lib/services/notifications/whatsapp-webhook-event-service"
     );
     const body = payload([
       { type: "text", from: "91790", id: "wamid.ok", timestamp: "1", text: { body: "DUES" } },
       { type: "image", from: "91790", id: "wamid.img", timestamp: "2", image: { id: "media-1" } },
-      { type: "button", from: "91790", id: "wamid.btn", timestamp: "3", button: { text: "Pay now" } },
       { type: "reaction", from: "91790", id: "wamid.rct", timestamp: "4", reaction: { emoji: "👍" } },
     ]);
 
@@ -131,11 +130,55 @@ describe("Unhandled inbound message types", () => {
     const unhandled = findUnhandledMessageTypes(body, extracted);
 
     expect(extracted.map((e) => e.messageId)).toEqual(["wamid.ok"]);
+    // `button` is deliberately absent from this list — a template quick reply
+    // is now handled. It used to be dropped, which would have made the [Help]
+    // button on `stayo_guardian_whatsapp_activated` do nothing at all.
     expect(unhandled).toEqual([
       { id: "wamid.img", type: "image" },
-      { id: "wamid.btn", type: "button" },
       { id: "wamid.rct", type: "reaction" },
     ]);
+  });
+
+  it("extracts a template quick-reply tap as text, so the vocabulary can read it", async () => {
+    const { extractMessageEvents, findUnhandledMessageTypes } = await import(
+      "@/lib/services/notifications/whatsapp-webhook-event-service"
+    );
+    // The exact shape Meta delivers when a guardian taps [Help] on
+    // `stayo_guardian_whatsapp_activated`.
+    const body = payload([
+      {
+        type: "button",
+        from: "919876500999",
+        id: "wamid.help",
+        timestamp: "1718000000",
+        button: { text: "Help", payload: "Help" },
+      },
+    ]);
+
+    const events = extractMessageEvents(body);
+
+    expect(events).toEqual([
+      {
+        from: "919876500999",
+        messageId: "wamid.help",
+        timestamp: "1718000000",
+        body: "Help",
+        // Text, not interactive: the payload is a keyword, not a `CC:` id.
+        messageType: "text",
+      },
+    ]);
+    expect(findUnhandledMessageTypes(body, events)).toEqual([]);
+  });
+
+  it("falls back to the button text when no payload is set", async () => {
+    const { extractMessageEvents } = await import(
+      "@/lib/services/notifications/whatsapp-webhook-event-service"
+    );
+    const body = payload([
+      { type: "button", from: "91790", id: "wamid.b", timestamp: "1", button: { text: "Help" } },
+    ]);
+
+    expect(extractMessageEvents(body)[0]?.body).toBe("Help");
   });
 
   it("reports nothing when every message was handled", async () => {
