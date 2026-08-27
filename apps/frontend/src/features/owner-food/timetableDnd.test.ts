@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addItem, filterByName, isOverDropZone, moveItem, removeItem, reorderIndexAt, resolveDisplayName } from './timetableDnd';
+import { addItem, filterByName, isOverDropZone, moveItem, removeItem, reorderIndexAt, resolveChipDrop, resolveDisplayName } from './timetableDnd';
 import { formatCellItems } from './weekGrid';
 
 describe('isOverDropZone', () => {
@@ -79,6 +79,31 @@ describe('reorderIndexAt', () => {
 
   it('with no siblings, returns the dragged index unchanged', () => {
     expect(reorderIndexAt({ x: 50, y: 60 }, [], 0)).toBe(0);
+  });
+});
+
+describe('resolveChipDrop', () => {
+  const trashRect = { left: 200, top: 200, right: 240, bottom: 240 };
+  const siblingRects = [
+    { left: 0, top: 0, right: 100, bottom: 40 },
+    { left: 0, top: 40, right: 100, bottom: 80 },
+  ];
+
+  it('resolves to trash when the point is over the trash zone', () => {
+    expect(resolveChipDrop({ x: 220, y: 220 }, trashRect, siblingRects, 0)).toEqual({ kind: 'trash' });
+  });
+
+  it('falls through to a reorder when the point is outside the trash zone', () => {
+    expect(resolveChipDrop({ x: 50, y: 60 }, trashRect, siblingRects, 0)).toEqual({ kind: 'reorder', toIndex: 1 });
+  });
+
+  it('falls through to a reorder when there is no trash rect yet', () => {
+    expect(resolveChipDrop({ x: 50, y: 60 }, null, siblingRects, 0)).toEqual({ kind: 'reorder', toIndex: 1 });
+  });
+
+  it('trash wins even when the point also overlaps a sibling rect', () => {
+    const overlappingTrash = { left: 0, top: 0, right: 100, bottom: 40 };
+    expect(resolveChipDrop({ x: 50, y: 20 }, overlappingTrash, siblingRects, 0)).toEqual({ kind: 'trash' });
   });
 });
 

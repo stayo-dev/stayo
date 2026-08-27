@@ -1,13 +1,10 @@
-import { useEffect, useRef } from 'react';
 import { FOOD_SLOTS, type MealSlotKey } from '@shared/mocks/food';
 import type { MealTimings } from '@features/food/mealTimings';
 import { formatTimeRange } from '@features/food/mealTimings';
-import { findDropTarget, type GridCellRect } from '../../gridDnd';
-import { measure } from '../../gridMeasure';
+import type { Rect } from '../../timetableDnd';
 import { cellAt, DAY_ORDER, type DayKey, type WeekGrid } from '../../weekGrid';
 import { mealIcon } from '../../mealIcons';
 import { MealPlanCell } from './MealPlanCell';
-import type { DropResolution } from './dropResolution';
 
 const DAY_LABEL_SHORT: Record<DayKey, string> = {
   MONDAY: 'Mon', TUESDAY: 'Tue', WEDNESDAY: 'Wed', THURSDAY: 'Thu',
@@ -21,49 +18,21 @@ interface MealPlanGridProps {
   setCellItems: (mealId: string, menuItemIds: string[]) => void;
   onOpenAddFood: (day: DayKey, slot: MealSlotKey) => void;
   onCopyToDays: (day: DayKey, slot: MealSlotKey) => void;
-  /**
-   * The page owns the drag source (the Food Library drawer chip) and the
-   * actual add/duplicate/toast logic; this component only knows its own
-   * cells' geometry. Registers a pure "what cell (if any) is at this point"
-   * resolver so the page can ask it on drop, without this component needing
-   * to know what a "drop" even means.
-   */
-  registerDropResolver: (resolve: (point: { x: number; y: number }) => DropResolution | null) => void;
-  /** Which cell is currently under an in-progress drag, and whether dropping there is valid (meal type matches) — drives the highlight. `null` when nothing is being dragged. */
-  dragHover: { day: DayKey; slot: MealSlotKey; valid: boolean } | null;
+  /** The page-level trash drop zone's current rect — passed through to every cell so a placed chip's drag-end can check it (ADR-123). */
+  getTrashRect: () => Rect | null;
+  /** A placed chip's live drag position, passed through to every cell — drives the trash zone's visibility/hover highlight at the page level. */
+  onChipDragMove: (point: { x: number; y: number } | null) => void;
 }
 
 /**
  * Desktop Meal Plan grid (ADR-121, `hidden md:block`) — a real 7×4 matrix,
- * sticky meal-name column, every cell simultaneously a live drop zone. This
- * replaces the retired `TimetablePage`'s one-active-day/one-active-section
- * model entirely on this breakpoint.
+ * sticky meal-name column. This replaces the retired `TimetablePage`'s
+ * one-active-day/one-active-section model entirely on this breakpoint. Used
+ * to also register a multi-zone drop resolver so a dragged Food Library chip
+ * could land on any cell — retired with the drawer (ADR-123); a cell's own
+ * chips now only ever drag to reorder-within-cell or drop-on-trash.
  */
-export function MealPlanGrid({ weekGrid, mealTimings, liveNameById, setCellItems, onOpenAddFood, onCopyToDays, registerDropResolver, dragHover }: MealPlanGridProps) {
-  const cellElsRef = useRef(new Map<string, HTMLDivElement>());
-
-  // Re-registered on every render (weekGrid changes constantly as edits land)
-  // so the resolver always closes over the current grid, not a stale one.
-  useEffect(() => {
-    registerDropResolver((point) => {
-      const cells: GridCellRect[] = [];
-      cellElsRef.current.forEach((el, key) => {
-        const [day, slot] = key.split(':') as [DayKey, MealSlotKey];
-        cells.push({ day, slot, rect: measure(el) });
-      });
-      const target = findDropTarget(point, cells);
-      if (!target) return null;
-      const cell = cellAt(weekGrid, target.day, target.slot);
-      if (!cell?.id) return null;
-      return {
-        cellId: cell.id,
-        currentIds: cell.items.map((i) => i.menu_item_id).filter((id): id is string => Boolean(id)),
-        day: target.day,
-        slot: target.slot,
-      };
-    });
-  });
-
+export function MealPlanGrid({ weekGrid, mealTimings, liveNameById, setCellItems, onOpenAddFood, onCopyToDays, getTrashRect, onChipDragMove }: MealPlanGridProps) {
   return (
     <div className="overflow-x-auto rounded-2xl border border-border bg-card">
       <div className="grid min-w-[720px] grid-cols-[120px_repeat(7,1fr)]">
@@ -91,8 +60,6 @@ export function MealPlanGrid({ weekGrid, mealTimings, liveNameById, setCellItems
               {DAY_ORDER.map((day) => {
                 const cell = cellAt(weekGrid, day, slotMeta.key);
                 const key = `${day}:${slotMeta.key}`;
-                const isHovered = dragHover?.day === day && dragHover?.slot === slotMeta.key;
-                const dropState = isHovered ? (dragHover!.valid ? 'valid' : 'invalid') : undefined;
                 return (
                   <div key={key} className="border-b border-border p-1.5">
                     <MealPlanCell
@@ -101,11 +68,8 @@ export function MealPlanGrid({ weekGrid, mealTimings, liveNameById, setCellItems
                       cell={cell}
                       liveNameById={liveNameById}
                       compact
-                      dropState={dropState}
-                      registerRect={(el) => {
-                        if (el) cellElsRef.current.set(key, el);
-                        else cellElsRef.current.delete(key);
-                      }}
+                      getTrashRect={getTrashRect}
+                      onChipDragMove={onChipDragMove}
                       onRemove={(itemId) => {
                         if (!cell?.id) return;
                         const ids = cell.items.map((i) => i.menu_item_id).filter((id): id is string => Boolean(id));

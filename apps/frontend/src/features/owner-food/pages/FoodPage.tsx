@@ -1,25 +1,26 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { CalendarRange, ChefHat, Vote } from 'lucide-react';
-import { FOOD_SLOTS, type MealSlotKey } from '@shared/mocks/food';
+import type { MealSlotKey } from '@shared/mocks/food';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
-import { useFoodMenuItems } from '../hooks/useFoodMenuItems';
 import { useFoodSchedule } from '../hooks/useFoodSchedule';
 import { useFoodScheduleHistory } from '../hooks/useFoodScheduleHistory';
 import { useMealTimings } from '../hooks/useMealTimings';
-import { FoodLibraryCard } from '../components/menu/FoodLibraryCard';
 import { MonthHistoryList } from '../components/schedule/MonthHistoryList';
 import { TodayCard } from '../components/today/TodayCard';
 import { HostelSwitcher } from '../components/HostelSwitcher';
+import { buildPublishChecks } from '../publishChecks';
 import { dayKeyFor } from '../weekGrid';
 
 /**
  * Food tab. Thin orchestrator: each section's real work lives in its own
- * hooks/components. Food Library stays inline here, same as always — it is
- * the source of reusable foods, not a separate destination (ADR-121
- * correction: an earlier pass moved it to its own `/owner/food/library`
- * route and that was reverted). The only navigation change on this page is
- * Meal Timings + Weekly Timetable collapsing into one Meal Plan destination.
+ * hooks/components. Used to also render the Food Library inline (ADR-121
+ * correction) — removed (ADR-123): it duplicated the same data the Meal
+ * Plan editor's Add Food popover now reads on demand, and this landing
+ * page's job is "what's serving / what's the state of this month," which the
+ * new status row below covers instead. The only other navigation change on
+ * this page is Meal Timings + Weekly Timetable collapsing into one Meal Plan
+ * destination.
  */
 export function FoodPage() {
   const session = useOwnerSession();
@@ -27,11 +28,11 @@ export function FoodPage() {
   const [selectedHostelId, setSelectedHostelId] = useState<string | null>(null);
   const hostelId = selectedHostelId ?? session.primaryHostelId;
 
-  const library = useFoodMenuItems(hostelId);
   const currentMonth = useMemo(() => new Date().toISOString().slice(0, 7), []);
   const schedule = useFoodSchedule(hostelId, currentMonth);
   const history = useFoodScheduleHistory(hostelId);
   const mealTimings = useMealTimings(hostelId);
+  const publishResult = useMemo(() => buildPublishChecks({ grid: schedule.weekGrid }), [schedule.weekGrid]);
 
   // Meal Plan (not a picker sheet here any more) is where editing happens —
   // "Fix" just lands the owner on today's day/slot already selected (ADR-121).
@@ -69,17 +70,30 @@ export function FoodPage() {
           mealTimings={mealTimings.mealTimings}
         />
 
-        <div className="flex flex-col gap-3">
-          <div className="flex items-baseline justify-between">
-            <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Food Library</span>
-            <span className="text-[11.5px] text-muted-foreground/70">Tap to expand</span>
-          </div>
-          <div className="flex flex-col gap-2.5">
-            {FOOD_SLOTS.map((slotMeta) => (
-              <FoodLibraryCard key={slotMeta.key} slotMeta={slotMeta} items={library.library[slotMeta.key]} library={library} />
-            ))}
-          </div>
-        </div>
+        {!schedule.isLoading && (
+          <Link
+            to={hostelId ? `/owner/food/meal-plan?hostelId=${encodeURIComponent(hostelId)}` : '/owner/food/meal-plan'}
+            className="flex items-center justify-between gap-2 rounded-xl border border-border bg-card px-3.5 py-3"
+          >
+            <span className="flex items-center gap-2">
+              <span
+                className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                  schedule.schedule?.status === 'PUBLISHED' ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                {schedule.schedule?.status === 'PUBLISHED' ? 'Published' : 'Draft'}
+              </span>
+              <span className="text-[12px] font-semibold text-foreground">
+                {schedule.schedule?.status === 'PUBLISHED'
+                  ? schedule.schedule.published_at
+                    ? `Published ${new Date(schedule.schedule.published_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`
+                    : 'Published'
+                  : `${publishResult.filledCount}/${publishResult.totalCells} meals planned`}
+              </span>
+            </span>
+            <span className="text-[11px] text-muted-foreground">This month ›</span>
+          </Link>
+        )}
 
         <Link
           to={hostelId ? `/owner/food/meal-plan?hostelId=${encodeURIComponent(hostelId)}` : '/owner/food/meal-plan'}

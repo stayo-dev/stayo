@@ -1,18 +1,14 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { foodService } from '@features/food/api';
 import { stayoToast } from '@shared/ui-patterns/Toast';
+import { applyPendingEdits, clearFlushed, hasPendingChanges as hasPendingChangesFn, setPendingEdit, shouldBufferEdits, type PendingEdits } from '../pendingEdits';
 import { toWeekGrid, DAY_ORDER, type DayKey, type WeekGrid } from '../weekGrid';
 
 // Day order has one definition, in `weekGrid`. Re-exported here only so the
 // components that already import it from this hook keep working.
 export { DAY_ORDER };
 export type { DayKey };
-
-const DAY_LABEL_SHORT: Record<DayKey, string> = {
-  MONDAY: 'Monday', TUESDAY: 'Tuesday', WEDNESDAY: 'Wednesday', THURSDAY: 'Thursday',
-  FRIDAY: 'Friday', SATURDAY: 'Saturday', SUNDAY: 'Sunday',
-};
 
 export interface ScheduleMealCell {
   id: string;
@@ -43,15 +39,19 @@ function scheduleKey(hostelId: string | undefined, month: string) {
 
 /**
  * Real weekly schedule for one hostel+month — `GET/POST /api/food/schedules`,
- * `PATCH .../meals/:mealId`, `POST .../publish`. One row per hostel+month,
- * mutable — there's no separate "republish" step, editing a PUBLISHED
- * schedule updates the same row tenants read.
+ * `PATCH .../meals/:mealId`, `POST .../publish`. One row per hostel+month.
  *
  * Manual-only per ADR-114: there is no generate/rebuild/swap here any more.
- * `createSchedule` is a plain "ensure this month has an (empty) row" call,
- * and `setCellItems` is the single write path for add/remove/reorder alike —
- * the caller (the Timetable page) computes the new ordered id array, this
- * hook just PATCHes it, optimistically, with rollback on failure.
+ * `createSchedule` is a plain "ensure this month has an (empty) row" call.
+ * `setCellItems` is still the single write path for add/remove/reorder
+ * alike — the caller (the Meal Plan page) computes the new ordered id array
+ * — but it now branches on the schedule's status (ADR-123, reversing part of
+ * ADR-114): a DRAFT schedule's edits PATCH immediately, optimistic with
+ * rollback on failure, exactly as before — a DRAFT row is already invisible
+ * to tenants regardless of when it's saved, so there's nothing to protect
+ * against. A PUBLISHED schedule's edits instead accumulate in local
+ * `pendingEdits` state and are never sent until `saveChanges()` is called —
+ * see `pendingEdits.ts` for the pure overlay/tracking logic.
  */
 export function useFoodSchedule(hostelId: string | undefined, month: string) {
   const queryClient = useQueryClient();
@@ -64,6 +64,16 @@ export function useFoodSchedule(hostelId: string | undefined, month: string) {
     staleTime: 15_000,
   });
   const schedule = scheduleQuery.data ?? null;
+
+  const [pendingEdits, setPendingEditsState] = useState<PendingEdits>({});
+  const [isSavingChanges, setIsSavingChanges] = useState(false);
+
+  // Safety net — the primary defense against a stale buffer is the nav guard
+  // in MealPlanPage.tsx, but a hostel/month swap must never carry another
+  // schedule's pending edits along with it.
+  useEffect(() => {
+    setPendingEditsState({});
+  }, [hostelId, month]);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: key });
 
@@ -122,35 +132,50 @@ export function useFoodSchedule(hostelId: string | undefined, month: string) {
     onSettled: invalidate,
   });
 
-  /** The single write path for add/remove/reorder — the caller computes the new ordered array, this sends it. */
+  /**
+   * The single write path for add/remove/reorder. DRAFT: PATCHes immediately
+   * (ADR-114, unchanged). PUBLISHED: buffers locally instead (ADR-123) — the
+   * caller sees the edit reflected via `weekGrid` below, nothing is sent
+   * until `saveChanges()` runs.
+   */
   const setCellItems = (mealId: string, menuItemIds: string[]) => {
     const before = schedule?.food_schedule_meals.find((m) => m.id === mealId);
     if (!before) return;
-    const previousItemIds = before.food_schedule_meal_items.map((i) => i.menu_item_id).filter((id): id is string => Boolean(id));
-    const wasPublished = schedule?.status === 'PUBLISHED';
-    const unchanged = previousItemIds.length === menuItemIds.length && previousItemIds.every((id, i) => id === menuItemIds[i]);
 
-    updateMealMutation.mutate(
-      { mealId, menuItemIds, expectedUpdatedAt: before.updated_at },
-      {
-        onSuccess: () => {
-          // Nothing to announce and nothing to undo when the saved selection
-          // is exactly what the cell already held.
-          if (!wasPublished || unchanged) return;
-          const dayLabel = DAY_LABEL_SHORT[before.day_of_week];
-          stayoToast.undo(`Changed for every ${dayLabel} this month · students see it now`, () => {
-            const latest = queryClient.getQueryData<FoodScheduleRow | null>(key)?.food_schedule_meals.find((m) => m.id === mealId);
-            updateMealMutation.mutate(
-              { mealId, menuItemIds: previousItemIds, expectedUpdatedAt: latest?.updated_at ?? before.updated_at },
-              { onError: () => stayoToast.error("Couldn't undo that — the change is still live") },
-            );
-          });
-        },
-      },
-    );
+    if (shouldBufferEdits(schedule?.status)) {
+      setPendingEditsState((prev) => setPendingEdit(prev, mealId, menuItemIds));
+      return;
+    }
+
+    updateMealMutation.mutate({ mealId, menuItemIds, expectedUpdatedAt: before.updated_at });
   };
 
-  const weekGrid: WeekGrid = useMemo(() => toWeekGrid(schedule?.food_schedule_meals), [schedule]);
+  /** Flushes every buffered edit — one PATCH per dirty cell, each keeping its own optimistic-update/rollback/stale-write guard. */
+  const saveChanges = async () => {
+    const entries = Object.entries(pendingEdits);
+    if (entries.length === 0) return;
+    setIsSavingChanges(true);
+    const results = await Promise.allSettled(
+      entries.map(([mealId, menuItemIds]) => {
+        const before = schedule?.food_schedule_meals.find((m) => m.id === mealId);
+        return updateMealMutation.mutateAsync({ mealId, menuItemIds, expectedUpdatedAt: before?.updated_at ?? null });
+      }),
+    );
+    const failedMealIds = entries.filter((_, i) => results[i].status === 'rejected').map(([mealId]) => mealId);
+    setPendingEditsState((prev) => clearFlushed(prev, failedMealIds));
+    setIsSavingChanges(false);
+    if (failedMealIds.length === 0) {
+      stayoToast.success('Changes saved — tenants can see them now');
+    } else {
+      stayoToast.error(`${failedMealIds.length} of ${entries.length} change${entries.length === 1 ? '' : 's'} couldn't be saved — try again`);
+    }
+  };
+
+  /** Drops every buffered edit without sending anything — the schedule reverts to what's actually committed on the server. */
+  const discardChanges = () => setPendingEditsState({});
+
+  const committedGrid: WeekGrid = useMemo(() => toWeekGrid(schedule?.food_schedule_meals), [schedule]);
+  const weekGrid: WeekGrid = useMemo(() => applyPendingEdits(committedGrid, pendingEdits), [committedGrid, pendingEdits]);
 
   return {
     isLoading: scheduleQuery.isLoading,
@@ -162,5 +187,9 @@ export function useFoodSchedule(hostelId: string | undefined, month: string) {
     isUpdatingMeal: updateMealMutation.isPending,
     publish: () => publishMutation.mutate(),
     isPublishing: publishMutation.isPending,
+    hasPendingChanges: hasPendingChangesFn(pendingEdits),
+    saveChanges,
+    discardChanges,
+    isSavingChanges,
   };
 }

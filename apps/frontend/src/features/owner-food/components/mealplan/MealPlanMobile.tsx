@@ -1,13 +1,10 @@
-import { useEffect, useRef } from 'react';
 import { FOOD_SLOTS, type MealSlotKey } from '@shared/mocks/food';
 import type { MealTimings } from '@features/food/mealTimings';
 import { formatTimeRange } from '@features/food/mealTimings';
-import { findDropTarget, type GridCellRect } from '../../gridDnd';
-import { measure } from '../../gridMeasure';
+import type { Rect } from '../../timetableDnd';
 import { cellAt, dayCompleteness, DAY_ORDER, type DayKey, type WeekGrid } from '../../weekGrid';
 import { mealIcon } from '../../mealIcons';
 import { MealPlanCell } from './MealPlanCell';
-import type { DropResolution } from './dropResolution';
 
 const DAY_LABEL_SHORT: Record<DayKey, string> = {
   MONDAY: 'Mon', TUESDAY: 'Tue', WEDNESDAY: 'Wed', THURSDAY: 'Thu',
@@ -23,43 +20,23 @@ interface MealPlanMobileProps {
   setCellItems: (mealId: string, menuItemIds: string[]) => void;
   onOpenAddFood: (day: DayKey, slot: MealSlotKey) => void;
   onCopyToDays: (day: DayKey, slot: MealSlotKey) => void;
-  registerDropResolver: (resolve: (point: { x: number; y: number }) => DropResolution | null) => void;
-  /** Which cell is currently under an in-progress drag, and whether dropping there is valid (meal type matches) — drives the highlight. `null` when nothing is being dragged. */
-  dragHover: { day: DayKey; slot: MealSlotKey; valid: boolean } | null;
+  /** The page-level trash drop zone's current rect — passed through to every cell so a placed chip's drag-end can check it (ADR-123). */
+  getTrashRect: () => Rect | null;
+  /** A placed chip's live drag position, passed through to every cell — drives the trash zone's visibility/hover highlight at the page level. */
+  onChipDragMove: (point: { x: number; y: number } | null) => void;
 }
 
 /**
  * Mobile Meal Plan view (ADR-121, `md:hidden`) — day tabs plus the selected
- * day's 4 meal sections, every one of them a live drop target and carrying
- * its own persistent "+ Add food", not just one "active" section (contrast
- * the retired `TimetablePage`, which gated the library/add affordance behind
- * tapping a section header first).
+ * day's 4 meal sections, every one of them carrying its own persistent
+ * "+ Add food", not just one "active" section (contrast the retired
+ * `TimetablePage`, which gated the library/add affordance behind tapping a
+ * section header first). Used to also register a multi-zone drop resolver so
+ * a dragged Food Library chip could land on any visible cell — retired with
+ * the drawer (ADR-123); a cell's own chips now only ever drag to
+ * reorder-within-cell or drop-on-trash.
  */
-export function MealPlanMobile({ activeDay, onSelectDay, weekGrid, mealTimings, liveNameById, setCellItems, onOpenAddFood, onCopyToDays, registerDropResolver, dragHover }: MealPlanMobileProps) {
-  const cellElsRef = useRef(new Map<string, HTMLDivElement>());
-
-  // Only the visible day's cells are ever registered — a drop can't land on
-  // a day that isn't rendered, which is correct: mobile shows one day at a
-  // time, so there is nothing else to drop onto.
-  useEffect(() => {
-    registerDropResolver((point) => {
-      const cells: GridCellRect[] = [];
-      cellElsRef.current.forEach((el, slot) => {
-        cells.push({ day: activeDay, slot: slot as MealSlotKey, rect: measure(el) });
-      });
-      const target = findDropTarget(point, cells);
-      if (!target) return null;
-      const cell = cellAt(weekGrid, target.day, target.slot);
-      if (!cell?.id) return null;
-      return {
-        cellId: cell.id,
-        currentIds: cell.items.map((i) => i.menu_item_id).filter((id): id is string => Boolean(id)),
-        day: target.day,
-        slot: target.slot,
-      };
-    });
-  });
-
+export function MealPlanMobile({ activeDay, onSelectDay, weekGrid, mealTimings, liveNameById, setCellItems, onOpenAddFood, onCopyToDays, getTrashRect, onChipDragMove }: MealPlanMobileProps) {
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex gap-1.5 overflow-x-auto pb-1">
@@ -95,8 +72,6 @@ export function MealPlanMobile({ activeDay, onSelectDay, weekGrid, mealTimings, 
           const cell = cellAt(weekGrid, activeDay, slotMeta.key);
           const Icon = mealIcon(slotMeta.key);
           const timing = mealTimings[slotMeta.key];
-          const isHovered = dragHover?.day === activeDay && dragHover?.slot === slotMeta.key;
-          const dropState = isHovered ? (dragHover!.valid ? 'valid' : 'invalid') : undefined;
           return (
             <div key={slotMeta.key} className="overflow-hidden rounded-[18px] border border-border bg-card">
               <div className="flex items-center gap-2.5 px-3.5 py-3">
@@ -114,11 +89,8 @@ export function MealPlanMobile({ activeDay, onSelectDay, weekGrid, mealTimings, 
                   slot={slotMeta.key}
                   cell={cell}
                   liveNameById={liveNameById}
-                  dropState={dropState}
-                  registerRect={(el) => {
-                    if (el) cellElsRef.current.set(slotMeta.key, el);
-                    else cellElsRef.current.delete(slotMeta.key);
-                  }}
+                  getTrashRect={getTrashRect}
+                  onChipDragMove={onChipDragMove}
                   onRemove={(itemId) => {
                     if (!cell?.id) return;
                     const ids = cell.items.map((i) => i.menu_item_id).filter((id): id is string => Boolean(id));
