@@ -32,11 +32,16 @@ import {
  * tenancy was adopted by the owner in the meantime (`CLAIM_REQUIRED`).
  */
 export function ClaimTenancyPage() {
-  const [state, dispatch] = useReducer(claimReducer, initialClaimState());
-  const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
   const { user, updateUser } = useAuth();
   const wasSignedInAtStart = Boolean(user);
+  // Read once, at mount -- `alreadySignedIn` describes the session the
+  // tenant walked in with and must not flip mid-flow (the reducer's own
+  // RESTART preserves it for the same reason). Gates whether the confirm
+  // step asks for a password and whether the backend will accept one --
+  // see `claimSteps.ts`'s module comment on `ClaimState.alreadySignedIn`.
+  const [state, dispatch] = useReducer(claimReducer, initialClaimState({ alreadySignedIn: wasSignedInAtStart }));
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const prefill = toLocalPhone(searchParams.get('phone'));
@@ -89,6 +94,9 @@ export function ClaimTenancyPage() {
         typedSignatureName: state.typedSignatureName,
         name: state.name,
         email: state.email,
+        // Omitted for an already-signed-in caller -- the backend refuses a
+        // password from them (their session already authenticates them).
+        ...(state.alreadySignedIn ? {} : { password: state.password }),
       });
       dispatch({ type: 'CONFIRM_SUCCEEDED', result });
       // Claiming a *second* tenancy while already signed in doesn't mint a
@@ -104,12 +112,47 @@ export function ClaimTenancyPage() {
     }
   };
 
-  const enterStayo = () => {
-    // A brand-new profile created by `confirm` has no password and no
-    // Supabase identity yet — there is genuinely nothing to sign it
-    // straight into. Someone already signed in, claiming a second
-    // tenancy, keeps the session `updateUser` just patched above.
-    navigate(wasSignedInAtStart ? '/tenant/home' : '/login?signin=1', { replace: true });
+  // Mirrors `ActivationPage.tsx`'s `enterStayo`: when `confirm` minted a
+  // session (a brand-new or newly-attached unauthenticated claimant), hand
+  // it to Supabase's client SDK via `setSession()` so the tenant lands
+  // signed in, rather than on a login screen they have no password-free way
+  // through.
+  const enterStayo = async () => {
+    const session = state.result?.session;
+    if (session?.access_token && session?.refresh_token) {
+      try {
+        const { supabase } = await import('@lib/supabaseClient');
+        const { queryClient } = await import('@lib/queryClient');
+        queryClient.clear();
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+        });
+        if (sessionError) throw sessionError;
+        navigate('/tenant/home', { replace: true });
+        return;
+      } catch {
+        navigate('/login?signin=1', { replace: true });
+        return;
+      }
+    }
+
+    // Someone already signed in, claiming a second tenancy, keeps the
+    // session `updateUser` patched above in `handleConfirm` -- no new
+    // session was ever expected here.
+    if (wasSignedInAtStart) {
+      navigate('/tenant/home', { replace: true });
+      return;
+    }
+
+    // No session came back even though this claimant wasn't signed in --
+    // the rare case where `tenancy-claim-service.ts`'s session-mint step
+    // failed *after* the claim itself durably committed (e.g. Supabase was
+    // briefly unreachable). The claim stands; there's nothing to sign
+    // straight into here. An ordinary password login (which re-provisions
+    // the Supabase identity on every attempt) self-heals once it's
+    // reachable again.
+    navigate('/login?signin=1', { replace: true });
   };
 
   return (
@@ -354,6 +397,39 @@ function ConfirmStep({ state, dispatch, onSubmit }: StepProps & { onSubmit: () =
         value={state.typedSignatureName}
         onChange={(e) => dispatch({ type: 'FIELD_CHANGED', field: 'typedSignatureName', value: e.target.value })}
       />
+
+      {!state.alreadySignedIn && (
+        <>
+          <label className="mt-4 block text-sm font-medium text-foreground" htmlFor="claim-password">
+            Create a password
+          </label>
+          <input
+            id="claim-password"
+            type="password"
+            autoComplete="new-password"
+            className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-accent"
+            placeholder="At least 8 characters"
+            value={state.password}
+            onChange={(e) => dispatch({ type: 'FIELD_CHANGED', field: 'password', value: e.target.value })}
+          />
+          <label className="mt-3 block text-sm font-medium text-foreground" htmlFor="claim-confirm-password">
+            Confirm password
+          </label>
+          <input
+            id="claim-confirm-password"
+            type="password"
+            autoComplete="new-password"
+            className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-accent"
+            placeholder="Re-enter your password"
+            value={state.confirmPassword}
+            onChange={(e) => dispatch({ type: 'FIELD_CHANGED', field: 'confirmPassword', value: e.target.value })}
+          />
+          {state.confirmPassword.length > 0 && state.password !== state.confirmPassword && (
+            <p className="mt-1.5 text-xs text-destructive">Passwords don't match yet.</p>
+          )}
+          <p className="mt-1.5 text-xs text-muted-foreground">You'll use this to sign in going forward.</p>
+        </>
+      )}
 
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>

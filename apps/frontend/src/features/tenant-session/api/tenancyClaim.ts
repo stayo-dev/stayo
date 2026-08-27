@@ -58,6 +58,14 @@ export const tenancyClaimApi = {
     typedSignatureName: string;
     name?: string;
     email?: string;
+    /**
+     * Omitted entirely for an already-signed-in caller — the backend
+     * (`tenancy-claim-service.ts` `confirm`) refuses one from them, since
+     * their session already authenticates them. Required for everyone else;
+     * `ClaimTenancyPage` gates the button on `canConfirm`/`passwordReady`
+     * before this is ever called.
+     */
+    password?: string;
   }): Promise<ClaimConfirmResult> => {
     const response = await api.post('/tenancy-claim/confirm', {
       phone: input.phone,
@@ -66,6 +74,7 @@ export const tenancyClaimApi = {
       typed_signature_name: input.typedSignatureName,
       ...(input.name?.trim() ? { name: input.name.trim() } : {}),
       ...(input.email?.trim() ? { email: input.email.trim() } : {}),
+      ...(input.password ? { password: input.password, confirm_password: input.password } : {}),
     });
     return unwrap(response);
   },

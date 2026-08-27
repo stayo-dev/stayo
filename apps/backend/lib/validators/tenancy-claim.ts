@@ -50,4 +50,18 @@ export const TenancyClaimConfirmSchema = z.object({
   typed_signature_name: z.string().trim().min(1).max(200).optional(),
   name: z.string().trim().min(1).max(200).optional(),
   email: z.string().trim().email({ message: "Invalid email address" }).optional(),
+  /**
+   * Same length floor as `ActivationSchema.password`
+   * (`src/validators/tenants/index.ts`) — deliberately the same policy, not
+   * a new one. Optional at this layer because whether it's actually
+   * required depends on runtime state this schema can't see: required when
+   * `confirm` is about to create or attach an account for an
+   * unauthenticated claimant, rejected when the caller already has a
+   * session. `tenancyClaimService.confirm` enforces both; this layer only
+   * shapes the wire format. `confirm_password` mirrors the activation
+   * route's own match check (`app/api/tenants/activate/route.ts`), applied
+   * the same way in `app/api/tenancy-claim/confirm/route.ts`.
+   */
+  password: z.string().min(8).optional(),
+  confirm_password: z.string().min(8).optional(),
 });

@@ -40,9 +40,26 @@ export interface ClaimTenancy {
   monthly_rent: number | null;
 }
 
+/** The subset of a Supabase session `POST /tenancy-claim/confirm` hands back when it mints one. */
+export interface ClaimSessionTokens {
+  access_token: string;
+  refresh_token: string;
+  expires_in?: number;
+}
+
 export interface ClaimConfirmResult extends ClaimTenancy {
   profile_id: string;
   access_mode: string;
+  /**
+   * Present only when `confirm` minted a fresh session — absent for an
+   * already-signed-in caller (whose existing session already authenticates
+   * them, and who was never asked for a password) and, rarely, when session
+   * minting failed *after* the claim itself durably committed on the backend
+   * (`tenancy-claim-service.ts`'s `session_mint_failed` path). Either way the
+   * claim itself succeeded; a missing `session` only changes how the tenant
+   * gets signed in, never whether the claim worked.
+   */
+  session?: ClaimSessionTokens | null;
 }
 
 /**
@@ -83,13 +100,26 @@ export interface ClaimState {
   typedSignatureName: string;
   name: string;
   email: string;
+  /** Only meaningful (and only required) when `!alreadySignedIn` — see `passwordReady`. */
+  password: string;
+  confirmPassword: string;
+  /**
+   * Whether the claimant already had a live session when this flow started.
+   * Set once, from `ClaimTenancyPage`'s own `useAuth()` read, via
+   * `initialClaimState`'s argument — never toggled mid-flow. Mirrors the
+   * backend's own rule (`tenancy-claim-service.ts` `confirm`): a
+   * signed-in caller needs no password (their session already authenticates
+   * them) and the backend refuses one from them; an unauthenticated
+   * claimant must supply one.
+   */
+  alreadySignedIn: boolean;
   submitting: boolean;
   /** The most recent failure's human-readable message, or null. Cleared on every input change. */
   error: string | null;
   result: ClaimConfirmResult | null;
 }
 
-export function initialClaimState(): ClaimState {
+export function initialClaimState(options?: { alreadySignedIn?: boolean }): ClaimState {
   return {
     step: 'phone',
     phone: '',
@@ -100,6 +130,9 @@ export function initialClaimState(): ClaimState {
     typedSignatureName: '',
     name: '',
     email: '',
+    password: '',
+    confirmPassword: '',
+    alreadySignedIn: options?.alreadySignedIn ?? false,
     submitting: false,
     error: null,
     result: null,
@@ -120,7 +153,7 @@ export type ClaimEvent =
   | { type: 'SELECT_TENANCY'; tenantId: string }
   | { type: 'BACK_TO_PICKER' }
   | { type: 'ACK_TOGGLED'; key: AcknowledgementKey; value: boolean }
-  | { type: 'FIELD_CHANGED'; field: 'typedSignatureName' | 'name' | 'email'; value: string }
+  | { type: 'FIELD_CHANGED'; field: 'typedSignatureName' | 'name' | 'email' | 'password' | 'confirmPassword'; value: string }
   | { type: 'CONFIRM_REQUESTED' }
   | { type: 'CONFIRM_SUCCEEDED'; result: ClaimConfirmResult }
   | { type: 'CONFIRM_FAILED'; code: string; message: string }
@@ -227,7 +260,11 @@ export function claimReducer(state: ClaimState, event: ClaimEvent): ClaimState {
       return applyClaimError(state, event.code, event.message);
 
     case 'RESTART':
-      return initialClaimState();
+      // Preserve `alreadySignedIn` across a restart -- it describes the
+      // session the tenant walked in with, not anything this flow itself
+      // set, so starting over must not forget it and start demanding a
+      // password from someone who never needed one.
+      return initialClaimState({ alreadySignedIn: state.alreadySignedIn });
 
     default:
       return state;
@@ -254,17 +291,30 @@ export function acknowledgementsComplete(acknowledgements: Acknowledgements): bo
 }
 
 /**
+ * Whether the password fields satisfy the server's own gate
+ * (`tenancy-claim-service.ts` `confirm`): an already-signed-in caller needs
+ * none (and the backend refuses one from them), so this is vacuously true;
+ * otherwise it's the same floor as `ActivationSchema.password` (8 chars) with
+ * the two fields matching.
+ */
+export function passwordReady(state: ClaimState): boolean {
+  if (state.alreadySignedIn) return true;
+  return state.password.length >= 8 && state.password === state.confirmPassword;
+}
+
+/**
  * Whether "Confirm" may be pressed. Mirrors the server's own gate
- * (`assertAcknowledgementsComplete` + the typed-signature requirement) so
- * the button disables before a doomed request is ever sent -- the server
- * enforcement is what actually matters, this is just not making the tenant
- * wait for a 400 to find out.
+ * (`assertAcknowledgementsComplete` + the typed-signature requirement +
+ * the password requirement) so the button disables before a doomed request
+ * is ever sent -- the server enforcement is what actually matters, this is
+ * just not making the tenant wait for a 400 to find out.
  */
 export function canConfirm(state: ClaimState): boolean {
   return (
     Boolean(state.selectedTenantId) &&
     acknowledgementsComplete(state.acknowledgements) &&
-    state.typedSignatureName.trim().length > 0
+    state.typedSignatureName.trim().length > 0 &&
+    passwordReady(state)
   );
 }
 

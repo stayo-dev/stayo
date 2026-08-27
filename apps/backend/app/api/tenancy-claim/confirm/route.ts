@@ -1,11 +1,13 @@
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { apiError, apiResponse, getSession } from "@/lib/auth";
 import { getLogger } from "@/lib/logger";
 import { tenancyClaimService, TenancyClaimError } from "@/src/services/tenants/tenancy-claim-service";
 import { TenancyClaimConfirmSchema } from "@/lib/validators/tenancy-claim";
+import { ACCESS_TOKEN_MAX_AGE_SECONDS, getSessionCookieOptions, TENANT_REFRESH_DAYS } from "@/lib/services/session-lifecycle-service";
+import { setCsrfCookie } from "@/lib/security/csrf";
 
 const logger = getLogger("api.tenancy-claim.confirm");
 
@@ -22,12 +24,52 @@ const logger = getLogger("api.tenancy-claim.confirm");
  * account that is not theirs. See `tenancy-claim-service.ts`'s module
  * comment for the full security model.
  */
+
+/**
+ * Mirrors `createActivationResponse` in `app/api/tenants/activate/route.ts`:
+ * when `tenancyClaimService.confirm` minted a session (a new/attached
+ * unauthenticated claimant, not an already-signed-in one — see that
+ * service's module comment), set the same session + refresh + CSRF cookies
+ * activation sets, and return `session` in the body so the frontend can call
+ * `supabase.auth.setSession()`. Falls back to the plain `apiResponse` shape
+ * when there's no session to attach (already-signed-in caller, or the
+ * session-mint step failed after the claim itself durably committed).
+ */
+function createClaimResponse(result: any) {
+  if (result && typeof result === "object" && "session" in result && result.session) {
+    const { session, ...rest } = result;
+
+    const response = NextResponse.json({
+      success: true,
+      ...rest,
+      session,
+    }, { status: 200 });
+
+    response.cookies.set("hms_session", session.access_token, {
+      ...getSessionCookieOptions(ACCESS_TOKEN_MAX_AGE_SECONDS),
+    });
+    response.cookies.set("hms_refresh_token", session.refresh_token, {
+      ...getSessionCookieOptions(60 * 60 * 24 * TENANT_REFRESH_DAYS),
+    });
+    setCsrfCookie(response, 60 * 60 * 24 * TENANT_REFRESH_DAYS);
+
+    return response;
+  }
+
+  return apiResponse(result);
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const validated = TenancyClaimConfirmSchema.safeParse(body);
     if (!validated.success) {
       return apiError("Invalid request", "VALIDATION_ERROR", 400);
+    }
+
+    const { password, confirm_password } = validated.data;
+    if ((password || confirm_password) && password !== confirm_password) {
+      return apiError("Passwords do not match", "VALIDATION_ERROR", 400);
     }
 
     const session = await getSession(req);
@@ -43,9 +85,10 @@ export async function POST(req: NextRequest) {
       typedSignatureName: validated.data.typed_signature_name,
       name: validated.data.name,
       email: validated.data.email,
+      password,
     });
 
-    return apiResponse(result);
+    return createClaimResponse(result);
   } catch (error: any) {
     if (error instanceof TenancyClaimError) {
       return apiError(error.message, error.code, error.status);

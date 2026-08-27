@@ -7,6 +7,7 @@ import {
   canConfirm,
   canSendOtp,
   canVerifyOtp,
+  passwordReady,
   selectedTenancy,
   REQUIRED_ACKNOWLEDGEMENTS,
   type ClaimState,
@@ -38,6 +39,17 @@ describe('initialClaimState', () => {
     expect(state.selectedTenantId).toBeNull();
     expect(state.error).toBeNull();
     expect(state.result).toBeNull();
+  });
+
+  it('defaults alreadySignedIn to false, and empty password fields, when no options are given', () => {
+    const state = initialClaimState();
+    expect(state.alreadySignedIn).toBe(false);
+    expect(state.password).toBe('');
+    expect(state.confirmPassword).toBe('');
+  });
+
+  it('carries an explicit alreadySignedIn through', () => {
+    expect(initialClaimState({ alreadySignedIn: true }).alreadySignedIn).toBe(true);
   });
 });
 
@@ -316,9 +328,11 @@ describe('canConfirm', () => {
     selectedTenantId: 't-1',
     acknowledgements: allAcksTrue(),
     typedSignatureName: 'Priya Sharma',
+    password: 'correcthorse1',
+    confirmPassword: 'correcthorse1',
   });
 
-  it('is true once a tenancy is selected, every acknowledgement is true, and a signature is typed', () => {
+  it('is true once a tenancy is selected, every acknowledgement is true, a signature is typed, and the passwords match', () => {
     expect(canConfirm(confirmReady())).toBe(true);
   });
 
@@ -336,6 +350,37 @@ describe('canConfirm', () => {
     expect(canConfirm({ ...confirmReady(), typedSignatureName: '' })).toBe(false);
     expect(canConfirm({ ...confirmReady(), typedSignatureName: '   ' })).toBe(false);
   });
+
+  it('is false with no password when not already signed in', () => {
+    expect(canConfirm({ ...confirmReady(), password: '', confirmPassword: '' })).toBe(false);
+  });
+
+  it('is false when the password is under 8 characters', () => {
+    expect(canConfirm({ ...confirmReady(), password: 'short1', confirmPassword: 'short1' })).toBe(false);
+  });
+
+  it('is false when the two password fields do not match', () => {
+    expect(canConfirm({ ...confirmReady(), password: 'correcthorse1', confirmPassword: 'correcthorse2' })).toBe(false);
+  });
+
+  it('is true with no password at all when the claimant was already signed in -- mirrors the backend refusing one from them', () => {
+    expect(
+      canConfirm({ ...confirmReady(), alreadySignedIn: true, password: '', confirmPassword: '' }),
+    ).toBe(true);
+  });
+});
+
+describe('passwordReady', () => {
+  it('is vacuously true for an already-signed-in caller regardless of the password fields', () => {
+    expect(passwordReady({ ...initialClaimState({ alreadySignedIn: true }) })).toBe(true);
+  });
+
+  it('requires at least 8 characters and a match for an unauthenticated caller', () => {
+    const base = initialClaimState();
+    expect(passwordReady({ ...base, password: '1234567', confirmPassword: '1234567' })).toBe(false);
+    expect(passwordReady({ ...base, password: 'abcdefgh', confirmPassword: 'abcdefghx' })).toBe(false);
+    expect(passwordReady({ ...base, password: 'abcdefgh', confirmPassword: 'abcdefgh' })).toBe(true);
+  });
 });
 
 describe('FIELD_CHANGED', () => {
@@ -347,6 +392,16 @@ describe('FIELD_CHANGED', () => {
     const next2 = claimReducer(next, { type: 'FIELD_CHANGED', field: 'email', value: 'priya@example.com' });
     expect(next2.email).toBe('priya@example.com');
     expect(next2.name).toBe('Priya');
+  });
+
+  it('updates password and confirmPassword independently', () => {
+    const state = { ...initialClaimState(), step: 'confirm' as const };
+    const next = claimReducer(state, { type: 'FIELD_CHANGED', field: 'password', value: 'correcthorse1' });
+    expect(next.password).toBe('correcthorse1');
+    expect(next.confirmPassword).toBe('');
+    const next2 = claimReducer(next, { type: 'FIELD_CHANGED', field: 'confirmPassword', value: 'correcthorse1' });
+    expect(next2.confirmPassword).toBe('correcthorse1');
+    expect(next2.password).toBe('correcthorse1');
   });
 });
 
@@ -365,6 +420,19 @@ describe('confirm submission', () => {
     expect(next.result).toEqual(result);
     expect(next.submitting).toBe(false);
   });
+
+  it('CONFIRM_SUCCEEDED carries a minted session through to the result untouched', () => {
+    const state = { ...initialClaimState(), step: 'confirm' as const, submitting: true };
+    const result = {
+      ...tenancy(),
+      profile_id: 'p-1',
+      access_mode: 'SELF_SERVE',
+      session: { access_token: 'at', refresh_token: 'rt', expires_in: 3600 },
+    };
+    const next = claimReducer(state, { type: 'CONFIRM_SUCCEEDED', result });
+    expect(next.step).toBe('done');
+    expect(next.result?.session).toEqual({ access_token: 'at', refresh_token: 'rt', expires_in: 3600 });
+  });
 });
 
 describe('RESTART', () => {
@@ -379,6 +447,13 @@ describe('RESTART', () => {
 
     const emptyState: ClaimState = { ...initialClaimState(), step: 'empty', phone: '9876543210' };
     expect(claimReducer(emptyState, { type: 'RESTART' })).toEqual(initialClaimState());
+  });
+
+  it('preserves alreadySignedIn across a restart -- it describes the session the tenant walked in with, not flow state', () => {
+    const state: ClaimState = { ...initialClaimState({ alreadySignedIn: true }), step: 'empty', phone: '9876543210' };
+    const next = claimReducer(state, { type: 'RESTART' });
+    expect(next).toEqual(initialClaimState({ alreadySignedIn: true }));
+    expect(next.alreadySignedIn).toBe(true);
   });
 });
 

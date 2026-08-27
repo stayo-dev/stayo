@@ -7,6 +7,8 @@ import { maskWhatsAppPhone, normalizeWhatsAppPhone } from "@/lib/services/notifi
 import { checkFixedWindowLimit } from "@/lib/redis/rate-limit";
 import { resolveTenantName } from "@/lib/tenants/tenant-identity";
 import { CLAIM_OTP_PURPOSE, isClaimable, isOtpProofValid } from "@/lib/tenants/claim-eligibility";
+import { hashPassword } from "@/lib/auth";
+import { getActiveTenancy } from "@/lib/tenancy/active-tenancy";
 import {
   getActiveTemplateAndSyncRuleVersion,
   interpolateRulesContent,
@@ -313,6 +315,15 @@ export const tenancyClaimService = {
     /** Optional — the tenant supplying their own details rather than inheriting the owner's placeholder. */
     name?: string | null;
     email?: string | null;
+    /**
+     * Required exactly when `profileId` is absent (an unauthenticated
+     * claimant is about to get — or reuse — an account and needs a real
+     * credential); rejected when `profileId` is present, since that session
+     * already authenticates the caller and accepting a password there would
+     * be a way to overwrite an existing account's credentials. See the
+     * checks immediately below.
+     */
+    password?: string | null;
   }) {
     const canonicalPhone = normalizeIndianPhone(params.phone);
     if (!canonicalPhone) {
@@ -322,9 +333,34 @@ export const tenancyClaimService = {
     if (!tenantId) {
       throw new TenancyClaimError("A tenancy id is required", "VALIDATION_ERROR", 400);
     }
+
+    const password = typeof params.password === "string" ? params.password : "";
+    if (params.profileId) {
+      if (password) {
+        throw new TenancyClaimError(
+          "You're already signed in — no password is needed to claim this tenancy.",
+          "VALIDATION_ERROR",
+          400,
+        );
+      }
+    } else if (password.length < 8) {
+      throw new TenancyClaimError(
+        "A password of at least 8 characters is required to create your account.",
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+
     assertAcknowledgementsComplete(params.acknowledgements);
 
     await enforceClaimRateLimits("confirm", canonicalPhone, getRequestIpForRateLimit(params.requestIp));
+
+    // Hashed once, outside the transaction (bcrypt is deliberately slow, and
+    // there's no reason to hold the transaction's row locks through it).
+    // `null` for an already-signed-in caller — who supplies no password (see
+    // above) and needs none, since `createSessionAndTokens` is never called
+    // for that path either (they already have a live session).
+    const passwordHash = params.profileId ? null : await hashPassword(password);
 
     // Set inside the transaction once the tenancy is loaded, so the audit
     // log below (which runs after the transaction commits) has the owner id
@@ -433,11 +469,31 @@ export const tenancyClaimService = {
         // the phone just re-verified, since a SELF_SERVE tenant's messaging
         // (`resolveTenantPhone`) reads `profiles.phone` before `tenant.phone_1`
         // — leaving it stale would silently misroute reminders after the claim.
-        if (profile.phone !== canonicalPhone || !profile.mobile_verified || !profile.phone_verified) {
+        //
+        // `passwordHash` also rides this same update whenever the caller
+        // isn't already signed in — for a brand-new profile this is the only
+        // password it will ever have; for a profile matched by phone (an
+        // existing marketplace account) this resets it, which is fine: an OTP
+        // that just proved possession of the phone carries the same trust
+        // level a password-reset flow relies on. Writing it here, inside the
+        // transaction, is what lets an ordinary `/api/auth/login` retry work
+        // later even if the Supabase session-mint step after commit fails —
+        // see the comment on that step below.
+        if (
+          profile.phone !== canonicalPhone ||
+          !profile.mobile_verified ||
+          !profile.phone_verified ||
+          passwordHash
+        ) {
           try {
             profile = await tx.profile.update({
               where: { id: profile.id },
-              data: { phone: canonicalPhone, mobile_verified: true, phone_verified: true },
+              data: {
+                phone: canonicalPhone,
+                mobile_verified: true,
+                phone_verified: true,
+                ...(passwordHash ? { password_hash: passwordHash } : {}),
+              },
             });
           } catch (error: any) {
             if (error?.code === "P2002") {
@@ -572,7 +628,62 @@ export const tenancyClaimService = {
         request_ip: params.requestIp || null,
       });
 
-      return result;
+      // Everything above is durably committed — nothing past this point is a
+      // reason to treat the claim itself as failed. An already-signed-in
+      // caller (`profileId` present) needs no new session: they have one,
+      // and were never given a password to mint one from anyway.
+      if (params.profileId) {
+        return result;
+      }
+
+      // Mint a session the same way `ActivationWorkflowService`'s ACTIVATE
+      // step does (`src/services/tenants/activation-workflow-service.ts`,
+      // its "Auto-login" comment): via `authService.createSessionAndTokens`,
+      // which provisions/links the profile's Supabase identity
+      // (`ensureSupabaseIdentity`) and then signs in for a real Supabase
+      // session. That call is an external API request, so — like
+      // activation's — it cannot happen inside the Prisma transaction above
+      // and necessarily runs after commit.
+      //
+      // If it fails (Supabase unreachable, etc.), the claim still stands:
+      // the tenancy is SELF_SERVE, the profile carries a working
+      // `password_hash` written inside the transaction above (step 3.5), and
+      // the OTP proof is spent. Swallowing the error here rather than
+      // rethrowing is a deliberate choice, not activation's exact shape —
+      // activation lets an identical failure propagate as a 500 even though
+      // its own DB write already committed; a claim in that same spot has
+      // already changed who owns a real financial history, so this returns
+      // the successful claim result without a `session` instead. The
+      // frontend falls back to routing the claimant to `/login`, where an
+      // ordinary password login (which itself calls `ensureSupabaseIdentity`
+      // again) self-heals the Supabase side once it's reachable. Retrying
+      // `confirm` itself is never the recovery path: the OTP proof is
+      // already consumed (`OTP_PROOF_REQUIRED`) and the tenancy is no longer
+      // `OWNER_MANAGED` (`NOT_CLAIMABLE`).
+      try {
+        const { authService } = await import("../../../lib/services/auth-service");
+        const updatedProfile = await prisma.profile.findUnique({ where: { id: result.profile_id } });
+        if (!updatedProfile) {
+          throw new Error(`Claimed profile ${result.profile_id} vanished before session mint`);
+        }
+        const activatedTenancy: any = await getActiveTenancy(updatedProfile.id);
+        const session = await authService.createSessionAndTokens(
+          updatedProfile,
+          activatedTenancy?.id || result.tenant_id,
+          activatedTenancy?.profile_completed ?? false,
+          { ipAddress: params.requestIp || undefined, userAgent: params.requestUserAgent || undefined },
+          password,
+          activatedTenancy?.status || "ACTIVE",
+        );
+        return { ...result, session };
+      } catch (sessionError: any) {
+        logger.error("tenancy_claim.session_mint_failed", {
+          tenant_id: result.tenant_id,
+          profile_id: result.profile_id,
+          reason: sessionError?.message || String(sessionError),
+        });
+        return result;
+      }
     } catch (error: any) {
       logger.warn("tenancy_claim.confirm_refused", {
         tenant_id: tenantId,
