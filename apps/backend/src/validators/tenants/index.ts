@@ -44,6 +44,10 @@ export const InvitationSchema = z.object({
   agreement_duration_months: optionalPositiveInteger(120),
   agreement_start_date: z.string().max(30).optional(),
   payment_frequency: z.enum(["MONTHLY", "QUARTERLY", "HALF_YEARLY", "ACADEMIC_YEARLY", "CUSTOM_INSTALLMENTS"]).optional(),
+  // Task 9b: "Just add to my records" creates the same invitation record but
+  // opts out of the WhatsApp/email send — defaults to false/undefined, so the
+  // ordinary "Send invite" path (which never sets this) is unaffected.
+  suppressInvitationNotification: z.boolean().optional(),
 });
 
 export const InvitationUpdateSchema = z.object({

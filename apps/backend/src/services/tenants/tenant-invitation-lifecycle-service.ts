@@ -144,6 +144,30 @@ export class TenantInvitationLifecycleService {
   }
 
   /**
+   * The `dispatchInvitationNotification` result shape for a caller that opted
+   * out of sending anything (`suppressInvitationNotification`) — e.g. "Just add
+   * to my records". No send was attempted, so both channels read as not sent
+   * and `needs_email` stays false: nothing failed, so there is nothing for the
+   * owner to retry or fall back on.
+   *
+   * `whatsapp_sent: false` here is what keeps `recordWhatsAppDelivery`
+   * consistent with a real failed/unsent invitation: it clears/leaves null the
+   * `whatsapp_delivered_at` proof column, so activation still asks this
+   * invitee for an OTP rather than trusting a message that was never sent.
+   */
+  private suppressedDeliveryResult() {
+    return {
+      whatsapp_sent: false,
+      whatsapp_error: undefined as string | undefined,
+      provider_message_id: null as string | null,
+      email_sent: false,
+      email_error: undefined as string | undefined,
+      needs_email: false,
+      notification_suppressed: true,
+    };
+  }
+
+  /**
    * Can this phone number be invited by this owner?
    *
    * Delegates the rule to `tenancyEligibilityService`, so "one live tenancy per
@@ -187,6 +211,13 @@ export class TenantInvitationLifecycleService {
   }
 
   async createInvitation(data: any, ownerId: string) {
+    // "Just add to my records" (Task 9b): the invitation record is still
+    // created — an owner-managed tenant must be able to claim their tenancy
+    // later through it — but the caller opts out of the WhatsApp/email send
+    // that would otherwise contradict "no invite sent". Every existing caller
+    // omits this, so `suppressInvitationNotification` is `false` and behaviour
+    // is byte-identical to before.
+    const suppressInvitationNotification = Boolean(data.suppressInvitationNotification);
     const normalizedEmail = data.email ? normalizeEmail(data.email) : null;
     const normalizedPhone = normalizeIndianPhone(data.phone);
     const name = String(data.name || "").trim();
@@ -385,17 +416,21 @@ export class TenantInvitationLifecycleService {
     }
 
     const activationLink = frontendUrl(`/activate/${created.invitation.token}`);
-    const delivery = await this.dispatchInvitationNotification(
-      created.invitation,
-      created.tenant,
-      created.room,
-      owner,
-      activationLink
-    );
+    const delivery = suppressInvitationNotification
+      ? this.suppressedDeliveryResult()
+      : await this.dispatchInvitationNotification(
+          created.invitation,
+          created.tenant,
+          created.room,
+          owner,
+          activationLink
+        );
 
     // A successful WhatsApp send is what later lets activation skip the OTP for
     // this number — see invitation-delivery-trust. Recorded rather than
-    // inferred, and only on success.
+    // inferred, and only on success. When suppressed, `whatsapp_sent` is
+    // already `false`, so this correctly leaves/sets the proof column null —
+    // the invitee never received anything, so activation must still ask.
     await recordWhatsAppDelivery(created.invitation.id, delivery.whatsapp_sent);
 
     await eventLog.log("tenant_invited", ownerId, {
@@ -409,6 +444,7 @@ export class TenantInvitationLifecycleService {
       email_sent: delivery.email_sent,
       email_error: delivery.email_error,
       needs_email: delivery.needs_email,
+      notification_suppressed: suppressInvitationNotification,
     }, created.tenant.id);
 
     return {
@@ -425,6 +461,11 @@ export class TenantInvitationLifecycleService {
   }
 
   async resendInvitation(invitationId: string, actor?: { id: string; role: string }, overrides?: any) {
+    // Reachable from createInvitation's "there's already a live invitation for
+    // this contact, so resend/update it instead" branch, which forwards its
+    // whole `data` payload as `overrides` — so an owner-managed submission that
+    // set `suppressInvitationNotification` still has that flag here.
+    const suppressInvitationNotification = Boolean(overrides?.suppressInvitationNotification);
     const invitation = await prisma.tenant_invitations.findUnique({
       where: { id: invitationId },
       include: {
@@ -738,16 +779,19 @@ export class TenantInvitationLifecycleService {
     const owner = await prisma.profile.findUnique({ where: { id: invitation.owner_id }, select: { name: true } });
     const activationLink = frontendUrl(`/activate/${token}`);
 
-    const delivery = await this.dispatchInvitationNotification(
-      updated.updatedInvitation,
-      updated.updatedTenant,
-      updated.targetRoom,
-      owner || { name: "The Owner" },
-      activationLink
-    );
+    const delivery = suppressInvitationNotification
+      ? this.suppressedDeliveryResult()
+      : await this.dispatchInvitationNotification(
+          updated.updatedInvitation,
+          updated.updatedTenant,
+          updated.targetRoom,
+          owner || { name: "The Owner" },
+          activationLink
+        );
 
     // A resend can change the phone number, so this both sets the proof on a
-    // successful send and clears a stale one from the previous number.
+    // successful send and clears a stale one from the previous number. When
+    // suppressed, `whatsapp_sent` is already `false`, so this still clears it.
     await recordWhatsAppDelivery(updated.updatedInvitation.id, delivery.whatsapp_sent);
 
     // Automatically write to activity/system event logs
@@ -767,10 +811,13 @@ export class TenantInvitationLifecycleService {
       email_sent: delivery.email_sent,
       email_error: delivery.email_error,
       needs_email: delivery.needs_email,
+      notification_suppressed: suppressInvitationNotification,
     }, updated.updatedInvitation.tenant_id);
 
     return {
-      message: delivery.whatsapp_sent
+      message: suppressInvitationNotification
+        ? "Invitation updated. No message sent."
+        : delivery.whatsapp_sent
         ? "Invitation resent via WhatsApp"
         : delivery.email_sent
         ? "Invitation resent via Email"

@@ -877,6 +877,11 @@ export class AdmissionsService {
         agreement_duration_months: input.agreement_duration_months,
         agreement_start_date: input.agreement_start_date,
         payment_frequency: input.payment_frequency,
+        // Task 9b: lets "Just add to my records" reach this endpoint too, when
+        // the Add Tenant wizard was opened from an accepted lead — see
+        // useInviteWizard's `createInvitation()`, which calls this same
+        // endpoint for both the ordinary and owner-managed submit paths.
+        suppressInvitationNotification: Boolean(input.suppressInvitationNotification),
       }, ownerId);
     } catch (error: any) {
       // tenantInvitationLifecycleService throws plain `Error("VALIDATION_ERROR: ...")`

@@ -109,7 +109,7 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
   // plain invite endpoint otherwise), regardless of whether the owner ends up
   // sending it (`submit`) or immediately adopting it (`submitAsOwnerManaged`).
   // The tenancy row, reservation and terms are created identically either way.
-  const buildInvitePayload = () => ({
+  const buildInvitePayload = (options: { suppressNotification?: boolean } = {}) => ({
     name: data.tenantName.trim(),
     phone: sanitizeIndianPhone(data.tenantPhone),
     // Omitted rather than sent blank: the backend's InvitationSchema
@@ -122,10 +122,16 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
     joining_date: data.joiningDate || undefined,
     agreement_duration_months: Number(data.agreementMonths) || undefined,
     payment_frequency: BILLING_TO_FREQUENCY[data.billing] ?? 'MONTHLY',
+    // Omitted (not `false`) for the ordinary "Send invite" path, so that
+    // request is byte-identical to before this flag existed. Only
+    // `submitAsOwnerManaged` ("Just add to my records") sets this — the
+    // invitation record still gets created, but the WhatsApp/email send that
+    // path's caption promises never happens is suppressed.
+    ...(options.suppressNotification ? { suppressInvitationNotification: true } : {}),
   });
 
-  const createInvitation = async () => {
-    const payload = buildInvitePayload();
+  const createInvitation = async (options: { suppressNotification?: boolean } = {}) => {
+    const payload = buildInvitePayload(options);
     if (leadId) {
       // Response is { invitation, lead } — unwrap so the rest of this hook
       // (resolveInviteDelivery, tenant_id) sees the same flat shape either way.
@@ -178,7 +184,7 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
    */
   const ownerManagedMutation = useMutation({
     mutationFn: async () => {
-      const created = (await createInvitation()) as { tenant_id?: string } | null;
+      const created = (await createInvitation({ suppressNotification: true })) as { tenant_id?: string } | null;
       const newTenantId = created?.tenant_id;
       if (!newTenantId) throw new Error('Tenant was created but no tenant_id came back.');
       return ownerManagedService.adopt({ tenantId: newTenantId, hostelId: data.hostelId });
