@@ -28,3 +28,28 @@ export const ownerServiceRequestsService = {
     return unwrap(response);
   },
 };
+
+/** Next status in the owner-driven flow; `null` means terminal (nothing left to advance to). */
+export const STATUS_FLOW: Record<string, string | null> = {
+  RAISED: 'ASSIGNED',
+  ASSIGNED: 'IN_PROGRESS',
+  IN_PROGRESS: 'RESOLVED',
+  RESOLVED: null,
+  REJECTED: null,
+};
+
+export const NEXT_ACTION_LABEL: Record<string, string> = {
+  ASSIGNED: 'Mark assigned',
+  IN_PROGRESS: 'Mark in progress',
+  RESOLVED: 'Mark resolved',
+};
+
+/** Human-readable label for each `ServiceRequestType` — the single place this mapping lives. */
+export const SERVICE_REQUEST_TYPE_LABEL: Record<string, string> = {
+  MAINTENANCE: 'Maintenance',
+  ROOM_CHANGE: 'Room change',
+  CLEANING: 'Cleaning',
+  LOST_KEY: 'Lost key',
+  VISITOR_PASS: 'Visitor pass',
+  EXTRA_MATTRESS: 'Extra mattress',
+};

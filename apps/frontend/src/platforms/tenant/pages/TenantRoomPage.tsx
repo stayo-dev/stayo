@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { TenantPageHeader } from '../components/TenantPageHeader';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Droplets, Wifi, Zap, Sparkles, Wrench, DoorOpen, KeyRound, UserPlus, BedDouble, ListChecks, MessageSquareWarning, Flame, Shirt, ShowerHead, UtensilsCrossed, Car, ShieldCheck, CircleDot, LogOut } from 'lucide-react';
+import { ChevronDown, ChevronRight, Droplets, Wifi, Zap, Sparkles, Wrench, DoorOpen, KeyRound, UserPlus, BedDouble, ListChecks, MessageSquareWarning, Flame, Shirt, ShowerHead, UtensilsCrossed, Car, ShieldCheck, CircleDot, LogOut, Repeat } from 'lucide-react';
 import { useTenantRoom } from '@features/tenant-room/hooks/useTenantRoom';
 import { buildTenantFacilities, type FacilityIcon } from '@features/tenant-room/facilities';
 import ShareSheet from '@shared/ui-patterns/ShareSheet';
@@ -228,6 +228,23 @@ export function TenantRoomPage() {
             </div>
           )}
         </div>
+
+        {room.room && (
+          <button
+            type="button"
+            onClick={() => overlay.push('svc_room_change')}
+            className={`${card} flex items-center gap-3 px-4 py-3.5 text-left`}
+          >
+            <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] bg-secondary text-primary">
+              <Repeat className="h-4.5 w-4.5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[13px] font-semibold text-[#2A2521]">Request room change</span>
+              <span className="block text-[11px] text-muted-foreground">Ask to move to a different room</span>
+            </span>
+            <ChevronRight className="h-4 w-4 flex-none text-[#C9BFB4]" />
+          </button>
+        )}
 
         {room.activeTicket && (
           <div className="flex flex-col gap-2.5">
