@@ -8,6 +8,48 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+
+## 2026-08-27 — Template quick-reply buttons were dropped on the floor (fixed)
+
+**Symptom.** Any quick-reply button on an approved template would do nothing when tapped. Surfaced while wiring `stayo_guardian_whatsapp_activated`, whose **[Help]** button is a guardian's very first interaction with the product.
+
+**Cause.** `extractMessageEvents` handled `text`, `interactive.button_reply` and `interactive.list_reply` — but a *template* quick reply is none of those. Meta delivers it as `type: "button"` with `button.payload`, and that type sat on `findUnhandledMessageTypes`' deliberately-dropped list, complete with a comment naming it. The webhook was marked PROCESSED with zero events and the sender heard nothing back.
+
+**Fix.** Extracted as **text** carrying the payload word, so it resolves through the ordinary command vocabulary — a template quick reply is semantically the reader *saying* that word, and its payload is a plain keyword (`Help`) rather than one of our `CC:` payload ids. A stale assertion in `whatsapp-webhook-interactive.test.ts` that expected `button` to be *unhandled* was updated, and positive coverage added.
+
+## 2026-08-27 — WhatsApp quoted a guardian two different debts, seconds apart (fixed)
+
+**Symptom.** A guardian sent `DUES` and read `Total Due: ₹24,000`. They sent `PAY` and were offered a link for `₹8,000`, with no explanation.
+
+**Cause.** The two commands answered from different sources. `handleDuesCommand` summed up to ten outstanding items from `financialService.getTenantDues()`. `handlePayCommand` called `getNextBillingInfo()` — which returns the **single oldest unpaid obligation** — and minted a `payment_link_tokens` row bound to it, bypassing `PaymentLinkService` entirely.
+
+**Why it mattered.** This is a rent-collection channel. The one moment it has to be trustworthy is the moment it asks for money, and it contradicted itself there. A parent reasonably concludes the system does not know what they owe.
+
+**Fix.** `RENT` and `PAY` both read `current_payable_amount` from `financialReadModelService`, and `PAY` issues a **tenant-scoped** token through `PaymentLinkService.getOrCreateToken({ tenantId })` — which prices the account at payment time and FIFO-allocates across it. Where the payable sum has more than one component, the message itemises it. See [[Decisions#ADR-128|ADR-128]].
+
+## 2026-08-27 — A 30-minute invisible mode could answer a guardian about the wrong child (fixed)
+
+**Symptom.** A guardian with two children in the same hostel asked about one, waited half an hour, asked again — and got the other child's figures, correctly formatted, with no indication anything had changed.
+
+**Cause.** `whatsapp-resident-context.ts` stored an "active resident" in Redis with a 30-minute TTL that every successful command silently refreshed. The sender could not see which resident they were in, and `SWITCH` — a command whose entire purpose was escaping this — was the only way out. Same failure class as the "first hostel as fallback" bug `architectural-invariants-check.ts` exists to catch: a silent wrong-subject answer.
+
+**Fix.** The mode is deleted rather than fixed. Which resident an action concerns rides in the interactive payload (`CC:<COMMAND>:<tenantId>`), re-authorised against the sender's own residents on arrival; every answer names the resident in its first line. `SWITCH` went with it. See [[Decisions#ADR-128|ADR-128]].
+
+## 2026-08-27 — Every live rent template was signed by a product that no longer exists (open — needs Meta approval)
+
+**Symptom.** All three approved rent templates end `- HMS`, and `rent_due_today_v1` instructs the reader to *"pay using the app"*.
+
+**Why it mattered.** A message about money, from an unrecognised number, signed by an unrecognised brand, asking the reader to tap a payment link, is indistinguishable from a scam — and guardians, the readers most likely to be paying, have no app to pay in.
+
+**Status.** *Partially fixed, blocked on Meta.* A template's body is approved server-side at Meta; `templateBody` in `templates.ts` is a local preview only, so this cannot be fixed by editing a string. `providers/whatsapp/rent-reminder-template-contract.ts` now defines **generation 2** — `stayo_rent_due_soon`, `stayo_rent_due_today`, `stayo_rent_overdue` — each naming the **hostel** in the body, footed `Sent via Stayo on behalf of your hostel`, with no app instruction. Rollout is per-template and env-driven (`WHATSAPP_RENT_DUE_SOON_TEMPLATE`, `WHATSAPP_RENT_DUE_TODAY_TEMPLATE`, `WHATSAPP_RENT_OVERDUE_TEMPLATE`): name, language **and** parameter shape switch together, so an approval landing alone can never send v2 parameters at a v1 template. **Until the three are submitted and approved, v1 keeps sending and readers still see `- HMS`.** Tracked in [[TODO]].
+
+## 2026-08-27 — The guardian role was computed four times and used for nothing (fixed)
+
+**Symptom.** No guardian anywhere ever received guardian-appropriate treatment, despite the system knowing exactly who was a guardian.
+
+**Cause.** `whatsapp-webhook-event-service.ts` derived `senderRole: "TENANT" | "GUARDIAN"` at four separate call sites (`:641`, `:844`, `:1203`, `:1651`) and passed it to `sendV2BalanceForTenant`, which used it **solely as an audit-log column value**. `identity-resolver.ts` likewise classified `GUARDIAN_PHONE` matches and dropped the distinction into a `TENANT` role. Guardians were addressed as though the debt were their own, and — per the reminder rule below — contacted only once it was three days late.
+
+**Fix.** `GUARDIAN` is a real `SenderRole` with its own permissions, OTP verification, third-person copy, and a reminder schedule that reaches them **before** the due date. See [[Decisions#ADR-127|ADR-127]] and [[Business-Rules#Guardian reminder escalation|Business-Rules]].
 ## 2026-08-26 — `visitor_leads.status` could never actually reach JOINED (fixed)
 
 **Found** during a UI redesign of the Leads tab's filter tabs — defining a new "Accepted" tab meaning "tenant joined" required tracing what actually sets that status, and the answer was nothing. `admissionsService.markJoinedForTenant(tenantId)` existed (`admissions-service.ts`) with a correct, tested-looking implementation, but grepping the entire codebase turned up zero callers.

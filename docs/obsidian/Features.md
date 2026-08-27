@@ -67,6 +67,52 @@ This is an inventory of features **confirmed implemented** (live route + live UI
 - **Depends on:** [[APIs]] (`POST /api/payments/pay-link`, `/api/payments/pay/[token]`), [[Business-Rules#Flexible payment links]], [[Database]] (`payment_link_tokens`), [[Decisions]] ADR-017, `src/services/payments/settlement-planner.ts::buildSettlementPlan` (the same FIFO engine offline "Receive Payment" uses).
 - **Notes:** Multi-task branch. Earlier tasks made `payment_link_tokens.obligation_id` nullable and `getOrCreateToken` obligation-optional (so "Share Payment Link" now shows regardless of outstanding dues), then opened `POST /api/payments/pay-link` to `TENANT` sessions (self-generation, scoped strictly to their own account, tested in `apps/backend/tests/pay-link-tenant-auth.test.ts`), then reworked the payer-facing `/pay/[token]` page to accept any entered amount with a live FIFO-allocation preview rather than a fixed pre-picked obligation balance. The final task added the tenant-portal UI entry point so a tenant can copy a `/pay/<token>` link (from the response's `url` field) to send to a guardian or anyone paying on their behalf, without needing the owner to generate it for them. `TenantFinancialsPage.tsx` is technically under the frozen `src/portal/` tree (see [[Frontend]]) — this was an in-place edit to an already-allowlisted file, not a new file, so `check-architecture.mjs`'s allowlist was not touched.
 
+## Resident & guardian WhatsApp command center (2026-08-27)
+
+The rebuilt conversational surface for the two people who pay rent. Owner-facing WhatsApp (`owner-whatsapp-assistant.ts`) is untouched and out of scope. See [[Decisions#ADR-127|ADR-127]], [[Decisions#ADR-128|ADR-128]], [[Business-Rules#Resident & guardian command center|Business-Rules]].
+
+**Files:** `lib/services/notifications/command-center/*`, `routing/{types,identity-resolver,intent-resolvers}.ts`, `providers/whatsapp/rent-reminder-template-contract.ts`.
+
+### The five commands
+
+| Command | Answers | Notes |
+|---|---|---|
+| `RENT` | What is payable, what it is made of, how late it is, where they are in the plan | Replaces `BAL`, `BALANCE`, `DUES`, `STATUS` |
+| `PAY` | A secure link for the **whole** payable amount | Tenant-scoped token via `PaymentLinkService` |
+| `PLAN` | Instalment progress — paid / due / overdue / upcoming, with totals | **New.** `installment_sequence` was in the schema and unread |
+| `RECEIPT` | The last payment, what it settled, what remains | **New** |
+| `HELP` | The menu, and which residents this number is recognised for | |
+
+Retired words (`BAL`, `BALANCE`, `DUES`, `STATUS`, `SWITCH`) still resolve and are advertised nowhere.
+
+### Guardians as first-class users
+
+- Recognised from `tenants.guardian_phone` as role `GUARDIAN` — **no account, no login** ([[Decisions#ADR-127|ADR-127]] upholds the existing "no second account" boundary).
+- **Verified by OTP on first financial request**, re-verified every 90 days. Never waived, even when WhatsApp OTP delivery is degraded.
+- Addressed in the third person — "Aarav's rent", never "your rent".
+- **Contacted before the due date**, not only after ([[Business-Rules#Guardian reminder escalation|the escalation table]]). Previously a guardian's first-ever message arrived at 3 days overdue, so every guardian touchpoint was a complaint.
+- A guardian of several residents gets a **priced picker** — each row states the room and the amount due — rather than being placed in an invisible 30-minute mode.
+
+### Guardian onboarding handshake (`stayo_guardian_whatsapp_activated`)
+
+When a tenant enters their guardian's number during activation and verifies it, the guardian now receives **Guardian Access Activated** — the channel's first word to them, sent from `activationWorkflowService.completeProfile` after the row commits. It names the tenant and hostel, says what the number can now do, and carries a **[Help] quick-reply button**.
+
+- **Approved in Meta as Utility, English, 12-hour validity.** Body variables in order: `{{1}}` guardian name, `{{2}}` **tenant name — never a possessive**, `{{3}}` hostel name. Footer: *Stayo Property Management*.
+- **The tap works.** Template quick-reply taps arrive as webhook type `button`, which the extractor used to drop outright — the button would have done nothing. It now resolves through the ordinary command vocabulary, so a guardian's first interaction is a tap rather than remembering a keyword.
+- **No second OTP.** `isGuardianVerified` accepts the onboarding `ParentVerify` proof as well as `GUARDIAN_ACCESS`, so tapping [Help] opens the menu instead of challenging a handset that verified minutes earlier.
+- Idempotent per `(tenant, guardian number)`; a **changed** guardian number sends afresh. Never blocks onboarding.
+
+### Trust and voice
+
+- Every money message names the **hostel** and signs `— <Hostel>, via Stayo`. Nothing signs `- HMS`.
+- Payment confirmations are pushed unprompted the moment a payment is recorded (`payment_recorded` event → `sendPaymentConfirmation`), to the resident and to verified guardians. The channel used to go silent at exactly the moment it had earned trust.
+- No apologies, no `━━ section rules ━━`, no `███░░░` progress bar, no "Lifetime Summary", and never the string "N/A".
+- Buttons carry the amount (`Pay ₹8,000`, not `Pay now`) and are never offered when they would be useless — no pay button on a settled account, no receipt button for someone who has never paid.
+
+### Testing
+
+68 tests across `whatsapp-command-center-vocabulary`, `whatsapp-command-center-formatting`, `whatsapp-guardian-reminders` and `whatsapp-guardian-activation-template`, all in the **pure** suite (`npm run test:pure`) — decision logic lives in modules that take plain arguments, so none of it needs a database.
+
 ## Tenant-facing (`apps/frontend` tenant routes, routed via `platforms/tenant/router`)
 
 **Restructured 2026-08-16 (ADR-078), superseding ADR-068's 5-tab IA.** Dashboard's internal tabs are now **Home/Money/Room/Food/Complaints** — Profile is no longer a Dashboard tab at all, promoted to a shared, app-wide tab (see [[#Common Stayo Profile (2026-08-16)]] below) reachable regardless of tenancy state. The Dashboard itself (the whole `/tenant/*` tree) is now only reachable with a **live tenancy** (`tenant_status` `INVITED`/`ACTIVE`) — `ProtectedTenantRoute` dropped its old `is_profile_completed` hard-block in favour of an in-dashboard nudge card, and gained the tenancy-liveness check it was missing (a Discover-only seeker could previously reach `/tenant/*` if `is_profile_completed` happened to be true).

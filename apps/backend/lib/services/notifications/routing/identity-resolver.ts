@@ -33,8 +33,14 @@ export function getPhoneCandidates(rawPhone: string): string[] {
   return Array.from(new Set(candidates.filter(Boolean)));
 }
 
-/** OWNER beats TENANT beats ADMIN/STAFF — most specific relationship to the message wins. */
-const ROLE_PRECEDENCE: SenderRole[] = ["OWNER", "TENANT", "ADMIN", "STAFF"];
+/**
+ * OWNER beats TENANT beats GUARDIAN beats ADMIN/STAFF — the most specific
+ * relationship to the message wins. GUARDIAN sits below TENANT so that a phone
+ * listed both as a resident's own number and as someone else's guardian
+ * contact is treated as the resident first; the guardian relationship is still
+ * present in `roles` and in `guardianResidents`, so nothing is lost.
+ */
+const ROLE_PRECEDENCE: SenderRole[] = ["OWNER", "TENANT", "GUARDIAN", "ADMIN", "STAFF"];
 
 function pickPrimaryRole(roles: SenderRole[]): SenderRole {
   for (const role of ROLE_PRECEDENCE) {
@@ -129,6 +135,14 @@ function scoreConfidence(roles: SenderRole[], residents: ResolvedResident[]): nu
   if (roles.includes("TENANT")) {
     return residents.some((resident) => resident.matchedVia !== "GUARDIAN_PHONE") ? 0.95 : 0.6;
   }
+  /**
+   * A guardian match is one hand-typed field away from being wrong, so the
+   * classification alone is worth about as much as it was before. What changed
+   * is that it is no longer the last word: `command-center/guardian-access`
+   * challenges the handset with a code before any money is discussed, and that
+   * challenge — not this number — is what actually authorises the guardian.
+   */
+  if (roles.includes("GUARDIAN")) return 0.6;
   return 0;
 }
 
@@ -156,9 +170,17 @@ export async function resolveSenderIdentity(phone: string): Promise<SenderIdenti
     findAdminProfile(candidates),
   ]);
 
+  // A phone can hold both relationships at once — a resident whose own number
+  // is also listed as their younger sibling's guardian contact. Split by how
+  // each tenant was actually matched rather than collapsing both into TENANT,
+  // which is what the old resolver did before discarding the distinction.
+  const guardianResidents = residents.filter((resident) => resident.matchedVia === "GUARDIAN_PHONE");
+  const ownResidents = residents.filter((resident) => resident.matchedVia !== "GUARDIAN_PHONE");
+
   const roles: SenderRole[] = [];
   if (owner) roles.push("OWNER");
-  if (residents.length > 0) roles.push("TENANT");
+  if (ownResidents.length > 0) roles.push("TENANT");
+  if (guardianResidents.length > 0) roles.push("GUARDIAN");
   if (admin) roles.push("ADMIN");
 
   const ownerHostelIds = owner ? await findOwnerHostels(owner.owner_id) : [];
@@ -179,6 +201,7 @@ export async function resolveSenderIdentity(phone: string): Promise<SenderIdenti
     hostelId: onlyOne(hostelIds),
     hostelIds,
     residents,
+    guardianResidents,
 
     profileId: admin?.id || null,
     displayName: admin?.name || residents[0]?.name || null,
@@ -194,6 +217,7 @@ export async function resolveSenderIdentity(phone: string): Promise<SenderIdenti
     roles: identity.roles,
     permissions: identity.permissions,
     tenant_count: identity.tenantIds.length,
+    guardian_resident_count: identity.guardianResidents.length,
     hostel_count: identity.hostelIds.length,
     unambiguous_tenant: Boolean(identity.tenantId),
     has_owner_link: Boolean(identity.ownerId),

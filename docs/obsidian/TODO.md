@@ -4,6 +4,15 @@ tags: [todo, backlog]
 
 # TODO / Backlog
 
+## WhatsApp command center — follow-ups (2026-08-27)
+
+- [ ] **Submit the three generation-2 rent templates to Meta**: `stayo_rent_due_soon`, `stayo_rent_due_today`, `stayo_rent_overdue`. Exact bodies, parameter order, footer and button are in `providers/whatsapp/rent-reminder-template-contract.ts`. Until approved and named in `WHATSAPP_RENT_DUE_SOON_TEMPLATE` / `WHATSAPP_RENT_DUE_TODAY_TEMPLATE` / `WHATSAPP_RENT_OVERDUE_TEMPLATE`, readers still receive `- HMS` and "pay using the app". See [[Bugs]].
+- [ ] **Confirm `stayo_guardian_whatsapp_activated` is approved in Meta** before relying on the onboarding handshake. It is wired and idempotent, but has never been sent against a live WABA — and the [Help] quick-reply path (webhook type `button`) is covered only by a unit test asserting the payload shape, not by a real tap.
+- [ ] **Delete `whatsapp-resident-context.ts` and `whatsapp-balance-formatter.ts`.** Both are dead — no live caller since [[Decisions#ADR-128|ADR-128]] — and were left in place to keep that change reviewable.
+- [ ] **End-to-end verification against a real WABA.** Nothing in this change has been exercised against live WhatsApp: the guardian OTP round trip, the interactive picker for a multi-resident guardian, and the payment-confirmation push are all covered only by pure unit tests. `DATABASE_URL_TEST` is still unset, so the DB-backed suite could not run either.
+- [ ] **Decide whether guardians need a language other than English.** The vocabulary and copy are English-only; the structure supports per-locale variants but no decision has been taken, and each language multiplies the Meta template approval count.
+
+
 Related: [[Bugs]] · [[Features]] · [[Decisions]]
 
 Running backlog of documentation and follow-up work. Not a replacement for a real issue tracker — use this for things worth remembering across sessions that don't have a ticket yet.

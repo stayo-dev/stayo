@@ -95,6 +95,14 @@ export default defineConfig({
       'tests/agreement-commitment.test.ts',
       'tests/activation-account-state.test.ts',
       'tests/invitation-expiry-reminder-contract.test.ts',
+      // The resident/guardian command center. Its formatters, vocabulary and
+      // reminder policy take plain arguments and touch nothing external —
+      // which is the design, not a coincidence: decision logic lives in pure
+      // modules so it can be verified without a database.
+      'tests/whatsapp-command-center-vocabulary.test.ts',
+      'tests/whatsapp-command-center-formatting.test.ts',
+      'tests/whatsapp-guardian-reminders.test.ts',
+      'tests/whatsapp-guardian-activation-template.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),

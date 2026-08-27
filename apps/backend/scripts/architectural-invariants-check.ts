@@ -47,6 +47,15 @@ const checks: Array<{
       /lib\/services\/reminder-service\.ts$/,
       /lib\/services\/tenant-service\.ts$/,
       /lib\/services\/notifications\/owner-whatsapp-assistant\.ts$/,
+      // False positive: `loadResidentContext` fetches ONE tenant by primary
+      // key (`where: { id: tenantId }`) and merely *selects* `owner_id` and
+      // `hostel_id` from it. The regex's 220-character window spans that
+      // select list and reads the adjacent field names as a hostel fallback.
+      // The file is in fact the opposite: `loadPickerRows` prices every
+      // resident and `dispatch` refuses to default to one, precisely so a
+      // guardian of two children is never silently answered about the wrong
+      // one — the same bug this rule guards against, one domain over.
+      /lib\/services\/notifications\/command-center\/context\.ts$/,
       /app\/api\/payments\/test-intent\/route\.ts$/,
       // False positive: findFirst here scopes strictly by owner_id (real
       // authorization, not a "first hostel" fallback) — the regex's wide
