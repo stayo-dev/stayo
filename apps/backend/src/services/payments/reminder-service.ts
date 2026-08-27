@@ -117,6 +117,7 @@ export class ReminderService {
           id: ob.tenant_id,
           owner_id: ob.owner_id,
           personal_email: ob.personal_email,
+          access_mode: (ob as any).access_mode ?? null,
           profiles: { name: ob.tenant_name, phone: (ob as any).phone },
         },
       };

@@ -175,6 +175,7 @@ export class BillingRepository {
       phone: string | null;
       late_fee: number;
       total_amount: number;
+      access_mode: string | null;
     }>>`
       SELECT
         o.id                                                AS obligation_id,
@@ -195,7 +196,8 @@ export class BillingRepository {
         (o.total_amount - COALESCE(pay_agg.total_paid, 0))::float AS remaining_amount,
         CASE WHEN t.profile_id IS NULL THEN t.display_name ELSE p.name END  AS tenant_name,
         t.personal_email,
-        CASE WHEN t.profile_id IS NULL THEN t.phone_1 ELSE p.phone END      AS phone
+        CASE WHEN t.profile_id IS NULL THEN t.phone_1 ELSE p.phone END      AS phone,
+        t.access_mode                                       AS access_mode
       FROM rent_obligations o
       JOIN tenants t ON t.id = o.tenant_id
       LEFT JOIN profiles p ON p.id = t.profile_id

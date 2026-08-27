@@ -825,6 +825,7 @@ export class TenantInvitationLifecycleService {
         ? "WhatsApp delivery failed. Email is required for fallback."
         : "Failed to resend invitation",
       action: "RESENT",
+      tenant_id: updated.updatedInvitation.tenant_id,
       email: updated.updatedInvitation.email,
       phone: updated.updatedInvitation.phone,
       activation_link: activationLink,

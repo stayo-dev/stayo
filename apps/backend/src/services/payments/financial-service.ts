@@ -226,6 +226,7 @@ export class FinancialService {
     phone: string | null;
     late_fee: number;
     total_amount: number;
+    access_mode: string | null;
   }>> {
     const rows = await billingRepository.getOperationalOverdueObligations(asOfDate, ownerId, hostelId);
 
@@ -249,6 +250,7 @@ export class FinancialService {
       phone:            r.phone,
       late_fee:         Number((r as any).late_fee || 0),
       total_amount:     Number((r as any).total_amount || 0),
+      access_mode:      (r as any).access_mode ?? null,
     }));
   }
 

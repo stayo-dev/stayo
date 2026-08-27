@@ -29,9 +29,17 @@ export interface AdoptResult {
  * OWNER_MANAGED, and the owner's assertion is stored as an attestation, never
  * as a TenantPolicyAcceptance.
  *
- * The invitation is marked SUPERSEDED rather than cancelled — if the tenant
- * clicks that month-old link later, it must still resolve to this tenancy so
- * they can claim it (Phase 2), not fail as invalid.
+ * The invitation is marked SUPERSEDED rather than cancelled. Today that does
+ * NOT let a late-clicking tenant claim this tenancy: the activation-token
+ * lookup (`tenant-invitation-lifecycle-service.ts`, `resolveByToken`) throws
+ * "INVALID: Activation link expired or already used" for any SUPERSEDED
+ * invitation, same as it would for a cancelled one — so the stale link is a
+ * dead end either way. SUPERSEDED was chosen over CANCELLED only to keep the
+ * status distinct for reporting; it is not (yet) a claim mechanism. Wiring an
+ * actual "claim this tenancy" path for a tenant who shows up later is
+ * unbuilt Phase 2 work — whoever picks it up needs to decide whether
+ * SUPERSEDED should short-circuit to this tenancy instead of erroring, or
+ * whether claiming should be a separate flow entirely.
  *
  * Name resolution deliberately does NOT use `resolveTenantName` — that helper
  * falls back to the literal string "Tenant" when no name is known anywhere,

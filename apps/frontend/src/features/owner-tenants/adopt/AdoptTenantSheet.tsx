@@ -24,7 +24,7 @@ function getErrorCode(error: unknown): string | undefined {
 
 function getErrorMessage(error: unknown, fallback: string): string {
   if (getErrorCode(error) === 'CAPACITY_EXCEEDED') {
-    return 'That room is now full — move him to a room with space first';
+    return 'That room is now full — move the tenant to a room with space first';
   }
   const data = (error as { response?: { data?: { error?: { message?: string } } } })?.response?.data;
   return data?.error?.message || fallback;
@@ -74,8 +74,8 @@ export function AdoptTenantSheet({ open, onClose, tenantId, hostelId, tenantName
 
         <p className="text-[13px] leading-relaxed text-foreground">
           {tenantName} will be added to your records as an active tenant. Rent will start generating
-          {whatsappRemindersOn ? ' and reminders will go to his WhatsApp. ' : '. '}
-          He won't have a login until he joins the app himself.
+          {whatsappRemindersOn ? ' and reminders will go to their WhatsApp. ' : '. '}
+          They won't have a login until they join the app themselves.
         </p>
 
         {!whatsappRemindersOn && (

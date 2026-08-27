@@ -11,19 +11,19 @@ describe('shouldOfferAdoption', () => {
     expect(shouldOfferAdoption({ openedAt: null, sentDaysAgo: 2 })).toBe(false);
   });
 
-  it('still offers when the tenant opened it but never finished', () => {
+  it('still offers when the tenant opened it but never finished — openedAt is deliberately not a gate', () => {
     expect(shouldOfferAdoption({ openedAt: '2026-08-01', sentDaysAgo: 20 })).toBe(true);
   });
 });
 
 describe('adoptionPromptText', () => {
-  it('states the fact and the remedy, without blaming anyone', () => {
+  it('states the fact and the remedy, without blaming anyone or assuming gender', () => {
     expect(adoptionPromptText('Rakesh', 12))
-      .toBe("Rakesh hasn't opened this invite in 12 days. You can keep his records yourself and invite him again anytime.");
+      .toBe("Rakesh hasn't opened this invite in 12 days. You can keep their records yourself and invite them again anytime.");
   });
 
   it('reads naturally at exactly one day', () => {
     expect(adoptionPromptText('Rakesh', 1))
-      .toBe("Rakesh hasn't opened this invite in 1 day. You can keep his records yourself and invite him again anytime.");
+      .toBe("Rakesh hasn't opened this invite in 1 day. You can keep their records yourself and invite them again anytime.");
   });
 });
