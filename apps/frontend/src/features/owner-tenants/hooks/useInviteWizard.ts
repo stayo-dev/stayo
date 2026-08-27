@@ -1,13 +1,15 @@
-import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { tenantService } from '@features/tenants/api';
 import { admissionsService } from '@features/admissions/api';
+import { parseTenancyConflict } from '@features/tenants/tenancyConflict';
 import { queryKeys } from '@lib/queryKeys';
 import {
   resolveInviteDelivery,
   resolveResendDelivery,
   type InviteDeliveryOutcome,
 } from '../invite/inviteDelivery';
+import { conflictFromPreview, type EligibilityPreview } from '../invite/eligibilityCheck';
 import {
   sanitizeIndianPhone,
   isValidIndianPhone,
@@ -16,6 +18,8 @@ import {
   EMAIL_REGEX,
 } from '../invite/validation';
 import { EMPTY_INVITE_WIZARD_DATA, type InviteWizardData } from '../types';
+
+const ELIGIBILITY_DEBOUNCE_MS = 400;
 
 export interface UseInviteWizardOptions {
   /** Pre-fills the form — e.g. from an accepted lead — instead of starting blank. */
@@ -64,7 +68,39 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
 
   const setD = (patch: Partial<InviteWizardData>) => setData((d) => ({ ...d, ...patch }));
 
-  const isStep0Valid = isValidTenantName(data.tenantName) && isValidIndianPhone(data.tenantPhone) && isValidTenantEmail(data.tenantEmail);
+  // Pre-submit tenancy-eligibility check — debounced on the phone field, so
+  // the owner learns about a blocked/existing number before filling out the
+  // rest of the wizard rather than only on a 409 at final Submit.
+  const cleanedPhone = sanitizeIndianPhone(data.tenantPhone);
+  const [debouncedPhone, setDebouncedPhone] = useState(cleanedPhone);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedPhone(cleanedPhone), ELIGIBILITY_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [cleanedPhone]);
+
+  // Phone only, deliberately — the invite's `email` field is optional and
+  // belongs to whoever the owner is inviting; combining it into the same OR
+  // lookup could attribute an unrelated profile's conflict to this phone
+  // number if the two happened to mismatch.
+  const eligibilityEnabled = isValidIndianPhone(debouncedPhone);
+  const eligibilityQuery = useQuery({
+    queryKey: queryKeys.owner.invitationEligibility(debouncedPhone, ''),
+    queryFn: () => tenantService.checkEligibility(debouncedPhone) as Promise<EligibilityPreview>,
+    enabled: eligibilityEnabled,
+    staleTime: 30_000,
+  });
+
+  const eligibilityConflict = eligibilityQuery.data ? conflictFromPreview(eligibilityQuery.data) : null;
+  const isCheckingEligibility =
+    isValidIndianPhone(cleanedPhone) &&
+    (debouncedPhone !== cleanedPhone || (eligibilityQuery.isFetching && !eligibilityQuery.data));
+  const hasExistingAccount = Boolean(eligibilityQuery.data?.has_account) && !eligibilityConflict;
+
+  const isStep0Valid =
+    isValidTenantName(data.tenantName) &&
+    isValidIndianPhone(data.tenantPhone) &&
+    isValidTenantEmail(data.tenantEmail) &&
+    !eligibilityConflict;
   const isStep1Valid = Boolean(data.hostelId && data.roomId && data.joiningDate && Number(data.agreementMonths) > 0);
   const isStep2Valid = Boolean(data.monthlyRent && Number(data.monthlyRent) >= 0);
   const isStep3Valid = Boolean(agreed && data.roomId && isStep0Valid && isStep1Valid && isStep2Valid);
@@ -189,6 +225,13 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
     reset,
     isSubmitting: inviteMutation.isPending,
     submitError: inviteMutation.isError ? getErrorMessage(inviteMutation.error, 'Could not send the invitation. Please try again.') : null,
+    // 409 safety net for the check→submit race (e.g. the number gets invited
+    // elsewhere between the debounced check and Submit) — same OWN/OTHER
+    // scoped card the pre-submit check already renders, built from the error.
+    submitConflict: inviteMutation.isError ? parseTenancyConflict(inviteMutation.error) : null,
+    eligibilityConflict,
+    isCheckingEligibility,
+    hasExistingAccount,
     // Fallback-email prompt
     fallbackEmail,
     setFallbackEmail,

@@ -42,7 +42,9 @@ export function HostelStaySummary({ hostelId, profileId, onViewFullHistory }: Ho
   return (
     <section className="rounded-2xl border border-border bg-card">
       <header className="flex items-center justify-between px-4 pb-1 pt-3.5">
-        <h3 className="font-display text-[15px] font-bold text-foreground">Previous stay</h3>
+        <h3 className="font-display text-[15px] font-bold text-foreground">
+          {relationship === 'ACTIVE_ELSEWHERE' ? 'Active elsewhere' : 'Previous stay'}
+        </h3>
         <HostelRelationshipBadge relationship={relationship} reason={data.reason} />
       </header>
 

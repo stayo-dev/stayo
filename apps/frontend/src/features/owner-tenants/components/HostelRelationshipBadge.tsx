@@ -7,6 +7,7 @@ const COPY: Record<Exclude<HostelRelationship, 'UNKNOWN'>, string> = {
   NEW: 'New to this hostel',
   CURRENT_TENANT: 'Currently a tenant here',
   PREVIOUS_TENANT: 'Previously stayed here',
+  ACTIVE_ELSEWHERE: 'Active tenant elsewhere',
 };
 
 const UNKNOWN_COPY: Record<DisclosedHistory['reason'], string> = {
@@ -41,8 +42,10 @@ export function HostelRelationshipBadge({
     );
   }
 
+  const tone = relationship === 'NEW' ? 'neutral' : relationship === 'ACTIVE_ELSEWHERE' ? 'warning' : 'info';
+
   return (
-    <StatusPill tone={relationship === 'NEW' ? 'neutral' : 'info'} variant="filter">
+    <StatusPill tone={tone} variant="filter">
       {COPY[relationship]}
     </StatusPill>
   );

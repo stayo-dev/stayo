@@ -98,6 +98,25 @@ export class TenancyEligibilityService {
     return result;
   }
 
+  /** Resolves an email/phone to a profile id, or null if no account exists. */
+  private async resolveProfileIdByContact(
+    contact: { email?: string | null; phone?: string | null },
+    tx?: any
+  ): Promise<string | null> {
+    const db = tx || prisma;
+    const email = contact.email?.trim().toLowerCase() || null;
+    const phone = contact.phone?.trim() || null;
+    if (!email && !phone) return null;
+
+    const profile = await db.profile.findFirst({
+      where: {
+        OR: [...(email ? [{ email }] : []), ...(phone ? [{ phone }] : [])],
+      },
+      select: { id: true },
+    });
+    return profile?.id ?? null;
+  }
+
   /**
    * Same question, asked before a profile exists — an owner typing an email or
    * phone number into the invite form. Resolves to a profile first; someone with
@@ -108,20 +127,10 @@ export class TenancyEligibilityService {
     invitingOwnerId: string | null,
     tx?: any
   ): Promise<TenancyEligibility> {
-    const db = tx || prisma;
-    const email = contact.email?.trim().toLowerCase() || null;
-    const phone = contact.phone?.trim() || null;
-    if (!email && !phone) return { eligible: true };
+    const profileId = await this.resolveProfileIdByContact(contact, tx);
+    if (!profileId) return { eligible: true };
 
-    const profile = await db.profile.findFirst({
-      where: {
-        OR: [...(email ? [{ email }] : []), ...(phone ? [{ phone }] : [])],
-      },
-      select: { id: true },
-    });
-    if (!profile) return { eligible: true };
-
-    return this.checkEligibility(profile.id, invitingOwnerId, tx);
+    return this.checkEligibility(profileId, invitingOwnerId, tx);
   }
 
   /** As `checkEligibilityByContact`, but throws a 409 the routes can serialise directly. */
@@ -133,6 +142,28 @@ export class TenancyEligibilityService {
     const result = await this.checkEligibilityByContact(contact, invitingOwnerId, tx);
     if (!result.eligible) throw new TenancyEligibilityError(result);
     return result;
+  }
+
+  /**
+   * The pre-submit answer to "can I invite this phone number?" — same rule,
+   * same OWN/OTHER disclosure scoping as `assertCanStartNewTenancyByContact`,
+   * but never throws and never mutates. Safe to call on every debounced
+   * keystroke in the invite wizard.
+   *
+   * `hasAccount` distinguishes "nobody found" (ordinary new-tenant flow) from
+   * "a Stayo account exists and is currently eligible" (shown as a light
+   * existing-account signal, never as history — see ADR-075).
+   */
+  async previewEligibilityByContact(
+    contact: { email?: string | null; phone?: string | null },
+    invitingOwnerId: string | null,
+    tx?: any
+  ): Promise<{ hasAccount: boolean; eligibility: TenancyEligibility }> {
+    const profileId = await this.resolveProfileIdByContact(contact, tx);
+    if (!profileId) return { hasAccount: false, eligibility: { eligible: true } };
+
+    const eligibility = await this.checkEligibility(profileId, invitingOwnerId, tx);
+    return { hasAccount: true, eligibility };
   }
 }
 

@@ -45,9 +45,9 @@ describe('classifyHostelRelationship', () => {
     expect(result).toEqual({ relationship: 'NEW', stay: null });
   });
 
-  it('returns NEW when stays exist but none match this hostel', () => {
+  it('returns NEW when stays exist but none match this hostel and none are live', () => {
     const result = classifyHostelRelationship(
-      history({ stays: [stay({ hostel: { id: HOSTEL_B, name: 'Hostel B', city: 'Pune' } })] }),
+      history({ stays: [stay({ hostel: { id: HOSTEL_B, name: 'Hostel B', city: 'Pune' }, is_current: false })] }),
       HOSTEL_A,
     );
     expect(result).toEqual({ relationship: 'NEW', stay: null });
@@ -78,5 +78,26 @@ describe('classifyHostelRelationship', () => {
     const live = stay({ id: 'stay-live', is_current: true, exit_date: null });
     const result = classifyHostelRelationship(history({ stays: [past, live] }), HOSTEL_A);
     expect(result).toEqual({ relationship: 'CURRENT_TENANT', stay: live });
+  });
+
+  // ACTIVE_ELSEWHERE — added for the invite/Leads-blocking feature (ADR-125):
+  // a live stay at a DIFFERENT hostel is what actually blocks an invite here,
+  // which the original NEW/CURRENT_TENANT/PREVIOUS_TENANT/UNKNOWN set had no
+  // way to express.
+  it('returns ACTIVE_ELSEWHERE for a live stay at a different hostel', () => {
+    const elsewhere = stay({
+      hostel: { id: HOSTEL_B, name: 'Hostel B', city: 'Pune' },
+      is_current: true,
+      exit_date: null,
+    });
+    const result = classifyHostelRelationship(history({ stays: [elsewhere] }), HOSTEL_A);
+    expect(result).toEqual({ relationship: 'ACTIVE_ELSEWHERE', stay: elsewhere });
+  });
+
+  it('prefers CURRENT_TENANT over ACTIVE_ELSEWHERE when both exist (the partial-unique-index guarantees only one live tenancy anyway, but the classifier should not depend on that)', () => {
+    const here = stay({ id: 'stay-here', hostel: { id: HOSTEL_A, name: 'Hostel A', city: 'Bangalore' }, is_current: true, exit_date: null });
+    const elsewhere = stay({ id: 'stay-elsewhere', hostel: { id: HOSTEL_B, name: 'Hostel B', city: 'Pune' }, is_current: false });
+    const result = classifyHostelRelationship(history({ stays: [here, elsewhere] }), HOSTEL_A);
+    expect(result).toEqual({ relationship: 'CURRENT_TENANT', stay: here });
   });
 });
