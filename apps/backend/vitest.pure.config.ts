@@ -100,6 +100,7 @@ export default defineConfig({
       'tests/tenant-transfer-authorization.test.ts',
       'tests/tenant-score-model.test.ts',
       'tests/tenant-identity.test.ts',
+      'tests/claim-eligibility.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),
