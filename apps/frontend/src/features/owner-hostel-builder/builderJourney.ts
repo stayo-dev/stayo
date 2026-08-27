@@ -1,4 +1,5 @@
 import type { BuilderStage } from './useHostelBuilder';
+import { agreementStepBlocker, type AgreementChoice } from './agreementSetup';
 
 /**
  * Where the owner is in the build, and how much is left.
@@ -26,7 +27,8 @@ const PHASES: Record<BuilderStage, string> = {
   name: 'Name',
   floors: 'Floors',
   fill: 'Rooms',
-  review: 'Done',
+  review: 'Review',
+  agreement: 'Agreement',
 };
 
 /** Where the Rooms phase starts and ends on the bar. */
@@ -64,7 +66,13 @@ export function builderJourney(
     };
   }
 
-  return { label: 'Review', phase, percent: 100 };
+  if (stage === 'review') {
+    // Not the last screen any more — the agreement decision follows it — so
+    // this no longer claims 100.
+    return { label: 'Review', phase, percent: 96 };
+  }
+
+  return { label: 'Agreement', phase, percent: 100 };
 }
 
 /**
@@ -77,7 +85,14 @@ export function builderJourney(
  */
 export function continueBlocker(
   stage: BuilderStage,
-  state: { hostelName: string; needsPassword: boolean; password: string; floorBlocker: string | null },
+  state: {
+    hostelName: string;
+    needsPassword: boolean;
+    password: string;
+    floorBlocker: string | null;
+    agreementChoice?: AgreementChoice;
+    hasSignature?: boolean;
+  },
 ): string | null {
   if (stage === 'name') {
     if (!state.hostelName.trim()) return 'Enter a name to continue';
@@ -85,5 +100,6 @@ export function continueBlocker(
     return null;
   }
   if (stage === 'fill') return state.floorBlocker;
+  if (stage === 'agreement') return agreementStepBlocker(state.agreementChoice ?? null, Boolean(state.hasSignature));
   return null;
 }
