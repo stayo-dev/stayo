@@ -1,6 +1,7 @@
 import { StatusPill, type StatusTone } from '@shared/ui-patterns/StatusPill';
 import type { MockTenant } from '@shared/mocks/tenants';
 import { TenantAvatar } from '@shared/ui/TenantAvatar';
+import { accessModeLabel } from '../accessMode';
 
 const TONE_BY_STATUS: Record<MockTenant['status'], StatusTone> = {
   active: 'success',
@@ -20,6 +21,9 @@ interface TenantRowProps {
 export function TenantRow({ tenant, onClick, showHostel }: TenantRowProps) {
   const meta = tenant.room === '—' ? `No room · ₹${tenant.rent.toLocaleString('en-IN')}/mo` : `Room ${tenant.room} · ₹${tenant.rent.toLocaleString('en-IN')}/mo`;
   const metaSuffix = tenant.kycStatus === 'Pending' || tenant.kycStatus === 'Not started' ? ' · docs pending' : '';
+  // States a fact about reach, not a tenancy status — kept off the status
+  // pill, beside the room/rent line instead.
+  const accessLabel = accessModeLabel(tenant.accessMode);
 
   return (
     <button
@@ -51,9 +55,16 @@ export function TenantRow({ tenant, onClick, showHostel }: TenantRowProps) {
           <div className="truncate text-[10px] font-bold uppercase tracking-wide text-primary/70">{tenant.hostelName}</div>
         )}
         <div className="truncate text-[13.5px] font-semibold text-foreground">{tenant.name}</div>
-        <div className="truncate text-[11.5px] text-muted-foreground">
-          {meta}
-          {metaSuffix}
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-[11.5px] text-muted-foreground">
+            {meta}
+            {metaSuffix}
+          </span>
+          {accessLabel && (
+            <StatusPill tone="neutral" className="flex-none">
+              {accessLabel}
+            </StatusPill>
+          )}
         </div>
       </div>
       <div className="flex flex-none flex-col items-end gap-1">

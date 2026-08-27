@@ -48,6 +48,7 @@ export function toTenantListItem(t: NormalizedTenant, hostelId: string, hostelNa
     paymentRatePercent: 0,
     agreementStatus: t.hasAgreement ? 'Signed' : 'Pending',
     kycStatus: t.documentVerified ? 'Verified' : 'Pending',
+    accessMode: t.accessMode,
     obligations: [],
     activity: [],
     documents: [],
