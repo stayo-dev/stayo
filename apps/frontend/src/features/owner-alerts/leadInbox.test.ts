@@ -3,12 +3,13 @@ import {
   ACTIONABLE_LEAD_STATUSES,
   SETTLED_LEAD_STATUSES,
   compareLeads,
-  groupIdFor,
-  groupLeads,
-  isGroupOpen,
-  primaryActionFor,
+  countLeadsByFilter,
+  filterLeads,
+  leadFilterFor,
+  leadMatchesFilter,
+  primaryActionForStatus,
   PRIMARY_ACTION_LABEL,
-  type LeadGroupId,
+  type LeadFilter,
 } from './leadInbox';
 import type { DynamicLead } from './hooks/useAlerts';
 
@@ -25,136 +26,123 @@ const lead = (over: Partial<DynamicLead> & Record<string, unknown> = {}): Dynami
     ...over,
   }) as DynamicLead;
 
-describe('groupIdFor', () => {
-  it('files every open status under Needs you', () => {
+describe('leadFilterFor', () => {
+  it('files every open status under New', () => {
     for (const status of ['NEW', 'INTERESTED', 'ROOM_VISITED', 'DECISION_PENDING', 'READY_TO_JOIN']) {
-      expect(groupIdFor(status)).toBe('needs_action');
+      expect(leadFilterFor(status)).toBe('new');
     }
   });
 
-  // The whole point of the redesign: ACCEPTED is half-finished work, not done.
-  it('keeps ACCEPTED separate from converted leads', () => {
-    expect(groupIdFor('ACCEPTED')).toBe('awaiting_invite');
-    expect(groupIdFor('INVITED')).toBe('converted');
-    expect(groupIdFor('JOINED')).toBe('converted');
+  // The whole point of the redesign: the UI's "Accepted" tab means the
+  // tenant joined, not that the owner said yes with no invite sent yet.
+  it('folds ACCEPTED into New rather than giving it its own tab', () => {
+    expect(leadFilterFor('ACCEPTED')).toBe('new');
   });
 
-  it('files held and closed leads under their own groups', () => {
-    expect(groupIdFor('ON_HOLD')).toBe('on_hold');
-    expect(groupIdFor('REJECTED')).toBe('closed');
-    expect(groupIdFor('LOST')).toBe('closed');
+  it('maps INVITED and JOINED to their own separate tabs', () => {
+    expect(leadFilterFor('INVITED')).toBe('invited');
+    expect(leadFilterFor('JOINED')).toBe('accepted');
+  });
+
+  it('maps held and rejected leads to their own tabs', () => {
+    expect(leadFilterFor('ON_HOLD')).toBe('hold');
+    expect(leadFilterFor('REJECTED')).toBe('rejected');
   });
 
   it('is case-insensitive', () => {
-    expect(groupIdFor('accepted')).toBe('awaiting_invite');
+    expect(leadFilterFor('accepted')).toBe('new');
+    expect(leadFilterFor('invited')).toBe('invited');
   });
 
-  // An enquiry must never vanish into a collapsed group because of a status
-  // this build has not heard of.
-  it('surfaces an unknown or missing status rather than hiding it', () => {
-    expect(groupIdFor('SOMETHING_NEW')).toBe('needs_action');
-    expect(groupIdFor(null)).toBe('needs_action');
-    expect(groupIdFor(undefined)).toBe('needs_action');
+  // An enquiry must never vanish because of a status this build has not
+  // heard of, or LOST (which nothing in this app's UI ever sets).
+  it('surfaces an unknown, missing, or LOST status under New rather than hiding it', () => {
+    expect(leadFilterFor('SOMETHING_NEW')).toBe('new');
+    expect(leadFilterFor('LOST')).toBe('new');
+    expect(leadFilterFor(null)).toBe('new');
+    expect(leadFilterFor(undefined)).toBe('new');
   });
 });
 
-describe('groupLeads', () => {
-  it('drops empty groups entirely', () => {
-    const groups = groupLeads([lead({ status: 'NEW' })]);
-    expect(groups.map((g) => g.id)).toEqual(['needs_action']);
+describe('leadMatchesFilter', () => {
+  it('matches everything under All', () => {
+    expect(leadMatchesFilter(lead({ status: 'REJECTED' }), 'all')).toBe(true);
+    expect(leadMatchesFilter(lead({ status: 'NEW' }), 'all')).toBe(true);
   });
 
-  it('orders groups by urgency, not by status name', () => {
-    const groups = groupLeads([
-      lead({ id: 'a', status: 'REJECTED' }),
-      lead({ id: 'b', status: 'INVITED' }),
-      lead({ id: 'c', status: 'ON_HOLD' }),
-      lead({ id: 'd', status: 'ACCEPTED' }),
-      lead({ id: 'e', status: 'NEW' }),
-    ]);
-    expect(groups.map((g) => g.id)).toEqual([
-      'needs_action',
-      'awaiting_invite',
-      'on_hold',
-      'converted',
-      'closed',
-    ]);
+  it('matches only its own tab otherwise', () => {
+    expect(leadMatchesFilter(lead({ status: 'ON_HOLD' }), 'hold')).toBe(true);
+    expect(leadMatchesFilter(lead({ status: 'ON_HOLD' }), 'new')).toBe(false);
+  });
+});
+
+describe('filterLeads', () => {
+  it('returns only the leads matching the given tab', () => {
+    const leads = [lead({ id: 'a', status: 'NEW' }), lead({ id: 'b', status: 'REJECTED' })];
+    expect(filterLeads(leads, 'new').map((l) => l.id)).toEqual(['a']);
+    expect(filterLeads(leads, 'rejected').map((l) => l.id)).toEqual(['b']);
   });
 
-  it('opens the two groups that need the owner and collapses the rest', () => {
-    const groups = groupLeads([
-      lead({ id: 'a', status: 'NEW' }),
-      lead({ id: 'b', status: 'ACCEPTED' }),
-      lead({ id: 'c', status: 'ON_HOLD' }),
-      lead({ id: 'd', status: 'INVITED' }),
-      lead({ id: 'e', status: 'LOST' }),
-    ]);
-    const open = Object.fromEntries(groups.map((g) => [g.id, g.defaultOpen]));
-    expect(open).toEqual({
-      needs_action: true,
-      awaiting_invite: true,
-      on_hold: false,
-      converted: false,
-      closed: false,
-    });
+  it('folds ACCEPTED leads in alongside open-status leads under New', () => {
+    const leads = [lead({ id: 'a', status: 'NEW' }), lead({ id: 'b', status: 'ACCEPTED' })];
+    expect(filterLeads(leads, 'new').map((l) => l.id).sort()).toEqual(['a', 'b']);
   });
 
-  it('names the awaiting group after the missing step, not the status', () => {
-    const [group] = groupLeads([lead({ status: 'ACCEPTED' })]);
-    expect(group.label).toMatch(/invitation not sent/i);
-    expect(group.hint).toMatch(/not tenants until the invitation goes out/i);
+  it('puts the hottest lead first under New', () => {
+    const leads = [lead({ id: 'cold', status: 'NEW', lead_score: 5 }), lead({ id: 'hot', status: 'NEW', lead_score: 60 })];
+    expect(filterLeads(leads, 'new').map((l) => l.id)).toEqual(['hot', 'cold']);
   });
 
-  it('loses no lead', () => {
-    const input = ['NEW', 'ACCEPTED', 'ON_HOLD', 'INVITED', 'JOINED', 'REJECTED', 'LOST'].map((status, i) =>
-      lead({ id: `l${i}`, status }),
-    );
-    const total = groupLeads(input).reduce((sum, g) => sum + g.leads.length, 0);
-    expect(total).toBe(input.length);
+  it('falls back to recency when scores tie, under New', () => {
+    const leads = [
+      lead({ id: 'older', status: 'NEW', lead_score: 10, last_activity_at: '2026-08-01T00:00:00Z' }),
+      lead({ id: 'newer', status: 'NEW', lead_score: 10, last_activity_at: '2026-08-20T00:00:00Z' }),
+    ];
+    expect(filterLeads(leads, 'new').map((l) => l.id)).toEqual(['newer', 'older']);
+  });
+
+  // Nothing outside New is being ranked — it is being looked up.
+  it('orders every other tab by recency alone, ignoring score', () => {
+    const leads = [
+      lead({ id: 'high', status: 'REJECTED', lead_score: 90, last_activity_at: '2026-08-01T00:00:00Z' }),
+      lead({ id: 'recent', status: 'REJECTED', lead_score: 1, last_activity_at: '2026-08-20T00:00:00Z' }),
+    ];
+    expect(filterLeads(leads, 'rejected').map((l) => l.id)).toEqual(['recent', 'high']);
+  });
+
+  it('orders All by recency, not by score', () => {
+    const leads = [
+      lead({ id: 'high', status: 'NEW', lead_score: 90, last_activity_at: '2026-08-01T00:00:00Z' }),
+      lead({ id: 'recent', status: 'NEW', lead_score: 1, last_activity_at: '2026-08-20T00:00:00Z' }),
+    ];
+    expect(filterLeads(leads, 'all').map((l) => l.id)).toEqual(['recent', 'high']);
+  });
+
+  it('falls back to created_at when there is no activity timestamp', () => {
+    const leads = [
+      lead({ id: 'older', status: 'REJECTED', created_at: '2026-08-01T00:00:00Z' }),
+      lead({ id: 'newer', status: 'REJECTED', created_at: '2026-08-20T00:00:00Z' }),
+    ];
+    expect(filterLeads(leads, 'rejected').map((l) => l.id)).toEqual(['newer', 'older']);
+  });
+
+  it('treats a missing or unparseable date as oldest rather than throwing', () => {
+    const leads = [
+      lead({ id: 'broken', status: 'REJECTED', last_activity_at: 'not-a-date' }),
+      lead({ id: 'real', status: 'REJECTED', last_activity_at: '2026-08-20T00:00:00Z' }),
+    ];
+    expect(filterLeads(leads, 'rejected').map((l) => l.id)).toEqual(['real', 'broken']);
   });
 
   it('does not mutate the array it was given', () => {
     const input = [lead({ id: 'a', status: 'NEW', lead_score: 1 }), lead({ id: 'b', status: 'NEW', lead_score: 9 })];
     const before = input.map((l) => l.id);
-    groupLeads(input);
+    filterLeads(input, 'new');
     expect(input.map((l) => l.id)).toEqual(before);
   });
 });
 
-describe('compareLeads — ordering inside a group', () => {
-  it('puts the hottest lead first in Needs you', () => {
-    const groups = groupLeads([
-      lead({ id: 'cold', status: 'NEW', lead_score: 5 }),
-      lead({ id: 'hot', status: 'NEW', lead_score: 60 }),
-    ]);
-    expect(groups[0].leads.map((l) => l.id)).toEqual(['hot', 'cold']);
-  });
-
-  it('falls back to recency when scores tie', () => {
-    const groups = groupLeads([
-      lead({ id: 'older', status: 'NEW', lead_score: 10, last_activity_at: '2026-08-01T00:00:00Z' }),
-      lead({ id: 'newer', status: 'NEW', lead_score: 10, last_activity_at: '2026-08-20T00:00:00Z' }),
-    ]);
-    expect(groups[0].leads.map((l) => l.id)).toEqual(['newer', 'older']);
-  });
-
-  // Nothing in a settled group is being ranked — it is being looked up.
-  it('orders the other groups by recency alone, ignoring score', () => {
-    const groups = groupLeads([
-      lead({ id: 'high', status: 'REJECTED', lead_score: 90, last_activity_at: '2026-08-01T00:00:00Z' }),
-      lead({ id: 'recent', status: 'REJECTED', lead_score: 1, last_activity_at: '2026-08-20T00:00:00Z' }),
-    ]);
-    expect(groups[0].leads.map((l) => l.id)).toEqual(['recent', 'high']);
-  });
-
-  it('falls back to created_at when there is no activity timestamp', () => {
-    const groups = groupLeads([
-      lead({ id: 'older', status: 'REJECTED', created_at: '2026-08-01T00:00:00Z' }),
-      lead({ id: 'newer', status: 'REJECTED', created_at: '2026-08-20T00:00:00Z' }),
-    ]);
-    expect(groups[0].leads.map((l) => l.id)).toEqual(['newer', 'older']);
-  });
-
+describe('compareLeads', () => {
   // Without a final tiebreak the list can reorder between renders, which reads
   // as the page moving under the owner's finger.
   it('is stable when everything ties', () => {
@@ -163,73 +151,79 @@ describe('compareLeads — ordering inside a group', () => {
     expect(compareLeads(a, b, true)).toBeLessThan(0);
     expect(compareLeads(b, a, true)).toBeGreaterThan(0);
   });
+});
 
-  it('treats a missing or unparseable date as oldest rather than throwing', () => {
-    const groups = groupLeads([
-      lead({ id: 'broken', status: 'REJECTED', last_activity_at: 'not-a-date' }),
-      lead({ id: 'real', status: 'REJECTED', last_activity_at: '2026-08-20T00:00:00Z' }),
-    ]);
-    expect(groups[0].leads.map((l) => l.id)).toEqual(['real', 'broken']);
+describe('countLeadsByFilter', () => {
+  it('sums to the total under All', () => {
+    const leads = [lead({ id: 'a', status: 'NEW' }), lead({ id: 'b', status: 'ON_HOLD' }), lead({ id: 'c', status: 'REJECTED' })];
+    const counts = countLeadsByFilter(leads);
+    expect(counts.all).toBe(3);
+  });
+
+  it('combines open-status and ACCEPTED leads under New', () => {
+    const leads = [lead({ id: 'a', status: 'NEW' }), lead({ id: 'b', status: 'ACCEPTED' }), lead({ id: 'c', status: 'INTERESTED' })];
+    const counts = countLeadsByFilter(leads);
+    expect(counts.new).toBe(3);
+    expect(counts.accepted).toBe(0);
+  });
+
+  it('counts each other tab independently', () => {
+    const leads = [
+      lead({ id: 'a', status: 'ON_HOLD' }),
+      lead({ id: 'b', status: 'JOINED' }),
+      lead({ id: 'c', status: 'INVITED' }),
+      lead({ id: 'd', status: 'REJECTED' }),
+    ];
+    const counts = countLeadsByFilter(leads);
+    expect(counts).toMatchObject({ hold: 1, accepted: 1, invited: 1, rejected: 1 });
   });
 });
 
-describe('primaryActionFor', () => {
-  it('gives each actionable group its actual next step', () => {
-    expect(primaryActionFor('needs_action')).toBe('accept_invite');
-    expect(primaryActionFor('awaiting_invite')).toBe('finish_invite');
-    expect(primaryActionFor('on_hold')).toBe('review');
+describe('primaryActionForStatus', () => {
+  it('gives an open-status lead the accept-and-invite action', () => {
+    for (const status of ['NEW', 'INTERESTED', 'ROOM_VISITED', 'DECISION_PENDING', 'READY_TO_JOIN']) {
+      expect(primaryActionForStatus(status)).toBe('accept_invite');
+    }
   });
 
-  // The old list offered WhatsApp on every card, including leads with nothing
+  it('gives a legacy-ACCEPTED lead the finish-invite action, distinct from a brand-new lead', () => {
+    expect(primaryActionForStatus('ACCEPTED')).toBe('finish_invite');
+  });
+
+  it('gives a held lead the review action', () => {
+    expect(primaryActionForStatus('ON_HOLD')).toBe('review');
+  });
+
+  // The old card offered WhatsApp on every lead, including ones with nothing
   // left to discuss.
-  it('gives a finished lead no primary button at all', () => {
-    expect(primaryActionFor('converted')).toBeNull();
-    expect(primaryActionFor('closed')).toBeNull();
+  it('gives a settled lead no primary button at all', () => {
+    for (const status of ['INVITED', 'JOINED', 'REJECTED', 'LOST']) {
+      expect(primaryActionForStatus(status)).toBeNull();
+    }
   });
 
   it('has a label for every action it can return', () => {
-    for (const group of ['needs_action', 'awaiting_invite', 'on_hold'] as LeadGroupId[]) {
-      const action = primaryActionFor(group)!;
+    for (const status of ['NEW', 'ACCEPTED', 'ON_HOLD']) {
+      const action = primaryActionForStatus(status)!;
       expect(PRIMARY_ACTION_LABEL[action]).toBeTruthy();
     }
   });
 });
 
-describe('isGroupOpen', () => {
-  const collapsed = groupLeads([lead({ status: 'REJECTED' })])[0];
-  const expanded = groupLeads([lead({ status: 'NEW' })])[0];
-
-  it('follows the default when untouched and not searching', () => {
-    expect(isGroupOpen(collapsed, {}, false)).toBe(false);
-    expect(isGroupOpen(expanded, {}, false)).toBe(true);
-  });
-
-  // Typing a name, seeing the count say 1, and finding nothing on screen makes
-  // the search look broken.
-  it('opens a collapsed group while a search is running', () => {
-    expect(isGroupOpen(collapsed, {}, true)).toBe(true);
-  });
-
-  it('lets the owner override in either direction, search or not', () => {
-    expect(isGroupOpen(collapsed, { closed: true }, false)).toBe(true);
-    expect(isGroupOpen(expanded, { needs_action: false }, false)).toBe(false);
-    expect(isGroupOpen(collapsed, { closed: false }, true)).toBe(false);
-  });
-});
-
-// The fetch splits the inbox in two; the grouping splits it in five. If the
-// two ever disagree, a lead is fetched into a group that does not exist or —
-// worse — never fetched at all.
-describe('the fetch sets agree with the grouping', () => {
-  it('sends every actionable status to an open-by-default group', () => {
+// The fetch splits the inbox in two; the filters split it in six. If the two
+// ever disagree, a lead is fetched into a tab that does not exist or — worse
+// — never fetched at all.
+describe('the fetch sets agree with the filters', () => {
+  it('sends every actionable status to New or Hold', () => {
     for (const status of ACTIONABLE_LEAD_STATUSES) {
-      expect(['needs_action', 'awaiting_invite', 'on_hold']).toContain(groupIdFor(status));
+      expect(['new', 'hold'] as LeadFilter[]).toContain(leadFilterFor(status));
     }
   });
 
-  it('sends every settled status to a collapsed group', () => {
+  it('sends every settled status except LOST to Accepted, Invited, or Rejected', () => {
     for (const status of SETTLED_LEAD_STATUSES) {
-      expect(['converted', 'closed']).toContain(groupIdFor(status));
+      if (status === 'LOST') continue;
+      expect(['accepted', 'invited', 'rejected'] as LeadFilter[]).toContain(leadFilterFor(status));
     }
   });
 

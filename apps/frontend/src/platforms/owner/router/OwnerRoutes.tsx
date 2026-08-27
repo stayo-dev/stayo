@@ -45,6 +45,12 @@ const RetiredToMealPlan = lazy(() => import('@features/owner-food/pages/RetiredF
 const KitchenSheetPage = lazy(() => import('@features/owner-food/pages/KitchenSheetPage').then((m) => ({ default: m.KitchenSheetPage })));
 const FoodPollsPage = lazy(() => import('@features/owner-food/pages/FoodPollsPage').then((m) => ({ default: m.FoodPollsPage })));
 const AlertsPage = lazy(() => import('@features/owner-alerts/pages/AlertsPage').then((m) => ({ default: m.AlertsPage })));
+const AlertsLeadsPage = lazy(() => import('@features/owner-alerts/pages/AlertsLeadsPage').then((m) => ({ default: m.AlertsLeadsPage })));
+const AlertsAnnouncementsPage = lazy(() =>
+  import('@features/owner-alerts/pages/AlertsAnnouncementsPage').then((m) => ({ default: m.AlertsAnnouncementsPage })),
+);
+const AlertsRenewalsPage = lazy(() => import('@features/owner-alerts/pages/AlertsRenewalsPage').then((m) => ({ default: m.AlertsRenewalsPage })));
+const AlertsRequestsPage = lazy(() => import('@features/owner-alerts/pages/AlertsRequestsPage').then((m) => ({ default: m.AlertsRequestsPage })));
 const MoreSettingsPage = lazy(() => import('@features/owner-more/pages/MoreSettingsPage').then((m) => ({ default: m.MoreSettingsPage })));
 const MoreProfilePage = lazy(() => import('@features/owner-more/pages/MoreProfilePage').then((m) => ({ default: m.MoreProfilePage })));
 const MoreHostelIdentityPage = lazy(() =>
@@ -233,6 +239,17 @@ export function OwnerRoutes() {
       <Route path="/owner/tenants/verifications" element={<PendingVerificationsPage />} />
       <Route path="/owner/tenants/activations" element={<PendingActivationsPage />} />
       <Route path="/owner/tenants/:tenantId" element={<TenantDetailPage />} />
+
+      {/* Alerts categories — full-screen takeovers with their own back
+          button, same treatment as Tenant Detail. Static per-category routes
+          rather than a single `/owner/alerts/:category`: Leads has grouping
+          + a detail sheet + pagination while the other three are simple flat
+          lists, so a shared dynamic page would need the same internal
+          branching anyway. */}
+      <Route path="/owner/alerts/leads" element={<AlertsLeadsPage />} />
+      <Route path="/owner/alerts/announcements" element={<AlertsAnnouncementsPage />} />
+      <Route path="/owner/alerts/renewals" element={<AlertsRenewalsPage />} />
+      <Route path="/owner/alerts/requests" element={<AlertsRequestsPage />} />
 
       {/* Add Hostel — a full-screen build flow, not a drilldown tab. Declared
           before the drilldown so `/owner/hostels/new` is not read as a hostel

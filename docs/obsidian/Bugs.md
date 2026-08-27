@@ -8,6 +8,50 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-08-26 — `visitor_leads.status` could never actually reach JOINED (fixed)
+
+**Found** during a UI redesign of the Leads tab's filter tabs — defining a new "Accepted" tab meaning "tenant joined" required tracing what actually sets that status, and the answer was nothing. `admissionsService.markJoinedForTenant(tenantId)` existed (`admissions-service.ts`) with a correct, tested-looking implementation, but grepping the entire codebase turned up zero callers.
+
+**Area:** [[Backend]] — `apps/backend/src/services/admissions/admissions-service.ts`, `apps/backend/src/services/tenants/tenant-invitation-lifecycle-service.ts`
+
+**Root cause:** several places already read `visitor_leads.status === "JOINED"` as if it were a real, populated value — funnel/stats aggregations in `admissions-service.ts` (today's-joins counter, QR-source revenue, per-source funnel breakdown), `lead-transition-guards.ts`'s terminal-status check (refuses re-accepting/holding/rejecting a `JOINED` lead), and `discovery-service.ts`'s seeker-facing `toEnquiryStage()` (maps `JOINED`/`INVITED` to `"ACCEPTED"` for the enquirer's own 3-step view). None of them ever wrote it. The tenant-activation-completion flow (`TenantInvitationLifecycleService.completeActivation()`) flips the tenant's own status to `ACTIVE` but never touched the lead that led to that tenant — `markJoinedForTenant` had presumably been written in anticipation of a call site that was never added.
+
+**Fix:** wired `completeActivation()` to call the (renamed/relocated) `markLeadJoinedForTenant(tenant.id, tx)` inside its own `prisma.$transaction`, immediately after the tenant's `ACTIVE` flip, so a lead's `JOINED` status and its tenant's `ACTIVE` status can never diverge across a crash between the two writes. Moved to a small leaf module (`lead-joined-transition.ts`) rather than called directly from `admissions-service.ts`, to avoid a real import cycle (`admissions-service.ts` → `invitation-service.ts` → `tenant-invitation-lifecycle-service.ts` → back to `admissions-service.ts`) that a naive direct call would have created — see [[Decisions#ADR-122|ADR-122]].
+
+**Lesson:** several independent readers agreeing on what a status *should* mean is not evidence anything writes it — the only way this surfaced was tracing the producer/consumer relationship directly (grep for callers), not by reading any one call site in isolation. Worth grepping for zero-caller service methods generally when a status enum has a value nothing seems to reach in practice.
+
+**See:** [[Business-Rules]], [[Features]], [[Decisions#ADR-122|ADR-122]], [[Changelog]]
+
+## 2026-08-26 — Discover listing's "Starting from" price could show a number matching none of the bed tiers below it (fixed)
+
+**Found** live-testing the same Discover listing page (`Sri Adithya Boys Hostel`, hostel id `79ba709b-fc27-42bd-9d7b-02bac79431b5`) while verifying an unrelated layout change — the sticky price card read "Starting from ₹8,000" while "Choose your bed" below listed tiers at ₹12,000, ₹7,000, and ₹8,500. None of the three matched the advertised "starting" price, and the true minimum (₹7,000) was understated by ₹1,000.
+
+**Area:** [[Frontend]] — `apps/frontend/src/app/pages/discover/ListingPage.tsx` (`displayPrice` computation, read by both the desktop `<aside>` and the mobile sticky bar)
+
+**Root cause:** `displayPrice` fell back to `hostel.starting_price` — a separate field returned by the Discover search/detail API — whenever no bed tier was explicitly selected (the default, unselected state most visitors see). Nothing cross-checked that field against `bedOptions`, the same array "Choose your bed" renders from, so the two could disagree with no code path forcing them back into sync.
+
+**Fix:** `displayPrice` now computes `Math.min()` over `bedOptions` directly — preferring tiers with `availableBeds > 0` (so the advertised price is never one a visitor can't actually book), falling back to the true minimum only if every tier is full, and to `hostel.starting_price` only if `bedOptions` has no priced tiers at all. Both surfaces that read `displayPrice` (desktop aside, mobile sticky bar) picked up the fix automatically since neither computes price independently.
+
+**Lesson:** the same "two surfaces derive the same number independently and drift" pattern documented for financial data in [[Business-Rules]] (`financial-read-model-service.ts`'s compose-don't-recalculate rule) applies just as much to marketing/pricing fields — `starting_price` and `bedOptions` are two paths to the same fact with no shared source, and only one of them is the one already rendered on screen.
+
+**See:** [[Frontend]], [[Changelog]]
+
+## 2026-08-26 — Two same-capacity bed tiers on the Discover listing page couldn't be told apart (fixed)
+
+**Found** live-testing the Discover listing page against production data (`Sri Adithya Boys Hostel`, hostel id `79ba709b-fc27-42bd-9d7b-02bac79431b5`) — the browser console logged "Encountered two children with the same key, `4`" on page load, which turned out to be the visible edge of a real selection bug, not just a lint-level warning.
+
+**Area:** [[Frontend]] — `apps/frontend/src/app/pages/discover/ListingPage.tsx` (`bedOptions` derivation, the "Choose your bed" section)
+
+**Symptom:** The hostel had published three marketing bed tiers via `data.bed_tiers` — "2-bed", "4 Sharing" (₹7,000), and "Ground floor 4-bed" (₹8,500) — the latter two both `sharing: 4`. Both buttons rendered fine individually, but clicking either one lit up **both** as active simultaneously, and the resolved `selectedOption` (price, label) always came from whichever of the two came first in the array — the ₹8,500 tier was functionally unselectable.
+
+**Root cause:** `bedOptions` derived from `bed_tiers` mapped each tier to `{ capacity: tier.sharing, ... }`, and the JSX keyed/selected buttons purely by `option.capacity` (`key={option.capacity}`, `selected: number | null` holding the capacity, `bedOptions.find(option => option.capacity === selected)`). `capacity` alone was never a unique identity — the bug only surfaces on a hostel with two real tiers of the same bed count, which no dev/test fixture happened to have.
+
+**Fix:** Selection changed from "by capacity" to "by array position": `selected` now holds the tier's index into `bedOptions`, the button key is `` `${option.capacity}-${index}` ``, and `selectedOption` is a direct `bedOptions[selected]` lookup instead of a `.find()` by capacity. Downstream consumers (`selectedOption.price/label/capacity`, the enquiry navigation state) were untouched since they already read off the resolved `selectedOption` object, not the index.
+
+**Lesson:** a derived list's "obvious" natural key (here, bed count) is only safe when the source guarantees uniqueness — the backend never promised distinct `sharing` values across tiers, and nothing before now had exercised a hostel that used that freedom.
+
+**See:** [[Frontend]], [[Changelog]]
+
 ## 2026-08-26 — Every brand-new Meal Plan cell 400'd on its first-ever edit, invisibly (fixed)
 
 **Found** while live-verifying [[Decisions#ADR-121|ADR-121]]'s multi-zone grid against the real dev backend — a tap-to-add that visibly placed a dish and never reverted, yet a direct database check moments later showed the cell untouched (`updated_at: null`, no items). Not a symptom anyone had reported; the optimistic UI hid it completely.
