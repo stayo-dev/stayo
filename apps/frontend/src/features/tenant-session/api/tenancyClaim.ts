@@ -41,12 +41,25 @@ export const tenancyClaimApi = {
     return unwrap(response);
   },
 
-  verifyOtp: async (phone: string, otp: string): Promise<void> => {
-    await api.post('/auth/verify-phone-otp', { phone, otp, purpose: CLAIM_OTP_PURPOSE });
+  /**
+   * SECURITY (final security review, finding 1): the backend now returns a
+   * single-use `claim_token` bound to this exact OTP row when purpose is
+   * `TENANCY_CLAIM` — the caller must present it, unchanged, to both
+   * `lookup` and `confirm` below or they 401 with `OTP_PROOF_REQUIRED`, even
+   * with an otherwise-fresh verified code. `ClaimTenancyPage` stores this in
+   * `state.claimToken` (`VERIFY_OTP_SUCCEEDED`) and threads it through.
+   */
+  verifyOtp: async (phone: string, otp: string): Promise<{ claimToken: string | null }> => {
+    const response = await api.post('/auth/verify-phone-otp', { phone, otp, purpose: CLAIM_OTP_PURPOSE });
+    const data = unwrap(response);
+    return { claimToken: typeof data?.claim_token === 'string' ? data.claim_token : null };
   },
 
-  lookup: async (phone: string): Promise<ClaimTenancy[]> => {
-    const response = await api.post('/tenancy-claim/lookup', { phone });
+  lookup: async (phone: string, claimToken: string | null): Promise<ClaimTenancy[]> => {
+    const response = await api.post('/tenancy-claim/lookup', {
+      phone,
+      ...(claimToken ? { claim_token: claimToken } : {}),
+    });
     const data = unwrap(response);
     return Array.isArray(data?.tenancies) ? data.tenancies : [];
   },
@@ -54,6 +67,7 @@ export const tenancyClaimApi = {
   confirm: async (input: {
     phone: string;
     tenantId: string;
+    claimToken: string | null;
     acknowledgements: Acknowledgements;
     typedSignatureName: string;
     name?: string;
@@ -70,6 +84,7 @@ export const tenancyClaimApi = {
     const response = await api.post('/tenancy-claim/confirm', {
       phone: input.phone,
       tenant_id: input.tenantId,
+      ...(input.claimToken ? { claim_token: input.claimToken } : {}),
       acknowledgements: input.acknowledgements,
       typed_signature_name: input.typedSignatureName,
       ...(input.name?.trim() ? { name: input.name.trim() } : {}),

@@ -16,6 +16,7 @@ import {
   recordOtpSendFailure,
   recordOtpSendSuccess,
 } from "@/lib/services/auth/otp-provider-breaker";
+import { CLAIM_OTP_PURPOSE, generateClaimProofToken } from "@/lib/tenants/claim-eligibility";
 
 const logger = getLogger("auth.otp-service");
 
@@ -343,6 +344,16 @@ export class AuthOtpService {
         throw new OtpServiceError("Invalid OTP", "OTP_INVALID", 400);
       }
 
+      // SECURITY (tenancy-claim final review, finding 1): a claim-purpose
+      // verification mints a single-use claim-proof token here, bound to
+      // this exact OTP row, so that `tenancy-claim-service.ts`'s `lookup`
+      // and `confirm` can require the caller to be whoever actually
+      // answered the code — not just whoever next asks about this phone
+      // number. See `claim-eligibility.ts`'s module comment for the full
+      // rationale. Every other purpose is untouched: `claimProofToken` is
+      // null and nothing about this row or the response changes for them.
+      const claimProofToken = input.purpose === CLAIM_OTP_PURPOSE ? generateClaimProofToken() : null;
+
       const profilePhones = profilePhoneCandidates(phone);
       const result = await prisma.$transaction(async (tx: any) => {
         const verified = await (tx as any).phoneVerificationOtp.updateMany({
@@ -351,6 +362,7 @@ export class AuthOtpService {
             status: "VERIFIED",
             verified_at: now,
             provider_status: "VERIFIED",
+            ...(claimProofToken ? { failure_reason: claimProofToken.storedValue } : {}),
           },
         });
 
@@ -390,6 +402,10 @@ export class AuthOtpService {
         success: true,
         phone_verified: true,
         profile_updated: result.profileUpdated,
+        // Present only for CLAIM_OTP_PURPOSE — see the comment above.
+        // Plaintext, returned exactly this once; only its hash is ever
+        // persisted.
+        ...(claimProofToken ? { claim_token: claimProofToken.token } : {}),
       };
     } finally {
       await releaseOneTimeLock(lockKey);

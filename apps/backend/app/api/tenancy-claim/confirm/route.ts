@@ -78,6 +78,7 @@ export async function POST(req: NextRequest) {
     const result = await tenancyClaimService.confirm({
       tenantId: validated.data.tenant_id,
       phone: validated.data.phone,
+      claimToken: validated.data.claim_token,
       profileId,
       requestIp: getRequestIp(req),
       requestUserAgent: req.headers.get("user-agent"),

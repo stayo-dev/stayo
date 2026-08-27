@@ -6,7 +6,12 @@ import { normalizeIndianPhone } from "@/lib/utils/phone-utils";
 import { maskWhatsAppPhone, normalizeWhatsAppPhone } from "@/lib/services/notifications/providers/whatsapp";
 import { checkFixedWindowLimit } from "@/lib/redis/rate-limit";
 import { resolveTenantName } from "@/lib/tenants/tenant-identity";
-import { CLAIM_OTP_PURPOSE, isClaimable, isOtpProofValid } from "@/lib/tenants/claim-eligibility";
+import {
+  CLAIM_OTP_PURPOSE,
+  isClaimable,
+  isClaimProofTokenValid,
+  isOtpProofValid,
+} from "@/lib/tenants/claim-eligibility";
 import { hashPassword } from "@/lib/auth";
 import { getActiveTenancy } from "@/lib/tenancy/active-tenancy";
 import {
@@ -134,26 +139,47 @@ async function enforceClaimRateLimits(scope: "lookup" | "confirm", phone: string
  *
  * Read-only: this must never be the thing that extends a proof's life —
  * `lookup` calls this same function and must not refresh or touch the row.
+ *
+ * `failure_reason` is selected because, for a `CLAIM_OTP_PURPOSE` row, it
+ * doubles as the claim-proof token hash (see `claim-eligibility.ts`'s
+ * `CLAIM_TOKEN_HASH_PREFIX`) — not because anything here cares about an
+ * actual failure reason.
  */
 export async function loadClaimOtpProof(db: any, canonicalPhone: string) {
   const otpPhone = normalizeWhatsAppPhone(canonicalPhone);
   return db.phoneVerificationOtp.findFirst({
     where: { phone: otpPhone, purpose: CLAIM_OTP_PURPOSE },
     orderBy: { created_at: "desc" },
-    select: { id: true, status: true, purpose: true, verified_at: true },
+    select: { id: true, status: true, purpose: true, verified_at: true, failure_reason: true },
   });
 }
 
 /**
  * Throws `OTP_PROOF_REQUIRED` unless a fresh, verified claim-purpose OTP
- * exists; otherwise returns that row so the caller can later consume the
- * *same* row it just validated (see `consumeClaimProof`) rather than
- * re-querying "most recent" a second time, which could resolve to a
+ * exists *and* `presentedClaimToken` matches the token that was handed to
+ * whoever verified it — otherwise returns that row so the caller can later
+ * consume the *same* row it just validated (see `consumeClaimProof`) rather
+ * than re-querying "most recent" a second time, which could resolve to a
  * different row if a new OTP was requested in between.
+ *
+ * SECURITY (final security review, finding 1): the token check is what
+ * stops an attacker who merely knows the victim's phone number from riding
+ * the victim's own OTP verification — see `claim-eligibility.ts`'s module
+ * comment for the full attack this closes. Both `lookup` and `confirm` call
+ * this, so neither is usable without the token.
  */
-export async function assertValidClaimProof(db: any, canonicalPhone: string, now: Date) {
+export async function assertValidClaimProof(
+  db: any,
+  canonicalPhone: string,
+  presentedClaimToken: string | null | undefined,
+  now: Date,
+) {
   const proof = await loadClaimOtpProof(db, canonicalPhone);
-  if (!proof || !isOtpProofValid(proof, now)) {
+  if (
+    !proof ||
+    !isOtpProofValid(proof, now) ||
+    !isClaimProofTokenValid(proof.failure_reason, presentedClaimToken)
+  ) {
     throw new TenancyClaimError(
       "This phone number has not been freshly verified. Request a new code and verify it before continuing.",
       "OTP_PROOF_REQUIRED",
@@ -193,6 +219,11 @@ const TENANT_CLAIM_SELECT = {
   owner_id: true,
   access_mode: true,
   status: true,
+  // SECURITY (final security review, finding 2): needed by `isClaimable` —
+  // a tenancy already bound to a profile (e.g. a half-activated tenancy
+  // `startActivation` bound and Phase 1's `adopt` then picked up, gated on
+  // `status` alone) must not be silently re-bound to a second claimant.
+  profile_id: true,
   display_name: true,
   phone_1: true,
   joined_on: true,
@@ -329,14 +360,18 @@ export const tenancyClaimService = {
    * matches are also legitimate (different hostels, or a past and present
    * stay under the same number) and the caller shows a picker.
    */
-  async lookup(params: { phone: string; requestIp?: string | null }) {
+  async lookup(params: { phone: string; claimToken?: string | null; requestIp?: string | null }) {
     const canonicalPhone = normalizeIndianPhone(params.phone);
     if (!canonicalPhone) {
       throw new TenancyClaimError("Invalid phone number", "VALIDATION_ERROR", 400);
     }
 
     await enforceClaimRateLimits("lookup", canonicalPhone, getRequestIpForRateLimit(params.requestIp));
-    await assertValidClaimProof(prisma, canonicalPhone, new Date());
+    // SECURITY (final security review, finding 1): requires the claim-proof
+    // token, not just a fresh verified OTP for this phone — otherwise an
+    // attacker who merely knows the victim's number could poll this
+    // endpoint as an oracle for `tenant_id` the instant the victim verifies.
+    await assertValidClaimProof(prisma, canonicalPhone, params.claimToken, new Date());
 
     const tenants = await prisma.tenants.findMany({
       where: { phone_1: canonicalPhone },
@@ -362,6 +397,13 @@ export const tenancyClaimService = {
     tenantId: string;
     phone: string;
     profileId?: string | null;
+    /**
+     * SECURITY (final security review, finding 1): required, same as
+     * `lookup` — the exact token handed back when this phone's claim OTP
+     * was verified. Without it, `assertValidClaimProof` refuses with
+     * `OTP_PROOF_REQUIRED` even for an otherwise-fresh, verified proof.
+     */
+    claimToken?: string | null;
     requestIp?: string | null;
     requestUserAgent?: string | null;
     /** Must have every key in `REQUIRED_ACKNOWLEDGEMENTS` set to exactly `true`. */
@@ -432,8 +474,11 @@ export const tenancyClaimService = {
 
         // 1. Re-validate the OTP proof independently — never trust that
         //    lookup ran. Keep the validated row so step 6 consumes this
-        //    exact row, not whatever "most recent" resolves to later.
-        const proof = await assertValidClaimProof(tx, canonicalPhone, now);
+        //    exact row, not whatever "most recent" resolves to later. Also
+        //    re-validates the claim-proof token (finding 1) inside this same
+        //    transaction, immediately before it's spent in step 6 — never
+        //    trust that `lookup`'s earlier token check still holds.
+        const proof = await assertValidClaimProof(tx, canonicalPhone, params.claimToken, now);
 
         // 2. Reload the tenancy and re-check eligibility + phone ownership.
         //    The owner may have edited the phone between lookup and confirm;
@@ -441,13 +486,16 @@ export const tenancyClaimService = {
         //    freshly-reloaded row, not anything cached from lookup. A
         //    missing tenancy and a no-longer-claimable one collapse to the
         //    same response — a 404 vs 409 split would let a caller probe
-        //    which UUIDs are real tenancies.
+        //    which UUIDs are real tenancies. `params.profileId ?? null` lets
+        //    an already-signed-in caller re-confirm a tenancy already bound
+        //    to their own profile (finding 2) without being refused by the
+        //    same check that blocks a second claimant from displacing it.
         const tenant = await tx.tenants.findUnique({
           where: { id: tenantId },
           select: TENANT_CLAIM_SELECT,
         });
         const tenantPhone = tenant ? normalizeIndianPhone(tenant.phone_1) : null;
-        if (!tenant || !isClaimable(tenant) || tenantPhone !== canonicalPhone) {
+        if (!tenant || !isClaimable(tenant, params.profileId ?? null) || tenantPhone !== canonicalPhone) {
           throw new TenancyClaimError(
             "This tenancy can no longer be claimed with this phone number",
             "NOT_CLAIMABLE",
@@ -536,11 +584,21 @@ export const tenancyClaimService = {
         // inside the transaction, is what lets an ordinary `/api/auth/login`
         // retry work later even if the Supabase session-mint step after
         // commit fails — see the comment on that step below.
+        //
+        // `is_active: true` rides along too (finding 3): a reused shell
+        // profile from `startActivation` is written `is_active: false`, and
+        // this is exactly the branch that reuses one. Without this, the
+        // claim and its first session (minted below, after commit) succeed,
+        // but every *later* login throws `FORBIDDEN: Account is disabled`
+        // (`authService.login` checks `is_active`, but this update never
+        // set it). A brand-new profile is already `is_active: true` (see the
+        // create branch above), so this is a harmless re-write there.
         if (
           profile.phone !== canonicalPhone ||
           !profile.mobile_verified ||
           !profile.phone_verified ||
-          passwordHash
+          passwordHash ||
+          !profile.is_active
         ) {
           try {
             profile = await tx.profile.update({
@@ -549,6 +607,7 @@ export const tenancyClaimService = {
                 phone: canonicalPhone,
                 mobile_verified: true,
                 phone_verified: true,
+                is_active: true,
                 ...(passwordHash ? { password_hash: passwordHash } : {}),
               },
             });
@@ -742,7 +801,13 @@ export const tenancyClaimService = {
       // the successful claim result without a `session` instead. The
       // frontend falls back to routing the claimant to `/login`, where an
       // ordinary password login (which itself calls `ensureSupabaseIdentity`
-      // again) self-heals the Supabase side once it's reachable. Retrying
+      // again) self-heals the Supabase side — but only while `auth_user_id`
+      // is still null: `ensureSupabaseIdentity` returns early the moment
+      // it's set (`lib/auth/supabase-identity.ts`: `if (profile.auth_user_id)
+      // return profile.auth_user_id;`), so once some *other* successful
+      // login links the identity first, this profile's Supabase password
+      // stops being pushed on every subsequent login, not just this one —
+      // there is no login-triggered retry of the link itself. Retrying
       // `confirm` itself is never the recovery path: the OTP proof is
       // already consumed (`OTP_PROOF_REQUIRED`) and the tenancy is no longer
       // `OWNER_MANAGED` (`NOT_CLAIMABLE`).

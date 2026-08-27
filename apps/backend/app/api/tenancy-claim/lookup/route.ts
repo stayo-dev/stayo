@@ -11,8 +11,10 @@ const logger = getLogger("api.tenancy-claim.lookup");
 
 /**
  * Public (pre-auth), like `/api/auth/send-phone-otp`. Requires a fresh,
- * verified `TENANCY_CLAIM`-purpose OTP for the phone — see
- * `tenancy-claim-service.ts`'s module comment for the full security model.
+ * verified `TENANCY_CLAIM`-purpose OTP for the phone, AND the `claim_token`
+ * returned by that verification (`POST /auth/verify-phone-otp`'s
+ * `claim_token` field) — see `claim-eligibility.ts`'s module comment for why
+ * the token is required, not just a fresh verified proof.
  *
  * Returns display data only, never obligations/balances/payment history: a
  * mistyped digit must not expose a stranger's finances.
@@ -27,6 +29,7 @@ export async function POST(req: NextRequest) {
 
     const tenancies = await tenancyClaimService.lookup({
       phone: validated.data.phone,
+      claimToken: validated.data.claim_token,
       requestIp: getRequestIp(req),
     });
 

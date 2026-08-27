@@ -15,7 +15,9 @@ import { canonicalPhone } from '@shared/lib/phone';
  *
  * Backend contract (already built, Tasks 1-3 of this plan):
  *  - `POST /auth/send-phone-otp` / `verify-phone-otp` with
- *    `purpose: "TENANCY_CLAIM"`.
+ *    `purpose: "TENANCY_CLAIM"` — `verify-phone-otp` returns a `claim_token`
+ *    (SECURITY, final security review finding 1) that must be presented to
+ *    both endpoints below; stored in `state.claimToken`.
  *  - `POST /tenancy-claim/lookup` -> `{ tenancies: ClaimTenancy[] }`.
  *  - `POST /tenancy-claim/confirm` -> a `ClaimTenancy` plus `profile_id` /
  *    `access_mode`.
@@ -94,6 +96,15 @@ export interface ClaimState {
   step: ClaimStepName;
   phone: string;
   otp: string;
+  /**
+   * SECURITY (final security review, finding 1): the single-use token the
+   * backend returns from OTP verification, which `lookup` and `confirm` both
+   * now require alongside a fresh verified code — see `tenancyClaimApi`'s
+   * module comment. Set once, by `VERIFY_OTP_SUCCEEDED`; cleared on
+   * `RESTART` (a new phone/OTP cycle earns a new token) exactly like `otp`
+   * itself is.
+   */
+  claimToken: string | null;
   tenancies: ClaimTenancy[];
   selectedTenantId: string | null;
   acknowledgements: Acknowledgements;
@@ -124,6 +135,7 @@ export function initialClaimState(options?: { alreadySignedIn?: boolean }): Clai
     step: 'phone',
     phone: '',
     otp: '',
+    claimToken: null,
     tenancies: [],
     selectedTenantId: null,
     acknowledgements: emptyAcknowledgements(),
@@ -146,6 +158,7 @@ export type ClaimEvent =
   | { type: 'SEND_OTP_FAILED'; message: string }
   | { type: 'OTP_CHANGED'; otp: string }
   | { type: 'VERIFY_OTP_REQUESTED' }
+  | { type: 'VERIFY_OTP_SUCCEEDED'; claimToken: string | null }
   | { type: 'VERIFY_OTP_FAILED'; message: string }
   | { type: 'LOOKUP_REQUESTED' }
   | { type: 'LOOKUP_SUCCEEDED'; tenancies: ClaimTenancy[] }
@@ -179,12 +192,15 @@ function classifyTenancies(tenancies: ClaimTenancy[]): { step: ClaimStepName; se
  */
 function applyClaimError(state: ClaimState, code: string, message: string): ClaimState {
   if (code === 'OTP_PROOF_REQUIRED') {
-    // The verified-proof window closed (10 minutes) or a previous failed
-    // confirm already consumed it — see the module comment. There is no
-    // "re-verify the same code" recovery, only "request a new one," so this
-    // always lands back on the phone step with the number retained, never
-    // leaves the tenant on the OTP or confirm screen waiting for nothing.
-    return { ...state, submitting: false, step: 'phone', otp: '', error: message };
+    // The verified-proof window closed (10 minutes), a previous failed
+    // confirm already consumed it, or the claim token no longer matches it
+    // — see the module comment. There is no "re-verify the same code"
+    // recovery, only "request a new one," so this always lands back on the
+    // phone step with the number retained, never leaves the tenant on the
+    // OTP or confirm screen waiting for nothing. `claimToken` is cleared
+    // too — it's bound to the now-invalid proof, so a stale one must not
+    // silently ride along into the next verify/lookup cycle.
+    return { ...state, submitting: false, step: 'phone', otp: '', claimToken: null, error: message };
   }
 
   if (code === 'NOT_CLAIMABLE') {
@@ -238,6 +254,10 @@ export function claimReducer(state: ClaimState, event: ClaimEvent): ClaimState {
 
     case 'VERIFY_OTP_REQUESTED':
       return { ...state, submitting: true, error: null };
+    case 'VERIFY_OTP_SUCCEEDED':
+      // Stays on 'otp' -- the caller immediately follows this with a lookup
+      // request; LOOKUP_REQUESTED/LOOKUP_SUCCEEDED own the step transition.
+      return { ...state, claimToken: event.claimToken, error: null };
     case 'VERIFY_OTP_FAILED':
       return { ...state, submitting: false, error: event.message };
 
@@ -286,6 +306,25 @@ export function claimReducer(state: ClaimState, event: ClaimEvent): ClaimState {
 // Pure predicates the thin renderer uses to decide what's clickable, kept
 // here rather than inline in the component so they're covered by the same
 // tests as the transitions they gate.
+
+/**
+ * Whether a caller who already had a live session when the claim flow
+ * started should be treated as `alreadySignedIn` for this flow. SECURITY
+ * (final security review, finding 4): previously `ClaimTenancyPage` used
+ * `Boolean(user)` alone, so a signed-in OWNER or ADMIN also got
+ * `alreadySignedIn: true` — hiding the password fields and enabling
+ * "Confirm" — but the backend's `confirm` (`tenancy-claim-service.ts`) only
+ * ever reads `profileId` off a session whose role is `TENANT`
+ * (`app/api/tenancy-claim/confirm/route.ts`: `session.role === "TENANT" ?
+ * session.sub : null`), so a non-TENANT caller's `profileId` comes through
+ * as `null` there — landing them on "A password of at least 8 characters is
+ * required" with no password field on screen to satisfy it, an
+ * unrecoverable dead end. `AuthContext` normalizes `role` to lowercase
+ * (`normalizeRole`), so this compares against `'tenant'`, not `'TENANT'`.
+ */
+export function isTenantSession(user: { role?: string | null } | null | undefined): boolean {
+  return user?.role === 'tenant';
+}
 
 /** A phone number must canonicalize to a full Indian mobile number before "Send code" is enabled. */
 export function canSendOtp(phone: string): boolean {

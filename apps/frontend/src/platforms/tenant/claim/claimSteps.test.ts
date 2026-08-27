@@ -7,6 +7,7 @@ import {
   canConfirm,
   canSendOtp,
   canVerifyOtp,
+  isTenantSession,
   passwordReady,
   selectedTenancy,
   REQUIRED_ACKNOWLEDGEMENTS,
@@ -51,6 +52,10 @@ describe('initialClaimState', () => {
   it('carries an explicit alreadySignedIn through', () => {
     expect(initialClaimState({ alreadySignedIn: true }).alreadySignedIn).toBe(true);
   });
+
+  it('defaults claimToken to null -- SECURITY (final security review, finding 1): no token until a fresh verify earns one', () => {
+    expect(initialClaimState().claimToken).toBeNull();
+  });
 });
 
 describe('phone step', () => {
@@ -84,6 +89,29 @@ describe('phone step', () => {
   });
 });
 
+describe('isTenantSession — SECURITY (final security review, finding 4)', () => {
+  it('is true only for a lowercase "tenant" role -- AuthContext normalizes role to lowercase', () => {
+    expect(isTenantSession({ role: 'tenant' })).toBe(true);
+  });
+
+  it('is false for an OWNER session -- confirm would otherwise hide the password field an OWNER actually needs', () => {
+    expect(isTenantSession({ role: 'owner' })).toBe(false);
+  });
+
+  it('is false for an ADMIN session', () => {
+    expect(isTenantSession({ role: 'admin' })).toBe(false);
+  });
+
+  it('is false for no session at all', () => {
+    expect(isTenantSession(null)).toBe(false);
+    expect(isTenantSession(undefined)).toBe(false);
+  });
+
+  it('REGRESSION GUARD: an uppercase "TENANT" does not match -- the bug this fix must not reintroduce is comparing against the wrong casing', () => {
+    expect(isTenantSession({ role: 'TENANT' })).toBe(false);
+  });
+});
+
 describe('canSendOtp', () => {
   it('accepts a full 10-digit Indian mobile number', () => {
     expect(canSendOtp('9876543210')).toBe(true);
@@ -110,6 +138,13 @@ describe('otp step', () => {
     expect(next.step).toBe('otp');
     expect(next.error).toBe('That code is not right');
     expect(next.submitting).toBe(false);
+  });
+
+  it('VERIFY_OTP_SUCCEEDED (SECURITY, finding 1) stores the claim token and stays on otp -- the caller follows up with a lookup request', () => {
+    const state = { ...initialClaimState(), step: 'otp' as const, submitting: true };
+    const next = claimReducer(state, { type: 'VERIFY_OTP_SUCCEEDED', claimToken: 'tok-abc' });
+    expect(next.claimToken).toBe('tok-abc');
+    expect(next.step).toBe('otp');
   });
 });
 
@@ -153,7 +188,7 @@ describe('LOOKUP_SUCCEEDED', () => {
 
 describe('OTP_PROOF_REQUIRED recovery', () => {
   it('from LOOKUP_FAILED sends the tenant back to phone -- no re-verify of a dead code', () => {
-    const state = { ...initialClaimState(), step: 'otp' as const, otp: '123456' };
+    const state = { ...initialClaimState(), step: 'otp' as const, otp: '123456', claimToken: 'tok-abc' };
     const next = claimReducer(state, {
       type: 'LOOKUP_FAILED',
       code: 'OTP_PROOF_REQUIRED',
@@ -164,12 +199,23 @@ describe('OTP_PROOF_REQUIRED recovery', () => {
     expect(next.error).toBe('This phone number has not been freshly verified.');
   });
 
+  it('clears the now-invalid claimToken -- a stale token must not silently ride into the next verify/lookup cycle', () => {
+    const state = { ...initialClaimState(), step: 'otp' as const, claimToken: 'tok-abc' };
+    const next = claimReducer(state, {
+      type: 'LOOKUP_FAILED',
+      code: 'OTP_PROOF_REQUIRED',
+      message: 'expired',
+    });
+    expect(next.claimToken).toBeNull();
+  });
+
   it('from CONFIRM_FAILED also sends the tenant back to phone -- a failed confirm may require re-verifying', () => {
     const state = {
       ...initialClaimState(),
       step: 'confirm' as const,
       tenancies: [tenancy()],
       selectedTenantId: 't-1',
+      claimToken: 'tok-abc',
     };
     const next = claimReducer(state, {
       type: 'CONFIRM_FAILED',
@@ -178,6 +224,7 @@ describe('OTP_PROOF_REQUIRED recovery', () => {
     });
     expect(next.step).toBe('phone');
     expect(next.otp).toBe('');
+    expect(next.claimToken).toBeNull();
   });
 });
 
@@ -462,12 +509,18 @@ describe('RESTART', () => {
       ...initialClaimState(),
       step: 'done',
       phone: '9876543210',
+      claimToken: 'tok-abc',
       result: { ...tenancy(), profile_id: 'p-1', access_mode: 'SELF_SERVE' },
     };
     expect(claimReducer(doneState, { type: 'RESTART' })).toEqual(initialClaimState());
 
-    const emptyState: ClaimState = { ...initialClaimState(), step: 'empty', phone: '9876543210' };
+    const emptyState: ClaimState = { ...initialClaimState(), step: 'empty', phone: '9876543210', claimToken: 'tok-abc' };
     expect(claimReducer(emptyState, { type: 'RESTART' })).toEqual(initialClaimState());
+  });
+
+  it('clears claimToken -- a new phone/OTP cycle must earn a new one, same as otp is cleared', () => {
+    const state: ClaimState = { ...initialClaimState(), step: 'confirm', claimToken: 'tok-abc' };
+    expect(claimReducer(state, { type: 'RESTART' }).claimToken).toBeNull();
   });
 
   it('preserves alreadySignedIn across a restart -- it describes the session the tenant walked in with, not flow state', () => {

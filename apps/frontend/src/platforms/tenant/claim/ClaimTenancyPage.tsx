@@ -14,6 +14,7 @@ import {
   canVerifyOtp,
   claimReducer,
   initialClaimState,
+  isTenantSession,
   REQUIRED_ACKNOWLEDGEMENTS,
   selectedTenancy,
   type AcknowledgementKey,
@@ -33,7 +34,12 @@ import {
  */
 export function ClaimTenancyPage() {
   const { user, updateUser } = useAuth();
-  const wasSignedInAtStart = Boolean(user);
+  // SECURITY (final security review, finding 4): gated on role, not mere
+  // presence of a session -- a signed-in OWNER/ADMIN is not who `confirm`'s
+  // already-signed-in path is for, and treating them as such hides the
+  // password fields while the backend still requires one from them. See
+  // `isTenantSession`'s doc comment.
+  const wasSignedInAtStart = isTenantSession(user);
   // Read once, at mount -- `alreadySignedIn` describes the session the
   // tenant walked in with and must not flip mid-flow (the reducer's own
   // RESTART preserves it for the same reason). Gates whether the confirm
@@ -66,15 +72,17 @@ export function ClaimTenancyPage() {
     const phone = canonicalPhone(state.phone);
     if (!phone || !canVerifyOtp(state.otp)) return;
     dispatch({ type: 'VERIFY_OTP_REQUESTED' });
+    let claimToken: string | null = null;
     try {
-      await tenancyClaimApi.verifyOtp(phone, state.otp.trim());
+      ({ claimToken } = await tenancyClaimApi.verifyOtp(phone, state.otp.trim()));
+      dispatch({ type: 'VERIFY_OTP_SUCCEEDED', claimToken });
     } catch (err) {
       dispatch({ type: 'VERIFY_OTP_FAILED', message: toErrorLine(resolveError(err, 'claim')) });
       return;
     }
     dispatch({ type: 'LOOKUP_REQUESTED' });
     try {
-      const tenancies = await tenancyClaimApi.lookup(phone);
+      const tenancies = await tenancyClaimApi.lookup(phone, claimToken);
       dispatch({ type: 'LOOKUP_SUCCEEDED', tenancies });
     } catch (err) {
       const extracted = extractError(err);
@@ -90,6 +98,7 @@ export function ClaimTenancyPage() {
       const result = await tenancyClaimApi.confirm({
         phone,
         tenantId: state.selectedTenantId,
+        claimToken: state.claimToken,
         acknowledgements: state.acknowledgements,
         typedSignatureName: state.typedSignatureName,
         name: state.name,

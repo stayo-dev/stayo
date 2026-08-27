@@ -31,8 +31,21 @@ const phoneField = z
     return normalized;
   });
 
+/**
+ * SECURITY (final security review, finding 1): the opaque token returned by
+ * `POST /auth/verify-phone-otp` when `purpose: "TENANCY_CLAIM"` verifies.
+ * Optional at this schema layer the same way `password` is below — whether
+ * it's actually required is a runtime decision the service enforces
+ * (`assertValidClaimProof` refuses with `OTP_PROOF_REQUIRED` when it's
+ * missing or doesn't match), not something this layer can see. Loosely
+ * bounded rather than a fixed length, since the token's exact encoding is an
+ * implementation detail of `generateClaimProofToken`.
+ */
+const claimTokenField = z.string().min(1).max(255).optional();
+
 export const TenancyClaimLookupSchema = z.object({
   phone: phoneField,
+  claim_token: claimTokenField,
 });
 
 /**
@@ -45,6 +58,7 @@ export const TenancyClaimLookupSchema = z.object({
  */
 export const TenancyClaimConfirmSchema = z.object({
   phone: phoneField,
+  claim_token: claimTokenField,
   tenant_id: z.string().uuid({ message: "Invalid tenant id" }),
   acknowledgements: z.record(z.string(), z.boolean()).optional(),
   typed_signature_name: z.string().trim().min(1).max(200).optional(),

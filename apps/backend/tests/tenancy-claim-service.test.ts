@@ -10,7 +10,7 @@ vi.mock("@/lib/db", () => ({
   prisma: {},
 }));
 
-import { CLAIM_OTP_PURPOSE, CLAIM_PROOF_MAX_AGE_MS } from "@/lib/tenants/claim-eligibility";
+import { CLAIM_OTP_PURPOSE, CLAIM_PROOF_MAX_AGE_MS, generateClaimProofToken } from "@/lib/tenants/claim-eligibility";
 import {
   assertAcknowledgementsComplete,
   assertClaimablePhoneMatch,
@@ -58,12 +58,26 @@ function verifiedRow(overrides: Partial<any> = {}) {
   };
 }
 
+/**
+ * SECURITY (final security review, finding 1): `assertValidClaimProof` now
+ * also requires a matching claim-proof token, stored (hashed) on the row's
+ * `failure_reason` — see `auth-otp-service.ts`'s `verifyPhoneOtp` and
+ * `claim-eligibility.ts`'s `generateClaimProofToken`. Returns both the row
+ * (pre-wired with the real stored hash) and the plaintext token a caller
+ * would need to present to pass validation.
+ */
+function verifiedRowWithToken(overrides: Partial<any> = {}) {
+  const { token, storedValue } = generateClaimProofToken();
+  const row = verifiedRow({ failure_reason: storedValue, ...overrides });
+  return { row, token };
+}
+
 describe("assertValidClaimProof — SECURITY: SKIPPED is refused at the service's own validation layer", () => {
   const now = new Date("2026-08-27T12:00:00.000Z");
 
   it("throws OTP_PROOF_REQUIRED for a SKIPPED row, never treating it as proof", async () => {
     const db = fakeOtpDb([verifiedRow({ status: "SKIPPED", verified_at: null })]);
-    await expect(assertValidClaimProof(db, "+919876543210", now)).rejects.toMatchObject({
+    await expect(assertValidClaimProof(db, "+919876543210", null, now)).rejects.toMatchObject({
       code: "OTP_PROOF_REQUIRED",
       status: 401,
     });
@@ -71,25 +85,56 @@ describe("assertValidClaimProof — SECURITY: SKIPPED is refused at the service'
 
   it("throws OTP_PROOF_REQUIRED when no row exists at all", async () => {
     const db = fakeOtpDb([]);
-    await expect(assertValidClaimProof(db, "+919876543210", now)).rejects.toBeInstanceOf(TenancyClaimError);
+    await expect(assertValidClaimProof(db, "+919876543210", null, now)).rejects.toBeInstanceOf(TenancyClaimError);
   });
 
-  it("accepts a fresh VERIFIED row and returns it (id included, for later consumption)", async () => {
-    const db = fakeOtpDb([verifiedRow()]);
-    const proof = await assertValidClaimProof(db, "+919876543210", now);
+  it("accepts a fresh VERIFIED row with the matching token and returns it (id included, for later consumption)", async () => {
+    const { row, token } = verifiedRowWithToken();
+    const db = fakeOtpDb([row]);
+    const proof = await assertValidClaimProof(db, "+919876543210", token, now);
     expect(proof.id).toBe("otp-1");
     expect(proof.status).toBe("VERIFIED");
+  });
+});
+
+describe("assertValidClaimProof — SECURITY FIX (final security review, finding 1): the claim-proof token", () => {
+  const now = new Date("2026-08-27T12:00:00.000Z");
+
+  it("SECURITY: refuses an otherwise-fresh, verified row when no token is presented -- this is the whole point of the fix", async () => {
+    const { row } = verifiedRowWithToken();
+    const db = fakeOtpDb([row]);
+    await expect(assertValidClaimProof(db, "+919876543210", null, now)).rejects.toMatchObject({
+      code: "OTP_PROOF_REQUIRED",
+      status: 401,
+    });
+  });
+
+  it("SECURITY: refuses the wrong token -- exactly the attack this closes (attacker knows the phone, not the token the victim received)", async () => {
+    const { row } = verifiedRowWithToken();
+    const db = fakeOtpDb([row]);
+    await expect(
+      assertValidClaimProof(db, "+919876543210", "attacker-guessed-token", now),
+    ).rejects.toMatchObject({ code: "OTP_PROOF_REQUIRED" });
+  });
+
+  it("SECURITY: refuses a token minted for a *different* verification of the same phone", async () => {
+    const { row } = verifiedRowWithToken();
+    const otherToken = generateClaimProofToken().token;
+    const db = fakeOtpDb([row]);
+    await expect(assertValidClaimProof(db, "+919876543210", otherToken, now)).rejects.toMatchObject({
+      code: "OTP_PROOF_REQUIRED",
+    });
   });
 });
 
 describe("assertValidClaimProof — re-validates independently every call, never caches", () => {
   it("a row valid on the first call and consumed before the second call is refused the second time", async () => {
     const now = new Date("2026-08-27T12:00:00.000Z");
-    const row = verifiedRow();
+    const { row, token } = verifiedRowWithToken();
     const db = fakeOtpDb([row]);
 
     // First call — e.g. what `confirm`'s own re-validation does.
-    const proof = await assertValidClaimProof(db, "+919876543210", now);
+    const proof = await assertValidClaimProof(db, "+919876543210", token, now);
     expect(proof.status).toBe("VERIFIED");
 
     // Simulate the same proof being consumed by a concurrent claim between
@@ -99,7 +144,7 @@ describe("assertValidClaimProof — re-validates independently every call, never
     // A second independent re-validation — e.g. a retried request reusing
     // the same phone — must hit the database again and see the new state,
     // not return a cached "still valid" answer.
-    await expect(assertValidClaimProof(db, "+919876543210", now)).rejects.toMatchObject({
+    await expect(assertValidClaimProof(db, "+919876543210", token, now)).rejects.toMatchObject({
       code: "OTP_PROOF_REQUIRED",
     });
     expect(db.phoneVerificationOtp.findFirst).toHaveBeenCalledTimes(2);
@@ -239,6 +284,10 @@ describe("toClaimSummary — SECURITY: no financial field beyond monthly_rent", 
       hostel_id: "h1",
       access_mode: "OWNER_MANAGED",
       status: "ACTIVE",
+      // Included in `TENANT_CLAIM_SELECT` (finding 2 — `isClaimable` needs
+      // it), but `toClaimSummary` must still never surface it: display data
+      // only, per the module's own security rule.
+      profile_id: "profile-1",
       display_name: "Rakesh",
       phone_1: "+919876543210",
       joined_on: new Date("2026-01-01"),
@@ -257,6 +306,7 @@ describe("toClaimSummary — SECURITY: no financial field beyond monthly_rent", 
     expect((summary as any).security_deposit).toBeUndefined();
     expect((summary as any).maintenance_charge).toBeUndefined();
     expect((summary as any).owner_id).toBeUndefined();
+    expect((summary as any).profile_id).toBeUndefined();
   });
 });
 
