@@ -13,7 +13,7 @@
 - A profile created for an owner-managed tenancy has `auth_user_id: null` and `password_hash: null` — it cannot log in, which is the entire distinction. It is not "inactive".
 - No behaviour change for `SELF_SERVE` tenancies.
 - Baselines: backend `tsc` 529, `check:invariants` 2 FAILs, `test:pure` 1110 passed / 2 failed; frontend 1693 passed + 1 unrelated collection failure, `check:architecture` + `build` pass.
-- Do not connect to the database. Do not modify production data — the user owns that.
+- **Amended:** the user has confirmed this is a testing environment and that data may be reset. Targeted cleanup of the rows violating the new constraint is therefore in scope, and Task 6's migration CAN be applied once they are cleared. Still prefer the minimum necessary deletion over a wholesale reset, and report exactly what was removed.
 
 ---
 
@@ -70,7 +70,7 @@ Keep the existing adopt entry point on the invited-tenant screen; this adds a se
 
 A partial unique index on canonical `phone_1` for live tenancies (`status IN ('ACTIVE','INVITED')`), so no code path can recreate this state.
 
-**This migration will be REJECTED until production data is cleaned** — `+918008046952` currently holds both an `ACTIVE` and an `INVITED` tenancy. Ship the migration; do not attempt to apply it. Document in the migration's own comment that it requires prior cleanup, and put the detection query in the docs so the user can find violators themselves.
+**This migration is rejected while violating rows exist** — `+918008046952` currently holds both an `ACTIVE` and an `INVITED` tenancy. Ship the migration with a comment saying so, and include the detection query so violators can always be found. Applying it, and the cleanup that precedes it, is a separate controller-run step — implementers must not touch the database.
 
 ### Task 7: Documentation
 
