@@ -38,6 +38,11 @@ export async function POST(req: NextRequest) {
       phone: validated.data.phone,
       profileId,
       requestIp: getRequestIp(req),
+      requestUserAgent: req.headers.get("user-agent"),
+      acknowledgements: validated.data.acknowledgements,
+      typedSignatureName: validated.data.typed_signature_name,
+      name: validated.data.name,
+      email: validated.data.email,
     });
 
     return apiResponse(result);
