@@ -1,10 +1,11 @@
 /**
  * Pure logic for the Meal Plan page's drag/tap interaction — no DOM, no
  * React. Per-cell operations only (add/remove/reorder/search/display-name
- * within one cell's own ids array) — "which of many simultaneously-live
- * cells did this drop land on" is `gridDnd.ts`'s `findDropTarget`, layered on
- * top of `isOverDropZone` here (see ADR-121; this module predates the
- * multi-zone grid and originally assumed a single active drop zone).
+ * within one cell's own ids array). Used to also back "which of many
+ * simultaneously-live cells did a Food Library chip land on" via `gridDnd.ts`'s
+ * `findDropTarget` — retired along with the Food Library drawer (ADR-123);
+ * `isOverDropZone` here is now reused instead for `resolveChipDrop`'s trash
+ * zone check, a single fixed target rather than many cell rects.
  */
 
 export interface Rect {
@@ -51,6 +52,27 @@ export function reorderIndexAt(point: { x: number; y: number }, siblingRects: Re
     if (point.y <= siblingRects[i].bottom) return i;
   }
   return siblingRects.length - 1;
+}
+
+/**
+ * Where a placed chip's drag-end point resolves to — the trash zone (delete)
+ * or an in-cell reorder slot. Trash is checked first and wins outright: a
+ * chip dropped anywhere over the trash zone is removed, never reordered,
+ * even if it also happens to overlap a sibling rect (backs
+ * `MealPlanCell.handleReorderEnd`'s short-circuit, ADR-123). `trashRect` is
+ * `null` when the trash zone hasn't mounted/measured yet, in which case this
+ * always falls through to a reorder.
+ */
+export type ChipDropResolution = { kind: 'trash' } | { kind: 'reorder'; toIndex: number };
+
+export function resolveChipDrop(
+  point: { x: number; y: number },
+  trashRect: Rect | null,
+  siblingRects: Rect[],
+  draggedIndex: number,
+): ChipDropResolution {
+  if (trashRect && isOverDropZone(point, trashRect)) return { kind: 'trash' };
+  return { kind: 'reorder', toIndex: reorderIndexAt(point, siblingRects, draggedIndex) };
 }
 
 /** Moves the item at `fromIndex` to `toIndex`, returning the new ordered id array — the exact payload the PATCH endpoint needs. */

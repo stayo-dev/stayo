@@ -1,37 +1,12 @@
 /**
- * Pure logic for the Meal Plan grid's multi-zone drag/drop — every one of the
- * 28 (7 day × 4 meal) cells is a live drop zone simultaneously, unlike the
- * single "active section" model `timetableDnd.ts` was written for. See
- * ADR-121.
+ * Pure logic backing "Copy to days" (`MealPlanPage.tsx`'s `handleCopyToDays`,
+ * via `CopyToDaysSheet.tsx`). Used to also host `findDropTarget`, the
+ * multi-cell drop resolver for dragging a Food Library chip onto any cell
+ * (ADR-121) — removed when the Food Library drawer was replaced by a
+ * per-cell Add Food popover (ADR-123); that drag mechanism no longer exists.
  */
 
-import type { MealSlotKey } from '@shared/mocks/food';
-import type { Rect } from './timetableDnd';
-import { isOverDropZone } from './timetableDnd';
 import type { DayKey } from './weekGrid';
-
-export interface GridCellKey {
-  day: DayKey;
-  slot: MealSlotKey;
-}
-
-export interface GridCellRect extends GridCellKey {
-  rect: Rect;
-}
-
-/**
- * Which of many simultaneously-live cells (if any) a drop point landed on.
- * Reuses `isOverDropZone`'s point-in-rect test unchanged — the "one active
- * zone" framing lived only in `timetableDnd.ts`'s call sites, never in that
- * function's own logic. Returns `null` for a drop outside every cell (empty
- * page) rather than guessing a default target.
- */
-export function findDropTarget(point: { x: number; y: number }, cells: GridCellRect[]): GridCellKey | null {
-  for (const cell of cells) {
-    if (isOverDropZone(point, cell.rect)) return { day: cell.day, slot: cell.slot };
-  }
-  return null;
-}
 
 /**
  * "Copy to days" — given a source cell's ordered items and the target days

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { FOOD_SLOTS, type MealSlotKey } from '@shared/mocks/food';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
@@ -9,16 +9,17 @@ import { useIsMobile } from '@/app/components/ui/use-mobile';
 import { HostelSwitcher } from '../components/HostelSwitcher';
 import { PublishChecklist } from '../components/schedule/PublishChecklist';
 import { MealTimingsForm } from '../components/timings/MealTimingsForm';
-import { FoodLibraryDrawer } from '../components/mealplan/FoodLibraryDrawer';
+import { AddFoodPopover } from '../components/mealplan/AddFoodPopover';
+import { TrashDropZone } from '../components/mealplan/TrashDropZone';
 import { CopyToDaysSheet } from '../components/mealplan/CopyToDaysSheet';
 import { MealPlanGrid } from '../components/mealplan/MealPlanGrid';
 import { MealPlanMobile } from '../components/mealplan/MealPlanMobile';
-import type { DropResolution } from '../components/mealplan/dropResolution';
 import { useFoodMenuItems } from '../hooks/useFoodMenuItems';
 import { useFoodSchedule, DAY_ORDER, type DayKey } from '../hooks/useFoodSchedule';
 import { useMealTimings } from '../hooks/useMealTimings';
 import { planCopyToDays } from '../gridDnd';
-import { addItem } from '../timetableDnd';
+import { addItem, isOverDropZone, type Rect } from '../timetableDnd';
+import { measure } from '../gridMeasure';
 import { buildPublishChecks, canPublish } from '../publishChecks';
 import { cellAt, dayKeyFor } from '../weekGrid';
 
@@ -48,6 +49,7 @@ function formatMonthLabel(month: string): string {
 export function MealPlanPage() {
   const session = useOwnerSession();
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const hostelId = searchParams.get('hostelId') ?? session.primaryHostelId ?? undefined;
 
@@ -78,45 +80,42 @@ export function MealPlanPage() {
     return map;
   }, [library.library]);
 
-  // Drawer state — `drawerTarget` is the specific cell a "+ Add food" button
-  // was pressed for, driving both the drawer's preselected meal-type tab and
-  // where a *tap*-to-add lands. A *drag* is resolved independently by
-  // geometry (`dropResolverRef`, below) and can land on any cell regardless
-  // of which one opened the drawer — the two affordances are deliberately
-  // not the same mechanism (ADR-121 §9).
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerTarget, setDrawerTarget] = useState<{ day: DayKey; slot: MealSlotKey } | null>(null);
-  const dropResolverRef = useRef<(point: { x: number; y: number }) => DropResolution | null>(() => null);
+  // Add Food popover state — `addFoodTarget` is the specific cell a
+  // "+ Add food" button was pressed for, driving both the popover's scope
+  // and where a pick/create lands. Replaces the old drawer's `drawerTarget`
+  // (ADR-123) — no more drag affordance for adding, no meal-type tabs.
+  const [addFoodOpen, setAddFoodOpen] = useState(false);
+  const [addFoodTarget, setAddFoodTarget] = useState<{ day: DayKey; slot: MealSlotKey } | null>(null);
 
-  // Live highlight for whichever cell a Food Library chip is currently being
-  // dragged over — `valid` when the cell's meal type matches the dragged
-  // item's own type, `invalid` otherwise (a cross-meal-type drop is refused
-  // client-side on drop, see handleDrawerDragEnd, rather than round-tripping
-  // to the backend to find out).
-  const [dragHover, setDragHover] = useState<{ day: DayKey; slot: MealSlotKey; valid: boolean } | null>(null);
+  // Trash drop zone — mounted once at the page level, measured the same way
+  // the old multi-cell resolver measured cell rects. Visible only while a
+  // placed chip is mid-drag; `trashHover` drives its hover highlight.
+  const trashRef = useRef<HTMLDivElement | null>(null);
+  const [chipDragging, setChipDragging] = useState(false);
+  const [trashHover, setTrashHover] = useState(false);
 
-  const handleDrawerDragMove = (mealType: MealSlotKey, point: { x: number; y: number } | null) => {
+  const getTrashRect = (): Rect | null => (trashRef.current ? measure(trashRef.current) : null);
+
+  const handleChipDragMove = (point: { x: number; y: number } | null) => {
     if (!point) {
-      setDragHover(null);
+      setChipDragging(false);
+      setTrashHover(false);
       return;
     }
-    const resolved = dropResolverRef.current(point);
-    if (!resolved) {
-      setDragHover(null);
-      return;
-    }
-    setDragHover({ day: resolved.day, slot: resolved.slot, valid: resolved.slot === mealType });
+    setChipDragging(true);
+    const rect = getTrashRect();
+    setTrashHover(rect ? isOverDropZone(point, rect) : false);
   };
 
   // The Today card's "Fix" deep-link (`?day=&slot=`) used to preseed the old
-  // Timetable's single active section; here it opens the drawer straight
-  // onto that cell, which is the closer equivalent — read once on mount.
+  // Timetable's single active section; here it opens the Add Food popover
+  // straight onto that cell — read once on mount.
   useEffect(() => {
     const day = searchParams.get('day');
     const slot = searchParams.get('slot');
     if (day && slot && (DAY_ORDER as readonly string[]).includes(day) && FOOD_SLOTS.some((s) => s.key === slot)) {
-      setDrawerTarget({ day: day as DayKey, slot: slot as MealSlotKey });
-      setDrawerOpen(true);
+      setAddFoodTarget({ day: day as DayKey, slot: slot as MealSlotKey });
+      setAddFoodOpen(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -125,17 +124,42 @@ export function MealPlanPage() {
   const [timingsOpen, setTimingsOpen] = useState(false);
   const [confirmPublishOpen, setConfirmPublishOpen] = useState(false);
 
-  const handleOpenAddFood = (day: DayKey, slot: MealSlotKey) => {
-    setDrawerTarget({ day, slot });
-    setDrawerOpen(true);
-  };
-
-  const handleDrawerTapAdd = (itemId: string) => {
-    if (!drawerTarget) {
-      stayoToast.info('Open "+ Add food" from a specific meal to add there');
+  // Unsaved-changes navigation guard (ADR-123) — wraps every in-app exit
+  // trigger (back link, hostel switch, month nav). Known limitation: this
+  // guards in-app navigation and tab close/refresh (`beforeunload`, below)
+  // only. The browser's own Back/Forward buttons are NOT intercepted — this
+  // app uses a plain <BrowserRouter> (RootProviders.tsx), not a data router,
+  // so react-router's useBlocker isn't available.
+  const [unsavedGuardOpen, setUnsavedGuardOpen] = useState(false);
+  const pendingActionRef = useRef<(() => void) | null>(null);
+  const guardedNavigate = (action: () => void) => {
+    if (!schedule.hasPendingChanges) {
+      action();
       return;
     }
-    const cell = cellAt(schedule.weekGrid, drawerTarget.day, drawerTarget.slot);
+    pendingActionRef.current = action;
+    setUnsavedGuardOpen(true);
+  };
+
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (schedule.hasPendingChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [schedule.hasPendingChanges]);
+
+  const handleOpenAddFood = (day: DayKey, slot: MealSlotKey) => {
+    setAddFoodTarget({ day, slot });
+    setAddFoodOpen(true);
+  };
+
+  const addToTarget = (itemId: string) => {
+    if (!addFoodTarget) return;
+    const cell = cellAt(schedule.weekGrid, addFoodTarget.day, addFoodTarget.slot);
     if (!cell?.id) return;
     const currentIds = cell.items.map((i) => i.menu_item_id).filter((id): id is string => Boolean(id));
     const { ids, added } = addItem(currentIds, itemId);
@@ -144,24 +168,13 @@ export function MealPlanPage() {
       return;
     }
     schedule.setCellItems(cell.id, ids);
+    setAddFoodOpen(false);
   };
 
-  const handleDrawerDragEnd = (itemId: string, mealType: MealSlotKey, point: { x: number; y: number }) => {
-    const resolved = dropResolverRef.current(point);
-    if (!resolved) return;
-    if (resolved.slot !== mealType) {
-      // Refused client-side — the same rule the backend would enforce
-      // (`validateMenuItemIds` scopes a cell's allowed items to its own meal
-      // type), caught here so it never round-trips to a 400.
-      stayoToast.error(`Can't add a ${mealType} item to ${resolved.slot}`);
-      return;
-    }
-    const { ids, added } = addItem(resolved.currentIds, itemId);
-    if (!added) {
-      stayoToast.info('Already added');
-      return;
-    }
-    schedule.setCellItems(resolved.cellId, ids);
+  const handleCreateAndPick = async (name: string) => {
+    if (!addFoodTarget) return;
+    const newId = await library.createAndReturn(addFoodTarget.slot, name);
+    if (newId) addToTarget(newId);
   };
 
   const handleCopyToDays = (targetDays: DayKey[]) => {
@@ -178,31 +191,54 @@ export function MealPlanPage() {
   const publishResult = buildPublishChecks({ grid: schedule.weekGrid });
   const publishAllowed = canPublish(publishResult);
 
+  const goBack = () => navigate(hostelId ? `/owner/food?hostelId=${encodeURIComponent(hostelId)}` : '/owner/food');
+
+  const resolveGuard = () => {
+    setUnsavedGuardOpen(false);
+    pendingActionRef.current?.();
+    pendingActionRef.current = null;
+  };
+
   return (
     <div className="flex flex-col gap-3.5 px-4 pb-8 pt-6 sm:px-6">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <Link
-            to={hostelId ? `/owner/food?hostelId=${encodeURIComponent(hostelId)}` : '/owner/food'}
+          <button
+            type="button"
+            onClick={() => guardedNavigate(goBack)}
             className="flex h-8 w-8 flex-none items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
           >
             <ChevronLeft className="h-5 w-5" />
-          </Link>
+          </button>
           <div className="min-w-0">
             <h1 className="font-display text-[22px] font-extrabold tracking-tight text-foreground">Weekly Meal Plan</h1>
             <p className="mt-0.5 text-[12.5px] font-medium text-muted-foreground">Plan your meals for the week</p>
           </div>
         </div>
-        <HostelSwitcher hostels={session.hostels} selectedId={hostelId ?? null} onSelect={(id) => setSearchParams({ hostelId: id }, { replace: true })} />
+        <HostelSwitcher
+          hostels={session.hostels}
+          selectedId={hostelId ?? null}
+          onSelect={(id) => guardedNavigate(() => setSearchParams({ hostelId: id }, { replace: true }))}
+        />
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-3 py-2">
         <div className="flex items-center gap-1">
-          <button type="button" onClick={() => setSelectedMonth((m) => shiftMonth(m, -1))} aria-label="Previous month" className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted">
+          <button
+            type="button"
+            onClick={() => guardedNavigate(() => setSelectedMonth((m) => shiftMonth(m, -1)))}
+            aria-label="Previous month"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+          >
             <ChevronLeft className="h-4 w-4" />
           </button>
           <span className="font-display text-[13.5px] font-bold text-foreground">{formatMonthLabel(selectedMonth)}</span>
-          <button type="button" onClick={() => setSelectedMonth((m) => shiftMonth(m, 1))} aria-label="Next month" className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted">
+          <button
+            type="button"
+            onClick={() => guardedNavigate(() => setSelectedMonth((m) => shiftMonth(m, 1)))}
+            aria-label="Next month"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+          >
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
@@ -210,6 +246,9 @@ export function MealPlanPage() {
           <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${schedule.schedule?.status === 'PUBLISHED' ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'}`}>
             {schedule.schedule?.status === 'PUBLISHED' ? 'Published' : 'Draft'}
           </span>
+          {schedule.schedule?.status === 'PUBLISHED' && schedule.hasPendingChanges && (
+            <span className="rounded-full bg-warning/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning">Unsaved changes</span>
+          )}
           <span className="text-[12px] font-semibold text-muted-foreground">
             {publishResult.filledCount} / {publishResult.totalCells} meals planned
             {' · '}
@@ -243,10 +282,8 @@ export function MealPlanPage() {
           setCellItems={schedule.setCellItems}
           onOpenAddFood={handleOpenAddFood}
           onCopyToDays={(day, slot) => setCopyTarget({ day, slot })}
-          registerDropResolver={(fn) => {
-            dropResolverRef.current = fn;
-          }}
-          dragHover={dragHover}
+          getTrashRect={getTrashRect}
+          onChipDragMove={handleChipDragMove}
         />
       ) : (
         <MealPlanGrid
@@ -256,10 +293,8 @@ export function MealPlanPage() {
           setCellItems={schedule.setCellItems}
           onOpenAddFood={handleOpenAddFood}
           onCopyToDays={(day, slot) => setCopyTarget({ day, slot })}
-          registerDropResolver={(fn) => {
-            dropResolverRef.current = fn;
-          }}
-          dragHover={dragHover}
+          getTrashRect={getTrashRect}
+          onChipDragMove={handleChipDragMove}
         />
       )}
 
@@ -276,20 +311,36 @@ export function MealPlanPage() {
             >
               {schedule.isPublishing ? 'Publishing…' : publishAllowed ? `Publish ${formatMonthLabel(selectedMonth)}` : 'Fill every meal to publish'}
             </button>
+          ) : schedule.hasPendingChanges ? (
+            <button
+              type="button"
+              disabled={schedule.isSavingChanges}
+              onClick={() => schedule.saveChanges()}
+              className="min-h-[44px] rounded-xl bg-primary py-3.5 text-center font-display text-[13.5px] font-bold text-primary-foreground shadow-[0_8px_20px_rgba(180,106,85,0.32)] disabled:opacity-40"
+            >
+              {schedule.isSavingChanges ? 'Saving…' : 'Save changes'}
+            </button>
           ) : (
-            <p className="text-center text-[11.5px] text-muted-foreground">Live — any edit above updates tenants immediately.</p>
+            <p className="text-center text-[11.5px] text-muted-foreground">Live — no unsaved changes.</p>
           )}
         </div>
       )}
 
-      <FoodLibraryDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+      <TrashDropZone
+        visible={chipDragging}
+        hovering={trashHover}
+        registerRect={(el) => {
+          trashRef.current = el;
+        }}
+      />
+
+      <AddFoodPopover
+        open={addFoodOpen}
+        onClose={() => setAddFoodOpen(false)}
+        target={addFoodTarget}
         library={library}
-        initialSlot={drawerTarget?.slot ?? null}
-        onAdd={handleDrawerTapAdd}
-        onDragEnd={handleDrawerDragEnd}
-        onDragMove={handleDrawerDragMove}
+        onPickExisting={addToTarget}
+        onCreateNew={handleCreateAndPick}
       />
 
       {copyTarget && (
@@ -337,6 +388,48 @@ export function MealPlanPage() {
           All {publishResult.totalCells} meals are planned for {formatMonthLabel(selectedMonth)}. Publishing makes this the live menu — tenants see it
           immediately.
         </p>
+      </BottomSheet>
+
+      <BottomSheet
+        open={unsavedGuardOpen}
+        onOpenChange={setUnsavedGuardOpen}
+        title="Unsaved changes"
+        footer={
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={async () => {
+                await schedule.saveChanges();
+                resolveGuard();
+              }}
+              className="min-h-[44px] rounded-xl bg-primary py-3 text-center font-display text-[13.5px] font-bold text-primary-foreground"
+            >
+              Save changes
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                schedule.discardChanges();
+                resolveGuard();
+              }}
+              className="min-h-[44px] rounded-xl border border-border py-3 text-center font-display text-[13.5px] font-bold text-foreground"
+            >
+              Discard changes
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setUnsavedGuardOpen(false);
+                pendingActionRef.current = null;
+              }}
+              className="min-h-[44px] py-2 text-center text-[13px] font-semibold text-muted-foreground"
+            >
+              Cancel
+            </button>
+          </div>
+        }
+      >
+        <p className="text-[13px] text-muted-foreground">You have unsaved changes to this published schedule. Save them so tenants see the update, or discard them?</p>
       </BottomSheet>
     </div>
   );
