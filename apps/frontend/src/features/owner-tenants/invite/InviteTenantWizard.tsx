@@ -33,6 +33,33 @@ export function InviteTenantWizard({ open, onClose, initialData, leadId }: Invit
     onClose();
   };
 
+  // "Just add to my records" has nothing to report on delivery — nothing was
+  // sent — so it gets its own short landing rather than routing through
+  // InviteDeliveryResult, which would otherwise show a meaningless
+  // whatsapp/email/none outcome for a tenant nobody tried to notify.
+  if (wizard.ownerManagedSuccess) {
+    return (
+      <BottomSheet open={open} onOpenChange={(v) => !v && handleClose()} title="Tenant added">
+        <div className="flex flex-col items-center gap-3 py-6 text-center">
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-success/10 text-success">
+            <Check className="h-6 w-6" strokeWidth={3} />
+          </span>
+          <p className="text-sm font-bold text-foreground">{wizard.data.tenantName || 'The tenant'} is now active.</p>
+          <p className="text-[12.5px] text-muted-foreground">
+            No invite was sent. You keep the records, and rent reminders still go to their WhatsApp.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleClose}
+          className="w-full rounded-xl bg-primary py-3.5 text-center font-display text-sm font-bold text-primary-foreground"
+        >
+          Done
+        </button>
+      </BottomSheet>
+    );
+  }
+
   // The invitation was created; whether it was *delivered* is a separate
   // question, answered by `wizard.delivery`. This screen used to claim success
   // unconditionally — see InviteDeliveryResult.
@@ -77,20 +104,37 @@ export function InviteTenantWizard({ open, onClose, initialData, leadId }: Invit
         </span>
       }
       footer={
-        <div className="flex gap-2.5">
-          {wizard.step > 0 && (
-            <button type="button" onClick={wizard.back} className="rounded-xl border border-border px-5 py-3.5 font-display text-sm font-bold text-foreground">
-              Back
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2.5">
+            {wizard.step > 0 && (
+              <button type="button" onClick={wizard.back} className="rounded-xl border border-border px-5 py-3.5 font-display text-sm font-bold text-foreground">
+                Back
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={isLast ? wizard.submit : wizard.next}
+              disabled={!wizard.isCurrentStepValid || wizard.isSubmitting || wizard.isSubmittingOwnerManaged}
+              className="flex-1 rounded-xl bg-primary py-3.5 text-center font-display text-sm font-bold text-primary-foreground disabled:opacity-50"
+            >
+              {isLast ? (wizard.isSubmitting ? 'Sending…' : 'Send invite') : `Continue to ${wizard.stepLabels[wizard.step + 1]?.toLowerCase()}`}
             </button>
+          </div>
+          {isLast && (
+            <div className="flex flex-col items-center gap-1 pt-0.5">
+              <button
+                type="button"
+                onClick={wizard.submitAsOwnerManaged}
+                disabled={!wizard.isOwnerManagedValid || wizard.isSubmitting || wizard.isSubmittingOwnerManaged}
+                className="font-display text-[13px] font-bold text-muted-foreground underline decoration-dotted underline-offset-4 disabled:opacity-50"
+              >
+                {wizard.isSubmittingOwnerManaged ? 'Adding…' : 'Just add to my records'}
+              </button>
+              <p className="text-center text-[11.5px] leading-snug text-muted-foreground">
+                No invite sent. You keep the records; reminders still go to their WhatsApp.
+              </p>
+            </div>
           )}
-          <button
-            type="button"
-            onClick={isLast ? wizard.submit : wizard.next}
-            disabled={!wizard.isCurrentStepValid || wizard.isSubmitting}
-            className="flex-1 rounded-xl bg-primary py-3.5 text-center font-display text-sm font-bold text-primary-foreground disabled:opacity-50"
-          >
-            {isLast ? (wizard.isSubmitting ? 'Sending…' : 'Send invitation') : `Continue to ${wizard.stepLabels[wizard.step + 1]?.toLowerCase()}`}
-          </button>
         </div>
       }
     >
@@ -118,9 +162,9 @@ export function InviteTenantWizard({ open, onClose, initialData, leadId }: Invit
         </p>
       )}
 
-      {wizard.submitError && (
+      {(wizard.submitError || wizard.ownerManagedError) && (
         <p className="mb-4 rounded-xl border border-destructive/25 bg-destructive/10 px-3.5 py-2.5 text-[12.5px] font-semibold text-destructive">
-          {wizard.submitError}
+          {wizard.submitError || wizard.ownerManagedError}
         </p>
       )}
 

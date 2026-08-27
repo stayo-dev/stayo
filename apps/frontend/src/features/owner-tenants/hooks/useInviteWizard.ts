@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { tenantService } from '@features/tenants/api';
 import { admissionsService } from '@features/admissions/api';
+import { ownerManagedService } from '../api/ownerManaged';
 import { queryKeys } from '@lib/queryKeys';
 import {
   resolveInviteDelivery,
@@ -68,6 +69,16 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
   const isStep1Valid = Boolean(data.hostelId && data.roomId && data.joiningDate && Number(data.agreementMonths) > 0);
   const isStep2Valid = Boolean(data.monthlyRent && Number(data.monthlyRent) >= 0);
   const isStep3Valid = Boolean(agreed && data.roomId && isStep0Valid && isStep1Valid && isStep2Valid);
+  // Owner-managed tenants never receive anything, so an email — valid,
+  // invalid, or blank — is irrelevant to this path. Name and phone still are.
+  const isOwnerManagedValid = Boolean(
+    agreed &&
+      data.roomId &&
+      isValidTenantName(data.tenantName) &&
+      isValidIndianPhone(data.tenantPhone) &&
+      isStep1Valid &&
+      isStep2Valid,
+  );
 
   const isCurrentStepValid = (() => {
     switch (step) {
@@ -93,30 +104,39 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
   const email = data.tenantEmail.trim();
   const emailInvalid = !isValidTenantEmail(email);
 
+  // Same "who am I creating this tenancy for" payload, and the same
+  // create-invitation call (lead-aware endpoint when converting from a lead,
+  // plain invite endpoint otherwise), regardless of whether the owner ends up
+  // sending it (`submit`) or immediately adopting it (`submitAsOwnerManaged`).
+  // The tenancy row, reservation and terms are created identically either way.
+  const buildInvitePayload = () => ({
+    name: data.tenantName.trim(),
+    phone: sanitizeIndianPhone(data.tenantPhone),
+    // Omitted rather than sent blank: the backend's InvitationSchema
+    // accepts a missing email but validates a present one.
+    ...(email ? { email } : {}),
+    room_id: data.roomId,
+    monthly_rent: Number(data.monthlyRent) || undefined,
+    advance_amount: Number(data.deposit) || undefined,
+    maintenance_amount: Number(data.maintenance) || undefined,
+    joining_date: data.joiningDate || undefined,
+    agreement_duration_months: Number(data.agreementMonths) || undefined,
+    payment_frequency: BILLING_TO_FREQUENCY[data.billing] ?? 'MONTHLY',
+  });
+
+  const createInvitation = async () => {
+    const payload = buildInvitePayload();
+    if (leadId) {
+      // Response is { invitation, lead } — unwrap so the rest of this hook
+      // (resolveInviteDelivery, tenant_id) sees the same flat shape either way.
+      const result = (await admissionsService.convertToInvitation(leadId, payload)) as { invitation?: unknown } | null;
+      return result?.invitation ?? result;
+    }
+    return tenantService.invite(payload);
+  };
+
   const inviteMutation = useMutation({
-    mutationFn: async () => {
-      const payload = {
-        name: data.tenantName.trim(),
-        phone: sanitizeIndianPhone(data.tenantPhone),
-        // Omitted rather than sent blank: the backend's InvitationSchema
-        // accepts a missing email but validates a present one.
-        ...(email ? { email } : {}),
-        room_id: data.roomId,
-        monthly_rent: Number(data.monthlyRent) || undefined,
-        advance_amount: Number(data.deposit) || undefined,
-        maintenance_amount: Number(data.maintenance) || undefined,
-        joining_date: data.joiningDate || undefined,
-        agreement_duration_months: Number(data.agreementMonths) || undefined,
-        payment_frequency: BILLING_TO_FREQUENCY[data.billing] ?? 'MONTHLY',
-      };
-      if (leadId) {
-        // Response is { invitation, lead } — unwrap so the rest of this hook
-        // (resolveInviteDelivery, tenant_id) sees the same flat shape either way.
-        const result = (await admissionsService.convertToInvitation(leadId, payload)) as { invitation?: unknown } | null;
-        return result?.invitation ?? result;
-      }
-      return tenantService.invite(payload);
-    },
+    mutationFn: createInvitation,
     onSuccess: (response: unknown) => {
       const outcome = resolveInviteDelivery(response);
       setDelivery(outcome);
@@ -149,9 +169,34 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
     },
   });
 
+  /**
+   * "Just add to my records" — the tenant never has to open a link. Creates
+   * the exact same tenancy the invite path would, then immediately adopts it
+   * (Task 8's `ownerManagedService.adopt`), so it lands `ACTIVE` /
+   * `OWNER_MANAGED` rather than sitting `INVITED` waiting on someone who was
+   * never going to click through.
+   */
+  const ownerManagedMutation = useMutation({
+    mutationFn: async () => {
+      const created = (await createInvitation()) as { tenant_id?: string } | null;
+      const newTenantId = created?.tenant_id;
+      if (!newTenantId) throw new Error('Tenant was created but no tenant_id came back.');
+      return ownerManagedService.adopt({ tenantId: newTenantId, hostelId: data.hostelId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['owner', 'tenants', 'list-merged'] });
+      if (leadId) queryClient.invalidateQueries({ queryKey: queryKeys.admissions.all() });
+    },
+  });
+
   const submit = () => {
     if (!isStep3Valid) return;
     inviteMutation.mutate();
+  };
+
+  const submitAsOwnerManaged = () => {
+    if (!isOwnerManagedValid) return;
+    ownerManagedMutation.mutate();
   };
 
   const sendFallbackEmail = () => {
@@ -170,6 +215,7 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
     setFallbackEmail('');
     inviteMutation.reset();
     resendMutation.reset();
+    ownerManagedMutation.reset();
   };
 
   return {
@@ -189,6 +235,16 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
     reset,
     isSubmitting: inviteMutation.isPending,
     submitError: inviteMutation.isError ? getErrorMessage(inviteMutation.error, 'Could not send the invitation. Please try again.') : null,
+    // "Just add to my records" — parallel state to the invite path above, kept
+    // separate because success here means something different: no delivery
+    // result to show, just "this tenant now exists and is active."
+    submitAsOwnerManaged,
+    isOwnerManagedValid,
+    isSubmittingOwnerManaged: ownerManagedMutation.isPending,
+    ownerManagedSuccess: ownerManagedMutation.isSuccess,
+    ownerManagedError: ownerManagedMutation.isError
+      ? getErrorMessage(ownerManagedMutation.error, 'Could not add this tenant. Please try again.')
+      : null,
     // Fallback-email prompt
     fallbackEmail,
     setFallbackEmail,
