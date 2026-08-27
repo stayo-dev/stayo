@@ -19,6 +19,11 @@ const PUBLIC_ROUTES = [
   "/api/auth/send-phone-otp",
   "/api/auth/verify-phone-otp",
   "/api/auth/onboarding-login",
+  // Claiming a tenancy an owner kept the books for: OTP-gated, reachable by
+  // someone with no account yet. `confirm` is registered in
+  // IDENTITY_OPTIONAL_UNDER_PUBLIC below so a signed-in tenant's session
+  // still comes through instead of being stripped.
+  "/api/tenancy-claim",
   "/api/leads/self-serve",
   "/api/leads/invitation",
   "/api/leads/track",

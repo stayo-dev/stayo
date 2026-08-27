@@ -58,6 +58,15 @@ const IDENTITY_OPTIONAL_UNDER_PUBLIC: { pattern: RegExp; methods: Set<string> }[
     pattern: /^\/api\/discover\/hostels\/[^/]+\/reviews\/?$/,
     methods: new Set(["GET"]),
   },
+  {
+    // Confirming a tenancy claim must stay reachable by someone with no
+    // account yet (a genuinely new profile gets created for them), but a
+    // signed-in marketplace-account tenant's session should be used rather
+    // than stripped — `tenancy-claim-service.ts` reads `profileId` off it
+    // instead of trusting a client-supplied body field.
+    pattern: /^\/api\/tenancy-claim\/confirm\/?$/,
+    methods: new Set(["POST"]),
+  },
 ];
 
 export function allowsOptionalIdentity(pathname: string, method: string): boolean {
