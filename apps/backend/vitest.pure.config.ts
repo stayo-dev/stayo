@@ -44,6 +44,7 @@ export default defineConfig({
       'tests/redis-key-parity.test.ts',
       'tests/activation-enforcement-coverage.test.ts',
       'tests/tenancy-eligibility-service.test.ts',
+      'tests/tenancy-eligibility-preview.test.ts',
       'tests/reset-token-channel.test.ts',
       'tests/config-change-labels.test.ts',
       'tests/email-delivery-classification.test.ts',

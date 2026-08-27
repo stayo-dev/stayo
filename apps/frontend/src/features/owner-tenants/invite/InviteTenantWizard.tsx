@@ -118,13 +118,26 @@ export function InviteTenantWizard({ open, onClose, initialData, leadId }: Invit
         </p>
       )}
 
-      {wizard.submitError && (
+      {wizard.submitConflict ? (
+        <div className="mb-4 rounded-xl border border-destructive/25 bg-destructive/10 px-3.5 py-2.5 text-[12.5px] font-semibold text-destructive">
+          <p className="mb-0.5 font-bold">{wizard.submitConflict.title}</p>
+          <p className="font-medium">{wizard.submitConflict.body}</p>
+        </div>
+      ) : wizard.submitError ? (
         <p className="mb-4 rounded-xl border border-destructive/25 bg-destructive/10 px-3.5 py-2.5 text-[12.5px] font-semibold text-destructive">
           {wizard.submitError}
         </p>
-      )}
+      ) : null}
 
-      {wizard.step === 0 && <TenantStep data={wizard.data} setD={wizard.setD} />}
+      {wizard.step === 0 && (
+        <TenantStep
+          data={wizard.data}
+          setD={wizard.setD}
+          isCheckingEligibility={wizard.isCheckingEligibility}
+          eligibilityConflict={wizard.eligibilityConflict}
+          hasExistingAccount={wizard.hasExistingAccount}
+        />
+      )}
       {wizard.step === 1 && <StayStep data={wizard.data} setD={wizard.setD} hostels={session.hostels} />}
       {wizard.step === 2 && <MoneyStep data={wizard.data} setD={wizard.setD} />}
       {wizard.step === 3 && <VerifyStep data={wizard.data} agreed={wizard.agreed} setAgreed={wizard.setAgreed} hostels={session.hostels} />}

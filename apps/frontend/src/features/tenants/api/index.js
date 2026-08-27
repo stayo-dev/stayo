@@ -200,6 +200,17 @@ export const tenantService = {
         const response = await api.post('/owners/invitations', data);
         return response.data.success !== undefined ? (response.data.data !== undefined ? response.data.data : response.data) : response.data;
     },
+    /**
+     * Read-only pre-submit tenancy-eligibility check — same rule and OWN/OTHER
+     * disclosure scoping as the 409 `invite()` can return, offered before the
+     * owner fills out the rest of the form. Never creates or mutates anything.
+     */
+    checkEligibility: async (phone, email) => {
+        const response = await api.get('/owners/invitations/eligibility', {
+            params: { phone, ...(email ? { email } : {}) },
+        });
+        return unwrap(response);
+    },
     resendInvitation: async (identifier, overrides = {}) => {
         const body = {
             identifier,
