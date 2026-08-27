@@ -9,6 +9,7 @@ async function main() {
     ownerManagedMissingContact,
     ownerManagedMissingAttestation,
     ownerManagedWithAuthIdentity,
+    ownerManagedWithPolicyAcceptance,
   ] = await Promise.all([
     prisma.tenants.findMany({
       where: {
@@ -73,6 +74,14 @@ async function main() {
       select: { id: true, profile_id: true },
       take: 25,
     }),
+    prisma.tenants.findMany({
+      where: {
+        access_mode: "OWNER_MANAGED",
+        rule_acceptances: { some: {} },
+      },
+      select: { id: true, profile_id: true },
+      take: 25,
+    }),
   ]);
 
   const failures = [
@@ -83,6 +92,7 @@ async function main() {
     ["OWNER_MANAGED ACTIVE tenant must have a display name and phone", ownerManagedMissingContact],
     ["OWNER_MANAGED ACTIVE tenant must have an owner attestation", ownerManagedMissingAttestation],
     ["OWNER_MANAGED tenant must not hold a linked auth identity", ownerManagedWithAuthIdentity],
+    ["OWNER_MANAGED tenant must not hold a TenantPolicyAcceptance", ownerManagedWithPolicyAcceptance],
   ].filter(([, rows]) => (rows as any[]).length > 0);
 
   if (failures.length > 0) {

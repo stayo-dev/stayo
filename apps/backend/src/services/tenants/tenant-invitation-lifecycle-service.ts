@@ -885,6 +885,16 @@ export class TenantInvitationLifecycleService {
       return this.resolveLegacyProfileToken(normalizedToken);
     }
     if (invitation.status === "SUPERSEDED") {
+      // An invitation is superseded two ways: adoption (the owner chose to keep
+      // records themselves while the invite sat unopened) or a genuine
+      // replacement (e.g. a room change re-issuing the invite). Only the
+      // former still has a live claim path — the tenant who finally opens
+      // that month-old link should land on "claim your tenancy," not a dead
+      // end. See design spec §6 and owner-managed-tenancy-service.ts's
+      // adoption comment.
+      if (invitation.tenant.access_mode === "OWNER_MANAGED") {
+        throw new Error("CLAIM_REQUIRED: This invitation was superseded because the owner is keeping records for this tenancy directly. Use the claim flow to link your account instead.");
+      }
       throw new Error("INVALID: Activation link expired or already used");
     }
     if (invitation.tenant.hostels?.status === "ARCHIVED") {
