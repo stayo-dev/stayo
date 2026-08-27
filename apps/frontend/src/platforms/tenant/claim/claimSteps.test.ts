@@ -295,6 +295,27 @@ describe('ROLE_MISMATCH and VALIDATION_ERROR', () => {
   });
 });
 
+describe('SIGN_IN_REQUIRED — SECURITY: an existing account is never reset, so this has no in-flow recovery', () => {
+  it('stays on the current step and surfaces the human-readable message, same as ROLE_MISMATCH', () => {
+    const state = {
+      ...initialClaimState(),
+      step: 'confirm' as const,
+      tenancies: [tenancy()],
+      selectedTenantId: 't-1',
+    };
+    const next = claimReducer(state, {
+      type: 'CONFIRM_FAILED',
+      code: 'SIGN_IN_REQUIRED',
+      message: 'You already have an account with this number — Sign in to that account, then claim this tenancy from there.',
+    });
+    expect(next.step).toBe('confirm');
+    expect(next.tenancies).toEqual(state.tenancies);
+    expect(next.selectedTenantId).toBe('t-1');
+    expect(next.submitting).toBe(false);
+    expect(next.error).toContain('Sign in');
+  });
+});
+
 describe('acknowledgements', () => {
   it('none of the five is pre-checked or implied by default', () => {
     expect(acknowledgementsComplete(emptyAcknowledgements())).toBe(false);

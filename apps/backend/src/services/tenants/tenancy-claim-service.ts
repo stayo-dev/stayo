@@ -44,8 +44,8 @@ export const REQUIRED_ACKNOWLEDGEMENTS = [
  * ## Why this is security-critical
  *
  * Whoever proves possession of a tenancy's phone number inherits everything
- * hung off `tenant_id` — obligations, payments, receipts, deposit. Two rules
- * hold everywhere in this file:
+ * hung off `tenant_id` — obligations, payments, receipts, deposit. Three
+ * rules hold everywhere in this file:
  *
  * 1. **The OTP skip path is never proof.** `authOtpService.sendPhoneOtp`
  *    writes a `phoneVerificationOtp` row with `status: "SKIPPED"` (never
@@ -59,6 +59,16 @@ export const REQUIRED_ACKNOWLEDGEMENTS = [
  *    pre-authentication by anyone holding a verified number, so a mistyped
  *    digit must never expose a stranger's finances — no obligations, no
  *    balances, no payment history, ever, from this file.
+ * 3. **A claim never overwrites an existing account's credentials.** When
+ *    the unauthenticated path matches an *existing* profile by phone
+ *    (`assertClaimablePhoneMatch`), a `password_hash` already on it is left
+ *    untouched — Indian numbers get recycled, so "the same phone" is not
+ *    reliably "the same person," and even when it is, a marketplace user who
+ *    already set a password must not have it silently reset by whoever next
+ *    proves the number over OTP. That claimant is refused with
+ *    `SIGN_IN_REQUIRED` and must authenticate first, after which the
+ *    already-signed-in `profileId` path (which never accepts a password)
+ *    handles the claim.
  */
 
 export class TenancyClaimError extends Error {
@@ -247,6 +257,51 @@ function getRequestIpForRateLimit(requestIp?: string | null) {
 }
 
 /**
+ * Guards the branch where `confirm`'s unauthenticated path (no `profileId`)
+ * matched an *existing* profile by phone. SECURITY: proving possession of a
+ * phone number over OTP must never let a claimant silently inherit -- or
+ * reset the password on -- somebody else's account. Indian mobile numbers
+ * get reassigned, so the "existing profile" this matches may belong to a
+ * different person entirely by now; and even when it's the same person, a
+ * marketplace user who already set a password must not have it silently
+ * changed underneath them.
+ *
+ * - No profile at that phone: nothing to guard here; the caller creates one.
+ * - A profile that isn't role TENANT: a different kind of account (owner,
+ *   admin) never gets folded into a tenancy claim -- `NOT_CLAIMABLE`.
+ * - A TENANT profile that already has a `password_hash`: a real,
+ *   credentialed account. Refuse with `SIGN_IN_REQUIRED` -- the claimant
+ *   must sign in on that account first and retry the claim through the
+ *   already-authenticated `profileId` path (`confirm` never accepts a
+ *   password there, so it can never touch this account's credentials).
+ * - A TENANT profile with no `password_hash` (an invitation-created shell
+ *   that was never activated): nothing to protect yet, so `confirm` may
+ *   still set one for it below -- unchanged from prior behaviour.
+ *
+ * Pure -- takes plain input, exported for direct testing, same idiom as
+ * `assertAcknowledgementsComplete`.
+ */
+export function assertClaimablePhoneMatch(
+  existingByPhone: { role: string; password_hash?: string | null } | null,
+) {
+  if (!existingByPhone) return;
+  if (existingByPhone.role !== "TENANT") {
+    throw new TenancyClaimError(
+      "This phone number is already linked to a different kind of Stayo account",
+      "NOT_CLAIMABLE",
+      409,
+    );
+  }
+  if (existingByPhone.password_hash) {
+    throw new TenancyClaimError(
+      "An account already exists for this phone number. Sign in, then claim this tenancy from your account.",
+      "SIGN_IN_REQUIRED",
+      401,
+    );
+  }
+}
+
+/**
  * Throws `ACKNOWLEDGEMENTS_REQUIRED` unless every acknowledgement in
  * `REQUIRED_ACKNOWLEDGEMENTS` is explicitly `true` — the same gate
  * `ActivationWorkflowService.acceptRules` applies before it will write a
@@ -413,13 +468,10 @@ export const tenancyClaimService = {
         } else {
           const existingByPhone = await tx.profile.findUnique({ where: { phone: canonicalPhone } });
           if (existingByPhone) {
-            if (existingByPhone.role !== "TENANT") {
-              throw new TenancyClaimError(
-                "This phone number is already linked to a different kind of Stayo account",
-                "NOT_CLAIMABLE",
-                409,
-              );
-            }
+            // SECURITY: throws NOT_CLAIMABLE or SIGN_IN_REQUIRED — see the
+            // guard's own doc comment. A credentialed existing account is
+            // never reused here; the claimant must sign in first.
+            assertClaimablePhoneMatch(existingByPhone);
             profile = existingByPhone;
           } else {
             // The tenant may supply their own name/email rather than
@@ -471,14 +523,15 @@ export const tenancyClaimService = {
         // — leaving it stale would silently misroute reminders after the claim.
         //
         // `passwordHash` also rides this same update whenever the caller
-        // isn't already signed in — for a brand-new profile this is the only
-        // password it will ever have; for a profile matched by phone (an
-        // existing marketplace account) this resets it, which is fine: an OTP
-        // that just proved possession of the phone carries the same trust
-        // level a password-reset flow relies on. Writing it here, inside the
-        // transaction, is what lets an ordinary `/api/auth/login` retry work
-        // later even if the Supabase session-mint step after commit fails —
-        // see the comment on that step below.
+        // isn't already signed in. By this point `assertClaimablePhoneMatch`
+        // has already refused any existing profile that had a
+        // `password_hash` (SIGN_IN_REQUIRED) — so a write here only ever sets
+        // a *first* password: either a brand-new profile, or an
+        // invitation-created shell that was never activated. It never resets
+        // credentials on an account someone already uses. Writing it here,
+        // inside the transaction, is what lets an ordinary `/api/auth/login`
+        // retry work later even if the Supabase session-mint step after
+        // commit fails — see the comment on that step below.
         if (
           profile.phone !== canonicalPhone ||
           !profile.mobile_verified ||

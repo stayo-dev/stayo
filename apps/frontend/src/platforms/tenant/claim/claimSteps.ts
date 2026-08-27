@@ -198,6 +198,17 @@ function applyClaimError(state: ClaimState, code: string, message: string): Clai
     return { ...state, submitting: false, tenancies: remaining, selectedTenantId, step, error: message };
   }
 
+  if (code === 'SIGN_IN_REQUIRED') {
+    // SECURITY (`tenancy-claim-service.ts` `assertClaimablePhoneMatch`): the
+    // phone number matched an existing account that already has a password,
+    // and the backend refuses to touch it. There is no in-flow recovery —
+    // supplying a different password or re-verifying the same number will
+    // never change the answer. Stays put and surfaces the message (already a
+    // full sentence telling them to sign in first); the page's copy can
+    // point them at the login screen from there.
+    return { ...state, submitting: false, error: message };
+  }
+
   // ROLE_MISMATCH ("this number belongs to a different kind of Stayo
   // account") has no in-flow recovery — retrying the same tenancy or a
   // different acknowledgement will not change the answer, so this stays put

@@ -13,6 +13,7 @@ vi.mock("@/lib/db", () => ({
 import { CLAIM_OTP_PURPOSE, CLAIM_PROOF_MAX_AGE_MS } from "@/lib/tenants/claim-eligibility";
 import {
   assertAcknowledgementsComplete,
+  assertClaimablePhoneMatch,
   assertValidClaimProof,
   consumeClaimProof,
   loadClaimOtpProof,
@@ -183,6 +184,49 @@ describe("assertAcknowledgementsComplete", () => {
       expect(error).toBeInstanceOf(TenancyClaimError);
       expect(error.code).toBe("ACKNOWLEDGEMENTS_REQUIRED");
       expect(error.status).toBe(400);
+    }
+  });
+});
+
+describe("assertClaimablePhoneMatch — SECURITY: a claim never overwrites an existing account's password", () => {
+  it("no-op when no profile exists at that phone — the caller goes on to create one", () => {
+    expect(() => assertClaimablePhoneMatch(null)).not.toThrow();
+  });
+
+  it("REGRESSION GUARD: refuses with SIGN_IN_REQUIRED when the matched TENANT profile already has a password_hash", () => {
+    try {
+      assertClaimablePhoneMatch({ role: "TENANT", password_hash: "$2b$10$somehash" });
+      throw new Error("expected assertClaimablePhoneMatch to throw");
+    } catch (error: any) {
+      expect(error).toBeInstanceOf(TenancyClaimError);
+      expect(error.code).toBe("SIGN_IN_REQUIRED");
+      expect(error.status).toBe(401);
+    }
+  });
+
+  it("allows reuse when the matched TENANT profile has no password_hash — an invitation shell never activated", () => {
+    expect(() => assertClaimablePhoneMatch({ role: "TENANT", password_hash: null })).not.toThrow();
+    expect(() => assertClaimablePhoneMatch({ role: "TENANT", password_hash: undefined })).not.toThrow();
+    expect(() => assertClaimablePhoneMatch({ role: "TENANT", password_hash: "" })).not.toThrow();
+  });
+
+  it("refuses with NOT_CLAIMABLE when the matched profile isn't a TENANT account, regardless of password_hash", () => {
+    try {
+      assertClaimablePhoneMatch({ role: "OWNER", password_hash: null });
+      throw new Error("expected assertClaimablePhoneMatch to throw");
+    } catch (error: any) {
+      expect(error).toBeInstanceOf(TenancyClaimError);
+      expect(error.code).toBe("NOT_CLAIMABLE");
+      expect(error.status).toBe(409);
+    }
+  });
+
+  it("NOT_CLAIMABLE takes priority over SIGN_IN_REQUIRED — a non-TENANT match is refused for its role, not its password", () => {
+    try {
+      assertClaimablePhoneMatch({ role: "OWNER", password_hash: "$2b$10$somehash" });
+      throw new Error("expected assertClaimablePhoneMatch to throw");
+    } catch (error: any) {
+      expect(error.code).toBe("NOT_CLAIMABLE");
     }
   });
 });

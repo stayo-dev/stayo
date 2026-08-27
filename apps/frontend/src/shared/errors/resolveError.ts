@@ -319,6 +319,13 @@ const BY_CONTEXT: Partial<Record<ErrorContext, Record<string, CatalogueEntry>>> 
       nextStep: 'Wait a few minutes, then try again.',
       severity: 'needs-step',
     },
+    SIGN_IN_REQUIRED: {
+      title: 'You already have an account with this number',
+      why: 'This phone number is linked to a Stayo account that already has a password, so Stayo will not reset it for you.',
+      nextStep: 'Sign in to that account, then claim this tenancy from there.',
+      severity: 'blocking',
+      action: { label: 'Sign in', intent: 'SIGN_IN' },
+    },
   },
 };
 
