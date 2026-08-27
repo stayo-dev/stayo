@@ -96,6 +96,10 @@ export async function POST(req: NextRequest) {
       DEPOSIT_OUTSTANDING: 409,
       MAINTENANCE_OUTSTANDING: 409,
       ONBOARDING_FINANCIALS_INCOMPLETE: 409,
+      // `activateTenant` -> mutate(ACTIVATE) -> resolveInvitation also
+      // reaches resolveByToken. Same mapping as the other branches in this
+      // file for defense in depth.
+      CLAIM_REQUIRED: 409,
     };
 
     const status = normalized.status || statusMap[normalized.code] || 500;
@@ -140,6 +144,14 @@ export async function PATCH(req: NextRequest) {
       DEPOSIT_OUTSTANDING: 409,
       MAINTENANCE_OUTSTANDING: 409,
       ONBOARDING_FINANCIALS_INCOMPLETE: 409,
+      // See the identical entry (and its comment) in
+      // app/api/tenants/activate/context/route.ts -- `mutate` reaches the
+      // same resolveByToken via resolveInvitation, so a step submitted
+      // against a link superseded by adoption mid-flow needs the same
+      // mapping, for defense in depth (GET .../context is the path the
+      // frontend actually hits first and where a tenant would normally
+      // already have been redirected).
+      CLAIM_REQUIRED: 409,
     };
 
     const status = normalized.status || statusMap[normalized.code] || 500;
@@ -168,6 +180,9 @@ export async function GET(req: NextRequest) {
       INVALID: 410,
       VALIDATION_ERROR: 400,
       INTERNAL_ERROR: 500,
+      // `validateActivationToken` calls resolveByToken directly too. Same
+      // mapping as the other two branches in this file.
+      CLAIM_REQUIRED: 409,
     };
 
     const status = statusMap[normalizedCode] || 500;

@@ -19,6 +19,7 @@ const AuthCallbackPage = lazy(() => import('@/app/pages/AuthCallbackPage').then(
 const ForgotPasswordPage = lazy(() => import('@/app/pages/ForgotPasswordPage').then((m) => ({ default: m.ForgotPasswordPage })));
 const ResetPasswordPage = lazy(() => import('@/app/pages/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })));
 const ActivationPage = lazy(() => import('@/platforms/tenant/onboarding/ActivationPage').then((m) => ({ default: m.ActivationPage })));
+const ClaimTenancyPage = lazy(() => import('@/platforms/tenant/claim/ClaimTenancyPage').then((m) => ({ default: m.ClaimTenancyPage })));
 const CompleteProfilePage = lazy(() => import('@/portal/pages/CompleteProfilePage').then((m) => ({ default: m.CompleteProfilePage })));
 const AuthRouteShell = lazy(() => import('@/app/providers/AuthRouteShell').then((m) => ({ default: m.AuthRouteShell })));
 const ReceiptVerificationPage = lazy(() => import('@/app/pages/public/ReceiptVerificationPage').then((m) => ({ default: m.ReceiptVerificationPage })));
@@ -106,6 +107,12 @@ export function PublicRoutes() {
         <Route path="/activate" element={<ActivationPage />} />
         <Route path="/activate/:token" element={<ActivationPage />} />
         <Route path="/invite/:token" element={<ActivationPage />} />
+        {/* A tenant whose owner has been keeping their records — either arriving
+            directly, or redirected here by ActivationPage when a stale
+            invitation link's tenancy was adopted (CLAIM_REQUIRED). See
+            docs/superpowers/plans/2026-08-27-owner-managed-tenants-phase-2.md
+            Task 4. */}
+        <Route path="/claim" element={<ClaimTenancyPage />} />
         <Route path="/complete-profile" element={<CompleteProfilePage />} />
       </Route>
     </>
