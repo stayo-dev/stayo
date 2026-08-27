@@ -16,6 +16,7 @@ import {
 } from "@/utils/default-rules";
 import { resolveActivationEmail } from "./invited-profile-resolver";
 import { tenancyEligibilityService } from "./tenancy-eligibility-service";
+import { notificationService } from "@/lib/services/notification-service";
 
 const logger = getLogger("services.tenancy-claim");
 
@@ -420,8 +421,10 @@ export const tenancyClaimService = {
     // Set inside the transaction once the tenancy is loaded, so the audit
     // log below (which runs after the transaction commits) has the owner id
     // without a second query — `result` itself intentionally omits it (see
-    // `toClaimSummary`'s "display data only" contract).
+    // `toClaimSummary`'s "display data only" contract). `tenantNameForNotice`
+    // rides along the same way, for the owner notification sent after commit.
     let ownerIdForAudit: string | null = null;
+    let tenantNameForNotice: string | null = null;
 
     try {
       const result = await prisma.$transaction(async (tx: any) => {
@@ -452,6 +455,7 @@ export const tenancyClaimService = {
           );
         }
         ownerIdForAudit = tenant.owner_id ?? null;
+        tenantNameForNotice = resolveTenantName(tenant);
 
         // 3. Attach identity — reuse an existing marketplace profile rather
         //    than creating a second one for the same phone number (see
@@ -680,6 +684,35 @@ export const tenancyClaimService = {
         profile_id: result.profile_id,
         request_ip: params.requestIp || null,
       });
+
+      // Tell the owner: they've been keeping this person's books by hand,
+      // and that changes the moment the tenant is on the app themselves.
+      // Reuses the same in-app `notifications` table every other lifecycle
+      // event in this codebase writes through (see
+      // `agreement-lifecycle-service.ts`'s `notifyOwner`/`notifyTenant`)
+      // rather than inventing a new channel — no WhatsApp template exists
+      // for this event, and this repo's business rule is compose/reuse, not
+      // build a new surface. Fire-and-forget: the claim already committed
+      // above, so a notification failure must never look like the claim
+      // failed.
+      if (ownerIdForAudit) {
+        const tenantLabel = tenantNameForNotice || "Your tenant";
+        const roomLabel = result.room_no ? ` (Room ${result.room_no})` : "";
+        await notificationService
+          .createNotification(
+            ownerIdForAudit,
+            "A tenant joined Stayo",
+            `${tenantLabel}${roomLabel} has claimed their tenancy and can now manage payments and requests from the Stayo app themselves.`,
+            "tenancy_claim",
+          )
+          .catch((error: any) => {
+            logger.warn("tenancy_claim.owner_notification_failed", {
+              tenant_id: result.tenant_id,
+              owner_id: ownerIdForAudit,
+              reason: error?.message || String(error),
+            });
+          });
+      }
 
       // Everything above is durably committed — nothing past this point is a
       // reason to treat the claim itself as failed. An already-signed-in
