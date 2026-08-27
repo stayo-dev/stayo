@@ -111,6 +111,7 @@ export interface FormConfig {
   prompt: string;
   needsOption?: boolean;
   needsName?: boolean;
+  needsNote?: boolean;
   hasIcon?: boolean;
   options?: FormOption[];
   inputs?: FormInputField[];

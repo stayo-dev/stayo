@@ -34,7 +34,7 @@ const LISTS: AlertsLists = {
     { id: 'm1', title: 'Payout sent', body: 'Rs 18,500 reached your bank', time: '2026-08-01', read: false },
   ],
   renewals: [{ id: 'r1', name: 'Riya Sharma', detail: 'Agreement ends 30 Sep', days: 12, read: false }],
-  requests: [{ id: 'q1', name: 'Kavya Menon', detail: 'Wants to change room', type: 'ROOM_CHANGE', read: false }],
+  requests: [{ id: 'q1', name: 'Kavya Menon', detail: 'Wants to change room', type: 'ROOM_CHANGE', status: 'RAISED', read: false }],
 };
 
 describe('normaliseQuery', () => {

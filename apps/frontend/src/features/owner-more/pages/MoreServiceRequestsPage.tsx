@@ -2,24 +2,11 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
-import { ownerServiceRequestsService } from '@features/hostel-content/api/serviceRequests';
+import { ownerServiceRequestsService, STATUS_FLOW, NEXT_ACTION_LABEL, SERVICE_REQUEST_TYPE_LABEL } from '@features/hostel-content/api/serviceRequests';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
 
 const card = 'overflow-hidden rounded-[20px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]';
 const sectionLabel = 'pl-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground';
-
-const STATUS_FLOW: Record<string, string | null> = {
-  RAISED: 'ASSIGNED',
-  ASSIGNED: 'IN_PROGRESS',
-  IN_PROGRESS: 'RESOLVED',
-  RESOLVED: null,
-  REJECTED: null,
-};
-const NEXT_ACTION_LABEL: Record<string, string> = {
-  ASSIGNED: 'Mark assigned',
-  IN_PROGRESS: 'Mark in progress',
-  RESOLVED: 'Mark resolved',
-};
 
 /** More → Settings → Service Requests. Owner queue for tenant Room-tab requests (maintenance, room change, cleaning, lost key, visitor pass, extra mattress). */
 export function MoreServiceRequestsPage() {
@@ -84,7 +71,7 @@ export function MoreServiceRequestsPage() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="text-[13.5px] font-semibold text-foreground">
-                      {r.tenants?.profiles?.name ?? 'Tenant'} · {r.type.replace('_', ' ')}
+                      {r.tenants?.profiles?.name ?? 'Tenant'} · {SERVICE_REQUEST_TYPE_LABEL[r.type] ?? r.type}
                     </div>
                     <div className="mt-0.5 text-[11.5px] text-muted-foreground">{r.category ?? r.description ?? '—'}</div>
                   </div>

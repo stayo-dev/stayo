@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import apiClient from '@lib/api-client';
 import { admissionsService } from '@features/admissions/api';
@@ -39,6 +39,7 @@ export interface DynamicRequest {
   name: string;
   detail: string;
   type: string;
+  status: string;
   read: boolean;
 }
 
@@ -61,23 +62,24 @@ export function useAlerts(options?: { includeLeads?: boolean }) {
   const [requests, setRequests] = useState<DynamicRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetchAlerts() {
-      try {
-        const response = await apiClient.get('/owner/alerts');
-        setAdminMessages(response.data.adminMessages || []);
-        setRenewals(response.data.renewals || []);
-        setRequests(response.data.requests || []);
-      } catch (err) {
-        console.error('Failed to fetch alerts', err);
-      } finally {
-        setLoading(false);
-      }
+  const fetchAlerts = useCallback(async () => {
+    try {
+      const response = await apiClient.get('/owner/alerts');
+      setAdminMessages(response.data.adminMessages || []);
+      setRenewals(response.data.renewals || []);
+      setRequests(response.data.requests || []);
+    } catch (err) {
+      console.error('Failed to fetch alerts', err);
+    } finally {
+      setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
     fetchAlerts();
     const interval = setInterval(fetchAlerts, 60_000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchAlerts]);
 
   // Leads have their own funnel elsewhere and don't need the 60s poll the
   // other three categories share — fetched via the shared admissions query
@@ -163,6 +165,7 @@ export function useAlerts(options?: { includeLeads?: boolean }) {
      */
     actionableTruncated: actionableTotal > actionableLeads.length,
     markRead,
-    loading
+    loading,
+    refetch: fetchAlerts,
   };
 }
