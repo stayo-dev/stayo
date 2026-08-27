@@ -6,7 +6,6 @@ import { StarRating } from '@shared/ui-patterns/StarRating';
 
 import { C, FONT } from '../discoverTheme';
 import { reviewerInitials } from '../reviewIdentity';
-import { HIGHLIGHT_LABELS } from './reviewCategoryMeta';
 
 const TRUNCATE_AT = 220;
 
@@ -23,11 +22,6 @@ const TRUNCATE_AT = 220;
  */
 export function ReviewsCard({ review, truncate = true }: { review: HostelReview; truncate?: boolean }) {
   const [expanded, setExpanded] = useState(false);
-
-  const tags = review.categories
-    .filter((category) => category.rating != null && category.rating >= 4)
-    .map((category) => HIGHLIGHT_LABELS[category.key])
-    .filter(Boolean);
 
   const dateLabel = new Date(review.created_at).toLocaleDateString('en-IN', {
     day: 'numeric',
@@ -94,20 +88,6 @@ export function ReviewsCard({ review, truncate = true }: { review: HostelReview;
             </button>
           )}
         </>
-      )}
-
-      {tags.length > 0 && (
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-          {tags.map((tag) => (
-            <span
-              key={tag}
-              className="rounded-[7px] px-2 py-1 text-[10.5px] font-semibold"
-              style={{ background: C.chipBg, color: '#6E6459' }}
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
       )}
     </article>
   );

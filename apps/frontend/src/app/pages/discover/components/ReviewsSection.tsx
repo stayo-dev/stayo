@@ -92,7 +92,7 @@ export function ReviewsSection({
   if (isLoading || (allReviews.length === 0 && !canWrite && !mine)) return null;
 
   return (
-    <section className="mt-7">
+    <section>
       <div className="flex items-baseline justify-between gap-3">
         <h2
           className="text-[16px] font-extrabold tracking-[-0.01em]"
@@ -135,25 +135,27 @@ export function ReviewsSection({
         </p>
       )}
 
-      {/* Below `lg:`: the carousel only. At `lg:` and up: the same score
-          block as the dedicated page, then a 2-column grid of the same
-          preview reviews — no carousel there, nothing needs to scroll. */}
+      {/* The score header (number, footprints, "How reviews work") shows on
+          every viewport — a phone scan still needs the number the decision
+          hinges on, even though its own category breakdown stays desktop-only
+          (see `ReviewsScoreSummary`). Below `lg:`: the carousel only. At
+          `lg:` and up: a 2-column grid of the same preview reviews instead —
+          no carousel there, nothing needs to scroll. */}
+      {summary?.average != null && <ReviewsScoreSummary summary={summary} />}
+
       {preview.length > 0 && (
         <div className="mt-4 lg:hidden">
           <ReviewsCarousel reviews={preview} />
         </div>
       )}
 
-      <div className="hidden lg:block">
-        {summary?.average != null && <ReviewsScoreSummary summary={summary} />}
-        {preview.length > 0 && (
-          <div className="mt-5 grid grid-cols-2 gap-4">
-            {preview.map((review) => (
-              <ReviewsCard key={review.id} review={review} truncate />
-            ))}
-          </div>
-        )}
-      </div>
+      {preview.length > 0 && (
+        <div className="mt-5 hidden gap-4 lg:grid lg:grid-cols-2">
+          {preview.map((review) => (
+            <ReviewsCard key={review.id} review={review} truncate />
+          ))}
+        </div>
+      )}
 
       {allReviews.length > 0 && (
         <button
