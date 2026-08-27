@@ -353,8 +353,10 @@ Real feature, `food_polls`/`food_poll_options`/`food_poll_votes` — deliberatel
 - `allow_multiple = true` polls toggle a tenant's vote per option (multi-select); `allow_multiple = false` polls replace — any other vote this tenant holds on the poll is removed first, and tapping the already-selected option unselects it.
 - `is_anonymous` is stored but has no current behavioral effect — no results view (owner or tenant) exposes a per-voter breakdown regardless of the flag, so there's nothing left to hide differently.
 - Auto-closes daily via the same cron that already closes the dormant voting window (`app/api/cron/food-expiry`, renamed from `food-carry-forward` 2026-08-25 when its schedule-cloning responsibility was removed — [[Decisions#ADR-114|ADR-114]]), once `closes_at` passes.
+- **A poll is editable while OPEN, never once CLOSED (2026-08-27, [[Decisions#ADR-124|ADR-124]]).** `PATCH /api/food/polls/[id]` rejects with 409 if `status !== 'OPEN'` — closing is still a one-way door for edits, matching how it's already a one-way door for voting.
+- **An option that already has ≥1 vote can never be removed by an edit (2026-08-27).** `PATCH /api/food/polls/[id]` rejects the entire request (`OPTION_HAS_VOTES`, 409) if any option slated for removal has a vote — checked against `food_poll_votes` at request time, not a stale count. An option's label may be changed freely regardless of its vote count, and new options may always be added. `poll_type` itself is not editable post-creation.
 
-See [[Food]] §16 for full detail, including a documented minor inconsistency (the "Allow multiple selections" toggle is independent of the Poll Type selector, inherited unreconciled from the reference design).
+See [[Food]] §16/§21 for full detail, including a documented minor inconsistency (the "Allow multiple selections" toggle is independent of the Poll Type selector, inherited unreconciled from the reference design).
 
 ## A scheduled meal can hold more than one dish (2026-08-24)
 

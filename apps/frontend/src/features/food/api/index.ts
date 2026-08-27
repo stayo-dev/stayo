@@ -114,6 +114,20 @@ export const foodService = {
     const response = await api.post(`/food/polls/${pollId}/close`);
     return unwrap(response);
   },
+  updatePoll: async (
+    pollId: string,
+    patch: Partial<{
+      title: string;
+      pollDate: string;
+      closesAt: string;
+      isAnonymous: boolean;
+      allowMultiple: boolean;
+      options: { id?: string; label: string }[];
+    }>,
+  ) => {
+    const response = await api.patch(`/food/polls/${pollId}`, patch);
+    return unwrap(response);
+  },
   getPollResults: async (pollId: string) => {
     const response = await api.get(`/food/polls/${pollId}/results`);
     return unwrap(response) as { poll: any; options: { id: string; label: string; position: number; votes: number }[]; totalVotes: number; voterCount: number; eligibleCount: number };

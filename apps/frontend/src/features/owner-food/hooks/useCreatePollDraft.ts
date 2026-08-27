@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import type { MealSlotKey } from '@shared/mocks/food';
 import { stayoToast } from '@shared/ui-patterns/Toast';
-import { needsOwnerOptions, RATING_OPTIONS, YES_NO_OPTIONS, type PollType } from '../polls/pollTypes';
+import { needsOwnerOptions, RATING_OPTIONS, YES_NO_OPTIONS, toClosesAtIso, type PollRow, type PollType } from '../polls/pollTypes';
 
 export interface CreatePollOption {
   id: string;
   name: string;
+  /** Only set when editing an existing poll — locks the option against removal. */
+  votes?: number;
 }
 
 export interface CreatePollDraft {
@@ -56,6 +58,16 @@ export interface BuiltPoll {
   allowMultiple: boolean;
 }
 
+export interface PollPatch {
+  title: string;
+  pollDate: string;
+  closesAt: string;
+  isAnonymous: boolean;
+  allowMultiple: boolean;
+  /** Omitted for RATING/YES_NO polls — their fixed option set isn't user-editable. */
+  options?: { id?: string; label: string }[];
+}
+
 /** The Create Poll sheet's own form state — self-contained, reset on open. */
 export function useCreatePollDraft() {
   const [draft, setDraft] = useState<CreatePollDraft>(emptyDraft);
@@ -65,6 +77,23 @@ export function useCreatePollDraft() {
 
   const reset = () => {
     setDraft(emptyDraft());
+    setOptionText('');
+    setOptionEdit(null);
+  };
+
+  /** Loads an existing published poll's fields for editing — options carry their live vote counts so locked ones can't be removed. */
+  const seedFrom = (poll: PollRow) => {
+    setDraft({
+      title: poll.title,
+      type: poll.poll_type,
+      options: poll.options.map((o) => ({ id: o.id, name: o.label, votes: o.votes })),
+      mealCat: poll.meal_type.toLowerCase() as MealSlotKey,
+      date: new Date(poll.poll_date).toISOString().slice(0, 10),
+      closeTime: new Date(poll.closes_at).toTimeString().slice(0, 5),
+      anon: poll.is_anonymous,
+      multi: poll.allow_multiple,
+      notify: false,
+    });
     setOptionText('');
     setOptionEdit(null);
   };
@@ -83,7 +112,16 @@ export function useCreatePollDraft() {
     setDraft((d) => ({ ...d, options: [...d.options, { id: `n${Date.now()}`, name }] }));
     setOptionText('');
   };
-  const deleteOption = (id: string) => setDraft((d) => ({ ...d, options: d.options.filter((o) => o.id !== id) }));
+  const deleteOption = (id: string) => {
+    setDraft((d) => {
+      const option = d.options.find((o) => o.id === id);
+      if (option && (option.votes ?? 0) > 0) {
+        stayoToast.info("Can't remove an option that already has votes");
+        return d;
+      }
+      return { ...d, options: d.options.filter((o) => o.id !== id) };
+    });
+  };
   const startEditOption = (id: string, value: string) => {
     setOptionEdit(id);
     setOptionEditText(value);
@@ -125,9 +163,35 @@ export function useCreatePollDraft() {
     };
   };
 
+  /** Builds a `PATCH /api/food/polls/:id` body for editing an already-published poll. `poll_type` is fixed once created, so unlike `buildPoll` this never re-derives it. */
+  const buildPatch = (): PollPatch | null => {
+    if (!draft.title.trim()) {
+      stayoToast.info('Add a poll title');
+      return null;
+    }
+    const ownerOptions = needsOwnerOptions(draft.type);
+    if (ownerOptions && draft.options.length < 2) {
+      stayoToast.info('Add at least 2 options');
+      return null;
+    }
+
+    const patch: PollPatch = {
+      title: draft.title.trim(),
+      pollDate: draft.date,
+      closesAt: toClosesAtIso(draft.date, draft.closeTime),
+      isAnonymous: draft.anon,
+      allowMultiple: ownerOptions ? draft.multi : false,
+    };
+    if (ownerOptions) {
+      patch.options = draft.options.map((o) => ({ id: o.id.startsWith('n') ? undefined : o.id, label: o.name }));
+    }
+    return patch;
+  };
+
   return {
     draft,
     reset,
+    seedFrom,
     setTitle,
     setType,
     setMealCat,
@@ -145,5 +209,6 @@ export function useCreatePollDraft() {
     confirmEditOption,
     reorderOptions,
     buildPoll,
+    buildPatch,
   };
 }

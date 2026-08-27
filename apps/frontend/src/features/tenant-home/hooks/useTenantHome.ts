@@ -7,7 +7,6 @@ import { useTenantSession } from '@features/tenant-session/useTenantSession';
 import { useTenantFinancials } from '@features/tenant-financials/hooks/useTenantFinancials';
 import { useTenantProfile } from '@features/tenant-profile/hooks/useTenantProfile';
 import { useTenantFoodSchedule, DAY_ORDER, type DayKey } from '@features/food/hooks/useTenantFoodSchedule';
-import { useTenantFoodVoting } from '@features/food/hooks/useTenantFoodVoting';
 
 const SLOT_ORDER = ['breakfast', 'lunch', 'snacks', 'dinner'] as const;
 
@@ -22,7 +21,6 @@ export function useTenantHome() {
   const session = useTenantSession();
   const financials = useTenantFinancials();
   const schedule = useTenantFoodSchedule();
-  const voting = useTenantFoodVoting();
   const roomState = useTenantRoom();
   const profile = useTenantProfile();
 
@@ -50,27 +48,14 @@ export function useTenantHome() {
     return SLOT_ORDER.map((slot) => ({ slot, cell: schedule.grid[day]?.[slot] })).filter((m) => m.cell);
   }, [schedule.grid]);
 
-  const pollPreview = useMemo(() => {
-    const names: string[] = [];
-    for (const slot of SLOT_ORDER) {
-      for (const item of voting.itemsBySlot[slot] ?? []) {
-        names.push(item.name);
-        if (names.length >= 3) return names;
-      }
-    }
-    return names;
-  }, [voting.itemsBySlot]);
-
   return {
-    isLoading: financials.isLoading || schedule.isLoading || voting.isLoading,
+    isLoading: financials.isLoading || schedule.isLoading,
     name: session.name,
     hostelId: session.hostelId,
     hostelName: profile.hostel?.name ?? null,
     roomNo: roomQuery.data?.room?.room_no ?? null,
     financials,
     todaysMeals,
-    pollAvailable: Boolean(voting.period && voting.isOpen),
-    pollPreview,
     announcements: announcementsQuery.data ?? [],
     events: eventsQuery.data ?? [],
     hasComplaint: roomState.hasOpenComplaint,
