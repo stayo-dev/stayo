@@ -59,7 +59,7 @@ export function ReviewsPage() {
   };
 
   return (
-    <div className="min-h-[100dvh]" style={{ background: C.paper }}>
+    <div className="min-h-[100dvh]">
       <header
         className="flex items-center gap-3 border-b px-5 pb-3.5 pt-[max(3.25rem,env(safe-area-inset-top))]"
         style={{ background: C.cardWarm, borderColor: C.line }}
@@ -84,7 +84,9 @@ export function ReviewsPage() {
       </header>
 
       <main className={`${PAGE_SHELL} py-6`}>
-        {!isLoading && summary?.average != null && <ReviewsScoreSummary summary={summary} />}
+        {!isLoading && summary?.average != null && (
+          <ReviewsScoreSummary summary={summary} showCategoriesOnMobile />
+        )}
 
         {!isLoading && summary?.emptyReason === 'TOO_FEW' && (
           <p className="mt-2 text-[12px] leading-[1.55]" style={{ color: C.textMuted }}>
