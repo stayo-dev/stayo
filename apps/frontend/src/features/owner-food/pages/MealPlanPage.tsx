@@ -168,7 +168,6 @@ export function MealPlanPage() {
       return;
     }
     schedule.setCellItems(cell.id, ids);
-    setAddFoodOpen(false);
   };
 
   const handleCreateAndPick = async (name: string) => {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/app/components/ui/sheet';
 import { useIsMobile } from '@/app/components/ui/use-mobile';
@@ -28,12 +28,17 @@ interface AddFoodPopoverProps {
  * `Sheet`/`useIsMobile` bottom-vs-right pattern the drawer established,
  * simplified to one slot's items with no tab bar and no drag affordance —
  * items are added by tap only, dishes already never require dragging to
- * place, only to remove (`TrashDropZone`).
+ * place, only to remove (`TrashDropZone`/the placed chip's own × — untouched
+ * by this component). Stays open across multiple picks/creates (2026-08-27)
+ * so an owner can add several dishes to one cell in a row — the search box
+ * clears and refocuses after each add; the owner closes it themselves (the
+ * sheet's own × or tapping outside) once done.
  */
 export function AddFoodPopover({ open, onClose, target, library, onPickExisting, onCreateNew }: AddFoodPopoverProps) {
   const isMobile = useIsMobile();
   const [query, setQuery] = useState('');
   const [creating, setCreating] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -49,11 +54,19 @@ export function AddFoodPopover({ open, onClose, target, library, onPickExisting,
   const trimmed = query.trim();
   const exactMatch = items.some((item) => item.name.toLowerCase() === trimmed.toLowerCase());
 
+  const handlePick = (itemId: string) => {
+    onPickExisting(itemId);
+    setQuery('');
+    inputRef.current?.focus();
+  };
+
   const handleCreate = async () => {
     if (!trimmed || creating) return;
     setCreating(true);
     await onCreateNew(trimmed);
     setCreating(false);
+    setQuery('');
+    inputRef.current?.focus();
   };
 
   return (
@@ -66,6 +79,7 @@ export function AddFoodPopover({ open, onClose, target, library, onPickExisting,
 
         <div className="flex flex-col gap-3 px-4 pb-6">
           <input
+            ref={inputRef}
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -78,7 +92,7 @@ export function AddFoodPopover({ open, onClose, target, library, onPickExisting,
               <button
                 key={item.id}
                 type="button"
-                onClick={() => onPickExisting(item.id)}
+                onClick={() => handlePick(item.id)}
                 className="min-h-[44px] rounded-lg border border-border px-3 text-left text-[13px] font-semibold text-foreground"
               >
                 {item.name}
