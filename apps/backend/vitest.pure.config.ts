@@ -103,6 +103,8 @@ export default defineConfig({
       'tests/whatsapp-command-center-formatting.test.ts',
       'tests/whatsapp-guardian-reminders.test.ts',
       'tests/whatsapp-guardian-activation-template.test.ts',
+      // Reads schema.prisma and the source as text — no client, no database.
+      'tests/whatsapp-prisma-accessors.test.ts',
     ],
     alias: {
       '@': path.resolve(__dirname, './'),

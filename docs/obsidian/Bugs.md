@@ -9,6 +9,20 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
 
+## 2026-08-27 — Every inbound WhatsApp message failed on `prisma.profiles` (fixed)
+
+**Symptom.** Sending anything to the WhatsApp number — `Help`, `RENT`, a tapped button — returned only the generic failure notice. Logs showed `Cannot read properties of undefined (reading 'findFirst')` for every message, with `processed_commands: 0`.
+
+**Cause.** `identity-resolver.ts::findAdminProfile` called `prisma.profiles.findFirst`. The Prisma model is **`profile`** (singular); `@@map("profiles")` names the *table*, not the client delegate. `prisma.profiles` is `undefined`. Because identity resolution runs first for every inbound message, nothing downstream ever ran.
+
+**Why nothing caught it.** `lib/db` exports `export const prisma: any` ([db.ts:83](../../apps/backend/lib/db.ts)), so **every** `prisma.<model>` typo in this repo is invisible to `tsc` and to `next build`. The DB-backed suite does not run without `DATABASE_URL_TEST`, and the pure suite touches no client. There was no layer left to catch it.
+
+**Predates the command-center rebuild.** The routing pipeline on `main` already called `resolveSenderIdentity` before [[Decisions#ADR-128|ADR-128]] shipped, so inbound WhatsApp had been failing since that pipeline landed — the rebuild only changed the wording of the notice the sender receives.
+
+**Fix.** `prisma.profile`. Plus `tests/whatsapp-prisma-accessors.test.ts`, which parses `schema.prisma` and the WhatsApp source as text — no client, no database — and fails on any `prisma.<name>` that is not a declared model. Verified to fail on the original bug before passing on the fix.
+
+**18 more of these exist elsewhere and are NOT fixed** — confirmed against a freshly generated client, not just a regex: `prisma.visitorLead` (should be `visitor_leads`, 6 files incl. `discovery-service`), `prisma.paymentWebhookEvent` (`payment_webhook_events`, 4 files), `prisma.paymentReconciliationRun`/`Item`, `prisma.paymentOperationalAnomaly`, `prisma.paymentAttemptStatusEvent`, `prisma.paymentProviderVerificationSnapshot`, `prisma.leadActivity`/`leadNote`, `prisma.roomReservation`, `prisma.ownerOnboardingState`, `prisma.messageLog`/`messagePack`, `prisma.migrationAuditRun`, `prisma.financialInvariantFailure`, `prisma.rentGenerationLedger`, `prisma.tenant_advance_ledger`, `prisma.leads`. Each throws the same way the moment its line is reached. Tracked in [[TODO]] — the guard above is scoped to the WhatsApp tree only because widening it now would fail the suite on all 18.
+
 ## 2026-08-27 — Template quick-reply buttons were dropped on the floor (fixed)
 
 **Symptom.** Any quick-reply button on an approved template would do nothing when tapped. Surfaced while wiring `stayo_guardian_whatsapp_activated`, whose **[Help]** button is a guardian's very first interaction with the product.

@@ -4,6 +4,23 @@ tags: [todo, backlog]
 
 # TODO / Backlog
 
+## Invalid `prisma.<model>` accessors — 18 latent runtime failures (2026-08-27)
+
+`lib/db` exports `prisma` as `any`, so a mistyped model accessor compiles, builds, and throws `Cannot read properties of undefined` the moment the line runs. One of these took inbound WhatsApp down entirely ([[Bugs]]). **18 more are still in the tree**, verified against a generated client:
+
+| Wrong | Correct | Files |
+|---|---|---|
+| `prisma.visitorLead` | `visitor_leads` | 6 (incl. `discovery-service`, `admissions-service`) |
+| `prisma.paymentWebhookEvent` | `payment_webhook_events` | 4 |
+| `prisma.paymentOperationalAnomaly` | *check schema* | 4 |
+| `prisma.paymentReconciliationRun` | *check schema* | 3 |
+| `prisma.paymentReconciliationItem`, `paymentAttemptStatusEvent`, `paymentProviderVerificationSnapshot`, `ownerOnboardingState` | *check schema* | 2 each |
+| `leadActivity`, `leadNote`, `roomReservation`, `messageLog`, `messagePack`, `migrationAuditRun`, `financialInvariantFailure`, `rentGenerationLedger`, `tenant_advance_ledger`, `leads` | *check schema* | 1 each |
+
+- [ ] Fix them. Several sit in payments/reconciliation, so verify each against `schema.prisma` rather than pattern-matching — a wrong "fix" here is worse than the bug.
+- [ ] Then widen `tests/whatsapp-prisma-accessors.test.ts`'s `WATCHED` list to `lib/`, `src/` and `app/`. It is scoped to the WhatsApp tree today only because widening it now fails on all 18.
+- [ ] Consider typing `lib/db`'s export as `PrismaClient` instead of `any`, which would make the compiler catch this class permanently. Large blast radius — likely surfaces many pre-existing errors, so scope it deliberately.
+
 ## WhatsApp command center — follow-ups (2026-08-27)
 
 - [ ] **Submit the three generation-2 rent templates to Meta**: `stayo_rent_due_soon`, `stayo_rent_due_today`, `stayo_rent_overdue`. Exact bodies, parameter order, footer and button are in `providers/whatsapp/rent-reminder-template-contract.ts`. Until approved and named in `WHATSAPP_RENT_DUE_SOON_TEMPLATE` / `WHATSAPP_RENT_DUE_TODAY_TEMPLATE` / `WHATSAPP_RENT_OVERDUE_TEMPLATE`, readers still receive `- HMS` and "pay using the app". See [[Bugs]].

@@ -146,9 +146,17 @@ function scoreConfidence(roles: SenderRole[], residents: ResolvedResident[]): nu
   return 0;
 }
 
+/**
+ * The Prisma model is `profile` (singular) — `@@map("profiles")` names the
+ * *table*, not the client accessor. `prisma.profiles` is `undefined`, so this
+ * threw `Cannot read properties of undefined (reading 'findFirst')` on **every
+ * inbound WhatsApp message**, since identity resolution runs before anything
+ * else. `lib/db` exports `prisma` as `any`, so neither the compiler nor the
+ * build caught it. See [[Bugs]].
+ */
 async function findAdminProfile(candidates: string[]) {
   if (candidates.length === 0) return null;
-  const profile = await prisma.profiles.findFirst({
+  const profile = await prisma.profile.findFirst({
     where: { phone: { in: candidates }, role: "ADMIN" },
     select: { id: true, name: true },
   });
