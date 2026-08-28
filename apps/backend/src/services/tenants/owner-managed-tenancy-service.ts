@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { normalizeIndianPhone } from "@/lib/utils/phone-utils";
 import { ensureActiveAllocation } from "./tenancy-allocation";
+import { resolveActivationEmail } from "./invited-profile-resolver";
 
 export interface AdoptParams {
   tenantId: string;
@@ -62,6 +63,8 @@ export const ownerManagedTenancyService = {
           access_mode: true,
           display_name: true,
           phone_1: true,
+          personal_email: true,
+          profile_id: true,
           joined_on: true,
           hostel_id: true,
           profiles: { select: { name: true, phone: true } },
@@ -69,7 +72,7 @@ export const ownerManagedTenancyService = {
             where: { status: "PENDING" },
             orderBy: { created_at: "desc" },
             take: 1,
-            select: { id: true, name: true, phone: true, room_id: true },
+            select: { id: true, name: true, phone: true, email: true, room_id: true },
           },
         },
       });
@@ -112,6 +115,62 @@ export const ownerManagedTenancyService = {
         startDate: tenant.joined_on || new Date(),
       });
 
+      // Identity is centralised on `profiles`, keyed by canonical phone. An
+      // owner-managed tenancy is a profile *without a login* — never a tenancy
+      // without a profile.
+      //
+      // The earlier design stored the name on `tenants.display_name` and left
+      // `profile_id` null. That orphaned the tenancy from the person: every
+      // duplicate guard in this system resolves a phone to a profile and then
+      // inspects that profile's tenancies, so an adopted tenancy was invisible
+      // to all of them. In production one phone ended up with three tenancies
+      // in one hostel — a second invite was accepted two minutes after the
+      // adoption, because `checkEligibilityByContact` could not see it.
+      //
+      // `auth_user_id` and `password_hash` stay null deliberately: that, and
+      // only that, is what "no login yet" means. The tenant sets them when they
+      // claim the tenancy, and it is the *same* account either way.
+      let profileId = tenant.profile_id as string | null;
+      if (!profileId) {
+        const existingByPhone = await tx.profile.findUnique({ where: { phone } });
+        if (existingByPhone) {
+          if (existingByPhone.role !== "TENANT") {
+            throw new Error(
+              "ROLE_MISMATCH: This phone number belongs to a different kind of Stayo account"
+            );
+          }
+          // Reuse, never duplicate. Credentials, email and role are left exactly
+          // as they are — adopting a tenancy must not touch an account the
+          // person may already be using.
+          profileId = existingByPhone.id;
+        } else {
+          const email = resolveActivationEmail({
+            profile: tenant.personal_email ? { email: tenant.personal_email } : null,
+            invitation: tenant.tenant_invitations[0]?.email
+              ? { email: tenant.tenant_invitations[0].email }
+              : null,
+            phone,
+          });
+          if (!email) {
+            throw new Error("VALIDATION_ERROR: A valid mobile number is required before managing this tenant");
+          }
+          const createdProfile = await tx.profile.create({
+            data: {
+              id: crypto.randomUUID(),
+              name: displayName,
+              email,
+              phone,
+              role: "TENANT",
+              is_active: true,
+              password_hash: null,
+              auth_user_id: null,
+            },
+            select: { id: true },
+          });
+          profileId = createdProfile.id;
+        }
+      }
+
       await tx.tenants.update({
         where: { id: tenant.id },
         data: {
@@ -119,6 +178,7 @@ export const ownerManagedTenancyService = {
           access_mode: "OWNER_MANAGED",
           display_name: displayName,
           phone_1: phone,
+          profile_id: profileId,
           activation_completed_at: new Date(),
           updated_at: new Date(),
         },
