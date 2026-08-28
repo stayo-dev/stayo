@@ -58,6 +58,7 @@ import {
   type ResidentContext,
 } from "./context";
 import { formatRentSummary } from "./rent-summary";
+import { sendReceiptDocument } from "./receipt-delivery";
 import { formatInstalmentPlan } from "./installment-plan";
 import {
   formatLastReceipt,
@@ -475,20 +476,18 @@ export class CommandCenterService {
       receiptNumber: document.receiptNumber,
     });
 
-    try {
-      // The caption rides on the document itself, so the PDF and the words
-      // describing it arrive as one message rather than two.
-      await this.provider.sendDocumentMessage(phone, document.url, document.filename, caption);
-    } catch (error: any) {
-      logger.error("command_center.receipt_document_send_failed", {
-        payment_id: payment.paymentId,
-        error: error?.message || String(error),
-      });
-      // The receipt exists and we know its URL — hand that over rather than
-      // failing outright.
+    const delivered = await sendReceiptDocument(this.provider, phone, document, caption);
+    if (!delivered) {
+      // The receipt exists but could not be attached. Say what we know rather
+      // than failing outright.
       await this.provider.sendTextMessage(
         phone,
-        compose(caption, lines("Download it here:", document.url))
+        document.url
+          ? compose(caption, lines("Download it here:", document.url))
+          : compose(
+              caption,
+              "The attachment did not go through. Please ask again in a moment, or the hostel can send it to you."
+            )
       );
     }
 

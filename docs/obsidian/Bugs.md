@@ -193,6 +193,16 @@ Independently, `<a download>` is ignored by browsers for cross-origin URLs: it n
 
 > **Not reproduced against a running instance.** The mechanism is traced from `middleware.ts`, `lib/auth.ts` and the login route; no session was exercised to confirm the exact expiry behaviour. The fix is correct regardless — it removes the cookie dependency and adds the in-app preview — but the severity of the original defect is inferred, not measured.
 
+## 2026-08-28 — WhatsApp receipt delivery depended on an unconfigured CDN (fixed)
+
+**Symptom.** None yet in production — found while sending a test receipt, because there is no `IMAGEKIT_PRIVATE_KEY` in `.env` at all.
+
+**Cause.** `sendDocumentMessage` only supported `document.link`, which Meta fetches server-side and therefore must be publicly reachable. The only URL available was `receipts.receipt_pdf_url`, written by `receiptService` after an ImageKit upload — and `lib/imagekit.ts` silently substitutes a **mock uploader** when the key is absent, storing `https://ik.imagekit.io/dummy/mock_upload.png`. Meta would have been handed a link to a non-existent PNG on every `RECEIPT`.
+
+**Fix.** `MetaWhatsAppProvider.uploadMedia` posts the bytes to Meta's media store and the document is sent by `id`, removing the CDN from the path entirely. `ensureReceiptDocument` now returns the buffer that `generatePdfBuffer` already produced and that the previous version discarded — so this is also one fewer render/round-trip. The mock URL is recognised and treated as absent; a genuine CDN URL is still used as a fallback. Shared by both the `RECEIPT` command and payment confirmations via `command-center/receipt-delivery.ts`.
+
+**Unverified:** whether production has `IMAGEKIT_PRIVATE_KEY` set is not visible from this environment. The fix makes it not matter.
+
 ## 2026-08-28 — Every receipt was signed by a different, retired business (fixed)
 
 **Symptom.** A receipt headed *Shoeb's Mansion* carried a footer reading a retired single-hostel brand and its Gmail address, plus that brand in the PDF's title and author metadata.

@@ -356,7 +356,21 @@ export async function findPayment(tenantId: string, paymentId: string): Promise<
   };
 }
 
-export type ReceiptDocument = { url: string; receiptNumber: string; filename: string };
+export type ReceiptDocument = {
+  /** The rendered PDF itself. Preferred — see `MetaWhatsAppProvider.uploadMedia`. */
+  bytes: Buffer | null;
+  /** CDN URL, when one genuinely exists. Fallback only. */
+  url: string | null;
+  receiptNumber: string;
+  filename: string;
+};
+
+/**
+ * `lib/imagekit.ts` mocks uploads when `IMAGEKIT_PRIVATE_KEY` is absent and
+ * writes this placeholder into `receipts.receipt_pdf_url`. Sending it to Meta
+ * would deliver a link to nothing, so it is treated as no URL at all.
+ */
+const MOCK_UPLOAD_URL = "ik.imagekit.io/dummy";
 
 /**
  * Make sure a current receipt PDF exists for this payment, and hand back the
@@ -375,14 +389,19 @@ export type ReceiptDocument = { url: string; receiptNumber: string; filename: st
  * answered with an explanation, never with silence.
  */
 export async function ensureReceiptDocument(paymentId: string): Promise<ReceiptDocument | null> {
+  let bytes: Buffer | null = null;
+
   try {
-    await receiptService.generatePdfBuffer(paymentId, { autoCreate: true });
+    // These bytes are the deliverable. They were previously rendered and then
+    // discarded in favour of a CDN URL, which is what tied receipt delivery to
+    // ImageKit being configured at all.
+    bytes = await receiptService.generatePdfBuffer(paymentId, { autoCreate: true });
   } catch (error: any) {
     logger.warn("command_center.receipt_render_failed", {
       payment_id: paymentId,
       error: error?.message || String(error),
     });
-    // Fall through — a URL cached by an earlier run may still be usable.
+    // Fall through — a real URL cached by an earlier run may still be usable.
   }
 
   const receipt = await prisma.receipts.findFirst({
@@ -390,14 +409,18 @@ export async function ensureReceiptDocument(paymentId: string): Promise<ReceiptD
     select: { receipt_number: true, receipt_pdf_url: true },
   });
 
-  if (!receipt?.receipt_pdf_url) {
-    logger.warn("command_center.receipt_url_missing", { payment_id: paymentId });
+  const storedUrl = receipt?.receipt_pdf_url || null;
+  const url = storedUrl && !storedUrl.includes(MOCK_UPLOAD_URL) ? storedUrl : null;
+
+  if (!bytes && !url) {
+    logger.warn("command_center.receipt_unavailable", { payment_id: paymentId });
     return null;
   }
 
-  const receiptNumber = receipt.receipt_number || "receipt";
+  const receiptNumber = receipt?.receipt_number || "receipt";
   return {
-    url: receipt.receipt_pdf_url,
+    bytes,
+    url,
     receiptNumber,
     // What the reader sees in their chat and their downloads — the receipt
     // number, not a UUID.

@@ -88,6 +88,8 @@ const MARGIN = 48;
 const CONTENT_W = PAGE_W - MARGIN * 2;
 
 const FONT_DIR = path.join(process.cwd(), "lib", "pdf", "fonts");
+/** The Stayo mark, kept inside the backend so it deploys with it. */
+const BRAND_MARK = path.join(process.cwd(), "lib", "pdf", "brand", "stayo-mark.png");
 
 type Fonts = { regular: PDFFont; medium: PDFFont; mono: PDFFont };
 
@@ -256,6 +258,33 @@ export async function generateReceiptPdf(data: ReceiptRenderData): Promise<Uint8
 
   page.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: PAPER });
 
+  // A Stayo edge along the top. Both brands are present on this document and
+  // this is the platform's: a 3pt rule reads as a mark of origin without
+  // competing with the hostel, which is the party the money actually went to
+  // and therefore the one that must head the page.
+  page.drawRectangle({ x: 0, y: PAGE_H - 3, width: PAGE_W, height: 3, color: ACCENT });
+
+  // The Stayo mark, watermarked. Drawn first so every line of the receipt sits
+  // over it, and at 4% so it registers as a ground rather than as content —
+  // a watermark that competes with an amount is a defect, not branding. It
+  // also occupies the empty middle band an A4 receipt with few line items
+  // inevitably leaves.
+  try {
+    const markBytes = await fs.readFile(BRAND_MARK);
+    const mark = await pdfDoc.embedPng(markBytes);
+    const markW = 300;
+    const markH = (mark.height / mark.width) * markW;
+    page.drawImage(mark, {
+      x: (PAGE_W - markW) / 2,
+      y: (PAGE_H - markH) / 2 - 40,
+      width: markW,
+      height: markH,
+      opacity: 0.04,
+    });
+  } catch {
+    // A missing mark is a plainer receipt, not a failed one.
+  }
+
   let y = PAGE_H - MARGIN;
 
   // ── Masthead ─────────────────────────────────────────────────────────────
@@ -414,10 +443,24 @@ export async function generateReceiptPdf(data: ReceiptRenderData): Promise<Uint8
   // that space in two reads as composition instead of an unfinished document.
   const footerTop = MARGIN + 42;
   if (content.verifyUrl) {
-    const verifyTop = footerTop + 92;
-    rule(page, verifyTop + 22, RULE);
-    y = verifyTop - 58;
+    const panelH = 84;
+    const panelY = footerTop + 26;
+    // A panel rather than a bare rule: verification is the one promise the
+    // platform makes on this document, so it is given a surface of its own.
+    page.drawRectangle({
+      x: MARGIN,
+      y: panelY,
+      width: CONTENT_W,
+      height: panelH,
+      color: WASH,
+      borderColor: RULE,
+      borderWidth: 0.6,
+    });
+    page.drawRectangle({ x: MARGIN, y: panelY, width: 2.5, height: panelH, color: ACCENT });
 
+    const qrSize = 56;
+    const qrX = MARGIN + 16;
+    const qrY = panelY + (panelH - qrSize) / 2;
     try {
       const qrDataUrl = await QRCode.toDataURL(content.verifyUrl, {
         margin: 0,
@@ -425,17 +468,25 @@ export async function generateReceiptPdf(data: ReceiptRenderData): Promise<Uint8
         color: { dark: "#1A1A1C", light: "#FFFFFF" },
       });
       const qrImage = await pdfDoc.embedPng(qrDataUrl);
-      page.drawImage(qrImage, { x: MARGIN, y, width: 58, height: 58 });
+      page.drawImage(qrImage, { x: qrX, y: qrY, width: qrSize, height: qrSize });
     } catch {
       // No QR is survivable; the URL below still verifies the receipt.
     }
 
-    draw(page, content.verifyHeading, MARGIN + 70, y + 44, fonts, { size: 9.5, font: fonts.medium });
-    draw(page, content.verifyNote, MARGIN + 70, y + 32, fonts, { size: 8.2, color: MUTED });
-    wrap(content.verifyUrl, fonts.mono, 7.2, CONTENT_W - 78)
+    const panelTextX = qrX + qrSize + 16;
+    draw(page, content.verifyHeading, panelTextX, panelY + panelH - 26, fonts, {
+      size: 10,
+      font: fonts.medium,
+    });
+    draw(page, content.verifyNote, panelTextX, panelY + panelH - 39, fonts, { size: 8.2, color: MUTED });
+    wrap(content.verifyUrl, fonts.mono, 7.2, CONTENT_W - (panelTextX - MARGIN) - 20)
       .slice(0, 2)
       .forEach((line, index) => {
-        draw(page, line, MARGIN + 70, y + 19 - index * 9, fonts, { size: 7.2, font: fonts.mono, color: FAINT });
+        draw(page, line, panelTextX, panelY + panelH - 54 - index * 9, fonts, {
+          size: 7.2,
+          font: fonts.mono,
+          color: FAINT,
+        });
       });
   }
 
@@ -451,10 +502,17 @@ export async function generateReceiptPdf(data: ReceiptRenderData): Promise<Uint8
   if (content.issuerGst) {
     draw(page, `GSTIN ${content.issuerGst}`, MARGIN, MARGIN - 19, fonts, { size: 7.6, color: FAINT });
   }
-  drawRight(page, content.footerRight, PAGE_W - MARGIN, MARGIN - 8, fonts, {
-    size: 8.4,
+  // The platform wordmark, set as a mark rather than a sentence — the hostel
+  // still owns the left of the footer and the top of the page.
+  drawRight(page, "STAYO", PAGE_W - MARGIN, MARGIN - 6, fonts, {
+    size: 11,
     font: fonts.medium,
     color: ACCENT,
+    tracking: 2.6,
+  });
+  drawRight(page, content.platformDomain, PAGE_W - MARGIN, MARGIN - 18, fonts, {
+    size: 7.4,
+    color: FAINT,
   });
 
   return pdfDoc.save();

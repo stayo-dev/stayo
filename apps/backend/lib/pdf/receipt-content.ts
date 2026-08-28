@@ -72,6 +72,7 @@ export type ReceiptContent = {
   footerLeft: string;
   /** Platform attribution. The hostel issues the receipt; Stayo carries it. */
   footerRight: string;
+  platformDomain: string;
 };
 
 export type ReceiptContentInput = {
@@ -253,7 +254,7 @@ export function buildReceiptContent(input: ReceiptContentInput): ReceiptContent 
     ]),
 
     verifyUrl: input.verification_url?.trim() || null,
-    verifyHeading: "Verify this receipt",
+    verifyHeading: "Verified by Stayo",
     // Not "Secure HMAC" — the reader is a resident, not an engineer.
     verifyNote: "Scan to confirm this receipt is genuine",
 
@@ -262,5 +263,6 @@ export function buildReceiptContent(input: ReceiptContentInput): ReceiptContent 
       "Computer-generated receipt — no signature required. For any query about this payment, contact the hostel.",
     footerLeft: joinParts([issuerName, input.hostel_phone], " · "),
     footerRight: "Powered by Stayo",
+    platformDomain: "yourstayo.com",
   };
 }

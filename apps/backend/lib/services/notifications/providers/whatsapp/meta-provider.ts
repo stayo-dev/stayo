@@ -387,20 +387,60 @@ export class MetaWhatsAppProvider {
   }
 
   /**
-   * Send a PDF (or any document) by public URL.
+   * Upload bytes to Meta's media store and return the id.
    *
-   * Meta fetches `link` **server-side**, so it must be reachable without
-   * credentials — an authenticated app route will not work here. Receipts
-   * qualify because `receiptService` uploads every rendered PDF to ImageKit
-   * and caches the CDN URL on `receipts.receipt_pdf_url`; that same URL is
-   * already re-fetched unauthenticated by the service's own cache path.
+   * The alternative to `document.link` — and the better one here. A link must
+   * be publicly fetchable by Meta's servers, which quietly makes receipt
+   * delivery depend on ImageKit being configured: `lib/imagekit.ts` falls back
+   * to a *mock* uploader when `IMAGEKIT_PRIVATE_KEY` is absent, writing
+   * `https://ik.imagekit.io/dummy/mock_upload.png` into
+   * `receipts.receipt_pdf_url`. Meta would then be handed a link to nothing.
    *
+   * Uploading the bytes removes that dependency: `generatePdfBuffer` already
+   * produces them, and they were being discarded.
+   */
+  async uploadMedia(
+    bytes: Uint8Array | Buffer,
+    mimeType: string,
+    filename: string
+  ): Promise<string> {
+    const url = `${this.config.baseUrl}/${this.config.phoneNumberId}/media`;
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", mimeType);
+    form.append("file", new Blob([bytes as any], { type: mimeType }), filename);
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${this.config.accessToken}` },
+      body: form,
+    });
+
+    const payload: any = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.id) {
+      throw new WhatsAppProviderError({
+        message: `WhatsApp media upload failed: ${payload?.error?.message || response.status}`,
+        code: "WHATSAPP_MEDIA_UPLOAD_FAILED",
+        // 5xx is worth another go; a rejected file is not.
+        retryable: response.status >= 500,
+        attempts: 1,
+        raw: payload,
+      });
+    }
+
+    return String(payload.id);
+  }
+
+  /**
+   * Send a document, either by uploaded media id or by public URL.
+   *
+   * Prefer `mediaId` — see `uploadMedia` for why a link is the fragile option.
    * `filename` is what the reader sees in their chat and in their downloads,
    * so it carries the receipt number rather than a UUID.
    */
   async sendDocumentMessage(
     to: string,
-    link: string,
+    source: { mediaId: string } | { link: string },
     filename: string,
     caption?: string
   ): Promise<WhatsAppSendResult> {
@@ -411,7 +451,7 @@ export class MetaWhatsAppProvider {
       to: phone,
       type: "document",
       document: {
-        link,
+        ...("mediaId" in source ? { id: source.mediaId } : { link: source.link }),
         // Meta caps the filename; a truncated name is better than a refusal.
         filename: String(filename || "receipt.pdf").slice(0, 240),
         ...(caption ? { caption: caption.slice(0, 1024) } : {}),

@@ -23,6 +23,7 @@ import { buildReceipt, ensureReceiptDocument, listPayments, loadResidentContext 
 import { formatPaymentConfirmation } from "./receipt";
 import { isGuardianVerified } from "./guardian-access";
 import { actionsFor } from "./menu";
+import { sendReceiptDocument } from "./receipt-delivery";
 import { COMMANDS } from "./commands";
 
 const logger = getLogger("whatsapp.command-center.payment-confirmation");
@@ -90,14 +91,8 @@ export async function sendPaymentConfirmation(tenantId: string): Promise<Payment
 
       if (document) {
         // The receipt itself, not a reference to one the reader has to go find.
-        await provider
-          .sendDocumentMessage(phone, document.url, document.filename)
-          .catch((error: any) =>
-            logger.warn("payment_confirmation.document_failed", {
-              tenant_id: tenantId,
-              error: error?.message || String(error),
-            })
-          );
+        // Best-effort: the confirmation text has already landed.
+        await sendReceiptDocument(provider, phone, document);
       }
 
       if (buttons.length > 0) {
