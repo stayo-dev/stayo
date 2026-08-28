@@ -302,6 +302,32 @@ export function LeadDetailSheet({ leadId, onClose }: LeadDetailSheetProps) {
                     : '—'
                 }
               />
+              <div className="pt-1">
+                <dt className="text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">Room preference</dt>
+                <dd className="mt-1">
+                  {lead.preferred_floor || lead.preferred_room ? (
+                    <div className="flex flex-col gap-1.5">
+                      {lead.preferred_floor && (
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-muted-foreground">Preferred floor</span>
+                          <span className="text-right font-semibold text-foreground">{lead.preferred_floor.name}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-muted-foreground">{lead.preferred_room ? 'Preferred room' : 'Room'}</span>
+                        <span className="text-right font-semibold text-foreground">
+                          {lead.preferred_room?.room_no ?? 'Any available room'}
+                        </span>
+                      </div>
+                      {lead.preferred_room && lead.preferred_room_available === false && (
+                        <p className="text-right text-[11px] font-semibold text-destructive">No longer available</p>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-foreground">No preference</span>
+                  )}
+                </dd>
+              </div>
               {lead.notes && (
                 <div className="pt-1">
                   <dt className="text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">Message</dt>

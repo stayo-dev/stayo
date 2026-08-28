@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, Lock, Phone, ShieldCheck } from 'lucide-react';
 
 import { useAuth } from '@context/AuthContext';
 import { authApi } from '@lib/authApi';
 import { useCreateEnquiry, useDiscoverListing, useIsSeeker } from '@features/discover/hooks/useDiscover';
+import { groupRoomsByFloor, type SeatGridSourceRoom } from '@shared/ui-patterns/roomSeatGrid';
 
 import { useDiscoverAuth } from './DiscoverAuthContext';
 import { PrimaryButton } from './components/DiscoverShell';
+import { RoomPreferenceGrid } from './components/RoomPreferenceGrid';
 import { C, FONT, PHOTO_FALLBACK, formatRupees } from './discoverTheme';
 import MoveInDateField from './MoveInDateField';
 import {
@@ -46,6 +48,42 @@ export function EnquiryPage() {
   const [duration, setDuration] = useState(6);
   const [message, setMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  // Room preference — entirely optional. Picking a floor without a room
+  // means "any available room on that floor"; clearing either resets both,
+  // since a room only ever makes sense alongside the floor it's on.
+  const [preferredFloorId, setPreferredFloorId] = useState<string | null>(null);
+  const [preferredRoomId, setPreferredRoomId] = useState<string | null>(null);
+
+  const seatGridRooms: SeatGridSourceRoom[] = useMemo(
+    () =>
+      (data?.rooms ?? []).map((room: any) => ({
+        id: room.id,
+        roomNo: room.room_no,
+        floorId: room.floor_id ?? null,
+        floorName: room.floor_name ?? null,
+        available: Number(room.available_beds ?? 0),
+      })),
+    [data?.rooms],
+  );
+  const preferenceFloors = useMemo(
+    () => groupRoomsByFloor(seatGridRooms, { selectedRoomId: preferredRoomId }),
+    [seatGridRooms, preferredRoomId],
+  );
+  const preferredFloorName = preferenceFloors.find((f) => f.id === preferredFloorId)?.name ?? null;
+  const preferredRoomNo = preferenceFloors.flatMap((f) => f.rooms).find((r) => r.id === preferredRoomId)?.roomNo ?? null;
+
+  const selectPreferredFloor = (floorId: string) => {
+    setPreferredFloorId(floorId);
+    setPreferredRoomId(null);
+  };
+  const selectPreferredRoom = (roomId: string) => {
+    setPreferredRoomId((current) => (current === roomId ? null : roomId));
+  };
+  const clearRoomPreference = () => {
+    setPreferredFloorId(null);
+    setPreferredRoomId(null);
+  };
 
   // Phone verification — only asked once, and only when actually needed
   // (no verified phone on file yet). `phoneStep` starts at 'confirm' if the
@@ -127,7 +165,15 @@ export function EnquiryPage() {
     setError(null);
     if (!slug) return;
     createEnquiry.mutate(
-      { slug, roomCapacity: capacity, moveInDate: moveIn, durationMonths: duration, message: message.trim() || undefined },
+      {
+        slug,
+        roomCapacity: capacity,
+        moveInDate: moveIn,
+        durationMonths: duration,
+        message: message.trim() || undefined,
+        preferredFloorId: preferredFloorId ?? undefined,
+        preferredRoomId: preferredRoomId ?? undefined,
+      },
       {
         onSuccess: (enquiry) => navigate(`/profile/enquiries/${enquiry.id}`, { replace: true }),
         onError: (mutationError: any) =>
@@ -232,6 +278,43 @@ export function EnquiryPage() {
             })}
           </div>
         </section>
+
+        {/* Preferred room — optional, never a reservation */}
+        {preferenceFloors.length > 0 && (
+          <section>
+            <h2 className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: '#9C9186' }}>
+              Preferred room{' '}
+              <span style={{ color: C.textFaint, fontWeight: 500, textTransform: 'none', letterSpacing: 'normal' }}>
+                (optional)
+              </span>
+            </h2>
+            <RoomPreferenceGrid
+              floors={preferenceFloors}
+              activeFloorId={preferredFloorId}
+              onSelectFloor={selectPreferredFloor}
+              onSelectRoom={selectPreferredRoom}
+            />
+            {preferredFloorId && (
+              <div
+                className="mt-3 flex items-center justify-between gap-2 rounded-[13px] px-3.5 py-2.5"
+                style={{ background: C.chipBg }}
+              >
+                <p className="text-[12px] font-semibold" style={{ color: C.text }}>
+                  {preferredFloorName}
+                  {preferredRoomNo ? ` · ${preferredRoomNo}` : ' · Any available room'}
+                </p>
+                <button
+                  type="button"
+                  onClick={clearRoomPreference}
+                  className="flex-none text-[11.5px] font-semibold underline"
+                  style={{ color: C.textMuted }}
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+          </section>
+        )}
 
         {/* Message */}
         <section>

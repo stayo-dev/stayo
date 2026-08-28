@@ -8,6 +8,7 @@ import { invitationService } from "@/src/services/tenants/invitation-service";
 import { canTransitionLeadStatus, canConvertLeadToInvitation } from "@/src/services/admissions/lead-transition-guards";
 import { markLeadJoinedForTenant } from "@/src/services/admissions/lead-joined-transition";
 import { whatsAppTemplateDeliveryService } from "@/lib/services/notifications/whatsapp-template-delivery";
+import { roomCapacityService } from "@/lib/services/room-capacity-service";
 import {
   buildTenantEnquiryRejected,
   rejectionReasonText,
@@ -134,6 +135,7 @@ function publicRoom(room: any) {
     id: room.id,
     room_no: room.room_no,
     floor: room.floor,
+    floor_id: room.floor_id ?? null,
     floor_name: room.floor_ref?.name || null,
     room_type: room.room_type || "Standard",
     capacity: room.capacity,
@@ -555,10 +557,30 @@ export class AdmissionsService {
         activities: { orderBy: { created_at: "desc" }, take: 80 },
         lead_notes: { orderBy: { created_at: "desc" }, take: 50 },
         reservations: { include: { room: { select: { id: true, room_no: true, room_type: true } } }, orderBy: { created_at: "desc" } },
+        preferred_floor: { select: { id: true, name: true } },
+        preferred_room: { select: { id: true, room_no: true, floor_id: true } },
       },
     });
     if (!lead) throw ApiError.notFound("Lead not found");
-    return this.shapeLead(lead);
+    const shaped = this.shapeLead(lead);
+
+    // Whether the tenant's preferred room, if any, is still assignable —
+    // judged fresh through the one blessed availability source
+    // (`roomCapacityService`), never re-derived here. Skipped once the lead
+    // has already become a tenant: the preference has done its job, and the
+    // room may since have been reassigned to someone else entirely.
+    if (lead.preferred_room_id && !["INVITED", "JOINED"].includes(lead.status)) {
+      try {
+        const snapshot = await roomCapacityService.getRoomCapacitySnapshot(lead.preferred_room_id, { ownerId });
+        shaped.preferred_room_available = snapshot.available > 0;
+      } catch {
+        // Soft-deleted (is_active: false) or otherwise no longer resolvable —
+        // reads as "not available" rather than surfacing an error.
+        shaped.preferred_room_available = false;
+      }
+    }
+
+    return shaped;
   }
 
   shapeLead(lead: any) {

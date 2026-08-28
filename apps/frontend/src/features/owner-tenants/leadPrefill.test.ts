@@ -1,29 +1,66 @@
 import { describe, it, expect } from 'vitest';
-import { leadToInviteWizardData } from './leadPrefill';
+import { leadToInviteWizardData, type AcceptedLeadSource } from './leadPrefill';
+
+const baseLead: AcceptedLeadSource = {
+  student_name: 'Asha Rao',
+  student_phone: '9876543210',
+  student_email: 'asha@example.com',
+  hostel_id: 'hostel-1',
+};
 
 describe('leadToInviteWizardData', () => {
-  it('maps the enquiry fields the owner should not have to retype', () => {
-    expect(
-      leadToInviteWizardData({
-        student_name: 'Harsha',
-        student_phone: '9876543210',
-        student_email: 'harsha@gmail.com',
-        hostel_id: 'hostel-1',
-      })
-    ).toEqual({
-      tenantName: 'Harsha',
-      tenantPhone: '9876543210',
-      tenantEmail: 'harsha@gmail.com',
-      hostelId: 'hostel-1',
+  it('carries no room fields when the lead expressed no preference', () => {
+    const data = leadToInviteWizardData(baseLead);
+    expect(data.preferredFloorId).toBeUndefined();
+    expect(data.preferredRoomId).toBeUndefined();
+    expect(data.roomId).toBeUndefined();
+  });
+
+  it('carries the floor only, without touching roomId, for a floor-only preference', () => {
+    const data = leadToInviteWizardData({
+      ...baseLead,
+      preferred_floor: { id: 'floor-ground', name: 'Ground' },
     });
+    expect(data.preferredFloorId).toBe('floor-ground');
+    expect(data.preferredRoomId).toBeUndefined();
+    expect(data.roomId).toBeUndefined();
   });
 
-  it('omits fields the lead never captured, rather than overwriting with blanks', () => {
-    expect(leadToInviteWizardData({ student_name: 'Harsha', student_phone: null, student_email: null, hostel_id: 'hostel-1' }))
-      .toEqual({ tenantName: 'Harsha', hostelId: 'hostel-1' });
+  it('preselects roomId/roomLabel when the preferred room is confirmed available', () => {
+    const data = leadToInviteWizardData({
+      ...baseLead,
+      preferred_floor: { id: 'floor-ground', name: 'Ground' },
+      preferred_room: { id: 'room-g103', room_no: 'G103' },
+      preferred_room_available: true,
+    });
+    expect(data.roomId).toBe('room-g103');
+    expect(data.roomLabel).toBe('G103');
+    expect(data.preferredRoomAvailable).toBe(true);
   });
 
-  it('produces an empty object for a lead with nothing usable', () => {
-    expect(leadToInviteWizardData({})).toEqual({});
+  it('does NOT preselect roomId when the preferred room is confirmed unavailable', () => {
+    const data = leadToInviteWizardData({
+      ...baseLead,
+      preferred_floor: { id: 'floor-ground', name: 'Ground' },
+      preferred_room: { id: 'room-g103', room_no: 'G103' },
+      preferred_room_available: false,
+    });
+    expect(data.roomId).toBeUndefined();
+    expect(data.roomLabel).toBeUndefined();
+    // Still carried, so the Stay step can explain what was preferred and why
+    // it wasn't preselected.
+    expect(data.preferredRoomId).toBe('room-g103');
+    expect(data.preferredRoomNo).toBe('G103');
+    expect(data.preferredRoomAvailable).toBe(false);
+  });
+
+  it('does NOT preselect roomId when availability is unknown (e.g. lead already converted)', () => {
+    const data = leadToInviteWizardData({
+      ...baseLead,
+      preferred_room: { id: 'room-g103', room_no: 'G103' },
+      preferred_room_available: undefined,
+    });
+    expect(data.roomId).toBeUndefined();
+    expect(data.preferredRoomAvailable).toBe(false);
   });
 });

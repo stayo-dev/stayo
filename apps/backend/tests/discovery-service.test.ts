@@ -11,6 +11,8 @@ vi.mock("@/lib/db", () => ({
     // implementations, so this default survives between tests.
     hostel_marketing_revisions: { findFirst: vi.fn(), findMany: vi.fn(async () => []) },
     profile: { findUnique: vi.fn() },
+    rooms: { findFirst: vi.fn() },
+    floors: { findFirst: vi.fn() },
   },
   supabase: {},
 }));
@@ -50,6 +52,8 @@ import { admissionsService } from "@/src/services/admissions/admissions-service"
 
 const hostels = () => (prisma as any).hostels;
 const leads = () => (prisma as any).visitorLead;
+const rooms = () => (prisma as any).rooms;
+const floors = () => (prisma as any).floors;
 
 /** A hostel row shaped the way the search projection selects it. */
 function hostelRow(overrides: Record<string, unknown> = {}) {
@@ -376,5 +380,83 @@ describe("enquiries", () => {
     const [enquiry] = await discoveryService.listEnquiries("p1");
     expect(enquiry.stage).toBe("REVIEWING");
     expect(enquiry).not.toHaveProperty("status");
+  });
+});
+
+describe("enquiry room preference", () => {
+  const seeker = { id: "p1", name: "Asha R", email: "asha@example.com", phone: "919000000000" };
+
+  function stubHostelAndLeadLookups() {
+    hostels().findFirst.mockResolvedValueOnce({ id: "h1", owner_id: "o1", name: "Sri Adithya" });
+    leads().findFirst
+      .mockResolvedValueOnce(null) // no open lead
+      .mockResolvedValueOnce({
+        id: "l1",
+        status: "NEW",
+        notes: null,
+        created_at: new Date(),
+        last_activity_at: new Date(),
+        hostel: { id: "h1", name: "Sri Adithya", public_slug: "sri-adithya", city: "Hyderabad", address: "Adikmet", admission_photos: [] },
+      });
+    leads().create.mockResolvedValueOnce({ id: "l1" });
+  }
+
+  it("stores a specific preferred room, deriving the floor from the room itself", async () => {
+    stubHostelAndLeadLookups();
+    rooms().findFirst.mockResolvedValueOnce({ id: "room-1", floor_id: "floor-1" });
+
+    await discoveryService.createEnquiry(seeker, { slug: "sri-adithya", preferredRoomId: "room-1" });
+
+    expect(rooms().findFirst.mock.calls[0][0].where).toMatchObject({ id: "room-1", hostel_id: "h1", is_active: true });
+    expect(leads().create.mock.calls[0][0].data).toMatchObject({
+      preferred_room_id: "room-1",
+      preferred_floor_id: "floor-1",
+    });
+  });
+
+  it("stores a floor-only preference with no room chosen", async () => {
+    stubHostelAndLeadLookups();
+    floors().findFirst.mockResolvedValueOnce({ id: "floor-1" });
+
+    await discoveryService.createEnquiry(seeker, { slug: "sri-adithya", preferredFloorId: "floor-1" });
+
+    expect(leads().create.mock.calls[0][0].data).toMatchObject({
+      preferred_floor_id: "floor-1",
+      preferred_room_id: null,
+    });
+  });
+
+  it("writes no preference at all when none was sent", async () => {
+    stubHostelAndLeadLookups();
+
+    await discoveryService.createEnquiry(seeker, { slug: "sri-adithya" });
+
+    expect(leads().create.mock.calls[0][0].data).toMatchObject({
+      preferred_floor_id: null,
+      preferred_room_id: null,
+    });
+  });
+
+  it("rejects a preferred room that belongs to a different hostel", async () => {
+    hostels().findFirst.mockResolvedValueOnce({ id: "h1", owner_id: "o1", name: "Sri Adithya" });
+    // Scoped to this hostel in the query itself, so a room from elsewhere
+    // simply doesn't match.
+    rooms().findFirst.mockResolvedValueOnce(null);
+
+    await expect(
+      discoveryService.createEnquiry(seeker, { slug: "sri-adithya", preferredRoomId: "someone-elses-room" }),
+    ).rejects.toThrow(/isn't part of this hostel/i);
+    expect(leads().create).not.toHaveBeenCalled();
+    expect(leads().update).not.toHaveBeenCalled();
+  });
+
+  it("rejects a preferred floor that belongs to a different hostel", async () => {
+    hostels().findFirst.mockResolvedValueOnce({ id: "h1", owner_id: "o1", name: "Sri Adithya" });
+    floors().findFirst.mockResolvedValueOnce(null);
+
+    await expect(
+      discoveryService.createEnquiry(seeker, { slug: "sri-adithya", preferredFloorId: "someone-elses-floor" }),
+    ).rejects.toThrow(/isn't part of this hostel/i);
+    expect(leads().create).not.toHaveBeenCalled();
   });
 });
