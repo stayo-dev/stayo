@@ -193,6 +193,28 @@ Independently, `<a download>` is ignored by browsers for cross-origin URLs: it n
 
 > **Not reproduced against a running instance.** The mechanism is traced from `middleware.ts`, `lib/auth.ts` and the login route; no session was exercised to confirm the exact expiry behaviour. The fix is correct regardless — it removes the cookie dependency and adds the in-app preview — but the severity of the original defect is inferred, not measured.
 
+## 2026-08-28 — Every receipt was signed by a different, retired business (fixed)
+
+**Symptom.** A receipt headed *Shoeb's Mansion* carried a footer reading a retired single-hostel brand and its Gmail address, plus that brand in the PDF's title and author metadata.
+
+**Cause.** The identity was hardcoded in five places in `lib/pdf/receipt-template-pdf-lib.ts` — `setTitle`, `setAuthor`, the monogram fallback, the hostel-name fallback, and the footer band.
+
+**Why the guardrail missed it.** `scripts/check-production-branding.mjs` forbids exactly these strings. It was only ever invoked as `check-production-branding.mjs dist` from `apps/frontend`'s build, and its `textFilePattern` did not match `.ts` at all — so backend source was both out of scope and unmatchable. The backend produces no bundled artefact for it to scan.
+
+**Fix.** The template takes its issuer entirely from data; there is no default identity. The guardrail now matches `.ts`/`.tsx`/`.mjs`, skips `node_modules`/`.next`, and excludes itself (its own rule list contains the strings). `apps/backend` gains `npm run check:branding`.
+
+**Three backend files still carry it and are NOT fixed** — deliberately, as each needs a different judgement: `lib/sanity/landingContent.ts` (a full legacy hostel identity used as fallback landing content — a genuine public leak), `lib/security/owner-integrity-guard.ts:24` (the address appears in what looks like a security allowlist — **do not change blind**), and `lib/services/notifications/owner-whatsapp-assistant.ts` (owner-facing copy, 3 sites). Tracked in [[TODO]]; the guardrail is not wired into a build until they are cleared.
+
+## 2026-08-28 — The receipt printed "Rs.", ", Hyderabad" and "N/A" (fixed)
+
+**Symptoms, all on the same document.** `Rs. 16,000` instead of `₹16,000`. A city line beginning with a stray comma. `TRANSACTION ID: N/A` on a cash payment, which has no transaction id by definition. `RECEIPT VERSION v4.0.0` on the face of the document. `SETTLEMENT BREAKDOWN` / `ALLOCATED AMOUNT` as headings, and `Secure HMAC` beside the QR.
+
+**Causes.** The rupee sign was actively rewritten to `Rs. ` by a `sanitizeText` helper, because pdf-lib's built-in fonts are WinAnsi-encoded and have no `₹` glyph. The comma came from joining an empty street line to a city. The rest was internal vocabulary and absent-value handling leaking onto a customer-facing document.
+
+**Fix.** Content moved into `lib/pdf/receipt-content.ts`, a pure module with no pdf-lib and no I/O, so each of these is now a unit test rather than a thing to notice by eye. Fields with no value are dropped rather than printed as "N/A"; a literal upstream `"N/A"` is treated as absent. The renderer embeds Inter, which carries `₹`.
+
+**A trap for anyone editing the fonts:** pdf-lib's subsetter drops most Latin glyphs from these Inter builds — the first render came out as `raba T a a 32` where `Hyderabad, Telangana 500032` belonged. Inter is embedded with `subset: false` on purpose. DM Mono subsets correctly.
+
 ## 2026-08-27 — Every inbound WhatsApp message failed on `prisma.profiles` (fixed)
 
 **Symptom.** Sending anything to the WhatsApp number — `Help`, `RENT`, a tapped button — returned only the generic failure notice. Logs showed `Cannot read properties of undefined (reading 'findFirst')` for every message, with `processed_commands: 0`.

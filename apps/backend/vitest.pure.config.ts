@@ -115,6 +115,8 @@ export default defineConfig({
       'tests/whatsapp-guardian-activation-template.test.ts',
       // Reads schema.prisma and the source as text — no client, no database.
       'tests/whatsapp-prisma-accessors.test.ts',
+      // The receipt's content model — no pdf-lib, no fonts, no I/O.
+      'tests/receipt-content.test.ts',
     ],
     alias: {
       // More specific than the catch-all `@` entry below, and must come

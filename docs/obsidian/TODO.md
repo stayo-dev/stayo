@@ -4,6 +4,15 @@ tags: [todo, backlog]
 
 # TODO / Backlog
 
+## Retired hostel identity still in backend source (2026-08-28)
+
+`npm run check:branding` in `apps/backend` now scans source and currently fails on three files. Each needs a different call, which is why none was changed with the receipt redesign:
+
+- [ ] `lib/sanity/landingContent.ts` — a complete legacy hostel identity (name, email, postal address, SEO title) used as **fallback landing content**. A genuine public-facing leak; replace with Stayo/neutral defaults.
+- [ ] `lib/security/owner-integrity-guard.ts:24` — the retired address sits in what reads as a security allowlist. **Do not change blind**; work out what the list gates first.
+- [ ] `lib/services/notifications/owner-whatsapp-assistant.ts` — 3 sites of owner-facing copy ("Welcome to … Assistant"). Owner surface, so out of the resident/guardian scope.
+- [ ] Once cleared, wire `check:branding` into the backend build the way `apps/frontend` wires its `dist` scan, so this cannot regress.
+
 ## Invalid `prisma.<model>` accessors — 18 latent runtime failures (2026-08-27)
 
 `lib/db` exports `prisma` as `any`, so a mistyped model accessor compiles, builds, and throws `Cannot read properties of undefined` the moment the line runs. One of these took inbound WhatsApp down entirely ([[Bugs]]). **18 more are still in the tree**, verified against a generated client:
