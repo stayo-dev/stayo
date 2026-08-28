@@ -11,10 +11,13 @@ import {
   acknowledgementsComplete,
   canConfirm,
   canSendOtp,
+  canSubmitDispute,
   canVerifyOtp,
   claimReducer,
   initialClaimState,
   isTenantSession,
+  paymentRef,
+  rentMonthRef,
   REQUIRED_ACKNOWLEDGEMENTS,
   selectedTenancy,
   type AcknowledgementKey,
@@ -90,9 +93,32 @@ export function ClaimTenancyPage() {
     }
   };
 
-  const handleConfirm = async () => {
+  // The 'confirm' step's own submit no longer calls the backend directly --
+  // it fetches the statement and lands on 'review' first, so the tenant
+  // reads what they're inheriting before the claim actually completes. The
+  // statement fetch never spends the OTP proof (see `tenancyClaimApi.statement`),
+  // so this can be retried freely.
+  const handleProceedToReview = async () => {
     const phone = canonicalPhone(state.phone);
     if (!phone || !state.selectedTenantId || !canConfirm(state)) return;
+    dispatch({ type: 'STATEMENT_REQUESTED' });
+    try {
+      const statement = await tenancyClaimApi.statement(phone, state.selectedTenantId, state.claimToken);
+      dispatch({ type: 'STATEMENT_SUCCEEDED', statement });
+    } catch (err) {
+      const extracted = extractError(err);
+      dispatch({ type: 'STATEMENT_FAILED', code: extracted.code, message: toErrorLine(resolveError(err, 'claim')) });
+    }
+  };
+
+  // The actual claim-completing call -- fired from the 'review' step either
+  // way the tenant decides: "This looks right" sends no dispute payload,
+  // "Something's wrong" sends the marked rows and note. Either way the
+  // claim completes; see `tenancy-claim-service.ts`'s module comment for
+  // why a dispute must never withhold the account.
+  const submitConfirm = async (dispute: { disputedItems?: string[]; disputeNote?: string }) => {
+    const phone = canonicalPhone(state.phone);
+    if (!phone || !state.selectedTenantId) return;
     dispatch({ type: 'CONFIRM_REQUESTED' });
     try {
       const result = await tenancyClaimApi.confirm({
@@ -106,6 +132,7 @@ export function ClaimTenancyPage() {
         // Omitted for an already-signed-in caller -- the backend refuses a
         // password from them (their session already authenticates them).
         ...(state.alreadySignedIn ? {} : { password: state.password }),
+        ...dispute,
       });
       dispatch({ type: 'CONFIRM_SUCCEEDED', result });
       // Claiming a *second* tenancy while already signed in doesn't mint a
@@ -119,6 +146,12 @@ export function ClaimTenancyPage() {
       const extracted = extractError(err);
       dispatch({ type: 'CONFIRM_FAILED', code: extracted.code, message: toErrorLine(resolveError(err, 'claim')) });
     }
+  };
+
+  const handleAcceptStatement = () => submitConfirm({});
+  const handleSubmitDispute = () => {
+    if (!canSubmitDispute(state)) return;
+    submitConfirm({ disputedItems: state.disputedItems, disputeNote: state.disputeNote });
   };
 
   // Mirrors `ActivationPage.tsx`'s `enterStayo`: when `confirm` minted a
@@ -173,7 +206,15 @@ export function ClaimTenancyPage() {
             {state.step === 'otp' && <OtpStep state={state} dispatch={dispatch} onSubmit={handleVerifyOtp} onResend={handleSendOtp} />}
             {state.step === 'empty' && <EmptyStep onTryAgain={() => dispatch({ type: 'RESTART' })} />}
             {state.step === 'picker' && <PickerStep state={state} dispatch={dispatch} />}
-            {state.step === 'confirm' && <ConfirmStep state={state} dispatch={dispatch} onSubmit={handleConfirm} />}
+            {state.step === 'confirm' && <ConfirmStep state={state} dispatch={dispatch} onSubmit={handleProceedToReview} />}
+            {state.step === 'review' && (
+              <ReviewStep
+                state={state}
+                dispatch={dispatch}
+                onAccept={handleAcceptStatement}
+                onSubmitDispute={handleSubmitDispute}
+              />
+            )}
             {state.step === 'done' && <DoneStep state={state} onEnter={enterStayo} />}
           </div>
         </div>
@@ -350,8 +391,7 @@ function ConfirmStep({ state, dispatch, onSubmit }: StepProps & { onSubmit: () =
       )}
       <h1 className="text-xl font-bold text-foreground">Confirm what you're claiming</h1>
       <p className="mt-1.5 text-sm text-muted-foreground">
-        Every payment and receipt already on this record stays exactly as it is — confirming just links it to your
-        account.
+        Next, we'll show you exactly what's on record for this tenancy before anything is linked to your account.
       </p>
       <ErrorBanner message={state.error} />
 
@@ -476,8 +516,185 @@ function ConfirmStep({ state, dispatch, onSubmit }: StepProps & { onSubmit: () =
         onClick={onSubmit}
         className="mt-5 w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-50"
       >
-        {state.submitting ? <StayoLoader size="sm" /> : 'Confirm and claim'}
+        {state.submitting ? <StayoLoader size="sm" /> : "Review what's on record"}
       </button>
+    </div>
+  );
+}
+
+const CURRENCY = (amount: number) => `₹${amount.toLocaleString('en-IN')}`;
+const DATE = (value: string) => new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+
+function ReviewStep({
+  state,
+  dispatch,
+  onAccept,
+  onSubmitDispute,
+}: StepProps & { onAccept: () => void; onSubmitDispute: () => void }) {
+  const statement = state.statement;
+  if (!statement) return null;
+
+  const toggleItem = (ref: string, checked: boolean) => dispatch({ type: 'DISPUTE_ITEM_TOGGLED', ref, value: checked });
+
+  return (
+    <div>
+      <h1 className="text-xl font-bold text-foreground">Here's what your owner recorded</h1>
+      <p className="mt-1.5 text-sm text-muted-foreground">
+        Take a look before it becomes part of your account. Either way you choose below, the account is yours —
+        if something looks off, we'll ask your owner to clarify it with you, but you're not locked out while that
+        happens.
+      </p>
+      <ErrorBanner message={state.error} />
+
+      <div className="mt-4 space-y-1.5 rounded-xl border border-border bg-muted/40 p-4 text-sm">
+        <div className="flex justify-between text-muted-foreground">
+          <span>Stay started</span>
+          <span className="text-foreground">{statement.stay_start_date ? DATE(statement.stay_start_date) : '—'}</span>
+        </div>
+        {statement.monthly_rent != null && (
+          <div className="flex justify-between text-muted-foreground">
+            <span>Monthly rent</span>
+            <span className="text-foreground">{CURRENCY(statement.monthly_rent)}</span>
+          </div>
+        )}
+        {statement.security_deposit != null && (
+          <div className="flex justify-between text-muted-foreground">
+            <span>Security deposit</span>
+            <span className="text-foreground">{CURRENCY(statement.security_deposit)}</span>
+          </div>
+        )}
+        <div className="flex justify-between font-semibold text-foreground">
+          <span>Outstanding today</span>
+          <span>{CURRENCY(statement.outstanding_total)}</span>
+        </div>
+      </div>
+
+      {statement.rent_months.length > 0 && (
+        <div className="mt-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Rent months</div>
+          <div className="mt-2 space-y-2">
+            {statement.rent_months.map((month) => {
+              const ref = rentMonthRef(month.obligation_id);
+              return (
+                <div key={ref} className="flex items-start gap-2.5 rounded-lg border border-border p-2.5 text-sm">
+                  {state.disputeMode && (
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4 shrink-0"
+                      checked={state.disputedItems.includes(ref)}
+                      onChange={(e) => toggleItem(ref, e.target.checked)}
+                      aria-label={`Flag ${DATE(month.rent_month)} rent`}
+                    />
+                  )}
+                  <div className="flex-1">
+                    <div className="flex justify-between">
+                      <span className="text-foreground">{DATE(month.rent_month)}</span>
+                      <span className="text-foreground">{CURRENCY(month.amount)}</span>
+                    </div>
+                    <div className="mt-0.5 flex justify-between text-xs text-muted-foreground">
+                      <span>{month.status}</span>
+                      {month.outstanding > 0 && <span>{CURRENCY(month.outstanding)} outstanding</span>}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {statement.payments.length > 0 && (
+        <div className="mt-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Payments</div>
+          <div className="mt-2 space-y-2">
+            {statement.payments.map((payment) => {
+              const ref = paymentRef(payment.payment_id);
+              return (
+                <div key={ref} className="flex items-start gap-2.5 rounded-lg border border-border p-2.5 text-sm">
+                  {state.disputeMode && (
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4 shrink-0"
+                      checked={state.disputedItems.includes(ref)}
+                      onChange={(e) => toggleItem(ref, e.target.checked)}
+                      aria-label={`Flag ${CURRENCY(payment.amount)} payment on ${DATE(payment.date)}`}
+                    />
+                  )}
+                  <div className="flex-1">
+                    <div className="flex justify-between">
+                      <span className="text-foreground">{DATE(payment.date)}</span>
+                      <span className="text-foreground">{CURRENCY(payment.amount)}</span>
+                    </div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      {payment.method}
+                      {payment.recorded_by_owner ? ' · Recorded by your owner' : ''}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {!state.disputeMode ? (
+        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            disabled={state.submitting}
+            onClick={() => dispatch({ type: 'DISPUTE_MODE_ENABLED' })}
+            className="w-full rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-foreground disabled:opacity-50"
+          >
+            Something's wrong
+          </button>
+          <button
+            type="button"
+            disabled={state.submitting}
+            onClick={onAccept}
+            className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+          >
+            {state.submitting ? <StayoLoader size="sm" /> : 'This looks right'}
+          </button>
+        </div>
+      ) : (
+        <div className="mt-5">
+          <p className="text-sm text-muted-foreground">
+            Tick whatever looks wrong above, and tell your owner what's off.
+          </p>
+          <label className="mt-3 block text-sm font-medium text-foreground" htmlFor="claim-dispute-note">
+            What looks wrong?
+          </label>
+          <textarea
+            id="claim-dispute-note"
+            rows={3}
+            className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-accent"
+            placeholder="e.g. I never got the March cash payment marked here"
+            value={state.disputeNote}
+            onChange={(e) => dispatch({ type: 'DISPUTE_NOTE_CHANGED', note: e.target.value })}
+          />
+          {state.disputeMode && state.disputedItems.length === 0 && (
+            <p className="mt-1.5 text-xs text-muted-foreground">Tick at least one entry above to continue.</p>
+          )}
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              disabled={state.submitting}
+              onClick={() => dispatch({ type: 'DISPUTE_MODE_CANCELLED' })}
+              className="w-full rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-foreground disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!canSubmitDispute(state) || state.submitting}
+              onClick={onSubmitDispute}
+              className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+            >
+              {state.submitting ? <StayoLoader size="sm" /> : 'Continue'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -495,6 +712,11 @@ function DoneStep({ state, onEnter }: { state: ReturnType<typeof initialClaimSta
         {state.result.hostel_name || 'Your tenancy'} — Room {state.result.room_no || '—'} — is now linked to your
         account, with every payment and receipt already on it.
       </p>
+      {state.result.dispute_recorded && (
+        <p className="mt-2 text-sm text-muted-foreground">
+          We've also let your owner know about the entries you flagged — they'll reach out to sort it out.
+        </p>
+      )}
       <button
         type="button"
         disabled={entering}

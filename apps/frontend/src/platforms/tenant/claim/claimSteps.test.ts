@@ -6,14 +6,37 @@ import {
   acknowledgementsComplete,
   canConfirm,
   canSendOtp,
+  canSubmitDispute,
   canVerifyOtp,
   isTenantSession,
   passwordReady,
+  paymentRef,
+  rentMonthRef,
   selectedTenancy,
   REQUIRED_ACKNOWLEDGEMENTS,
   type ClaimState,
+  type ClaimStatement,
   type ClaimTenancy,
 } from './claimSteps';
+
+const statement = (overrides: Partial<ClaimStatement> = {}): ClaimStatement => ({
+  tenant_id: 't-1',
+  hostel_name: 'Sunrise PG',
+  owner_name: 'Ravi Kumar',
+  room_no: '204',
+  stay_start_date: '2026-01-01',
+  monthly_rent: 9000,
+  security_deposit: 15000,
+  rent_months: [
+    { obligation_id: 'ob-1', rent_month: '2026-01-01', status: 'PAID', amount: 9000, paid: 9000, outstanding: 0 },
+    { obligation_id: 'ob-2', rent_month: '2026-02-01', status: 'PENDING', amount: 9000, paid: 0, outstanding: 9000 },
+  ],
+  payments: [
+    { payment_id: 'p-1', obligation_id: 'ob-1', amount: 9000, date: '2026-01-05', method: 'CASH', recorded_by_owner: true },
+  ],
+  outstanding_total: 9000,
+  ...overrides,
+});
 
 const tenancy = (overrides: Partial<ClaimTenancy> = {}): ClaimTenancy => ({
   tenant_id: 't-1',
@@ -503,6 +526,132 @@ describe('confirm submission', () => {
   });
 });
 
+describe('review step: fetching the statement', () => {
+  it('STATEMENT_REQUESTED marks submitting without leaving the confirm step', () => {
+    const state = { ...initialClaimState(), step: 'confirm' as const };
+    const next = claimReducer(state, { type: 'STATEMENT_REQUESTED' });
+    expect(next.submitting).toBe(true);
+    expect(next.step).toBe('confirm');
+  });
+
+  it('STATEMENT_SUCCEEDED advances to review with the statement attached', () => {
+    const state = { ...initialClaimState(), step: 'confirm' as const, submitting: true };
+    const stmt = statement();
+    const next = claimReducer(state, { type: 'STATEMENT_SUCCEEDED', statement: stmt });
+    expect(next.step).toBe('review');
+    expect(next.statement).toEqual(stmt);
+    expect(next.submitting).toBe(false);
+  });
+
+  it('STATEMENT_FAILED with OTP_PROOF_REQUIRED sends the tenant back to phone and clears the statement/dispute state', () => {
+    const state = {
+      ...initialClaimState(),
+      step: 'confirm' as const,
+      claimToken: 'tok-abc',
+      statement: statement(),
+      disputeMode: true,
+      disputedItems: ['payment:p-1'],
+      disputeNote: 'looks wrong',
+    };
+    const next = claimReducer(state, {
+      type: 'STATEMENT_FAILED',
+      code: 'OTP_PROOF_REQUIRED',
+      message: 'expired',
+    });
+    expect(next.step).toBe('phone');
+    expect(next.claimToken).toBeNull();
+    expect(next.statement).toBeNull();
+    expect(next.disputeMode).toBe(false);
+    expect(next.disputedItems).toEqual([]);
+    expect(next.disputeNote).toBe('');
+  });
+
+  it('STATEMENT_FAILED with an unmapped code stays put, same as LOOKUP_FAILED/CONFIRM_FAILED', () => {
+    const state = { ...initialClaimState(), step: 'confirm' as const };
+    const next = claimReducer(state, { type: 'STATEMENT_FAILED', code: 'SOMETHING_NEW', message: 'boom' });
+    expect(next.step).toBe('confirm');
+    expect(next.error).toBe('boom');
+  });
+});
+
+describe('review step: accepting or disputing', () => {
+  const reviewState = (): ClaimState => ({
+    ...initialClaimState(),
+    step: 'review',
+    tenancies: [tenancy()],
+    selectedTenantId: 't-1',
+    statement: statement(),
+  });
+
+  it('DISPUTE_MODE_ENABLED reveals the flagging UI', () => {
+    const next = claimReducer(reviewState(), { type: 'DISPUTE_MODE_ENABLED' });
+    expect(next.disputeMode).toBe(true);
+    expect(next.disputedItems).toEqual([]);
+  });
+
+  it('DISPUTE_ITEM_TOGGLED marks and unmarks a specific ref, without duplicating', () => {
+    let state = claimReducer(reviewState(), { type: 'DISPUTE_MODE_ENABLED' });
+    state = claimReducer(state, { type: 'DISPUTE_ITEM_TOGGLED', ref: 'payment:p-1', value: true });
+    expect(state.disputedItems).toEqual(['payment:p-1']);
+
+    // Re-marking the same ref true is a no-op, not a duplicate entry.
+    state = claimReducer(state, { type: 'DISPUTE_ITEM_TOGGLED', ref: 'payment:p-1', value: true });
+    expect(state.disputedItems).toEqual(['payment:p-1']);
+
+    state = claimReducer(state, { type: 'DISPUTE_ITEM_TOGGLED', ref: 'rent_month:ob-2', value: true });
+    expect(state.disputedItems).toEqual(['payment:p-1', 'rent_month:ob-2']);
+
+    state = claimReducer(state, { type: 'DISPUTE_ITEM_TOGGLED', ref: 'payment:p-1', value: false });
+    expect(state.disputedItems).toEqual(['rent_month:ob-2']);
+  });
+
+  it('DISPUTE_NOTE_CHANGED updates the note field', () => {
+    const next = claimReducer(reviewState(), { type: 'DISPUTE_NOTE_CHANGED', note: 'the cash payment is wrong' });
+    expect(next.disputeNote).toBe('the cash payment is wrong');
+  });
+
+  it('DISPUTE_MODE_CANCELLED clears marks and the note, returning to plain review', () => {
+    let state = claimReducer(reviewState(), { type: 'DISPUTE_MODE_ENABLED' });
+    state = claimReducer(state, { type: 'DISPUTE_ITEM_TOGGLED', ref: 'payment:p-1', value: true });
+    state = claimReducer(state, { type: 'DISPUTE_NOTE_CHANGED', note: 'wrong' });
+    const next = claimReducer(state, { type: 'DISPUTE_MODE_CANCELLED' });
+    expect(next.disputeMode).toBe(false);
+    expect(next.disputedItems).toEqual([]);
+    expect(next.disputeNote).toBe('');
+  });
+
+  it('CONFIRM_SUCCEEDED from review lands on done, carrying dispute_recorded through', () => {
+    const state = { ...reviewState(), submitting: true };
+    const result = { ...tenancy(), profile_id: 'p-1', access_mode: 'SELF_SERVE', dispute_recorded: true };
+    const next = claimReducer(state, { type: 'CONFIRM_SUCCEEDED', result });
+    expect(next.step).toBe('done');
+    expect(next.result?.dispute_recorded).toBe(true);
+  });
+});
+
+describe('canSubmitDispute', () => {
+  it('is false until dispute mode is on and at least one item is marked', () => {
+    const base = { ...initialClaimState(), step: 'review' as const };
+    expect(canSubmitDispute(base)).toBe(false);
+    expect(canSubmitDispute({ ...base, disputeMode: true })).toBe(false);
+    expect(canSubmitDispute({ ...base, disputeMode: true, disputedItems: ['payment:p-1'] })).toBe(true);
+  });
+
+  it('is false with items marked but dispute mode off -- an accepted review with stale marks does not silently dispute', () => {
+    expect(
+      canSubmitDispute({ ...initialClaimState(), disputeMode: false, disputedItems: ['payment:p-1'] }),
+    ).toBe(false);
+  });
+});
+
+describe('rentMonthRef / paymentRef', () => {
+  it('produce distinct, stable, prefixed references', () => {
+    expect(rentMonthRef('ob-1')).toBe('rent_month:ob-1');
+    expect(paymentRef('p-1')).toBe('payment:p-1');
+    expect(rentMonthRef('ob-1')).not.toBe(paymentRef('ob-1'));
+  });
+});
+
 describe('RESTART', () => {
   it('resets all the way back to a fresh phone step from any terminal state', () => {
     const doneState: ClaimState = {
@@ -516,6 +665,22 @@ describe('RESTART', () => {
 
     const emptyState: ClaimState = { ...initialClaimState(), step: 'empty', phone: '9876543210', claimToken: 'tok-abc' };
     expect(claimReducer(emptyState, { type: 'RESTART' })).toEqual(initialClaimState());
+  });
+
+  it('clears the statement and any in-progress dispute from a review state', () => {
+    const state: ClaimState = {
+      ...initialClaimState(),
+      step: 'review',
+      statement: statement(),
+      disputeMode: true,
+      disputedItems: ['payment:p-1'],
+      disputeNote: 'wrong',
+    };
+    const next = claimReducer(state, { type: 'RESTART' });
+    expect(next.statement).toBeNull();
+    expect(next.disputeMode).toBe(false);
+    expect(next.disputedItems).toEqual([]);
+    expect(next.disputeNote).toBe('');
   });
 
   it('clears claimToken -- a new phone/OTP cycle must earn a new one, same as otp is cleared', () => {

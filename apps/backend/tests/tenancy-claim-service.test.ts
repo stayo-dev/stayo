@@ -15,8 +15,10 @@ import {
   assertAcknowledgementsComplete,
   assertClaimablePhoneMatch,
   assertValidClaimProof,
+  buildDisputeComplaintContent,
   consumeClaimProof,
   loadClaimOtpProof,
+  normalizeDisputeInput,
   REQUIRED_ACKNOWLEDGEMENTS,
   TenancyClaimError,
   toClaimSummary,
@@ -307,6 +309,71 @@ describe("toClaimSummary — SECURITY: no financial field beyond monthly_rent", 
     expect((summary as any).maintenance_charge).toBeUndefined();
     expect((summary as any).owner_id).toBeUndefined();
     expect((summary as any).profile_id).toBeUndefined();
+  });
+});
+
+describe("normalizeDisputeInput — deciding whether the tenant actually disputed anything", () => {
+  it("returns null for undefined/null input -- 'this looks right'", () => {
+    expect(normalizeDisputeInput(undefined)).toBeNull();
+    expect(normalizeDisputeInput(null)).toBeNull();
+  });
+
+  it("returns null when both itemRefs and note are empty", () => {
+    expect(normalizeDisputeInput({ itemRefs: [], note: "" })).toBeNull();
+    expect(normalizeDisputeInput({ itemRefs: [], note: "   " })).toBeNull();
+  });
+
+  it("registers a dispute from itemRefs alone, note null", () => {
+    const result = normalizeDisputeInput({ itemRefs: ["payment:p1"], note: null });
+    expect(result).toEqual({ itemRefs: ["payment:p1"], note: null });
+  });
+
+  it("registers a dispute from a note alone, no items flagged", () => {
+    const result = normalizeDisputeInput({ itemRefs: [], note: "January rent looks wrong" });
+    expect(result).toEqual({ itemRefs: [], note: "January rent looks wrong" });
+  });
+
+  it("trims the note and dedupes/trims item refs", () => {
+    const result = normalizeDisputeInput({
+      itemRefs: [" payment:p1 ", "payment:p1", "", "  ", "rent_month:o1"],
+      note: "  looks off  ",
+    });
+    expect(result).toEqual({ itemRefs: ["payment:p1", "rent_month:o1"], note: "looks off" });
+  });
+
+  it("caps itemRefs at 50 entries rather than growing unbounded", () => {
+    const many = Array.from({ length: 80 }, (_, i) => `payment:p${i}`);
+    const result = normalizeDisputeInput({ itemRefs: many, note: null });
+    expect(result?.itemRefs).toHaveLength(50);
+  });
+});
+
+describe("buildDisputeComplaintContent — the complaints row a claim-time dispute writes", () => {
+  it("names the tenant in the title and lists flagged entries and the note in the description", () => {
+    const { title, description } = buildDisputeComplaintContent("Rakesh", {
+      itemRefs: ["payment:p1", "rent_month:o2"],
+      note: "This payment was never actually made",
+    });
+    expect(title).toContain("Rakesh");
+    expect(description).toContain("payment:p1");
+    expect(description).toContain("rent_month:o2");
+    expect(description).toContain("This payment was never actually made");
+  });
+
+  it("says plainly that this never blocks the tenant's access", () => {
+    const { description } = buildDisputeComplaintContent("Rakesh", { itemRefs: [], note: "note" });
+    expect(description.toLowerCase()).toContain("does not block");
+  });
+
+  it("still produces a readable description with no items flagged", () => {
+    const { description } = buildDisputeComplaintContent("Rakesh", { itemRefs: [], note: "Something is off" });
+    expect(description).toContain("No specific entries flagged");
+    expect(description).toContain("Something is off");
+  });
+
+  it("still produces a readable description with no note", () => {
+    const { description } = buildDisputeComplaintContent("Rakesh", { itemRefs: ["payment:p1"], note: null });
+    expect(description).toContain("No additional note provided");
   });
 });
 

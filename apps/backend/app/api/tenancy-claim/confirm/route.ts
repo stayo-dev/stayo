@@ -87,6 +87,10 @@ export async function POST(req: NextRequest) {
       name: validated.data.name,
       email: validated.data.email,
       password,
+      dispute: {
+        itemRefs: validated.data.disputed_items ?? null,
+        note: validated.data.dispute_note ?? null,
+      },
     });
 
     return createClaimResponse(result);
