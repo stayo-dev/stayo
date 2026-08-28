@@ -87,6 +87,23 @@ export function useFoodSchedule(hostelId: string | undefined, month: string) {
     onSuccess: invalidate,
   });
 
+  /**
+   * Copies this schedule to other hostels. Errors (including the
+   * `CONFIRM_OVERWRITE` 409) propagate to the caller via `mutateAsync` so
+   * `MealPlanPage` can show the overwrite-warning sheet and retry.
+   */
+  const copyToHostelsMutation = useMutation({
+    mutationFn: ({ targetHostelIds, confirmOverwrite }: { targetHostelIds: string[]; confirmOverwrite?: boolean }) =>
+      foodService.copyScheduleToHostels(schedule!.id, targetHostelIds, confirmOverwrite),
+    onSuccess: (result) => {
+      invalidate();
+      for (const { hostelId } of result.copied) {
+        queryClient.invalidateQueries({ queryKey: scheduleKey(hostelId, month) });
+        queryClient.invalidateQueries({ queryKey: ['owner', 'food', 'menu-items', hostelId] });
+      }
+    },
+  });
+
   const updateMealMutation = useMutation({
     mutationFn: ({ mealId, menuItemIds, expectedUpdatedAt }: { mealId: string; menuItemIds: string[]; expectedUpdatedAt: string | null }) =>
       foodService.updateScheduleMeal(schedule!.id, mealId, menuItemIds, expectedUpdatedAt),
@@ -187,6 +204,9 @@ export function useFoodSchedule(hostelId: string | undefined, month: string) {
     isUpdatingMeal: updateMealMutation.isPending,
     publish: () => publishMutation.mutate(),
     isPublishing: publishMutation.isPending,
+    copyToHostels: (targetHostelIds: string[], confirmOverwrite = false) =>
+      copyToHostelsMutation.mutateAsync({ targetHostelIds, confirmOverwrite }),
+    isCopyingToHostels: copyToHostelsMutation.isPending,
     hasPendingChanges: hasPendingChangesFn(pendingEdits),
     saveChanges,
     discardChanges,

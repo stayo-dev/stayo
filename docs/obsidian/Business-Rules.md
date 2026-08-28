@@ -458,6 +458,16 @@ See [[Decisions#ADR-114|ADR-114]] and [[Food]] §18 for the full write-up. The o
 - **Month navigation never seeds content.** A schedule row is created empty on demand (idempotent `POST /api/food/schedules`) the first time the owner opens a given month's Timetable; it never copies the previous month and never auto-selects a dish, regardless of how many times that month is revisited.
 - **A stale edit is rejected, not merged.** No realtime/multi-tab sync exists; the PATCH endpoint requires the client's last-known `updated_at` for the cell and refuses (`409`) if it doesn't match current, so a second tab's outdated click can't silently overwrite a newer one.
 
+## Copying a food schedule to another hostel (2026-08-29)
+
+See [[Decisions#ADR-137|ADR-137]] and [[Food]] §22 for the full write-up. `POST /api/food/schedules/[id]/copy-to-hostels` copies a schedule's full weekly pattern into one or more of the owner's other hostels for the same month.
+
+- **Dishes are matched across hostels by name, never by id.** `food_menu_items` is a per-hostel library — a source item's id doesn't exist in the target hostel's library. Each distinct `(meal_type, name)` used in the source schedule is resolved once per target hostel: reuse an active item of that name, reactivate a soft-deleted one, or create it new — the same find/reactivate/create rule `POST /api/food/menu-items` already applies on a name collision.
+- **The target's publish state always matches the source's, unconditionally — this is not a suggestion the owner can decline per copy.** A PUBLISHED source publishes the target too (fanning out the same `food_schedule_published` tenant notification, only on the DRAFT→PUBLISHED transition — copying onto an already-published target doesn't renotify). A DRAFT source leaves the target DRAFT. There is no separate "publish the target too?" step.
+- **Overwriting existing content requires explicit confirmation.** If a target hostel already has any real content for that month, nothing is written on the first call — the route answers `409 CONFIRM_OVERWRITE` listing the affected hostels, and the caller must resend with `confirmOverwrite: true` to proceed. A target with no existing content for that month copies with no prompt.
+- **A copy is one-shot, not a live sync.** After copying, the source and target schedules are completely independent — editing one never affects the other. Running the copy action again re-applies the source's current state to the target as of that moment; nothing keeps them linked in between.
+- **Every target hostel must belong to the same owner as the source**, checked with the same `requireHostelBelongsToOwner` guard every other food route uses — never optional, never a fallback to any other hostel.
+
 ## Food Polls — ad-hoc, independent of the monthly voting window above (2026-08-08)
 
 Real feature, `food_polls`/`food_poll_options`/`food_poll_votes` — deliberately a third, separate poll/vote concept in this module (see [[Decisions#ADR-057|ADR-057]]). Not to be confused with the dormant `food_voting_periods` window above, nor with the deleted mock "Food Polls" ([[Decisions#ADR-048|ADR-048]]).
