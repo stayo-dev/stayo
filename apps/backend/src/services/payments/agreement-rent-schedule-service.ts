@@ -3,6 +3,19 @@ import { resolvePreferences } from "@/lib/preferences";
 import { financialLifecycleService } from "./financial-lifecycle-service";
 import { fromLegacyStatus } from "./financial-obligation.types";
 import type { LifecycleStatus, SettlementStatus } from "./financial-obligation.types";
+import {
+  addUtcMonths,
+  dueDateForMonth,
+  firstOfUtcMonth,
+  lastDayOfUtcMonth,
+} from "./rent-schedule-dates";
+
+// Re-exported for backward compatibility — the canonical definitions now
+// live in rent-schedule-dates.ts (a pure module with no `@/lib/db` import)
+// so callers that need only the date maths, not the DB-backed schedule
+// generator, can import them without pulling in Prisma. See that file's
+// header comment.
+export { addUtcMonths, dueDateForMonth, firstOfUtcMonth, lastDayOfUtcMonth };
 
 type Tx = typeof prisma | any;
 
@@ -24,24 +37,6 @@ function money(value: unknown) {
 
 function startOfUtcDay(value: Date) {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
-}
-
-function firstOfUtcMonth(value: Date) {
-  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
-}
-
-function addUtcMonths(value: Date, months: number) {
-  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + months, 1));
-}
-
-function lastDayOfUtcMonth(value: Date) {
-  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + 1, 0));
-}
-
-function dueDateForMonth(month: Date, dueDay: number) {
-  const bounded = Math.max(1, Math.min(28, Math.trunc(Number(dueDay || 5))));
-  const lastDay = lastDayOfUtcMonth(month).getUTCDate();
-  return new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth(), Math.min(bounded, lastDay)));
 }
 
 function monthLabel(month: Date, sequence: number) {

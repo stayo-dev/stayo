@@ -30,6 +30,7 @@ export default defineConfig({
       'tests/settlement-planner-policy.test.ts',
       'tests/settlement-planner-overdue.test.ts',
       'tests/settlement-planner-minimum-percentage.test.ts',
+      'tests/invite-settlement-preview.test.ts',
       'tests/search-ranking.test.ts',
       'tests/collection-queue-prioritisation.test.ts',
       'tests/expense-memory.test.ts',
