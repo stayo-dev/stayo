@@ -303,9 +303,9 @@ model tenants {
 }
 ```
 
-**`access_mode`** is a second axis, independent of `TenantStatus` — see [[Business-Rules]] for the full split and why `ACTIVE` no longer implies an account. `SELF_SERVE` is the default, so every existing row keeps today's meaning unchanged. `OWNER_MANAGED` means the owner keeps the book and the tenant has no login — `profile_id` stays `NULL` for as long as that holds.
+**`access_mode`** is a second axis, independent of `TenantStatus` — see [[Business-Rules]] for the full split and why `ACTIVE` no longer implies an account. `SELF_SERVE` is the default, so every existing row keeps today's meaning unchanged. `OWNER_MANAGED` means the owner keeps the book and the tenant has no login. **Corrected 2026-08-28 ([[Decisions#ADR-135|ADR-135]]):** this line originally continued "— `profile_id` stays `NULL` for as long as that holds." That was the shipped Phase 1 behaviour and it was wrong — see the "Identity is centralised on `profiles`" subsection below. `profile_id` is now set (resolved-or-created) at adoption regardless of access mode; `OWNER_MANAGED` is carried entirely by `auth_user_id`/`password_hash` being `null` on the linked profile.
 
-**`display_name`** exists because `tenants` has no name column of its own — a tenant's name today lives on `profiles.name` (required) or `tenant_invitations.name`. An owner-managed tenant has no `profiles` row, so `display_name` is where the owner's name for them is persisted instead, and `tenants.phone_1` (pre-existing) carries the phone the same way. `resolveTenantName()` / `resolveTenantPhone()` (`apps/backend/lib/tenants/tenant-identity.ts`) fall back `profile.name/phone → tenants.display_name/phone_1 → tenant_invitations[0].name/phone`, in E.164 for phone via the existing `normalizeIndianPhone`. Every reminder/notification code path that used to read `tenant.profiles?.name`/`.phone` directly — and silently skipped or misaddressed a `profile_id: null` row — now goes through these two helpers instead. `resolveTenantName` returns the literal string `"Tenant"` when nothing is known, which is correct for addressing a message but was deliberately **not** reused when *persisting* `display_name` on adopt (`ownerManagedTenancyService.adopt`, `apps/backend/src/services/tenants/owner-managed-tenancy-service.ts`) — that path refuses the request instead of silently writing "Tenant" as someone's identity.
+**`display_name`** exists because `tenants` has no name column of its own — a tenant's name today lives on `profiles.name` (required) or `tenant_invitations.name`. **Corrected 2026-08-28:** this paragraph originally said "an owner-managed tenant has no `profiles` row, so `display_name` is where the owner's name for them is persisted instead" — an owner-managed tenant now always has a `profiles` row (see below), and `display_name` survives only as a display-layer fallback, not as the identity mechanism for a profile-less tenant. `tenants.phone_1` (pre-existing) carries the phone the same way. `resolveTenantName()` / `resolveTenantPhone()` (`apps/backend/lib/tenants/tenant-identity.ts`) fall back `profile.name/phone → tenants.display_name/phone_1 → tenant_invitations[0].name/phone`, in E.164 for phone via the existing `normalizeIndianPhone`, and are unchanged by the 2026-08-28 fix. Every reminder/notification code path that used to read `tenant.profiles?.name`/`.phone` directly — and silently skipped or misaddressed a `profile_id: null` row — now goes through these two helpers instead. `resolveTenantName` returns the literal string `"Tenant"` when nothing is known, which is correct for addressing a message but was deliberately **not** reused when *persisting* `display_name` on adopt (`ownerManagedTenancyService.adopt`, `apps/backend/src/services/tenants/owner-managed-tenancy-service.ts`) — that path refuses the request instead of silently writing "Tenant" as someone's identity.
 
 ```prisma
 /// An owner asserting that a tenancy is managed offline. Deliberately NOT a
@@ -331,6 +331,29 @@ Indexes: `tenant_id`, `hostel_id`. Both FKs `ON DELETE CASCADE ON UPDATE CASCADE
 Enforced by `scripts/activation-invariants-check.ts`, made conditional on `access_mode` in the same change — see [[Business-Rules]].
 
 **Not yet built (Phase 2, per the design spec's §7):** the OTP-gated claim flow that flips `OWNER_MANAGED → SELF_SERVE` and links a real `profile_id`. See [[TODO]].
+
+### Identity is centralised on `profiles`, keyed by canonical phone (2026-08-28, migration `20260827180000_one_live_tenancy_per_phone`, **NOT applied to any database**)
+
+Fixes the gap the paragraphs above described before this date: adoption left `profile_id: NULL`, which made an owner-managed tenancy invisible to every guard that resolves a phone/email to a `profiles` row first. Observed in production: a tenancy adopted at 16:31:56 was still "eligible" to `checkEligibilityByContact` at 16:34:09, and a second tenancy was created for the same phone — one phone ended up with three tenancies (`FORMER_TENANT`, `ACTIVE`/`OWNER_MANAGED`, `INVITED`) in one hostel. See [[Bugs]] for the full incident and [[Decisions#ADR-135|ADR-135]] for the decision record.
+
+**Application-layer fix:** `ownerManagedTenancyService.adopt` now resolves a `profiles` row keyed on canonical phone before writing the tenancy — reusing an existing profile untouched if one matches, else creating one with `auth_user_id: null` and `password_hash: null`. A profile created this way with no real email on file (`personal_email` and the invitation's `email` both empty) gets a synthetic `{phone}@hms.temp` address from `resolveActivationEmail` rather than a null one, because `profiles.email` is a required, non-nullable column. `tenancy-eligibility-service.ts` independently also looks up live tenancies by phone directly (`loadLiveTenanciesByPhone`), not only through a profile — a second, non-redundant guard against the same failure mode.
+
+**Database-layer fix — the actual guarantee:**
+
+```sql
+-- Rejected while violating rows exist. Find them with:
+--
+--   SELECT phone_1, count(*), array_agg(id)
+--   FROM tenants
+--   WHERE status IN ('ACTIVE','INVITED') AND phone_1 IS NOT NULL
+--   GROUP BY phone_1 HAVING count(*) > 1;
+--
+CREATE UNIQUE INDEX tenants_one_live_tenancy_per_phone
+  ON tenants (phone_1)
+  WHERE status IN ('ACTIVE', 'INVITED') AND phone_1 IS NOT NULL;
+```
+
+This is deliberately independent of `tenants_one_live_tenancy_per_profile` (above) rather than a replacement for it: the profile-keyed index only ever constrained rows that had a `profile_id`, which is exactly the guarantee that failed. This one keys on `phone_1` alone, so it holds regardless of whether some future write path remembers to link a profile correctly. **Not yet applied to any database** — like `20260827100000_owner_managed_tenants` above, it exists only as a migration file in the repo. It is written to be **rejected outright while violating rows exist** (the three-tenancies-per-phone shape from the production incident), so the detection query in its own comment must be run and the data cleaned up before it can apply. See [[TODO]] for the outstanding cleanup task.
 
 ## Stayo Discover — `seeker_profile_id` and `saved_hostels` (2026-08-15, migration 063)
 
