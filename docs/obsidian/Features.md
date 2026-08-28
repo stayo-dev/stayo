@@ -94,7 +94,7 @@ The rebuilt conversational surface for the two people who pay rent. Owner-facing
 | `RENT` | What is payable, what it is made of, how late it is, where they are in the plan | Replaces `BAL`, `BALANCE`, `DUES`, `STATUS` |
 | `PAY` | A secure link for the **whole** payable amount | Tenant-scoped token via `PaymentLinkService` |
 | `PLAN` | Instalment progress — paid / due / overdue / upcoming, with totals | **New.** `installment_sequence` was in the schema and unread |
-| `RECEIPT` | The last payment, what it settled, what remains | **New** |
+| `RECEIPT` | Asks **which payment**, then sends that receipt as a PDF attachment | **New.** Picker skipped when there is only one payment |
 | `HELP` | The menu, and which residents this number is recognised for | |
 
 Retired words (`BAL`, `BALANCE`, `DUES`, `STATUS`, `SWITCH`) still resolve and are advertised nowhere.
@@ -119,7 +119,7 @@ When a tenant enters their guardian's number during activation and verifies it, 
 ### Trust and voice
 
 - Every money message names the **hostel** and signs `— <Hostel>, via Stayo`. Nothing signs `- HMS`.
-- Payment confirmations are pushed unprompted the moment a payment is recorded (`payment_recorded` event → `sendPaymentConfirmation`), to the resident and to verified guardians. The channel used to go silent at exactly the moment it had earned trust.
+- Payment confirmations are pushed unprompted the moment a payment is recorded (`payment_recorded` event → `sendPaymentConfirmation`), to the resident and to verified guardians, **with the receipt PDF attached**. The channel used to go silent at exactly the moment it had earned trust.
 - No apologies, no `━━ section rules ━━`, no `███░░░` progress bar, no "Lifetime Summary", and never the string "N/A".
 - Buttons carry the amount (`Pay ₹8,000`, not `Pay now`) and are never offered when they would be useless — no pay button on a settled account, no receipt button for someone who has never paid.
 

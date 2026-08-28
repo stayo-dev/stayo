@@ -105,3 +105,70 @@ export function formatPaymentConfirmation(input: ReceiptInput): string {
     signature(input.subject)
   );
 }
+
+/**
+ * The message that accompanies the attached receipt PDF.
+ *
+ * Short on purpose — the document is the answer, and this only says what it is
+ * so the reader can tell one receipt from another months later without opening
+ * it. `RECEIPT` used to hand over a receipt *number* and nothing else, which
+ * left the reader to go and find the document themselves.
+ */
+export function formatReceiptDelivery(input: {
+  audience: Audience;
+  subject: Subject;
+  payment: PaymentRecord;
+  receiptNumber: string;
+}): string {
+  const on = shortDate(input.payment.paidOn);
+  return compose(
+    subjectLine(input.audience, input.subject),
+    lines(
+      `Receipt *${input.receiptNumber}*`,
+      on
+        ? `${rupees(input.payment.amount)} received on ${on}`
+        : `${rupees(input.payment.amount)} received`,
+      input.payment.towards ? `Towards: ${input.payment.towards}` : null,
+      input.payment.method ? `Method: ${input.payment.method}` : null
+    ),
+    signature(input.subject)
+  );
+}
+
+/**
+ * Sent when a receipt genuinely cannot be produced.
+ *
+ * Names the payment so the reader can quote it to the hostel, which is the
+ * only thing that actually helps them at this point.
+ */
+export function formatReceiptUnavailable(input: {
+  audience: Audience;
+  subject: Subject;
+  payment: PaymentRecord;
+}): string {
+  const on = shortDate(input.payment.paidOn);
+  return compose(
+    subjectLine(input.audience, input.subject),
+    lines(
+      "That payment is recorded, but the receipt document could not be produced just now.",
+      "",
+      on
+        ? `Payment: ${rupees(input.payment.amount)} on ${on}`
+        : `Payment: ${rupees(input.payment.amount)}`,
+      input.payment.towards ? `Towards: ${input.payment.towards}` : null
+    ),
+    "Please try again shortly, or quote this payment to the hostel and they can send it to you.",
+    signature(input.subject)
+  );
+}
+
+/** No payments at all — say so, and point at the thing that would change it. */
+export function formatNoPayments(input: { audience: Audience; subject: Subject }): string {
+  const whose = possessive(input.audience, input.subject);
+  return compose(
+    subjectLine(input.audience, input.subject),
+    `No payments have been recorded against ${whose} account yet, so there is no receipt to send.`,
+    "Send *PAY* to get a secure payment link.",
+    signature(input.subject)
+  );
+}

@@ -6,7 +6,10 @@ import {
 } from "@/lib/services/notifications/command-center/installment-plan";
 import {
   formatLastReceipt,
+  formatNoPayments,
   formatPaymentConfirmation,
+  formatReceiptDelivery,
+  formatReceiptUnavailable,
 } from "@/lib/services/notifications/command-center/receipt";
 import { possessive, rupees, shortDate } from "@/lib/services/notifications/command-center/voice";
 
@@ -278,5 +281,64 @@ describe("RECEIPT and payment confirmation", () => {
 
     expect(text).toContain("Still due: *₹8,000*");
     expect(text).not.toContain("fully paid up");
+  });
+});
+
+describe("receipt delivery", () => {
+  const payment = {
+    amount: 8000,
+    paidOn: "2026-08-05",
+    towards: "Rent — August 2026",
+    reference: "RCPT-2026-00412",
+    receiptUrl: null,
+    method: "UPI",
+  };
+
+  it("says which receipt is attached, so two are tellable apart later", () => {
+    const text = formatReceiptDelivery({
+      audience: "GUARDIAN",
+      subject,
+      payment,
+      receiptNumber: "RCPT-2026-00412",
+    });
+
+    expect(text).toContain("Receipt *RCPT-2026-00412*");
+    expect(text).toContain("₹8,000 received on");
+    expect(text).toContain("Towards: Rent — August 2026");
+    expect(text).toContain("Method: UPI");
+    expect(text).toContain("— Sunrise Residency, via Stayo");
+  });
+
+  it("stays inside WhatsApp's document-caption ceiling", () => {
+    const text = formatReceiptDelivery({
+      audience: "GUARDIAN",
+      subject,
+      payment,
+      receiptNumber: "RCPT-2026-00412",
+    });
+    // The caption rides on the document itself; Meta caps it at 1024.
+    expect(text.length).toBeLessThanOrEqual(1024);
+  });
+
+  it("names the payment when the document cannot be produced", () => {
+    // Naming it is the only thing that helps — the reader can quote it.
+    const text = formatReceiptUnavailable({ audience: "GUARDIAN", subject, payment });
+
+    expect(text).toContain("could not be produced");
+    expect(text).toContain("₹8,000");
+    expect(text).toContain("Rent — August 2026");
+    expect(text).toContain("quote this payment to the hostel");
+    expect(text.toLowerCase()).not.toContain("sorry");
+  });
+
+  it("tells a guardian with no payments in the third person", () => {
+    const text = formatNoPayments({ audience: "GUARDIAN", subject });
+    expect(text).toContain("Aarav Sharma's account");
+    expect(text).toContain("Send *PAY*");
+  });
+
+  it("tells a resident the same thing in the second person", () => {
+    const text = formatNoPayments({ audience: "RESIDENT", subject });
+    expect(text).toContain("your account");
   });
 });

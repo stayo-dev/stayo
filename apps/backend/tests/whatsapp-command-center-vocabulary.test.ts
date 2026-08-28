@@ -11,6 +11,7 @@ import {
   decodePayload,
   encodePayload,
   helpMessage,
+  paymentPicker,
   residentPicker,
   unknownSenderMessage,
   unrecognisedMessage,
@@ -90,6 +91,7 @@ describe("interactive payloads", () => {
     expect(decodePayload(payload)).toEqual({
       command: COMMANDS.PAY,
       tenantId: "8f2b1c44-0000-4000-8000-000000000001",
+      ref: null,
     });
   });
 
@@ -97,6 +99,31 @@ describe("interactive payloads", () => {
     expect(decodePayload(encodePayload(COMMANDS.HELP))).toEqual({
       command: COMMANDS.HELP,
       tenantId: null,
+      ref: null,
+    });
+  });
+
+  it("carries which payment a receipt is for", () => {
+    const payload = encodePayload(
+      COMMANDS.RECEIPT,
+      "8f2b1c44-0000-4000-8000-000000000001",
+      "3a1e9b70-0000-4000-8000-0000000000ff"
+    );
+    expect(decodePayload(payload)).toEqual({
+      command: COMMANDS.RECEIPT,
+      tenantId: "8f2b1c44-0000-4000-8000-000000000001",
+      ref: "3a1e9b70-0000-4000-8000-0000000000ff",
+    });
+    // Two UUIDs and a prefix must still clear WhatsApp's ceiling.
+    expect(payload.length).toBeLessThanOrEqual(LIMITS.PAYLOAD_ID);
+  });
+
+  it("drops a ref that has no resident to hang off", () => {
+    // A ref without a tenant is meaningless — the payment could not be scoped.
+    expect(decodePayload(encodePayload(COMMANDS.RECEIPT, null, "pay-1"))).toEqual({
+      command: COMMANDS.RECEIPT,
+      tenantId: null,
+      ref: null,
     });
   });
 
@@ -173,7 +200,7 @@ describe("resident picker", () => {
 
   it("carries the original command forward, so choosing is one tap", () => {
     const { rows } = residentPicker({ command: COMMANDS.PAY, residents });
-    expect(decodePayload(rows[0].id)).toEqual({ command: COMMANDS.PAY, tenantId: "t-1" });
+    expect(decodePayload(rows[0].id)).toEqual({ command: COMMANDS.PAY, tenantId: "t-1", ref: null });
   });
 
   it("respects WhatsApp's list row limits", () => {
@@ -190,6 +217,58 @@ describe("resident picker", () => {
       expect(row.title.length).toBeLessThanOrEqual(LIMITS.LIST_ROW_TITLE);
       expect(row.description!.length).toBeLessThanOrEqual(LIMITS.LIST_ROW_DESCRIPTION);
     }
+  });
+});
+
+describe("payment picker", () => {
+  const payments = [
+    { paymentId: "p-1", amount: "₹8,000", paidOn: "05 Aug 2026", towards: "Rent — August 2026" },
+    { paymentId: "p-2", amount: "₹8,000", paidOn: "05 Jul 2026", towards: "Rent — July 2026" },
+  ];
+
+  it("leads each row with the amount and date — what people remember", () => {
+    const { rows } = paymentPicker({ tenantId: "t-1", payments });
+    expect(rows[0].title).toBe("₹8,000 · 05 Aug 2026");
+    expect(rows[0].description).toBe("Rent — August 2026");
+  });
+
+  it("carries both the resident and the chosen payment", () => {
+    const { rows } = paymentPicker({ tenantId: "t-1", payments });
+    expect(decodePayload(rows[0].id)).toEqual({
+      command: COMMANDS.RECEIPT,
+      tenantId: "t-1",
+      ref: "p-1",
+    });
+  });
+
+  it("asks the question the reader can actually answer", () => {
+    const { body } = paymentPicker({ tenantId: "t-1", payments });
+    expect(body).toBe("Which payment do you need the receipt for?");
+  });
+
+  it("respects WhatsApp's list limits with a long payment history", () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({
+      paymentId: `p-${i}`,
+      amount: "₹1,00,000",
+      paidOn: "05 Aug 2026",
+      towards: `A very long obligation label that will certainly overflow ${i}`,
+    }));
+    const { rows } = paymentPicker({ tenantId: "t-1", payments: many });
+
+    expect(rows.length).toBeLessThanOrEqual(LIMITS.LIST_ROWS);
+    for (const row of rows) {
+      expect(row.title.length).toBeLessThanOrEqual(LIMITS.LIST_ROW_TITLE);
+      expect(row.description!.length).toBeLessThanOrEqual(LIMITS.LIST_ROW_DESCRIPTION);
+    }
+  });
+
+  it("still renders a row when the payment date is unknown", () => {
+    const { rows } = paymentPicker({
+      tenantId: "t-1",
+      payments: [{ paymentId: "p-1", amount: "₹8,000", paidOn: null, towards: null }],
+    });
+    expect(rows[0].title).toBe("₹8,000");
+    expect(rows[0].description).toBe("Payment received");
   });
 });
 

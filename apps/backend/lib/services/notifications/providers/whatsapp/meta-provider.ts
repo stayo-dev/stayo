@@ -386,6 +386,69 @@ export class MetaWhatsAppProvider {
     });
   }
 
+  /**
+   * Send a PDF (or any document) by public URL.
+   *
+   * Meta fetches `link` **server-side**, so it must be reachable without
+   * credentials — an authenticated app route will not work here. Receipts
+   * qualify because `receiptService` uploads every rendered PDF to ImageKit
+   * and caches the CDN URL on `receipts.receipt_pdf_url`; that same URL is
+   * already re-fetched unauthenticated by the service's own cache path.
+   *
+   * `filename` is what the reader sees in their chat and in their downloads,
+   * so it carries the receipt number rather than a UUID.
+   */
+  async sendDocumentMessage(
+    to: string,
+    link: string,
+    filename: string,
+    caption?: string
+  ): Promise<WhatsAppSendResult> {
+    const phone = normalizeWhatsAppPhone(to);
+    const url = `${this.config.baseUrl}/${this.config.phoneNumberId}/messages`;
+    const body = {
+      messaging_product: "whatsapp",
+      to: phone,
+      type: "document",
+      document: {
+        link,
+        // Meta caps the filename; a truncated name is better than a refusal.
+        filename: String(filename || "receipt.pdf").slice(0, 240),
+        ...(caption ? { caption: caption.slice(0, 1024) } : {}),
+      },
+    };
+
+    let lastError: WhatsAppProviderError | null = null;
+    for (let attempt = 1; attempt <= this.config.maxRetries + 1; attempt += 1) {
+      try {
+        const result = await this.post(url, body, attempt);
+        const providerMessageId = Array.isArray((result as any)?.messages)
+          ? String((result as any).messages[0]?.id || "")
+          : "";
+        return {
+          providerMessageId: providerMessageId || null,
+          raw: result,
+          attempts: attempt,
+        };
+      } catch (error: any) {
+        if (error instanceof WhatsAppProviderError) {
+          lastError = error;
+          if (!error.retryable || attempt > this.config.maxRetries) throw error;
+          await sleep(Math.min(1000 * 2 ** (attempt - 1), 5000));
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw lastError || new WhatsAppProviderError({
+      message: "WhatsApp document send failed",
+      code: "WHATSAPP_SEND_FAILED",
+      retryable: false,
+      attempts: this.config.maxRetries + 1,
+    });
+  }
+
   async sendButtonMessage(
     to: string,
     bodyText: string,

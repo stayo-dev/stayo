@@ -18,6 +18,7 @@
 import { prisma } from "@/lib/db";
 import { getLogger } from "@/lib/logger";
 import { financialReadModelService, type FinancialReadModel } from "@/src/services/payments/financial-read-model-service";
+import { receiptService } from "@/src/services/payments/receipt-service";
 import type { Subject } from "./voice";
 import type { RentComponent, RentSummaryInput } from "./rent-summary";
 import type { InstalmentPlanInput, InstalmentRow, InstalmentState } from "./installment-plan";
@@ -272,6 +273,135 @@ export async function buildReceipt(
     payment: record,
     totalPaid,
     stillDue: context.financials.current_payable_amount,
+  };
+}
+
+/** One payment, shaped for the "which payment?" picker and for a receipt reply. */
+export type PaymentSummary = {
+  paymentId: string;
+  amount: number;
+  paidOn: Date | null;
+  towards: string | null;
+  method: string | null;
+  /** The issued receipt number, when a receipt row already exists. */
+  receiptNumber: string | null;
+};
+
+/**
+ * The payments a reader can ask for a receipt about, newest first.
+ *
+ * Capped at the picker's own ceiling plus one, so the caller can say "showing
+ * your most recent N" truthfully without loading a whole tenancy's history.
+ */
+export async function listPayments(tenantId: string, limit = 10): Promise<PaymentSummary[]> {
+  const rows = await prisma.payments.findMany({
+    where: { tenant_id: tenantId },
+    orderBy: [{ payment_date: "desc" }, { created_at: "desc" }],
+    take: limit,
+    select: {
+      id: true,
+      amount_paid: true,
+      payment_date: true,
+      payment_method: true,
+      obligation: { select: { obligation_type: true, rent_month: true, installment_label: true } },
+      receipts: { select: { receipt_number: true } },
+    },
+  });
+
+  return rows.map((row: any) => ({
+    paymentId: String(row.id),
+    amount: Number(row.amount_paid),
+    paidOn: row.payment_date || null,
+    towards: row.obligation
+      ? componentLabel({
+          type: row.obligation.obligation_type || "RENT",
+          rent_month: row.obligation.rent_month,
+          installment_label: row.obligation.installment_label ?? null,
+        } as FinancialReadModel["items"][number])
+      : null,
+    method: row.payment_method || null,
+    receiptNumber: row.receipts?.receipt_number || null,
+  }));
+}
+
+/** One payment by id, scoped to the tenant so a payload can't reach another. */
+export async function findPayment(tenantId: string, paymentId: string): Promise<PaymentSummary | null> {
+  const row = await prisma.payments.findFirst({
+    where: { id: paymentId, tenant_id: tenantId },
+    select: {
+      id: true,
+      amount_paid: true,
+      payment_date: true,
+      payment_method: true,
+      obligation: { select: { obligation_type: true, rent_month: true, installment_label: true } },
+      receipts: { select: { receipt_number: true } },
+    },
+  });
+
+  if (!row) return null;
+
+  return {
+    paymentId: String(row.id),
+    amount: Number(row.amount_paid),
+    paidOn: row.payment_date || null,
+    towards: row.obligation
+      ? componentLabel({
+          type: row.obligation.obligation_type || "RENT",
+          rent_month: row.obligation.rent_month,
+          installment_label: row.obligation.installment_label ?? null,
+        } as FinancialReadModel["items"][number])
+      : null,
+    method: row.payment_method || null,
+    receiptNumber: row.receipts?.receipt_number || null,
+  };
+}
+
+export type ReceiptDocument = { url: string; receiptNumber: string; filename: string };
+
+/**
+ * Make sure a current receipt PDF exists for this payment, and hand back the
+ * public URL WhatsApp can attach.
+ *
+ * `receiptService.generatePdfBuffer` is the canonical "reuse or generate"
+ * operation: it creates the `receipts` row if missing, returns the cached PDF
+ * when the stored template version is current, and otherwise re-renders and
+ * re-uploads to ImageKit. Calling it here rather than reimplementing the
+ * staleness check keeps one rule in one place — at the cost of one discarded
+ * buffer on a cache hit, which is the right trade against the two copies of
+ * that rule drifting apart. `RECEIPT_TEMPLATE_VERSION` is module-private, so
+ * checking it ourselves would mean exporting and then duplicating it.
+ *
+ * Returns `null` rather than throwing: a receipt that cannot be produced is
+ * answered with an explanation, never with silence.
+ */
+export async function ensureReceiptDocument(paymentId: string): Promise<ReceiptDocument | null> {
+  try {
+    await receiptService.generatePdfBuffer(paymentId, { autoCreate: true });
+  } catch (error: any) {
+    logger.warn("command_center.receipt_render_failed", {
+      payment_id: paymentId,
+      error: error?.message || String(error),
+    });
+    // Fall through — a URL cached by an earlier run may still be usable.
+  }
+
+  const receipt = await prisma.receipts.findFirst({
+    where: { payment_id: paymentId },
+    select: { receipt_number: true, receipt_pdf_url: true },
+  });
+
+  if (!receipt?.receipt_pdf_url) {
+    logger.warn("command_center.receipt_url_missing", { payment_id: paymentId });
+    return null;
+  }
+
+  const receiptNumber = receipt.receipt_number || "receipt";
+  return {
+    url: receipt.receipt_pdf_url,
+    receiptNumber,
+    // What the reader sees in their chat and their downloads — the receipt
+    // number, not a UUID.
+    filename: `Receipt-${receiptNumber}.pdf`.replace(/[/\\]/g, "-"),
   };
 }
 
