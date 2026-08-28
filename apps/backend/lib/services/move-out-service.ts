@@ -5,6 +5,7 @@ import { getLogger } from "../logger";
 import { financialService } from "../../src/services/payments/financial-service";
 import { tenantFinancialLedgerService } from "../../src/services/payments/tenant-financial-ledger-service";
 import { obligationEngine } from "../../src/services/payments/obligation-engine";
+import { financialPaymentFacade } from "../../src/services/payments/financial-payment-facade";
 import { assertTransition, assertCapability, canonicalMoveOutStatus, checkCapability, getTenantSteps } from "./move-out-state-machine";
 import { detectSettlementDrift, planQuickExitSteps, type QuickExitStep } from "./move-out-quick-exit-plan";
 import {
@@ -533,7 +534,12 @@ export class MoveOutService {
     paymentMethod?: string;
     paymentReference?: string;
     paymentNotes?: string;
-    duesDisposition?: "RECOVERABLE" | "WAIVE";
+    duesDisposition?: "RECOVERABLE" | "WAIVE" | "COLLECT";
+    /** COLLECT only: amount actually received. Omit to settle the full outstanding.
+     *  `paymentMethod` and `paymentReference` above carry how it arrived. */
+    collectedAmount?: number;
+    /** COLLECT only: recorded on the payment row for the audit trail. */
+    recordedIp?: string;
   }) {
     await this.requireRequestActor(params.requestId, params.actor, {
       action: "complete this move-out request",
@@ -562,6 +568,68 @@ export class MoveOutService {
       // Anything else leaves the obligations standing as recoverable debt —
       // see the `duesDisposition` note on this method.
       let waivedCount = 0;
+      let collected: Awaited<ReturnType<typeof financialPaymentFacade.receivePayment>> | null = null;
+      if (params.duesDisposition === "COLLECT") {
+        const hostelId = await tx.tenants
+          .findUnique({ where: { id: req.tenant_id }, select: { hostel_id: true } })
+          .then((t: any) => t?.hostel_id);
+        if (!hostelId) throw new Error("NOT_FOUND: Tenant hostel not found");
+
+        // The owner is settling the dues in the same breath as closing the
+        // move-out — cash handed over at the door, or a UPI transfer they can
+        // see. Making them leave this flow, find the payment page and come back
+        // is how outstanding rent quietly became "waived" instead: WAIVE was one
+        // click away and collecting was five.
+        //
+        // This records a real payment through the same planner/engine the
+        // ordinary collect flow uses, so allocation is FIFO, the ledger and
+        // receipts are written, and the obligation statuses are recomputed —
+        // never a status flip that would leave the books saying money arrived
+        // when no payment row exists.
+        // `getTenantDues` is the one place "what is owed" is decided; deriving
+        // it again here is how two surfaces drift apart.
+        const owed = await financialService.getTenantDues(
+          req.tenant_id,
+          req.tenant?.owner_id || null,
+          hostelId
+        );
+        const due = Number(owed.total_due || 0);
+        const amount = params.collectedAmount != null ? Number(params.collectedAmount) : due;
+
+        if (!(amount > 0)) {
+          throw new Error("VALIDATION: There is nothing outstanding to collect");
+        }
+        if (amount > due + 0.01) {
+          throw new Error(
+            `VALIDATION: Cannot collect more than the ₹${due.toFixed(2)} outstanding`
+          );
+        }
+        if (!params.paymentMethod) {
+          throw new Error("VALIDATION: A payment method is required to mark dues as paid");
+        }
+
+        collected = await financialPaymentFacade.receivePayment(
+          tx,
+          {
+            tenantId: req.tenant_id,
+            hostelId,
+            amountPaid: amount,
+            paymentMethod: params.paymentMethod,
+            referenceNumber: params.paymentReference,
+            paymentDate: now,
+            ownerId: req.tenant?.owner_id || undefined,
+            // Idempotent per move-out request: a double-submitted "mark as paid"
+            // must not record the money twice.
+            idempotencyKey: `moveout-collect:${params.requestId}`,
+            offlineRecordedBy: req.tenant?.owner_id || undefined,
+            offlineRecordedAt: now,
+            offlineRecordedIp: params.recordedIp,
+            offlineNote: "Collected at move-out settlement",
+          },
+          randomUUID()
+        );
+      }
+
       if (params.duesDisposition === "WAIVE") {
         // Routed through ObligationEngine so any PARTIAL obligation (real
         // payments on record) gets a proper ledger correction instead of a
@@ -590,6 +658,7 @@ export class MoveOutService {
         tenant_id: req.tenant_id,
         dues_disposition: params.duesDisposition ?? "RECOVERABLE",
         waived_obligations: waivedCount,
+        collected_amount: collected?.totalPaid ?? 0,
       });
       notifyMoveOutTransition(params.requestId, "COMPLETED");
       return {
@@ -597,6 +666,8 @@ export class MoveOutService {
         request_id: params.requestId,
         dues_disposition: params.duesDisposition ?? "RECOVERABLE",
         waived_obligations: waivedCount,
+        collected_amount: collected?.totalPaid ?? 0,
+        collected_remaining: collected?.remaining ?? null,
       };
     });
   }

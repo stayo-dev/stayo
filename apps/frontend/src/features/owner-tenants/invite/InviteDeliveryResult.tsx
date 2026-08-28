@@ -36,6 +36,15 @@ const secondaryBtn =
  * returns when nothing was delivered at all. Three cases now, and the
  * activation link is always offered in the failure ones so the owner can still
  * onboard the tenant by hand rather than being stranded.
+ *
+ * The delivered case is a plain confirmation, not a choice. It used to also
+ * offer "Wait for them to activate" vs. "Keep the records myself meanwhile" —
+ * that fork is gone because there is nothing left to decide: the tenancy is
+ * already live and owner-managed by the time this screen renders (the
+ * backend does that inside the same transaction that creates the invitation
+ * — see `tenant-invitation-lifecycle-service.ts`'s `createInvitation`), so
+ * "keep the records myself" was already true before the owner could click
+ * anything.
  */
 export function InviteDeliveryResult({
   delivery,
@@ -91,9 +100,15 @@ export function InviteDeliveryResult({
             </>
           )}
         </p>
-        <button type="button" onClick={onDone} className="mt-2 rounded-xl bg-primary px-6 py-3 font-display text-sm font-bold text-primary-foreground">
-          Done
-        </button>
+        <div className="mt-2 flex w-full flex-col items-center gap-2">
+          <button type="button" onClick={onDone} className={primaryBtn}>
+            Done
+          </button>
+          <p className="max-w-[280px] text-center text-[11.5px] leading-snug text-muted-foreground">
+            You keep the books and rent starts today. If {name} activates later, they&apos;ll pick up this exact
+            record — nothing is duplicated.
+          </p>
+        </div>
       </div>
     );
   }

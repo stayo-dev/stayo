@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { normalizeIndianPhone } from "@/lib/utils/phone-utils";
 import {
   evaluateTenancyEligibility,
   type TenancyEligibility,
@@ -40,10 +41,35 @@ export class TenancyEligibilityError extends Error {
 export class TenancyEligibilityService {
   /** Every tenancy a profile has ever held, shaped for the pure rules. */
   private async loadTenancies(profileId: string, tx?: any): Promise<TenancySnapshot[]> {
+    return this.loadTenanciesWhere({ profile_id: profileId }, tx);
+  }
+
+  /**
+   * Live tenancies carrying this phone number, whatever profile they point at.
+   *
+   * This exists because `profile_id` is not a reliable index of a person.
+   * Adoption used to leave it null, which made an owner-managed tenancy
+   * invisible to every profile-keyed guard — in production one phone
+   * accumulated three tenancies in one hostel, the third invite accepted two
+   * minutes after the adoption. Adoption now links a profile, but this check
+   * stands independently: it catches the rows already orphaned, and it does not
+   * depend on a future code path remembering to set `profile_id`.
+   *
+   * Only `ACTIVE` and `INVITED` count. A `FORMER_TENANT`, `CANCELLED` or
+   * `EXPIRED` tenancy must never block a returning resident.
+   */
+  private async loadLiveTenanciesByPhone(phone: string, tx?: any): Promise<TenancySnapshot[]> {
+    return this.loadTenanciesWhere(
+      { phone_1: phone, status: { in: ["ACTIVE", "INVITED"] } },
+      tx
+    );
+  }
+
+  private async loadTenanciesWhere(where: any, tx?: any): Promise<TenancySnapshot[]> {
     const db = tx || prisma;
 
     const tenancies = await db.tenants.findMany({
-      where: { profile_id: profileId },
+      where,
       select: {
         id: true,
         status: true,
@@ -98,6 +124,27 @@ export class TenancyEligibilityService {
     return result;
   }
 
+  /**
+   * Everything relevant to "may this contact start a tenancy?" — the tenancies
+   * of any profile matching the email/phone, PLUS any live tenancy carrying that
+   * phone directly, deduplicated. Either source alone has a blind spot.
+   */
+  private async loadTenanciesForContact(
+    contact: { email?: string | null; phone?: string | null },
+    tx?: any
+  ): Promise<{ hasAccount: boolean; tenancies: TenancySnapshot[] }> {
+    const profileId = await this.resolveProfileIdByContact(contact, tx);
+    const byProfile = profileId ? await this.loadTenancies(profileId, tx) : [];
+
+    const phone = normalizeIndianPhone(contact.phone ?? null);
+    const byPhone = phone ? await this.loadLiveTenanciesByPhone(phone, tx) : [];
+
+    const seen = new Set(byProfile.map((t) => t.id));
+    const tenancies = [...byProfile, ...byPhone.filter((t) => !seen.has(t.id))];
+
+    return { hasAccount: Boolean(profileId), tenancies };
+  }
+
   /** Resolves an email/phone to a profile id, or null if no account exists. */
   private async resolveProfileIdByContact(
     contact: { email?: string | null; phone?: string | null },
@@ -127,10 +174,10 @@ export class TenancyEligibilityService {
     invitingOwnerId: string | null,
     tx?: any
   ): Promise<TenancyEligibility> {
-    const profileId = await this.resolveProfileIdByContact(contact, tx);
-    if (!profileId) return { eligible: true };
+    const { tenancies } = await this.loadTenanciesForContact(contact, tx);
+    if (tenancies.length === 0) return { eligible: true };
 
-    return this.checkEligibility(profileId, invitingOwnerId, tx);
+    return evaluateTenancyEligibility(tenancies, invitingOwnerId);
   }
 
   /** As `checkEligibilityByContact`, but throws a 409 the routes can serialise directly. */
@@ -159,11 +206,10 @@ export class TenancyEligibilityService {
     invitingOwnerId: string | null,
     tx?: any
   ): Promise<{ hasAccount: boolean; eligibility: TenancyEligibility }> {
-    const profileId = await this.resolveProfileIdByContact(contact, tx);
-    if (!profileId) return { hasAccount: false, eligibility: { eligible: true } };
+    const { hasAccount, tenancies } = await this.loadTenanciesForContact(contact, tx);
+    if (tenancies.length === 0) return { hasAccount, eligibility: { eligible: true } };
 
-    const eligibility = await this.checkEligibility(profileId, invitingOwnerId, tx);
-    return { hasAccount: true, eligibility };
+    return { hasAccount, eligibility: evaluateTenancyEligibility(tenancies, invitingOwnerId) };
   }
 }
 

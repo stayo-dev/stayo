@@ -1,5 +1,5 @@
 import api from '@lib/api-client';
-import type { Acknowledgements, ClaimConfirmResult, ClaimTenancy } from '@platforms/tenant/claim/claimSteps';
+import type { Acknowledgements, ClaimConfirmResult, ClaimStatement, ClaimTenancy } from '@platforms/tenant/claim/claimSteps';
 
 /**
  * API wrapper for the tenant-facing tenancy-claim flow
@@ -64,6 +64,22 @@ export const tenancyClaimApi = {
     return Array.isArray(data?.tenancies) ? data.tenancies : [];
   },
 
+  /**
+   * The pre-confirm statement of what the owner recorded (rent months,
+   * payments, outstanding total) for one claimable tenancy — gated by the
+   * same `claimToken` as `lookup`/`confirm`. Read-only on the backend: it
+   * never consumes the OTP proof, so this can be called (or re-called,
+   * while the tenant reads it) without spending what `confirm` still needs.
+   */
+  statement: async (phone: string, tenantId: string, claimToken: string | null): Promise<ClaimStatement> => {
+    const response = await api.post('/tenancy-claim/statement', {
+      phone,
+      tenant_id: tenantId,
+      ...(claimToken ? { claim_token: claimToken } : {}),
+    });
+    return unwrap(response);
+  },
+
   confirm: async (input: {
     phone: string;
     tenantId: string;
@@ -80,6 +96,14 @@ export const tenancyClaimApi = {
      * before this is ever called.
      */
     password?: string;
+    /**
+     * The tenant's verdict on the statement shown at the review step —
+     * absent/empty on both means "this looks right." A dispute never blocks
+     * the claim (`tenancy-claim-service.ts`'s own module comment); it just
+     * gets recorded and the owner notified once the claim commits.
+     */
+    disputedItems?: string[];
+    disputeNote?: string;
   }): Promise<ClaimConfirmResult> => {
     const response = await api.post('/tenancy-claim/confirm', {
       phone: input.phone,
@@ -90,6 +114,8 @@ export const tenancyClaimApi = {
       ...(input.name?.trim() ? { name: input.name.trim() } : {}),
       ...(input.email?.trim() ? { email: input.email.trim() } : {}),
       ...(input.password ? { password: input.password, confirm_password: input.password } : {}),
+      ...(input.disputedItems?.length ? { disputed_items: input.disputedItems } : {}),
+      ...(input.disputeNote?.trim() ? { dispute_note: input.disputeNote.trim() } : {}),
     });
     return unwrap(response);
   },

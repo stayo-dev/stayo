@@ -59,17 +59,50 @@ describe("isClaimable", () => {
     expect(isClaimable(candidate({ access_mode: "OWNER_MANAGED", status: "CANCELLED" }))).toBe(false);
   });
 
+  describe("centralised identity: a bound profile is not automatically a real account", () => {
+    it("REGRESSION: a tenancy bound to a login-less shell is still claimable", () => {
+      // Adoption now links (or creates) a profile keyed on the canonical phone,
+      // so EVERY owner-managed tenancy carries a `profile_id`. Refusing all
+      // bound tenancies — the previous rule — would refuse every claim and
+      // break the entire claim flow.
+      expect(
+        isClaimable(candidate({ profile_id: "shell-profile", profile_has_login: false }))
+      ).toBe(true);
+    });
+
+    it("refuses a tenancy bound to a profile that can sign in", () => {
+      // That is a real account; claiming it would be a takeover, not onboarding.
+      expect(
+        isClaimable(candidate({ profile_id: "real-account", profile_has_login: true }))
+      ).toBe(false);
+    });
+
+    it("fails closed when the login flag is missing on a bound tenancy", () => {
+      // A caller that forgets to select `profiles.auth_user_id` must be refused,
+      // never waved through on an undefined.
+      expect(isClaimable(candidate({ profile_id: "unknown-state" }))).toBe(false);
+    });
+
+    it("still lets an authenticated caller re-confirm their own tenancy", () => {
+      expect(
+        isClaimable(candidate({ profile_id: "mine", profile_has_login: true }), "mine")
+      ).toBe(true);
+    });
+  });
+
   describe("SECURITY FIX (finding 2): profile_id binding", () => {
     it("accepts an unbound (profile_id: null) tenancy, same as before, with no claiming profile", () => {
       expect(isClaimable(candidate({ profile_id: null }))).toBe(true);
     });
 
     it("REGRESSION GUARD: rejects a tenancy already bound to a profile when no claiming profile is given (e.g. lookup, pre-auth)", () => {
-      expect(isClaimable(candidate({ profile_id: "profile-a" }))).toBe(false);
+      expect(isClaimable(candidate({ profile_id: "profile-a", profile_has_login: true }))).toBe(false);
     });
 
     it("rejects a tenancy bound to a *different* profile than the one attempting to claim it", () => {
-      expect(isClaimable(candidate({ profile_id: "profile-a" }), "profile-b")).toBe(false);
+      expect(
+        isClaimable(candidate({ profile_id: "profile-a", profile_has_login: true }), "profile-b")
+      ).toBe(false);
     });
 
     it("accepts a tenancy already bound to the exact profile attempting to (re-)claim it", () => {

@@ -49,6 +49,18 @@ export const TenancyClaimLookupSchema = z.object({
 });
 
 /**
+ * `POST /tenancy-claim/statement` — the read-only pre-confirm statement.
+ * Same phone/token shape as lookup, plus which tenancy to summarise; gated
+ * by the same claim proof (see `tenancyClaimService.statement`'s doc
+ * comment), never a second, looser gate.
+ */
+export const TenancyClaimStatementSchema = z.object({
+  phone: phoneField,
+  claim_token: claimTokenField,
+  tenant_id: z.string().uuid({ message: "Invalid tenant id" }),
+});
+
+/**
  * `acknowledgements` mirrors activation's `REQUIRED_ACKNOWLEDGEMENTS` gate —
  * validated for completeness in `tenancyClaimService.confirm`, not here;
  * this layer only shapes the wire format (a map of ack-key to boolean).
@@ -78,4 +90,15 @@ export const TenancyClaimConfirmSchema = z.object({
    */
   password: z.string().min(8).optional(),
   confirm_password: z.string().min(8).optional(),
+  /**
+   * The tenant's verdict on the statement `POST /tenancy-claim/statement`
+   * showed them, before confirming — see
+   * `tenancy-claim-service.ts::normalizeDisputeInput`, which treats both
+   * absent/empty as "this looks right." Loosely bounded (an opaque
+   * reference string per flagged row) the same way `claim_token` is above —
+   * this layer only shapes the wire format, not what a valid reference
+   * looks like.
+   */
+  disputed_items: z.array(z.string().min(1).max(300)).max(50).optional(),
+  dispute_note: z.string().trim().max(2000).optional(),
 });

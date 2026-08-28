@@ -13,6 +13,7 @@ import { selectCurrentTenancy } from "@/lib/tenancy/active-tenancy";
 import { recordWhatsAppDelivery, readWhatsAppDeliveredAt } from "./invitation-delivery-trust";
 import { isPhoneAlreadyProven } from "./invitation-phone-trust";
 import { resolveInvitedProfile, resolveActivationEmail } from "./invited-profile-resolver";
+import { finalizeOwnerManagedTenancy } from "./owner-managed-tenancy-service";
 import {
   TenancyEligibilityError,
   tenancyEligibilityService,
@@ -212,12 +213,12 @@ export class TenantInvitationLifecycleService {
   }
 
   async createInvitation(data: any, ownerId: string) {
-    // "Just add to my records" (Task 9b): the invitation record is still
-    // created — an owner-managed tenant must be able to claim their tenancy
-    // later through it — but the caller opts out of the WhatsApp/email send
-    // that would otherwise contradict "no invite sent". Every existing caller
-    // omits this, so `suppressInvitationNotification` is `false` and behaviour
-    // is byte-identical to before.
+    // Every existing caller omits this, so `suppressInvitationNotification` is
+    // `false` and the invite is always dispatched. The invitation is
+    // mandatory now — "just add to my records without inviting" is not a
+    // choice the wizard offers — but the parameter itself is left in place
+    // for a caller with a genuinely different reason to opt out (it always
+    // defaulted to false; nothing here changes that default).
     const suppressInvitationNotification = Boolean(data.suppressInvitationNotification);
     const normalizedEmail = data.email ? normalizeEmail(data.email) : null;
     const normalizedPhone = normalizeIndianPhone(data.phone);
@@ -401,6 +402,37 @@ export class TenantInvitationLifecycleService {
         });
       }
 
+      // Inviting someone now means "this person is my tenant" — the owner
+      // manages this profile from this moment until the invitee activates it
+      // themselves. That is not a choice ("Just add to my records" no longer
+      // exists as a separate path); it is what every tenancy is, so the
+      // reservation just created above is converted into a real room
+      // allocation immediately, rent generates on schedule, and the room
+      // reads occupied — none of that waits on the tenant to act.
+      // `finalizeOwnerManagedTenancy` is the same write path `adopt()` uses
+      // for a tenant who ignored their invitation; reused rather than
+      // duplicated. This must run before dispatch below, not after: the
+      // invitation is intentionally left SUPERSEDED (not cancelled) so a
+      // later click on the very link about to be sent still resolves — see
+      // `resolveByToken`'s CLAIM_REQUIRED branch — into the claim flow
+      // instead of erroring or (worse) silently no-opping against a tenant
+      // who is already ACTIVE.
+      await finalizeOwnerManagedTenancy({
+        tx,
+        tenantId: tenant.id,
+        ownerId,
+        hostelId: capacity.room.hostel_id,
+        displayName: name,
+        phone: normalizedPhone,
+        roomId,
+        joiningDate,
+        existingProfileId: null,
+        profileEmail: normalizedEmail,
+        invitationEmail: normalizedEmail,
+        reservation: { id: reservation.id },
+        invitationId: invitation.id,
+      });
+
       return { tenant, invitation, reservation, room: capacity.room, financials };
     }, { timeout: 30000 });
 
@@ -484,7 +516,14 @@ export class TenantInvitationLifecycleService {
     if (actor?.role === "OWNER" && invitation.owner_id !== actor.id) {
       throw new Error("FORBIDDEN: You can only resend your own invitations");
     }
-    if (invitation.status === "ACTIVATED" || invitation.tenant.status === "ACTIVE") {
+    // An owner-managed tenancy is ACTIVE from the moment it's invited (see
+    // createInvitation) but hasn't been claimed — resend/edit must keep
+    // serving it (adding an email after a failed WhatsApp send, correcting
+    // terms) rather than treating "already ACTIVE" as the terminal state it
+    // is for a tenant who genuinely self-registered.
+    const tenantAlreadyOwnerManaged =
+      invitation.tenant.status === "ACTIVE" && invitation.tenant.access_mode === "OWNER_MANAGED";
+    if (invitation.status === "ACTIVATED" || (invitation.tenant.status === "ACTIVE" && !tenantAlreadyOwnerManaged)) {
       throw new Error("BAD_REQUEST: Tenant is already active");
     }
     if (invitation.status === "CANCELLED") throw new Error("BAD_REQUEST: Invitation is cancelled");
@@ -644,7 +683,12 @@ export class TenantInvitationLifecycleService {
       const updatedTenant = await tx.tenants.update({
         where: { id: invitation.tenant_id },
         data: {
-          status: "INVITED",
+          // A genuinely self-serve tenant has no live tenancy yet — resend
+          // reopens it at INVITED, same as always. An owner-managed tenant
+          // (the common case now — see createInvitation) already IS the live
+          // tenancy: resend corrects its terms without undoing that rent
+          // keeps generating and the room keeps reading occupied.
+          ...(tenantAlreadyOwnerManaged ? {} : { status: "INVITED" }),
           activation_started_at: null,
           activation_completed_at: null,
           onboarding_last_activity_at: null,
@@ -724,7 +768,14 @@ export class TenantInvitationLifecycleService {
           email: email ? normalizeEmail(email) : invitation.email,
           token,
           expires_at: expiresAt,
-          status: "PENDING",
+          // A genuinely self-serve tenant's fresh version is PENDING, same as
+          // always. An owner-managed tenant is already ACTIVE — this version
+          // is created SUPERSEDED for the same reason `createInvitation`
+          // supersedes the original: resolving its token must route through
+          // the claim flow (CLAIM_REQUIRED), not normal activation, which
+          // would silently no-op against a tenant who's already ACTIVE (see
+          // completeActivation's idempotency guard).
+          status: tenantAlreadyOwnerManaged ? "SUPERSEDED" : "PENDING",
           opened_at: null,
           activation_started_at: null,
           activated_at: null,
@@ -740,21 +791,28 @@ export class TenantInvitationLifecycleService {
         },
       });
 
-      // 9. Create a new reservation for the new invitation
-      await tx.tenant_invitation_reservations.create({
-        data: {
-          id: crypto.randomUUID(),
-          tenant_id: invitation.tenant_id,
-          invitation_id: newInvitationId,
-          owner_id: invitation.owner_id,
-          hostel_id: targetHostelId,
-          room_id: targetRoomId,
-          batch_id: invitation.batch_id,
-          status: "ACTIVE",
-          reserved_at: new Date(),
-          expires_at: expiresAt,
-        },
-      });
+      // 9. Create a new reservation for the new invitation — skipped for an
+      // already owner-managed tenant: they hold a real room allocation from
+      // the moment they were invited (see createInvitation), not a
+      // reservation, and creating one here would double-count them against
+      // the room's capacity (`getRoomCapacitySnapshot` sums allocations and
+      // reservations) with nothing that will ever convert or release it.
+      if (!tenantAlreadyOwnerManaged) {
+        await tx.tenant_invitation_reservations.create({
+          data: {
+            id: crypto.randomUUID(),
+            tenant_id: invitation.tenant_id,
+            invitation_id: newInvitationId,
+            owner_id: invitation.owner_id,
+            hostel_id: targetHostelId,
+            room_id: targetRoomId,
+            batch_id: invitation.batch_id,
+            status: "ACTIVE",
+            reserved_at: new Date(),
+            expires_at: expiresAt,
+          },
+        });
+      }
 
       return {
         updatedInvitation,
@@ -885,24 +943,31 @@ export class TenantInvitationLifecycleService {
     if (!invitation || !invitation.tenant) {
       return this.resolveLegacyProfileToken(normalizedToken);
     }
-    if (invitation.status === "SUPERSEDED") {
-      // An invitation is superseded two ways: adoption (the owner chose to keep
-      // records themselves while the invite sat unopened) or a genuine
-      // replacement (e.g. a room change re-issuing the invite). Only the
-      // former still has a live claim path — the tenant who finally opens
-      // that month-old link should land on "claim your tenancy," not a dead
-      // end. See design spec §6 and owner-managed-tenancy-service.ts's
-      // adoption comment.
-      if (invitation.tenant.access_mode === "OWNER_MANAGED") {
-        throw new Error("CLAIM_REQUIRED: This invitation was superseded because the owner is keeping records for this tenancy directly. Use the claim flow to link your account instead.");
-      }
-      throw new Error("INVALID: Activation link expired or already used");
-    }
+    // Hostel status blocks every path, including the claim route below — an
+    // archived/inactive hostel is not something a SUPERSEDED+OWNER_MANAGED
+    // tenancy should be claimable into, so this must run before that check,
+    // not after it. (Every tenancy is SUPERSEDED+OWNER_MANAGED from the
+    // moment it's invited now — see createInvitation — so this ordering,
+    // previously a rare edge case, is the common case.)
     if (invitation.tenant.hostels?.status === "ARCHIVED") {
       throw new Error("FORBIDDEN: Cannot activate tenant in an archived hostel");
     }
     if (invitation.tenant.hostels?.status === "INACTIVE") {
       throw new Error("FORBIDDEN: Cannot activate tenant in an inactive hostel");
+    }
+    if (invitation.status === "SUPERSEDED") {
+      // An invitation is superseded two ways: adoption (the owner is keeping
+      // records themselves — including the default case now, where every
+      // invitation supersedes itself into an owner-managed tenancy at the
+      // moment it's created) or a genuine replacement (e.g. a room change
+      // re-issuing the invite). Only the former still has a live claim path —
+      // the tenant who finally opens that link should land on "claim your
+      // tenancy," not a dead end. See design spec §6 and
+      // owner-managed-tenancy-service.ts's adoption comment.
+      if (invitation.tenant.access_mode === "OWNER_MANAGED") {
+        throw new Error("CLAIM_REQUIRED: This invitation was superseded because the owner is keeping records for this tenancy directly. Use the claim flow to link your account instead.");
+      }
+      throw new Error("INVALID: Activation link expired or already used");
     }
     if (invitation.status === "ACTIVATED" || invitation.tenant.status === "ACTIVE") {
       throw new Error("ALREADY_ACTIVE: Account already active");

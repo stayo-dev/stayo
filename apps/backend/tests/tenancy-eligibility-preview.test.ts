@@ -28,13 +28,44 @@ describe("TenancyEligibilityService.previewEligibilityByContact", () => {
     vi.clearAllMocks();
   });
 
-  it("reports no account for an unknown phone, without touching tenancies", async () => {
+  it("reports no account for a phone with neither a profile nor a tenancy", async () => {
     prismaMock.profile.findFirst.mockResolvedValue(null);
+    prismaMock.tenants.findMany.mockResolvedValue([]);
 
     await expect(
       tenancyEligibilityService.previewEligibilityByContact({ phone: "9876543210" }, "owner-a")
     ).resolves.toEqual({ hasAccount: false, eligibility: { eligible: true } });
-    expect(prismaMock.tenants.findMany).not.toHaveBeenCalled();
+  });
+
+  it("still looks for tenancies when no profile matches — the orphan case", async () => {
+    // REGRESSION: this previously short-circuited on "no profile" and never
+    // queried tenancies at all. Adoption used to leave `profile_id` null, so an
+    // owner-managed tenancy had no profile to be found by — and was therefore
+    // invisible here. In production that let a second invite through two
+    // minutes after an adoption, leaving one phone with three tenancies in one
+    // hostel. The lookup by phone must happen whether or not a profile exists.
+    prismaMock.profile.findFirst.mockResolvedValue(null);
+    prismaMock.tenants.findMany.mockResolvedValue([]);
+
+    await tenancyEligibilityService.previewEligibilityByContact({ phone: "9876543210" }, "owner-a");
+
+    expect(prismaMock.tenants.findMany).toHaveBeenCalled();
+    const where = prismaMock.tenants.findMany.mock.calls[0][0].where;
+    expect(where.phone_1).toBe("+919876543210");
+    expect(where.status).toEqual({ in: ["ACTIVE", "INVITED"] });
+  });
+
+  it("refuses a phone whose live tenancy has no profile attached", async () => {
+    prismaMock.profile.findFirst.mockResolvedValue(null);
+    prismaMock.tenants.findMany.mockResolvedValue([tenancyRow({ owner_id: "owner-a" })]);
+
+    const result = await tenancyEligibilityService.previewEligibilityByContact(
+      { phone: "9876543210" },
+      "owner-a"
+    );
+
+    expect(result.hasAccount).toBe(false);
+    expect(result.eligibility.eligible).toBe(false);
   });
 
   it("reports an existing, currently eligible account", async () => {

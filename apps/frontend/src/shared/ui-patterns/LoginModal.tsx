@@ -442,6 +442,36 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
             </>
           )}
 
+          {!isOwner && (
+            /*
+             * The doorway into the claim flow.
+             *
+             * A tenant whose owner has been keeping their records has a real
+             * profile with a real phone number and NO password -- so logging in
+             * with their own number returns "Invalid email, phone, or password".
+             * The system knows their hostel, room and payment history and tells
+             * them they do not exist. Without this, their only ways in were
+             * typing /claim from memory or clicking a months-old invite link.
+             *
+             * Deliberately always shown, and deliberately not driven by what
+             * was typed: a login form that answered "that number belongs to a
+             * tenant" would let anyone enumerate which phone numbers live in
+             * which hostels. Proof of the number comes from the OTP inside the
+             * claim flow, and nothing is revealed before it.
+             */
+            <div className="mt-5 border-t border-border pt-4 text-center">
+              <p className="text-[12.5px] leading-normal text-muted-foreground">
+                Already staying at a hostel and your owner set you up?
+              </p>
+              <a
+                href="/claim"
+                className="mt-1 inline-block font-display text-[13px] font-bold text-primary hover:underline"
+              >
+                Take charge of your account
+              </a>
+            </div>
+          )}
+
           {isOwner && (
             <p className="mt-4 text-center text-[12.5px] leading-normal text-muted-foreground">
               Owner accounts are created during onboarding — contact Stayo support if you need help accessing yours.

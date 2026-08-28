@@ -20,7 +20,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     // Default RECOVERABLE, never WAIVE — writing off a former tenant's dues
     // has to be something the caller asked for in words. See ADR-122 and the
     // `duesDisposition` note on `confirmPaymentAndComplete`.
-    const duesDisposition = body.duesDisposition === "WAIVE" ? "WAIVE" : "RECOVERABLE";
+    //
+    // COLLECT is the third, explicit option: the owner took the money at the
+    // door and says so here, rather than leaving the flow for the payment page
+    // and coming back. It records a real payment through the settlement engine.
+    const duesDisposition =
+      body.duesDisposition === "WAIVE" || body.duesDisposition === "COLLECT"
+        ? body.duesDisposition
+        : "RECOVERABLE";
 
     const result = await moveOutService.confirmPaymentAndComplete({
       requestId: params.id,
@@ -29,6 +36,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       paymentReference: body.paymentReference,
       paymentNotes: body.paymentNotes,
       duesDisposition,
+      collectedAmount:
+        body.collectedAmount != null ? Number(body.collectedAmount) : undefined,
+      recordedIp: req.headers.get("x-forwarded-for") || undefined,
     });
     return apiResponse(result);
   } catch (error: any) {

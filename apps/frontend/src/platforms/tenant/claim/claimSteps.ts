@@ -30,7 +30,7 @@ import { canonicalPhone } from '@shared/lib/phone';
  *    step rather than stranding the tenant on a dead screen.
  */
 
-export type ClaimStepName = 'phone' | 'otp' | 'empty' | 'picker' | 'confirm' | 'done';
+export type ClaimStepName = 'phone' | 'otp' | 'empty' | 'picker' | 'confirm' | 'review' | 'done';
 
 /** Display-only shape `POST /tenancy-claim/lookup` and `.../confirm` both return — never obligations/balances. */
 export interface ClaimTenancy {
@@ -62,6 +62,61 @@ export interface ClaimConfirmResult extends ClaimTenancy {
    * gets signed in, never whether the claim worked.
    */
   session?: ClaimSessionTokens | null;
+  /**
+   * Whether the tenant's review-step dispute was written to the owner's
+   * `complaints` queue (`tenancy-claim-service.ts`'s `confirm`). The claim
+   * always succeeds either way -- this only changes the `DoneStep` copy.
+   */
+  dispute_recorded?: boolean;
+}
+
+/** One rent-month line of the pre-confirm statement — `POST /tenancy-claim/statement`. */
+export interface ClaimStatementRentMonth {
+  obligation_id: string;
+  rent_month: string;
+  status: string;
+  amount: number;
+  paid: number;
+  outstanding: number;
+}
+
+/** One payment line of the pre-confirm statement. */
+export interface ClaimStatementPayment {
+  payment_id: string;
+  obligation_id: string;
+  amount: number;
+  date: string;
+  method: string;
+  /** `true` when the owner recorded this by hand (`payments.offline_recorded_by`). */
+  recorded_by_owner: boolean;
+}
+
+/**
+ * What the owner recorded for this tenancy, read-only, shown on the
+ * `review` step before the tenant decides whether it looks right. Never
+ * fetched until the phone is OTP-proven — see `tenancyClaimApi.statement`.
+ */
+export interface ClaimStatement {
+  tenant_id: string;
+  hostel_name: string | null;
+  owner_name: string | null;
+  room_no: string | null;
+  stay_start_date: string | null;
+  monthly_rent: number | null;
+  security_deposit: number | null;
+  rent_months: ClaimStatementRentMonth[];
+  payments: ClaimStatementPayment[];
+  outstanding_total: number;
+}
+
+/** Opaque reference for a disputed rent-month row — echoed back to `confirm`, never re-parsed on this side either. */
+export function rentMonthRef(obligationId: string): string {
+  return `rent_month:${obligationId}`;
+}
+
+/** Opaque reference for a disputed payment row. */
+export function paymentRef(paymentId: string): string {
+  return `payment:${paymentId}`;
 }
 
 /**
@@ -128,6 +183,18 @@ export interface ClaimState {
   /** The most recent failure's human-readable message, or null. Cleared on every input change. */
   error: string | null;
   result: ClaimConfirmResult | null;
+  /**
+   * Fetched once the `confirm` step's fields are ready (`canConfirm`), via
+   * `POST /tenancy-claim/statement`, and rendered on the `review` step —
+   * see that endpoint's doc comment for why fetching it never consumes the
+   * OTP proof `confirm` still needs.
+   */
+  statement: ClaimStatement | null;
+  /** Whether "Something's wrong" was chosen on the review step -- reveals the flagging UI. */
+  disputeMode: boolean;
+  /** Opaque refs (`rentMonthRef`/`paymentRef`) of statement rows the tenant marked. */
+  disputedItems: string[];
+  disputeNote: string;
 }
 
 export function initialClaimState(options?: { alreadySignedIn?: boolean }): ClaimState {
@@ -148,6 +215,10 @@ export function initialClaimState(options?: { alreadySignedIn?: boolean }): Clai
     submitting: false,
     error: null,
     result: null,
+    statement: null,
+    disputeMode: false,
+    disputedItems: [],
+    disputeNote: '',
   };
 }
 
@@ -167,6 +238,13 @@ export type ClaimEvent =
   | { type: 'BACK_TO_PICKER' }
   | { type: 'ACK_TOGGLED'; key: AcknowledgementKey; value: boolean }
   | { type: 'FIELD_CHANGED'; field: 'typedSignatureName' | 'name' | 'email' | 'password' | 'confirmPassword'; value: string }
+  | { type: 'STATEMENT_REQUESTED' }
+  | { type: 'STATEMENT_SUCCEEDED'; statement: ClaimStatement }
+  | { type: 'STATEMENT_FAILED'; code: string; message: string }
+  | { type: 'DISPUTE_MODE_ENABLED' }
+  | { type: 'DISPUTE_MODE_CANCELLED' }
+  | { type: 'DISPUTE_ITEM_TOGGLED'; ref: string; value: boolean }
+  | { type: 'DISPUTE_NOTE_CHANGED'; note: string }
   | { type: 'CONFIRM_REQUESTED' }
   | { type: 'CONFIRM_SUCCEEDED'; result: ClaimConfirmResult }
   | { type: 'CONFIRM_FAILED'; code: string; message: string }
@@ -199,8 +277,22 @@ function applyClaimError(state: ClaimState, code: string, message: string): Clai
     // phone step with the number retained, never leaves the tenant on the
     // OTP or confirm screen waiting for nothing. `claimToken` is cleared
     // too — it's bound to the now-invalid proof, so a stale one must not
-    // silently ride along into the next verify/lookup cycle.
-    return { ...state, submitting: false, step: 'phone', otp: '', claimToken: null, error: message };
+    // silently ride along into the next verify/lookup cycle. The statement
+    // (and any in-progress dispute marks) are bound to that same dead
+    // proof -- clear them too, rather than carrying stale financial data
+    // into a re-verified cycle that may resolve to a different tenancy.
+    return {
+      ...state,
+      submitting: false,
+      step: 'phone',
+      otp: '',
+      claimToken: null,
+      statement: null,
+      disputeMode: false,
+      disputedItems: [],
+      disputeNote: '',
+      error: message,
+    };
   }
 
   if (code === 'NOT_CLAIMABLE') {
@@ -282,6 +374,36 @@ export function claimReducer(state: ClaimState, event: ClaimEvent): ClaimState {
       return { ...state, acknowledgements: { ...state.acknowledgements, [event.key]: event.value } };
     case 'FIELD_CHANGED':
       return { ...state, [event.field]: event.value };
+
+    case 'STATEMENT_REQUESTED':
+      // Fired from the 'confirm' step once its own fields are ready
+      // (`canConfirm`) -- stays there while the statement loads; only a
+      // successful fetch advances to 'review'.
+      return { ...state, submitting: true, error: null };
+    case 'STATEMENT_SUCCEEDED':
+      return { ...state, submitting: false, statement: event.statement, step: 'review', error: null };
+    case 'STATEMENT_FAILED':
+      // Same recovery table as LOOKUP_FAILED/CONFIRM_FAILED -- an expired
+      // proof sends the tenant back to 'phone', a since-unclaimable tenancy
+      // gets dropped and re-picked, everything else stays put in place.
+      return applyClaimError(state, event.code, event.message);
+
+    case 'DISPUTE_MODE_ENABLED':
+      return { ...state, disputeMode: true, error: null };
+    case 'DISPUTE_MODE_CANCELLED':
+      // Back to "this looks right" -- clears any marks made while exploring
+      // the flagging UI, so re-entering it starts clean rather than with
+      // stale ticks the tenant may no longer intend.
+      return { ...state, disputeMode: false, disputedItems: [], disputeNote: '', error: null };
+    case 'DISPUTE_ITEM_TOGGLED': {
+      const alreadyMarked = state.disputedItems.includes(event.ref);
+      const disputedItems = event.value
+        ? (alreadyMarked ? state.disputedItems : [...state.disputedItems, event.ref])
+        : state.disputedItems.filter((ref) => ref !== event.ref);
+      return { ...state, disputedItems };
+    }
+    case 'DISPUTE_NOTE_CHANGED':
+      return { ...state, disputeNote: event.note };
 
     case 'CONFIRM_REQUESTED':
       return { ...state, submitting: true, error: null };
@@ -370,4 +492,17 @@ export function canConfirm(state: ClaimState): boolean {
 
 export function selectedTenancy(state: ClaimState): ClaimTenancy | null {
   return state.tenancies.find((t) => t.tenant_id === state.selectedTenantId) ?? null;
+}
+
+/**
+ * Whether the review step's "Continue" (submitting a dispute) may be
+ * pressed. At least one flagged row is required -- a bare note with nothing
+ * ticked isn't disputing a specific entry, it's just "something's wrong,"
+ * which the tenant can still say via the note field once at least one row
+ * is marked. Mirrors the backend's own leniency
+ * (`normalizeDisputeInput` accepts a note alone), so this is a UI floor,
+ * not a re-statement of the server's rule.
+ */
+export function canSubmitDispute(state: ClaimState): boolean {
+  return state.disputeMode && state.disputedItems.length > 0;
 }

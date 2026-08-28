@@ -22,6 +22,7 @@ import {
 import { resolveActivationEmail } from "./invited-profile-resolver";
 import { tenancyEligibilityService } from "./tenancy-eligibility-service";
 import { notificationService } from "@/lib/services/notification-service";
+import { financialService } from "../payments/financial-service";
 
 const logger = getLogger("services.tenancy-claim");
 
@@ -213,6 +214,15 @@ export async function consumeClaimProof(tx: any, proofId: string) {
   return result.count === 1;
 }
 
+/**
+ * `isClaimable` asks whether the bound profile can sign in, not whether one
+ * exists. Deriving it here — in one place both call sites go through — keeps a
+ * future caller from passing a raw row and silently failing closed.
+ */
+function withLoginFlag(tenant: any) {
+  return { ...tenant, profile_has_login: tenant?.profiles?.auth_user_id != null };
+}
+
 const TENANT_CLAIM_SELECT = {
   id: true,
   hostel_id: true,
@@ -224,6 +234,13 @@ const TENANT_CLAIM_SELECT = {
   // `startActivation` bound and Phase 1's `adopt` then picked up, gated on
   // `status` alone) must not be silently re-bound to a second claimant.
   profile_id: true,
+  // Identity is centralised: adoption now links a profile, so every
+  // owner-managed tenancy carries a `profile_id`. What decides claimability is
+  // whether that profile can sign in — a login-less shell is the owner holding
+  // the account for the tenant; an auth-linked profile is a real account, and
+  // claiming it would be a takeover. Without this, `isClaimable` fails closed
+  // and every claim is refused.
+  profiles: { select: { auth_user_id: true } },
   display_name: true,
   phone_1: true,
   joined_on: true,
@@ -353,6 +370,62 @@ export function assertAcknowledgementsComplete(acknowledgements: Record<string, 
   }
 }
 
+/**
+ * A tenant's raw "this entry looks wrong" input, captured before
+ * `confirm` decides what to do with it. `itemRefs` are opaque strings the
+ * frontend statement view attaches to whichever rent-month/payment rows the
+ * tenant marks (see `claimSteps.ts`'s `rentMonthRef`/`paymentRef`) — this
+ * layer never re-parses or re-validates them against the ledger; the point
+ * of a dispute is capturing what the tenant *said* looks wrong so the owner
+ * can look into it, not re-deciding who's right.
+ */
+export interface ClaimDisputeInput {
+  itemRefs: string[];
+  note: string | null;
+}
+
+/**
+ * Normalises raw dispute input off the wire into `ClaimDisputeInput`, or
+ * `null` when there is nothing to record — i.e. the tenant picked "This
+ * looks right" (both `itemRefs` and `note` empty/absent). Pure, exported for
+ * direct testing. Deliberately lenient about *which* of the two is present:
+ * a tenant who only typed a note without ticking a specific row, or only
+ * ticked rows without adding a note, still has something worth telling the
+ * owner about.
+ */
+export function normalizeDisputeInput(
+  input: { itemRefs?: string[] | null; note?: string | null } | null | undefined,
+): ClaimDisputeInput | null {
+  const itemRefs = Array.from(
+    new Set((input?.itemRefs ?? []).map((ref) => String(ref ?? "").trim()).filter(Boolean)),
+  ).slice(0, 50);
+  const note = typeof input?.note === "string" ? input.note.trim().slice(0, 2000) : "";
+  if (itemRefs.length === 0 && !note) return null;
+  return { itemRefs, note: note || null };
+}
+
+/**
+ * The `complaints` row's `title`/`description` for a claim-time dispute.
+ * Pure — takes plain input, exported for direct testing. `complaints` (not
+ * `tenant_notes` or `change_requests`) is the table this writes to; see the
+ * module comment above `confirm` for why.
+ */
+export function buildDisputeComplaintContent(tenantName: string, dispute: ClaimDisputeInput) {
+  const title = `${tenantName} disputed records while taking over their account`;
+  const itemsLine =
+    dispute.itemRefs.length > 0
+      ? `Flagged entries: ${dispute.itemRefs.join(", ")}`
+      : "No specific entries flagged.";
+  const noteLine = dispute.note ? `Tenant's note: ${dispute.note}` : "No additional note provided.";
+  const description = [
+    `${tenantName} has just taken charge of their own Stayo account. Reviewing the records you kept for them, they flagged something as needing clarification.`,
+    itemsLine,
+    noteLine,
+    "This does not block their access -- they already have their account. Please reach out to clarify and resolve the disagreement.",
+  ].join("\n\n");
+  return { title, description };
+}
+
 export const tenancyClaimService = {
   /**
    * Claimable tenancies for a phone number, as display data only. An empty
@@ -378,7 +451,122 @@ export const tenancyClaimService = {
       select: TENANT_CLAIM_SELECT,
     });
 
-    return tenants.filter((tenant: any) => isClaimable(tenant)).map(toClaimSummary);
+    return tenants
+      .filter((tenant: any) => isClaimable(withLoginFlag(tenant)))
+      .map(toClaimSummary);
+  },
+
+  /**
+   * A read-only statement of what the owner recorded for one claimable
+   * tenancy: stay start date, rent, deposit, every rent month with its
+   * status, every payment the owner recorded, and the outstanding total —
+   * so the tenant reads what they're inheriting before deciding whether it
+   * looks right, rather than taking it on trust.
+   *
+   * SECURITY: gated by the exact same OTP proof as `lookup` — this is a
+   * stranger's financial history until the phone number is proven — and,
+   * critically, `assertValidClaimProof` is read-only (see its own doc
+   * comment). This method never calls `consumeClaimProof`, so a tenant can
+   * fetch (or re-fetch, while reading) the statement without spending the
+   * single-use proof `confirm` still needs to actually complete the claim.
+   *
+   * Financial figures are composed, never recalculated: rent-month
+   * status/amounts come straight off `rent_obligations`, payments off
+   * `payments` (including `offline_recorded_by`, exactly as
+   * `financial-timeline-service.ts` already reads it, to mark which entries
+   * the owner recorded by hand), and the outstanding total is
+   * `financialService.getTenantDues`'s own `total_due` — the one place
+   * "what is owed" is decided (see CLAUDE.md).
+   */
+  async statement(params: { tenantId: string; phone: string; claimToken?: string | null; requestIp?: string | null }) {
+    const canonicalPhone = normalizeIndianPhone(params.phone);
+    if (!canonicalPhone) {
+      throw new TenancyClaimError("Invalid phone number", "VALIDATION_ERROR", 400);
+    }
+    const tenantId = String(params.tenantId || "").trim();
+    if (!tenantId) {
+      throw new TenancyClaimError("A tenancy id is required", "VALIDATION_ERROR", 400);
+    }
+
+    await enforceClaimRateLimits("lookup", canonicalPhone, getRequestIpForRateLimit(params.requestIp));
+    // Read-only proof check — never consumes. See the method doc comment.
+    await assertValidClaimProof(prisma, canonicalPhone, params.claimToken, new Date());
+
+    // Same eligibility + phone-ownership guard as `lookup`/`confirm`: a
+    // fresh, verified proof for this phone is not licence to read *any*
+    // tenant's statement, only one this exact phone number can claim.
+    const tenant = await prisma.tenants.findUnique({
+      where: { id: tenantId },
+      select: TENANT_CLAIM_SELECT,
+    });
+    const tenantPhone = tenant ? normalizeIndianPhone(tenant.phone_1) : null;
+    if (!tenant || !isClaimable(withLoginFlag(tenant)) || tenantPhone !== canonicalPhone) {
+      throw new TenancyClaimError(
+        "This tenancy can no longer be claimed with this phone number",
+        "NOT_CLAIMABLE",
+        409,
+      );
+    }
+
+    const [obligations, payments, dues] = await Promise.all([
+      prisma.rent_obligations.findMany({
+        where: { tenant_id: tenant.id, obligation_type: "RENT" },
+        orderBy: { rent_month: "asc" },
+        select: { id: true, rent_month: true, status: true, total_amount: true },
+      }),
+      prisma.payments.findMany({
+        where: { tenant_id: tenant.id },
+        orderBy: { payment_date: "asc" },
+        select: {
+          id: true,
+          obligation_id: true,
+          amount_paid: true,
+          payment_method: true,
+          payment_date: true,
+          offline_recorded_by: true,
+        },
+      }),
+      financialService.getTenantDues(tenant.id, tenant.owner_id ?? undefined, tenant.hostel_id),
+    ]);
+
+    const paidByObligation = new Map<string, number>();
+    for (const payment of payments) {
+      paidByObligation.set(
+        payment.obligation_id,
+        (paidByObligation.get(payment.obligation_id) ?? 0) + Number(payment.amount_paid),
+      );
+    }
+
+    return {
+      tenant_id: tenant.id as string,
+      hostel_name: tenant.hostels?.name ?? null,
+      owner_name: tenant.hostels?.profiles?.name ?? null,
+      room_no: tenant.room_allocations?.[0]?.room?.room_no ?? null,
+      stay_start_date: tenant.joined_on ?? null,
+      monthly_rent: tenant.monthly_rent != null ? Number(tenant.monthly_rent) : null,
+      security_deposit: tenant.security_deposit != null ? Number(tenant.security_deposit) : null,
+      rent_months: obligations.map((ob: any) => {
+        const paid = paidByObligation.get(ob.id) ?? 0;
+        const amount = Number(ob.total_amount);
+        return {
+          obligation_id: ob.id as string,
+          rent_month: ob.rent_month,
+          status: ob.status as string,
+          amount,
+          paid,
+          outstanding: Math.max(amount - paid, 0),
+        };
+      }),
+      payments: payments.map((payment: any) => ({
+        payment_id: payment.id as string,
+        obligation_id: payment.obligation_id as string,
+        amount: Number(payment.amount_paid),
+        date: payment.payment_date,
+        method: payment.payment_method as string,
+        recorded_by_owner: payment.offline_recorded_by != null,
+      })),
+      outstanding_total: dues.total_due,
+    };
   },
 
   /**
@@ -422,7 +610,19 @@ export const tenancyClaimService = {
      * checks immediately below.
      */
     password?: string | null;
+    /**
+     * The tenant's verdict on the statement they were shown (see
+     * `tenancyClaimService.statement`) before confirming: `null`/absent (or
+     * both fields empty) means "this looks right" and the claim completes
+     * exactly as it always has. A non-empty `itemRefs` and/or `note` means
+     * "something's wrong" — the claim still completes (see the module
+     * comment: a dispute must never withhold the account) but a `complaints`
+     * row is written and the owner is notified. Normalised by
+     * `normalizeDisputeInput` before use.
+     */
+    dispute?: { itemRefs?: string[] | null; note?: string | null } | null;
   }) {
+    const disputeInput = normalizeDisputeInput(params.dispute);
     const canonicalPhone = normalizeIndianPhone(params.phone);
     if (!canonicalPhone) {
       throw new TenancyClaimError("Invalid phone number", "VALIDATION_ERROR", 400);
@@ -495,7 +695,11 @@ export const tenancyClaimService = {
           select: TENANT_CLAIM_SELECT,
         });
         const tenantPhone = tenant ? normalizeIndianPhone(tenant.phone_1) : null;
-        if (!tenant || !isClaimable(tenant, params.profileId ?? null) || tenantPhone !== canonicalPhone) {
+        if (
+          !tenant ||
+          !isClaimable(withLoginFlag(tenant), params.profileId ?? null) ||
+          tenantPhone !== canonicalPhone
+        ) {
           throw new TenancyClaimError(
             "This tenancy can no longer be claimed with this phone number",
             "NOT_CLAIMABLE",
@@ -705,6 +909,58 @@ export const tenancyClaimService = {
           }
         }
 
+        // 5.5. Record a dispute, if the tenant raised one over the statement
+        //      shown before confirming. Deliberately inside this same
+        //      transaction — the record is as durable as the claim itself —
+        //      but it is a record, never a gate: nothing above or below this
+        //      block reads `disputeInput` to decide whether to proceed. A
+        //      dispute must never block the tenant from taking charge of
+        //      their own account (see the module comment).
+        //
+        //      Written to `complaints` (not `tenant_notes` or
+        //      `change_requests`): `tenant_notes` is documented as
+        //      "owner-private notes" the owner writes about a tenant, not
+        //      somewhere a tenant's own words belong; `change_requests` is a
+        //      structured entity-diff/approval workflow (before/diff,
+        //      approval levels) that doesn't fit "the tenant said this looks
+        //      wrong" at all. `complaints` already models exactly this
+        //      shape — tenant_id + owner_id + title/description + a
+        //      PENDING→resolved status the owner can close out — and is
+        //      already wired into the owner's daily briefing
+        //      (`briefing-engine.ts` counts `status: "PENDING"` complaints
+        //      toward the owner's operations score), so a dispute here
+        //      surfaces on a surface the owner already checks, for free.
+        //      `tenant.owner_id` is guarded rather than asserted non-null —
+        //      `complaints.owner_id` is a required column, and an
+        //      owner-managed tenancy should always carry one, but this is a
+        //      dispute record, not the claim itself: if it's ever absent,
+        //      skip the write and log rather than fail an otherwise-valid
+        //      claim over a missing owner id.
+        let disputeRecorded = false;
+        if (disputeInput) {
+          if (tenant.owner_id) {
+            const { title, description } = buildDisputeComplaintContent(
+              resolveTenantName(tenant),
+              disputeInput,
+            );
+            await tx.complaints.create({
+              data: {
+                id: crypto.randomUUID(),
+                tenant_id: tenant.id,
+                owner_id: tenant.owner_id,
+                hostel_id: tenant.hostel_id,
+                title,
+                description,
+                category: "TENANCY_CLAIM_DISPUTE",
+                priority: "HIGH",
+              },
+            });
+            disputeRecorded = true;
+          } else {
+            logger.warn("tenancy_claim.dispute_skipped_no_owner", { tenant_id: tenant.id });
+          }
+        }
+
         // 6. Consume the OTP proof — after every other validation and write
         //    has succeeded, immediately before returning. Guarded: see
         //    `consumeClaimProof`. A lost race here throws, which rolls back
@@ -725,6 +981,7 @@ export const tenancyClaimService = {
           ...toClaimSummary(tenant),
           profile_id: profile.id as string,
           access_mode: "SELF_SERVE" as const,
+          dispute_recorded: disputeRecorded,
         };
       }, { timeout: 30000 });
 
@@ -771,6 +1028,29 @@ export const tenancyClaimService = {
               reason: error?.message || String(error),
             });
           });
+
+        // A second, separate notification when the tenant disputed part of
+        // the statement — the `complaints` row above is the durable record;
+        // this is just what tells the owner to go look at it. Independently
+        // fire-and-forget from the notification above: one failing must
+        // never suppress the other, and neither can ever fail the claim,
+        // which already committed.
+        if (result.dispute_recorded) {
+          await notificationService
+            .createNotification(
+              ownerIdForAudit,
+              "A tenant disputed records you kept",
+              `${tenantLabel}${roomLabel} has taken charge of their own account and flagged some entries in your records as needing clarification. Please reach out to sort it out.`,
+              "tenancy_claim_dispute",
+            )
+            .catch((error: any) => {
+              logger.warn("tenancy_claim.dispute_notification_failed", {
+                tenant_id: result.tenant_id,
+                owner_id: ownerIdForAudit,
+                reason: error?.message || String(error),
+              });
+            });
+        }
       }
 
       // Everything above is durably committed — nothing past this point is a

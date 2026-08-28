@@ -9,10 +9,17 @@ import { AdmissionsService } from "@/src/services/admissions/admissions-service"
 vi.mock("@/lib/db", () => {
   const tx = {
     $executeRaw: vi.fn(),
-    tenants: { create: vi.fn() },
-    tenant_invitations: { create: vi.fn() },
-    tenant_invitation_reservations: { create: vi.fn() },
+    tenants: { create: vi.fn(), update: vi.fn() },
+    tenant_invitations: { create: vi.fn(), update: vi.fn() },
+    tenant_invitation_reservations: { create: vi.fn(), update: vi.fn() },
     rooms: { findFirst: vi.fn(), findUnique: vi.fn() },
+    // createInvitation now finalizes the tenancy as owner-managed inside the
+    // same transaction (see finalizeOwnerManagedTenancy) — these back that:
+    // linking/creating the profile, converting the reservation to a real
+    // allocation, and recording the attestation.
+    profile: { findUnique: vi.fn(), create: vi.fn() },
+    roomAllocation: { findFirst: vi.fn(), create: vi.fn() },
+    tenant_owner_attestations: { create: vi.fn() },
   };
   const mockPrisma = {
     profile: { findUnique: vi.fn() },
@@ -176,6 +183,15 @@ describe("onboarding financial flow routing", () => {
       id: "reservation-1",
       ...data,
     }));
+    // finalizeOwnerManagedTenancy's writes — see the tx mock's comment above.
+    tx.tenants.update.mockResolvedValue({});
+    tx.tenant_invitations.update.mockResolvedValue({});
+    tx.tenant_invitation_reservations.update.mockResolvedValue({});
+    tx.profile.findUnique.mockResolvedValue(null);
+    tx.profile.create.mockResolvedValue({ id: "profile-1" });
+    tx.roomAllocation.findFirst.mockResolvedValue(null);
+    tx.roomAllocation.create.mockResolvedValue({ id: "allocation-1" });
+    tx.tenant_owner_attestations.create.mockResolvedValue({ id: "attestation-1" });
   });
 
   it("manual invite reaches the shared onboarding financial initializer", async () => {

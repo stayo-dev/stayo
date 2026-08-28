@@ -117,6 +117,12 @@ export function MoveOutSheet({ open, onClose, tenantId, hostelId, tenantName, ro
   const [duesDisposition, setDuesDisposition] = useState<DuesDisposition>('RECOVERABLE');
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('Cash');
   const [paymentReference, setPaymentReference] = useState('');
+  // COLLECT only: what the owner says they actually took, in rupees. Free
+  // text so it can start blank — blank means "the full outstanding balance,"
+  // not zero. `paymentMode`/`paymentReference` above double as how it arrived:
+  // the backend's `/complete` route takes one payment method for the whole
+  // completion, so there is no separate picker for this.
+  const [collectedAmount, setCollectedAmount] = useState('');
 
   // Full-lane only.
   const [roomCondition, setRoomCondition] = useState<'GOOD' | 'FAIR' | 'POOR'>('GOOD');
@@ -137,6 +143,7 @@ export function MoveOutSheet({ open, onClose, tenantId, hostelId, tenantName, ro
     setDuesDisposition('RECOVERABLE');
     setPaymentMode('Cash');
     setPaymentReference('');
+    setCollectedAmount('');
     setRoomCondition('GOOD');
     setCleaningStatus('CLEAN');
     setDamagesAmount('0');
@@ -189,12 +196,21 @@ export function MoveOutSheet({ open, onClose, tenantId, hostelId, tenantName, ro
   const outstandingDues = Number(preview?.total_dues ?? 0);
   const exitIsFuture = new Date(exitDate) > new Date(todayValue());
 
+  // Blank means "the full outstanding balance" — never zero. Capped so a
+  // typo (or a stale preview) can't be shown back as a promise the server
+  // will refuse anyway.
+  const collectedAmountNumber =
+    duesDisposition === 'COLLECT'
+      ? Math.min(collectedAmount.trim() ? Number(collectedAmount) || 0 : outstandingDues, outstandingDues)
+      : undefined;
+
   const consequences = buildConsequences({
     tenantName,
     roomNo,
     summary,
     outstandingDues,
     duesDisposition,
+    collectedAmount: collectedAmountNumber,
     exitDateLabel: prettyDate(exitDate),
     exitIsFuture,
   });
@@ -262,6 +278,9 @@ export function MoveOutSheet({ open, onClose, tenantId, hostelId, tenantName, ro
         paymentMethod: paymentMode.toUpperCase().replace(' ', '_'),
         paymentReference: paymentReference.trim() || undefined,
         duesDisposition,
+        // Omitted (not 0) when the field was left blank, so the server
+        // settles the full outstanding balance rather than being told "₹0".
+        collectedAmount: duesDisposition === 'COLLECT' && collectedAmount.trim() ? Number(collectedAmount) : undefined,
       }),
     onSuccess: () => {
       invalidate();
@@ -540,20 +559,33 @@ export function MoveOutSheet({ open, onClose, tenantId, hostelId, tenantName, ro
 
             {active && (status === 'PHYSICALLY_VACATED' || status === 'SETTLEMENT_PENDING_PAYMENT') && !hasOpenDispute && (
               <>
-                {summary.amount > 0 && (
-                  <PaymentModeRow
-                    label={summary.ownerPays ? 'How are you refunding them?' : 'How was this settled?'}
-                    paymentMode={paymentMode}
-                    setPaymentMode={setPaymentMode}
-                    paymentReference={paymentReference}
-                    setPaymentReference={setPaymentReference}
-                  />
-                )}
                 {outstandingDues > 0.01 && (
                   <DuesChoice
                     outstandingDues={outstandingDues}
                     duesDisposition={duesDisposition}
                     setDuesDisposition={setDuesDisposition}
+                    allowCollect
+                    collectedAmount={collectedAmount}
+                    setCollectedAmount={setCollectedAmount}
+                  />
+                )}
+                {/* The `/complete` route takes one payment method for the whole
+                    completion — this answers both "how did the dues arrive"
+                    (COLLECT) and "how was the deposit settled" (a refund, or
+                    the tenant's payout kept on account). */}
+                {(summary.amount > 0 || duesDisposition === 'COLLECT') && (
+                  <PaymentModeRow
+                    label={
+                      summary.ownerPays
+                        ? 'How are you refunding them?'
+                        : duesDisposition === 'COLLECT'
+                          ? 'How did they pay?'
+                          : 'How was this settled?'
+                    }
+                    paymentMode={paymentMode}
+                    setPaymentMode={setPaymentMode}
+                    paymentReference={paymentReference}
+                    setPaymentReference={setPaymentReference}
                   />
                 )}
                 <ConsequenceList lines={consequences} />
@@ -565,7 +597,7 @@ export function MoveOutSheet({ open, onClose, tenantId, hostelId, tenantName, ro
                 >
                   {completeMutation.isPending
                     ? 'Closing…'
-                    : completionLabel(summary, duesDisposition, outstandingDues)}
+                    : completionLabel(summary, duesDisposition, outstandingDues, collectedAmountNumber)}
                 </button>
               </>
             )}
@@ -720,28 +752,54 @@ function PaymentModeRow(props: {
  * Completing a move-out waived every outstanding obligation with no mention
  * of it, behind a button that said "Confirm Refund & Complete". The owner is
  * now asked, and the default keeps their money.
+ *
+ * `allowCollect` gates the third option (COLLECT): only the staged
+ * settlement screen offers it, because `/move-out/quick-exit` — the fast
+ * lane's endpoint — doesn't accept it and would silently downgrade it to
+ * RECOVERABLE, which is worse than not offering it at all.
  */
 function DuesChoice({
   outstandingDues,
   duesDisposition,
   setDuesDisposition,
+  allowCollect,
+  collectedAmount,
+  setCollectedAmount,
 }: {
   outstandingDues: number;
   duesDisposition: DuesDisposition;
   setDuesDisposition: (d: DuesDisposition) => void;
+  allowCollect?: boolean;
+  collectedAmount?: string;
+  setCollectedAmount?: (v: string) => void;
 }) {
+  const options: Array<{ value: DuesDisposition; title: string; detail: string }> = [
+    {
+      value: 'RECOVERABLE',
+      title: 'Keep it on their account',
+      detail: 'The debt stays on the books. Nothing chases them for it.',
+    },
+  ];
+  if (allowCollect) {
+    options.push({
+      value: 'COLLECT',
+      title: 'They paid — record it now',
+      detail: `Records ${rupees(outstandingDues)} as a real payment: ledger, receipt and their balance all update.`,
+    });
+  }
+  options.push({
+    value: 'WAIVE',
+    title: 'Write it off',
+    detail: 'The money is gone. This cannot be undone.',
+  });
+
   return (
     <div className="rounded-2xl border border-border bg-card p-3.5">
       <p className="font-display text-[13px] font-bold text-foreground">
         {rupees(outstandingDues)} is still unpaid
       </p>
       <div className="mt-2.5 flex flex-col gap-2">
-        {(
-          [
-            ['RECOVERABLE', 'Keep it on their account', 'You can still collect it. Nothing further is added.'],
-            ['WAIVE', 'Write it off', 'The money is gone. This cannot be undone.'],
-          ] as const
-        ).map(([value, title, detail]) => (
+        {options.map(({ value, title, detail }) => (
           <button
             key={value}
             type="button"
@@ -755,6 +813,18 @@ function DuesChoice({
           </button>
         ))}
       </div>
+      {allowCollect && duesDisposition === 'COLLECT' && setCollectedAmount && (
+        <label className="mt-2.5 block">
+          <span className={labelStyle}>Amount collected (optional)</span>
+          <input
+            value={collectedAmount ?? ''}
+            onChange={(e) => setCollectedAmount(e.target.value.replace(/[^0-9]/g, ''))}
+            placeholder={`Full ${rupees(outstandingDues)} if left blank`}
+            inputMode="numeric"
+            className={inputStyle}
+          />
+        </label>
+      )}
     </div>
   );
 }

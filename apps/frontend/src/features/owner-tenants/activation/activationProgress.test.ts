@@ -114,21 +114,30 @@ describe('toActivationProgress', () => {
 });
 
 describe('isAwaitingActivation', () => {
-  it('is true for an invited tenant who has not finished', () => {
-    expect(isAwaitingActivation('INVITED', state())).toBe(true);
+  // A tenancy is ACTIVE from the moment it's invited (see createInvitation),
+  // so status no longer tells "hasn't taken charge yet" apart from any other
+  // active tenant — access_mode does. This used to key off tenants.status
+  // === 'INVITED'; that was the defect this queue exists to not have.
+  it('is true for an owner-managed tenant who has not finished', () => {
+    expect(isAwaitingActivation('OWNER_MANAGED', state())).toBe(true);
   });
 
   it('is false once activation completed', () => {
-    expect(isAwaitingActivation('ACTIVE', state({ activation_completed: true }))).toBe(false);
+    expect(isAwaitingActivation('SELF_SERVE', state({ activation_completed: true }))).toBe(false);
   });
 
   // Requirement: the tenant disappears from the queue automatically.
-  it('drops out the moment the backend reports completion, whatever the row status says', () => {
-    expect(isAwaitingActivation('INVITED', state({ activation_completed: true }))).toBe(false);
+  it('drops out the moment the backend reports completion, whatever the row access_mode says', () => {
+    expect(isAwaitingActivation('OWNER_MANAGED', state({ activation_completed: true }))).toBe(false);
   });
 
-  it('is false for a tenant who left', () => {
-    expect(isAwaitingActivation('FORMER_TENANT', state())).toBe(false);
+  it('is false for a tenant who claimed their own account', () => {
+    expect(isAwaitingActivation('SELF_SERVE', state())).toBe(false);
+  });
+
+  it('is false when access_mode is missing', () => {
+    expect(isAwaitingActivation(null, state())).toBe(false);
+    expect(isAwaitingActivation(undefined, state())).toBe(false);
   });
 });
 

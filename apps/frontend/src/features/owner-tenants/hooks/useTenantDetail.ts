@@ -67,6 +67,14 @@ export interface RealTenantDetail {
   phone: string;
   status: 'active' | 'overdue' | 'invited' | 'pending-docs';
   statusLabel: string;
+  /**
+   * `OWNER_MANAGED` means the tenant has not taken charge of their account yet
+   * — the owner is keeping their records. It is NOT a lesser kind of tenancy:
+   * rent generates, reminders fire and payments are recorded exactly the same.
+   * Since inviting now makes a tenancy immediately ACTIVE, this — not
+   * `status === 'invited'` — is how "hasn't activated yet" is known.
+   */
+  accessMode: 'SELF_SERVE' | 'OWNER_MANAGED' | null;
   room: string;
   joinedDate: string;
   hostelName: string;
@@ -333,6 +341,12 @@ export function useTenantDetail(tenantId: string | undefined) {
       phone: String(o.phone ?? ''),
       status,
       statusLabel,
+      accessMode:
+        o.access_mode === 'OWNER_MANAGED' || o.access_mode === 'SELF_SERVE'
+          ? o.access_mode
+          : tenantRaw.access_mode === 'OWNER_MANAGED' || tenantRaw.access_mode === 'SELF_SERVE'
+            ? tenantRaw.access_mode
+            : null,
       room: roomLabel,
       joinedDate: formatDate(o.joined_on ?? o.joined_at),
       hostelName,
