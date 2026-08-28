@@ -22,6 +22,8 @@ import {
 } from '@features/discover/hooks/useDiscover';
 
 import { useDiscoverAuth } from './DiscoverAuthContext';
+import { useAuth } from '@context/AuthContext';
+import { hasLiveTenancy } from '@/app/nav/useAppNav';
 import { useShareHostel } from '@shared/hooks/useShareHostel';
 import { HostelCard } from './components/HostelCard';
 import { DiscoverEmpty, HostelCardSkeleton, PrimaryButton } from './components/DiscoverShell';
@@ -68,6 +70,19 @@ export function ExplorePage() {
   const { isSeeker } = useIsSeeker();
   const { openSignIn } = useDiscoverAuth();
   const { share } = useShareHostel();
+  const { user } = useAuth();
+
+  /*
+   * A tenant who signed up to browse, and whose hostel owner later added them,
+   * lands here — ProtectedTenantRoute sends any TENANT with no live tenancy to
+   * Explore. Without this they see a marketing page and no hint that their
+   * own tenancy, with their rent and payment history already on it, is sitting
+   * one OTP away. Their profile phone may be null (marketplace signup does not
+   * collect one, ADR-113), so this cannot be resolved for them here; the claim
+   * flow proves the number and finds it.
+   */
+  const showClaimPrompt =
+    Boolean(user) && user?.role?.toLowerCase() === 'tenant' && !hasLiveTenancy(user);
 
   // The chosen city persists: someone browsing Hyderabad hostels does not want
   // to re-pick it on every visit. Falls back to "everywhere" rather than
@@ -155,6 +170,24 @@ export function ExplorePage() {
       <FootprintTrail />
 
       <div className="relative z-[1]">
+      {showClaimPrompt && (
+        <div className="mx-4 mt-4 rounded-2xl border border-border bg-card px-4 py-3 lg:mx-auto lg:max-w-3xl">
+          <p className="font-display text-[13.5px] font-bold text-foreground">
+            Already staying at a hostel?
+          </p>
+          <p className="mt-0.5 text-[12.5px] leading-snug text-muted-foreground">
+            If your owner has been keeping your records, they're waiting for you — your room,
+            your rent and everything paid so far.
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/claim')}
+            className="mt-2 font-display text-[12.5px] font-bold text-primary underline underline-offset-2"
+          >
+            Take charge of your account
+          </button>
+        </div>
+      )}
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <header
         className="relative overflow-hidden rounded-b-[28px] pb-5 pt-[max(3.5rem,env(safe-area-inset-top))] lg:rounded-b-[40px] lg:pb-14 lg:pt-0"
