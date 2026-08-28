@@ -8,6 +8,24 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-08-28 — A hostel's tenant agreement could silently ship with no owner signature at all (fixed)
+
+**Found** while implementing the Add Hostel builder's new agreement step ([[Decisions#ADR-135|ADR-135]]), not reported — nothing surfaced this to anyone, which is the actual finding.
+
+**Area:** [[Backend]] — `apps/backend/src/utils/default-rules.ts`'s `getActiveTemplateAndSyncRuleVersion`, and the frontend, which had no caller for the two routes that would have prevented it (`apps/frontend/src/features/owner-more/api/configApi.ts`).
+
+**Symptom:** None visible to the owner. A hostel left on the default `preferences_config.tenant_rules.agreement_required: true` — i.e. every hostel that never visited Configuration › Agreements — would have a tenant complete the Rules + Agreement onboarding steps, sign, and receive a generated agreement whose "Owner signature" was blank.
+
+**Root cause.** `AgreementTemplate.owner_signature_url` is set two ways: the owner draws a signature (`POST /owner/hostels/[id]/agreement-template/signature`), or the template is published carrying whatever `owner_signature_url` the caller passed (`POST .../agreement-template`, `action: publish`). Neither route was ever called by any live page — `configApi.ts` only wired the template's `save_draft` action, and no owner-facing UI drew a signature or published anything. The first time *anything* touched a hostel's agreement with no published template yet — the first tenant reaching the AGREEMENT onboarding step, or the first read of Configuration › Agreements — `getActiveTemplateAndSyncRuleVersion`'s fallback auto-created one: `status: "PUBLISHED"`, `is_active: true`, and no `owner_signature_url` field at all, defaulting to `null`. From that point every tenant of that hostel signed against a real, active, otherwise-normal agreement that simply had no owner signature on it.
+
+**Why it survived:** the backend behaved exactly as designed — an agreement must exist the moment one is needed, so the fallback creating one is correct. The gap was entirely upstream: nothing in the product ever asked the owner to make the "does this hostel use an agreement" decision or capture a signature, so the fallback's blank default was the *only* path every hostel that didn't independently discover Configuration › Agreements ever went through.
+
+**Fix:** [[Decisions#ADR-135|ADR-135]] — a new Add Hostel builder step makes the decision explicit and, when "Yes," runs `publish` then the signature upload in the same action, before the hostel's rooms are even reachable. No backend change; the two existing routes just finally have a caller.
+
+**Not fixed:** a hostel that already has a blank-signature auto-created template from before this shipped stays as-is — this closes the gap for hostels going through Add Hostel from now on, not a backfill of existing rows. A hostel that turns `agreement_required` back on later from Configuration › Agreements, without a signature configured, can still reach the same state through that separate surface.
+
+**See:** [[Decisions#ADR-135|ADR-135]], [[Features]], [[Changelog]]
+
 ## 2026-08-27 — An owner-managed tenant was adopted, then invisible to the system that was supposed to chase them (fixed)
 
 An owner can now adopt a tenant who ignored their invitation (`POST /api/tenants/:id/adopt`, `ownerManagedTenancyService.adopt` — see [[Features]]/[[APIs]] for the full capability): the tenancy flips to `ACTIVE` with `access_mode = 'OWNER_MANAGED'` and `profile_id = NULL` — the person has no login, no `profiles` row, and their name/phone live on `tenants.display_name`/`tenants.phone_1` instead. The entire point of adopting them is that the system keeps chasing rent on their behalf, exactly as it would for a self-serve tenant.

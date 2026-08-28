@@ -42,4 +42,33 @@ export const configApi = {
     });
     return response.data;
   },
+
+  /**
+   * Publishes the hostel's default agreement template. Used once, from the
+   * Add Hostel builder's agreement step, for a hostel that has never
+   * published one — `owner_name`/`rules_content` are deliberately omitted so
+   * the backend fills in the hostel's own name and its shipped default
+   * clauses (`DEFAULT_AGREEMENT_TEMPLATE`).
+   */
+  publishAgreementTemplate: async (hostelId: string) => {
+    const response = await api.post(`/owner/hostels/${hostelId}/agreement-template`, {
+      action: 'publish',
+    });
+    return response.data;
+  },
+
+  /**
+   * Uploads the owner's signature stamp, captured once per hostel. The
+   * backend attaches it to the hostel's currently-active template — publish
+   * this template first if one does not exist yet, or the upload has nothing
+   * to attach to.
+   */
+  uploadOwnerSignature: async (hostelId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post(`/owner/hostels/${hostelId}/agreement-template/signature`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
 };
