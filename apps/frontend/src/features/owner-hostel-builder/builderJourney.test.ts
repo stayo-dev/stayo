@@ -30,6 +30,7 @@ describe('builderJourney', () => {
       builderJourney('fill', { activeIndex: 0, floorCount: 3 }).percent,
       builderJourney('fill', { activeIndex: 2, floorCount: 3 }).percent,
       builderJourney('review').percent,
+      builderJourney('agreement').percent,
     ];
     expect(seq).toEqual([...seq].sort((a, b) => a - b));
     expect(seq[seq.length - 1]).toBe(100);
@@ -72,5 +73,14 @@ describe('continueBlocker', () => {
   it('never blocks the Floors or Review steps', () => {
     expect(continueBlocker('floors', { ...base, hostelName: '' })).toBeNull();
     expect(continueBlocker('review', { ...base, floorBlocker: 'anything' })).toBeNull();
+  });
+
+  it('holds the Agreement step until a choice — and a signature for "Yes" — is made', () => {
+    expect(continueBlocker('agreement', base)).toBe('Choose whether this hostel uses a tenant agreement');
+    expect(continueBlocker('agreement', { ...base, agreementChoice: 'no' })).toBeNull();
+    expect(continueBlocker('agreement', { ...base, agreementChoice: 'yes', hasSignature: false })).toBe(
+      'Draw your signature to continue',
+    );
+    expect(continueBlocker('agreement', { ...base, agreementChoice: 'yes', hasSignature: true })).toBeNull();
   });
 });

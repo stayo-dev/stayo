@@ -1,7 +1,7 @@
 import type { DisclosedHistory } from './api/tenantHistory';
 import type { ResidencyStay } from '@features/profile/api';
 
-export type HostelRelationship = 'NEW' | 'CURRENT_TENANT' | 'PREVIOUS_TENANT' | 'UNKNOWN';
+export type HostelRelationship = 'NEW' | 'CURRENT_TENANT' | 'PREVIOUS_TENANT' | 'ACTIVE_ELSEWHERE' | 'UNKNOWN';
 
 export interface HostelRelationshipResult {
   relationship: HostelRelationship;
@@ -31,6 +31,15 @@ export function classifyHostelRelationship(history: DisclosedHistory, hostelId: 
 
   const staysHere = history.stays.filter((stay) => stay.hostel.id === hostelId);
   if (staysHere.length === 0) {
+    // Not a stay at THIS hostel — but they may currently be live at a
+    // DIFFERENT one, which is what actually blocks an invite here (not
+    // "NEW"). `stays` already spans every hostel the person has been at once
+    // access is earned (see the file header) — this reads what's already
+    // disclosed, it does not request anything new.
+    const elsewhere = history.stays.find((stay) => stay.is_current);
+    if (elsewhere) {
+      return { relationship: 'ACTIVE_ELSEWHERE', stay: elsewhere };
+    }
     return { relationship: 'NEW', stay: null };
   }
 

@@ -33,15 +33,14 @@ const CONFLICT_CODES: TenancyConflictCode[] = [
 ];
 
 /**
- * Reads an Axios error. Returns null when it isn't a tenancy conflict, so the
- * caller falls back to its normal error banner.
+ * The OWN/OTHER-aware copy for a given conflict code + disclosure. Pulled out
+ * of `parseTenancyConflict` so the same copy can be built from a pre-submit
+ * 200 response (see `eligibilityCheck.ts`), not just from a 409 error.
  */
-export function parseTenancyConflict(error: unknown): TenancyConflict | null {
-  const payload = (error as any)?.response?.data?.error;
-  const code = payload?.code as TenancyConflictCode | undefined;
-  if (!code || !CONFLICT_CODES.includes(code)) return null;
-
-  const disclosure = (payload.details ?? {}) as Partial<TenancyDisclosure>;
+export function buildTenancyConflictCopy(
+  code: TenancyConflictCode,
+  disclosure: Partial<TenancyDisclosure>
+): TenancyConflict {
   const isOwn = disclosure.scope === 'OWN';
   const hostelName = isOwn ? disclosure.hostelName ?? null : null;
   const roomNumber = isOwn ? disclosure.roomNumber ?? null : null;
@@ -71,4 +70,16 @@ export function parseTenancyConflict(error: unknown): TenancyConflict | null {
       : 'This person has left another property on Stayo but their move-out is not settled yet. They can be invited once that is complete.',
     tenantId: isOwn ? disclosure.tenantId ?? null : null,
   };
+}
+
+/**
+ * Reads an Axios error. Returns null when it isn't a tenancy conflict, so the
+ * caller falls back to its normal error banner.
+ */
+export function parseTenancyConflict(error: unknown): TenancyConflict | null {
+  const payload = (error as any)?.response?.data?.error;
+  const code = payload?.code as TenancyConflictCode | undefined;
+  if (!code || !CONFLICT_CODES.includes(code)) return null;
+
+  return buildTenancyConflictCopy(code, (payload.details ?? {}) as Partial<TenancyDisclosure>);
 }

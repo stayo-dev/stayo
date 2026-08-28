@@ -38,6 +38,8 @@ export interface NormalizedTenant {
   securityDeposit: number;
   guardianPhone: string | null;
   advanceBalance: number;
+  /** `SELF_SERVE` (default) or `OWNER_MANAGED` — the tenant never registered; the owner attested the tenancy instead. */
+  accessMode: string | null;
   raw: Record<string, unknown>;
 }
 
@@ -89,6 +91,7 @@ export function normalizeTenant(s: Record<string, unknown>): NormalizedTenant {
     securityDeposit: Number(s.security_deposit ?? s.advance_deposit ?? 0),
     guardianPhone: s.phone_2 != null ? String(s.phone_2) : s.guardian_phone != null ? String(s.guardian_phone) : profile?.emergency_contact != null ? String(profile.emergency_contact) : null,
     advanceBalance: Number(s.advance_balance ?? s.deposit_balance ?? 0),
+    accessMode: s.access_mode != null ? String(s.access_mode) : null,
     raw: s,
   };
 }

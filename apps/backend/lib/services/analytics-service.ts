@@ -151,17 +151,19 @@ export class AnalyticsService {
             ${tenantHostelFilter}
         `,
         prisma.$queryRaw<{ tenant_id: string; name: string; score: number; avg_delay_days: number }[]>`
-          SELECT t.id AS tenant_id, p.name, COALESCE(tbs.score, 100) AS score,
+          SELECT t.id AS tenant_id,
+            CASE WHEN t.profile_id IS NULL THEN COALESCE(t.display_name, 'Tenant') ELSE p.name END AS name,
+            COALESCE(tbs.score, 100) AS score,
             COALESCE(AVG(CASE WHEN pay.payment_date > o.due_date THEN pay.payment_date - o.due_date END), 0)::float AS avg_delay_days
           FROM tenants t
-          JOIN profiles p ON p.id = t.profile_id
+          LEFT JOIN profiles p ON p.id = t.profile_id
           LEFT JOIN tenant_behavior_scores tbs ON tbs.tenant_id = t.id
           LEFT JOIN rent_obligations o ON o.tenant_id = t.id
           LEFT JOIN payments pay ON pay.tenant_id = t.id AND pay.obligation_id = o.id
           WHERE t.owner_id = ${ownerId}::uuid AND t.status = 'ACTIVE'
             AND COALESCE(tbs.score, 100) < 50
             ${tenantHostelFilter}
-          GROUP BY t.id, p.name, tbs.score
+          GROUP BY t.id, t.profile_id, t.display_name, p.name, tbs.score
           ORDER BY COALESCE(tbs.score, 100) ASC LIMIT 10
         `,
         prisma.$queryRaw<{ on_time: bigint; total: bigint; avg_delay: number }[]>`

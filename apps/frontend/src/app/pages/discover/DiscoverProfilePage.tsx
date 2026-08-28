@@ -1,22 +1,8 @@
 import { useMemo, useEffect, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
-import {
-  ChevronRight,
-  ClipboardList,
-  FileText,
-  GraduationCap,
-  Heart,
-  History,
-  Home,
-  LifeBuoy,
-  Lock,
-  LogOut,
-  Luggage,
-  Phone,
-  ShieldAlert,
-  ShieldCheck,
-  User,
-} from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import api from '@lib/api-client';
+import { ArrowLeft, Bell, ChevronRight, ClipboardList, FileText, GraduationCap, Heart, History, Home, LifeBuoy, Lock, LogOut, Luggage, Phone, ShieldAlert, ShieldCheck, User } from 'lucide-react';
 
 import { useAuth } from '@context/AuthContext';
 import { hasLiveTenancy } from '@/app/nav/useAppNav';
@@ -36,6 +22,7 @@ import { SignedOutPrompt } from './components/SignedOutPrompt';
 import { C, FONT } from './discoverTheme';
 import { countMeta, gapHint, heroMode, stayMeta, totalGaps } from '@features/profile-hub/profileHub';
 import { ListGroup, ListRowItem, SectionHead } from '@features/stayo-ui/ListSection';
+import { unreadCount, type AlertRow } from '@features/tenant-alerts/alerts';
 import { currentStay, historySummaryLine, stayDuration, stayLine } from '@features/tenant-room/staySummary';
 import { MoveOutSheet } from '@features/tenant-room/components/MoveOutSheet';
 import { CloseAccountSheet } from '@features/account-closure/components/CloseAccountSheet';
@@ -72,6 +59,13 @@ function initials(name: string | undefined): string {
 
 export function DiscoverProfilePage() {
   const navigate = useNavigate();
+  /**
+   * Where the viewer came from, when they came from somewhere that cannot be
+   * returned to. This tree renders with no shell — no bottom nav — and this
+   * hub has no back control of its own, so a tenant arriving from the
+   * Dashboard's "Complete your profile" nudge was stranded here.
+   */
+  const returnTo = (useLocation().state as { returnTo?: string } | null)?.returnTo ?? null;
   const { user, logout } = useAuth();
   const { isSeeker, loading } = useIsSeeker();
   const { data: saved } = useSavedHostels();
@@ -82,6 +76,20 @@ export function DiscoverProfilePage() {
   const [moveOutOpen, setMoveOutOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
   const { data: disclosures } = useDisclosures();
+  /**
+   * 26 of these existed in production with no screen to read them. The count
+   * is the only reason anyone would look, so it goes on the row.
+   */
+  const { data: alerts } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: async () => {
+      const response = await api.get('/notifications');
+      const body = response.data?.data ?? response.data ?? {};
+      return (body.notifications ?? body ?? []) as AlertRow[];
+    },
+    enabled: isSeeker,
+    staleTime: 30_000,
+  });
   const liveTenancy = hasLiveTenancy(user);
   const tenantProfile = useTenantProfile();
   const overlay = useOverlayStack();
@@ -151,6 +159,19 @@ export function DiscoverProfilePage() {
         className="sticky top-0 z-20 px-5 pb-3.5 pt-[max(2.5rem,env(safe-area-inset-top))] backdrop-blur-md"
         style={{ background: 'rgba(247,243,239,.88)', borderBottom: `1px solid ${C.line}` }}
       >
+        {/* Only when the viewer arrived from somewhere with no way back. This
+            hub is normally a bottom-nav destination and needs no back control;
+            a tenant sent here from their Dashboard has no nav at all. */}
+        {returnTo && (
+          <button
+            type="button"
+            onClick={() => navigate(returnTo)}
+            className="mb-2.5 flex items-center gap-1.5 text-[13px] font-semibold text-muted-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" strokeWidth={1.9} />
+            Back
+          </button>
+        )}
         <div className="flex items-center gap-3.5">
           <span
             className="flex h-14 w-14 flex-none items-center justify-center rounded-2xl text-[19px] font-extrabold"
@@ -245,7 +266,7 @@ export function DiscoverProfilePage() {
             </div>
             <button
               type="button"
-              onClick={() => navigate('/profile/details')}
+              onClick={() => navigate('/profile/details', returnTo ? { state: { returnTo } } : undefined)}
               className="relative mt-3 w-full rounded-[11px] py-2.5 text-[12.5px] font-extrabold"
               style={{ fontFamily: FONT.display, background: C.clayLight, color: C.ink }}
             >
@@ -291,11 +312,18 @@ export function DiscoverProfilePage() {
           <SectionHead title="Your record" />
           <ListGroup>
             <ListRowItem
+              icon={Bell}
+              title="Alerts"
+              meta={unreadCount(alerts) > 0 ? `${unreadCount(alerts)} new` : null}
+              metaTone="warn"
+              first
+              onClick={() => navigate('/profile/alerts')}
+            />
+            <ListRowItem
               icon={FileText}
               title="Documents"
               meta={liveTenancy && tenantProfile.missingDocuments.length > 0 ? `${tenantProfile.missingDocuments.length} pending` : null}
               metaTone="warn"
-              first
               onClick={() => navigate('/profile/documents')}
             />
             <ListRowItem

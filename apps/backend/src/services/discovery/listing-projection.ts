@@ -216,3 +216,47 @@ export function projectListing({ detail, visible, marketing, preview = false }: 
     preview,
   };
 }
+
+/**
+ * The price a hostel actually advertises, from its approved marketing revision.
+ *
+ * ## Why this is not `min(rooms.base_rent)`
+ *
+ * Those are two different numbers and the card was quoting the wrong one.
+ * `rooms.base_rent` is the **operational** rent — what the hostel bills the
+ * people living there, room by room. The marketing revision's `beds[]` is the
+ * **advertised** offer: the sharing options a seeker can actually choose from,
+ * each with its own price, reviewed by an admin before it goes public.
+ *
+ * On Sri Adithya every room is a 4-bed at ₹8,000 operationally, while the
+ * approved listing offers 2-bed at ₹12,000, 4-sharing at ₹7,000 and a ground
+ * floor 4-bed at ₹8,500. The card said "from ₹8,000" — higher than the
+ * cheapest thing on sale, and a number appearing on no public page.
+ *
+ * **Available beds win.** Quoting the price of a bed type that is full is a
+ * "from" nobody can take. If nothing is marked available the whole set is used
+ * rather than dropping the price entirely, since the card shows availability
+ * separately and a listing with no price is worse than one with a full one.
+ *
+ * Returns `null` when the revision prices nothing, so the caller can fall back
+ * to the operational figure rather than rendering "Price on request" for a
+ * hostel that does have rooms priced.
+ */
+export function advertisedStartingPrice(marketing: any | null): number | null {
+  const beds = Array.isArray(marketing?.beds) ? marketing.beds : [];
+  if (beds.length === 0) return null;
+
+  const priceOf = (bed: any): number | null => {
+    const price = Number(bed?.price ?? 0);
+    // A bed with no price is unpriced, not free — quoting ₹0 would be a lie.
+    return Number.isFinite(price) && price > 0 ? price : null;
+  };
+
+  const pick = (rows: any[]): number | null => {
+    const prices = rows.map(priceOf).filter((price): price is number => price !== null);
+    return prices.length > 0 ? Math.min(...prices) : null;
+  };
+
+  const available = beds.filter((bed: any) => String(bed?.availability ?? '').toUpperCase() === 'AVAILABLE');
+  return pick(available) ?? pick(beds);
+}

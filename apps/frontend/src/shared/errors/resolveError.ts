@@ -65,6 +65,7 @@ export type ErrorContext =
   | 'auth'
   | 'invite-tenant'
   | 'activation'
+  | 'claim'
   | 'payment'
   | 'hostel-setup'
   | 'admin'
@@ -278,6 +279,52 @@ const BY_CONTEXT: Partial<Record<ErrorContext, Record<string, CatalogueEntry>>> 
       why: 'The email or password does not look right.',
       nextStep: 'Correct them and try again.',
       severity: 'needs-step',
+    },
+  },
+  // Claiming a tenancy an owner has been keeping records for
+  // (`platforms/tenant/claim/ClaimTenancyPage.tsx`) — see the plan's error
+  // list in docs/superpowers/plans/2026-08-27-owner-managed-tenants-phase-2.md
+  // Task 4. `OTP_SEND_FAILED`/`OTP_EXPIRED`/`OTP_INVALID` fall through to the
+  // shared catalogue above, which already covers them.
+  claim: {
+    OTP_PROOF_REQUIRED: {
+      title: 'Your verification expired',
+      why: 'A verified code is only good for a short window, and it has passed — or it was already used by an earlier attempt.',
+      nextStep: 'Request a new code and verify it again.',
+      severity: 'needs-step',
+      action: { label: 'Send a new code', intent: 'RETRY' },
+    },
+    NOT_CLAIMABLE: {
+      title: "That tenancy can't be claimed",
+      why: 'It may already be claimed, cancelled, or no longer managed directly by the owner.',
+      nextStep: 'Choose a different one if there is another, or check the number.',
+      severity: 'needs-step',
+    },
+    ROLE_MISMATCH: {
+      title: 'That number belongs to a different kind of account',
+      why: "This phone number is already linked to a Stayo account that isn't a tenant account.",
+      nextStep: 'Contact support for help linking it.',
+      severity: 'blocking',
+      action: { label: 'Contact support', intent: 'CONTACT_SUPPORT' },
+    },
+    VALIDATION_ERROR: {
+      title: "That can't be submitted yet",
+      why: 'Something in the form is missing or not filled in correctly.',
+      nextStep: 'Check the highlighted fields and try again.',
+      severity: 'needs-step',
+    },
+    RATE_LIMITED: {
+      title: 'Too many attempts',
+      why: 'Stayo limits how often this can be tried, to keep accounts safe.',
+      nextStep: 'Wait a few minutes, then try again.',
+      severity: 'needs-step',
+    },
+    SIGN_IN_REQUIRED: {
+      title: 'You already have an account with this number',
+      why: 'This phone number is linked to a Stayo account that already has a password, so Stayo will not reset it for you.',
+      nextStep: 'Sign in to that account, then claim this tenancy from there.',
+      severity: 'blocking',
+      action: { label: 'Sign in', intent: 'SIGN_IN' },
     },
   },
 };

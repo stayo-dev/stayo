@@ -17,6 +17,8 @@ export const queryKeys = {
     tenantHistory: (tenantId: string) => ownerKey('tenant-history', tenantId),
     /** Same disclosed history, looked up by hostel+profile — the enquiry/invite path, before a tenancy exists. */
     tenantHistoryByProfile: (hostelId: string, profileId: string) => ownerKey('tenant-history', hostelId, profileId),
+    /** Pre-submit tenancy-eligibility check for a phone/email typed into the invite wizard. */
+    invitationEligibility: (phone: string, email: string) => ownerKey('invitation-eligibility', phone, email),
     renewalQueue: () => ownerKey('renewal-queue'),
     /**
      * Money Stayo is holding for this owner. Portfolio-level, never hostel-keyed:

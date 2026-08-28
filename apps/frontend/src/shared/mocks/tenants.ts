@@ -55,6 +55,8 @@ export interface MockTenant {
   id: string;
   name: string;
   initials: string;
+  /** Uploaded at onboarding. Owners recognise faces before names. */
+  photoUrl?: string | null;
   phone: string;
   hostelId: string;
   hostelName: string;
@@ -76,6 +78,8 @@ export interface MockTenant {
   activity: TenantActivityItem[];
   documents: TenantDocument[];
   stay: TenantStayDetails;
+  /** `OWNER_MANAGED` when the tenant never registered and the owner is keeping the records; `SELF_SERVE`/null otherwise. Not a tenancy status — see `accessModeLabel`. */
+  accessMode?: string | null;
 }
 
 const RENT_MONTHS = ['Aug 2026', 'Sept 2026', 'Oct 2026', 'Nov 2026', 'Dec 2026'];

@@ -1,8 +1,5 @@
 // Components
 export { ChangeStatusBadge } from './components/ChangeStatusBadge';
-export { ChangeRequestDrawer } from './components/ChangeRequestDrawer';
-export { ChangePreview } from './components/ChangePreview';
-export { PendingBanner } from './components/PendingBanner';
 export { ChangeTimeline } from './components/ChangeTimeline';
 
 // Hooks

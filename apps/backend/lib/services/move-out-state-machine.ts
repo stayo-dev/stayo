@@ -18,24 +18,12 @@ import { prisma } from "../db";
 // APPROVED and VACATED are legacy readable statuses. New writes should use
 // SETTLEMENT_APPROVED and PHYSICALLY_VACATED.
 
-export const MOVE_OUT_STATUS = {
-  REQUESTED: "REQUESTED",
-  SETTLEMENT_PENDING: "SETTLEMENT_PENDING",
-  SETTLEMENT_APPROVED: "SETTLEMENT_APPROVED",
-  PHYSICALLY_VACATED: "PHYSICALLY_VACATED",
-  SETTLEMENT_PENDING_PAYMENT: "SETTLEMENT_PENDING_PAYMENT",
-  COMPLETED: "COMPLETED",
-  REJECTED: "REJECTED",
-} as const;
-
-const LEGACY_STATUS_ALIASES: Partial<Record<MoveOutStatus, MoveOutStatus>> = {
-  APPROVED: "SETTLEMENT_APPROVED" as MoveOutStatus,
-  VACATED: "PHYSICALLY_VACATED" as MoveOutStatus,
-};
-
-export function canonicalMoveOutStatus(status: MoveOutStatus | string): string {
-  return (LEGACY_STATUS_ALIASES[status as MoveOutStatus] || status) as string;
-}
+// The status vocabulary lives in `move-out-status.ts`, which imports nothing —
+// this module imports `prisma` for `checkCapability`, so keeping the names here
+// meant no pure module could compare two statuses without opening a database
+// connection. Re-exported so existing importers of this file are unaffected.
+export { MOVE_OUT_STATUS, canonicalMoveOutStatus } from "./move-out-status";
+import { canonicalMoveOutStatus } from "./move-out-status";
 
 const TRANSITIONS: Record<MoveOutStatus, MoveOutStatus[]> = {
   REQUESTED: ["SETTLEMENT_PENDING", "REJECTED"],

@@ -8,6 +8,190 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-08-28 — A hostel's tenant agreement could silently ship with no owner signature at all (fixed)
+
+**Found** while implementing the Add Hostel builder's new agreement step ([[Decisions#ADR-135|ADR-135]]), not reported — nothing surfaced this to anyone, which is the actual finding.
+
+**Area:** [[Backend]] — `apps/backend/src/utils/default-rules.ts`'s `getActiveTemplateAndSyncRuleVersion`, and the frontend, which had no caller for the two routes that would have prevented it (`apps/frontend/src/features/owner-more/api/configApi.ts`).
+
+**Symptom:** None visible to the owner. A hostel left on the default `preferences_config.tenant_rules.agreement_required: true` — i.e. every hostel that never visited Configuration › Agreements — would have a tenant complete the Rules + Agreement onboarding steps, sign, and receive a generated agreement whose "Owner signature" was blank.
+
+**Root cause.** `AgreementTemplate.owner_signature_url` is set two ways: the owner draws a signature (`POST /owner/hostels/[id]/agreement-template/signature`), or the template is published carrying whatever `owner_signature_url` the caller passed (`POST .../agreement-template`, `action: publish`). Neither route was ever called by any live page — `configApi.ts` only wired the template's `save_draft` action, and no owner-facing UI drew a signature or published anything. The first time *anything* touched a hostel's agreement with no published template yet — the first tenant reaching the AGREEMENT onboarding step, or the first read of Configuration › Agreements — `getActiveTemplateAndSyncRuleVersion`'s fallback auto-created one: `status: "PUBLISHED"`, `is_active: true`, and no `owner_signature_url` field at all, defaulting to `null`. From that point every tenant of that hostel signed against a real, active, otherwise-normal agreement that simply had no owner signature on it.
+
+**Why it survived:** the backend behaved exactly as designed — an agreement must exist the moment one is needed, so the fallback creating one is correct. The gap was entirely upstream: nothing in the product ever asked the owner to make the "does this hostel use an agreement" decision or capture a signature, so the fallback's blank default was the *only* path every hostel that didn't independently discover Configuration › Agreements ever went through.
+
+**Fix:** [[Decisions#ADR-135|ADR-135]] — a new Add Hostel builder step makes the decision explicit and, when "Yes," runs `publish` then the signature upload in the same action, before the hostel's rooms are even reachable. No backend change; the two existing routes just finally have a caller.
+
+**Not fixed:** a hostel that already has a blank-signature auto-created template from before this shipped stays as-is — this closes the gap for hostels going through Add Hostel from now on, not a backfill of existing rows. A hostel that turns `agreement_required` back on later from Configuration › Agreements, without a signature configured, can still reach the same state through that separate surface.
+
+**See:** [[Decisions#ADR-135|ADR-135]], [[Features]], [[Changelog]]
+
+## 2026-08-27 — An owner-managed tenant was adopted, then invisible to the system that was supposed to chase them (fixed)
+
+An owner can now adopt a tenant who ignored their invitation (`POST /api/tenants/:id/adopt`, `ownerManagedTenancyService.adopt` — see [[Features]]/[[APIs]] for the full capability): the tenancy flips to `ACTIVE` with `access_mode = 'OWNER_MANAGED'` and `profile_id = NULL` — the person has no login, no `profiles` row, and their name/phone live on `tenants.display_name`/`tenants.phone_1` instead. The entire point of adopting them is that the system keeps chasing rent on their behalf, exactly as it would for a self-serve tenant.
+
+It did not. Four raw-SQL queries across the operational/reporting surface joined `tenants` to `profiles` with an **inner join** (`JOIN profiles p ON p.id = t.profile_id`) purely to read the tenant's name/phone for display — and an inner join silently drops any row where that join can't match, which is every owner-managed tenant, unconditionally:
+
+- `billingRepository.getOperationalOverdueObligations` (`apps/backend/src/repositories/billingRepository.ts`) — the query behind `processDailyReminders`. An owner-managed tenant's overdue rent obligations never appeared in the sweep, so they got **no automated reminders**, and since the late-fee engine rides the same loop (`reminder-service.ts`), **no late fees ever accrued** either. This is the one that matters most — it defeated the feature's stated purpose.
+- `billingRepository.getOperationalDefaulters` — the owner dashboard's top-defaulters widget. Owner-managed tenants could never appear in it, however overdue.
+- `lib/services/analytics-service.ts`'s risky-tenants query (`getTenantIntelligenceDashboard`) — owner-managed tenants were invisible to owner analytics, undercutting the promise that occupancy/revenue dashboards read true.
+- `app/api/dashboard/portfolio-shell/route.ts`'s `getOverduePreview` — the dashboard's overdue-preview widget, same pattern, found in a follow-up review pass rather than the original fix.
+
+**Fix.** All four became `LEFT JOIN profiles p ON p.id = t.profile_id`, following the idiom already established at `dashboard-service.ts:669/693/707` for this exact relationship. Every `p.*` column is now read through `CASE WHEN t.profile_id IS NULL THEN <tenant-owned fallback> ELSE p.<column> END` rather than a bare `COALESCE(p.col, fallback)` — the stricter guarded form matters because `profiles.phone` is nullable, so a plain `COALESCE` could have changed an *existing* self-serve tenant's output (null → `tenants.phone_1`, which is a general-purpose field populated during ordinary onboarding, not exclusive to owner-managed tenants) rather than only adding rows. The guarded CASE instead guarantees the `p.<column>` branch fires unconditionally for every row that matched before (`t.profile_id IS NOT NULL`), so no existing row's name, phone, amount, ordering, or grouping changes — proved column-by-column, not asserted.
+
+**A follow-on, deliberate, non-bug consequence:** three of the four queries (`getOperationalDefaulters`, the analytics risky-tenants query, and `getOverduePreview`) are ranked and `LIMIT`-bound. Newly-visible owner-managed tenants can now displace a self-serve tenant out of a fixed-size window if they rank higher (worse overdue amount / risk score) — not because the displaced tenant's own numbers changed, but because the candidate pool grew. Intended. The unlimited sweep query (`getOperationalOverdueObligations`, the one that actually drives late fees) has no such window, so no row can be displaced there at all.
+
+See [[Business-Rules]] for the domain model this closes a gap in (Obligation as source of truth, `access_mode`), [[Changelog]] for the shipped entry, and [[Database]] for `tenants.access_mode`/`display_name`/`phone_1`.
+
+## 2026-08-27 — An owner-managed tenant could climb to FINAL_NOTICE and go permanently silent, while the owner saw "final notice sent" (fixed)
+
+Same feature, an earlier link in the same chain: before an owner-managed tenant can be chased, `reminder-service.ts`'s `triggerNotification` has to record what actually happened to each reminder attempt — and what it recorded was wrong for exactly this tenant shape.
+
+**The in-app channel wrote a `reminder_logs` row unconditionally, on every trigger, whether or not anything was actually delivered.** `reminder_logs` is not a plain audit trail — escalation reads the most recent row for an obligation to decide the next reminder's type (`DUE_SOON → WARNING → FINAL_NOTICE`, never repeating a type, terminal once `FINAL_NOTICE` is reached). For a `SELF_SERVE` tenant this was harmless, because in-app was in practice always "sent." For an `OWNER_MANAGED` tenant — no `profiles` row, so no in-app surface exists for them to open — every trigger still wrote an in-app row and counted as a delivery for escalation purposes, even though nothing had reached anyone: WhatsApp defaults off per hostel and frequently has no valid number besides, and email requires `personal_email`, which an owner-managed tenant often has none of either. The tenant would climb the entire ladder to `FINAL_NOTICE` — the terminal state, after which nothing sends again — while having received precisely zero messages, and the owner's dashboard would report "final notice sent" against someone who was never contacted once.
+
+**Fix.** Two changes to `triggerNotification` (`apps/backend/src/services/payments/reminder-service.ts`): (1) the in-app channel now marks itself `{ attempted: false, sent: false, skipped: true, reason: "NO_TENANT_ACCOUNT" }` for an `OWNER_MANAGED` tenant, before the ordinary on/off preference check even runs — there is nothing for them to open. (2) A `reminder_logs` row is now written **only when a channel actually delivered** — `deliveredChannel` resolves to `IN_APP` if `result.in_app.sent`, else `WHATSAPP` if `result.whatsapp.sent`, else `EMAIL` if `result.email.sent`, else `null`, and the write is skipped entirely when `null`. Escalation therefore only ever advances on a reminder that actually reached somewhere, for every tenant, not just owner-managed ones.
+
+See [[Business-Rules#Notification triggers|Business-Rules]] for the escalation rule this now enforces, [[Decisions#ADR-133|ADR-133]] for the design decision, and the entry above for the related inner-join defect this feature also had to fix before an owner-managed tenant's obligations were even visible to the sweep that calls this function.
+
+## 2026-08-27 — Create Charge asked for a password that protected nothing (fixed)
+
+`CreateObligationModal` required the owner's login password on every manual charge. It called `identityService.confirmIdentity(password)`, read the returned `identity_token` — and then never sent it. The request it made was:
+
+```ts
+await api.post('/payments/obligations', {
+  tenant_id, obligation_type, amount, due_date, rent_month, description, notes,
+});
+```
+
+No token. `POST /api/payments/obligations` accepts none: it is owner-scoped by session (`tenant.owner_id !== ownerId` → 403) and has no identity guard. So the prompt added a step to a routine action and guarded nothing — anyone holding the session could post directly without it.
+
+Worse, `confirmIdentity` was called with **no purpose**, so it defaulted to `OFFLINE_PAYMENT` — minting a single-use token bound to *recording a payment* as a side effect of filling in a charge form, then abandoning it to expire in `identity_tokens`.
+
+The contrast is in the same directory: `CancelObligationModal` and `WaiveObligationModal` both pass their token through to `onConfirm` and on to the backend, which does verify it. Those two forgive money; creating a charge raises a debt and is undone by cancelling it. Only the first kind warrants the step.
+
+**Fix.** The password field is gone. `CreateChargeSheet` posts the charge directly. Cancel and Waive are untouched.
+
+**Second defect in the same form: the type defaulted to `RENT`.** Rent is generated every month by `rentGenerationService`, so a manual rent installment double-bills the tenant for a month they already owe — and it was the preselected value, reachable by an owner who filled in an amount and a date without touching the dropdown. There is no default now; the type is an explicit choice, `RENT` is ordered away from the top, and choosing it shows a caution saying why.
+
+**Third: the billing month drifted west of UTC.** `new Date(dueDate)` parsed `YYYY-MM-DD` as a UTC instant, then `.getFullYear()`/`.getMonth()` read it in local time — so a charge due on the 1st filed under the *previous* month for any viewer in a negative offset. `resolveBillingMonth` computes entirely in UTC and is tested for that case.
+
+## 2026-08-26 — Any owner could transfer any other owner's tenant (fixed)
+
+Found while wiring hostel transfer into the owner's Move flow, which is what made the endpoint reachable.
+
+`POST /api/tenants/transfer` gated on the session role alone:
+
+```ts
+if (!session || !["OWNER", "ADMIN"].includes(session.role)) return 403;
+```
+
+and `tenantTransferService.transferTenant` validated only that the **target room and the tenant share an owner**:
+
+```ts
+if (targetRoom.hostel.owner_id !== tenant.owner_id) throw FORBIDDEN;
+```
+
+Neither checked that this owner is the **caller**. So any authenticated owner could move any other owner's tenant between that owner's hostels — closing an allocation, opening another, rewriting `tenants.hostel_id` — and `tenant_transfer_logs.transferred_by` would record the caller's id, so an audit trail built precisely to answer "who did this" would name the wrong person while looking correct.
+
+`GET /api/tenants/transfer?tenantId=…` had the same shape: any owner could read any tenant's movement history between properties.
+
+**Why it went unnoticed:** nothing in the app called either handler. `grep` across `apps/frontend/src` returned zero callers, so the hole was real but unreachable through the UI.
+
+**Fix.** A new pure module, `tenant-transfer-authorization.ts`, exporting `assertTransferActorOwnsTenant(actorOwnerId, tenantOwnerId)`. The route passes `resolveOwnerScope(session).owner_id` for an OWNER and `undefined` for an ADMIN, who operates across owners by design. Both the POST and the GET now assert before doing anything.
+
+An **empty string** scope is refused rather than treated as an admin — a failed scope resolution must not become privilege escalation. That is a named test case.
+
+Kept as its own import-free module because the service it guards imports Prisma, and a security rule needs to be unit-testable without a database (see `vitest.pure.config.ts`).
+
+## 2026-08-26 — A rent change never repriced cron-generated obligations (fixed)
+
+Found while fixing the DRAFT-agreement bug above, and the more consequential half of it.
+
+`applyRentChangeInTx` selected the obligations to reprice with `agreement_id: agreementId`. **Two paths generate rent obligations and only one sets that column:**
+
+| Path | Sets `agreement_id`? | Fires when |
+|---|---|---|
+| `agreement-rent-schedule-service` | **yes** | an agreement is signed — writes the whole installment schedule |
+| `rentGenerationService.generateMonthlyRent` (the monthly cron) | **no** — the field is absent from `rentRows`/`maintRows` entirely | every month, for every active allocation |
+
+A hostel with `agreement_required = false` ([[Decisions#ADR-059|ADR-059]]) never signs, so its tenants are fed entirely by the cron and **every obligation they hold is unlinked**. Changing their rent updated `agreement.contract_rent` and `tenants.monthly_rent` — so future months generated correctly — while every already-generated unpaid obligation silently kept the old amount. The owner sees "Rent updated", the charges say otherwise.
+
+The live database showed the split exactly: the two tenants with `SIGNED` agreements had 11 linked obligations each (all carrying `installment_sequence`, the schedule service's signature); the one on a `DRAFT` agreement had a single unlinked row with no sequence.
+
+**Fix.** The selector gains a second branch:
+
+```ts
+OR: [
+  { agreement_id: agreementId },
+  { agreement_id: null, tenant_id: agreement.tenant_id, hostel_id: hostelId },
+]
+```
+
+The unlinked branch is scoped by tenant **and** hostel, because an unlinked row carries no agreement and those two columns are the only thing keeping one tenant's rent change out of another's charges — or out of charges this tenant ran up at a hostel they have since transferred away from. A legacy row with no `hostel_id` is skipped rather than guessed at: for a rent change, under-repricing is the safe direction to fail.
+
+**Why not link `agreement_id` at generation time instead** (the other option considered): the cron would have to attach the tenant's `DRAFT` agreement, and `@@unique([agreement_id, rent_month, obligation_type])` would then collide with the schedule service's rows if that tenant later signs — the same `Agreement` row flips `DRAFT → SIGNED` and `createMany({ skipDuplicates: true })` would **silently skip** creating the real installment schedule. Widening the read is reversible and touches no write path; changing the cron is neither. It also fixes existing rows with no migration.
+
+Tested against a stub transaction (10 cases, `test:pure`) covering both kinds together, the cross-tenant and cross-hostel refusals, the missing-hostel skip, and the pre-existing guards — zero-payment-only, month scoping, lifecycle/settlement filters, and the contract/tenant rent sync.
+
+> **The integration tests for this service were not run.** `tests/integration/rent-change-service.test.ts` requires `DATABASE_URL_TEST`, which is not provisioned (ADR-043). Reading them, all three build their obligations *with* `agreement_id` set, so the added OR branch cannot change their outcomes — but that is inspection, not execution.
+
+## 2026-08-26 — Change rent was impossible for any hostel that doesn't require agreements (fixed)
+
+`POST /api/tenants/:id/change-rent` looked for the tenant's agreement in the **current** set:
+
+```ts
+status: { in: ["SIGNED", "EXPIRING_SOON", "AGREEMENT_EXPIRED"] }
+```
+
+and answered `404 "No active agreement found for this tenant"` when it found none.
+
+A hostel with `tenant_rules.agreement_required = false` ([[Decisions#ADR-059|ADR-059]]) never has its tenants sign — onboarding is `ACCOUNT → PROFILE → ACTIVATE`, and `AGREEMENT` is an invalid transition. The `Agreement` row is still created, deliberately, because as [[Business-Rules]] puts it, signing "governs the signing ceremony only — `Agreement` rows are created either way, because `contract_rent` on that record is what rent changes, obligation generation, renewals and move-out settlement key to." That row therefore stays **`DRAFT`** for the entire tenancy.
+
+`DRAFT` is in no "current" set. So rent could never be changed for **any** tenant of **any** such hostel — the endpoint's own precondition contradicted the rule that its agreement row is what rent changes key to.
+
+**Evidence.** On the live database, the tenant this was reported against (`Sri Adithya Boys Hostel`, `agreement_required: false`) is `ACTIVE` with a single `DRAFT` agreement. Across the whole database, `DRAFT` accounted for **8 of 10** agreements.
+
+**The failure was also reported late.** The owner fills in the new rent, the effective month and a reason, taps Continue, types their **account password**, and only then sees the error — `ChangeRentModal` renders `mutation.isError` in the password step, and the mutation is the first thing that touches the endpoint. So it read as "Change rent doesn't work" rather than "this tenant has no signed agreement".
+
+**Fix.** A new `RENT_CHANGEABLE_AGREEMENT_STATUSES` in `agreement-status.ts` — the current set **plus `DRAFT`** — with `rentChangeableAgreementWhere()` used by the change-rent route. `RENEWED` and `TERMINATED` stay excluded: a later agreement governs, or none does, and repricing either would rewrite a contract no longer in force.
+
+Kept deliberately separate from `CURRENT_AGREEMENT_STATUSES` rather than widening it. That constant drives `has_active_agreement` on the owner overview, the Documents tab's agreement card and the renewal queue; widening it would tell owners a never-signed draft is an "Active Contract". A test asserts `currentAgreementWhere()` still excludes `DRAFT`.
+
+`applyRentChangeInTx` already writes **both** `agreement.contract_rent` and `tenants.monthly_rent`, so the fix is complete for these tenants: rent generation reads `tenants.monthly_rent` for anyone without a signed-agreement schedule, and now sees the new figure.
+
+**Follow-up, fixed the same day — see the next entry.** The repricing step filtered unpaid obligations by `agreement_id`, which the monthly cron never sets.
+
+## 2026-08-26 — The owner tenant profile rendered controls that did nothing (fixed)
+
+Five separate defects on `/owner/tenants/:tenantId`, one shared cause: the routed page (`features/owner-tenants/pages/TenantDetailPage.tsx`) was a Stayo-styled re-implementation of a second, *unrouted* tenant-profile tree (`features/tenants/components/profile/`, ~700 lines, zero importers) — and it copied the appearance of that tree's sections without their handlers. Work had landed in the dead tree; the live page looked finished.
+
+- **The Communication Center was decorative.** `CommRowActions()` rendered four `<span>` elements — not buttons, no `onClick`, no `aria-label`. One of the four (a document icon) mapped to no action in either tree. Meanwhile the wired `CommunicationCenter`, with call/WhatsApp/copy/history, rendered nowhere. Emergency contact was never shown at all despite `phone_3` and `profile.emergency_contact` being on the response.
+- **Private Notes discarded what the owner typed.** `useTenantNotes` (GET/POST/DELETE `/api/tenants/:id/notes`) was fully wired and called only by `InvitedTenantProfileView`. On this page the `+` button had no `onClick` and *"No private notes yet."* was a hardcoded string beneath it.
+- **Room change was impossible.** The Stay tab's "Change room" called `setActionsOpen(true)`, and the Actions sheet had no room row. The only other route was Request Change → Transfer Room, whose room field was `{ key: 'room_id', type: 'text' }` — a free-text box for a UUID — submitted through the change-management facade, which drops it, because `room_id` is not a `tenant_profile` field. Three working backends existed and none were reachable: `POST /api/allocations/shift`, `POST /api/tenants/transfer`, and a wired-but-dead `TransferRoomSheet`.
+- **"+ Add Charge" had no `onClick`.** `CreateObligationModal` was mounted and reachable only from the Actions sheet.
+- **A change request awaiting tenant approval was reported as applied.** `PUT /api/tenants/:id` answers **200 + the tenant** when a change applies and **202 + the change request** when it needs tenant consent. Neither body carries an `applied` field, and `ChangeRequestDrawer` inferred one with `data?.applied !== false` — `undefined !== false` is `true`, so *both* outcomes rendered "Changes applied successfully." An owner who submitted a Category C contractual change was told it was done and had no reason to follow it up.
+
+**Fix.** The pieces the dead tree got right were rebuilt as tested pure modules (`contactChannels`, `roomOptions`, `documentGroups`, `overdueDisplay`, `amendmentOutcome`) with thin components over them, and the dead tree was deleted — 13 files under `features/tenants/components/{profile,allocation}`, plus `ChangeRequestDrawer`/`ChangePreview`/`PendingBanner`. Room change is now a two-tap sheet on `/api/allocations/shift`. See [[Decisions#ADR-131|ADR-131]], [[Decisions#ADR-132|ADR-132]], [[Features]], [[Changelog]].
+
+## 2026-08-26 — The OVERDUE tile showed a boolean wearing a unit (fixed)
+
+`useTenantDetail` computed `overdueMonths: Number(o.overdue_amount ?? 0) > 0 ? 1 : 0` and the profile rendered it as `{tenant.overdueMonths} days`. The value was neither months nor days: a tenant one day late and a tenant three months late both read **"1 days"**, and everyone else read **"0 days"** — a number that looked precise, was never right, and gave an owner no way to tell an urgent case from a routine one.
+
+The field name said months, the label said days, and the value was a flag. Nothing in between checked.
+
+**Fix.** `overdueDisplay.ts` derives real days from the oldest still-unpaid obligation's due date, keeping `overdue_amount` (from `FinancialReadModelService`) as the authority on *whether* the tenant is overdue and using due dates only for *how long*. When no due date can answer, the tile shows the tone and label with no number rather than inventing one. 13 tests, including the original bug as a named case.
+
+Related: `advance_balance` (rent paid ahead) was computed on every response and dropped by the same mapper — now a Future credit tile.
+
+## 2026-08-26 — Document View and Download sent no authentication (fixed)
+
+`DocumentReviewCard` opened a tenant's KYC document with `window.open(doc.downloadUrl)` and offered `<a href={downloadUrl} download>`. Both are bare cross-origin browser requests carrying **no `Authorization` header**. `middleware.ts` accepts a bearer token, then the `hms_session` cookie, then a query token (SSE only) — so these fell through to the cookie, which is written once at `/api/auth/login` and **never refreshed** (under ADR-031 Supabase refreshes into localStorage, not that cookie). The links therefore work for roughly one access-token lifetime after sign-in and 401 afterwards; under Safari/ITP cross-site cookie blocking, never. The failure is silent — a blank tab.
+
+Independently, `<a download>` is ignored by browsers for cross-origin URLs: it navigates instead of downloading.
+
+**Fix.** `useDocumentBlob` fetches through the authenticated API client (`responseType: 'blob'`), so the request carries the same live token as every other call, and `DocumentPreviewSheet` renders the document in-app — images inline, PDFs in an `<object>` with a download fallback for browsers that refuse to embed them. Download is a blob-anchor click, which works cross-origin. Failures are distinguished and named: 401/403 as an expired session, 404 as a missing document, 502 as an unreachable stored file.
+
+> **Not reproduced against a running instance.** The mechanism is traced from `middleware.ts`, `lib/auth.ts` and the login route; no session was exercised to confirm the exact expiry behaviour. The fix is correct regardless — it removes the cookie dependency and adds the in-app preview — but the severity of the original defect is inferred, not measured.
 
 ## 2026-08-27 — Every inbound WhatsApp message failed on `prisma.profiles` (fixed)
 
@@ -1605,6 +1789,38 @@ Copy this block for each new entry:
 
 
 
+
+## 2026-08-26 — Completing a move-out silently wrote off everything the tenant owed
+
+`confirmPaymentAndComplete` ended with an unconditional `obligationEngine.bulkWaiveInTx` over every `PENDING`/`PARTIAL` obligation, reason `"Move-out settlement confirmed — outstanding rent waived"`. The owner app's button for that call read **"Confirm Refund & Complete"** — on a sheet that had, one step earlier, displayed *Owed by tenant ₹25,000*.
+
+So the owner tapped a button that said *refund*, and forgave ₹25,000 owed **to them**. Nothing on screen mentioned a write-off, and nothing asked. The label was wrong in the other direction too: `summariseSettlement` now derives direction once and every label reads from it.
+
+**Fix:** `duesDisposition` on the service and the route, defaulting to `RECOVERABLE`; `WAIVE` is opt-in and the button then says *"Write off ₹25,000 & close"*. See [[Decisions#ADR-130|ADR-130]], [[Business-Rules]].
+
+## 2026-08-26 — `/api/auth/me` picked an arbitrary tenancy, locking re-admitted tenants out
+
+The tenant lookup was `prisma.tenants.findFirst({ where: { profile_id } })` — **no `orderBy`, no status filter**. For anyone with more than one tenancy row (a previous stay plus a current one) Postgres returned whichever it liked, so `tenant_status` could come back `FORMER_TENANT` for someone who had just moved into a new hostel. Every `hasLiveTenancy` gate downstream then refused them their own dashboard.
+
+`profile-identity-service.ts::selectFallbackTenancy` had already solved exactly this — live tenancy first, else most recently created, with a comment explaining why `orderBy: { status: 'asc' }` is wrong (`TenantStatus` declares `INVITED` before `ACTIVE`, so enum sorting prefers a tenancy the person never activated). `/auth/me` never got the fix. It now uses the same precedence.
+
+## 2026-08-26 — A tenant who moved out was deleted from the app without a word
+
+`hasLiveTenancy` is `INVITED|ACTIVE`, so a `FORMER_TENANT` failed `ProtectedTenantRoute` and hit `<Navigate to="/discover" replace />`: no message, no explanation, and `buildOuterTabs` silently swapped the six dashboard tabs for Explore/Profile. Someone opening the app to check whether their deposit had come back landed on a marketing browse page as though they had never lived anywhere — and their settlement record, which lives inside the tenant dashboard tree, became permanently unreachable from their side.
+
+The timing made it worse: `tenants.status` flips to `FORMER_TENANT` in **`vacate`**, when the bed is released, which is a whole step before `complete` settles the money. People were locked out of the app *while still owed a refund*.
+
+**Fix:** three tenancy states instead of two. `EXITING` keeps the dashboard read-only until the settlement closes; `EXITED` lands on `/tenant/farewell` with the receipt and a door into Discover. See [[Decisions#ADR-130|ADR-130]].
+
+## 2026-08-26 — Two owner action bars never learned about `FORMER_TENANT`
+
+`FloatingActionMenu.tsx` and `StickyOpsBar.tsx` both gated on `['LEFT', 'CANCELLED', 'EXPIRED']`. `FORMER_TENANT` — the status the move-out flow actually writes — was in neither list, so a tenant who had already moved out still got the full action set on their profile: Receive Payment, Send Reminder, and **Move Out** a second time. `INACTIVE_STATUSES` in `features/tenants/utils/normalize.ts` had it right all along, which is why the tenant *list* behaved correctly and only the profile did not.
+
+## 2026-08-26 — The move-out sheet latched onto a tenant's old completed exit
+
+`MoveOutSheet` resolved its request with `requests.find(r => r.tenant_id === tenantId)` over one 50-row page ordered `created_at desc`, **with no status filter**. Two consequences: a re-admitted tenant matched their previous `COMPLETED` request, so the sheet showed "Move-out completed" forever with no way to start a new one; and past 50 requests in a hostel an in-flight request could fall off the page entirely, leaving the sheet offering "Initiate Move Out" to someone who already had one open — which `createRequest` then rejects with `VALIDATION: Active move-out request already exists`.
+
+`resolveActiveRequest` now prefers a non-terminal request regardless of list order, and returns the last completed one separately so a finished exit can still show its receipt without being mistaken for work outstanding.
 
 ## 2026-08-19 — A signed-in user was told to sign in when posting a review
 

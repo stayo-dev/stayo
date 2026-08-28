@@ -248,3 +248,18 @@
     animation: none;
   }
 }
+
+/*
+ * Photo-tour mosaic.
+ *
+ * The column span is per-tile and computed in `photoMosaic.ts`, so it arrives
+ * as a CSS variable on the element rather than as a class — Tailwind cannot
+ * generate `col-span-{n}` for a value it never sees at build time. On a phone
+ * the grid is two columns and the inline `grid-column` set by the component
+ * wins; from `sm` up this rule takes over with the six-column span.
+ */
+@media (min-width: 640px) {
+  .mosaic-tile {
+    grid-column: span var(--sm-span) / span var(--sm-span) !important;
+  }
+}

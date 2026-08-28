@@ -115,7 +115,7 @@ export function CorrectPaymentModal({ paymentId, hostelId, tenantId, onClose, on
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+      <div className="relative w-full max-w-md rounded-[22px] border border-border bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-200">
         <button
           type="button"
           onClick={onClose}
@@ -126,7 +126,7 @@ export function CorrectPaymentModal({ paymentId, hostelId, tenantId, onClose, on
         </button>
 
         <div className="flex items-center gap-3 border-b border-border pb-4 mb-4">
-          <div className="p-2 rounded-xl bg-rose-500/10 text-rose-600">
+          <div className="p-2 rounded-xl bg-destructive/10 text-destructive">
             <Undo2 className="w-5 h-5" />
           </div>
           <div>
@@ -157,7 +157,7 @@ export function CorrectPaymentModal({ paymentId, hostelId, tenantId, onClose, on
                   type="button"
                   onClick={() => { setCorrectionType('REVERSE'); setToTenantId(null); setToTenantName(null); }}
                   className={`flex-1 h-9 rounded-xl text-xs font-semibold transition-colors ${
-                    correctionType === 'REVERSE' ? 'bg-rose-600 text-white' : 'bg-secondary text-secondary-foreground'
+                    correctionType === 'REVERSE' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'
                   }`}
                 >
                   Wrong / Reverse
@@ -166,7 +166,7 @@ export function CorrectPaymentModal({ paymentId, hostelId, tenantId, onClose, on
                   type="button"
                   onClick={() => setCorrectionType('TRANSFER')}
                   className={`flex-1 h-9 rounded-xl text-xs font-semibold transition-colors ${
-                    correctionType === 'TRANSFER' ? 'bg-rose-600 text-white' : 'bg-secondary text-secondary-foreground'
+                    correctionType === 'TRANSFER' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'
                   }`}
                 >
                   Wrong Tenant / Transfer
@@ -177,15 +177,15 @@ export function CorrectPaymentModal({ paymentId, hostelId, tenantId, onClose, on
             {!succeeded && !kase && correctionType === 'TRANSFER' && (
               <div className="space-y-1.5 mb-4">
                 <label className="text-xs font-semibold text-foreground">
-                  Correct tenant <span className="text-rose-500">*</span>
+                  Correct tenant <span className="text-destructive">*</span>
                 </label>
                 {toTenantId ? (
-                  <div className="flex items-center justify-between rounded-xl border border-input bg-muted/40 px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between rounded-xl border border-border bg-muted/40 px-3 py-2 text-sm">
                     <span className="font-semibold text-foreground">{toTenantName}</span>
                     <button
                       type="button"
                       onClick={() => { setToTenantId(null); setToTenantName(null); setToTenantQuery(''); }}
-                      className="text-[11px] font-semibold text-accent hover:underline"
+                      className="text-[11px] font-semibold text-primary hover:underline"
                     >
                       Change
                     </button>
@@ -197,7 +197,7 @@ export function CorrectPaymentModal({ paymentId, hostelId, tenantId, onClose, on
                       value={toTenantQuery}
                       onChange={(e) => setToTenantQuery(e.target.value)}
                       placeholder="Search tenant by name or phone"
-                      className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
                     />
                     {toTenantSearchLoading && <p className="text-[11px] text-muted-foreground px-1">Searching…</p>}
                     {toTenantResults && toTenantResults.length > 0 && (
@@ -223,7 +223,7 @@ export function CorrectPaymentModal({ paymentId, hostelId, tenantId, onClose, on
             <form onSubmit={handlePreview} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-foreground">
-                  Reason for correction <span className="text-rose-500">*</span>
+                  Reason for correction <span className="text-destructive">*</span>
                 </label>
                 <textarea
                   required
@@ -232,14 +232,14 @@ export function CorrectPaymentModal({ paymentId, hostelId, tenantId, onClose, on
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   placeholder="e.g. Recorded against the wrong tenant"
-                  className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
                 />
                 {kase && (
                   <button
                     type="button"
                     onClick={handleEditReason}
                     disabled={isBusy}
-                    className="text-[11px] font-semibold text-accent hover:underline disabled:opacity-50"
+                    className="text-[11px] font-semibold text-primary hover:underline disabled:opacity-50"
                   >
                     Edit reason &amp; re-preview
                   </button>
@@ -267,7 +267,7 @@ export function CorrectPaymentModal({ paymentId, hostelId, tenantId, onClose, on
                     {previewImpact.ledgerEntries.map((entry, idx) => (
                       <div key={idx} className="flex justify-between">
                         <span className="text-muted-foreground">
-                          {entry.direction === 'DEBIT' ? 'Debit' : 'Credit'} ledger entry ({entry.reason.replaceAll('_', ' ').toLowerCase()})
+                          {entry.direction === 'DEBIT' ? 'Debit' : 'Credit'} ledger entry ({entry.reason.replace(/_/g, ' ').toLowerCase()})
                         </span>
                         <span className="font-semibold text-foreground">{fmt(entry.amount)}</span>
                       </div>
@@ -316,7 +316,7 @@ export function CorrectPaymentModal({ paymentId, hostelId, tenantId, onClose, on
               </div>
             )}
 
-            <div className="bg-rose-500/5 text-rose-600 dark:text-rose-400 rounded-xl p-3 border border-rose-500/10 text-xs leading-relaxed mt-4">
+            <div className="mt-4 rounded-xl border border-destructive/15 bg-destructive/5 p-3 text-xs leading-relaxed text-destructive">
               <strong>Warning:</strong>{' '}
               {correctionType === 'TRANSFER'
                 ? "Transferring moves this payment's ledger entries and obligation allocation to the selected tenant."
@@ -329,7 +329,7 @@ export function CorrectPaymentModal({ paymentId, hostelId, tenantId, onClose, on
                 type="button"
                 onClick={onClose}
                 disabled={isBusy}
-                className="px-4 h-10 rounded-xl border border-input bg-background text-sm font-semibold hover:bg-accent hover:text-accent-foreground active:scale-98 transition-transform disabled:opacity-50"
+                className="px-4 h-10 rounded-xl border border-border bg-background text-sm font-semibold hover:bg-primary hover:text-primary-foreground active:scale-98 transition-transform disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -337,7 +337,7 @@ export function CorrectPaymentModal({ paymentId, hostelId, tenantId, onClose, on
                 type="button"
                 onClick={handleConfirm}
                 disabled={!kase || isBusy}
-                className="px-4 h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold active:scale-98 transition-transform flex items-center justify-center gap-1.5 disabled:opacity-50"
+                className="px-4 h-10 rounded-xl bg-destructive hover:bg-destructive/90 text-white text-sm font-semibold active:scale-98 transition-transform flex items-center justify-center gap-1.5 disabled:opacity-50"
               >
                 {isConfirming ? <StayoLoader size="sm" label={null} /> : <Undo2 className="w-4 h-4" />}
                 <span>{correctionType === 'TRANSFER' ? 'Confirm Transfer' : 'Confirm Reversal'}</span>

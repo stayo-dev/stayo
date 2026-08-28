@@ -25,6 +25,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: [
+      "tests/advertised-starting-price.test.ts",
       'tests/settlement-planner.test.ts',
       'tests/settlement-planner-policy.test.ts',
       'tests/settlement-planner-overdue.test.ts',
@@ -44,6 +45,7 @@ export default defineConfig({
       'tests/redis-key-parity.test.ts',
       'tests/activation-enforcement-coverage.test.ts',
       'tests/tenancy-eligibility-service.test.ts',
+      'tests/tenancy-eligibility-preview.test.ts',
       'tests/reset-token-channel.test.ts',
       'tests/config-change-labels.test.ts',
       'tests/email-delivery-classification.test.ts',
@@ -95,6 +97,14 @@ export default defineConfig({
       'tests/agreement-commitment.test.ts',
       'tests/activation-account-state.test.ts',
       'tests/invitation-expiry-reminder-contract.test.ts',
+      'tests/move-out-quick-exit-plan.test.ts',
+      'tests/rent-changeable-agreement.test.ts',
+      'tests/rent-change-repricing.test.ts',
+      'tests/tenant-transfer-authorization.test.ts',
+      'tests/tenant-score-model.test.ts',
+      'tests/tenant-identity.test.ts',
+      'tests/claim-eligibility.test.ts',
+      'tests/tenancy-claim-service.test.ts',
       // The resident/guardian command center. Its formatters, vocabulary and
       // reminder policy take plain arguments and touch nothing external —
       // which is the design, not a coincidence: decision logic lives in pure
@@ -107,6 +117,15 @@ export default defineConfig({
       'tests/whatsapp-prisma-accessors.test.ts',
     ],
     alias: {
+      // More specific than the catch-all `@` entry below, and must come
+      // first: `tsconfig.json`'s `@/*` maps to `./src/*` before falling back
+      // to `./*` (see `paths`), but Vitest's plain string alias has no such
+      // fallback chain — `@/utils/default-rules` would otherwise resolve to
+      // a nonexistent root-level `utils/`, since the real file lives under
+      // `src/utils/`. `tenancy-claim-service.ts` imports it that way (via
+      // `@/utils/default-rules`), so this was a real gap, just never
+      // previously exercised by a pure test.
+      '@/utils': path.resolve(__dirname, './src/utils'),
       '@': path.resolve(__dirname, './'),
     },
   },

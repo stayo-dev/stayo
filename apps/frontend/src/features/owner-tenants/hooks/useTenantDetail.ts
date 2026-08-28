@@ -36,11 +36,34 @@ export interface RealTenantInvitation {
   agreementStartDate: string | null;
 }
 
+/** Onboarding obligations the tenant has or hasn't discharged. */
+export interface RealTenantCompliance {
+  profileCompleted: boolean;
+  rulesAccepted: boolean;
+  rulesAcceptedAt: string | null;
+  rulesVersion: string | null;
+  documentVerified: boolean;
+}
+
+/** The tenant's live agreement, as the owner may view it. */
+export interface RealTenantAgreement {
+  id: string;
+  status: string;
+  startDate: string | null;
+  endDate: string | null;
+  durationMonths: number | null;
+  contractRent: number | null;
+  contractDeposit: number | null;
+  pdfUrl: string | null;
+}
+
 export interface RealTenantDetail {
   id: string;
   hostelId: string;
   name: string;
   initials: string;
+  /** Uploaded during onboarding. Present on the response all along, never rendered. */
+  photoUrl: string | null;
   phone: string;
   status: 'active' | 'overdue' | 'invited' | 'pending-docs';
   statusLabel: string;
@@ -49,16 +72,49 @@ export interface RealTenantDetail {
   hostelName: string;
   agreementStatus: string;
   guardian?: MockGuardian;
-  riskScore: number;
+  /** Null when there isn't enough history to judge — never a fabricated 100. */
+  riskScore: number | null;
+  /** How many more paid cycles before a score means anything. */
+  riskCyclesNeeded: number;
   riskLabel: string;
   riskInsight: string;
+  /**
+   * Every insight the score service produced, not just the first.
+   * `suggestions` is deliberately not carried: that array is written in the
+   * second person addressed to the tenant ("Pay before due date to improve
+   * your score") because the same service backs `/api/tenants/me/score`.
+   */
+  riskInsights: string[];
   riskTrend: string;
   kycStatus: string;
   outstanding: number;
-  overdueMonths: number;
+  /** From FinancialReadModelService — the authority on *whether* they're overdue. */
+  overdueAmount: number;
+  currentPayableAmount: number;
+  /** Rent paid ahead. Computed by the backend, previously dropped on the floor. */
+  futureCredit: number;
   obligations: TenantObligation[];
-  activity: TenantActivityItem[];
+  /** Raw due date + status per obligation, so days-overdue is derivable. */
+  obligationDueDates: Array<{ due_date: string | null; status: string }>;
+  /**
+   * `type` is carried alongside the display fields so a payment row can offer
+   * the correction flow. For `type: 'payment'` the item's `id` **is** the
+   * payment id — see `recent_activity` in `getOwnerTenantOverview`.
+   */
+  activity: Array<TenantActivityItem & { type: string }>;
   documents: RealTenantDocument[];
+  compliance: RealTenantCompliance;
+  agreement: RealTenantAgreement | null;
+  /** Needed by any room-scoped action; without it the room picker can't exclude the current room. */
+  currentRoomId: string | null;
+  /** True while a move-out is in flight, so the profile can say so. */
+  hasOpenMoveOut: boolean;
+  /**
+   * The unmapped overview response. `contactChannels` reads the several
+   * columns that can carry a phone number directly rather than having this
+   * interface grow a field per column.
+   */
+  raw: Record<string, any>;
   /** Present only while the tenant is still INVITED. */
   invitation?: RealTenantInvitation;
   /** Raw maintenance terms — needed to show one consistent move-in total. */
@@ -159,9 +215,10 @@ export function useTenantDetail(tenantId: string | undefined) {
       : undefined;
 
     const grade = score?.grade ? String(score.grade) : '';
-    const activity: TenantActivityItem[] = Array.isArray(o.recent_activity)
+    const activity: Array<TenantActivityItem & { type: string }> = Array.isArray(o.recent_activity)
       ? o.recent_activity.map((a: any) => ({
           id: String(a.id),
+          type: String(a.type ?? ''),
           title: String(a.title ?? ''),
           sub: String(a.detail ?? ''),
           date: formatDate(a.date),
@@ -197,16 +254,25 @@ export function useTenantDetail(tenantId: string | undefined) {
         })),
     ];
 
-    const obligations: TenantObligation[] = Array.isArray(full?.rent_obligations)
-      ? full.rent_obligations.map((ob: any) => ({
-          id: String(ob.id),
-          type: String(ob.obligation_type ?? 'RENT'),
-          month: formatDate(ob.rent_month) || String(ob.rent_month ?? ''),
-          amount: Number(ob.total_amount ?? ob.amount ?? 0),
-          dueLabel: `Due: ${formatDate(ob.due_date)}`,
-          status: (['PENDING', 'UPCOMING', 'PAID', 'OVERDUE'].includes(ob.status) ? ob.status : 'PENDING') as TenantObligation['status'],
-        }))
-      : [];
+    const rawObligations: any[] = Array.isArray(full?.rent_obligations) ? full.rent_obligations : [];
+    const obligations: TenantObligation[] = rawObligations.map((ob: any) => ({
+      id: String(ob.id),
+      type: String(ob.obligation_type ?? 'RENT'),
+      month: formatDate(ob.rent_month) || String(ob.rent_month ?? ''),
+      amount: Number(ob.total_amount ?? ob.amount ?? 0),
+      dueLabel: `Due: ${formatDate(ob.due_date)}`,
+      status: (['PENDING', 'UPCOMING', 'PAID', 'OVERDUE'].includes(ob.status) ? ob.status : 'PENDING') as TenantObligation['status'],
+    }));
+
+    /**
+     * Kept unformatted alongside the display rows. The OVERDUE tile needs a
+     * real date to count days from — reading it back out of the `dueLabel`
+     * string is how that tile ended up rendering a boolean instead.
+     */
+    const obligationDueDates = rawObligations.map((ob: any) => ({
+      due_date: ob.due_date ? String(ob.due_date) : null,
+      status: String(ob.status ?? 'PENDING'),
+    }));
 
     const inv = (o.invitation ?? null) as Record<string, any> | null;
 
@@ -251,11 +317,19 @@ export function useTenantDetail(tenantId: string | undefined) {
         }
       : undefined;
 
+    const agreementRaw = (o.current_agreement ?? null) as Record<string, any> | null;
+    const complianceRaw = (o.compliance ?? {}) as Record<string, any>;
+    const profileRaw = (o.profile ?? {}) as Record<string, any>;
+    const tenantRaw = (o.tenant ?? {}) as Record<string, any>;
+
+    const str = (value: unknown) => (value == null ? '' : String(value));
+
     tenant = {
       id: String(o.id ?? tenantId),
       hostelId,
       name: String(o.name ?? 'Tenant'),
       initials: getInitials(String(o.name ?? '')),
+      photoUrl: o.photo_url ? String(o.photo_url) : tenantRaw.photo_url ? String(tenantRaw.photo_url) : null,
       phone: String(o.phone ?? ''),
       status,
       statusLabel,
@@ -264,16 +338,43 @@ export function useTenantDetail(tenantId: string | undefined) {
       hostelName,
       agreementStatus: o.has_active_agreement ? 'Signed' : 'Pending',
       guardian,
-      riskScore: Number(score?.score ?? 0),
+      riskScore: score?.score == null ? null : Number(score.score),
+      riskCyclesNeeded: Number(score?.cycles_needed ?? 0),
       riskLabel: GRADE_LABEL[grade] ?? '—',
-      riskInsight: score?.insights?.[0] ?? score?.suggestions?.[0] ?? 'No insights yet.',
+      riskInsight: score?.insights?.[0] ?? 'No insights yet.',
+      riskInsights: Array.isArray(score?.insights) ? score.insights.map(String) : [],
       riskTrend: TREND_LABEL[String(score?.trend ?? '')] ?? '—',
       kycStatus: documentVerified ? 'Verified' : 'Pending',
       outstanding,
-      overdueMonths: Number(o.overdue_amount ?? 0) > 0 ? 1 : 0,
+      overdueAmount: Number(o.overdue_amount ?? 0),
+      currentPayableAmount: Number(o.current_payable_amount ?? 0),
+      futureCredit: Number(o.advance_balance ?? 0),
       obligations,
+      obligationDueDates,
       activity,
       documents,
+      compliance: {
+        profileCompleted: Boolean(complianceRaw.profile_completed ?? o.profile_completed),
+        rulesAccepted: Boolean(complianceRaw.rules_accepted),
+        rulesAcceptedAt: complianceRaw.rules_accepted_at ? formatDate(complianceRaw.rules_accepted_at) : null,
+        rulesVersion: complianceRaw.rules_version ? String(complianceRaw.rules_version) : null,
+        documentVerified,
+      },
+      agreement: agreementRaw
+        ? {
+            id: String(agreementRaw.id),
+            status: String(agreementRaw.status ?? ''),
+            startDate: agreementRaw.agreement_start_date ? String(agreementRaw.agreement_start_date) : null,
+            endDate: agreementRaw.agreement_end_date ? String(agreementRaw.agreement_end_date) : null,
+            durationMonths: agreementRaw.agreement_duration_months != null ? Number(agreementRaw.agreement_duration_months) : null,
+            contractRent: agreementRaw.contract_rent != null ? Number(agreementRaw.contract_rent) : null,
+            contractDeposit: agreementRaw.contract_security_deposit != null ? Number(agreementRaw.contract_security_deposit) : null,
+            pdfUrl: agreementRaw.pdf_url ? String(agreementRaw.pdf_url) : null,
+          }
+        : null,
+      currentRoomId: o.current_room?.id ? String(o.current_room.id) : null,
+      hasOpenMoveOut: Array.isArray(o.move_out_requests) && o.move_out_requests.length > 0,
+      raw: o,
       invitation,
       maintenanceCharge: Number(o.maintenance_charge ?? 0),
       maintenanceType: (['MONTHLY', 'ONE_TIME', 'NONE'].includes(String(o.maintenance_type))

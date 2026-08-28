@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Check, ChevronLeft, Info } from 'lucide-react';
 
 import type { IdentityPatch, ProfileType } from '@features/profile/api';
@@ -68,6 +68,13 @@ const PROFESSIONAL: FieldSpec[] = [
 
 export function ProfileEditPage() {
   const navigate = useNavigate();
+  /**
+   * Where to go on save or back. Hardcoding `/profile` stranded anyone who
+   * arrived from outside this tree — the Dashboard's profile nudge sent
+   * tenants here and then returned them to a hub with no nav and no back
+   * button. Falls back to the hub for the ordinary case.
+   */
+  const returnTo = (useLocation().state as { returnTo?: string } | null)?.returnTo ?? '/profile';
   const { data, isLoading } = useProfileIdentity();
   const update = useUpdateProfileIdentity();
 
@@ -104,7 +111,7 @@ export function ProfileEditPage() {
   const save = () => {
     setError(null);
     if (Object.keys(draft).length === 0) {
-      navigate('/profile');
+      navigate(returnTo);
       return;
     }
     update.mutate(draft, {
@@ -129,7 +136,7 @@ export function ProfileEditPage() {
         <button
           type="button"
           aria-label="Back"
-          onClick={() => navigate('/profile')}
+          onClick={() => navigate(returnTo)}
           className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-full"
           style={{ background: '#F4EEE7' }}
         >

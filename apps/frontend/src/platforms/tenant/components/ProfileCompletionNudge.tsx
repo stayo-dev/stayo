@@ -12,6 +12,14 @@ const card = 'rounded-[16px] border border-border bg-card shadow-[0_1px_2px_rgba
  * hard-block). Reads the same `completion_percent` the Explore/Profile
  * nudge card does (`useProfileIdentity()`, one query key, one number) —
  * not a second computation.
+ *
+ * Opens the profile **section** (`/profile`), not the edit form beneath it —
+ * "complete your profile" should show the tenant their profile, with what is
+ * missing visible, rather than dropping them straight into one form.
+ *
+ * Carries `returnTo`, because `/profile/*` renders outside the tenant app
+ * shell: it has no bottom nav and its hub has no back button, so a tenant sent
+ * there from the Dashboard previously had no route back at all.
  */
 export function ProfileCompletionNudge() {
   const navigate = useNavigate();
@@ -22,7 +30,7 @@ export function ProfileCompletionNudge() {
   return (
     <button
       type="button"
-      onClick={() => navigate('/profile/details')}
+      onClick={() => navigate('/profile', { state: { returnTo: '/tenant/home' } })}
       className={`${card} p-[18px] text-left`}
     >
       <div className="flex items-center justify-between">

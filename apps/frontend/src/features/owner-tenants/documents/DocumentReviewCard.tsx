@@ -1,4 +1,4 @@
-import { Check, Download, Eye, X } from 'lucide-react';
+import { Check, Eye, X } from 'lucide-react';
 import { StatusPill } from '@shared/ui-patterns/StatusPill';
 import { canActOnDocument, documentTypeLabel, type ReviewDocument } from './kycDocuments';
 
@@ -7,6 +7,8 @@ interface DocumentReviewCardProps {
   isBusy: boolean;
   onApprove: (documentId: string) => void;
   onReject: (doc: ReviewDocument) => void;
+  /** Opens the in-app preview. Replaces the old new-tab open, which carried no auth. */
+  onPreview: (doc: ReviewDocument) => void;
 }
 
 const STATUS_TONE = {
@@ -41,11 +43,9 @@ function formatDate(value: string | null) {
  * owner could see that a document was pending and had no way to act on it,
  * which is where tenant onboarding stopped.
  */
-export function DocumentReviewCard({ doc, isBusy, onApprove, onReject }: DocumentReviewCardProps) {
+export function DocumentReviewCard({ doc, isBusy, onApprove, onReject, onPreview }: DocumentReviewCardProps) {
   const actionable = canActOnDocument(doc);
   const uploaded = formatDate(doc.uploadedAt);
-
-  const open = () => doc.downloadUrl && window.open(doc.downloadUrl, '_blank', 'noopener,noreferrer');
 
   return (
     <div className="flex flex-col gap-3 rounded-[18px] border border-border bg-card p-3.5 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]">
@@ -66,20 +66,14 @@ export function DocumentReviewCard({ doc, isBusy, onApprove, onReject }: Documen
       )}
 
       {doc.downloadUrl && (
-        <div className="flex gap-2">
-          <button type="button" onClick={open} className={`${actionBtn} border border-border bg-card text-foreground`}>
-            <Eye className="h-3.5 w-3.5" strokeWidth={1.9} />
-            View
-          </button>
-          <a
-            href={doc.downloadUrl}
-            download
-            className={`${actionBtn} border border-border bg-card text-foreground`}
-          >
-            <Download className="h-3.5 w-3.5" strokeWidth={1.9} />
-            Download
-          </a>
-        </div>
+        <button
+          type="button"
+          onClick={() => onPreview(doc)}
+          className={`${actionBtn} border border-border bg-card text-foreground`}
+        >
+          <Eye className="h-3.5 w-3.5" strokeWidth={1.9} />
+          View &amp; download
+        </button>
       )}
 
       {actionable && (

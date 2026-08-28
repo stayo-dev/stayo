@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@context/AuthContext';
-import { hasLiveTenancy } from '@/app/nav/useAppNav';
+import { hasLiveTenancy, tenancyState } from '@/app/nav/useAppNav';
+import { canOpenDashboard, hasFarewell } from '@/app/nav/appNavConfig';
 import { StayoLoadingScreen } from '@shared/ui/brand';
 
 interface ProtectedTenantRouteProps {
@@ -21,13 +22,31 @@ export function ProtectedTenantRoute({ children }: ProtectedTenantRouteProps) {
     return <Navigate to="/login" replace />;
   }
 
-  // A TENANT role alone isn't enough — a Discover-only marketplace account
-  // (no `tenants` row, e.g. someone who signed up to browse/enquire) has
-  // nothing to show inside the Dashboard. Previously nothing checked this,
-  // so such an account could reach `/tenant/*` as long as
-  // `is_profile_completed` happened to be true. Send them to Explore instead
-  // — the outer nav won't even offer a Dashboard tab for this state.
-  if (!hasLiveTenancy(user)) {
+  /*
+   * Three outcomes, not two.
+   *
+   * A TENANT role alone isn't enough. A Discover-only marketplace account (no
+   * `tenants` row — someone who signed up to browse and enquire) has nothing
+   * to show inside the Dashboard and goes to Explore; the outer nav won't
+   * even offer a Dashboard tab for that state.
+   *
+   * A departed tenant used to fall through the same `hasLiveTenancy` check as
+   * a browse-only account and get bounced to /discover with no message — so
+   * someone who opened the app to check their refund landed on a marketing
+   * page as though they had never lived anywhere, and their settlement record
+   * became unreachable. Worse, the bounce fired at `vacate`, a whole step
+   * before the money settled.
+   *
+   * EXITING keeps the dashboard, read-only, until the settlement closes.
+   * EXITED goes to the farewell screen, which explains what happened, keeps
+   * the receipt, and points at Discover. Only an account that never had a
+   * tenancy still goes straight to Explore. (ADR-122)
+   */
+  const state = tenancyState(user);
+  if (!canOpenDashboard(state)) {
+    return <Navigate to={hasFarewell(state) ? '/tenant/farewell' : '/discover'} replace />;
+  }
+  if (!hasLiveTenancy(user) && state !== 'EXITING') {
     return <Navigate to="/discover" replace />;
   }
 

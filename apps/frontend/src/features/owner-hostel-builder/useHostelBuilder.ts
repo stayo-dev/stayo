@@ -24,7 +24,7 @@ import {
 } from './hostelBuilder';
 import { primaryFloorAction, sweepBlocker, unsavedFloorIndexes } from './floorStrip';
 
-export type BuilderStage = 'name' | 'floors' | 'fill' | 'review';
+export type BuilderStage = 'name' | 'floors' | 'fill' | 'review' | 'agreement';
 
 /**
  * Drives the Add Hostel builder.

@@ -29,6 +29,9 @@ export function toTenantListItem(t: NormalizedTenant, hostelId: string, hostelNa
     id: t.id,
     name: t.name,
     initials: getInitials(t.name),
+    // Already produced by the normalizer and already on every list endpoint —
+    // this mapping was the only thing dropping it.
+    photoUrl: t.photoUrl ?? null,
     phone: t.phone,
     hostelId,
     hostelName,
@@ -45,6 +48,7 @@ export function toTenantListItem(t: NormalizedTenant, hostelId: string, hostelNa
     paymentRatePercent: 0,
     agreementStatus: t.hasAgreement ? 'Signed' : 'Pending',
     kycStatus: t.documentVerified ? 'Verified' : 'Pending',
+    accessMode: t.accessMode,
     obligations: [],
     activity: [],
     documents: [],

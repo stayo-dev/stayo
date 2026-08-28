@@ -20,6 +20,12 @@ function mapActivationError(error: any) {
     VALIDATION_ERROR: 400,
     NOT_FOUND: 404,
     INTERNAL_ERROR: 500,
+    // `resolveByToken` throws this for a SUPERSEDED invitation whose
+    // tenancy is OWNER_MANAGED (the owner adopted it while the invite sat
+    // unopened) -- not a dead link, a redirect to the claim flow.
+    // `ActivationPage.tsx` routes on this code rather than showing "link
+    // expired". See tenant-invitation-lifecycle-service.ts's resolveByToken.
+    CLAIM_REQUIRED: 409,
   };
   return { message, code, status: statusMap[code] || 500 };
 }

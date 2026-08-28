@@ -5,7 +5,8 @@ import { getLogger } from "../logger";
 import { financialService } from "../../src/services/payments/financial-service";
 import { tenantFinancialLedgerService } from "../../src/services/payments/tenant-financial-ledger-service";
 import { obligationEngine } from "../../src/services/payments/obligation-engine";
-import { assertTransition, assertCapability, checkCapability, getTenantSteps } from "./move-out-state-machine";
+import { assertTransition, assertCapability, canonicalMoveOutStatus, checkCapability, getTenantSteps } from "./move-out-state-machine";
+import { detectSettlementDrift, planQuickExitSteps, type QuickExitStep } from "./move-out-quick-exit-plan";
 import {
   notifyMoveOutDisputeRaised,
   notifyMoveOutDisputeUpdated,
@@ -506,7 +507,34 @@ export class MoveOutService {
   }
 
   // ── Confirm Payment → COMPLETED ─────────────────────────────
-  async confirmPaymentAndComplete(params: { requestId: string; actor: MoveOutActor; paymentMethod?: string; paymentReference?: string; paymentNotes?: string }) {
+  /**
+   * `duesDisposition` — what happens to rent the tenant still owes when the
+   * move-out closes (ADR-122).
+   *
+   * This used to be unconditional: completing a move-out bulk-waived every
+   * PENDING/PARTIAL obligation, with the reason "outstanding rent waived",
+   * behind a button the owner app labelled "Confirm Refund & Complete". An
+   * owner closing the books on a tenant who owed ₹25,000 wrote off ₹25,000
+   * and was never told. That is the opposite of what the button said.
+   *
+   * The default is now RECOVERABLE: the tenancy closes, the debt does not.
+   * Nothing chases the former tenant for it — `reminder-service` and
+   * `rent-generation-service` both filter `status: "ACTIVE"`, so no late fee
+   * accrues and no reminder fires once they are FORMER_TENANT — but the
+   * money stays on the books and a payment can still be recorded against it
+   * (`payment-service` has no tenancy-status gate).
+   *
+   * WAIVE is still available, and still does exactly what it did. It is just
+   * no longer something that happens to an owner by accident.
+   */
+  async confirmPaymentAndComplete(params: {
+    requestId: string;
+    actor: MoveOutActor;
+    paymentMethod?: string;
+    paymentReference?: string;
+    paymentNotes?: string;
+    duesDisposition?: "RECOVERABLE" | "WAIVE";
+  }) {
     await this.requireRequestActor(params.requestId, params.actor, {
       action: "complete this move-out request",
       allowOwner: true,
@@ -530,19 +558,26 @@ export class MoveOutService {
         await applyAdvanceSettlementInTx(tx, req.settlement.id, params.actor.id, now);
       }
 
-      // Waive outstanding rent obligations — routed through ObligationEngine
-      // so any PARTIAL obligation (real payments on record) gets a proper
-      // ledger correction instead of a silent status flip.
-      const toWaive = await tx.rent_obligations.findMany({
-        where: { tenant_id: req.tenant_id, status: { in: ["PENDING", "PARTIAL"] } },
-        select: { id: true },
-      });
-      if (toWaive.length > 0 && req.tenant?.owner_id) {
-        await obligationEngine.bulkWaiveInTx(tx, {
-          obligationIds: toWaive.map((o: any) => o.id),
-          reason: "Move-out settlement confirmed — outstanding rent waived",
-          actorId: req.tenant.owner_id,
+      // Outstanding rent: waived only when the owner explicitly asked for it.
+      // Anything else leaves the obligations standing as recoverable debt —
+      // see the `duesDisposition` note on this method.
+      let waivedCount = 0;
+      if (params.duesDisposition === "WAIVE") {
+        // Routed through ObligationEngine so any PARTIAL obligation (real
+        // payments on record) gets a proper ledger correction instead of a
+        // silent status flip.
+        const toWaive = await tx.rent_obligations.findMany({
+          where: { tenant_id: req.tenant_id, status: { in: ["PENDING", "PARTIAL"] } },
+          select: { id: true },
         });
+        if (toWaive.length > 0 && req.tenant?.owner_id) {
+          await obligationEngine.bulkWaiveInTx(tx, {
+            obligationIds: toWaive.map((o: any) => o.id),
+            reason: "Move-out settlement confirmed — outstanding rent waived by owner",
+            actorId: req.tenant.owner_id,
+          });
+          waivedCount = toWaive.length;
+        }
       }
 
       await tx.move_out_requests.update({
@@ -550,10 +585,184 @@ export class MoveOutService {
         data: { status: "COMPLETED", financial_completion_date: now, completed_at: now, updated_at: now },
       });
 
-      logger.info("move_out.completed", { id: params.requestId, tenant_id: req.tenant_id });
+      logger.info("move_out.completed", {
+        id: params.requestId,
+        tenant_id: req.tenant_id,
+        dues_disposition: params.duesDisposition ?? "RECOVERABLE",
+        waived_obligations: waivedCount,
+      });
       notifyMoveOutTransition(params.requestId, "COMPLETED");
-      return { success: true, request_id: params.requestId };
+      return {
+        success: true,
+        request_id: params.requestId,
+        dues_disposition: params.duesDisposition ?? "RECOVERABLE",
+        waived_obligations: waivedCount,
+      };
     });
+  }
+
+  // ── Quick Exit (one owner action, whole pipeline) ────────────
+  /**
+   * Run the whole move-out pipeline for the case that does not need a
+   * five-screen conversation (ADR-122).
+   *
+   * The overwhelming majority of exits an owner records are bookkeeping: the
+   * course ended, the tenant already went home, the room is fine, and the
+   * only question is whether the deposit comes back. Those were being walked
+   * through the identical REQUESTED → SETTLEMENT_PENDING → SETTLEMENT_APPROVED
+   * → PHYSICALLY_VACATED → COMPLETED conversation as a disputed exit with
+   * damages — five forms, five round trips, priced for the 5% case.
+   *
+   * This does not add a state, weaken a guard, or write a status directly.
+   * Every hop still goes through the same public method and therefore the
+   * same `assertTransition()`, so a request closed in one tap has exactly the
+   * audit trail of one closed in five.
+   *
+   * TWO PROPERTIES MATTER MORE THAN THE SPEED:
+   *
+   * 1. **It is resumable, not atomic.** The steps are separate transactions
+   *    (each underlying method opens its own), so a failure at step 4 leaves
+   *    a real, consistent request sitting at step 3. Calling again picks up
+   *    from wherever it stopped rather than starting over or double-applying
+   *    — which is why every stage below is guarded by the *current* status
+   *    rather than assumed from the previous line.
+   *
+   * 2. **It refuses to close an outcome the owner did not see.** The caller
+   *    sends back the net and direction it displayed; we recompute and bail
+   *    with STALE_PREVIEW if they no longer match. Without this, a payment
+   *    landing between the sheet rendering ₹0 and the owner tapping "confirm"
+   *    would silently settle a different number than the one on screen. That
+   *    guard is the whole reason this is safe to expose as one button.
+   */
+  async quickExit(params: {
+    hostelId: string;
+    tenantId: string;
+    actor: MoveOutActor;
+    reason: MoveOutReason;
+    reasonText?: string;
+    plannedExitDate: string;
+    physicalExitDate?: string;
+    paymentMethod?: string;
+    paymentReference?: string;
+    paymentNotes?: string;
+    duesDisposition?: "RECOVERABLE" | "WAIVE";
+    expectedNet: number;
+    expectedDirection: string;
+  }) {
+    if (!params.actor?.ownerId) this.forbidden("run a quick exit");
+
+    // 1 ── Reuse an in-flight request if there is one. `createRequest`
+    //      refuses to make a second, and re-tapping after a mid-way failure
+    //      must continue rather than error.
+    let request = await prisma.move_out_requests.findFirst({
+      where: { tenant_id: params.tenantId, status: { notIn: ["COMPLETED", "REJECTED"] } },
+      orderBy: { created_at: "desc" },
+      select: { id: true, status: true, hostel_id: true },
+    });
+
+    let created = false;
+    if (!request) {
+      const result = await this.createRequest({
+        tenantId: params.tenantId,
+        hostelId: params.hostelId,
+        ownerId: params.actor.ownerId,
+        initiatedBy: params.actor.id,
+        initiatedByRole: "OWNER",
+        reason: params.reason,
+        reasonText: params.reasonText,
+        plannedExitDate: params.plannedExitDate,
+        actor: params.actor,
+      });
+      request = { id: result.request.id, status: result.request.status, hostel_id: result.request.hostel_id };
+      created = true;
+    } else if (request.hostel_id !== params.hostelId) {
+      throw new Error("FORBIDDEN: Move-out request belongs to a different hostel");
+    }
+
+    const requestId = request.id;
+
+    // 2 ── A dispute means somebody disagrees about money. That is never a
+    //      one-tap situation; send the caller to the full flow.
+    await this.assertNoActiveDisputes(requestId);
+
+    // 3 ── Confirm the owner is closing the number they were shown.
+    //      Done before any transition, so a mismatch costs nothing but the
+    //      REQUESTED row above (which reflects real intent and is picked up
+    //      by the normal flow).
+    const preview = await this.calculateSettlementPreview(requestId);
+    const drift = detectSettlementDrift(preview, {
+      net: params.expectedNet,
+      direction: params.expectedDirection,
+    });
+    if (drift.drifted) {
+      throw new Error(
+        `STALE_PREVIEW: The settlement changed while you were reviewing it — ` +
+        `now ${preview.settlement_direction} ₹${Math.abs(Number(preview.net_settlement_amount))}. ` +
+        `Reopen the move-out to see the current figures.` +
+        (created ? ` The exit request was created and is waiting at inspection.` : ``)
+      );
+    }
+
+    // 4 ── Walk only the hops this request has not already taken.
+    const remaining = planQuickExitSteps(request.status);
+    const steps: QuickExitStep[] = [];
+    let status = canonicalMoveOutStatus(request.status);
+
+    if (remaining.includes("INSPECTED")) {
+      // Quick exit is by definition the no-deductions case — a damaged room
+      // has amounts to enter and belongs in the full flow. Recording the
+      // inspection explicitly (rather than skipping the state) keeps the
+      // move_out_inspections row every downstream reader expects.
+      await this.submitInspection({
+        requestId,
+        inspectedBy: params.actor.id,
+        roomCondition: "GOOD",
+        cleaningStatus: "CLEAN",
+        damagesAmount: 0,
+        cleaningFee: 0,
+        missingItemsFee: 0,
+        otherDeductions: 0,
+        notes: "Quick exit — no deductions recorded.",
+        actor: params.actor,
+      });
+      steps.push("INSPECTED");
+      status = "SETTLEMENT_PENDING";
+    }
+
+    if (remaining.includes("SETTLED")) {
+      await this.approveSettlement(requestId, params.actor, "Quick exit — settlement confirmed by owner.");
+      steps.push("SETTLED");
+      status = "SETTLEMENT_APPROVED";
+    }
+
+    if (remaining.includes("VACATED")) {
+      await this.vacate(requestId, params.actor, params.physicalExitDate || params.plannedExitDate);
+      steps.push("VACATED");
+      status = "PHYSICALLY_VACATED";
+    }
+
+    if (remaining.includes("COMPLETED")) {
+      await this.confirmPaymentAndComplete({
+        requestId,
+        actor: params.actor,
+        paymentMethod: params.paymentMethod,
+        paymentReference: params.paymentReference,
+        paymentNotes: params.paymentNotes,
+        duesDisposition: params.duesDisposition,
+      });
+      steps.push("COMPLETED");
+      status = "COMPLETED";
+    }
+
+    logger.info("move_out.quick_exit", { id: requestId, tenant_id: params.tenantId, steps });
+
+    return {
+      success: true,
+      request_id: requestId,
+      status,
+      steps,
+      settlement: preview,
+    };
   }
 
   // ── Raise Dispute ────────────────────────────────────────────

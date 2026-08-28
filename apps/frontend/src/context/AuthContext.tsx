@@ -26,6 +26,15 @@ export interface AuthUser {
    * context previously dropped on the floor.
    */
   tenant_status?: string | null;
+  /**
+   * LIVE / EXITING / EXITED / NONE — computed by `/api/auth/me`, which is the
+   * only place that knows whether a departed tenant still has an unsettled
+   * move-out. See `appNavConfig.ts::TenancyState` for why `tenant_status`
+   * alone was not enough to gate dashboard access. (ADR-122)
+   */
+  tenancy_state?: string | null;
+  /** The move-out to show on the read-only dashboard and farewell screen. */
+  exit_request_id?: string | null;
   phone?: string | null;
   phone_verified?: boolean;
 }
@@ -160,6 +169,8 @@ function buildAuthUser(data: any): AuthUser {
     hostel_id: data.hostel_id,
     is_profile_completed: data.is_profile_completed,
     tenant_status: data.tenant_status ?? null,
+    tenancy_state: data.tenancy_state ?? null,
+    exit_request_id: data.exit_request_id ?? null,
     phone: data.phone ?? null,
     phone_verified: Boolean(data.phone_verified),
   };

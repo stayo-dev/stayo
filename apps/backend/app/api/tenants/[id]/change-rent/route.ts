@@ -7,7 +7,7 @@ import { ApiResponse } from "@/src/lib/api-response";
 import { ApiError } from "@/src/lib/api-error";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
 import { requireHostelBelongsToOwner } from "@/lib/security/scoped-query";
-import { prisma } from "@/lib/db";
+import { prisma as dbClient } from "@/lib/db";
 import { applyRentChangeInTx } from "@/src/services/payments/rent-change-service";
 import { verifyIdentityConfirmation, consumeIdentityTokenInTx } from "@/src/services/payments/identity-confirmation-guard";
 
@@ -28,6 +28,12 @@ const IDENTITY_ACTION = "change_rent";
  * Owner-only, no tenant approval — see Business-Rules.md. Identity-confirmed
  * (password re-entry) like obligation cancel/waive, because it is a
  * financially sensitive mutation.
+ *
+ * **Needs no agreement.** Rent is anchored to `tenants.monthly_rent`, not to
+ * an `Agreement` row — an agreement is optional by design (ADR-059 lets an
+ * owner switch signing off entirely), so requiring one made rent unchangeable
+ * for those hostels. Where an agreement does exist the service keeps its
+ * `contract_rent` in step; it is a snapshot, never a gate.
  *
  * Body: { hostelId, newRentAmount, effectiveFromMonth, reason, identityToken }
  */
@@ -54,20 +60,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const identity = await verifyIdentityConfirmation(identityToken, IDENTITY_PURPOSE, IDENTITY_ACTION, session.sub);
 
-    const agreement = await prisma.agreement.findFirst({
-      where: {
-        tenant_id: params.id,
-        hostel_id: hostelId,
-        status: { in: ["SIGNED", "EXPIRING_SOON", "AGREEMENT_EXPIRED"] },
-      },
-      orderBy: { generated_at: "desc" },
-    });
-    if (!agreement) return ApiResponse.error(ApiError.notFound("No active agreement found for this tenant"));
-
-    const result = await prisma.$transaction(async (tx: any) => {
+    const result = await dbClient.$transaction(async (tx: any) => {
       await consumeIdentityTokenInTx(tx, identity.jti);
       return applyRentChangeInTx(tx, {
-        agreementId: agreement.id,
+        tenantId: params.id,
         hostelId,
         newRentAmount: Number(newRentAmount),
         effectiveFromMonth: new Date(effectiveFromMonth),

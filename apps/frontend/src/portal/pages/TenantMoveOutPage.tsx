@@ -8,6 +8,7 @@ import { MoveOutStepper } from '@features/tenants/components/moveout/MoveOutStep
 import { Link } from 'react-router-dom';
 import { canonicalMoveOutStatus } from '@/shared/types/moveout';
 import { StayoLoader } from '@shared/ui/brand';
+import { ExitImpactNotice } from '@features/tenant-exit/ExitImpactNotice';
 
 const fmt = (n: number) => `₹${Number(n ?? 0).toLocaleString('en-IN')}`;
 const GOOGLE_REVIEW_URL = 'https://search.google.com/local/writereview?placeid=ChIJW1hB1g13yzsRscG4r7mVPt4';
@@ -649,6 +650,9 @@ export function TenantMoveOutPage() {
           <h1 className="text-2xl font-bold text-foreground">Why Are You Leaving?</h1>
           <p className="text-sm text-muted-foreground">Select a reason for requesting move-out.</p>
         </div>
+
+        {/* Told before the decision, not after it. */}
+        <ExitImpactNotice />
 
         {is4thYear && (
           <div className="p-3.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-xs leading-relaxed">

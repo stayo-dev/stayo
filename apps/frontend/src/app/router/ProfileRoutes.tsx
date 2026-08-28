@@ -13,6 +13,9 @@ const ResidencyHistoryPage = lazy(() =>
 const ProfileDocumentsPage = lazy(() =>
   import('@/app/pages/discover/ProfileDocumentsPage').then((m) => ({ default: m.ProfileDocumentsPage })),
 );
+const AlertsPage = lazy(() =>
+  import('@features/tenant-alerts/AlertsPage').then((m) => ({ default: m.AlertsPage })),
+);
 const SupportTicketsPage = lazy(() =>
   import('@/app/pages/discover/SupportTicketsPage').then((m) => ({ default: m.SupportTicketsPage })),
 );
@@ -46,6 +49,7 @@ export function ProfileRoutes() {
       <Route path="/profile/details" element={<ProfileEditPage />} />
       <Route path="/profile/history" element={<ResidencyHistoryPage />} />
       <Route path="/profile/documents" element={<ProfileDocumentsPage />} />
+      <Route path="/profile/alerts" element={<AlertsPage />} />
       <Route path="/profile/tickets" element={<SupportTicketsPage />} />
       <Route path="/profile/saved" element={<SavedPage />} />
       <Route path="/profile/enquiries" element={<EnquiriesPage />} />

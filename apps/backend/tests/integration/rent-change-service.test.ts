@@ -41,7 +41,7 @@ describe('applyRentChangeInTx', () => {
 
     const result = await prisma.$transaction((tx) =>
       applyRentChangeInTx(tx, {
-        agreementId: agreement.id,
+        tenantId: tenant.id,
         hostelId: hostel.id,
         newRentAmount: 9000,
         effectiveFromMonth: feb,
@@ -84,7 +84,7 @@ describe('applyRentChangeInTx', () => {
 
     const result = await prisma.$transaction((tx) =>
       applyRentChangeInTx(tx, {
-        agreementId: agreement.id,
+        tenantId: tenant.id,
         hostelId: hostel.id,
         newRentAmount: 9000,
         effectiveFromMonth: feb,
@@ -98,17 +98,64 @@ describe('applyRentChangeInTx', () => {
     expect(Number(untouched.amount)).toBe(8000);
   });
 
+  it('changes rent for a tenant with no agreement at all', async () => {
+    // The case the agreement-anchored version could not serve: a hostel with
+    // `agreement_required = false` never signs, so no Agreement row is ever
+    // created, and rent still has to be changeable.
+    const owner = await createTestOwner();
+    const hostel = await createTestHostel(owner.id);
+    const tenant = await createTestTenant(owner.id, hostel.id, { monthly_rent: 8000 });
+
+    const feb = new Date(Date.UTC(2027, 1, 1));
+    const obligation = await prisma.$transaction((tx: any) =>
+      tx.rent_obligations.create({
+        data: {
+          tenant_id: tenant.id,
+          hostel_id: hostel.id,
+          obligation_type: 'RENT',
+          amount: 8000,
+          total_amount: 8000,
+          rent_month: feb,
+          due_date: new Date(feb.getTime() + 4 * 24 * 60 * 60 * 1000),
+          status: 'UPCOMING',
+          lifecycle_status: 'ACTIVE',
+          settlement_status: 'UNPAID',
+        },
+      })
+    );
+
+    const result = await prisma.$transaction((tx: any) =>
+      applyRentChangeInTx(tx, {
+        tenantId: tenant.id,
+        hostelId: hostel.id,
+        newRentAmount: 9000,
+        effectiveFromMonth: feb,
+        actorId: owner.id,
+        reason: 'no agreement in this hostel',
+      })
+    );
+
+    expect(result.agreementId).toBeNull();
+    expect(result.oldRentAmount).toBe(8000);
+    expect(result.obligationsUpdated).toBe(1);
+
+    const repriced = await prisma.rent_obligations.findUniqueOrThrow({ where: { id: obligation.id } });
+    expect(Number(repriced.amount)).toBe(9000);
+
+    const updatedTenant = await prisma.tenants.findUniqueOrThrow({ where: { id: tenant.id } });
+    expect(Number(updatedTenant.monthly_rent)).toBe(9000);
+  });
+
   it('rejects a hostel mismatch', async () => {
     const owner = await createTestOwner();
     const hostelA = await createTestHostel(owner.id);
     const hostelB = await createTestHostel(owner.id);
     const tenant = await createTestTenant(owner.id, hostelA.id);
-    const agreement = await createTestAgreement(tenant.id, hostelA.id);
 
     await expect(
       prisma.$transaction((tx) =>
         applyRentChangeInTx(tx, {
-          agreementId: agreement.id,
+          tenantId: tenant.id,
           hostelId: hostelB.id,
           newRentAmount: 9000,
           effectiveFromMonth: new Date(Date.UTC(2027, 1, 1)),

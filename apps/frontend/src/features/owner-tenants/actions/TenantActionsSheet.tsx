@@ -6,6 +6,7 @@ import {
   RotateCcw,
   ArrowLeftRight,
   CalendarClock,
+  BedDouble,
   LogOut,
 } from 'lucide-react';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
@@ -21,6 +22,7 @@ interface TenantActionsSheetProps {
   onViewReceipts: () => void;
   onRequestChange: () => void;
   onChangeBilling: () => void;
+  onChangeRoom: () => void;
 }
 
 const GROUPS: {
@@ -40,9 +42,15 @@ const GROUPS: {
     ],
   },
   {
+    label: 'Stay',
+    rows: [
+      { icon: BedDouble, title: 'Move Room', sub: 'Shift to a room with space', key: 'change-room' },
+    ],
+  },
+  {
     label: 'Agreement',
     rows: [
-      { icon: RotateCcw, title: 'Request Change', sub: "Ask tenant to re-sign terms", key: 'request-change' },
+      { icon: RotateCcw, title: 'Amend Agreement', sub: 'Duration, deposit, maintenance', key: 'request-change' },
       { icon: ArrowLeftRight, title: 'Change Rent', sub: 'Revise monthly rent amount', key: 'change-rent' },
       { icon: CalendarClock, title: 'Change Billing Frequency', sub: 'Monthly, quarterly or yearly', key: 'change-billing' },
     ],
@@ -61,6 +69,7 @@ export function TenantActionsSheet({
   onViewReceipts,
   onRequestChange,
   onChangeBilling,
+  onChangeRoom,
 }: TenantActionsSheetProps) {
   const ROW_HANDLERS: Record<string, () => void> = {
     collect: onCollectPayment,
@@ -71,6 +80,7 @@ export function TenantActionsSheet({
     'view-receipts': onViewReceipts,
     'request-change': onRequestChange,
     'change-billing': onChangeBilling,
+    'change-room': onChangeRoom,
   };
 
   const handleRow = (key: string) => {

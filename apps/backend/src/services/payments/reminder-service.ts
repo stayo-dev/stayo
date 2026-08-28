@@ -12,6 +12,7 @@ import { financialLifecycleService } from "./financial-lifecycle-service";
 import { selectReminderForOverdueDay } from "@/lib/services/collection-strategy-service";
 import { whatsappReminderDeliveryService } from "@/lib/services/notifications/whatsapp-reminder-delivery";
 import { getLogger } from "@/lib/logger";
+import { resolveTenantName, resolveTenantPhone } from "@/lib/tenants/tenant-identity";
 
 const logger = getLogger("reminder-service");
 
@@ -116,6 +117,7 @@ export class ReminderService {
           id: ob.tenant_id,
           owner_id: ob.owner_id,
           personal_email: ob.personal_email,
+          access_mode: (ob as any).access_mode ?? null,
           profiles: { name: ob.tenant_name, phone: (ob as any).phone },
         },
       };
@@ -353,6 +355,9 @@ export class ReminderService {
         personal_email: true,
         owner_id: true,
         hostel_id: true,
+        display_name: true,
+        phone_1: true,
+        access_mode: true,
         profiles: { select: { name: true, phone: true } },
       },
     });
@@ -372,7 +377,7 @@ export class ReminderService {
       orderBy: { due_date: "asc" },
     });
 
-    if (!obligation) return { sent: 0, tenant_name: tenant.profiles?.name ?? "Tenant" };
+    if (!obligation) return { sent: 0, tenant_name: resolveTenantName(tenant) };
 
     const context = await getTenantOperationalContext(tenantId, ownerId, tenant.hostel_id);
     const config = context.prefs;
@@ -401,12 +406,15 @@ export class ReminderService {
       ? 1
       : 0;
 
-    return { sent, tenant_name: tenant.profiles?.name ?? "Tenant", channels };
+    return { sent, tenant_name: resolveTenantName(tenant), channels };
   }
 
   private async triggerNotification(obligation: any, type: string, config: any): Promise<NotificationDeliveryResult> {
     const tenant = obligation.tenant;
     const ownerId = tenant.owner_id;
+    const tenantName = resolveTenantName(tenant);
+    const tenantPhone = resolveTenantPhone(tenant);
+    const isOwnerManaged = tenant.access_mode === "OWNER_MANAGED";
     const result: NotificationDeliveryResult = {
       credited: false,
       in_app: emptyChannel(),
@@ -419,19 +427,11 @@ export class ReminderService {
     const canEmail = config.reminder_email ?? true;
     const canInApp = config.reminder_in_app ?? true;
 
-    // 1️⃣ In-App Notification (Always log an audit entry at minimum)
-    if (canInApp) {
+    // 1️⃣ In-App Notification
+    if (isOwnerManaged) {
+      result.in_app = { attempted: false, sent: false, skipped: true, reason: "NO_TENANT_ACCOUNT" };
+    } else if (canInApp) {
       result.in_app.attempted = true;
-      await prisma.reminder_logs.create({
-        data: {
-          id: randomUUID(),
-          obligation_id: obligation.id,
-          tenant_id: obligation.tenant.id,
-          reminder_type: type,
-          channel: "IN_APP",
-          hostel_id: obligation.hostel_id,
-        }
-      });
       result.in_app.sent = true;
     } else {
       result.in_app = { attempted: false, sent: false, skipped: true, reason: "IN_APP_DISABLED" };
@@ -443,7 +443,7 @@ export class ReminderService {
       try {
         const mailData = {
           toEmail: tenant.personal_email,
-          name: tenant.profiles?.name || "Tenant",
+          name: tenantName,
           amount: Number(obligation.amount),
           rentMonth: formatMonthYear(obligation.rent_month, config),
           dueDate: formatDate(obligation.due_date, config),
@@ -479,7 +479,7 @@ export class ReminderService {
       result.whatsapp = { attempted: false, sent: false, skipped: true, reason: "WHATSAPP_DISABLED" };
     } else if (!ownerId) {
       result.whatsapp = { attempted: false, sent: false, skipped: true, reason: "OWNER_MISSING" };
-    } else if (!tenant.profiles?.phone) {
+    } else if (!tenantPhone) {
       result.whatsapp = { attempted: false, sent: false, skipped: true, reason: "TENANT_PHONE_MISSING" };
     } else {
       result.whatsapp.attempted = true;
@@ -502,8 +502,8 @@ export class ReminderService {
             tenantId: tenant.id,
             hostelId: obligation.hostel_id,
             obligationId: obligation.id,
-            phone: tenant.profiles.phone,
-            tenantName: tenant.profiles?.name || "Tenant",
+            phone: tenantPhone,
+            tenantName,
             hostelName: obligation.hostel_name || "Your Hostel",
             amount: Number(obligation.amount),
             rentMonth: obligation.rent_month,
@@ -558,6 +558,31 @@ export class ReminderService {
         provider_message_id: result.whatsapp.provider_message_id,
       },
     });
+
+    // `reminder_logs` is escalation state, not just an audit trail: the next
+    // reminder's type is chosen from the last row here. Writing one when every
+    // channel was skipped would march an unreachable tenant up to FINAL_NOTICE
+    // and then silence them forever. Only a delivery counts.
+    const deliveredChannel = result.in_app.sent
+      ? "IN_APP"
+      : result.whatsapp.sent
+        ? "WHATSAPP"
+        : result.email.sent
+          ? "EMAIL"
+          : null;
+
+    if (deliveredChannel) {
+      await prisma.reminder_logs.create({
+        data: {
+          id: randomUUID(),
+          obligation_id: obligation.id,
+          tenant_id: tenant.id,
+          reminder_type: type,
+          channel: deliveredChannel,
+          hostel_id: obligation.hostel_id,
+        },
+      });
+    }
 
     return result;
   }

@@ -1,5 +1,7 @@
+import { rentChangeableAgreementWhere } from "../tenants/agreement-status";
+
 export interface ApplyRentChangeParams {
-  agreementId: string;
+  tenantId: string;
   hostelId: string;
   newRentAmount: number;
   effectiveFromMonth: Date;
@@ -8,8 +10,9 @@ export interface ApplyRentChangeParams {
 }
 
 export interface RentChangeResult {
-  agreementId: string;
   tenantId: string;
+  /** The agreement kept in step, when the tenant had one. Null is ordinary. */
+  agreementId: string | null;
   oldRentAmount: number;
   newRentAmount: number;
   effectiveFromMonth: Date;
@@ -23,18 +26,38 @@ function money(value: unknown): number {
 }
 
 /**
- * Changes a tenant's rent effective from a chosen month onward. Reuses the
- * same safety rule already established in agreement-rent-schedule-service.ts
- * (a rent_obligations row may be repriced in place ONLY when it has zero
- * recorded payments) but adds month-scoping that service lacks — implemented
- * as a standalone function rather than a modification to that shared,
- * renewal-critical service.
+ * Changes a tenant's rent from a chosen month onward, and reprices the charges
+ * that month and later which nobody has paid against yet.
+ *
+ * **The tenant is the anchor, not an agreement.** This used to take an
+ * `agreementId`: it read the old rent from `contract_rent`, locked the
+ * `Agreement` row, selected obligations by `agreement_id`, and the calling
+ * route refused the whole operation when no suitable agreement existed. That
+ * made money depend on an optional record. `tenant_rules.agreement_required`
+ * (ADR-059) lets an owner switch the signing ceremony off entirely, and then no
+ * signed agreement is ever created — so rent was unchangeable for every tenant
+ * of every such hostel, and even where an agreement existed the monthly cron's
+ * obligations (written with no `agreement_id`) were never repriced.
+ *
+ * `tenants.monthly_rent` is the source of truth. The rest of the codebase
+ * already agrees: every reader of `contract_rent` falls back to it
+ * (`agreement?.contract_rent ?? monthly_rent`).
+ *
+ * An agreement, when one exists, is a **snapshot kept in step** — updated
+ * because those same readers prefer it when present, so leaving it stale would
+ * have renewals and settlement quoting the old rent. It is never a
+ * precondition, and its absence is an ordinary outcome rather than an error.
+ *
+ * The zero-payment rule is unchanged: an obligation may be repriced in place
+ * only while nothing has been paid against it (the same safety rule
+ * `agreement-rent-schedule-service` established), with month-scoping that
+ * service lacks.
  */
 export async function applyRentChangeInTx(
   tx: any,
   params: ApplyRentChangeParams
 ): Promise<RentChangeResult> {
-  const { agreementId, hostelId, newRentAmount, effectiveFromMonth, reason } = params;
+  const { tenantId, hostelId, newRentAmount, effectiveFromMonth, reason } = params;
 
   if (!(newRentAmount > 0)) {
     throw new Error("VALIDATION_ERROR: newRentAmount must be greater than 0");
@@ -43,21 +66,34 @@ export async function applyRentChangeInTx(
     throw new Error("VALIDATION_ERROR: reason is required");
   }
 
-  // Table name confirmed against prisma/schema.prisma: model `Agreement` has
-  // no @@map, so the Postgres table is literally "Agreement".
-  await tx.$queryRaw`SELECT id FROM "Agreement" WHERE id = ${agreementId}::uuid FOR UPDATE`;
+  // Serialises concurrent rent changes for one tenant. The lock moved here
+  // from the Agreement row along with the anchor — a tenant with no agreement
+  // would otherwise have had nothing to lock.
+  await tx.$queryRaw`SELECT id FROM tenants WHERE id = ${tenantId}::uuid FOR UPDATE`;
 
-  const agreement = await tx.agreement.findUniqueOrThrow({ where: { id: agreementId } });
+  const tenant = await tx.tenants.findUniqueOrThrow({
+    where: { id: tenantId },
+    select: { id: true, hostel_id: true, monthly_rent: true },
+  });
 
-  if (agreement.hostel_id !== hostelId) {
-    throw new Error(`Agreement ${agreementId} does not belong to hostel ${hostelId}`);
+  // The agreement's hostel used to prove the caller was operating on the right
+  // property. With the agreement optional, the tenant's own hostel is the only
+  // check left, so it has to be made explicitly.
+  if (tenant.hostel_id !== hostelId) {
+    throw new Error(`Tenant ${tenantId} does not belong to hostel ${hostelId}`);
   }
 
-  const oldRentAmount = money(agreement.contract_rent);
+  const oldRentAmount = money(tenant.monthly_rent);
 
   const candidates = await tx.rent_obligations.findMany({
     where: {
-      agreement_id: agreementId,
+      // By tenant and hostel — never by agreement. Both generation paths set
+      // these two columns, whereas only `agreement-rent-schedule-service` sets
+      // `agreement_id`; the monthly cron omits it entirely. Hostel scoping
+      // keeps a transferred tenant's charges at their previous property out of
+      // this change.
+      tenant_id: tenantId,
+      hostel_id: hostelId,
       obligation_type: "RENT",
       is_superseded: false,
       lifecycle_status: "ACTIVE",
@@ -69,21 +105,30 @@ export async function applyRentChangeInTx(
 
   const safeToReprice = candidates.filter((ob: any) => !ob.payments || ob.payments.length === 0);
 
-  await tx.agreement.update({
-    where: { id: agreementId },
-    data: { contract_rent: newRentAmount },
-  });
-
-  // Keep tenants.monthly_rent in sync with the agreement's contract_rent —
-  // the same tenant-contract-sync pattern used by renewal activation (see
-  // renewal-activation-engine.ts's tenantContractSync / tx.tenants.update
-  // call). Without this, the frontend (which sources "current rent" from
-  // tenant.monthly_rent, not agreement.contract_rent) shows the stale rent
-  // after a successful change.
   await tx.tenants.update({
-    where: { id: agreement.tenant_id },
+    where: { id: tenantId },
     data: { monthly_rent: newRentAmount },
   });
+
+  // Best-effort snapshot sync. Excludes RENEWED and TERMINATED: a later
+  // agreement governs, or none does, and rewriting a closed contract's rent
+  // would falsify history.
+  const agreement = await tx.agreement.findFirst({
+    where: {
+      tenant_id: tenantId,
+      hostel_id: hostelId,
+      status: rentChangeableAgreementWhere(),
+    },
+    orderBy: { generated_at: "desc" },
+    select: { id: true },
+  });
+
+  if (agreement) {
+    await tx.agreement.update({
+      where: { id: agreement.id },
+      data: { contract_rent: newRentAmount },
+    });
+  }
 
   const updatedObligationIds: string[] = [];
   for (const obligation of safeToReprice) {
@@ -99,8 +144,8 @@ export async function applyRentChangeInTx(
   }
 
   return {
-    agreementId,
-    tenantId: agreement.tenant_id,
+    tenantId,
+    agreementId: agreement?.id ?? null,
     oldRentAmount,
     newRentAmount: money(newRentAmount),
     effectiveFromMonth,

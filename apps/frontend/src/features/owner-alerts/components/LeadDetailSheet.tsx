@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Phone } from 'lucide-react';
+import { Mail, MessageCircle, Phone } from 'lucide-react';
 
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { admissionsService } from '@features/admissions/api';
 import { queryKeys } from '@lib/queryKeys';
+import { openWhatsAppShare } from '@lib/share';
 import { HostelStaySummary } from '@features/owner-tenants/components/HostelStaySummary';
+import { tenantHistoryService } from '@features/owner-tenants/api/tenantHistory';
+import { classifyHostelRelationship } from '@features/owner-tenants/hostelRelationship';
 import { LEAD_SOURCE_LABEL, leadStatusLabel, leadCanAcceptHoldReject } from '../leadConstants';
 
 interface LeadDetailSheetProps {
@@ -49,6 +52,21 @@ export function LeadDetailSheet({ leadId, onClose }: LeadDetailSheetProps) {
     queryFn: () => admissionsService.detail(leadId),
     enabled: Boolean(leadId),
   });
+
+  const hostelId = lead?.hostel_id;
+  const profileId = lead?.seeker_profile_id;
+  // Same query key HostelStaySummary uses internally below — React Query
+  // dedupes identical keys, so this reads the same cached result rather than
+  // firing a second request. Disclosure is already earned here via this
+  // lead's own open enquiry (ADR-075) — this only classifies what's already
+  // fetched, it discloses nothing new.
+  const { data: staySummary } = useQuery({
+    queryKey: queryKeys.owner.tenantHistoryByProfile(hostelId ?? '', profileId ?? ''),
+    queryFn: () => tenantHistoryService.byProfile(hostelId as string, profileId as string),
+    enabled: Boolean(hostelId && profileId),
+  });
+  const relationship = staySummary && hostelId ? classifyHostelRelationship(staySummary, hostelId) : null;
+  const isActiveElsewhere = relationship?.relationship === 'ACTIVE_ELSEWHERE';
 
   const actionMutation = useMutation({
     mutationFn: (payload: { status: 'ON_HOLD' | 'REJECTED'; note?: string }) =>
@@ -156,17 +174,39 @@ export function LeadDetailSheet({ leadId, onClose }: LeadDetailSheetProps) {
                   </div>
                 </div>
               )
-              : leadCanAcceptHoldReject(lead.status)
+              : leadCanAcceptHoldReject(lead.status) && isActiveElsewhere
                 ? (
                   <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={goToAddTenant}
-                      disabled={actionMutation.isPending}
-                      className={actionBtn}
-                    >
-                      Accept &amp; invite
-                    </button>
+                    {lead.student_phone ? (
+                      <a href={`tel:${lead.student_phone}`} className={sideBtn}>
+                        Call
+                      </a>
+                    ) : (
+                      <button type="button" disabled className={sideBtn}>
+                        Call
+                      </button>
+                    )}
+                    {lead.student_phone ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openWhatsAppShare(
+                            `Hi ${lead.student_name}, this is regarding your enquiry at ${lead.hostel?.name ?? 'our hostel'}.`,
+                            lead.student_phone,
+                          )
+                        }
+                        className={sideBtn}
+                      >
+                        <span className="inline-flex items-center gap-1.5">
+                          <MessageCircle className="h-3.5 w-3.5" strokeWidth={2} />
+                          Chat
+                        </span>
+                      </button>
+                    ) : (
+                      <button type="button" disabled className={sideBtn}>
+                        Chat
+                      </button>
+                    )}
                     <button type="button" onClick={() => setMode('hold')} disabled={actionMutation.isPending} className={sideBtn}>
                       Hold
                     </button>
@@ -180,6 +220,30 @@ export function LeadDetailSheet({ leadId, onClose }: LeadDetailSheetProps) {
                     </button>
                   </div>
                 )
+                : leadCanAcceptHoldReject(lead.status)
+                  ? (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={goToAddTenant}
+                        disabled={actionMutation.isPending}
+                        className={actionBtn}
+                      >
+                        Accept &amp; invite
+                      </button>
+                      <button type="button" onClick={() => setMode('hold')} disabled={actionMutation.isPending} className={sideBtn}>
+                        Hold
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMode('reject-confirm')}
+                        disabled={actionMutation.isPending}
+                        className={`${sideBtn} text-destructive`}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  )
                 : lead.status === 'ACCEPTED'
                   ? (
                     <button type="button" onClick={goToAddTenant} className={actionBtn}>
@@ -216,6 +280,12 @@ export function LeadDetailSheet({ leadId, onClose }: LeadDetailSheetProps) {
               </span>
             )}
           </div>
+
+          {isActiveElsewhere && relationship?.stay && (
+            <p className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3.5 py-2.5 text-[12.5px] font-semibold text-amber-700">
+              This person currently has an active tenancy at {relationship.stay.hostel.name ?? 'another hostel'}. Inviting them here isn&apos;t possible until they move out and settle there — Call or Chat to stay in touch.
+            </p>
+          )}
 
           {lead.seeker_profile_id && <HostelStaySummary hostelId={lead.hostel_id} profileId={lead.seeker_profile_id} />}
 
