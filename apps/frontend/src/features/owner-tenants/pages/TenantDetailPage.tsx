@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
+import { tenantService } from '@features/tenants/api';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ArrowRight, BedDouble, Clock, FileText, LogOut, Undo2 } from 'lucide-react';
@@ -65,6 +67,7 @@ export function TenantDetailPage() {
 
   const [activeTab, setActiveTab] = useState<TenantDetailTab>('charges');
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [isResending, setIsResending] = useState(false);
   const [quickCollectOpen, setQuickCollectOpen] = useState(false);
   const [changeRentOpen, setChangeRentOpen] = useState(false);
   const [moveOutOpen, setMoveOutOpen] = useState(false);
@@ -149,6 +152,45 @@ export function TenantDetailPage() {
         </div>
 
         <div className="flex flex-col gap-3.5 px-4 pb-10 sm:px-6">
+          {tenant.accessMode === 'OWNER_MANAGED' && (
+            /*
+             * Inviting a tenant now makes the tenancy live immediately, so
+             * `status === 'invited'` is never true and the pre-activation
+             * workspace below is unreachable for new tenancies. That workspace
+             * shows no money, which is wrong for a tenant whose payments the
+             * owner is actively recording — so the normal view stays, and the
+             * one invitation action that still matters is surfaced here.
+             */
+            <div className="rounded-2xl border border-border bg-card px-4 py-3">
+              <p className="font-display text-[13.5px] font-bold text-foreground">
+                You're keeping these records
+              </p>
+              <p className="mt-0.5 text-[12.5px] leading-snug text-muted-foreground">
+                {tenant.name.split(' ')[0]} hasn't taken charge of their account yet. Everything
+                here keeps working either way — they can join anytime and pick up this same record.
+              </p>
+              <button
+                type="button"
+                disabled={isResending}
+                onClick={async () => {
+                  setIsResending(true);
+                  try {
+                    await tenantService.resendInvitation(tenant.phone);
+                    toast.success('Invitation resent');
+                  } catch (error: any) {
+                    toast.error(
+                      error?.response?.data?.error?.message || 'Failed to resend invitation',
+                    );
+                  } finally {
+                    setIsResending(false);
+                  }
+                }}
+                className="mt-2 font-display text-[12.5px] font-bold text-primary underline underline-offset-2 disabled:opacity-50"
+              >
+                {isResending ? 'Sending…' : 'Resend invite'}
+              </button>
+            </div>
+          )}
           <ProfileHeader tenant={tenant} />
 
           <button
