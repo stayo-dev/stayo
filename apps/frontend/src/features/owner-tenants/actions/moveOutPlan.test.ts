@@ -200,6 +200,34 @@ describe('completionLabel', () => {
     const s = summariseSettlement(preview());
     expect(completionLabel(s, 'WAIVE', 0)).toBe('Complete move-out');
   });
+
+  it('names the collected amount when the owner collects the full balance at close', () => {
+    // The bug this exists to fix: collecting cost five taps because there was
+    // no way to say "they paid me just now" from this screen at all.
+    const s = summariseSettlement(preview({
+      net_settlement_amount: -25000, settlement_direction: 'TENANT_OWES_OWNER',
+    }));
+    expect(completionLabel(s, 'COLLECT', 25000)).toBe('Collect ₹25,000 & close');
+  });
+
+  it('names only the partial amount when the owner only collected part of it', () => {
+    const s = summariseSettlement(preview({
+      net_settlement_amount: -25000, settlement_direction: 'TENANT_OWES_OWNER',
+    }));
+    expect(completionLabel(s, 'COLLECT', 25000, 8000)).toBe('Collect ₹8,000 & close');
+  });
+
+  it('does not claim a collection when there is nothing outstanding', () => {
+    const s = summariseSettlement(preview());
+    expect(completionLabel(s, 'COLLECT', 0)).toBe('Complete move-out');
+  });
+
+  it('never lets a mistakenly-oversized collected amount exceed what is owed', () => {
+    const s = summariseSettlement(preview({
+      net_settlement_amount: -25000, settlement_direction: 'TENANT_OWES_OWNER',
+    }));
+    expect(completionLabel(s, 'COLLECT', 25000, 99999)).toBe('Collect ₹25,000 & close');
+  });
 });
 
 describe('buildConsequences', () => {
@@ -260,6 +288,46 @@ describe('buildConsequences', () => {
   it('says nothing about dues when there are none', () => {
     const lines = buildConsequences({ ...base, summary: summariseSettlement(preview()) });
     expect(lines.join(' ')).not.toMatch(/unpaid rent/);
+  });
+
+  it('says the dues are recorded as paid in full when COLLECT covers the whole balance', () => {
+    const lines = buildConsequences({
+      ...base,
+      outstandingDues: 25000,
+      duesDisposition: 'COLLECT',
+      summary: summariseSettlement(preview({
+        net_settlement_amount: -25000, settlement_direction: 'TENANT_OWES_OWNER',
+      })),
+    });
+    const joined = lines.join(' ');
+    expect(joined).toMatch(/₹25,000 of unpaid rent is recorded as paid, right now/);
+  });
+
+  it('names both the collected amount and what remains when COLLECT is partial', () => {
+    const lines = buildConsequences({
+      ...base,
+      outstandingDues: 25000,
+      duesDisposition: 'COLLECT',
+      collectedAmount: 8000,
+      summary: summariseSettlement(preview({
+        net_settlement_amount: -25000, settlement_direction: 'TENANT_OWES_OWNER',
+      })),
+    });
+    const joined = lines.join(' ');
+    expect(joined).toMatch(/₹8,000 of the ₹25,000 unpaid rent is recorded as paid now/);
+    expect(joined).toMatch(/₹17,000 stays on their account/);
+  });
+
+  it('treats an omitted collected amount as the full outstanding balance', () => {
+    const lines = buildConsequences({
+      ...base,
+      outstandingDues: 25000,
+      duesDisposition: 'COLLECT',
+      summary: summariseSettlement(preview({
+        net_settlement_amount: -25000, settlement_direction: 'TENANT_OWES_OWNER',
+      })),
+    });
+    expect(lines.join(' ')).not.toMatch(/stays on their account/);
   });
 
   it('always states what happens to the tenant’s access', () => {

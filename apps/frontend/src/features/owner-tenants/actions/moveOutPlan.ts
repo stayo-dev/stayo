@@ -22,7 +22,7 @@ export const MOVE_OUT_STATUS_ORDER = [
 ] as const;
 
 export type SettlementDirection = 'OWNER_OWES_TENANT' | 'TENANT_OWES_OWNER' | 'SETTLED';
-export type DuesDisposition = 'RECOVERABLE' | 'WAIVE';
+export type DuesDisposition = 'RECOVERABLE' | 'WAIVE' | 'COLLECT';
 
 export interface SettlementPreview {
   net_settlement_amount: number;
@@ -180,11 +180,16 @@ export function completionLabel(
   summary: SettlementSummary,
   duesDisposition: DuesDisposition,
   outstandingDues: number,
+  collectedAmount?: number,
 ): string {
   const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 
   if (duesDisposition === 'WAIVE' && outstandingDues > 0.01) {
     return `Write off ${rupees(outstandingDues)} & close`;
+  }
+  if (duesDisposition === 'COLLECT' && outstandingDues > 0.01) {
+    const amount = Math.min(collectedAmount ?? outstandingDues, outstandingDues);
+    return `Collect ${rupees(amount)} & close`;
   }
   if (summary.ownerPays) return `Refund ${rupees(summary.amount)} & close`;
   if (summary.direction === 'TENANT_OWES_OWNER') return `Close & keep ${rupees(summary.amount)} on their account`;
@@ -208,6 +213,8 @@ export function buildConsequences(input: {
   duesDisposition: DuesDisposition;
   exitDateLabel: string;
   exitIsFuture: boolean;
+  /** COLLECT only: what the owner says they actually took. Defaults to the full outstanding balance. */
+  collectedAmount?: number;
 }): string[] {
   const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
   const lines: string[] = [];
@@ -231,11 +238,21 @@ export function buildConsequences(input: {
   }
 
   if (input.outstandingDues > 0.01) {
-    lines.push(
-      input.duesDisposition === 'WAIVE'
-        ? `${rupees(input.outstandingDues)} of unpaid rent is written off. This cannot be undone.`
-        : `${rupees(input.outstandingDues)} of unpaid rent stays on their account — you can still collect it. No late fees or reminders will be added after today.`,
-    );
+    if (input.duesDisposition === 'WAIVE') {
+      lines.push(`${rupees(input.outstandingDues)} of unpaid rent is written off. This cannot be undone.`);
+    } else if (input.duesDisposition === 'COLLECT') {
+      const collected = Math.min(input.collectedAmount ?? input.outstandingDues, input.outstandingDues);
+      const remaining = input.outstandingDues - collected;
+      lines.push(
+        remaining > 0.01
+          ? `${rupees(collected)} of the ${rupees(input.outstandingDues)} unpaid rent is recorded as paid now; ${rupees(remaining)} stays on their account.`
+          : `${rupees(collected)} of unpaid rent is recorded as paid, right now.`,
+      );
+    } else {
+      lines.push(
+        `${rupees(input.outstandingDues)} of unpaid rent stays on their account — you can still collect it. No late fees or reminders will be added after today.`,
+      );
+    }
   }
 
   lines.push('They keep read-only access to their settlement, and lose the tenant dashboard.');
