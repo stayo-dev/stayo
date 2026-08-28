@@ -201,17 +201,27 @@ export class TenantService {
 
   async getAllTenants(params: {
     status?: string;
+    /**
+     * `SELF_SERVE` (default) or `OWNER_MANAGED` — who has not taken charge of
+     * their own account yet, as of the tenancy becoming ACTIVE immediately on
+     * invite (see `tenant-invitation-lifecycle-service.ts`'s createInvitation).
+     * Independent of `status`: a tenancy can be ACTIVE and still be
+     * OWNER_MANAGED, so callers that used to filter `status=INVITED` to find
+     * "awaiting activation" tenants now filter on this instead.
+     */
+    accessMode?: string;
     search?: string;
     ownerId?: string;
     hostelId: string; // URL-driven hostel isolation
     limit?: number;
     offset?: number;
   }) {
-    const { status, search, ownerId, hostelId, limit = 50, offset = 0 } = params;
+    const { status, accessMode, search, ownerId, hostelId, limit = 50, offset = 0 } = params;
 
     const where: any = {
       ...(ownerId && { owner_id: ownerId }),
       ...(hostelId && { hostel_id: hostelId }),
+      ...(accessMode && { access_mode: accessMode as any }),
     };
 
     if (status) {

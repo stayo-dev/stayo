@@ -108,13 +108,21 @@ export function toActivationProgress(state: unknown): ActivationProgress {
 /**
  * Whether this tenant still belongs in the Pending Activations queue.
  *
- * `activation_completed` wins over the row's status so a tenant drops out the
- * moment the backend says they are done, without waiting for a list refetch to
- * report a new status string.
+ * Used to key off `tenants.status === 'INVITED'`. It can't any more: a
+ * tenancy is `ACTIVE` from the moment it's invited (see
+ * `tenant-invitation-lifecycle-service.ts`'s `createInvitation`), so status
+ * no longer distinguishes "hasn't taken charge of their account yet" from
+ * any other active tenant. `access_mode` does — `OWNER_MANAGED` is exactly
+ * "the owner is managing this profile because the tenant hasn't activated
+ * it", which is this queue's whole definition.
+ *
+ * `activation_completed` still wins over the row's access mode so a tenant
+ * drops out the moment the backend says they are done, without waiting for a
+ * list refetch to report a new access-mode string.
  */
-export function isAwaitingActivation(tenantStatus: string, state: unknown): boolean {
+export function isAwaitingActivation(accessMode: string | null | undefined, state: unknown): boolean {
   if (asRecord(state).activation_completed) return false;
-  return String(tenantStatus ?? '').toUpperCase() === 'INVITED';
+  return String(accessMode ?? '').toUpperCase() === 'OWNER_MANAGED';
 }
 
 /** KYC, rendered separately — it never blocks activation. */

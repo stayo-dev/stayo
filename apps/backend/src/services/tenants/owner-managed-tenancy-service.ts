@@ -21,6 +21,170 @@ export interface AdoptResult {
   allocation_created: boolean;
 }
 
+export interface FinalizeOwnerManagedTenancyParams {
+  /** Caller must already hold the row lock on `roomId` (`SELECT ... FOR UPDATE`) — see `ensureActiveAllocation`. */
+  tx: any;
+  tenantId: string;
+  ownerId: string;
+  hostelId: string;
+  displayName: string;
+  /** Canonical (normalized) phone — the identity key a profile is matched or created by. */
+  phone: string;
+  roomId: string;
+  joiningDate: Date;
+  /** Existing `tenants.profile_id`, if this tenancy is already linked to one. Null on a brand-new invite. */
+  existingProfileId: string | null;
+  /**
+   * Candidate emails to resolve an activation email from if a new profile has
+   * to be created — matches `resolveActivationEmail`'s `profile` / `invitation`
+   * inputs, most-trusted first.
+   */
+  profileEmail: string | null;
+  invitationEmail: string | null;
+  /** The reservation this tenancy is holding, if any — converted to an allocation and released. */
+  reservation: { id: string } | null;
+  /** The invitation this tenancy came from, if any — marked SUPERSEDED so a late claim routes correctly. */
+  invitationId: string | null;
+  note?: string;
+  ip?: string | null;
+}
+
+/**
+ * The write side of "this tenancy is owner-managed, starting now": link or
+ * create the profile by canonical phone, convert the held reservation into a
+ * real room allocation (via `ensureActiveAllocation`'s overbooking guard),
+ * flip the tenancy to `ACTIVE` / `OWNER_MANAGED`, and record the owner's
+ * attestation.
+ *
+ * Shared by two callers that reach this exact state from different starting
+ * points: `adopt()` below (an owner taking over a tenancy that sat `INVITED`
+ * and unclaimed) and `tenant-invitation-lifecycle-service.ts`'s
+ * `createInvitation()` (every new invitation, immediately — see its comment
+ * for why owner-managed is no longer a choice). Both need identical
+ * profile-linking, allocation and attestation logic; this function is that
+ * logic, extracted so neither duplicates it. Callers own their own validation
+ * (name/room presence, tenancy-state guards) and the room-row lock — this
+ * function assumes both are already satisfied.
+ */
+export async function finalizeOwnerManagedTenancy(
+  params: FinalizeOwnerManagedTenancyParams,
+): Promise<AdoptResult> {
+  const { tx, tenantId, ownerId, hostelId, displayName, phone, roomId, joiningDate } = params;
+
+  const { created } = await ensureActiveAllocation(tx, {
+    tenantId,
+    roomId,
+    hostelId,
+    startDate: joiningDate,
+  });
+
+  // Identity is centralised on `profiles`, keyed by canonical phone. An
+  // owner-managed tenancy is a profile *without a login* — never a tenancy
+  // without a profile.
+  //
+  // The earlier design stored the name on `tenants.display_name` and left
+  // `profile_id` null. That orphaned the tenancy from the person: every
+  // duplicate guard in this system resolves a phone to a profile and then
+  // inspects that profile's tenancies, so an adopted tenancy was invisible
+  // to all of them. In production one phone ended up with three tenancies
+  // in one hostel — a second invite was accepted two minutes after the
+  // adoption, because `checkEligibilityByContact` could not see it.
+  //
+  // `auth_user_id` and `password_hash` stay null deliberately: that, and
+  // only that, is what "no login yet" means. The tenant sets them when they
+  // claim the tenancy, and it is the *same* account either way.
+  let profileId = params.existingProfileId;
+  if (!profileId) {
+    const existingByPhone = await tx.profile.findUnique({ where: { phone } });
+    if (existingByPhone) {
+      if (existingByPhone.role !== "TENANT") {
+        throw new Error(
+          "ROLE_MISMATCH: This phone number belongs to a different kind of Stayo account"
+        );
+      }
+      // Reuse, never duplicate. Credentials, email and role are left exactly
+      // as they are — this must not touch an account the person may already
+      // be using.
+      profileId = existingByPhone.id;
+    } else {
+      const email = resolveActivationEmail({
+        profile: params.profileEmail ? { email: params.profileEmail } : null,
+        invitation: params.invitationEmail ? { email: params.invitationEmail } : null,
+        phone,
+      });
+      if (!email) {
+        throw new Error("VALIDATION_ERROR: A valid mobile number is required before managing this tenant");
+      }
+      const createdProfile = await tx.profile.create({
+        data: {
+          id: crypto.randomUUID(),
+          name: displayName,
+          email,
+          phone,
+          role: "TENANT",
+          is_active: true,
+          password_hash: null,
+          auth_user_id: null,
+        },
+        select: { id: true },
+      });
+      profileId = createdProfile.id;
+    }
+  }
+
+  await tx.tenants.update({
+    where: { id: tenantId },
+    data: {
+      status: "ACTIVE",
+      access_mode: "OWNER_MANAGED",
+      display_name: displayName,
+      phone_1: phone,
+      profile_id: profileId,
+      activation_completed_at: new Date(),
+      updated_at: new Date(),
+    },
+  });
+
+  await tx.tenant_owner_attestations.create({
+    data: {
+      id: crypto.randomUUID(),
+      tenant_id: tenantId,
+      hostel_id: hostelId,
+      attested_by: ownerId,
+      attested_ip: params.ip || null,
+      note: params.note || null,
+    },
+  });
+
+  if (params.reservation) {
+    await tx.tenant_invitation_reservations.update({
+      where: { id: params.reservation.id },
+      data: {
+        status: "RELEASED",
+        released_by: ownerId,
+        released_at: new Date(),
+        release_reason: "ADOPTED",
+        updated_at: new Date(),
+      },
+    });
+  }
+
+  if (params.invitationId) {
+    await tx.tenant_invitations.update({
+      where: { id: params.invitationId },
+      data: { status: "SUPERSEDED", updated_at: new Date() },
+    });
+  }
+
+  return {
+    tenant_id: tenantId,
+    access_mode: "OWNER_MANAGED" as const,
+    status: "ACTIVE" as const,
+    display_name: displayName,
+    allocation_created: created,
+  };
+}
+
 /**
  * Adopting a tenant who ignored their invitation.
  *
@@ -49,6 +213,14 @@ export interface AdoptResult {
  * every later check only tests for non-empty. Here, when no name can be
  * resolved from an explicit param, the linked profile, or the invitation, we
  * refuse to proceed instead of persisting a placeholder.
+ *
+ * By the time this is commonly reachable, most invitations are already
+ * `ACTIVE` / `OWNER_MANAGED` from the moment they were created (see
+ * `createInvitation`) — the guard below refuses those with `CONFLICT` rather
+ * than re-adopting them. This path remains for tenancies that are genuinely
+ * still `INVITED`: historical data from before that change, and any other
+ * caller that legitimately creates a tenancy without going through
+ * `createInvitation`.
  */
 export const ownerManagedTenancyService = {
   async adopt(params: AdoptParams): Promise<AdoptResult> {
@@ -108,120 +280,23 @@ export const ownerManagedTenancyService = {
 
       await tx.$executeRaw`SELECT id FROM rooms WHERE id = ${roomId}::uuid FOR UPDATE`;
 
-      const { created } = await ensureActiveAllocation(tx, {
+      return finalizeOwnerManagedTenancy({
+        tx,
         tenantId: tenant.id,
-        roomId,
+        ownerId,
         hostelId: tenant.hostel_id,
-        startDate: tenant.joined_on || new Date(),
+        displayName,
+        phone,
+        roomId,
+        joiningDate: tenant.joined_on || new Date(),
+        existingProfileId: tenant.profile_id,
+        profileEmail: tenant.personal_email,
+        invitationEmail: tenant.tenant_invitations[0]?.email ?? null,
+        reservation: reservation ? { id: reservation.id } : null,
+        invitationId: tenant.tenant_invitations[0]?.id ?? null,
+        note: params.note,
+        ip: params.ip,
       });
-
-      // Identity is centralised on `profiles`, keyed by canonical phone. An
-      // owner-managed tenancy is a profile *without a login* — never a tenancy
-      // without a profile.
-      //
-      // The earlier design stored the name on `tenants.display_name` and left
-      // `profile_id` null. That orphaned the tenancy from the person: every
-      // duplicate guard in this system resolves a phone to a profile and then
-      // inspects that profile's tenancies, so an adopted tenancy was invisible
-      // to all of them. In production one phone ended up with three tenancies
-      // in one hostel — a second invite was accepted two minutes after the
-      // adoption, because `checkEligibilityByContact` could not see it.
-      //
-      // `auth_user_id` and `password_hash` stay null deliberately: that, and
-      // only that, is what "no login yet" means. The tenant sets them when they
-      // claim the tenancy, and it is the *same* account either way.
-      let profileId = tenant.profile_id as string | null;
-      if (!profileId) {
-        const existingByPhone = await tx.profile.findUnique({ where: { phone } });
-        if (existingByPhone) {
-          if (existingByPhone.role !== "TENANT") {
-            throw new Error(
-              "ROLE_MISMATCH: This phone number belongs to a different kind of Stayo account"
-            );
-          }
-          // Reuse, never duplicate. Credentials, email and role are left exactly
-          // as they are — adopting a tenancy must not touch an account the
-          // person may already be using.
-          profileId = existingByPhone.id;
-        } else {
-          const email = resolveActivationEmail({
-            profile: tenant.personal_email ? { email: tenant.personal_email } : null,
-            invitation: tenant.tenant_invitations[0]?.email
-              ? { email: tenant.tenant_invitations[0].email }
-              : null,
-            phone,
-          });
-          if (!email) {
-            throw new Error("VALIDATION_ERROR: A valid mobile number is required before managing this tenant");
-          }
-          const createdProfile = await tx.profile.create({
-            data: {
-              id: crypto.randomUUID(),
-              name: displayName,
-              email,
-              phone,
-              role: "TENANT",
-              is_active: true,
-              password_hash: null,
-              auth_user_id: null,
-            },
-            select: { id: true },
-          });
-          profileId = createdProfile.id;
-        }
-      }
-
-      await tx.tenants.update({
-        where: { id: tenant.id },
-        data: {
-          status: "ACTIVE",
-          access_mode: "OWNER_MANAGED",
-          display_name: displayName,
-          phone_1: phone,
-          profile_id: profileId,
-          activation_completed_at: new Date(),
-          updated_at: new Date(),
-        },
-      });
-
-      await tx.tenant_owner_attestations.create({
-        data: {
-          id: crypto.randomUUID(),
-          tenant_id: tenant.id,
-          hostel_id: tenant.hostel_id,
-          attested_by: ownerId,
-          attested_ip: params.ip || null,
-          note: params.note || null,
-        },
-      });
-
-      if (reservation) {
-        await tx.tenant_invitation_reservations.update({
-          where: { id: reservation.id },
-          data: {
-            status: "RELEASED",
-            released_by: ownerId,
-            released_at: new Date(),
-            release_reason: "ADOPTED",
-            updated_at: new Date(),
-          },
-        });
-      }
-
-      if (tenant.tenant_invitations[0]) {
-        await tx.tenant_invitations.update({
-          where: { id: tenant.tenant_invitations[0].id },
-          data: { status: "SUPERSEDED", updated_at: new Date() },
-        });
-      }
-
-      return {
-        tenant_id: tenant.id,
-        access_mode: "OWNER_MANAGED" as const,
-        status: "ACTIVE" as const,
-        display_name: displayName,
-        allocation_created: created,
-      };
     });
   },
 };

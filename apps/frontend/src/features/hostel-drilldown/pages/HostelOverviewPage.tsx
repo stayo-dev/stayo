@@ -25,10 +25,14 @@ export function HostelOverviewPage() {
     staleTime: 60_000,
   });
 
+  // Who hasn't taken charge of their account yet — `access_mode =
+  // OWNER_MANAGED`, not `status = INVITED` (a tenancy is ACTIVE from the
+  // moment it's invited; see createInvitation). See useOwnerDashboard's
+  // matching tile for the full story.
   const invitedQuery = useQuery({
     queryKey: [...queryKeys.owner.invitedCounts([hostelId ?? '']), 'single'],
     queryFn: () =>
-      tenantService.getAll(hostelId!, { status: 'INVITED', limit: 1 }).then((r: any) => Number(r?.total ?? r?.tenants?.length ?? 0)),
+      tenantService.getAll(hostelId!, { accessMode: 'OWNER_MANAGED', limit: 1 }).then((r: any) => Number(r?.total ?? r?.tenants?.length ?? 0)),
     enabled: Boolean(hostelId),
     staleTime: 60_000,
   });

@@ -89,13 +89,18 @@ export function useOwnerDashboard() {
     [portfolioQuery.data],
   );
 
+  // Powers the "Activate Tenants — N awaiting activation" tile below. Used to
+  // query `status: 'INVITED'`, which went to zero forever once a tenancy
+  // became ACTIVE from the moment it's invited (see createInvitation's
+  // owner-managed adoption) — who hasn't taken charge of their account yet is
+  // `access_mode = OWNER_MANAGED` now, not `status = INVITED`.
   const invitedQuery = useQuery({
     queryKey: queryKeys.owner.invitedCounts(hostelIds),
     queryFn: async () => {
       const counts = await Promise.all(
         hostelIds.map((hostelId) =>
           tenantService
-            .getAll(hostelId, { status: 'INVITED', limit: 1 })
+            .getAll(hostelId, { accessMode: 'OWNER_MANAGED', limit: 1 })
             .then((r: any) => Number(r?.total ?? r?.tenants?.length ?? 0)),
         ),
       );

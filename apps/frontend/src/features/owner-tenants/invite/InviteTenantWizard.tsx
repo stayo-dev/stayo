@@ -55,10 +55,6 @@ export function InviteTenantWizard({ open, onClose, initialData, leadId }: Invit
           isSendingFallback={wizard.isSendingFallback}
           fallbackError={wizard.fallbackError}
           canSendFallback={wizard.canSendFallback}
-          onKeepRecordsMyself={wizard.keepRecordsMyself}
-          isAdopting={wizard.isAdopting}
-          adoptSuccess={wizard.adoptSuccess}
-          adoptError={wizard.adoptError}
         />
       </BottomSheet>
     );

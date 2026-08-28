@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { tenantService } from '@features/tenants/api';
 import { admissionsService } from '@features/admissions/api';
-import { ownerManagedService } from '../api/ownerManaged';
 import { parseTenancyConflict } from '@features/tenants/tenancyConflict';
 import { queryKeys } from '@lib/queryKeys';
 import {
@@ -47,22 +46,6 @@ function getErrorMessage(error: unknown, fallback: string) {
   return data?.error?.message || fallback;
 }
 
-function getErrorCode(error: unknown): string | undefined {
-  return (error as { response?: { data?: { error?: { code?: string } } } })?.response?.data?.error?.code;
-}
-
-/**
- * Same CAPACITY_EXCEEDED phrasing as `AdoptTenantSheet` — this is the same
- * adopt endpoint, just called from a second moment (right after the invite
- * goes out, instead of later from the invited-tenant screen).
- */
-function getAdoptErrorMessage(error: unknown): string {
-  if (getErrorCode(error) === 'CAPACITY_EXCEEDED') {
-    return 'That room is now full — move the tenant to a room with space first';
-  }
-  return getErrorMessage(error, 'Could not keep the records. The invitation was still sent — try again, or just wait for them to activate.');
-}
-
 /**
  * Step index + form data + navigation for the 4-step Invite Tenant wizard.
  *
@@ -71,6 +54,16 @@ function getAdoptErrorMessage(error: unknown): string {
  * *delivered* is a separate question the backend answers with `whatsapp_sent`
  * / `email_sent` / `needs_email` / `activation_link`, all of which this hook
  * used to discard while the UI claimed success regardless.
+ *
+ * The invitation is mandatory and always sent — there is no path here that
+ * suppresses it (the backend's `suppressInvitationNotification` still exists
+ * for a different kind of caller, but `buildInvitePayload` never sets it).
+ * The tenancy itself is live and owner-managed from the moment the backend
+ * creates it — see `tenant-invitation-lifecycle-service.ts`'s
+ * `createInvitation` — so there is no separate "keep the records myself"
+ * step here either; that used to be a second mutation fired after this one
+ * succeeded, and it is gone because the backend now does it unconditionally,
+ * inside the same transaction, before this mutation's response even returns.
  */
 export function useInviteWizard(options: UseInviteWizardOptions = {}) {
   const { initialData, leadId } = options;
@@ -206,34 +199,9 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
     },
   });
 
-  /**
-   * "Keep the records myself meanwhile" — the second moment to make this
-   * choice, offered on the success screen right after the invitation goes
-   * out (see `InviteDeliveryResult`). Whether a tenant uses the app is the
-   * tenant's decision, not something the owner predicts up front, so this
-   * replaces what used to be a pre-send "Just add to my records" exit on the
-   * wizard itself. Adopts the same tenancy `inviteMutation` just created
-   * (`tenantId`, captured in its `onSuccess` below) — nothing new is created,
-   * nothing is duplicated, and the invitation stays claimable afterwards.
-   */
-  const adoptMutation = useMutation({
-    mutationFn: () => {
-      if (!tenantId) throw new Error('No tenant to adopt yet.');
-      return ownerManagedService.adopt({ tenantId, hostelId: data.hostelId });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['owner', 'tenants', 'list-merged'] });
-      if (leadId) queryClient.invalidateQueries({ queryKey: queryKeys.admissions.all() });
-    },
-  });
-
   const submit = () => {
     if (!isStep3Valid) return;
     inviteMutation.mutate();
-  };
-
-  const keepRecordsMyself = () => {
-    adoptMutation.mutate();
   };
 
   const sendFallbackEmail = () => {
@@ -252,7 +220,6 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
     setFallbackEmail('');
     inviteMutation.reset();
     resendMutation.reset();
-    adoptMutation.reset();
   };
 
   return {
@@ -279,14 +246,6 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
     eligibilityConflict,
     isCheckingEligibility,
     hasExistingAccount,
-    // "Keep the records myself meanwhile" — offered on the success screen
-    // after the invite is sent (see `keepRecordsMyself` above). A failure
-    // here does not mean the invitation failed; it already went out.
-    keepRecordsMyself,
-    isAdopting: adoptMutation.isPending,
-    adoptSuccess: adoptMutation.isSuccess,
-    adoptError: adoptMutation.isError ? getAdoptErrorMessage(adoptMutation.error) : null,
-    resetAdoptError: adoptMutation.reset,
     // Fallback-email prompt
     fallbackEmail,
     setFallbackEmail,

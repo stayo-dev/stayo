@@ -27,13 +27,14 @@ export async function GET(req: NextRequest) {
     const scope = resolveOwnerScope(session);
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status") || undefined;
+    const accessMode = searchParams.get("accessMode") || undefined;
     const search = searchParams.get("search") || undefined;
     const { limit, offset } = safePagination(searchParams.get("limit"), searchParams.get("offset"));
 
     const hostelId = searchParams.get("hostelId") || undefined;
-    
+
     console.log(`[tenants.GET] Fetching tenants for owner ${scope.owner_id}, hostel ${hostelId}`);
-    
+
     await requireHostelBelongsToOwner(scope.owner_id, hostelId);
     if (!hostelId) {
       console.warn("[tenants.GET] Missing hostelId context");
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest) {
     }
 
     const result = await tenantService.getAllTenants({
-      status, search, ownerId: scope.owner_id, limit, offset,
+      status, accessMode, search, ownerId: scope.owner_id, limit, offset,
       hostelId,
     });
 

@@ -163,10 +163,16 @@ describe('Tenant Onboarding Integration Flow', () => {
     });
     expect(oldInvite?.status).toBe('SUPERSEDED');
 
-    // Verify invitation record now has the email updated on the new version
+    // The tenant is already ACTIVE + OWNER_MANAGED (see createInvitation) —
+    // resend still updates and redispatches, but the new version is created
+    // SUPERSEDED too (not PENDING), so a later click on its link routes
+    // through the claim flow (CLAIM_REQUIRED) instead of normal activation,
+    // which would silently no-op against a tenant who's already ACTIVE. See
+    // tenant-invitation-lifecycle-service.ts's resendInvitation.
     const dbInvite = await prisma.tenant_invitations.findFirst({
-      where: { tenant_id: initial.tenant_id, status: 'PENDING' },
+      where: { tenant_id: initial.tenant_id, parent_invitation_id: initial.invitation_id },
     });
+    expect(dbInvite?.status).toBe('SUPERSEDED');
     expect(dbInvite?.email).toBe('rahul-fallback4@test.com');
   });
 
@@ -551,22 +557,32 @@ describe('Tenant Onboarding Integration Flow', () => {
       expect(supersededInvite!.status).toBe('SUPERSEDED');
       expect(supersededInvite!.token).toBe(oldToken); // old token remains on the superseded record
 
-      // Verify new invitation is created
+      // Verify new invitation is created. The tenant is already ACTIVE +
+      // OWNER_MANAGED (see createInvitation) — the resent version is created
+      // SUPERSEDED too, not PENDING, for the same reason the original
+      // invitation is (see resendInvitation's comment).
       const newInvite = await prisma.tenant_invitations.findFirst({
-        where: { tenant_id: initial.tenant_id, status: 'PENDING' },
+        where: { tenant_id: initial.tenant_id, parent_invitation_id: initial.invitation_id },
       });
       expect(newInvite).not.toBeNull();
+      expect(newInvite!.status).toBe('SUPERSEDED');
       expect(newInvite!.token).not.toBe(oldToken);
       expect(newInvite!.parent_invitation_id).toBe(initial.invitation_id);
 
-      // Verify old token cannot be resolved
+      // Both the original link and the resent link route through the claim
+      // flow now: the tenant became this owner's ACTIVE tenant the moment
+      // they were invited (see createInvitation), so neither token can go
+      // through normal self-activation, which would silently no-op against
+      // an already-ACTIVE tenant (see completeActivation's idempotency
+      // guard). CLAIM_REQUIRED is the live path into tenancy-claim-service.ts.
       await expect(
         tenantInvitationLifecycleService.resolveByToken(oldToken)
-      ).rejects.toThrow(/INVALID: Activation link expired or already used/);
+      ).rejects.toThrow(/CLAIM_REQUIRED/);
 
-      // Verify new token resolves successfully
-      const resolved = await tenantInvitationLifecycleService.resolveByToken(newInvite!.token);
-      expect(resolved.invitation.id).toBe(newInvite!.id);
+      const resolvedError = await tenantInvitationLifecycleService
+        .resolveByToken(newInvite!.token)
+        .catch((err: any) => err);
+      expect(String(resolvedError?.message ?? resolvedError)).toMatch(/CLAIM_REQUIRED/);
 
       // Verify financial regeneration (old deposit of 20000 deleted, new deposit of 24000 created)
       const updatedObligations = await prisma.rent_obligations.findMany({
@@ -644,9 +660,13 @@ describe('Tenant Onboarding Integration Flow', () => {
           { id: owner.id, role: 'OWNER' },
           { monthly_rent: 10000 + i * 100 }
         );
-        // Find the newly created invitation to resend again
+        // Find the newly created invitation to resend again. The tenant is
+        // already ACTIVE + OWNER_MANAGED (see createInvitation), so each new
+        // version is created SUPERSEDED, not PENDING — the latest version for
+        // this tenant is found by recency instead.
         const latestInvite = await prisma.tenant_invitations.findFirst({
-          where: { tenant_id: initial.tenant_id, status: 'PENDING' },
+          where: { tenant_id: initial.tenant_id },
+          orderBy: { created_at: 'desc' },
         });
         currentInviteId = latestInvite!.id;
       }
@@ -869,9 +889,12 @@ describe('Tenant Onboarding Integration Flow', () => {
       });
       expect(Number(oldInvite!.monthly_rent)).toBe(9500);
 
-      // Verify new invitation's rent is stored as 10500
+      // Verify new invitation's rent is stored as 10500. The tenant is
+      // already ACTIVE + OWNER_MANAGED (see createInvitation), so this
+      // version is created SUPERSEDED, not PENDING — found by parentage
+      // instead.
       const newInvite = await prisma.tenant_invitations.findFirst({
-        where: { tenant_id: initial.tenant_id, status: 'PENDING' },
+        where: { tenant_id: initial.tenant_id, parent_invitation_id: initial.invitation_id },
       });
       expect(Number(newInvite!.monthly_rent)).toBe(10500);
     });
