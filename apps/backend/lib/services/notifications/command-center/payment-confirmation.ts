@@ -19,10 +19,11 @@
 import { prisma } from "@/lib/db";
 import { getLogger } from "@/lib/logger";
 import { MetaWhatsAppProvider } from "../providers/whatsapp";
-import { buildReceipt, loadResidentContext } from "./context";
+import { buildReceipt, ensureReceiptDocument, listPayments, loadResidentContext } from "./context";
 import { formatPaymentConfirmation } from "./receipt";
 import { isGuardianVerified } from "./guardian-access";
 import { actionsFor } from "./menu";
+import { sendReceiptDocument } from "./receipt-delivery";
 import { COMMANDS } from "./commands";
 
 const logger = getLogger("whatsapp.command-center.payment-confirmation");
@@ -76,9 +77,24 @@ export async function sendPaymentConfirmation(tenantId: string): Promise<Payment
       hasPayments: true,
     });
 
+    // Render (or reuse) the receipt once, not once per recipient. Best-effort:
+    // a confirmation without an attachment is still a useful confirmation, and
+    // this runs on the payment event path where nothing may block.
+    // `buildReceipt` describes the newest payment but does not carry its id,
+    // so take it from the same ordering rather than re-deriving "newest".
+    const [newest] = await listPayments(tenantId, 1);
+    const document = newest ? await ensureReceiptDocument(newest.paymentId).catch(() => null) : null;
+
     const deliver = async (phone: string, audience: "RESIDENT" | "GUARDIAN") => {
       const text = formatPaymentConfirmation({ ...receipt, audience, subject: context.subject });
       await provider.sendTextMessage(phone, text);
+
+      if (document) {
+        // The receipt itself, not a reference to one the reader has to go find.
+        // Best-effort: the confirmation text has already landed.
+        await sendReceiptDocument(provider, phone, document);
+      }
+
       if (buttons.length > 0) {
         // Best-effort: the confirmation itself already landed.
         await provider.sendButtonMessage(phone, "Anything else?", buttons).catch(() => {});

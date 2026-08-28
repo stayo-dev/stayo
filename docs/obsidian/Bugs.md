@@ -22,11 +22,28 @@ Log of significant bugs — open and fixed. Not meant to replace an issue tracke
 
 **A second bug this fix had to solve to avoid breaking the feature it was fixing:** once adoption links a profile unconditionally, *every* `OWNER_MANAGED` tenancy carries a non-null `profile_id`. The pre-existing `isClaimable` rule (`lib/tenants/claim-eligibility.ts`) read a null `profile_id` as "unclaimed, therefore claimable" and a non-null one as "claimed, therefore not" — so this fix would otherwise have made every owner-managed tenancy permanently unclaimable the moment it shipped. `isClaimable` now checks whether the *bound profile can sign in* (`profile_has_login`, derived from `profiles.auth_user_id != null` in `tenancy-claim-service.ts`'s `withLoginFlag`) rather than whether a `profile_id` is set at all: a login-less shell stays claimable by whoever proves the number, a profile that can already sign in does not (claiming it would be an account takeover). A missing/undefined flag fails closed — refused, not claimable — so a caller that forgets to select `profiles.auth_user_id` cannot accidentally open every bound tenancy to claiming.
 
-**Also removed as part of closing this gap:** the invite wizard's pre-send "Just add to my records" exit (`isOwnerManagedValid`/`submitAsOwnerManaged`/`ownerManagedMutation`) is gone. The owner is now asked to keep the records **after** the invitation is sent — "Wait for them to activate" or "Keep the records myself meanwhile" on `InviteDeliveryResult` — because whether a tenant ends up using the app is the tenant's decision, not something the owner should have to predict on the form. See [[Decisions#ADR-135|ADR-135]] for the full reasoning and [[Features]] for the current invite flow.
+**Also removed as part of closing this gap:** the invite wizard's pre-send "Just add to my records" exit (`isOwnerManagedValid`/`submitAsOwnerManaged`/`ownerManagedMutation`) is gone. The owner is now asked to keep the records **after** the invitation is sent — "Wait for them to activate" or "Keep the records myself meanwhile" on `InviteDeliveryResult` — because whether a tenant ends up using the app is the tenant's decision, not something the owner should have to predict on the form. See [[Decisions#ADR-136|ADR-136]] for the full reasoning and [[Features]] for the current invite flow.
 
 **Lesson:** a check that resolves identity through a join is only as strong as the guarantee that the join was populated. `profile_id` being nullable-by-design (a real, load-bearing part of the original owner-managed-tenants design) was exactly what let one write path — adoption — silently produce rows every downstream guard was blind to. The fix does not just patch the one call site that broke in production; it makes the missing link impossible to create at all (fix 1), gives the existing guards a second, independent path to the same fact (fix 2), and backstops both with a constraint the database itself enforces (fix 3) — so a future write path that forgets to link a profile fails at the database rather than months later in production telemetry.
 
-**See:** [[Decisions#ADR-135|ADR-135]], [[Business-Rules]], [[Database]], [[Changelog]], [[TODO]].
+**See:** [[Decisions#ADR-136|ADR-136]], [[Business-Rules]], [[Database]], [[Changelog]], [[TODO]].
+## 2026-08-28 — A hostel's tenant agreement could silently ship with no owner signature at all (fixed)
+
+**Found** while implementing the Add Hostel builder's new agreement step ([[Decisions#ADR-135|ADR-135]]), not reported — nothing surfaced this to anyone, which is the actual finding.
+
+**Area:** [[Backend]] — `apps/backend/src/utils/default-rules.ts`'s `getActiveTemplateAndSyncRuleVersion`, and the frontend, which had no caller for the two routes that would have prevented it (`apps/frontend/src/features/owner-more/api/configApi.ts`).
+
+**Symptom:** None visible to the owner. A hostel left on the default `preferences_config.tenant_rules.agreement_required: true` — i.e. every hostel that never visited Configuration › Agreements — would have a tenant complete the Rules + Agreement onboarding steps, sign, and receive a generated agreement whose "Owner signature" was blank.
+
+**Root cause.** `AgreementTemplate.owner_signature_url` is set two ways: the owner draws a signature (`POST /owner/hostels/[id]/agreement-template/signature`), or the template is published carrying whatever `owner_signature_url` the caller passed (`POST .../agreement-template`, `action: publish`). Neither route was ever called by any live page — `configApi.ts` only wired the template's `save_draft` action, and no owner-facing UI drew a signature or published anything. The first time *anything* touched a hostel's agreement with no published template yet — the first tenant reaching the AGREEMENT onboarding step, or the first read of Configuration › Agreements — `getActiveTemplateAndSyncRuleVersion`'s fallback auto-created one: `status: "PUBLISHED"`, `is_active: true`, and no `owner_signature_url` field at all, defaulting to `null`. From that point every tenant of that hostel signed against a real, active, otherwise-normal agreement that simply had no owner signature on it.
+
+**Why it survived:** the backend behaved exactly as designed — an agreement must exist the moment one is needed, so the fallback creating one is correct. The gap was entirely upstream: nothing in the product ever asked the owner to make the "does this hostel use an agreement" decision or capture a signature, so the fallback's blank default was the *only* path every hostel that didn't independently discover Configuration › Agreements ever went through.
+
+**Fix:** [[Decisions#ADR-135|ADR-135]] — a new Add Hostel builder step makes the decision explicit and, when "Yes," runs `publish` then the signature upload in the same action, before the hostel's rooms are even reachable. No backend change; the two existing routes just finally have a caller.
+
+**Not fixed:** a hostel that already has a blank-signature auto-created template from before this shipped stays as-is — this closes the gap for hostels going through Add Hostel from now on, not a backfill of existing rows. A hostel that turns `agreement_required` back on later from Configuration › Agreements, without a signature configured, can still reach the same state through that separate surface.
+
+**See:** [[Decisions#ADR-135|ADR-135]], [[Features]], [[Changelog]]
 
 ## 2026-08-27 — An owner-managed tenant was adopted, then invisible to the system that was supposed to chase them (fixed)
 
@@ -194,6 +211,72 @@ Independently, `<a download>` is ignored by browsers for cross-origin URLs: it n
 **Fix.** `useDocumentBlob` fetches through the authenticated API client (`responseType: 'blob'`), so the request carries the same live token as every other call, and `DocumentPreviewSheet` renders the document in-app — images inline, PDFs in an `<object>` with a download fallback for browsers that refuse to embed them. Download is a blob-anchor click, which works cross-origin. Failures are distinguished and named: 401/403 as an expired session, 404 as a missing document, 502 as an unreachable stored file.
 
 > **Not reproduced against a running instance.** The mechanism is traced from `middleware.ts`, `lib/auth.ts` and the login route; no session was exercised to confirm the exact expiry behaviour. The fix is correct regardless — it removes the cookie dependency and adds the in-app preview — but the severity of the original defect is inferred, not measured.
+
+## 2026-08-28 — The agreement printed every clause title twice, and no amounts (fixed)
+
+**Symptoms.** Clause 4 read *"Notice Period: Notice Period: Either party must provide…"* and clause 5 the same way. Money appeared as `Rs. 8,500`, and — once that substitution was removed — as a bare `8,500` with no symbol at all.
+
+**Causes.** The renderer prints `"{n}. {title}: {content}"` while the stored content of several seed terms *begins with its own title*. Separately, `sanitizeText` rewrote `₹` to `Rs. ` **and** stripped every character above `U+00FF`; removing only the first left the second to delete the rupee sign outright.
+
+**Fix.** `clauseBody` strips a title the content repeats — done at render time, not by correcting the seed rows, because owners can save custom terms with the same shape. `sanitizeText` now only trims: the document embeds Inter, so neither of its original jobs applies.
+
+## 2026-08-28 — The agreement was missing the parts that make it an instrument (fixed)
+
+**What was absent.** No page numbering, on a multi-page contract — so a page could be removed or substituted with neither party able to show it. No agreement reference on the page. No preamble naming the parties and the date. No execution statement, so signature images sat under no record of *when and where* the parties signed. No governing-law or jurisdiction clause. No note on stamp duty, on an instrument that generally attracts it in India.
+
+**Fix.** `lib/pdf/agreement-content.ts` (pure, tested) supplies the preamble, five standard clauses (entire agreement, amendment, severability, governing law, stamp duty), the `IN WITNESS WHEREOF` statement, and per-page footers carrying `{reference} · Page N of M` plus an initials line. The hostel's own terms still lead; the structural clauses follow.
+
+**A forum is not guessed.** `placeFromAddress` returns the **city**, not the state — an Indian address ends `"<City>, <State> <PIN>"`, so a naive last-part read produced "the courts at Telangana". Where the address cannot be parsed it returns `null` and the clause falls back to "the courts having jurisdiction over the location of the hostel", because a wrong forum is worse than an unstated one.
+
+**Deliberately not branded.** Unlike the receipt, this document carries no Stayo watermark and no wordmark. A tenancy agreement is between the hostel and the resident; **Stayo is not a party**, and branding a contract like a marketing surface risks implying the platform is a party, licensor or guarantor. Stayo appears in one footer line stating what it actually did — generated and can authenticate the record. A test asserts Stayo appears nowhere in the operative text.
+
+**NOT LEGAL ADVICE.** The added boilerplate is conventional neutral wording to make the document structurally complete. It has not been reviewed by a lawyer. Tracked in [[TODO]].
+
+## 2026-08-28 — WhatsApp receipt delivery depended on an unconfigured CDN (fixed)
+
+**Symptom.** None yet in production — found while sending a test receipt, because there is no `IMAGEKIT_PRIVATE_KEY` in `.env` at all.
+
+**Cause.** `sendDocumentMessage` only supported `document.link`, which Meta fetches server-side and therefore must be publicly reachable. The only URL available was `receipts.receipt_pdf_url`, written by `receiptService` after an ImageKit upload — and `lib/imagekit.ts` silently substitutes a **mock uploader** when the key is absent, storing `https://ik.imagekit.io/dummy/mock_upload.png`. Meta would have been handed a link to a non-existent PNG on every `RECEIPT`.
+
+**Fix.** `MetaWhatsAppProvider.uploadMedia` posts the bytes to Meta's media store and the document is sent by `id`, removing the CDN from the path entirely. `ensureReceiptDocument` now returns the buffer that `generatePdfBuffer` already produced and that the previous version discarded — so this is also one fewer render/round-trip. The mock URL is recognised and treated as absent; a genuine CDN URL is still used as a fallback. Shared by both the `RECEIPT` command and payment confirmations via `command-center/receipt-delivery.ts`.
+
+**Unverified:** whether production has `IMAGEKIT_PRIVATE_KEY` set is not visible from this environment. The fix makes it not matter.
+
+## 2026-08-28 — Every receipt was signed by a different, retired business (fixed)
+
+**Symptom.** A receipt headed *Shoeb's Mansion* carried a footer reading a retired single-hostel brand and its Gmail address, plus that brand in the PDF's title and author metadata.
+
+**Cause.** The identity was hardcoded in five places in `lib/pdf/receipt-template-pdf-lib.ts` — `setTitle`, `setAuthor`, the monogram fallback, the hostel-name fallback, and the footer band.
+
+**Why the guardrail missed it.** `scripts/check-production-branding.mjs` forbids exactly these strings. It was only ever invoked as `check-production-branding.mjs dist` from `apps/frontend`'s build, and its `textFilePattern` did not match `.ts` at all — so backend source was both out of scope and unmatchable. The backend produces no bundled artefact for it to scan.
+
+**Fix.** The template takes its issuer entirely from data; there is no default identity. The guardrail now matches `.ts`/`.tsx`/`.mjs`, skips `node_modules`/`.next`, and excludes itself (its own rule list contains the strings). `apps/backend` gains `npm run check:branding`.
+
+**Three backend files still carry it and are NOT fixed** — deliberately, as each needs a different judgement: `lib/sanity/landingContent.ts` (a full legacy hostel identity used as fallback landing content — a genuine public leak), `lib/security/owner-integrity-guard.ts:24` (the address appears in what looks like a security allowlist — **do not change blind**), and `lib/services/notifications/owner-whatsapp-assistant.ts` (owner-facing copy, 3 sites). Tracked in [[TODO]]; the guardrail is not wired into a build until they are cleared.
+
+## 2026-08-28 — The receipt printed "Rs.", ", Hyderabad" and "N/A" (fixed)
+
+**Symptoms, all on the same document.** `Rs. 16,000` instead of `₹16,000`. A city line beginning with a stray comma. `TRANSACTION ID: N/A` on a cash payment, which has no transaction id by definition. `RECEIPT VERSION v4.0.0` on the face of the document. `SETTLEMENT BREAKDOWN` / `ALLOCATED AMOUNT` as headings, and `Secure HMAC` beside the QR.
+
+**Causes.** The rupee sign was actively rewritten to `Rs. ` by a `sanitizeText` helper, because pdf-lib's built-in fonts are WinAnsi-encoded and have no `₹` glyph. The comma came from joining an empty street line to a city. The rest was internal vocabulary and absent-value handling leaking onto a customer-facing document.
+
+**Fix.** Content moved into `lib/pdf/receipt-content.ts`, a pure module with no pdf-lib and no I/O, so each of these is now a unit test rather than a thing to notice by eye. Fields with no value are dropped rather than printed as "N/A"; a literal upstream `"N/A"` is treated as absent. The renderer embeds Inter, which carries `₹`.
+
+**A trap for anyone editing the fonts:** pdf-lib's subsetter drops most Latin glyphs from these Inter builds — the first render came out as `raba T a a 32` where `Hyderabad, Telangana 500032` belonged. Inter is embedded with `subset: false` on purpose. DM Mono subsets correctly.
+
+## 2026-08-27 — Every inbound WhatsApp message failed on `prisma.profiles` (fixed)
+
+**Symptom.** Sending anything to the WhatsApp number — `Help`, `RENT`, a tapped button — returned only the generic failure notice. Logs showed `Cannot read properties of undefined (reading 'findFirst')` for every message, with `processed_commands: 0`.
+
+**Cause.** `identity-resolver.ts::findAdminProfile` called `prisma.profiles.findFirst`. The Prisma model is **`profile`** (singular); `@@map("profiles")` names the *table*, not the client delegate. `prisma.profiles` is `undefined`. Because identity resolution runs first for every inbound message, nothing downstream ever ran.
+
+**Why nothing caught it.** `lib/db` exports `export const prisma: any` ([db.ts:83](../../apps/backend/lib/db.ts)), so **every** `prisma.<model>` typo in this repo is invisible to `tsc` and to `next build`. The DB-backed suite does not run without `DATABASE_URL_TEST`, and the pure suite touches no client. There was no layer left to catch it.
+
+**Predates the command-center rebuild.** The routing pipeline on `main` already called `resolveSenderIdentity` before [[Decisions#ADR-128|ADR-128]] shipped, so inbound WhatsApp had been failing since that pipeline landed — the rebuild only changed the wording of the notice the sender receives.
+
+**Fix.** `prisma.profile`. Plus `tests/whatsapp-prisma-accessors.test.ts`, which parses `schema.prisma` and the WhatsApp source as text — no client, no database — and fails on any `prisma.<name>` that is not a declared model. Verified to fail on the original bug before passing on the fix.
+
+**18 more of these exist elsewhere and are NOT fixed** — confirmed against a freshly generated client, not just a regex: `prisma.visitorLead` (should be `visitor_leads`, 6 files incl. `discovery-service`), `prisma.paymentWebhookEvent` (`payment_webhook_events`, 4 files), `prisma.paymentReconciliationRun`/`Item`, `prisma.paymentOperationalAnomaly`, `prisma.paymentAttemptStatusEvent`, `prisma.paymentProviderVerificationSnapshot`, `prisma.leadActivity`/`leadNote`, `prisma.roomReservation`, `prisma.ownerOnboardingState`, `prisma.messageLog`/`messagePack`, `prisma.migrationAuditRun`, `prisma.financialInvariantFailure`, `prisma.rentGenerationLedger`, `prisma.tenant_advance_ledger`, `prisma.leads`. Each throws the same way the moment its line is reached. Tracked in [[TODO]] — the guard above is scoped to the WhatsApp tree only because widening it now would fail the suite on all 18.
 
 ## 2026-08-27 — Template quick-reply buttons were dropped on the floor (fixed)
 

@@ -35,16 +35,37 @@ export const PAYLOAD_PREFIX = "CC";
 export type Button = { id: string; title: string };
 export type ListRow = { id: string; title: string; description?: string };
 
-/** `CC:PAY:<tenantId>` — the command and its subject, together, always. */
-export function encodePayload(command: CommandName, tenantId?: string | null): string {
-  const payload = tenantId ? `${PAYLOAD_PREFIX}:${command}:${tenantId}` : `${PAYLOAD_PREFIX}:${command}`;
+/**
+ * `CC:PAY:<tenantId>` — the command and its subject, together, always.
+ *
+ * An optional fourth segment carries *which one* when a command needs it:
+ * `CC:RECEIPT:<tenantId>:<paymentId>` names the payment a reader picked out of
+ * their history. Two UUIDs plus the prefix is ~85 characters, well inside
+ * WhatsApp's 200-character ceiling, which the guard below enforces anyway.
+ */
+export function encodePayload(
+  command: CommandName,
+  tenantId?: string | null,
+  ref?: string | null
+): string {
+  const segments = [PAYLOAD_PREFIX, command];
+  if (tenantId) {
+    segments.push(tenantId);
+    if (ref) segments.push(ref);
+  }
+  const payload = segments.join(":");
   if (payload.length > LIMITS.PAYLOAD_ID) {
     throw new Error(`Command-center payload exceeds ${LIMITS.PAYLOAD_ID} characters: ${payload}`);
   }
   return payload;
 }
 
-export type DecodedPayload = { command: CommandName; tenantId: string | null };
+export type DecodedPayload = {
+  command: CommandName;
+  tenantId: string | null;
+  /** The specific thing the reader picked — a payment id, for `RECEIPT`. */
+  ref: string | null;
+};
 
 export function decodePayload(raw: string): DecodedPayload | null {
   const parts = String(raw || "").trim().split(":");
@@ -56,6 +77,7 @@ export function decodePayload(raw: string): DecodedPayload | null {
   return {
     command: COMMANDS[command as keyof typeof COMMANDS],
     tenantId: parts[2] || null,
+    ref: parts[3] || null,
   };
 }
 
@@ -130,6 +152,33 @@ export function residentPicker(options: {
   });
 
   return { body: "Which resident is this about?", rows };
+}
+
+/**
+ * "Which payment?" — shown when a reader asks for a receipt and has made more
+ * than one payment.
+ *
+ * Asking is only worth a turn when there is a genuine choice: a reader with a
+ * single payment gets that receipt straight away, and one with none is told so
+ * rather than handed an empty list. Rows lead with the amount and date, since
+ * that is what someone actually remembers about a payment they made.
+ */
+export function paymentPicker(options: {
+  tenantId: string;
+  payments: Array<{
+    paymentId: string;
+    amount: string;
+    paidOn: string | null;
+    towards: string | null;
+  }>;
+}): { body: string; rows: ListRow[] } {
+  const rows = options.payments.slice(0, LIMITS.LIST_ROWS).map((payment) => ({
+    id: encodePayload(COMMANDS.RECEIPT, options.tenantId, payment.paymentId),
+    title: fit(payment.paidOn ? `${payment.amount} · ${payment.paidOn}` : payment.amount, LIMITS.LIST_ROW_TITLE),
+    description: fit(payment.towards || "Payment received", LIMITS.LIST_ROW_DESCRIPTION),
+  }));
+
+  return { body: "Which payment do you need the receipt for?", rows };
 }
 
 /**

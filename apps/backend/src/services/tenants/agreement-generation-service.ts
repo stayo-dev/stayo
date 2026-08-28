@@ -1,4 +1,18 @@
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { PDFDocument, rgb } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
+import fsp from "fs/promises";
+import nodePath from "path";
+import QRCode from "qrcode";
+import {
+  rupees,
+  executionStatement,
+  numberClauses,
+  pageFooter,
+  placeFromAddress,
+  platformAttestation,
+  preamble,
+  standardLegalClauses,
+} from "@/lib/pdf/agreement-content";
 import { prisma } from "../../../lib/db";
 import { imagekit } from "../../../lib/imagekit";
 import axios from "axios";
@@ -147,12 +161,18 @@ export interface AgreementData {
   termsAndConditions?: { id: string; title: string; content: string; }[] | null;
 }
 
-// WinAnsi character encoding helper
+/**
+ * Was a WinAnsi guard; now only trims.
+ *
+ * The document embeds Inter, which is a Unicode font, so neither of this
+ * function's original jobs applies any more — and both were actively wrong on
+ * a financial instrument. It rewrote `₹` to `Rs. `, and then stripped every
+ * character above U+00FF, which silently deleted the rupee sign outright when
+ * the substitution was removed. Amounts rendered as a bare "8,500".
+ */
 function sanitizeText(str: string | null | undefined): string {
   if (!str) return "";
-  let s = str.replace(/₹/g, "Rs. ");
-  s = s.replace(/[^\x00-\xFF]/g, "");
-  return s.trim();
+  return String(str).trim();
 }
 
 function wrapText(text: string, width: number, font: any, fontSize: number): string[] {
@@ -370,9 +390,17 @@ export class AgreementGenerationService {
    */
   static async generatePdfBuffer(data: AgreementData): Promise<Buffer> {
     const pdfDoc = await PDFDocument.create();
-    const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    const fontItalic = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
+    pdfDoc.registerFontkit(fontkit);
+    const FONT_DIR = nodePath.join(process.cwd(), "lib", "pdf", "fonts");
+    // `subset: false` deliberately — pdf-lib's subsetter drops most Latin
+    // glyphs from these Inter builds. See lib/pdf/receipt-template-pdf-lib.ts.
+    const [interRegular, interMedium] = await Promise.all([
+      fsp.readFile(nodePath.join(FONT_DIR, "inter-400.ttf")),
+      fsp.readFile(nodePath.join(FONT_DIR, "inter-500.ttf")),
+    ]);
+    const fontRegular = await pdfDoc.embedFont(interRegular, { subset: false });
+    const fontBold = await pdfDoc.embedFont(interMedium, { subset: false });
+    const fontItalic = fontRegular;
 
     let page = pdfDoc.addPage([595.28, 841.89]); // A4
     const { width, height } = page.getSize();
@@ -414,8 +442,46 @@ export class AgreementGenerationService {
       }
     };
 
+    // The legal furniture this document was missing. See lib/pdf/agreement-content.
+    const placeOfExecution = placeFromAddress(data.hostelAddress);
+    const executionDateDisplay = data.ownerSignedAt
+      ? formatAgreementDate(data.ownerSignedAt)
+      : formatAgreementDate(data.agreementStartDate || data.joiningDate);
+    const agreementReference = (data as any).agreementReference || "";
+    const verificationUrl = (data as any).verificationUrl || null;
+
+    const legalContext = {
+      hostelName: data.hostelName,
+      hostelAddress: data.hostelAddress,
+      ownerName: data.ownerName,
+      tenantName: data.tenantName,
+      agreementReference,
+      executionDateDisplay,
+      placeOfExecution,
+      terms: [],
+      verificationUrl,
+    };
+
     // Initialize first page header
     drawHeader();
+
+    // ── Preamble ──
+    // A contract opens by naming its parties and its date. This one opened
+    // with two boxes of contact details and no operative sentence at all.
+    currentY -= 6;
+    const preambleLines = wrapText(preamble(legalContext), contentWidth, fontRegular, 9);
+    checkPageBreak(preambleLines.length * 12 + 12);
+    preambleLines.forEach((line) => {
+      page.drawText(sanitizeText(line), {
+        x: margin,
+        y: currentY,
+        size: 9,
+        font: fontRegular,
+        color: COLORS.textPrimary,
+      });
+      currentY -= 12;
+    });
+    currentY -= 10;
 
     // 1. Parties Info Box
     checkPageBreak(120);
@@ -520,13 +586,14 @@ export class AgreementGenerationService {
     currentY -= 20;
 
     const gridItems = [
-      { label: "Room Allocated", value: data.roomNo || "N/A" },
+      { label: "Room Allocated", value: data.roomNo || "Not yet allocated" },
       { label: "Agreement Duration", value: data.agreementDurationMonths ? `${data.agreementDurationMonths} Months` : "12 Months" },
-      { label: "Monthly Rent", value: `Rs. ${data.monthlyRent.toLocaleString("en-IN")}` },
+      { label: "Monthly Rent", value: rupees(data.monthlyRent) },
       { label: "Agreement Start", value: formatAgreementDate(data.agreementStartDate || data.joiningDate) },
-      { label: "Security Deposit", value: `Rs. ${data.advanceDeposit.toLocaleString("en-IN")}` },
+      { label: "Security Deposit", value: rupees(data.advanceDeposit) },
       { label: "Agreement End", value: formatAgreementDate(data.agreementEndDate) },
-      { label: "Maintenance Fee", value: data.maintenanceCharge > 0 ? `Rs. ${data.maintenanceCharge.toLocaleString("en-IN")} (${data.maintenanceType})` : "N/A" },
+      // "N/A" against a maintenance fee reads as unknown; "None" is the fact.
+      { label: "Maintenance Fee", value: data.maintenanceCharge > 0 ? `${rupees(data.maintenanceCharge)} (${data.maintenanceType})` : "None" },
       { label: "Payment Frequency", value: data.paymentFrequency },
     ];
 
@@ -573,10 +640,16 @@ export class AgreementGenerationService {
     });
     currentY -= 20;
 
-    const termsList = data.termsAndConditions || DEFAULT_TERMS_AND_CONDITIONS;
+    // The hostel's own terms lead; the structural clauses every contract needs
+    // follow. `numberClauses` also strips a title the stored content repeats —
+    // the source of "4. Notice Period: Notice Period: Either party…".
+    const termsList = numberClauses([
+      ...(data.termsAndConditions || DEFAULT_TERMS_AND_CONDITIONS),
+      ...standardLegalClauses(legalContext),
+    ]);
 
-    termsList.forEach((term, idx) => {
-      const termWrapped = wrapText(`${idx + 1}. ${term.title}: ${term.content}`, contentWidth, fontRegular, 9);
+    termsList.forEach((term) => {
+      const termWrapped = wrapText(`${term.number}. ${term.title}: ${term.body}`, contentWidth, fontRegular, 9);
       checkPageBreak(termWrapped.length * 12 + 10);
       termWrapped.forEach((line) => {
         page.drawText(sanitizeText(line), {
@@ -724,6 +797,21 @@ export class AgreementGenerationService {
       color: COLORS.border,
     });
     currentY -= 20;
+
+    // The operative execution statement. Signature images with no statement of
+    // when and where the parties signed are not an execution block.
+    const witnessLines = wrapText(executionStatement(legalContext), contentWidth, fontRegular, 9);
+    witnessLines.forEach((line) => {
+      page.drawText(sanitizeText(line), {
+        x: margin,
+        y: currentY,
+        size: 9,
+        font: fontRegular,
+        color: COLORS.textPrimary,
+      });
+      currentY -= 12;
+    });
+    currentY -= 14;
 
     page.drawText(sanitizeText("DIGITAL SIGNATURES & AUDIT LOGS"), {
       x: margin,
@@ -957,6 +1045,60 @@ export class AgreementGenerationService {
       size: 7,
       font: fontRegular,
       color: COLORS.textMuted,
+    });
+
+    // ── Per-page furniture ────────────────────────────────────────────────
+    // Applied last, when the total page count is finally known.
+    //
+    // Page numbering is the most important thing added to this document: a
+    // multi-page contract that does not say "Page 2 of 5" can have a page
+    // removed or substituted without either party being able to demonstrate
+    // it. The agreement reference on every sheet ties the paper to the record.
+    const pages = pdfDoc.getPages();
+    const total = pages.length;
+    const attestation = platformAttestation(verificationUrl);
+
+    pages.forEach((p, index) => {
+      const { width: pw } = p.getSize();
+      const footerText = pageFooter(agreementReference, index + 1, total);
+
+      p.drawLine({
+        start: { x: margin, y: margin + 26 },
+        end: { x: pw - margin, y: margin + 26 },
+        thickness: 0.5,
+        color: COLORS.border,
+      });
+
+      p.drawText(sanitizeText(footerText), {
+        x: margin,
+        y: margin + 14,
+        size: 7,
+        font: fontRegular,
+        color: COLORS.textMuted,
+      });
+
+      // Space for the parties to initial each page — standard practice for a
+      // multi-page instrument, and meaningless without page numbers above.
+      const initials = "Initials: ______ / ______";
+      p.drawText(sanitizeText(initials), {
+        x: pw - margin - fontRegular.widthOfTextAtSize(initials, 7),
+        y: margin + 14,
+        size: 7,
+        font: fontRegular,
+        color: COLORS.textMuted,
+      });
+
+      // Platform attestation on the final page only — it is a statement about
+      // the record, not a term of the contract, and Stayo is not a party.
+      if (index === total - 1) {
+        p.drawText(sanitizeText(attestation), {
+          x: margin,
+          y: margin + 4,
+          size: 6.5,
+          font: fontRegular,
+          color: COLORS.textMuted,
+        });
+      }
     });
 
     const pdfBytes = await pdfDoc.save();

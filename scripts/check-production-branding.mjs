@@ -25,16 +25,28 @@ const forbidden = [
   /spchidiri2006/i,
 ];
 
-const textFilePattern = /\.(html?|js|css|json|webmanifest|xml|txt|svg|map)$/i;
+// `.ts`/`.tsx` are included so this can be pointed at **source**, not only at
+// built output. It could not before, and that gap is not theoretical: a retired
+// single-hostel identity sat hardcoded in the backend's receipt template and
+// was printed on every receipt the product issued, because the only invocation
+// scanned `apps/frontend/dist` and the backend has no bundled output to scan.
+const textFilePattern = /\.(html?|jsx?|tsx?|mjs|cjs|css|json|webmanifest|xml|txt|svg|map)$/i;
+
+/** Never worth scanning: dependencies, build caches, and this script itself. */
+const SKIP_DIRS = new Set(["node_modules", ".next", ".turbo", ".git", "coverage"]);
+
 const failures = [];
 
 function walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
+      if (SKIP_DIRS.has(entry.name)) continue;
       walk(fullPath);
       continue;
     }
+    // The rule list itself necessarily contains the forbidden strings.
+    if (path.resolve(fullPath) === path.resolve(process.argv[1])) continue;
     if (!textFilePattern.test(entry.name)) continue;
 
     const content = fs.readFileSync(fullPath, "utf8");

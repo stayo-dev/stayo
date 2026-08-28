@@ -40,6 +40,7 @@ import {
   decodePayload,
   encodePayload,
   helpMessage,
+  paymentPicker,
   residentPicker,
   unknownSenderMessage,
   unrecognisedMessage,
@@ -48,13 +49,23 @@ import {
   buildInstalmentPlan,
   buildReceipt,
   buildRentSummary,
+  ensureReceiptDocument,
+  findPayment,
+  listPayments,
   loadPickerRows,
   loadResidentContext,
+  type PaymentSummary,
   type ResidentContext,
 } from "./context";
 import { formatRentSummary } from "./rent-summary";
+import { sendReceiptDocument } from "./receipt-delivery";
 import { formatInstalmentPlan } from "./installment-plan";
-import { formatLastReceipt } from "./receipt";
+import {
+  formatLastReceipt,
+  formatNoPayments,
+  formatReceiptDelivery,
+  formatReceiptUnavailable,
+} from "./receipt";
 import {
   challengeMessage,
   extractOtp,
@@ -64,7 +75,7 @@ import {
   verifiedMessage,
   verifyGuardianCode,
 } from "./guardian-access";
-import { compose, lines, rupees, signature, subjectLine, type Audience } from "./voice";
+import { compose, lines, rupees, shortDate, signature, subjectLine, type Audience } from "./voice";
 
 const logger = getLogger("whatsapp.command-center");
 
@@ -80,6 +91,14 @@ export type CommandCenterResult = {
 };
 
 const NOT_MINE: CommandCenterResult = { handled: false };
+
+/** What `actionsFor` needs to pick the follow-on buttons. */
+type ActionOptions = {
+  command: CommandName;
+  tenantId: string | null;
+  payableNow: number;
+  hasPayments: boolean;
+};
 
 export class CommandCenterService {
   constructor(private readonly provider = new MetaWhatsAppProvider()) {}
@@ -112,6 +131,7 @@ export class CommandCenterService {
       identity,
       command: decoded.command,
       tenantId: decoded.tenantId,
+      ref: decoded.ref,
     });
   }
 
@@ -122,6 +142,8 @@ export class CommandCenterService {
     identity: SenderIdentity;
     command: CommandName;
     tenantId: string | null;
+    /** Which one — a payment id for `RECEIPT`, when the reader picked it. */
+    ref?: string | null;
   }): Promise<CommandCenterResult> {
     const { phone, identity, command } = input;
 
@@ -191,7 +213,7 @@ export class CommandCenterService {
       case COMMANDS.PLAN:
         return this.sendPlan(phone, context, audience);
       case COMMANDS.RECEIPT:
-        return this.sendReceipt(phone, context, audience);
+        return this.sendReceipt(phone, context, audience, input.ref || null);
       default:
         return NOT_MINE;
     }
@@ -317,18 +339,172 @@ export class CommandCenterService {
     return { handled: true, command: COMMANDS.PLAN, tenantId: context.tenantId, audience };
   }
 
-  private async sendReceipt(phone: string, context: ResidentContext, audience: Audience): Promise<CommandCenterResult> {
-    const receipt = await buildReceipt(context);
-    const text = formatLastReceipt({ ...receipt, audience, subject: context.subject });
+  /**
+   * `RECEIPT` — ask which payment, then send that receipt as a PDF.
+   *
+   * Two things changed here. It used to answer with a receipt *number* and
+   * leave the reader to go find the document; the document is now attached, so
+   * a guardian gets the thing they can forward to whoever asked them for it.
+   * And it used to assume "the last one" — but a resident half a year in has
+   * made six payments, and the one they want is rarely the newest.
+   *
+   * Asking is only worth a turn when there is a real choice: one payment is
+   * sent straight away, and none is answered plainly rather than with an empty
+   * list.
+   */
+  private async sendReceipt(
+    phone: string,
+    context: ResidentContext,
+    audience: Audience,
+    paymentId: string | null
+  ): Promise<CommandCenterResult> {
+    if (paymentId) {
+      // Scoped to this tenant inside `findPayment`, so a payload that travelled
+      // through the reader's handset cannot reach another resident's payment.
+      const payment = await findPayment(context.tenantId, paymentId);
+      if (!payment) {
+        await this.provider.sendTextMessage(
+          phone,
+          compose(
+            subjectLine(audience, context.subject),
+            "That payment is no longer on the account.",
+            "Send *RECEIPT* to see the payments we can issue a receipt for.",
+            signature(context.subject)
+          )
+        );
+        return { handled: true, command: COMMANDS.RECEIPT, tenantId: context.tenantId, outcome: "PAYMENT_NOT_FOUND" };
+      }
+      return this.deliverReceipt(phone, context, audience, payment);
+    }
 
-    await this.reply(phone, text, {
+    const payments = await listPayments(context.tenantId);
+
+    if (payments.length === 0) {
+      await this.reply(phone, formatNoPayments({ audience, subject: context.subject }), {
+        command: COMMANDS.RECEIPT,
+        tenantId: context.tenantId,
+        payableNow: context.financials.current_payable_amount,
+        hasPayments: false,
+      });
+      return { handled: true, command: COMMANDS.RECEIPT, tenantId: context.tenantId, outcome: "NO_PAYMENTS" };
+    }
+
+    // One payment — asking "which one?" would be a wasted turn.
+    if (payments.length === 1) {
+      return this.deliverReceipt(phone, context, audience, payments[0]);
+    }
+
+    const picker = paymentPicker({
+      tenantId: context.tenantId,
+      payments: payments.map((payment) => ({
+        paymentId: payment.paymentId,
+        amount: rupees(payment.amount),
+        paidOn: shortDate(payment.paidOn),
+        towards: payment.towards,
+      })),
+    });
+
+    try {
+      await this.provider.sendListMessage(
+        phone,
+        picker.body,
+        [{ title: "Payments received", rows: picker.rows }],
+        "Choose payment"
+      );
+    } catch (error: any) {
+      // A list is a nicety; three buttons still let them choose the recent ones.
+      logger.warn("command_center.payment_picker_list_failed", {
+        error: error?.message || String(error),
+      });
+      await this.provider.sendButtonMessage(
+        phone,
+        picker.body,
+        picker.rows.slice(0, 3).map((row) => ({ id: row.id, title: row.title }))
+      );
+    }
+
+    return {
+      handled: true,
+      command: COMMANDS.RECEIPT,
+      tenantId: context.tenantId,
+      audience,
+      outcome: "PAYMENT_PICKER_SENT",
+    };
+  }
+
+  /** Render-or-reuse the PDF, attach it, and say what it is. */
+  private async deliverReceipt(
+    phone: string,
+    context: ResidentContext,
+    audience: Audience,
+    payment: PaymentSummary
+  ): Promise<CommandCenterResult> {
+    const record = {
+      amount: payment.amount,
+      paidOn: payment.paidOn,
+      towards: payment.towards,
+      reference: payment.receiptNumber,
+      receiptUrl: null,
+      method: payment.method,
+    };
+
+    const document = await ensureReceiptDocument(payment.paymentId);
+
+    if (!document) {
+      await this.reply(
+        phone,
+        formatReceiptUnavailable({ audience, subject: context.subject, payment: record }),
+        {
+          command: COMMANDS.RECEIPT,
+          tenantId: context.tenantId,
+          payableNow: context.financials.current_payable_amount,
+          hasPayments: true,
+        }
+      );
+      return {
+        handled: true,
+        command: COMMANDS.RECEIPT,
+        tenantId: context.tenantId,
+        outcome: "RECEIPT_UNAVAILABLE",
+      };
+    }
+
+    const caption = formatReceiptDelivery({
+      audience,
+      subject: context.subject,
+      payment: record,
+      receiptNumber: document.receiptNumber,
+    });
+
+    const delivered = await sendReceiptDocument(this.provider, phone, document, caption);
+    if (!delivered) {
+      // The receipt exists but could not be attached. Say what we know rather
+      // than failing outright.
+      await this.provider.sendTextMessage(
+        phone,
+        document.url
+          ? compose(caption, lines("Download it here:", document.url))
+          : compose(
+              caption,
+              "The attachment did not go through. Please ask again in a moment, or the hostel can send it to you."
+            )
+      );
+    }
+
+    await this.sendActions(phone, {
       command: COMMANDS.RECEIPT,
       tenantId: context.tenantId,
       payableNow: context.financials.current_payable_amount,
-      hasPayments: Boolean(receipt.payment),
+      hasPayments: true,
     });
 
-    return { handled: true, command: COMMANDS.RECEIPT, tenantId: context.tenantId, audience };
+    return {
+      handled: true,
+      command: COMMANDS.RECEIPT,
+      tenantId: context.tenantId,
+      audience,
+      outcome: "RECEIPT_SENT",
+    };
   }
 
   private async sendHelp(
@@ -478,10 +654,19 @@ export class CommandCenterService {
   private async reply(
     phone: string,
     text: string,
-    options: { command: CommandName; tenantId: string | null; payableNow: number; hasPayments: boolean }
+    options: ActionOptions
   ): Promise<void> {
     await this.provider.sendTextMessage(phone, text);
+    await this.sendActions(phone, options);
+  }
 
+  /**
+   * The follow-on actions, on their own.
+   *
+   * Separate from `reply` because the receipt path sends a *document* rather
+   * than text and still owes the reader somewhere to go next.
+   */
+  private async sendActions(phone: string, options: ActionOptions): Promise<void> {
     const buttons = actionsFor(options);
     if (buttons.length === 0) return;
 

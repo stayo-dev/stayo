@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ownerService } from '@features/owners/api';
 import { queryKeys } from '@lib/queryKeys';
 
-const policyKey = (hostelId: string) => ['hostel', hostelId, 'settings-policy'];
+export const policyKey = (hostelId: string) => ['hostel', hostelId, 'settings-policy'];
 
 export function useHostelPolicy(hostelId: string | null) {
   return useQuery({

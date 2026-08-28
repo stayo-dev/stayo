@@ -8,10 +8,13 @@ import { useHostelBuilder, type BuilderStage } from '../useHostelBuilder';
 import { builderJourney, continueBlocker } from '../builderJourney';
 import { primaryFloorAction, primaryFloorLabel } from '../floorStrip';
 import { defaultFloorName } from '../hostelBuilder';
+import { isAgreementSettled, type AgreementChoice } from '../agreementSetup';
+import { useAgreementSetupState, useSaveAgreementDecision } from '../useAgreementSetup';
 import { NameStep } from '../steps/NameStep';
 import { FloorsStep } from '../steps/FloorsStep';
 import { FillFloorStep } from '../steps/FillFloorStep';
 import { ReviewStep } from '../steps/ReviewStep';
+import { AgreementDecisionStep } from '../steps/AgreementDecisionStep';
 
 /** The form every step renders into, so the sticky footer button can submit it. */
 const STEP_FORM_ID = 'hostel-builder-step';
@@ -45,6 +48,16 @@ export function HostelBuilderPage() {
   const [floorNames, setFloorNames] = useState<string[]>(() =>
     Array.from({ length: 3 }, (_, i) => defaultFloorName(i)),
   );
+  const [agreementChoice, setAgreementChoice] = useState<AgreementChoice>(null);
+  const [signatureBlob, setSignatureBlob] = useState<Blob | null>(null);
+
+  const agreementState = useAgreementSetupState(builder.hostelId || null);
+  const saveAgreement = useSaveAgreementDecision(builder.hostelId);
+  const agreementSettled = isAgreementSettled({
+    agreementRequired: agreementState.agreementRequired,
+    signatureConfigured: agreementState.signatureConfigured,
+  });
+  const hasSignature = Boolean(signatureBlob) || agreementState.signatureConfigured;
 
   const {
     stage,
@@ -105,13 +118,39 @@ export function HostelBuilderPage() {
         await advance();
         return;
       }
-      navigate(`/owner/hostels/${builder.hostelId}/rooms`);
+      if (stage === 'review') {
+        // The agreement decision is one-time, hostel-wide — so a build that
+        // already settled it (resumed, or the owner already said "No") skips
+        // straight to Rooms instead of re-asking.
+        if (!agreementSettled) {
+          setStage('agreement');
+          return;
+        }
+        navigate(`/owner/hostels/${builder.hostelId}/rooms`);
+        return;
+      }
+      if (stage === 'agreement') {
+        if (agreementChoice === 'no') {
+          await saveAgreement.mutateAsync({ choice: 'no' });
+        } else if (agreementChoice === 'yes' && signatureBlob) {
+          const file = new File([signatureBlob], 'owner_signature.png', { type: 'image/png' });
+          await saveAgreement.mutateAsync({
+            choice: 'yes',
+            signatureFile: file,
+            hasActiveTemplate: agreementState.hasActiveTemplate,
+          });
+        } else {
+          return;
+        }
+        navigate(`/owner/hostels/${builder.hostelId}/rooms`);
+      }
     } catch (error) {
       stayoToast.error(errorMessage(error, 'Something went wrong. Please try again.'));
     }
   };
 
   const handleBack = () => {
+    if (stage === 'agreement') return setStage('review');
     if (stage === 'fill' && activeIndex > 0) return setActiveIndex(activeIndex - 1);
     if (stage === 'fill') {
       // Re-seed the count and names from the floors that were actually
@@ -127,7 +166,7 @@ export function HostelBuilderPage() {
     navigate('/owner');
   };
 
-  const busy = createHostel.isPending || createFloors.isPending || saveFloor.isPending;
+  const busy = createHostel.isPending || createFloors.isPending || saveFloor.isPending || saveAgreement.isPending;
 
   const primaryLabel =
     stage === 'name'
@@ -143,13 +182,23 @@ export function HostelBuilderPage() {
           // next floor still needing rooms, not simply the next index, so the
           // label has to be derived from the same rule. See `floorStrip.ts`.
           ? primaryFloorLabel(primaryFloorAction(floors, activeIndex))
-          : 'Open my hostel';
+          : stage === 'review'
+            ? agreementSettled
+              ? 'Open my hostel'
+              : 'Continue'
+            : 'Finish setup';
+
+  // True on whichever stage is actually the last tap of the build — Review
+  // itself only when there is nothing left to settle after it.
+  const isFinalStep = stage === 'agreement' || (stage === 'review' && agreementSettled);
 
   const whyBlocked = continueBlocker(stage, {
     hostelName,
     needsPassword: builder.needsPassword,
     password,
     floorBlocker: blocker,
+    agreementChoice,
+    hasSignature,
   });
   const canContinue = whyBlocked === null;
 
@@ -286,7 +335,7 @@ export function HostelBuilderPage() {
               floors={floors}
               onSelectFloor={goToFloor}
             />
-          ) : (
+          ) : stage === 'review' ? (
             <ReviewStep
               hostelName={hostelName}
               floors={floors}
@@ -294,6 +343,14 @@ export function HostelBuilderPage() {
                 setActiveIndex(index);
                 setStage('fill');
               }}
+            />
+          ) : (
+            <AgreementDecisionStep
+              choice={agreementChoice}
+              onChoiceChange={setAgreementChoice}
+              hasSignature={hasSignature}
+              existingSignatureUrl={agreementState.signatureUrl}
+              onSignatureChange={setSignatureBlob}
             />
           )}
           </form>
@@ -323,7 +380,7 @@ export function HostelBuilderPage() {
               ) : (
                 <>
                   {primaryLabel}
-                  {stage === 'review' ? <Check className="h-4 w-4" strokeWidth={2.4} /> : <ArrowRight className="h-4 w-4" strokeWidth={2.4} />}
+                  {isFinalStep ? <Check className="h-4 w-4" strokeWidth={2.4} /> : <ArrowRight className="h-4 w-4" strokeWidth={2.4} />}
                 </>
               )}
             </button>

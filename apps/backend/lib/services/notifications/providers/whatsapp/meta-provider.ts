@@ -386,6 +386,109 @@ export class MetaWhatsAppProvider {
     });
   }
 
+  /**
+   * Upload bytes to Meta's media store and return the id.
+   *
+   * The alternative to `document.link` — and the better one here. A link must
+   * be publicly fetchable by Meta's servers, which quietly makes receipt
+   * delivery depend on ImageKit being configured: `lib/imagekit.ts` falls back
+   * to a *mock* uploader when `IMAGEKIT_PRIVATE_KEY` is absent, writing
+   * `https://ik.imagekit.io/dummy/mock_upload.png` into
+   * `receipts.receipt_pdf_url`. Meta would then be handed a link to nothing.
+   *
+   * Uploading the bytes removes that dependency: `generatePdfBuffer` already
+   * produces them, and they were being discarded.
+   */
+  async uploadMedia(
+    bytes: Uint8Array | Buffer,
+    mimeType: string,
+    filename: string
+  ): Promise<string> {
+    const url = `${this.config.baseUrl}/${this.config.phoneNumberId}/media`;
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", mimeType);
+    form.append("file", new Blob([bytes as any], { type: mimeType }), filename);
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${this.config.accessToken}` },
+      body: form,
+    });
+
+    const payload: any = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.id) {
+      throw new WhatsAppProviderError({
+        message: `WhatsApp media upload failed: ${payload?.error?.message || response.status}`,
+        code: "WHATSAPP_MEDIA_UPLOAD_FAILED",
+        // 5xx is worth another go; a rejected file is not.
+        retryable: response.status >= 500,
+        attempts: 1,
+        raw: payload,
+      });
+    }
+
+    return String(payload.id);
+  }
+
+  /**
+   * Send a document, either by uploaded media id or by public URL.
+   *
+   * Prefer `mediaId` — see `uploadMedia` for why a link is the fragile option.
+   * `filename` is what the reader sees in their chat and in their downloads,
+   * so it carries the receipt number rather than a UUID.
+   */
+  async sendDocumentMessage(
+    to: string,
+    source: { mediaId: string } | { link: string },
+    filename: string,
+    caption?: string
+  ): Promise<WhatsAppSendResult> {
+    const phone = normalizeWhatsAppPhone(to);
+    const url = `${this.config.baseUrl}/${this.config.phoneNumberId}/messages`;
+    const body = {
+      messaging_product: "whatsapp",
+      to: phone,
+      type: "document",
+      document: {
+        ...("mediaId" in source ? { id: source.mediaId } : { link: source.link }),
+        // Meta caps the filename; a truncated name is better than a refusal.
+        filename: String(filename || "receipt.pdf").slice(0, 240),
+        ...(caption ? { caption: caption.slice(0, 1024) } : {}),
+      },
+    };
+
+    let lastError: WhatsAppProviderError | null = null;
+    for (let attempt = 1; attempt <= this.config.maxRetries + 1; attempt += 1) {
+      try {
+        const result = await this.post(url, body, attempt);
+        const providerMessageId = Array.isArray((result as any)?.messages)
+          ? String((result as any).messages[0]?.id || "")
+          : "";
+        return {
+          providerMessageId: providerMessageId || null,
+          raw: result,
+          attempts: attempt,
+        };
+      } catch (error: any) {
+        if (error instanceof WhatsAppProviderError) {
+          lastError = error;
+          if (!error.retryable || attempt > this.config.maxRetries) throw error;
+          await sleep(Math.min(1000 * 2 ** (attempt - 1), 5000));
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw lastError || new WhatsAppProviderError({
+      message: "WhatsApp document send failed",
+      code: "WHATSAPP_SEND_FAILED",
+      retryable: false,
+      attempts: this.config.maxRetries + 1,
+    });
+  }
+
   async sendButtonMessage(
     to: string,
     bodyText: string,

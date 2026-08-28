@@ -94,7 +94,7 @@ The rebuilt conversational surface for the two people who pay rent. Owner-facing
 | `RENT` | What is payable, what it is made of, how late it is, where they are in the plan | Replaces `BAL`, `BALANCE`, `DUES`, `STATUS` |
 | `PAY` | A secure link for the **whole** payable amount | Tenant-scoped token via `PaymentLinkService` |
 | `PLAN` | Instalment progress — paid / due / overdue / upcoming, with totals | **New.** `installment_sequence` was in the schema and unread |
-| `RECEIPT` | The last payment, what it settled, what remains | **New** |
+| `RECEIPT` | Asks **which payment**, then sends that receipt as a PDF attachment | **New.** Picker skipped when there is only one payment |
 | `HELP` | The menu, and which residents this number is recognised for | |
 
 Retired words (`BAL`, `BALANCE`, `DUES`, `STATUS`, `SWITCH`) still resolve and are advertised nowhere.
@@ -119,7 +119,7 @@ When a tenant enters their guardian's number during activation and verifies it, 
 ### Trust and voice
 
 - Every money message names the **hostel** and signs `— <Hostel>, via Stayo`. Nothing signs `- HMS`.
-- Payment confirmations are pushed unprompted the moment a payment is recorded (`payment_recorded` event → `sendPaymentConfirmation`), to the resident and to verified guardians. The channel used to go silent at exactly the moment it had earned trust.
+- Payment confirmations are pushed unprompted the moment a payment is recorded (`payment_recorded` event → `sendPaymentConfirmation`), to the resident and to verified guardians, **with the receipt PDF attached**. The channel used to go silent at exactly the moment it had earned trust.
 - No apologies, no `━━ section rules ━━`, no `███░░░` progress bar, no "Lifetime Summary", and never the string "N/A".
 - Buttons carry the amount (`Pay ₹8,000`, not `Pay now`) and are never offered when they would be useless — no pay button on a settled account, no receipt button for someone who has never paid.
 
@@ -542,6 +542,7 @@ The StayO redesign is being built in place inside the same `apps/frontend` tree,
 - **Depends on:** [[APIs]] (`POST /api/owner/hostels`, `POST /api/floors/[id]/rooms`, `PATCH`/`DELETE` on floors and rooms), [[Decisions#ADR-066|ADR-066]].
 - **What it does:** name the hostel (which creates it), raise the floors with editable names, then fill each floor — a room count plus a default sharing size and rent, with any room tappable to differ, because real floors mix 4-sharing and 2-sharing at different prices. "Same as this" clones a floor onto the next. Rent is remembered per sharing size across the session. **Update 2026-08-15 — the illustrated building behind the form is gone.** It gained a storey per floor added, grew windows as rooms appeared, and lit them once the rooms were configured; it was removed in favour of the standard owner graph-paper grid (`#EBDCCF` 1px / 52px — the same treatment `OwnerAppShell`/`TenantDetailPage`/`HostelDrilldownLayout` use), because a moving illustration competing with the form made this the one owner screen that did not look like the rest of the app. `builderScene.ts` + its 10 tests were deleted with it: they mapped this page's state onto that scene and had no other consumer. `HostelScene` itself is untouched and still live — the onboarding wizard renders it.
 - **Notes:** replaces onboarding steps 4–11, which described a whole property with four scalars and could not express a mixed floor. Writes are incremental, so leaving mid-build is normal and Home offers to resume. **Rent shown here is a default that prefills invites, not a price** — the tenant's real rent is set at invite time — and the builder deliberately shows **no revenue projection** for that reason. See [[Decisions#ADR-066|ADR-066]].
+- **Update 2026-08-28 — a new `agreement` stage follows Review: "Does this hostel use a tenant agreement?"** One hostel-wide decision, asked once, never per room and never per tenant. New files: `agreementSetup.ts` + `.test.ts` (pure — `isAgreementSettled`, `agreementStepBlocker`), `useAgreementSetup.ts` (`useAgreementSetupState`, `useSaveAgreementDecision`), `steps/AgreementDecisionStep.tsx`. "Yes" captures the owner's signature once via the existing `SignaturePad` (`@shared/ui/inputs`) and publishes the hostel's default agreement template (`configApi.publishAgreementTemplate` → `configApi.uploadOwnerSignature`, two new frontend methods calling pre-existing, previously-uncalled backend routes); "No" sets `tenant_rules.agreement_required: false`. A resumed build only re-shows this step if the decision genuinely isn't settled yet (`isAgreementSettled` — an untouched "required, unsigned" default does not count as settled), so it is never re-asked once answered. No schema or backend change. This is also the fix for a real bug: see [[Bugs]] and [[Decisions#ADR-135|ADR-135]].
 ### Pre-activation workspace — the owner fixes an invitation before the tenant activates
 - **Status:** shipped 2026-08-11
 - **Owner-facing?** yes · **Tenant-facing?** indirectly (they receive the corrected invitation)

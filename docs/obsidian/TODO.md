@@ -4,6 +4,39 @@ tags: [todo, backlog]
 
 # TODO / Backlog
 
+## Agreement PDF — legal review outstanding (2026-08-28)
+
+- [ ] **Have a lawyer review the standard clauses** added in `lib/pdf/agreement-content.ts` (entire agreement, amendment, severability, governing law and jurisdiction, stamp duty). They are conventional neutral wording chosen to make the document structurally complete, not drafted or reviewed by counsel.
+- [ ] **Decide the stamp-duty position properly.** The clause currently states that duty and registration are the parties' responsibility and that the electronic record is not itself stamped. Whether Stayo should instead facilitate e-stamping is a product decision.
+- [ ] **Consider a witness block.** Not added, because whether witnesses are wanted for a hostel accommodation agreement is a legal/product call rather than a formatting one.
+- [ ] `agreementReference` and `verificationUrl` are read off the render data with a fallback to empty — wire them from the agreement record so the page footer always carries a real reference.
+
+## Retired hostel identity still in backend source (2026-08-28)
+
+`npm run check:branding` in `apps/backend` now scans source and currently fails on three files. Each needs a different call, which is why none was changed with the receipt redesign:
+
+- [ ] `lib/sanity/landingContent.ts` — a complete legacy hostel identity (name, email, postal address, SEO title) used as **fallback landing content**. A genuine public-facing leak; replace with Stayo/neutral defaults.
+- [ ] `lib/security/owner-integrity-guard.ts:24` — the retired address sits in what reads as a security allowlist. **Do not change blind**; work out what the list gates first.
+- [ ] `lib/services/notifications/owner-whatsapp-assistant.ts` — 3 sites of owner-facing copy ("Welcome to … Assistant"). Owner surface, so out of the resident/guardian scope.
+- [ ] Once cleared, wire `check:branding` into the backend build the way `apps/frontend` wires its `dist` scan, so this cannot regress.
+
+## Invalid `prisma.<model>` accessors — 18 latent runtime failures (2026-08-27)
+
+`lib/db` exports `prisma` as `any`, so a mistyped model accessor compiles, builds, and throws `Cannot read properties of undefined` the moment the line runs. One of these took inbound WhatsApp down entirely ([[Bugs]]). **18 more are still in the tree**, verified against a generated client:
+
+| Wrong | Correct | Files |
+|---|---|---|
+| `prisma.visitorLead` | `visitor_leads` | 6 (incl. `discovery-service`, `admissions-service`) |
+| `prisma.paymentWebhookEvent` | `payment_webhook_events` | 4 |
+| `prisma.paymentOperationalAnomaly` | *check schema* | 4 |
+| `prisma.paymentReconciliationRun` | *check schema* | 3 |
+| `prisma.paymentReconciliationItem`, `paymentAttemptStatusEvent`, `paymentProviderVerificationSnapshot`, `ownerOnboardingState` | *check schema* | 2 each |
+| `leadActivity`, `leadNote`, `roomReservation`, `messageLog`, `messagePack`, `migrationAuditRun`, `financialInvariantFailure`, `rentGenerationLedger`, `tenant_advance_ledger`, `leads` | *check schema* | 1 each |
+
+- [ ] Fix them. Several sit in payments/reconciliation, so verify each against `schema.prisma` rather than pattern-matching — a wrong "fix" here is worse than the bug.
+- [ ] Then widen `tests/whatsapp-prisma-accessors.test.ts`'s `WATCHED` list to `lib/`, `src/` and `app/`. It is scoped to the WhatsApp tree today only because widening it now fails on all 18.
+- [ ] Consider typing `lib/db`'s export as `PrismaClient` instead of `any`, which would make the compiler catch this class permanently. Large blast radius — likely surfaces many pre-existing errors, so scope it deliberately.
+
 ## WhatsApp command center — follow-ups (2026-08-27)
 
 - [ ] **Submit the three generation-2 rent templates to Meta**: `stayo_rent_due_soon`, `stayo_rent_due_today`, `stayo_rent_overdue`. Exact bodies, parameter order, footer and button are in `providers/whatsapp/rent-reminder-template-contract.ts`. Until approved and named in `WHATSAPP_RENT_DUE_SOON_TEMPLATE` / `WHATSAPP_RENT_DUE_TODAY_TEMPLATE` / `WHATSAPP_RENT_OVERDUE_TEMPLATE`, readers still receive `- HMS` and "pay using the app". See [[Bugs]].
