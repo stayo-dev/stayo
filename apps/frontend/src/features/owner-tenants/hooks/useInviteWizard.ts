@@ -47,6 +47,22 @@ function getErrorMessage(error: unknown, fallback: string) {
   return data?.error?.message || fallback;
 }
 
+function getErrorCode(error: unknown): string | undefined {
+  return (error as { response?: { data?: { error?: { code?: string } } } })?.response?.data?.error?.code;
+}
+
+/**
+ * Same CAPACITY_EXCEEDED phrasing as `AdoptTenantSheet` — this is the same
+ * adopt endpoint, just called from a second moment (right after the invite
+ * goes out, instead of later from the invited-tenant screen).
+ */
+function getAdoptErrorMessage(error: unknown): string {
+  if (getErrorCode(error) === 'CAPACITY_EXCEEDED') {
+    return 'That room is now full — move the tenant to a room with space first';
+  }
+  return getErrorMessage(error, 'Could not keep the records. The invitation was still sent — try again, or just wait for them to activate.');
+}
+
 /**
  * Step index + form data + navigation for the 4-step Invite Tenant wizard.
  *
@@ -105,23 +121,6 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
   const isStep1Valid = Boolean(data.hostelId && data.roomId && data.joiningDate && Number(data.agreementMonths) > 0);
   const isStep2Valid = Boolean(data.monthlyRent && Number(data.monthlyRent) >= 0);
   const isStep3Valid = Boolean(agreed && data.roomId && isStep0Valid && isStep1Valid && isStep2Valid);
-  // Owner-managed tenants never receive anything, so an email — valid,
-  // invalid, or blank — is irrelevant to this path. Name and phone still are.
-  // `!eligibilityConflict` is not optional here: "Just add to my records"
-  // creates the exact same ACTIVE tenancy an accepted invite eventually does
-  // (see `ownerManagedMutation` below), so it is bound by the same one-live-
-  // tenancy-per-person rule the "Send invite" path enforces via `isStep0Valid`
-  // — without this, a person already active at another hostel could be
-  // blocked from Send but waved through this second exit instead.
-  const isOwnerManagedValid = Boolean(
-    agreed &&
-      data.roomId &&
-      isValidTenantName(data.tenantName) &&
-      isValidIndianPhone(data.tenantPhone) &&
-      !eligibilityConflict &&
-      isStep1Valid &&
-      isStep2Valid,
-  );
 
   const isCurrentStepValid = (() => {
     switch (step) {
@@ -147,12 +146,7 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
   const email = data.tenantEmail.trim();
   const emailInvalid = !isValidTenantEmail(email);
 
-  // Same "who am I creating this tenancy for" payload, and the same
-  // create-invitation call (lead-aware endpoint when converting from a lead,
-  // plain invite endpoint otherwise), regardless of whether the owner ends up
-  // sending it (`submit`) or immediately adopting it (`submitAsOwnerManaged`).
-  // The tenancy row, reservation and terms are created identically either way.
-  const buildInvitePayload = (options: { suppressNotification?: boolean } = {}) => ({
+  const buildInvitePayload = () => ({
     name: data.tenantName.trim(),
     phone: sanitizeIndianPhone(data.tenantPhone),
     // Omitted rather than sent blank: the backend's InvitationSchema
@@ -165,16 +159,10 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
     joining_date: data.joiningDate || undefined,
     agreement_duration_months: Number(data.agreementMonths) || undefined,
     payment_frequency: BILLING_TO_FREQUENCY[data.billing] ?? 'MONTHLY',
-    // Omitted (not `false`) for the ordinary "Send invite" path, so that
-    // request is byte-identical to before this flag existed. Only
-    // `submitAsOwnerManaged` ("Just add to my records") sets this — the
-    // invitation record still gets created, but the WhatsApp/email send that
-    // path's caption promises never happens is suppressed.
-    ...(options.suppressNotification ? { suppressInvitationNotification: true } : {}),
   });
 
-  const createInvitation = async (options: { suppressNotification?: boolean } = {}) => {
-    const payload = buildInvitePayload(options);
+  const createInvitation = async () => {
+    const payload = buildInvitePayload();
     if (leadId) {
       // Response is { invitation, lead } — unwrap so the rest of this hook
       // (resolveInviteDelivery, tenant_id) sees the same flat shape either way.
@@ -219,18 +207,19 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
   });
 
   /**
-   * "Just add to my records" — the tenant never has to open a link. Creates
-   * the exact same tenancy the invite path would, then immediately adopts it
-   * (Task 8's `ownerManagedService.adopt`), so it lands `ACTIVE` /
-   * `OWNER_MANAGED` rather than sitting `INVITED` waiting on someone who was
-   * never going to click through.
+   * "Keep the records myself meanwhile" — the second moment to make this
+   * choice, offered on the success screen right after the invitation goes
+   * out (see `InviteDeliveryResult`). Whether a tenant uses the app is the
+   * tenant's decision, not something the owner predicts up front, so this
+   * replaces what used to be a pre-send "Just add to my records" exit on the
+   * wizard itself. Adopts the same tenancy `inviteMutation` just created
+   * (`tenantId`, captured in its `onSuccess` below) — nothing new is created,
+   * nothing is duplicated, and the invitation stays claimable afterwards.
    */
-  const ownerManagedMutation = useMutation({
-    mutationFn: async () => {
-      const created = (await createInvitation({ suppressNotification: true })) as { tenant_id?: string } | null;
-      const newTenantId = created?.tenant_id;
-      if (!newTenantId) throw new Error('Tenant was created but no tenant_id came back.');
-      return ownerManagedService.adopt({ tenantId: newTenantId, hostelId: data.hostelId });
+  const adoptMutation = useMutation({
+    mutationFn: () => {
+      if (!tenantId) throw new Error('No tenant to adopt yet.');
+      return ownerManagedService.adopt({ tenantId, hostelId: data.hostelId });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['owner', 'tenants', 'list-merged'] });
@@ -243,9 +232,8 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
     inviteMutation.mutate();
   };
 
-  const submitAsOwnerManaged = () => {
-    if (!isOwnerManagedValid) return;
-    ownerManagedMutation.mutate();
+  const keepRecordsMyself = () => {
+    adoptMutation.mutate();
   };
 
   const sendFallbackEmail = () => {
@@ -264,7 +252,7 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
     setFallbackEmail('');
     inviteMutation.reset();
     resendMutation.reset();
-    ownerManagedMutation.reset();
+    adoptMutation.reset();
   };
 
   return {
@@ -291,20 +279,14 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
     eligibilityConflict,
     isCheckingEligibility,
     hasExistingAccount,
-    // "Just add to my records" — parallel state to the invite path above, kept
-    // separate because success here means something different: no delivery
-    // result to show, just "this tenant now exists and is active." Bound by
-    // the same tenancy-conflict rule as the invite path (see
-    // `isOwnerManagedValid` above for the pre-submit gate); this is the same
-    // 409 safety net for the same check→submit race.
-    submitAsOwnerManaged,
-    isOwnerManagedValid,
-    isSubmittingOwnerManaged: ownerManagedMutation.isPending,
-    ownerManagedSuccess: ownerManagedMutation.isSuccess,
-    ownerManagedConflict: ownerManagedMutation.isError ? parseTenancyConflict(ownerManagedMutation.error) : null,
-    ownerManagedError: ownerManagedMutation.isError
-      ? getErrorMessage(ownerManagedMutation.error, 'Could not add this tenant. Please try again.')
-      : null,
+    // "Keep the records myself meanwhile" — offered on the success screen
+    // after the invite is sent (see `keepRecordsMyself` above). A failure
+    // here does not mean the invitation failed; it already went out.
+    keepRecordsMyself,
+    isAdopting: adoptMutation.isPending,
+    adoptSuccess: adoptMutation.isSuccess,
+    adoptError: adoptMutation.isError ? getAdoptErrorMessage(adoptMutation.error) : null,
+    resetAdoptError: adoptMutation.reset,
     // Fallback-email prompt
     fallbackEmail,
     setFallbackEmail,

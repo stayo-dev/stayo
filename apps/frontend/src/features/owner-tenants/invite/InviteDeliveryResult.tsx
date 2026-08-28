@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AlertTriangle, Check, Copy, Mail, Share2 } from 'lucide-react';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import {
@@ -20,6 +20,16 @@ interface InviteDeliveryResultProps {
   isSendingFallback: boolean;
   fallbackError: string | null;
   canSendFallback: boolean;
+  /**
+   * "Keep the records myself meanwhile" — the post-invite half of the choice
+   * described on `InviteTenantWizard`. Only offered once the invite actually
+   * went out (the delivered case below); a failed delivery has its own
+   * recovery UI (fallback email, manual link) that this doesn't replace.
+   */
+  onKeepRecordsMyself: () => void;
+  isAdopting: boolean;
+  adoptSuccess: boolean;
+  adoptError: string | null;
 }
 
 const primaryBtn =
@@ -48,9 +58,22 @@ export function InviteDeliveryResult({
   isSendingFallback,
   fallbackError,
   canSendFallback,
+  onKeepRecordsMyself,
+  isAdopting,
+  adoptSuccess,
+  adoptError,
 }: InviteDeliveryResultProps) {
   const [copied, setCopied] = useState(false);
   const name = tenantName.trim() || 'The tenant';
+
+  // Adoption is fire-and-forget from here: once it succeeds, there is nothing
+  // left to show on this screen, so close the same way "Wait for them to
+  // activate" would. A failure does *not* close — the invitation still went
+  // out, so the owner should see the error and get to retry or fall back to
+  // waiting, not be dropped out of the flow.
+  useEffect(() => {
+    if (adoptSuccess) onDone();
+  }, [adoptSuccess, onDone]);
 
   const handleCopy = async () => {
     const ok = await copyActivationLink(delivery.activationLink);
@@ -91,9 +114,28 @@ export function InviteDeliveryResult({
             </>
           )}
         </p>
-        <button type="button" onClick={onDone} className="mt-2 rounded-xl bg-primary px-6 py-3 font-display text-sm font-bold text-primary-foreground">
-          Done
-        </button>
+        <div className="mt-2 flex w-full flex-col items-center gap-2">
+          <button type="button" onClick={onDone} className={primaryBtn}>
+            Wait for them to activate
+          </button>
+          <button
+            type="button"
+            onClick={onKeepRecordsMyself}
+            disabled={isAdopting}
+            className="font-display text-[13px] font-bold text-muted-foreground underline decoration-dotted underline-offset-4 disabled:opacity-50"
+          >
+            {isAdopting ? 'Adding…' : 'Keep the records myself meanwhile'}
+          </button>
+          <p className="max-w-[280px] text-center text-[11.5px] leading-snug text-muted-foreground">
+            You keep the books and rent starts today, whether or not {name} finishes signing up. If they activate
+            later, they&apos;ll pick up this exact record — nothing is duplicated.
+          </p>
+          {adoptError && (
+            <p className="max-w-[280px] rounded-xl border border-destructive/25 bg-destructive/10 px-3 py-2 text-center text-[12px] font-semibold text-destructive">
+              {adoptError}
+            </p>
+          )}
+        </div>
       </div>
     );
   }
