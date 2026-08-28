@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import {
-  resolveActiveRequest,
-  decideLane,
-  summariseSettlement,
-  completionLabel,
   buildConsequences,
-  exitProgress,
   canonicalStatus,
+  completionLabel,
+  decideLane,
+  exitProgress,
+  humaniseServerError,
+  moveOutBlock,
+  resolveActiveRequest,
+  summariseSettlement,
   type SettlementPreview,
 } from './moveOutPlan';
 
@@ -300,5 +302,85 @@ describe('canonicalStatus', () => {
   it('leaves current spellings alone and tolerates junk', () => {
     expect(canonicalStatus('REQUESTED')).toBe('REQUESTED');
     expect(canonicalStatus(null)).toBe('');
+  });
+});
+
+describe('moveOutBlock', () => {
+  it('lets an active tenancy start an exit', () => {
+    expect(moveOutBlock({ tenantStatus: 'ACTIVE' })).toBeNull();
+    expect(moveOutBlock({ tenantStatus: 'active' })).toBeNull();
+  });
+
+  it('refuses a cancelled tenancy, and says what to do instead', () => {
+    // The bug: the sheet offered a full exit form for a CANCELLED tenant and
+    // let the server refuse on submit with its internal validation string.
+    const blocked = moveOutBlock({ tenantStatus: 'CANCELLED' });
+    expect(blocked?.reason).toBe('This tenancy was cancelled');
+    expect(blocked?.detail).toContain('reactivate');
+  });
+
+  it('points an invited tenant at cancelling the invitation', () => {
+    const blocked = moveOutBlock({ tenantStatus: 'INVITED' });
+    expect(blocked?.reason).toBe('They have not moved in yet');
+    expect(blocked?.detail).toContain('Cancel the invitation');
+  });
+
+  it('treats an already-closed tenancy as closed', () => {
+    for (const status of ['INACTIVE', 'MOVED_OUT', 'COMPLETED']) {
+      expect(moveOutBlock({ tenantStatus: status })?.reason, status).toBe('They have already moved out');
+    }
+  });
+
+  it('refuses an unknown status rather than assuming it is fine', () => {
+    const blocked = moveOutBlock({ tenantStatus: 'SOMETHING_NEW' });
+    expect(blocked?.reason).toBe('Move-out is not available');
+    expect(blocked?.detail).toContain('something_new');
+
+    expect(moveOutBlock({ tenantStatus: null })?.reason).toBe('Move-out is not available');
+    expect(moveOutBlock({ tenantStatus: undefined })?.reason).toBe('Move-out is not available');
+  });
+
+  it('always opens for an exit already in flight, whatever the status', () => {
+    // A tenancy legitimately leaves ACTIVE mid-exit while its settlement is
+    // still being worked through. Locking the owner out would strand the money.
+    for (const status of ['CANCELLED', 'INACTIVE', 'MOVED_OUT', null]) {
+      expect(
+        moveOutBlock({
+          tenantStatus: status,
+          activeRequest: { id: 'r1', tenant_id: 't1', status: 'SETTLEMENT_PENDING' },
+        }),
+        String(status),
+      ).toBeNull();
+    }
+  });
+
+  it('does not treat a terminal request as an exit in flight', () => {
+    // A COMPLETED request must not re-open the form for a cancelled tenancy.
+    expect(
+      moveOutBlock({
+        tenantStatus: 'CANCELLED',
+        activeRequest: { id: 'r1', tenant_id: 't1', status: 'COMPLETED' },
+      })?.reason,
+    ).toBe('This tenancy was cancelled');
+  });
+});
+
+describe('humaniseServerError', () => {
+  it('strips the internal prefix the owner should never see', () => {
+    expect(
+      humaniseServerError('VALIDATION: Only ACTIVE tenants can request move-out. Current: CANCELLED', 'x'),
+    ).toBe('Only ACTIVE tenants can request move-out. Current: CANCELLED');
+    expect(humaniseServerError('VALIDATION_ERROR: nope', 'x')).toBe('nope');
+    expect(humaniseServerError('ERROR : spaced', 'x')).toBe('spaced');
+  });
+
+  it('leaves an ordinary message alone', () => {
+    expect(humaniseServerError('Room 101 is occupied.', 'x')).toBe('Room 101 is occupied.');
+  });
+
+  it('falls back when there is nothing to show', () => {
+    expect(humaniseServerError('', 'fallback')).toBe('fallback');
+    expect(humaniseServerError(null, 'fallback')).toBe('fallback');
+    expect(humaniseServerError('VALIDATION:', 'fallback')).toBe('fallback');
   });
 });

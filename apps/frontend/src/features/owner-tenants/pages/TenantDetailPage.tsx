@@ -485,6 +485,7 @@ export function TenantDetailPage() {
         currentRent={tenant.stay.monthlyRent}
       />
       <MoveOutSheet
+        tenantStatus={tenant.status}
         open={moveOutOpen}
         onClose={() => setMoveOutOpen(false)}
         tenantId={tenant.id}
