@@ -1,13 +1,24 @@
 import { prisma } from "@/lib/db";
 import { getLogger } from "@/lib/logger";
+import { addUtcMonths, dueDateForMonth, lastDayOfUtcMonth } from "./rent-schedule-dates";
 
 const logger = getLogger("onboarding-financials");
+
+// Sane horizon for how many months of back-rent a single onboarding call
+// will generate. Without this, a mistyped joining year (e.g. 2015 instead of
+// 2025) would silently create hundreds of RENT obligations. See the
+// "Settle at Invite" plan.
+const RENT_BACKFILL_CAP_MONTHS = 24;
 
 export type OnboardingFinancialInitResult = {
   createdObligations: string[];
   createdObligationIds: string[];
   skipped: boolean;
   reason?: string;
+  /** Present (and > 1) only when joiningDate is in the past and more than one month of rent was generated — the ordinary same-month case never sets this. */
+  rentMonthsElapsed?: number;
+  /** True when the elapsed-month count exceeded RENT_BACKFILL_CAP_MONTHS and the backfill was capped to the most recent months. */
+  rentBackfillTruncated?: boolean;
 };
 
 type Tx = typeof prisma;
@@ -32,6 +43,8 @@ export class OnboardingFinancialsService {
       monthlyRent?: number;
       maintenanceCharge: number;
       maintenanceType: string;
+      /** Hostel's configured due day (1-28), applied to every backdated rent month after the joining month. Defaults to 5, matching the hostel-preferences default (lib/preferences.ts). */
+      dueDay?: number;
     }
   ): Promise<OnboardingFinancialInitResult> {
     const tenantId = String(params.tenantId || "").trim();
@@ -40,6 +53,7 @@ export class OnboardingFinancialsService {
     const joiningDate = params.joiningDate instanceof Date ? params.joiningDate : new Date(params.joiningDate);
     const maintenanceType = String(params.maintenanceType || "MONTHLY").toUpperCase();
     const maintenanceCharge = money(params.maintenanceCharge);
+    const dueDay = Math.trunc(Number(params.dueDay || 5));
 
     if (!tenantId) throw new Error("VALIDATION_ERROR: tenantId is required");
     if (!ownerId) throw new Error("VALIDATION_ERROR: ownerId is required");
@@ -156,46 +170,99 @@ export class OnboardingFinancialsService {
       }
     }
 
-    // ── CURRENT-MONTH RENT obligation ────────────────────────
-    // P0 Revenue Protection: If joining_date <= today, create the
-    // current month's rent obligation immediately instead of
-    // waiting for the monthly cron job.
+    // ── RENT obligations: one per elapsed month ──────────────────────────
+    // P0 Revenue Protection: if joining_date <= today, create rent for
+    // every month that has elapsed since joining, through the current
+    // month, instead of only the joining month and waiting for the monthly
+    // cron job. This is what makes a mid-year hostel adoption (a tenant
+    // already 5-6 months in, having already paid 5-6 months of rent) real —
+    // without it, the settle-at-invite preview (lib/billing/invite-
+    // settlement-preview.ts) promises months this service never creates.
+    //
+    // The joining month keeps the exact original single-month rule
+    // (due_date = the literal joining date) so an ordinary, same-month
+    // invite is byte-for-byte unchanged. Every month after that uses
+    // dueDateForMonth — the same per-month due-date rule
+    // agreement-rent-schedule-service uses — via the shared pure helpers in
+    // rent-schedule-dates.ts, so this never invents its own date maths.
+    let rentMonthsElapsed = 0;
+    let rentBackfillTruncated = false;
+
     if (shouldCreateRent) {
-      const existingRent = await tx.rent_obligations.findFirst({
-        where: {
+      const currentMonth = rentMonthFor(today);
+      const elapsedMonths: Date[] = [];
+      for (let cursor = rentMonth; cursor.getTime() <= currentMonth.getTime(); cursor = addUtcMonths(cursor, 1)) {
+        elapsedMonths.push(cursor);
+      }
+      rentMonthsElapsed = elapsedMonths.length;
+
+      let monthsToCreate = elapsedMonths;
+      if (elapsedMonths.length > RENT_BACKFILL_CAP_MONTHS) {
+        // Cap the backfill rather than generating hundreds of rows from a
+        // mistyped joining year — keep the most recent months, since the
+        // current (live) month's rent matters most.
+        rentBackfillTruncated = true;
+        monthsToCreate = elapsedMonths.slice(elapsedMonths.length - RENT_BACKFILL_CAP_MONTHS);
+        logger.warn("onboarding.rent_backfill_truncated", {
           tenant_id: tenantId,
-          rent_month: rentMonth,
-          obligation_type: "RENT",
-          is_superseded: false,
-        },
-        select: { id: true },
-      });
-      if (!existingRent) {
+          hostel_id: hostelId,
+          joining_date: joiningDate.toISOString(),
+          elapsed_months: elapsedMonths.length,
+          cap: RENT_BACKFILL_CAP_MONTHS,
+        });
+      }
+
+      for (const monthAnchor of monthsToCreate) {
+        const isJoiningMonth = monthAnchor.getTime() === rentMonth.getTime();
+
+        const existingRent = await tx.rent_obligations.findFirst({
+          where: {
+            tenant_id: tenantId,
+            rent_month: monthAnchor,
+            obligation_type: "RENT",
+            is_superseded: false,
+          },
+          select: { id: true },
+        });
+        if (existingRent) continue;
+
+        const dueDate = isJoiningMonth ? joiningDate : dueDateForMonth(monthAnchor, dueDay);
+        const billingPeriodStart = isJoiningMonth ? joiningDate : monthAnchor;
+        const billingPeriodEnd = isJoiningMonth
+          ? new Date(Date.UTC(joiningDate.getFullYear(), joiningDate.getMonth() + 1, 0))
+          : lastDayOfUtcMonth(monthAnchor);
+        const monthLabel = isJoiningMonth
+          ? joiningDate.toLocaleDateString("en-IN", { month: "short", year: "numeric" })
+          : monthAnchor.toLocaleDateString("en-IN", { month: "short", year: "numeric", timeZone: "UTC" });
+
         const createdRow = await tx.rent_obligations.create({
           data: {
             tenant_id: tenantId,
             allocation_id: null,
             owner_id: ownerId,
             hostel_id: hostelId,
-            rent_month: rentMonth,
+            rent_month: monthAnchor,
             amount: rentAmount,
             total_amount: rentAmount,
-            due_date: joiningDate,
+            due_date: dueDate,
             status: "PENDING",
             obligation_type: "RENT",
-            billing_period_start: joiningDate,
-            billing_period_end: new Date(Date.UTC(joiningDate.getFullYear(), joiningDate.getMonth() + 1, 0)),
-            installment_label: `Rent – ${joiningDate.toLocaleDateString("en-IN", { month: "short", year: "numeric" })}`,
+            billing_period_start: billingPeriodStart,
+            billing_period_end: billingPeriodEnd,
+            installment_label: `Rent – ${monthLabel}`,
           },
         });
         createdObligations.push("RENT");
         createdObligationIds.push(createdRow.id);
-        logger.info("onboarding.current_month_rent_created", {
-          tenant_id: tenantId,
-          hostel_id: hostelId,
-          amount: rentAmount,
-          rent_month: rentMonth.toISOString(),
-        });
+        logger.info(
+          isJoiningMonth ? "onboarding.current_month_rent_created" : "onboarding.backdated_rent_created",
+          {
+            tenant_id: tenantId,
+            hostel_id: hostelId,
+            amount: rentAmount,
+            rent_month: monthAnchor.toISOString(),
+          }
+        );
       }
     }
 
@@ -205,6 +272,8 @@ export class OnboardingFinancialsService {
       createdObligationIds,
       skipped,
       ...(skipped ? { reason: "OBLIGATIONS_EXIST" } : {}),
+      ...(rentMonthsElapsed > 1 ? { rentMonthsElapsed } : {}),
+      ...(rentBackfillTruncated ? { rentBackfillTruncated: true } : {}),
     };
   }
 }
