@@ -193,6 +193,26 @@ Independently, `<a download>` is ignored by browsers for cross-origin URLs: it n
 
 > **Not reproduced against a running instance.** The mechanism is traced from `middleware.ts`, `lib/auth.ts` and the login route; no session was exercised to confirm the exact expiry behaviour. The fix is correct regardless — it removes the cookie dependency and adds the in-app preview — but the severity of the original defect is inferred, not measured.
 
+## 2026-08-28 — The agreement printed every clause title twice, and no amounts (fixed)
+
+**Symptoms.** Clause 4 read *"Notice Period: Notice Period: Either party must provide…"* and clause 5 the same way. Money appeared as `Rs. 8,500`, and — once that substitution was removed — as a bare `8,500` with no symbol at all.
+
+**Causes.** The renderer prints `"{n}. {title}: {content}"` while the stored content of several seed terms *begins with its own title*. Separately, `sanitizeText` rewrote `₹` to `Rs. ` **and** stripped every character above `U+00FF`; removing only the first left the second to delete the rupee sign outright.
+
+**Fix.** `clauseBody` strips a title the content repeats — done at render time, not by correcting the seed rows, because owners can save custom terms with the same shape. `sanitizeText` now only trims: the document embeds Inter, so neither of its original jobs applies.
+
+## 2026-08-28 — The agreement was missing the parts that make it an instrument (fixed)
+
+**What was absent.** No page numbering, on a multi-page contract — so a page could be removed or substituted with neither party able to show it. No agreement reference on the page. No preamble naming the parties and the date. No execution statement, so signature images sat under no record of *when and where* the parties signed. No governing-law or jurisdiction clause. No note on stamp duty, on an instrument that generally attracts it in India.
+
+**Fix.** `lib/pdf/agreement-content.ts` (pure, tested) supplies the preamble, five standard clauses (entire agreement, amendment, severability, governing law, stamp duty), the `IN WITNESS WHEREOF` statement, and per-page footers carrying `{reference} · Page N of M` plus an initials line. The hostel's own terms still lead; the structural clauses follow.
+
+**A forum is not guessed.** `placeFromAddress` returns the **city**, not the state — an Indian address ends `"<City>, <State> <PIN>"`, so a naive last-part read produced "the courts at Telangana". Where the address cannot be parsed it returns `null` and the clause falls back to "the courts having jurisdiction over the location of the hostel", because a wrong forum is worse than an unstated one.
+
+**Deliberately not branded.** Unlike the receipt, this document carries no Stayo watermark and no wordmark. A tenancy agreement is between the hostel and the resident; **Stayo is not a party**, and branding a contract like a marketing surface risks implying the platform is a party, licensor or guarantor. Stayo appears in one footer line stating what it actually did — generated and can authenticate the record. A test asserts Stayo appears nowhere in the operative text.
+
+**NOT LEGAL ADVICE.** The added boilerplate is conventional neutral wording to make the document structurally complete. It has not been reviewed by a lawyer. Tracked in [[TODO]].
+
 ## 2026-08-28 — WhatsApp receipt delivery depended on an unconfigured CDN (fixed)
 
 **Symptom.** None yet in production — found while sending a test receipt, because there is no `IMAGEKIT_PRIVATE_KEY` in `.env` at all.

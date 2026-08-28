@@ -4,6 +4,13 @@ tags: [todo, backlog]
 
 # TODO / Backlog
 
+## Agreement PDF — legal review outstanding (2026-08-28)
+
+- [ ] **Have a lawyer review the standard clauses** added in `lib/pdf/agreement-content.ts` (entire agreement, amendment, severability, governing law and jurisdiction, stamp duty). They are conventional neutral wording chosen to make the document structurally complete, not drafted or reviewed by counsel.
+- [ ] **Decide the stamp-duty position properly.** The clause currently states that duty and registration are the parties' responsibility and that the electronic record is not itself stamped. Whether Stayo should instead facilitate e-stamping is a product decision.
+- [ ] **Consider a witness block.** Not added, because whether witnesses are wanted for a hostel accommodation agreement is a legal/product call rather than a formatting one.
+- [ ] `agreementReference` and `verificationUrl` are read off the render data with a fallback to empty — wire them from the agreement record so the page footer always carries a real reference.
+
 ## Retired hostel identity still in backend source (2026-08-28)
 
 `npm run check:branding` in `apps/backend` now scans source and currently fails on three files. Each needs a different call, which is why none was changed with the receipt redesign:
