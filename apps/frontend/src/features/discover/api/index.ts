@@ -277,6 +277,8 @@ export const discoverService = {
     moveInDate?: string;
     durationMonths?: number;
     message?: string;
+    preferredFloorId?: string;
+    preferredRoomId?: string;
   }): Promise<DiscoverEnquiry> => {
     const response = await api.post('/discover/enquiries', {
       slug: input.slug,
@@ -284,6 +286,8 @@ export const discoverService = {
       move_in_date: input.moveInDate,
       duration_months: input.durationMonths,
       message: input.message,
+      preferred_floor_id: input.preferredFloorId,
+      preferred_room_id: input.preferredRoomId,
     });
     return unwrap(response) as DiscoverEnquiry;
   },

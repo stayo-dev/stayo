@@ -569,6 +569,19 @@ Added [[Decisions#ADR-087|ADR-087]]. This is the tenant-admissions `visitor_lead
 
 See [[APIs]], [[Database]], [[Features]], [[Decisions]], [[Bugs]].
 
+## Enquiry room preference — a preference, never a reservation (2026-08-29, migration 077)
+
+**Files:** `src/services/discovery/discovery-service.ts` (`createEnquiry`), `src/services/admissions/admissions-service.ts` (`getLeadForOwner`), `lib/services/room-capacity-service.ts` (`roomCapacityService`, unchanged), `src/services/tenants/tenant-invitation-lifecycle-service.ts` (`createInvitation`, unchanged).
+
+1. **A preference is stored, not a hold.** `visitor_leads.preferred_floor_id`/`preferred_room_id` record what the tenant asked for at enquiry time. Neither column, nor anything this feature does, reserves a bed — no row is written to `room_reservations` or `tenant_invitation_reservations` for it. That is a deliberate, separate, owner-initiated mechanism (`admissionsService.reserveRoom`, point-in-time and expiring) which this feature does not touch or read from.
+2. **Integrity is checked at submission; availability never is.** `createEnquiry` verifies a `preferred_room_id`/`preferred_floor_id` actually belongs to the enquired hostel (422 `VALIDATION_ERROR` otherwise) — nothing more. Whether the room is currently free is irrelevant at this point and deliberately never checked: a tenant is allowed to prefer a room that's already full, and the preference is still worth recording as information for the owner.
+3. **Availability is judged fresh, exactly once, when the owner reviews the enquiry** — via `getLeadForOwner` composing `roomCapacityService.getRoomCapacitySnapshot`, the same single source of truth `createInvitation`'s final check uses (see [[Business-Rules]]'s "compose, don't reimplement" precedent for the financial read model). Skipped once the lead is `INVITED`/`JOINED`: the preference has done its job, and by then the room a tenant actually got may be a different one entirely.
+4. **The Invite Tenant wizard's room field preselects only on a live "yes."** `leadPrefill.ts`'s `leadToInviteWizardData` copies the preferred room into `roomId` **only** when the backend just confirmed `preferred_room_available === true` for this read. `false` or unset (no preference; lead already converted) leaves `roomId` blank — the Stay step's own picker, backed by the same live `roomService.getAll(..., {grouped:true})` query, is what decides in that case.
+5. **The final assignment goes through the same, unmodified authority.** `createInvitation`'s `SELECT … FOR UPDATE` row lock + `roomCapacityService` capacity check is untouched by this feature — a preselected-but-since-filled room is still refused there exactly as any owner-picked one would be. This feature can only ever suggest a starting point for the owner's own dropdown-equivalent; it cannot cause a room to be assigned twice.
+6. **The owner can always override.** Nothing about a preference — available or not — disables or hides any room in the picker; occupied rooms simply render as unselectable squares, exactly as they would for a walk-in tenant with no stated preference.
+
+See [[APIs]], [[Database]], [[Features]], [[Changelog]].
+
 ## Tenant self-service profile edits — governed vs. direct fields (2026-08-14, narrowed same day)
 
 A tenant editing their own profile (`platforms/tenant` Profile tab → `PATCH /api/tenants/me/profile`) hits one of two paths depending on the field, per explicit product decision. **This was narrowed the same day it shipped**: an earlier pass also governed `permanent_address`/`date_of_birth`; the final, authoritative rule is that *only phone and email* require approval — everything else, including address and DOB, saves directly.

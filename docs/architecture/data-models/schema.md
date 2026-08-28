@@ -195,6 +195,8 @@ VisitorLead represents a hostel admissions prospect before they become a tenant 
 | converted_tenant_id | string | no | Tenant created by the existing invitation service. |
 | lost_reason | string | no | Structured lost reason. |
 | lost_note | string | no | Optional custom lost note. |
+| preferred_floor_id | string | no | Floor the tenant asked for on the enquiry (migration 077). A preference, never a reservation — no bed is held. |
+| preferred_room_id | string | no | Room the tenant asked for on the enquiry (migration 077). Same caveat: a preference only, re-checked for real availability when the owner reviews the lead, never assumed still free. |
 
 **Relationships:**
 - belongs to hostels via hostel_id.
@@ -203,6 +205,8 @@ VisitorLead represents a hostel admissions prospect before they become a tenant 
 - has many LeadNote via lead_id.
 - has many RoomReservation via lead_id.
 - may connect to tenants via converted_tenant_id.
+- may connect to a Floor via preferred_floor_id (`ON DELETE SET NULL`).
+- may connect to a Room via preferred_room_id (`ON DELETE SET NULL`).
 
 **Status values (if applicable):**
 | Value | Meaning |

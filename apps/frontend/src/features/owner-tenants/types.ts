@@ -26,6 +26,16 @@ export interface InviteWizardData {
   deposit: string;
   billing: string;
   maintenance: string;
+  /**
+   * The room/floor the tenant named as a preference on their enquiry, carried
+   * through so the Stay step can preselect it (when still available) and
+   * explain itself (when not) — never carries any weight beyond that. The
+   * actual assignment is always whatever `roomId` ends up holding.
+   */
+  preferredFloorId?: string;
+  preferredRoomId?: string;
+  preferredRoomNo?: string;
+  preferredRoomAvailable?: boolean;
 }
 
 export const EMPTY_INVITE_WIZARD_DATA: InviteWizardData = {

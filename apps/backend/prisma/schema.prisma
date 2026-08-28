@@ -1227,6 +1227,7 @@ model rooms {
   tenant_invitation_reservations tenant_invitation_reservations[]
   hostels                        hostels                          @relation(fields: [hostel_id], references: [id])
   floor_ref                      floors?                          @relation(fields: [floor_id], references: [id])
+  preferred_by_leads visitor_leads[] @relation("LeadPreferredRoom")
 
   @@unique([hostel_id, room_no])
   @@index([hostel_id])
@@ -1243,6 +1244,7 @@ model floors {
   created_at DateTime @default(now()) @db.Timestamptz(6)
   hostel     hostels  @relation(fields: [hostel_id], references: [id])
   rooms      rooms[]
+  preferred_by_leads visitor_leads[] @relation("LeadPreferredFloor")
 
   @@index([hostel_id])
   @@index([owner_id])
@@ -1320,12 +1322,21 @@ model visitor_leads {
   /// lead that has no seeker account behind it — QR, walk-in, reception — which
   /// is every row that predates the discovery surface. Never assume it is set.
   seeker_profile_id         String?             @db.Uuid
+  /// The room/floor the tenant expressed interest in when sending this
+  /// enquiry — a preference to help the owner decide, never a reservation.
+  /// Both nullable, independently: a tenant may pick just a floor ("any room
+  /// on Ground") or a specific room. Availability is judged fresh at
+  /// activation via `roomCapacityService`, never here.
+  preferred_floor_id        String?             @db.Uuid
+  preferred_room_id         String?             @db.Uuid
   created_at                DateTime            @default(now()) @db.Timestamptz(6)
   updated_at                DateTime?           @db.Timestamptz(6)
   hostel                    hostels             @relation(fields: [hostel_id], references: [id])
   owner                     profile             @relation(fields: [owner_id], references: [id])
   seeker                    profile?            @relation("SeekerEnquiries", fields: [seeker_profile_id], references: [id])
   converted_tenant          tenants?            @relation(fields: [converted_tenant_id], references: [id])
+  preferred_floor           floors?             @relation("LeadPreferredFloor", fields: [preferred_floor_id], references: [id])
+  preferred_room            rooms?              @relation("LeadPreferredRoom", fields: [preferred_room_id], references: [id])
   activities                lead_activities[]
   reservations              room_reservations[]
   lead_notes                lead_notes[]
@@ -1336,6 +1347,7 @@ model visitor_leads {
   @@index([owner_id, lead_score(sort: Desc)], map: "idx_visitor_leads_owner_score")
   @@index([converted_tenant_id], map: "idx_visitor_leads_converted_tenant")
   @@index([seeker_profile_id, created_at(sort: Desc)], map: "idx_visitor_leads_seeker_created")
+  @@index([preferred_room_id], map: "idx_visitor_leads_preferred_room")
   @@map("visitor_leads")
 }
 

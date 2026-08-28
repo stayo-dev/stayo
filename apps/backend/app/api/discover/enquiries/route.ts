@@ -17,6 +17,9 @@ const EnquirySchema = z.object({
   move_in_date: z.string().max(40).optional(),
   duration_months: z.number().int().positive().max(60).optional(),
   message: z.string().max(1000).optional(),
+  /** Optional floor/room the seeker prefers — a preference, not a booking. */
+  preferred_floor_id: z.string().uuid().optional(),
+  preferred_room_id: z.string().uuid().optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -59,6 +62,8 @@ export async function POST(req: NextRequest) {
       moveInDate: parsed.data.move_in_date,
       durationMonths: parsed.data.duration_months,
       message: parsed.data.message,
+      preferredFloorId: parsed.data.preferred_floor_id,
+      preferredRoomId: parsed.data.preferred_room_id,
     });
 
     return ApiResponse.success(enquiry, "Enquiry sent to the owner");
