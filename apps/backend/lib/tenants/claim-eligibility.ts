@@ -65,6 +65,13 @@ export interface ClaimCandidateLike {
   /** `TenantStatus` — only `"ACTIVE"` tenancies are claimable. */
   status: string;
   /**
+   * Whether the bound profile can sign in — i.e. it has an `auth_user_id`.
+   * `false` marks the login-less shell adoption creates, which stays claimable;
+   * `true` marks a real account, which does not. Must be supplied whenever
+   * `profile_id` is set, or a bound tenancy is refused by default (fail-closed).
+   */
+  profile_has_login?: boolean;
+  /**
    * SECURITY FIX (final security review, finding 2): must be `null` — or
    * already equal to the profile doing the claiming — for a tenancy to be
    * claimable. `startActivation` writes `tenants.profile_id` while leaving
@@ -114,7 +121,18 @@ export interface OtpProofLike {
 export function isClaimable(candidate: ClaimCandidateLike, claimingProfileId?: string | null): boolean {
   if (candidate.access_mode !== "OWNER_MANAGED" || candidate.status !== "ACTIVE") return false;
   if (candidate.profile_id == null) return true;
-  return claimingProfileId != null && candidate.profile_id === claimingProfileId;
+  if (claimingProfileId != null && candidate.profile_id === claimingProfileId) return true;
+
+  // Identity is now centralised: adoption links (or creates) a profile keyed on
+  // the canonical phone, so EVERY owner-managed tenancy carries a `profile_id`.
+  // Refusing all bound tenancies would therefore refuse every claim.
+  //
+  // What actually distinguishes "the owner is holding this person's account for
+  // them" from "this account belongs to someone who can already sign in" is
+  // whether the bound profile has an auth identity. A login-less shell — the
+  // exact thing adoption creates — is still claimable by whoever proves the
+  // number. A profile that can log in is not, because that would be a takeover.
+  return candidate.profile_has_login === false;
 }
 
 /**

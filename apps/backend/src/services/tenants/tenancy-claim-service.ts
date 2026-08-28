@@ -213,6 +213,15 @@ export async function consumeClaimProof(tx: any, proofId: string) {
   return result.count === 1;
 }
 
+/**
+ * `isClaimable` asks whether the bound profile can sign in, not whether one
+ * exists. Deriving it here — in one place both call sites go through — keeps a
+ * future caller from passing a raw row and silently failing closed.
+ */
+function withLoginFlag(tenant: any) {
+  return { ...tenant, profile_has_login: tenant?.profiles?.auth_user_id != null };
+}
+
 const TENANT_CLAIM_SELECT = {
   id: true,
   hostel_id: true,
@@ -224,6 +233,13 @@ const TENANT_CLAIM_SELECT = {
   // `startActivation` bound and Phase 1's `adopt` then picked up, gated on
   // `status` alone) must not be silently re-bound to a second claimant.
   profile_id: true,
+  // Identity is centralised: adoption now links a profile, so every
+  // owner-managed tenancy carries a `profile_id`. What decides claimability is
+  // whether that profile can sign in — a login-less shell is the owner holding
+  // the account for the tenant; an auth-linked profile is a real account, and
+  // claiming it would be a takeover. Without this, `isClaimable` fails closed
+  // and every claim is refused.
+  profiles: { select: { auth_user_id: true } },
   display_name: true,
   phone_1: true,
   joined_on: true,
@@ -378,7 +394,9 @@ export const tenancyClaimService = {
       select: TENANT_CLAIM_SELECT,
     });
 
-    return tenants.filter((tenant: any) => isClaimable(tenant)).map(toClaimSummary);
+    return tenants
+      .filter((tenant: any) => isClaimable(withLoginFlag(tenant)))
+      .map(toClaimSummary);
   },
 
   /**
@@ -495,7 +513,11 @@ export const tenancyClaimService = {
           select: TENANT_CLAIM_SELECT,
         });
         const tenantPhone = tenant ? normalizeIndianPhone(tenant.phone_1) : null;
-        if (!tenant || !isClaimable(tenant, params.profileId ?? null) || tenantPhone !== canonicalPhone) {
+        if (
+          !tenant ||
+          !isClaimable(withLoginFlag(tenant), params.profileId ?? null) ||
+          tenantPhone !== canonicalPhone
+        ) {
           throw new TenancyClaimError(
             "This tenancy can no longer be claimed with this phone number",
             "NOT_CLAIMABLE",
