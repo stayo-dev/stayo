@@ -11,6 +11,8 @@ import {
   completionLabel,
   decideLane,
   exitProgress,
+  humaniseServerError,
+  moveOutBlock,
   resolveActiveRequest,
   summariseSettlement,
   type DuesDisposition,
@@ -24,6 +26,8 @@ interface MoveOutSheetProps {
   hostelId: string;
   tenantName: string;
   roomNo?: string | null;
+  /** The tenancy's status. Decides whether an exit can be started at all. */
+  tenantStatus?: string | null;
 }
 
 /**
@@ -85,7 +89,9 @@ const prettyDate = (iso: string) =>
 
 function getErrorMessage(error: unknown, fallback: string) {
   const data = (error as { response?: { data?: { error?: { message?: string } } } })?.response?.data;
-  return data?.error?.message || fallback;
+  // The server prefixes validation failures with "VALIDATION:", which means
+  // something to the codebase and nothing to the owner reading it.
+  return humaniseServerError(data?.error?.message, fallback);
 }
 
 interface MoveOutRequest {
@@ -99,7 +105,7 @@ interface MoveOutRequest {
   disputes: { id: string; status: string }[];
 }
 
-export function MoveOutSheet({ open, onClose, tenantId, hostelId, tenantName, roomNo }: MoveOutSheetProps) {
+export function MoveOutSheet({ open, onClose, tenantId, hostelId, tenantName, roomNo, tenantStatus }: MoveOutSheetProps) {
   const queryClient = useQueryClient();
 
   const [exitDate, setExitDate] = useState(todayValue());
@@ -312,20 +318,44 @@ export function MoveOutSheet({ open, onClose, tenantId, hostelId, tenantName, ro
   /* A completed exit is a receipt, not a workflow. */
   const showReceipt = !active && Boolean(lastCompleted);
 
+  /*
+   * Can an exit be started at all? Previously never asked here: the sheet
+   * rendered the full form for any tenancy and let the server refuse on
+   * submit, so an owner filled in a date and a reason for a cancelled tenant
+   * and got back the server's internal validation string.
+   */
+  const blocked = moveOutBlock({ tenantStatus, activeRequest: active });
+
   return (
     <BottomSheet open={open} onOpenChange={(v) => !v && onClose()} title={`Move out · ${tenantName}`}>
       <div className="flex flex-col gap-4 pb-2">
-        {activeError && (
+        {blocked && (
+          <div className="rounded-xl border border-border bg-muted/40 px-3.5 py-3">
+            <p className="font-display text-[13px] font-extrabold text-foreground">{blocked.reason}</p>
+            <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">{blocked.detail}</p>
+            <button
+              type="button"
+              onClick={onClose}
+              className="mt-3 rounded-lg bg-card px-3 py-1.5 font-display text-[11.5px] font-bold text-foreground"
+            >
+              Close
+            </button>
+          </div>
+        )}
+
+        {!blocked && activeError && (
           <p className="rounded-xl border border-destructive/25 bg-destructive/10 px-3.5 py-2.5 text-[12.5px] font-semibold text-destructive">
             {getErrorMessage(activeError, 'Something went wrong. Nothing was changed.')}
           </p>
         )}
 
-        {isLoading && <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>}
+        {!blocked && isLoading && (
+          <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
+        )}
 
-        {!isLoading && showReceipt && <Receipt requestId={lastCompleted!.id} />}
+        {!blocked && !isLoading && showReceipt && <Receipt requestId={lastCompleted!.id} />}
 
-        {!isLoading && !showReceipt && (
+        {!blocked && !isLoading && !showReceipt && (
           <>
             {/* The money, on every screen — not just the third one. */}
             <SettlementStrip

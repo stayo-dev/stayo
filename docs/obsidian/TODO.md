@@ -4,6 +4,11 @@ tags: [todo, backlog]
 
 # TODO / Backlog
 
+## Owner tenant detail — inconsistencies seen alongside the move-out fix (2026-08-28)
+
+- [ ] **A `CANCELLED` tenancy rendered a `Docs Pending` status badge.** The badge is computed from document state and ignores the tenancy status, so a closed tenancy advertises outstanding paperwork. Decide which wins and make the badge say it.
+- [ ] **Settlement preview reported "could not be calculated"** on the same tenant. Worth tracing whether that is a consequence of the cancelled status or an independent failure.
+
 ## Agreement PDF — legal review outstanding (2026-08-28)
 
 - [ ] **Have a lawyer review the standard clauses** added in `lib/pdf/agreement-content.ts` (entire agreement, amendment, severability, governing law and jurisdiction, stamp duty). They are conventional neutral wording chosen to make the document structurally complete, not drafted or reviewed by counsel.

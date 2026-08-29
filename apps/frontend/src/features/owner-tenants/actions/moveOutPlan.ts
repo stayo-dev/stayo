@@ -284,3 +284,87 @@ export function exitProgress(status: unknown): { step: number; total: number; la
   const step = index < 0 ? 1 : Math.min(index + 1, 4);
   return { step, total: 4, label: labels[canonical] ?? 'Move out' };
 }
+
+/**
+ * Whether a move-out can be started at all, and what to say when it cannot.
+ *
+ * This gate did not exist. The sheet opened for any tenant, presented a full
+ * exit form — date, reason, notes, a primary button — and only on submit did
+ * the backend refuse with `VALIDATION: Only ACTIVE tenants can request
+ * move-out. Current: CANCELLED`. The owner was offered a form that could never
+ * succeed, and then shown the server's internal error format.
+ *
+ * The backend guard (`move-out-service.ts`) is correct and stays: a tenancy
+ * that is already cancelled or completed has nothing left to exit. What was
+ * missing is the same knowledge on the side that decides whether to *offer*
+ * the action, which is this file.
+ *
+ * An exit already in flight is always openable, whatever the tenant's status —
+ * a tenancy mid-exit legitimately moves out of ACTIVE while its settlement is
+ * still being worked through, and locking the owner out of it would strand the
+ * money.
+ */
+/**
+ * Why an exit cannot be started, or `null` when it can.
+ *
+ * Deliberately *not* a discriminated union: this project does not run with
+ * `strictNullChecks`, so `canStart ? … : …` does not narrow and every call
+ * site would need a cast. A nullable reason needs no narrowing at all, and
+ * reads better where it is used.
+ */
+export type MoveOutBlock = { reason: string; detail: string } | null;
+
+/** Statuses from which a *new* exit may be started. */
+const EXITABLE_STATUSES = ['ACTIVE'];
+
+export function moveOutBlock(input: {
+  tenantStatus: unknown;
+  /** An in-flight request, if `resolveActiveRequest` located one. */
+  activeRequest?: MoveOutRequestLike | null;
+}): MoveOutBlock {
+  // Already exiting — the sheet is how the owner finishes it.
+  if (input.activeRequest && !isTerminal(input.activeRequest.status)) return null;
+
+  const status = String(input.tenantStatus ?? '').toUpperCase();
+  if (EXITABLE_STATUSES.includes(status)) return null;
+
+  switch (status) {
+    case 'CANCELLED':
+      return {
+        reason: 'This tenancy was cancelled',
+        detail:
+          'A cancelled tenancy has already ended, so there is no stay to move out of. If this tenant is living here, reactivate them first.',
+      };
+    case 'INVITED':
+      return {
+        reason: 'They have not moved in yet',
+        detail:
+          'This tenant is still on an invitation. Cancel the invitation instead of starting a move-out.',
+      };
+    case 'INACTIVE':
+    case 'MOVED_OUT':
+    case 'COMPLETED':
+      return {
+        reason: 'They have already moved out',
+        detail: 'This tenancy is closed. Their settlement record stays available under Activity.',
+      };
+    default:
+      return {
+        reason: 'Move-out is not available',
+        detail: `A move-out can only be started for an active tenancy. This one is ${status.toLowerCase() || 'in an unknown state'}.`,
+      };
+  }
+}
+
+/**
+ * Strip the internal prefix from a server validation message.
+ *
+ * `move-out-service` throws `Error("VALIDATION: …")` and the prefix travels all
+ * the way to the owner's screen. It means something to the codebase and
+ * nothing to the person reading it.
+ */
+export function humaniseServerError(message: unknown, fallback: string): string {
+  const text = String(message ?? '').trim();
+  if (!text) return fallback;
+  return text.replace(/^(VALIDATION|VALIDATION_ERROR|ERROR|BAD_REQUEST)\s*:\s*/i, '').trim() || fallback;
+}

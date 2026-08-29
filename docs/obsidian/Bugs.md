@@ -212,6 +212,20 @@ Independently, `<a download>` is ignored by browsers for cross-origin URLs: it n
 
 > **Not reproduced against a running instance.** The mechanism is traced from `middleware.ts`, `lib/auth.ts` and the login route; no session was exercised to confirm the exact expiry behaviour. The fix is correct regardless — it removes the cookie dependency and adds the in-app preview — but the severity of the original defect is inferred, not measured.
 
+## 2026-08-28 — Move-out offered a form that could never succeed (fixed)
+
+**Symptom.** Opening *Move out* for a tenant whose tenancy was `CANCELLED` presented the full exit form — date, reason, notes, and a primary button — above the server's raw refusal: `VALIDATION: Only ACTIVE tenants can request move-out. Current: CANCELLED`.
+
+**Cause.** Two gaps, one on each side of the call. `move-out-service.ts:226` correctly refuses a non-ACTIVE tenancy, but **nothing on the frontend knew that rule**: `moveOutPlan.ts` — the pure module that owns every other decision in this flow — had no eligibility function, so the sheet rendered for any tenant and let the server refuse on submit. Separately, `getErrorMessage` surfaced the message verbatim, including the `VALIDATION:` prefix that is an internal convention and means nothing to an owner.
+
+**Fix.** `moveOutBlock({ tenantStatus, activeRequest })` returns the reason an exit cannot start, or `null`. The sheet renders that explanation instead of the form, and the copy says what to do instead — reactivate a cancelled tenancy, cancel an invitation rather than move out an invited tenant. `humaniseServerError` strips the prefix. Both are pure and covered by 12 new tests.
+
+**An exit already in flight always opens**, whatever the tenant's status: a tenancy legitimately leaves ACTIVE mid-exit while its settlement is still being worked through, and locking the owner out at that point would strand the money. A *terminal* request does not count, so a COMPLETED exit cannot re-open the form for a cancelled tenancy.
+
+**Note on the union.** `moveOutBlock` returns a nullable reason rather than a discriminated union because `apps/frontend/tsconfig.json` sets `"strict": false` — `canStart ? … : …` does not narrow without `strictNullChecks`, and every call site would have needed a cast.
+
+**Still open, seen in the same screenshot:** the tenant header showed a `Docs Pending` badge on a `CANCELLED` tenancy, which is a separate presentation inconsistency, and the settlement preview reported it could not be calculated. Neither is addressed here. Tracked in [[TODO]].
+
 ## 2026-08-28 — The agreement printed every clause title twice, and no amounts (fixed)
 
 **Symptoms.** Clause 4 read *"Notice Period: Notice Period: Either party must provide…"* and clause 5 the same way. Money appeared as `Rs. 8,500`, and — once that substitution was removed — as a bare `8,500` with no symbol at all.
