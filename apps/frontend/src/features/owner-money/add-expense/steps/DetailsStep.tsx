@@ -5,6 +5,7 @@ import { categoryIcon } from '../../components/expenses/categoryIcons';
 import { cn } from '@shared/lib/cn';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import type { AddExpenseData } from '../../types';
+import { capitalizeWordsLive } from '@shared/lib/textFormat';
 import {
   useExpenseMemory,
   applySetup,
@@ -18,11 +19,6 @@ interface DetailsStepProps {
   setD: (patch: Partial<AddExpenseData>) => void;
   /** Jump straight to the amount once a remembered expense is reused. */
   onReused?: () => void;
-}
-
-/** Capitalizes the first letter of each word without touching the rest, so casing typed mid-word (e.g. "iPhone") is preserved. */
-function capitalizeWords(value: string): string {
-  return value.replace(/(^|\s)([a-z])/g, (_match, sep, char) => sep + char.toUpperCase());
 }
 
 /* ── Confidence label ────────────────────────────────────────────── */
@@ -404,7 +400,7 @@ export function DetailsStep({ data, setD, onReused }: DetailsStepProps) {
         </span>
         <input
           value={data.title}
-          onChange={(e) => setD({ title: capitalizeWords(e.target.value) })}
+          onChange={(e) => setD({ title: capitalizeWordsLive(e.target.value) })}
           placeholder="e.g. Rice purchase, Electricity bill, Staff salary"
           className="w-full rounded-2xl border-[1.5px] border-border bg-card px-4 py-4 text-[15px] font-semibold text-foreground focus:border-primary focus:outline-none"
         />

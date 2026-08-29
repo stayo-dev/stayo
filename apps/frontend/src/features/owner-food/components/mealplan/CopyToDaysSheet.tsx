@@ -24,9 +24,17 @@ interface CopyToDaysSheetProps {
 export function CopyToDaysSheet({ open, onClose, sourceDay, onConfirm }: CopyToDaysSheetProps) {
   const [selected, setSelected] = useState<DayKey[]>([]);
 
+  // Every day but the source. "Copy this to the rest of the week" is the
+  // common case — a hostel serving the same breakfast six days running — and
+  // it used to cost six taps.
+  const selectableDays = DAY_ORDER.filter((day) => day !== sourceDay);
+  const allSelected = selected.length === selectableDays.length;
+
   const toggle = (day: DayKey) => {
     setSelected((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]));
   };
+
+  const toggleAll = () => setSelected(allSelected ? [] : [...selectableDays]);
 
   const confirm = () => {
     if (selected.length === 0) return;
@@ -56,8 +64,21 @@ export function CopyToDaysSheet({ open, onClose, sourceDay, onConfirm }: CopyToD
         </button>
       }
     >
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-[12px] font-medium text-muted-foreground">
+          {selected.length} of {selectableDays.length} selected
+        </span>
+        <button
+          type="button"
+          onClick={toggleAll}
+          className="min-h-[32px] rounded-lg px-2 text-[12.5px] font-bold text-primary transition-colors active:bg-primary/10"
+        >
+          {allSelected ? 'Clear all' : 'Select all'}
+        </button>
+      </div>
+
       <div className="flex flex-col gap-1.5">
-        {DAY_ORDER.filter((day) => day !== sourceDay).map((day) => {
+        {selectableDays.map((day) => {
           const checked = selected.includes(day);
           return (
             <button

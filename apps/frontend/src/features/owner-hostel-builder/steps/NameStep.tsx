@@ -1,4 +1,5 @@
 import { StayoLoader } from '@shared/ui/brand';
+import { titleCaseText } from '@shared/lib/textFormat';
 import {
   eyebrow,
   h1,
@@ -59,6 +60,9 @@ export function NameStep({
             autoFocus={!needsPassword}
             value={name}
             onChange={(e) => onNameChange(e.target.value)}
+            // On blur, not per keystroke — this is the name tenants know the
+            // hostel by and it ends up on every agreement and receipt.
+            onBlur={(e) => onNameChange(titleCaseText(e.target.value))}
             placeholder="Sunrise Residency"
             autoComplete="organization"
             enterKeyHint="next"

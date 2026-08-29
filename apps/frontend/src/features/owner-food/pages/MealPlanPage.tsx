@@ -157,23 +157,41 @@ export function MealPlanPage() {
     setAddFoodOpen(true);
   };
 
-  const addToTarget = (itemId: string) => {
+  /**
+   * Places one dish in the target cell, or — when the owner asked for it — in
+   * that slot on every day of the week. Hostels serve the same lunch all week
+   * far more often than not, and doing that used to mean seven trips through
+   * this sheet.
+   *
+   * Days that already carry the dish are skipped rather than duplicated, and
+   * the toast reports what actually changed instead of claiming seven.
+   */
+  const addToTarget = (itemId: string, allDays = false) => {
     if (!addFoodTarget) return;
-    const cell = cellAt(schedule.weekGrid, addFoodTarget.day, addFoodTarget.slot);
-    if (!cell?.id) return;
-    const currentIds = cell.items.map((i) => i.menu_item_id).filter((id): id is string => Boolean(id));
-    const { ids, added } = addItem(currentIds, itemId);
-    if (!added) {
-      stayoToast.info('Already added');
+    const days = allDays ? DAY_ORDER : [addFoodTarget.day];
+
+    let changed = 0;
+    for (const day of days) {
+      const cell = cellAt(schedule.weekGrid, day, addFoodTarget.slot);
+      if (!cell?.id) continue;
+      const currentIds = cell.items.map((i) => i.menu_item_id).filter((id): id is string => Boolean(id));
+      const { ids, added } = addItem(currentIds, itemId);
+      if (!added) continue;
+      schedule.setCellItems(cell.id, ids);
+      changed += 1;
+    }
+
+    if (changed === 0) {
+      stayoToast.info(allDays ? 'Already on every day' : 'Already added');
       return;
     }
-    schedule.setCellItems(cell.id, ids);
+    if (allDays) stayoToast.success(`Added to ${changed} ${changed === 1 ? 'day' : 'days'}`);
   };
 
-  const handleCreateAndPick = async (name: string) => {
+  const handleCreateAndPick = async (name: string, allDays = false) => {
     if (!addFoodTarget) return;
     const newId = await library.createAndReturn(addFoodTarget.slot, name);
-    if (newId) addToTarget(newId);
+    if (newId) addToTarget(newId, allDays);
   };
 
   const handleCopyToDays = (targetDays: DayKey[]) => {

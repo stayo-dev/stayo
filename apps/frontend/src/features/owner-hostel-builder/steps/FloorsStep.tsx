@@ -2,6 +2,7 @@ import { Pencil } from 'lucide-react';
 import { useState } from 'react';
 import { eyebrow, h1, sub, fieldLabel, fieldHint, stepBtn } from '@features/owner-onboarding/components/stepStyles';
 import { defaultFloorName } from '../hostelBuilder';
+import { titleCaseText } from '@shared/lib/textFormat';
 
 const MAX_FLOORS = 12;
 
@@ -70,7 +71,13 @@ export function FloorsStep({
                 autoFocus
                 value={name}
                 onChange={(e) => onRename(i, e.target.value)}
-                onBlur={() => setEditing(null)}
+                onBlur={(e) => {
+                  // Tidy the case, then leave edit mode. Both on blur — this
+                  // input already ended editing here, and capitalising per
+                  // keystroke would fight the caret.
+                  onRename(i, titleCaseText(e.target.value));
+                  setEditing(null);
+                }}
                 onKeyDown={(e) => {
                   if (e.key !== 'Enter') return;
                   // Every step lives inside the page's form now, so a bare

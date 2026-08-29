@@ -513,3 +513,15 @@ A chevron (`lucide-react`'s `ChevronDown`, rotated when expanded — the same af
 - [[APIs]] · [[Database]] — endpoint and schema detail, not restated here
 - [[Bugs]] — the two Phase 0 defects and the `hostels[0]` violation, all fixed
 - [[Features]] · [[Changelog]] — what shipped and when
+
+
+## Select-all (2026-08-29, [[Decisions#ADR-143|ADR-143]])
+
+Two places an owner used to repeat themselves now do it in one tap.
+
+- **`CopyToDaysSheet`** — Select all / Clear all, plus a live "n of 6 selected" count. Source day still excluded.
+- **`AddFoodPopover`** — an **"Add to every day"** toggle, off by default and reset on every open, because it writes seven cells at once. `onPickExisting`/`onCreateNew` take an `allDays` flag and `MealPlanPage.addToTarget` loops `DAY_ORDER` for that slot. Days already holding the dish are skipped rather than duplicated; the toast reports the real count.
+
+Neither reintroduces the cross-day swap-dragging removed in §18 ([[Decisions#ADR-114|ADR-114]]) — the owner still builds the week by hand. What is removed is only the repetition of saying the same thing seven times.
+
+**New food item names are title-cased on creation** ([[Decisions#ADR-142|ADR-142]]) via `shared/lib/textFormat.ts`, and the tidied name is shown on the create button before it is saved. Search stays case-insensitive.

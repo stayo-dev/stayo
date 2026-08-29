@@ -1,5 +1,6 @@
 import type { InviteWizardData } from '../../types';
 import type { TenancyConflict } from '@features/tenants/tenancyConflict';
+import { titleCaseName } from '@shared/lib/textFormat';
 import {
   sanitizeIndianPhone,
   isValidIndianPhone,
@@ -55,6 +56,10 @@ export function TenantStep({
         <input
           value={data.tenantName}
           onChange={(e) => setD({ tenantName: e.target.value })}
+          // Tidied on blur, never mid-keystroke: capitalising while someone is
+          // still typing moves the caret and fights them. This name goes onto
+          // the agreement, the receipt and every WhatsApp message.
+          onBlur={(e) => setD({ tenantName: titleCaseName(e.target.value) })}
           placeholder="Tenant's full name"
           className={`${inputStyle} ${showNameError ? 'border-destructive focus:border-destructive' : ''}`}
         />
