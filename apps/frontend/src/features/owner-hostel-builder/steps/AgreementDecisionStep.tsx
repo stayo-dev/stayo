@@ -143,12 +143,18 @@ export function AgreementDecisionStep({
           </span>
           <p className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">
             Captured once here — it appears on every tenant's agreement for this hostel automatically.
+            Draw it, or upload a photo of your signature on paper.
           </p>
           <div className="mt-2.5 overflow-hidden rounded-xl border border-border bg-card/90 p-3">
+            {/* Upload is enabled here and nowhere else: this is the owner
+                capturing their own signature once for their own hostel's
+                template. The tenant-facing pads stay draw-only — see the prop's
+                own note and ADR-140. */}
             <SignaturePad
               onSave={onSignatureChange}
               existingSignatureUrl={existingSignatureUrl}
               placeholder="Draw your signature here"
+              allowUpload
             />
           </div>
           {hasSignature && (
