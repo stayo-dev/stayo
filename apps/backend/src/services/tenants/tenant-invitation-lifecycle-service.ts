@@ -402,6 +402,34 @@ export class TenantInvitationLifecycleService {
         });
       }
 
+      // The tenant was already living here and had already paid some of it.
+      // The obligations above are raised either way — what this settles is the
+      // part the owner says is already in hand, so they are not asked to
+      // re-enter months of payments afterwards and the deposit is recorded as
+      // held rather than chased and then never refunded at move-out.
+      //
+      // Gated on `prior_history` being present, which only the already-living-
+      // here path sends: a joining date in the past happens for ordinary
+      // reasons on the new-tenant path and must not silently settle anything.
+      // See ADR-141.
+      if (data.prior_history) {
+        const { priorTenancySettlement } = await import("./prior-tenancy-settlement");
+        await priorTenancySettlement.settleInTx(tx, {
+          tenantId: tenant.id,
+          ownerId,
+          hostelId: capacity.room.hostel_id,
+          joiningDate,
+          monthlyRent,
+          securityDeposit: Number(tenant.security_deposit || 0),
+          maintenanceCharge,
+          maintenanceType,
+          rentPaidThrough: data.prior_history.rent_paid_through ?? null,
+          depositPaid: Boolean(data.prior_history.deposit_paid),
+          maintenancePaid: Boolean(data.prior_history.maintenance_paid),
+          recordedBy: ownerId,
+        });
+      }
+
       // Inviting someone now means "this person is my tenant" — the owner
       // manages this profile from this moment until the invitee activates it
       // themselves. That is not a choice ("Just add to my records" no longer
