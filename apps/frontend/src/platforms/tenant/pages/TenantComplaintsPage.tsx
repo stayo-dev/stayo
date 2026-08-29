@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, LifeBuoy, MessageSquareWarning, Plus } from 'lucide-react';
 import { useTenantRoom } from '@features/tenant-room/hooks/useTenantRoom';
@@ -48,10 +48,23 @@ function LoadingSkeleton() {
  */
 export function TenantComplaintsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const room = useTenantRoom();
   const overlay = useOverlayStack();
 
   const formConfigs = useMemo(() => buildServiceRequestFormConfigs({ createRequest: room.createRequest }), [room.createRequest]);
+
+  // Deep link from a tapped notification (`/tenant/notifications` navigates
+  // here with `state: { openTicketId }`) — open that ticket's detail once on
+  // mount, then clear the state so a later back-navigation doesn't reopen it.
+  useEffect(() => {
+    const requestId = (location.state as { openTicketId?: string } | null)?.openTicketId;
+    if (requestId) {
+      overlay.push(`tk_${requestId}`);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only, reads location.state once
+  }, []);
 
   const activeTicketId = overlay.view.startsWith('tk_') ? overlay.view.slice(3) : null;
   const activeTicket = activeTicketId ? room.requests.find((r) => r.id === activeTicketId) ?? null : null;

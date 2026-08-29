@@ -6,6 +6,8 @@ import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
 import { requireHostelBelongsToOwner } from "@/lib/security/scoped-query";
 import { prisma } from "@/lib/db";
+import { notificationService } from "@/lib/services/notification-service";
+import { LIVE_TENANCY_STATUSES } from "@/lib/tenancy/active-tenancy";
 
 /**
  * GET /api/announcements?hostelId=
@@ -64,6 +66,23 @@ export async function POST(req: NextRequest) {
     const announcement = await prisma.hostel_announcements.create({
       data: { hostel_id: hostelId, owner_id: scope.owner_id, title: trimmedTitle, body: trimmedBody },
     });
+
+    // Fan out to every live tenant of this hostel who has an account —
+    // fire-and-forget, mirrors the tenancy-claim/food-publish notification
+    // precedents so one failed send never blocks the announcement itself.
+    prisma.tenants
+      .findMany({
+        where: { hostel_id: hostelId, status: { in: [...LIVE_TENANCY_STATUSES] }, profile_id: { not: null } },
+        select: { profile_id: true },
+      })
+      .then((tenants: { profile_id: string | null }[]) =>
+        Promise.allSettled(
+          tenants.map((t) =>
+            notificationService.createNotification(t.profile_id as string, trimmedTitle, trimmedBody, "announcement"),
+          ),
+        ),
+      )
+      .catch((err: unknown) => console.error("[announcements] failed to fan out tenant notifications:", err));
 
     return apiResponse(announcement, 201);
   } catch (error: any) {

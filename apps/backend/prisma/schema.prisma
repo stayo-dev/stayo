@@ -443,6 +443,7 @@ model notifications {
   title      String
   message    String
   type       String
+  metadata   Json?
   is_read    Boolean  @default(false)
   created_at DateTime @default(now()) @db.Timestamptz(6)
   profiles   profile  @relation(fields: [profile_id], references: [id])

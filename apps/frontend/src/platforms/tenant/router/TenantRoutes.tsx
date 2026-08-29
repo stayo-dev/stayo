@@ -12,6 +12,7 @@ const TenantHomePage = lazy(() => import('../pages/TenantHomePage').then((m) => 
 const TenantMoneyPage = lazy(() => import('../pages/TenantMoneyPage').then((m) => ({ default: m.TenantMoneyPage })));
 const TenantRoomPage = lazy(() => import('../pages/TenantRoomPage').then((m) => ({ default: m.TenantRoomPage })));
 const TenantComplaintsPage = lazy(() => import('../pages/TenantComplaintsPage').then((m) => ({ default: m.TenantComplaintsPage })));
+const TenantNotificationsPage = lazy(() => import('../pages/TenantNotificationsPage').then((m) => ({ default: m.TenantNotificationsPage })));
 const TenantHelpPage = lazy(() => import('../pages/TenantHelpPage').then((m) => ({ default: m.TenantHelpPage })));
 const TenantProfilePortalPage = lazy(() =>
   import('@/portal/pages/TenantProfilePortalPage').then((m) => ({ default: m.TenantProfilePortalPage })),
@@ -98,6 +99,7 @@ function tenantAppRoutes() {
         <Route path="/tenant/food" element={<TenantFoodPage />} />
       </Route>
       <Route path="/tenant/complaints" element={<TenantComplaintsPage />} />
+      <Route path="/tenant/notifications" element={<TenantNotificationsPage />} />
       <Route
         path="/tenant/profile/details"
         element={
