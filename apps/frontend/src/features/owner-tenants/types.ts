@@ -4,6 +4,8 @@
  * shared/mocks/tenants.ts, reused across features).
  */
 
+import type { PaymentMode } from '@shared/mocks/payments';
+
 export type TenantFilterChip = 'all' | 'overdue' | 'invited';
 
 export type TenantDetailTab = 'charges' | 'activity' | 'documents' | 'stay';
@@ -26,6 +28,18 @@ export interface InviteWizardData {
   deposit: string;
   billing: string;
   maintenance: string;
+  /**
+   * "Has the tenant already paid anything?" — off by default. Covers a
+   * deposit paid face-to-face at the door, and onboarding a hostel whose
+   * tenants are already months into their stay and have paid for them.
+   */
+  hasPaidAlready: boolean;
+  paidAmount: string;
+  /** Does the amount above include the security deposit? Defaults to yes. */
+  paidIncludesDeposit: boolean;
+  /** Empty string = not chosen yet; required once `paidAmount` > 0. */
+  paymentMethod: PaymentMode | '';
+  paymentReference: string;
 }
 
 export const EMPTY_INVITE_WIZARD_DATA: InviteWizardData = {
@@ -41,6 +55,11 @@ export const EMPTY_INVITE_WIZARD_DATA: InviteWizardData = {
   deposit: '16000',
   billing: 'Monthly',
   maintenance: '',
+  hasPaidAlready: false,
+  paidAmount: '',
+  paidIncludesDeposit: true,
+  paymentMethod: '',
+  paymentReference: '',
 };
 
 export type QuickCollectStep = 'select' | 'amount' | 'preview' | 'password' | 'success';

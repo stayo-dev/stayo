@@ -1,4 +1,4 @@
-import { BILLING_FREQUENCIES } from '@shared/mocks/payments';
+import { BILLING_FREQUENCIES, PAYMENT_MODES, type PaymentMode } from '@shared/mocks/payments';
 import type { InviteWizardData } from '../../types';
 
 interface MoneyStepProps {
@@ -81,6 +81,87 @@ export function MoneyStep({ data, setD }: MoneyStepProps) {
             <span className="font-display text-xl font-extrabold tabular-nums text-foreground">₹{total.toLocaleString('en-IN')}</span>
           </div>
         </div>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-2xl border border-border bg-muted p-4">
+        <button
+          type="button"
+          onClick={() => setD({ hasPaidAlready: !data.hasPaidAlready })}
+          className="flex items-center justify-between text-left"
+        >
+          <span className="text-[13.5px] font-bold text-foreground">Has the tenant already paid anything?</span>
+          <span
+            className={`relative h-6 w-10 flex-none rounded-full transition-colors ${data.hasPaidAlready ? 'bg-primary' : 'bg-border'}`}
+          >
+            <span
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${data.hasPaidAlready ? 'translate-x-4.5' : 'translate-x-0.5'}`}
+            />
+          </span>
+        </button>
+
+        {data.hasPaidAlready && (
+          <div className="flex flex-col gap-3.5 border-t border-border pt-3.5">
+            <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+              A deposit paid in cash at the door, or months already collected from a tenant who joined before
+              Stayo — record it here and it settles the same way a real payment would.
+            </p>
+
+            <label className="block">
+              <span className={labelStyle}>Amount already paid</span>
+              <div className="flex items-center rounded-[11px] border border-border bg-card px-3">
+                <span className="text-sm font-semibold text-muted-foreground">₹</span>
+                <input
+                  value={data.paidAmount}
+                  onChange={(e) => setD({ paidAmount: e.target.value.replace(/[^0-9]/g, '') })}
+                  inputMode="numeric"
+                  placeholder="0"
+                  className={moneyInputStyle}
+                />
+              </div>
+            </label>
+
+            <button
+              type="button"
+              onClick={() => setD({ paidIncludesDeposit: !data.paidIncludesDeposit })}
+              className="flex items-center justify-between text-left"
+            >
+              <span className="text-[12.5px] font-semibold text-foreground">Does this include the security deposit?</span>
+              <span
+                className={`relative h-5.5 w-9 flex-none rounded-full transition-colors ${data.paidIncludesDeposit ? 'bg-primary' : 'bg-border'}`}
+              >
+                <span
+                  className={`absolute top-0.5 h-4.5 w-4.5 rounded-full bg-white shadow transition-transform ${data.paidIncludesDeposit ? 'translate-x-4' : 'translate-x-0.5'}`}
+                />
+              </span>
+            </button>
+
+            <label className="block">
+              <span className={labelStyle}>Payment method{Number(data.paidAmount) > 0 ? ' *' : ''}</span>
+              <div className="mt-1.5 flex gap-2">
+                {PAYMENT_MODES.map((m: PaymentMode) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setD({ paymentMethod: m })}
+                    className={`flex-1 rounded-xl border-[1.5px] py-2.5 text-center font-display text-[12.5px] font-bold ${data.paymentMethod === m ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-foreground'}`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </label>
+
+            <label className="block">
+              <span className={labelStyle}>Reference (optional)</span>
+              <input
+                value={data.paymentReference}
+                onChange={(e) => setD({ paymentReference: e.target.value })}
+                placeholder="UTR / transaction ID / note"
+                className="w-full rounded-[11px] border border-border bg-card px-3.5 py-3 text-sm font-semibold text-foreground focus:border-primary focus:outline-none"
+              />
+            </label>
+          </div>
+        )}
       </div>
     </div>
   );

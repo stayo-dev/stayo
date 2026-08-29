@@ -19,6 +19,8 @@ export const queryKeys = {
     tenantHistoryByProfile: (hostelId: string, profileId: string) => ownerKey('tenant-history', hostelId, profileId),
     /** Pre-submit tenancy-eligibility check for a phone/email typed into the invite wizard. */
     invitationEligibility: (phone: string, email: string) => ownerKey('invitation-eligibility', phone, email),
+    /** "Where does the money the tenant already paid land?" — Invite wizard's Money/Verify steps. `requestKey` is the JSON-stringified preview request body, so any field change refetches. */
+    inviteSettlementPreview: (requestKey: string) => ownerKey('invite-settlement-preview', requestKey),
     renewalQueue: () => ownerKey('renewal-queue'),
     /**
      * Money Stayo is holding for this owner. Portfolio-level, never hostel-keyed:
