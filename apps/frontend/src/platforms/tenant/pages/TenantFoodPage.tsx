@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { TenantPageHeader } from '../components/TenantPageHeader';
-import { ChevronDown, ChevronLeft, Camera, TriangleAlert, UtensilsCrossed } from 'lucide-react';
+import { ChevronDown, UtensilsCrossed } from 'lucide-react';
 import { EmptyState } from '@shared/ui-patterns/EmptyState';
-import { MEAL_CATEGORY_META, type MealSlotKey } from '@shared/mocks/food';
+import { MEAL_CATEGORY_META } from '@shared/mocks/food';
 import { useTenantFoodSchedule, DAY_ORDER, type DayKey } from '@features/food/hooks/useTenantFoodSchedule';
 import { useTenantFoodPolls } from '@features/food/hooks/useTenantFoodPolls';
 import { useTenantMealTimings } from '@features/food/hooks/useTenantMealTimings';
@@ -53,14 +53,16 @@ function FoodLoadingSkeleton() {
  * live Served/Serving now/Upcoming pill on each. Below it, "My weekly menu"
  * is a day accordion — every row starts collapsed to just its name, tapping
  * a day expands/collapses it to show its own full meal list (no live status
- * pill unless that day happens to be today).
+ * pill unless that day happens to be today). Meal rows are display-only —
+ * there's no per-meal detail page (owners never populate a photo/description
+ * for a meal item, so a placeholder screen was the only thing tapping through
+ * ever showed).
  */
 export function TenantFoodPage() {
   const schedule = useTenantFoodSchedule();
   const polls = useTenantFoodPolls();
   const mealTimings = useTenantMealTimings();
   const now = useNow();
-  const [openMeal, setOpenMeal] = useState<{ name: string; slot: MealSlotKey } | null>(null);
   const [expandedDay, setExpandedDay] = useState<DayKey | null>(null);
 
   if (schedule.isLoading) return <FoodLoadingSkeleton />;
@@ -104,10 +106,8 @@ export function TenantFoodPage() {
                 const status = mealStatusAt(entry, now);
                 const pill = STATUS_PILL[status];
                 return (
-                  <button
+                  <div
                     key={slot}
-                    type="button"
-                    onClick={() => setOpenMeal({ name: cellItems(cell), slot })}
                     className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-3 text-left ${i > 0 ? 'border-t border-border' : ''} ${status === 'SERVING_NOW' ? 'bg-secondary/40' : ''}`}
                   >
                     <span className="flex h-10 w-10 flex-none items-center justify-center rounded-[11px] bg-secondary text-primary">
@@ -120,7 +120,7 @@ export function TenantFoodPage() {
                       <div className="mt-0.5 font-display text-[15.5px] font-bold tracking-[-0.01em] text-foreground">{cellItems(cell)}</div>
                     </div>
                     <span className={`flex-none rounded-full px-2.5 py-1 text-[10px] font-bold ${pill.className}`}>{pill.label}</span>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -164,10 +164,8 @@ export function TenantFoodPage() {
                           const status = isToday ? mealStatusAt(entry, now) : null;
                           const pill = status ? STATUS_PILL[status] : null;
                           return (
-                            <button
+                            <div
                               key={slot}
-                              type="button"
-                              onClick={() => setOpenMeal({ name: cellItems(cell), slot })}
                               className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left ${status === 'SERVING_NOW' ? 'bg-secondary/40' : ''}`}
                             >
                               <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] bg-secondary text-primary">
@@ -180,7 +178,7 @@ export function TenantFoodPage() {
                                 <div className="mt-0.5 font-display text-[14.5px] font-bold tracking-[-0.01em] text-foreground">{cellItems(cell)}</div>
                               </div>
                               {pill && <span className={`flex-none rounded-full px-2.5 py-1 text-[10px] font-bold ${pill.className}`}>{pill.label}</span>}
-                            </button>
+                            </div>
                           );
                         })}
                       </div>
@@ -211,30 +209,6 @@ export function TenantFoodPage() {
 
         <p className="pt-0.5 text-center text-[11px] font-medium text-[#B7AC9F]">Stayo</p>
       </div>
-
-      {openMeal && (
-        <div className="stayo-panel-slide-in fixed inset-0 z-[45] flex flex-col bg-background">
-          <div className="flex flex-none items-center gap-3 px-[18px] pb-3 pt-14">
-            <button type="button" onClick={() => setOpenMeal(null)} className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px] border border-border bg-card">
-              <ChevronLeft className="h-[18px] w-[18px] text-[#4A433C]" strokeWidth={2} />
-            </button>
-            <div className="min-w-0 flex-1">
-              <div className="font-display text-[18px] font-extrabold tracking-[-0.02em] text-foreground">{openMeal.name}</div>
-              <div className="text-[11.5px] font-medium text-muted-foreground">{MEAL_CATEGORY_META[openMeal.slot].label}</div>
-            </div>
-          </div>
-          <div className="flex-1 overflow-auto px-[18px] pb-7 pt-2">
-            <div className="flex h-[150px] flex-col items-center justify-center gap-1.5 rounded-2xl border border-border bg-[#F3EAD8] text-[#B0A597]">
-              <Camera className="h-[30px] w-[30px]" strokeWidth={1.5} />
-              <span className="text-[11px] font-semibold">Meal photo</span>
-            </div>
-            <div className="mt-5 flex items-center gap-2.5 rounded-2xl border border-[#F1E2C4] bg-warning-bg p-[13px_15px]">
-              <TriangleAlert className="h-[18px] w-[18px] flex-none text-warning" strokeWidth={1.9} />
-              <p className="flex-1 text-[12px] font-semibold text-[#7A5A24]">Full details will be added by your hostel.</p>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
