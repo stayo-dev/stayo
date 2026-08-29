@@ -9,9 +9,8 @@ import {
 const signals = (over: Partial<GettingStartedSignals> = {}): GettingStartedSignals => ({
   roomCapacity: 0,
   tenantCount: 0,
-  collectedThisMonth: 0,
+  hasEverCollected: false,
   hostelInProgress: null,
-  graduated: false,
   ...over,
 });
 
@@ -38,19 +37,25 @@ describe('deriveGettingStarted', () => {
   });
 
   it('hides itself once all three are done', () => {
-    const result = deriveGettingStarted(signals({ roomCapacity: 10, tenantCount: 3, collectedThisMonth: 8000 }));
+    const result = deriveGettingStarted(signals({ roomCapacity: 10, tenantCount: 3, hasEverCollected: true }));
     expect(result.isComplete).toBe(true);
     expect(result.visible).toBe(false);
     expect(result.percent).toBe(100);
   });
 
-  it('stays hidden for a graduated owner even when this month has no rent yet', () => {
-    // The payment signal resets on the 1st. Without the latch an established
-    // owner would be told each month that they had never taken a payment.
-    const result = deriveGettingStarted(
-      signals({ roomCapacity: 40, tenantCount: 12, collectedThisMonth: 0, graduated: true }),
-    );
+  it('stays hidden in a month with no rent yet, with no stored latch to help it', () => {
+    // The whole reason the old `graduated` flag existed. The payment step now
+    // reads a lifetime fact, so a quiet month cannot resurrect the checklist
+    // on an established hostel.
+    const result = deriveGettingStarted(signals({ roomCapacity: 40, tenantCount: 12, hasEverCollected: true }));
     expect(result.visible).toBe(false);
+  });
+
+  it('shows for a brand-new owner regardless of what any other account did', () => {
+    // The regression that shipped this change: the latch was browser-global,
+    // so one finished account hid the checklist from every account opened
+    // afterwards on the same browser. There is no longer any state that could.
+    expect(deriveGettingStarted(signals()).visible).toBe(true);
   });
 
   it('surfaces an unfinished build as the first step’s detail', () => {
@@ -62,7 +67,7 @@ describe('deriveGettingStarted', () => {
 
   it('marks the earliest incomplete step as current, even when a later one is done', () => {
     // Someone could record a payment before inviting through the app.
-    const result = deriveGettingStarted(signals({ roomCapacity: 10, collectedThisMonth: 5000 }));
+    const result = deriveGettingStarted(signals({ roomCapacity: 10, hasEverCollected: true }));
     expect(result.steps.map((s) => s.state)).toEqual(['done', 'current', 'done']);
     expect(result.doneCount).toBe(2);
   });
@@ -70,26 +75,44 @@ describe('deriveGettingStarted', () => {
   it('pluralises real counts rather than guessing', () => {
     expect(deriveGettingStarted(signals({ roomCapacity: 1 })).steps[0].detail).toBe('1 bed ready');
   });
+
+  it('explains why an outstanding step matters, and how long it takes', () => {
+    const step = deriveGettingStarted(signals()).steps[0];
+    expect(step.why).toContain('before anyone can be put in one');
+    expect(step.duration).toBe('About 5 minutes');
+  });
+
+  it('drops the explanation once the step is done, leaving only the fact', () => {
+    const step = deriveGettingStarted(signals({ roomCapacity: 38 })).steps[0];
+    expect(step.why).toBeNull();
+    expect(step.duration).toBeNull();
+    expect(step.detail).toBe('38 beds ready');
+  });
 });
 
 describe('shouldRunSpotlight', () => {
-  const base = { roomCapacity: 0, tenantCount: 0, dismissed: false, ready: true };
+  const base = { roomCapacity: 0, isComplete: false, dismissed: false, ready: true };
 
-  it('runs for a genuinely empty, ready account', () => {
-    expect(shouldRunSpotlight(base)).toBe(true);
+  it('waits for the first hostel — an empty Home has nothing to point at', () => {
+    expect(shouldRunSpotlight(base)).toBe(false);
   });
 
-  it('never runs once the owner has anything', () => {
-    expect(shouldRunSpotlight({ ...base, roomCapacity: 12 })).toBe(false);
-    expect(shouldRunSpotlight({ ...base, tenantCount: 1 })).toBe(false);
+  it('runs once rooms exist and the dashboard has something in it', () => {
+    expect(shouldRunSpotlight({ ...base, roomCapacity: 24 })).toBe(true);
+  });
+
+  it('never tours an owner who has finished setting up', () => {
+    // Storage is per-device, so an established owner on a new phone reads as
+    // "not dismissed". Completion is what actually stops the tour.
+    expect(shouldRunSpotlight({ ...base, roomCapacity: 40, isComplete: true })).toBe(false);
   });
 
   it('respects a dismissal', () => {
-    expect(shouldRunSpotlight({ ...base, dismissed: true })).toBe(false);
+    expect(shouldRunSpotlight({ ...base, roomCapacity: 24, dismissed: true })).toBe(false);
   });
 
   it('waits for the dashboard rather than spotlighting a loading screen', () => {
-    expect(shouldRunSpotlight({ ...base, ready: false })).toBe(false);
+    expect(shouldRunSpotlight({ ...base, roomCapacity: 24, ready: false })).toBe(false);
   });
 });
 

@@ -22,6 +22,14 @@ export interface GettingStartedStep {
   title: string;
   /** Real facts once known, guidance before that — never a fabricated number. */
   detail: string;
+  /**
+   * Why this step exists at all, in the owner's terms rather than the app's.
+   * Present only while the step is outstanding: once it is done, the reason
+   * has been demonstrated and the row should shrink back to a fact.
+   */
+  why: string | null;
+  /** Roughly how long this takes. Absent once done. */
+  duration: string | null;
   cta: string;
   state: StepState;
 }
@@ -31,21 +39,23 @@ export interface GettingStartedSignals {
   roomCapacity: number;
   /** Active + invited. An invited tenant counts — the owner did the work. */
   tenantCount: number;
-  /** Rent recorded this month. */
-  collectedThisMonth: number;
+  /**
+   * Whether the owner has *ever* recorded a payment, across every hostel.
+   *
+   * Deliberately a lifetime fact rather than this month's collection. The
+   * monthly figure resets on the 1st, so the checklist used to need a one-way
+   * `graduated` latch in browser storage to stop it telling an established
+   * hostel every month that it had never taken rent — and that latch was
+   * keyed globally rather than per owner, so one finished account silently
+   * suppressed the checklist for every account opened afterwards in the same
+   * browser, new ones included. With all three steps now permanently-true
+   * facts, the latch has nothing left to do and is gone. See ADR-139.
+   */
+  hasEverCollected: boolean;
   /**
    * A hostel that exists but has floors with no rooms, for step one's detail.
    */
   hostelInProgress?: { name: string; summary: string } | null;
-  /**
-   * Set once the owner has completed all three, ever.
-   *
-   * Load-bearing: the payment signal is *this month's* collection, which
-   * resets on the 1st. Without a one-way latch the card would reappear on a
-   * long-established account every month, claiming its owner had never taken
-   * a payment. Completion is permanent even though the signal is not.
-   */
-  graduated: boolean;
 }
 
 export interface GettingStarted {
@@ -61,18 +71,29 @@ export interface GettingStarted {
 export function deriveGettingStarted(signals: GettingStartedSignals): GettingStarted {
   const hasRooms = signals.roomCapacity > 0;
   const hasTenants = signals.tenantCount > 0;
-  const hasPayments = signals.collectedThisMonth > 0;
 
   const done: Record<StepId, boolean> = {
     hostel: hasRooms,
     tenant: hasTenants,
-    payment: hasPayments,
+    payment: signals.hasEverCollected,
   };
 
   const order: StepId[] = ['hostel', 'tenant', 'payment'];
   const firstTodo = order.find((id) => !done[id]) ?? null;
 
-  const copy: Record<StepId, { title: string; cta: string; doneDetail: string; todoDetail: string }> = {
+  /**
+   * Written for someone who has run a hostel for years and has never run
+   * software. Each outstanding step says what to do, why it has to happen
+   * before the next one, and roughly how long it takes — the three things
+   * that stop a non-technical owner putting the phone down. A finished step
+   * drops all of that and states a fact about their hostel instead, so the
+   * card gets shorter and calmer as they go rather than staying a wall of
+   * instructions.
+   */
+  const copy: Record<
+    StepId,
+    { title: string; cta: string; doneDetail: string; todoDetail: string; why: string; duration: string }
+  > = {
     hostel: {
       title: 'Set up your hostel',
       cta: 'Start building',
@@ -80,18 +101,24 @@ export function deriveGettingStarted(signals: GettingStartedSignals): GettingSta
       todoDetail: signals.hostelInProgress
         ? signals.hostelInProgress.summary
         : 'Add your floors, then the rooms on each one',
+      why: 'Rooms have to exist before anyone can be put in one.',
+      duration: 'About 5 minutes',
     },
     tenant: {
       title: 'Invite your first tenant',
       cta: 'Invite a tenant',
       doneDetail: `${signals.tenantCount} ${signals.tenantCount === 1 ? 'tenant' : 'tenants'} on board`,
       todoDetail: 'They get a link to join and fill in their own details',
+      why: 'They fill in their own details, so you do not have to type them.',
+      duration: 'About 2 minutes',
     },
     payment: {
       title: 'Record your first payment',
       cta: 'Collect rent',
       doneDetail: 'Rent is coming in',
       todoDetail: 'Log a payment, or share a payment link',
+      why: 'Once rent is recorded, Stayo keeps track of who still owes you.',
+      duration: 'About a minute',
     },
   };
 
@@ -99,6 +126,8 @@ export function deriveGettingStarted(signals: GettingStartedSignals): GettingSta
     id,
     title: copy[id].title,
     detail: done[id] ? copy[id].doneDetail : copy[id].todoDetail,
+    why: done[id] ? null : copy[id].why,
+    duration: done[id] ? null : copy[id].duration,
     cta: copy[id].cta,
     state: done[id] ? 'done' : id === firstTodo ? 'current' : 'todo',
   }));
@@ -107,7 +136,9 @@ export function deriveGettingStarted(signals: GettingStartedSignals): GettingSta
   const isComplete = doneCount === order.length;
 
   return {
-    visible: !signals.graduated && !isComplete,
+    // Every step is now a permanently-true fact, so completion is permanent
+    // on its own and needs no stored latch to hold it.
+    visible: !isComplete,
     steps,
     doneCount,
     total: order.length,
@@ -121,21 +152,29 @@ export function deriveGettingStarted(signals: GettingStartedSignals): GettingSta
 /**
  * Whether the one-time orientation spotlight should run.
  *
- * Gated on real emptiness as well as the dismissal flag. The flag lives in
- * browser storage, so it is lost on a new device or a cleared cache — but
- * because an account with any rooms or tenants is excluded outright, the worst
- * case is re-showing an introduction to someone who still has nothing, which
- * is when showing it is correct anyway.
+ * It used to fire on a *completely empty* account, which was exactly the wrong
+ * moment twice over. Its three stops pointed at the Action Center and the
+ * search bar — neither of which an empty account renders any more (see
+ * `homeSections.ts`) — so it dimmed the screen to highlight things that were
+ * not there. And on a screen holding one card with one button, a modal tour is
+ * noise a non-technical owner dismisses without reading.
+ *
+ * So it waits until the first hostel is actually built. That is the moment the
+ * dashboard has something in it and the tour has something true to point at.
+ * It stops for good once the checklist is complete, which also means an
+ * established owner who clears their browser storage is never re-toured — the
+ * failure mode the old emptiness gate was there to prevent. See ADR-139.
  */
 export function shouldRunSpotlight(input: {
   roomCapacity: number;
-  tenantCount: number;
+  /** All three steps done — this owner is past being introduced to anything. */
+  isComplete: boolean;
   dismissed: boolean;
   /** Don't compete with a loading dashboard. */
   ready: boolean;
 }): boolean {
-  if (!input.ready || input.dismissed) return false;
-  return input.roomCapacity === 0 && input.tenantCount === 0;
+  if (!input.ready || input.dismissed || input.isComplete) return false;
+  return input.roomCapacity > 0;
 }
 
 // ── Verification status ────────────────────────────────────────────────────

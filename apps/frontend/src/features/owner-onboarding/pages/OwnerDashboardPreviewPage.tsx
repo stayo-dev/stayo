@@ -16,6 +16,7 @@ import { InviteTenantWizard } from '@features/owner-tenants/invite/InviteTenantW
 import { pendingVerificationsRoute } from '@features/owner-tenants/documents/kycDocuments';
 import { PENDING_ACTIVATIONS_PATH } from '@features/owner-tenants/activation/activationProgress';
 import { useGettingStarted } from '@features/owner-dashboard/getting-started/useGettingStarted';
+import { deriveHomeSections } from '@features/owner-dashboard/homeSections';
 import { Spotlight } from '@shared/ui-patterns/Spotlight';
 
 function DashboardLoadingSkeleton() {
@@ -54,6 +55,7 @@ export function OwnerDashboardPreviewPage() {
   const gettingStartedRef = useRef<HTMLElement>(null);
   const actionCenterRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLButtonElement>(null);
+  const hostelsRef = useRef<HTMLDivElement>(null);
 
   // A hostel whose build was left unfinished — derived from the data itself
   // rather than a stored "onboarding step", which would drift the moment an
@@ -72,9 +74,14 @@ export function OwnerDashboardPreviewPage() {
 
   const gettingStarted = useGettingStarted({
     ...dash.gettingStartedSignals,
+    ownerId: dash.ownerId,
     hostelInProgress: hostelInProgress ? { name: hostelInProgress.name, summary: hostelInProgress.summary } : null,
     ready: !dash.isLoading,
   });
+
+  // Home shows a card only once it has something true to put in it. See
+  // `homeSections.ts` — a new owner used to meet a dashboard of zeros.
+  const sections = deriveHomeSections(dash.homeSectionSignals);
 
   if (dash.isLoading) return <DashboardLoadingSkeleton />;
 
@@ -112,6 +119,7 @@ export function OwnerDashboardPreviewPage() {
         actionCenter={dash.actionCenter}
         collection={dash.collection}
         spendAnomaly={dash.spendAnomaly}
+        sections={sections}
         onSelectProperty={(hostelId) => navigate(`/owner/hostels/${hostelId}/overview`)}
         onOpenAlerts={() => navigate('/owner/alerts')}
         onOpenQuickActions={qa.openSheet}
@@ -129,6 +137,7 @@ export function OwnerDashboardPreviewPage() {
         gettingStartedRef={gettingStartedRef}
         actionCenterRef={actionCenterRef}
         searchRef={searchRef}
+        hostelsRef={hostelsRef}
         gettingStarted={
           gettingStarted.state.visible
             ? {
@@ -183,6 +192,11 @@ export function OwnerDashboardPreviewPage() {
         onInviteTenant={qa.inviteTenant}
         onAddExpense={qa.addExpense}
         onCreateFoodPoll={qa.createFoodPoll}
+        onAddHostel={() => {
+          qa.closeSheet();
+          navigate('/owner/hostels/new');
+        }}
+        canOperate={dash.properties.length > 0}
       />
       <AllActionsSheet
         open={qa.allActionsOpen}
@@ -202,17 +216,28 @@ export function OwnerDashboardPreviewPage() {
         onInviteTenant={qa.inviteTenant}
         actionCenter={dash.actionCenter}
       />
-      {/* Orientation, once, and only for an account that is genuinely empty.
-          It ends on the checklist so the last thing highlighted is the thing
-          the owner should actually do next. */}
+      {/* Orientation, once, after the first hostel exists.
+          It used to run on a completely empty account, where it dimmed the
+          screen to point at an Action Center and a search bar that Home no
+          longer renders that early — so stops were silently filtered out and
+          the tour explained things that were not on screen. Waiting until
+          there is a building to talk about also means every stop below has
+          something real underneath it. `Spotlight` still drops any stop whose
+          ref is empty, so the last two simply wait their turn until the first
+          tenant brings those sections in. See ADR-139. */}
       <Spotlight
         open={gettingStarted.runSpotlight}
         onDone={gettingStarted.dismissSpotlight}
         stops={[
           {
             ref: gettingStartedRef,
-            title: 'Your next three steps',
-            body: 'Set up your hostel, invite a tenant, take your first payment. Each one ticks itself off as you go.',
+            title: 'What to do next',
+            body: 'Your remaining steps live here, and each one ticks itself off as you go. Nothing to remember.',
+          },
+          {
+            ref: hostelsRef,
+            title: 'Your hostels',
+            body: 'Every hostel you add sits here. Tap one to open it, or drag to put them in the order you think about them.',
           },
           {
             ref: actionCenterRef,

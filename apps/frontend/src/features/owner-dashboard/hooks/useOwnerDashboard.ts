@@ -47,6 +47,13 @@ interface PortfolioHostelCard {
 interface PortfolioSummaryResponse {
   aggregate: PortfolioAggregate;
   hostels: PortfolioHostelCard[];
+  /**
+   * Has this owner ever recorded a payment, across every hostel and every
+   * month. Composed in the route beside `month_spend`. Drives the checklist's
+   * third step, which previously read *this month's* collection and therefore
+   * needed a stored latch to survive the 1st. See ADR-139.
+   */
+  has_ever_collected?: boolean;
 }
 
 /**
@@ -213,7 +220,13 @@ export function useOwnerDashboard() {
     alerts.renewals.filter(r => !r.read).length + 
     alerts.requests.filter(r => !r.read).length;
 
+  const roomCapacity = Number(aggregate?.total_capacity ?? 0);
+  // An invited tenant counts: the owner has done the work, and waiting on
+  // the tenant to accept is not a step they can take again.
+  const tenantCount = Number(aggregate?.active_tenants ?? 0) + Number(invitedQuery.data ?? 0);
+
   return {
+    ownerId: session.ownerId,
     ownerName: session.ownerName?.split(' ')[0] || 'Owner',
     properties,
     actionCenter,
@@ -226,11 +239,21 @@ export function useOwnerDashboard() {
      * does not compare to zero.
      */
     gettingStartedSignals: {
-      roomCapacity: Number(aggregate?.total_capacity ?? 0),
-      // An invited tenant counts: the owner has done the work, and waiting on
-      // the tenant to accept is not a step they can take again.
-      tenantCount: Number(aggregate?.active_tenants ?? 0) + Number(invitedQuery.data ?? 0),
-      collectedThisMonth: Number(aggregate?.rent_collected_this_month ?? 0),
+      roomCapacity,
+      tenantCount,
+      hasEverCollected: Boolean(portfolioQuery.data?.has_ever_collected),
+    },
+    /**
+     * Which cards on Home have earned the right to render. Same raw figures,
+     * different question — see `homeSections.ts` for why a brand-new owner is
+     * shown a growing screen rather than a dashboard full of zeros.
+     */
+    homeSectionSignals: {
+      hostelCount: properties.length,
+      roomCapacity,
+      tenantCount,
+      collectedThisMonth: collected,
+      monthTarget: target,
     },
     // policyQuery is included so the Renewal Agreements card's appearance
     // isn't a visible pop-in after the rest of the page has already

@@ -8,6 +8,23 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-08-29 — A new owner could not create a hostel at all; the only two buttons that did it were both hidden (fixed)
+
+**Symptom.** A freshly signed-up owner's Home showed a greeting, a search bar, "Collect Rent ₹0", three zero tiles and a month card of "₹0 of ₹0" — and no way whatsoever to add a hostel. No hostels section, no `+ Add hostel` button, no getting-started checklist. The FAB's Quick Actions offered Collect Payment, Add Tenant, Add Expense and Food menu, all four of which require a hostel to exist. The account was a complete dead end.
+
+**Root cause — two independent defects that only bite together.** There are exactly two routes to `/owner/hostels/new` in the whole application, and both were hidden.
+
+1. **`OwnerHomeDashboard.tsx` rendered the property list only when `properties.length > 0`** — and that list carries the app's only `+ Add hostel` button. The walkthrough commit (`73e9e47`) had changed `properties.length === 0 ? <FirstHostelCard/> : <PropertyList/>` into a bare `properties.length > 0 &&`, deleting `FirstHostelCard` on the reasoning that the new checklist told a new owner to add a hostel. Sound reasoning, but it made the checklist load-bearing.
+2. **The checklist then hid itself.** `useGettingStarted` latched a one-way `graduated` flag into `localStorage` under **`stayo_owner_getting_started_done` — a browser-global key with no owner id in it**. Once any owner on that browser completed setup, the flag was set forever, and every account signed in afterwards on that device was permanently denied the checklist, brand-new accounts included. Triggered here by `chore(scripts): reset every owner and tenant` (`73464a9`): the database rows went, the browser flag did not.
+
+**Confirmed from the screenshots, not inferred.** The one-time spotlight rendered **2 stops instead of 3**, starting at "Your daily view". `Spotlight` filters out stops whose ref is empty (`stops.filter((stop) => stop.ref.current)`), so the missing first stop is direct evidence the checklist was not in the DOM — while the tour running at all proves `roomCapacity === 0 && tenantCount === 0`, i.e. a genuinely empty account that should have been showing it.
+
+**Why the latch existed.** Steps one and two read lifetime facts; step three read `rent_collected_this_month`, which resets on the 1st. Without the latch the card would reappear every month to tell an established hostel it had never taken rent. The latch was a workaround for one signal having the wrong time scale — and the workaround, not the signal, is what broke the screen.
+
+**Fix.** The hostels section is now unconditional and gains a first-run empty state with its own primary button; `Add Hostel` also joins the FAB sheet, where actions needing a hostel are dimmed rather than offered; and completion is derived from a new lifetime `has_ever_collected` signal so **no completion state is stored anywhere** and the `graduated` flag is deleted outright. Three independent paths into hostel creation, none of which browser state can hide. Separately, Home now renders each card only once it has something true to say, so a new owner is no longer shown a dashboard of zeros. See [[Decisions#ADR-139|ADR-139]], [[Features]], [[Changelog]].
+
+**Also fixed in passing:** the spotlight pointed at an Action Center and a search bar that Home no longer renders for an empty account, so its stops were being silently filtered away. It now runs once the first hostel is built, and its dismissal flag is keyed per owner.
+
 ## 2026-08-28 — Adopting a tenancy orphaned it from its person; two minutes later a duplicate invite sailed through (fixed)
 
 **Symptom, observed in production:** a tenancy was adopted (`ownerManagedTenancyService.adopt`) at 16:31:56. At 16:34:09 — under three minutes later — `checkEligibilityByContact` answered "eligible" for the **same phone number**, and a second invitation was accepted for it. That phone ended up holding three tenancies in a single hostel: `FORMER_TENANT`, `ACTIVE`/`OWNER_MANAGED` (the adoption), and `INVITED` (the duplicate) — one person, one real identity, and a `profiles` row that nothing linked to two of the three.

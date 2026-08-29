@@ -42,8 +42,11 @@ export const GettingStartedCard = forwardRef<HTMLElement, GettingStartedCardProp
       >
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="font-display text-[17px] font-extrabold text-foreground">Getting started</h2>
+          {/* "Step 2 of 3" rather than "1 of 3" — a count of what is finished
+              reads as a score, and on day one that score is zero. Naming the
+              step they are on says the same thing forwards. */}
           <span className="text-[12px] font-bold text-muted-foreground">
-            {state.doneCount} of {state.total}
+            Step {Math.min(state.doneCount + 1, state.total)} of {state.total}
           </span>
         </div>
 
@@ -110,15 +113,31 @@ function StepRow({ step, onAction }: { step: GettingStartedStep; onAction: () =>
         </span>
         <span className="mt-0.5 block text-[12.5px] leading-relaxed text-muted-foreground">{step.detail}</span>
 
+        {/* The reason and the time estimate ride on the current step only.
+            Repeating them on every row turns three short instructions into a
+            page of small print, and the steps that are not next yet do not
+            need justifying — the owner is not being asked to do them. */}
+        {current && step.why && (
+          <span className="mt-1.5 block text-[12.5px] leading-relaxed text-foreground/75">{step.why}</span>
+        )}
+
         {current && (
-          <button
-            type="button"
-            onClick={onAction}
-            className="mt-2.5 inline-flex min-h-[42px] items-center gap-1.5 rounded-xl bg-primary px-4 font-display text-[13px] font-bold text-primary-foreground shadow-sm active:scale-[0.98] transition-transform"
-          >
-            {step.cta}
-            <ArrowRight className="h-3.5 w-3.5" strokeWidth={2.4} />
-          </button>
+          <span className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
+            <button
+              type="button"
+              onClick={onAction}
+              className="inline-flex min-h-[42px] items-center gap-1.5 rounded-xl bg-primary px-4 font-display text-[13px] font-bold text-primary-foreground shadow-sm active:scale-[0.98] transition-transform"
+            >
+              {step.cta}
+              <ArrowRight className="h-3.5 w-3.5" strokeWidth={2.4} />
+            </button>
+            {step.duration && (
+              <span className="inline-flex items-center gap-1 text-[12px] font-medium text-muted-foreground">
+                <Clock className="h-3.5 w-3.5" strokeWidth={1.9} />
+                {step.duration}
+              </span>
+            )}
+          </span>
         )}
       </span>
     </li>

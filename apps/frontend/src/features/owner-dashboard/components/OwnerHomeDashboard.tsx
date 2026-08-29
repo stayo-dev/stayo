@@ -13,6 +13,7 @@ import { currentAndNextMeal } from '@features/food/mealTimings';
 import { PropertyList } from '../property-order/PropertyList';
 import { GettingStartedCard } from '../getting-started/GettingStartedCard';
 import type { GettingStarted, StepId, VerificationStatus } from '../getting-started/gettingStarted';
+import type { HomeSections } from '../homeSections';
 import {
   mockOwnerName,
   mockActionCenter,
@@ -61,12 +62,22 @@ interface OwnerHomeDashboardProps {
   onAddHostel?: () => void;
   /** A hostel that exists but still has floors without rooms. */
   hostelInProgress?: { name: string; summary: string } | null;
-  /** New-owner walkthrough. Absent once the owner has graduated. */
+  /** New-owner walkthrough. Absent once all three steps are satisfied. */
   gettingStarted?: { state: GettingStarted; verification: VerificationStatus; onStep: (id: StepId) => void } | null;
+  /**
+   * Which cards have earned the right to render. A brand-new owner used to be
+   * shown the entire dashboard with nothing in it — "Collect Rent ₹0", three
+   * zero tiles, "₹0 of ₹0" — which reads as broken software to someone
+   * non-technical and buries the one thing they should do. See
+   * `homeSections.ts` and ADR-139. Defaults to everything visible so the
+   * mock-data preview and any other caller renders the full screen.
+   */
+  sections?: HomeSections;
   /** Spotlight anchors, so the tour points at real elements not selectors. */
   gettingStartedRef?: React.Ref<HTMLElement>;
   actionCenterRef?: React.Ref<HTMLDivElement>;
   searchRef?: React.Ref<HTMLButtonElement>;
+  hostelsRef?: React.Ref<HTMLDivElement>;
   /** Full ordered list of hostel ids after a manual reorder. See ADR-042. */
   onReorderProperties?: (orderedIds: string[]) => void;
   /** Opens Universal Search. See ADR-044. */
@@ -101,6 +112,7 @@ export function OwnerHomeDashboard({
   actionCenter = mockActionCenter,
   collection = mockCollection,
   spendAnomaly = null,
+  sections = { search: true, actionCenter: true, monthCard: true, hostels: true, setupMode: false },
   onSelectProperty,
   onOpenAlerts,
   onOpenQuickActions,
@@ -112,6 +124,7 @@ export function OwnerHomeDashboard({
   gettingStartedRef,
   actionCenterRef,
   searchRef,
+  hostelsRef,
   onReorderProperties,
   onOpenSearch,
   onOpenCollectionQueue,
@@ -140,8 +153,8 @@ export function OwnerHomeDashboard({
             Good morning, {ownerName}
           </h1>
           <p className="mt-1.5 text-[13px] font-medium text-muted-foreground">
-            {properties.length === 0
-              ? 'Let\u2019s get your first hostel set up'
+            {sections.setupMode
+              ? 'Let\u2019s get your hostel running'
               : `${properties.length} ${properties.length === 1 ? 'hostel' : 'hostels'} · ${collection.month}`}
           </p>
         </div>
@@ -160,7 +173,10 @@ export function OwnerHomeDashboard({
       </div>
 
       {/* Was a non-interactive <div>+<span> — looked like a search field,
-          did nothing. Now opens Universal Search (ADR-044). */}
+          did nothing. Now opens Universal Search (ADR-044). Hidden until the
+          account has somebody in it: searching an empty hostel returns
+          nothing, and offering it on day one implies data that isn't there. */}
+      {sections.search && (
       <button
         ref={searchRef}
         type="button"
@@ -171,6 +187,7 @@ export function OwnerHomeDashboard({
         <Search className="h-3.5 w-3.5 flex-none text-muted-foreground" strokeWidth={1.6} />
         <span className="text-[13px] text-muted-foreground">Search tenant, room, phone…</span>
       </button>
+      )}
 
       {gettingStarted && (
         <GettingStartedCard
@@ -181,6 +198,12 @@ export function OwnerHomeDashboard({
         />
       )}
 
+      {/* Every tile in here is structurally zero until a tenant exists — no
+          rent can be overdue, nobody can await activation, no revenue can
+          have landed. Shown to a new owner it was four zeros and a dark card
+          reading "Collect Rent ₹0", which teaches nothing and looks broken.
+          See `homeSections.ts`. */}
+      {sections.actionCenter && (
       <section className="flex flex-col gap-3" ref={actionCenterRef}>
         <div className="flex items-baseline justify-between">
           <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Action Center</h2>
@@ -250,6 +273,7 @@ export function OwnerHomeDashboard({
           />
         </div>
       </section>
+      )}
 
       {/* Current meal, one line — only when there's something to say. A food
           gap belongs in the Action Center (Phase 2), not as an empty card
@@ -284,6 +308,7 @@ export function OwnerHomeDashboard({
           is cash received minus cash spent, blind to unpaid dues and deposits
           held, and this codebase does not dress a partial number as a whole
           one. */}
+      {sections.monthCard && (
       <section className="rounded-2xl border border-border bg-card p-4.5 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="font-display text-sm font-bold text-foreground">{collection.month}</h2>
@@ -339,8 +364,15 @@ export function OwnerHomeDashboard({
           </div>
         </div>
       </section>
+      )}
 
-      {properties.length > 0 && (
+      {/* Never conditional. This section was previously rendered only when
+          `properties.length > 0`, and it carries the only "+ Add hostel"
+          button on the screen — so an owner with no hostels had no way to
+          create one, and the account was a dead end. The checklist's step one
+          was the sole remaining path, and a stale browser flag could hide
+          that too. See ADR-139. */}
+      <div ref={hostelsRef}>
         <PropertyList
           properties={properties}
           onSelectProperty={onSelectProperty}
@@ -348,7 +380,7 @@ export function OwnerHomeDashboard({
           onAddHostel={onAddHostel}
           onReorder={onReorderProperties}
         />
-      )}
+      </div>
 
       <button
         type="button"

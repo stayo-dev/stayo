@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Reorder, useDragControls } from 'motion/react';
-import { RefreshCw, Archive, Trash2 } from 'lucide-react';
+import { RefreshCw, Archive, Trash2, Plus, Building2 } from 'lucide-react';
 import { StatusPill } from '@shared/ui-patterns/StatusPill';
 import { DragHandle } from '@shared/ui-patterns/DragHandle';
 import { cn } from '@shared/lib/cn';
@@ -191,6 +191,18 @@ export function PropertyList({
     saveSortMode(next);
   };
 
+  /**
+   * No hostels at all — not "the Active tab happens to be empty". Worth its
+   * own treatment: tabs reading "Active (0) • Archived (0)" and a sort control
+   * over nothing are chrome around an absence, and the owner needs one obvious
+   * thing to press instead. See ADR-139.
+   */
+  const isFirstRun = properties.length === 0;
+
+  const firstRunHeader = (
+    <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Your hostels</h2>
+  );
+
   const header = (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
@@ -234,6 +246,31 @@ export function PropertyList({
     onReactivate: () => setReactivateTarget({ id: p.id, name: p.name }),
     onDelete: () => setDeleteTarget({ id: p.id, name: p.name }),
   });
+
+  if (isFirstRun) {
+    return (
+      <section className="flex flex-col gap-3">
+        {firstRunHeader}
+        <div className="flex flex-col items-center gap-1 rounded-[22px] border border-dashed border-primary/35 bg-primary/[0.04] px-5 py-7 text-center">
+          <span className="mb-1.5 flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <Building2 className="h-5 w-5" strokeWidth={1.8} />
+          </span>
+          <span className="font-display text-[15px] font-extrabold text-foreground">No hostels yet</span>
+          <span className="max-w-[15rem] text-[12.5px] leading-relaxed text-muted-foreground">
+            Add your building, its floors and its rooms. Everything else on Stayo starts here.
+          </span>
+          <button
+            type="button"
+            onClick={onAddHostel}
+            className="mt-3.5 inline-flex min-h-[44px] items-center gap-1.5 rounded-xl bg-primary px-5 font-display text-[13.5px] font-bold text-primary-foreground shadow-sm transition-transform active:scale-[0.98]"
+          >
+            <Plus className="h-4 w-4" strokeWidth={2.4} />
+            Add your first hostel
+          </button>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="flex flex-col gap-3">
