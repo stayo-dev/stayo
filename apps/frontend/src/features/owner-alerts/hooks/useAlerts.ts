@@ -24,6 +24,8 @@ export interface DynamicAdminMessage {
   body: string;
   time: string;
   read: boolean;
+  /** Present when this is a `service_request` notification — lets a click deep-link to the exact ticket's chat. */
+  metadata?: { requestId?: string } | null;
 }
 
 export interface DynamicRenewal {

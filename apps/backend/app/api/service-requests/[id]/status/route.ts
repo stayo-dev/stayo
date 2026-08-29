@@ -6,7 +6,7 @@ import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
 import { prisma } from "@/lib/db";
 import { ServiceRequestStatus } from "@prisma/client";
-import { notificationService } from "@/lib/services/notification-service";
+import { notifyServiceRequestParticipant } from "@/lib/services/service-request-notifications";
 
 const VALID_STATUSES: string[] = Object.values(ServiceRequestStatus);
 
@@ -75,19 +75,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const tenantProfileId = existing.tenants.profile_id;
     if (tenantProfileId) {
-      const ticketLabel = existing.category ?? existing.type.replace(/_/g, " ");
       // Fire-and-forget: the status update has already committed, so a
       // notification failure is logged and swallowed rather than surfacing
       // as a failed status update (matches the tenancy-claim precedent).
-      notificationService
-        .createNotification(
-          tenantProfileId,
-          `${ticketLabel} update`,
-          trimmedNote ?? `Status updated to ${STATUS_LABEL[status] ?? status}`,
-          "service_request",
-          { requestId: id },
-        )
-        .catch((err) => console.error("[service-requests/status] failed to notify tenant:", err));
+      notifyServiceRequestParticipant(
+        tenantProfileId,
+        existing,
+        trimmedNote ?? `Status updated to ${STATUS_LABEL[status] ?? status}`,
+      ).catch((err: unknown) => console.error("[service-requests/status] failed to notify tenant:", err));
     }
 
     return apiResponse(updated);

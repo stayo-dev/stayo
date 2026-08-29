@@ -55,7 +55,8 @@ export interface ServiceRequest {
 
 export interface ServiceRequestEvent {
   id: string;
-  status: ServiceRequestStatus;
+  /** Null for a pure chat message — set only when this entry is an actual status change. */
+  status: ServiceRequestStatus | null;
   note: string | null;
   actor_role: string;
   created_at: string;
@@ -84,5 +85,9 @@ export const tenantRoomService = {
   createServiceRequest: async (data: { type: ServiceRequestType; category?: string; description?: string; photoUrl?: string }) => {
     const response = await api.post('/tenants/me/service-requests', data);
     return unwrap(response) as ServiceRequest;
+  },
+  sendServiceRequestMessage: async (id: string, message: string) => {
+    const response = await api.post(`/tenants/me/service-requests/${id}/messages`, { message });
+    return unwrap(response) as ServiceRequestEvent;
   },
 };

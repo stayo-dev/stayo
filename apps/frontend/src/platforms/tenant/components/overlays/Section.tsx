@@ -1,5 +1,6 @@
-import { Inbox } from 'lucide-react';
-import type { DetailSection } from './types';
+import { useState } from 'react';
+import { Inbox, Send } from 'lucide-react';
+import type { DetailSection, MessagesSection as MessagesSectionType } from './types';
 import { TONE_COLOR } from './types';
 
 export const sectionLabel = 'text-[12px] font-bold uppercase tracking-[0.06em] text-[#9C9186]';
@@ -140,6 +141,8 @@ export function Section({ section }: { section: DetailSection }) {
           <div className="mt-1 text-[12px] leading-relaxed text-[#8A7F75]">{section.body}</div>
         </div>
       );
+    case 'messages':
+      return <MessagesThread section={section} />;
     case 'actions':
       return (
         <div className="flex flex-col gap-2.5">
@@ -162,4 +165,67 @@ export function Section({ section }: { section: DetailSection }) {
         </div>
       );
   }
+}
+
+/** A ticket's chat thread — real messages as left/right bubbles, status changes as a small centered pill, plus a composer. */
+function MessagesThread({ section }: { section: MessagesSectionType }) {
+  const [text, setText] = useState('');
+
+  const send = () => {
+    const trimmed = text.trim();
+    if (!trimmed || section.sending) return;
+    section.onSend(trimmed);
+    setText('');
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2.5">
+        {section.messages.map((m) =>
+          m.isStatusPill ? (
+            <div key={m.id} className="flex justify-center">
+              <span
+                className="rounded-full px-3 py-1 text-[11px] font-semibold"
+                style={{ background: TONE_COLOR[m.tone ?? 'grey'].bg, color: TONE_COLOR[m.tone ?? 'grey'].c }}
+              >
+                {m.text} · {m.meta}
+              </span>
+            </div>
+          ) : (
+            <div key={m.id} className={`flex ${m.fromMe ? 'justify-end' : 'justify-start'}`}>
+              <div
+                className={`max-w-[78%] rounded-[16px] px-3.5 py-2.5 ${
+                  m.fromMe ? 'rounded-br-[4px] bg-[#A45D44] text-white' : 'rounded-bl-[4px] bg-[#F0E8DE] text-[#2A2521]'
+                }`}
+              >
+                <div className="text-[13px] leading-snug">{m.text}</div>
+                <div className={`mt-1 text-[10px] font-medium ${m.fromMe ? 'text-white/70' : 'text-[#9A8F84]'}`}>{m.meta}</div>
+              </div>
+            </div>
+          ),
+        )}
+      </div>
+      <div className="flex items-center gap-2 rounded-[14px] border border-[#EFE6DA] bg-card p-1.5">
+        <input
+          type="text"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') send();
+          }}
+          placeholder={section.placeholder ?? 'Type a message…'}
+          className="min-w-0 flex-1 bg-transparent px-2.5 py-2 text-[13px] outline-none placeholder:text-[#B0A597]"
+        />
+        <button
+          type="button"
+          onClick={send}
+          disabled={!text.trim() || section.sending}
+          aria-label="Send"
+          className="flex h-9 w-9 flex-none items-center justify-center rounded-[11px] bg-[#A45D44] text-white disabled:opacity-40"
+        >
+          <Send className="h-4 w-4" strokeWidth={2} />
+        </button>
+      </div>
+    </div>
+  );
 }

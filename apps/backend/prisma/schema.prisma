@@ -3390,7 +3390,9 @@ model tenant_service_requests {
 model tenant_service_request_events {
   id                      String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   request_id              String                  @db.Uuid
-  status                  ServiceRequestStatus
+  /// Null for a pure chat message (no status transition) — set only when this
+  /// event represents an actual status change on the ticket.
+  status                  ServiceRequestStatus?
   note                    String?
   actor_role              String
   created_at              DateTime                @default(now()) @db.Timestamptz(6)

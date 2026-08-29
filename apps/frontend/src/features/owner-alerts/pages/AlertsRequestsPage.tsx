@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Inbox, Loader2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { EmptyState } from '@shared/ui-patterns/EmptyState';
@@ -9,14 +9,29 @@ import { ownerServiceRequestsService, STATUS_FLOW, NEXT_ACTION_LABEL, SERVICE_RE
 import { useAlerts } from '../hooks/useAlerts';
 import { searchAlerts } from '../alertsSearch';
 import { AlertSearchBox } from '../components/AlertSearchBox';
-import { rowCard, actionBtn, sideBtn, initials, soon } from '../alertsStyles';
+import { ServiceRequestChatSheet } from '../components/ServiceRequestChatSheet';
+import { rowCard, actionBtn, sideBtn, initials } from '../alertsStyles';
 
 /** Requests — dedicated Alerts category page. */
 export function AlertsRequestsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const alerts = useAlerts();
   const [query, setQuery] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [chatRequestId, setChatRequestId] = useState<string | null>(null);
+
+  // Deep link from a tapped notification (a tenant's chat reply navigates
+  // here with `state: { openChatRequestId }`) — open that ticket's chat once
+  // on mount, then clear the state so a later back-navigation doesn't reopen it.
+  useEffect(() => {
+    const requestId = (location.state as { openChatRequestId?: string } | null)?.openChatRequestId;
+    if (requestId) {
+      setChatRequestId(requestId);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only, reads location.state once
+  }, []);
 
   const found = useMemo(
     () => searchAlerts(query, { leads: [], adminMessages: [], renewals: [], requests: alerts.requests }),
@@ -141,7 +156,7 @@ export function AlertsRequestsPage() {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            soon();
+                            setChatRequestId(q.id);
                           }}
                           className={`${sideBtn} text-success`}
                         >
@@ -156,6 +171,8 @@ export function AlertsRequestsPage() {
           )}
         </div>
       </div>
+
+      <ServiceRequestChatSheet requestId={chatRequestId} onClose={() => setChatRequestId(null)} />
     </ThemeProvider>
   );
 }

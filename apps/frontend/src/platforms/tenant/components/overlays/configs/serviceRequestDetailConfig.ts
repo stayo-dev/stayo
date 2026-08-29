@@ -21,7 +21,11 @@ const PILL_TONE: Record<ServiceRequestStatus, OverlayTone> = {
 const dateLabel = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 
 /** Ticket/service-request detail — used for both Room's active-maintenance card and any ticket opened from Profile's list. Mirrors Stayo Tenant.dc.html's `maint_ticket`/`tk_*` DETAIL entries, built from the real `ServiceRequest` + its event log rather than static mock content. */
-export function buildServiceRequestDetailConfig(request: ServiceRequest, events: ServiceRequestEvent[]): DetailConfig {
+export function buildServiceRequestDetailConfig(
+  request: ServiceRequest,
+  events: ServiceRequestEvent[],
+  chat: { onSend: (text: string) => void; sending?: boolean },
+): DetailConfig {
   const stepIndex = request.status === 'REJECTED' ? -1 : STEP_ORDER.indexOf(request.status as (typeof STEP_ORDER)[number]);
 
   const config: DetailConfig = {
@@ -60,12 +64,21 @@ export function buildServiceRequestDetailConfig(request: ServiceRequest, events:
           ]
         : []),
       {
-        kind: 'notices',
-        title: 'Updates',
-        notices:
+        kind: 'messages',
+        title: 'Messages',
+        onSend: chat.onSend,
+        sending: chat.sending,
+        messages:
           events.length > 0
-            ? events.map((e) => ({ title: e.note ?? `Status changed to ${STEP_LABEL[e.status]}`, meta: dateLabel(e.created_at), tone: PILL_TONE[e.status] }))
-            : [{ title: 'Request received', meta: dateLabel(request.created_at), tone: 'grey' as const }],
+            ? events.map((e) => ({
+                id: e.id,
+                text: e.status ? (e.note ?? `Status changed to ${STEP_LABEL[e.status]}`) : (e.note ?? ''),
+                meta: dateLabel(e.created_at),
+                fromMe: e.actor_role === 'TENANT',
+                isStatusPill: e.status !== null,
+                tone: e.status ? PILL_TONE[e.status] : ('grey' as const),
+              }))
+            : [{ id: 'received', text: 'Request received', meta: dateLabel(request.created_at), fromMe: false, isStatusPill: true, tone: 'grey' as const }],
       },
     ],
   };

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { TenantPageHeader } from '../components/TenantPageHeader';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, Droplets, Wifi, Zap, Sparkles, Wrench, DoorOpen, KeyRound, UserPlus, BedDouble, ListChecks, MessageSquareWarning, Flame, Shirt, ShowerHead, UtensilsCrossed, Car, ShieldCheck, CircleDot, LogOut, Repeat } from 'lucide-react';
 import { useTenantRoom } from '@features/tenant-room/hooks/useTenantRoom';
 import { buildTenantFacilities, type FacilityIcon } from '@features/tenant-room/facilities';
@@ -87,10 +87,19 @@ export function TenantRoomPage() {
   );
   const formConfigs = useMemo(() => buildServiceRequestFormConfigs({ createRequest: room.createRequest }), [room.createRequest]);
 
+  const queryClient = useQueryClient();
+
   const ticketEventsQuery = useQuery({
     queryKey: ['tenant', 'service-requests', room.activeTicket?.id, 'events'],
     queryFn: () => tenantRoomService.getServiceRequestDetail(room.activeTicket!.id),
     enabled: overlay.view === 'maint_ticket' && Boolean(room.activeTicket),
+  });
+
+  const sendMessageMutation = useMutation({
+    mutationFn: ({ id, message }: { id: string; message: string }) => tenantRoomService.sendServiceRequestMessage(id, message),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['tenant', 'service-requests', variables.id, 'events'] });
+    },
   });
 
   /** Generic ticket detail, opened from the "view all tickets" list (any request, not just the inline `activeTicket`) — mirrors Profile's `tk_<id>` handling. */
@@ -361,13 +370,25 @@ export function TenantRoomPage() {
         <DetailScreen config={detailConfigs[overlay.view]} onBack={overlay.back} />
       )}
       {overlay.view === 'maint_ticket' && room.activeTicket && (
-        <DetailScreen config={buildServiceRequestDetailConfig(room.activeTicket, ticketEventsQuery.data?.tenant_service_request_events ?? [])} onBack={overlay.back} />
+        <DetailScreen
+          config={buildServiceRequestDetailConfig(room.activeTicket, ticketEventsQuery.data?.tenant_service_request_events ?? [], {
+            onSend: (text) => sendMessageMutation.mutate({ id: room.activeTicket!.id, message: text }),
+            sending: sendMessageMutation.isPending,
+          })}
+          onBack={overlay.back}
+        />
       )}
       {overlay.view === 'all_tickets' && (
         <TicketsListScreen requests={room.requests} onBack={overlay.back} onOpenTicket={(id) => overlay.push(`tk_${id}`)} onNewTicket={() => overlay.push('maint_new')} />
       )}
       {genericTicketId && genericTicket && (
-        <DetailScreen config={buildServiceRequestDetailConfig(genericTicket, genericTicketEventsQuery.data?.tenant_service_request_events ?? [])} onBack={overlay.back} />
+        <DetailScreen
+          config={buildServiceRequestDetailConfig(genericTicket, genericTicketEventsQuery.data?.tenant_service_request_events ?? [], {
+            onSend: (text) => sendMessageMutation.mutate({ id: genericTicketId, message: text }),
+            sending: sendMessageMutation.isPending,
+          })}
+          onBack={overlay.back}
+        />
       )}
       {!overlay.isHome && formConfigs[overlay.view] && (
         <FormPanel config={formConfigs[overlay.view]} onBack={overlay.back} onClose={overlay.close} />

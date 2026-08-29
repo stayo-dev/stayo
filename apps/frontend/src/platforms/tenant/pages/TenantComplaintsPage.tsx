@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, LifeBuoy, MessageSquareWarning, Plus } from 'lucide-react';
 import { useTenantRoom } from '@features/tenant-room/hooks/useTenantRoom';
 import { tenantRoomService } from '@features/tenant-room/api';
@@ -49,6 +49,7 @@ function LoadingSkeleton() {
 export function TenantComplaintsPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const queryClient = useQueryClient();
   const room = useTenantRoom();
   const overlay = useOverlayStack();
 
@@ -72,6 +73,13 @@ export function TenantComplaintsPage() {
     queryKey: ['tenant', 'service-requests', activeTicketId, 'events'],
     queryFn: () => tenantRoomService.getServiceRequestDetail(activeTicketId!),
     enabled: Boolean(activeTicketId && activeTicket),
+  });
+
+  const sendMessageMutation = useMutation({
+    mutationFn: (message: string) => tenantRoomService.sendServiceRequestMessage(activeTicketId!, message),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant', 'service-requests', activeTicketId, 'events'] });
+    },
   });
 
   if (room.isLoading) return <LoadingSkeleton />;
@@ -162,7 +170,13 @@ export function TenantComplaintsPage() {
       </div>
 
       {activeTicket && (
-        <DetailScreen config={buildServiceRequestDetailConfig(activeTicket, ticketEventsQuery.data?.tenant_service_request_events ?? [])} onBack={overlay.back} />
+        <DetailScreen
+          config={buildServiceRequestDetailConfig(activeTicket, ticketEventsQuery.data?.tenant_service_request_events ?? [], {
+            onSend: (text) => sendMessageMutation.mutate(text),
+            sending: sendMessageMutation.isPending,
+          })}
+          onBack={overlay.back}
+        />
       )}
       {overlay.view === 'all_tickets' && (
         <TicketsListScreen requests={room.requests} onBack={overlay.back} onOpenTicket={(id) => overlay.push(`tk_${id}`)} onNewTicket={() => overlay.push('raise_ticket')} />
