@@ -8,6 +8,18 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-08-30 — Every tenancy claim failed at the last step, blocked by the tenancy being claimed (fixed)
+
+**Symptom.** `POST /api/tenancy-claim/confirm` returned `409 TENANT_HAS_ACTIVE_TENANCY` — "This person already has an active tenancy" — after the tenant had verified their phone, reviewed their statement and pressed "This looks right". The `tenantId` in the error payload was the id of the tenancy they were claiming.
+
+**Root cause — an interaction between two correct changes.** `tenancyClaimService.confirm` guards with `assertCanStartNewTenancy(profile.id, …)`, deliberately, so a claimant who already lives elsewhere gets a real explanation instead of an opaque unique-index violation. That worked while an owner-managed tenancy had `profile_id: null`. [[Decisions#ADR-136|ADR-136]] then bound a `profile_id` to every owner-managed tenancy — the right fix for a real duplicate-invite bug — which means the claimant's profile now *already holds the tenancy being claimed*. The guard asks "may this profile start a **new** tenancy?", finds that tenancy, sees it live, and refuses. The claim flow rejected exactly the tenancies it exists to serve, from the moment ADR-136 shipped.
+
+**A wrong first diagnosis, worth recording.** From the error payload alone this was attributed to the owner pressing "+ Invite", since `createInvitation` produces an identical error. Only the DevTools network trace — showing the failing request as `confirm`, after `lookup` and `statement` succeeded — placed it in the claim flow. Two paths sharing one rule produce indistinguishable errors; the request name was the only thing that separated them.
+
+**Fix.** `evaluateTenancyEligibility` takes an optional `ignoreTenancyId`, and the claim path passes the tenancy being claimed. Only that one is excused — a live tenancy elsewhere, or an unsettled previous stay, still blocks. Every other caller passes nothing and is unchanged, which a test asserts. See [[Decisions#ADR-153|ADR-153]].
+
+**Verified read-only against the reporting tenancy:** ineligible before, eligible after.
+
 ## 2026-08-30 — A tenant adopted mid-year was billed twice for the same month (fixed for new tenancies)
 
 **Symptom.** A real tenancy showed two identical `RENT` obligations for `2026-08`, ₹8,000 each, both `PENDING`. The tenant's claim screen — the first thing they ever see of Stayo — listed "1 Aug 2026" twice and an outstanding balance ₹8,000 higher than they owed.

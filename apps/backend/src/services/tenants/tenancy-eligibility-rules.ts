@@ -75,11 +75,34 @@ function discloseTo(tenancy: TenancySnapshot, invitingOwnerId: string | null): T
  * @param tenancies every tenancy the person has ever held
  * @param invitingOwnerId the owner asking; controls how much the refusal reveals
  */
+export interface EligibilityOptions {
+  /**
+   * A tenancy to leave out of the judgement — the one being taken over.
+   *
+   * **Claiming a tenancy is not starting a new one.** Since
+   * [[Decisions#ADR-136]] every owner-managed tenancy carries a `profile_id`,
+   * so by the time someone claims theirs, the profile is already bound to the
+   * very tenancy in question. Asking "may this profile start a new tenancy?"
+   * then finds that tenancy, sees it is live, and refuses — which broke the
+   * claim flow for exactly the tenancies it exists to serve.
+   *
+   * Only the claimed tenancy is excused. A second live tenancy elsewhere, or
+   * an unsettled previous stay, still blocks — that is the guard's real job
+   * and the reason it is not simply skipped at the call site. See ADR-153.
+   */
+  ignoreTenancyId?: string;
+}
+
 export function evaluateTenancyEligibility(
   tenancies: readonly TenancySnapshot[],
-  invitingOwnerId: string | null
+  invitingOwnerId: string | null,
+  options: EligibilityOptions = {}
 ): TenancyEligibility {
-  const live = tenancies.find(isLiveTenancy);
+  const considered = options.ignoreTenancyId
+    ? tenancies.filter((tenancy) => tenancy.id !== options.ignoreTenancyId)
+    : tenancies;
+
+  const live = considered.find(isLiveTenancy);
   if (live) {
     return {
       eligible: false,
@@ -88,7 +111,7 @@ export function evaluateTenancyEligibility(
     };
   }
 
-  const unsettled = tenancies.find(
+  const unsettled = considered.find(
     (tenancy) => tenancy.wasActivated && !tenancy.hasCompletedMoveOut
   );
   if (unsettled) {

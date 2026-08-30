@@ -4,6 +4,7 @@ import {
   evaluateTenancyEligibility,
   type TenancyEligibility,
   type TenancySnapshot,
+  type EligibilityOptions,
 } from "./tenancy-eligibility-rules";
 
 export type { TenancyEligibility, TenancyDisclosure } from "./tenancy-eligibility-rules";
@@ -108,18 +109,25 @@ export class TenancyEligibilityService {
   async checkEligibility(
     profileId: string,
     invitingOwnerId: string | null,
-    tx?: any
+    tx?: any,
+    /** See `EligibilityOptions.ignoreTenancyId` — used by the claim flow. */
+    options: EligibilityOptions = {}
   ): Promise<TenancyEligibility> {
     const id = String(profileId || "").trim();
     if (!id) return { eligible: true };
 
     const tenancies = await this.loadTenancies(id, tx);
-    return evaluateTenancyEligibility(tenancies, invitingOwnerId);
+    return evaluateTenancyEligibility(tenancies, invitingOwnerId, options);
   }
 
   /** As `checkEligibility`, but throws a 409 the routes can serialise directly. */
-  async assertCanStartNewTenancy(profileId: string, invitingOwnerId: string | null, tx?: any) {
-    const result = await this.checkEligibility(profileId, invitingOwnerId, tx);
+  async assertCanStartNewTenancy(
+    profileId: string,
+    invitingOwnerId: string | null,
+    tx?: any,
+    options: EligibilityOptions = {}
+  ) {
+    const result = await this.checkEligibility(profileId, invitingOwnerId, tx, options);
     if (!result.eligible) throw new TenancyEligibilityError(result);
     return result;
   }

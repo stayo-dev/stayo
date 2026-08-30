@@ -830,7 +830,18 @@ export const tenancyClaimService = {
         // `tenants_one_live_tenancy_per_profile` would reject a second live
         // tenancy anyway, but as an opaque constraint error — check first so a
         // person who already lives somewhere else gets a real explanation.
-        await tenancyEligibilityService.assertCanStartNewTenancy(profile.id, tenant.owner_id, tx);
+        //
+        // The tenancy being claimed is excluded, and that exclusion is the
+        // whole reason this call worked before ADR-136 and not after: adoption
+        // now binds a `profile_id` to the tenancy, so by the time someone
+        // claims theirs the profile already holds it. Asking "may this profile
+        // start a *new* tenancy?" then found that very tenancy, saw it live,
+        // and refused — the claim flow rejecting exactly the tenancies it
+        // exists to serve. A live tenancy anywhere else still blocks. See
+        // ADR-153.
+        await tenancyEligibilityService.assertCanStartNewTenancy(profile.id, tenant.owner_id, tx, {
+          ignoreTenancyId: tenant.id,
+        });
 
         // 4. Flip access — same tenant_id, so every obligation, payment and
         //    receipt already on the record survives untouched.
