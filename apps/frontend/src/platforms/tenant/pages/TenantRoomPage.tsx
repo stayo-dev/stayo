@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react';
 import { TenantPageHeader } from '../components/TenantPageHeader';
+import { GuideNote } from '../guide/GuideNote';
+import { useTenantGuide } from '../guide/useTenantGuide';
+import { TAB_COPY } from '../guide/guideCopy';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, Droplets, Wifi, Zap, Sparkles, Wrench, DoorOpen, KeyRound, UserPlus, BedDouble, ListChecks, MessageSquareWarning, Flame, Shirt, ShowerHead, UtensilsCrossed, Car, ShieldCheck, CircleDot, LogOut, Repeat } from 'lucide-react';
@@ -111,6 +114,10 @@ export function TenantRoomPage() {
     enabled: Boolean(genericTicketId && genericTicket),
   });
 
+  // Introduces this screen once, the first time it is opened with real
+  // data on it. Inline rather than a spotlight — see `GuideNote`.
+  const guide = useTenantGuide('room', !room.isLoading);
+
   if (room.isLoading) return <LoadingSkeleton />;
 
   const ticketStepIndex = room.activeTicket ? TICKET_STEPS.findIndex((s) => s.key === room.activeTicket!.status) : -1;
@@ -120,6 +127,7 @@ export function TenantRoomPage() {
     <div className="min-h-screen">
       <TenantPageHeader title="My Room" subtitle="Everything about your living space" />
       <div className="flex flex-col gap-6 px-[22px] pb-8 pt-5">
+        {guide.show && <GuideNote {...TAB_COPY.room} onDismiss={guide.dismiss} />}
         <button
           type="button"
           onClick={() => overlay.push('room_details')}

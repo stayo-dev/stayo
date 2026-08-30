@@ -1,3 +1,4 @@
+import { useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { greetingWithName } from '../components/tenantGreeting';
 import { Bell, Megaphone, CalendarDays, CreditCard } from 'lucide-react';
@@ -13,6 +14,11 @@ import { ActivePollCard } from '@features/food/components/ActivePollCard';
 import { formatCellItems } from '@features/owner-food/weekGrid';
 import { PaySheet } from '@features/tenant-financials/components/PaySheet';
 import { ProfileCompletionNudge } from '../components/ProfileCompletionNudge';
+import { Spotlight, type SpotlightStop } from '@shared/ui-patterns/Spotlight';
+import { useNavAnchor } from '@/app/nav/NavAnchorContext';
+import { useTenantGuide } from '../guide/useTenantGuide';
+import { welcomeStops } from '../guide/tenantGuide';
+import { WELCOME_COPY } from '../guide/guideCopy';
 
 const card = 'rounded-[16px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_4px_14px_rgba(40,30,20,0.05)]';
 const sectionLabel = 'text-[13px] font-bold uppercase tracking-wide text-muted-foreground';
@@ -47,6 +53,24 @@ export function TenantHomePage() {
   const mealTimings = useTenantMealTimings();
   const polls = useTenantFoodPolls();
   const now = useNow();
+
+  /*
+   * The welcome tour's anchors. Refs, not selectors — see `Spotlight`.
+   * The nav bar is a sibling of this page rather than a child (`AppShell`
+   * renders it beside the outlet), so its ref arrives through context.
+   */
+  const headerRef = useRef<HTMLDivElement | null>(null);
+  const rentCardRef = useRef<HTMLDivElement | null>(null);
+  const navAnchor = useNavAnchor();
+  const guide = useTenantGuide('welcome', !home.isLoading);
+
+  const welcome = useMemo<SpotlightStop[]>(() => {
+    const anchors = { rent: rentCardRef, header: headerRef, nav: navAnchor ?? { current: null } };
+    return welcomeStops({ hasAmountDue: fin.amountDue > 0 }).map((id) => ({
+      ref: anchors[id],
+      ...WELCOME_COPY[id],
+    }));
+  }, [fin.amountDue, navAnchor]);
 
   if (home.isLoading) return <LoadingSkeleton />;
 
@@ -83,7 +107,7 @@ export function TenantHomePage() {
         The greeting reads the clock rather than repeating the product name
         back at someone who lives here — see `tenantGreeting.ts`.
       */}
-      <div className="sticky top-0 z-20 border-b border-border/60 bg-background/85 px-5 pb-3 pt-[max(1.25rem,env(safe-area-inset-top))] backdrop-blur-md sm:px-6">
+      <div ref={headerRef} className="sticky top-0 z-20 border-b border-border/60 bg-background/85 px-5 pb-3 pt-[max(1.25rem,env(safe-area-inset-top))] backdrop-blur-md sm:px-6">
         <div className="flex items-center gap-3">
           <span className="flex h-11 w-11 flex-none items-center justify-center rounded-[14px] bg-primary/12 font-display text-[14px] font-extrabold text-primary">
             {home.hostelName
@@ -124,7 +148,7 @@ export function TenantHomePage() {
       <div className="flex flex-col gap-6 px-4 sm:px-6">
       <ProfileCompletionNudge />
       {fin.amountDue > 0 && (
-        <div className={`${card} p-[18px]`}>
+        <div ref={rentCardRef} className={`${card} p-[18px]`}>
           <div className="flex items-center gap-2">
             <span className="h-[7px] w-[7px] flex-none rounded-full bg-warning" />
             <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-warning">Rent due</span>
@@ -244,6 +268,8 @@ export function TenantHomePage() {
 
       <p className="pt-0.5 text-center text-[11px] font-medium text-[#B7AC9F]">Stayo{home.hostelName ? ` · ${home.hostelName}` : ''}</p>
       </div>
+
+      <Spotlight open={guide.show} stops={welcome} onDone={guide.dismiss} />
 
       <PaySheet
         stage={fin.payStage}

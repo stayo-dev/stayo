@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import { TenantPageHeader } from '../components/TenantPageHeader';
+import { GuideNote } from '../guide/GuideNote';
+import { useTenantGuide } from '../guide/useTenantGuide';
+import { TAB_COPY } from '../guide/guideCopy';
 import { ChevronDown, UtensilsCrossed } from 'lucide-react';
 import { EmptyState } from '@shared/ui-patterns/EmptyState';
 import { MEAL_CATEGORY_META } from '@shared/mocks/food';
@@ -65,6 +68,10 @@ export function TenantFoodPage() {
   const now = useNow();
   const [expandedDay, setExpandedDay] = useState<DayKey | null>(null);
 
+  // Introduces this screen once, the first time it is opened with real
+  // data on it. Inline rather than a spotlight — see `GuideNote`.
+  const guide = useTenantGuide('food', !schedule.isLoading);
+
   if (schedule.isLoading) return <FoodLoadingSkeleton />;
 
   const currentMonth = schedule.months.find((m) => m.isCurrent) ?? null;
@@ -95,6 +102,7 @@ export function TenantFoodPage() {
         }
       />
       <div className="flex flex-col gap-6 px-5 pb-8 pt-5">
+        {guide.show && <GuideNote {...TAB_COPY.food} onDismiss={guide.dismiss} />}
 
         {mealsForDay(today).length > 0 && (
           <div className="flex flex-col gap-2.5">

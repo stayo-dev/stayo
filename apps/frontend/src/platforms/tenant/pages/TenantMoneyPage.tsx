@@ -1,5 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import { TenantPageHeader } from '../components/TenantPageHeader';
+import { GuideNote } from '../guide/GuideNote';
+import { useTenantGuide } from '../guide/useTenantGuide';
+import { TAB_COPY } from '../guide/guideCopy';
 import { useMutation } from '@tanstack/react-query';
 import { Share2, Receipt, Wallet, Info, ShieldCheck, Undo2 } from 'lucide-react';
 import { stayoToast } from '@shared/ui-patterns/Toast';
@@ -81,6 +84,10 @@ export function TenantMoneyPage() {
     onError: () => stayoToast.error('Could not generate a payment link'),
   });
 
+  // Introduces this screen once, the first time it is opened with real
+  // data on it. Inline rather than a spotlight — see `GuideNote`.
+  const guide = useTenantGuide('money', !fin.isLoading);
+
   if (fin.isLoading) return <LoadingSkeleton />;
 
   const tierIndex = standingIndex(fin.score?.grade);
@@ -108,6 +115,7 @@ export function TenantMoneyPage() {
         }
       />
       <div className="flex flex-col gap-6 px-4 pb-8 pt-5 sm:px-6">
+        {guide.show && <GuideNote {...TAB_COPY.money} onDismiss={guide.dismiss} />}
 
       <div className="relative overflow-hidden rounded-[22px] bg-foreground p-5 text-background shadow-[0_12px_30px_rgba(34,30,26,0.24)]">
         <div

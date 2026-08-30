@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { AppBottomNav } from '@/app/components/AppBottomNav';
+import { NavAnchorProvider } from '@/app/nav/NavAnchorContext';
 import { GRID_GROUND } from '@/app/pages/discover/discoverTheme';
 
 /**
@@ -16,9 +17,11 @@ import { GRID_GROUND } from '@/app/pages/discover/discoverTheme';
  */
 export function AppShell({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-[100dvh] flex-col antialiased" style={GRID_GROUND}>
-      <div className="flex-1 pb-[env(safe-area-inset-bottom)]">{children}</div>
-      <AppBottomNav />
-    </div>
+    <NavAnchorProvider>
+      <div className="flex min-h-[100dvh] flex-col antialiased" style={GRID_GROUND}>
+        <div className="flex-1 pb-[env(safe-area-inset-bottom)]">{children}</div>
+        <AppBottomNav />
+      </div>
+    </NavAnchorProvider>
   );
 }
