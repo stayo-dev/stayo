@@ -23,6 +23,7 @@ import {
   type AcknowledgementKey,
 } from './claimSteps';
 import { groupRentMonths, groupRangeLabel } from './rentMonthGroups';
+import { APP_SURFACE } from '@shared/ui/surface';
 
 /**
  * Thin renderer over `claimSteps.ts`'s pure step machine. This component
@@ -200,7 +201,10 @@ export function ClaimTenancyPage() {
 
   return (
     <ThemeProvider theme="product">
-      <div className="min-h-screen bg-background px-4 py-10">
+      {/* The same ground every other Stayo screen stands on. This flow had a
+          flat background while the app around it had the grid — on the first
+          screen a tenant ever sees. See `shared/ui/surface.ts`. */}
+      <div className={`${APP_SURFACE} px-4 py-10`}>
         <div className="mx-auto w-full max-w-md">
           <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
             {state.step === 'phone' && <PhoneStep state={state} dispatch={dispatch} onSubmit={handleSendOtp} />}

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Check, Info } from 'lucide-react';
 import { cn } from '@shared/lib/cn';
+import { APP_SURFACE } from '@shared/ui/surface';
 
 /**
  * The one work-queue interaction model (ADR-046).
@@ -211,7 +212,7 @@ export function WorkQueue({
     // here rather than per-page keeps all four consistent instead of
     // drifting. See the file header comment on why there's a single
     // implementation at all.
-    <div className="min-h-screen bg-background [background-image:linear-gradient(#EBDCCF_1px,transparent_1px),linear-gradient(90deg,#EBDCCF_1px,transparent_1px)] [background-size:52px_52px] sm:mx-auto sm:max-w-[480px] sm:border-x sm:border-border">
+    <div className={APP_SURFACE}>
       <div className="flex flex-col gap-4 px-4 pb-28 pt-5 sm:px-6">
         <div className="flex items-center gap-2">
           <button

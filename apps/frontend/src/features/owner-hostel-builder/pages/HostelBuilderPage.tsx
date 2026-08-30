@@ -15,6 +15,7 @@ import { FloorsStep } from '../steps/FloorsStep';
 import { FillFloorStep } from '../steps/FillFloorStep';
 import { ReviewStep } from '../steps/ReviewStep';
 import { AgreementDecisionStep } from '../steps/AgreementDecisionStep';
+import { APP_GRID } from '@shared/ui/surface';
 
 /** The form every step renders into, so the sticky footer button can submit it. */
 const STEP_FORM_ID = 'hostel-builder-step';
@@ -229,7 +230,7 @@ export function HostelBuilderPage() {
         stage/floor state onto that scene, had no other consumer and was
         deleted with its test file. Restoring the illustration here means
         writing that mapping again; it is in git history, not on disk. */}
-    <div className="relative min-h-screen overflow-x-hidden bg-background [background-image:linear-gradient(#EBDCCF_1px,transparent_1px),linear-gradient(90deg,#EBDCCF_1px,transparent_1px)] [background-size:52px_52px]">
+    <div className={`relative min-h-screen overflow-x-hidden bg-background ${APP_GRID}`}>
       <div className="relative flex min-h-screen flex-col">
         <header className="sticky top-0 z-40 border-b border-border/60 bg-background/72 backdrop-blur-md">
           <div className="mx-auto flex max-w-[680px] items-center gap-3 px-4 py-3 sm:px-6">

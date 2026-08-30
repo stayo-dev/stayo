@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { portfolioService } from '@features/dashboard/api';
 import { queryKeys } from '@lib/queryKeys';
+import { APP_SURFACE } from '@shared/ui/surface';
 
 const TABS = [
   { to: 'overview', label: 'Overview' },
@@ -34,7 +35,7 @@ export function HostelDrilldownLayout() {
 
   return (
     <ThemeProvider theme="product">
-      <div className="min-h-screen bg-background [background-image:linear-gradient(#EBDCCF_1px,transparent_1px),linear-gradient(90deg,#EBDCCF_1px,transparent_1px)] [background-size:52px_52px] sm:mx-auto sm:max-w-[480px] sm:border-x sm:border-border">
+      <div className={APP_SURFACE}>
         <div className="flex items-center gap-2.5 px-4 pb-1.5 pt-6 sm:px-6">
           <button type="button" onClick={() => navigate('/owner/home')} aria-label="Back" className="flex h-8.5 w-8.5 flex-none items-center justify-center rounded-full border border-border bg-card">
             <ArrowLeft className="h-4 w-4 text-muted-foreground" strokeWidth={1.9} />

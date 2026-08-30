@@ -2290,3 +2290,12 @@ Related: [[Business-Rules]] · [[APIs]] · [[Features]] · ADR-076 · ADR-040
 - **Decision — collapse is for reading; acting always expands.** While disputing, every month renders individually with its own checkbox, and a folded run can be opened, so a single month inside it can still be flagged. A summary must never be the reason someone cannot report the one row that is wrong.
 - **Consequences:** `groupRentMonths` is pure with 13 tests, including one asserting every input month survives the fold — a grouping bug that silently dropped a month would be invisible on screen and material to the tenant. The open/closed state is local to the screen, not part of the claim.
 - **See:** [[Features]], [[Changelog]], [[Decisions#ADR-134|ADR-134]], [[Decisions#ADR-149|ADR-149]]
+
+### ADR-152 — The app's ground is named, not copy-pasted (2026-08-30)
+
+- **Status:** Accepted
+- **Context:** Stayo's graph-paper grid (`#EBDCCF` hairlines on a 52px pitch) and the phone-width frame around every full-screen surface existed only as a ~200-character Tailwind arbitrary-value string, pasted verbatim into seven files. Two consequences, both already real: the copies had **drifted** — `HostelBuilderPage` carries the grid without the frame — and a screen written without one to copy from simply has no grid at all. That is how the **tenant claim flow** ended up on flat background while every screen around it had the texture, on the first surface a tenant ever sees.
+- **Decision — name it.** `shared/ui/surface.ts` exports `APP_GRID` (the texture), `APP_FRAME` (the desktop column and edges) and `APP_SURFACE` (the usual combination). Three pieces rather than one blob, because the existing call sites genuinely differ: the shells add `flex flex-col text-foreground`, the builder wants the grid without the frame. A single monolithic class would have forced those to keep their copies, which is the problem restated.
+- **Decision — a constant, not a component.** These are class names composed into existing elements, and wrapping seven layouts in a new element would change the DOM for a purely visual convention. `shared/` stays a leaf with no imports, as `check-architecture.mjs` enforces.
+- **Consequences:** all seven call sites migrated and the raw string no longer appears anywhere; changing the grid is one edit. This also gives the platform-wide redesign a place to start — the ground is now a decision that can be changed once rather than a string to be found in every file.
+- **See:** [[Frontend]], [[Changelog]], [[Decisions#ADR-151|ADR-151]]

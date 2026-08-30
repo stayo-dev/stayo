@@ -2,6 +2,7 @@ import { Link, Outlet } from 'react-router-dom';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
 import { useAppNav } from '@/app/nav/useAppNav';
+import { APP_GRID, APP_FRAME } from '@shared/ui/surface';
 
 /**
  * The Tenant Dashboard's content wrapper — background/frame chrome only, no
@@ -20,7 +21,7 @@ import { useAppNav } from '@/app/nav/useAppNav';
 export function TenantAppShell() {
   return (
     <ThemeProvider theme="product">
-      <div className="flex min-h-screen flex-col bg-background text-foreground [background-image:linear-gradient(#EBDCCF_1px,transparent_1px),linear-gradient(90deg,#EBDCCF_1px,transparent_1px)] [background-size:52px_52px] sm:mx-auto sm:max-w-[480px] sm:border-x sm:border-border">
+      <div className={`flex min-h-screen flex-col bg-background text-foreground ${APP_GRID} ${APP_FRAME}`}>
         <ExitingBanner />
         <main className="flex-1">
           <ErrorBoundary>

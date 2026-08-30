@@ -2,6 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { Home, Users, Wallet, UtensilsCrossed, Settings2 } from 'lucide-react';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
+import { APP_GRID, APP_FRAME } from '@shared/ui/surface';
 
 /**
  * Owner app shell — bottom-nav chrome per BottomNav.dc.html: exactly 5 tabs
@@ -45,7 +46,7 @@ export function OwnerAppShell({ basePath = '/owner' }: OwnerAppShellProps) {
   const tabs = ownerTabs(basePath);
   return (
     <ThemeProvider theme="product">
-      <div className="flex min-h-screen flex-col bg-background text-foreground [background-image:linear-gradient(#EBDCCF_1px,transparent_1px),linear-gradient(90deg,#EBDCCF_1px,transparent_1px)] [background-size:52px_52px] sm:mx-auto sm:max-w-[480px] sm:border-x sm:border-border">
+      <div className={`flex min-h-screen flex-col bg-background text-foreground ${APP_GRID} ${APP_FRAME}`}>
         <main className="flex-1 pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))]">
           <ErrorBoundary>
             <Outlet />

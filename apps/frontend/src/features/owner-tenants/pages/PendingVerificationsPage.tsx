@@ -7,6 +7,7 @@ import { usePendingVerifications } from '../hooks/usePendingVerifications';
 import { useDocumentVerification } from '../hooks/useDocumentVerification';
 import { RejectDocumentSheet } from '../documents/RejectDocumentSheet';
 import { documentTypeLabel } from '../documents/kycDocuments';
+import { APP_SURFACE } from '@shared/ui/surface';
 
 const card =
   'flex flex-col gap-3 rounded-[18px] border border-border bg-card p-3.5 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]';
@@ -47,7 +48,7 @@ export function PendingVerificationsPage() {
 
   return (
     <ThemeProvider theme="product">
-      <div className="min-h-screen bg-background [background-image:linear-gradient(#EBDCCF_1px,transparent_1px),linear-gradient(90deg,#EBDCCF_1px,transparent_1px)] [background-size:52px_52px] sm:mx-auto sm:max-w-[480px] sm:border-x sm:border-border">
+      <div className={APP_SURFACE}>
         <div className="flex items-center gap-2.5 px-4 pb-1.5 pt-6 sm:px-6">
           <button
             type="button"
