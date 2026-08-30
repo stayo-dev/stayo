@@ -3532,6 +3532,14 @@ model platform_leads {
   id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name               String
   hostel_name        String
+  /// At most one non-LOST, non-empty-phone row may exist per phone —
+  /// enforced by the partial unique index
+  /// `platform_leads_one_active_lead_per_phone` (migration 078), not
+  /// expressible in Prisma schema syntax (no `extendedIndexes` preview
+  /// feature enabled here). A LOST lead does not block a reapplication;
+  /// every other status does. Empty phone (Discover demand-evidence leads,
+  /// see platform-listing-leads.ts) is excluded from the constraint. See
+  /// POST /api/leads/self-serve for the enforcement + duplicate-response path.
   phone              String
   google_email       String?
   phone_verified     Boolean            @default(false)

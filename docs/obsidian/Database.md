@@ -491,6 +491,15 @@ The existing `docs/` reference pages are **out of date** relative to the live sc
 
 `pain_point TEXT NULL` and `current_tooling TEXT NULL` were added by migration `20260807000000_platform_leads_qualification` for a longer qualification conversation that was then cut back to three questions before shipping. **Nothing currently writes them** — they are live, nullable and unpopulated, kept rather than dropped from a production table so a future qualification pass needs no new migration. This is the same state `city` and `bed_count` were already in. Deliberately free-form TEXT rather than enums: the option lists are marketing copy and get reworded, so these are not safe to aggregate without normalising first. See [[Features]] and [[APIs]].
 
+### `platform_leads` — one active lead per phone (2026-08-31, migration 078, [[Decisions#ADR-157|ADR-157]])
+
+A partial unique index, `platform_leads_one_active_lead_per_phone`, enforces `ON platform_leads (phone) WHERE status <> 'LOST' AND phone <> ''`. Not expressible as a declarative Prisma constraint (no `extendedIndexes` preview feature enabled in this schema) — same situation as `tenants_one_live_tenancy_per_profile` (`migrations/062_tenancy_per_row.sql`), documented only as a `///` doc-comment on the `phone` field rather than a schema attribute. Two carve-outs, both deliberate:
+
+- **`LOST` is excluded** so a rejected applicant can reapply and get a genuinely new row, rather than being permanently blocked from ever submitting again.
+- **Empty phone is excluded** because `platform-listing-leads.ts`'s `buildPlatformLeadFromEnquiry` (Discover's "demand evidence" sales leads, one raised per newly-enquired *listed* hostel) deliberately writes `phone: ""` and dedupes by `hostel_name` instead — a bare phone-only index would have let only the very first such row across the whole table succeed, silently breaking that unrelated feature for every hostel after the first.
+
+Enforced at the DB level specifically so a concurrent double-submit (two requests for the same phone racing each other) cannot slip two active rows past an application-level check alone — `POST /api/leads/self-serve` and `POST /api/platform-admin/leads` both still do their own `findFirst` pre-check first as the fast/friendly path, and both catch a `P2002` from losing the race. See [[Business-Rules]], [[APIs]], [[Features]].
+
 ### `owner_documents.review_note` (2026-08-07)
 
 `TEXT NULL`, added by `20260807100000_owner_document_review_note`. Why an admin rejected a KYC document, returned to the owner by `GET /api/owner/kyc-documents` and rendered on the onboarding KYC step. A rejection with no reason just makes the owner upload the same file again.

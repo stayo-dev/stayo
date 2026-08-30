@@ -27,7 +27,7 @@ const inputStyle =
 /** Survives the Google OAuth full-page redirect. */
 export const PENDING_LEAD_TOKEN_KEY = 'stayo.pendingLeadToken';
 
-type Stage = 'questions' | 'otp' | 'done';
+type Stage = 'questions' | 'otp' | 'done' | 'duplicate';
 
 /**
  * Lead capture — three questions, then Google last and optional.
@@ -77,6 +77,7 @@ export function HostelLeadModal({ open, onClose, prefillName, googleEmail }: Hos
   const saveLead = async () => {
     const result = await hostelLeadsApi.submitLead(buildLeadPayload(answers, googleEmail));
     setTrackingToken(result.tracking_token);
+    setStage(result.duplicate ? 'duplicate' : 'done');
   };
 
   const goNext = async () => {
@@ -103,7 +104,6 @@ export function HostelLeadModal({ open, onClose, prefillName, googleEmail }: Hos
       // arrive.
       if (result.verification_required === false) {
         await saveLead();
-        setStage('done');
         return;
       }
 
@@ -145,7 +145,6 @@ export function HostelLeadModal({ open, onClose, prefillName, googleEmail }: Hos
     try {
       await hostelLeadsApi.verifyLeadOtp(answers.phone.trim(), otp.join(''));
       await saveLead();
-      setStage('done');
     } catch (err: any) {
       setError(err?.response?.data?.error?.message || 'That code did not work. Check it and try again.');
     } finally {
@@ -196,7 +195,7 @@ export function HostelLeadModal({ open, onClose, prefillName, googleEmail }: Hos
             <X className="h-4 w-4 text-foreground" />
           </Dialog.Close>
 
-          {stage !== 'done' && (
+          {stage !== 'done' && stage !== 'duplicate' && (
             <div className="mb-5 mt-1 flex items-center gap-3 pr-10">
               {(index > 0 || stage === 'otp') && (
                 <button
@@ -348,6 +347,39 @@ export function HostelLeadModal({ open, onClose, prefillName, googleEmail }: Hos
                   className="rounded-xl px-5 py-2.5 text-[13px] font-semibold text-muted-foreground hover:text-foreground"
                 >
                   {googleEmail ? 'Done' : "No thanks, I'm done"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {stage === 'duplicate' && (
+            <div className="py-2 text-center">
+              <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                <Check className="h-6 w-6 text-muted-foreground" strokeWidth={2.8} />
+              </div>
+              <Dialog.Title className="mb-2 font-display text-xl font-extrabold text-foreground">
+                You&apos;ve already applied
+              </Dialog.Title>
+              <Dialog.Description className="mb-6 text-sm leading-relaxed text-muted-foreground">
+                You&apos;ve already submitted your application. Please don&apos;t apply again. We&apos;ll contact you
+                shortly.
+              </Dialog.Description>
+
+              <div className="flex flex-col gap-2.5">
+                {trackingToken && (
+                  <a
+                    href={`/enquiry/${trackingToken}`}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 font-display text-[15px] font-bold text-primary-foreground shadow-[0_12px_26px_-12px_rgba(164,93,68,0.6)]"
+                  >
+                    View my application status
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-xl px-5 py-2.5 text-[13px] font-semibold text-muted-foreground hover:text-foreground"
+                >
+                  Close
                 </button>
               </div>
             </div>
