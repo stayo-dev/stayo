@@ -8,7 +8,7 @@ import { StayoLoadingScreen } from '@shared/ui/brand';
 const WelcomePage = lazy(() => import('@/app/pages/public/WelcomePage').then((m) => ({ default: m.WelcomePage })));
 const LandingPage = lazy(() => import('@/app/pages/public/LandingPage').then((m) => ({ default: m.LandingPage })));
 const LeadSignupCallbackPage = lazy(() => import('@/app/pages/public/LeadSignupCallbackPage').then((m) => ({ default: m.LeadSignupCallbackPage })));
-const OwnerLeadInvitePage = lazy(() => import('@/app/pages/public/OwnerLeadInvitePage').then((m) => ({ default: m.OwnerLeadInvitePage })));
+const OwnerActivationPage = lazy(() => import('@/app/pages/public/OwnerActivationPage').then((m) => ({ default: m.OwnerActivationPage })));
 const EnquiryStatusPage = lazy(() => import('@/app/pages/public/EnquiryStatusPage').then((m) => ({ default: m.EnquiryStatusPage })));
 const AboutPage = lazy(() => import('@/app/pages/public/AboutPage').then((m) => ({ default: m.AboutPage })));
 const CompanyPage = lazy(() => import('@/app/pages/public/CompanyPage').then((m) => ({ default: m.CompanyPage })));
@@ -79,7 +79,7 @@ export function PublicRoutes() {
             than under AuthShell because the popup needs AuthProvider. */}
         <Route path="/login" element={<LandingPage />} />
         <Route path="/lead-signup/callback" element={<LeadSignupCallbackPage />} />
-        <Route path="/owner-invite/:token" element={<OwnerLeadInvitePage />} />
+        <Route path="/activation/:token" element={<OwnerActivationPage />} />
         <Route path="/enquiry/:token" element={<EnquiryStatusPage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/company" element={<CompanyPage />} />

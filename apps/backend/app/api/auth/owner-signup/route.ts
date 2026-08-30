@@ -10,17 +10,18 @@ import { getClientIp } from "@/lib/security/api-guard";
 import { ACCESS_TOKEN_MAX_AGE_SECONDS, getSessionCookieOptions, TENANT_REFRESH_DAYS } from "@/lib/services/session-lifecycle-service";
 import { setCsrfCookie } from "@/lib/security/csrf";
 import { normalizeWhatsAppPhone } from "@/lib/services/notifications/providers/whatsapp";
-import { resolveSignupPhoneVerification } from "@/lib/services/auth/signup-phone-verification-gate";
-import { leadInvitationService } from "@/src/services/platform-leads/lead-invitation-service";
+import { leadInvitationService, mapInvitationError } from "@/src/services/platform-leads/lead-invitation-service";
 import { platformLeadNotificationService } from "@/src/services/platform-leads/platform-lead-notification-service";
 
-const OTP_PURPOSE = "PHONE_VERIFICATION";
-
 /**
- * Real StayO owner self-signup. Public route — creates the owner profile
- * directly (see authService.selfSignUpOwner's doc comment for why this is a
- * separate, ungated method from the legacy registerOwner) and logs the new
- * owner in immediately, mirroring /api/auth/login's response + cookie shape.
+ * Owner activation (owner-acquisition funnel phase 3). NOT a public
+ * self-signup route — every request must carry a valid, unexpired, unused
+ * `platform_lead_invitations` token (see lead-invitation-service.ts). The
+ * token is resolved first, before any account is created, and name/phone
+ * are always taken from the lead it belongs to — never from the request
+ * body — so a caller can't activate under a different identity than the
+ * lead the token was issued for. Phone is not re-verified here: it was
+ * already verified (or WhatsApp-skip-recorded) at lead-capture time.
  */
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req) ?? undefined;
@@ -31,7 +32,20 @@ export async function POST(req: NextRequest) {
     if (!validated.success) {
       return apiError("Validation error", "VALIDATION_ERROR", 400);
     }
-    const { email, password, name, phone, lead_token } = validated.data;
+    const { lead_token, email: bodyEmail, password } = validated.data;
+
+    let ctx;
+    try {
+      ctx = await leadInvitationService.getInvitationContext(lead_token);
+    } catch (ctxErr: any) {
+      const mapped = mapInvitationError(ctxErr);
+      return apiError(mapped.message, mapped.code, mapped.status);
+    }
+
+    const email = ctx.google_email || bodyEmail;
+    if (!email) {
+      return apiError("Email is required", "VALIDATION_ERROR", 400);
+    }
 
     const rlResult = await rateLimitService.checkRateLimit(email, "REGULAR", ip);
     if (!rlResult.allowed) {
@@ -42,20 +56,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const normalizedPhone = normalizeWhatsAppPhone(phone);
-    const verification = await resolveSignupPhoneVerification(normalizedPhone, OTP_PURPOSE);
-    if (!verification.ok) {
-      return apiError("Phone verification is required before signing up", "PHONE_NOT_VERIFIED", 400);
-    }
+    const normalizedPhone = normalizeWhatsAppPhone(ctx.phone);
 
     let profile;
     try {
       profile = await authService.selfSignUpOwner({
         email,
         password,
-        name,
+        name: ctx.name,
         phone: normalizedPhone,
-        phoneVerified: verification.phoneVerified,
+        phoneVerified: ctx.phone_verified,
       });
     } catch (signupErr: any) {
       await rateLimitService.recordAttempt(email, "REGULAR", false, ip, req.headers.get("user-agent") ?? undefined, signupErr?.message);
@@ -63,31 +73,27 @@ export async function POST(req: NextRequest) {
     }
     await rateLimitService.recordAttempt(email, "REGULAR", true, ip);
 
-    // Owner-acquisition funnel phase 2: if this signup came from a lead
-    // activation link, mark the lead OWNER_ACTIVATED. Never blocks the
-    // real signup — the account is already legitimately created above
-    // regardless of whether this side effect succeeds.
-    if (lead_token) {
-      try {
-        await leadInvitationService.activateInvitationForOwner(lead_token, profile.id);
-      } catch (err) {
-        console.error("[auth.owner-signup] lead activation side effect failed (non-fatal)", err);
-      }
+    // Single-use claim: rejects if the token was already activated/cancelled/
+    // expired since the context check above (e.g. a concurrent request).
+    try {
+      await leadInvitationService.activateInvitationForOwner(lead_token, profile.id);
+    } catch (err) {
+      console.error("[auth.owner-signup] lead activation side effect failed (non-fatal)", err);
+    }
 
-      // stayo_owner_welcome is superseded by stayo_owner_account_activated
-      // (design doc D4). The old handler and its approved template are left
-      // in place but no longer called — see Changelog.
-      if (profile.phone) {
-        void platformLeadNotificationService
-          .sendAccountActivated(profile.id, profile.name, profile.phone)
-          .catch((err) => {
-            console.error("[owner-signup] account-activated notify failed", err);
-          });
-      } else {
-        console.warn("[auth.owner-signup] skipping account-activated notify: profile has no phone", {
-          profileId: profile.id,
+    // stayo_owner_welcome is superseded by stayo_owner_account_activated
+    // (design doc D4). The old handler and its approved template are left
+    // in place but no longer called — see Changelog.
+    if (profile.phone) {
+      void platformLeadNotificationService
+        .sendAccountActivated(profile.id, profile.name, profile.phone)
+        .catch((err) => {
+          console.error("[owner-signup] account-activated notify failed", err);
         });
-      }
+    } else {
+      console.warn("[auth.owner-signup] skipping account-activated notify: profile has no phone", {
+        profileId: profile.id,
+      });
     }
 
     const sessionResult = await authService.createSessionAndTokens(profile, null, null, {
