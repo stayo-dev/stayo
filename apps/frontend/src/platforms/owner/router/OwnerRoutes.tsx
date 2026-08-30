@@ -54,7 +54,12 @@ const AlertsAnnouncementsPage = lazy(() =>
 );
 const AlertsRenewalsPage = lazy(() => import('@features/owner-alerts/pages/AlertsRenewalsPage').then((m) => ({ default: m.AlertsRenewalsPage })));
 const AlertsRequestsPage = lazy(() => import('@features/owner-alerts/pages/AlertsRequestsPage').then((m) => ({ default: m.AlertsRequestsPage })));
-const MoreSettingsPage = lazy(() => import('@features/owner-more/pages/MoreSettingsPage').then((m) => ({ default: m.MoreSettingsPage })));
+const MorePasswordPage = lazy(() =>
+  import('@features/owner-more/pages/MorePasswordPage').then((m) => ({ default: m.MorePasswordPage })),
+);
+const MorePayoutAccountPage = lazy(() =>
+  import('@features/owner-more/pages/MorePayoutAccountPage').then((m) => ({ default: m.MorePayoutAccountPage })),
+);
 const MoreProfilePage = lazy(() => import('@features/owner-more/pages/MoreProfilePage').then((m) => ({ default: m.MoreProfilePage })));
 const MoreHostelIdentityPage = lazy(() =>
   import('@features/owner-more/pages/MoreHostelIdentityPage').then((m) => ({ default: m.MoreHostelIdentityPage })),
@@ -97,9 +102,6 @@ const MoreConfigAgreementRequirementPage = lazy(() =>
 );
 const MoreConfigNotificationsPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigNotificationsPage').then((m) => ({ default: m.MoreConfigNotificationsPage })),
-);
-const MoreConfigAccountPage = lazy(() =>
-  import('@features/owner-more/pages/MoreConfigAccountPage').then((m) => ({ default: m.MoreConfigAccountPage })),
 );
 const AgreementQueuePage = lazy(() =>
   import('@features/owner-workqueue/AgreementQueuePage').then((m) => ({ default: m.AgreementQueuePage })),
@@ -201,13 +203,14 @@ export function OwnerRoutes() {
 
         <Route path="/owner/more" element={<MoreConfigurationHubPage />} />
         <Route path="/owner/more/workspace-configuration" element={<MoreWorkspaceConfigPage />} />
-        <Route path="/owner/more/settings" element={<MoreSettingsPage />} />
         {/* Billing behaviour has exactly one home (ADR-043). These three
             routes each used to own a slice of it and could overwrite each
             other; they now redirect to the canonical screen so existing links,
             bookmarks and back-stack entries still land somewhere real. */}
         <Route path="/owner/more/billing" element={<Navigate to="/owner/more/configuration/finance/billing-policy" replace />} />
         <Route path="/owner/more/profile" element={<MoreProfilePage />} />
+        <Route path="/owner/more/password" element={<MorePasswordPage />} />
+        <Route path="/owner/more/payout-account" element={<MorePayoutAccountPage />} />
         <Route path="/owner/more/hostel" element={<MoreHostelIdentityPage />} />
         <Route path="/owner/more/hostel/:hostelId" element={<MoreHostelIdentityPage />} />
         <Route path="/owner/more/notices" element={<MoreNoticesPage />} />
@@ -226,7 +229,6 @@ export function OwnerRoutes() {
         <Route path="/owner/more/configuration/agreements/requirement" element={<MoreConfigAgreementRequirementPage />} />
         <Route path="/owner/more/configuration/agreements/clauses" element={<MoreConfigAgreementClausesPage />} />
         <Route path="/owner/more/configuration/notifications" element={<MoreConfigNotificationsPage />} />
-        <Route path="/owner/more/configuration/account" element={<MoreConfigAccountPage />} />
         <Route path="/owner/more/configuration/finance/late-fees" element={<MoreConfigLateFeePage />} />
         <Route path="/owner/more/configuration/finance/rent-schedule" element={<MoreConfigRentSchedulePage />} />
         <Route path="/owner/more/configuration/finance/part-payments" element={<MoreConfigPartPaymentsPage />} />

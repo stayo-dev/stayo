@@ -105,7 +105,7 @@ export function MoreHostelIdentityPage() {
       {
         onSuccess: () => {
           stayoToast.success('Hostel identity updated');
-          navigate('/owner/more/settings');
+          navigate(-1);
         },
         onError: () => stayoToast.error('Could not update hostel identity'),
       },
@@ -122,7 +122,7 @@ export function MoreHostelIdentityPage() {
 
   return (
     <div className={`flex flex-col gap-5 px-4 pt-6 sm:px-6 ${dirty ? 'pb-40' : 'pb-24'}`}>
-      <MoreScreenHeader backTo="/owner/more/settings" backLabel="Settings" title="Hostel identity" />
+      <MoreScreenHeader title="Hostel identity" />
 
       {policyQuery.isLoading ? (
         <div className="h-72 animate-pulse rounded-2xl bg-muted" />

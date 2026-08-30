@@ -50,6 +50,12 @@ export function visibleAttention(items: HubAttentionItem[] | undefined): HubAtte
 /**
  * Everything the hub links to, in the order it is shown.
  *
+ * **One settings screen, not three.** "Settings" (`MoreSettingsPage`) and
+ * "Account & security" (`MoreConfigAccountPage`) were separate menus that led
+ * back into the same places — an owner had to know which of three screens
+ * held a given row. Their real contents are listed here directly; both are
+ * deleted.
+ *
  * **No hostel section.** Hostels are managed from Home, and everything
  * configurable about one now lives on that hostel's own Settings tab
  * (`/owner/hostels/:id/settings`). Configure holding a second hostel section
@@ -63,8 +69,16 @@ export function hubGroups(): HubGroup[] {
     {
       label: 'Your account',
       rows: [
-        { key: 'account', label: 'Account & security', route: '/owner/more/configuration/account' },
-        { key: 'settings', label: 'Profile, notices & requests', route: '/owner/more/settings' },
+        { key: 'profile', label: 'Your details', route: '/owner/more/profile' },
+        { key: 'password', label: 'Password', route: '/owner/more/password' },
+        { key: 'payout', label: 'Where your money goes', route: '/owner/more/payout-account' },
+      ],
+    },
+    {
+      label: 'Your tenants',
+      rows: [
+        { key: 'notices', label: 'Notices & announcements', route: '/owner/more/notices' },
+        { key: 'requests', label: 'Tenant requests', route: '/owner/more/service-requests' },
       ],
     },
     {
