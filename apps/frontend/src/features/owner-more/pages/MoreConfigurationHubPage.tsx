@@ -215,7 +215,7 @@ export function MoreConfigurationHubPage() {
               <Info className="h-4 w-4" strokeWidth={1.8} />
             </span>
           }
-          title="About StayO"
+          title="About Stayo"
           showChevron
           onClick={() => navigate('/owner/more/about')}
           className="px-4 border-t border-border/60"
@@ -231,8 +231,6 @@ export function MoreConfigurationHubPage() {
           className="px-4 border-t border-border/60"
         />
       </div>
-
-      <p className="pt-1 text-center text-[11px] text-muted-foreground/70">Stayo v2.0 · Manage. Automate. Grow.</p>
     </div>
   );
 }

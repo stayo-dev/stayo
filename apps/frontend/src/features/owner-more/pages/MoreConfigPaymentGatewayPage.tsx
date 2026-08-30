@@ -25,9 +25,9 @@ export function MoreConfigPaymentGatewayPage() {
         <div className="mx-auto mb-3.5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
           <CreditCard className="h-6 w-6 text-primary" strokeWidth={1.8} />
         </div>
-        <div className="font-display text-base font-bold tracking-tight text-foreground">Payments enabled by StayO</div>
+        <div className="font-display text-base font-bold tracking-tight text-foreground">Payments enabled by Stayo</div>
         <p className="mx-auto mt-1.5 max-w-[260px] text-[12.5px] leading-relaxed text-muted-foreground">
-          Your payment provider is set up and managed for you as part of your StayO account. To change how tenants pay, contact StayO support.
+          Your payment provider is set up and managed for you as part of your Stayo account. To change how tenants pay, contact Stayo support.
         </p>
       </div>
 
