@@ -23,6 +23,13 @@ The Explore "Already staying at a hostel?" prompt was removed — see [[Changelo
 - [ ] **Check every owner-side surface that shows an enquiry's move-in date** renders a missing one as "Flexible" rather than blank, "Invalid date", or today. The owner enquiry list/detail, the lead funnel, and any WhatsApp notification template that interpolates it.
 - [ ] **Decide whether "Flexible" should sort differently** in the owner's enquiry queue — a seeker with no date is not necessarily less urgent than one moving in next month.
 
+## Piece B must restore the payout-account action (2026-08-30)
+
+The failed-payout alert (`features/owner-money/payouts/payoutState.ts`) lost its "Check payout account" button because `/owner/more/payout-account` was never a route. The API behind it (`GET/PATCH /api/owner/payout-account`) exists and works, and the fields live on `profiles` (migration 070) — only the screen is missing.
+
+- [ ] When Piece B builds the *Where your money goes* row, restore the action pointing at it, and restore the assertion in `payoutState.test.ts` that the alert offers a way to fix the bank details.
+- [ ] The `'unavailable'` row state and `UNAVAILABLE_LABEL` survive in `MoreConfigurationHubPage`, `MoreConfigAccountPage` (staff roles, two-factor) and `config/agreements.ts`. Those surfaces are rebuilt in pieces B and C; delete the state with the last of them.
+
 ## Agreement PDF — legal review outstanding (2026-08-28)
 
 - [ ] **Have a lawyer review the standard clauses** added in `lib/pdf/agreement-content.ts` (entire agreement, amendment, severability, governing law and jurisdiction, stamp duty). They are conventional neutral wording chosen to make the document structurally complete, not drafted or reviewed by counsel.

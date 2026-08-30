@@ -8,6 +8,16 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-08-30 — Two configuration links pointed at routes that did not exist (fixed)
+
+**Symptom.** Tapping "Room configuration" in the Hostel module did nothing. The row showed a real room and bed count and rendered as *configured*, so nothing suggested it was broken. Separately, the "Check payout account" button on the failed-payout alert also did nothing — and that alert appears **only** when an owner has just been told money did not reach their bank.
+
+**Root cause.** Both targets were never registered as routes. `/owner/more/configuration/hostel/rooms` never existed; the hostel drilldown's Rooms tab (`/owner/hostels/:hostelId/rooms`) has always owned rooms. `/owner/more/payout-account` never existed either — although its API (`GET/PATCH /api/owner/payout-account`) does exist and works, and the owner's bank details have been on `profiles` since migration 070. The configuration section simply had no screen for them, so the link was written against a page nobody built.
+
+**Fix.** The rooms row points at the drilldown tab, and returns no route at all when the hostel id is unknown rather than a broken one. The payout button is removed until Piece B of the configuration redesign builds its destination — a missing button is honest; a button that does nothing at that moment is not.
+
+**What made it findable.** Diffing every `/owner/more/...` path linked anywhere in the source against every path actually registered in the router. Neither link was reachable by any test, because the frontend suite renders no components. A second pass caught six pages using `/owner/more/configuration` — a route being deleted in the same change — as their back destination; the first grep had missed them by quoting style alone, which is worth remembering: search for both quote forms when auditing routes.
+
 ## 2026-08-30 — Claiming an owner-managed account skipped tenant onboarding entirely (fixed)
 
 **Symptom.** A tenant who claimed their tenancy landed on the dashboard as a fully active resident having never been asked for their identity details, ID documents, guardian contacts, or a signature on the residency agreement — all of which every self-serve tenant provides before activating. The tenancy read as complete; the paperwork behind it did not exist.
