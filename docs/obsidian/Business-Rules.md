@@ -595,6 +595,19 @@ Added 2026-08-06 ([[Decisions#ADR-050|ADR-050]], [[Decisions#ADR-051|ADR-051]]).
 
 See [[Features]], [[Database]], [[APIs]], [[Decisions]].
 
+## Owner-acquisition funnel — one active lead per phone number (2026-08-31, [[Decisions#ADR-157|ADR-157]])
+
+Added because the same phone number could submit `POST /api/leads/self-serve` repeatedly and create a fresh `platform_leads` row every time, cluttering the admin console with duplicates of the same applicant.
+
+1. **A phone number may have at most one non-`LOST` lead.** A second self-serve submission for a phone that already has a `NEW`…`LIVE` lead does not create a new row — the endpoint returns the existing lead's `id`/`status`/`tracking_token` with `duplicate: true`, and the frontend routes the applicant straight to their existing `/enquiry/:token` status page instead of re-registering them.
+2. **`LOST` does not block a reapplication.** An applicant who was rejected is allowed to submit again, and gets a genuinely new `platform_leads` row — the old `LOST` row is left untouched for history, the two are never merged or linked.
+3. **OTP verification still runs for a repeat phone number, exactly as for a new one.** The duplicate check happens only *after* `resolveSignupPhoneVerification` succeeds — deliberately, so nobody can type in an arbitrary phone number and immediately see another applicant's hostel name, status, or rejection reason with no proof they own that number. Skipping OTP for "a maybe-duplicate number" would be a privacy leak, not a convenience.
+4. **Enforced at the database, not just in the route.** A partial unique index, `platform_leads_one_active_lead_per_phone` (migration 078: `ON platform_leads (phone) WHERE status <> 'LOST' AND phone <> ''`), guarantees this even under two concurrent requests for the same number — the route's own pre-check is an optimization for the common case, not the actual guarantee. A `P2002` from losing that race is caught and turned into the same `duplicate: true` response, never a 500.
+5. **Empty phone is excluded from the constraint.** Discover's "demand evidence" sales leads (`buildPlatformLeadFromEnquiry`, one raised per newly-enquired listed hostel) deliberately write `phone: ""` and are keyed by `hostel_name`, not phone — a different invariant entirely. See [[Database]].
+6. **The admin-manual lead-creation route** (`POST /api/platform-admin/leads`) is subject to the same DB constraint (it also inserts into `platform_leads`) and now pre-checks for an existing non-`LOST` lead by phone, returning a clear `409 DUPLICATE_PHONE` rather than a raw unique-constraint error.
+
+See [[Features]], [[Database]], [[APIs]], [[Decisions]].
+
 ## Admissions / Leads — Accept / Hold / Reject (2026-08-20)
 
 Added [[Decisions#ADR-087|ADR-087]]. This is the tenant-admissions `visitor_leads` funnel — distinct from the owner-acquisition `platform_leads` funnel documented above. **Files:** `src/services/admissions/admissions-service.ts` (`updateStatus`, `convertToInvitation`), `src/services/admissions/lead-transition-guards.ts` (`canTransitionLeadStatus`, pure), `lib/services/notifications/providers/whatsapp/enquiry-template-contracts.ts` (`TENANT_ENQUIRY_REJECTED`).

@@ -36,21 +36,59 @@ export async function POST(req: NextRequest) {
       return apiError("Phone verification is required before submitting", "PHONE_NOT_VERIFIED", 400);
     }
 
-    const lead = await prisma.platform_leads.create({
-      data: {
-        name,
-        hostel_name,
-        phone: normalizedPhone,
-        google_email: google_email || null,
-        phone_verified: verification.phoneVerified,
-        city: city || null,
-        bed_count: bed_count ?? null,
-        pain_point: pain_point || null,
-        current_tooling: current_tooling || null,
-        status: "NEW",
-        tracking_token: crypto.randomBytes(32).toString("hex"),
-      },
+    // A phone with any non-LOST lead already on file has "already applied" —
+    // no new row, no re-notification. LOST does not block: that applicant is
+    // allowed to reapply, and gets a fresh row (migration 078 enforces this
+    // at the DB level too, against a concurrent double-submit racing past
+    // this check).
+    const existingLead = await prisma.platform_leads.findFirst({
+      where: { phone: normalizedPhone, status: { not: "LOST" } },
+      orderBy: { created_at: "desc" },
     });
+    if (existingLead) {
+      await eventLog.log("LEAD_DUPLICATE_BLOCKED", null, { lead_id: existingLead.id, phone: normalizedPhone });
+      return apiResponse(
+        { id: existingLead.id, status: existingLead.status, tracking_token: existingLead.tracking_token, duplicate: true },
+        200,
+      );
+    }
+
+    let lead;
+    try {
+      lead = await prisma.platform_leads.create({
+        data: {
+          name,
+          hostel_name,
+          phone: normalizedPhone,
+          google_email: google_email || null,
+          phone_verified: verification.phoneVerified,
+          city: city || null,
+          bed_count: bed_count ?? null,
+          pain_point: pain_point || null,
+          current_tooling: current_tooling || null,
+          status: "NEW",
+          tracking_token: crypto.randomBytes(32).toString("hex"),
+        },
+      });
+    } catch (err: any) {
+      if (err?.code !== "P2002") throw err;
+      // Lost the race: another request created a non-LOST row for this exact
+      // phone between our findFirst and this insert. Treat it exactly like
+      // the pre-check duplicate case rather than surfacing a 500 — this is
+      // the whole reason the DB constraint exists.
+      const raced = await prisma.platform_leads.findFirst({
+        where: { phone: normalizedPhone, status: { not: "LOST" } },
+        orderBy: { created_at: "desc" },
+      });
+      if (raced) {
+        await eventLog.log("LEAD_DUPLICATE_BLOCKED", null, { lead_id: raced.id, phone: normalizedPhone, race: true });
+        return apiResponse(
+          { id: raced.id, status: raced.status, tracking_token: raced.tracking_token, duplicate: true },
+          200,
+        );
+      }
+      throw err;
+    }
 
     await eventLog.log("LEAD_CREATED", null, { lead_id: lead.id, hostel_name: lead.hostel_name });
 
@@ -61,7 +99,7 @@ export async function POST(req: NextRequest) {
       .sendLeadReceived({ id: lead.id, name: lead.name, phone: lead.phone, tracking_token: lead.tracking_token })
       .catch((err) => console.error("[leads.self-serve] lead-received notify failed", err));
 
-    return apiResponse({ id: lead.id, status: lead.status, tracking_token: lead.tracking_token }, 201);
+    return apiResponse({ id: lead.id, status: lead.status, tracking_token: lead.tracking_token, duplicate: false }, 201);
   } catch (error: any) {
     console.error("Detailed API Error [leads.self-serve]:", error);
     return apiError("Could not submit your details. Please try again.", "INTERNAL_ERROR", 500);

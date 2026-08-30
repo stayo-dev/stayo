@@ -30,7 +30,7 @@ export const hostelLeadsApi = {
     google_email?: string;
   }) => {
     const response = await api.post('/leads/self-serve', data);
-    return response.data as { success: boolean; id: string; status: string; tracking_token: string };
+    return response.data as { success: boolean; id: string; status: string; tracking_token: string; duplicate: boolean };
   },
   getEnquiryStatus: async (token: string) => {
     const response = await api.get(`/leads/track/${token}`);
