@@ -9,6 +9,13 @@ tags: [todo, backlog]
 - [ ] **A `CANCELLED` tenancy rendered a `Docs Pending` status badge.** The badge is computed from document state and ignores the tenancy status, so a closed tenancy advertises outstanding paperwork. Decide which wins and make the badge say it.
 - [ ] **Settlement preview reported "could not be calculated"** on the same tenant. Worth tracing whether that is a consequence of the cancelled status or an independent failure.
 
+## Connect an enquiring seeker to their waiting tenancy, without a second OTP (2026-08-30)
+
+The Explore "Already staying at a hostel?" prompt was removed — see [[Changelog]] — because it sent someone who had *already* proved their phone through a second, separate OTP ceremony to reach the same tenancy.
+
+- [ ] **Surface the waiting tenancy at enquiry time instead.** Since [[Decisions#ADR-078|ADR-078]] a seeker verifies their number when they send their first enquiry, and `verifyOtp` writes `phone_verified`/`mobile_verified` on every profile matching it. At that moment the backend can look up an `OWNER_MANAGED` tenancy on that number and tell them it is waiting.
+- [ ] **Decide whether that can skip the claim OTP.** It should not be assumed. `TENANCY_CLAIM` is deliberately absent from `SKIPPABLE_OTP_PURPOSES` ([[Business-Rules]]) and the claim consumes a single-use proof, because claiming transfers a financial record. Reusing an enquiry-time verification means accepting a *stale* proof of possession — a real weakening of a deliberate control, and a product/security call rather than a refactor. An intermediate option is to keep the OTP but pre-fill the number and skip straight to the tenancy, so the ceremony is one tap rather than a flow.
+
 ## Agreement PDF — legal review outstanding (2026-08-28)
 
 - [ ] **Have a lawyer review the standard clauses** added in `lib/pdf/agreement-content.ts` (entire agreement, amendment, severability, governing law and jurisdiction, stamp duty). They are conventional neutral wording chosen to make the document structurally complete, not drafted or reviewed by counsel.
