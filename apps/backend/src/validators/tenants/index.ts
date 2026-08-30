@@ -48,6 +48,16 @@ export const InvitationSchema = z.object({
   // opts out of the WhatsApp/email send — defaults to false/undefined, so the
   // ordinary "Send invite" path (which never sets this) is unaffected.
   suppressInvitationNotification: z.boolean().optional(),
+  // Money the tenant has already handed over, recorded with the invitation:
+  // a deposit paid face-to-face at the door, or months of rent an existing
+  // resident has already paid at a hostel being onboarded mid-year. Absent on
+  // the ordinary path, which is therefore unaffected. `payment_method` is
+  // required by the service whenever an amount is present — a payment with no
+  // method recorded is not a payment anyone can reconcile later.
+  paid_amount: optionalNumber(),
+  paid_includes_deposit: z.boolean().optional(),
+  payment_method: z.string().max(40).optional(),
+  payment_reference: z.string().max(120).optional(),
 });
 
 export const InvitationUpdateSchema = z.object({

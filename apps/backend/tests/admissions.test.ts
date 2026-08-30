@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-const { mockPrisma } = vi.hoisted(() => {
+const { mockPrisma, mockRoomCapacityService } = vi.hoisted(() => {
   return {
     mockPrisma: {
       rooms: {
@@ -30,7 +30,10 @@ const { mockPrisma } = vi.hoisted(() => {
       rent_obligations: {
         findMany: vi.fn(),
       },
-    }
+    },
+    mockRoomCapacityService: {
+      getRoomCapacitySnapshot: vi.fn(),
+    },
   };
 });
 
@@ -46,6 +49,14 @@ vi.mock('@/lib/redis/cache', () => ({
 
 vi.mock('@/lib/redis/rate-limit', () => ({
   checkFixedWindowLimit: vi.fn(),
+}));
+
+// `getLeadForOwner`'s preferred-room-availability check composes this
+// service rather than re-deriving capacity math — mocked wholesale so this
+// file tests the composition, not room-capacity-service's own logic (that's
+// `tests/room-capacity-service.test.ts`).
+vi.mock('@/lib/services/room-capacity-service', () => ({
+  roomCapacityService: mockRoomCapacityService,
 }));
 
 import { AdmissionsService } from '@/src/services/admissions/admissions-service';
@@ -95,5 +106,102 @@ describe('AdmissionsService analytical boundaries', () => {
     expect(result.funnel.joined).toBe(3); // t-2, t-3, t-4
     expect(result.funnel.activated).toBe(3); // activating is joining
     expect(result.funnel.moved_in).toBe(3);
+  });
+});
+
+describe('AdmissionsService.getLeadForOwner — room preference', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function leadRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'lead-1',
+      owner_id: 'owner-1',
+      status: 'NEW',
+      lead_score: 0,
+      lead_notes: [],
+      preferred_floor: null,
+      preferred_room: null,
+      preferred_room_id: null,
+      ...overrides,
+    };
+  }
+
+  it('reports the preferred room available when the capacity snapshot has a free bed', async () => {
+    mockPrisma.visitorLead.findFirst.mockResolvedValueOnce(
+      leadRow({
+        preferred_floor: { id: 'floor-1', name: 'Ground' },
+        preferred_room: { id: 'room-1', room_no: 'G101', floor_id: 'floor-1' },
+        preferred_room_id: 'room-1',
+      }),
+    );
+    mockRoomCapacityService.getRoomCapacitySnapshot.mockResolvedValueOnce({ available: 1 });
+
+    const service = new AdmissionsService();
+    const lead = await service.getLeadForOwner('lead-1', 'owner-1');
+
+    expect(mockRoomCapacityService.getRoomCapacitySnapshot).toHaveBeenCalledWith('room-1', { ownerId: 'owner-1' });
+    expect(lead.preferred_room_available).toBe(true);
+  });
+
+  it('reports the preferred room unavailable once it has filled up', async () => {
+    mockPrisma.visitorLead.findFirst.mockResolvedValueOnce(
+      leadRow({
+        preferred_floor: { id: 'floor-1', name: 'Ground' },
+        preferred_room: { id: 'room-1', room_no: 'G101', floor_id: 'floor-1' },
+        preferred_room_id: 'room-1',
+      }),
+    );
+    mockRoomCapacityService.getRoomCapacitySnapshot.mockResolvedValueOnce({ available: 0 });
+
+    const service = new AdmissionsService();
+    const lead = await service.getLeadForOwner('lead-1', 'owner-1');
+
+    expect(lead.preferred_room_available).toBe(false);
+  });
+
+  it('reports unavailable, not an error, when the preferred room can no longer be resolved (soft-deleted)', async () => {
+    mockPrisma.visitorLead.findFirst.mockResolvedValueOnce(
+      leadRow({
+        preferred_floor: { id: 'floor-1', name: 'Ground' },
+        preferred_room: { id: 'room-1', room_no: 'G101', floor_id: 'floor-1' },
+        preferred_room_id: 'room-1',
+      }),
+    );
+    mockRoomCapacityService.getRoomCapacitySnapshot.mockRejectedValueOnce(new Error('NOT_FOUND: Room not found'));
+
+    const service = new AdmissionsService();
+    const lead = await service.getLeadForOwner('lead-1', 'owner-1');
+
+    expect(lead.preferred_room_available).toBe(false);
+  });
+
+  it('never checks availability once the lead has already become a tenant', async () => {
+    mockPrisma.visitorLead.findFirst.mockResolvedValueOnce(
+      leadRow({
+        status: 'JOINED',
+        preferred_room: { id: 'room-1', room_no: 'G101', floor_id: 'floor-1' },
+        preferred_room_id: 'room-1',
+      }),
+    );
+
+    const service = new AdmissionsService();
+    const lead = await service.getLeadForOwner('lead-1', 'owner-1');
+
+    expect(mockRoomCapacityService.getRoomCapacitySnapshot).not.toHaveBeenCalled();
+    expect(lead.preferred_room_available).toBeUndefined();
+  });
+
+  it('leaves preferred_room_available unset when there was no room preference', async () => {
+    mockPrisma.visitorLead.findFirst.mockResolvedValueOnce(leadRow());
+
+    const service = new AdmissionsService();
+    const lead = await service.getLeadForOwner('lead-1', 'owner-1');
+
+    expect(mockRoomCapacityService.getRoomCapacitySnapshot).not.toHaveBeenCalled();
+    expect(lead.preferred_room_available).toBeUndefined();
+    expect(lead.preferred_floor).toBeNull();
+    expect(lead.preferred_room).toBeNull();
   });
 });

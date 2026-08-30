@@ -602,7 +602,15 @@ export class DiscoveryService {
    */
   async createEnquiry(
     seeker: { id: string; name: string; email: string; phone: string | null },
-    input: { slug: string; roomCapacity?: number; moveInDate?: string; durationMonths?: number; message?: string },
+    input: {
+      slug: string;
+      roomCapacity?: number;
+      moveInDate?: string;
+      durationMonths?: number;
+      message?: string;
+      preferredFloorId?: string;
+      preferredRoomId?: string;
+    },
   ) {
     // A lead with no phone is worse than no lead: the owner's whole reason for
     // receiving one is being able to call back, and `student_phone` used to be
@@ -624,6 +632,31 @@ export class DiscoveryService {
       select: { id: true, owner_id: true, name: true, city: true, listing_source: true },
     });
     if (!hostel) throw ApiError.notFound("This hostel is not listed on Stayo");
+
+    // A preference, never a reservation — this only checks the room/floor
+    // actually belongs to this hostel. Live availability is judged fresh at
+    // activation via `roomCapacityService`, never here.
+    let preferredRoomId: string | undefined;
+    let preferredFloorId: string | undefined;
+    if (input.preferredRoomId) {
+      const room = await prisma.rooms.findFirst({
+        where: { id: input.preferredRoomId, hostel_id: hostel.id, is_active: true },
+        select: { id: true, floor_id: true },
+      });
+      if (!room) throw ApiError.validationError("That room isn't part of this hostel");
+      preferredRoomId = room.id;
+      // A room already names its own floor — keep the two consistent unless
+      // the request explicitly named a different one.
+      preferredFloorId = input.preferredFloorId ?? room.floor_id ?? undefined;
+    }
+    if (!preferredFloorId && input.preferredFloorId) {
+      const floor = await prisma.floors.findFirst({
+        where: { id: input.preferredFloorId, hostel_id: hostel.id },
+        select: { id: true },
+      });
+      if (!floor) throw ApiError.validationError("That floor isn't part of this hostel");
+      preferredFloorId = floor.id;
+    }
 
     // Re-enquiring to the same hostel updates the open lead rather than
     // stacking duplicates in the owner's inbox — matching what
@@ -647,6 +680,8 @@ export class DiscoveryService {
             student_email: seeker.email,
             student_phone: seeker.phone,
             notes,
+            preferred_floor_id: preferredFloorId ?? null,
+            preferred_room_id: preferredRoomId ?? null,
             last_activity_at: new Date(),
             updated_at: new Date(),
           },
@@ -659,6 +694,8 @@ export class DiscoveryService {
             student_name: seeker.name,
             student_email: seeker.email,
             student_phone: seeker.phone,
+            preferred_floor_id: preferredFloorId ?? null,
+            preferred_room_id: preferredRoomId ?? null,
             decision_maker_type: "STUDENT",
             source: "DISCOVER",
             notes,

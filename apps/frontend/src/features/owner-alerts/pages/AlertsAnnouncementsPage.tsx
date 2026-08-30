@@ -48,7 +48,16 @@ export function AlertsAnnouncementsPage() {
             <EmptyState icon={<Inbox className="h-5 w-5" />} title={found.active ? `No announcements match "${query.trim()}"` : 'No announcements'} />
           ) : (
             found.adminMessages.map((a) => (
-              <div key={a.id} className={`${rowCard} flex-row items-start gap-3`} onClick={() => alerts.markRead('admin', a.id)}>
+              <div
+                key={a.id}
+                className={`${rowCard} flex-row items-start gap-3`}
+                onClick={() => {
+                  alerts.markRead('admin', a.id);
+                  if (a.metadata?.requestId) {
+                    navigate('/owner/alerts/requests', { state: { openChatRequestId: a.metadata.requestId } });
+                  }
+                }}
+              >
                 {!a.read && <span className="mt-1.5 h-2 w-2 flex-none rounded-full bg-primary" />}
                 <span className="flex h-10 w-10 flex-none items-center justify-center rounded-xl bg-secondary font-display text-xs font-bold text-primary">SO</span>
                 <div className="min-w-0 flex-1">

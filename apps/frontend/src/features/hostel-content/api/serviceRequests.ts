@@ -7,6 +7,15 @@ function unwrap(response: { data: any }) {
   return response.data;
 }
 
+export interface OwnerServiceRequestEvent {
+  id: string;
+  /** Null for a pure chat message — set only when this entry is an actual status change. */
+  status: string | null;
+  note: string | null;
+  actor_role: string;
+  created_at: string;
+}
+
 export interface OwnerServiceRequest {
   id: string;
   type: string;
@@ -16,6 +25,8 @@ export interface OwnerServiceRequest {
   assigned_to: string | null;
   created_at: string;
   tenants: { id: string; profiles: { name: string } | null };
+  /** Most recent timeline/chat entry, if any — used to flag "awaiting owner reply." */
+  tenant_service_request_events?: OwnerServiceRequestEvent[];
 }
 
 export const ownerServiceRequestsService = {
@@ -27,7 +38,21 @@ export const ownerServiceRequestsService = {
     const response = await api.patch(`/service-requests/${id}/status`, data);
     return unwrap(response);
   },
+  getMessages: async (id: string) => {
+    const response = await api.get(`/service-requests/${id}/messages`);
+    return unwrap(response) as OwnerServiceRequest & { tenant_service_request_events: OwnerServiceRequestEvent[] };
+  },
+  sendMessage: async (id: string, message: string) => {
+    const response = await api.post(`/service-requests/${id}/messages`, { message });
+    return unwrap(response) as OwnerServiceRequestEvent;
+  },
 };
+
+/** Awaiting the owner's reply: the ticket's most recent timeline entry was sent by the tenant. */
+export function hasUnreadFromTenant(request: OwnerServiceRequest): boolean {
+  const latest = request.tenant_service_request_events?.[0];
+  return latest?.actor_role === 'TENANT';
+}
 
 /** Next status in the owner-driven flow; `null` means terminal (nothing left to advance to). */
 export const STATUS_FLOW: Record<string, string | null> = {

@@ -431,14 +431,12 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
                 {googleSubmitting ? <StayoLoader size="sm" label={null} /> : <GoogleMark />}
                 {googleSubmitting ? 'Please wait…' : 'Continue with Google'}
               </button>
-              {!isOwner && (
-                <a
-                  href="/forgot-password"
-                  className="mt-4 text-center text-[12.5px] font-semibold text-primary hover:underline"
-                >
-                  Forgot password?
-                </a>
-              )}
+              <a
+                href="/forgot-password"
+                className="mt-4 text-center text-[12.5px] font-semibold text-primary hover:underline"
+              >
+                Forgot password?
+              </a>
             </>
           )}
 
@@ -470,12 +468,6 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
                 Take charge of your account
               </a>
             </div>
-          )}
-
-          {isOwner && (
-            <p className="mt-4 text-center text-[12.5px] leading-normal text-muted-foreground">
-              Owner accounts are created during onboarding — contact Stayo support if you need help accessing yours.
-            </p>
           )}
         </Dialog.Content>
       </Dialog.Portal>

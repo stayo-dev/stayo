@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
       },
       include: {
         tenants: { select: { id: true, profiles: { select: { name: true } } } },
+        tenant_service_request_events: { orderBy: { created_at: "desc" }, take: 1 },
       },
       orderBy: { created_at: "desc" },
       take: 100,

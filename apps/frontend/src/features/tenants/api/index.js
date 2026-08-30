@@ -201,6 +201,19 @@ export const tenantService = {
         return response.data.success !== undefined ? (response.data.data !== undefined ? response.data.data : response.data) : response.data;
     },
     /**
+     * Read-only dry run of "if the tenant already paid this much, where does
+     * it land?" — runs the real settlement planner against obligations
+     * synthesised from the invite form, before anything is created. Safe to
+     * call on every debounced change; see `POST /tenants/invite-settlement-preview`.
+     */
+    getInviteSettlementPreview: async (body) => {
+        const response = await api.post('/tenants/invite-settlement-preview', body);
+        // The route responds `{ success: true, preview: {...} }` — apiResponse()
+        // spreads its argument at the top level rather than nesting under
+        // `data`, so `preview` isn't reachable through unwrap()'s `.data` check.
+        return response.data?.preview;
+    },
+    /**
      * Read-only pre-submit tenancy-eligibility check — same rule and OWN/OTHER
      * disclosure scoping as the 409 `invite()` can return, offered before the
      * owner fills out the rest of the form. Never creates or mutates anything.

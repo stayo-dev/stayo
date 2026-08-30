@@ -36,6 +36,17 @@ Log of significant bugs — open and fixed. Not meant to replace an issue tracke
 **Fix.** The hostels section is now unconditional and gains a first-run empty state with its own primary button; `Add Hostel` also joins the FAB sheet, where actions needing a hostel are dimmed rather than offered; and completion is derived from a new lifetime `has_ever_collected` signal so **no completion state is stored anywhere** and the `graduated` flag is deleted outright. Three independent paths into hostel creation, none of which browser state can hide. Separately, Home now renders each card only once it has something true to say, so a new owner is no longer shown a dashboard of zeros. See [[Decisions#ADR-139|ADR-139]], [[Features]], [[Changelog]].
 
 **Also fixed in passing:** the spotlight pointed at an Action Center and a search bar that Home no longer renders for an empty account, so its stops were being silently filtered away. It now runs once the first hostel is built, and its dismissal flag is keyed per owner.
+## 2026-08-29 — Owner login had no working "Forgot password?" link (fixed)
+
+**Symptom:** an owner who forgot their password had no self-serve way to reset it — the login popup showed no "Forgot password?" link at all, only a dead-end sentence: "Owner accounts are created during onboarding — contact Stayo support if you need help accessing yours."
+
+**Root cause:** `apps/frontend/src/shared/ui-patterns/LoginModal.tsx` is the single login surface for both owner and tenant modes (per [[Decisions#ADR-035|ADR-035]]). The "Forgot password?" link was gated behind `{!isOwner && (...)}`, so it only ever rendered for tenants. This predates [[Decisions#ADR-054|ADR-054]] (2026-08-08), which made password reset role-agnostic end to end — the backend (`authService.requestPasswordReset`) resolves by email/phone with no role filter, and `/forgot-password` + `/reset-password` were already built role-neutral. The frontend gate on `LoginModal.tsx` was simply never updated to match, so the entire working reset flow was unreachable from the owner login form for three weeks.
+
+**Fix:** removed the `!isOwner` condition on the "Forgot password?" link and deleted the owner-only "contact support" fallback paragraph. No backend or route changes were needed — the flow was fully built, just unlinked from owner mode.
+
+**Lesson:** when a business rule (here, "reset works the same for every role") changes, every UI surface that hard-codes the old per-role behavior needs an audit, not just the ones the change was written for — this gate was untouched by the ADR-054 change because that work focused on the backend/route layer, not the modal that gated access to it.
+
+**See:** [[Decisions#ADR-054|ADR-054]], [[Features]], [[Changelog]].
 
 ## 2026-08-28 — Adopting a tenancy orphaned it from its person; two minutes later a duplicate invite sailed through (fixed)
 

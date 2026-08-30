@@ -1,8 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import { greetingWithName } from '../components/tenantGreeting';
 import { Bell, Megaphone, CalendarDays, CreditCard } from 'lucide-react';
-import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useTenantHome } from '@features/tenant-home/hooks/useTenantHome';
+import { useTenantNotifications } from '@features/notifications/hooks/useTenantNotifications';
 import { useTenantFinancials } from '@features/tenant-financials/hooks/useTenantFinancials';
 import { useTenantMealTimings } from '@features/food/hooks/useTenantMealTimings';
 import { useTenantFoodPolls } from '@features/food/hooks/useTenantFoodPolls';
@@ -42,6 +42,7 @@ function LoadingSkeleton() {
 export function TenantHomePage() {
   const navigate = useNavigate();
   const home = useTenantHome();
+  const { hasUnread } = useTenantNotifications();
   const fin = useTenantFinancials();
   const mealTimings = useTenantMealTimings();
   const polls = useTenantFoodPolls();
@@ -110,12 +111,12 @@ export function TenantHomePage() {
 
           <button
             type="button"
-            onClick={() => stayoToast.info('No new alerts')}
-            aria-label="Alerts"
+            onClick={() => navigate('/tenant/notifications')}
+            aria-label="Notifications"
             className="relative flex h-10 w-10 flex-none items-center justify-center rounded-full border border-border bg-card"
           >
             <Bell className="h-[18px] w-[18px] text-muted-foreground" strokeWidth={1.8} />
-            <span className="absolute right-1 top-1 h-2 w-2 rounded-full border-2 border-card bg-primary" />
+            {hasUnread && <span className="absolute right-1 top-1 h-2 w-2 rounded-full border-2 border-card bg-primary" />}
           </button>
         </div>
       </div>

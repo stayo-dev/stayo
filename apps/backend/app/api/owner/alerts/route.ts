@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
       body: n.message,
       time: n.created_at,
       read: n.is_read,
+      metadata: n.metadata ?? null,
     }));
 
     // 2. Renewals

@@ -92,6 +92,16 @@ export const foodService = {
     const response = await api.post(`/food/schedules/${scheduleId}/publish`);
     return unwrap(response);
   },
+  /**
+   * Copies this schedule's full weekly pattern into one or more other
+   * hostels for the same month. On a 409 `CONFIRM_OVERWRITE`, the axios
+   * error's `response.data.error.details.pendingOverwrite` lists which
+   * target hostels already have content — same pattern as `STALE_WRITE`.
+   */
+  copyScheduleToHostels: async (scheduleId: string, targetHostelIds: string[], confirmOverwrite = false) => {
+    const response = await api.post(`/food/schedules/${scheduleId}/copy-to-hostels`, { targetHostelIds, confirmOverwrite });
+    return unwrap(response) as { copied: { hostelId: string; hostelName: string; scheduleId: string; status: 'DRAFT' | 'PUBLISHED' }[] };
+  },
   getScheduleHistory: async (hostelId: string) => {
     const response = await api.get('/food/schedules/history', { params: { hostelId } });
     return unwrap(response).schedules as any[];

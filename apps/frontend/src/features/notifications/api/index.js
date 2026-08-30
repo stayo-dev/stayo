@@ -1,9 +1,11 @@
 import api from '@lib/api-client';
 
 export const notificationService = {
+    // GET /notifications responds { success, data: [...] } (array body) —
+    // unwrap it so callers get the list directly, not the envelope.
     getAll: async () => {
         const response = await api.get('/notifications');
-        return response.data;
+        return response.data?.data ?? response.data;
     },
     markAsRead: async (id) => {
         const response = await api.post(`/notifications/${id}/read`);

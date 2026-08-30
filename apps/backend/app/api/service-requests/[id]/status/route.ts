@@ -6,8 +6,17 @@ import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
 import { prisma } from "@/lib/db";
 import { ServiceRequestStatus } from "@prisma/client";
+import { notifyServiceRequestParticipant } from "@/lib/services/service-request-notifications";
 
 const VALID_STATUSES: string[] = Object.values(ServiceRequestStatus);
+
+const STATUS_LABEL: Record<string, string> = {
+  RAISED: "Raised",
+  ASSIGNED: "Assigned",
+  IN_PROGRESS: "In progress",
+  RESOLVED: "Resolved",
+  REJECTED: "Rejected",
+};
 
 /**
  * PATCH /api/service-requests/[id]/status
@@ -26,7 +35,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const scope = resolveOwnerScope(session);
     const existing = await prisma.tenant_service_requests.findFirst({
       where: { id },
-      include: { hostels: { select: { owner_id: true } } },
+      include: {
+        hostels: { select: { owner_id: true } },
+        tenants: { select: { profile_id: true } },
+      },
     });
     if (!existing || existing.hostels.owner_id !== scope.owner_id) {
       return apiError("Request not found", "NOT_FOUND", 404);
@@ -50,14 +62,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       },
     });
 
+    const trimmedNote = typeof note === "string" && note.trim() ? note.trim() : null;
+
     await prisma.tenant_service_request_events.create({
       data: {
         request_id: id,
         status: status as ServiceRequestStatus,
-        note: typeof note === "string" && note.trim() ? note.trim() : null,
+        note: trimmedNote,
         actor_role: "OWNER",
       },
     });
+
+    const tenantProfileId = existing.tenants.profile_id;
+    if (tenantProfileId) {
+      // Fire-and-forget: the status update has already committed, so a
+      // notification failure is logged and swallowed rather than surfacing
+      // as a failed status update (matches the tenancy-claim precedent).
+      notifyServiceRequestParticipant(
+        tenantProfileId,
+        existing,
+        trimmedNote ?? `Status updated to ${STATUS_LABEL[status] ?? status}`,
+      ).catch((err: unknown) => console.error("[service-requests/status] failed to notify tenant:", err));
+    }
 
     return apiResponse(updated);
   } catch (error: any) {

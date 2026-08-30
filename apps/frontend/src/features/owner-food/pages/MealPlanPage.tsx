@@ -13,6 +13,7 @@ import { MealTimingsForm } from '../components/timings/MealTimingsForm';
 import { AddFoodPopover } from '../components/mealplan/AddFoodPopover';
 import { TrashDropZone } from '../components/mealplan/TrashDropZone';
 import { CopyToDaysSheet } from '../components/mealplan/CopyToDaysSheet';
+import { CopyToHostelsSheet } from '../components/mealplan/CopyToHostelsSheet';
 import { MealPlanGrid } from '../components/mealplan/MealPlanGrid';
 import { MealPlanMobile } from '../components/mealplan/MealPlanMobile';
 import { useFoodMenuItems } from '../hooks/useFoodMenuItems';
@@ -126,6 +127,14 @@ export function MealPlanPage() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [confirmPublishOpen, setConfirmPublishOpen] = useState(false);
 
+  // "Copy to another hostel" — one action for both the initial full copy
+  // and later small-change re-syncs (the underlying operation is identical).
+  const [copyToHostelsOpen, setCopyToHostelsOpen] = useState(false);
+  const [copyOverwriteWarning, setCopyOverwriteWarning] = useState<{
+    targetHostelIds: string[];
+    hostelNames: string[];
+  } | null>(null);
+
   // Unsaved-changes navigation guard (ADR-123) — wraps every in-app exit
   // trigger (back link, hostel switch, month nav). Known limitation: this
   // guards in-app navigation and tab close/refresh (`beforeunload`, below)
@@ -204,6 +213,24 @@ export function MealPlanPage() {
     for (const { day, ids } of plan) {
       const targetCell = cellAt(schedule.weekGrid, day, copyTarget.slot);
       if (targetCell?.id) schedule.setCellItems(targetCell.id, ids);
+    }
+  };
+
+  const handleCopyToHostels = async (targetHostelIds: string[], confirmOverwrite = false) => {
+    try {
+      const result = await schedule.copyToHostels(targetHostelIds, confirmOverwrite);
+      setCopyToHostelsOpen(false);
+      setCopyOverwriteWarning(null);
+      const count = result.copied.length;
+      stayoToast.success(`Copied to ${count} ${count === 1 ? 'hostel' : 'hostels'}`);
+    } catch (error: any) {
+      const apiErr = error?.response?.data?.error;
+      if (apiErr?.code === 'CONFIRM_OVERWRITE') {
+        const pending = (apiErr.details?.pendingOverwrite ?? []) as { hostelId: string; hostelName: string }[];
+        setCopyOverwriteWarning({ targetHostelIds, hostelNames: pending.map((p) => p.hostelName) });
+        return;
+      }
+      stayoToast.error(apiErr?.message || "Couldn't copy to those hostels — try again");
     }
   };
 
@@ -354,6 +381,15 @@ export function MealPlanPage() {
           ) : (
             <p className="text-center text-[11.5px] text-muted-foreground">Live — no unsaved changes.</p>
           )}
+          {session.hostels.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setCopyToHostelsOpen(true)}
+              className="min-h-[44px] rounded-xl border border-border py-3 text-center font-display text-[13.5px] font-bold text-foreground"
+            >
+              Copy to another hostel
+            </button>
+          )}
         </div>
       )}
 
@@ -389,6 +425,49 @@ export function MealPlanPage() {
         monthLabel={formatMonthLabel(selectedMonth)}
         isDraft={schedule.schedule?.status !== 'PUBLISHED'}
       />
+      {hostelId && (
+        <CopyToHostelsSheet
+          open={copyToHostelsOpen}
+          onClose={() => setCopyToHostelsOpen(false)}
+          sourceHostelId={hostelId}
+          hostels={session.hostels}
+          onConfirm={(targetHostelIds) => handleCopyToHostels(targetHostelIds)}
+        />
+      )}
+
+      <BottomSheet
+        open={Boolean(copyOverwriteWarning)}
+        onOpenChange={(next) => {
+          if (!next) setCopyOverwriteWarning(null);
+        }}
+        title="Replace existing menu?"
+        footer={
+          copyOverwriteWarning && (
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => setCopyOverwriteWarning(null)}
+                className="min-h-[44px] flex-1 rounded-xl border border-border py-3 text-center font-display text-[13.5px] font-bold text-foreground"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={schedule.isCopyingToHostels}
+                onClick={() => handleCopyToHostels(copyOverwriteWarning.targetHostelIds, true)}
+                className="min-h-[44px] flex-1 rounded-xl bg-primary py-3 text-center font-display text-[13.5px] font-bold text-primary-foreground disabled:opacity-40"
+              >
+                Copy anyway
+              </button>
+            </div>
+          )
+        }
+      >
+        <p className="text-[13px] text-muted-foreground">
+          {copyOverwriteWarning?.hostelNames.join(', ')} already {copyOverwriteWarning?.hostelNames.length === 1 ? 'has' : 'have'} a menu for{' '}
+          {formatMonthLabel(selectedMonth)}. Copying will replace it.
+        </p>
+      </BottomSheet>
 
       <BottomSheet open={timingsOpen} onOpenChange={setTimingsOpen} title="Meal Timings">
         <MealTimingsForm

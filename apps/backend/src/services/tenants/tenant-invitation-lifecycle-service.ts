@@ -9,6 +9,8 @@ import { hostelBillingPreferencesService, type MaintenanceType } from "../../../
 import { roomCapacityService } from "../../../lib/services/room-capacity-service";
 import { ensureActiveAllocation } from "./tenancy-allocation";
 import { onboardingFinancialsService } from "../payments/onboarding-financials-service";
+import { financialPaymentFacade } from "../payments/financial-payment-facade";
+import { financialService } from "../payments/financial-service";
 import { selectCurrentTenancy } from "@/lib/tenancy/active-tenancy";
 import { recordWhatsAppDelivery, readWhatsAppDeliveredAt } from "./invitation-delivery-trust";
 import { isPhoneAlreadyProven } from "./invitation-phone-trust";
@@ -433,7 +435,60 @@ export class TenantInvitationLifecycleService {
         invitationId: invitation.id,
       });
 
-      return { tenant, invitation, reservation, room: capacity.room, financials };
+      // Money the tenant has already handed over, recorded in the same breath
+      // as the invitation.
+      //
+      // Two situations, one mechanism. A deposit negotiated face-to-face and
+      // paid in cash or over UPI at the door; and onboarding a hostel that has
+      // been running for months, whose tenant is five rent cycles in and has
+      // paid for them. Without this the owner had to invite, leave, find the
+      // payment page, and come back — and for the second case there was
+      // nothing to pay *against*, because the arrears did not exist until
+      // `initializeOnboardingFinancials` learned to backfill elapsed months.
+      //
+      // Allocation is the real settlement engine (FIFO, ledger, receipt), not
+      // a status flip, so this cannot disagree with what
+      // `buildInviteSettlementPreview` showed the owner before they committed.
+      let settlement: any = null;
+      const paidAmount = Number(data.paid_amount || 0);
+      if (paidAmount > 0) {
+        if (!data.payment_method) {
+          throw new Error("VALIDATION_ERROR: A payment method is required to record an amount already paid");
+        }
+        const owed = await financialService.getTenantDues(
+          tenant.id,
+          ownerId,
+          capacity.room.hostel_id
+        );
+        const due = Number(owed?.total_due || 0);
+        if (paidAmount > due + 0.01) {
+          throw new Error(
+            `VALIDATION_ERROR: Cannot record ₹${paidAmount.toFixed(2)} — only ₹${due.toFixed(2)} is owed`
+          );
+        }
+
+        settlement = await financialPaymentFacade.receivePayment(
+          tx,
+          {
+            tenantId: tenant.id,
+            hostelId: capacity.room.hostel_id,
+            amountPaid: paidAmount,
+            paymentMethod: String(data.payment_method),
+            referenceNumber: data.payment_reference || undefined,
+            paymentDate: new Date(),
+            ownerId,
+            // One settlement per invitation: a double-submitted form must not
+            // record the money twice.
+            idempotencyKey: `invite-settle:${invitation.id}`,
+            offlineRecordedBy: ownerId,
+            offlineRecordedAt: new Date(),
+            offlineNote: "Recorded while inviting — already paid",
+          },
+          crypto.randomUUID()
+        );
+      }
+
+      return { tenant, invitation, reservation, room: capacity.room, financials, settlement };
     }, { timeout: 30000 });
 
     // Post-commit: notify (cache invalidation + SSE). Activation itself

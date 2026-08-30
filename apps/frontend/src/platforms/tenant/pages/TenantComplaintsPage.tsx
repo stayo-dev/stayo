@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, LifeBuoy, MessageSquareWarning, Plus } from 'lucide-react';
 import { useTenantRoom } from '@features/tenant-room/hooks/useTenantRoom';
 import { tenantRoomService } from '@features/tenant-room/api';
@@ -48,10 +48,24 @@ function LoadingSkeleton() {
  */
 export function TenantComplaintsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const queryClient = useQueryClient();
   const room = useTenantRoom();
   const overlay = useOverlayStack();
 
   const formConfigs = useMemo(() => buildServiceRequestFormConfigs({ createRequest: room.createRequest }), [room.createRequest]);
+
+  // Deep link from a tapped notification (`/tenant/notifications` navigates
+  // here with `state: { openTicketId }`) — open that ticket's detail once on
+  // mount, then clear the state so a later back-navigation doesn't reopen it.
+  useEffect(() => {
+    const requestId = (location.state as { openTicketId?: string } | null)?.openTicketId;
+    if (requestId) {
+      overlay.push(`tk_${requestId}`);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only, reads location.state once
+  }, []);
 
   const activeTicketId = overlay.view.startsWith('tk_') ? overlay.view.slice(3) : null;
   const activeTicket = activeTicketId ? room.requests.find((r) => r.id === activeTicketId) ?? null : null;
@@ -59,6 +73,13 @@ export function TenantComplaintsPage() {
     queryKey: ['tenant', 'service-requests', activeTicketId, 'events'],
     queryFn: () => tenantRoomService.getServiceRequestDetail(activeTicketId!),
     enabled: Boolean(activeTicketId && activeTicket),
+  });
+
+  const sendMessageMutation = useMutation({
+    mutationFn: (message: string) => tenantRoomService.sendServiceRequestMessage(activeTicketId!, message),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant', 'service-requests', activeTicketId, 'events'] });
+    },
   });
 
   if (room.isLoading) return <LoadingSkeleton />;
@@ -149,7 +170,13 @@ export function TenantComplaintsPage() {
       </div>
 
       {activeTicket && (
-        <DetailScreen config={buildServiceRequestDetailConfig(activeTicket, ticketEventsQuery.data?.tenant_service_request_events ?? [])} onBack={overlay.back} />
+        <DetailScreen
+          config={buildServiceRequestDetailConfig(activeTicket, ticketEventsQuery.data?.tenant_service_request_events ?? [], {
+            onSend: (text) => sendMessageMutation.mutate(text),
+            sending: sendMessageMutation.isPending,
+          })}
+          onBack={overlay.back}
+        />
       )}
       {overlay.view === 'all_tickets' && (
         <TicketsListScreen requests={room.requests} onBack={overlay.back} onOpenTicket={(id) => overlay.push(`tk_${id}`)} onNewTicket={() => overlay.push('raise_ticket')} />

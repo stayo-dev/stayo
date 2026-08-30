@@ -67,6 +67,26 @@ export interface ActionsSection {
   actions: DetailAction[];
 }
 
+/** One entry in a `MessagesSection` thread — a real chat message, or a status-change entry rendered as a centered pill instead of a bubble. */
+export interface ChatMessage {
+  id: string;
+  text: string;
+  meta: string;
+  /** Aligns/styles as sent by the current viewer (bubble on the right) vs. the other participant. */
+  fromMe: boolean;
+  /** A status-change entry (not a real chat message) — rendered as a small centered pill. */
+  isStatusPill?: boolean;
+  tone?: OverlayTone;
+}
+export interface MessagesSection {
+  kind: 'messages';
+  title?: string;
+  messages: ChatMessage[];
+  onSend: (text: string) => void;
+  sending?: boolean;
+  placeholder?: string;
+}
+
 export type DetailSection =
   | StatusSection
   | ChipsSection
@@ -76,7 +96,8 @@ export type DetailSection =
   | PhotosSection
   | PersonSection
   | EmptySection
-  | ActionsSection;
+  | ActionsSection
+  | MessagesSection;
 
 /** One drill-in / read-only destination — Room details, per-utility screens, roommate cards, ticket detail, profile detail cards, etc. */
 export interface DetailConfig {
