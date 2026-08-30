@@ -545,3 +545,11 @@ Each row in `AddFoodPopover` carries an `×` that asks for confirmation inline o
 - The confirmation states how many of this month's meals use the dish (`menuItemUsage.ts`, pure) and promises they are untouched — the softness is otherwise invisible from the dialog.
 - The `×` has its own 44px target, bordered off from the row, because the row's primary action is *add this dish*.
 - **Rename is still not offered**, deliberately — [[Decisions#ADR-123|ADR-123]]'s note applies to it too until some surface needs it.
+
+## Kitchen sheet, improved (2026-08-30)
+
+- **Print downloads the real A4 sheet** (`/api/food/menu-pdf`, [[Decisions#ADR-144|ADR-144]]) instead of calling `window.print()`, which printed the screen through a phone print dialog.
+- **Tomorrow gets one labelled row per meal**, in the UI and in the WhatsApp message. It was previously all four joined with `·` into a single run.
+- **Serving windows** appear under each meal label, from `useMealTimings`.
+- **Dish names are title-cased for display** ([[Decisions#ADR-142|ADR-142]]). Only real dish names — the empty-slot placeholder stays product copy, which the existing tests caught when it briefly became "Not Set".
+- **Send on WhatsApp still shares text from the owner's own WhatsApp.** `wa.me` cannot carry a file, and the backend's Meta media path sends *from Stayo's number to a known recipient* — kitchen groups are not in the system, so text remains the right transport.

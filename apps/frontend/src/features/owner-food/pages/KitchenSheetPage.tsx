@@ -1,12 +1,23 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Printer, Share2 } from 'lucide-react';
+import { Download, Loader2, Share2 } from 'lucide-react';
 import { MEAL_CATEGORY_META } from '@shared/mocks/food';
+import { titleCaseText } from '@shared/lib/textFormat';
+import { stayoToast } from '@shared/ui-patterns/Toast';
+import { foodService } from '@features/food/api';
+import { formatTimeRange } from '@features/food/mealTimings';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { HostelSwitcher } from '../components/HostelSwitcher';
 import { useFoodSchedule } from '../hooks/useFoodSchedule';
+import { useMealTimings } from '../hooks/useMealTimings';
 import { buildKitchenMessage, whatsappShareUrl } from '../kitchenSheet';
 import { cellAt, dayKeyFor, DAY_ORDER, formatCellItems, isFilled, SLOT_ORDER } from '../weekGrid';
+
+/** Dish names as they should read. Display only — see ADR-142. */
+function dishes(cell: Parameters<typeof formatCellItems>[0]): string {
+  const text = formatCellItems(cell);
+  return isFilled(cell) ? titleCaseText(text) || text : text;
+}
 
 /**
  * The cook's and kitchen staff's only surface. Deliberately the dumbest screen
@@ -26,13 +37,44 @@ export function KitchenSheetPage() {
   const hostelId = searchParams.get('hostelId') ?? session.primaryHostelId;
   const currentMonth = useMemo(() => new Date().toISOString().slice(0, 7), []);
   const schedule = useFoodSchedule(hostelId ?? undefined, currentMonth);
+  const { mealTimings } = useMealTimings(hostelId ?? undefined);
+  const [downloading, setDownloading] = useState(false);
 
   const now = new Date();
   const today = dayKeyFor(now);
   const tomorrow = DAY_ORDER[(DAY_ORDER.indexOf(today) + 1) % DAY_ORDER.length];
   const hostelName = session.hostels.find((h) => h.id === hostelId)?.name ?? 'Hostel';
 
-  const message = buildKitchenMessage({ grid: schedule.weekGrid, now, hostelName });
+  const message = buildKitchenMessage({ grid: schedule.weekGrid, now, hostelName, timings: mealTimings });
+
+  /**
+   * Downloads the designed A4 sheet rather than calling `window.print()`.
+   *
+   * That printed the *screen* — app chrome stripped by `print:hidden` classes,
+   * at whatever size the browser chose — through a phone print dialog that is
+   * unreliable on exactly the devices these owners use. The real menu sheet
+   * already exists, in the brand fonts, and is what belongs on a wall. See
+   * ADR-144.
+   */
+  const download = async () => {
+    if (!hostelId || downloading) return;
+    setDownloading(true);
+    try {
+      const { blob, filename } = await foodService.downloadMenuPdf(hostelId, currentMonth);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      stayoToast.error("Couldn't build the menu sheet just now. Try again in a moment.");
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 px-5 py-8 print:px-0 print:py-0">
@@ -57,31 +99,57 @@ export function KitchenSheetPage() {
           const cell = cellAt(schedule.weekGrid, today, slot);
           return (
             <div key={slot} className="flex items-baseline gap-4 py-4">
-              <span className="w-[110px] flex-none text-[13px] font-bold uppercase tracking-wide text-muted-foreground">
-                {MEAL_CATEGORY_META[slot].label}
+              <span className="w-[110px] flex-none">
+                <span className="block text-[13px] font-bold uppercase tracking-wide text-muted-foreground">
+                  {MEAL_CATEGORY_META[slot].label}
+                </span>
+                {/* The cook is the person who most needs the serving window,
+                    and the paper charts this replaces never carry it. */}
+                {mealTimings[slot]?.enabled && (
+                  <span className="mt-0.5 block text-[11px] font-medium text-muted-foreground/80">
+                    {formatTimeRange(mealTimings[slot])}
+                  </span>
+                )}
               </span>
               <span className={`font-display text-[24px] font-extrabold tracking-tight ${isFilled(cell) ? 'text-foreground' : 'italic text-muted-foreground/60'}`}>
-                {formatCellItems(cell)}
+                {dishes(cell)}
               </span>
             </div>
           );
         })}
       </div>
 
+      {/* One labelled row per meal. This was all four joined by "·" into a
+          single run, so nothing marked where breakfast ended and lunch began —
+          on the block whose entire job is telling a cook what to prep tonight. */}
       <div className="rounded-2xl bg-muted/50 p-4">
         <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Tomorrow — prep tonight</span>
-        <p className="mt-1 text-[14px] font-semibold text-foreground">
-          {SLOT_ORDER.map((slot) => formatCellItems(cellAt(schedule.weekGrid, tomorrow, slot))).join(' · ')}
-        </p>
+        <dl className="mt-2 flex flex-col gap-1.5">
+          {SLOT_ORDER.map((slot) => {
+            const cell = cellAt(schedule.weekGrid, tomorrow, slot);
+            return (
+              <div key={slot} className="flex items-baseline gap-3">
+                <dt className="w-[86px] flex-none text-[11.5px] font-bold uppercase tracking-wide text-muted-foreground">
+                  {MEAL_CATEGORY_META[slot].label}
+                </dt>
+                <dd className={`text-[14px] font-semibold ${isFilled(cell) ? 'text-foreground' : 'italic text-muted-foreground/60'}`}>
+                  {dishes(cell)}
+                </dd>
+              </div>
+            );
+          })}
+        </dl>
       </div>
 
       <div className="flex gap-2.5 print:hidden">
         <button
           type="button"
-          onClick={() => window.print()}
-          className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl border-[1.5px] border-border py-3 font-display text-[13.5px] font-bold text-foreground"
+          onClick={download}
+          disabled={!hostelId || downloading}
+          className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl border-[1.5px] border-border py-3 font-display text-[13.5px] font-bold text-foreground disabled:opacity-50"
         >
-          <Printer className="h-4 w-4" /> Print
+          {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          {downloading ? 'Preparing…' : 'Print the week'}
         </button>
         <a
           href={whatsappShareUrl(message)}

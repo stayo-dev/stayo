@@ -1,18 +1,41 @@
 import { MEAL_CATEGORY_META } from '@shared/mocks/food';
-import { cellAt, dayKeyFor, DAY_ORDER, formatCellItems, SLOT_ORDER, type DayKey, type WeekGrid } from './weekGrid';
+import { titleCaseText } from '@shared/lib/textFormat';
+import { formatTimeRange, type MealTimings } from '@features/food/mealTimings';
+import { cellAt, dayKeyFor, DAY_ORDER, formatCellItems, isFilled, SLOT_ORDER, type DayKey, type WeekGrid } from './weekGrid';
 
 export interface KitchenSheetInput {
   grid: WeekGrid;
   now: Date;
   hostelName: string;
+  /** Serving windows, when the hostel has them. Omitted leaves times off. */
+  timings?: MealTimings | null;
 }
 
 function nextDay(day: DayKey): DayKey {
   return DAY_ORDER[(DAY_ORDER.indexOf(day) + 1) % DAY_ORDER.length];
 }
 
+/**
+ * Dish names as they should read, not as they were typed. Items created before
+ * ADR-142 are stored exactly as entered ("bonda", "idly"), and this message is
+ * pasted into a kitchen group where it is the hostel's own writing. Display
+ * only — the stored value is never rewritten.
+ */
 function nameFor(grid: WeekGrid, day: DayKey, slot: (typeof SLOT_ORDER)[number]): string {
-  return formatCellItems(cellAt(grid, day, slot));
+  const cell = cellAt(grid, day, slot);
+  const text = formatCellItems(cell);
+  // Only dish names are tidied. `formatCellItems` returns the "not set"
+  // placeholder for an empty slot, and title-casing that turns product copy
+  // into "Not Set" — caught by this module's existing tests.
+  return isFilled(cell) ? titleCaseText(text) || text : text;
+}
+
+/** "Breakfast (7:00 AM – 9:00 AM)", or just the label when no window is set. */
+function slotHeading(slot: (typeof SLOT_ORDER)[number], timings?: MealTimings | null): string {
+  const label = MEAL_CATEGORY_META[slot].label;
+  const entry = timings?.[slot];
+  if (!entry || !entry.enabled) return label;
+  return `${label} (${formatTimeRange(entry)})`;
 }
 
 /**
@@ -23,17 +46,27 @@ function nameFor(grid: WeekGrid, day: DayKey, slot: (typeof SLOT_ORDER)[number])
  *
  * WhatsApp-flavoured markdown (*bold*) because that is where this goes.
  */
-export function buildKitchenMessage({ grid, now, hostelName }: KitchenSheetInput): string {
+export function buildKitchenMessage({ grid, now, hostelName, timings }: KitchenSheetInput): string {
   const today = dayKeyFor(now);
   const tomorrow = nextDay(today);
   const dateLabel = now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
 
+  /**
+   * Tomorrow gets one labelled line per meal, like today.
+   *
+   * It used to be all four joined by "·" into a single run — "Bonda • Dosa •
+   * Puri · Rice • Dal • Curry · Chai · Rice • Sambar" — with nothing marking
+   * where breakfast ended and lunch began, on the one line whose whole purpose
+   * is telling a cook what to prepare tonight. Four short lines cost four
+   * newlines in a WhatsApp message and are actually readable.
+   */
   const lines = [
     `*${dateLabel} — ${hostelName}*`,
     '',
-    ...SLOT_ORDER.map((slot) => `${MEAL_CATEGORY_META[slot].label.padEnd(10)} ${nameFor(grid, today, slot)}`),
+    ...SLOT_ORDER.map((slot) => `*${slotHeading(slot, timings)}*\n${nameFor(grid, today, slot)}`),
     '',
-    `_Tomorrow_: ${SLOT_ORDER.map((slot) => nameFor(grid, tomorrow, slot)).join(' · ')}`,
+    '_Tomorrow — prep tonight_',
+    ...SLOT_ORDER.map((slot) => `${MEAL_CATEGORY_META[slot].label}: ${nameFor(grid, tomorrow, slot)}`),
   ];
 
   return lines.join('\n');

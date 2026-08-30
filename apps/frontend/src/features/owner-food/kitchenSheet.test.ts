@@ -35,7 +35,66 @@ describe('buildKitchenMessage', () => {
   });
 
   it('names an empty meal rather than silently omitting it', () => {
-    expect(buildKitchenMessage({ grid, now: THURSDAY, hostelName: 'H' })).toMatch(new RegExp(`Snacks\\s+${EMPTY_CELL_LABEL}`));
+    // The label now sits on its own bold line above the dishes, so this
+    // asserts the intent rather than the old single-line shape.
+    const msg = buildKitchenMessage({ grid, now: THURSDAY, hostelName: 'H' });
+    expect(msg).toContain(`*Snacks*\n${EMPTY_CELL_LABEL}`);
+  });
+
+  it('leaves the empty-slot placeholder as product copy, not a dish name', () => {
+    // Title-casing every value turned "Not set" into "Not Set" — caught here
+    // when dish names started being tidied.
+    const msg = buildKitchenMessage({ grid, now: THURSDAY, hostelName: 'H' });
+    expect(msg).toContain(EMPTY_CELL_LABEL);
+    expect(msg).not.toContain('Not Set');
+  });
+
+  it('tidies dish names typed before the app started doing it', () => {
+    const scruffy = toWeekGrid([cell('THURSDAY', 'BREAKFAST', [mealItem('bonda'), mealItem('idly')])]);
+    const msg = buildKitchenMessage({ grid: scruffy, now: THURSDAY, hostelName: 'H' });
+    expect(msg).toContain('Bonda');
+    expect(msg).toContain('Idly');
+  });
+
+  it('gives tomorrow one labelled line per meal', () => {
+    // It used to join all four with "·" into a single run, so nothing marked
+    // where breakfast ended and lunch began — on the line whose whole job is
+    // telling a cook what to prepare tonight.
+    const msg = buildKitchenMessage({ grid, now: THURSDAY, hostelName: 'H' });
+    expect(msg).toContain('Breakfast: Idli');
+    expect(msg).toContain('Lunch: Curd Rice');
+    expect(msg).toContain('Dinner: Paneer Curry');
+  });
+
+  it('prints serving windows when the hostel has set them', () => {
+    const msg = buildKitchenMessage({
+      grid,
+      now: THURSDAY,
+      hostelName: 'H',
+      timings: {
+        breakfast: { start: '07:00', end: '09:00', enabled: true },
+        lunch: { start: '12:30', end: '14:00', enabled: true },
+        snacks: { start: '17:00', end: '18:00', enabled: true },
+        dinner: { start: '19:00', end: '21:00', enabled: true },
+      },
+    });
+    expect(msg).toContain('Breakfast (7:00 AM – 9:00 AM)');
+  });
+
+  it('omits the window for a meal the hostel has switched off', () => {
+    const msg = buildKitchenMessage({
+      grid,
+      now: THURSDAY,
+      hostelName: 'H',
+      timings: {
+        breakfast: { start: '07:00', end: '09:00', enabled: false },
+        lunch: { start: '12:30', end: '14:00', enabled: true },
+        snacks: { start: '17:00', end: '18:00', enabled: true },
+        dinner: { start: '19:00', end: '21:00', enabled: true },
+      },
+    });
+    expect(msg).toContain('*Breakfast*');
+    expect(msg).not.toContain('Breakfast (');
   });
 
   it('includes tomorrow, because prep starts the night before', () => {
