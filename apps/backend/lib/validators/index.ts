@@ -22,12 +22,24 @@ export const RegisterSchema = z.object({
   role:     z.enum(["OWNER", "admin"]).optional(), // frontend sends 'admin' as default
 });
 
+/**
+ * Owner activation (owner-acquisition funnel phase 3 — see
+ * lead-invitation-service.ts). `lead_token` is mandatory: this is not a
+ * public self-signup endpoint, it completes a specific admin-approved
+ * `platform_lead_invitations` token. `name`/`phone` are deliberately absent
+ * — the handler derives them from the lead record, never from the client, so
+ * an activation request can't claim a different identity than the lead it's
+ * completing. `email` is optional here because it's only required when the
+ * lead has no `google_email` on file; the handler enforces that.
+ */
 export const OwnerSignupSchema = z.object({
-  email:      z.string().trim().email(),
-  password:   z.string().min(8).max(64),
-  name:       z.string().min(2),
-  phone:      z.string().min(8).max(20),
-  lead_token: z.string().min(1).optional(), // owner-acquisition funnel phase 2 — see lead-invitation-service.ts
+  lead_token:      z.string().min(1),
+  email:           z.string().trim().email().optional(),
+  password:        z.string().min(8).max(64),
+  confirm_password: z.string().min(8).max(64),
+}).refine((data) => data.password === data.confirm_password, {
+  message: "Passwords do not match",
+  path: ["confirm_password"],
 });
 
 /**

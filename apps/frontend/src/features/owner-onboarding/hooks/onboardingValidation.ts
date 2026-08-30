@@ -11,8 +11,6 @@ import type { OnboardingScreen, OwnerOnboardingData, OwnerOnboardingKyc } from '
  * Returns the message to show, or null when the step is satisfied.
  */
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 /** Accepts 10 local digits, optionally with +91/91. */
 export function isValidIndianMobile(raw: string): boolean {
   const digits = raw.replace(/\D/g, '');
@@ -38,14 +36,6 @@ export function validateOnboardingStep(
       if (missing.length === 0) return null;
       return `Upload your ${missing.join(' and ')} to continue — we verify these before your hostel goes live.`;
     }
-
-    case 'account':
-      // Credentials themselves are checked in useOnboardingSubmission, which
-      // owns the password fields.
-      if (data.name.trim().length < 2) return 'Tell us your name first.';
-      if (!isValidIndianMobile(data.mobile)) return 'Enter a valid 10-digit Indian mobile number.';
-      if (!EMAIL_RE.test(data.email.trim())) return 'Enter a valid email address.';
-      return null;
 
     default:
       return null;

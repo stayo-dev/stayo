@@ -9,8 +9,7 @@ import {
 import { validateOnboardingStep } from './onboardingValidation';
 
 /**
- * Onboarding covers only what onboarding alone can do: create the account and
- * verify the owner.
+ * Onboarding covers only what onboarding alone can do: KYC.
  *
  * Hostel creation used to live here as eight further screens (`create`,
  * `location`, `details`, `floors`, `rooms`, `beds`, `review`, `publish`).
@@ -19,8 +18,16 @@ import { validateOnboardingStep } from './onboardingValidation';
  * rooms at different prices, so the building was wrong on arrival and had to
  * be corrected room by room anyway. That work now happens in Add Hostel, when
  * the owner chooses to do it. See ADR-066.
+ *
+ * Account creation (name/mobile/OTP/email/password) used to live here too, as
+ * an `account` step reachable with no token at all — anyone who typed
+ * `/onboarding` got a working self-signup form. That step moved to
+ * `/activation/:token` (OwnerActivationPage), which the backend validates
+ * against a specific admin-approved lead invitation before creating any
+ * account; this wizard is now only reachable by an already-authenticated
+ * owner (see ProtectedRoute in OwnerJourneyRoutes.tsx).
  */
-export const ONBOARDING_SCREENS = ['welcome', 'account', 'kyc', 'success'] as const;
+export const ONBOARDING_SCREENS = ['welcome', 'kyc', 'success'] as const;
 
 export type OnboardingScreen = (typeof ONBOARDING_SCREENS)[number];
 
@@ -47,14 +54,8 @@ const INITIAL_DATA: OwnerOnboardingData = {
   city: '',
 };
 
-/**
- * Step/data state for the onboarding wizard.
- *
- * `initialData` (owner-acquisition funnel phase 2): optional prefill from a
- * lead-activation link (OwnerLeadInvitePage → router state). Absent for a
- * normal, non-lead-originated visit — behavior is unchanged in that case.
- */
-export function useOwnerOnboardingState(initialData?: Partial<OwnerOnboardingData>) {
+/** Step/data state for the onboarding wizard. */
+export function useOwnerOnboardingState() {
   // Restore synchronously on first render so the wizard never flashes empty
   // fields before filling them in.
   const restoredRef = useRef<OnboardingDraft | null>(
@@ -62,17 +63,13 @@ export function useOwnerOnboardingState(initialData?: Partial<OwnerOnboardingDat
   );
   const restored = restoredRef.current;
 
-  // A lead-activation prefill is fresher intent than an old local draft, so it
-  // wins on the fields it actually provides.
   const [step, setStep] = useState(() => (isDraftResumable(restored) ? restored!.step : 0));
   const [data, setData] = useState<OwnerOnboardingData>(() => ({
     ...INITIAL_DATA,
     ...(isDraftResumable(restored) ? restored!.data : {}),
-    ...initialData,
   }));
   const [draftRestored, setDraftRestored] = useState(() => isDraftResumable(restored));
   const [kyc, setKyc] = useState<OwnerOnboardingKyc>({ aadhaar: false, pan: false, photo: false });
-  const [otpOpen, setOtpOpen] = useState(false);
 
   const screenId = ONBOARDING_SCREENS[step];
 
@@ -90,7 +87,7 @@ export function useOwnerOnboardingState(initialData?: Partial<OwnerOnboardingDat
   const startOver = () => {
     clearStoredDraft();
     setDraftRestored(false);
-    setData({ ...INITIAL_DATA, ...initialData });
+    setData({ ...INITIAL_DATA });
     setStep(0);
     if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
   };
@@ -110,25 +107,13 @@ export function useOwnerOnboardingState(initialData?: Partial<OwnerOnboardingDat
   /** Why the current step can't be left yet, or null when it's complete. */
   const currentStepError = () => validateOnboardingStep(screenId, data, kyc);
 
-  const next = () => {
-    if (screenId === 'account') {
-      setOtpOpen(true);
-      return;
-    }
-    go(step + 1);
-  };
-
-  const verifyOtp = () => {
-    setOtpOpen(false);
-    go(step + 1);
-  };
+  const next = () => go(step + 1);
 
   const hostelDisplay = data.hostelName.trim() || 'Your Hostel';
 
   const continueLabel = useMemo(() => {
     const labels: Record<OnboardingScreen, string> = {
       welcome: 'Begin the journey',
-      account: 'Continue',
       kyc: 'Continue',
       success: 'Go to dashboard',
     };
@@ -143,12 +128,9 @@ export function useOwnerOnboardingState(initialData?: Partial<OwnerOnboardingDat
     setD,
     kyc,
     setKyc,
-    otpOpen,
-    setOtpOpen,
     go,
     back,
     next,
-    verifyOtp,
     hostelDisplay,
     continueLabel,
     canBack: step > 0 && screenId !== 'success',

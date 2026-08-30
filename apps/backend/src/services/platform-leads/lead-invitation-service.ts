@@ -37,6 +37,28 @@ function addDays(days: number) {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 }
 
+/**
+ * Shared error-code -> HTTP-status mapping for the INVALID/EXPIRED/
+ * ALREADY_ACTIVE/CANCELLED errors thrown by getInvitationContext and
+ * activateInvitationForOwner below. Used by both the GET context route and
+ * the owner-signup/activation route so the two never drift apart.
+ */
+export function mapInvitationError(error: any) {
+  const rawMessage = String(error?.message || "Failed to process activation");
+  const [maybeCode, ...rest] = rawMessage.split(":");
+  const code = rest.length ? maybeCode.trim() : "ACTIVATION_ERROR";
+  const message = rest.length ? rest.join(":").trim() : rawMessage;
+  const statusMap: Record<string, number> = {
+    INVALID: 410,
+    EXPIRED: 410,
+    ALREADY_ACTIVE: 409,
+    CANCELLED: 410,
+    NOT_FOUND: 404,
+    INTERNAL_ERROR: 500,
+  };
+  return { message, code, status: statusMap[code] || 500 };
+}
+
 export class LeadInvitationService {
   /**
    * Approve a lead: generate + persist a token, send the activation link,
@@ -60,7 +82,7 @@ export class LeadInvitationService {
       data: { lead_id: leadId, token, status: "PENDING", expires_at: expiresAt },
     });
 
-    const activationLink = frontendUrl(`/owner-invite/${token}`);
+    const activationLink = frontendUrl(`/activation/${token}`);
     const delivery = await this.dispatchActivationNotification(leadId, lead, activationLink, token);
 
     if (delivery.whatsapp_sent || delivery.email_sent) {
@@ -151,6 +173,7 @@ export class LeadInvitationService {
       name: lead.name,
       hostel_name: lead.hostel_name,
       phone: lead.phone,
+      phone_verified: lead.phone_verified,
       google_email: lead.google_email,
       city: lead.city,
     };
