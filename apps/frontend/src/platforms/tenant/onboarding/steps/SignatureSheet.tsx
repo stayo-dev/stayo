@@ -1,5 +1,17 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
+import {
+  SIGNATURE_ACCEPTED_TYPES,
+  SIGNATURE_MAX_EDGE,
+  applyInkMask,
+  fitWithin,
+  flattenIllumination,
+  isPlausibleSignature,
+  luminanceHistogram,
+  otsuThreshold,
+  toLuminance,
+  validateSignatureFile,
+} from '@shared/ui/inputs/signatureImage';
 import '../onboarding.css';
 
 /**
@@ -52,6 +64,9 @@ export function SignatureSheet({ mode, name: initialName, relation: initialRelat
   const [name, setName] = useState(initialName);
   const [relation, setRelation] = useState(initialRelation);
   const [scribbled, setScribbled] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -129,6 +144,90 @@ export function SignatureSheet({ mode, name: initialName, relation: initialRelat
     const { w, h } = sizeRef.current;
     if (ctx) ctx.clearRect(0, 0, w + 4, h + 4);
     setScribbled(false);
+    setUploadError(null);
+  };
+
+  /**
+   * A photograph of a signature on paper, cleaned to ink and drawn onto this
+   * sheet's own canvas — so `scribbled`, `canApply` and `exportBlob` all behave
+   * exactly as they do for a drawn signature and nothing downstream can tell
+   * the two apart.
+   *
+   * The arithmetic is the shared, tested `signatureImage.ts` the owner pad
+   * uses: illumination flattened on a coarse grid first (a phone shadow across
+   * one corner otherwise thresholds into a solid black block), then a threshold
+   * chosen by Otsu's method from the photo's own histogram. Runs here rather
+   * than on a server — no key, no upload, no round trip. See ADR-140.
+   */
+  const importPhoto = async (file: File) => {
+    const check = validateSignatureFile({ type: file.type, size: file.size });
+    if (!check.ok) {
+      setUploadError(check.reason ?? 'That file will not work.');
+      return;
+    }
+
+    setUploading(true);
+    setUploadError(null);
+    const sourceUrl = URL.createObjectURL(file);
+
+    try {
+      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('decode failed'));
+        img.src = sourceUrl;
+      });
+
+      const { width, height } = fitWithin(
+        image.naturalWidth || image.width,
+        image.naturalHeight || image.height,
+        SIGNATURE_MAX_EDGE,
+      );
+
+      const work = document.createElement('canvas');
+      work.width = width;
+      work.height = height;
+      const workCtx = work.getContext('2d', { willReadFrequently: true });
+      if (!workCtx) throw new Error('no 2d context');
+      workCtx.drawImage(image, 0, 0, width, height);
+
+      const frame = workCtx.getImageData(0, 0, width, height);
+      const lum = toLuminance(frame.data);
+      const flat = flattenIllumination(lum, width, height);
+      const { inkPixels, totalPixels } = applyInkMask(frame.data, flat, otsuThreshold(luminanceHistogram(flat)));
+
+      if (!isPlausibleSignature(inkPixels, totalPixels)) {
+        setUploadError("We couldn't find a signature in that photo. Try again on a plain sheet in even light.");
+        return;
+      }
+
+      // Paper becomes transparent rather than white, so the sheet's dashed
+      // baseline still shows through under the signature. `exportBlob` flattens
+      // onto white afterwards, exactly as it does for a drawn one.
+      for (let i = 0; i < frame.data.length; i += 4) {
+        if (frame.data[i] === 255) frame.data[i + 3] = 0;
+      }
+      workCtx.putImageData(frame, 0, 0);
+
+      const el = canvasRef.current;
+      const ctx = ctxRef.current;
+      if (!el || !ctx) throw new Error('no canvas');
+
+      // Contain, never stretch: a distorted signature is not the person's.
+      const { w, h } = sizeRef.current;
+      ctx.clearRect(0, 0, w + 4, h + 4);
+      const scale = Math.min((w * 0.86) / width, (h * 0.7) / height);
+      const drawW = width * scale;
+      const drawH = height * scale;
+      ctx.drawImage(work, (w - drawW) / 2, (h - drawH) / 2, drawW, drawH);
+
+      setScribbled(true);
+    } catch {
+      setUploadError('That photo could not be read. Try a different one.');
+    } finally {
+      URL.revokeObjectURL(sourceUrl);
+      setUploading(false);
+    }
   };
 
   /** Flatten onto white — the agreement PDF composites this over a light page. */
@@ -234,8 +333,33 @@ export function SignatureSheet({ mode, name: initialName, relation: initialRelat
         <div className="relative flex min-h-0 flex-1 flex-col" style={{ padding: '12px 14px' }}>
           <div className="mb-2 flex items-center justify-between">
             <span className="text-[11px] font-extrabold uppercase tracking-[.05em]" style={{ color: '#7A6F63' }}>
-              Draw your signature
+              Draw or upload
             </span>
+            <div className="flex items-center gap-1.5">
+            <input
+              ref={fileRef}
+              type="file"
+              accept={SIGNATURE_ACCEPTED_TYPES.join(',')}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                // Reset first, so choosing the same file twice still fires.
+                e.target.value = '';
+                if (file) void importPhoto(file);
+              }}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="flex items-center gap-[5px] rounded-full border bg-white font-display text-[11.5px] font-bold disabled:opacity-60"
+              style={{ borderColor: '#E7DDCE', padding: '6px 12px', color: '#A45D44' }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+              </svg>
+              {uploading ? 'Cleaning…' : 'Upload photo'}
+            </button>
             <button
               type="button"
               onClick={clear}
@@ -247,6 +371,7 @@ export function SignatureSheet({ mode, name: initialName, relation: initialRelat
               </svg>
               Clear
             </button>
+            </div>
           </div>
 
           <div
@@ -285,8 +410,12 @@ export function SignatureSheet({ mode, name: initialName, relation: initialRelat
               </div>
             )}
           </div>
-          <div className="mt-2 text-center text-[11px]" style={{ color: '#9A8F84' }}>
-            {existingSignatureUrl && !scribbled ? 'A signature is already on file — draw here to replace it' : 'Use your finger or mouse to sign above the line'}
+          <div className="mt-2 text-center text-[11px]" style={{ color: uploadError ? '#B3261E' : '#9A8F84' }}>
+            {uploadError
+              ? uploadError
+              : existingSignatureUrl && !scribbled
+                ? 'A signature is already on file — draw or upload to replace it'
+                : 'Sign above the line, or upload a photo of your signature on paper'}
           </div>
         </div>
 

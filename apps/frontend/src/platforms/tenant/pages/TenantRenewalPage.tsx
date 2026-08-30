@@ -410,7 +410,10 @@ function SignAgreementSection({
 
         <div className="mt-5 space-y-3 border-t border-border pt-4">
           <label className="text-xs font-bold text-foreground">Your Signature *</label>
-          <SignaturePad onSave={setTenantSigBlob} placeholder="Draw your signature here" />
+          {/* Upload is offered to tenants and guardians as well as owners as of
+              2026-08-30 — see ADR-140, which originally scoped it to owners
+              only and records why that was reversed. */}
+          <SignaturePad onSave={setTenantSigBlob} placeholder="Draw your signature here" allowUpload />
           <div>
             <label className="text-xs font-bold text-foreground">Your Full Name *</label>
             <input
@@ -435,7 +438,7 @@ function SignAgreementSection({
                 Remove
               </button>
             </div>
-            <SignaturePad onSave={setGuardianSigBlob} placeholder="Guardian signs here" />
+            <SignaturePad onSave={setGuardianSigBlob} placeholder="Guardian signs here" allowUpload />
             <div className="grid grid-cols-2 gap-3">
               <input
                 type="text"
