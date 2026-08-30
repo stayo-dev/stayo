@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Clock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Printer } from 'lucide-react';
 import { FOOD_SLOTS, type MealSlotKey } from '@shared/mocks/food';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { stayoToast } from '@shared/ui-patterns/Toast';
@@ -8,6 +8,7 @@ import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { useIsMobile } from '@/app/components/ui/use-mobile';
 import { HostelSwitcher } from '../components/HostelSwitcher';
 import { PublishChecklist } from '../components/schedule/PublishChecklist';
+import { MenuPreviewSheet } from '../components/mealplan/MenuPreviewSheet';
 import { MealTimingsForm } from '../components/timings/MealTimingsForm';
 import { AddFoodPopover } from '../components/mealplan/AddFoodPopover';
 import { TrashDropZone } from '../components/mealplan/TrashDropZone';
@@ -122,6 +123,7 @@ export function MealPlanPage() {
 
   const [copyTarget, setCopyTarget] = useState<{ day: DayKey; slot: MealSlotKey } | null>(null);
   const [timingsOpen, setTimingsOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [confirmPublishOpen, setConfirmPublishOpen] = useState(false);
 
   // Unsaved-changes navigation guard (ADR-123) — wraps every in-app exit
@@ -280,13 +282,25 @@ export function MealPlanPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-[18px] border border-border bg-card px-3.5 py-3">
         <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Meal Timings</span>
-        <button
-          type="button"
-          onClick={() => setTimingsOpen(true)}
-          className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[11.5px] font-semibold text-foreground"
-        >
-          <Clock className="h-3.5 w-3.5" /> Edit timings
-        </button>
+        <div className="flex items-center gap-2">
+          {/* The point of drafting a week is the sheet on the canteen wall, so
+              the way to that sheet lives next to the plan itself rather than
+              behind a menu. See ADR-144. */}
+          <button
+            type="button"
+            onClick={() => setPreviewOpen(true)}
+            className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[11.5px] font-semibold text-foreground"
+          >
+            <Printer className="h-3.5 w-3.5" /> Preview &amp; print
+          </button>
+          <button
+            type="button"
+            onClick={() => setTimingsOpen(true)}
+            className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[11.5px] font-semibold text-foreground"
+          >
+            <Clock className="h-3.5 w-3.5" /> Edit timings
+          </button>
+        </div>
       </div>
 
       {isMobile ? (
@@ -363,6 +377,17 @@ export function MealPlanPage() {
       {copyTarget && (
         <CopyToDaysSheet open={Boolean(copyTarget)} onClose={() => setCopyTarget(null)} sourceDay={copyTarget.day} onConfirm={handleCopyToDays} />
       )}
+
+      <MenuPreviewSheet
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        grid={schedule.weekGrid}
+        hostelId={hostelId}
+        hostelName={session.hostels.find((h) => h.id === hostelId)?.name ?? 'Your hostel'}
+        month={selectedMonth}
+        monthLabel={formatMonthLabel(selectedMonth)}
+        isDraft={schedule.schedule?.status !== 'PUBLISHED'}
+      />
 
       <BottomSheet open={timingsOpen} onOpenChange={setTimingsOpen} title="Meal Timings">
         <MealTimingsForm

@@ -121,6 +121,9 @@ export default defineConfig({
       'tests/whatsapp-prisma-accessors.test.ts',
       // The receipt's content model — no pdf-lib, no fonts, no I/O.
       'tests/receipt-content.test.ts',
+      // The printed weekly menu's content model. Same split as the receipt —
+      // what it says, decided apart from how it is drawn. ADR-144.
+      'tests/menu-content.test.ts',
       'tests/agreement-content.test.ts',
     ],
     alias: {

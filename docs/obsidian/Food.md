@@ -525,3 +525,14 @@ Two places an owner used to repeat themselves now do it in one tap.
 Neither reintroduces the cross-day swap-dragging removed in §18 ([[Decisions#ADR-114|ADR-114]]) — the owner still builds the week by hand. What is removed is only the repetition of saying the same thing seven times.
 
 **New food item names are title-cased on creation** ([[Decisions#ADR-142|ADR-142]]) via `shared/lib/textFormat.ts`, and the tidied name is shown on the create button before it is saved. Search stays case-insensitive.
+
+## Printable weekly menu (2026-08-29, [[Decisions#ADR-144|ADR-144]])
+
+`GET /api/food/menu-pdf?hostelId=&month=YYYY-MM` — OWNER/ADMIN, owner-scoped, returns PDF bytes. Meal Plan's **Preview & print** shows the week as it will print, then downloads it.
+
+One A4 **landscape** sheet: hostel logo (or monogram) and name in the masthead, a Day column against Breakfast / Lunch / Snacks / Dinner, serving windows in the column headers, and a footer carrying the Stayo mark plus a QR to `/discover/h/<slug>`.
+
+- Content: `lib/pdf/menu-content.ts` — pure, 22 tests. Layout: `menu-template-pdf-lib.ts`. Same split as the receipt.
+- Regenerated from the live schedule on every request; nothing is stored, so no stale copy can exist.
+- A `DRAFT` schedule prints marked as a draft. An unplanned slot prints `—`. A meal switched off in Meal Timings prints no window. The QR appears only when `listing_status` is `PUBLISHED` and a `public_slug` exists.
+- Dish names are title-cased for display ([[Decisions#ADR-142|ADR-142]]) — items created earlier are stored as typed, and the stored value is never rewritten.

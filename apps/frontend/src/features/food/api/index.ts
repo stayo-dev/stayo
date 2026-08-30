@@ -16,6 +16,23 @@ export const foodService = {
     const response = await api.post('/food/menu-items', { hostelId, mealType, name });
     return unwrap(response);
   },
+  /**
+   * The printed weekly menu — A4 landscape, for the kitchen and canteen wall.
+   *
+   * Returns the file itself plus the name the server chose, matching the
+   * owner-exports pattern. Regenerated from the live schedule on every call,
+   * so a menu edited a minute ago prints correctly and no stale copy exists.
+   * See ADR-144.
+   */
+  downloadMenuPdf: async (hostelId: string, month: string): Promise<{ blob: Blob; filename: string }> => {
+    const response = await api.get('/food/menu-pdf', {
+      params: { hostelId, month },
+      responseType: 'blob',
+    });
+    const disposition = String((response.headers as any)?.['content-disposition'] ?? '');
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    return { blob: response.data as Blob, filename: match?.[1] ?? `menu-${month}.pdf` };
+  },
   updateMenuItem: async (id: string, data: { name?: string; isActive?: boolean }) => {
     const response = await api.patch(`/food/menu-items/${id}`, data);
     return unwrap(response);
