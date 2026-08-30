@@ -2314,6 +2314,27 @@ Related: [[Business-Rules]] · [[APIs]] · [[Features]] · ADR-076 · ADR-040
 - **Consequences:** an earlier reading of this bug attributed it to the owner pressing "+ Invite". The DevTools trace showed the failing request was `confirm`, not the invite endpoint — the error payloads are identical because both paths run the same rule, which is exactly why the first diagnosis went wrong. The claim-link affordance added in [[Decisions#ADR-150|ADR-150]] remains right and necessary; it was simply pointing at a flow that could not complete.
 - **See:** [[Bugs]], [[Decisions#ADR-136|ADR-136]], [[Decisions#ADR-134|ADR-134]], [[Decisions#ADR-150|ADR-150]]
 
+### ADR-156 — The enquiry screen states answers instead of asking questions (2026-08-30)
+
+**Context.** "Send an enquiry" presented five sections — move-in date, duration, preferred room, message, phone verification — each with its own uppercase heading, all at the same visual weight, with the send button below the fold. A first-time seeker read it as a form to complete.
+
+It was not one. At the API (`POST /api/discover/enquiries`) **every field except `slug` is optional**: `move_in_date`, `duration_months`, `room_capacity`, `message`, `preferred_floor_id`, `preferred_room_id`. And every one already had a value on screen. So a seeker was being asked five questions that had already been answered, and the one thing genuinely required — verifying a phone, once — sat inline as a sixth block *before* they had done anything, reading as a precondition.
+
+The loudest element was the least necessary: `RoomPreferenceGrid`'s floor tabs, room chips and three-state colour legend, for a preference that is explicitly not a reservation.
+
+**Decision.** The screen becomes a **summary of what will be sent**, not a form.
+
+1. **Two rows state the current answers** — "Moving in", "Staying" — each opening a sheet on tap. A stated value is a correction to make, not a task to complete, which is what lets a seeker who agrees with the defaults send in one tap.
+2. **Everything optional moves behind one line.** Room preference and note live in a single sheet. Once used, the line states what was added, so it never has to be opened to check.
+3. **Phone verification becomes what the send button opens**, at the moment it is needed. Previously the page changed shape based on `needsPhoneVerification` and *two different elements owned submission* depending on a state the seeker could not see. Now one button always sends, and the pure `sendAction()` decides between `sign_in`, `verify_phone` and `submit`.
+4. **Move-in defaults to "Flexible", not today.** The old default asserted a move-in date on the seeker's behalf, and an owner reads "moving in today" very differently from "flexible". `null` is sent as no `move_in_date` at all, which the API already accepts.
+
+**Consequences.** A seeker with a verified number sends in **one tap**. A first-time seeker taps send → number → code. The verification logic itself is untouched — `enquiryPhoneVerification.ts` and its 18 tests are unchanged, and only where it renders moved.
+
+Owners now receive some enquiries with no move-in date, where previously every enquiry carried one (often today's, by default rather than intent). That is a truer signal, but it is a change to what the owner's inbox shows — see [[TODO]] for surfacing "Flexible" well on the owner side.
+
+Labels are the pure `enquirySummary.ts` (20 tests), per this repo's node-only frontend test rule. See [[Features]], [[Changelog]].
+
 ### ADR-155 — A claimed tenancy enters onboarding on its session, and "activation complete" stops meaning "tenancy is live" (2026-08-30)
 
 **Context.** Claiming ([[Decisions#ADR-134]]) links an owner-managed tenancy to

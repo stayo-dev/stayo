@@ -167,6 +167,16 @@ When a tenant enters their guardian's number during activation and verifies it, 
 - **Notes:** Full governance rule, route list, and the reasoning for *not* reusing `ChangeManagementFacade` are in [[Business-Rules]] and [[Decisions]] ADR-069 (+ its same-day amendment) — read those before touching either direction of `change_requests`. Personal Information shows 5 identity rows + a "Government ID" section (Aadhaar routes to the document-upload flow instead of a text field; PAN is a plain text field). Emergency Contact now correctly uses `guardian_name`/`guardian_relation`/`guardian_phone`/`phone_3` instead of the earlier mislabeled `emergency_contact`-as-name bug. Document upload is a real inline `<input type="file">` (upload-icon pill) instead of a navigation away from the themed Profile tab. **Verified live end-to-end both passes**, not just via build: direct fields (name, DOB, gender, blood group, nationality, PAN, guardian details, academic fields) save immediately with no reason prompt; email/phone changes require a reason, show a pending-approval banner, and only take effect after the dev test owner approves via `/owner/profile-requests` (confirmed via UI re-check, not just a DB read, this pass). Two pre-existing bugs unrelated to this feature were found and fixed while verifying — see [[Bugs]].
 - See [[Changelog]].
 
+### Sending an enquiry takes one tap (2026-08-30)
+
+The enquiry screen was five headed sections at equal weight — move-in, duration, preferred room, message, phone — with the send button below the fold. Every field except the hostel is optional at the API and all of them were pre-filled, so the screen asked five questions it had already answered.
+
+It now states what will be sent rather than asking for it: two rows ("Moving in", "Staying") that open sheets on tap, one line holding everything optional, and a single button that always sends. A seeker whose number is already verified sends in **one tap**; a first-time seeker taps send, enters their number, then the code.
+
+Move-in reads **"Flexible"** until chosen, and sends no date — the previous default asserted "today" on the seeker's behalf.
+
+See [[Decisions#ADR-156|ADR-156]], [[Changelog]].
+
 ### Claiming an account leads into onboarding, not around it (2026-08-30)
 
 A tenant claiming an owner-managed tenancy ([[Decisions#ADR-134|ADR-134]]) proved their phone, linked their account and settled their ledger — and was never asked for their identity details, ID documents, guardian contacts, or a signature on the residency agreement. They landed on the dashboard as a fully active resident with none of the paperwork every self-serve tenant provides.

@@ -16,6 +16,13 @@ The Explore "Already staying at a hostel?" prompt was removed — see [[Changelo
 - [ ] **Surface the waiting tenancy at enquiry time instead.** Since [[Decisions#ADR-078|ADR-078]] a seeker verifies their number when they send their first enquiry, and `verifyOtp` writes `phone_verified`/`mobile_verified` on every profile matching it. At that moment the backend can look up an `OWNER_MANAGED` tenancy on that number and tell them it is waiting.
 - [ ] **Decide whether that can skip the claim OTP.** It should not be assumed. `TENANCY_CLAIM` is deliberately absent from `SKIPPABLE_OTP_PURPOSES` ([[Business-Rules]]) and the claim consumes a single-use proof, because claiming transfers a financial record. Reusing an enquiry-time verification means accepting a *stale* proof of possession — a real weakening of a deliberate control, and a product/security call rather than a refactor. An intermediate option is to keep the OTP but pre-fill the number and skip straight to the tenancy, so the ceremony is one tap rather than a flow.
 
+## An enquiry can now arrive with no move-in date (2026-08-30)
+
+[[Decisions#ADR-156|ADR-156]] made the seeker's move-in date default to "Flexible" and send nothing, rather than defaulting to today. The field was always optional at the API, but in practice every enquiry carried a date, so owner-side surfaces have never had to render its absence.
+
+- [ ] **Check every owner-side surface that shows an enquiry's move-in date** renders a missing one as "Flexible" rather than blank, "Invalid date", or today. The owner enquiry list/detail, the lead funnel, and any WhatsApp notification template that interpolates it.
+- [ ] **Decide whether "Flexible" should sort differently** in the owner's enquiry queue — a seeker with no date is not necessarily less urgent than one moving in next month.
+
 ## Agreement PDF — legal review outstanding (2026-08-28)
 
 - [ ] **Have a lawyer review the standard clauses** added in `lib/pdf/agreement-content.ts` (entire agreement, amendment, severability, governing law and jurisdiction, stamp duty). They are conventional neutral wording chosen to make the document structurally complete, not drafted or reviewed by counsel.
