@@ -26,3 +26,29 @@
     font-size: 16px;
   }
 }
+
+/**
+ * Chrome paints an autofilled field pale blue (`#e8f0fe`) and overrides the
+ * text colour with it, so a remembered name or password arrives in a colour
+ * from another product — most visibly on the tenant claim flow, where two
+ * fields autofill side by side under a Stayo masthead.
+ *
+ * There is no property that turns it off. The accepted technique is an inset
+ * box-shadow large enough to cover the field, since Chrome does not override
+ * shadows, plus `-webkit-text-fill-color` for the text itself. The long
+ * transition delay stops the blue flashing in before the shadow applies.
+ *
+ * Unlayered, like the zoom rule above, so it outranks Tailwind's layered
+ * background utilities without `!important`.
+ */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: var(--foreground);
+  -webkit-box-shadow: 0 0 0 1000px var(--card) inset;
+  box-shadow: 0 0 0 1000px var(--card) inset;
+  transition: background-color 5000s ease-in-out 0s;
+  caret-color: var(--foreground);
+}

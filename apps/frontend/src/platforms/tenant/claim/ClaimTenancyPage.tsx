@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useState, type Dispatch } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, CheckCircle2, ChevronLeft } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, ChevronLeft, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@context/AuthContext';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { StayoLoader } from '@shared/ui/brand';
@@ -24,6 +24,7 @@ import {
 } from './claimSteps';
 import { groupRentMonths, groupRangeLabel } from './rentMonthGroups';
 import { APP_SURFACE } from '@shared/ui/surface';
+import { passwordStrength } from '../onboarding/steps/passwordPolicy';
 
 /**
  * Thin renderer over `claimSteps.ts`'s pure step machine. This component
@@ -270,7 +271,7 @@ function PhoneStep({ state, dispatch, onSubmit }: StepProps & { onSubmit: () => 
         type="button"
         disabled={!canSendOtp(state.phone) || state.submitting}
         onClick={onSubmit}
-        className="mt-5 w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+        className="mt-5 w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-transform active:scale-[0.99] disabled:opacity-50"
       >
         {state.submitting ? <StayoLoader size="sm" /> : 'Send code'}
       </button>
@@ -295,7 +296,7 @@ function OtpStep({ state, dispatch, onSubmit, onResend }: StepProps & { onSubmit
         inputMode="numeric"
         autoFocus
         maxLength={6}
-        className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-center text-lg tracking-[0.4em] text-foreground outline-none focus:ring-2 focus:ring-accent"
+        className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-center text-lg tracking-[0.4em] text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
         placeholder="——————"
         value={state.otp}
         onChange={(e) => dispatch({ type: 'OTP_CHANGED', otp: e.target.value.replace(/\D/g, '').slice(0, 6) })}
@@ -304,7 +305,7 @@ function OtpStep({ state, dispatch, onSubmit, onResend }: StepProps & { onSubmit
         type="button"
         disabled={!canVerifyOtp(state.otp) || state.submitting}
         onClick={onSubmit}
-        className="mt-5 w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+        className="mt-5 w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-transform active:scale-[0.99] disabled:opacity-50"
       >
         {state.submitting ? <StayoLoader size="sm" /> : 'Verify'}
       </button>
@@ -380,6 +381,9 @@ const ACK_LABELS: Record<AcknowledgementKey, string> = {
 
 function ConfirmStep({ state, dispatch, onSubmit }: StepProps & { onSubmit: () => void }) {
   const tenancy = selectedTenancy(state);
+  // Reveals both fields at once: they are meant to be identical, so hiding one
+  // while showing the other helps nobody.
+  const [showPassword, setShowPassword] = useState(false);
   if (!tenancy) return null;
   const canGoBack = state.tenancies.length > 1;
 
@@ -429,9 +433,12 @@ function ConfirmStep({ state, dispatch, onSubmit }: StepProps & { onSubmit: () =
       <div className="mt-4 space-y-2.5">
         {REQUIRED_ACKNOWLEDGEMENTS.map((key) => (
           <label key={key} className="flex items-start gap-2.5 text-sm text-foreground">
+            {/* `accent-primary` paints the native control in Warm Clay. These
+                were browser blue on a screen whose whole job is to look like
+                Stayo — five of them, above the fold. */}
             <input
               type="checkbox"
-              className="mt-0.5 h-4 w-4 shrink-0"
+              className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
               checked={state.acknowledgements[key]}
               onChange={(e) => dispatch({ type: 'ACK_TOGGLED', key, value: e.target.checked })}
             />
@@ -446,7 +453,7 @@ function ConfirmStep({ state, dispatch, onSubmit }: StepProps & { onSubmit: () =
       <input
         id="claim-signature"
         type="text"
-        className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-accent"
+        className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
         placeholder="Your full name"
         value={state.typedSignatureName}
         onChange={(e) => dispatch({ type: 'FIELD_CHANGED', field: 'typedSignatureName', value: e.target.value })}
@@ -457,29 +464,71 @@ function ConfirmStep({ state, dispatch, onSubmit }: StepProps & { onSubmit: () =
           <label className="mt-4 block text-sm font-medium text-foreground" htmlFor="claim-password">
             Create a password
           </label>
-          <input
-            id="claim-password"
-            type="password"
-            autoComplete="new-password"
-            className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-accent"
-            placeholder="At least 8 characters"
-            value={state.password}
-            onChange={(e) => dispatch({ type: 'FIELD_CHANGED', field: 'password', value: e.target.value })}
-          />
+          <div className="relative mt-1.5">
+            <input
+              id="claim-password"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="new-password"
+              className="w-full rounded-xl border border-border bg-card px-3 py-2.5 pr-11 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
+              placeholder="At least 8 characters"
+              value={state.password}
+              onChange={(e) => dispatch({ type: 'FIELD_CHANGED', field: 'password', value: e.target.value })}
+            />
+            {/* Someone choosing a password they will use for years should be
+                able to see what they typed, rather than typing it twice
+                blind. */}
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted-foreground"
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+
+          {/* The same meter the tenant activation step uses, so a resident who
+              has seen one recognises the other. */}
+          {state.password.length > 0 && (
+            <>
+              <div className="mt-2 h-[5px] overflow-hidden rounded-full bg-muted">
+                <div
+                  className={`h-full rounded-full transition-all ${passwordStrength(state.password).color}`}
+                  style={{ width: passwordStrength(state.password).width }}
+                />
+              </div>
+              <p className={`mt-1.5 text-[11.5px] font-bold ${passwordStrength(state.password).textColor}`}>
+                Password strength: {passwordStrength(state.password).label}
+              </p>
+              {state.password.length < 8 && (
+                <p className="mt-0.5 text-[11.5px] text-muted-foreground">
+                  {8 - state.password.length} more character{8 - state.password.length === 1 ? '' : 's'} to go
+                </p>
+              )}
+            </>
+          )}
           <label className="mt-3 block text-sm font-medium text-foreground" htmlFor="claim-confirm-password">
             Confirm password
           </label>
           <input
             id="claim-confirm-password"
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             autoComplete="new-password"
-            className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-accent"
+            className="mt-1.5 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
             placeholder="Re-enter your password"
             value={state.confirmPassword}
             onChange={(e) => dispatch({ type: 'FIELD_CHANGED', field: 'confirmPassword', value: e.target.value })}
           />
-          {state.confirmPassword.length > 0 && state.password !== state.confirmPassword && (
-            <p className="mt-1.5 text-xs text-destructive">Passwords don't match yet.</p>
+          {/* Says when it matches, not only when it does not. Confirming a
+              password you cannot see is guesswork until something says so. */}
+          {state.confirmPassword.length > 0 && (
+            state.password === state.confirmPassword ? (
+              <p className="mt-1.5 flex items-center gap-1 text-xs font-semibold text-success">
+                <Check className="h-3.5 w-3.5" strokeWidth={3} /> Passwords match
+              </p>
+            ) : (
+              <p className="mt-1.5 text-xs text-destructive">Passwords don't match yet.</p>
+            )
           )}
           <p className="mt-1.5 text-xs text-muted-foreground">You'll use this to sign in going forward.</p>
         </>
@@ -493,7 +542,7 @@ function ConfirmStep({ state, dispatch, onSubmit }: StepProps & { onSubmit: () =
           <input
             id="claim-name"
             type="text"
-            className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-accent"
+            className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
             value={state.name}
             onChange={(e) => dispatch({ type: 'FIELD_CHANGED', field: 'name', value: e.target.value })}
           />
@@ -505,7 +554,7 @@ function ConfirmStep({ state, dispatch, onSubmit }: StepProps & { onSubmit: () =
           <input
             id="claim-email"
             type="email"
-            className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-accent"
+            className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
             value={state.email}
             onChange={(e) => dispatch({ type: 'FIELD_CHANGED', field: 'email', value: e.target.value })}
           />
@@ -519,7 +568,7 @@ function ConfirmStep({ state, dispatch, onSubmit }: StepProps & { onSubmit: () =
         type="button"
         disabled={!canConfirm(state) || state.submitting}
         onClick={onSubmit}
-        className="mt-5 w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+        className="mt-5 w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-transform active:scale-[0.99] disabled:opacity-50"
       >
         {state.submitting ? <StayoLoader size="sm" /> : "Review what's on record"}
       </button>
@@ -700,7 +749,7 @@ function ReviewStep({
             type="button"
             disabled={state.submitting}
             onClick={onAccept}
-            className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+            className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-transform active:scale-[0.99] disabled:opacity-50"
           >
             {state.submitting ? <StayoLoader size="sm" /> : 'This looks right'}
           </button>
@@ -716,7 +765,7 @@ function ReviewStep({
           <textarea
             id="claim-dispute-note"
             rows={3}
-            className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-accent"
+            className="mt-1.5 w-full rounded-xl border border-border px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
             placeholder="e.g. I never got the March cash payment marked here"
             value={state.disputeNote}
             onChange={(e) => dispatch({ type: 'DISPUTE_NOTE_CHANGED', note: e.target.value })}
@@ -737,7 +786,7 @@ function ReviewStep({
               type="button"
               disabled={!canSubmitDispute(state) || state.submitting}
               onClick={onSubmitDispute}
-              className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+              className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-transform active:scale-[0.99] disabled:opacity-50"
             >
               {state.submitting ? <StayoLoader size="sm" /> : 'Continue'}
             </button>
@@ -753,7 +802,7 @@ function DoneStep({ state, onEnter }: { state: ReturnType<typeof initialClaimSta
   if (!state.result) return null;
   return (
     <div className="text-center">
-      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-accent/10 text-accent">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-success/10 text-success">
         <CheckCircle2 className="h-7 w-7" />
       </div>
       <h1 className="mt-4 text-xl font-bold text-foreground">You're in</h1>
@@ -773,7 +822,7 @@ function DoneStep({ state, onEnter }: { state: ReturnType<typeof initialClaimSta
           setEntering(true);
           onEnter();
         }}
-        className="mt-5 w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+        className="mt-5 w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-transform active:scale-[0.99] disabled:opacity-50"
       >
         {entering ? <StayoLoader size="sm" /> : 'Continue'}
       </button>
