@@ -4,7 +4,7 @@ import { hubGroups, visibleAttention, MAX_ATTENTION_ROWS } from './hubSections';
 describe('hubGroups', () => {
   it('groups every destination under a heading in the owner\'s words', () => {
     const groups = hubGroups();
-    expect(groups.map((g) => g.label)).toEqual(['Your hostel', 'Your account', 'Support']);
+    expect(groups.map((g) => g.label)).toEqual(['Your account', 'Support']);
   });
 
   it('carries a label and a route per row, and nothing else', () => {
@@ -17,19 +17,23 @@ describe('hubGroups', () => {
     }
   });
 
-  it('keeps every per-hostel setting reachable while the hostel Settings tab does not exist', () => {
-    // Moving these into the drilldown is Piece C. Until then, removing them
-    // from here would leave rent, agreements and reminders with no home.
+  it('holds nothing about a hostel — those live on the hostel itself', () => {
+    // Hostels are managed from Home. A second hostel section here made an
+    // owner guess which of two places a setting lived in, and let a
+    // multi-hostel owner edit the wrong hostel's rules. See
+    // hostelSettingsSections, which now owns all of these.
     const routes = hubGroups().flatMap((g) => g.rows).map((r) => r.route);
-    for (const needed of [
+    for (const moved of [
+      '/owner/more/hostel',
       '/owner/more/configuration/finance',
       '/owner/more/configuration/agreements',
       '/owner/more/configuration/notifications',
       '/owner/more/configuration/automation',
-      '/owner/more/configuration/account',
     ]) {
-      expect(routes).toContain(needed);
+      expect(routes).not.toContain(moved);
     }
+    // Account and security is owner-level and stays.
+    expect(routes).toContain('/owner/more/configuration/account');
   });
 
   it('has no duplicate rows or routes', () => {

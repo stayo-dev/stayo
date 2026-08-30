@@ -50,23 +50,16 @@ export function visibleAttention(items: HubAttentionItem[] | undefined): HubAtte
 /**
  * Everything the hub links to, in the order it is shown.
  *
- * Per-hostel settings still live under `/owner/more/configuration/*`. The
- * approved structure moves them into the hostel's own Settings tab, but that
- * tab does not exist yet — moving them now would leave rent, agreements and
- * reminders with no home at all. See the spec's decomposition.
+ * **No hostel section.** Hostels are managed from Home, and everything
+ * configurable about one now lives on that hostel's own Settings tab
+ * (`/owner/hostels/:id/settings`). Configure holding a second hostel section
+ * made an owner guess which of two places a setting lived in, and let a
+ * multi-hostel owner edit one hostel's rules while a different hostel's name
+ * sat in the header. What is left here is genuinely owner-level: it applies
+ * wherever they go, whichever hostel they are looking at.
  */
 export function hubGroups(): HubGroup[] {
   return [
-    {
-      label: 'Your hostel',
-      rows: [
-        { key: 'hostel', label: 'Hostel details', route: '/owner/more/hostel' },
-        { key: 'finance', label: 'Rent & finance', route: '/owner/more/configuration/finance' },
-        { key: 'agreements', label: 'Agreements', route: '/owner/more/configuration/agreements' },
-        { key: 'notifications', label: 'Reminders', route: '/owner/more/configuration/notifications' },
-        { key: 'automation', label: 'Automation', route: '/owner/more/configuration/automation' },
-      ],
-    },
     {
       label: 'Your account',
       rows: [

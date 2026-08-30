@@ -1,0 +1,60 @@
+import { describe, it, expect } from 'vitest';
+import { hostelSettingsGroups } from './hostelSettingsSections';
+
+const groups = () => hostelSettingsGroups('h-1');
+
+describe('hostelSettingsGroups', () => {
+  it("groups by the owner's question, not by the policy object", () => {
+    // `billing`, `reminders` and `automation` each feed more than one group.
+    // An owner does not know which object holds which field.
+    expect(groups().map((g) => g.label)).toEqual([
+      'This hostel',
+      'Rent & money',
+      'Tenants',
+      'Messages & automation',
+    ]);
+  });
+
+  it('scopes hostel-owned screens to the hostel being viewed', () => {
+    expect(groups().flatMap((g) => g.rows).find((r) => r.key === 'rooms')?.route)
+      .toBe('/owner/hostels/h-1/rooms');
+    expect(hostelSettingsGroups('h-2').flatMap((g) => g.rows).find((r) => r.key === 'rooms')?.route)
+      .toBe('/owner/hostels/h-2/rooms');
+  });
+
+  it('gives every row a label and a hint, so no row is a bare noun', () => {
+    // "Rent rules" tells an owner nothing. The hint is what makes a row
+    // answerable without opening it.
+    for (const row of groups().flatMap((g) => g.rows)) {
+      expect(row.label.length).toBeGreaterThan(0);
+      expect(row.hint.length).toBeGreaterThan(0);
+      expect(row.label).not.toBe(row.hint);
+    }
+  });
+
+  it('carries every setting that used to live in the Configure section', () => {
+    // Configure no longer has a hostel section, so anything missing here is
+    // unreachable rather than merely moved.
+    const routes = groups().flatMap((g) => g.rows).map((r) => r.route);
+    for (const moved of [
+      '/owner/more/hostel',
+      '/owner/more/configuration/finance/rent-schedule',
+      '/owner/more/configuration/finance/late-fees',
+      '/owner/more/configuration/finance/part-payments',
+      '/owner/more/configuration/finance/deposit',
+      '/owner/more/configuration/finance/receipt-footer',
+      '/owner/more/configuration/hostel/tenant-defaults',
+      '/owner/more/configuration/agreements',
+      '/owner/more/configuration/notifications',
+      '/owner/more/configuration/automation',
+    ]) {
+      expect(routes).toContain(moved);
+    }
+  });
+
+  it('has no duplicate rows', () => {
+    const rows = groups().flatMap((g) => g.rows);
+    expect(new Set(rows.map((r) => r.key)).size).toBe(rows.length);
+    expect(new Set(rows.map((r) => r.route)).size).toBe(rows.length);
+  });
+});
