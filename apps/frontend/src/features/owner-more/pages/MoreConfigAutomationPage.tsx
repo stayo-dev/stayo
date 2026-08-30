@@ -1,5 +1,5 @@
+import { useConfiguredHostelId } from '../hooks/useConfiguredHostel';
 import { stayoToast } from '@shared/ui-patterns/Toast';
-import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useHostelPolicy, useUpdateHostelPolicy } from '@features/settings/settingsHooks';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
 import { ConfigWorkflowRow } from '../components/ConfigWorkflowRow';
@@ -24,8 +24,8 @@ import {
  * data model's own shape.
  */
 export function MoreConfigAutomationPage() {
-  const session = useOwnerSession();
-  const hostelId = session.primaryHostelId;
+  
+  const hostelId = useConfiguredHostelId();
   const policyQuery = useHostelPolicy(hostelId);
   const updateMutation = useUpdateHostelPolicy(hostelId ?? '');
 

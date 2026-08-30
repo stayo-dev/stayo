@@ -1,6 +1,6 @@
+import { useConfiguredHostelId } from '../hooks/useConfiguredHostel';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useNavigate } from 'react-router-dom';
-import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useHostelPolicy, useUpdateHostelPolicy } from '@features/settings/settingsHooks';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
 import { ConfigSectionGroup } from '../components/ConfigSectionGroup';
@@ -26,8 +26,8 @@ import {
  */
 export function MoreConfigNotificationsPage() {
   const navigate = useNavigate();
-  const session = useOwnerSession();
-  const hostelId = session.primaryHostelId;
+  
+  const hostelId = useConfiguredHostelId();
   const policyQuery = useHostelPolicy(hostelId);
   const updateMutation = useUpdateHostelPolicy(hostelId ?? '');
 

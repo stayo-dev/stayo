@@ -1,3 +1,4 @@
+import { useConfiguredHostelId } from './useConfiguredHostel';
 import { useQuery } from '@tanstack/react-query';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useHostelPolicy } from '@features/settings/settingsHooks';
@@ -29,7 +30,7 @@ export function useConfigModule(module: 'hostel' | 'finance'): {
   isLoading: boolean;
 } {
   const session = useOwnerSession();
-  const hostelId = session.primaryHostelId;
+  const hostelId = useConfiguredHostelId();
   const policyQuery = useHostelPolicy(hostelId);
   const { bedsTotal, roomsTotal, floorsTotal, isLoading: bedsLoading } = useHostelBedSummary(hostelId);
   const portfolioQuery = useQuery({

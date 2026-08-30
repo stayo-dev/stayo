@@ -1,7 +1,7 @@
+import { useConfiguredHostelId } from '../hooks/useConfiguredHostel';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { stayoToast } from '@shared/ui-patterns/Toast';
-import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useHostelPolicy, useUpdateHostelPolicy } from '@features/settings/settingsHooks';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
 import { SaveBar } from '../components/SaveBar';
@@ -13,8 +13,8 @@ const sectionLabel = 'pl-0.5 text-[11px] font-semibold uppercase tracking-wider 
 /** Configuration > Finance > Receipts > footer — the one real, wired receipt-customization field (policy.receipts.footer). */
 export function MoreConfigReceiptFooterPage() {
   const navigate = useNavigate();
-  const session = useOwnerSession();
-  const hostelId = session.primaryHostelId;
+  
+  const hostelId = useConfiguredHostelId();
   const policyQuery = useHostelPolicy(hostelId);
   const updateMutation = useUpdateHostelPolicy(hostelId ?? '');
 

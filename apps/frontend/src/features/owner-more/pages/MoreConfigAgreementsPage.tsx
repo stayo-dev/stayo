@@ -1,9 +1,9 @@
+import { useConfiguredHostelId } from '../hooks/useConfiguredHostel';
 import { useNavigate } from 'react-router-dom';
 import { FileText } from 'lucide-react';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
 import { ConfigSectionGroup } from '../components/ConfigSectionGroup';
 import { useAgreementTemplate, useAgreementTemplates } from '../hooks/useAgreements';
-import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useHostelPolicy } from '@features/settings/settingsHooks';
 import { deriveAgreementSections } from '../config/agreements';
 
@@ -25,8 +25,8 @@ export function MoreConfigAgreementsPage() {
   const navigate = useNavigate();
   const { templates, isLoading: listLoading } = useAgreementTemplates();
   const { rules, signatureConfigured, isLoading: contentLoading } = useAgreementTemplate();
-  const session = useOwnerSession();
-  const policyQuery = useHostelPolicy(session.primaryHostelId);
+  
+  const policyQuery = useHostelPolicy(useConfiguredHostelId());
 
   const draftCount = templates.filter((t) => t.status !== 'PUBLISHED').length;
   const sections = deriveAgreementSections({

@@ -1,11 +1,11 @@
+import { useConfiguredHostelId } from './useConfiguredHostel';
 import { useQuery } from '@tanstack/react-query';
-import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { configApi } from '../api/configApi';
 
 /** Templates with their issued-agreement counts, for the Templates screen. */
 export function useAgreementTemplates() {
-  const session = useOwnerSession();
-  const hostelId = session.primaryHostelId;
+  
+  const hostelId = useConfiguredHostelId();
 
   const query = useQuery({
     queryKey: ['owner', 'agreement-templates', hostelId],
@@ -23,8 +23,8 @@ export function useAgreementTemplates() {
  * that is what the owner last edited and what they expect to see.
  */
 export function useAgreementTemplate() {
-  const session = useOwnerSession();
-  const hostelId = session.primaryHostelId;
+  
+  const hostelId = useConfiguredHostelId();
 
   const query = useQuery({
     queryKey: ['owner', 'agreement-template', hostelId],

@@ -32,6 +32,17 @@ export interface HostelSettingGroup {
 
 const CONFIG = '/owner/more/configuration';
 
+/**
+ * Every configuration screen must be told which hostel it is editing.
+ *
+ * They all read `session.primaryHostelId` before this — so opening a second
+ * hostel's Settings and changing its late fee edited the *first* hostel's,
+ * with the second hostel's name in the header. `useConfiguredHostelId` reads
+ * this query; without it the fallback silently wins. See that hook.
+ */
+const forHostel = (route: string, hostelId: string) =>
+  hostelId ? `${route}?hostelId=${encodeURIComponent(hostelId)}` : route;
+
 export function hostelSettingsGroups(hostelId: string): HostelSettingGroup[] {
   const hostel = `/owner/hostels/${hostelId}`;
 
@@ -39,32 +50,32 @@ export function hostelSettingsGroups(hostelId: string): HostelSettingGroup[] {
     {
       label: 'This hostel',
       rows: [
-        { key: 'identity', label: 'Name, address & logo', hint: 'What tenants and receipts show', route: '/owner/more/hostel' },
+        { key: 'identity', label: 'Name, address & logo', hint: 'What tenants and receipts show', route: forHostel('/owner/more/hostel', hostelId) },
         { key: 'rooms', label: 'Rooms & beds', hint: 'Floors, rooms and how many share each', route: `${hostel}/rooms` },
       ],
     },
     {
       label: 'Rent & money',
       rows: [
-        { key: 'rent-due', label: 'When rent is due', hint: 'Due day, grace period and when rent is raised', route: `${CONFIG}/finance/rent-schedule` },
-        { key: 'late', label: 'What happens when rent is late', hint: 'Late fees and when they start', route: `${CONFIG}/finance/late-fees` },
-        { key: 'how-they-pay', label: 'How tenants pay', hint: 'Full or part payments, and your UPI', route: `${CONFIG}/finance/part-payments` },
-        { key: 'deposit', label: 'Deposits', hint: 'What you collect at move-in, and whether it comes back', route: `${CONFIG}/finance/deposit` },
-        { key: 'receipts', label: 'Receipts', hint: 'Numbering, GST and what the footer says', route: `${CONFIG}/finance/receipt-footer` },
+        { key: 'rent-due', label: 'When rent is due', hint: 'Due day, grace period and when rent is raised', route: forHostel(`${CONFIG}/finance/rent-schedule`, hostelId) },
+        { key: 'late', label: 'What happens when rent is late', hint: 'Late fees and when they start', route: forHostel(`${CONFIG}/finance/late-fees`, hostelId) },
+        { key: 'how-they-pay', label: 'How tenants pay', hint: 'Full or part payments, and your UPI', route: forHostel(`${CONFIG}/finance/part-payments`, hostelId) },
+        { key: 'deposit', label: 'Deposits', hint: 'What you collect at move-in, and whether it comes back', route: forHostel(`${CONFIG}/finance/deposit`, hostelId) },
+        { key: 'receipts', label: 'Receipts', hint: 'Numbering, GST and what the footer says', route: forHostel(`${CONFIG}/finance/receipt-footer`, hostelId) },
       ],
     },
     {
       label: 'Tenants',
       rows: [
-        { key: 'invite-defaults', label: 'Defaults for new tenants', hint: 'Filled in for you every time you invite someone', route: `${CONFIG}/hostel/tenant-defaults` },
-        { key: 'agreements', label: 'Agreements', hint: 'Your rental agreement, its clauses and versions', route: `${CONFIG}/agreements` },
+        { key: 'invite-defaults', label: 'Defaults for new tenants', hint: 'Filled in for you every time you invite someone', route: forHostel(`${CONFIG}/hostel/tenant-defaults`, hostelId) },
+        { key: 'agreements', label: 'Agreements', hint: 'Your rental agreement, its clauses and versions', route: forHostel(`${CONFIG}/agreements`, hostelId) },
       ],
     },
     {
       label: 'Messages & automation',
       rows: [
-        { key: 'reminders', label: 'Reminders', hint: 'What we send tenants, and on which days', route: `${CONFIG}/notifications` },
-        { key: 'automation', label: 'What Stayo does on its own', hint: 'Raising rent, applying late fees, sending receipts', route: `${CONFIG}/automation` },
+        { key: 'reminders', label: 'Reminders', hint: 'What we send tenants, and on which days', route: forHostel(`${CONFIG}/notifications`, hostelId) },
+        { key: 'automation', label: 'What Stayo does on its own', hint: 'Raising rent, applying late fees, sending receipts', route: forHostel(`${CONFIG}/automation`, hostelId) },
       ],
     },
   ];

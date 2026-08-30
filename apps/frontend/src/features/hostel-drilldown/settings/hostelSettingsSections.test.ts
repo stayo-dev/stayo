@@ -35,7 +35,7 @@ describe('hostelSettingsGroups', () => {
   it('carries every setting that used to live in the Configure section', () => {
     // Configure no longer has a hostel section, so anything missing here is
     // unreachable rather than merely moved.
-    const routes = groups().flatMap((g) => g.rows).map((r) => r.route);
+    const routes = groups().flatMap((g) => g.rows).map((r) => r.route.split('?')[0]);
     for (const moved of [
       '/owner/more/hostel',
       '/owner/more/configuration/finance/rent-schedule',
@@ -49,6 +49,16 @@ describe('hostelSettingsGroups', () => {
       '/owner/more/configuration/automation',
     ]) {
       expect(routes).toContain(moved);
+    }
+  });
+
+  it('tells every configuration screen which hostel it is editing', () => {
+    // Those screens all fell back to the owner's primary hostel. Without this
+    // query, opening a second hostel's Settings and changing its late fee
+    // edited the first hostel's — with the second hostel's name in the header.
+    for (const row of groups().flatMap((g) => g.rows)) {
+      const scoped = row.route.includes('/owner/hostels/h-1/') || row.route.includes('hostelId=h-1');
+      expect(scoped).toBe(true);
     }
   });
 

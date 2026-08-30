@@ -1,5 +1,5 @@
+import { useConfiguredHostelId } from '../hooks/useConfiguredHostel';
 import { CreditCard } from 'lucide-react';
-import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useHostelPolicy } from '@features/settings/settingsHooks';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
 
@@ -13,8 +13,8 @@ const sectionLabel = 'pl-0.5 text-[11px] font-semibold uppercase tracking-wider 
  * "Connect" button, no third-party provider branding.
  */
 export function MoreConfigPaymentGatewayPage() {
-  const session = useOwnerSession();
-  const policyQuery = useHostelPolicy(session.primaryHostelId);
+  
+  const policyQuery = useHostelPolicy(useConfiguredHostelId());
   const upiId = policyQuery.data?.policy?.payments?.upi_id;
 
   return (
