@@ -52,16 +52,25 @@ interface Fonts {
   display: PDFFont;
 }
 
+/**
+ * Poppins and Playfair Display — the Stayo brand pair, the same
+ * `--font-body` / `--font-display` the apps set in `styles/theme.css`.
+ *
+ * The receipt embeds Inter instead, and deliberately: it prints `₹` on every
+ * line and Inter carries U+20B9. This sheet prints no currency at all, so it
+ * is free to use the brand's own body face and should — it is the most public
+ * document the product makes, hanging on a wall for a month at a time.
+ */
 async function loadFonts(pdfDoc: PDFDocument): Promise<Fonts> {
   pdfDoc.registerFontkit(fontkit);
   const [regular, medium, display] = await Promise.all([
-    fs.readFile(path.join(FONT_DIR, "inter-400.ttf")),
-    fs.readFile(path.join(FONT_DIR, "inter-500.ttf")),
+    fs.readFile(path.join(FONT_DIR, "poppins-400.ttf")),
+    fs.readFile(path.join(FONT_DIR, "poppins-500.ttf")),
     fs.readFile(path.join(FONT_DIR, "playfair-700.ttf")),
   ]);
   // Not subset, for the reason the receipt template documents: pdf-lib's
-  // subsetter drops most Latin glyphs from these Inter builds and the page
-  // comes out with letters missing.
+  // subsetter drops most Latin glyphs from these builds and the page comes
+  // out with letters missing.
   return {
     regular: await pdfDoc.embedFont(regular, { subset: false }),
     medium: await pdfDoc.embedFont(medium, { subset: false }),
