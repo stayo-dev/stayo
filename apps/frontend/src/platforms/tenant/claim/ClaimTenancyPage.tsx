@@ -22,6 +22,7 @@ import {
   selectedTenancy,
   type AcknowledgementKey,
 } from './claimSteps';
+import { groupRentMonths, groupRangeLabel } from './rentMonthGroups';
 
 /**
  * Thin renderer over `claimSteps.ts`'s pure step machine. This component
@@ -532,6 +533,9 @@ function ReviewStep({
   onSubmitDispute,
 }: StepProps & { onAccept: () => void; onSubmitDispute: () => void }) {
   const statement = state.statement;
+  // Which folded runs the tenant has opened. Local to the screen: it is a
+  // reading preference, not part of the claim.
+  const [openMonthRuns, setOpenMonthRuns] = useState<string[]>([]);
   if (!statement) return null;
 
   const toggleItem = (ref: string, checked: boolean) => dispatch({ type: 'DISPUTE_ITEM_TOGGLED', ref, value: checked });
@@ -573,31 +577,72 @@ function ReviewStep({
         <div className="mt-4">
           <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Rent months</div>
           <div className="mt-2 space-y-2">
-            {statement.rent_months.map((month) => {
-              const ref = rentMonthRef(month.obligation_id);
-              return (
-                <div key={ref} className="flex items-start gap-2.5 rounded-lg border border-border p-2.5 text-sm">
-                  {state.disputeMode && (
-                    <input
-                      type="checkbox"
-                      className="mt-0.5 h-4 w-4 shrink-0"
-                      checked={state.disputedItems.includes(ref)}
-                      onChange={(e) => toggleItem(ref, e.target.checked)}
-                      aria-label={`Flag ${DATE(month.rent_month)} rent`}
-                    />
-                  )}
-                  <div className="flex-1">
-                    <div className="flex justify-between">
-                      <span className="text-foreground">{DATE(month.rent_month)}</span>
-                      <span className="text-foreground">{CURRENCY(month.amount)}</span>
+            {/*
+             * Identical consecutive months fold into one row. A hostel adopting
+             * someone six months in otherwise produces six copies of the same
+             * fact, and the number that matters is below the fold — which is
+             * what people skip rather than review.
+             *
+             * Never folded while disputing: each month needs its own checkbox
+             * then, and a run has to be openable so a single month inside it can
+             * be flagged. Collapse is for reading; acting always shows the
+             * detail. See ADR-151.
+             */}
+            {groupRentMonths(statement.rent_months).map((group) => {
+              const first = group.months[0];
+              const groupKey = `g-${first.obligation_id}`;
+              const expanded = state.disputeMode || openMonthRuns.includes(groupKey);
+
+              if (group.collapsed && !expanded) {
+                return (
+                  <button
+                    key={groupKey}
+                    type="button"
+                    onClick={() => setOpenMonthRuns((prev) => [...prev, groupKey])}
+                    className="flex w-full items-start gap-2.5 rounded-lg border border-border p-2.5 text-left text-sm"
+                  >
+                    <div className="flex-1">
+                      <div className="flex justify-between">
+                        <span className="text-foreground">{groupRangeLabel(group)}</span>
+                        <span className="text-foreground">{CURRENCY(group.outstanding)}</span>
+                      </div>
+                      <div className="mt-0.5 flex justify-between text-xs text-muted-foreground">
+                        <span>
+                          {group.months.length} months · {CURRENCY(group.amount)} each · {group.status}
+                        </span>
+                        <span className="font-semibold text-primary">Show months</span>
+                      </div>
                     </div>
-                    <div className="mt-0.5 flex justify-between text-xs text-muted-foreground">
-                      <span>{month.status}</span>
-                      {month.outstanding > 0 && <span>{CURRENCY(month.outstanding)} outstanding</span>}
+                  </button>
+                );
+              }
+
+              return group.months.map((month) => {
+                const ref = rentMonthRef(month.obligation_id);
+                return (
+                  <div key={ref} className="flex items-start gap-2.5 rounded-lg border border-border p-2.5 text-sm">
+                    {state.disputeMode && (
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 shrink-0"
+                        checked={state.disputedItems.includes(ref)}
+                        onChange={(e) => toggleItem(ref, e.target.checked)}
+                        aria-label={`Flag ${DATE(month.rent_month)} rent`}
+                      />
+                    )}
+                    <div className="flex-1">
+                      <div className="flex justify-between">
+                        <span className="text-foreground">{DATE(month.rent_month)}</span>
+                        <span className="text-foreground">{CURRENCY(month.amount)}</span>
+                      </div>
+                      <div className="mt-0.5 flex justify-between text-xs text-muted-foreground">
+                        <span>{month.status}</span>
+                        {month.outstanding > 0 && <span>{CURRENCY(month.outstanding)} outstanding</span>}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
+                );
+              });
             })}
           </div>
         </div>
