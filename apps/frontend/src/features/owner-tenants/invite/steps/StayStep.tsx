@@ -3,7 +3,6 @@ import { roomService } from '@features/rooms/api';
 import type { OwnerSessionHostel } from '@features/owner-session/useOwnerSession';
 import type { InviteMode, InviteWizardData } from '../../types';
 import { isBackdated, todayIso } from '../priorHistory';
-import { DateDialPicker } from '@shared/ui/inputs/DateDialPicker';
 
 interface StayStepProps {
   data: InviteWizardData;
@@ -84,21 +83,15 @@ export function StayStep({ data, setD, hostels, mode }: StayStepProps) {
           ))}
         </select>
       </label>
-      <div className="block">
-        {/* Three dials rather than `<input type="date">`. That control shows an
-            owner on a phone an `mm/dd/yyyy` placeholder whose field order
-            follows the browser's locale, so someone entering 5 August is shown
-            mm/dd/yyyy and reasonably types 5/8 — recording 8 May as the start
-            of a tenancy, and with it the rent months and the agreement. A named
-            month has no order to get wrong. See ADR-146. */}
-        <DateDialPicker
-          label={existing ? 'When did they move in?' : 'Joining date'}
+      <label className="block">
+        <span className={labelStyle}>{existing ? 'When did they move in?' : 'Joining date'}</span>
+        <input
+          type="date"
           value={data.joiningDate}
-          onChange={(joiningDate) => setD({ joiningDate })}
-          // A tenant who is already living here cannot have arrived tomorrow —
-          // enforced by not offering those days at all, rather than by
-          // refusing the choice after it is made.
+          onChange={(e) => setD({ joiningDate: e.target.value })}
+          // A tenant who is already living here cannot have arrived tomorrow.
           max={existing ? today : undefined}
+          className="w-full rounded-[11px] border border-border bg-card px-3.5 py-3 text-sm font-semibold text-foreground focus:border-primary focus:outline-none"
         />
         {/* Says what the date will cause, on the step where it is chosen —
             rather than letting the next step be a surprise. */}
@@ -109,7 +102,7 @@ export function StayStep({ data, setD, hostels, mode }: StayStepProps) {
               : "They moved in this month — we'll still ask what they've already paid."}
           </span>
         )}
-      </div>
+      </label>
       <label className="block">
         <span className={labelStyle}>Agreement duration (months)</span>
         <input
