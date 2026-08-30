@@ -245,3 +245,22 @@ describe('deriveFinanceSections', () => {
     expect(find(deriveFinanceSections(source()), 'receipts').detail).toContain('SRI');
   });
 });
+
+describe('room configuration row', () => {
+  it('points at the hostel drilldown rooms tab, which is where rooms actually live', () => {
+    const sections = deriveHostelSections(
+      source({ hostel: { id: 'h-1', name: 'Sunrise Residency', city: 'Guntur' } }),
+    );
+    expect(find(sections, 'room-configuration').route).toBe('/owner/hostels/h-1/rooms');
+  });
+
+  it('offers no route at all when the hostel id is unknown, rather than a broken one', () => {
+    // A row that navigates nowhere is worse than a row that does not invite a
+    // tap: the old route `/owner/more/configuration/hostel/rooms` was never
+    // registered, so tapping it did nothing and said nothing.
+    const sections = deriveHostelSections(
+      source({ hostel: { name: 'Sunrise Residency' } }),
+    );
+    expect(find(sections, 'room-configuration').route).toBeUndefined();
+  });
+});

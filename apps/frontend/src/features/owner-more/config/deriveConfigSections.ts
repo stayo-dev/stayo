@@ -16,6 +16,7 @@ import { describeDeposit } from '../billing-policy/depositPolicy';
  */
 export interface ConfigSource {
   hostel?: {
+    id?: string | null;
     name?: string | null;
     phone?: string | null;
     address?: string | null;
@@ -146,7 +147,10 @@ export function deriveHostelSections(source: ConfigSource): ConfigSection[] {
           title: 'Room configuration',
           detail: `${plural(counts.rooms, 'room')} · ${plural(counts.beds, 'bed')}`,
           state: counts.rooms > 0 ? 'configured' : 'attention',
-          route: '/owner/more/configuration/hostel/rooms',
+          // The hostel drilldown's Rooms tab owns rooms. This used to point at
+          // `/owner/more/configuration/hostel/rooms`, which was never a route,
+          // so the row rendered as configured and then did nothing.
+          route: hostel?.id ? `/owner/hostels/${hostel.id}/rooms` : undefined,
         },
         unavailable('room-types', 'Room types'),
         unavailable('amenities', 'Amenities'),
