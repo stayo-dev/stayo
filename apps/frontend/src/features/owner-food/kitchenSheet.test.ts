@@ -34,19 +34,27 @@ describe('buildKitchenMessage', () => {
     expect(msg.indexOf('Sambar Rice')).toBeLessThan(msg.indexOf('Chapati'));
   });
 
-  it('names an empty meal rather than silently omitting it', () => {
-    // The label now sits on its own bold line above the dishes, so this
-    // asserts the intent rather than the old single-line shape.
+  it('marks a one-off gap with a dash, in a meal the kitchen does run', () => {
+    // Snacks is empty on Thursday but served on Friday, so the meal stays and
+    // Thursday reads as a dash. A dash is information for a cook; "Not set"
+    // describes the app rather than the kitchen.
     const msg = buildKitchenMessage({ grid, now: THURSDAY, hostelName: 'H' });
-    expect(msg).toContain(`*Snacks*\n${EMPTY_CELL_LABEL}`);
+    expect(msg).toContain('*Snacks*\n—');
+    expect(msg).not.toContain(EMPTY_CELL_LABEL);
   });
 
-  it('leaves the empty-slot placeholder as product copy, not a dish name', () => {
-    // Title-casing every value turned "Not set" into "Not Set" — caught here
-    // when dish names started being tidied.
-    const msg = buildKitchenMessage({ grid, now: THURSDAY, hostelName: 'H' });
-    expect(msg).toContain(EMPTY_CELL_LABEL);
-    expect(msg).not.toContain('Not Set');
+  it('drops a meal the kitchen never runs all week', () => {
+    // Otherwise every message carries "Snacks —", which reads as an
+    // unfinished menu rather than a hostel that serves no evening snack.
+    const noSnacks = toWeekGrid([
+      cell('THURSDAY', 'BREAKFAST', [mealItem('Dosa')]),
+      cell('THURSDAY', 'LUNCH', [mealItem('Sambar Rice')]),
+      cell('THURSDAY', 'DINNER', [mealItem('Chapati')]),
+    ]);
+    const msg = buildKitchenMessage({ grid: noSnacks, now: THURSDAY, hostelName: 'H' });
+    expect(msg).not.toContain('Snacks');
+    expect(msg).toContain('Breakfast');
+    expect(msg).toContain('Dinner');
   });
 
   it('tidies dish names typed before the app started doing it', () => {
@@ -110,9 +118,13 @@ describe('buildKitchenMessage', () => {
     expect(msg).toContain('Dal Rice');
   });
 
-  it('handles an entirely empty grid without throwing', () => {
+  it('handles an entirely empty grid without throwing, keeping every meal', () => {
+    // A schedule nobody has started is a week to fill in, not a hostel that
+    // serves no food — so all four meals stay, each showing a dash.
     const msg = buildKitchenMessage({ grid: [], now: THURSDAY, hostelName: 'H' });
-    expect(msg).toContain(EMPTY_CELL_LABEL);
+    expect(msg).toContain('*Breakfast*\n—');
+    expect(msg).toContain('*Dinner*\n—');
+    expect(msg).not.toContain(EMPTY_CELL_LABEL);
   });
 
   it('lists every dish of a multi-item meal, joined with the shared separator', () => {

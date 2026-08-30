@@ -36,21 +36,59 @@ describe("buildMenuContent", () => {
     expect(content.rows[0].label).toBe("Monday");
   });
 
-  it("gives every row one cell per meal column", () => {
-    for (const row of build().rows) expect(row.cells).toHaveLength(4);
+  it("gives every row one cell per rendered column, so the table cannot drift", () => {
+    const full = build();
+    for (const row of full.rows) expect(row.cells).toHaveLength(full.columns.length);
+  });
+
+  it("drops a meal the kitchen serves on no day of the week", () => {
+    // Seven "Snacks —" cells down a canteen wall read as an unfinished menu
+    // rather than a hostel with no evening snack. See ADR-147.
+    const content = build({
+      cells: [
+        cell("MONDAY", "breakfast", "Idly"),
+        cell("MONDAY", "lunch", "Rice"),
+        cell("MONDAY", "dinner", "Chapati"),
+      ],
+    });
+    expect(content.columns.map((c) => c.slot)).toEqual(["breakfast", "lunch", "dinner"]);
+    for (const row of content.rows) expect(row.cells).toHaveLength(3);
+  });
+
+  it("keeps a meal that runs on even one day, dashing the rest", () => {
+    // A dash says "this meal runs but nothing is planned that day", which is
+    // real information for a cook. A dropped column says only that the kitchen
+    // does not serve it.
+    const content = build({
+      cells: [cell("MONDAY", "breakfast", "Idly"), cell("SUNDAY", "snacks", "Bajji")],
+    });
+    expect(content.columns.map((c) => c.slot)).toEqual(["breakfast", "snacks"]);
+    expect(content.rows[0].cells).toEqual(["Idly", EMPTY_CELL]);
+    expect(content.rows[6].cells).toEqual([EMPTY_CELL, "Bajji"]);
+  });
+
+  it("keeps every meal for a week nobody has started", () => {
+    // A blank schedule is a week to fill in, not a hostel that serves no food.
+    const content = build();
+    expect(content.columns).toHaveLength(4);
+    for (const row of content.rows) expect(row.cells.every((c) => c === EMPTY_CELL)).toBe(true);
   });
 
   it("prints a dash for an unplanned slot rather than leaving a blank box", () => {
     // A blank cell on a wall reads as a broken menu and someone asks the cook.
+    // Only breakfast is served here, so it is the only column; every other
+    // day's breakfast is a dash.
     const content = build({ cells: [cell("MONDAY", "breakfast", "Idly")] });
+    expect(content.columns.map((c) => c.slot)).toEqual(["breakfast"]);
     expect(content.rows[0].cells[0]).toBe("Idly");
-    expect(content.rows[0].cells[1]).toBe(EMPTY_CELL);
     expect(content.rows[1].cells.every((c) => c === EMPTY_CELL)).toBe(true);
   });
 
   it("lists several dishes in one cell, comma separated", () => {
+    // Lunch is the only served meal here, so it is the only column.
     const content = build({ cells: [cell("MONDAY", "lunch", "Rice", "Dal", "Curry")] });
-    expect(content.rows[0].cells[1]).toBe("Rice, Dal, Curry");
+    expect(content.columns.map((c) => c.slot)).toEqual(["lunch"]);
+    expect(content.rows[0].cells[0]).toBe("Rice, Dal, Curry");
   });
 
   it("title-cases dish names typed before the app started doing it", () => {
@@ -62,7 +100,8 @@ describe("buildMenuContent", () => {
 
   it("reads days and slots case-insensitively, as they arrive from the grid", () => {
     const content = build({ cells: [{ day: "monday", slot: "DINNER", items: [{ name: "Rice" }] }] });
-    expect(content.rows[0].cells[3]).toBe("Rice");
+    expect(content.columns.map((c) => c.slot)).toEqual(["dinner"]);
+    expect(content.rows[0].cells[0]).toBe("Rice");
   });
 
   it("accepts the schedule row's own `item_name` as well as `name`", () => {

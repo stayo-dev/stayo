@@ -6,7 +6,7 @@ import { foodService } from '@features/food/api';
 import { titleCaseText } from '@shared/lib/textFormat';
 import { FOOD_SLOTS, type MealSlotKey } from '@shared/mocks/food';
 import { DAY_ORDER, type DayKey } from '../../hooks/useFoodSchedule';
-import { cellAt, formatCellItems, type WeekGrid } from '../../weekGrid';
+import { cellAt, formatCellItems, isFilled, slotsInUse, type WeekGrid } from '../../weekGrid';
 
 interface MenuPreviewSheetProps {
   open: boolean;
@@ -51,6 +51,12 @@ export function MenuPreviewSheet({
   isDraft,
 }: MenuPreviewSheetProps) {
   const [downloading, setDownloading] = useState(false);
+
+  // Columns the kitchen actually runs. A meal served on no day of the week is
+  // dropped rather than printed as seven dashes — see ADR-147. The PDF applies
+  // the same rule, so preview and paper agree.
+  const served = slotsInUse(grid);
+  const columns = FOOD_SLOTS.filter((slot) => served.includes(slot.key as MealSlotKey));
 
   const download = async () => {
     if (!hostelId || downloading) return;
@@ -111,7 +117,7 @@ export function MenuPreviewSheet({
                 <th className="border-b border-border px-3 py-2 text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">
                   Day
                 </th>
-                {FOOD_SLOTS.map((slot) => (
+                {columns.map((slot) => (
                   <th
                     key={slot.key}
                     className="border-b border-l border-border px-3 py-2 text-[10.5px] font-bold uppercase tracking-wide text-foreground"
@@ -127,17 +133,17 @@ export function MenuPreviewSheet({
                   <td className="border-b border-border px-3 py-2.5 align-top text-[12.5px] font-bold text-foreground">
                     {DAY_LABEL[day]}
                   </td>
-                  {FOOD_SLOTS.map((slot) => {
+                  {columns.map((slot) => {
                     const cell = cellAt(grid, day, slot.key as MealSlotKey);
-                    const text = formatCellItems(cell, ', ');
+                    const filled = isFilled(cell);
                     return (
                       <td
                         key={slot.key}
                         className={`border-b border-l border-border px-3 py-2.5 align-top text-[12.5px] leading-snug ${
-                          text ? 'text-foreground' : 'text-muted-foreground'
+                          filled ? 'text-foreground' : 'text-muted-foreground'
                         }`}
                       >
-                        {text ? titleCaseText(text) : EMPTY}
+                        {filled ? titleCaseText(formatCellItems(cell, ', ')) : EMPTY}
                       </td>
                     );
                   })}

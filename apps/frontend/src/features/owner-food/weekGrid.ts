@@ -152,6 +152,29 @@ export function cellAt(grid: WeekGrid, day: DayKey, slot: MealSlotKey): WeekGrid
 }
 
 /** A cell counts as filled only when it holds at least one real dish. */
+/**
+ * The meal slots this hostel actually serves, judged by the week in front of
+ * us: a slot with nothing planned on any of the seven days is one the kitchen
+ * does not run.
+ *
+ * Used to drop a whole column or row rather than print it as seven dashes.
+ * A hostel that serves no evening snack should not have "Snacks —" repeated
+ * down a sheet on its canteen wall; that reads as an unfinished menu, which is
+ * exactly the impression a wall chart must not give. An individual gap in a
+ * slot the hostel *does* serve still shows a dash, because there the absence
+ * is real information — that meal is genuinely unplanned.
+ *
+ * Order is preserved from `SLOT_ORDER`. Everything empty returns everything,
+ * deliberately: a schedule nobody has started is a blank week to fill in, not
+ * a hostel that serves no food at all. See ADR-147.
+ */
+export function slotsInUse(grid: WeekGrid): MealSlotKey[] {
+  const used = SLOT_ORDER.filter((slot) =>
+    DAY_ORDER.some((day) => isFilled(cellAt(grid, day, slot))),
+  );
+  return used.length > 0 ? used : [...SLOT_ORDER];
+}
+
 export function isFilled(cell: WeekGridCell | null | undefined): boolean {
   return Boolean(cell && cell.items.length > 0);
 }

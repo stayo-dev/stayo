@@ -9,6 +9,13 @@
  *
  * - A cell with nothing planned prints an em dash, never an empty box. A blank
  *   cell on a wall reads as "the menu is wrong", and someone will ask the cook.
+ * - **A meal served on no day of the week is dropped entirely.** A hostel with
+ *   no evening snack should not carry a Snacks column of seven dashes down its
+ *   canteen wall — that reads as an unfinished menu, which is the one
+ *   impression a wall chart must not give. The distinction is deliberate: a
+ *   dash means "this meal runs, but nothing is planned that day", which is
+ *   real information; a whole empty column means only that the kitchen does
+ *   not serve it. See ADR-147.
  * - Serving windows are printed in the column headers. The real wall charts
  *   this replaces almost never carry them, and "what time is dinner" is the
  *   question residents ask most.
@@ -192,11 +199,26 @@ export function buildMenuContent(input: MenuContentInput): MenuContent {
     }),
   }));
 
-  const columns: MenuColumn[] = MENU_SLOTS.map((slot) => ({
+  // Meals the kitchen actually runs. Everything empty keeps every column: a
+  // schedule nobody has started is a week to fill in, not a hostel that serves
+  // no food at all.
+  const anyPlanned = MENU_SLOTS.some((slot, index) => rows.some((row) => row.cells[index] !== EMPTY_CELL));
+  const servedSlots = anyPlanned
+    ? MENU_SLOTS.filter((slot, index) => rows.some((row) => row.cells[index] !== EMPTY_CELL))
+    : [...MENU_SLOTS];
+
+  const columns: MenuColumn[] = servedSlots.map((slot) => ({
     slot,
     label: SLOT_LABEL[slot],
     window: formatWindow(input.timings?.[slot]),
   }));
+
+  // Rows carry one cell per *rendered* column, so the table cannot drift out
+  // of alignment with its own header.
+  const keptIndexes = servedSlots.map((slot) => MENU_SLOTS.indexOf(slot));
+  for (const row of rows) {
+    row.cells = keptIndexes.map((index) => row.cells[index]);
+  }
 
   const slug = String(input.publicSlug ?? "").trim();
   const base = String(input.publicBaseUrl ?? "").trim().replace(/\/+$/, "");

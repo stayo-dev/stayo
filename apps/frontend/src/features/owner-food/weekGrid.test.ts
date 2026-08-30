@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   toWeekGrid, dayKeyFor, cellAt, isFilled, dayCompleteness, formatCellItems, sameItemSet, itemSetKey, EMPTY_CELL_LABEL,
+  slotsInUse, SLOT_ORDER,
   type WeekGrid,
 } from './weekGrid';
 
@@ -156,3 +157,59 @@ describe('dayCompleteness', () => {
 
 // `mealSlotAt`/`MEAL_TIMES` moved to `features/food/mealTimings.ts`
 // (`currentAndNextMeal`, real per-hostel timings) — see that file's own tests.
+
+describe('slotsInUse', () => {
+  const week = (entries: Array<[string, string, string[]]>) =>
+    toWeekGrid(
+      entries.map(([day, meal, names], i) => ({
+        id: `${day}-${meal}-${i}`,
+        day_of_week: day,
+        meal_type: meal,
+        food_schedule_meal_items: names.map((item_name, j) => ({
+          id: `${day}-${meal}-${j}`,
+          menu_item_id: `m${j}`,
+          item_name,
+          display_order: j,
+        })),
+      })),
+    );
+
+  it('drops a meal the hostel never serves all week', () => {
+    // Seven "Snacks —" rows down a canteen wall read as an unfinished menu.
+    const grid = week([
+      ['MONDAY', 'BREAKFAST', ['Idly']],
+      ['MONDAY', 'LUNCH', ['Rice']],
+      ['MONDAY', 'DINNER', ['Chapati']],
+    ]);
+    expect(slotsInUse(grid)).toEqual(['breakfast', 'lunch', 'dinner']);
+  });
+
+  it('keeps a meal that runs on even one day', () => {
+    const grid = week([
+      ['MONDAY', 'BREAKFAST', ['Idly']],
+      ['SUNDAY', 'SNACKS', ['Bajji']],
+    ]);
+    expect(slotsInUse(grid)).toContain('snacks');
+  });
+
+  it('keeps SLOT_ORDER, so columns never reshuffle between weeks', () => {
+    const grid = week([
+      ['MONDAY', 'DINNER', ['Chapati']],
+      ['MONDAY', 'BREAKFAST', ['Idly']],
+    ]);
+    expect(slotsInUse(grid)).toEqual(['breakfast', 'dinner']);
+  });
+
+  it('treats a slot with an empty cell as unused', () => {
+    const grid = week([
+      ['MONDAY', 'BREAKFAST', ['Idly']],
+      ['MONDAY', 'SNACKS', []],
+    ]);
+    expect(slotsInUse(grid)).not.toContain('snacks');
+  });
+
+  it('returns every slot for a week nobody has started', () => {
+    // A blank schedule is a week to fill in, not a hostel that serves no food.
+    expect(slotsInUse([])).toEqual([...SLOT_ORDER]);
+  });
+});

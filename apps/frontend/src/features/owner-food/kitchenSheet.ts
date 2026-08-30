@@ -1,7 +1,7 @@
 import { MEAL_CATEGORY_META } from '@shared/mocks/food';
 import { titleCaseText } from '@shared/lib/textFormat';
 import { formatTimeRange, type MealTimings } from '@features/food/mealTimings';
-import { cellAt, dayKeyFor, DAY_ORDER, formatCellItems, isFilled, SLOT_ORDER, type DayKey, type WeekGrid } from './weekGrid';
+import { cellAt, dayKeyFor, DAY_ORDER, formatCellItems, isFilled, slotsInUse, SLOT_ORDER, type DayKey, type WeekGrid } from './weekGrid';
 
 export interface KitchenSheetInput {
   grid: WeekGrid;
@@ -21,13 +21,17 @@ function nextDay(day: DayKey): DayKey {
  * pasted into a kitchen group where it is the hostel's own writing. Display
  * only — the stored value is never rewritten.
  */
+/** A gap in a meal the hostel does serve. See `slotsInUse` and ADR-147. */
+const GAP = '—';
+
 function nameFor(grid: WeekGrid, day: DayKey, slot: (typeof SLOT_ORDER)[number]): string {
   const cell = cellAt(grid, day, slot);
-  const text = formatCellItems(cell);
-  // Only dish names are tidied. `formatCellItems` returns the "not set"
-  // placeholder for an empty slot, and title-casing that turns product copy
-  // into "Not Set" — caught by this module's existing tests.
-  return isFilled(cell) ? titleCaseText(text) || text : text;
+  // Only dish names are tidied. `formatCellItems` returns product copy for an
+  // empty slot, and title-casing that turned it into "Not Set" — caught by
+  // this module's existing tests. An unplanned meal reads as a dash here
+  // rather than as a sentence: this message goes to a cook, not a settings
+  // screen, and "Not set" describes the app rather than the kitchen.
+  return isFilled(cell) ? titleCaseText(formatCellItems(cell)) || GAP : GAP;
 }
 
 /** "Breakfast (7:00 AM – 9:00 AM)", or just the label when no window is set. */
@@ -50,6 +54,10 @@ export function buildKitchenMessage({ grid, now, hostelName, timings }: KitchenS
   const today = dayKeyFor(now);
   const tomorrow = nextDay(today);
   const dateLabel = now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
+  // A meal the kitchen never runs is left off entirely rather than sent as a
+  // dash every day; a meal it does run but has not planned today still shows
+  // one, because there the absence is real information.
+  const served = slotsInUse(grid);
 
   /**
    * Tomorrow gets one labelled line per meal, like today.
@@ -63,10 +71,10 @@ export function buildKitchenMessage({ grid, now, hostelName, timings }: KitchenS
   const lines = [
     `*${dateLabel} — ${hostelName}*`,
     '',
-    ...SLOT_ORDER.map((slot) => `*${slotHeading(slot, timings)}*\n${nameFor(grid, today, slot)}`),
+    ...served.map((slot) => `*${slotHeading(slot, timings)}*\n${nameFor(grid, today, slot)}`),
     '',
     '_Tomorrow — prep tonight_',
-    ...SLOT_ORDER.map((slot) => `${MEAL_CATEGORY_META[slot].label}: ${nameFor(grid, tomorrow, slot)}`),
+    ...served.map((slot) => `${MEAL_CATEGORY_META[slot].label}: ${nameFor(grid, tomorrow, slot)}`),
   ];
 
   return lines.join('\n');

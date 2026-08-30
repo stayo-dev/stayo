@@ -11,12 +11,19 @@ import { HostelSwitcher } from '../components/HostelSwitcher';
 import { useFoodSchedule } from '../hooks/useFoodSchedule';
 import { useMealTimings } from '../hooks/useMealTimings';
 import { buildKitchenMessage, whatsappShareUrl } from '../kitchenSheet';
-import { cellAt, dayKeyFor, DAY_ORDER, formatCellItems, isFilled, SLOT_ORDER } from '../weekGrid';
+import { cellAt, dayKeyFor, DAY_ORDER, formatCellItems, isFilled, slotsInUse, type WeekGridCell } from '../weekGrid';
 
-/** Dish names as they should read. Display only — see ADR-142. */
-function dishes(cell: Parameters<typeof formatCellItems>[0]): string {
-  const text = formatCellItems(cell);
-  return isFilled(cell) ? titleCaseText(text) || text : text;
+/** A gap in a meal the hostel does serve. See `slotsInUse` and ADR-147. */
+const GAP = '—';
+
+/**
+ * Dish names as they should read, and a dash where a meal is unplanned.
+ *
+ * "Not set" describes the app; a cook reading this off a wall wants the
+ * kitchen's language. Display only — see ADR-142.
+ */
+function dishes(cell: WeekGridCell | null | undefined): string {
+  return isFilled(cell) ? titleCaseText(formatCellItems(cell)) || GAP : GAP;
 }
 
 /**
@@ -44,6 +51,10 @@ export function KitchenSheetPage() {
   const today = dayKeyFor(now);
   const tomorrow = DAY_ORDER[(DAY_ORDER.indexOf(today) + 1) % DAY_ORDER.length];
   const hostelName = session.hostels.find((h) => h.id === hostelId)?.name ?? 'Hostel';
+
+  // Meals this kitchen actually runs. One it never runs is dropped rather
+  // than shown as a dash every day — see ADR-147.
+  const served = slotsInUse(schedule.weekGrid);
 
   const message = buildKitchenMessage({ grid: schedule.weekGrid, now, hostelName, timings: mealTimings });
 
@@ -95,7 +106,7 @@ export function KitchenSheetPage() {
       </div>
 
       <div className="flex flex-col divide-y divide-border border-y border-border">
-        {SLOT_ORDER.map((slot) => {
+        {served.map((slot) => {
           const cell = cellAt(schedule.weekGrid, today, slot);
           return (
             <div key={slot} className="flex items-baseline gap-4 py-4">
@@ -125,7 +136,7 @@ export function KitchenSheetPage() {
       <div className="rounded-2xl bg-muted/50 p-4">
         <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Tomorrow — prep tonight</span>
         <dl className="mt-2 flex flex-col gap-1.5">
-          {SLOT_ORDER.map((slot) => {
+          {served.map((slot) => {
             const cell = cellAt(schedule.weekGrid, tomorrow, slot);
             return (
               <div key={slot} className="flex items-baseline gap-3">
