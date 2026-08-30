@@ -212,7 +212,6 @@ export function OwnerRoutes() {
         <Route path="/owner/more/help" element={<MoreHelpPage />} />
         <Route path="/owner/more/about" element={<MoreAboutPage />} />
 
-        <Route path="/owner/more/configuration" element={<MoreConfigurationHubPage />} />
         <Route path="/owner/more/configuration/hostel" element={<MoreConfigHostelPage />} />
         <Route path="/owner/more/configuration/hostel/agreement-duration" element={<MoreConfigAgreementDurationPage />} />
         <Route path="/owner/more/configuration/hostel/tenant-defaults" element={<Navigate to="/owner/more/configuration/hostel/agreement-duration" replace />} />

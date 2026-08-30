@@ -21,7 +21,7 @@ export function MoreConfigHostelPage() {
   return (
     <div className="flex flex-col gap-5 px-4 pb-8 pt-6 sm:px-6">
       <MoreScreenHeader
-        backTo="/owner/more/configuration"
+        backTo="/owner/more"
         backLabel="Configuration"
         title="Hostel"
         subtitle="Your physical property setup"
