@@ -8,6 +8,18 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-08-29 — The printable menu failed on every request: a `YYYY-MM` string sent to a `Date` column (fixed)
+
+**Symptom.** Every call to `GET /api/food/menu-pdf` returned `Invalid value for argument 'month': premature end of input. Expected ISO-8601 DateTime`. No owner could print a menu at all — the feature was broken for its entire, brief life.
+
+**Root cause.** The route takes `month` as `YYYY-MM`, which is the API's shape, and passed that string straight into `food_schedules.findUnique`. The column is `month DateTime @db.Date`. The sibling route `app/api/food/schedules/route.ts` had a local `firstOfMonth()` doing exactly this conversion; the new route was written without noticing it, because the query *reads* as though `month` were a string.
+
+**Why nothing caught it.** The content model (`lib/pdf/menu-content.ts`) is pure and knows nothing of Prisma. The renderer was verified by actually rendering a page and looking at it — which is why the layout was right — but rendering takes content, not a database. **The route itself was never run against a database before shipping.** `tsc` cannot help either: Prisma's generated `where` type accepts `string | Date` for a date field.
+
+**Fix.** The route converts through its own `firstOfMonth()`, mirroring the sibling route, and answers `400` when the month cannot be read. Verified against the real database — reproducing the exact reported error with the string form, then rendering the reporting owner's actual August menu (28 cells) with the fixed form.
+
+**Regression test.** `tests/menu-pdf-month-key.test.ts` asserts both directions: a converted `Date` finds the row, and the raw `YYYY-MM` string still throws. It asserts the *failure* deliberately — if `month` ever became a string column, that test should be re-read rather than silently keep passing. See [[Decisions#ADR-144|ADR-144]].
+
 ## 2026-08-29 — A new owner could not create a hostel at all; the only two buttons that did it were both hidden (fixed)
 
 **Symptom.** A freshly signed-up owner's Home showed a greeting, a search bar, "Collect Rent ₹0", three zero tiles and a month card of "₹0 of ₹0" — and no way whatsoever to add a hostel. No hostels section, no `+ Add hostel` button, no getting-started checklist. The FAB's Quick Actions offered Collect Payment, Add Tenant, Add Expense and Food menu, all four of which require a hostel to exist. The account was a complete dead end.

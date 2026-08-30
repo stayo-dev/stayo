@@ -23,6 +23,18 @@ import { renderMenuPdf } from "@/lib/pdf/menu-template-pdf-lib";
  * `menu-template-pdf-lib.ts`, the same split the receipt uses. See ADR-144.
  */
 
+/**
+ * `food_schedules.month` is `DateTime @db.Date`, not a string — the `YYYY-MM`
+ * in the query string is the API's shape, not the column's. Passing the raw
+ * string straight into `findUnique` fails with "premature end of input.
+ * Expected ISO-8601 DateTime", which is exactly what this route shipped doing.
+ * Mirrors the same conversion `app/api/food/schedules/route.ts` performs.
+ */
+function firstOfMonth(value: string): Date | null {
+  const date = new Date(`${value.slice(0, 7)}-01T00:00:00.000Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 const SLOT_BY_MEAL_TYPE: Record<string, MenuSlot> = {
   BREAKFAST: "breakfast",
   LUNCH: "lunch",
@@ -67,8 +79,11 @@ export async function GET(req: NextRequest) {
     });
     if (!hostel) return apiError("Hostel not found", "NOT_FOUND", 404);
 
+    const monthDate = firstOfMonth(month);
+    if (!monthDate) return apiError("month must be YYYY-MM", "VALIDATION_ERROR", 400);
+
     const schedule = await prisma.food_schedules.findUnique({
-      where: { hostel_id_month: { hostel_id: hostelId, month } },
+      where: { hostel_id_month: { hostel_id: hostelId, month: monthDate } },
       include: {
         food_schedule_meals: {
           include: { food_schedule_meal_items: { orderBy: { display_order: "asc" } } },
