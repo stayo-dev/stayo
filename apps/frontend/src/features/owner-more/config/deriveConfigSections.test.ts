@@ -3,7 +3,7 @@ import { deriveFinanceSections, deriveHostelSections, ordinalDay, type ConfigSou
 import { tallyConfigRows } from './configRows';
 
 const source = (overrides: Partial<ConfigSource> = {}): ConfigSource => ({
-  hostel: { name: 'Sri Adithya Hostels', phone: '9876543210', address: '12 Main Rd', city: 'Guntur', gst_number: null },
+  hostel: { name: 'Sunrise Residency', phone: '9876543210', address: '12 Main Rd', city: 'Guntur', gst_number: null },
   policy: {
     billing: {
       auto_rent_day: 1,
@@ -48,7 +48,7 @@ describe('deriveHostelSections', () => {
     const row = find(deriveHostelSections(source()), 'hostel-identity');
 
     expect(row.state).toBe('configured');
-    expect(row.detail).toContain('Sri Adithya Hostels');
+    expect(row.detail).toContain('Sunrise Residency');
     expect(row.detail).toContain('3 properties');
   });
 

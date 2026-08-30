@@ -38,7 +38,7 @@ describe("NavigationSchema", () => {
   });
 
   it("accepts a map pin, and keeps it as numbers", () => {
-    // Sri Adithya Boys Hostel, Yamnampet — the pair an admin pastes.
+    // Sunrise Residency, Yamnampet — the pair an admin pastes.
     const parsed = NavigationSchema.parse({ placeId: PLACE_ID, lat: 17.4542678, lng: 78.6628497 });
     expect(parsed.lat).toBe(17.4542678);
     expect(parsed.lng).toBe(78.6628497);

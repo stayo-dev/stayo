@@ -182,27 +182,27 @@ const fallbackImages = {
 
 export const fallbackLandingContent: LandingMarketingContent = {
   hostelProfile: {
-    name: 'Sri Adithya Boys Hostel',
+    name: 'Sunrise Residency',
     phone: '07901070333',
     whatsappNumber: '919392433422',
-    email: 'sriadithyahostels@gmail.com',
+    email: 'examplehostel@gmail.com',
     shortLocation: 'Yamnampet, Secunderabad',
-    addressLines: ['Sri Adithya Boys Hostel, Yamnampet', 'Secunderabad, Telangana — 501302'],
+    addressLines: ['Sunrise Residency, Yamnampet', 'Secunderabad, Telangana — 501302'],
     locationTitle: 'Prime Location',
     locationDescription: 'Conveniently located near SNIST — your daily commute is just a 5-minute walk',
     distanceTitle: 'Just 400m from SNIST',
     distanceDescription: '5 minute walk to campus gate',
     googleMapsUrl: 'https://maps.app.goo.gl/tUrcbuFmST7Zyt1c9',
     googleMapsEmbedUrl:
-      'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d951.5284365512007!2d78.66220596962678!3d17.454269078321268!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3bcb770dd641583b%3A0xde3e95b9afb8c1b1!2sSri%20Adithya%20Boys%20Hostel!5e0!3m2!1sen!2sin!4v1780503771881!5m2!1sen!2sin',
+      'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d951.5284365512007!2d78.66220596962678!3d17.454269078321268!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3bcb770dd641583b%3A0xde3e95b9afb8c1b1!2sSunrise%20Residency!5e0!3m2!1sen!2sin!4v1780503771881!5m2!1sen!2sin',
     ownerName: 'Srinivasa Rao',
     ownerMessage: 'I personally respond to every enquiry.',
   },
   seo: {
-    title: 'Best Boys Hostel in Yamnampet, Secunderabad | Sri Adithya Boys Hostel',
+    title: 'Best Boys Hostel in Yamnampet, Secunderabad | Sunrise Residency',
     description:
       'Best Boys Hostel near SNIST with Home Food, Wi-Fi, CCTV security, and single/sharing room options. Walkable distance to SNIST college.',
-    canonicalUrl: 'https://sriadithyahostels.in/',
+    canonicalUrl: 'https://example-hostel.in/',
   },
   hero: {
     title: '5 Minutes from SNIST Gate.',
@@ -252,7 +252,7 @@ export const fallbackLandingContent: LandingMarketingContent = {
       icon: 'utensils',
       title: 'Homely Food',
       description: "Fresh, daily meals included — just like mom's cooking",
-      image: { url: fallbackImages.food, alt: 'Homely food served at Sri Adithya Boys Hostel' },
+      image: { url: fallbackImages.food, alt: 'Homely food served at Sunrise Residency' },
       bulletPoints: [
         '3 Hot Meals Daily (Breakfast, Lunch & Dinner)',
         'Sunday Special Meals & festive celebrations',
@@ -263,7 +263,7 @@ export const fallbackLandingContent: LandingMarketingContent = {
       icon: 'home',
       title: 'Homely Atmosphere',
       description: 'Warm, safe & comfortable — designed for students',
-      image: { url: fallbackImages.room, alt: 'Student room at Sri Adithya Boys Hostel' },
+      image: { url: fallbackImages.room, alt: 'Student room at Sunrise Residency' },
       bulletPoints: [
         'Upgraded to 100 Mbps high-speed WiFi in every room',
         'Daily housekeeping & room cleaning',
@@ -274,7 +274,7 @@ export const fallbackLandingContent: LandingMarketingContent = {
       icon: 'map-pin',
       title: 'Prime Location',
       description: '400m from SNIST gate — walk in 5 minutes',
-      image: { url: fallbackImages.building, alt: 'Sri Adithya Boys Hostel building location' },
+      image: { url: fallbackImages.building, alt: 'Sunrise Residency building location' },
       bulletPoints: [
         'Only 400m from SNIST gate (3 min walk)',
         'Safe well-lit walking path for students',
@@ -377,7 +377,7 @@ export const fallbackLandingContent: LandingMarketingContent = {
     { stepNumber: 5, title: 'Move In', description: 'Bring your things. Your home near SNIST is ready.' },
   ],
   footer: {
-    title: 'Sri Adithya Boys Hostel',
+    title: 'Sunrise Residency',
     description: 'Your home away from home — providing comfortable, safe, and affordable accommodation for students near SNIST.',
     quickLinks: [
       { label: 'Home', href: '#home' },
@@ -387,7 +387,7 @@ export const fallbackLandingContent: LandingMarketingContent = {
       { label: 'Contact', href: '#contact' },
       { label: 'Tenant / Owner Login', href: '/login' },
     ],
-    copyright: '© 2026 Sri Adithya Boys Hostel. All rights reserved.',
+    copyright: '© 2026 Sunrise Residency. All rights reserved.',
   },
   food: {
     title: 'Homely & Hygienic Meals',
@@ -402,11 +402,11 @@ export const fallbackLandingContent: LandingMarketingContent = {
       { day: 'Saturday', breakfast: 'Puri Sabji', lunch: 'Rice, Pappu, Curry', dinner: 'Rice, Rasam, Curd' },
       { day: 'Sunday', breakfast: 'Special Dosa', lunch: 'Veg / Egg Fried Rice', dinner: 'Rice, Chicken Curry / Special Curry' },
     ],
-    parentQuote: 'I was worried about my son’s food habits. After visiting Sri Adithya Boys Hostel’s kitchen, I am completely satisfied that he gets fresh, homely meals every single day.',
+    parentQuote: 'I was worried about my son’s food habits. After visiting Sunrise Residency’s kitchen, I am completely satisfied that he gets fresh, homely meals every single day.',
     parentName: 'R. Srinivasa Rao (Father of Karthik, SNIST 3rd Year)',
   },
   parentTrust: {
-    title: 'Why Parents Trust Sri Adithya Boys Hostel',
+    title: 'Why Parents Trust Sunrise Residency',
     subtitle: 'We provide a safe, secure, and disciplined environment for your son’s academic journey.',
     points: [
       { title: '24/7 Active Warden', description: 'Experienced hostel warden resident on-site to maintain discipline and handle student needs.', icon: 'warden' },
@@ -449,22 +449,22 @@ export const fallbackLandingContent: LandingMarketingContent = {
 export const fallbackSiteSettings = {
   phoneNumber: "07901070333",
   whatsappNumber: "9392433422",
-  email: "sriadithyahostels@gmail.com",
-  address: "Sri Adithya Boys Hostel, Yamnampet\nSecunderabad, Telangana — 501302",
+  email: "examplehostel@gmail.com",
+  address: "Sunrise Residency, Yamnampet\nSecunderabad, Telangana — 501302",
   googleRating: 4.2,
   googleReviewCount: 51,
   totalStudents: 78,
   ownerName: "Srinivasa Rao",
-  ownerTitle: "Owner, Sri Adithya Boys Hostel",
+  ownerTitle: "Owner, Sunrise Residency",
   ownerQuote: "I personally respond to every enquiry.",
   ownerPhoto: null,
   googleMapsUrl: "https://maps.app.goo.gl/tUrcbuFmST7Zyt1c9",
-  seoTitle: "Best Boys Hostel in Yamnampet, Secunderabad | Sri Adithya Boys Hostel",
+  seoTitle: "Best Boys Hostel in Yamnampet, Secunderabad | Sunrise Residency",
   seoDescription: "Best Boys Hostel near SNIST with Home Food, Wi-Fi, CCTV security, and single/sharing room options. Walkable distance to SNIST college.",
-  ogTitle: "Best Boys Hostel in Yamnampet, Secunderabad | Sri Adithya Boys Hostel",
+  ogTitle: "Best Boys Hostel in Yamnampet, Secunderabad | Sunrise Residency",
   ogDescription: "Best Boys Hostel near SNIST with Home Food, Wi-Fi, CCTV security, and single/sharing room options. Walkable distance to SNIST college.",
-  seoSiteName: "Sri Adithya Boys Hostel",
-  canonicalUrl: "https://sriadithyahostels.in/",
+  seoSiteName: "Sunrise Residency",
+  canonicalUrl: "https://example-hostel.in/",
   whatsappFABTemplate: "Hi {ownerName}, I am browsing {hostelName} and would like to ask a question.",
   whatsappHeroTemplate: "Hi {ownerName}, I would like to check availability at {hostelName}.",
   whatsappRoomBookingTemplate: "Hi {ownerName}, I am interested in booking a {sharingType} room at {hostelName}.",

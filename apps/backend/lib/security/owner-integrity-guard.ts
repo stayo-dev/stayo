@@ -21,7 +21,7 @@ const logger = getLogger("security.owner-integrity");
  * Update this list when adding new owner accounts via bootstrap.
  */
 const EXPECTED_OWNER_EMAILS: string[] = [
-  "sriadithyahostels@gmail.com",
+  "examplehostel@gmail.com",
 ];
 
 /**

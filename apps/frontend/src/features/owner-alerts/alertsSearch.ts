@@ -22,7 +22,7 @@ import type {
  * Matching, in order of what actually gets typed:
  *
  * - **Every word must match, anywhere in the record.** "riya sri" finds Riya
- *   at Sri Adithya; word order and field boundaries do not matter, because an
+ *   at Sunrise Residency; word order and field boundaries do not matter, because an
  *   owner does not know which field holds what.
  * - **Digits match the phone**, on its last 10 (`toLocalPhone`) — so `8046`
  *   finds `+918008046952`, and the country code never has to be typed. Same

@@ -26,8 +26,8 @@ describe("whether there is a term worth asking about", () => {
 
 describe("the sentence the tenant agrees to", () => {
   it("names the hostel, the length and the window, in the first person", () => {
-    expect(commitmentStatement({ hostelName: "Sri Adithya Boys Hostel", term: TERM })).toBe(
-      "I am committing to stay at Sri Adithya Boys Hostel for 11 months — from 1 Sep 2026 until 31 Jul 2027.",
+    expect(commitmentStatement({ hostelName: "Sunrise Residency", term: TERM })).toBe(
+      "I am committing to stay at Sunrise Residency for 11 months — from 1 Sep 2026 until 31 Jul 2027.",
     );
   });
 
@@ -35,7 +35,7 @@ describe("the sentence the tenant agrees to", () => {
   // undercut the seriousness of the moment.
   it("says month, not months, for a one-month term", () => {
     const statement = commitmentStatement({
-      hostelName: "Sri Adithya",
+      hostelName: "Sunrise Residency",
       term: { durationMonths: 1, startDate: "2026-09-01", endDate: "2026-09-30" },
     });
     expect(statement).toContain("for 1 month —");
@@ -44,8 +44,8 @@ describe("the sentence the tenant agrees to", () => {
 
   it("still reads properly when the dates are missing", () => {
     expect(
-      commitmentStatement({ hostelName: "Sri Adithya", term: { durationMonths: 12, startDate: null, endDate: null } }),
-    ).toBe("I am committing to stay at Sri Adithya for 12 months.");
+      commitmentStatement({ hostelName: "Sunrise Residency", term: { durationMonths: 12, startDate: null, endDate: null } }),
+    ).toBe("I am committing to stay at Sunrise Residency for 12 months.");
   });
 
   it("falls back to a neutral phrase rather than an empty hostel name", () => {
@@ -66,7 +66,7 @@ describe("recording the commitment", () => {
 
   it("stores the term, the time, and the exact wording that was shown", () => {
     const record = buildCommitmentRecord({
-      hostelName: "Sri Adithya Boys Hostel",
+      hostelName: "Sunrise Residency",
       term: TERM,
       acknowledgement: ack,
       now: NOW,
@@ -80,7 +80,7 @@ describe("recording the commitment", () => {
       start_date: "2026-09-01",
       end_date: "2027-07-31",
       statement:
-        "I am committing to stay at Sri Adithya Boys Hostel for 11 months — from 1 Sep 2026 until 31 Jul 2027.",
+        "I am committing to stay at Sunrise Residency for 11 months — from 1 Sep 2026 until 31 Jul 2027.",
       ip: "1.2.3.4",
       user_agent: "Mobile Safari",
     });

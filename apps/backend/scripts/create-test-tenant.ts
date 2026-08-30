@@ -11,7 +11,7 @@
  * Usage:
  *   npx tsx --env-file=../../.env scripts/create-test-tenant.ts \
  *     --email tenant@yourstayo.com --password 'Stayo@2026' \
- *     --owner spchidiri2006@gmail.com [--hostel "Starlink"] [--apply]
+ *     --owner owner@example.com [--hostel "Starlink"] [--apply]
  *
  * Without `--apply` it reports what it *would* do and writes nothing.
  */

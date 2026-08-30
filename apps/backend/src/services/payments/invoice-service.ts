@@ -304,7 +304,7 @@ export class InvoiceService {
     page.drawText(thankText, { x: (595 - thankWidth) / 2, y: Y, size: 11, font: fontBold, color: COLORS.body });
 
     Y -= 16;
-    const supportText = "For support: support@sriadithyahostels.in";
+    const supportText = "For support: support@example-hostel.in";
     const supportWidth = font.widthOfTextAtSize(supportText, 8);
     page.drawText(supportText, { x: (595 - supportWidth) / 2, y: Y, size: 8, font, color: COLORS.light });
 

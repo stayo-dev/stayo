@@ -3,7 +3,7 @@ import { toOwnerRows, ownerStats, formatInr } from './ownerRows';
 
 const api = [
   {
-    id: 'o1', name: 'Sri Adithya Hostels', city: 'Guntur', hostels: 3, beds: 137,
+    id: 'o1', name: 'Sunrise Residency', city: 'Guntur', hostels: 3, beds: 137,
     monthly_revenue: 820000, plan: 'Pro', is_active: true,
   },
   {
@@ -29,7 +29,7 @@ describe('formatInr', () => {
 
 describe('toOwnerRows', () => {
   it('derives two-letter initials from the owner name', () => {
-    expect(toOwnerRows(api)[0].initials).toBe('SA');
+    expect(toOwnerRows(api)[0].initials).toBe('SR');
   });
 
   it('formats GMV in Indian lakh notation', () => {

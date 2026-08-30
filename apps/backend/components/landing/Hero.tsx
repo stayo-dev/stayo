@@ -52,7 +52,7 @@ export function Hero({
   
   let supportingCopy = hostel?.heroSupportingCopy || (availability?.hasLiveAvailability 
     ? `Join ${availability?.occupiedBeds ?? 0} SNIST students`
-    : 'Join senior SNIST students at Sri Adithya Boys Hostel');
+    : 'Join senior SNIST students at Sunrise Residency');
   if (startingPriceText) {
     const hasPrice = supportingCopy.includes('₹') || supportingCopy.toLowerCase().includes('/month');
     if (!hasPrice) {

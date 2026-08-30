@@ -4,18 +4,18 @@ import LegalNav from "@/components/legal/LegalNav"
 import LegalSection from "@/components/legal/LegalSection"
 
 export const metadata: Metadata = {
-  title: "Legal & Policies | Sri Adithya Boys Hostel",
+  title: "Legal & Policies | Sunrise Residency",
   description:
-    "Terms & Conditions, Privacy Policy, and Refund Policy for Sri Adithya Boys Hostel.",
+    "Terms & Conditions, Privacy Policy, and Refund Policy for Sunrise Residency.",
   alternates: {
-    canonical: "https://sriadithyahostels.in/legal",
+    canonical: "https://example-hostel.in/legal",
   },
   openGraph: {
-    title: "Legal & Policies | Sri Adithya Boys Hostel",
+    title: "Legal & Policies | Sunrise Residency",
     description:
-      "Terms & Conditions, Privacy Policy, and Refund Policy for Sri Adithya Boys Hostel.",
-    url: "https://sriadithyahostels.in/legal",
-    siteName: "Sri Adithya Boys Hostel",
+      "Terms & Conditions, Privacy Policy, and Refund Policy for Sunrise Residency.",
+    url: "https://example-hostel.in/legal",
+    siteName: "Sunrise Residency",
     type: "website",
   },
   robots: {
@@ -33,14 +33,14 @@ export default function LegalPage() {
       <header className="bg-slate-900 text-white">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-14 sm:py-20 text-center">
           <p className="text-indigo-400 text-xs font-bold uppercase tracking-[0.2em] mb-4">
-            Sri Adithya Boys Hostel
+            Stayo
           </p>
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
             Legal &amp; Policies
           </h1>
           <p className="mt-4 text-slate-400 text-base sm:text-lg max-w-xl mx-auto leading-relaxed">
-            Our commitment to transparency, privacy, and fair usage of the Sri
-            Adithya Boys Hostel platform.
+            Our commitment to transparency, privacy, and fair usage of the
+            Stayo platform.
           </p>
           {/* Quick jump links for no-JS fallback */}
           <div className="mt-8 flex flex-wrap justify-center gap-3">
@@ -74,7 +74,7 @@ export default function LegalPage() {
       <footer className="border-t border-slate-200 bg-slate-50">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-sm text-slate-500">
-            &copy; {new Date().getFullYear()} Sri Adithya Boys Hostel. All rights
+            &copy; {new Date().getFullYear()} Sunrise Residency. All rights
             reserved.
           </p>
           <nav aria-label="Policy quick links" className="flex gap-5">

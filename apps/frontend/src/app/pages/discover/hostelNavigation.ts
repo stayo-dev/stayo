@@ -130,7 +130,7 @@ const MAP_ZOOM = 16;
  * A map of the hostel, embedded without an API key.
  *
  * Google's `maps?q=…&output=embed` endpoint returns a full Google map in an
- * iframe with **no key, no billing and no SDK**. It is what `sriadithyahostels.in`
+ * iframe with **no key, no billing and no SDK**. It is what `example-hostel.in`
  * already uses, and what loads `init_embed.js` / `map.js` / `places_impl.js` in
  * the network tab.
  *

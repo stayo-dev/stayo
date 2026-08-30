@@ -29,15 +29,21 @@ const PAGE_H = 595.28;
 const MARGIN = 34;
 const CONTENT_W = PAGE_W - MARGIN * 2;
 
-const INK = rgb(0.1, 0.1, 0.11);
-const MUTED = rgb(0.42, 0.42, 0.45);
-const FAINT = rgb(0.6, 0.6, 0.63);
-const RULE = rgb(0.84, 0.84, 0.86);
-const RULE_STRONG = rgb(0.62, 0.62, 0.65);
-const ACCENT = rgb(0.72, 0.28, 0.16);
-const ZEBRA = rgb(0.973, 0.965, 0.957);
-const HEADER_WASH = rgb(0.945, 0.925, 0.906);
-const PAPER = rgb(1, 1, 1);
+/**
+ * The Stayo palette, from `Stayo-Brand-Assetes/color/colors.css`. Hex is kept
+ * in the comment because that is how the brand pack states it and how anyone
+ * checking this against the palette sheet will read it.
+ */
+const INK = rgb(0.184, 0.184, 0.184); // Charcoal #2F2F2F
+const MUTED = rgb(0.42, 0.42, 0.42);
+const FAINT = rgb(0.60, 0.60, 0.60);
+const RULE = rgb(0.85, 0.82, 0.78);
+const RULE_STRONG = rgb(0.68, 0.63, 0.57);
+const ACCENT = rgb(0.706, 0.416, 0.333); // Warm Clay #B46A55 — primary brand
+const ACCENT_DEEP = rgb(0.643, 0.365, 0.267); // Terra Cotta #A45D44
+const ZEBRA = rgb(0.969, 0.953, 0.933); // Cream #F7F3EE
+const HEADER_WASH = rgb(0.922, 0.851, 0.769); // Latte #EBD9C4
+const PAPER = rgb(1, 1, 1); // Print white, not Cream — this is paper.
 
 const FONT_DIR = path.join(process.cwd(), "lib", "pdf", "fonts");
 const BRAND_MARK = path.join(process.cwd(), "lib", "pdf", "brand", "stayo-mark.png");
@@ -53,20 +59,26 @@ interface Fonts {
 }
 
 /**
- * Poppins and Playfair Display — the Stayo brand pair, the same
- * `--font-body` / `--font-display` the apps set in `styles/theme.css`.
+ * **Manrope and Inter — the Stayo brand pair**, per the brand pack's own
+ * typography rule: Manrope carries headings, UI and the wordmark at 600–800;
+ * Inter keeps body copy quiet and legible.
  *
- * The receipt embeds Inter instead, and deliberately: it prints `₹` on every
- * line and Inter carries U+20B9. This sheet prints no currency at all, so it
- * is free to use the brand's own body face and should — it is the most public
- * document the product makes, hanging on a wall for a month at a time.
+ * This sheet has been wrong twice. It first shipped in Inter + Playfair,
+ * copied from the receipt template; then in Poppins + Playfair, matching
+ * `styles/theme.css`. Neither was the brand: `theme.css` itself declares
+ * Playfair Display + Poppins, which predates the brand pack and is off-brand
+ * across the whole product — recorded in [[TODO]] rather than silently
+ * restyled here.
+ *
+ * Inter, incidentally, is the same face the receipt embeds for its own reason
+ * (it carries `₹`, U+20B9, which pdf-lib's built-in Helvetica cannot encode).
  */
 async function loadFonts(pdfDoc: PDFDocument): Promise<Fonts> {
   pdfDoc.registerFontkit(fontkit);
   const [regular, medium, display] = await Promise.all([
-    fs.readFile(path.join(FONT_DIR, "poppins-400.ttf")),
-    fs.readFile(path.join(FONT_DIR, "poppins-500.ttf")),
-    fs.readFile(path.join(FONT_DIR, "playfair-700.ttf")),
+    fs.readFile(path.join(FONT_DIR, "inter-400.ttf")),
+    fs.readFile(path.join(FONT_DIR, "inter-500.ttf")),
+    fs.readFile(path.join(FONT_DIR, "manrope-700.ttf")),
   ]);
   // Not subset, for the reason the receipt template documents: pdf-lib's
   // subsetter drops most Latin glyphs from these builds and the page comes
@@ -187,7 +199,7 @@ export async function renderMenuPdf(content: MenuContent): Promise<Uint8Array> {
     draw(page, content.monogram, MARGIN + (badgeSize - monoWidth) / 2, badgeY + 15, {
       size: 18,
       font: fonts.display,
-      color: ACCENT,
+      color: ACCENT_DEEP,
     });
   }
 

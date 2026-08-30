@@ -7,7 +7,7 @@ async function main() {
     const ownerId = "0b301633-272e-4856-b9a5-773faf3a58da";
     const token = await generateToken({
       sub: ownerId,
-      email: "sriadithyahostels@gmail.com",
+      email: "examplehostel@gmail.com",
       role: "OWNER",
       owner_id: ownerId,
       sid: "test-session-id-1234567890",

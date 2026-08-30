@@ -20,7 +20,7 @@ async function runTests() {
   if (!room) throw new Error("No room found in database");
 
   // Create another profile to test duplicate email check
-  const duplicateEmail = "duplicate-test-" + crypto.randomUUID().slice(0, 8) + "@sriadithyahostels.in";
+  const duplicateEmail = "duplicate-test-" + crypto.randomUUID().slice(0, 8) + "@example-hostel.in";
   const duplicateProfile = await prisma.profile.create({
     data: {
       id: crypto.randomUUID(),
@@ -124,7 +124,7 @@ async function runTests() {
   }
 
   // Test Case 4: Valid email and passwords - Activation initialization
-  const validEmail = "success-test-" + crypto.randomUUID().slice(0, 8) + "@sriadithyahostels.in";
+  const validEmail = "success-test-" + crypto.randomUUID().slice(0, 8) + "@example-hostel.in";
   console.log(`Test Case 4: Activating with valid email ${validEmail}...`);
   await tenantInvitationLifecycleService.startActivation(token, {
     phone: "+919876500123",
@@ -173,7 +173,7 @@ async function runTests() {
 
   // Test Case 5: Verification via activationWorkflowService.saveAccount
   console.log("Test Case 5: Testing saveAccount email validation and updates...");
-  const updatedValidEmail = "updated-test-" + crypto.randomUUID().slice(0, 8) + "@sriadithyahostels.in";
+  const updatedValidEmail = "updated-test-" + crypto.randomUUID().slice(0, 8) + "@example-hostel.in";
   
   // Verify saveAccount rejects missing email
   try {

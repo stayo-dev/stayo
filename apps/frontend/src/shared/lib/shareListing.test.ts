@@ -52,7 +52,7 @@ describe('shouldFallbackAfterShareError', () => {
 });
 
 describe('the share sheet targets', () => {
-  const hostel = { name: 'Sri Adithya Boys Hostel', slug: 'starlink-79ba709b', city: 'Hyderabad' };
+  const hostel = { name: 'Sunrise Residency', slug: 'starlink-79ba709b', city: 'Hyderabad' };
   const url = 'https://yourstayo.com/h/starlink-79ba709b';
   const links = buildShareLinks(hostel, url);
 
@@ -69,7 +69,7 @@ describe('the share sheet targets', () => {
   it('carries the link inside the message for chat apps', () => {
     const whatsapp = links.find((l) => l.channel === 'whatsapp')!;
     expect(decodeURIComponent(whatsapp.href)).toContain(url);
-    expect(decodeURIComponent(whatsapp.href)).toContain('Sri Adithya Boys Hostel, Hyderabad — on Stayo');
+    expect(decodeURIComponent(whatsapp.href)).toContain('Sunrise Residency, Hyderabad — on Stayo');
   });
 
   it('encodes the url, so a slug with punctuation cannot break the target', () => {

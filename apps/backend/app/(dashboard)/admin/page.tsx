@@ -11,7 +11,7 @@ import { api } from "@/lib/api-client";
  * Renders the FIVE money buckets distinguished by the financial-ops
  * brief:
  *
- *   1. Platform revenue           — what Sri Adithya Boys Hostel earned
+ *   1. Platform revenue           — what Sunrise Residency earned
  *   2. Owner payable liability    — what is currently owed to owners (live)
  *   3. Unsettled liability        — un-reserved subset of (2)
  *   4. Settled payouts (window)   — money disbursed in the window
@@ -87,7 +87,7 @@ export default function AdminOverviewPage() {
       <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
         <Bucket
           tone="indigo"
-          label="Sri Adithya Boys Hostel Platform Revenue"
+          label="Sunrise Residency Platform Revenue"
           sub={`${data.buckets.hms_platform_revenue.payment_count} payments · last ${days}d`}
           value={rupees(data.buckets.hms_platform_revenue.total)}
           note="Subscriptions + add-ons. Never mixed with owner liability."

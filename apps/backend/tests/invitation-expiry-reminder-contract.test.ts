@@ -52,7 +52,7 @@ describe("hours remaining", () => {
 describe("the payload", () => {
   const payload = buildInvitationExpiryReminderPayload({
     tenantName: "Shiva",
-    hostelName: "Sri Adithya Boys Hostel",
+    hostelName: "Sunrise Residency",
     activationLink: LINK,
     expiresAt: new Date("2026-08-26T12:00:00.000Z"),
     now: NOW,
@@ -62,7 +62,7 @@ describe("the payload", () => {
     const body = payload.components.find((c) => c.type === "body");
     expect(body?.parameters).toEqual([
       { type: "text", text: "Shiva" },
-      { type: "text", text: "Sri Adithya Boys Hostel" },
+      { type: "text", text: "Sunrise Residency" },
       { type: "text", text: "24" },
     ]);
     // A mismatch here is Meta error #132000 on every send.

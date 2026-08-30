@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { validatePayoutAccount } from "@/src/services/settlements/payout-account";
 
 const valid = {
-  holder_name: "Sri Adithya Hostels",
+  holder_name: "Sunrise Residency",
   account_no: "50100443777341",
   account_no_confirm: "50100443777341",
   ifsc: "HDFC0001204",

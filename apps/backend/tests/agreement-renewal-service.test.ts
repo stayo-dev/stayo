@@ -22,7 +22,7 @@ const sourceAgreement = {
   contract_maintenance_type: "ONE_TIME",
   contract_payment_frequency: "MONTHLY",
   content_snapshot: {
-    hostel_name: "Sri Adithya",
+    hostel_name: "Sunrise Residency",
     tenant_name: "Tenant One",
     monthly_rent: 8000,
     advance_deposit: 9000,
@@ -161,7 +161,7 @@ describe("AgreementRenewalService", () => {
 
     const created = tx.agreement.create.mock.calls[0][0].data;
     expect(created.content_snapshot).toMatchObject({
-      hostel_name: "Sri Adithya",
+      hostel_name: "Sunrise Residency",
       tenant_name: "Tenant One",
       monthly_rent: 8500,
       advance_deposit: 10000,
@@ -258,7 +258,7 @@ describe("AgreementRenewalService", () => {
       agreement_end_date: null,
       agreement_duration_months: null,
       content_snapshot: {
-        hostel_name: "Sri Adithya",
+        hostel_name: "Sunrise Residency",
         tenant_name: "Tenant One",
         monthly_rent: 8000,
         advance_deposit: 9000,
@@ -306,7 +306,7 @@ describe("AgreementRenewalService", () => {
       agreement_end_date: null,
       agreement_duration_months: null,
       content_snapshot: {
-        hostel_name: "Sri Adithya",
+        hostel_name: "Sunrise Residency",
         tenant_name: "Tenant One",
         monthly_rent: 8000,
         advance_deposit: 9000,

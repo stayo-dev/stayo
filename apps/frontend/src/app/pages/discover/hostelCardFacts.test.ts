@@ -5,8 +5,8 @@ import { availabilityFact, hostelCardFacts, locationLabel, sharingSummary } from
 function card(overrides: Partial<DiscoverCard> = {}): DiscoverCard {
   return {
     id: 'h1',
-    slug: 'sri-adithya',
-    name: 'Sri Adithya Boys Hostel',
+    slug: 'sunrise-residency',
+    name: 'Sunrise Residency',
     city: 'Hyderabad',
     address: 'Ameerpet',
     hostel_type: 'BOYS',

@@ -247,7 +247,7 @@ const COMMANDS_TEXT = [
 const LINK_SUCCESS_TEXT = [
   "Connected Successfully",
   "",
-  "Welcome to Sri Adithya Boys Hostel Assistant",
+  "Welcome to Sunrise Residency Assistant",
   "",
   "Send HELP for quick actions.",
   "You can also type a tenant name, phone number, or room number.",
@@ -874,7 +874,7 @@ export class OwnerWhatsAppAssistantService {
           phone: normalizedPhone,
           message,
           command: isQuickAction ? "QUICK_ACTION" : "VIEW_DUES",
-          response: "Sri Adithya Boys Hostel: No active context found. Use the menu commands below to view stats or send reminders.",
+          response: "Sunrise Residency: No active context found. Use the menu commands below to view stats or send reminders.",
           success: true,
         });
       }
@@ -5950,7 +5950,7 @@ export class OwnerWhatsAppAssistantService {
     return [
       "🔔 WhatsApp Assistant Updated",
       "",
-      `An owner number was ${verb} Sri Adithya Boys Hostel.`,
+      `An owner number was ${verb} Sunrise Residency.`,
       "",
       `Number: ${maskWhatsAppPhone(input.phone)}`,
       `Connected Numbers: ${input.connectedCount}`,

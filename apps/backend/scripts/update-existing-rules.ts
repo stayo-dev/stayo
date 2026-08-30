@@ -117,7 +117,7 @@ async function main() {
     await prisma.ruleVersion.update({
       where: { id: rv.id },
       data: {
-        title: "Sri Adithya Boys Hostel — Rules & Regulations",
+        title: "Sunrise Residency — Rules & Regulations",
         content: NEW_RULE_CONTENT,
         content_snapshot: NEW_RULE_CONTENT,
       },

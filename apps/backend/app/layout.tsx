@@ -7,22 +7,22 @@ import { Providers } from "@/lib/providers";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Sri Adithya Boys Hostel",
-  description: "Modern hostel management platform for Sri Adithya Boys Hostel.",
+  title: "Sunrise Residency",
+  description: "Modern hostel management platform for Sunrise Residency.",
   alternates: {
-    canonical: "https://sriadithyahostels.in/",
+    canonical: "https://example-hostel.in/",
   },
   openGraph: {
-    title: "Sri Adithya Boys Hostel",
-    description: "Modern hostel management platform for Sri Adithya Boys Hostel.",
-    url: "https://sriadithyahostels.in/",
-    siteName: "Sri Adithya Boys Hostel",
+    title: "Sunrise Residency",
+    description: "Modern hostel management platform for Sunrise Residency.",
+    url: "https://example-hostel.in/",
+    siteName: "Sunrise Residency",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Sri Adithya Boys Hostel",
-    description: "Modern hostel management platform for Sri Adithya Boys Hostel.",
+    title: "Sunrise Residency",
+    description: "Modern hostel management platform for Sunrise Residency.",
   },
 };
 

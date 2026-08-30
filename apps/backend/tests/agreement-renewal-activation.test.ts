@@ -108,7 +108,7 @@ describe("AgreementRenewalActivation", () => {
       },
       tenant: {
         owner_id: "owner-id",
-        profiles: { name: "Adithya" },
+        profiles: { name: "Sunrise" },
         rent_obligations: [], // no unpaid deposit obligations
       },
       template: {
@@ -138,7 +138,7 @@ describe("AgreementRenewalActivation", () => {
         rule_version_id: "rule-v1",
         rule_version_number: "v1",
         content_snapshot: {
-          tenant_name: "Adithya",
+          tenant_name: "Sunrise",
           room_no: "101",
         },
       },
@@ -218,7 +218,7 @@ describe("AgreementRenewalActivation", () => {
     expect(updateCall).toBeDefined();
     expect(updateCall[0].data.content_snapshot).toEqual(
       expect.objectContaining({
-        tenant_name: "Adithya",
+        tenant_name: "Sunrise",
         room_no: "101",
         source: "renewal_offer",
         renewal_offer_id: "offer-id",
@@ -247,7 +247,7 @@ describe("AgreementRenewalActivation", () => {
       contract_payment_frequency: "MONTHLY",
       tenant: {
         owner_id: "owner-id",
-        profiles: { name: "Adithya" },
+        profiles: { name: "Sunrise" },
       },
       renewed_from_agreement: {
         id: "predecessor-agreement-id",
@@ -319,7 +319,7 @@ describe("AgreementRenewalActivation", () => {
       },
       tenant: {
         owner_id: "owner-id",
-        profiles: { name: "Adithya" },
+        profiles: { name: "Sunrise" },
         rent_obligations: [],
       },
       template: {
@@ -349,7 +349,7 @@ describe("AgreementRenewalActivation", () => {
         rule_version_id: "rule-v1",
         rule_version_number: "v1",
         content_snapshot: {
-          tenant_name: "Adithya",
+          tenant_name: "Sunrise",
           room_no: "101",
         },
       },
@@ -398,7 +398,7 @@ describe("AgreementRenewalActivation", () => {
       hostel_id: "hostel-id",
       status: "DRAFT",
       agreement_start_date: today,
-      tenant: { owner_id: "owner-id", profiles: { name: "Adithya" }, rent_obligations: [] },
+      tenant: { owner_id: "owner-id", profiles: { name: "Sunrise" }, rent_obligations: [] },
       renewed_from_agreement: { id: "predecessor-agreement-id", status: "TERMINATED" },
     };
     mocks.agreementFindMany.mockResolvedValue([mockDraft]);
@@ -452,7 +452,7 @@ describe("AgreementRenewalActivation", () => {
       contract_maintenance: 1000,
       contract_maintenance_type: "MONTHLY",
       contract_payment_frequency: "MONTHLY",
-      tenant: { owner_id: "owner-id", profiles: { name: "Adithya" }, rent_obligations: [] },
+      tenant: { owner_id: "owner-id", profiles: { name: "Sunrise" }, rent_obligations: [] },
       renewed_from_agreement: { id: "predecessor-agreement-id", status: "SIGNED", renewed_to_agreement_id: "draft-agreement-id" },
     };
     mocks.agreementFindMany.mockResolvedValue([mockDraft]);
@@ -496,7 +496,7 @@ describe("AgreementRenewalActivation", () => {
       contract_payment_frequency: "MONTHLY",
       template_id: "template-id",
       content_snapshot: { source: "renewal_offer", renewal_offer_id: "offer-id" },
-      tenant: { owner_id: "owner-id", profiles: { name: "Adithya" }, rent_obligations: [] },
+      tenant: { owner_id: "owner-id", profiles: { name: "Sunrise" }, rent_obligations: [] },
       template: { owner_signature_url: "url", owner_name: "Owner", rules_content: { rules: [] }, version_number: 1 },
       renewed_from_agreement: {
         id: "predecessor-agreement-id",

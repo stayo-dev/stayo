@@ -70,14 +70,14 @@ describe("isActionable", () => {
 
 describe("ownerNotification", () => {
   it("tells an owner their page is still up when changes are requested", () => {
-    const { title, body } = ownerNotification("REQUEST_CHANGES", "Sri Adithya", "Fix the mess menu.");
+    const { title, body } = ownerNotification("REQUEST_CHANGES", "Sunrise Residency", "Fix the mess menu.");
     expect(title).toBe("Changes requested on your listing");
     expect(body).toContain("still live");
     expect(body).toContain("Fix the mess menu.");
   });
 
   it("tells an owner their page is down, and how to get it back", () => {
-    const { title, body } = ownerNotification("UNPUBLISH", "Sri Adithya", "The ₹4,500 tier does not exist.");
+    const { title, body } = ownerNotification("UNPUBLISH", "Sunrise Residency", "The ₹4,500 tier does not exist.");
     expect(title).toBe("Your listing has been taken down");
     expect(body).toContain("no longer visible");
     expect(body).toContain("resubmit");

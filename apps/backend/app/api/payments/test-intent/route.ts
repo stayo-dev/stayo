@@ -45,7 +45,7 @@ export async function POST(req: Request) {
 
     const activeProvider = getActivePaymentProvider();
     if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-      return apiError("Sri Adithya Boys Hostel Razorpay credentials are not configured", "CONFIG_ERROR", 422);
+      return apiError("Sunrise Residency Razorpay credentials are not configured", "CONFIG_ERROR", 422);
     }
 
     let tenantId = "";

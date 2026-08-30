@@ -37,7 +37,7 @@ describe("requiresSessionDespitePublicPrefix", () => {
 });
 
 describe('allowsOptionalIdentity — public, but knows who is asking', () => {
-  const path = '/api/discover/hostels/sri-adithya/reviews';
+  const path = '/api/discover/hostels/sunrise-residency/reviews';
 
   // The bug: a signed-in resident was told "Sign in to write a review" while
   // holding a good session, because the public branch strips identity headers.
@@ -57,7 +57,7 @@ describe('allowsOptionalIdentity — public, but knows who is asking', () => {
   });
 
   it('does not leak to neighbouring discover paths', () => {
-    expect(allowsOptionalIdentity('/api/discover/hostels/sri-adithya', 'GET')).toBe(false);
+    expect(allowsOptionalIdentity('/api/discover/hostels/sunrise-residency', 'GET')).toBe(false);
     expect(allowsOptionalIdentity('/api/discover/enquiries', 'GET')).toBe(false);
     expect(allowsOptionalIdentity('/api/discover/saved', 'GET')).toBe(false);
     expect(allowsOptionalIdentity('/api/discover/hostels/a/reviews/b', 'GET')).toBe(false);

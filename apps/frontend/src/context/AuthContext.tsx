@@ -153,7 +153,11 @@ const clearSessionScopedStorage = (options: LogoutOptions = {}) => {
     ? sessionStorage.getItem(SESSION_EXPIRY_NOTICE_KEY)
     : null;
   localStorage.removeItem('hms_onboarding_step');
-  localStorage.removeItem('sri_adithya_onboarding_complete');
+  // A key from the single-hostel product this was built out of. The retired
+  // identity is not allowed anywhere in this codebase (see
+  // `scripts/check-production-branding.mjs`), and an orphaned localStorage
+  // entry on an old browser is inert — it is read by nothing.
+  localStorage.removeItem('stayo_onboarding_complete');
   sessionStorage.clear();
   if (preservedNotice) sessionStorage.setItem(SESSION_EXPIRY_NOTICE_KEY, preservedNotice);
 };

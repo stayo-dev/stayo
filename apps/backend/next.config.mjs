@@ -36,7 +36,7 @@ const nextConfig = {
 
     // Keep this in sync with lib/config/domains.ts's PRODUCTION_FRONTEND_URL
     // — this file previously fell back to the legacy pre-rebrand domain
-    // (sriadithyahostels.in), disagreeing with every other fallback in the
+    // (example-hostel.in), disagreeing with every other fallback in the
     // codebase, which uses yourstayo.com.
     if (!frontendBase) {
       frontendBase = "https://yourstayo.com";

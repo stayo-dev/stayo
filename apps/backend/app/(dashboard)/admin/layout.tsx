@@ -39,7 +39,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <div className="flex">
         <aside className="w-64 min-h-screen border-r border-gray-200 bg-white">
           <div className="p-4 border-b border-gray-200">
-            <div className="text-xs uppercase tracking-wider text-gray-500">Sri Adithya Boys Hostel Treasury</div>
+            <div className="text-xs uppercase tracking-wider text-gray-500">Sunrise Residency Treasury</div>
             <div className="text-sm font-semibold mt-1">{user.name}</div>
             <div className="text-xs text-gray-500">{user.email}</div>
           </div>

@@ -11,8 +11,8 @@ const period = financialYearPeriod(2026);
 const base: DocumentData = { period, scopeLabel: 'All hostels', ...EMPTY_DOCUMENT_DATA };
 
 const rent = [
-  { date: '2026-04-05', tenantName: 'Ravi Kumar', hostelName: 'Sri Adithya', amount: 8500, method: 'Online', reference: 'pay_abc', source: 'verified' as const },
-  { date: '2026-04-07', tenantName: 'Kiran S', hostelName: 'Sri Adithya', amount: 6000, method: 'Cash', reference: '', source: 'owner_recorded' as const },
+  { date: '2026-04-05', tenantName: 'Ravi Kumar', hostelName: 'Sunrise Residency', amount: 8500, method: 'Online', reference: 'pay_abc', source: 'verified' as const },
+  { date: '2026-04-07', tenantName: 'Kiran S', hostelName: 'Sunrise Residency', amount: 6000, method: 'Cash', reference: '', source: 'owner_recorded' as const },
   { date: '2026-05-02', tenantName: 'Suresh P', hostelName: 'Green Nest', amount: 4000, method: 'UPI', reference: 'upi-1', source: 'owner_recorded' as const },
 ];
 
@@ -53,7 +53,7 @@ describe('rendering produces real files', () => {
     const bytes = await renderReconciliationWorkbook({
       ...base,
       payouts: [{ id: 'p1', amount: 13900, status: 'PAID', method: 'BANK_TRANSFER', reference: 'N2148891', paidAt: '2026-08-21',
-        tenants: [{ name: 'Ravi Kumar', hostelName: 'Sri Adithya', amount: 8500, date: '2026-08-19' }] }],
+        tenants: [{ name: 'Ravi Kumar', hostelName: 'Sunrise Residency', amount: 8500, date: '2026-08-19' }] }],
     });
     expect(magic(bytes, 2)).toBe('PK');
   });
@@ -62,7 +62,7 @@ describe('rendering produces real files', () => {
     const bytes = await renderWhoOwesMePdf({
       ...base,
       queue: { totalTenants: 1, totalOutstanding: 8500, groups: [{ label: 'Needs immediate attention', count: 1, totalOutstanding: 8500,
-        rows: [{ tenantName: 'Ravi Kumar', room: '204', hostelName: 'Sri Adithya', outstanding: 8500, daysOverdue: 12, phone: '9999999999' }] }] },
+        rows: [{ tenantName: 'Ravi Kumar', room: '204', hostelName: 'Sunrise Residency', outstanding: 8500, daysOverdue: 12, phone: '9999999999' }] }] },
     });
     expect(magic(bytes)).toBe('%PDF');
   });

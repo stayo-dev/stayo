@@ -23,7 +23,7 @@ async function runTests() {
   const profileId = crypto.randomUUID();
   const inviteId = crypto.randomUUID();
   const token = crypto.randomBytes(32).toString("hex");
-  const testEmail = `guardian.otp.test-${crypto.randomUUID().slice(0, 8)}@sriadithyahostels.in`;
+  const testEmail = `guardian.otp.test-${crypto.randomUUID().slice(0, 8)}@example-hostel.in`;
 
   // Create profile first to avoid foreign key violation
   await prisma.profile.create({

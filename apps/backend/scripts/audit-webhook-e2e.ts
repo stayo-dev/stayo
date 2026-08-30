@@ -61,7 +61,7 @@ async function main() {
     await prisma.profile.create({
       data: {
         id: profileId,
-        email: `audit-tenant-${tenantId}@sriadithyahostels.in`,
+        email: `audit-tenant-${tenantId}@example-hostel.in`,
         name: "Webhook Audit Tenant",
         phone: "9999999999",
         role: "TENANT",

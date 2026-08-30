@@ -21,7 +21,7 @@ const lead = (over: Partial<DynamicLead> & Record<string, unknown> = {}): Dynami
     source: 'DISCOVER',
     status: 'NEW',
     hostel_id: 'h1',
-    hostel: { id: 'h1', name: 'Sri Adithya Boys Hostel' },
+    hostel: { id: 'h1', name: 'Sunrise Residency' },
     seeker_profile_id: null,
     ...over,
   }) as DynamicLead;

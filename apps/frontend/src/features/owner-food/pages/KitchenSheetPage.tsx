@@ -34,7 +34,7 @@ function dishes(cell: WeekGridCell | null | undefined): string {
  * The hostel comes from `?hostelId=`, carried over by the Food tab's link, and
  * falls back to the primary hostel only when the screen is reached directly.
  * It never picks "the first hostel": a multi-property owner reading Sri
- * Lakshmi's week and tapping Send to kitchen must not get Sri Adithya's menu
+ * Lakshmi's week and tapping Send to kitchen must not get Sunrise Residency's menu
  * pre-filled into a WhatsApp share. The switcher is here too, so this screen is
  * not a dead end for the other properties.
  */

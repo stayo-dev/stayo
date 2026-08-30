@@ -916,7 +916,7 @@ function sanitizeAndValidateToken(rawToken: string, requestType: "GET" | "POST")
     if (requestType === "GET") {
       const html = renderPage({
         title: "Payment Not Found",
-        hostelName: "Sri Adithya Hostels",
+        hostelName: "Sunrise Residency",
         tenantName: "Resident",
         status: "ERROR",
         errorMessage: "Payment Link Not Found",
@@ -994,7 +994,7 @@ export async function GET(
       return new NextResponse(
         renderPage({
           title: "Payment Not Found",
-          hostelName: "Sri Adithya Boys Hostel",
+          hostelName: "Sunrise Residency",
           tenantName: "",
           status: "ERROR",
           errorMessage: "This payment link is not valid.",
@@ -1003,7 +1003,7 @@ export async function GET(
       );
     }
 
-    const hostelName = linkToken.hostels.name || "Sri Adithya Boys Hostel";
+    const hostelName = linkToken.hostels.name || "Sunrise Residency";
     const tenantName = linkToken.tenants.profiles?.name || "Tenant";
     const supportPhone = linkToken.hostels.phone || "";
     const obligation = linkToken.rent_obligations;
@@ -1116,7 +1116,7 @@ export async function GET(
     return new NextResponse(
       renderPage({
         title: "Error",
-        hostelName: "Sri Adithya Boys Hostel",
+        hostelName: "Sunrise Residency",
         tenantName: "",
         status: "ERROR",
         errorMessage: "Something went wrong. Please try again.",

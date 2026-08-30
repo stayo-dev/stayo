@@ -27,7 +27,7 @@ export const landingHostel = defineType({
       name: 'heroSupportingCopy',
       title: 'Hero Supporting Copy override',
       type: 'string',
-      description: 'Optional supporting text below subtitle. E.g., "Join senior SNIST students at Sri Adithya."',
+      description: 'Optional supporting text below subtitle. E.g., "Join senior SNIST students at Sunrise Residency."',
     }),
     defineField({
       name: 'heroHighlights',

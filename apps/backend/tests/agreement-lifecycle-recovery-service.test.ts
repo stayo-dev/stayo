@@ -36,7 +36,7 @@ const legacyAgreement: any = {
   },
   hostel: {
     id: "hostel-1",
-    name: "Sri Adithya",
+    name: "Sunrise Residency",
     owner_id: "owner-1",
   },
 };

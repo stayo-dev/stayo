@@ -67,7 +67,7 @@ export function FoodSection({ food }: { food?: FoodContent }) {
                   </div>
                   <div className="relative z-10">
                     <div className="flex items-center gap-1.5 mb-4 text-[#F07B1D]">
-                      <span className="text-sm font-bold uppercase tracking-wider">★ Parents Approve Sri Adithya Boys Hostel</span>
+                      <span className="text-sm font-bold uppercase tracking-wider">★ Parents Approve Sunrise Residency</span>
                     </div>
                     <p className="text-[#FFFDF5]/90 italic text-base leading-relaxed mb-6 font-medium">
                       "{food.parentQuote}"

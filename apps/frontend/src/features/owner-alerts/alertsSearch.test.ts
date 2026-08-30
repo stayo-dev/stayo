@@ -14,7 +14,7 @@ const lead = (over: Partial<AlertsLists['leads'][number]> = {}) => ({
   source: 'DISCOVER',
   status: 'READY_TO_JOIN',
   hostel_id: 'h1',
-  hostel: { id: 'h1', name: 'Sri Adithya Boys Hostel' },
+  hostel: { id: 'h1', name: 'Sunrise Residency' },
   seeker_profile_id: null,
   ...over,
 });
@@ -49,7 +49,7 @@ describe('normaliseQuery', () => {
 });
 
 describe('matchesTokens', () => {
-  const hay = { text: ['Riya Sharma', 'Sri Adithya Boys Hostel'], phones: ['+918008046952'] };
+  const hay = { text: ['Riya Sharma', 'Sunrise Residency'], phones: ['+918008046952'] };
 
   it('matches nothing-typed as everything', () => {
     expect(matchesTokens(hay, [])).toBe(true);
@@ -58,8 +58,8 @@ describe('matchesTokens', () => {
   // The owner does not know which field holds what, so word order and field
   // boundaries must not matter.
   it('requires every word, but across any field and in any order', () => {
-    expect(matchesTokens(hay, ['riya', 'adithya'])).toBe(true);
-    expect(matchesTokens(hay, ['adithya', 'riya'])).toBe(true);
+    expect(matchesTokens(hay, ['riya', 'sunrise'])).toBe(true);
+    expect(matchesTokens(hay, ['sunrise', 'riya'])).toBe(true);
     expect(matchesTokens(hay, ['riya', 'kavya'])).toBe(false);
   });
 
@@ -127,7 +127,7 @@ describe('searchAlerts', () => {
   });
 
   it('finds a lead by hostel', () => {
-    expect(searchAlerts('adithya', LISTS).leads.map((l) => l.id)).toEqual(['l1']);
+    expect(searchAlerts('sunrise', LISTS).leads.map((l) => l.id)).toEqual(['l1']);
   });
 
   it('finds a lead by part of a phone number', () => {

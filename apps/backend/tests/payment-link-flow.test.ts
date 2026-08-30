@@ -84,7 +84,7 @@ describe("Payment Link Token Public Flow", () => {
         rent_obligations: { status: "PENDING", amount: 5000, rent_month: new Date() },
         tenants: { profiles: { name: "John Doe" } },
         hostels: {
-          name: "Adithya Hostel",
+          name: "Sunrise Hostel",
           phone: "1234567890",
           address: "123 Main St",
           city: "Hyderabad",
@@ -111,7 +111,7 @@ describe("Payment Link Token Public Flow", () => {
         rent_obligations: { status: "PAID", amount: 5000, rent_month: new Date(), payments: [] },
         tenants: { profiles: { name: "John Doe" }, monthly_rent: 5000 },
         hostels: {
-          name: "Adithya Hostel",
+          name: "Sunrise Hostel",
           phone: "1234567890",
           address: "123 Main St",
           city: "Hyderabad",
@@ -145,7 +145,7 @@ describe("Payment Link Token Public Flow", () => {
         rent_obligations: null, // generic tenant-scoped link, no specific obligation hinted
         tenants: { profiles: { name: "John Doe" }, monthly_rent: 8500 },
         hostels: {
-          name: "Adithya Hostel",
+          name: "Sunrise Hostel",
           phone: "1234567890",
           address: "123 Main St",
           city: "Hyderabad",
@@ -190,7 +190,7 @@ describe("Payment Link Token Public Flow", () => {
         rent_obligations: { status: "PENDING", amount: 5000, rent_month: new Date(), payments: [] },
         tenants: { profiles: { name: "John Doe" }, monthly_rent: 5000 },
         hostels: {
-          name: "Adithya Hostel",
+          name: "Sunrise Hostel",
           phone: "1234567890",
           address: "123 Main St",
           city: "Hyderabad",
@@ -217,7 +217,7 @@ describe("Payment Link Token Public Flow", () => {
         rent_obligations: { status: "PENDING", amount: 5000, rent_month: new Date(), payments: [] },
         tenants: { profiles: { name: "John Doe" }, monthly_rent: 5000 },
         hostels: {
-          name: "Adithya Hostel",
+          name: "Sunrise Hostel",
           phone: "1234567890",
           address: "123 Main St",
           city: "Hyderabad",
@@ -279,7 +279,7 @@ describe("Payment Link Token Public Flow", () => {
         rent_obligations: { status: "PENDING", amount: 5000 },
         tenants: { profiles: { name: "John Doe", email: "j@example.com" } },
         hostels: {
-          name: "Adithya Hostel",
+          name: "Sunrise Hostel",
           phone: "1234567890",
           address: "123 Main St",
           city: "Hyderabad",
@@ -320,7 +320,7 @@ describe("Payment Link Token Public Flow", () => {
         rent_obligations: { status: "PENDING", amount: 5000 },
         tenants: { profiles: { name: "John Doe" } },
         hostels: {
-          name: "Adithya Hostel",
+          name: "Sunrise Hostel",
           phone: "1234567890",
           address: "123 Main St",
           city: "Hyderabad",
@@ -373,7 +373,7 @@ describe("Payment Link Token Public Flow", () => {
         obligation_id: null,
         expires_at: new Date(Date.now() + 1000 * 60 * 60),
         rent_obligations: null,
-        hostels: { name: "Adithya Hostel", phone: "1234567890" },
+        hostels: { name: "Sunrise Hostel", phone: "1234567890" },
         tenants: { profiles: { name: "John Doe" } },
       });
 
@@ -416,7 +416,7 @@ describe("Payment Link Token Public Flow", () => {
         obligation_id: null,
         expires_at: new Date(Date.now() + 1000 * 60 * 60),
         rent_obligations: null,
-        hostels: { name: "Adithya Hostel", phone: "1234567890" },
+        hostels: { name: "Sunrise Hostel", phone: "1234567890" },
         tenants: { profiles: { name: "John Doe" } },
       });
 
@@ -438,7 +438,7 @@ describe("Payment Link Token Public Flow", () => {
         obligation_id: null,
         expires_at: new Date(Date.now() + 1000 * 60 * 60),
         rent_obligations: null,
-        hostels: { name: "Adithya Hostel", phone: "1234567890" },
+        hostels: { name: "Sunrise Hostel", phone: "1234567890" },
         tenants: { profiles: { name: "John Doe", email: "j@example.com", phone: "9999999999" } },
       });
 
@@ -477,7 +477,7 @@ describe("Payment Link Token Public Flow", () => {
         obligation_id: null,
         expires_at: new Date(Date.now() + 1000 * 60 * 60),
         rent_obligations: null,
-        hostels: { name: "Adithya Hostel", phone: "1234567890" },
+        hostels: { name: "Sunrise Hostel", phone: "1234567890" },
         tenants: { profiles: { name: "John Doe" } },
       });
 

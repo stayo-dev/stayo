@@ -16,25 +16,25 @@ function nav(overrides: Partial<HostelNavigation> = {}): HostelNavigation {
 
 describe('directionsUrl', () => {
   it('builds the documented one-tap navigate URL', () => {
-    expect(directionsUrl(nav(), 'Sri Adithya Boys Hostel')).toBe(
+    expect(directionsUrl(nav(), 'Sunrise Residency')).toBe(
       'https://www.google.com/maps/dir/?api=1' +
-        '&destination=Sri%20Adithya%20Boys%20Hostel' +
+        '&destination=Sunrise%20Residency' +
         `&destination_place_id=${PLACE_ID}` +
         '&dir_action=navigate',
     );
   });
 
   it('encodes a name with characters that would break the query string', () => {
-    const url = directionsUrl(nav(), 'Sri Adithya Boys & Girls Hostel #2');
-    expect(url).toContain('destination=Sri%20Adithya%20Boys%20%26%20Girls%20Hostel%20%232');
-    expect(url).not.toContain('&destination=Sri Adithya');
+    const url = directionsUrl(nav(), 'Sunrise Residency Boys & Girls Hostel #2');
+    expect(url).toContain('destination=Sunrise%20Residency%20Boys%20%26%20Girls%20Hostel%20%232');
+    expect(url).not.toContain('&destination=Sunrise Residency');
   });
 
   it('returns null with no Place ID, so no dead button is drawn', () => {
-    expect(directionsUrl(null, 'Sri Adithya')).toBeNull();
-    expect(directionsUrl(undefined, 'Sri Adithya')).toBeNull();
-    expect(directionsUrl(nav({ placeId: '' }), 'Sri Adithya')).toBeNull();
-    expect(directionsUrl(nav({ placeId: '   ' }), 'Sri Adithya')).toBeNull();
+    expect(directionsUrl(null, 'Sunrise Residency')).toBeNull();
+    expect(directionsUrl(undefined, 'Sunrise Residency')).toBeNull();
+    expect(directionsUrl(nav({ placeId: '' }), 'Sunrise Residency')).toBeNull();
+    expect(directionsUrl(nav({ placeId: '   ' }), 'Sunrise Residency')).toBeNull();
   });
 
   it('never emits a bare hostel name as the destination when the name is blank', () => {
@@ -79,7 +79,7 @@ describe('the pin', () => {
     ({ placeId: 'ChIJx', landmark: null, entrancePhoto: null, distanceFromReference: null, referenceName: 'SNIST', lat, lng } as any);
 
   it('accepts a real coordinate', () => {
-    // Sri Adithya Boys Hostel, Yamnampet.
+    // Sunrise Residency, Yamnampet.
     expect(hasCoordinates(at(17.4542678, 78.6628497))).toBe(true);
   });
 

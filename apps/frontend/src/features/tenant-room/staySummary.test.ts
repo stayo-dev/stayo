@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { currentStay, formatStayDate, historySummaryLine, stayDuration, stayLine } from './staySummary';
 
-const live = { is_current: true, hostel_name: 'Sri Adithya Boys Hostel', room_no: '105', start_date: '2026-08-24', duration_months: 3 };
+const live = { is_current: true, hostel_name: 'Sunrise Residency', room_no: '105', start_date: '2026-08-24', duration_months: 3 };
 const past = { is_current: false, hostel_name: 'Old Place', room_no: '12', start_date: '2025-06-01', duration_months: 11 };
 
 describe('finding the live stay', () => {

@@ -5,10 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <!-- ── Favicon set ─────────────────────────────────────────────────── -->
-    <link rel="icon" href="/favicon.ico" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <!-- Scales to any tab/bookmark size without the softness a fixed-size PNG
+         gets when a browser upsamples it. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- iOS ignores transparency and does not downscale well, so this is a
+         flattened 180×180 rather than the 512 it would otherwise resample. -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
 
     <!-- ── Google Fonts (legacy public sub-page theme) ────────────────── -->

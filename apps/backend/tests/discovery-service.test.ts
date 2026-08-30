@@ -25,7 +25,7 @@ vi.mock("@/src/services/admissions/admissions-service", () => ({
   ACTIVE_LEAD_STATUSES: ["NEW", "INTERESTED", "ROOM_VISITED", "DECISION_PENDING", "READY_TO_JOIN", "INVITED"],
   admissionsService: {
     getPublicHostel: vi.fn(async () => ({
-      hostel: { id: "h1", public_slug: "sri-adithya", name: "Sri Adithya", photos: [], starting_price: 4500 },
+      hostel: { id: "h1", public_slug: "sunrise-residency", name: "Sunrise Residency", photos: [], starting_price: 4500 },
       rooms: [],
     })),
     recordActivity: vi.fn(async () => undefined),
@@ -55,8 +55,8 @@ const leads = () => (prisma as any).visitorLead;
 function hostelRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "h1",
-    public_slug: "sri-adithya",
-    name: "Sri Adithya",
+    public_slug: "sunrise-residency",
+    name: "Sunrise Residency",
     city: "Hyderabad",
     address: "Adikmet",
     hostel_type: "BOYS",
@@ -126,9 +126,9 @@ describe("discovery visibility", () => {
     // No approved marketing revision — the listing must still render.
     (prisma as any).hostel_marketing_revisions.findFirst.mockResolvedValueOnce(null);
 
-    await discoveryService.getListing("sri-adithya");
+    await discoveryService.getListing("sunrise-residency");
 
-    expect(hostels().findFirst.mock.calls[0][0].where.public_slug).toBe("sri-adithya");
+    expect(hostels().findFirst.mock.calls[0][0].where.public_slug).toBe("sunrise-residency");
   });
 
   it("never writes listing or verification status (ADR-040)", async () => {
@@ -157,7 +157,7 @@ describe("the published mess menu", () => {
       week: [{ b: "Idli · Sambar" }],
     });
 
-    const listing: any = await discoveryService.getListing("sri-adithya");
+    const listing: any = await discoveryService.getListing("sunrise-residency");
 
     expect(listing.mess.type).toBe("BOTH");
     expect(listing.mess.week).toHaveLength(7);
@@ -169,7 +169,7 @@ describe("the published mess menu", () => {
     // nothing under it — that reads as missing data, not as no mess.
     listingWithMess({ provided: false, week: [{ b: "leftover draft text" }] });
 
-    const listing: any = await discoveryService.getListing("sri-adithya");
+    const listing: any = await discoveryService.getListing("sunrise-residency");
 
     expect(listing.mess).toBeNull();
   });
@@ -184,7 +184,7 @@ describe("the published mess menu", () => {
       ],
     });
 
-    const listing: any = await discoveryService.getListing("sri-adithya");
+    const listing: any = await discoveryService.getListing("sunrise-residency");
 
     expect(listing.mess.meals.map((meal: any) => meal.key)).toEqual(["b", "l", "dn"]);
   });
@@ -193,7 +193,7 @@ describe("the published mess menu", () => {
     hostels().findFirst.mockResolvedValueOnce({ id: "h1", hostel_type: "BOYS", food_included: true });
     (prisma as any).hostel_marketing_revisions.findFirst.mockResolvedValueOnce(null);
 
-    const listing: any = await discoveryService.getListing("sri-adithya");
+    const listing: any = await discoveryService.getListing("sunrise-residency");
 
     expect(listing.mess).toBeNull();
   });
@@ -252,7 +252,7 @@ describe("enquiries", () => {
   const seeker = { id: "p1", name: "Asha R", email: "asha@example.com", phone: "919000000000" };
 
   it("creates a lead attributed to the seeker and sourced to Discover", async () => {
-    hostels().findFirst.mockResolvedValueOnce({ id: "h1", owner_id: "o1", name: "Sri Adithya" });
+    hostels().findFirst.mockResolvedValueOnce({ id: "h1", owner_id: "o1", name: "Sunrise Residency" });
     leads().findFirst
       .mockResolvedValueOnce(null) // no open lead
       .mockResolvedValueOnce({
@@ -261,11 +261,11 @@ describe("enquiries", () => {
         notes: null,
         created_at: new Date(),
         last_activity_at: new Date(),
-        hostel: { id: "h1", name: "Sri Adithya", public_slug: "sri-adithya", city: "Hyderabad", address: "Adikmet", admission_photos: [] },
+        hostel: { id: "h1", name: "Sunrise Residency", public_slug: "sunrise-residency", city: "Hyderabad", address: "Adikmet", admission_photos: [] },
       });
     leads().create.mockResolvedValueOnce({ id: "l1" });
 
-    await discoveryService.createEnquiry(seeker, { slug: "sri-adithya", roomCapacity: 4 });
+    await discoveryService.createEnquiry(seeker, { slug: "sunrise-residency", roomCapacity: 4 });
 
     expect(leads().create.mock.calls[0][0].data).toMatchObject({
       hostel_id: "h1",
@@ -276,7 +276,7 @@ describe("enquiries", () => {
   });
 
   it("updates the open lead instead of stacking a duplicate in the owner's inbox", async () => {
-    hostels().findFirst.mockResolvedValueOnce({ id: "h1", owner_id: "o1", name: "Sri Adithya" });
+    hostels().findFirst.mockResolvedValueOnce({ id: "h1", owner_id: "o1", name: "Sunrise Residency" });
     leads().findFirst
       .mockResolvedValueOnce({ id: "existing", student_phone: "919000000000", student_email: null, notes: null })
       .mockResolvedValueOnce({
@@ -285,11 +285,11 @@ describe("enquiries", () => {
         notes: null,
         created_at: new Date(),
         last_activity_at: new Date(),
-        hostel: { id: "h1", name: "Sri Adithya", public_slug: "sri-adithya", city: "Hyderabad", address: "Adikmet", admission_photos: [] },
+        hostel: { id: "h1", name: "Sunrise Residency", public_slug: "sunrise-residency", city: "Hyderabad", address: "Adikmet", admission_photos: [] },
       });
     leads().update.mockResolvedValueOnce({ id: "existing" });
 
-    await discoveryService.createEnquiry(seeker, { slug: "sri-adithya" });
+    await discoveryService.createEnquiry(seeker, { slug: "sunrise-residency" });
 
     expect(leads().create).not.toHaveBeenCalled();
     expect(leads().update).toHaveBeenCalled();
@@ -310,7 +310,7 @@ describe("enquiries", () => {
   it("refuses an enquiry from a seeker with no phone on file", async () => {
     const phoneless = { ...seeker, phone: null };
 
-    await expect(discoveryService.createEnquiry(phoneless, { slug: "sri-adithya" })).rejects.toThrow(
+    await expect(discoveryService.createEnquiry(phoneless, { slug: "sunrise-residency" })).rejects.toThrow(
       /mobile number/i,
     );
     expect(leads().create).not.toHaveBeenCalled();
@@ -320,7 +320,7 @@ describe("enquiries", () => {
   it("refuses before touching the database, so no hostel lookup is spent on it", async () => {
     const phoneless = { ...seeker, phone: null };
 
-    await expect(discoveryService.createEnquiry(phoneless, { slug: "sri-adithya" })).rejects.toThrow();
+    await expect(discoveryService.createEnquiry(phoneless, { slug: "sunrise-residency" })).rejects.toThrow();
     expect(hostels().findFirst).not.toHaveBeenCalled();
   });
 
@@ -329,7 +329,7 @@ describe("enquiries", () => {
   // would break that path, so the rule is "a number is on file", not "a code
   // was entered".
   it("accepts a seeker whose number is on file but was never OTP-verified", async () => {
-    hostels().findFirst.mockResolvedValueOnce({ id: "h1", owner_id: "o1", name: "Sri Adithya" });
+    hostels().findFirst.mockResolvedValueOnce({ id: "h1", owner_id: "o1", name: "Sunrise Residency" });
     leads().findFirst
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({
@@ -338,13 +338,13 @@ describe("enquiries", () => {
         notes: null,
         created_at: new Date(),
         last_activity_at: new Date(),
-        hostel: { id: "h1", name: "Sri Adithya", public_slug: "sri-adithya", city: "Hyderabad", address: "Adikmet", admission_photos: [] },
+        hostel: { id: "h1", name: "Sunrise Residency", public_slug: "sunrise-residency", city: "Hyderabad", address: "Adikmet", admission_photos: [] },
       });
     leads().create.mockResolvedValueOnce({ id: "l1" });
 
     await discoveryService.createEnquiry(
       { ...seeker, phone: "919000000000" },
-      { slug: "sri-adithya" },
+      { slug: "sunrise-residency" },
     );
 
     expect(leads().create).toHaveBeenCalled();
@@ -369,7 +369,7 @@ describe("enquiries", () => {
         notes: null,
         created_at: new Date(),
         last_activity_at: new Date(),
-        hostel: { id: "h1", name: "Sri Adithya", public_slug: "s", city: "Hyderabad", address: "A", admission_photos: [] },
+        hostel: { id: "h1", name: "Sunrise Residency", public_slug: "s", city: "Hyderabad", address: "A", admission_photos: [] },
       },
     ]);
 

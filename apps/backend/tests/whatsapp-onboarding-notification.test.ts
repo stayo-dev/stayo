@@ -30,7 +30,7 @@ describe("buildTenantOnboardingTemplatePayload (pure mapper)", () => {
   it("should return 6 correctly mapped parameters", () => {
     const params = buildTenantOnboardingTemplatePayload({
       tenantName: "Rahul Kumar",
-      hostelName: "Sri Adithya Hostel",
+      hostelName: "Sunrise Residency Hostel",
       roomNumber: "G1",
       joiningDate: new Date("2026-06-01"),
       monthlyRent: 8000,
@@ -39,7 +39,7 @@ describe("buildTenantOnboardingTemplatePayload (pure mapper)", () => {
 
     expect(params).toHaveLength(6);
     expect(params[0]).toBe("Rahul Kumar");
-    expect(params[1]).toBe("Sri Adithya Hostel");
+    expect(params[1]).toBe("Sunrise Residency Hostel");
     expect(params[2]).toBe("G1");
     expect(params[3]).toMatch(/\d/); // contains a date
     expect(params[4]).toBe("8,000");
@@ -166,7 +166,7 @@ describe("sendTenantOnboardingNotification", () => {
       monthly_rent: 8000,
       joined_on: new Date("2026-06-01"),
       profiles: { name: "Rahul Kumar" },
-      hostels: { id: "h1", name: "Sri Adithya Hostel", auto_rent_day: 5, owner_id: "o1" },
+      hostels: { id: "h1", name: "Sunrise Residency Hostel", auto_rent_day: 5, owner_id: "o1" },
       room_allocations: [{ room: { room_no: "G1" } }],
     });
 
@@ -189,7 +189,7 @@ describe("sendTenantOnboardingNotification", () => {
         idempotencyKey: "tenant_onboarding_completed:t1",
         tenantId: "t1",
         hostelId: "h1",
-        bodyParameters: expect.arrayContaining(["Rahul Kumar", "Sri Adithya Hostel", "G1"]),
+        bodyParameters: expect.arrayContaining(["Rahul Kumar", "Sunrise Residency Hostel", "G1"]),
         languageCode: "en",
       })
     );
@@ -212,7 +212,7 @@ describe("sendTenantOnboardingNotification", () => {
       monthly_rent: 8000,
       joined_on: new Date("2026-06-01"),
       profiles: { name: "Rahul Kumar" },
-      hostels: { id: "h1", name: "Sri Adithya Hostel", auto_rent_day: 5, owner_id: "o1" },
+      hostels: { id: "h1", name: "Sunrise Residency Hostel", auto_rent_day: 5, owner_id: "o1" },
       room_allocations: [{ room: { room_no: "G1" } }],
     });
 
@@ -243,7 +243,7 @@ describe("sendTenantOnboardingNotification", () => {
       monthly_rent: 8000,
       joined_on: new Date("2026-06-01"),
       profiles: { name: "Rahul Kumar" },
-      hostels: { id: "h1", name: "Sri Adithya Hostel", auto_rent_day: 5, owner_id: "o1" },
+      hostels: { id: "h1", name: "Sunrise Residency Hostel", auto_rent_day: 5, owner_id: "o1" },
       room_allocations: [{ room: { room_no: "G1" } }],
     });
 

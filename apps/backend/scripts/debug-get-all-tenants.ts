@@ -8,7 +8,7 @@ async function main() {
     const headers = new Headers();
     headers.set("x-user-id", "0b301633-272e-4856-b9a5-773faf3a58da");
     headers.set("x-user-role", "OWNER");
-    headers.set("x-user-email", "sriadithyahostels@gmail.com");
+    headers.set("x-user-email", "examplehostel@gmail.com");
     headers.set("x-owner-id", "0b301633-272e-4856-b9a5-773faf3a58da");
     
     const req = new NextRequest(url, { headers });

@@ -27,7 +27,7 @@ function tenancy(overrides: Record<string, unknown> = {}) {
     monthly_rent: 6500,
     activation_completed_at: new Date("2026-01-10"),
     created_at: new Date("2026-01-01"),
-    hostels: { id: "h1", name: "Sri Adithya", city: "Hyderabad" },
+    hostels: { id: "h1", name: "Sunrise Residency", city: "Hyderabad" },
     room_allocations: [{ room: { room_no: "204", capacity: 4, room_type: "AC" } }],
     move_out_requests: [{ id: "m1" }],
     exit_reason: "DISPUTE",
@@ -62,7 +62,7 @@ describe("the facts projection", () => {
     const { stays } = await residencyHistoryService.getOwnHistory("p1");
 
     expect(stays[0]).toMatchObject({
-      hostel: { name: "Sri Adithya", city: "Hyderabad" },
+      hostel: { name: "Sunrise Residency", city: "Hyderabad" },
       room_no: "204",
       sharing: 4,
       monthly_rent: 6500,

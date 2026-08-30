@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildTenantFacilities, iconForLabel, wifiCredentialLine } from './facilities';
 import { describeAvailability } from '@shared/lib/amenityAvailability';
 
-const room = { wifi_name: 'SriAdithya_5G', wifi_password: 'hostel@2026' };
+const room = { wifi_name: 'Sunrise_5G', wifi_password: 'hostel@2026' };
 
 describe('choosing a glyph', () => {
   // The old list gave every row the Wi-Fi icon, which is why Hot water and
@@ -93,7 +93,7 @@ describe('building the tenant list', () => {
 
   it('attaches the room credentials to the Wi-Fi row', () => {
     const rows = buildTenantFacilities({ amenities: [{ label: 'Wi-Fi', enabled: true }], room });
-    expect(rows[0].wifi).toEqual({ ssid: 'SriAdithya_5G', password: 'hostel@2026' });
+    expect(rows[0].wifi).toEqual({ ssid: 'Sunrise_5G', password: 'hostel@2026' });
   });
 
   // The tenant needs the password. Its absence from a marketing list is not a
@@ -101,7 +101,7 @@ describe('building the tenant list', () => {
   it('adds a Wi-Fi row when the owner never listed it but the room has credentials', () => {
     const rows = buildTenantFacilities({ amenities: [{ label: 'Laundry', enabled: true }], room });
     expect(rows[0].label).toBe('Wi-Fi');
-    expect(rows[0].wifi?.ssid).toBe('SriAdithya_5G');
+    expect(rows[0].wifi?.ssid).toBe('Sunrise_5G');
   });
 
   it('does not invent a Wi-Fi row when there are no credentials either', () => {
@@ -124,8 +124,8 @@ describe('building the tenant list', () => {
 
 describe('the Wi-Fi credential lines', () => {
   it('shows the credentials once an owner has set them', () => {
-    expect(wifiCredentialLine({ ssid: 'SriAdithya_5G', password: 'hostel@2026' })).toEqual({
-      ssid: 'SriAdithya_5G',
+    expect(wifiCredentialLine({ ssid: 'Sunrise_5G', password: 'hostel@2026' })).toEqual({
+      ssid: 'Sunrise_5G',
       password: 'hostel@2026',
       configured: true,
     });
@@ -141,7 +141,7 @@ describe('the Wi-Fi credential lines', () => {
   });
 
   it('counts as configured when only one of the two is set', () => {
-    expect(wifiCredentialLine({ ssid: 'SriAdithya_5G', password: null }).configured).toBe(true);
+    expect(wifiCredentialLine({ ssid: 'Sunrise_5G', password: null }).configured).toBe(true);
   });
 });
 
@@ -179,7 +179,7 @@ describe('the tenant Room tab and the Discovery listing cannot drift', () => {
   );
 
   it('renders the real production timings the way the owner set them', () => {
-    // The slots saved from the dial for Sri Adithya's three meals.
+    // The slots saved from the dial for Sunrise Residency's three meals.
     const [row] = buildTenantFacilities({ amenities: [cases[0]], room: null });
     expect(row.schedule).toBe('7–9 AM · 12–2 PM · 7–8:30 PM');
   });

@@ -71,14 +71,14 @@ describe('the sentence the tenant agrees to', () => {
   // Must stay byte-identical to the server's commitmentStatement: the server
   // stores what it generates, and the record has to be the words they read.
   it('names the hostel, the length and the window, in the first person', () => {
-    expect(commitmentStatement('Sri Adithya Boys Hostel', TERM)).toBe(
-      'I am committing to stay at Sri Adithya Boys Hostel for 11 months — from 1 Sep 2026 until 31 Jul 2027.',
+    expect(commitmentStatement('Sunrise Residency', TERM)).toBe(
+      'I am committing to stay at Sunrise Residency for 11 months — from 1 Sep 2026 until 31 Jul 2027.',
     );
   });
 
   it('drops the window when the dates are unknown', () => {
-    expect(commitmentStatement('Sri Adithya', { ...TERM, start_date: null, end_date: null })).toBe(
-      'I am committing to stay at Sri Adithya for 11 months.',
+    expect(commitmentStatement('Sunrise Residency', { ...TERM, start_date: null, end_date: null })).toBe(
+      'I am committing to stay at Sunrise Residency for 11 months.',
     );
   });
 
@@ -105,7 +105,7 @@ describe('the two sides of the promise', () => {
   // Listing only the tenant's obligations reads as extraction. Both halves are
   // what makes it a mutual word.
   it('states what the hostel owes as well as what the tenant owes', () => {
-    const { tenant, hostel } = promises({ hostelName: 'Sri Adithya', roomNumber: '105', term: TERM });
+    const { tenant, hostel } = promises({ hostelName: 'Sunrise Residency', roomNumber: '105', term: TERM });
 
     expect(tenant[0]).toContain('11 months');
     expect(tenant[0]).toContain('1 Sep 2026 → 31 Jul 2027');
@@ -118,7 +118,7 @@ describe('the two sides of the promise', () => {
 
   it('degrades to honest wording when the room or money is unknown', () => {
     const { tenant, hostel } = promises({
-      hostelName: 'Sri Adithya',
+      hostelName: 'Sunrise Residency',
       roomNumber: null,
       term: { ...TERM, monthly_rent: null, security_deposit: null },
     });

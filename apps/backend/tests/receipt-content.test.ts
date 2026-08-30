@@ -170,15 +170,15 @@ describe("branding: the hostel issues it, Stayo carries it", () => {
     );
 
     for (const source of sources) {
-      expect(source).not.toMatch(/Sri\s*Adithya/i);
-      expect(source).not.toMatch(/sriadithyahostels/i);
+      expect(source).not.toMatch(/Sri\s*Sunrise/i);
+      expect(source).not.toMatch(/examplehostel/i);
       expect(source).not.toMatch(/stayo\.app/i);
       expect(source).not.toMatch(/spchidiri2006/i);
     }
 
     // And nothing survives into the rendered content either.
     const content = JSON.stringify(buildReceiptContent(base({ hostel_name: "" })));
-    expect(content).not.toMatch(/Sri\s*Adithya/i);
+    expect(content).not.toMatch(/Sri\s*Sunrise/i);
     expect(content).not.toContain("HMS");
   });
 

@@ -1,6 +1,6 @@
 import crypto from "crypto";
 
-const HMAC_SECRET = process.env.RECEIPT_VERIFY_SECRET || "sri-adithya-verify-secret-key-2026";
+const HMAC_SECRET = process.env.RECEIPT_VERIFY_SECRET || "sunrise-residency-verify-secret-key-2026";
 
 export function generateVerificationToken(receiptId: string, issuedAt: Date | string): string {
   const timestamp = new Date(issuedAt).getTime().toString();

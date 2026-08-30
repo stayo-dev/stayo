@@ -45,7 +45,7 @@ function validContent(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  hostels().findFirst.mockResolvedValue({ id: "h1", name: "Sri Adithya", public_slug: "sri-adithya" });
+  hostels().findFirst.mockResolvedValue({ id: "h1", name: "Sunrise Residency", public_slug: "sunrise-residency" });
   // Real enquiry count backs the design's stats row; views are not tracked.
   (prisma as any).visitorLead.count.mockResolvedValue(0);
 });
@@ -245,7 +245,7 @@ describe("approval", () => {
       status: "PENDING_REVIEW",
       hostel_id: "h1",
       version: 2,
-      hostel: { owner_id: "owner-a", name: "Sri Adithya" },
+      hostel: { owner_id: "owner-a", name: "Sunrise Residency" },
     });
     revisions().updateMany.mockResolvedValue({ count: 1 });
     revisions().update.mockResolvedValue({ id: "r2", version: 2, status: "APPROVED" });
@@ -280,7 +280,7 @@ describe("approval", () => {
       status: "PENDING_REVIEW",
       hostel_id: "h1",
       version: 2,
-      hostel: { owner_id: "owner-a", name: "Sri Adithya" },
+      hostel: { owner_id: "owner-a", name: "Sunrise Residency" },
     });
     revisions().updateMany.mockResolvedValue({ count: 0 });
     revisions().update.mockResolvedValue({ id: "r2", version: 2, status: "APPROVED" });
@@ -319,7 +319,7 @@ describe("actOnLiveListing", () => {
   const live = { id: "rev-live", version: 5, content: validContent() };
 
   beforeEach(() => {
-    hostels().findUnique = vi.fn().mockResolvedValue({ id: "h1", name: "Sri Adithya", owner_id: "o1" });
+    hostels().findUnique = vi.fn().mockResolvedValue({ id: "h1", name: "Sunrise Residency", owner_id: "o1" });
   });
 
   /** findFirst is called for the APPROVED revision, then for any open one. */

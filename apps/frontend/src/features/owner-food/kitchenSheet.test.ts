@@ -21,14 +21,14 @@ const THURSDAY = new Date('2026-08-06T09:00:00');
 
 describe('buildKitchenMessage', () => {
   it('leads with the hostel name and today’s date', () => {
-    const msg = buildKitchenMessage({ grid, now: THURSDAY, hostelName: 'Sri Adithya' });
-    expect(msg).toContain('Sri Adithya');
+    const msg = buildKitchenMessage({ grid, now: THURSDAY, hostelName: 'Sunrise Residency' });
+    expect(msg).toContain('Sunrise Residency');
     expect(msg).toContain('Thursday');
     expect(msg).toContain('6 August');
   });
 
   it('lists all four of today’s meals in order', () => {
-    const msg = buildKitchenMessage({ grid, now: THURSDAY, hostelName: 'Sri Adithya' });
+    const msg = buildKitchenMessage({ grid, now: THURSDAY, hostelName: 'Sunrise Residency' });
     expect(msg.indexOf('Dosa')).toBeGreaterThan(-1);
     expect(msg.indexOf('Dosa')).toBeLessThan(msg.indexOf('Sambar Rice'));
     expect(msg.indexOf('Sambar Rice')).toBeLessThan(msg.indexOf('Chapati'));

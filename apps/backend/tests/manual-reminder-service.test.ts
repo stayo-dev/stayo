@@ -63,7 +63,7 @@ describe("ReminderService.sendManualReminder", () => {
       rent_month: new Date("2026-06-01T00:00:00.000Z"),
     });
     mocks.getTenantContext.mockResolvedValue({
-      hostel: { id: "11111111-1111-1111-1111-111111111111", name: "Sri Adithya Boys Hostel-1" },
+      hostel: { id: "11111111-1111-1111-1111-111111111111", name: "Sunrise Residency-1" },
       prefs: { reminder_in_app: true, reminder_email: false, reminder_whatsapp: false },
     });
     mocks.createReminderLog.mockResolvedValue({ id: "log-1" });

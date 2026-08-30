@@ -4,22 +4,38 @@
   "description": "Stayo — hostel management for owners, and a home-away-from-home portal for tenants.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#efe9e2",
-  "theme_color": "#b46a55",
+  "background_color": "#F7F3EE",
+  "theme_color": "#B46A55",
   "lang": "en-IN",
-  "categories": ["education", "travel", "lifestyle"],
+  "categories": [
+    "business",
+    "productivity",
+    "travel"
+  ],
   "icons": [
     {
       "src": "/android-chrome-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/android-chrome-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/stayo-app-icon-1024.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/maskable-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

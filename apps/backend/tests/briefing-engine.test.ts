@@ -9,7 +9,7 @@ describe("BriefingEngine Weighted Scoring Tests", () => {
 
   const ownerId = crypto.randomUUID();
   const mockOwner = { id: ownerId, name: "Test Owner", role: "OWNER", is_active: true };
-  const mockHostels = [{ id: crypto.randomUUID(), name: "Sri Adithya Girls Hostel", owner_id: ownerId, is_active: true }];
+  const mockHostels = [{ id: crypto.randomUUID(), name: "Lakeview Residency", owner_id: ownerId, is_active: true }];
 
   beforeEach(() => {
     vi.clearAllMocks();

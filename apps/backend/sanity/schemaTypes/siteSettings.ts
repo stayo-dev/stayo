@@ -61,7 +61,7 @@ export const siteSettings = defineType({
       name: 'ownerTitle',
       title: 'Owner Title',
       type: 'string',
-      description: 'Example: Owner, Sri Adithya Boys Hostel',
+      description: 'Example: Owner, Sunrise Residency',
     }),
     defineField({
       name: 'ownerQuote',

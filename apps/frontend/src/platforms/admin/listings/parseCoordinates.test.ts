@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { coordinatesHint, parseCoordinates, embedUrlHint, extractEmbedSrc } from './parseCoordinates';
 
 describe('what an admin pastes', () => {
-  // The literal string copied out of a search result for Sri Adithya Boys Hostel.
+  // The literal string copied out of a search result for Sunrise Residency.
   it('accepts "lat, lng" straight from a search result', () => {
     expect(parseCoordinates('17.4542678, 78.6628497')).toEqual({ lat: 17.4542678, lng: 78.6628497 });
   });
@@ -65,11 +65,11 @@ describe('what Google actually puts on the clipboard', () => {
   // tag. Telling an admin to "paste the src" is an instruction nobody can
   // follow without hand-editing HTML.
   const IFRAME =
-    '<iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3806.11!2sSri%20Adithya%20Boys%20Hostel" width="600" height="450" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe>';
+    '<iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3806.11!2sSunrise%20Residency" width="600" height="450" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe>';
 
   it('pulls the src out of a pasted iframe tag', () => {
     expect(extractEmbedSrc(IFRAME)).toBe(
-      'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3806.11!2sSri%20Adithya%20Boys%20Hostel',
+      'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3806.11!2sSunrise%20Residency',
     );
   });
 

@@ -11,8 +11,8 @@ import {
 } from './sanity/schemaTypes'
 
 export default defineConfig({
-  name: 'sri-adithya-hostels',
-  title: 'Sri Adithya Boys Hostel',
+  name: 'sunrise-residency-hostels',
+  title: 'Sunrise Residency',
   projectId: process.env.NEXT_PUBLIC_SANITY_PROJECT_ID!,
   dataset: process.env.NEXT_PUBLIC_SANITY_DATASET!,
   basePath: '/studio',

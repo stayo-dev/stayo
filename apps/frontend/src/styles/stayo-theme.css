@@ -1,6 +1,6 @@
 /*
  * StayO design tokens — a brand-new theme that coexists with the legacy
- * Shri Adithya theme.css rather than replacing it. Every token below is
+ * the pre-Stayo single-hostel theme.css rather than replacing it. Every token below is
  * scoped under [data-app-theme="marketing"|"product"], so it only applies
  * inside a StayO layout root that sets that attribute (via ThemeProvider);
  * legacy screens rendered outside that scope keep resolving theme.css's

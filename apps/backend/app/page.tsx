@@ -267,7 +267,7 @@ export default async function HomePage() {
   }
   if (!hostel) {
     hostel = {
-      name: "Sri Adithya Boys Hostel",
+      name: "Sunrise Residency",
       shortLocation: "Yamnampet, Secunderabad",
       locationTitle: fallbackLandingContent.hostelProfile.locationTitle,
       locationDescription: fallbackLandingContent.hostelProfile.locationDescription,

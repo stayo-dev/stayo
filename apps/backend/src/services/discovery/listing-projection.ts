@@ -228,7 +228,7 @@ export function projectListing({ detail, visible, marketing, preview = false }: 
  * **advertised** offer: the sharing options a seeker can actually choose from,
  * each with its own price, reviewed by an admin before it goes public.
  *
- * On Sri Adithya every room is a 4-bed at ₹8,000 operationally, while the
+ * On Sunrise Residency every room is a 4-bed at ₹8,000 operationally, while the
  * approved listing offers 2-bed at ₹12,000, 4-sharing at ₹7,000 and a ground
  * floor 4-bed at ₹8,500. The card said "from ₹8,000" — higher than the
  * cheapest thing on sale, and a number appearing on no public page.

@@ -296,7 +296,7 @@ describe("toClaimSummary — SECURITY: no financial field beyond monthly_rent", 
       monthly_rent: 9000,
       security_deposit: 20000,
       maintenance_charge: 1500,
-      hostels: { name: "Sri Adithya", profiles: { name: "Owner Name" } },
+      hostels: { name: "Sunrise Residency", profiles: { name: "Owner Name" } },
       room_allocations: [{ room: { room_no: "A-101" } }],
     };
 

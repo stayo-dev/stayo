@@ -2,21 +2,21 @@ import { describe, it, expect } from 'vitest';
 import { confirmHostelDeletion } from './hostelDeletion';
 
 describe('confirmHostelDeletion', () => {
-  const name = 'Sri Adithya Boys Hostel';
+  const name = 'Sunrise Residency';
 
   it('accepts the name typed exactly', () => {
     expect(confirmHostelDeletion(name, name)).toBe(true);
   });
 
   it('forgives case, surrounding whitespace and doubled spaces', () => {
-    expect(confirmHostelDeletion('  sri adithya boys hostel ', name)).toBe(true);
-    expect(confirmHostelDeletion('SRI ADITHYA BOYS HOSTEL', name)).toBe(true);
-    expect(confirmHostelDeletion('Sri  Adithya  Boys  Hostel', name)).toBe(true);
+    expect(confirmHostelDeletion('  sunrise residency ', name)).toBe(true);
+    expect(confirmHostelDeletion('SUNRISE RESIDENCY', name)).toBe(true);
+    expect(confirmHostelDeletion('Sunrise   Residency', name)).toBe(true);
   });
 
   it('rejects a different hostel or a partial name', () => {
-    expect(confirmHostelDeletion('Sri Adithya Girls Hostel', name)).toBe(false);
-    expect(confirmHostelDeletion('Sri Adithya', name)).toBe(false);
+    expect(confirmHostelDeletion('Lakeview Residency', name)).toBe(false);
+    expect(confirmHostelDeletion('Sunrise', name)).toBe(false);
     expect(confirmHostelDeletion('', name)).toBe(false);
   });
 

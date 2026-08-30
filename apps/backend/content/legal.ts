@@ -25,11 +25,11 @@ export const legalSections: LegalSection[] = [
       },
       {
         type: "paragraph",
-        text: "This document is published in accordance with the provisions of Rule 3 (1) of the Information Technology (Intermediaries guidelines) Rules, 2011 that require publishing the rules and regulations, privacy policy and Terms of Use for access or usage of domain name https://sriadithyahostels.in ('Website'), including the related mobile site and mobile application (hereinafter referred to as 'Platform').",
+        text: "This document is published in accordance with the provisions of Rule 3 (1) of the Information Technology (Intermediaries guidelines) Rules, 2011 that require publishing the rules and regulations, privacy policy and Terms of Use for access or usage of domain name https://example-hostel.in ('Website'), including the related mobile site and mobile application (hereinafter referred to as 'Platform').",
       },
       {
         type: "paragraph",
-        text: "The Platform is owned by Sri Adithya Boys Hostel, a company incorporated under the Companies Act, 1956 with its registered office at Kodangal (hereinafter referred to as 'Platform Owner', 'we', 'us', 'our').",
+        text: "The Platform is owned by Sunrise Residency, a company incorporated under the Companies Act, 1956 with its registered office at Kodangal (hereinafter referred to as 'Platform Owner', 'we', 'us', 'our').",
       },
       {
         type: "paragraph",
@@ -130,7 +130,7 @@ export const legalSections: LegalSection[] = [
       },
       {
         type: "paragraph",
-        text: "This Privacy Policy describes how Sri Adithya Boys Hostel and its affiliates (collectively \"Sri Adithya Boys Hostel, we, our, us\") collect, use, share, protect or otherwise process your information/personal data through our website https://sriadithyahostels.in (hereinafter referred to as Platform). Please note that you may be able to browse certain sections of the Platform without registering with us. We do not offer any product/service under this Platform outside India and your personal data will primarily be stored and processed in India. By visiting this Platform, providing your information or availing any product/service offered on the Platform, you expressly agree to be bound by the terms and conditions of this Privacy Policy, the Terms of Use and the applicable service/product terms and conditions, and agree to be governed by the laws of India including but not limited to the laws applicable to data protection and privacy. If you do not agree please do not use or access our Platform.",
+        text: "This Privacy Policy describes how Sunrise Residency and its affiliates (collectively \"Sunrise Residency, we, our, us\") collect, use, share, protect or otherwise process your information/personal data through our website https://example-hostel.in (hereinafter referred to as Platform). Please note that you may be able to browse certain sections of the Platform without registering with us. We do not offer any product/service under this Platform outside India and your personal data will primarily be stored and processed in India. By visiting this Platform, providing your information or availing any product/service offered on the Platform, you expressly agree to be bound by the terms and conditions of this Privacy Policy, the Terms of Use and the applicable service/product terms and conditions, and agree to be governed by the laws of India including but not limited to the laws applicable to data protection and privacy. If you do not agree please do not use or access our Platform.",
       },
       {
         type: "subheading",
@@ -150,7 +150,7 @@ export const legalSections: LegalSection[] = [
       },
       {
         type: "notice",
-        text: "If you receive an email or a call from a person/association claiming to be Sri Adithya Boys Hostel seeking personal data like debit/credit card PIN, net-banking or mobile banking password, never provide such information. Report any such incident immediately to an appropriate law enforcement agency.",
+        text: "If you receive an email or a call from a person/association claiming to be Sunrise Residency seeking personal data like debit/credit card PIN, net-banking or mobile banking password, never provide such information. Report any such incident immediately to an appropriate law enforcement agency.",
       },
       {
         type: "subheading",

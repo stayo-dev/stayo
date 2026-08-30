@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { advertisedStartingPrice } from "@/src/services/discovery/listing-projection";
 
-/** The real approved revision for Sri Adithya, which is what exposed this. */
-const SRI_ADITHYA = {
+/** The real approved revision for Sunrise Residency, which is what exposed this. */
+const SUNRISE_RESIDENCY = {
   beds: [
     { name: "2-bed", price: 12000, sharing: 2, availability: "AVAILABLE" },
     { name: "4 Sharing", price: 7000, sharing: 4, availability: "AVAILABLE" },
@@ -14,7 +14,7 @@ describe("advertisedStartingPrice", () => {
   it("quotes the cheapest thing actually on sale", () => {
     // The card said ₹8,000 — min(rooms.base_rent), the operational rent, which
     // appears on no public page. The listing offers 4-sharing at ₹7,000.
-    expect(advertisedStartingPrice(SRI_ADITHYA)).toBe(7000);
+    expect(advertisedStartingPrice(SUNRISE_RESIDENCY)).toBe(7000);
   });
 
   it("ignores bed types that are full", () => {

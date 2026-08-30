@@ -176,7 +176,7 @@ export function skyEnv(hour: number, override: ThemePhase | null): SkyEnv {
 /**
  * Initials badge fallback for the dual-brand header (Stayo icon × hostel
  * badge) when a hostel has no `logo_url` — up to 2 letters, one per word,
- * matching the design source's static "SA" for "Sri Adithya Hostels".
+ * matching the design source's static "SA" for "Sunrise Residency".
  */
 export function hostelInitials(name: string): string {
   const words = (name || '').trim().split(/\s+/).filter(Boolean);
