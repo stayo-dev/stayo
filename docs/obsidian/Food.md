@@ -536,3 +536,12 @@ One A4 **landscape** sheet: hostel logo (or monogram) and name in the masthead, 
 - Regenerated from the live schedule on every request; nothing is stored, so no stale copy can exist.
 - A `DRAFT` schedule prints marked as a draft. An unplanned slot prints `—`. A meal switched off in Meal Timings prints no window. The QR appears only when `listing_status` is `PUBLISHED` and a `public_slug` exists.
 - Dish names are title-cased for display ([[Decisions#ADR-142|ADR-142]]) — items created earlier are stored as typed, and the stored value is never rewritten.
+
+## Removing a library item (2026-08-29, [[Decisions#ADR-145|ADR-145]])
+
+Each row in `AddFoodPopover` carries an `×` that asks for confirmation inline on the row. `useFoodMenuItems` gains `remove(itemId, name)` over the pre-existing `DELETE /api/food/menu-items/[id]`.
+
+- **Soft delete.** `is_active = false`; the row survives because `food_schedule_meals` references it. Planned meals keep the dish; past months are unchanged. Copy says "remove from your list", never "delete".
+- The confirmation states how many of this month's meals use the dish (`menuItemUsage.ts`, pure) and promises they are untouched — the softness is otherwise invisible from the dialog.
+- The `×` has its own 44px target, bordered off from the row, because the row's primary action is *add this dish*.
+- **Rename is still not offered**, deliberately — [[Decisions#ADR-123|ADR-123]]'s note applies to it too until some surface needs it.

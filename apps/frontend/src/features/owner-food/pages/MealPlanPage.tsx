@@ -372,6 +372,7 @@ export function MealPlanPage() {
         library={library}
         onPickExisting={addToTarget}
         onCreateNew={handleCreateAndPick}
+        grid={schedule.weekGrid}
       />
 
       {copyTarget && (

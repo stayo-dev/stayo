@@ -29,8 +29,10 @@ function queryKey(hostelId: string | undefined) {
  * Library browsing/edit/delete UI (`FoodLibraryCard.tsx`) — removed (ADR-123)
  * in favor of the Meal Plan editor's inline Add Food popover, which only
  * ever reads `library` (for autocomplete) and creates new items on demand
- * via `createAndReturn`. If item rename/delete is needed again, it belongs
- * behind whatever surface actually needs it, not resurrected here unused.
+ * via `createAndReturn`. That note said delete "belongs behind whatever
+ * surface actually needs it, not resurrected here unused" — `remove` below is
+ * that, added for the Add-food sheet, which is the surface that needed it.
+ * Rename is still absent, deliberately, for the same reason. See ADR-145.
  */
 export function useFoodMenuItems(hostelId: string | undefined) {
   const queryClient = useQueryClient();
@@ -53,6 +55,11 @@ export function useFoodMenuItems(hostelId: string | undefined) {
 
   const createMutation = useMutation({
     mutationFn: ({ slot, name }: { slot: MealSlotKey; name: string }) => foodService.createMenuItem(hostelId!, SLOT_TO_MEAL_TYPE[slot], name),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKey(hostelId) }),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (itemId: string) => foodService.deleteMenuItem(itemId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKey(hostelId) }),
   });
 
@@ -80,5 +87,27 @@ export function useFoodMenuItems(hostelId: string | undefined) {
         return null;
       }
     },
+
+    /**
+     * Takes an item out of the hostel's list.
+     *
+     * The endpoint soft-deletes (`is_active = false`) and never removes the
+     * row, because past `food_schedule_meals` still reference it — so meals
+     * already planned with this dish keep it, and previous months are
+     * unchanged. The wording everywhere says "remove from your list", never
+     * "delete", because "delete" would promise a destruction that does not
+     * happen and is not wanted.
+     */
+    remove: async (itemId: string, name: string): Promise<boolean> => {
+      try {
+        await removeMutation.mutateAsync(itemId);
+        stayoToast.success(`Removed ${name}`);
+        return true;
+      } catch (error: any) {
+        stayoToast.error(error?.response?.data?.error?.message || `Could not remove ${name}`);
+        return false;
+      }
+    },
+    isRemoving: removeMutation.isPending,
   };
 }
