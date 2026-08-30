@@ -91,84 +91,6 @@ export function useConfigurationHub() {
   const areaMeta = (tally: { configured: number; attention: number }) =>
     `${tally.configured + tally.attention} area${tally.configured + tally.attention === 1 ? '' : 's'}`;
 
-  const modules: ConfigModule[] = [
-    {
-      key: 'hostel',
-      glyph: 'H',
-      title: 'Hostel',
-      desc: 'Identity, rooms, amenities & policies',
-      status: hostelTally.attention > 0 ? 'warn' : 'ok',
-      statusLabel: hostelTally.attention > 0 ? `${hostelTally.attention} to finish` : 'Configured',
-      meta: areaMeta(hostelTally),
-      tint: '#F5E9E3',
-      iconColor: '#B46A55',
-      route: '/owner/more/configuration/hostel',
-    },
-    {
-      key: 'finance',
-      glyph: '₹',
-      title: 'Finance',
-      desc: 'Rent, deposits, penalties & payouts',
-      status: financeTally.attention > 0 ? 'warn' : 'ok',
-      statusLabel: financeTally.attention > 0 ? `${financeTally.attention} to finish` : 'Configured',
-      meta: areaMeta(financeTally),
-      tint: '#FBF1DE',
-      iconColor: '#B8792B',
-      route: '/owner/more/configuration/finance',
-    },
-    {
-      key: 'agreements',
-      glyph: '§',
-      title: 'Agreements',
-      desc: 'Templates, clauses & signing',
-      status: agreementDrafts > 0 ? 'warn' : 'ok',
-      statusLabel: agreementDrafts > 0 ? `${agreementDrafts} draft${agreementDrafts === 1 ? '' : 's'}` : 'Configured',
-      meta: `${agreementTemplates} template${agreementTemplates === 1 ? '' : 's'}`,
-      tint: '#F3E7DD',
-      iconColor: '#A45D44',
-      route: '/owner/more/configuration/agreements',
-    },
-    {
-      key: 'automation',
-      glyph: '↻',
-      title: 'Automation',
-      desc: 'Collection, reminders & workers',
-      // A paused workflow is a deliberate choice, never a gap — so this card is
-      // 'ok' whatever the mix, and reports how many are running instead.
-      status: 'ok',
-      statusLabel: automation.running > 0 ? 'Active' : 'All paused',
-      meta: `${automation.running} of ${automation.total} workflows running`,
-      tint: '#E4EFE7',
-      iconColor: '#1F7A52',
-      route: '/owner/more/configuration/automation',
-    },
-    {
-      key: 'notifications',
-      glyph: '◔',
-      title: 'Notifications',
-      desc: 'Tenant & owner event alerts',
-      // Zero channels means nothing can be delivered — a genuine gap.
-      status: activeChannelCount === 0 ? 'warn' : 'ok',
-      statusLabel: activeChannelCount === 0 ? 'No channels on' : 'Configured',
-      meta: `${activeChannelCount} of ${NOTIFICATION_CHANNELS.length} channels on`,
-      tint: '#E4EDF0',
-      iconColor: '#3B5FA8',
-      route: '/owner/more/configuration/notifications',
-    },
-    {
-      key: 'account',
-      glyph: '@',
-      title: 'Account & Security',
-      desc: 'Profile, password & sessions',
-      status: 'ok',
-      statusLabel: 'Configured',
-      meta: 'Profile, password, sessions',
-      tint: '#EFE6DA',
-      iconColor: '#8A7F75',
-      route: '/owner/more/configuration/account',
-    },
-  ];
-
   const attention: ConfigAttentionItem[] = [];
   if (!identityComplete) {
     attention.push({ title: 'Hostel identity incomplete', sub: 'Hostel · add name, phone & address', route: '/owner/more/hostel' });
@@ -180,8 +102,6 @@ export function useConfigurationHub() {
     attention.push({ title: 'Late fee amount not set', sub: 'Finance · late fees are on but have no amount', route: '/owner/more/configuration/finance/late-fees' });
   }
 
-  const doneCount = modules.filter((m) => m.status === 'ok').length;
-  const percentComplete = isLoading ? 0 : Math.round((doneCount / modules.length) * 100);
 
   // The real workspace name, from the hostel the owner actually owns — this
   // header previously rendered `mockOwnerProfile` from @shared/mocks.
@@ -192,12 +112,13 @@ export function useConfigurationHub() {
     .map((word: string) => word[0]?.toUpperCase() ?? '')
     .join('');
 
+  // `modules`, `doneCount`, `percentComplete` and `totalCount` are gone. They
+  // fed the hub's progress ring and module cards, and were one of the two
+  // independently computed completeness scores the configuration audit found
+  // (the other lived in `useWorkspaceConfig`, which pieces B and C retire).
+  // `attention` is derived from real gaps and does not depend on any of them.
   return {
-    modules,
     attention,
-    percentComplete,
-    doneCount,
-    totalCount: modules.length,
     isLoading,
     workspaceName,
     workspaceInitials,
