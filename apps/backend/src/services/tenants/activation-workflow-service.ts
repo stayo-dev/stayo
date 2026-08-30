@@ -18,6 +18,8 @@ import { eventSystem } from "../../../lib/events";
 import { tenantInvitationLifecycleService } from "./tenant-invitation-lifecycle-service";
 import { AgreementGenerationService } from "./agreement-generation-service";
 import { currentAgreementWhere, isCurrentAgreementStatus, isSignedAgreementStatus } from "./agreement-status";
+import { canEnterActivation, hasCompletedActivation, ACTIVATABLE_STATUSES } from "./activation-entry";
+import { resolveActivationSubject, type ActivationSubjectRef } from "./activation-subject";
 import { agreementRentScheduleService } from "../payments/agreement-rent-schedule-service";
 import { financialLifecycleService } from "../payments/financial-lifecycle-service";
 import { authOtpService } from "../../../lib/services/auth/auth-otp-service";
@@ -28,6 +30,32 @@ import {
 } from "./agreement-lifecycle-completeness";
 
 type ActivationStep = "ACCOUNT" | "RULES" | "AGREEMENT" | "PROFILE" | "ACTIVATE";
+/**
+ * Either proof an activation request can carry. A bare string stays acceptable
+ * so that every existing caller — and the onboarding test suite that pins the
+ * invited-tenant flow — keeps working unchanged; it simply means "token".
+ */
+type ActivationCredential = string | ActivationSubjectRef;
+
+/**
+ * The three fields `activation-entry` needs, read off a resolved tenancy.
+ * Kept in one place so entry and completion can never disagree about what
+ * "already onboarded" means. See ADR-155.
+ */
+function toEntrySubject(tenant: any, invitation?: any | null) {
+  return {
+    status: tenant?.status,
+    activationCompletedAt: tenant?.activation_completed_at,
+    invitationStatus: invitation?.status ?? null,
+    ownerAttested: (tenant?.owner_attestations?.length ?? 0) > 0,
+  };
+}
+
+function toSubjectRef(input: ActivationCredential): ActivationSubjectRef {
+  if (typeof input === "string") return resolveActivationSubject({ token: input });
+  return input || resolveActivationSubject({});
+}
+
 type ResolvedInvitation = {
   profile: any | null;
   tenant: any;
@@ -160,16 +188,25 @@ async function assertUniqueRollNumberForTenant(tenant: any, rollNumber: string) 
 }
 
 export class ActivationWorkflowService {
-  private async resolveInvitation(token: string, options: { markOpened?: boolean } = {}): Promise<ResolvedInvitation> {
-    const normalizedToken = String(token || "").trim();
-    if (!normalizedToken) throw new Error("VALIDATION_ERROR: Activation token is required");
-    const resolved = await tenantInvitationLifecycleService.resolveByToken(normalizedToken, options);
-    if (resolved.tenant.status === "ACTIVE") throw new Error("ALREADY_ACTIVE: Account already active");
-    if (resolved.tenant.status === "CANCELLED") throw new Error("CANCELLED: Invitation was cancelled");
-    if (resolved.tenant.status === "EXPIRED") throw new Error("EXPIRED: Invitation expired");
-    if (resolved.tenant.status !== "INVITED") {
-      throw new Error("INVALID: Activation is not available for this tenant");
-    }
+  /**
+   * Load the tenancy this request is acting on, by whichever credential it
+   * brought. The token branch is untouched — same call, same options, same
+   * errors — so the ordinary invited-tenant flow behaves exactly as before.
+   * The session branch is the claim route's way in. See ADR-155.
+   */
+  private async resolveSubject(input: ActivationCredential, options: { markOpened?: boolean } = {}): Promise<ResolvedInvitation> {
+    const ref = toSubjectRef(input);
+    if (!ref.ok) throw new Error(`${ref.code || "VALIDATION_ERROR"}: ${ref.message || "Activation token is required"}`);
+
+    const resolved = ref.mode === "session"
+      ? await tenantInvitationLifecycleService.resolveForSession(String(ref.tenantId || ""))
+      : await tenantInvitationLifecycleService.resolveByToken(String(ref.token || "").trim(), options);
+    // `status` says whether the tenancy is live; it has never said whether the
+    // *tenant* has onboarded. An owner-managed tenancy is ACTIVE from creation
+    // with the tenant having seen nothing, so refusing every ACTIVE row shut
+    // claiming tenants out of the ceremony entirely. See ADR-155.
+    const verdict = canEnterActivation(toEntrySubject(resolved.tenant, resolved.invitation));
+    if (!verdict.allowed) throw new Error(`${verdict.code}: ${verdict.message}`);
     return resolved;
   }
 
@@ -255,7 +292,7 @@ export class ActivationWorkflowService {
    * read would silently fall back to "required" and make the setting look broken
    * on some paths but not others.
    */
-  private computeState(profile: any, tenant: any, ruleVersion: any, agreementRequired: boolean) {
+  private computeState(profile: any, tenant: any, ruleVersion: any, agreementRequired: boolean, invitation?: any | null) {
     const latestAcceptance = (tenant.rule_acceptances || []).find((a: any) => a.rule_version_id === ruleVersion.id);
     // See activation-account-state for why this tests `profile_id` and not
     // merely a verified number — it is the 2026-08-25 regression in one line.
@@ -279,7 +316,10 @@ export class ActivationWorkflowService {
       requiredDocumentTypes.includes(doc.doc_type)
     );
     const documentsUploaded = requiredDocuments.length > 0;
-    const activationCompleted = tenant.status === "ACTIVE";
+    // Not `status === "ACTIVE"`: an owner-managed tenancy is active without the
+    // tenant ever having onboarded, and reading status here told a claiming
+    // tenant their activation was already complete. See ADR-155.
+    const activationCompleted = hasCompletedActivation(toEntrySubject(tenant, invitation));
     const startedAt = tenant.activation_started_at || tenant.created_at || null;
     const completedAt = tenant.activation_completed_at || null;
     const durationSeconds = startedAt && completedAt
@@ -402,6 +442,9 @@ export class ActivationWorkflowService {
         rule_acceptances: { orderBy: { accepted_at: "desc" }, take: 5 },
         agreements: { orderBy: { generated_at: "desc" }, take: 5 },
         identification_documents: { where: { is_active: true }, orderBy: { created_at: "desc" } },
+        // Both halves of "has this tenant onboarded" — see activation-entry.
+        owner_attestations: { take: 1, select: { id: true } },
+        tenant_invitations: { orderBy: { created_at: "desc" }, take: 1, select: { status: true } },
       },
     });
     if (!tenant) throw new Error("NOT_FOUND: Tenant not found");
@@ -414,11 +457,12 @@ export class ActivationWorkflowService {
       tenant,
       ruleVersion,
       await this.resolveAgreementRequired(tenant.hostel_id),
+      (tenant as any).tenant_invitations?.[0] ?? null,
     );
   }
 
-  async getContext(token: string) {
-    const resolvedContext = await this.resolveInvitation(token, { markOpened: true });
+  async getContext(ref: ActivationCredential) {
+    const resolvedContext = await this.resolveSubject(ref, { markOpened: true });
     const { profile, tenant, invitation } = resolvedContext;
     const hostel = tenant.hostels;
     if (!tenant.hostel_id || !hostel) throw new Error("INTERNAL_ERROR: Tenant hostel context unavailable");
@@ -566,7 +610,7 @@ export class ActivationWorkflowService {
       tenant.agreements = [activeAgreement, ...(tenant.agreements || [])];
     }
 
-    const state = this.computeState(profile, tenant, ruleVersion, await this.resolveAgreementRequired(tenant.hostel_id));
+    const state = this.computeState(profile, tenant, ruleVersion, await this.resolveAgreementRequired(tenant.hostel_id), invitation);
     const activationFinancialStatus = await getActivationFinancialStatus(tenant.id);
     const requiredDocumentTypes = this.requiredDocumentTypes(tenant.profile_type);
     const requiredDocuments = (tenant.identification_documents || []).filter((doc: any) =>
@@ -760,11 +804,11 @@ export class ActivationWorkflowService {
       : ["AADHAAR", "COLLEGE_ID"];
   }
 
-  async mutate(token: string, step: ActivationStep, data: any, context: { ip: string; userAgent: string }) {
+  async mutate(ref: ActivationCredential, step: ActivationStep, data: any, context: { ip: string; userAgent: string }) {
     if (!["ACCOUNT", "RULES", "AGREEMENT", "PROFILE", "ACTIVATE"].includes(step)) {
       throw new Error("VALIDATION_ERROR: Unsupported activation step");
     }
-    const resolved = await this.resolveInvitation(token);
+    const resolved = await this.resolveSubject(ref);
     const { profile, tenant, invitation } = resolved;
     if (!tenant.hostel_id) throw new Error("INTERNAL_ERROR: Tenant hostel context unavailable");
     const ruleVersion = await this.getActiveRuleVersion(tenant.hostel_id);
@@ -800,11 +844,20 @@ export class ActivationWorkflowService {
       }
     }
 
-    const state = this.computeState(profile, tenant, ruleVersion, await this.resolveAgreementRequired(tenant.hostel_id));
+    const state = this.computeState(profile, tenant, ruleVersion, await this.resolveAgreementRequired(tenant.hostel_id), invitation);
     this.assertTransition(step, state);
 
     if (step === "ACCOUNT") {
-      await this.saveAccount(profile, tenant, data, token, invitation, resolved);
+      // `saveAccount` binds the tenancy to an account via `startActivation`,
+      // which is a token-path operation. A session-mode tenant is bound
+      // already — that binding is what let them authenticate — so the step is
+      // unreachable rather than merely unnecessary, and is refused explicitly
+      // instead of calling through with an empty token. See ADR-155.
+      const credential = toSubjectRef(ref);
+      if (credential.mode === "session") {
+        throw new Error("INVALID_TRANSITION: This account is already set up");
+      }
+      await this.saveAccount(profile, tenant, data, String(credential.token || ""), invitation, resolved);
     }
     if (step === "RULES") {
       await this.acceptRules(profile, tenant, data, context, invitation);
@@ -856,7 +909,7 @@ export class ActivationWorkflowService {
       };
     }
 
-    return this.getContext(token);
+    return this.getContext(ref);
   }
 
   private assertTransition(step: ActivationStep, state: any) {
@@ -1426,16 +1479,20 @@ export class ActivationWorkflowService {
           include: {
             rule_acceptances: { where: { rule_version_id: ruleVersion.id } },
             identification_documents: true,
+            owner_attestations: { take: 1, select: { id: true } },
           },
         },
       },
     });
     const tenantNow: any = selectCurrentTenancy(current?.tenants);
     if (!current || !tenantNow) throw new Error("INVALID: Activation link expired or already used");
-    if (tenantNow.status !== "INVITED") throw new Error("INVALID_TRANSITION: Tenant is not invited");
+    const finalVerdict = canEnterActivation(toEntrySubject(tenantNow, invitation));
+    if (!finalVerdict.allowed) {
+      throw new Error(`INVALID_TRANSITION: ${finalVerdict.message}`);
+    }
 
     // Recompute and check required onboarding steps
-    const state = this.computeState(current, tenantNow, ruleVersion, await this.resolveAgreementRequired(tenantNow.hostel_id));
+    const state = this.computeState(current, tenantNow, ruleVersion, await this.resolveAgreementRequired(tenantNow.hostel_id), invitation);
     // `rules_accepted` is only a requirement where the hostel asks for the
     // agreement ceremony — this is a second, independent gate to the one in
     // assertTransition, and missing it here would block activation for
@@ -1523,7 +1580,11 @@ export class ActivationWorkflowService {
           where: {
             id: tenantNow.id,
             profile_id: current.id,
-            status: "INVITED",
+            // A claimed tenancy is already ACTIVE, so completing onboarding
+            // stamps the timestamp rather than flipping a status that is
+            // already right. `activation_completed_at: null` is what makes
+            // this idempotent — a second submit matches no row. See ADR-155.
+            status: { in: [...ACTIVATABLE_STATUSES] },
             activation_completed_at: null,
           },
           data: {

@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
+import { activationSubjectFromRequest } from "@/src/services/tenants/activation-request-subject";
 import { ACCESS_TOKEN_MAX_AGE_SECONDS, getSessionCookieOptions, TENANT_REFRESH_DAYS } from "@/lib/services/session-lifecycle-service";
 import { setCsrfCookie } from "@/lib/security/csrf";
 import { apiError, apiResponse } from "@/lib/auth";
@@ -121,9 +122,11 @@ export async function PATCH(req: NextRequest) {
     const body = await req.json();
     const token = String(body?.token || "").trim();
     const step = String(body?.step || "").trim().toUpperCase() as any;
-    if (!token) return withOnboardingMetrics(apiError("Activation token is required", "VALIDATION_ERROR", 400), { startedAt });
+    // See the context route: a claimed tenant carries a session, not a token.
+    const subject = await activationSubjectFromRequest(req, token);
+    if (!subject.ok) return withOnboardingMetrics(apiError(subject.message || "Activation token is required", subject.code || "VALIDATION_ERROR", 400), { startedAt });
 
-    const result = await activationWorkflowService.mutate(token, step, body?.data || {}, {
+    const result = await activationWorkflowService.mutate(subject, step, body?.data || {}, {
       ip: req.headers.get("x-forwarded-for") || req.ip || "unknown",
       userAgent: req.headers.get("user-agent") || "unknown",
     });

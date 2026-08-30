@@ -53,6 +53,13 @@ export interface ClaimConfirmResult extends ClaimTenancy {
   profile_id: string;
   access_mode: string;
   /**
+   * Whether this tenant still owes the onboarding a self-serve tenant goes
+   * through — identity, documents, guardian, signed agreement. Claiming links
+   * the account and settles the ledger; it collects none of that. Drives
+   * `claimDestination`. See ADR-155.
+   */
+  activation_required?: boolean;
+  /**
    * Present only when `confirm` minted a fresh session — absent for an
    * already-signed-in caller (whose existing session already authenticates
    * them, and who was never asked for a password) and, rarely, when session

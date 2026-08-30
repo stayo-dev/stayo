@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { imagekit } from "@/lib/imagekit";
 import { withOnboardingMetrics } from "@/lib/onboarding-metrics";
 import { tenantInvitationLifecycleService } from "@/src/services/tenants/tenant-invitation-lifecycle-service";
+import { activationSubjectFromRequest } from "@/src/services/tenants/activation-request-subject";
 
 export async function POST(req: NextRequest) {
   const startedAt = performance.now();
@@ -17,7 +18,9 @@ export async function POST(req: NextRequest) {
     const file = formData.get("file") as File | null;
     const signatureType = String(formData.get("type") || "tenant").toLowerCase(); // "tenant" or "guardian"
 
-    if (!token) return withOnboardingMetrics(apiError("token is required", "VALIDATION_ERROR", 400), { startedAt });
+    // A claimed tenant uploads under their session, not a token. See ADR-154.
+    const subject = await activationSubjectFromRequest(req, token);
+    if (!subject.ok) return withOnboardingMetrics(apiError("token is required", "VALIDATION_ERROR", 400), { startedAt });
     if (!file) return withOnboardingMetrics(apiError("file is required", "VALIDATION_ERROR", 400), { startedAt });
 
     const allowed = ["image/jpeg", "image/png", "image/webp"];
@@ -28,7 +31,9 @@ export async function POST(req: NextRequest) {
       return withOnboardingMetrics(apiError("Signature must be under 2MB", "VALIDATION_ERROR", 400), { startedAt });
     }
 
-    const resolved = await tenantInvitationLifecycleService.resolveByToken(token);
+    const resolved = subject.mode === "session"
+      ? await tenantInvitationLifecycleService.resolveForSession(String(subject.tenantId || ""))
+      : await tenantInvitationLifecycleService.resolveByToken(String(subject.token || ""));
     if (!resolved.tenant) {
       return withOnboardingMetrics(apiError("Invalid or expired activation link", "INVALID", 410), { startedAt });
     }

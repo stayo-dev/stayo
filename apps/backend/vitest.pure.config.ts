@@ -97,6 +97,9 @@ export default defineConfig({
       'tests/identity-field-policy.test.ts',
       'tests/agreement-commitment.test.ts',
       'tests/activation-account-state.test.ts',
+      // The guards deciding who may enter the activation ceremony. ADR-154.
+      'tests/activation-entry.test.ts',
+      'tests/activation-subject.test.ts',
       'tests/invitation-expiry-reminder-contract.test.ts',
       'tests/move-out-quick-exit-plan.test.ts',
       'tests/rent-changeable-agreement.test.ts',

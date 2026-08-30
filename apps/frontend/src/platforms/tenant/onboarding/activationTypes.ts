@@ -193,6 +193,30 @@ export type ProfileDraft = {
   savedAt: number;
 };
 
+/**
+ * What to key a tenant's in-progress onboarding draft by.
+ *
+ * The draft holds identity details, so the key must never be shared between
+ * two people. The activation token is naturally unique per tenancy, and stays
+ * the key wherever there is one.
+ *
+ * A claimed tenant has no token — they arrive on a session — so the key falls
+ * back to their tenancy id. A fixed string like "session" would have been
+ * simpler and wrong: two tenants claiming on the same phone (a pair of
+ * roommates, one shared handset) would read each other's half-finished
+ * identity form. See ADR-155.
+ *
+ * Returns "" when neither is known, which disables drafts rather than
+ * inventing a shared key — `readProfileDraft` and friends already treat an
+ * empty key as "no draft".
+ */
+export function activationDraftKey(token?: string | null, tenantId?: string | null): string {
+  const t = String(token ?? '').trim();
+  if (t) return t;
+  const id = String(tenantId ?? '').trim();
+  return id ? `tenant:${id}` : '';
+}
+
 function profileDraftKey(token: string) {
   return `hms:tenant-activation:${token}:profile-draft`;
 }

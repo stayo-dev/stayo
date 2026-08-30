@@ -22,6 +22,7 @@ import {
   invalidPhoneMessage,
   normalizeActivationToken,
   phoneDigits,
+  activationDraftKey,
   readProfileDraft,
   writeProfileDraft,
 } from './activationTypes';
@@ -43,6 +44,12 @@ export function ActivationPage() {
   const { token: pathToken } = useParams();
   const [searchParams] = useSearchParams();
   const token = normalizeActivationToken(pathToken || searchParams.get('token'));
+  // A tenant who claimed their tenancy arrives here with no token at all --
+  // their invitation was superseded at adoption, so the link is dead by
+  // design and the session is the credential instead. Every call below still
+  // passes `token`; when it is empty the backend resolves the session. See
+  // ADR-155.
+  const [draftKey, setDraftKey] = useState('');
   const navigate = useNavigate();
   const { login } = useAuth();
 
@@ -109,16 +116,17 @@ export function ActivationPage() {
   }, [guardianOtpCountdown]);
 
   const loadContext = async () => {
-    if (!token) {
-      setInvalid(true);
-      setChecking(false);
-      return;
-    }
+    // No early bail on a missing token: a claimed tenant legitimately has
+    // none, and only the backend can say whether their session stands in for
+    // one. A request with neither still comes back VALIDATION_ERROR and lands
+    // on the same "unavailable" screen as before.
     setChecking(true);
     setProfileDraftReady(false);
     try {
       const data = await tenantService.getActivationContext(token);
-      const draft = readProfileDraft(token);
+      const key = activationDraftKey(token, data?.tenant?.id);
+      setDraftKey(key);
+      const draft = readProfileDraft(key);
       setCtx(data);
       setPaymentFrequency(String(data?.tenant?.payment_frequency || 'MONTHLY'));
       setProfilePhotoPreview(String(data.tenant?.photo_url || draft?.photoUrl || ''));
@@ -164,7 +172,7 @@ export function ActivationPage() {
         setGuardianVerifiedPhone(draft.guardianVerifiedPhone || '');
       }
 
-      if (data.activation_state?.profile_completed) clearProfileDraft(token);
+      if (data.activation_state?.profile_completed) clearProfileDraft(key);
       setProfileDraftStatus(draft && !data.activation_state?.profile_completed ? 'restored' : 'idle');
     } catch (err: unknown) {
       const message =
@@ -222,11 +230,11 @@ export function ActivationPage() {
   }, [activeStep, submitting]);
 
   useEffect(() => {
-    if (!token || !ctx || !profileDraftReady || ctx.activation_state?.profile_completed) return;
+    if (!draftKey || !ctx || !profileDraftReady || ctx.activation_state?.profile_completed) return;
     if (activeStep !== 'ACCOUNT' && activeStep !== 'PROFILE') return;
     setProfileDraftStatus('saving');
     const timer = window.setTimeout(() => {
-      writeProfileDraft(token, {
+      writeProfileDraft(draftKey, {
         profile,
         selectedCollege: '',
         selectedCourse: '',
@@ -237,7 +245,7 @@ export function ActivationPage() {
       setProfileDraftStatus('saved');
     }, 700);
     return () => window.clearTimeout(timer);
-  }, [activeStep, ctx, profile, profileDraftReady, profilePhotoPreview, token, guardianOtpVerified, guardianVerifiedPhone]);
+  }, [activeStep, ctx, profile, profileDraftReady, profilePhotoPreview, draftKey, guardianOtpVerified, guardianVerifiedPhone]);
 
   const goToStep = (step: ActivationStep) => {
     const targetStep = step === 'RULES' ? 'AGREEMENT' : step;
@@ -396,7 +404,7 @@ export function ActivationPage() {
       if (uploadRes?.photo_url) {
         setProfilePhotoPreview(uploadRes.photo_url);
         setProfilePhotoFile(null);
-        writeProfileDraft(token, {
+        writeProfileDraft(draftKey, {
           profile,
           selectedCollege: '',
           selectedCourse: '',
@@ -453,7 +461,7 @@ export function ActivationPage() {
       }
       const saved = await submitStep('PROFILE', { ...profile, photo_url: photoUrl, guardian_otp: guardianOtp });
       if (saved) {
-        clearProfileDraft(token);
+        clearProfileDraft(draftKey);
         setProfileDraftStatus('idle');
       }
       return saved;

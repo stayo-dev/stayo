@@ -2313,3 +2313,80 @@ Related: [[Business-Rules]] · [[APIs]] · [[Features]] · ADR-076 · ADR-040
 - **Verified read-only against the reporting tenancy:** `{eligible: false, code: TENANT_HAS_ACTIVE_TENANCY}` before, `{eligible: true}` after — and the `tenantId` in the production error payload is the claimed tenancy's own id, which is the proof it was blocking itself.
 - **Consequences:** an earlier reading of this bug attributed it to the owner pressing "+ Invite". The DevTools trace showed the failing request was `confirm`, not the invite endpoint — the error payloads are identical because both paths run the same rule, which is exactly why the first diagnosis went wrong. The claim-link affordance added in [[Decisions#ADR-150|ADR-150]] remains right and necessary; it was simply pointing at a flow that could not complete.
 - **See:** [[Bugs]], [[Decisions#ADR-136|ADR-136]], [[Decisions#ADR-134|ADR-134]], [[Decisions#ADR-150|ADR-150]]
+
+### ADR-155 — A claimed tenancy enters onboarding on its session, and "activation complete" stops meaning "tenancy is live" (2026-08-30)
+
+**Context.** Claiming ([[Decisions#ADR-134]]) links an owner-managed tenancy to
+a real account: phone proved by OTP, tenancy matched, password set, session
+minted. It collects none of what a self-serve tenant provides on the way in —
+identity details, ID documents, guardian contacts, a signed residency
+agreement. A claimed tenant landed on the dashboard and was never asked.
+
+Routing them into the existing flow hit two walls.
+
+*The credential.* The activation token authenticates a stranger; nothing else
+about an invited tenant is known yet. A claimed tenant is not a stranger, and
+their invitation is `SUPERSEDED` by construction — adoption marks it so, and
+`resolveByToken` refuses it with `CLAIM_REQUIRED`, which is what sent them to
+the claim flow in the first place. Minting them a fresh token would add a
+credential in order to re-prove something already proven.
+
+*The predicate.* `tenants.status` says whether a tenancy is live, never whether
+the tenant onboarded — [[Decisions#ADR-133]] said exactly this, and activation
+did not follow it. Worse, the obvious replacement is also wrong:
+`owner-managed-tenancy-service.ts` stamps `activation_completed_at` at
+adoption, so the field is already set for precisely the tenants who have seen
+nothing. It records "this tenancy is set up", not "this person onboarded".
+
+**Decision.**
+
+1. **The session is the credential.** `/api/tenants/activate*` accept a token
+   *or*, when no token is presented, the caller's own live tenancy resolved
+   through `getActiveTenancy`. A token always wins when present, so an ordinary
+   invite link cannot be diverted into session mode by a stray cookie, and the
+   invited-tenant flow is byte-identical to before.
+2. **Completion is read off the invitation, not the timestamp.** A tenant has
+   onboarded iff their invitation reached `ACTIVATED` — the only write that
+   fires when a *tenant* finishes the ceremony — or, for a tenancy that was
+   never invited, `activation_completed_at` is set and no owner attestation
+   exists. Adoption writes `SUPERSEDED` plus a `tenant_owner_attestations` row,
+   so the two populations separate cleanly.
+3. **Existing guards are carved out, not replaced.** `completeActivation` kept
+   its original status skip list; only the adopted-and-unfinished case is
+   allowed through it. Without that carve-out a claiming tenant completed every
+   step and had the final write silently skipped, looping them back into
+   onboarding forever.
+
+`activation_completed_at` is left stamped at adoption. Changing it would ripple
+into `residency-history-service` (`ever_moved_in`), `tenancy-eligibility-service`
+(`wasActivated`) and the owner WhatsApp assistant's "activated today" reports;
+the new predicate is additive and touches none of them.
+
+**Consequences.** A claimed tenant walks PROFILE → AGREEMENT → ACTIVATE;
+ACCOUNT and RULES already read as complete, because claim binds `profile_id`
+([[Decisions#ADR-136]]) and writes a real `TenantPolicyAcceptance` against the
+active residency rule version. `activation_required` on the claim confirm
+result routes them. The `ACCOUNT` step is explicitly refused in session mode —
+it binds the tenancy via a token-path call, and a session-mode tenant is bound
+already.
+
+Onboarding drafts are keyed by tenancy rather than token on this path; a fixed
+key would have let two roommates claiming on one handset read each other's
+half-finished identity form.
+
+See [[Business-Rules]], [[APIs]], [[Bugs]].
+
+### ADR-154 — The tenant is taught progressively, one screen at a time, and the nav bar is made to fit rather than explained (2026-08-30)
+
+- **Status:** Accepted
+- **Context:** the tenant portal had no orientation of any kind. Owners got one ([[Decisions#ADR-067|ADR-067]], revised by [[Decisions#ADR-139|ADR-139]]); tenants were dropped straight onto Home. Several real capabilities were effectively invisible as a result — kitchen polls, raising and tracking a complaint, the per-month shareable receipt, and the entire Explore tab.
+- **Context — a tenant's problem is the inverse of an owner's.** A new owner's dashboard is all zeros, which is precisely why they got a *checklist* rather than a tour: a spotlight over ₹0 cards points at things that do nothing. A tenant's first screen is already full — rent owed, a room, roommates, today's meals. There is something true to point at from the first minute, so the useful guidance is not "what to fill in" but "what all of this is".
+- **Decision — progressive, per-screen, not one sequential tour.** A short welcome spotlight on Home, then one inline note per tab the first time it is opened. A single cross-tab guided run was rejected on two grounds: it is a multi-minute modal wall thrown in front of someone who opened the app to pay rent, and cross-route spotlight orchestration means anchoring to refs that unmount on navigation.
+- **Decision — the welcome leads with the money when money is owed.** `welcomeStops` puts the rent card first whenever `amountDue > 0`. A tenant landing on a months-old overdue balance did not come for a tour; making the first stop the thing they came for earns the interruption instead of delaying it.
+- **Decision — a missing stop is dropped in the model, not silently by the renderer.** Home renders its rent card only while `amountDue > 0`. `Spotlight` already filters stops whose ref is empty and says nothing about it — which is exactly how the owner tour came to render two stops instead of three unnoticed ([[Decisions#ADR-139|ADR-139]]). Deciding it in a pure, tested function makes it a rule rather than an accident.
+- **Decision — per-tab hints are inline notes, not spotlights.** Four full-screen dims in a tenant's first week is how a guided journey becomes something people dismiss unread. The inline form also buys something a cut-out cannot: **it can describe a feature that is not currently on screen.** The Food note teaches kitchen polls on a day when no poll is running; a spotlight there would have to dim the screen and highlight nothing.
+- **Decision — dismissal stays in browser storage, keyed per tenant and per beat.** "Has this person read a caption on the Food tab" is a per-device viewing preference, not a fact about the tenancy, and does not justify a migration plus two endpoints. `guideKey` returns **`null`** rather than falling back to an `anonymous` key when there is no tenant id: a shared fallback is [[Decisions#ADR-139|ADR-139]]'s bug wearing a different name, and on a handed-down or shared hostel phone one person's dismissal would silence the journey for the next.
+- **Decision — a read-only tenancy is taught nothing.** Someone whose move-out has started and whose settlement is still open keeps their pages but can act in none of them ([[Decisions#ADR-122|ADR-122]]); introducing them to features they can no longer use would be the app failing to read the room.
+- **Decision — the bottom nav is made to fit, not explained.** Teaching someone to swipe a nav bar is papering over a bar that does not fit; see [[Bugs]]. Tabs now share the available width instead of being fixed at 76px. One welcome stop still names all six tabs, because with six destinations the bar is a map worth reading once — but nothing in the journey is load-bearing for basic navigation, which is the trap [[Decisions#ADR-139|ADR-139]] documents.
+- **Consequences:** no tour library, no backend change, no schema change, and `Spotlight` itself is untouched — it was already generic and is now shared by both personas. A tenant who changes phone sees the notes once more; that is the accepted cost of not storing them server-side.
+- **See:** [[Features]], [[Bugs]], [[Changelog]], [[Decisions#ADR-067|ADR-067]], [[Decisions#ADR-139|ADR-139]], [[Decisions#ADR-122|ADR-122]]

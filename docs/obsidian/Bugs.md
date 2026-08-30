@@ -8,6 +8,30 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-08-30 — Claiming an owner-managed account skipped tenant onboarding entirely (fixed)
+
+**Symptom.** A tenant who claimed their tenancy landed on the dashboard as a fully active resident having never been asked for their identity details, ID documents, guardian contacts, or a signature on the residency agreement — all of which every self-serve tenant provides before activating. The tenancy read as complete; the paperwork behind it did not exist.
+
+**Root cause — two fields that had quietly changed meaning.**
+
+`resolveInvitation` refused any `ACTIVE` tenancy, and `computeState` derived `activationCompleted` from `status === "ACTIVE"`. That is right for a tenant who activated themselves — they became `ACTIVE` by finishing — and wrong for an owner-managed tenancy, which is `ACTIVE` from the moment the owner creates it. [[Decisions#ADR-133|ADR-133]] had already said access is a second axis and not a redefinition of `ACTIVE`; activation was the place that did not follow it.
+
+The obvious replacement was also wrong, and only surfaced when the fix was checked against live data rather than typechecked. `owner-managed-tenancy-service.ts` stamps `activation_completed_at: new Date()` **at adoption**, so the field is already set for precisely the population that has onboarded nothing. It records "this tenancy is set up", not "this person went through onboarding". A first implementation built on it was inert — it locked out exactly the tenants it was written to admit, and `activation_required` computed `false` for all of them.
+
+A third instance sat one level down and would have been worse: `completeActivation`'s idempotency guard returned silently on `status ∈ (ACTIVE, …)`. A claiming tenant would have completed every step and had the final write skipped without a word — no invitation flip, no agreement finalisation — leaving them permanently unfinished and looped back into onboarding on every visit.
+
+**Fix.** Completion is read off the invitation reaching `ACTIVATED` — the only write in the system that fires when a *tenant* finishes the ceremony — falling back to the timestamp only for a tenancy that was never invited and carries no owner attestation. Adoption writes `SUPERSEDED` plus a `tenant_owner_attestations` row, so the two populations separate cleanly. `completeActivation` keeps its original status skip list and carves out only the adopted-and-unfinished case, so every existing caller behaves exactly as before. `activation_completed_at` is deliberately left stamped at adoption: `residency-history-service`, `tenancy-eligibility-service` and the owner WhatsApp assistant all read it, and the new predicate is additive.
+
+**What made it findable.** Resolving the real tenancy read-only, rather than trusting the types — the same probe also caught an include using the table name `tenant_owner_attestations` where the Prisma relation on `tenants` is `owner_attestations`, which `strict: false` and `any`-typed rows had hidden from `tsc`. See [[Decisions#ADR-155|ADR-155]], [[Business-Rules]].
+
+## 2026-08-30 — The Explore tab sat off the right edge of every phone (fixed)
+
+**Symptom.** On the tenant bottom nav, the sixth tab (Explore) was not visible on any handset. The bar scrolled horizontally, but nothing indicated that it did, so an entire primary destination was reachable only by swiping a nav bar — a gesture almost no mobile app asks for, and one nobody thinks to try.
+
+**Root cause — arithmetic, not a rendering fault.** `AppBottomNav` gave every tab a fixed `w-[76px]` in an `overflow-x-auto` row. Six tabs therefore needed `6×76 + 5×4 gap + 16 padding ≈ 472px`, against 360-414px on the common Android and iPhone widths. The doc comment described this as deliberate ("six comfortable tabs don't squeeze onto a narrow phone width, so on mobile the row scrolls instead") — the overflow was known, but the consequence, that the last tab is never on screen, was not followed through. The bar went from two tabs to six when the old two-layer nav (an Explore/Dashboard/Profile outer bar plus a Home/Money/Room/Food/Complaints inner strip, cited in `appNavConfig.ts` as ADR-078 — **not recorded as a heading in [[Decisions]]**) was collapsed into one single-level bar. At two tabs the fixed 76px width was correct and nothing overflowed; the regression arrived with the sixth tab, not with the width.
+
+**Fix.** Items are now `flex-1 basis-0` capped at `max-w-[76px]`, so six tabs divide the available width and two tabs still cap at 76px and centre exactly as before. Measured in a real browser against the built CSS at four widths: no overflow and no clipped tab at 320/360/390/414px; tab widths 47/54/59/63px respectively. At 320px the "Payments" label ellipsises, which is accepted — a shortened label is strictly better than an unreachable destination. From `lg` up items return to fixed width, since the floating dock is shrink-to-fit and has no width to divide. See [[Decisions#ADR-154|ADR-154]], [[Features]].
+
 ## 2026-08-30 — Every tenancy claim failed at the last step, blocked by the tenancy being claimed (fixed)
 
 **Symptom.** `POST /api/tenancy-claim/confirm` returned `409 TENANT_HAS_ACTIVE_TENANCY` — "This person already has an active tenancy" — after the tenant had verified their phone, reviewed their statement and pressed "This looks right". The `tenantId` in the error payload was the id of the tenancy they were claiming.

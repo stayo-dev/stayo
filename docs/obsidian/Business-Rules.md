@@ -387,6 +387,25 @@ Weakening the checks globally was rejected in the design — a real self-serve b
 
 **Phase 2 shipped 2026-08-27: the claim flow.** See the section immediately below. **Still not built:** the reminder-copy claim link (design spec §8.4), and Revoke (`SELF_SERVE → OWNER_MANAGED` for a tenant who stopped using the app). See [[TODO]].
 
+## "Activation complete" is a fact about the tenant, not about the tenancy being live (2026-08-30, [[Decisions#ADR-155|ADR-155]])
+
+Two fields look like they answer "has this person been through onboarding" and neither does.
+
+`tenants.status` says whether the tenancy is **live** — the person is in a room, rent is generating, they count toward occupancy. [[Decisions#ADR-133|ADR-133]] established access as a second axis and explicitly not a redefinition of `ACTIVE`. An owner-managed tenancy is `ACTIVE` from the moment the owner creates it, with the tenant having seen no onboarding screen.
+
+`tenants.activation_completed_at` looks like the honest replacement and is not: `owner-managed-tenancy-service.ts` stamps it **at adoption**, in the same write that sets `access_mode: OWNER_MANAGED` and creates the owner's attestation. It records "this tenancy is set up", not "this person onboarded".
+
+**The rule.** A tenant has been through onboarding themselves iff:
+
+- their invitation reached **`ACTIVATED`** — the only write in the system that fires when a *tenant* finishes the ceremony (`completeActivation`); or
+- the tenancy has **no owner attestation** and `activation_completed_at` is set — a tenancy that was never adopted, where nothing else could have stamped it.
+
+Adoption writes `SUPERSEDED` plus a `tenant_owner_attestations` row, so the two populations separate cleanly. The predicate lives in `activation-entry.ts` (`hasCompletedActivation`, `isAwaitingTenantOnboarding`) and is the single source for entry (`canEnterActivation`), the activation state machine's `activation_completed`, `completeActivation`'s idempotency guard, and the claim confirm result's `activation_required`.
+
+`activation_completed_at` is deliberately **left stamped at adoption**. `residency-history-service` (`ever_moved_in`), `tenancy-eligibility-service` (`wasActivated`) and the owner WhatsApp assistant's "activated today" reports all read it; the rule above is additive and changes none of them.
+
+**Consequence for claiming.** A claimed tenant walks **PROFILE → AGREEMENT → ACTIVATE**. `ACCOUNT` already reads complete because claiming binds `profile_id` ([[Decisions#ADR-136|ADR-136]]) against an OTP-verified phone, and `RULES` because claiming writes a real `TenantPolicyAcceptance` against the active residency rule version — the same record activation would have written. See [[APIs]], [[Bugs]].
+
 ## Claiming an owner-managed tenancy (2026-08-27, Phase 2)
 
 **Files:** `apps/backend/lib/tenants/claim-eligibility.ts` (pure eligibility + proof rules), `apps/backend/src/services/tenants/tenancy-claim-service.ts` (`lookup`/`confirm`), `apps/backend/app/api/tenancy-claim/{lookup,confirm}/route.ts`, `apps/frontend/src/platforms/tenant/claim/{ClaimTenancyPage.tsx,claimSteps.ts}`. See [[APIs]], [[Features]], [[Decisions]], [[TODO]].

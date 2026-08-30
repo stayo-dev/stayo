@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 
 import { NextRequest } from "next/server";
 import { apiError, apiResponse } from "@/lib/auth";
+import { activationSubjectFromRequest } from "@/src/services/tenants/activation-request-subject";
 import { activationWorkflowService } from "@/src/services/tenants/activation-workflow-service";
 import { withOnboardingMetrics } from "@/lib/onboarding-metrics";
 
@@ -34,9 +35,12 @@ export async function GET(req: NextRequest) {
   const startedAt = performance.now();
   try {
     const token = new URL(req.url).searchParams.get("token");
-    if (!token) return withOnboardingMetrics(apiError("Activation token is required", "VALIDATION_ERROR", 400), { startedAt });
+    // A tenant who claimed their tenancy has no token — their invitation was
+    // superseded at adoption — so their session is the credential. See ADR-154.
+    const subject = await activationSubjectFromRequest(req, token);
+    if (!subject.ok) return withOnboardingMetrics(apiError(subject.message || "Activation token is required", subject.code || "VALIDATION_ERROR", 400), { startedAt });
 
-    const result = await activationWorkflowService.getContext(token);
+    const result = await activationWorkflowService.getContext(subject);
     return withOnboardingMetrics(apiResponse(result, 200), { startedAt, payload: result });
   } catch (error: any) {
     const mapped = mapActivationError(error);

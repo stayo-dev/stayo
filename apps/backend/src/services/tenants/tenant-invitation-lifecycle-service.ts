@@ -71,6 +71,35 @@ function addDays(days: number) {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 }
 
+/**
+ * Everything activation needs to know about a tenancy, in one shape.
+ *
+ * Extracted so the token path and the session path cannot drift: a screen that
+ * renders from `rule_acceptances` or `agreements` must not work on one route
+ * and quietly find `undefined` on the other. See ADR-155.
+ */
+import { isAwaitingTenantOnboarding } from "./activation-entry";
+
+const ACTIVATION_TENANT_INCLUDE = {
+  profiles: true,
+  hostels: {
+    include: { profiles: { select: { id: true, name: true, phone: true, email: true } } },
+  },
+  room_allocations: {
+    where: { is_active: true, end_date: null },
+    orderBy: { start_date: "desc" as const },
+    take: 1,
+    include: { room: true },
+  },
+  identification_documents: { where: { is_active: true }, orderBy: { created_at: "desc" as const } },
+  rule_acceptances: { orderBy: { accepted_at: "desc" as const }, take: 5, include: { rule_version: true } },
+  agreements: { orderBy: { generated_at: "desc" as const }, take: 5, include: { template: true } },
+  // Presence alone is the signal: an owner attested on this tenant's behalf,
+  // so the tenancy's `activation_completed_at` is adoption's, not theirs.
+  // See activation-entry.ts.
+  owner_attestations: { take: 1, select: { id: true } },
+};
+
 export class TenantInvitationLifecycleService {
   async getRoomCapacitySnapshot(tx: any, roomId: string) {
     return roomCapacityService.getRoomCapacitySnapshot(roomId, { tx });
@@ -974,21 +1003,7 @@ export class TenantInvitationLifecycleService {
       where: { token: normalizedToken },
       include: {
         tenant: {
-          include: {
-            profiles: true,
-            hostels: {
-              include: { profiles: { select: { id: true, name: true, phone: true, email: true } } },
-            },
-            room_allocations: {
-              where: { is_active: true, end_date: null },
-              orderBy: { start_date: "desc" },
-              take: 1,
-              include: { room: true },
-            },
-            identification_documents: { where: { is_active: true }, orderBy: { created_at: "desc" } },
-            rule_acceptances: { orderBy: { accepted_at: "desc" }, take: 5, include: { rule_version: true } },
-            agreements: { orderBy: { generated_at: "desc" }, take: 5, include: { template: true } },
-          },
+          include: ACTIVATION_TENANT_INCLUDE,
         },
         room: true,
         reservations: { where: { status: "ACTIVE" }, orderBy: { reserved_at: "desc" }, take: 1, include: { room: true } },
@@ -1065,6 +1080,78 @@ export class TenantInvitationLifecycleService {
       whatsapp_delivered_at: await readWhatsAppDeliveredAt(invitation.id),
       tenant: invitation.tenant,
       token: normalizedToken,
+    };
+  }
+
+  /**
+   * Resolve the same activation subject from a session instead of a token.
+   *
+   * Reached only by a request that presented no token at all (see
+   * `resolveActivationSubject`), which until now was a flat refusal. The
+   * caller has already established *which* tenancy the session belongs to;
+   * this method does not authenticate, it loads.
+   *
+   * The invitation-status ladder in `resolveByToken` is deliberately absent
+   * here, because every rung of it asks a question about a *link* — is it
+   * spent, superseded, expired. None of that bears on someone holding a
+   * session: their invitation is `SUPERSEDED` by construction (adoption marks
+   * it so), which is precisely the `CLAIM_REQUIRED` dead end that sent them
+   * through the claim flow to get this session in the first place. Refusing
+   * them again on the same ground would close the loop.
+   *
+   * What does still apply is the hostel gate — an archived or inactive hostel
+   * is not somewhere anyone onboards, however they arrived — and the tenancy's
+   * own eligibility, which `ActivationWorkflowService` applies via
+   * `canEnterActivation`. See ADR-155.
+   */
+  async resolveForSession(tenantId: string) {
+    const id = String(tenantId || "").trim();
+    if (!id) throw new Error("VALIDATION_ERROR: Tenant is required");
+
+    const tenant = await prisma.tenants.findUnique({
+      where: { id },
+      include: ACTIVATION_TENANT_INCLUDE,
+    });
+    if (!tenant) throw new Error("NOT_FOUND: Tenancy not found");
+
+    if (tenant.hostels?.status === "ARCHIVED") {
+      throw new Error("FORBIDDEN: Cannot activate tenant in an archived hostel");
+    }
+    if (tenant.hostels?.status === "INACTIVE") {
+      throw new Error("FORBIDDEN: Cannot activate tenant in an inactive hostel");
+    }
+
+    // A session exists only because an account was bound to this tenancy —
+    // claim writes `profile_id` before it mints one. If that is somehow not
+    // true, the agreement would be signed by nobody, so refuse rather than
+    // proceed with a null signatory.
+    const profile = tenant.profiles || null;
+    if (!profile) throw new Error("INVALID: This tenancy is not linked to an account");
+
+    // Read-only, and never a credential: the tenancy's own invitation, when it
+    // had one, carries the agreed start date and duration that the residency
+    // agreement interpolates. A tenancy the owner created directly has none,
+    // and every consumer of `invitation` is already null-guarded.
+    const invitation = await prisma.tenant_invitations.findFirst({
+      where: { tenant_id: tenant.id },
+      orderBy: { created_at: "desc" },
+      include: {
+        room: true,
+        reservations: { where: { status: "ACTIVE" }, orderBy: { reserved_at: "desc" }, take: 1, include: { room: true } },
+      },
+    }).catch(() => null);
+
+    return {
+      source: "session",
+      invitation,
+      profile,
+      profile_source: "tenancy",
+      email_conflict: null,
+      // Nothing was delivered over WhatsApp on this path, so there is no
+      // delivery to vouch for a phone number. Null is the honest answer.
+      whatsapp_delivered_at: null,
+      tenant,
+      token: "",
     };
   }
 
@@ -1266,7 +1353,9 @@ export class TenantInvitationLifecycleService {
     await prisma.$transaction(async (tx: any) => {
       // 1. Proactive row lock on the tenant row
       const tenantRow = await tx.$queryRaw`
-        SELECT id, status, joined_on, owner_id FROM tenants 
+        SELECT id, status, joined_on, owner_id, activation_completed_at,
+               EXISTS(SELECT 1 FROM tenant_owner_attestations a WHERE a.tenant_id = tenants.id) AS owner_attested
+        FROM tenants 
         WHERE id = ${tenant.id}::uuid FOR UPDATE
       `;
       if (!tenantRow || tenantRow.length === 0) {
@@ -1275,8 +1364,32 @@ export class TenantInvitationLifecycleService {
       
       const currentTenantStatus = tenantRow[0].status;
 
-      // 2. Rigorous idempotency guard: check if already in terminal/active states
-      if (["ACTIVE", "CHECKED_IN", "MOVED_IN", "MOVED_OUT"].includes(currentTenantStatus)) {
+      // 2. Idempotency guard.
+      //
+      // The status list below is the original one, unchanged: a tenancy in any
+      // of those states has finished and this write must not run twice.
+      //
+      // What is new is the carve-out. `ACTIVE` used to be sufficient proof that
+      // activation was complete, which is true of a tenant who activated
+      // themselves — they became ACTIVE by finishing — and false of an
+      // owner-managed tenancy, which is ACTIVE from the moment the owner
+      // created it. A claiming tenant would have completed every onboarding
+      // step and then had this write skipped without a word, leaving them
+      // permanently unfinished and looped back into onboarding on every visit.
+      //
+      // So the skip still applies to everyone it applied to before, except a
+      // tenancy the owner attested for whose tenant has not since finished.
+      // See activation-entry.ts and ADR-155.
+      const awaitingTenantOnboarding = isAwaitingTenantOnboarding({
+        status: currentTenantStatus,
+        activationCompletedAt: tenantRow[0].activation_completed_at,
+        invitationStatus: invitation?.status ?? null,
+        ownerAttested: Boolean(tenantRow[0].owner_attested),
+      });
+      if (
+        !awaitingTenantOnboarding &&
+        ["ACTIVE", "CHECKED_IN", "MOVED_IN", "MOVED_OUT"].includes(currentTenantStatus)
+      ) {
         console.log(`[Lifecycle] Tenant ${tenant.id} is already in state ${currentTenantStatus}. Activation is already complete.`);
         return;
       }

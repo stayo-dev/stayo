@@ -22,6 +22,7 @@ import {
   selectedTenancy,
   type AcknowledgementKey,
 } from './claimSteps';
+import { claimDestination } from './claimDestination';
 import { groupRentMonths, groupRangeLabel } from './rentMonthGroups';
 import { APP_SURFACE } from '@shared/ui/surface';
 import { passwordStrength } from '../onboarding/steps/passwordPolicy';
@@ -164,6 +165,10 @@ export function ClaimTenancyPage() {
   // through.
   const enterStayo = async () => {
     const session = state.result?.session;
+    // Claiming links the account but collects none of what onboarding does.
+    // `claimDestination` decides between the dashboard and `/activate`; the
+    // login fallbacks below are unchanged. See ADR-155.
+    const activationRequired = Boolean(state.result?.activation_required);
     if (session?.access_token && session?.refresh_token) {
       try {
         const { supabase } = await import('@lib/supabaseClient');
@@ -174,7 +179,7 @@ export function ClaimTenancyPage() {
           refresh_token: session.refresh_token,
         });
         if (sessionError) throw sessionError;
-        navigate('/tenant/home', { replace: true });
+        navigate(claimDestination({ activationRequired, signedIn: true }), { replace: true });
         return;
       } catch {
         navigate('/login?signin=1', { replace: true });
@@ -186,7 +191,7 @@ export function ClaimTenancyPage() {
     // session `updateUser` patched above in `handleConfirm` -- no new
     // session was ever expected here.
     if (wasSignedInAtStart) {
-      navigate('/tenant/home', { replace: true });
+      navigate(claimDestination({ activationRequired, signedIn: true }), { replace: true });
       return;
     }
 

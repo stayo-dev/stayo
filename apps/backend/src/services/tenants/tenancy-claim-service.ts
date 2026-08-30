@@ -19,6 +19,7 @@ import {
   interpolateRulesContent,
   DEFAULT_AGREEMENT_TEMPLATE,
 } from "@/utils/default-rules";
+import { hasCompletedActivation } from "./activation-entry";
 import { resolveActivationEmail } from "./invited-profile-resolver";
 import { tenancyEligibilityService } from "./tenancy-eligibility-service";
 import { notificationService } from "@/lib/services/notification-service";
@@ -252,6 +253,15 @@ const TENANT_CLAIM_SELECT = {
   // does not change what `lookup` exposes.
   security_deposit: true,
   maintenance_charge: true,
+  // Whether this tenant has ever been through onboarding *themselves*. The
+  // timestamp alone cannot say: adoption stamps it at creation, so it is
+  // already set for every owner-managed tenancy whose tenant has seen nothing.
+  // The attestation and the invitation's status are what separate the two.
+  // Together they drive `activation_required` on the confirm result.
+  // See activation-entry.ts and ADR-155.
+  activation_completed_at: true,
+  owner_attestations: { take: 1, select: { id: true } },
+  tenant_invitations: { orderBy: { created_at: "desc" as const }, take: 1, select: { status: true } },
   hostels: { select: { name: true, profiles: { select: { name: true } } } },
   room_allocations: {
     where: { is_active: true, end_date: null },
@@ -993,6 +1003,17 @@ export const tenancyClaimService = {
           profile_id: profile.id as string,
           access_mode: "SELF_SERVE" as const,
           dispute_recorded: disputeRecorded,
+          // Claiming links the account; it does not collect the identity,
+          // documents, guardian details or residency agreement that every
+          // self-serve tenant provides. When those are still owed, the client
+          // sends the tenant into onboarding instead of the dashboard — which
+          // it can now do on their session alone. See ADR-155.
+          activation_required: !hasCompletedActivation({
+            status: tenant.status,
+            activationCompletedAt: tenant.activation_completed_at,
+            invitationStatus: (tenant as any).tenant_invitations?.[0]?.status ?? null,
+            ownerAttested: ((tenant as any).owner_attestations?.length ?? 0) > 0,
+          }),
         };
       }, { timeout: 30000 });
 
