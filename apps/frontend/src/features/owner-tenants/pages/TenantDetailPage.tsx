@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { tenantService } from '@features/tenants/api';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowRight, BedDouble, Clock, FileText, LogOut, Undo2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BedDouble, Clock, Copy, FileText, LogOut, Send, Undo2 } from 'lucide-react';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { StatusPill } from '@shared/ui-patterns/StatusPill';
 import { EmptyState } from '@shared/ui-patterns/EmptyState';
@@ -39,6 +38,7 @@ import { CreateChargeSheet } from '../profile/CreateChargeSheet';
 import { ChangeRentModal } from '../actions/ChangeRentModal';
 import { MoveOutSheet } from '../actions/MoveOutSheet';
 import { QuickCollectModal } from '../quick-collect/QuickCollectModal';
+import { claimLink, claimInviteMessage, claimWhatsappUrl } from '../claimInvite';
 
 const TABS: { id: TenantDetailTab; label: string }[] = [
   { id: 'charges', label: 'Charges' },
@@ -67,7 +67,6 @@ export function TenantDetailPage() {
 
   const [activeTab, setActiveTab] = useState<TenantDetailTab>('charges');
   const [actionsOpen, setActionsOpen] = useState(false);
-  const [isResending, setIsResending] = useState(false);
   const [quickCollectOpen, setQuickCollectOpen] = useState(false);
   const [changeRentOpen, setChangeRentOpen] = useState(false);
   const [moveOutOpen, setMoveOutOpen] = useState(false);
@@ -141,6 +140,15 @@ export function TenantDetailPage() {
     );
   }
 
+  // Getting an owner-managed tenant onto the app. The link carries no token —
+  // the claim flow proves possession by OTP to their own number — so it is
+  // safe to WhatsApp or read out. See `claimInvite.ts`.
+  const claimUrl = claimLink(window.location.origin);
+  const claimWhatsapp = claimWhatsappUrl(
+    tenant.phone,
+    claimInviteMessage({ tenantName: tenant.name, hostelName: tenant.hostelName ?? '', link: claimUrl }),
+  );
+
   return (
     <ThemeProvider theme="product">
       <div className="min-h-screen bg-background [background-image:linear-gradient(#EBDCCF_1px,transparent_1px),linear-gradient(90deg,#EBDCCF_1px,transparent_1px)] [background-size:52px_52px] sm:mx-auto sm:max-w-[480px] sm:border-x sm:border-border">
@@ -154,41 +162,57 @@ export function TenantDetailPage() {
         <div className="flex flex-col gap-3.5 px-4 pb-10 sm:px-6">
           {tenant.accessMode === 'OWNER_MANAGED' && (
             /*
-             * Inviting a tenant now makes the tenancy live immediately, so
-             * `status === 'invited'` is never true and the pre-activation
-             * workspace below is unreachable for new tenancies. That workspace
-             * shows no money, which is wrong for a tenant whose payments the
-             * owner is actively recording — so the normal view stays, and the
-             * one invitation action that still matters is surfaced here.
+             * The one thing an owner cannot otherwise do from here: hand this
+             * account over.
+             *
+             * The only affordance used to be "Resend invite", and the only one
+             * on the Tenants list is "+ Invite" — which means *create a new
+             * tenancy* and is correctly refused with
+             * `TENANT_HAS_ACTIVE_TENANCY`, because this person already has
+             * one. So an owner doing exactly the right thing hit a dead end,
+             * and the claim flow built for this was unreachable because
+             * nothing pointed at it. See ADR-150.
              */
-            <div className="rounded-2xl border border-border bg-card px-4 py-3">
+            <div className="rounded-2xl border border-border bg-card px-4 py-3.5">
               <p className="font-display text-[13.5px] font-bold text-foreground">
                 You're keeping these records
               </p>
-              <p className="mt-0.5 text-[12.5px] leading-snug text-muted-foreground">
-                {tenant.name.split(' ')[0]} hasn't taken charge of their account yet. Everything
-                here keeps working either way — they can join anytime and pick up this same record.
+              <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
+                {tenant.name.split(' ')[0]} isn't on Stayo yet. Send them a link and they can see
+                their own rent, dues and receipts — you keep everything you've recorded, and
+                nothing changes if they never open it.
               </p>
-              <button
-                type="button"
-                disabled={isResending}
-                onClick={async () => {
-                  setIsResending(true);
-                  try {
-                    await tenantService.resendInvitation(tenant.phone);
-                    toast.success('Invitation resent');
-                  } catch (error: any) {
-                    toast.error(
-                      error?.response?.data?.error?.message || 'Failed to resend invitation',
-                    );
-                  } finally {
-                    setIsResending(false);
-                  }
-                }}
-                className="mt-2 font-display text-[12.5px] font-bold text-primary underline underline-offset-2 disabled:opacity-50"
-              >
-                {isResending ? 'Sending…' : 'Resend invite'}
-              </button>
+
+              <div className="mt-2.5 flex gap-2">
+                {claimWhatsapp && (
+                  <a
+                    href={claimWhatsapp}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary font-display text-[13px] font-bold text-primary-foreground shadow-sm transition-transform active:scale-[0.98]"
+                  >
+                    <Send className="h-4 w-4" strokeWidth={2.2} />
+                    Send on WhatsApp
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(claimUrl);
+                      toast.success('Link copied');
+                    } catch {
+                      toast.error("Couldn't copy the link");
+                    }
+                  }}
+                  className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-border bg-card px-4 font-display text-[13px] font-bold text-foreground transition-transform active:scale-[0.98] ${
+                    claimWhatsapp ? '' : 'flex-1'
+                  }`}
+                >
+                  <Copy className="h-4 w-4 text-muted-foreground" strokeWidth={2} />
+                  Copy link
+                </button>
+              </div>
             </div>
           )}
           <ProfileHeader tenant={tenant} />
