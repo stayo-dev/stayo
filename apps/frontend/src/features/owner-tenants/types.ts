@@ -60,9 +60,15 @@ export const EMPTY_INVITE_WIZARD_DATA: InviteWizardData = {
   roomId: '',
   roomLabel: '',
   joiningDate: '',
-  agreementMonths: '11',
-  monthlyRent: '8000',
-  deposit: '16000',
+  // Blank, deliberately. These carried hardcoded '11' / '8000' / '16000',
+  // which meant every owner in the country began every invite by correcting
+  // somebody's test numbers — and any figure they failed to notice became a
+  // wrong rent on a real tenancy. The hostel's own defaults are applied by
+  // `inviteDefaults` once a hostel and room are chosen; a blank field beats a
+  // wrong one until then.
+  agreementMonths: '',
+  monthlyRent: '',
+  deposit: '',
   billing: 'Monthly',
   maintenance: '',
   hasPaidAlready: false,
