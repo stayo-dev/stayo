@@ -1,4 +1,4 @@
-import { UNAVAILABLE_LABEL, type ConfigRowState } from './configRows';
+import { type ConfigRowState } from './configRows';
 
 /**
  * The Automation screen: work that runs without the owner.
@@ -71,14 +71,6 @@ const toggleRow = (
   offValue: false,
 });
 
-const unavailableRow = (key: string, title: string): ConfigWorkflowRow => ({
-  key,
-  title,
-  detail: UNAVAILABLE_LABEL,
-  enabled: null,
-  state: 'unavailable',
-});
-
 export function deriveAutomationSections(source: AutomationSource): ConfigWorkflowSection[] {
   const automation = source.automation ?? {};
   const channels = source.channels ?? {};
@@ -149,7 +141,6 @@ export function deriveAutomationSections(source: AutomationSource): ConfigWorkfl
         // exists anywhere in the codebase — no sender, no send call.
         // A toggle persisting a preference that changes nothing observable
         // would be worse than saying so.
-        unavailableRow('channel_sms', 'SMS'),
       ],
     },
     {
@@ -183,8 +174,6 @@ export function deriveAutomationSections(source: AutomationSource): ConfigWorkfl
         ),
         // Both would need endpoints that do not exist: a cron inventory with
         // next-run times, and an owner-facing activity feed screen.
-        unavailableRow('scheduled_jobs', 'Scheduled jobs'),
-        unavailableRow('activity_logs', 'Activity logs'),
       ],
     },
   ];

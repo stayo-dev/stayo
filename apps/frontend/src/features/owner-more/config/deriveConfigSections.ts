@@ -1,4 +1,4 @@
-import { UNAVAILABLE_LABEL, type ConfigRow } from './configRows';
+import { type ConfigRow } from './configRows';
 import { describeDeposit } from '../billing-policy/depositPolicy';
 
 /**
@@ -10,9 +10,10 @@ import { describeDeposit } from '../billing-policy/depositPolicy';
  * `hostel-policy-service.ts` returns (`billing`, `receipts`, `branding`,
  * `tenant_rules`) — not the flat legacy `HostelPreferences` shape.
  *
- * Rows whose subsystem does not exist are `unavailable` rather than omitted,
- * so the screens keep the shape of the design while never claiming a feature
- * works. See configRows.ts for why those never affect a count.
+ * Rows whose subsystem does not exist are **omitted**. They used to render as
+ * permanently `unavailable`, which was honest but still left the owner reading
+ * past settings that were never going to work — and they existed largely to
+ * pad a completeness meter the configuration redesign removes.
  */
 export interface ConfigSource {
   hostel?: {
@@ -82,13 +83,6 @@ export function ordinalDay(day: number): string {
 const plural = (count: number, singular: string, pluralForm = `${singular}s`) =>
   `${count} ${count === 1 ? singular : pluralForm}`;
 
-const unavailable = (key: string, title: string): ConfigRow => ({
-  key,
-  title,
-  detail: UNAVAILABLE_LABEL,
-  state: 'unavailable',
-});
-
 export function deriveHostelSections(source: ConfigSource): ConfigSection[] {
   const { hostel, policy, counts } = source;
   const branding = policy?.branding;
@@ -152,8 +146,6 @@ export function deriveHostelSections(source: ConfigSource): ConfigSection[] {
           // so the row rendered as configured and then did nothing.
           route: hostel?.id ? `/owner/hostels/${hostel.id}/rooms` : undefined,
         },
-        unavailable('room-types', 'Room types'),
-        unavailable('amenities', 'Amenities'),
       ],
     },
     {
@@ -268,7 +260,6 @@ export function deriveFinanceSections(source: ConfigSource): ConfigSection[] {
     {
       label: 'Getting paid',
       rows: [
-        unavailable('payment-methods', 'Payment methods'),
         {
           key: 'payment-gateway',
           title: 'Payment gateway',

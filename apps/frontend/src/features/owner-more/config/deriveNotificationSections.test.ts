@@ -96,9 +96,12 @@ describe('deriveNotificationSections', () => {
     expect(find(source(), 'owner-daily-summary')).toBeTruthy();
   });
 
-  it('renders events with no per-event gating as unavailable', () => {
-    for (const key of ['payment-received', 'agreement-ready', 'move-in-out', 'automation-failure']) {
-      expect(find(source(), key).state).toBe('unavailable');
+  it('lists only events that have a real setting behind them', () => {
+    // These five had no per-event gating to offer, so they rendered as
+    // permanently "Not available yet". They padded a completeness meter the
+    // configuration redesign removes.
+    for (const key of ['payment-received', 'agreement-ready', 'move-in-out', 'collection-report', 'automation-failure']) {
+      expect(find(source(), key)).toBeUndefined();
     }
   });
 

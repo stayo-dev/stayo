@@ -83,11 +83,14 @@ describe('deriveHostelSections', () => {
     expect(find(deriveHostelSections(source()), 'room-configuration').detail).toBe('14 rooms · 137 beds');
   });
 
-  it('renders room types and amenities as unavailable, not as gaps', () => {
-    const sections = deriveHostelSections(source());
+  it('does not list settings that do not exist', () => {
+    // Room types and amenities have no implementation. They were rendered as
+    // permanently "Not available yet" to pad a completeness meter the
+    // configuration redesign removes.
+    const keys = deriveHostelSections(source()).flatMap((s) => s.rows).map((r) => r.key);
 
-    expect(find(sections, 'room-types').state).toBe('unavailable');
-    expect(find(sections, 'amenities').state).toBe('unavailable');
+    expect(keys).not.toContain('room-types');
+    expect(keys).not.toContain('amenities');
   });
 
   it('owns agreement duration but not the deposit, so no field has two editors', () => {
@@ -97,13 +100,12 @@ describe('deriveHostelSections', () => {
     expect(keys).not.toContain('security-deposit');
   });
 
-  it('keeps unavailable rows out of the area tally', () => {
+  it('leaves no unavailable rows at all, so every row is worth a tap', () => {
     const sections = deriveHostelSections(source());
     const tally = tallyConfigRows(sections.flatMap((s) => s.rows));
-    const realRows = sections.flatMap((s) => s.rows).filter((r) => r.state !== 'unavailable');
 
-    expect(tally.configured + tally.attention).toBeLessThanOrEqual(realRows.length);
-    expect(allRows(sections).some((r) => r.state === 'unavailable')).toBe(true);
+    expect(allRows(sections).some((r) => r.state === 'unavailable')).toBe(false);
+    expect(tally.configured + tally.attention).toBe(allRows(sections).length);
   });
 });
 
@@ -231,14 +233,13 @@ describe('deriveFinanceSections', () => {
     expect(find(deriveFinanceSections(s), 'gst').state).toBe('configured');
   });
 
-  it('renders payment methods as unavailable rather than the hardcoded list it replaces', () => {
-    // The screen this replaces printed "UPI · Cash · Bank transfer" from a
-    // string literal; `payment_method` exists only on payment rows, never as
-    // configuration.
-    const row = find(deriveFinanceSections(source()), 'payment-methods');
+  it('does not list payment methods, which are not configuration at all', () => {
+    // The screen this replaced printed "UPI · Cash · Bank transfer" from a
+    // string literal; `payment_method` exists only on payment rows. Rendering
+    // it as permanently unavailable was honest but useless.
+    const keys = deriveFinanceSections(source()).map((s) => s.rows).flat().map((r) => r.key);
 
-    expect(row.state).toBe('unavailable');
-    expect(row.detail).not.toContain('UPI');
+    expect(keys).not.toContain('payment-methods');
   });
 
   it('describes the receipt series from the real prefix and format', () => {

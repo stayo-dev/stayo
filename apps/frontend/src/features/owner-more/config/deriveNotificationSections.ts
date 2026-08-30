@@ -1,4 +1,4 @@
-import { UNAVAILABLE_LABEL, type ConfigRow } from './configRows';
+import { type ConfigRow } from './configRows';
 import type { ConfigSection } from './deriveConfigSections';
 
 /**
@@ -63,13 +63,6 @@ export function describeSchedule(schedule: {
   return `Sent ${list(before)} days before, then ${list(after)} days after`;
 }
 
-const unavailable = (key: string, title: string, why: string): ConfigRow => ({
-  key,
-  title,
-  detail: `${UNAVAILABLE_LABEL} — ${why}`,
-  state: 'unavailable',
-});
-
 export function deriveNotificationSections(source: NotificationSource): ConfigSection[] {
   const reminders = source.reminders ?? {};
   const schedule = reminders.schedule ?? {};
@@ -98,9 +91,6 @@ export function deriveNotificationSections(source: NotificationSource): ConfigSe
         },
         // These three are in the design but have no per-event gating: nothing
         // stores whether they send, so a toggle would write nowhere.
-        unavailable('payment-received', 'Payment received', 'receipts are always sent'),
-        unavailable('agreement-ready', 'Agreement ready', 'no per-event setting exists'),
-        unavailable('move-in-out', 'Move-in / move-out', 'no per-event setting exists'),
       ],
     },
     {
@@ -117,8 +107,6 @@ export function deriveNotificationSections(source: NotificationSource): ConfigSe
           state: reminders.owner_daily_summary ? 'configured' : 'off',
           route: '/owner/more/configuration/notifications',
         },
-        unavailable('collection-report', 'Collection report', 'no weekly report exists yet'),
-        unavailable('automation-failure', 'Automation failure alerts', 'not implemented yet'),
       ],
     },
   ];

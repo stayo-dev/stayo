@@ -62,14 +62,16 @@ describe('deriveAutomationSections', () => {
     expect(find(source(), 'channel_email').enabled).toBe(true);
   });
 
-  it('renders SMS as unavailable, because no SMS provider exists in the codebase', () => {
+  it('lists only workflows that exist', () => {
     // `reminders.channels.sms` is a real stored flag, but nothing sends an
-    // SMS — no provider, no sender. A toggle that persists a preference which
-    // changes nothing observable is worse than an honest placeholder.
-    const row = find(source(), 'channel_sms');
+    // SMS — no provider, no sender. Scheduled jobs and activity logs have no
+    // implementation either. All three rendered as honest placeholders, which
+    // is still three rows an owner has to read past.
+    const keys = deriveAutomationSections(source()).flatMap((s) => s.rows).map((r) => r.key);
 
-    expect(row.state).toBe('unavailable');
-    expect(row.enabled).toBeNull();
+    expect(keys).not.toContain('channel_sms');
+    expect(keys).not.toContain('scheduled_jobs');
+    expect(keys).not.toContain('activity_logs');
   });
 
   it('gives every writable row a policy path to patch', () => {
@@ -80,11 +82,13 @@ describe('deriveAutomationSections', () => {
     for (const row of writable) expect(row.path).toBeTruthy();
   });
 
-  it('gives unavailable rows no path, so they cannot be written', () => {
+  it('leaves every row writable, which is now the whole rule', () => {
     const rows = deriveAutomationSections(source()).flatMap((s) => s.rows);
 
-    for (const row of rows.filter((r) => r.state === 'unavailable')) {
-      expect(row.path).toBeUndefined();
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.enabled).not.toBeNull();
+      expect(row.path).toBeTruthy();
     }
   });
 });
@@ -144,9 +148,10 @@ describe('buildWorkflowPatch', () => {
     expect(buildWorkflowPatch(row, false)).toEqual({ automation: { auto_deactivate_days: 0 } });
   });
 
-  it('refuses to build a patch for an unavailable row', () => {
-    const row = find(source(), 'channel_sms');
-
-    expect(buildWorkflowPatch(row, true)).toBeNull();
+  it('refuses to build a patch for a row that cannot be written', () => {
+    // The guard outlives the unavailable rows it was written for: any row
+    // arriving without a path must not produce a patch.
+    expect(buildWorkflowPatch({ key: 'x', title: 'X', enabled: null } as any, true)).toBeNull();
+    expect(buildWorkflowPatch({ key: 'x', title: 'X', enabled: false } as any, true)).toBeNull();
   });
 });
