@@ -31,9 +31,6 @@ export default defineConfig({
       'tests/settlement-planner-overdue.test.ts',
       'tests/settlement-planner-minimum-percentage.test.ts',
       'tests/invite-settlement-preview.test.ts',
-      // The one conversion from an owner's "already paid" answers to a rupee
-      // amount — shared by that preview and the invite write path. ADR-141.
-      'tests/prior-tenancy-payment.test.ts',
       'tests/search-ranking.test.ts',
       'tests/collection-queue-prioritisation.test.ts',
       'tests/expense-memory.test.ts',

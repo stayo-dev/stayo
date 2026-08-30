@@ -48,26 +48,6 @@ export const InvitationSchema = z.object({
   // opts out of the WhatsApp/email send — defaults to false/undefined, so the
   // ordinary "Send invite" path (which never sets this) is unaffected.
   suppressInvitationNotification: z.boolean().optional(),
-  /**
-   * Present only when the owner said this tenant is *already living here*.
-   *
-   * Its presence is what authorises reconstructing the months between the
-   * joining date and today and settling the ones already paid — never the
-   * joining date merely being in the past, which happens for ordinary reasons
-   * on the new-tenant path. See ADR-141.
-   */
-  prior_history: z
-    .object({
-      /** `YYYY-MM` of the last fully paid month; null when nothing is paid. */
-      rent_paid_through: z
-        .string()
-        .regex(/^\d{4}-\d{2}$/, "rent_paid_through must be YYYY-MM")
-        .nullable()
-        .optional(),
-      deposit_paid: z.boolean().optional(),
-      maintenance_paid: z.boolean().optional(),
-    })
-    .optional(),
 });
 
 export const InvitationUpdateSchema = z.object({

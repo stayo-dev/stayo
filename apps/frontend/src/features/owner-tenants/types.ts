@@ -26,26 +26,7 @@ export interface InviteWizardData {
   deposit: string;
   billing: string;
   maintenance: string;
-  /**
-   * The last month whose rent the tenant has already paid, `YYYY-MM`, or empty
-   * for "none yet". Only meaningful on the already-living-here path. See
-   * `invite/priorHistory.ts` and ADR-141.
-   */
-  rentPaidThrough: string;
-  depositAlreadyPaid: boolean;
-  maintenanceAlreadyPaid: boolean;
 }
-
-/**
- * Which kind of person the owner is adding.
- *
- * `null` until they say, which is the wizard's opening question — an owner
- * putting a hostel onto Stayo is mostly entering people who moved in months
- * ago and have already paid, and that is a different job from admitting
- * someone new. Naming it first lets the rest of the wizard adapt instead of
- * making every owner read fields that do not apply to them.
- */
-export type InviteMode = 'NEW' | 'EXISTING';
 
 export const EMPTY_INVITE_WIZARD_DATA: InviteWizardData = {
   tenantName: '',
@@ -60,9 +41,6 @@ export const EMPTY_INVITE_WIZARD_DATA: InviteWizardData = {
   deposit: '16000',
   billing: 'Monthly',
   maintenance: '',
-  rentPaidThrough: '',
-  depositAlreadyPaid: false,
-  maintenanceAlreadyPaid: false,
 };
 
 export type QuickCollectStep = 'select' | 'amount' | 'preview' | 'password' | 'success';

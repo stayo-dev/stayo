@@ -17,8 +17,7 @@ import {
   isValidTenantName,
   EMAIL_REGEX,
 } from '../invite/validation';
-import { EMPTY_INVITE_WIZARD_DATA, type InviteMode, type InviteWizardData } from '../types';
-import type { InviteSettlementPreview } from '../invite/priorHistory';
+import { EMPTY_INVITE_WIZARD_DATA, type InviteWizardData } from '../types';
 
 const ELIGIBILITY_DEBOUNCE_MS = 400;
 
@@ -33,12 +32,7 @@ export interface UseInviteWizardOptions {
   leadId?: string;
 }
 
-/**
- * The already-living-here path gains one step. Everything else about the
- * common new-tenant path is deliberately unchanged — see [[Decisions#ADR-141]].
- */
-const STEP_LABELS_NEW = ['Tenant', 'Stay', 'Money', 'Verify'] as const;
-const STEP_LABELS_EXISTING = ['Tenant', 'Stay', 'Money', 'History', 'Verify'] as const;
+const STEP_LABELS = ['Tenant', 'Stay', 'Money', 'Verify'] as const;
 
 const BILLING_TO_FREQUENCY: Record<string, string> = {
   Monthly: 'MONTHLY',
@@ -75,9 +69,6 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
   const { initialData, leadId } = options;
   const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
-  // Null until the owner answers the opening question. Kept out of `data` so
-  // resetting the form cannot leave a half-configured mode behind.
-  const [mode, setMode] = useState<InviteMode | null>(null);
   const [data, setData] = useState<InviteWizardData>({ ...EMPTY_INVITE_WIZARD_DATA, ...initialData });
   const [agreed, setAgreed] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -115,53 +106,6 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
     (debouncedPhone !== cleanedPhone || (eligibilityQuery.isFetching && !eligibilityQuery.data));
   const hasExistingAccount = Boolean(eligibilityQuery.data?.has_account) && !eligibilityConflict;
 
-  const stepLabels = (mode === 'EXISTING' ? STEP_LABELS_EXISTING : STEP_LABELS_NEW) as readonly string[];
-
-  /**
-   * What the backend will actually write for the months before today.
-   *
-   * Asked of the server rather than computed here on purpose. The obligations
-   * are raised by `onboarding-financials-service` and the payment is placed by
-   * `buildInviteSettlementPreview` → `buildSettlementPlan`; a second
-   * implementation in the wizard could drift from either, and this is money.
-   * Only enabled on the already-living-here path, and only once there is
-   * enough to ask about. See ADR-141.
-   */
-  const priorHistoryEnabled = Boolean(
-    mode === 'EXISTING' && data.roomId && data.joiningDate && Number(data.monthlyRent) >= 0,
-  );
-  const priorHistoryQuery = useQuery({
-    queryKey: [
-      'owner',
-      'invite-settlement-preview',
-      data.roomId,
-      data.joiningDate,
-      data.monthlyRent,
-      data.deposit,
-      data.maintenance,
-      data.rentPaidThrough,
-      data.depositAlreadyPaid,
-      data.maintenanceAlreadyPaid,
-    ],
-    queryFn: () =>
-      tenantService.previewInviteSettlement({
-        room_id: data.roomId,
-        joining_date: data.joiningDate,
-        monthly_rent: Number(data.monthlyRent) || 0,
-        security_deposit: Number(data.deposit) || 0,
-        maintenance_amount: Number(data.maintenance) || 0,
-        agreement_duration_months: Number(data.agreementMonths) || undefined,
-        rent_paid_through: data.rentPaidThrough || null,
-        deposit_paid: data.depositAlreadyPaid,
-        maintenance_paid: data.maintenanceAlreadyPaid,
-      }) as Promise<InviteSettlementPreview>,
-    enabled: priorHistoryEnabled,
-    staleTime: 30_000,
-    retry: false,
-  });
-
-  const priorHistory = (priorHistoryQuery.data as InviteSettlementPreview | undefined) ?? null;
-
   const isStep0Valid =
     isValidTenantName(data.tenantName) &&
     isValidIndianPhone(data.tenantPhone) &&
@@ -169,28 +113,18 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
     !eligibilityConflict;
   const isStep1Valid = Boolean(data.hostelId && data.roomId && data.joiningDate && Number(data.agreementMonths) > 0);
   const isStep2Valid = Boolean(data.monthlyRent && Number(data.monthlyRent) >= 0);
-  // The owner may legitimately answer "nothing paid yet", so History blocks on
-  // nothing of its own. It does wait for the preview to resolve: pressing on
-  // without it would mean approving a summary that never loaded.
-  const isHistoryValid = !priorHistoryEnabled || Boolean(priorHistory) || priorHistoryQuery.isError;
-  const isVerifyValid =
-    Boolean(agreed && data.roomId && isStep0Valid && isStep1Valid && isStep2Valid) &&
-    (mode !== 'EXISTING' || isHistoryValid);
+  const isStep3Valid = Boolean(agreed && data.roomId && isStep0Valid && isStep1Valid && isStep2Valid);
 
-  // Keyed by label rather than index: adding History shifted Verify from 3 to
-  // 4, and an index-based switch would have silently validated the wrong step.
   const isCurrentStepValid = (() => {
-    switch (stepLabels[step]) {
-      case 'Tenant':
+    switch (step) {
+      case 0:
         return isStep0Valid;
-      case 'Stay':
+      case 1:
         return isStep1Valid;
-      case 'Money':
+      case 2:
         return isStep2Valid;
-      case 'History':
-        return isHistoryValid;
-      case 'Verify':
-        return isVerifyValid;
+      case 3:
+        return isStep3Valid;
       default:
         return false;
     }
@@ -198,7 +132,7 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
 
   const next = () => {
     if (!isCurrentStepValid) return;
-    setStep((s) => Math.min(stepLabels.length - 1, s + 1));
+    setStep((s) => Math.min(STEP_LABELS.length - 1, s + 1));
   };
   const back = () => setStep((s) => Math.max(0, s - 1));
 
@@ -218,19 +152,6 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
     joining_date: data.joiningDate || undefined,
     agreement_duration_months: Number(data.agreementMonths) || undefined,
     payment_frequency: BILLING_TO_FREQUENCY[data.billing] ?? 'MONTHLY',
-    // Sent only on the already-living-here path. Its presence is what tells the
-    // backend to reconstruct the months before today and settle the ones the
-    // owner says are paid — reconstruction follows an explicit request, never
-    // merely from the date happening to be in the past. See ADR-141.
-    ...(mode === 'EXISTING'
-      ? {
-          prior_history: {
-            rent_paid_through: data.rentPaidThrough || null,
-            deposit_paid: data.depositAlreadyPaid,
-            maintenance_paid: data.maintenanceAlreadyPaid,
-          },
-        }
-      : {}),
   });
 
   const createInvitation = async () => {
@@ -279,7 +200,7 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
   });
 
   const submit = () => {
-    if (!isVerifyValid) return;
+    if (!isStep3Valid) return;
     inviteMutation.mutate();
   };
 
@@ -291,7 +212,6 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
 
   const reset = () => {
     setStep(0);
-    setMode(null);
     setData({ ...EMPTY_INVITE_WIZARD_DATA, ...initialData });
     setAgreed(false);
     setSubmitted(false);
@@ -304,17 +224,7 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
 
   return {
     step,
-    stepLabels,
-    mode,
-    priorHistoryLoading: priorHistoryQuery.isFetching,
-    priorHistoryError: priorHistoryQuery.isError
-      ? getErrorMessage(priorHistoryQuery.error, "We couldn't work out the earlier months just now.")
-      : null,
-    chooseMode: (next: InviteMode) => {
-      setMode(next);
-      setStep(0);
-    },
-    priorHistory,
+    stepLabels: STEP_LABELS,
     data,
     setD,
     agreed,

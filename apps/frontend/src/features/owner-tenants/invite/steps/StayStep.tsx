@@ -1,15 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { roomService } from '@features/rooms/api';
 import type { OwnerSessionHostel } from '@features/owner-session/useOwnerSession';
-import type { InviteMode, InviteWizardData } from '../../types';
-import { isBackdated, todayIso } from '../priorHistory';
+import type { InviteWizardData } from '../../types';
 
 interface StayStepProps {
   data: InviteWizardData;
   setD: (patch: Partial<InviteWizardData>) => void;
   hostels: OwnerSessionHostel[];
-  /** Changes what the date field means and says. See ADR-141. */
-  mode: InviteMode;
 }
 
 const labelStyle = 'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground';
@@ -20,13 +17,7 @@ interface VacantRoom {
 }
 
 /** Step 2/4 of the Invite Tenant wizard — which hostel, room, and when. Real hostels + real vacant rooms (`GET /api/rooms?grouped=true`). */
-export function StayStep({ data, setD, hostels, mode }: StayStepProps) {
-  const today = todayIso();
-  const existing = mode === 'EXISTING';
-  // Deliberately not a rent calculation — the exact months and amounts come
-  // from the server on the History step. This only says whether the date is in
-  // the past, so the owner is not surprised by a step appearing. See ADR-141.
-  const backdated = existing && Boolean(data.joiningDate) && isBackdated(data.joiningDate, today);
+export function StayStep({ data, setD, hostels }: StayStepProps) {
   const roomsQuery = useQuery({
     queryKey: ['hostel', data.hostelId, 'rooms', 'grouped'],
     queryFn: () => roomService.getAll(data.hostelId, { grouped: true }),
@@ -84,24 +75,13 @@ export function StayStep({ data, setD, hostels, mode }: StayStepProps) {
         </select>
       </label>
       <label className="block">
-        <span className={labelStyle}>{existing ? 'When did they move in?' : 'Joining date'}</span>
+        <span className={labelStyle}>Joining date</span>
         <input
           type="date"
           value={data.joiningDate}
           onChange={(e) => setD({ joiningDate: e.target.value })}
-          // A tenant who is already living here cannot have arrived tomorrow.
-          max={existing ? today : undefined}
           className="w-full rounded-[11px] border border-border bg-card px-3.5 py-3 text-sm font-semibold text-foreground focus:border-primary focus:outline-none"
         />
-        {/* Says what the date will cause, on the step where it is chosen —
-            rather than letting the next step be a surprise. */}
-        {existing && Boolean(data.joiningDate) && (
-          <span className="mt-1.5 block text-[12px] leading-relaxed text-muted-foreground">
-            {backdated
-              ? "That's in the past — we'll ask what they've already paid before you finish."
-              : "They moved in this month — we'll still ask what they've already paid."}
-          </span>
-        )}
       </label>
       <label className="block">
         <span className={labelStyle}>Agreement duration (months)</span>

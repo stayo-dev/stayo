@@ -211,16 +211,6 @@ export const tenantService = {
         });
         return unwrap(response);
     },
-    /**
-     * Read-only. "This tenant already lives here and has already paid me some
-     * of it — what exactly will you record?", answered by the same backend
-     * module that does the recording, so the wizard never does money
-     * arithmetic of its own. Creates nothing. See ADR-141.
-     */
-    previewInviteSettlement: async (payload) => {
-        const response = await api.post('/owners/invitations/settlement-preview', payload);
-        return unwrap(response);
-    },
     resendInvitation: async (identifier, overrides = {}) => {
         const body = {
             identifier,

@@ -7,8 +7,6 @@ import { InviteDeliveryResult } from './InviteDeliveryResult';
 import { TenantStep } from './steps/TenantStep';
 import { StayStep } from './steps/StayStep';
 import { MoneyStep } from './steps/MoneyStep';
-import { HistoryStep } from './steps/HistoryStep';
-import { ModeStep } from './steps/ModeStep';
 import { VerifyStep } from './steps/VerifyStep';
 import type { InviteWizardData } from '../types';
 
@@ -62,17 +60,6 @@ export function InviteTenantWizard({ open, onClose, initialData, leadId }: Invit
     );
   }
 
-  // The opening question stands on its own: no step indicator, no footer, no
-  // Back — there is nothing behind it, and a progress bar over a single choice
-  // implies work that has not started. See ADR-141.
-  if (!wizard.mode) {
-    return (
-      <BottomSheet open={open} onOpenChange={(v) => !v && handleClose()} title="Add tenant">
-        <ModeStep onChoose={wizard.chooseMode} />
-      </BottomSheet>
-    );
-  }
-
   const isLast = wizard.step === wizard.stepLabels.length - 1;
 
   return (
@@ -86,7 +73,7 @@ export function InviteTenantWizard({ open, onClose, initialData, leadId }: Invit
               <ChevronLeft className="h-4 w-4" />
             </button>
           )}
-          {wizard.mode === 'EXISTING' ? 'Add existing tenant' : 'Invite tenant'}
+          Invite tenant
         </span>
       }
       footer={
@@ -142,7 +129,7 @@ export function InviteTenantWizard({ open, onClose, initialData, leadId }: Invit
         </p>
       ) : null}
 
-      {wizard.stepLabels[wizard.step] === 'Tenant' && (
+      {wizard.step === 0 && (
         <TenantStep
           data={wizard.data}
           setD={wizard.setD}
@@ -151,28 +138,9 @@ export function InviteTenantWizard({ open, onClose, initialData, leadId }: Invit
           hasExistingAccount={wizard.hasExistingAccount}
         />
       )}
-      {wizard.stepLabels[wizard.step] === 'Stay' && (
-        <StayStep data={wizard.data} setD={wizard.setD} hostels={session.hostels} mode={wizard.mode} />
-      )}
-      {wizard.stepLabels[wizard.step] === 'Money' && <MoneyStep data={wizard.data} setD={wizard.setD} />}
-      {wizard.stepLabels[wizard.step] === 'History' && (
-        <HistoryStep
-          data={wizard.data}
-          setD={wizard.setD}
-          preview={wizard.priorHistory}
-          isLoading={wizard.priorHistoryLoading}
-          error={wizard.priorHistoryError}
-        />
-      )}
-      {wizard.stepLabels[wizard.step] === 'Verify' && (
-        <VerifyStep
-          data={wizard.data}
-          agreed={wizard.agreed}
-          setAgreed={wizard.setAgreed}
-          hostels={session.hostels}
-          priorHistory={wizard.mode === 'EXISTING' ? wizard.priorHistory : null}
-        />
-      )}
+      {wizard.step === 1 && <StayStep data={wizard.data} setD={wizard.setD} hostels={session.hostels} />}
+      {wizard.step === 2 && <MoneyStep data={wizard.data} setD={wizard.setD} />}
+      {wizard.step === 3 && <VerifyStep data={wizard.data} agreed={wizard.agreed} setAgreed={wizard.setAgreed} hostels={session.hostels} />}
     </BottomSheet>
   );
 }

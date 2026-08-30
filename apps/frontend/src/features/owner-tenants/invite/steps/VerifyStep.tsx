@@ -1,53 +1,26 @@
 import { Check } from 'lucide-react';
 import type { OwnerSessionHostel } from '@features/owner-session/useOwnerSession';
 import type { InviteWizardData } from '../../types';
-import type { InviteSettlementPreview } from '../priorHistory';
 
 interface VerifyStepProps {
   data: InviteWizardData;
   agreed: boolean;
   setAgreed: (v: boolean) => void;
   hostels: OwnerSessionHostel[];
-  /**
-   * Present only on the already-living-here path. Repeated here because this
-   * step creates settled financial records, and the last thing the owner reads
-   * before pressing send should say so. See ADR-141.
-   */
-  priorHistory?: InviteSettlementPreview | null;
 }
 
 const row = 'flex items-center justify-between border-t border-border/60 px-3.5 py-2.5 first:border-t-0';
 
 /** Step 4/4 of the Invite Tenant wizard — review everything before sending. */
-export function VerifyStep({ data, agreed, setAgreed, hostels, priorHistory = null }: VerifyStepProps) {
+export function VerifyStep({ data, agreed, setAgreed, hostels }: VerifyStepProps) {
   const rent = Number(data.monthlyRent) || 0;
   const deposit = Number(data.deposit) || 0;
   const maintenance = Number(data.maintenance) || 0;
   const total = rent + deposit + maintenance;
   const hostelName = hostels.find((h) => h.id === data.hostelId)?.name ?? '—';
 
-  const settledMonths = priorHistory?.months.filter((m) => m.settled).length ?? 0;
-  const depositRecorded = priorHistory?.amount_includes_deposit ?? false;
-
   return (
     <div className="flex flex-col gap-4.5">
-      {priorHistory && priorHistory.months.length > 0 && (
-        <div className="rounded-2xl border border-primary/30 bg-primary/[0.04] p-4">
-          <span className="font-display text-[13.5px] font-bold text-foreground">
-            Recording {priorHistory.months.length} {priorHistory.months.length === 1 ? 'month' : 'months'} of history
-          </span>
-          <p className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">
-            {settledMonths > 0
-              ? `${settledMonths} ${settledMonths === 1 ? 'month' : 'months'} of rent`
-              : 'No rent'}
-            {depositRecorded ? ' and the deposit' : ''} marked as already paid — ₹
-            {Math.round(priorHistory.amount_paid).toLocaleString('en-IN')} in total. Anything left
-            unticked stays due from its original date. No payment messages or receipts are sent for any
-            of it.
-          </p>
-        </div>
-      )}
-
       <div className="flex flex-col gap-2">
         <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Review details</span>
         <div className="overflow-hidden rounded-2xl border border-border bg-card">
