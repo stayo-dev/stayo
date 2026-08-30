@@ -1,7 +1,9 @@
 import crypto from "crypto";
+import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/db";
 import { normalizeIndianPhone } from "@/lib/utils/phone-utils";
 import { ensureActiveAllocation } from "./tenancy-allocation";
+import { planObligationLinking } from "./obligation-linking";
 import { resolveActivationEmail } from "./invited-profile-resolver";
 
 export interface AdoptParams {
@@ -71,12 +73,51 @@ export async function finalizeOwnerManagedTenancy(
 ): Promise<AdoptResult> {
   const { tx, tenantId, ownerId, hostelId, displayName, phone, roomId, joiningDate } = params;
 
-  const { created } = await ensureActiveAllocation(tx, {
+  const { created, allocationId } = await ensureActiveAllocation(tx, {
     tenantId,
     roomId,
     hostelId,
     startDate: joiningDate,
   });
+
+  // Bind obligations raised before this allocation existed.
+  //
+  // `createInvitation` writes the tenancy's obligations — including the
+  // months a mid-year adoption backfills — while only a *reservation* exists,
+  // so they carry `allocation_id: null`. Every duplicate guard downstream is
+  // allocation-scoped: the monthly rent cron matches on
+  // `allocation_id: { in: [...] }` and `upsertObligation` on
+  // `allocation_id + rent_month + obligation_type`. `NULL` matches neither, so
+  // both were blind to the backfilled months and raised them a second time —
+  // a tenant adopted mid-year saw two identical RENT rows for the current
+  // month, ₹8,000 they did not owe, on the first screen they ever opened.
+  //
+  // Binding them here makes the existing checks — and the
+  // `(allocation_id, rent_month, obligation_type)` unique index — cover these
+  // rows too, rather than redefining "duplicate" in four places. See ADR-149.
+  const orphanCandidates = await tx.rent_obligations.findMany({
+    where: { tenant_id: tenantId, is_superseded: false },
+    select: { id: true, allocation_id: true, obligation_type: true, rent_month: true },
+  });
+  const linkPlan = planObligationLinking(orphanCandidates as any, allocationId);
+
+  if (linkPlan.link.length > 0) {
+    await tx.rent_obligations.updateMany({
+      where: { id: { in: linkPlan.link } },
+      data: { allocation_id: allocationId },
+    });
+  }
+  if (linkPlan.skipped.length > 0) {
+    // Pre-existing duplicates from before this fix. Left unbound rather than
+    // failing the invitation over historical data — an unbound row is exactly
+    // what it was a moment ago, and cancelling an obligation is an owner's
+    // decision, not a side effect of adoption.
+    logger.warn("tenancy.obligation_link_skipped", {
+      tenant_id: tenantId,
+      allocation_id: allocationId,
+      skipped: linkPlan.skipped,
+    });
+  }
 
   // Identity is centralised on `profiles`, keyed by canonical phone. An
   // owner-managed tenancy is a profile *without a login* — never a tenancy

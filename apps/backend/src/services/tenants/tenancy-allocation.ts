@@ -21,20 +21,24 @@ export interface EnsureAllocationParams {
 export async function ensureActiveAllocation(
   tx: any,
   params: EnsureAllocationParams,
-): Promise<{ created: boolean }> {
+): Promise<{ created: boolean; allocationId: string }> {
   const existing = await tx.roomAllocation.findFirst({
     where: { tenant_id: params.tenantId, is_active: true, end_date: null },
   });
-  if (existing) return { created: false };
+  if (existing) return { created: false, allocationId: existing.id };
 
   const capacity = await roomCapacityService.getRoomCapacitySnapshot(params.roomId, { tx });
   if (capacity.occupied >= Number(capacity.room.capacity || 0)) {
     throw new Error("CAPACITY_EXCEEDED: Reserved room no longer has available capacity");
   }
 
+  // The id is returned, not discarded: obligations raised before this
+  // allocation existed have to be bound to it, or every allocation-scoped
+  // duplicate check stays blind to them. See ADR-149.
+  const allocationId = crypto.randomUUID();
   await tx.roomAllocation.create({
     data: {
-      id: crypto.randomUUID(),
+      id: allocationId,
       tenant_id: params.tenantId,
       room_id: params.roomId,
       hostel_id: params.hostelId,
@@ -43,5 +47,5 @@ export async function ensureActiveAllocation(
     },
   });
 
-  return { created: true };
+  return { created: true, allocationId };
 }

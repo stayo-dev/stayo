@@ -8,6 +8,20 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-08-30 — A tenant adopted mid-year was billed twice for the same month (fixed for new tenancies)
+
+**Symptom.** A real tenancy showed two identical `RENT` obligations for `2026-08`, ₹8,000 each, both `PENDING`. The tenant's claim screen — the first thing they ever see of Stayo — listed "1 Aug 2026" twice and an outstanding balance ₹8,000 higher than they owed.
+
+**Root cause.** `createInvitation` writes the tenancy's obligations while only a *reservation* exists, and converts that reservation into a room allocation afterwards. The obligations are therefore written with `allocation_id: null` — correct at that moment, never corrected later.
+
+Every duplicate guard downstream is allocation-scoped: `rent-generation-service.ts` loads existing rows with `allocation_id: { in: allocationIds }`, and `obligationEngine.upsertObligation` matches on `allocation_id + rent_month + obligation_type`. **`NULL IN (...)` is never true**, so both are blind to every backfilled row by construction. The monthly rent cron duly raised August a second time, keyed to the allocation.
+
+**Fix.** `ensureActiveAllocation` returns the allocation id rather than discarding it, and `finalizeOwnerManagedTenancy` binds the tenancy's unallocated obligations to it in the same transaction. The existing checks and the `(allocation_id, rent_month, obligation_type)` unique index then cover these rows. `planObligationLinking` (pure, 9 tests) decides what binds; an orphan whose slot is already taken is **skipped and logged**, not forced, so historical duplicates cannot fail an invitation.
+
+**Verified read-only against the reporting tenancy:** 8 orphans, 7 would bind, 1 skipped — exactly the duplicate August row.
+
+**Not fixed by this:** tenancies that already carry a duplicate. Obligations are audit-first, so the extra row is cancelled deliberately through `POST /api/payments/obligations/[id]/cancel`, which writes a ledger correction — not deleted, and not as a side effect of this change. See [[Decisions#ADR-149|ADR-149]].
+
 ## 2026-08-29 — The printable menu failed on every request: a `YYYY-MM` string sent to a `Date` column (fixed)
 
 **Symptom.** Every call to `GET /api/food/menu-pdf` returned `Invalid value for argument 'month': premature end of input. Expected ISO-8601 DateTime`. No owner could print a menu at all — the feature was broken for its entire, brief life.

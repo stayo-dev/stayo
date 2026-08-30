@@ -121,6 +121,9 @@ export default defineConfig({
       // The printed weekly menu's content model. Same split as the receipt —
       // what it says, decided apart from how it is drawn. ADR-144.
       'tests/menu-content.test.ts',
+      // Which obligations bind to a room allocation — the rule behind a real
+      // double-billing defect. ADR-149.
+      'tests/obligation-linking.test.ts',
       'tests/agreement-content.test.ts',
     ],
     alias: {
