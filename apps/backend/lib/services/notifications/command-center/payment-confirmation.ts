@@ -85,19 +85,52 @@ export async function sendPaymentConfirmation(tenantId: string): Promise<Payment
     const [newest] = await listPayments(tenantId, 1);
     const document = newest ? await ensureReceiptDocument(newest.paymentId).catch(() => null) : null;
 
-    const deliver = async (phone: string, audience: "RESIDENT" | "GUARDIAN") => {
-      const text = formatPaymentConfirmation({ ...receipt, audience, subject: context.subject });
-      await provider.sendTextMessage(phone, text);
-
-      if (document) {
-        // The receipt itself, not a reference to one the reader has to go find.
-        // Best-effort: the confirmation text has already landed.
-        await sendReceiptDocument(provider, phone, document);
+    let mediaId: string | null = null;
+    if (document?.bytes) {
+      try {
+        mediaId = await provider.uploadMedia(document.bytes, "application/pdf", document.filename);
+      } catch (err: any) {
+        logger.warn("payment_confirmation.upload_media_failed", { error: err?.message || String(err) });
       }
+    }
 
-      if (buttons.length > 0) {
-        // Best-effort: the confirmation itself already landed.
-        await provider.sendButtonMessage(phone, "Anything else?", buttons).catch(() => {});
+    const deliver = async (phone: string, audience: "RESIDENT" | "GUARDIAN") => {
+      const templateName = String(process.env.WHATSAPP_PAYMENT_RECEIPT_TEMPLATE || "").trim() || "stayo_payment_receipt";
+      const recipientName = audience === "GUARDIAN" ? "Guardian" : context.subject.name;
+      const amountStr = receipt.payment?.amount ? String(Math.round(receipt.payment.amount)) : "0";
+      const monthStr = receipt.payment?.towards || "Rent";
+      const hostelStr = context.subject.hostelName;
+      const statusStr = receipt.stillDue > 0 ? "Partially Paid" : "Paid";
+      const balanceStr = String(Math.round(Math.max(0, receipt.stillDue)));
+
+      try {
+        await provider.sendTemplate({
+          to: phone,
+          templateName,
+          language: { code: "en" },
+          bodyParameters: [recipientName, amountStr, monthStr, hostelStr, statusStr, balanceStr],
+          headerDocument: mediaId
+            ? { mediaId, filename: document?.filename || "Receipt.pdf" }
+            : document?.url
+            ? { link: document.url, filename: document.filename }
+            : undefined,
+          buttonParameters: [tenantId],
+        });
+      } catch (templateError: any) {
+        logger.warn("payment_confirmation.template_fallback", {
+          phone,
+          error: templateError?.message || String(templateError),
+        });
+        const text = formatPaymentConfirmation({ ...receipt, audience, subject: context.subject });
+        await provider.sendTextMessage(phone, text);
+
+        if (document) {
+          await sendReceiptDocument(provider, phone, document);
+        }
+
+        if (buttons.length > 0) {
+          await provider.sendButtonMessage(phone, "Anything else?", buttons).catch(() => {});
+        }
       }
       result.sent += 1;
     };
