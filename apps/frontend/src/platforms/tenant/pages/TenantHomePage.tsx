@@ -19,6 +19,9 @@ import { useNavAnchor } from '@/app/nav/NavAnchorContext';
 import { useTenantGuide } from '../guide/useTenantGuide';
 import { welcomeStops } from '../guide/tenantGuide';
 import { WELCOME_COPY } from '../guide/guideCopy';
+import { useTenantSession } from '@features/tenant-session/useTenantSession';
+import { usePushSubscription } from '@features/push/usePushSubscription';
+import { PushPromptCard } from '@features/push/PushPromptCard';
 
 const card = 'rounded-[16px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_4px_14px_rgba(40,30,20,0.05)]';
 const sectionLabel = 'text-[13px] font-bold uppercase tracking-wide text-muted-foreground';
@@ -63,6 +66,15 @@ export function TenantHomePage() {
   const rentCardRef = useRef<HTMLDivElement | null>(null);
   const navAnchor = useNavAnchor();
   const guide = useTenantGuide('welcome', !home.isLoading);
+
+  /*
+   * The push ask, placed after the rent card rather than on load: the value
+   * has to be demonstrated before the browser's one-shot permission dialog is
+   * spent. `useTenantHome` carries no identity, so the tenancy id scopes the
+   * dismissal — it only needs to be stable and per-person.
+   */
+  const session = useTenantSession();
+  const push = usePushSubscription(session.tenantId ?? null);
 
   const welcome = useMemo<SpotlightStop[]>(() => {
     const anchors = { rent: rentCardRef, header: headerRef, nav: navAnchor ?? { current: null } };
@@ -177,6 +189,15 @@ export function TenantHomePage() {
             Pay ₹{fin.amountDue.toLocaleString('en-IN')}
           </button>
         </div>
+      )}
+
+      {push.offer && fin.amountDue > 0 && (
+        <PushPromptCard
+          headline="Get told when rent is due"
+          detail="A reminder before the due date, and a confirmation the moment your payment is recorded. Nothing else."
+          onEnable={push.enable}
+          onDismiss={push.dismiss}
+        />
       )}
 
       {home.todaysMeals.length > 0 && (
