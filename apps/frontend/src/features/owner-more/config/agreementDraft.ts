@@ -192,6 +192,107 @@ export function fillVariables(text: string, values: Record<string, string>): str
   return String(text ?? '').replace(VARIABLE_PATTERN, (token) => values[token] ?? token);
 }
 
+/**
+ * Add a section of the owner's own.
+ *
+ * The editor could rewrite Stayo's sections and not write one, which made it a
+ * tool for correcting our document rather than authoring theirs. A hostel with
+ * a rule we never thought of — a curfew, a guest policy, a kitchen rota — had
+ * nowhere to put it.
+ *
+ * The id is prefixed so an owner's own section is distinguishable from one of
+ * ours: `resetSection` must leave it alone, having no default to restore it
+ * to, and a future default with a colliding id must not overwrite it.
+ */
+export function addSection(content: RulesContent, title = 'New section'): RulesContent {
+  const id = `own-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  return {
+    ...content,
+    categories: [
+      ...(content.categories ?? []),
+      { id, title: String(title ?? '').trim() || 'New section', severity: 'standard', rules: [''] },
+    ],
+  };
+}
+
+/**
+ * Delete a section outright.
+ *
+ * Distinct from `toggleSection`, which keeps the text for later. This is for a
+ * section an owner never wants — and it is the only destructive operation
+ * here, so the screen confirms before calling it.
+ */
+export function removeSection(content: RulesContent, categoryId: string): RulesContent {
+  return {
+    ...content,
+    categories: (content.categories ?? []).filter((c) => c.id !== categoryId),
+  };
+}
+
+/** Reorder sections. Section order is the document's order of argument. */
+export function moveSection(content: RulesContent, categoryId: string, direction: -1 | 1): RulesContent {
+  const categories = [...(content.categories ?? [])];
+  const index = categories.findIndex((c) => c.id === categoryId);
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= categories.length) return content;
+  [categories[index], categories[target]] = [categories[target], categories[index]];
+  return { ...content, categories };
+}
+
+/**
+ * Turn an owner's pasted agreement into sections and lines.
+ *
+ * Most owners already have an agreement — in Word, or printed and retyped
+ * every year. Asking them to re-enter it a line at a time is how a good
+ * editor still goes unused, so this accepts the whole thing at once.
+ *
+ * A line is treated as a heading when it is numbered ("1." / "1)") or is short
+ * and unpunctuated — the two shapes headings actually take in these documents.
+ * Everything else becomes a rule under the heading above it. Text before any
+ * heading gets a section of its own rather than being dropped.
+ *
+ * Deliberately forgiving rather than clever: an owner can fix a
+ * mis-detected heading in two taps, but silently losing a clause is not
+ * recoverable.
+ */
+export function parsePastedAgreement(text: string): RulesContent {
+  const lines = String(text ?? '')
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  const categories: RulesCategory[] = [];
+  let current: RulesCategory | null = null;
+  let counter = 0;
+
+  const isHeading = (line: string): boolean => {
+    if (/^\d+[.)]\s+/.test(line)) return true;
+    return line.length <= 60 && !/[.;:]$/.test(line) && line.split(/\s+/).length <= 8;
+  };
+
+  for (const line of lines) {
+    if (isHeading(line)) {
+      current = {
+        id: `own-${Date.now().toString(36)}-${counter++}`,
+        title: line.replace(/^\d+[.)]\s*/, '').trim() || 'Section',
+        severity: 'standard',
+        rules: [],
+      };
+      categories.push(current);
+      continue;
+    }
+    if (!current) {
+      // Text before any heading. Keeping it in its own section beats dropping
+      // it: a preamble is still part of the agreement.
+      current = { id: `own-${Date.now().toString(36)}-${counter++}`, title: 'Introduction', severity: 'standard', rules: [] };
+      categories.push(current);
+    }
+    current.rules = [...(current.rules ?? []), line];
+  }
+
+  return { categories: categories.filter((c) => (c.rules ?? []).length > 0) };
+}
+
 /** Nothing to save when the draft matches what is already published. */
 export function hasDraftChanges(
   draft: RulesContent | null | undefined,

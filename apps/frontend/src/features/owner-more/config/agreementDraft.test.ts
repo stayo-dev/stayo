@@ -14,6 +14,10 @@ import {
   fillVariables,
   hasDraftChanges,
   countEnabledLines,
+  addSection,
+  removeSection,
+  moveSection,
+  parsePastedAgreement,
 } from './agreementDraft';
 import type { RulesContent } from './agreements';
 
@@ -196,5 +200,94 @@ describe('countEnabledLines', () => {
 
   it('leaves an excluded section out of the count', () => {
     expect(countEnabledLines(toggleSection(content(), 'fees'))).toBe(1);
+  });
+});
+
+describe('authoring your own sections', () => {
+  it('adds a section with one empty line ready to write in', () => {
+    // The editor could rewrite Stayo's sections and not write one — a tool for
+    // correcting our document rather than authoring theirs.
+    const next = addSection(content(), 'Curfew');
+    expect(next.categories).toHaveLength(3);
+    expect(next.categories![2].title).toBe('Curfew');
+    expect(next.categories![2].rules).toEqual(['']);
+  });
+
+  it("marks an owner's own section so reset leaves it alone", () => {
+    // It has no Stayo default to restore to, and a future default with a
+    // colliding id must not overwrite it.
+    const own = addSection(content(), 'Curfew').categories![2];
+    expect(own.id.startsWith('own-')).toBe(true);
+    const reset = resetSection(addSection(content(), 'Curfew'), own.id, content());
+    expect(reset.categories).toHaveLength(3);
+  });
+
+  it('falls back to a usable title rather than an empty one', () => {
+    expect(addSection(content(), '   ').categories![2].title).toBe('New section');
+  });
+
+  it('deletes a section outright, unlike leaving it out', () => {
+    const next = removeSection(content(), 'fees');
+    expect(next.categories).toHaveLength(1);
+    expect(next.categories![0].id).toBe('facilities');
+  });
+
+  it('reorders sections, and stops at the ends', () => {
+    expect(moveSection(content(), 'facilities', -1).categories![0].id).toBe('facilities');
+    expect(moveSection(content(), 'fees', -1)).toEqual(content());
+    expect(moveSection(content(), 'facilities', 1)).toEqual(content());
+  });
+});
+
+describe('parsePastedAgreement', () => {
+  const pasted = `1. Fee Structure
+Hostel fees once paid are non-refundable.
+Rent is due on the 5th of each month.
+
+2. Facilities
+Wi-Fi is provided free of cost.`;
+
+  it('turns a pasted document into sections and lines', () => {
+    // Most owners already have an agreement. Asking them to retype it a line
+    // at a time is how a good editor still goes unused.
+    const parsed = parsePastedAgreement(pasted);
+    expect(parsed.categories).toHaveLength(2);
+    expect(parsed.categories![0].title).toBe('Fee Structure');
+    expect(parsed.categories![0].rules).toHaveLength(2);
+    expect(parsed.categories![1].title).toBe('Facilities');
+  });
+
+  it('strips the numbering from a heading, since the document renumbers itself', () => {
+    expect(parsePastedAgreement('1) Rules\nNo smoking.').categories![0].title).toBe('Rules');
+  });
+
+  it('keeps text that arrives before any heading', () => {
+    // A preamble is still part of the agreement. Dropping it is not
+    // recoverable; putting it in its own section is fixable in two taps.
+    const parsed = parsePastedAgreement('This agreement is made between the parties named below.\n1. Fees\nDue monthly.');
+    expect(parsed.categories![0].title).toBe('Introduction');
+    expect(parsed.categories![0].rules![0]).toContain('made between');
+  });
+
+  it('treats a short unpunctuated line as a heading', () => {
+    const parsed = parsePastedAgreement('House Rules\nNo loud music after 10pm.');
+    expect(parsed.categories![0].title).toBe('House Rules');
+    expect(parsed.categories![0].rules).toEqual(['No loud music after 10pm.']);
+  });
+
+  it('does not mistake a long sentence for a heading', () => {
+    const long = 'Students are required to vacate the premises during semester holidays and festival vacations';
+    expect(parsePastedAgreement(`Rules\n${long}`).categories![0].rules).toEqual([long]);
+  });
+
+  it('drops nothing but empty lines', () => {
+    const parsed = parsePastedAgreement(pasted);
+    const total = parsed.categories!.reduce((n, c) => n + (c.rules ?? []).length, 0);
+    expect(total).toBe(3);
+  });
+
+  it('survives empty input', () => {
+    expect(parsePastedAgreement('').categories).toEqual([]);
+    expect(parsePastedAgreement('   \n  ').categories).toEqual([]);
   });
 });

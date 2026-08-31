@@ -21,6 +21,10 @@ import {
   fillVariables,
   hasDraftChanges,
   countEnabledLines,
+  addSection,
+  removeSection,
+  moveSection,
+  parsePastedAgreement,
   AGREEMENT_VARIABLES,
 } from '../config/agreementDraft';
 
@@ -69,6 +73,8 @@ export function MoreConfigAgreementEditorPage() {
   const [editing, setEditing] = useState<{ categoryId: string; index: number } | null>(null);
   const [preview, setPreview] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [pasting, setPasting] = useState(false);
+  const [pasted, setPasted] = useState('');
   const saveTimer = useRef<number | null>(null);
 
   useEffect(() => {
@@ -301,12 +307,108 @@ export function MoreConfigAgreementEditorPage() {
                         <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} /> Reset wording
                       </SectionAction>
                     )}
+                    <SectionAction onClick={() => change(moveSection(draft, category.id, -1))}>
+                      <ArrowUp className="h-3.5 w-3.5" strokeWidth={2} /> Move up
+                    </SectionAction>
+                    <SectionAction onClick={() => change(moveSection(draft, category.id, 1))}>
+                      <ArrowDown className="h-3.5 w-3.5" strokeWidth={2} /> Move down
+                    </SectionAction>
+                    <SectionAction
+                      onClick={() => {
+                        // The only operation here that loses text, so it asks.
+                        // "Leave out" exists for everything short of this.
+                        if (window.confirm(`Delete "${category.title}" and everything in it?`)) {
+                          setOpenSection(null);
+                          change(removeSection(draft, category.id));
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" strokeWidth={2} /> Delete section
+                    </SectionAction>
                   </div>
                 </div>
               )}
             </div>
           );
         })
+      )}
+
+      {!preview && (
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              const next = addSection(draft);
+              change(next);
+              setOpenSection(next.categories?.[next.categories.length - 1]?.id ?? null);
+            }}
+            className="flex items-center justify-center gap-2 rounded-[14px] border border-dashed border-border bg-card py-3 text-[13px] font-semibold text-foreground"
+          >
+            <Plus className="h-4 w-4" strokeWidth={2} /> Add your own section
+          </button>
+
+          {/*
+            Most owners already have an agreement — in Word, or printed and
+            retyped every year. Asking them to re-enter it a line at a time is
+            how a good editor still goes unused.
+          */}
+          {pasting ? (
+            <div className={`${card} p-4`}>
+              <p className="text-[12.5px] font-semibold text-foreground">Paste your agreement</p>
+              <p className="mt-1 text-[11.5px] leading-[1.5] text-muted-foreground">
+                Headings become sections, everything else becomes a line under them. You can fix
+                anything it gets wrong afterwards — nothing is thrown away.
+              </p>
+              <textarea
+                value={pasted}
+                onChange={(e) => setPasted(e.target.value)}
+                rows={8}
+                placeholder={'1. Fee Structure\nHostel fees once paid are non-refundable.\n\n2. Facilities\nWi-Fi is provided free of cost.'}
+                className="mt-3 w-full resize-none rounded-xl border border-border bg-card px-3 py-2.5 text-[12.5px] leading-[1.55] text-foreground outline-none focus:border-primary"
+              />
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  disabled={!pasted.trim()}
+                  onClick={() => {
+                    const parsed = parsePastedAgreement(pasted);
+                    if (!parsed.categories?.length) return;
+                    // Replacing everything is a big move, so it says so and is
+                    // still only a draft — the published version is untouched
+                    // until Publish.
+                    if (window.confirm('Replace the whole agreement with this text? Your published version stays live until you publish.')) {
+                      change(parsed);
+                      setOpenSection(parsed.categories[0].id);
+                      setPasted('');
+                      setPasting(false);
+                    }
+                  }}
+                  className="flex-1 rounded-xl bg-primary py-2.5 text-[13px] font-bold text-primary-foreground disabled:opacity-50"
+                >
+                  Use this text
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPasting(false);
+                    setPasted('');
+                  }}
+                  className="rounded-xl border border-border px-4 py-2.5 text-[13px] font-semibold text-foreground"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setPasting(true)}
+              className="text-center text-[12px] font-semibold text-primary underline underline-offset-2"
+            >
+              Or paste your own agreement
+            </button>
+          )}
+        </div>
       )}
 
       <div className="fixed inset-x-0 bottom-[68px] border-t border-border bg-card px-4 py-3 sm:px-6">
