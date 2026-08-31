@@ -26,6 +26,7 @@ export default defineConfig({
     environment: 'node',
     include: [
       'tests/push-policy.test.ts',
+      'tests/push-send-window.test.ts',
       "tests/advertised-starting-price.test.ts",
       'tests/settlement-planner.test.ts',
       'tests/settlement-planner-policy.test.ts',
