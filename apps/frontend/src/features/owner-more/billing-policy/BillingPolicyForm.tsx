@@ -11,6 +11,7 @@ import { hasChanges } from '../config/dirtyState';
 import { useHostelBedSummary } from '../hooks/useHostelBedSummary';
 import { policyDetail, policyHeadline } from './billingPolicy';
 import { depositPreview, type DepositMode } from './depositPolicy';
+import { monthDays, scheduleMilestones, describeSchedule, crossesMonthEnd } from './rentScheduleCalendar';
 import {
   buildBillingPatch,
   policyToFormValues,
@@ -242,12 +243,17 @@ export function BillingPolicyForm({
               <Stepper value={values.graceDays} onChange={(v) => set('graceDays', v)} min={0} max={28} />
             </div>
           </div>
-          <p className={sectionNote}>
-            Rent is raised on day {values.generationDay}, due on day {values.dueDay}
-            {values.graceDays > 0
-              ? `, and counts as late after ${values.graceDays} more day${values.graceDays > 1 ? 's' : ''}.`
-              : ', and counts as late the next day.'}
-          </p>
+          {/*
+            The three numbers above are each clear and together are not: an
+            owner had to hold "raised on the 1st", "due on the 5th" and "late
+            after 0 more days" in their head and imagine a month to see what it
+            meant for a tenant. Here is the month.
+          */}
+          <RentMonthPreview
+            generationDay={values.generationDay}
+            dueDay={values.dueDay}
+            graceDays={values.graceDays}
+          />
         </div>
       )}
 
@@ -473,6 +479,74 @@ export function BillingPolicyForm({
         onDiscard={() => setValues(baseline)}
         label={`Save ${title.toLowerCase()}`}
       />
+    </div>
+  );
+}
+
+const ROLE_STYLE: Record<string, { dot: string; cell: string }> = {
+  raised: { dot: 'bg-[#3F7D58]', cell: 'bg-[#E6F0E8] text-[#2F5B41] font-bold' },
+  due: { dot: 'bg-primary', cell: 'bg-primary text-primary-foreground font-bold' },
+  grace: { dot: 'bg-[#D9A94E]', cell: 'bg-[#F8EFDC] text-[#7A5510] font-semibold' },
+  late: { dot: 'bg-[#B3402F]', cell: 'bg-[#F7E4DF] text-[#8E3122] font-semibold' },
+  plain: { dot: 'bg-border', cell: 'text-muted-foreground' },
+};
+
+/**
+ * One rent month, drawn.
+ *
+ * Colour alone would not carry this — the same information is in the timeline
+ * beneath, which names each day and says what happens on it, so the calendar
+ * is the fast read and the list is the accessible one.
+ */
+function RentMonthPreview({
+  generationDay,
+  dueDay,
+  graceDays,
+}: {
+  generationDay: number;
+  dueDay: number;
+  graceDays: number;
+}) {
+  const schedule = { generationDay, dueDay, graceDays };
+  const days = monthDays(schedule);
+  const milestones = scheduleMilestones(schedule);
+
+  return (
+    <div className={`${card} flex flex-col gap-3.5 p-4`}>
+      <div className="grid grid-cols-7 gap-1">
+        {days.map(({ day, role }) => (
+          <span
+            key={day}
+            className={`flex h-8 items-center justify-center rounded-lg text-[12px] tabular-nums ${ROLE_STYLE[role].cell}`}
+          >
+            {day}
+          </span>
+        ))}
+      </div>
+
+      <div className="flex flex-col gap-2 border-t border-border/60 pt-3">
+        {milestones.map((m) => (
+          <div key={m.role} className="flex items-start gap-2.5">
+            <span className={`mt-[5px] h-2 w-2 flex-none rounded-full ${ROLE_STYLE[m.role].dot}`} />
+            <span className="min-w-0 flex-1">
+              <span className="text-[12.5px] font-semibold text-foreground">
+                {m.label} · day {m.day}
+              </span>
+              <span className="mt-0.5 block text-[11px] leading-[1.45] text-muted-foreground">{m.detail}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <p className="border-t border-border/60 pt-3 text-[12px] font-medium text-foreground">
+        {describeSchedule(schedule)}
+      </p>
+
+      {crossesMonthEnd(schedule) && (
+        <p className="text-[11px] leading-[1.45] text-muted-foreground">
+          This schedule runs into the next month, so the days above are not all in the same one.
+        </p>
+      )}
     </div>
   );
 }

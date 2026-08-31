@@ -25,6 +25,12 @@
  * **No rooms row.** Rooms are the tab immediately to the left of Settings, so
  * listing them here was a second door to a screen already one tap away.
  *
+ * **Rent and late fees are one row.** An owner setting a grace period is
+ * already thinking about what happens when it runs out, and the late-fee
+ * screen's own note had to point back at the rent screen to say where grace
+ * was configured. Splitting one question across two rows made the owner hold
+ * half of it in their head.
+ *
  * **No receipts row.** Receipt numbering and the footer are set once when a
  * hostel is set up and effectively never revisited, so a permanent row spent
  * a slot on a decision nobody comes back to. The screen still exists, is
@@ -76,16 +82,10 @@ export function hostelSettingsGroups(hostelId: string): HostelSettingGroup[] {
       label: 'Rent & money',
       rows: [
         {
-          key: 'rent-due',
+          key: 'rent',
           label: 'Rent',
-          hint: "When it's raised, the day it's due and the grace period",
+          hint: "When it's raised, when it's due, and what's charged if it's late",
           route: forHostel(`${CONFIG}/finance/rent-schedule`, hostelId),
-        },
-        {
-          key: 'late',
-          label: 'Late fees',
-          hint: "What's charged when rent is overdue, and when it starts",
-          route: forHostel(`${CONFIG}/finance/late-fees`, hostelId),
         },
         {
           key: 'how-they-pay',

@@ -15,6 +15,14 @@ describe('hostelSettingsGroups', () => {
     ]);
   });
 
+  it('keeps rent and late fees together, since they are one question', () => {
+    // An owner setting a grace period is already thinking about what happens
+    // when it runs out. Two rows made them hold half the question in their head.
+    const rows = groups().flatMap((g) => g.rows);
+    expect(rows.some((r) => r.key === 'late')).toBe(false);
+    expect(rows.find((r) => r.key === 'rent')?.hint).toContain('late');
+  });
+
   it('does not list receipts, which are set once and never revisited', () => {
     expect(groups().flatMap((g) => g.rows).some((r) => r.key === 'receipts')).toBe(false);
   });
@@ -51,7 +59,6 @@ describe('hostelSettingsGroups', () => {
     for (const moved of [
       '/owner/more/hostel',
       '/owner/more/configuration/finance/rent-schedule',
-      '/owner/more/configuration/finance/late-fees',
       '/owner/more/configuration/finance/part-payments',
       '/owner/more/configuration/finance/deposit',
       '/owner/more/configuration/hostel/tenant-defaults',

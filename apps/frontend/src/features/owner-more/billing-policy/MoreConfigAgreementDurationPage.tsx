@@ -12,8 +12,6 @@ export function MoreConfigAgreementDurationPage() {
       sections={['agreement']}
       title="Agreement duration"
       subtitle="Default lease length offered to new tenants"
-      backTo="/owner/more/configuration/hostel"
-      backLabel="Hostel"
     />
   );
 }
