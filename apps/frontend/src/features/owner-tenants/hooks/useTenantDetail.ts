@@ -36,15 +36,6 @@ export interface RealTenantInvitation {
   agreementStartDate: string | null;
 }
 
-/** Onboarding obligations the tenant has or hasn't discharged. */
-export interface RealTenantCompliance {
-  profileCompleted: boolean;
-  rulesAccepted: boolean;
-  rulesAcceptedAt: string | null;
-  rulesVersion: string | null;
-  documentVerified: boolean;
-}
-
 /** The tenant's live agreement, as the owner may view it. */
 export interface RealTenantAgreement {
   id: string;
@@ -111,7 +102,6 @@ export interface RealTenantDetail {
    */
   activity: Array<TenantActivityItem & { type: string }>;
   documents: RealTenantDocument[];
-  compliance: RealTenantCompliance;
   agreement: RealTenantAgreement | null;
   /** Needed by any room-scoped action; without it the room picker can't exclude the current room. */
   currentRoomId: string | null;
@@ -326,7 +316,6 @@ export function useTenantDetail(tenantId: string | undefined) {
       : undefined;
 
     const agreementRaw = (o.current_agreement ?? null) as Record<string, any> | null;
-    const complianceRaw = (o.compliance ?? {}) as Record<string, any>;
     const profileRaw = (o.profile ?? {}) as Record<string, any>;
     const tenantRaw = (o.tenant ?? {}) as Record<string, any>;
 
@@ -367,13 +356,6 @@ export function useTenantDetail(tenantId: string | undefined) {
       obligationDueDates,
       activity,
       documents,
-      compliance: {
-        profileCompleted: Boolean(complianceRaw.profile_completed ?? o.profile_completed),
-        rulesAccepted: Boolean(complianceRaw.rules_accepted),
-        rulesAcceptedAt: complianceRaw.rules_accepted_at ? formatDate(complianceRaw.rules_accepted_at) : null,
-        rulesVersion: complianceRaw.rules_version ? String(complianceRaw.rules_version) : null,
-        documentVerified,
-      },
       agreement: agreementRaw
         ? {
             id: String(agreementRaw.id),

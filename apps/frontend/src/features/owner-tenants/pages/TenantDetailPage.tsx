@@ -16,7 +16,6 @@ import { documentTypeLabel, type ReviewDocument } from '../documents/kycDocument
 import { RejectDocumentSheet } from '../documents/RejectDocumentSheet';
 import type { TenantDetailTab } from '../types';
 import { InvitedTenantProfileView } from '../components/InvitedTenantProfileView';
-import { TenantHistoryPanel } from '../components/TenantHistoryPanel';
 import { TenantActionsSheet } from '../actions/TenantActionsSheet';
 import { ProfileHeader } from '../profile/ProfileHeader';
 import { CommunicationCard } from '../profile/CommunicationCard';
@@ -33,7 +32,6 @@ import { CorrectPaymentModal } from '@/app/components/modals/CorrectPaymentModal
 import { useDocumentShares } from '../hooks/useDocumentShares';
 import { AmendAgreementSheet } from '../profile/AmendAgreementSheet';
 import { PendingChangeCard } from '../profile/PendingChangeCard';
-import { ComplianceCard } from '../profile/ComplianceCard';
 import { CreateChargeSheet } from '../profile/CreateChargeSheet';
 import { ChangeRentModal } from '../actions/ChangeRentModal';
 import { MoveOutSheet } from '../actions/MoveOutSheet';
@@ -501,16 +499,8 @@ export function TenantDetailPage() {
                 <StayRow label="Billing frequency" value={tenant.stay.billingFrequency} />
               </div>
 
-              {/* Where they stayed before this. Disclosure is decided
-                  server-side — see ADR-053's amendment; the panel renders
-                  "not shared with you" rather than hiding itself, so the
-                  absence of history and the absence of consent stay
-                  distinguishable to the owner without leaking either. */}
-              <ComplianceCard tenant={tenant} />
-
               <TenantRequestsCard hostelId={tenant.hostelId} tenantId={tenant.id} />
 
-              <TenantHistoryPanel tenantId={tenantId} />
               <div className="flex gap-2.5">
                 <button
                   type="button"
