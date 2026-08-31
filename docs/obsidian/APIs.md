@@ -530,3 +530,11 @@ deleted, and every live session is revoked in Redis. See
 `POST /api/tenants/me/profile-requests` and the owner's profile-request queue.
 Profile fields now save through `PATCH /api/tenants/me/profile` directly; a
 changed phone is proved with `send-phone-otp` / `verify-phone-otp` first.
+
+### Push subscriptions (2026-08-30, [[Decisions#ADR-158|ADR-158]])
+
+`POST /api/push/subscriptions` — body `{ endpoint, keys: { p256dh, auth } }`. Upserts **by `endpoint`**, because a subscription belongs to a browser install rather than a person: re-subscribing the same browser updates rather than duplicates, and one person on two devices is two rows. The upsert **reassigns `profile_id`** on conflict — a handed-down phone, or one person signing out and another in, would otherwise keep sending the first person's rent reminders to whoever now holds the device. Requires a session; `session.sub` is the profile id.
+
+`DELETE /api/push/subscriptions` — body `{ endpoint }`. Scoped to the session's own profile, so an endpoint cannot be unsubscribed by another account.
+
+Rows are also deleted automatically by the sender when the push service returns **404/410** (permanently gone). A 5xx or timeout does **not** prune — that would quietly delete live devices during an outage.

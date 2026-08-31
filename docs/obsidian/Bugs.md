@@ -34,6 +34,16 @@ A third instance sat one level down and would have been worse: `completeActivati
 
 **What made it findable.** Resolving the real tenancy read-only, rather than trusting the types — the same probe also caught an include using the table name `tenant_owner_attestations` where the Prisma relation on `tenants` is `owner_attestations`, which `strict: false` and `any`-typed rows had hidden from `tsc`. See [[Decisions#ADR-155|ADR-155]], [[Business-Rules]].
 
+## 2026-08-30 — Rent reminders reported in-app delivery and delivered nothing (fixed)
+
+**Symptom.** A tenant with only the "In-app" channel enabled received nothing at all for rent reminders, while the delivery report recorded a successful in-app send.
+
+**Root cause.** `src/services/payments/reminder-service.ts` never imported `notificationService` — the name appeared zero times in the file. Its in-app block set `attempted = true; sent = true` and created no `notifications` row. The flag was the entire implementation. Email and WhatsApp were real; in-app was a claim.
+
+**Why it went unnoticed.** The channel reported success, so every log, every delivery summary and the `sent` roll-up all agreed it had worked. Nothing distinguished it from a real send except the absence of a row.
+
+**Fix.** The block now writes a real notification, which also emits the push (`createNotification` is where the push channel hangs — see [[Decisions#ADR-158|ADR-158]]). `profile_id` is looked up in `triggerNotification` rather than threaded through the caller: the daily path builds its tenant by hand from `financialService`'s raw SQL, and adding a column there to carry a notification id would put notification plumbing inside the money source of truth. A failed in-app write can no longer abort the email and WhatsApp sends that follow. See [[Changelog]], [[Features]].
+
 ## 2026-08-30 — The Explore tab sat off the right edge of every phone (fixed)
 
 **Symptom.** On the tenant bottom nav, the sixth tab (Explore) was not visible on any handset. The bar scrolled horizontally, but nothing indicated that it did, so an entire primary destination was reachable only by swiping a nav bar — a gesture almost no mobile app asks for, and one nobody thinks to try.

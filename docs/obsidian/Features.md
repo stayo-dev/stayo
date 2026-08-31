@@ -175,7 +175,7 @@ It now states what will be sent rather than asking for it: two rows ("Moving in"
 
 Move-in reads **"Flexible"** until chosen, and sends no date — the previous default asserted "today" on the seeker's behalf.
 
-See [[Decisions#ADR-156|ADR-156]], [[Changelog]].
+See [[Decisions#ADR-157|ADR-157]], [[Changelog]].
 
 ### Claiming an account leads into onboarding, not around it (2026-08-30)
 
@@ -187,7 +187,7 @@ They arrive **on their session, not a token**. The activation token exists to au
 
 The claim confirm result carries `activation_required` to decide where the tenant lands, and in-progress onboarding drafts are keyed by tenancy rather than a shared string — two roommates claiming on one handset must not read each other's half-finished identity form.
 
-See [[Decisions#ADR-155|ADR-155]], [[Business-Rules]], [[APIs]], [[Bugs]].
+See [[Decisions#ADR-157|ADR-157]], [[Business-Rules]], [[APIs]], [[Bugs]].
 
 ### Tenant activation — link expiry, visible and reminded (2026-08-25)
 
@@ -1187,3 +1187,30 @@ See [[Frontend]], [[Changelog]], [[Bugs]].
 - **Shipped alongside:** the bottom nav made to fit six tabs on a phone, so Explore stops being off-screen — see [[Bugs]].
 - **Verification status:** `tenantGuide.test.ts` passes (12 tests); full frontend suite passes (122 files, 1893 tests); `check:architecture` passes; `vite build` succeeds; `tsc --noEmit` introduces no new errors in any touched file (the baseline has pre-existing errors elsewhere). The nav fit was **measured in a real browser** against the built CSS at 320/360/390/414px. **The spotlight and the three notes have not been exercised in a running app** — that needs a signed-in tenant with a live tenancy and is open work.
 - **See:** [[Decisions#ADR-154|ADR-154]], [[Bugs]], [[Changelog]], [[Frontend]]
+
+### Owner success confirmation — the Stayo chime and a haptic, on commitments
+- **Status:** shipped 2026-08-30
+- **Owner-facing?** yes · **Tenant-facing?** no
+- **Key files:** `shared/ui-patterns/successFeedback.ts` + `.test.ts` (new, 13 tests), `public/stayo-success.mp3` (new asset, served as `/stayo-success.mp3`), and five call sites — `app/components/modals/RecordPaymentModal.tsx`, `features/owner-tenants/quick-collect/QuickCollectModal.tsx`, `features/owner-tenants/actions/ChangeRentModal.tsx`, `features/owner-money/add-expense/AddExpenseModal.tsx`, `features/owner-tenants/invite/InviteDeliveryResult.tsx`.
+- **Depends on:** [[Decisions#ADR-157|ADR-157]]. **No backend, API or schema change.**
+- **What it does:** plays the Stayo brand success sound **and a `[20, 45, 20]` double-tap haptic** when an owner reaches a success *screen* for something involving money, a commitment, or another person — a recorded payment, a collected payment, a rent change, a saved expense, a delivered tenant invitation. Volume 0.45 (the marketing chime is 0.35 — that is a flourish, this is a confirmation).
+- **Notes — where it deliberately does not play:** not on `stayoToast.success` (57 call sites, mostly "Saved" / "Link copied", plus "coming soon" placeholders), and not on a **failed** invite delivery (`InviteDeliveryResult` with `channel === 'none'` is a warning screen — the tenant exists but nothing reached them).
+- **Notes — repetition:** it plays every time, including a back-to-back collection run, by explicit product decision. A re-trigger restarts the single shared element rather than layering a second copy over the first.
+- **Notes — one call, not two:** `playSuccessFeedback()` fires both; neither the sound nor the haptic is exported alone, so a sixth flow added later cannot get one without the other. The haptic goes first (synchronous, so it lands with the tap) and is what still works when the phone is on silent — the case where the sound does nothing.
+- **Notes — no haptic on iOS.** Safari does not implement the Vibration API at all, so iPhone owners get the sound only. A silent no-op by design, not an unhandled case.
+- **Notes — accessibility:** unlike `welcomeChime`, neither bails under `prefers-reduced-motion`; both are prompted by the owner's own tap, and that query is about visual animation. Autoplay blocking does not apply either, and Chrome's identical user-activation rule for `navigator.vibrate` is satisfied for the same reason.
+- **Verification status:** `successFeedback.test.ts` passes (13 tests, covering element reuse, restart-not-layer, volume, the exact vibration pattern, and that a rejected play, a throwing/absent `vibrate`, or an environment with no `window`/`navigator`/`Audio` at all cannot throw); full frontend suite passes (125 files, 1941 tests); `check:architecture` passes; `vite build` succeeds and emits `dist/stayo-success.mp3`. `tsc --noEmit` introduces no new errors — the one error reported in `QuickCollectModal.tsx` was **proven pre-existing** by reverting the change and re-running. **Neither the sound nor the haptic has been experienced in a running app** — browser audio and vibration are both outside a node-only suite, so an owner-side check on a real Android handset is open work.
+- **Open:** the asset is 3.03s / 95KB at 256kbps joint stereo, heavier than a UI sound needs; a mono re-encode would cut it by roughly two-thirds.
+- **See:** [[Decisions#ADR-157|ADR-157]], [[Changelog]], [[Frontend]]
+
+### Web push notifications — a fourth channel on the existing event stream
+- **Status:** shipped 2026-08-30 (code complete; **not yet verified on a real device**)
+- **Owner-facing?** yes · **Tenant-facing?** yes
+- **Key files:** Backend — `src/services/notifications/push/{push-policy,send-window,push-delivery,push-sender}.ts` (new), `app/api/push/subscriptions/route.ts` (new), `lib/services/notification-service.ts` (the one hook), `src/services/payments/reminder-service.ts` (in-app fix + `push` channel), `prisma/schema.prisma`, `migrations/078_push_subscriptions.sql` (new). Frontend — `public/sw.js` (new), `src/features/push/{pushSupport,pushPrompt,usePushSubscription,PushPromptCard,api/pushApi}.ts[x]` (new), `features/owner-more/config/deriveNotificationSections.ts`, `platforms/tenant/pages/TenantHomePage.tsx`, `features/owner-alerts/pages/AlertsLeadsPage.tsx`.
+- **Depends on:** [[Decisions#ADR-158|ADR-158]]. New dependency `web-push`. New env vars `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (backend, repo-root `.env`) and `VITE_VAPID_PUBLIC_KEY` (frontend).
+- **What it does:** 18 notification types now also arrive as a browser push — rent due, payment recorded, owner announcements, complaint status, agreements, renewals, settlements, claim/invite expiry, food polls, rejected documents, and for owners: new enquiries, payments received, marketing outcomes and every payout stage. Tapping deep-links to the right screen.
+- **What deliberately does not push:** the generic success toast path, weekly menu published, verified documents, platform broadcasts, and any unknown type. `daily_briefing` is absent because that cron sends WhatsApp directly and never calls `createNotification`.
+- **Fixed on the way past:** rent reminders reported in-app delivery while writing nothing — see [[Bugs]].
+- **Verification status:** backend pure suite passes — 92 files / 1273 tests, of which the 2 failures in `agreement-requirement.test.ts` are pre-existing from concurrent work; new tests cover the policy (8), the send window (7) and delivery/pruning (6). Frontend passes 132 files / 2043 tests, including 9 new soft-prompt tests. `check:architecture` passes, `vite build` succeeds and emits `dist/sw.js`, `tsc --noEmit` adds no new errors (the 6 in `reminder-service.ts` and 1 in `QuickCollectModal.tsx` were proven pre-existing by reverting and re-running). **Not verified:** the service worker, real push delivery, the permission prompt, and the migration — none have run. Requires migration 078 applied, VAPID keys set, and a pass on a real Android handset.
+- **Known limitation:** no push on iOS in a browser tab; Safari supports it only for a Home-Screen install.
+- **See:** [[Decisions#ADR-158|ADR-158]], [[Bugs]], [[APIs]], [[Database]], [[Changelog]]
