@@ -284,6 +284,22 @@ export class MetaWhatsAppProvider {
     const phone = normalizeWhatsAppPhone(message.to);
     const url = `${this.config.baseUrl}/${this.config.phoneNumberId}/messages`;
     const components: any[] = [];
+    if (message.headerDocument) {
+      const docObj: Record<string, string> = {};
+      if (message.headerDocument.mediaId) docObj.id = message.headerDocument.mediaId;
+      else if (message.headerDocument.link) docObj.link = message.headerDocument.link;
+      if (message.headerDocument.filename) docObj.filename = message.headerDocument.filename;
+
+      components.push({
+        type: "header",
+        parameters: [
+          {
+            type: "document",
+            document: docObj,
+          },
+        ],
+      });
+    }
     if (message.bodyParameters?.length) {
       components.push({
         type: "body",

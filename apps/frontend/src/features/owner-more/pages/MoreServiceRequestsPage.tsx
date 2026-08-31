@@ -43,7 +43,7 @@ export function MoreServiceRequestsPage() {
 
   return (
     <div className="flex flex-col gap-5 px-4 pb-10 pt-6 sm:px-6">
-      <MoreScreenHeader backTo="/owner/more/settings" backLabel="Settings" title="Service Requests" />
+      <MoreScreenHeader backTo="/owner/more" backLabel="Configuration" title="Service Requests" />
 
       <div className="flex gap-1.5">
         {(['open', 'all'] as const).map((f) => (

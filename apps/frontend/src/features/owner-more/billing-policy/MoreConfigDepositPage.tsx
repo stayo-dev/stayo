@@ -7,8 +7,6 @@ export function MoreConfigDepositPage() {
       sections={['deposit']}
       title="Security deposit"
       subtitle="What you collect at move-in"
-      backTo="/owner/more/configuration/finance"
-      backLabel="Finance"
     />
   );
 }

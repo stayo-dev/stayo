@@ -5,6 +5,23 @@ export const ownerService = {
         const response = await api.get('/owner/me/profile');
         return response.data;
     },
+    /**
+     * Where this owner's settled rent is sent. One account per owner, not per
+     * hostel — the columns live on `profiles`.
+     *
+     * GET returns the account number MASKED (`••••4321`); the full number is
+     * never sent back, so the form always asks for it afresh rather than
+     * pretending to pre-fill something it does not have.
+     */
+    getPayoutAccount: async () => {
+        const response = await api.get('/owner/payout-account');
+        return response.data?.data ?? response.data;
+    },
+    /** Requires `account_no_confirm` — the backend rejects a mismatch. */
+    savePayoutAccount: async (payload) => {
+        const response = await api.put('/owner/payout-account', payload);
+        return response.data?.data ?? response.data;
+    },
     updateOwner: async (data) => {
         const response = await api.patch('/owner/me/profile', data);
         return response.data;

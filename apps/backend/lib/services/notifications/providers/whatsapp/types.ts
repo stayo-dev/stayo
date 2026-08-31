@@ -17,6 +17,8 @@ export type WhatsAppTemplateMessage = {
   templateName: string;
   language?: WhatsAppTemplateLanguage;
   bodyParameters?: string[];
+  /** Optional media header document (PDF/Image) for media template headers */
+  headerDocument?: { mediaId?: string; link?: string; filename?: string };
   /** URL suffix parameters for CTA URL button components */
   buttonParameters?: string[];
 };

@@ -44,15 +44,24 @@ export const configApi = {
   },
 
   /**
-   * Publishes the hostel's default agreement template. Used once, from the
-   * Add Hostel builder's agreement step, for a hostel that has never
-   * published one — `owner_name`/`rules_content` are deliberately omitted so
-   * the backend fills in the hostel's own name and its shipped default
-   * clauses (`DEFAULT_AGREEMENT_TEMPLATE`).
+   * Publishes an agreement template.
+   *
+   * **`rulesContent` is required whenever the owner has written anything.**
+   * The route resolves `rules_content = body.rules_content ||
+   * DEFAULT_AGREEMENT_TEMPLATE` and, in the same transaction, *deletes the
+   * draft*. Publishing without content therefore throws away everything the
+   * owner wrote and publishes Stayo's stock template over it.
+   *
+   * Omitting it is correct in exactly one place: the Add Hostel builder's
+   * agreement step, for a hostel that has never published and has no draft,
+   * where the default clauses are the intended content. `owner_name` stays
+   * omitted either way — the route falls back to the hostel's own profile
+   * name.
    */
-  publishAgreementTemplate: async (hostelId: string) => {
+  publishAgreementTemplate: async (hostelId: string, rulesContent?: RulesContent) => {
     const response = await api.post(`/owner/hostels/${hostelId}/agreement-template`, {
       action: 'publish',
+      ...(rulesContent ? { rules_content: rulesContent } : {}),
     });
     return response.data;
   },

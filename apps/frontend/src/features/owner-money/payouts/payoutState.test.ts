@@ -49,10 +49,16 @@ describe('stripVoice priority', () => {
     expect(voice.detail).toContain('bank rejected the account number');
   });
 
-  it('offers a one-tap fix on failure, because only the owner can correct his own account', () => {
+  it('offers no action on failure while its destination does not exist', () => {
+    // `/owner/more/payout-account` was never a route, so this button did
+    // nothing at the worst possible moment — the owner has just been told
+    // money did not reach his bank. Piece B of the configuration redesign
+    // builds the bank-account row and restores the action.
     const voice = stripVoice(summary({ failed: { total: 12000, count: 1, reason: null } }));
-    expect(voice.action).not.toBeNull();
-    expect(voice.action?.to).toContain('payout-account');
+    expect(voice.action).toBeUndefined();
+    // The reason still has to survive: it is what tells the owner whether his
+    // own bank details are at fault, which only he can correct.
+    expect(voice.detail).toContain('rejected');
   });
 
   it('says who paid today before it says what is pending', () => {

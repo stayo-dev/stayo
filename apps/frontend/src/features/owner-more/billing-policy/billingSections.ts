@@ -41,6 +41,21 @@ export interface BillingFormValues {
   chargeType: ChargeType;
   lateFeeAmount: number;
   maxLateFee: number;
+  /**
+   * From `policy.automation`, not `policy.billing`.
+   *
+   * These lived on a separate "Automation" screen, which was a section only
+   * because they are a field group in code. An owner never sets out to manage
+   * automation — they want rent to raise itself, or late fees to apply
+   * themselves, both of which are properties of the rent rules they are
+   * already looking at. The old screen even described late-fee processing as
+   * running "after the grace period" while the grace period was configured on
+   * a different screen.
+   */
+  autoGenerateRent: boolean;
+  autoApplyLateFees: boolean;
+  /** 0 means no escalation. The backend validates 0-365. */
+  autoDeactivateDays: number;
 }
 
 export interface BillingSectionMeta {
@@ -95,7 +110,7 @@ export const BILLING_SECTIONS: BillingSectionMeta[] = [
  * visibility is judged against (config/dirtyState.ts) — they have to be derived
  * the same way, or a freshly loaded screen would look edited.
  */
-export function policyToFormValues(billing: any): BillingFormValues {
+export function policyToFormValues(billing: any, automation?: any): BillingFormValues {
   const partial = billing?.partial_payments;
   const deposit = billing?.deposit;
   const lateFee = billing?.late_fee;
@@ -122,6 +137,11 @@ export function policyToFormValues(billing: any): BillingFormValues {
     chargeType: (rule?.type as ChargeType) ?? 'FLAT',
     lateFeeAmount: Number(rule?.amount ?? 0) || 0,
     maxLateFee: Number(lateFee?.max_amount ?? 0) || 0,
+    // Default true: the backend defaults these on, and an owner who has never
+    // opened this screen is already having rent raised for them.
+    autoGenerateRent: automation?.auto_generate_rent !== false,
+    autoApplyLateFees: automation?.auto_apply_late_fees !== false,
+    autoDeactivateDays: Number(automation?.auto_deactivate_days ?? 0) || 0,
   };
 }
 
@@ -141,8 +161,9 @@ export function sectionMeta(key: BillingSectionKey): BillingSectionMeta {
 export function buildBillingPatch(
   values: BillingFormValues,
   sections: BillingSectionKey[],
-): { billing: Record<string, unknown> } {
+): { billing: Record<string, unknown>; automation?: Record<string, unknown> } {
   const billing: Record<string, unknown> = {};
+  const automation: Record<string, unknown> = {};
   const shown = new Set(sections);
 
   if (shown.has('collection')) {
@@ -195,6 +216,7 @@ export function buildBillingPatch(
     billing.auto_rent_day = values.generationDay;
     billing.due_day = values.dueDay;
     billing.grace_days = values.graceDays;
+    automation.auto_generate_rent = values.autoGenerateRent;
   }
 
   if (shown.has('lateFee')) {
@@ -213,7 +235,11 @@ export function buildBillingPatch(
           max_amount: values.maxLateFee || 0,
         }
       : { enabled: false };
+    automation.auto_apply_late_fees = values.autoApplyLateFees;
+    automation.auto_deactivate_days = values.autoDeactivateDays;
   }
 
-  return { billing };
+  // `automation` is omitted entirely when this form shows no section that
+  // owns one of its flags, so a deposit-only save cannot touch them.
+  return Object.keys(automation).length > 0 ? { billing, automation } : { billing };
 }

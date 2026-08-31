@@ -73,7 +73,7 @@ export function MoreNoticesPage() {
 
   return (
     <div className="flex flex-col gap-5 px-4 pb-10 pt-6 sm:px-6">
-      <MoreScreenHeader backTo="/owner/more/settings" backLabel="Settings" title="Notices" />
+      <MoreScreenHeader backTo="/owner/more" backLabel="Configuration" title="Notices" />
 
       <div className="flex flex-col gap-2">
         <span className={sectionLabel}>Post an announcement</span>

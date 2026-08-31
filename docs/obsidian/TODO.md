@@ -4,14 +4,35 @@ tags: [todo, backlog]
 
 # TODO / Backlog
 
-## An owner-turned-tenant-of-another-hostel cannot yet reach that tenant portal (2026-09-01, [[Decisions#ADR-158|ADR-158]])
+## An owner-turned-tenant-of-another-hostel cannot yet reach that tenant portal (2026-09-01, [[Decisions#ADR-162|ADR-162]])
 
-- [ ] `profile.role` is a single global field (`OWNER | TENANT | ADMIN`) that `getSession()`/`resolveSupabaseSession()` derive the entire authenticated session's role from. ADR-158 fixed `tenancy-claim-service.ts`/`owner-managed-tenancy-service.ts` to stop refusing an owner of Hostel A from becoming a tenant of Hostel B — but doing so does not change that profile's `role` column, so the resulting account still authenticates as `OWNER` and cannot pass `resolveTenantScope` (which requires `session.role === "TENANT"`) to actually use the Hostel B tenant portal. Needs a real decision: a per-hostel role model, a session "acting as" mechanism, or something else — not a code patch to guess at.
+- [ ] `profile.role` is a single global field (`OWNER | TENANT | ADMIN`) that `getSession()`/`resolveSupabaseSession()` derive the entire authenticated session's role from. ADR-162 fixed `tenancy-claim-service.ts`/`owner-managed-tenancy-service.ts` to stop refusing an owner of Hostel A from becoming a tenant of Hostel B — but doing so does not change that profile's `role` column, so the resulting account still authenticates as `OWNER` and cannot pass `resolveTenantScope` (which requires `session.role === "TENANT"`) to actually use the Hostel B tenant portal. Needs a real decision: a per-hostel role model, a session "acting as" mechanism, or something else — not a code patch to guess at.
 
 ## Owner tenant detail — inconsistencies seen alongside the move-out fix (2026-08-28)
 
 - [ ] **A `CANCELLED` tenancy rendered a `Docs Pending` status badge.** The badge is computed from document state and ignores the tenancy status, so a closed tenancy advertises outstanding paperwork. Decide which wins and make the badge say it.
 - [ ] **Settlement preview reported "could not be calculated"** on the same tenant. Worth tracing whether that is a consequence of the cancelled status or an independent failure.
+
+## Connect an enquiring seeker to their waiting tenancy, without a second OTP (2026-08-30)
+
+The Explore "Already staying at a hostel?" prompt was removed — see [[Changelog]] — because it sent someone who had *already* proved their phone through a second, separate OTP ceremony to reach the same tenancy.
+
+- [ ] **Surface the waiting tenancy at enquiry time instead.** Since [[Decisions#ADR-078|ADR-078]] a seeker verifies their number when they send their first enquiry, and `verifyOtp` writes `phone_verified`/`mobile_verified` on every profile matching it. At that moment the backend can look up an `OWNER_MANAGED` tenancy on that number and tell them it is waiting.
+- [ ] **Decide whether that can skip the claim OTP.** It should not be assumed. `TENANCY_CLAIM` is deliberately absent from `SKIPPABLE_OTP_PURPOSES` ([[Business-Rules]]) and the claim consumes a single-use proof, because claiming transfers a financial record. Reusing an enquiry-time verification means accepting a *stale* proof of possession — a real weakening of a deliberate control, and a product/security call rather than a refactor. An intermediate option is to keep the OTP but pre-fill the number and skip straight to the tenancy, so the ceremony is one tap rather than a flow.
+
+## An enquiry can now arrive with no move-in date (2026-08-30)
+
+[[Decisions#ADR-158|ADR-158]] made the seeker's move-in date default to "Flexible" and send nothing, rather than defaulting to today. The field was always optional at the API, but in practice every enquiry carried a date, so owner-side surfaces have never had to render its absence.
+
+- [ ] **Check every owner-side surface that shows an enquiry's move-in date** renders a missing one as "Flexible" rather than blank, "Invalid date", or today. The owner enquiry list/detail, the lead funnel, and any WhatsApp notification template that interpolates it.
+- [ ] **Decide whether "Flexible" should sort differently** in the owner's enquiry queue — a seeker with no date is not necessarily less urgent than one moving in next month.
+
+## Piece B must restore the payout-account action (2026-08-30)
+
+The failed-payout alert (`features/owner-money/payouts/payoutState.ts`) lost its "Check payout account" button because `/owner/more/payout-account` was never a route. The API behind it (`GET/PATCH /api/owner/payout-account`) exists and works, and the fields live on `profiles` (migration 070) — only the screen is missing.
+
+- [ ] When Piece B builds the *Where your money goes* row, restore the action pointing at it, and restore the assertion in `payoutState.test.ts` that the alert offers a way to fix the bank details.
+- [ ] The `'unavailable'` row state and `UNAVAILABLE_LABEL` survive in `MoreConfigurationHubPage`, `MoreConfigAccountPage` (staff roles, two-factor) and `config/agreements.ts`. Those surfaces are rebuilt in pieces B and C; delete the state with the last of them.
 
 ## Agreement PDF — legal review outstanding (2026-08-28)
 

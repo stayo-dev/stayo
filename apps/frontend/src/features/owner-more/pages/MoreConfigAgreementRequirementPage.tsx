@@ -1,7 +1,7 @@
+import { useConfiguredHostelId } from '../hooks/useConfiguredHostel';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { stayoToast } from '@shared/ui-patterns/Toast';
-import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useHostelPolicy, useUpdateHostelPolicy } from '@features/settings/settingsHooks';
 import { Toggle } from '@features/owner-food/components/Toggle';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
@@ -43,8 +43,8 @@ const CONSEQUENCES: Record<'on' | 'off', { title: string; points: string[] }> = 
  */
 export function MoreConfigAgreementRequirementPage() {
   const navigate = useNavigate();
-  const session = useOwnerSession();
-  const hostelId = session.primaryHostelId;
+  
+  const hostelId = useConfiguredHostelId();
   const policyQuery = useHostelPolicy(hostelId);
   const updateMutation = useUpdateHostelPolicy(hostelId ?? '');
 
@@ -92,8 +92,6 @@ export function MoreConfigAgreementRequirementPage() {
   return (
     <div className={`flex flex-col gap-5 px-4 pt-6 sm:px-6 ${dirty ? 'pb-40' : 'pb-24'}`}>
       <MoreScreenHeader
-        backTo="/owner/more/configuration/agreements"
-        backLabel="Agreements"
         title="Tenant agreement"
         subtitle="Whether tenants must sign before moving in"
       />

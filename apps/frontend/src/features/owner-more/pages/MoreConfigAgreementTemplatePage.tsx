@@ -1,3 +1,5 @@
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Pencil } from 'lucide-react';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
 import { useAgreementTemplate } from '../hooks/useAgreements';
 import { countClauses, splitByVariables, usedVariables } from '../config/agreements';
@@ -15,13 +17,15 @@ export function MoreConfigAgreementTemplatePage() {
   const { active, rules, hasDraft, isLoading } = useAgreementTemplate();
   const variables = usedVariables(rules);
   const clauses = countClauses(rules);
+  const navigate = useNavigate();
+  // Carries `?hostelId=` through, so the editor edits the hostel being viewed.
+  const { search } = useLocation();
+
   const categories = rules?.categories ?? [];
 
   return (
     <div className="flex flex-col gap-5 px-4 pb-8 pt-6 sm:px-6">
       <MoreScreenHeader
-        backTo="/owner/more/configuration/agreements/templates"
-        backLabel="Templates"
         title={active?.title ?? 'Agreement template'}
         subtitle={
           isLoading
@@ -45,6 +49,22 @@ export function MoreConfigAgreementTemplatePage() {
             {variables.length} variable{variables.length === 1 ? '' : 's'} auto-fill per tenant
           </span>
         </div>
+      )}
+
+      {/*
+        This screen renders the agreement and offered no way to change it, so
+        an owner who reached it could read their own document and stop there.
+        The editor is one tap away rather than somewhere else in the section.
+      */}
+      {!isLoading && (
+        <button
+          type="button"
+          onClick={() => navigate(`/owner/more/configuration/agreements/edit${search}`)}
+          className="flex items-center justify-center gap-2 rounded-[13px] bg-primary py-3 text-[14px] font-bold text-primary-foreground"
+        >
+          <Pencil className="h-4 w-4" strokeWidth={2} />
+          Edit this agreement
+        </button>
       )}
 
       {categories.length > 0 && (

@@ -86,7 +86,7 @@ export function MoreProfilePage() {
       {
         onSuccess: () => {
           stayoToast.success('Profile updated');
-          navigate('/owner/more/settings');
+          navigate('/owner/more');
         },
         onError: () => stayoToast.error('Could not update your profile'),
       },
@@ -95,7 +95,7 @@ export function MoreProfilePage() {
 
   return (
     <div className={`flex flex-col gap-5 px-4 pt-6 sm:px-6 ${dirty ? 'pb-40' : 'pb-24'}`}>
-      <MoreScreenHeader backTo="/owner/more/settings" backLabel="Settings" title="My profile" />
+      <MoreScreenHeader backTo="/owner/more" backLabel="Configuration" title="My profile" />
 
       {profileQuery.isLoading ? (
         <div className="h-64 animate-pulse rounded-2xl bg-muted" />

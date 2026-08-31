@@ -1,5 +1,5 @@
+import { useConfiguredHostelId } from '../hooks/useConfiguredHostel';
 import { CreditCard } from 'lucide-react';
-import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useHostelPolicy } from '@features/settings/settingsHooks';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
 
@@ -13,21 +13,21 @@ const sectionLabel = 'pl-0.5 text-[11px] font-semibold uppercase tracking-wider 
  * "Connect" button, no third-party provider branding.
  */
 export function MoreConfigPaymentGatewayPage() {
-  const session = useOwnerSession();
-  const policyQuery = useHostelPolicy(session.primaryHostelId);
+  
+  const policyQuery = useHostelPolicy(useConfiguredHostelId());
   const upiId = policyQuery.data?.policy?.payments?.upi_id;
 
   return (
     <div className="flex flex-col gap-5 px-4 pb-8 pt-6 sm:px-6">
-      <MoreScreenHeader backTo="/owner/more/configuration/finance" backLabel="Finance" title="Payment gateway" subtitle="How tenants pay you" />
+      <MoreScreenHeader title="Payment gateway" subtitle="How tenants pay you" />
 
       <div className={`${card} px-[22px] py-[26px] text-center`}>
         <div className="mx-auto mb-3.5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
           <CreditCard className="h-6 w-6 text-primary" strokeWidth={1.8} />
         </div>
-        <div className="font-display text-base font-bold tracking-tight text-foreground">Payments enabled by StayO</div>
+        <div className="font-display text-base font-bold tracking-tight text-foreground">Payments enabled by Stayo</div>
         <p className="mx-auto mt-1.5 max-w-[260px] text-[12.5px] leading-relaxed text-muted-foreground">
-          Your payment provider is set up and managed for you as part of your StayO account. To change how tenants pay, contact StayO support.
+          Your payment provider is set up and managed for you as part of your Stayo account. To change how tenants pay, contact Stayo support.
         </p>
       </div>
 

@@ -28,6 +28,9 @@ const values: BillingFormValues = {
   depositRefundable: true,
   depositMonths: 2,
   agreementMonths: 11,
+  autoGenerateRent: true,
+  autoApplyLateFees: true,
+  autoDeactivateDays: 30,
   generationDay: 1,
   dueDay: 5,
   graceDays: 3,
@@ -43,7 +46,25 @@ describe('buildBillingPatch — section isolation', () => {
   it('writes only the schedule fields for the schedule section', () => {
     expect(patchFor('schedule')).toEqual({
       billing: { auto_rent_day: 1, due_day: 5, grace_days: 3 },
+      // Raising rent automatically is a property of the rent schedule, not of
+      // a separate "Automation" screen, so it saves with it.
+      automation: { auto_generate_rent: true },
     });
+  });
+
+  it('carries the late-fee automation with the late-fee rules', () => {
+    expect(patchFor('lateFee').automation).toEqual({
+      auto_apply_late_fees: true,
+      auto_deactivate_days: 30,
+    });
+  });
+
+  it('omits automation entirely for sections that own none of it', () => {
+    // A deposit-only save must not touch flags it never displayed — the same
+    // rule that keeps a focused screen from clobbering the late-fee cap.
+    expect(patchFor('deposit').automation).toBeUndefined();
+    expect(patchFor('collection').automation).toBeUndefined();
+    expect(patchFor('agreement').automation).toBeUndefined();
   });
 
   it('writes only the deposit fields for the deposit section', () => {

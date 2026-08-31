@@ -7,8 +7,6 @@ export function MoreConfigPartPaymentsPage() {
       sections={['collection']}
       title="Part payments"
       subtitle="Whether a due can be cleared in instalments"
-      backTo="/owner/more/configuration/finance"
-      backLabel="Finance"
     />
   );
 }

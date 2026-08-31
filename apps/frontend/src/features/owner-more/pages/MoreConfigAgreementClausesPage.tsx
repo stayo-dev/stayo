@@ -50,8 +50,6 @@ export function MoreConfigAgreementClausesPage() {
   return (
     <div className="flex flex-col gap-5 px-4 pb-8 pt-6 sm:px-6">
       <MoreScreenHeader
-        backTo="/owner/more/configuration/agreements"
-        backLabel="Agreements"
         title="Clause library"
         subtitle="Reusable blocks for every template"
       />

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { roomService } from '@features/rooms/api';
 import type { OwnerSessionHostel } from '@features/owner-session/useOwnerSession';
+import { useHostelPolicy } from '@features/settings/settingsHooks';
+import { applyInviteDefaults, inviteDefaults } from '../inviteDefaults';
 import { groupRoomsByFloor, type SeatGridSourceRoom } from '@shared/ui-patterns/roomSeatGrid';
 import { RoomSeatGrid } from './RoomSeatGrid';
 import type { InviteWizardData } from '../../types';
@@ -34,6 +36,19 @@ export function StayStep({ data, setD, hostels }: StayStepProps) {
       available: Number(r.available ?? 0),
     })),
   );
+  /**
+   * The seat grid only needs a room's number and how many beds are free, so
+   * its mapping drops `base_rent`. Keep it here: it is what
+   * `auto_fill_room_rent` fills the invite's rent from.
+   */
+  const policyQuery = useHostelPolicy(data.hostelId || null);
+
+  const rentByRoomId = new Map<string, number>(
+    (roomsQuery.data ?? []).flatMap((floor: any) =>
+      (floor.rooms ?? []).map((r: any) => [r.id, Number(r.base_rent ?? 0)] as [string, number]),
+    ),
+  );
+
   const floors = groupRoomsByFloor(seatGridRooms, { selectedRoomId: data.roomId || null });
 
   const preferredStillAvailable =
@@ -73,7 +88,15 @@ export function StayStep({ data, setD, hostels }: StayStepProps) {
   };
   const selectRoom = (roomId: string) => {
     const room = seatGridRooms.find((r) => r.id === roomId);
-    setD({ roomId, roomLabel: room?.roomNo ?? '' });
+    // Choosing a room is the first moment both halves of the hostel's invite
+    // defaults are known — its policy, and this room's rent. `applyInviteDefaults`
+    // fills only what the owner has left blank, so an agreed rent already
+    // typed for this tenant survives.
+    const suggested = applyInviteDefaults(
+      data,
+      inviteDefaults(policyQuery.data?.policy, { baseRent: rentByRoomId.get(roomId) }),
+    );
+    setD({ roomId, roomLabel: room?.roomNo ?? '', ...suggested });
   };
 
   return (

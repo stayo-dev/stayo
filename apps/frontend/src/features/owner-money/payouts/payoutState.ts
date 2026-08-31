@@ -92,7 +92,11 @@ export function stripVoice(summary: PayoutSummary | null | undefined): StripVoic
       // it. "We're on it" alone is a brush-off; the cause is what lets him tell
       // whether it is his bank details at fault, which only he can correct.
       detail: `${summary.failed.reason?.trim() || 'The transfer was rejected'} — your money is safe with Stayo and we're on it.`,
-      action: { label: 'Check payout account', to: '/owner/more/payout-account' },
+      // No action here. This carried a "Check payout account" button pointing
+      // at `/owner/more/payout-account`, which was never a route — so at the
+      // one moment an owner most needs to act, the button did nothing. Piece B
+      // of the configuration redesign adds the bank-account row and restores
+      // it. A missing button is honest; a dead one is not.
     };
   }
 

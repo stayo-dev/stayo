@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
-import { useHostelPolicy, useUpdateHostelIdentity, useUploadHostelLogo, useRemoveHostelLogo } from '@features/settings/settingsHooks';
+import { useHostelPolicy, useUpdateHostelIdentity, useUpdateHostelPolicy, useUploadHostelLogo, useRemoveHostelLogo } from '@features/settings/settingsHooks';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
 import { SaveBar } from '../components/SaveBar';
 import { hasChanges } from '../config/dirtyState';
@@ -16,6 +16,9 @@ interface IdentityFields {
   pincode: string;
   upiId: string;
   gstNumber: string;
+  /** `policy.branding.legal_name` — the only field here that is not on the
+   *  hostel row itself, and the only one that had no editor anywhere. */
+  legalName: string;
 }
 
 const EMPTY_IDENTITY: IdentityFields = {
@@ -27,12 +30,19 @@ const EMPTY_IDENTITY: IdentityFields = {
   pincode: '',
   upiId: '',
   gstNumber: '',
+  legalName: '',
 };
 
 const card = 'overflow-hidden rounded-[20px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]';
 const sectionLabel = 'pl-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground';
-const labelStyle = 'mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground';
-const inputStyle = 'w-full rounded-xl border border-border bg-card px-3.5 py-3 text-sm font-semibold text-foreground focus:border-primary focus:outline-none';
+/**
+ * Sentence case, not SHOUTING CAPS. Nine stacked uppercase labels read as nine
+ * warnings; owners here are not technical and the form should feel like
+ * answering questions, not filling a database row.
+ */
+const labelStyle = 'mb-1 block text-[12.5px] font-semibold text-foreground';
+const hintStyle = 'mt-1.5 block text-[11px] leading-[1.45] text-muted-foreground';
+const inputStyle = 'w-full rounded-xl border border-border bg-card px-3.5 py-3 text-sm font-medium text-foreground focus:border-primary focus:outline-none';
 
 /**
  * More → Settings → Hostel Identity. Real data via `useHostelPolicy`
@@ -52,6 +62,9 @@ export function MoreHostelIdentityPage() {
   const hostelId = hostelIdParam ?? session.primaryHostelId;
   const policyQuery = useHostelPolicy(hostelId);
   const updateMutation = useUpdateHostelIdentity(hostelId ?? '');
+  // `legal_name` lives on the policy, not the hostel row, so it saves through
+  // a second mutation fired alongside the first.
+  const updatePolicyMutation = useUpdateHostelPolicy(hostelId ?? '');
   const uploadLogoMutation = useUploadHostelLogo(hostelId ?? '');
   const removeLogoMutation = useRemoveHostelLogo(hostelId ?? '');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -74,16 +87,17 @@ export function MoreHostelIdentityPage() {
         pincode: hostel.pincode ?? '',
         upiId: hostel.upi_id ?? '',
         gstNumber: hostel.gst_number ?? '',
+        legalName: (policyQuery.data?.policy as any)?.branding?.legal_name ?? '',
       };
       setFields(loaded);
       setBaseline(loaded);
     }
-  }, [hostel]);
+  }, [hostel, policyQuery.data]);
 
   const set = <K extends keyof IdentityFields>(key: K, value: IdentityFields[K]) =>
     setFields((prev) => ({ ...prev, [key]: value }));
 
-  const { name, phone, address, city, state, pincode, upiId, gstNumber } = fields;
+  const { name, phone, address, city, state, pincode, upiId, gstNumber, legalName } = fields;
   const dirty = hasChanges(baseline, fields);
 
   const save = () => {
@@ -104,8 +118,11 @@ export function MoreHostelIdentityPage() {
       },
       {
         onSuccess: () => {
+          if (legalName.trim() !== (baseline?.legalName ?? '')) {
+            updatePolicyMutation.mutate({ branding: { legal_name: legalName.trim() || null } });
+          }
           stayoToast.success('Hostel identity updated');
-          navigate('/owner/more/settings');
+          navigate(-1);
         },
         onError: () => stayoToast.error('Could not update hostel identity'),
       },
@@ -122,60 +139,99 @@ export function MoreHostelIdentityPage() {
 
   return (
     <div className={`flex flex-col gap-5 px-4 pt-6 sm:px-6 ${dirty ? 'pb-40' : 'pb-24'}`}>
-      <MoreScreenHeader backTo="/owner/more/settings" backLabel="Settings" title="Hostel identity" />
+      <MoreScreenHeader title="Hostel identity" />
 
       {policyQuery.isLoading ? (
         <div className="h-72 animate-pulse rounded-2xl bg-muted" />
       ) : (
         <>
+          {/*
+            Sections are the questions an owner is answering, not the tables
+            the fields land in. "Details" told them nothing about what the
+            details were for; "Payments & Tax" put the UPI they are paid into
+            beside a GST number that only appears on receipts.
+          */}
           <div className="flex flex-col gap-2">
-            <span className={sectionLabel}>Logo</span>
-            <div className={`${card} flex items-center gap-3.5 p-4`}>
-              <span className="flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-2xl bg-secondary">
-                {hostel?.logo_url ? (
-                  <img src={hostel.logo_url} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <span className="font-display text-lg font-bold text-primary">{name ? name[0]?.toUpperCase() : 'H'}</span>
-                )}
-              </span>
-              <div className="flex flex-1 gap-2">
-                <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
-                <button
-                  type="button"
-                  disabled={uploadLogoMutation.isPending}
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex-1 rounded-xl border border-border bg-card py-2.5 text-center font-display text-[12.5px] font-bold text-foreground disabled:opacity-50"
-                >
-                  {uploadLogoMutation.isPending ? 'Uploading…' : 'Upload'}
-                </button>
-                {hostel?.logo_url && (
+            <span className={sectionLabel}>What tenants see</span>
+            <div className={`${card} flex flex-col gap-4 p-4`}>
+              <div className="flex items-center gap-3.5">
+                <span className="flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-2xl bg-secondary">
+                  {hostel?.logo_url ? (
+                    <img src={hostel.logo_url} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="font-display text-lg font-bold text-primary">{name ? name[0]?.toUpperCase() : 'H'}</span>
+                  )}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
+                  {/*
+                    One primary action. Upload and Remove used to sit side by
+                    side at equal width and weight, so a destructive action was
+                    as loud as the one an owner actually came for.
+                  */}
                   <button
                     type="button"
-                    disabled={removeLogoMutation.isPending}
-                    onClick={() => removeLogoMutation.mutate(undefined, { onSuccess: () => stayoToast.success('Logo removed') })}
-                    className="flex-1 rounded-xl border border-destructive/25 py-2.5 text-center font-display text-[12.5px] font-bold text-destructive disabled:opacity-50"
+                    disabled={uploadLogoMutation.isPending}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="rounded-xl border border-border bg-card px-4 py-2 font-display text-[12.5px] font-bold text-foreground disabled:opacity-50"
                   >
-                    Remove
+                    {uploadLogoMutation.isPending ? 'Uploading…' : hostel?.logo_url ? 'Change logo' : 'Add logo'}
                   </button>
-                )}
+                  <span className={hintStyle}>
+                    Shown on receipts and your Stayo listing.
+                    {hostel?.logo_url && (
+                      <>
+                        {' '}
+                        <button
+                          type="button"
+                          disabled={removeLogoMutation.isPending}
+                          onClick={() => removeLogoMutation.mutate(undefined, { onSuccess: () => stayoToast.success('Logo removed') })}
+                          className="font-semibold text-destructive underline underline-offset-2 disabled:opacity-50"
+                        >
+                          Remove
+                        </button>
+                      </>
+                    )}
+                  </span>
+                </div>
               </div>
+
+              <label className="block">
+                <span className={labelStyle}>Hostel name</span>
+                <input value={name} onChange={(e) => set('name', e.target.value)} className={inputStyle} />
+                <span className={hintStyle}>Required. Tenants see this everywhere — invites, receipts and reminders.</span>
+              </label>
+
+              <label className="block">
+                <span className={labelStyle}>Phone</span>
+                <input
+                  value={phone}
+                  onChange={(e) => set('phone', e.target.value)}
+                  inputMode="tel"
+                  autoComplete="tel"
+                  placeholder="Number tenants can call"
+                  className={inputStyle}
+                />
+              </label>
             </div>
           </div>
 
           <div className="flex flex-col gap-2">
-            <span className={sectionLabel}>Details</span>
-            <div className={`${card} flex flex-col gap-3 p-4`}>
-              <label className="block">
-                <span className={labelStyle}>Hostel Name *</span>
-                <input value={name} onChange={(e) => set('name', e.target.value)} className={inputStyle} />
-              </label>
-              <label className="block">
-                <span className={labelStyle}>Phone</span>
-                <input value={phone} onChange={(e) => set('phone', e.target.value)} className={inputStyle} />
-              </label>
+            <span className={sectionLabel}>Where you are</span>
+            <div className={`${card} flex flex-col gap-4 p-4`}>
               <label className="block">
                 <span className={labelStyle}>Address</span>
-                <input value={address} onChange={(e) => set('address', e.target.value)} className={inputStyle} />
+                {/*
+                  A textarea, because a real address is two or three lines. The
+                  single-line input truncated most of it out of sight, so an
+                  owner could not check what they had typed.
+                */}
+                <textarea
+                  value={address}
+                  onChange={(e) => set('address', e.target.value)}
+                  rows={2}
+                  className={`${inputStyle} resize-none`}
+                />
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
@@ -187,26 +243,64 @@ export function MoreHostelIdentityPage() {
                   <input value={state} onChange={(e) => set('state', e.target.value)} className={inputStyle} />
                 </label>
               </div>
-              <label className="block">
+              <label className="block w-1/2 pr-1.5">
                 <span className={labelStyle}>Pincode</span>
-                <input value={pincode} onChange={(e) => set('pincode', e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" className={inputStyle} />
+                {/* Half width: a six-digit field stretched across the screen
+                    reads as though more is expected. */}
+                <input
+                  value={pincode}
+                  onChange={(e) => set('pincode', e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
+                  inputMode="numeric"
+                  maxLength={6}
+                  className={inputStyle}
+                />
               </label>
             </div>
           </div>
 
           <div className="flex flex-col gap-2">
-            <span className={sectionLabel}>Payments &amp; Tax</span>
-            <div className={`${card} flex flex-col gap-3 p-4`}>
+            <span className={sectionLabel}>On receipts and paperwork</span>
+            <div className={`${card} flex flex-col gap-4 p-4`}>
               <label className="block">
-                <span className={labelStyle}>UPI ID</span>
-                <input value={upiId} onChange={(e) => set('upiId', e.target.value)} className={inputStyle} />
+                <span className={labelStyle}>Registered name</span>
+                <input
+                  value={legalName}
+                  onChange={(e) => set('legalName', e.target.value)}
+                  placeholder={name || 'Same as hostel name'}
+                  className={inputStyle}
+                />
+                <span className={hintStyle}>
+                  Only if your legal name differs from the hostel's name. Leave blank to use the hostel name.
+                </span>
               </label>
               <label className="block">
-                <span className={labelStyle}>GST Number</span>
-                <input value={gstNumber} onChange={(e) => set('gstNumber', e.target.value)} className={inputStyle} />
+                <span className={labelStyle}>GST number</span>
+                <input
+                  value={gstNumber}
+                  onChange={(e) => set('gstNumber', e.target.value.toUpperCase())}
+                  placeholder="22AAAAA0000A1Z5"
+                  autoCapitalize="characters"
+                  className={`${inputStyle} uppercase`}
+                />
+                <span className={hintStyle}>Printed on every receipt once set. Leave blank if you do not charge GST.</span>
               </label>
             </div>
           </div>
+
+          <div className="flex flex-col gap-2">
+            <span className={sectionLabel}>How tenants pay you</span>
+            <div className={`${card} flex flex-col gap-4 p-4`}>
+              <label className="block">
+                <span className={labelStyle}>UPI ID</span>
+                <input value={upiId} onChange={(e) => set('upiId', e.target.value)} placeholder="name@bank" className={inputStyle} />
+                <span className={hintStyle}>
+                  Shown to tenants when they pay by UPI. This is not where Stayo settles your rent — that is your bank
+                  account, under Configuration.
+                </span>
+              </label>
+            </div>
+          </div>
+
         </>
       )}
 

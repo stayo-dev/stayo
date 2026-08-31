@@ -1,7 +1,7 @@
+import { useConfiguredHostelId } from '../hooks/useConfiguredHostel';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { stayoToast } from '@shared/ui-patterns/Toast';
-import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useHostelPolicy, useUpdateHostelPolicy } from '@features/settings/settingsHooks';
 import { Toggle } from '@features/owner-food/components/Toggle';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
@@ -11,6 +11,7 @@ import { hasChanges } from '../config/dirtyState';
 import { useHostelBedSummary } from '../hooks/useHostelBedSummary';
 import { policyDetail, policyHeadline } from './billingPolicy';
 import { depositPreview, type DepositMode } from './depositPolicy';
+import { monthDays, scheduleMilestones, describeSchedule, crossesMonthEnd } from './rentScheduleCalendar';
 import {
   buildBillingPatch,
   policyToFormValues,
@@ -140,12 +141,13 @@ export function BillingPolicyForm({
   sections: BillingSectionKey[];
   title: string;
   subtitle: string;
-  backTo: string;
-  backLabel: string;
+  /** Omit to return wherever the owner opened this from. */
+  backTo?: string;
+  backLabel?: string;
 }) {
   const navigate = useNavigate();
-  const session = useOwnerSession();
-  const hostelId = session.primaryHostelId;
+  
+  const hostelId = useConfiguredHostelId();
   const policyQuery = useHostelPolicy(hostelId);
   const updateMutation = useUpdateHostelPolicy(hostelId ?? '');
   const { rents } = useHostelBedSummary(hostelId);
@@ -159,7 +161,7 @@ export function BillingPolicyForm({
   useEffect(() => {
     const billing = policyQuery.data?.policy?.billing;
     if (!billing) return;
-    const loaded = policyToFormValues(billing);
+    const loaded = policyToFormValues(billing, policyQuery.data?.policy?.automation);
     setValues(loaded);
     setBaseline(loaded);
   }, [policyQuery.data]);
@@ -201,7 +203,10 @@ export function BillingPolicyForm({
     updateMutation.mutate(buildBillingPatch(values, sections), {
       onSuccess: () => {
         stayoToast.success(`${title} saved`);
-        navigate(backTo);
+        // Back to wherever this was opened from — these screens are reached
+        // from a hostel's Settings tab now, not from one fixed hub.
+        if (backTo) navigate(backTo);
+        else navigate(-1);
       },
       onError: (error: any) =>
         stayoToast.error(error?.response?.data?.error?.message || `Could not save ${title.toLowerCase()}`),
@@ -238,12 +243,31 @@ export function BillingPolicyForm({
               <Stepper value={values.graceDays} onChange={(v) => set('graceDays', v)} min={0} max={28} />
             </div>
           </div>
-          <p className={sectionNote}>
-            Rent is raised on day {values.generationDay}, due on day {values.dueDay}
-            {values.graceDays > 0
-              ? `, and counts as late after ${values.graceDays} more day${values.graceDays > 1 ? 's' : ''}.`
-              : ', and counts as late the next day.'}
-          </p>
+          {/*
+            The three numbers above are each clear and together are not: an
+            owner had to hold "raised on the 1st", "due on the 5th" and "late
+            after 0 more days" in their head and imagine a month to see what it
+            meant for a tenant. Here is the month.
+          */}
+          <div className={card}>
+            <div className="px-4 pb-1 pt-3.5">
+              {/* Was a row on a separate "Automation" screen. An owner never
+                  sets out to manage automation — they want rent to raise
+                  itself, which is a property of the rent rules above. */}
+              <Toggle
+                checked={values.autoGenerateRent}
+                onChange={() => set('autoGenerateRent', !values.autoGenerateRent)}
+                label="Raise rent automatically"
+                sub={`Creates every tenant's bill on day ${values.generationDay} without you`}
+              />
+            </div>
+          </div>
+
+          <RentMonthPreview
+            generationDay={values.generationDay}
+            dueDay={values.dueDay}
+            graceDays={values.graceDays}
+          />
         </div>
       )}
 
@@ -439,11 +463,41 @@ export function BillingPolicyForm({
               </>
             )}
           </div>
-          {/* Grace days live in the Rent schedule section, so say where the
-              threshold comes from rather than leaving it implicit. */}
+
+          {values.lateFeeEnabled && <LateFeePreview values={values} />}
+
+          {values.lateFeeEnabled && (
+            <div className={card}>
+              <div className="border-b border-border/60 px-4 pb-1 pt-3.5">
+                {/* Both were rows on the deleted "Automation" screen. The old
+                    one described this as running "after the grace period"
+                    while the grace period was set on a different screen. */}
+                <Toggle
+                  checked={values.autoApplyLateFees}
+                  onChange={() => set('autoApplyLateFees', !values.autoApplyLateFees)}
+                  label="Apply late fees automatically"
+                  sub="Charges them the day rent becomes late, without you"
+                />
+              </div>
+              <div className={rowBase}>
+                <span className="flex-1 text-[13.5px] text-foreground/80">
+                  Suspend after
+                  <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                    Days overdue before the tenant loses app access. 0 never suspends.
+                  </span>
+                </span>
+                <NumberField
+                  value={values.autoDeactivateDays}
+                  onChange={(v) => set('autoDeactivateDays', v)}
+                  suffix="days"
+                  ariaLabel="Suspend after days overdue"
+                />
+              </div>
+            </div>
+          )}
           {values.lateFeeEnabled && sections.length === 1 && (
             <p className={sectionNote}>
-              Applies after the {values.graceDays}-day grace period set in Rent schedule.
+              Applies after the {values.graceDays}-day grace period set in Rent.
             </p>
           )}
         </div>
@@ -469,6 +523,126 @@ export function BillingPolicyForm({
         onDiscard={() => setValues(baseline)}
         label={`Save ${title.toLowerCase()}`}
       />
+    </div>
+  );
+}
+
+const ROLE_STYLE: Record<string, { dot: string; cell: string }> = {
+  raised: { dot: 'bg-[#3F7D58]', cell: 'bg-[#E6F0E8] text-[#2F5B41] font-bold' },
+  due: { dot: 'bg-primary', cell: 'bg-primary text-primary-foreground font-bold' },
+  grace: { dot: 'bg-[#D9A94E]', cell: 'bg-[#F8EFDC] text-[#7A5510] font-semibold' },
+  late: { dot: 'bg-[#B3402F]', cell: 'bg-[#F7E4DF] text-[#8E3122] font-semibold' },
+  plain: { dot: 'bg-border', cell: 'text-muted-foreground' },
+};
+
+/**
+ * One rent month, drawn.
+ *
+ * Colour alone would not carry this — the same information is in the timeline
+ * beneath, which names each day and says what happens on it, so the calendar
+ * is the fast read and the list is the accessible one.
+ */
+function RentMonthPreview({
+  generationDay,
+  dueDay,
+  graceDays,
+}: {
+  generationDay: number;
+  dueDay: number;
+  graceDays: number;
+}) {
+  const schedule = { generationDay, dueDay, graceDays };
+  const days = monthDays(schedule);
+  const milestones = scheduleMilestones(schedule);
+
+  return (
+    <div className={`${card} flex flex-col gap-3.5 p-4`}>
+      <div className="grid grid-cols-7 gap-1">
+        {days.map(({ day, role }) => (
+          <span
+            key={day}
+            className={`flex h-8 items-center justify-center rounded-lg text-[12px] tabular-nums ${ROLE_STYLE[role].cell}`}
+          >
+            {day}
+          </span>
+        ))}
+      </div>
+
+      <div className="flex flex-col gap-2 border-t border-border/60 pt-3">
+        {milestones.map((m) => (
+          <div key={m.role} className="flex items-start gap-2.5">
+            <span className={`mt-[5px] h-2 w-2 flex-none rounded-full ${ROLE_STYLE[m.role].dot}`} />
+            <span className="min-w-0 flex-1">
+              <span className="text-[12.5px] font-semibold text-foreground">
+                {m.label} · day {m.day}
+              </span>
+              <span className="mt-0.5 block text-[11px] leading-[1.45] text-muted-foreground">{m.detail}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <p className="border-t border-border/60 pt-3 text-[12px] font-medium text-foreground">
+        {describeSchedule(schedule)}
+      </p>
+
+      {crossesMonthEnd(schedule) && (
+        <p className="text-[11px] leading-[1.45] text-muted-foreground">
+          This schedule runs into the next month, so the days above are not all in the same one.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * What the rule actually costs a tenant.
+ *
+ * A charge type, an amount and a cap are three abstractions whose product an
+ * owner has to compute in their head — and a per-day fee is the one people
+ * misjudge, because a small daily number reaches the cap faster than it feels
+ * like it should. Worked examples at 1, 7 and 30 days overdue turn the rule
+ * into the three numbers an owner can recognise as right or wrong.
+ */
+function LateFeePreview({ values }: { values: BillingFormValues }) {
+  const sampleRent = 8000;
+  const charge = (daysLate: number) => {
+    const raw =
+      values.chargeType === 'PER_DAY'
+        ? values.lateFeeAmount * daysLate
+        : values.chargeType === 'PERCENTAGE'
+          ? (sampleRent * values.lateFeeAmount) / 100
+          : values.lateFeeAmount;
+    const capped = values.maxLateFee > 0 ? Math.min(raw, values.maxLateFee) : raw;
+    return { capped: Math.round(capped), atCap: values.maxLateFee > 0 && raw > values.maxLateFee };
+  };
+
+  return (
+    <div className={`${card} flex flex-col gap-3 p-4`}>
+      <p className="text-[12px] font-semibold text-foreground">
+        On ₹{sampleRent.toLocaleString('en-IN')} rent, a tenant would pay
+      </p>
+      <div className="grid grid-cols-3 gap-2">
+        {[1, 7, 30].map((days) => {
+          const { capped, atCap } = charge(days);
+          return (
+            <div key={days} className="rounded-xl bg-secondary px-2 py-2.5 text-center">
+              <div className="font-display text-[15px] font-extrabold tabular-nums text-foreground">
+                ₹{capped.toLocaleString('en-IN')}
+              </div>
+              <div className="mt-0.5 text-[10.5px] text-muted-foreground">
+                {days} day{days === 1 ? '' : 's'} late{atCap ? ' · at cap' : ''}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {values.maxLateFee === 0 && values.chargeType === 'PER_DAY' && (
+        <p className="text-[11px] leading-[1.45] text-muted-foreground">
+          With no cap, this keeps growing every day. A tenant three months late would owe
+          ₹{(values.lateFeeAmount * 90).toLocaleString('en-IN')} in fees alone.
+        </p>
+      )}
     </div>
   );
 }

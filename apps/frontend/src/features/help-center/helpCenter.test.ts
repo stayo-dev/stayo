@@ -26,7 +26,7 @@ const REAL_ROUTES = new Set([
   '/owner/money/payouts',
   '/owner/more/hostel',
   '/owner/more/service-requests',
-  '/owner/more/configuration/finance',
+  '/owner/home',
   '/owner/rooms/vacant',
   '/owner/tenants',
   '/owner/tenants/activations',

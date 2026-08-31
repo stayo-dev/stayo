@@ -18,14 +18,14 @@ const OPEN_SOURCE_LIBS = [
   { name: 'Lucide icons', license: 'ISC' },
 ];
 
-/** More → About StayO. Not in Stayo App.dc.html's design source — added per explicit request, same visual pattern as the rest of More/Settings. */
+/** More → About Stayo. Not in Stayo App.dc.html's design source — added per explicit request, same visual pattern as the rest of More/Settings. */
 export function MoreAboutPage() {
   const navigate = useNavigate();
   const [licensesOpen, setLicensesOpen] = useState(false);
 
   return (
     <div className="flex flex-col gap-5 px-4 pb-8 pt-6 sm:px-6">
-      <MoreScreenHeader backTo="/owner/more" backLabel="More" title="About StayO" />
+      <MoreScreenHeader backTo="/owner/more" backLabel="More" title="About Stayo" />
 
       <div className="flex flex-col items-center gap-1.5 py-4 text-center">
         <span className="font-display text-lg font-extrabold text-primary">Stayo</span>

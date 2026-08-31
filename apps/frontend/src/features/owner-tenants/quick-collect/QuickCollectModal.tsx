@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, Check } from 'lucide-react';
+import { playSuccessFeedback } from '@shared/ui-patterns/successFeedback';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { PAYMENT_MODES, type PaymentMode } from '@shared/mocks/payments';
 import type { TenantObligation } from '@shared/mocks/tenants';
@@ -119,6 +120,12 @@ export function QuickCollectModal({ open, onClose, initialTenant }: QuickCollect
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [step, setStep] = useState<QuickCollectStep>('select');
+
+  // Plays on every collection, including a back-to-back run — a re-trigger
+  // restarts the sound rather than layering a second copy over the first.
+  useEffect(() => {
+    if (step === 'success') playSuccessFeedback();
+  }, [step]);
   const [search, setSearch] = useState('');
   const [selectedTenant, setSelectedTenant] = useState<QuickCollectTenant | undefined>(initialTenant);
   const [amount, setAmount] = useState('');

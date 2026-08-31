@@ -8,6 +8,9 @@ import { searchAlerts } from '../alertsSearch';
 import { LeadDetailSheet } from '../components/LeadDetailSheet';
 import { LeadCard } from '../components/LeadCard';
 import { AlertSearchBox } from '../components/AlertSearchBox';
+import { useOwnerSession } from '@features/owner-session/useOwnerSession';
+import { usePushSubscription } from '@features/push/usePushSubscription';
+import { PushPromptCard } from '@features/push/PushPromptCard';
 import {
   countLeadsByFilter,
   filterLeads,
@@ -25,6 +28,15 @@ export function AlertsLeadsPage() {
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<LeadFilter>('all');
+
+  /*
+   * Asked here, on the screen that proves the point: an enquiry is only worth
+   * anything if the owner reaches it first. Offered only once there is at
+   * least one real lead on screen — a prompt over an empty inbox is asking for
+   * permission to send nothing.
+   */
+  const ownerSession = useOwnerSession();
+  const push = usePushSubscription(ownerSession.ownerId ?? null);
 
   const found = useMemo(
     () => searchAlerts(query, { leads: alerts.leads, adminMessages: [], renewals: [], requests: [] }),
@@ -48,6 +60,17 @@ export function AlertsLeadsPage() {
           </button>
           <span className="text-[13.5px] font-semibold text-muted-foreground">Back to Alerts</span>
         </div>
+
+        {push.offer && alerts.leads.length > 0 && (
+          <div className="px-4 sm:px-6">
+            <PushPromptCard
+              headline="Get told the moment an enquiry arrives"
+              detail="New enquiries, payments received and complaints raised, sent straight to this device so you can respond first."
+              onEnable={push.enable}
+              onDismiss={push.dismiss}
+            />
+          </div>
+        )}
 
         <div className="flex flex-col gap-3 px-4 sm:px-6">
           <h1 className="font-display text-[22px] font-extrabold tracking-tight text-foreground">Leads</h1>
