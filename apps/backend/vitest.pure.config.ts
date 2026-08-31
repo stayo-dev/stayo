@@ -25,6 +25,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: [
+      'tests/push-policy.test.ts',
       "tests/advertised-starting-price.test.ts",
       'tests/settlement-planner.test.ts',
       'tests/settlement-planner-policy.test.ts',
