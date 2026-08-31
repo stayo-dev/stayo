@@ -12,6 +12,7 @@ export enum WhatsAppRentReminderTemplate {
   RENT_DUE_REMINDER = "RENT_DUE_REMINDER",
   RENT_DUE_TODAY = "RENT_DUE_TODAY",
   RENT_OVERDUE_REMINDER = "RENT_OVERDUE_REMINDER",
+  PAYMENT_RECEIPT = "PAYMENT_RECEIPT",
 }
 
 export type RentReminderTemplateVariables = {
@@ -23,6 +24,8 @@ export type RentReminderTemplateVariables = {
   rentMonth: Date | string;
   dueDate: Date | string;
   daysOverdue: number;
+  stillDue?: number;
+  paymentStatus?: string;
   prefs?: Partial<HostelPreferences>;
 };
 
@@ -38,6 +41,7 @@ const TEMPLATE_KIND: Record<WhatsAppRentReminderTemplate, RentReminderKind> = {
   [WhatsAppRentReminderTemplate.RENT_DUE_REMINDER]: "DUE_SOON",
   [WhatsAppRentReminderTemplate.RENT_DUE_TODAY]: "DUE_TODAY",
   [WhatsAppRentReminderTemplate.RENT_OVERDUE_REMINDER]: "OVERDUE",
+  [WhatsAppRentReminderTemplate.PAYMENT_RECEIPT]: "PAYMENT_RECEIPT",
 };
 
 /**
@@ -53,22 +57,31 @@ const V2_PARAMETERS: Record<WhatsAppRentReminderTemplate, (data: RentReminderTem
   [WhatsAppRentReminderTemplate.RENT_DUE_REMINDER]: (data) => [
     data.tenantName || "Resident",
     data.hostelName || "your hostel",
+    String(Math.max(1, Math.abs(Math.round(data.daysOverdue)))),
     formatTemplateAmount(data.amount),
     formatMonthYear(data.rentMonth, data.prefs),
     formatDate(data.dueDate, data.prefs),
   ],
   [WhatsAppRentReminderTemplate.RENT_DUE_TODAY]: (data) => [
     data.tenantName || "Resident",
-    data.hostelName || "your hostel",
     formatTemplateAmount(data.amount),
     formatMonthYear(data.rentMonth, data.prefs),
+    data.hostelName || "your hostel",
   ],
   [WhatsAppRentReminderTemplate.RENT_OVERDUE_REMINDER]: (data) => [
     data.tenantName || "Resident",
-    data.hostelName || "your hostel",
     formatTemplateAmount(data.amount),
     formatMonthYear(data.rentMonth, data.prefs),
+    data.hostelName || "your hostel",
     String(Math.max(1, Math.floor(data.daysOverdue))),
+  ],
+  [WhatsAppRentReminderTemplate.PAYMENT_RECEIPT]: (data) => [
+    data.tenantName || "Resident",
+    formatTemplateAmount(data.amount),
+    typeof data.rentMonth === "string" ? data.rentMonth : formatMonthYear(data.rentMonth, data.prefs),
+    data.hostelName || "your hostel",
+    data.paymentStatus || ((data.stillDue ?? 0) > 0 ? "Partially Paid" : "Paid"),
+    formatTemplateAmount(data.stillDue ?? 0),
   ],
 };
 

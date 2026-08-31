@@ -18,11 +18,6 @@
  * again. It now has a screen of its own.
  *
  * What remains is four rows that each open something different and real.
- *
- * The Agreement row opens the editor rather than the read-only list it used
- * to: every operation the editor needs — save draft, publish, reset a section
- * — already existed on the backend and none was wired, so an owner could read
- * their agreement and change nothing in it.
  */
 
 export interface AgreementRow {
@@ -73,7 +68,7 @@ export function agreementRows(input: AgreementSectionsInput): AgreementRow[] {
           : version > 0
             ? `${templateCount} document · v${version}`
             : `${templateCount} document · draft`,
-      route: scoped(`${BASE}/edit`, hostelId),
+      route: scoped(`${BASE}/templates`, hostelId),
     },
     {
       key: 'clauses',

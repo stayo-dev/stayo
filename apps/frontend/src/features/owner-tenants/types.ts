@@ -28,6 +28,9 @@ export interface InviteWizardData {
   deposit: string;
   billing: string;
   maintenance: string;
+  /** MONTHLY | ONE_TIME | NONE — the invite never sent this, so every tenant
+   *  silently got the column default of MONTHLY even for a joining fee. */
+  maintenanceType: string;
   /**
    * "Has the tenant already paid anything?" — off by default. Covers a
    * deposit paid face-to-face at the door, and onboarding a hostel whose
@@ -71,6 +74,7 @@ export const EMPTY_INVITE_WIZARD_DATA: InviteWizardData = {
   deposit: '',
   billing: 'Monthly',
   maintenance: '',
+  maintenanceType: 'MONTHLY',
   hasPaidAlready: false,
   paidAmount: '',
   paidIncludesDeposit: true,

@@ -575,3 +575,13 @@ The tenant's optional room preference on an enquiry, entered as a compact floor/
 **Never a reservation.** Nothing here holds a bed; `admissions-service.getLeadForOwner` computes `preferred_room_available` fresh on each read by composing the existing `roomCapacityService.getRoomCapacitySnapshot` (same "compose, don't reimplement" pattern as the financial read model — see [[Business-Rules]]) rather than re-deriving availability, and the Invite Tenant wizard's final room assignment still goes through the same capacity check + row lock it always has.
 
 > ⚠️ **Migration mechanism inconsistency, worth resolving.** This repo currently has two live-looking migration paths: the repo-root `migrations/` hand-written SQL this change followed (`077_lead_room_preference.sql`, matching CLAUDE.md's documented convention and the style of `063`/`067`/`076`), and a genuinely active native `apps/backend/prisma/migrations/` directory with entries as recent as `20260827100000_owner_managed_tenants` — newer than any repo-root file. No `apps/backend/prisma/migrations/` folder was generated for this change. If that directory is what `prisma migrate deploy` actually applies in this project's deploy pipeline, `077_lead_room_preference.sql` needs to be re-expressed as a real Prisma migration (`npx prisma migrate dev --create-only`) before it reaches a database that way, or schema.prisma will drift from the applied migration history. **Not verified against a live database** — this schema.prisma edit and migration file have not been applied to any Supabase project.
+
+### `push_subscriptions` (2026-08-30, migration 078, [[Decisions#ADR-158|ADR-158]])
+
+`id, profile_id → profiles(id) ON DELETE CASCADE, endpoint (UNIQUE), p256dh, auth, user_agent, created_at, last_used_at, failure_count`. Indexed on `profile_id`.
+
+**One row per browser install, not per user.** An owner with a phone and a laptop has two, and sending iterates every row for a profile. `endpoint` is the push service's URL for that install and is globally unique, making it the natural key.
+
+Subscriptions expire and rotate silently. A **404/410** from the push service means gone forever and the row is deleted rather than retried; softer failures increment `failure_count`. `ON DELETE CASCADE` so a deleted profile leaves no endpoints still receiving messages about an account that no longer exists.
+
+The field added to the `profile` model is a **relation**, not a scalar, so Prisma does not select it by default and it cannot break existing `profile` queries — but the migration must still be applied **before** the code is deployed.

@@ -181,6 +181,9 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
     monthly_rent: Number(data.monthlyRent) || undefined,
     advance_amount: Number(data.deposit) || undefined,
     maintenance_amount: Number(data.maintenance) || undefined,
+    // Never sent before, so every invited tenant got the column default of
+    // MONTHLY — a one-time joining fee became a recurring charge.
+    maintenance_type: Number(data.maintenance) > 0 ? data.maintenanceType || 'MONTHLY' : 'NONE',
     joining_date: data.joiningDate || undefined,
     agreement_duration_months: Number(data.agreementMonths) || undefined,
     payment_frequency: BILLING_TO_FREQUENCY[data.billing] ?? 'MONTHLY',

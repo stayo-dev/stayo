@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AlertTriangle, Check, Copy, Mail, Share2 } from 'lucide-react';
 import { stayoToast } from '@shared/ui-patterns/Toast';
+import { playSuccessFeedback } from '@shared/ui-patterns/successFeedback';
 import {
   buildActivationShareText,
   buildWhatsAppShareUrl,
@@ -59,6 +60,18 @@ export function InviteDeliveryResult({
   canSendFallback,
 }: InviteDeliveryResultProps) {
   const [copied, setCopied] = useState(false);
+
+  /*
+   * Only when something actually reached the tenant. `channel === 'none'`
+   * renders the warning branch below: the tenant exists, but neither
+   * WhatsApp nor email got through and the owner has to deliver the link
+   * themselves. A triumph sound over that screen would be telling them the
+   * opposite of what it says.
+   */
+  const delivered = delivery.channel !== 'none';
+  useEffect(() => {
+    if (delivered) playSuccessFeedback();
+  }, [delivered]);
   const name = tenantName.trim() || 'The tenant';
 
   const handleCopy = async () => {

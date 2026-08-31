@@ -13,6 +13,8 @@ import { selectReminderForOverdueDay } from "@/lib/services/collection-strategy-
 import { whatsappReminderDeliveryService } from "@/lib/services/notifications/whatsapp-reminder-delivery";
 import { getLogger } from "@/lib/logger";
 import { resolveTenantName, resolveTenantPhone } from "@/lib/tenants/tenant-identity";
+import { notificationService } from "@/lib/services/notification-service";
+import { withinSendWindow } from "@/src/services/notifications/push/send-window";
 
 const logger = getLogger("reminder-service");
 
@@ -33,6 +35,8 @@ type NotificationDeliveryResult = {
   in_app: ChannelDeliveryStatus;
   email: ChannelDeliveryStatus;
   whatsapp: ChannelDeliveryStatus;
+  /** Sent as a side effect of the in-app write — see the in_app block below. */
+  push: ChannelDeliveryStatus;
 };
 
 function emptyChannel(): ChannelDeliveryStatus {
@@ -402,6 +406,7 @@ export class ReminderService {
     const sent = channels.in_app.sent ||
       channels.email.sent ||
       channels.whatsapp.sent ||
+      channels.push.sent ||
       channels.whatsapp.reason === "DUPLICATE_REMINDER"
       ? 1
       : 0;
@@ -420,6 +425,7 @@ export class ReminderService {
       in_app: emptyChannel(),
       email: emptyChannel(),
       whatsapp: emptyChannel(),
+      push: emptyChannel(),
     };
 
     result.credited = true;
@@ -428,13 +434,81 @@ export class ReminderService {
     const canInApp = config.reminder_in_app ?? true;
 
     // 1️⃣ In-App Notification
+    //
+    // This block used to set `sent = true` and write nothing at all — the
+    // service never imported `notificationService`. A tenant with only in-app
+    // enabled therefore received nothing for rent reminders while the delivery
+    // report claimed success. Writing the row also emits the push, since
+    // `createNotification` is where the push channel hangs.
+    //
+    // `profile_id` is looked up here rather than threaded through the caller:
+    // the daily path builds its `tenant` by hand from the financial service's
+    // raw SQL, and adding a column to that query to carry a notification id
+    // would put notification plumbing inside the money source of truth.
     if (isOwnerManaged) {
       result.in_app = { attempted: false, sent: false, skipped: true, reason: "NO_TENANT_ACCOUNT" };
-    } else if (canInApp) {
-      result.in_app.attempted = true;
-      result.in_app.sent = true;
-    } else {
+      result.push = { attempted: false, sent: false, skipped: true, reason: "NO_TENANT_ACCOUNT" };
+    } else if (!canInApp) {
       result.in_app = { attempted: false, sent: false, skipped: true, reason: "IN_APP_DISABLED" };
+      result.push = { attempted: false, sent: false, skipped: true, reason: "IN_APP_DISABLED" };
+    } else {
+      const account = await prisma.tenants
+        .findUnique({ where: { id: tenant.id }, select: { profile_id: true } })
+        .catch(() => null);
+
+      if (!account?.profile_id) {
+        result.in_app = { attempted: false, sent: false, skipped: true, reason: "NO_TENANT_ACCOUNT" };
+        result.push = { attempted: false, sent: false, skipped: true, reason: "NO_TENANT_ACCOUNT" };
+      } else {
+        const quiet = !withinSendWindow(new Date());
+        const amount = Number(obligation.amount ?? 0);
+        const message =
+          `Rent for ${formatMonthYear(obligation.rent_month, config)} — ` +
+          `₹${amount.toLocaleString("en-IN")} was due ${formatDate(obligation.due_date, config)}.`;
+
+        result.in_app.attempted = true;
+        result.push.attempted = !quiet;
+        try {
+          if (quiet) {
+            /*
+             * Outside 08:00–21:00 IST the row is still written, but the push
+             * that hangs off `createNotification` would buzz someone at 3am.
+             * Written straight through Prisma so the tray stays silent; the
+             * tenant sees it on their next visit, and the email and WhatsApp
+             * sends below are untouched.
+             */
+            await prisma.notifications.create({
+              data: {
+                profile_id: account.profile_id,
+                title: "Rent due",
+                message,
+                type: "rent_reminder",
+              },
+            });
+            result.push = { attempted: false, sent: false, skipped: true, reason: "QUIET_HOURS" };
+          } else {
+            await notificationService.createNotification(
+              account.profile_id,
+              "Rent due",
+              message,
+              "rent_reminder",
+            );
+            result.push.sent = true;
+          }
+          result.in_app.sent = true;
+        } catch (err) {
+          // A failed in-app write must not abort the email and WhatsApp sends
+          // below — those are the channels that actually reach someone.
+          result.in_app.error_code = "IN_APP_WRITE_FAILED";
+          result.in_app.error_message = err instanceof Error ? err.message : String(err);
+          result.push = { attempted: false, sent: false, skipped: true, reason: "IN_APP_WRITE_FAILED" };
+          logger.error("reminder.in_app.failed", {
+            tenant_id: tenant.id,
+            owner_id: ownerId,
+            error: result.in_app.error_message,
+          });
+        }
+      }
     }
 
     // 2️⃣ Email Notification

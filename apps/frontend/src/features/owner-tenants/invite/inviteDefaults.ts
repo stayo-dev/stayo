@@ -55,6 +55,8 @@ export interface InviteDefaults {
   monthlyRent: string;
   deposit: string;
   maintenance: string;
+  /** MONTHLY | ONE_TIME | NONE, from the hostel's own maintenance policy. */
+  maintenanceType: string;
   agreementMonths: string;
   billing: string;
 }
@@ -124,6 +126,15 @@ export function inviteDefaults(
     monthlyRent,
     deposit: depositFor(p, monthlyRent),
     maintenance: money(p.billing?.maintenance?.amount),
+    // A stored amount with no type is monthly — the backend column's default.
+    // Zero is NONE whatever was stored, so a cleared charge leaves no type
+    // behind describing one.
+    maintenanceType:
+      money(p.billing?.maintenance?.amount) === ''
+        ? 'NONE'
+        : String(p.billing?.maintenance?.type ?? '').toUpperCase() === 'ONE_TIME'
+          ? 'ONE_TIME'
+          : 'MONTHLY',
     agreementMonths: Number.isFinite(months) && months > 0 ? String(Math.round(months)) : '',
     billing: billingLabelFor(p.billing?.rent_cycle),
   };

@@ -35,6 +35,22 @@ async function runTests() {
     due_date: new Date("2026-05-05T00:00:00Z"),
     obligation_amount: 15000,
     obligation_status: "PAID",
+    settlement_allocations: [
+      {
+        type: "RENT",
+        rent_month: new Date("2026-05-01T00:00:00Z"),
+        allocated: 15000,
+        label: "Rent - May 2026",
+      },
+    ],
+    future_credit_allocated: 0,
+    total_transaction_paid: 15000,
+    outstanding_balance_after: 0,
+    future_credit_balance_after: 0,
+    payment_id: "pay_123456",
+    tenant_id: "ten_789012",
+    receipt_id: "rec_345678",
+    template_version: 5,
     prefs: {
       currency: "INR",
       date_format: "DD/MM/YYYY",

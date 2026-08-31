@@ -37,12 +37,12 @@
  * vitest.pure.config.ts. Keep it that way.
  */
 
-export type RentReminderKind = "DUE_SOON" | "DUE_TODAY" | "OVERDUE";
+export type RentReminderKind = "DUE_SOON" | "DUE_TODAY" | "OVERDUE" | "PAYMENT_RECEIPT";
 
 export type RentReminderGeneration = "v1" | "v2";
 
 /**
- * Submit these three to Meta, then set the matching env var to the approved
+ * Submit these to Meta, then set the matching env var to the approved
  * name. The bodies below are the exact text to submit — they are what the
  * reader will see, and the parameter order here is the order to declare.
  */
@@ -64,12 +64,14 @@ export const RENT_REMINDER_TEMPLATES: Record<
       parameters: ["tenant_name", "days_until_due", "amount", "rent_month", "due_date"],
     },
     v2: {
-      name: "stayo_rent_due_soon",
+      name: "stayo_rent_due_reminder",
       language: "en",
-      parameters: ["tenant_name", "hostel_name", "amount", "rent_month", "due_date"],
+      parameters: ["tenant_name", "hostel_name", "days_until_due", "amount", "rent_month", "due_date"],
       body:
-        "Hello {{1}}, your rent at {{2}} — ₹{{3}} for {{4}} — is due on {{5}}. " +
-        "Tap below to pay securely. If you have already paid, please ignore this message.",
+        "Hello {{1}}, your rent payment at {{2}} is due in {{3}} day(s).\n" +
+        "*Amount:* {{4}} Rs *for* {{5}}.\n" +
+        "*Due Date:* {{6}}.\n" +
+        "Tap below to pay securely..",
     },
   },
   DUE_TODAY: {
@@ -82,12 +84,12 @@ export const RENT_REMINDER_TEMPLATES: Record<
     v2: {
       name: "stayo_rent_due_today",
       language: "en",
-      parameters: ["tenant_name", "hostel_name", "amount", "rent_month"],
-      // No "use the app": the payment button below is the whole route, and it
-      // works for a parent who has never installed anything.
+      parameters: ["tenant_name", "amount", "rent_month", "hostel_name"],
       body:
-        "Hello {{1}}, your rent at {{2}} — ₹{{3}} for {{4}} — is due today. " +
-        "Tap below to pay securely.",
+        "Hello {{1}}, your rent of {{2}} *for* {{3}} at {{4}} is *due today.*\n" +
+        "Pay now to keep your account in good standing.\n" +
+        "*Tap below to pay securely.*\n" +
+        "Thank You :)",
     },
   },
   OVERDUE: {
@@ -98,15 +100,31 @@ export const RENT_REMINDER_TEMPLATES: Record<
       parameters: ["tenant_name", "amount", "rent_month", "due_date", "days_overdue"],
     },
     v2: {
-      name: "stayo_rent_overdue",
+      name: "stayo_rent_overdue_reminder",
       language: "en",
-      parameters: ["tenant_name", "hostel_name", "amount", "rent_month", "days_overdue"],
-      // States the position and offers the way out. It does not scold: the
-      // reader is usually a parent who would have paid had they been asked
-      // earlier, which generation 2 of the reminder schedule now does.
+      parameters: ["tenant_name", "amount", "rent_month", "hostel_name", "days_overdue"],
       body:
-        "Hello {{1}}, rent at {{2}} — ₹{{3}} for {{4}} — is now {{5}} days past its due date. " +
-        "Tap below to pay securely, or contact the hostel if something needs sorting out.",
+        "Hello {{1}}, your rent of {{2}} for {{3}} at {{4}} is *overdue by* {{5}} *day(s).* " +
+        "Please complete the payment at your earliest convenience. Contact the hostel if you need assistance.\n" +
+        "*Tap below to pay securely.*",
+    },
+  },
+  PAYMENT_RECEIPT: {
+    envVar: "WHATSAPP_PAYMENT_RECEIPT_TEMPLATE",
+    v1: {
+      name: "stayo_payment_receipt_v1",
+      language: "en",
+      parameters: ["tenant_name", "amount", "rent_month", "hostel_name", "payment_status", "balance_due"],
+    },
+    v2: {
+      name: "stayo_payment_receipt",
+      language: "en",
+      parameters: ["tenant_name", "amount", "rent_month", "hostel_name", "payment_status", "balance_due"],
+      body:
+        "Hello {{1}}, we have *successfully received your rent payment of* {{2}} *Rs for* {{3}} *at* {{4}}.\n\n" +
+        "*Payment Status:* {{5}}\n" +
+        "*Balance Due:* ₹{{6}}\n\n" +
+        "*Thank you for staying with us :)*",
     },
   },
 };

@@ -86,6 +86,9 @@ const MoreConfigAgreementTemplatesPage = lazy(() =>
 const MoreConfigAgreementTemplatePage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigAgreementTemplatePage').then((m) => ({ default: m.MoreConfigAgreementTemplatePage })),
 );
+const MoreConfigAgreementSignaturePage = lazy(() =>
+  import('@features/owner-more/pages/MoreConfigAgreementSignaturePage').then((m) => ({ default: m.MoreConfigAgreementSignaturePage })),
+);
 const MoreConfigAgreementClausesPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigAgreementClausesPage').then((m) => ({ default: m.MoreConfigAgreementClausesPage })),
 );
@@ -231,6 +234,7 @@ export function OwnerRoutes() {
         <Route path="/owner/more/configuration/agreements/template" element={<MoreConfigAgreementTemplatePage />} />
         <Route path="/owner/more/configuration/agreements/requirement" element={<MoreConfigAgreementRequirementPage />} />
         <Route path="/owner/more/configuration/agreements/clauses" element={<MoreConfigAgreementClausesPage />} />
+        <Route path="/owner/more/configuration/agreements/signature" element={<MoreConfigAgreementSignaturePage />} />
         <Route path="/owner/more/configuration/notifications" element={<MoreConfigNotificationsPage />} />
         <Route path="/owner/more/configuration/finance/late-fees" element={<MoreConfigLateFeePage />} />
         <Route path="/owner/more/configuration/finance/rent-schedule" element={<MoreConfigRentSchedulePage />} />

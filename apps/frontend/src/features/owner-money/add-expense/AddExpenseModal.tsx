@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Check, Plus } from 'lucide-react';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { stayoToast } from '@shared/ui-patterns/Toast';
+import { playSuccessFeedback } from '@shared/ui-patterns/successFeedback';
 import { useAddExpenseWizard } from '../hooks/useAddExpenseWizard';
 import type { AddExpenseData } from '../types';
 import { DetailsStep } from './steps/DetailsStep';
@@ -28,6 +29,10 @@ interface AddExpenseModalProps {
 export function AddExpenseModal({ open, onClose, seed, editingId }: AddExpenseModalProps) {
   const wizard = useAddExpenseWizard(editingId);
   const [showSuccess, setShowSuccess] = useState(false);
+
+  useEffect(() => {
+    if (showSuccess) playSuccessFeedback();
+  }, [showSuccess]);
 
   useEffect(() => {
     if (open) {

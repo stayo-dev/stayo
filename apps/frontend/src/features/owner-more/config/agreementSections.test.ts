@@ -30,13 +30,6 @@ describe('agreementRows', () => {
     expect(keys).not.toContain('version-history');
   });
 
-  it('opens the editor, not the read-only list', () => {
-    // Every operation the editor needs already existed on the backend and none
-    // was wired: an owner could read the agreement and change nothing in it.
-    expect(agreementRows(input()).find((r) => r.key === 'template')?.route.split('?')[0])
-      .toBe('/owner/more/configuration/agreements/edit');
-  });
-
   it('folds the version into the document row rather than giving it its own', () => {
     expect(agreementRows(input()).find((r) => r.key === 'template')?.detail).toBe('1 document · v3');
   });
