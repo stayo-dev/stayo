@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  normaliseMaintenanceType,
   toInviteDefaultsForm,
   buildInviteDefaultsPatch,
   describeInviteExpiry,
@@ -19,6 +20,7 @@ const policy = (over: any = {}) => ({
 const form = (over: Partial<ReturnType<typeof toInviteDefaultsForm>> = {}) => ({
   useRoomRent: true,
   maintenanceAmount: 500,
+  maintenanceType: 'MONTHLY' as const,
   agreementMonths: 11,
   inviteExpiryHours: 48,
   ...over,
@@ -29,6 +31,7 @@ describe('toInviteDefaultsForm', () => {
     expect(toInviteDefaultsForm(policy())).toEqual({
       useRoomRent: true,
       maintenanceAmount: 500,
+      maintenanceType: 'MONTHLY',
       agreementMonths: 11,
       inviteExpiryHours: 48,
     });
@@ -86,6 +89,38 @@ describe('buildInviteDefaultsPatch', () => {
     expect(patch.billing.deposit).toBeUndefined();
     expect(patch.billing.rent_cycle).toBeUndefined();
     expect(patch.billing.late_fee).toBeUndefined();
+  });
+});
+
+describe('maintenance type', () => {
+  it('keeps a one-time charge out of the monthly total', () => {
+    // The whole reason the two types exist: the same ₹2,000 is ₹24,000 a year
+    // or ₹2,000 once, and adding a joining fee into a monthly figure is the
+    // confusion this is meant to remove.
+    expect(previewMonthlyCharge(form({ maintenanceType: 'ONE_TIME' }), 9500))
+      .toBe('₹9,500 a month, plus ₹500 once at move-in');
+  });
+
+  it('adds a monthly charge into the monthly total', () => {
+    expect(previewMonthlyCharge(form(), 9500)).toContain('= ₹10,000 a month');
+  });
+
+  it('treats a stored amount with no type as monthly', () => {
+    // The backend column defaults to MONTHLY, and that is what every tenancy
+    // created before the type was selectable actually got.
+    expect(normaliseMaintenanceType(undefined, 500)).toBe('MONTHLY');
+    expect(normaliseMaintenanceType('', 500)).toBe('MONTHLY');
+  });
+
+  it('is NONE whenever the amount is cleared, whatever type was stored', () => {
+    // A cleared charge must not leave a type behind that still describes one.
+    expect(normaliseMaintenanceType('ONE_TIME', 0)).toBe('NONE');
+    expect(normaliseMaintenanceType('MONTHLY', 0)).toBe('NONE');
+  });
+
+  it('saves the chosen type', () => {
+    expect(buildInviteDefaultsPatch(form({ maintenanceType: 'ONE_TIME' })).billing.maintenance)
+      .toEqual({ type: 'ONE_TIME', amount: 500 });
   });
 });
 

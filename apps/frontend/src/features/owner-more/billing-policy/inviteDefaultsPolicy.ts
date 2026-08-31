@@ -26,11 +26,29 @@
  * typed wrong.
  */
 
+/**
+ * Mirrored from the backend's own validator (`invitation-service.ts` accepts
+ * exactly MONTHLY, ONE_TIME or NONE), which stays the authority.
+ *
+ * MONTHLY is billed every month alongside rent; ONE_TIME is a single charge
+ * at move-in — a fit-out or joining fee, not a recurring one. The difference
+ * is the whole reason an owner needs to pick: the same ₹2,000 means ₹24,000 a
+ * year or ₹2,000 once.
+ */
+export type MaintenanceType = 'MONTHLY' | 'ONE_TIME' | 'NONE';
+
+export const MAINTENANCE_CHOICES: { value: MaintenanceType; label: string; hint: string }[] = [
+  { value: 'MONTHLY', label: 'Every month', hint: 'Billed with rent, every month' },
+  { value: 'ONE_TIME', label: 'Once at move-in', hint: 'A single joining charge' },
+  { value: 'NONE', label: 'Not charged', hint: 'No maintenance at all' },
+];
+
 export interface InviteDefaultsForm {
   /** Fill a new tenant's rent from the room they are given. */
   useRoomRent: boolean;
-  /** Rupees per month, added to every new tenant. 0 means none. */
+  /** Rupees. What it means depends on `maintenanceType`. 0 means none. */
   maintenanceAmount: number;
+  maintenanceType: MaintenanceType;
   /** Months. 0 means the hostel has not set one. */
   agreementMonths: number;
   /** Hours an invite link stays valid. */
@@ -44,6 +62,18 @@ function count(value: unknown, fallback = 0): number {
   return Number.isFinite(n) && n >= 0 ? Math.round(n) : fallback;
 }
 
+/**
+ * An amount with no type stored is monthly — the backend column's own default,
+ * and what every tenancy created before the type was selectable actually got.
+ * An amount of zero is NONE whatever the stored type says, so a cleared charge
+ * cannot leave a type behind that still describes one.
+ */
+export function normaliseMaintenanceType(type: unknown, amount: number): MaintenanceType {
+  if (amount <= 0) return 'NONE';
+  const value = String(type ?? '').toUpperCase();
+  return value === 'ONE_TIME' ? 'ONE_TIME' : 'MONTHLY';
+}
+
 export function toInviteDefaultsForm(policy: any): InviteDefaultsForm {
   const invite = policy?.billing?.invite_defaults ?? {};
   return {
@@ -51,6 +81,7 @@ export function toInviteDefaultsForm(policy: any): InviteDefaultsForm {
     // who has never opened this screen already has.
     useRoomRent: invite.auto_fill_room_rent !== false,
     maintenanceAmount: count(policy?.billing?.maintenance?.amount),
+    maintenanceType: normaliseMaintenanceType(policy?.billing?.maintenance?.type, count(policy?.billing?.maintenance?.amount)),
     agreementMonths: count(invite.agreement_duration_months),
     inviteExpiryHours: count(policy?.tenant_rules?.invite_expiry_hours, DEFAULT_INVITE_EXPIRY_HOURS)
       || DEFAULT_INVITE_EXPIRY_HOURS,
@@ -70,7 +101,7 @@ export function buildInviteDefaultsPatch(values: InviteDefaultsForm) {
         agreement_duration_months: values.agreementMonths,
       },
       maintenance: {
-        type: values.maintenanceAmount > 0 ? 'MONTHLY' : 'NONE',
+        type: normaliseMaintenanceType(values.maintenanceType, values.maintenanceAmount),
         amount: values.maintenanceAmount,
       },
     },
@@ -97,13 +128,24 @@ export function describeInviteExpiry(hours: number): string {
  */
 export function previewMonthlyCharge(values: InviteDefaultsForm, roomRent: number | null | undefined): string {
   const rent = count(roomRent);
+  const type = normaliseMaintenanceType(values.maintenanceType, values.maintenanceAmount);
+  const maintenance = values.maintenanceAmount.toLocaleString('en-IN');
+
   if (!values.useRoomRent || rent <= 0) {
-    return values.maintenanceAmount > 0
-      ? `Rent typed per tenant, plus ₹${values.maintenanceAmount.toLocaleString('en-IN')} maintenance`
-      : 'Rent typed per tenant';
+    if (type === 'NONE') return 'Rent typed per tenant';
+    return type === 'ONE_TIME'
+      ? `Rent typed per tenant, plus ₹${maintenance} once at move-in`
+      : `Rent typed per tenant, plus ₹${maintenance} maintenance a month`;
   }
+
+  if (type === 'NONE') return `₹${rent.toLocaleString('en-IN')} a month`;
+
+  // A one-time charge must never be added into a monthly total: that is the
+  // exact confusion having two types is meant to remove.
+  if (type === 'ONE_TIME') {
+    return `₹${rent.toLocaleString('en-IN')} a month, plus ₹${maintenance} once at move-in`;
+  }
+
   const total = rent + values.maintenanceAmount;
-  return values.maintenanceAmount > 0
-    ? `₹${rent.toLocaleString('en-IN')} + ₹${values.maintenanceAmount.toLocaleString('en-IN')} maintenance = ₹${total.toLocaleString('en-IN')} a month`
-    : `₹${rent.toLocaleString('en-IN')} a month`;
+  return `₹${rent.toLocaleString('en-IN')} + ₹${maintenance} maintenance = ₹${total.toLocaleString('en-IN')} a month`;
 }

@@ -5,6 +5,7 @@ import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { identityService } from '@features/auth/api';
 import { tenantService } from '@features/tenants/api';
 import { queryKeys } from '@lib/queryKeys';
+import { playSuccessFeedback } from '@shared/ui-patterns/successFeedback';
 
 interface ChangeRentModalProps {
   open: boolean;
@@ -42,6 +43,10 @@ const labelStyle = 'text-[11px] font-bold uppercase tracking-wide text-muted-for
 export function ChangeRentModal({ open, onClose, tenantId, hostelId, tenantName, currentRent }: ChangeRentModalProps) {
   const queryClient = useQueryClient();
   const [step, setStep] = useState<'form' | 'password' | 'success'>('form');
+
+  useEffect(() => {
+    if (step === 'success') playSuccessFeedback();
+  }, [step]);
   const [newRent, setNewRent] = useState('');
   const [effectiveMonth, setEffectiveMonth] = useState(nextMonthValue());
   const [reason, setReason] = useState('');

@@ -12,6 +12,7 @@ import {
   buildInviteDefaultsPatch,
   describeInviteExpiry,
   previewMonthlyCharge,
+  MAINTENANCE_CHOICES,
   type InviteDefaultsForm,
 } from '../billing-policy/inviteDefaultsPolicy';
 
@@ -105,11 +106,48 @@ export function MoreConfigInviteDefaultsPage() {
                 />
               </label>
 
+              <div className="border-b border-border/60 px-4 py-3.5">
+                <span className="block text-[13.5px] text-foreground/80">Maintenance</span>
+                <span className="mt-0.5 block text-[11px] leading-[1.45] text-muted-foreground">
+                  A monthly charge and a one-time joining fee are different things — the same
+                  ₹2,000 is ₹24,000 a year or ₹2,000 once.
+                </span>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {MAINTENANCE_CHOICES.map((choice) => {
+                    const active = values.maintenanceType === choice.value;
+                    return (
+                      <button
+                        key={choice.value}
+                        type="button"
+                        onClick={() => {
+                          set('maintenanceType', choice.value);
+                          // Choosing "not charged" must clear the amount, or a
+                          // figure stays on screen describing a charge nobody
+                          // pays.
+                          if (choice.value === 'NONE') set('maintenanceAmount', 0);
+                        }}
+                        aria-pressed={active}
+                        className={`rounded-full px-3.5 py-2 text-[12.5px] font-semibold ${
+                          active
+                            ? 'bg-primary text-primary-foreground'
+                            : 'border border-border bg-card text-foreground/80'
+                        }`}
+                      >
+                        {choice.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {values.maintenanceType !== 'NONE' && (
               <div className={rowBase}>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[13.5px] text-foreground/80">Maintenance</span>
+                  <span className="block text-[13.5px] text-foreground/80">Amount</span>
                   <span className="mt-0.5 block text-[11px] leading-[1.45] text-muted-foreground">
-                    Charged every month on top of rent. 0 if you do not charge it.
+                    {values.maintenanceType === 'ONE_TIME'
+                      ? 'Charged once, when the tenant moves in'
+                      : 'Charged every month, alongside rent'}
                   </span>
                 </span>
                 <span className="flex flex-none items-center gap-1 rounded-xl border border-border px-3 py-2">
@@ -124,6 +162,7 @@ export function MoreConfigInviteDefaultsPage() {
                   />
                 </span>
               </div>
+              )}
             </div>
 
             {/* The point of the screen: this line is already right before the

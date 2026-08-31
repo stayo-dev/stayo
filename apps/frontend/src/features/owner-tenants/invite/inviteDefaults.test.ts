@@ -34,6 +34,19 @@ describe('inviteDefaults', () => {
     expect(inviteDefaults(policy(), { baseRent: 9500 }).maintenance).toBe('500');
   });
 
+  it('carries the maintenance type, which the invite never used to send', () => {
+    // Without it every invited tenant got the column default of MONTHLY, so a
+    // one-time joining fee silently became a recurring charge.
+    expect(inviteDefaults(policy({ maintenance: { type: 'ONE_TIME', amount: 2000 } })).maintenanceType)
+      .toBe('ONE_TIME');
+    expect(inviteDefaults(policy()).maintenanceType).toBe('MONTHLY');
+  });
+
+  it('reports no maintenance type when nothing is charged', () => {
+    expect(inviteDefaults(policy({ maintenance: { type: 'ONE_TIME', amount: 0 } })).maintenanceType)
+      .toBe('NONE');
+  });
+
   it('omits maintenance when the hostel does not charge it', () => {
     expect(inviteDefaults(policy({ maintenance: { amount: 0 } })).maintenance).toBe('');
     expect(inviteDefaults(policy({ maintenance: null })).maintenance).toBe('');
@@ -49,6 +62,7 @@ describe('inviteDefaults', () => {
       monthlyRent: '',
       deposit: '',
       maintenance: '',
+      maintenanceType: 'NONE',
       agreementMonths: '',
       billing: 'Monthly',
     });
@@ -97,7 +111,7 @@ describe('billingLabelFor', () => {
 });
 
 describe('applyInviteDefaults', () => {
-  const defaults = { monthlyRent: '9500', deposit: '19000', maintenance: '500', agreementMonths: '6', billing: 'Monthly' };
+  const defaults = { monthlyRent: '9500', deposit: '19000', maintenance: '500', maintenanceType: 'MONTHLY', agreementMonths: '6', billing: 'Monthly' };
 
   it('fills fields the owner has left blank', () => {
     expect(applyInviteDefaults({ monthlyRent: '', deposit: '' }, defaults)).toMatchObject({

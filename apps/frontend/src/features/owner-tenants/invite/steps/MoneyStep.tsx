@@ -59,6 +59,35 @@ export function MoneyStep({ data, setD }: MoneyStepProps) {
           <span className="text-sm font-semibold text-muted-foreground">₹</span>
           <input value={data.maintenance} onChange={(e) => setD({ maintenance: e.target.value.replace(/[^0-9]/g, '') })} inputMode="numeric" placeholder="0" className={moneyInputStyle} />
         </div>
+        {/*
+          The amount alone was never enough: the invite did not send a type, so
+          every tenant got the column default of MONTHLY and a one-time joining
+          fee silently became a recurring charge. Pre-filled from the hostel's
+          own maintenance policy, changeable for this tenant.
+        */}
+        {Number(data.maintenance) > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {[
+              { value: 'MONTHLY', label: 'Every month' },
+              { value: 'ONE_TIME', label: 'Once at move-in' },
+            ].map((choice) => {
+              const active = (data.maintenanceType || 'MONTHLY') === choice.value;
+              return (
+                <button
+                  key={choice.value}
+                  type="button"
+                  onClick={() => setD({ maintenanceType: choice.value })}
+                  aria-pressed={active}
+                  className={`rounded-full px-3 py-1.5 text-[12px] font-semibold ${
+                    active ? 'bg-primary text-primary-foreground' : 'border border-border bg-card text-foreground/75'
+                  }`}
+                >
+                  {choice.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </label>
 
       <div className="flex flex-col gap-2">
