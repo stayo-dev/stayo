@@ -8,18 +8,26 @@ describe('hostelSettingsGroups', () => {
     // `billing`, `reminders` and `automation` each feed more than one group.
     // An owner does not know which object holds which field.
     expect(groups().map((g) => g.label)).toEqual([
-      'This hostel',
+      'Hostel',
       'Rent & money',
       'Tenants',
-      'Messages & automation',
+      'Messages',
     ]);
   });
 
-  it('scopes hostel-owned screens to the hostel being viewed', () => {
-    expect(groups().flatMap((g) => g.rows).find((r) => r.key === 'rooms')?.route)
-      .toBe('/owner/hostels/h-1/rooms');
-    expect(hostelSettingsGroups('h-2').flatMap((g) => g.rows).find((r) => r.key === 'rooms')?.route)
-      .toBe('/owner/hostels/h-2/rooms');
+  it('does not list rooms, which are the tab next door', () => {
+    // Rooms sit immediately left of Settings in the same tab row. A row here
+    // was a second door to a screen already one tap away.
+    expect(groups().flatMap((g) => g.rows).some((r) => r.key === 'rooms')).toBe(false);
+  });
+
+  it('labels a row with a keyword and explains it underneath', () => {
+    // A column of full sentences has to be read line by line; one-word labels
+    // are found at a glance, and the sentence still does its work in the hint.
+    for (const row of groups().flatMap((g) => g.rows)) {
+      expect(row.label.split(' ').length).toBeLessThanOrEqual(2);
+      expect(row.hint.length).toBeGreaterThan(row.label.length);
+    }
   });
 
   it('gives every row a label and a hint, so no row is a bare noun', () => {

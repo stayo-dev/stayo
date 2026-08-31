@@ -13,8 +13,17 @@
  *
  * Grouping follows the owner's question, not the storage shape. `billing`,
  * `reminders` and `automation` each supply rows to more than one group,
- * because "what happens when rent is late" spans all three and an owner does
- * not know or care which object holds which field.
+ * because late rent spans all three and an owner does not know or care which
+ * object holds which field.
+ *
+ * **A row is a keyword, not a sentence.** These read as questions at first —
+ * "What happens when rent is late" — which is how an owner thinks but not how
+ * anyone scans a list: a column of full sentences has to be read line by line,
+ * while one-word labels are found at a glance. The sentence moves into the
+ * hint underneath, where it does the same explaining without slowing the scan.
+ *
+ * **No rooms row.** Rooms are the tab immediately to the left of Settings, so
+ * listing them here was a second door to a screen already one tap away.
  */
 
 export interface HostelSettingRow {
@@ -48,34 +57,83 @@ export function hostelSettingsGroups(hostelId: string): HostelSettingGroup[] {
 
   return [
     {
-      label: 'This hostel',
+      label: 'Hostel',
       rows: [
-        { key: 'identity', label: 'Name, address & logo', hint: 'What tenants and receipts show', route: forHostel('/owner/more/hostel', hostelId) },
-        { key: 'rooms', label: 'Rooms & beds', hint: 'Floors, rooms and how many share each', route: `${hostel}/rooms` },
+        {
+          key: 'identity',
+          label: 'Identity',
+          hint: 'Name, address, phone and logo — what tenants and receipts show',
+          route: forHostel('/owner/more/hostel', hostelId),
+        },
       ],
     },
     {
       label: 'Rent & money',
       rows: [
-        { key: 'rent-due', label: 'When rent is due', hint: 'Due day, grace period and when rent is raised', route: forHostel(`${CONFIG}/finance/rent-schedule`, hostelId) },
-        { key: 'late', label: 'What happens when rent is late', hint: 'Late fees and when they start', route: forHostel(`${CONFIG}/finance/late-fees`, hostelId) },
-        { key: 'how-they-pay', label: 'How tenants pay', hint: 'Full or part payments, and your UPI', route: forHostel(`${CONFIG}/finance/part-payments`, hostelId) },
-        { key: 'deposit', label: 'Deposits', hint: 'What you collect at move-in, and whether it comes back', route: forHostel(`${CONFIG}/finance/deposit`, hostelId) },
-        { key: 'receipts', label: 'Receipts', hint: 'Numbering, GST and what the footer says', route: forHostel(`${CONFIG}/finance/receipt-footer`, hostelId) },
+        {
+          key: 'rent-due',
+          label: 'Rent',
+          hint: "When it's raised, the day it's due and the grace period",
+          route: forHostel(`${CONFIG}/finance/rent-schedule`, hostelId),
+        },
+        {
+          key: 'late',
+          label: 'Late fees',
+          hint: "What's charged when rent is overdue, and when it starts",
+          route: forHostel(`${CONFIG}/finance/late-fees`, hostelId),
+        },
+        {
+          key: 'how-they-pay',
+          label: 'Payments',
+          hint: 'Whether a due can be paid in parts, and your UPI',
+          route: forHostel(`${CONFIG}/finance/part-payments`, hostelId),
+        },
+        {
+          key: 'deposit',
+          label: 'Deposits',
+          hint: 'What you collect at move-in, and whether it comes back',
+          route: forHostel(`${CONFIG}/finance/deposit`, hostelId),
+        },
+        {
+          key: 'receipts',
+          label: 'Receipts',
+          hint: 'Numbering, GST and the footer',
+          route: forHostel(`${CONFIG}/finance/receipt-footer`, hostelId),
+        },
       ],
     },
     {
       label: 'Tenants',
       rows: [
-        { key: 'invite-defaults', label: 'Defaults for new tenants', hint: 'Filled in for you every time you invite someone', route: forHostel(`${CONFIG}/hostel/tenant-defaults`, hostelId) },
-        { key: 'agreements', label: 'Agreements', hint: 'Your rental agreement, its clauses and versions', route: forHostel(`${CONFIG}/agreements`, hostelId) },
+        {
+          key: 'invite-defaults',
+          label: 'Invite defaults',
+          hint: 'Filled in for you every time you invite someone',
+          route: forHostel(`${CONFIG}/hostel/tenant-defaults`, hostelId),
+        },
+        {
+          key: 'agreements',
+          label: 'Agreements',
+          hint: 'Your rental agreement, its clauses and versions',
+          route: forHostel(`${CONFIG}/agreements`, hostelId),
+        },
       ],
     },
     {
-      label: 'Messages & automation',
+      label: 'Messages',
       rows: [
-        { key: 'reminders', label: 'Reminders', hint: 'What we send tenants, and on which days', route: forHostel(`${CONFIG}/notifications`, hostelId) },
-        { key: 'automation', label: 'What Stayo does on its own', hint: 'Raising rent, applying late fees, sending receipts', route: forHostel(`${CONFIG}/automation`, hostelId) },
+        {
+          key: 'reminders',
+          label: 'Reminders',
+          hint: 'What tenants are sent, and on which days',
+          route: forHostel(`${CONFIG}/notifications`, hostelId),
+        },
+        {
+          key: 'automation',
+          label: 'Automation',
+          hint: 'What Stayo does without asking you',
+          route: forHostel(`${CONFIG}/automation`, hostelId),
+        },
       ],
     },
   ];

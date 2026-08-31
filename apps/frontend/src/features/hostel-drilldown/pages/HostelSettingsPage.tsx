@@ -11,9 +11,13 @@ import { hostelSettingsGroups } from '../settings/hostelSettingsSections';
  * setting lived in — and let a multi-hostel owner edit one hostel's rules
  * while the header named another.
  *
- * Rows state what they govern rather than naming a policy object: "What
- * happens when rent is late", not "Late fees". The hint under each is what
- * lets an owner pick the right row without opening two of them.
+ * A row is a keyword with the explanation underneath — "Late fees", then what
+ * it governs. Full-sentence labels read the way an owner thinks but not the
+ * way anyone scans a list: a column of sentences is read line by line, while
+ * one-word labels are found at a glance.
+ *
+ * Rooms are deliberately absent. They are the tab immediately to the left of
+ * this one, so a row here was a second door to a screen already one tap away.
  *
  * Archiving deliberately stays on Overview rather than moving here. That copy
  * of `ArchiveHostelModal` is handed the hostel's active tenant count and
@@ -42,8 +46,10 @@ export function HostelSettingsPage() {
                 className={`flex w-full items-center gap-3 px-4 py-3 text-left ${i === 0 ? '' : 'border-t border-border/60'}`}
               >
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[14px] font-semibold text-foreground">{row.label}</span>
-                  <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">{row.hint}</span>
+                  <span className="block text-[14.5px] font-bold text-foreground">{row.label}</span>
+                  {/* Wraps rather than truncating: the hint is now the longer
+                      line, and half a sentence explains nothing. */}
+                  <span className="mt-0.5 block text-[11.5px] leading-[1.45] text-muted-foreground">{row.hint}</span>
                 </span>
                 <ChevronRight className="h-4 w-4 flex-none text-muted-foreground/50" strokeWidth={2} />
               </button>
