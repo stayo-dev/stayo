@@ -37,13 +37,18 @@ const find = (s: NotificationSource, key: string) =>
 describe('NOTIFICATION_CHANNELS', () => {
   it('offers only channels that can actually deliver', () => {
     // WhatsApp (Meta Cloud API) and email (Resend) both send. In-app writes a
-    // notifications row. SMS has no provider and push has no infrastructure at
-    // all — no FCM, no APNs, no web-push anywhere in the codebase.
-    expect(NOTIFICATION_CHANNELS.map((c) => c.key)).toEqual(['whatsapp', 'email', 'in_app']);
+    // notifications row. Push now has real infrastructure too — a VAPID
+    // web-push sender and a push-only service worker — so it joined the list;
+    // before that it was deliberately absent, and this test said so.
+    expect(NOTIFICATION_CHANNELS.map((c) => c.key)).toEqual(['whatsapp', 'email', 'in_app', 'push']);
   });
 
-  it('never offers push, which has no infrastructure', () => {
-    expect(NOTIFICATION_CHANNELS.some((c) => /push/i.test(c.key) || /push/i.test(c.label))).toBe(false);
+  it('still never offers SMS, which has no provider', () => {
+    // The guard this file has always carried: a channel is offered only when
+    // something can actually deliver it. `reminder_sms` exists in stored prefs
+    // and there is no SMS provider anywhere, so offering it would be a switch
+    // that silently drops every message.
+    expect(NOTIFICATION_CHANNELS.some((c) => /sms/i.test(c.key) || /sms/i.test(c.label))).toBe(false);
   });
 });
 

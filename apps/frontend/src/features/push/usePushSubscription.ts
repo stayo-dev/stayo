@@ -22,13 +22,20 @@ function writeDismissedAt(key: string | null) {
   }
 }
 
-/** The VAPID public key must reach `subscribe()` as bytes, not base64url text. */
-function urlBase64ToUint8Array(base64: string): Uint8Array {
+/**
+ * The VAPID public key must reach `subscribe()` as bytes, not base64url text.
+ * Returns the underlying `ArrayBuffer`: TypeScript 5.7 made `Uint8Array`
+ * generic over its buffer, and the generic form no longer satisfies
+ * `BufferSource`.
+ */
+function urlBase64ToBuffer(base64: string): ArrayBuffer {
   const padded = (base64 + '='.repeat((4 - (base64.length % 4)) % 4))
     .replace(/-/g, '+')
     .replace(/_/g, '/');
   const raw = window.atob(padded);
-  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
+  return bytes.buffer;
 }
 
 /**
@@ -74,7 +81,7 @@ export function usePushSubscription(profileId: string | null) {
 
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapid),
+        applicationServerKey: urlBase64ToBuffer(vapid),
       });
       const json = subscription.toJSON() as {
         endpoint?: string;

@@ -1,5 +1,6 @@
 import { useConfiguredHostelId } from '../hooks/useConfiguredHostel';
 import { stayoToast } from '@shared/ui-patterns/Toast';
+import { permissionState } from '@features/push/pushSupport';
 import { useNavigate } from 'react-router-dom';
 import { useHostelPolicy, useUpdateHostelPolicy } from '@features/settings/settingsHooks';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
@@ -108,20 +109,40 @@ export function MoreConfigNotificationsPage() {
           <div className="flex flex-wrap gap-2">
             {NOTIFICATION_CHANNELS.map((channel) => {
               const on = Boolean((channels as Record<string, boolean>)[channel.key]);
+              /*
+               * Push is the one channel the browser can veto. A toggle that
+               * silently does nothing is worse than no toggle, so a blocked or
+               * unsupported browser gets a disabled chip that says which it is
+               * — "blocked" is fixable in site settings, "unavailable" is an
+               * iPhone in a browser tab and is not.
+               */
+              const pushState = channel.key === 'push' ? permissionState() : null;
+              const vetoed = pushState === 'denied' || pushState === 'unsupported';
               return (
                 <button
                   key={channel.key}
                   type="button"
-                  aria-pressed={on}
-                  disabled={updateMutation.isPending}
-                  onClick={() => toggleChannel(channel.key, !on)}
+                  aria-pressed={on && !vetoed}
+                  disabled={updateMutation.isPending || vetoed}
+                  title={
+                    pushState === 'denied'
+                      ? 'Blocked in your browser — turn it on in site settings'
+                      : pushState === 'unsupported'
+                        ? 'Not available in this browser'
+                        : undefined
+                  }
+                  onClick={() => !vetoed && toggleChannel(channel.key, !on)}
                   className={`rounded-full border px-3.5 py-2 text-[12.5px] font-semibold transition-colors disabled:opacity-50 ${
                     on
                       ? 'border-primary/40 bg-primary/10 text-primary'
                       : 'border-border bg-card text-muted-foreground'
                   }`}
                 >
-                  {channel.label}
+                  {pushState === 'denied'
+                    ? 'Push · blocked'
+                    : pushState === 'unsupported'
+                      ? 'Push · unavailable'
+                      : channel.label}
                 </button>
               );
             })}

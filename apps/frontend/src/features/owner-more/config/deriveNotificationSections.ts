@@ -26,7 +26,7 @@ export interface NotificationSource {
   } | null;
 }
 
-export type NotificationChannelKey = 'whatsapp' | 'email' | 'in_app';
+export type NotificationChannelKey = 'whatsapp' | 'email' | 'in_app' | 'push';
 
 /**
  * Only channels that can actually deliver. WhatsApp goes through the Meta Cloud
@@ -40,6 +40,7 @@ export const NOTIFICATION_CHANNELS: Array<{ key: NotificationChannelKey; label: 
   { key: 'whatsapp', label: 'WhatsApp' },
   { key: 'email', label: 'Email' },
   { key: 'in_app', label: 'In-app' },
+  { key: 'push', label: 'Push' },
 ];
 
 const list = (days: number[]): string =>
