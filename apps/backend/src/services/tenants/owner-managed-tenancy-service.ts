@@ -246,13 +246,13 @@ export async function finalizeOwnerManagedTenancy(
  * The invitation is marked SUPERSEDED rather than cancelled precisely so a
  * late-clicking tenant can still act on that link. `resolveByToken`
  * (`tenant-invitation-lifecycle-service.ts`) distinguishes the two SUPERSEDED
- * cases: for one whose tenancy is still `OWNER_MANAGED` (this path), it
- * throws the distinct `CLAIM_REQUIRED` code instead of `INVALID`, so the
- * caller can route the tenant into the claim flow (`tenancy-claim-service.ts`)
- * against this exact tenancy rather than erroring. A SUPERSEDED invitation
- * whose tenancy was edited/replaced by other means (room change, resend)
- * still throws `INVALID` as before — SUPERSEDED alone was never the signal;
- * `OWNER_MANAGED` is.
+ * cases: for one whose tenancy is still `OWNER_MANAGED` and not yet onboarded
+ * (this path), it falls through into the same activation context a
+ * never-superseded invitation gets, so the tenant lands on the normal
+ * activation screen against this exact tenancy rather than erroring. A
+ * SUPERSEDED invitation whose tenancy was edited/replaced by other means
+ * (room change, resend) still throws `INVALID` as before — SUPERSEDED alone
+ * was never the signal; `OWNER_MANAGED` is.
  *
  * Name resolution deliberately does NOT use `resolveTenantName` — that helper
  * falls back to the literal string "Tenant" when no name is known anywhere,

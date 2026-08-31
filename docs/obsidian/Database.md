@@ -338,7 +338,7 @@ Indexes: `tenant_id`, `hostel_id`. Both FKs `ON DELETE CASCADE ON UPDATE CASCADE
 
 Enforced by `scripts/activation-invariants-check.ts`, made conditional on `access_mode` in the same change — see [[Business-Rules]].
 
-**Not yet built (Phase 2, per the design spec's §7):** the OTP-gated claim flow that flips `OWNER_MANAGED → SELF_SERVE` and links a real `profile_id`. See [[TODO]].
+**`OWNER_MANAGED → SELF_SERVE`, and linking a real `profile_id`, now happens via the same activation wizard every tenant uses** (`completeActivation`, 2026-09-01) — a dedicated OTP-gated claim flow (Phase 2, shipped 2026-08-27) briefly existed for this and was removed. See [[Decisions#ADR-163|ADR-163]], [[Business-Rules]].
 
 ### Identity is centralised on `profiles`, keyed by canonical phone (2026-08-28, migration `20260827180000_one_live_tenancy_per_phone`, **NOT applied to any database**)
 
