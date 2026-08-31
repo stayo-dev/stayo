@@ -24,6 +24,11 @@
  *
  * **No rooms row.** Rooms are the tab immediately to the left of Settings, so
  * listing them here was a second door to a screen already one tap away.
+ *
+ * **No receipts row.** Receipt numbering and the footer are set once when a
+ * hostel is set up and effectively never revisited, so a permanent row spent
+ * a slot on a decision nobody comes back to. The screen still exists, is
+ * still routed, and is still found by searching "receipt".
  */
 
 export interface HostelSettingRow {
@@ -93,12 +98,6 @@ export function hostelSettingsGroups(hostelId: string): HostelSettingGroup[] {
           label: 'Deposits',
           hint: 'What you collect at move-in, and whether it comes back',
           route: forHostel(`${CONFIG}/finance/deposit`, hostelId),
-        },
-        {
-          key: 'receipts',
-          label: 'Receipts',
-          hint: 'Numbering, GST and the footer',
-          route: forHostel(`${CONFIG}/finance/receipt-footer`, hostelId),
         },
       ],
     },

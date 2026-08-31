@@ -15,6 +15,10 @@ describe('hostelSettingsGroups', () => {
     ]);
   });
 
+  it('does not list receipts, which are set once and never revisited', () => {
+    expect(groups().flatMap((g) => g.rows).some((r) => r.key === 'receipts')).toBe(false);
+  });
+
   it('does not list rooms, which are the tab next door', () => {
     // Rooms sit immediately left of Settings in the same tab row. A row here
     // was a second door to a screen already one tap away.
@@ -50,7 +54,6 @@ describe('hostelSettingsGroups', () => {
       '/owner/more/configuration/finance/late-fees',
       '/owner/more/configuration/finance/part-payments',
       '/owner/more/configuration/finance/deposit',
-      '/owner/more/configuration/finance/receipt-footer',
       '/owner/more/configuration/hostel/tenant-defaults',
       '/owner/more/configuration/agreements',
       '/owner/more/configuration/notifications',
