@@ -77,6 +77,9 @@ const MoreConfigurationHubPage = lazy(() =>
 const MoreConfigAgreementsPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigAgreementsPage').then((m) => ({ default: m.MoreConfigAgreementsPage })),
 );
+const MoreConfigAgreementEditorPage = lazy(() =>
+  import('@features/owner-more/pages/MoreConfigAgreementEditorPage').then((m) => ({ default: m.MoreConfigAgreementEditorPage })),
+);
 const MoreConfigAgreementTemplatesPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigAgreementTemplatesPage').then((m) => ({ default: m.MoreConfigAgreementTemplatesPage })),
 );
@@ -224,6 +227,7 @@ export function OwnerRoutes() {
         <Route path="/owner/more/configuration/hostel/agreement-duration" element={<KeepQueryRedirect to="/owner/more/configuration/hostel/tenant-defaults" />} />
         <Route path="/owner/more/configuration/agreements" element={<MoreConfigAgreementsPage />} />
         <Route path="/owner/more/configuration/agreements/templates" element={<MoreConfigAgreementTemplatesPage />} />
+        <Route path="/owner/more/configuration/agreements/edit" element={<MoreConfigAgreementEditorPage />} />
         <Route path="/owner/more/configuration/agreements/template" element={<MoreConfigAgreementTemplatePage />} />
         <Route path="/owner/more/configuration/agreements/requirement" element={<MoreConfigAgreementRequirementPage />} />
         <Route path="/owner/more/configuration/agreements/clauses" element={<MoreConfigAgreementClausesPage />} />

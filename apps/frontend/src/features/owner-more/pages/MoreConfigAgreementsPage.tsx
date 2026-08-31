@@ -2,10 +2,11 @@ import { useConfiguredHostelId } from '../hooks/useConfiguredHostel';
 import { useNavigate } from 'react-router-dom';
 import { FileText } from 'lucide-react';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
-import { ConfigSectionGroup } from '../components/ConfigSectionGroup';
 import { useAgreementTemplate, useAgreementTemplates } from '../hooks/useAgreements';
 import { useHostelPolicy } from '@features/settings/settingsHooks';
-import { deriveAgreementSections } from '../config/agreements';
+import { countClauses } from '../config/agreements';
+import { agreementRows } from '../config/agreementSections';
+import { ChevronRight } from 'lucide-react';
 
 /**
  * Configuration › Agreements — the owner's leasing documents.
@@ -24,18 +25,19 @@ import { deriveAgreementSections } from '../config/agreements';
 export function MoreConfigAgreementsPage() {
   const navigate = useNavigate();
   const { templates, isLoading: listLoading } = useAgreementTemplates();
-  const { rules, signatureConfigured, isLoading: contentLoading } = useAgreementTemplate();
+  const { active, rules, signatureConfigured, isLoading: contentLoading } = useAgreementTemplate();
   
   const policyQuery = useHostelPolicy(useConfiguredHostelId());
 
-  const draftCount = templates.filter((t) => t.status !== 'PUBLISHED').length;
-  const sections = deriveAgreementSections({
+  const hostelId = useConfiguredHostelId();
+  const rows = agreementRows({
+    hostelId,
     templateCount: templates.length,
-    draftCount,
-    rules,
-    signatureConfigured,
+    version: Number(active?.version_number ?? 0) || 0,
+    clauseCount: countClauses(rules).clauses,
     // Absent means required, matching the backend default.
     agreementRequired: policyQuery.data?.policy?.tenant_rules?.agreement_required !== false,
+    hasSignature: signatureConfigured,
   });
 
   return (
@@ -62,9 +64,30 @@ export function MoreConfigAgreementsPage() {
         </div>
       )}
 
-      {sections.map((section) => (
-        <ConfigSectionGroup key={section.label} section={section} onNavigate={navigate} />
-      ))}
+      {/*
+        One flat list. This was four headings over seven rows, three of which
+        opened a screen another row already opened or a route that never
+        existed — see config/agreementSections.ts.
+      */}
+      <div className="overflow-hidden rounded-[20px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]">
+        {rows.map((row, i) => (
+          <button
+            key={row.key}
+            type="button"
+            onClick={() => navigate(row.route)}
+            className={`flex w-full items-center gap-3 px-4 py-3.5 text-left ${i === 0 ? '' : 'border-t border-border/60'}`}
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block text-[14.5px] font-bold text-foreground">{row.label}</span>
+              <span className="mt-0.5 block text-[11.5px] leading-[1.45] text-muted-foreground">{row.hint}</span>
+              {row.detail && (
+                <span className="mt-1 block text-[11.5px] font-semibold text-foreground/70">{row.detail}</span>
+              )}
+            </span>
+            <ChevronRight className="h-4 w-4 flex-none text-muted-foreground/50" strokeWidth={2} />
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
