@@ -2428,6 +2428,24 @@ See [[Business-Rules]], [[APIs]], [[Bugs]].
 - **Note — `navigator.vibrate` carries Chrome's user-activation requirement too**, so the haptic works for the same reason the sound does: all five plays follow a confirm-button tap. The haptic fires first, being synchronous and instant, so it lands with the tap rather than behind the audio element. It is left ungated by `prefers-reduced-motion` on the same reasoning as the sound — that query is about visual animation and vestibular triggers, and this buzz answers a button just pressed.
 - **See:** [[Features]], [[Changelog]], [[Frontend]]
 
+### ADR-160 — Owners choose reminder days; the message follows from the day (2026-08-31)
+
+**Context.** The Notifications screen listed "Rent due" and "Late fee applied" as events, each with a read-only line beneath it — *"Sent 1, 5 and 10 days after the due date"*. An owner could see the schedule and not change it, so the one thing the screen exists to control was the one thing it did not offer. `reminders.schedule.before_due_days` / `after_due_days` had no editor anywhere in the app.
+
+**Decision.**
+
+1. **The owner picks days. They never pick a message type.** What a reminder says follows from where the day sits relative to that tenant's due date: before → *due soon*, on the day → *due today*, after → *overdue*. Those are the three approved WhatsApp templates (`RentReminderKind`, [[Decisions#ADR-050|ADR-050]]'s registry pattern). Offering a type would let an owner select "overdue" for a day before rent is due — a message we cannot send and a promise we cannot keep.
+
+2. **A strip centred on the due day, not a month calendar.** The stored values are *offsets from each tenant's own due date*. A tenant due on the 5th and one due on the 20th share one schedule and are reminded on different calendar days, so a 1–31 grid would be accurate only for whoever happened to match the hostel's default due day. The picker renders exactly what is stored, which also means no lossy conversion on save and no special case for tenants on quarterly or academic-year cycles.
+
+3. **The screen shows what each reminder actually says.** Tapping a selected day reveals the template body with the hostel's own name in it. Owners had never seen what Stayo sends on their behalf — the reason [[Decisions#ADR-050|the generation-2 templates]] were needed at all was that the previous copy signed itself `- HMS` and told guardians to "pay using the app".
+
+**Consequences.** The two event rows are gone, and with them `deriveNotificationSections` — its only remaining exports, the delivery channels and their patch helper, move to `config/notificationChannels.ts`. Days beyond the picker's range are dropped on read rather than being held invisibly and written back as absent.
+
+An advisory line appears once six or more overdue days are selected: a tenant who feels chased mutes the number, and then none of the reminders land. It does not block — it is the owner's hostel.
+
+See [[Features]], [[Changelog]], [[Business-Rules]].
+
 ### ADR-158 — Push is a fourth channel on an existing event stream, not a new notification system (2026-08-30)
 
 - **Status:** Accepted
