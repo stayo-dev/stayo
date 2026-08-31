@@ -327,7 +327,11 @@ function getRequestIpForRateLimit(requestIp?: string | null) {
  *
  * - No profile at that phone: nothing to guard here; the caller creates one.
  * - A profile that isn't role TENANT: a different kind of account (owner,
- *   admin) never gets folded into a tenancy claim -- `NOT_CLAIMABLE`.
+ *   admin) never gets folded into a tenancy claim -- `NOT_CLAIMABLE`. The one
+ *   exception is an OWNER profile that does not own *this* tenancy's hostel
+ *   (`hostelOwnerId`) -- Hostel A's owner may still claim a tenancy at
+ *   Hostel B. An OWNER profile that owns this exact hostel is never let
+ *   through, regardless of `hostelOwnerId`.
  * - A TENANT profile that already has a `password_hash`: a real,
  *   credentialed account. Refuse with `SIGN_IN_REQUIRED` -- the claimant
  *   must sign in on that account first and retry the claim through the
@@ -341,10 +345,15 @@ function getRequestIpForRateLimit(requestIp?: string | null) {
  * `assertAcknowledgementsComplete`.
  */
 export function assertClaimablePhoneMatch(
-  existingByPhone: { role: string; password_hash?: string | null } | null,
+  existingByPhone: { id?: string; role: string; password_hash?: string | null } | null,
+  hostelOwnerId?: string | null,
 ) {
   if (!existingByPhone) return;
-  if (existingByPhone.role !== "TENANT") {
+  // Fails closed when hostelOwnerId is unknown: only an explicitly-different
+  // hostel owner is let through, never an absence of information.
+  const isDifferentHostelOwner =
+    existingByPhone.role === "OWNER" && Boolean(hostelOwnerId) && existingByPhone.id !== hostelOwnerId;
+  if (existingByPhone.role !== "TENANT" && !isDifferentHostelOwner) {
     throw new TenancyClaimError(
       "This phone number is already linked to a different kind of Stayo account",
       "NOT_CLAIMABLE",
@@ -729,7 +738,16 @@ export const tenancyClaimService = {
             throw new TenancyClaimError("Signed-in account not found", "NOT_FOUND", 404);
           }
           if (profile.role !== "TENANT") {
-            throw new TenancyClaimError("Only a tenant account can claim a tenancy", "ROLE_MISMATCH", 400);
+            // An owner of a DIFFERENT hostel may still claim this tenancy
+            // (Hostel A owner -> Hostel B tenant is allowed); an owner of
+            // THIS hostel may never claim it as their own tenancy.
+            const isDifferentHostelOwner = profile.role === "OWNER" && Boolean(tenant.owner_id) && profile.id !== tenant.owner_id;
+            if (!isDifferentHostelOwner) {
+              const message = profile.role === "OWNER"
+                ? "You already own this hostel and cannot become its tenant"
+                : "Only a tenant account can claim a tenancy";
+              throw new TenancyClaimError(message, "ROLE_MISMATCH", 400);
+            }
           }
         } else {
           const existingByPhone = await tx.profile.findUnique({ where: { phone: canonicalPhone } });
@@ -737,7 +755,7 @@ export const tenancyClaimService = {
             // SECURITY: throws NOT_CLAIMABLE or SIGN_IN_REQUIRED — see the
             // guard's own doc comment. A credentialed existing account is
             // never reused here; the claimant must sign in first.
-            assertClaimablePhoneMatch(existingByPhone);
+            assertClaimablePhoneMatch(existingByPhone, tenant.owner_id);
             profile = existingByPhone;
           } else {
             // The tenant may supply their own name/email rather than

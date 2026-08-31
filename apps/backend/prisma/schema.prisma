@@ -1300,6 +1300,15 @@ model visitor_leads {
   hostel_id                 String              @db.Uuid
   owner_id                  String              @db.Uuid
   student_name              String
+  /// At most one row in an "active" status (see `ACTIVE_LEAD_STATUSES` in
+  /// admissions-service.ts) may exist per (hostel_id, student_phone) —
+  /// enforced by the partial unique index
+  /// `visitor_leads_one_active_lead_per_hostel_phone` (migration 079), not
+  /// expressible in Prisma schema syntax (no `extendedIndexes` preview
+  /// feature enabled here). LOST/REJECTED/JOINED rows do not block a fresh
+  /// lead for the same hostel+phone. Null phone is excluded from the
+  /// constraint. See `createLead`/`createDirectLead` for the enforcement +
+  /// P2002 fallback path.
   student_phone             String?
   student_email             String?
   parent_name               String?
