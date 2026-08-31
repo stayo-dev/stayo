@@ -167,6 +167,16 @@ When a tenant enters their guardian's number during activation and verifies it, 
 - **Notes:** Full governance rule, route list, and the reasoning for *not* reusing `ChangeManagementFacade` are in [[Business-Rules]] and [[Decisions]] ADR-069 (+ its same-day amendment) — read those before touching either direction of `change_requests`. Personal Information shows 5 identity rows + a "Government ID" section (Aadhaar routes to the document-upload flow instead of a text field; PAN is a plain text field). Emergency Contact now correctly uses `guardian_name`/`guardian_relation`/`guardian_phone`/`phone_3` instead of the earlier mislabeled `emergency_contact`-as-name bug. Document upload is a real inline `<input type="file">` (upload-icon pill) instead of a navigation away from the themed Profile tab. **Verified live end-to-end both passes**, not just via build: direct fields (name, DOB, gender, blood group, nationality, PAN, guardian details, academic fields) save immediately with no reason prompt; email/phone changes require a reason, show a pending-approval banner, and only take effect after the dev test owner approves via `/owner/profile-requests` (confirmed via UI re-check, not just a DB read, this pass). Two pre-existing bugs unrelated to this feature were found and fixed while verifying — see [[Bugs]].
 - See [[Changelog]].
 
+### Reminder days are the owner's to choose (2026-08-31)
+
+Rent reminders went out on a schedule the owner could read and not change. They now pick the days themselves, on a strip centred on the due day — some before, the due day itself, some after.
+
+They never pick what the reminder *says*: that follows from where the day sits relative to each tenant's due date, and the three messages are the approved WhatsApp templates. Tapping a chosen day shows the message a tenant will actually receive, with the hostel's own name in it.
+
+Deliberately not a month calendar — the days are counted from each tenant's own due date, so one schedule treats every tenant the same whichever day their rent falls on.
+
+See [[Decisions#ADR-159|ADR-159]], [[Changelog]].
+
 ### Sending an enquiry takes one tap (2026-08-30)
 
 The enquiry screen was five headed sections at equal weight — move-in, duration, preferred room, message, phone — with the send button below the fold. Every field except the hostel is optional at the API and all of them were pre-filled, so the screen asked five questions it had already answered.
