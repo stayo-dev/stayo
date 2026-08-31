@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { Outlet, Route } from 'react-router-dom';
+import { Navigate, Outlet, Route, useParams } from 'react-router-dom';
 import { queryClient } from '@lib/queryClient';
 import { AuthProvider } from '@context/AuthContext';
 import { StayoLoadingScreen } from '@shared/ui/brand';
@@ -34,6 +34,20 @@ const ReceiptVerificationPage = lazy(() => import('@/app/pages/public/ReceiptVer
  */
 function PublicRouteFallback() {
   return <StayoLoadingScreen />;
+}
+
+/**
+ * `/owner-invite/:token` was the activation link's path before it was
+ * renamed to `/activation/:token` (2026-08-31). Any invitation approved and
+ * sent over WhatsApp/email before that rename shipped has the old path
+ * baked into already-delivered message text, permanently — nothing
+ * server-side can rewrite a message that already went out. This keeps
+ * those still-unexpired, unactivated links working indefinitely instead of
+ * 404ing on a token that is otherwise perfectly valid.
+ */
+function OwnerInviteRedirect() {
+  const { token } = useParams<{ token: string }>();
+  return <Navigate to={token ? `/activation/${token}` : '/activation'} replace />;
 }
 
 function PublicShell() {
@@ -80,6 +94,7 @@ export function PublicRoutes() {
         <Route path="/login" element={<LandingPage />} />
         <Route path="/lead-signup/callback" element={<LeadSignupCallbackPage />} />
         <Route path="/activation/:token" element={<OwnerActivationPage />} />
+        <Route path="/owner-invite/:token" element={<OwnerInviteRedirect />} />
         <Route path="/enquiry/:token" element={<EnquiryStatusPage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/company" element={<CompanyPage />} />
