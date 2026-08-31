@@ -16,8 +16,6 @@ export function MoreConfigBillingPolicyPage() {
       sections={['schedule', 'collection', 'deposit', 'lateFee', 'agreement']}
       title="All billing settings"
       subtitle="How rent is collected, charged and enforced"
-      backTo="/owner/more/configuration/finance"
-      backLabel="Finance"
     />
   );
 }

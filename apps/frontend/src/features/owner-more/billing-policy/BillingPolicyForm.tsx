@@ -140,8 +140,9 @@ export function BillingPolicyForm({
   sections: BillingSectionKey[];
   title: string;
   subtitle: string;
-  backTo: string;
-  backLabel: string;
+  /** Omit to return wherever the owner opened this from. */
+  backTo?: string;
+  backLabel?: string;
 }) {
   const navigate = useNavigate();
   
@@ -201,7 +202,10 @@ export function BillingPolicyForm({
     updateMutation.mutate(buildBillingPatch(values, sections), {
       onSuccess: () => {
         stayoToast.success(`${title} saved`);
-        navigate(backTo);
+        // Back to wherever this was opened from — these screens are reached
+        // from a hostel's Settings tab now, not from one fixed hub.
+        if (backTo) navigate(backTo);
+        else navigate(-1);
       },
       onError: (error: any) =>
         stayoToast.error(error?.response?.data?.error?.message || `Could not save ${title.toLowerCase()}`),

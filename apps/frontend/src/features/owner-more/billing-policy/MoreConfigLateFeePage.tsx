@@ -13,8 +13,6 @@ export function MoreConfigLateFeePage() {
       sections={['lateFee']}
       title="Late fees"
       subtitle="What a tenant is charged for paying late"
-      backTo="/owner/more/configuration/finance"
-      backLabel="Finance"
     />
   );
 }

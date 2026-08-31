@@ -39,7 +39,7 @@ export function MoreConfigReceiptFooterPage() {
       {
         onSuccess: () => {
           stayoToast.success('Receipt footer saved');
-          navigate('/owner/more/configuration/finance');
+          navigate(-1);
         },
         onError: () => stayoToast.error('Could not save receipt footer'),
       },

@@ -7,8 +7,6 @@ export function MoreConfigRentSchedulePage() {
       sections={['schedule']}
       title="Rent schedule"
       subtitle="When rent is raised, due, and counted late"
-      backTo="/owner/more/configuration/finance"
-      backLabel="Finance"
     />
   );
 }

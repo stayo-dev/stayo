@@ -208,8 +208,9 @@ export const HELP_GUIDES: HelpGuide[] = [
     id: 'owner-late-fees',
     audience: ['owner'],
     question: 'How do I change rent dates, late fees or the deposit?',
-    answer: 'All of the money rules live together under Configuration → Finance.',
-    action: { label: 'Open Finance settings', to: '/owner/more/configuration/finance' },
+    answer:
+      "Money rules belong to a hostel, so they live on that hostel: open it from Home and pick Settings. Everything about rent, late fees and deposits is under Rent & money there.",
+    action: { label: 'Open your hostels', to: '/owner/home' },
     keywords: ['late fee', 'rent date', 'due date', 'deposit', 'billing', 'schedule', 'penalty'],
   },
   {

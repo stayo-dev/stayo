@@ -74,12 +74,6 @@ const MoreWorkspaceConfigPage = lazy(() =>
 const MoreConfigurationHubPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigurationHubPage').then((m) => ({ default: m.MoreConfigurationHubPage })),
 );
-const MoreConfigHostelPage = lazy(() =>
-  import('@features/owner-more/pages/MoreConfigHostelPage').then((m) => ({ default: m.MoreConfigHostelPage })),
-);
-const MoreConfigFinancePage = lazy(() =>
-  import('@features/owner-more/pages/MoreConfigFinancePage').then((m) => ({ default: m.MoreConfigFinancePage })),
-);
 const MoreConfigAutomationPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigAutomationPage').then((m) => ({ default: m.MoreConfigAutomationPage })),
 );
@@ -218,10 +212,8 @@ export function OwnerRoutes() {
         <Route path="/owner/more/help" element={<MoreHelpPage />} />
         <Route path="/owner/more/about" element={<MoreAboutPage />} />
 
-        <Route path="/owner/more/configuration/hostel" element={<MoreConfigHostelPage />} />
         <Route path="/owner/more/configuration/hostel/agreement-duration" element={<MoreConfigAgreementDurationPage />} />
         <Route path="/owner/more/configuration/hostel/tenant-defaults" element={<Navigate to="/owner/more/configuration/hostel/agreement-duration" replace />} />
-        <Route path="/owner/more/configuration/finance" element={<MoreConfigFinancePage />} />
         <Route path="/owner/more/configuration/automation" element={<MoreConfigAutomationPage />} />
         <Route path="/owner/more/configuration/agreements" element={<MoreConfigAgreementsPage />} />
         <Route path="/owner/more/configuration/agreements/templates" element={<MoreConfigAgreementTemplatesPage />} />
