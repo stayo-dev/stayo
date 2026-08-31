@@ -113,11 +113,28 @@ export async function POST(req: NextRequest) {
     if (!hostelName?.trim()) return apiError("hostelName is required", "VALIDATION_ERROR", 400);
     if (!phone?.trim()) return apiError("phone is required", "VALIDATION_ERROR", 400);
 
+    const trimmedPhone = phone.trim();
+    // A partial unique index (migration 078) enforces one active lead per
+    // phone at the DB level; this pre-check exists so an admin re-adding a
+    // known number gets a clear message instead of a raw unique-constraint
+    // error out of the catch block below.
+    const existingLead = await prisma.platform_leads.findFirst({
+      where: { phone: trimmedPhone, status: { not: "LOST" } },
+      orderBy: { created_at: "desc" },
+    });
+    if (existingLead) {
+      return apiError(
+        `A lead with this phone number already exists (id ${existingLead.id}, status ${existingLead.status})`,
+        "DUPLICATE_PHONE",
+        409,
+      );
+    }
+
     const lead = await prisma.platform_leads.create({
       data: {
         name: name.trim(),
         hostel_name: hostelName.trim(),
-        phone: phone.trim(),
+        phone: trimmedPhone,
         city: city?.trim() || null,
         bed_count: bedCount ? Number(bedCount) : null,
         notes: notes?.trim() || null,

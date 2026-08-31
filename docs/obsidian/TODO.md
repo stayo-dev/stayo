@@ -18,7 +18,7 @@ The Explore "Already staying at a hostel?" prompt was removed — see [[Changelo
 
 ## An enquiry can now arrive with no move-in date (2026-08-30)
 
-[[Decisions#ADR-156|ADR-156]] made the seeker's move-in date default to "Flexible" and send nothing, rather than defaulting to today. The field was always optional at the API, but in practice every enquiry carried a date, so owner-side surfaces have never had to render its absence.
+[[Decisions#ADR-158|ADR-158]] made the seeker's move-in date default to "Flexible" and send nothing, rather than defaulting to today. The field was always optional at the API, but in practice every enquiry carried a date, so owner-side surfaces have never had to render its absence.
 
 - [ ] **Check every owner-side surface that shows an enquiry's move-in date** renders a missing one as "Flexible" rather than blank, "Invalid date", or today. The owner enquiry list/detail, the lead funnel, and any WhatsApp notification template that interpolates it.
 - [ ] **Decide whether "Flexible" should sort differently** in the owner's enquiry queue — a seeker with no date is not necessarily less urgent than one moving in next month.

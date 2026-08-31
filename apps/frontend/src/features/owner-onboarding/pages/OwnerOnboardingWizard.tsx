@@ -1,23 +1,18 @@
 import type { CSSProperties } from 'react';
-import { useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Save, Check, ArrowLeft, ArrowRight } from 'lucide-react';
-import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { stayoToast } from '@shared/ui-patterns/Toast';
-import { useOwnerOnboardingState, type OwnerOnboardingData } from '../hooks/useOwnerOnboardingState';
-import { useOnboardingSubmission } from '../hooks/useOnboardingSubmission';
+import { useOwnerOnboardingState } from '../hooks/useOwnerOnboardingState';
 import { HostelScene } from '@shared/ui/brand';
 import { onboardingSceneState } from '../components/onboardingScene';
 import { WelcomeStep } from '../components/steps/WelcomeStep';
-import { AccountStep } from '../components/steps/AccountStep';
 import { KycStep } from '../components/steps/KycStep';
 import { SuccessStep } from '../components/steps/SuccessStep';
 
-const MILESTONE_NAMES = ['Owner', 'Verified', 'Ready'];
+const MILESTONE_NAMES = ['Verified', 'Ready'];
 const MILESTONE_MAP: Record<string, number> = {
-  account: 0,
-  kyc: 1,
-  success: 2,
+  kyc: 0,
+  success: 1,
 };
 
 const CONFETTI_COLORS = ['#A45D44', '#D2986C', '#EBD9C4', '#1F8A5B', '#F4C67A'];
@@ -36,37 +31,19 @@ function buildConfetti() {
 }
 
 /**
- * The 12-step onboarding wizard, per Owner Onboarding.dc.html — a single
- * route with internal step state, not one route per step (matches the
- * design's own implementation). Gated by RequireMockOwnerJourney upstream
- * (see MockOwnerJourneyContext for why this replaces the real ProtectedRoute
- * assumption from the Phase-1 scaffold).
+ * The onboarding wizard, per Owner Onboarding.dc.html — a single route with
+ * internal step state, not one route per step (matches the design's own
+ * implementation).
  *
- * Owner-acquisition funnel phase 2: if reached via a lead activation link
- * (OwnerLeadInvitePage), router state carries `{ prefill, token }` — read
- * once at mount to prefill the wizard and thread the token through to the
- * two backend auto-progression choke points (owner-signup, publish). A
- * normal, non-lead-originated visit has no state here and is unaffected.
+ * Account creation no longer happens here (owner-acquisition funnel phase
+ * 3): a lead-approved owner activates their account at `/activation/:token`
+ * (OwnerActivationPage) and lands straight on the dashboard already logged
+ * in. This wizard is what's left — KYC — and is only reachable by an
+ * authenticated owner (gated by `ProtectedRoute` in OwnerJourneyRoutes.tsx).
  */
 export function OwnerOnboardingWizard() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const leadState = location.state as { prefill?: { name?: string; hostel_name?: string; phone?: string; google_email?: string; city?: string }; token?: string } | null;
-  const leadToken = leadState?.token;
-  const initialData = useMemo((): Partial<OwnerOnboardingData> | undefined => {
-    const prefill = leadState?.prefill;
-    if (!prefill) return undefined;
-    return {
-      name: prefill.name || '',
-      mobile: prefill.phone || '',
-      email: prefill.google_email || '',
-      hostelName: prefill.hostel_name || '',
-      city: prefill.city || '',
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const s = useOwnerOnboardingState(initialData);
-  const submission = useOnboardingSubmission(s, leadToken);
+  const s = useOwnerOnboardingState();
 
 
   const isWelcome = s.screenId === 'welcome';
@@ -187,99 +164,49 @@ export function OwnerOnboardingWizard() {
               </div>
             )}
             {s.screenId === 'welcome' && <WelcomeStep />}
-            {s.screenId === 'account' && (
-              <AccountStep
-                data={s.data}
-                setD={s.setD}
-                password={submission.password}
-                setPassword={submission.setPassword}
-                confirmPassword={submission.confirmPassword}
-                setConfirmPassword={submission.setConfirmPassword}
-              />
-            )}
             {s.screenId === 'kyc' && <KycStep kyc={s.kyc} setKyc={s.setKyc} />}
             {s.screenId === 'success' && <SuccessStep onExplore={() => navigate('/owner/home')} />}
           </div>
         </div>
 
         {/* FOOTER NAV */}
-        {!s.otpOpen && (
-          <div className="sticky bottom-0 z-40 border-t border-border/60 bg-background/78 backdrop-blur-md">
-            <div className="mx-auto flex max-w-6xl items-center gap-3.5 px-4 py-3.5 sm:px-7.5">
-              {s.canBack && (
-                <button
-                  type="button"
-                  onClick={s.back}
-                  className="inline-flex items-center gap-1.5 px-2 py-3 font-display text-[15px] font-bold text-foreground/80 transition-colors hover:text-primary"
-                >
-                  <ArrowLeft className="h-4 w-4" strokeWidth={2.4} />
-                  Back
-                </button>
-              )}
-              <div className="flex-1" />
+        <div className="sticky bottom-0 z-40 border-t border-border/60 bg-background/78 backdrop-blur-md">
+          <div className="mx-auto flex max-w-6xl items-center gap-3.5 px-4 py-3.5 sm:px-7.5">
+            {s.canBack && (
               <button
                 type="button"
-                disabled={submission.sendingOtp}
-                onClick={() => {
-                  if (isSuccess) return navigate('/owner/home');
-
-                  // Every step must be complete and correctly formatted before
-                  // the wizard will move on — a half-filled hostel is far more
-                  // expensive to unpick after publish.
-                  const stepError = s.currentStepError();
-                  if (stepError) {
-                    stayoToast.error(stepError);
-                    return;
-                  }
-
-                  if (s.screenId === 'account') return submission.submitAccount();
-                  return s.next();
-                }}
-                className="inline-flex items-center gap-2 rounded-[13px] bg-primary px-7.5 py-3.5 font-display text-base font-bold text-primary-foreground shadow-[0_12px_28px_-12px_rgba(164,93,68,0.65)] transition-transform hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-60"
+                onClick={s.back}
+                className="inline-flex items-center gap-1.5 px-2 py-3 font-display text-[15px] font-bold text-foreground/80 transition-colors hover:text-primary"
               >
-                {s.screenId === 'account' && submission.sendingOtp
-                  ? 'Creating account…'
-                  : s.screenId === 'account' && submission.accountReady
-                  ? 'Continue'
-                  : s.continueLabel}
-                <ArrowRight className="h-4 w-4" strokeWidth={2.4} />
+                <ArrowLeft className="h-4 w-4" strokeWidth={2.4} />
+                Back
               </button>
-            </div>
-          </div>
-        )}
-      </div>
+            )}
+            <div className="flex-1" />
+            <button
+              type="button"
+              onClick={() => {
+                if (isSuccess) return navigate('/owner/home');
 
-      {/* OTP SHEET */}
-      <BottomSheet
-        open={s.otpOpen}
-        onOpenChange={s.setOtpOpen}
-        title="Enter verification code"
-        footer={
-          <button
-            type="button"
-            disabled={submission.verifyingOtp}
-            onClick={submission.submitOtp}
-            className="w-full rounded-[13px] bg-primary py-4 font-display text-base font-bold text-primary-foreground shadow-[0_12px_28px_-12px_rgba(164,93,68,0.65)] transition-transform active:scale-[0.98] disabled:opacity-60"
-          >
-            {submission.verifyingOtp ? 'Verifying…' : 'Verify & Continue'}
-          </button>
-        }
-      >
-        <p className="mb-6 text-center text-sm text-muted-foreground">Sent to {s.data.mobile.trim() || '+91 90000 00000'}</p>
-        <div className="mb-2 flex justify-center">
-          <input
-            value={submission.otpCode}
-            onChange={(e) => submission.setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-            placeholder="6-digit code"
-            inputMode="numeric"
-            autoFocus
-            className="w-40 rounded-xl border-[1.5px] border-border bg-card px-4 py-3 text-center font-display text-xl font-bold tracking-[0.3em] text-primary focus:border-primary focus:outline-none"
-          />
+                // Every step must be complete and correctly formatted before
+                // the wizard will move on — a half-filled hostel is far more
+                // expensive to unpick after publish.
+                const stepError = s.currentStepError();
+                if (stepError) {
+                  stayoToast.error(stepError);
+                  return;
+                }
+
+                return s.next();
+              }}
+              className="inline-flex items-center gap-2 rounded-[13px] bg-primary px-7.5 py-3.5 font-display text-base font-bold text-primary-foreground shadow-[0_12px_28px_-12px_rgba(164,93,68,0.65)] transition-transform hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-60"
+            >
+              {s.continueLabel}
+              <ArrowRight className="h-4 w-4" strokeWidth={2.4} />
+            </button>
+          </div>
         </div>
-        <div className="text-center text-[13px] font-medium text-muted-foreground">
-          Didn&apos;t receive? <span className="font-bold text-primary">Resend in 28s</span>
-        </div>
-      </BottomSheet>
+      </div>
 
       {/* CONFETTI */}
       {isSuccess && (

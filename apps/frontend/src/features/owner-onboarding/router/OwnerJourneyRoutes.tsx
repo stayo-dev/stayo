@@ -4,6 +4,7 @@ import { Toaster } from '@/app/components/ui/sonner';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
 import { AuthProvider } from '@context/AuthContext';
+import { ProtectedRoute } from '@/app/components/ProtectedRoute';
 import { RequireMockOwnerJourney } from './RequireMockOwnerJourney';
 import { StayoLoadingScreen } from '@shared/ui/brand';
 
@@ -26,9 +27,9 @@ function JourneyRouteFallback() {
 function OwnerJourneyBoundary() {
   return (
     <ErrorBoundary context="owner-journey-routes">
-      {/* AuthProvider — the onboarding wizard's account step does a real
-          sign-up + login (useOnboardingSubmission), which needs it. Not
-          mounted this far up the tree otherwise. */}
+      {/* AuthProvider — ProtectedRoute (guarding /onboarding below) reads
+          useAuth(), which needs it. Not mounted this far up the tree
+          otherwise. */}
       <AuthProvider>
         <Toaster position="top-right" expand visibleToasts={4} closeButton richColors />
         <Suspense fallback={<JourneyRouteFallback />}>
@@ -51,13 +52,16 @@ function MarketingThemeBoundary() {
 /**
  * Routes for the owner acquisition/lead-capture funnel (Landing lives at
  * `/`, under PublicRoutes — everything downstream of the Google-mock step
- * lives here) plus the real onboarding wizard. `/onboarding` itself does
- * real sign-up/login mid-wizard (its account step), so it isn't gated on
- * entry, and on success now lands the owner on `/owner/home` — the single
- * canonical owner app (see `platforms/owner/router/OwnerRoutes.tsx`). The
- * two lead-capture pages (`/get-started/submitted`, `/get-started/activate/:token`)
- * remain mock/local-state only, gated by `RequireMockOwnerJourney` — real
- * lead persistence + admin review is a later phase, not part of this app's
+ * lives here) plus the real onboarding wizard. Account creation happens at
+ * `/activation/:token` (OwnerActivationPage, under PublicRoutes — a specific
+ * admin-approved lead invitation is the credential, not being logged in), so
+ * by the time an owner reaches `/onboarding` they're already authenticated
+ * and logged in; `ProtectedRoute` enforces that rather than trusting it —
+ * an unauthenticated visit redirects to `/login` instead of rendering
+ * anything. The two lead-capture pages
+ * (`/get-started/submitted`, `/get-started/activate/:token`) remain
+ * mock/local-state only, gated by `RequireMockOwnerJourney` — real lead
+ * persistence + admin review is a later phase, not part of this app's
  * real-data wiring yet.
  */
 export function OwnerJourneyRoutes() {
@@ -68,9 +72,14 @@ export function OwnerJourneyRoutes() {
           <Route path="/get-started/submitted" element={<LeadSubmittedPage />} />
           <Route path="/get-started/activate/:token" element={<ActivationLinkPage />} />
         </Route>
-        {/* No auth gate here — the wizard's own account step is where real
-            sign-up/login happens; the visitor isn't authenticated yet on entry. */}
-        <Route path="/onboarding" element={<OwnerOnboardingWizard />} />
+        <Route
+          path="/onboarding"
+          element={
+            <ProtectedRoute allowedRoles={['owner']}>
+              <OwnerOnboardingWizard />
+            </ProtectedRoute>
+          }
+        />
       </Route>
     </Route>
   );

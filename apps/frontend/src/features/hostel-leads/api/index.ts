@@ -30,7 +30,7 @@ export const hostelLeadsApi = {
     google_email?: string;
   }) => {
     const response = await api.post('/leads/self-serve', data);
-    return response.data as { success: boolean; id: string; status: string; tracking_token: string };
+    return response.data as { success: boolean; id: string; status: string; tracking_token: string; duplicate: boolean };
   },
   getEnquiryStatus: async (token: string) => {
     const response = await api.get(`/leads/track/${token}`);
@@ -62,5 +62,18 @@ export const hostelLeadsApi = {
   completeInvitation: async (token: string) => {
     const response = await api.post(`/leads/invitation/${token}/complete`);
     return response.data;
+  },
+  /**
+   * Completes activation for a lead-approved owner. `email` is only sent
+   * when the lead has no `google_email` on file — the backend derives
+   * everything else (name, hostel, verified phone) from the lead itself and
+   * rejects the token if it's invalid, expired, cancelled, or already used.
+   */
+  activateInvitation: async (
+    token: string,
+    data: { email?: string; password: string; confirm_password: string },
+  ) => {
+    const response = await api.post('/auth/owner-signup', { lead_token: token, ...data });
+    return response.data as { success: boolean; access_token: string; refresh_token: string };
   },
 };
