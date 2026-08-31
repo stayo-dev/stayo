@@ -11,6 +11,7 @@ import { identityService } from '@features/auth/api';
 import { queryKeys } from '@lib/queryKeys';
 import { SettlementPreview } from '@features/tenants/components/financial/SettlementPreview';
 import { StayoLoader } from '@shared/ui/brand';
+import { playSuccessFeedback } from '@shared/ui-patterns/successFeedback';
 
 export type PaymentContext = {
   tenantId?: string;
@@ -122,6 +123,13 @@ export function RecordPaymentModal({
   initialTenantData,
 }: RecordPaymentModalProps) {
   const [step, setStep] = useState<PaymentFlowStep>('amount');
+
+  // The Stayo confirmation, on arriving at the success screen — money has
+  // moved and the owner is told so. Not on 'receipt', which is the same
+  // payment viewed again.
+  useEffect(() => {
+    if (step === 'success') playSuccessFeedback();
+  }, [step]);
   const [selectedTenant, setSelectedTenant] = useState<any | null>(null);
   const [tenantSearch, setTenantSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');

@@ -77,4 +77,4 @@ for print or large formats; use the PNGs where a raster is required.
 
 ---
 
-*Built by Trishul Solutions · stayo.in*
+*Built by Trishul Solutions · yourstayo.com*
