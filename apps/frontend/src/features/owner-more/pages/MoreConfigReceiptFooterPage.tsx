@@ -48,7 +48,7 @@ export function MoreConfigReceiptFooterPage() {
 
   return (
     <div className={`flex flex-col gap-5 px-4 pt-6 sm:px-6 ${dirty ? 'pb-40' : 'pb-24'}`}>
-      <MoreScreenHeader backTo="/owner/more/configuration/finance" backLabel="Finance" title="Receipt footer" subtitle="Shown at the bottom of every generated receipt" />
+      <MoreScreenHeader title="Receipt footer" subtitle="Shown at the bottom of every generated receipt" />
 
       <div className="flex flex-col gap-2">
         <span className={sectionLabel}>Footer text</span>

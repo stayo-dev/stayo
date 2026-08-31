@@ -92,8 +92,6 @@ export function MoreConfigAgreementRequirementPage() {
   return (
     <div className={`flex flex-col gap-5 px-4 pt-6 sm:px-6 ${dirty ? 'pb-40' : 'pb-24'}`}>
       <MoreScreenHeader
-        backTo="/owner/more/configuration/agreements"
-        backLabel="Agreements"
         title="Tenant agreement"
         subtitle="Whether tenants must sign before moving in"
       />

@@ -48,8 +48,6 @@ export function MoreConfigAutomationPage() {
   return (
     <div className="flex flex-col gap-5 px-4 pb-8 pt-6 sm:px-6">
       <MoreScreenHeader
-        backTo="/owner/more"
-        backLabel="Configuration"
         title="Automation"
         subtitle="Work that runs without you"
       />

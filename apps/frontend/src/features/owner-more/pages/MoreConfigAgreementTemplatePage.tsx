@@ -20,8 +20,6 @@ export function MoreConfigAgreementTemplatePage() {
   return (
     <div className="flex flex-col gap-5 px-4 pb-8 pt-6 sm:px-6">
       <MoreScreenHeader
-        backTo="/owner/more/configuration/agreements/templates"
-        backLabel="Templates"
         title={active?.title ?? 'Agreement template'}
         subtitle={
           isLoading

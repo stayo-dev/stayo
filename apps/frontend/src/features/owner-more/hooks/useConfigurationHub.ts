@@ -115,7 +115,7 @@ export function useConfigurationHub() {
   // `modules`, `doneCount`, `percentComplete` and `totalCount` are gone. They
   // fed the hub's progress ring and module cards, and were one of the two
   // independently computed completeness scores the configuration audit found
-  // (the other lived in `useWorkspaceConfig`, which pieces B and C retire).
+  // (the other lived in `useWorkspaceConfig`, since deleted with its screen).
   // `attention` is derived from real gaps and does not depend on any of them.
   return {
     attention,

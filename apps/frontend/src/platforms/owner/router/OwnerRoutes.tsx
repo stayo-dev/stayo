@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { Navigate, Route } from 'react-router-dom';
+import { Navigate, Route, useLocation } from 'react-router-dom';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
 import { StayoLoadingScreen } from '@shared/ui/brand';
 
@@ -68,9 +68,6 @@ const MoreNoticesPage = lazy(() => import('@features/owner-more/pages/MoreNotice
 const MoreServiceRequestsPage = lazy(() => import('@features/owner-more/pages/MoreServiceRequestsPage').then((m) => ({ default: m.MoreServiceRequestsPage })));
 const MoreHelpPage = lazy(() => import('@features/owner-more/pages/MoreHelpPage').then((m) => ({ default: m.MoreHelpPage })));
 const MoreAboutPage = lazy(() => import('@features/owner-more/pages/MoreAboutPage').then((m) => ({ default: m.MoreAboutPage })));
-const MoreWorkspaceConfigPage = lazy(() =>
-  import('@features/owner-more/pages/MoreWorkspaceConfigPage').then((m) => ({ default: m.MoreWorkspaceConfigPage })),
-);
 const MoreConfigurationHubPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigurationHubPage').then((m) => ({ default: m.MoreConfigurationHubPage })),
 );
@@ -168,6 +165,18 @@ export function OwnerBoundary() {
  * rendered as full-screen takeovers with their own back button, not
  * bottom-nav tabs.
  */
+/**
+ * A redirect that keeps the query string.
+ *
+ * `<Navigate to="...">` discards it, and `?hostelId=` is how a configuration
+ * screen knows which hostel it is editing — losing it sends the owner to a
+ * screen quietly editing their primary hostel instead of the one they opened.
+ */
+function KeepQueryRedirect({ to }: { to: string }) {
+  const { search } = useLocation();
+  return <Navigate to={`${to}${search}`} replace />;
+}
+
 export function OwnerRoutes() {
   return (
     <Route element={<OwnerBoundary />}>
@@ -196,7 +205,6 @@ export function OwnerRoutes() {
         <Route path="/owner/alerts" element={<AlertsPage />} />
 
         <Route path="/owner/more" element={<MoreConfigurationHubPage />} />
-        <Route path="/owner/more/workspace-configuration" element={<MoreWorkspaceConfigPage />} />
         {/* Billing behaviour has exactly one home (ADR-043). These three
             routes each used to own a slice of it and could overwrite each
             other; they now redirect to the canonical screen so existing links,
@@ -213,7 +221,10 @@ export function OwnerRoutes() {
         <Route path="/owner/more/about" element={<MoreAboutPage />} />
 
         <Route path="/owner/more/configuration/hostel/agreement-duration" element={<MoreConfigAgreementDurationPage />} />
-        <Route path="/owner/more/configuration/hostel/tenant-defaults" element={<Navigate to="/owner/more/configuration/hostel/agreement-duration" replace />} />
+        {/* Carries the query through: `?hostelId=` is how the destination
+            knows which hostel it is editing, and a bare Navigate dropped it,
+            silently falling back to the owner's primary hostel. */}
+        <Route path="/owner/more/configuration/hostel/tenant-defaults" element={<KeepQueryRedirect to="/owner/more/configuration/hostel/agreement-duration" />} />
         <Route path="/owner/more/configuration/automation" element={<MoreConfigAutomationPage />} />
         <Route path="/owner/more/configuration/agreements" element={<MoreConfigAgreementsPage />} />
         <Route path="/owner/more/configuration/agreements/templates" element={<MoreConfigAgreementTemplatesPage />} />

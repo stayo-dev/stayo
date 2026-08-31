@@ -19,7 +19,7 @@ export function MoreConfigPaymentGatewayPage() {
 
   return (
     <div className="flex flex-col gap-5 px-4 pb-8 pt-6 sm:px-6">
-      <MoreScreenHeader backTo="/owner/more/configuration/finance" backLabel="Finance" title="Payment gateway" subtitle="How tenants pay you" />
+      <MoreScreenHeader title="Payment gateway" subtitle="How tenants pay you" />
 
       <div className={`${card} px-[22px] py-[26px] text-center`}>
         <div className="mx-auto mb-3.5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
