@@ -94,7 +94,16 @@ export function MoreConfigAgreementEditorPage() {
   });
 
   const publish = useMutation({
-    mutationFn: () => configApi.publishAgreementTemplate(hostelId!),
+    /**
+     * Publishes exactly what is on screen.
+     *
+     * The route resolves `rules_content || DEFAULT_AGREEMENT_TEMPLATE` and
+     * deletes the draft in the same transaction, so publishing without the
+     * content would throw the owner's work away and publish Stayo's stock
+     * template over it. Sending it also means publishing does not depend on
+     * the autosave having landed first.
+     */
+    mutationFn: (content: RulesContent) => configApi.publishAgreementTemplate(hostelId!, content),
     onSuccess: () => {
       stayoToast.success('Published — new tenants sign this version');
       queryClient.invalidateQueries({ queryKey: ['owner', 'agreement-template', hostelId] });
@@ -116,7 +125,18 @@ export function MoreConfigAgreementEditorPage() {
   };
 
   const unknown = useMemo(() => unknownVariables(draft), [draft]);
-  const dirty = hasDraftChanges(draft, rules);
+  /** Local edits the autosave has not written yet. */
+  const unsaved = hasDraftChanges(draft, rules);
+  /**
+   * Whether there is anything to publish — measured against the *published*
+   * version, not the saved draft.
+   *
+   * `useAgreementTemplate` returns the draft's content as `rules` once a draft
+   * exists, so comparing against it said "nothing to publish" the moment the
+   * autosave landed: an owner could edit, watch it save, and find Publish
+   * disabled forever.
+   */
+  const canPublish = hasDraft || hasDraftChanges(draft, active?.rules_content ?? null);
 
   if (isLoading || !draft) {
     return (
@@ -144,7 +164,9 @@ export function MoreConfigAgreementEditorPage() {
         <span className="text-[11.5px] font-medium text-muted-foreground">
           {saveDraft.isPending
             ? 'Saving…'
-            : savedAt
+            : unsaved
+              ? 'Unsaved changes'
+              : savedAt
               ? 'Draft saved'
               : hasDraft
                 ? 'Unpublished draft'
@@ -414,11 +436,11 @@ export function MoreConfigAgreementEditorPage() {
       <div className="fixed inset-x-0 bottom-[68px] border-t border-border bg-card px-4 py-3 sm:px-6">
         <button
           type="button"
-          disabled={publish.isPending || saveDraft.isPending || !dirty}
-          onClick={() => publish.mutate()}
+          disabled={publish.isPending || !canPublish}
+          onClick={() => draft && publish.mutate(draft)}
           className="w-full rounded-[13px] bg-primary py-3 text-[14px] font-bold text-primary-foreground disabled:opacity-50"
         >
-          {publish.isPending ? 'Publishing…' : dirty ? 'Publish changes' : 'Nothing to publish'}
+          {publish.isPending ? 'Publishing…' : canPublish ? 'Publish changes' : 'Nothing to publish'}
         </button>
         <p className="mt-1.5 text-center text-[10.5px] text-muted-foreground">
           Tenants keep signing the published version until you publish.
