@@ -60,6 +60,9 @@ const MorePasswordPage = lazy(() =>
 const MorePayoutAccountPage = lazy(() =>
   import('@features/owner-more/pages/MorePayoutAccountPage').then((m) => ({ default: m.MorePayoutAccountPage })),
 );
+const MoreConfigInviteDefaultsPage = lazy(() =>
+  import('@features/owner-more/pages/MoreConfigInviteDefaultsPage').then((m) => ({ default: m.MoreConfigInviteDefaultsPage })),
+);
 const MoreProfilePage = lazy(() => import('@features/owner-more/pages/MoreProfilePage').then((m) => ({ default: m.MoreProfilePage })));
 const MoreHostelIdentityPage = lazy(() =>
   import('@features/owner-more/pages/MoreHostelIdentityPage').then((m) => ({ default: m.MoreHostelIdentityPage })),
@@ -111,9 +114,6 @@ const MoreConfigDepositPage = lazy(() =>
 );
 const MoreConfigLateFeePage = lazy(() =>
   import('@features/owner-more/billing-policy/MoreConfigLateFeePage').then((m) => ({ default: m.MoreConfigLateFeePage })),
-);
-const MoreConfigAgreementDurationPage = lazy(() =>
-  import('@features/owner-more/billing-policy/MoreConfigAgreementDurationPage').then((m) => ({ default: m.MoreConfigAgreementDurationPage })),
 );
 const MoreConfigBillingPolicyPage = lazy(() =>
   import('@features/owner-more/billing-policy/MoreConfigBillingPolicyPage').then((m) => ({
@@ -217,11 +217,11 @@ export function OwnerRoutes() {
         <Route path="/owner/more/help" element={<MoreHelpPage />} />
         <Route path="/owner/more/about" element={<MoreAboutPage />} />
 
-        <Route path="/owner/more/configuration/hostel/agreement-duration" element={<MoreConfigAgreementDurationPage />} />
-        {/* Carries the query through: `?hostelId=` is how the destination
-            knows which hostel it is editing, and a bare Navigate dropped it,
-            silently falling back to the owner's primary hostel. */}
-        <Route path="/owner/more/configuration/hostel/tenant-defaults" element={<KeepQueryRedirect to="/owner/more/configuration/hostel/agreement-duration" />} />
+        <Route path="/owner/more/configuration/hostel/tenant-defaults" element={<MoreConfigInviteDefaultsPage />} />
+        {/* The old single-value screen. Kept routed because search and older
+            links point at it; it now redirects to the screen that holds all
+            of the invite defaults, carrying `?hostelId=` through. */}
+        <Route path="/owner/more/configuration/hostel/agreement-duration" element={<KeepQueryRedirect to="/owner/more/configuration/hostel/tenant-defaults" />} />
         <Route path="/owner/more/configuration/agreements" element={<MoreConfigAgreementsPage />} />
         <Route path="/owner/more/configuration/agreements/templates" element={<MoreConfigAgreementTemplatesPage />} />
         <Route path="/owner/more/configuration/agreements/template" element={<MoreConfigAgreementTemplatePage />} />
