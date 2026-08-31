@@ -4,6 +4,10 @@ tags: [todo, backlog]
 
 # TODO / Backlog
 
+## An owner-turned-tenant-of-another-hostel cannot yet reach that tenant portal (2026-09-01, [[Decisions#ADR-162|ADR-162]])
+
+- [ ] `profile.role` is a single global field (`OWNER | TENANT | ADMIN`) that `getSession()`/`resolveSupabaseSession()` derive the entire authenticated session's role from. ADR-162 fixed `tenancy-claim-service.ts`/`owner-managed-tenancy-service.ts` to stop refusing an owner of Hostel A from becoming a tenant of Hostel B — but doing so does not change that profile's `role` column, so the resulting account still authenticates as `OWNER` and cannot pass `resolveTenantScope` (which requires `session.role === "TENANT"`) to actually use the Hostel B tenant portal. Needs a real decision: a per-hostel role model, a session "acting as" mechanism, or something else — not a code patch to guess at.
+
 ## Owner tenant detail — inconsistencies seen alongside the move-out fix (2026-08-28)
 
 - [ ] **A `CANCELLED` tenancy rendered a `Docs Pending` status badge.** The badge is computed from document state and ignores the tenancy status, so a closed tenancy advertises outstanding paperwork. Decide which wins and make the badge say it.

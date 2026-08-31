@@ -278,6 +278,8 @@ CREATE UNIQUE INDEX tenants_one_live_tenancy_per_profile
 
 One **live** tenancy per person; every past stay survives as its own row with its own payments, obligations, agreements and allocations. Because activation is what sets `profile_id`, this index also prevents two owners driving the same person to activation.
 
+**Does not by itself protect against two concurrent brand-new invitations for the same phone at two different hostels**: `createInvitation` inserts a `tenants` row with `profile_id: null` (it isn't bound until claim/activation), so this partial index — which only fires `WHERE profile_id IS NOT NULL` — cannot see it. That gap is closed application-side by a transaction-scoped `pg_advisory_xact_lock` keyed on the phone, added 2026-09-01 — see [[Decisions#ADR-162|ADR-162]].
+
 `profile.tenants` is therefore a **list** in Prisma. Never take `[0]`. Read it through `lib/tenancy/active-tenancy.ts`:
 
 | Helper | Use for |
@@ -491,7 +493,7 @@ The existing `docs/` reference pages are **out of date** relative to the live sc
 
 `pain_point TEXT NULL` and `current_tooling TEXT NULL` were added by migration `20260807000000_platform_leads_qualification` for a longer qualification conversation that was then cut back to three questions before shipping. **Nothing currently writes them** — they are live, nullable and unpopulated, kept rather than dropped from a production table so a future qualification pass needs no new migration. This is the same state `city` and `bed_count` were already in. Deliberately free-form TEXT rather than enums: the option lists are marketing copy and get reworded, so these are not safe to aggregate without normalising first. See [[Features]] and [[APIs]].
 
-### `platform_leads` — one active lead per phone (2026-08-31, migration 078, [[Decisions#ADR-157|ADR-157]])
+### `platform_leads` — one active lead per phone (2026-08-31, migration 078, [[Decisions#ADR-161|ADR-161]])
 
 A partial unique index, `platform_leads_one_active_lead_per_phone`, enforces `ON platform_leads (phone) WHERE status <> 'LOST' AND phone <> ''`. Not expressible as a declarative Prisma constraint (no `extendedIndexes` preview feature enabled in this schema) — same situation as `tenants_one_live_tenancy_per_profile` (`migrations/062_tenancy_per_row.sql`), documented only as a `///` doc-comment on the `phone` field rather than a schema attribute. Two carve-outs, both deliberate:
 
@@ -499,6 +501,10 @@ A partial unique index, `platform_leads_one_active_lead_per_phone`, enforces `ON
 - **Empty phone is excluded** because `platform-listing-leads.ts`'s `buildPlatformLeadFromEnquiry` (Discover's "demand evidence" sales leads, one raised per newly-enquired *listed* hostel) deliberately writes `phone: ""` and dedupes by `hostel_name` instead — a bare phone-only index would have let only the very first such row across the whole table succeed, silently breaking that unrelated feature for every hostel after the first.
 
 Enforced at the DB level specifically so a concurrent double-submit (two requests for the same phone racing each other) cannot slip two active rows past an application-level check alone — `POST /api/leads/self-serve` and `POST /api/platform-admin/leads` both still do their own `findFirst` pre-check first as the fast/friendly path, and both catch a `P2002` from losing the race. See [[Business-Rules]], [[APIs]], [[Features]].
+
+### `visitor_leads` — one active lead per (hostel, phone) (2026-09-01, migration 079, [[Decisions#ADR-162|ADR-162]])
+
+A partial unique index, `visitor_leads_one_active_lead_per_hostel_phone`, enforces `ON visitor_leads (hostel_id, student_phone) WHERE student_phone IS NOT NULL AND status IN (<the same status list as ACTIVE_LEAD_STATUSES in admissions-service.ts>)`. Same shape and same reason as `platform_leads_one_active_lead_per_phone` above (not expressible as a declarative Prisma constraint here — a `///` doc-comment on `visitor_leads.student_phone` instead), but keyed on `(hostel_id, student_phone)` rather than `phone` alone: a `visitor_leads` row belongs to one hostel, and the same phone can legitimately be an open lead at two *different* hostels simultaneously. `LOST`/`REJECTED`/`JOINED` are excluded from the constraint, unchanged from the existing `ACTIVE_LEAD_STATUSES` semantics — a `JOINED` lead (already converted to a tenant) is guarded separately, by `hasLiveTenancyAtHostel` querying `tenants` directly at lead-creation time, not by this index. `createDirectLead`/`createLead` (`admissions-service.ts`) catch a `P2002` from losing a concurrent create race and merge into the winning row, mirroring `POST /api/leads/self-serve`'s established fallback. **Not applied to any database as of this writing** — like every migration in this repo, it is a SQL file to run manually (`migrations/README.md`); the application-level `findFirst`-then-create pre-check works regardless, but the race-safety half is inactive until the index is applied. See [[Business-Rules]], [[Bugs]], [[Decisions#ADR-162|ADR-162]].
 
 ### `owner_documents.review_note` (2026-08-07)
 

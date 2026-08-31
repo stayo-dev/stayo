@@ -138,10 +138,18 @@ export async function finalizeOwnerManagedTenancy(
   if (!profileId) {
     const existingByPhone = await tx.profile.findUnique({ where: { phone } });
     if (existingByPhone) {
-      if (existingByPhone.role !== "TENANT") {
-        throw new Error(
-          "ROLE_MISMATCH: This phone number belongs to a different kind of Stayo account"
-        );
+      // An OWNER may become a tenant of a hostel they don't own (Hostel A
+      // owner → Hostel B tenant is allowed); they may never become a tenant
+      // of the hostel they DO own. `ownerId` here is always this tenancy's
+      // hostel's actual owner (callers already verified that), so comparing
+      // the matched profile's id against it is hostel-scoped, not a blanket
+      // "owners can never be tenants" rule.
+      const isDifferentHostelOwner = existingByPhone.role === "OWNER" && existingByPhone.id !== ownerId;
+      if (existingByPhone.role !== "TENANT" && !isDifferentHostelOwner) {
+        const message = existingByPhone.role === "OWNER"
+          ? "ROLE_MISMATCH: You already own this hostel and cannot become its tenant"
+          : "ROLE_MISMATCH: This phone number belongs to a different kind of Stayo account";
+        throw new Error(message);
       }
       // Reuse, never duplicate. Credentials, email and role are left exactly
       // as they are — this must not touch an account the person may already

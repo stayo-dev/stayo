@@ -276,6 +276,44 @@ describe("assertClaimablePhoneMatch — SECURITY: a claim never overwrites an ex
       expect(error.code).toBe("NOT_CLAIMABLE");
     }
   });
+
+  describe("hostel-scoped owner exception — an owner may claim a tenancy at a DIFFERENT hostel", () => {
+    it("still refuses NOT_CLAIMABLE when the matched OWNER profile owns THIS hostel", () => {
+      try {
+        assertClaimablePhoneMatch({ id: "owner-1", role: "OWNER", password_hash: null }, "owner-1");
+        throw new Error("expected assertClaimablePhoneMatch to throw");
+      } catch (error: any) {
+        expect(error).toBeInstanceOf(TenancyClaimError);
+        expect(error.code).toBe("NOT_CLAIMABLE");
+      }
+    });
+
+    it("lets an OWNER profile through the role check when they own a DIFFERENT hostel", () => {
+      // No password_hash on the matched profile — nothing left to guard, so
+      // this must not throw at all now.
+      expect(() =>
+        assertClaimablePhoneMatch({ id: "owner-1", role: "OWNER", password_hash: null }, "owner-2"),
+      ).not.toThrow();
+    });
+
+    it("still requires sign-in when the different-hostel OWNER profile already has a password", () => {
+      try {
+        assertClaimablePhoneMatch({ id: "owner-1", role: "OWNER", password_hash: "$2b$10$somehash" }, "owner-2");
+        throw new Error("expected assertClaimablePhoneMatch to throw");
+      } catch (error: any) {
+        expect(error.code).toBe("SIGN_IN_REQUIRED");
+      }
+    });
+
+    it("without a hostelOwnerId (unknown), still fails closed — backward compatible with every existing call above", () => {
+      try {
+        assertClaimablePhoneMatch({ id: "owner-1", role: "OWNER", password_hash: null });
+        throw new Error("expected assertClaimablePhoneMatch to throw");
+      } catch (error: any) {
+        expect(error.code).toBe("NOT_CLAIMABLE");
+      }
+    });
+  });
 });
 
 describe("toClaimSummary — SECURITY: no financial field beyond monthly_rent", () => {
