@@ -111,8 +111,6 @@ export default defineConfig({
       'tests/tenant-transfer-authorization.test.ts',
       'tests/tenant-score-model.test.ts',
       'tests/tenant-identity.test.ts',
-      'tests/claim-eligibility.test.ts',
-      'tests/tenancy-claim-service.test.ts',
       // The resident/guardian command center. Its formatters, vocabulary and
       // reminder policy take plain arguments and touch nothing external —
       // which is the design, not a coincidence: decision logic lives in pure
@@ -139,9 +137,7 @@ export default defineConfig({
       // to `./*` (see `paths`), but Vitest's plain string alias has no such
       // fallback chain — `@/utils/default-rules` would otherwise resolve to
       // a nonexistent root-level `utils/`, since the real file lives under
-      // `src/utils/`. `tenancy-claim-service.ts` imports it that way (via
-      // `@/utils/default-rules`), so this was a real gap, just never
-      // previously exercised by a pure test.
+      // `src/utils/`.
       '@/utils': path.resolve(__dirname, './src/utils'),
       '@': path.resolve(__dirname, './'),
     },

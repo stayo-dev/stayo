@@ -165,10 +165,12 @@ describe('Tenant Onboarding Integration Flow', () => {
 
     // The tenant is already ACTIVE + OWNER_MANAGED (see createInvitation) —
     // resend still updates and redispatches, but the new version is created
-    // SUPERSEDED too (not PENDING), so a later click on its link routes
-    // through the claim flow (CLAIM_REQUIRED) instead of normal activation,
-    // which would silently no-op against a tenant who's already ACTIVE. See
-    // tenant-invitation-lifecycle-service.ts's resendInvitation.
+    // SUPERSEDED too (not PENDING), so resolveByToken's SUPERSEDED+
+    // OWNER_MANAGED fall-through is what lets a later click on its link still
+    // resolve into normal activation, instead of resolveByToken's plain
+    // SUPERSEDED->INVALID path or silently no-opping against a tenant who's
+    // already ACTIVE. See tenant-invitation-lifecycle-service.ts's
+    // resendInvitation.
     const dbInvite = await prisma.tenant_invitations.findFirst({
       where: { tenant_id: initial.tenant_id, parent_invitation_id: initial.invitation_id },
     });
@@ -569,20 +571,20 @@ describe('Tenant Onboarding Integration Flow', () => {
       expect(newInvite!.token).not.toBe(oldToken);
       expect(newInvite!.parent_invitation_id).toBe(initial.invitation_id);
 
-      // Both the original link and the resent link route through the claim
-      // flow now: the tenant became this owner's ACTIVE tenant the moment
-      // they were invited (see createInvitation), so neither token can go
-      // through normal self-activation, which would silently no-op against
-      // an already-ACTIVE tenant (see completeActivation's idempotency
-      // guard). CLAIM_REQUIRED is the live path into tenancy-claim-service.ts.
-      await expect(
-        tenantInvitationLifecycleService.resolveByToken(oldToken)
-      ).rejects.toThrow(/CLAIM_REQUIRED/);
+      // Both the original link and the resent link still resolve into normal
+      // activation: the tenant became this owner's ACTIVE/OWNER_MANAGED
+      // tenant the moment they were invited (see createInvitation), and
+      // resolveByToken's SUPERSEDED+OWNER_MANAGED fall-through lets either
+      // still-unexpired token reach the same activation context a
+      // never-superseded invitation would, since the tenant has not yet
+      // onboarded themselves (isAwaitingTenantOnboarding).
+      const oldResolved = await tenantInvitationLifecycleService.resolveByToken(oldToken);
+      expect(oldResolved.source).toBe('tenant_invitations');
+      expect(oldResolved.tenant.id).toBe(initial.tenant_id);
 
-      const resolvedError = await tenantInvitationLifecycleService
-        .resolveByToken(newInvite!.token)
-        .catch((err: any) => err);
-      expect(String(resolvedError?.message ?? resolvedError)).toMatch(/CLAIM_REQUIRED/);
+      const newResolved = await tenantInvitationLifecycleService.resolveByToken(newInvite!.token);
+      expect(newResolved.source).toBe('tenant_invitations');
+      expect(newResolved.tenant.id).toBe(initial.tenant_id);
 
       // Verify financial regeneration (old deposit of 20000 deleted, new deposit of 24000 created)
       const updatedObligations = await prisma.rent_obligations.findMany({
@@ -590,6 +592,69 @@ describe('Tenant Onboarding Integration Flow', () => {
       });
       expect(updatedObligations.length).toBe(1);
       expect(Number(updatedObligations[0].amount)).toBe(24000);
+    });
+
+    it('should let an owner-managed tenant complete activation through their original link, without an active reservation', async () => {
+      // Every invitation now makes the tenant ACTIVE/OWNER_MANAGED immediately
+      // (see createInvitation -> finalizeOwnerManagedTenancy), which already
+      // converts the reservation into a real allocation and releases it
+      // (release_reason "ADOPTED"). completeActivation used to hard-require
+      // an *active* reservation to exist, which this tenant no longer has —
+      // this test proves the fallback to the tenant's existing allocation
+      // works, and that access_mode is correctly flipped back to SELF_SERVE
+      // once they genuinely walk through activation themselves.
+      sendInvitationSpy.mockResolvedValueOnce({
+        providerMessageId: 'wamid.owner_managed_activation_test',
+        attempts: 1,
+      });
+
+      const invited: any = await tenantInvitationLifecycleService.createInvitation({
+        name: 'Owner Managed Activation Tenant',
+        phone: '9876543299',
+        room_id: room.id,
+        monthly_rent: 9000,
+      }, owner.id);
+
+      expect(invited.action).toBe('INVITED');
+
+      const preTenant = await prisma.tenants.findUnique({ where: { id: invited.tenant_id } });
+      expect(preTenant?.status).toBe('ACTIVE');
+      expect(preTenant?.access_mode).toBe('OWNER_MANAGED');
+
+      const preInvite = await prisma.tenant_invitations.findUnique({ where: { id: invited.invitation_id } });
+      expect(preInvite?.status).toBe('SUPERSEDED');
+
+      // No active reservation left — finalizeOwnerManagedTenancy already
+      // released it.
+      const activeReservation = await prisma.tenant_invitation_reservations.findFirst({
+        where: { invitation_id: invited.invitation_id, status: 'ACTIVE' },
+      });
+      expect(activeReservation).toBeNull();
+
+      const resolved: any = await tenantInvitationLifecycleService.resolveByToken(preInvite!.token);
+      expect(resolved.source).toBe('tenant_invitations');
+
+      await expect(
+        tenantInvitationLifecycleService.completeActivation(
+          resolved.invitation,
+          resolved.tenant,
+          resolved.profile,
+          'MONTHLY',
+          'SomePassword123!'
+        )
+      ).resolves.not.toThrow();
+
+      const postTenant = await prisma.tenants.findUnique({ where: { id: invited.tenant_id } });
+      expect(postTenant?.status).toBe('ACTIVE');
+      expect(postTenant?.access_mode).toBe('SELF_SERVE');
+
+      const postInvite = await prisma.tenant_invitations.findUnique({ where: { id: invited.invitation_id } });
+      expect(postInvite?.status).toBe('ACTIVATED');
+
+      const allocations = await prisma.roomAllocation.findMany({
+        where: { tenant_id: invited.tenant_id, is_active: true, end_date: null },
+      });
+      expect(allocations.length).toBe(1);
     });
 
     it('should lock invitation editing and resending once a payment has been recorded', async () => {
