@@ -33,6 +33,7 @@ export function MoreConfigNotificationsPage() {
 
   const reminders = policyQuery.data?.policy?.reminders ?? null;
   const channels = reminders?.channels ?? {};
+  const remindersOn = (policyQuery.data?.policy as any)?.automation?.auto_send_reminders !== false;
   const sections = deriveNotificationSections({ reminders });
 
   const activeChannels = NOTIFICATION_CHANNELS.filter(
@@ -53,6 +54,41 @@ export function MoreConfigNotificationsPage() {
         title="Notifications"
         subtitle="Who hears about what, and how"
       />
+
+      {/*
+        The master switch, moved here from the deleted "Automation" screen,
+        where it was called the "reminder engine". An owner turning reminders
+        off looks for that on the reminders screen, not under a heading named
+        after the thing that runs them.
+      */}
+      <div className="rounded-[20px] border border-border bg-card p-4 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]">
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={remindersOn}
+            disabled={updateMutation.isPending}
+            onChange={() =>
+              updateMutation.mutate(
+                { automation: { auto_send_reminders: !remindersOn } },
+                {
+                  onSuccess: () =>
+                    stayoToast.success(remindersOn ? 'Reminders paused' : 'Reminders switched on'),
+                  onError: () => stayoToast.error('Could not change reminders'),
+                },
+              )
+            }
+            className="mt-0.5 h-4 w-4 flex-none accent-primary"
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13.5px] font-semibold text-foreground">Send reminders automatically</span>
+            <span className="mt-0.5 block text-[11.5px] leading-[1.45] text-muted-foreground">
+              {remindersOn
+                ? 'Tenants are nudged before and after rent is due, without you.'
+                : 'Paused — nothing below is sent until you switch this back on.'}
+            </span>
+          </span>
+        </label>
+      </div>
 
       <div className="rounded-[20px] bg-foreground p-5 shadow-[0_12px_30px_rgba(34,30,26,0.24)]">
         <div className="font-display text-[14.5px] font-bold tracking-tight text-background">

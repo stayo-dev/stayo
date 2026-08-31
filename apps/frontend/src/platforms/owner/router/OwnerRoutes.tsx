@@ -71,9 +71,6 @@ const MoreAboutPage = lazy(() => import('@features/owner-more/pages/MoreAboutPag
 const MoreConfigurationHubPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigurationHubPage').then((m) => ({ default: m.MoreConfigurationHubPage })),
 );
-const MoreConfigAutomationPage = lazy(() =>
-  import('@features/owner-more/pages/MoreConfigAutomationPage').then((m) => ({ default: m.MoreConfigAutomationPage })),
-);
 const MoreConfigAgreementsPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigAgreementsPage').then((m) => ({ default: m.MoreConfigAgreementsPage })),
 );
@@ -225,7 +222,6 @@ export function OwnerRoutes() {
             knows which hostel it is editing, and a bare Navigate dropped it,
             silently falling back to the owner's primary hostel. */}
         <Route path="/owner/more/configuration/hostel/tenant-defaults" element={<KeepQueryRedirect to="/owner/more/configuration/hostel/agreement-duration" />} />
-        <Route path="/owner/more/configuration/automation" element={<MoreConfigAutomationPage />} />
         <Route path="/owner/more/configuration/agreements" element={<MoreConfigAgreementsPage />} />
         <Route path="/owner/more/configuration/agreements/templates" element={<MoreConfigAgreementTemplatesPage />} />
         <Route path="/owner/more/configuration/agreements/template" element={<MoreConfigAgreementTemplatePage />} />

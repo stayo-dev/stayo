@@ -15,12 +15,20 @@ describe('hostelSettingsGroups', () => {
     ]);
   });
 
-  it('keeps rent and late fees together, since they are one question', () => {
-    // An owner setting a grace period is already thinking about what happens
-    // when it runs out. Two rows made them hold half the question in their head.
+  it('has no automation row — each toggle lives with what it automates', () => {
+    // Raising rent belongs to Rent, applying late fees to Late fees, the
+    // reminder engine to Reminders, auto-receipts to Receipts. "Automation"
+    // grouped by what runs on a schedule, which is our implementation and not
+    // a question an owner arrives with.
     const rows = groups().flatMap((g) => g.rows);
-    expect(rows.some((r) => r.key === 'late')).toBe(false);
-    expect(rows.find((r) => r.key === 'rent')?.hint).toContain('late');
+    expect(rows.some((r) => r.key === 'automation')).toBe(false);
+    expect(rows.map((r) => r.route).some((r) => r.includes('/automation'))).toBe(false);
+  });
+
+  it('names the instalments row for what it does', () => {
+    // "Payments" could mean anything on a screen full of money settings.
+    expect(groups().flatMap((g) => g.rows).find((r) => r.key === 'partial')?.label)
+      .toBe('Partial payments');
   });
 
   it('does not list receipts, which are set once and never revisited', () => {
@@ -59,12 +67,12 @@ describe('hostelSettingsGroups', () => {
     for (const moved of [
       '/owner/more/hostel',
       '/owner/more/configuration/finance/rent-schedule',
+      '/owner/more/configuration/finance/late-fees',
       '/owner/more/configuration/finance/part-payments',
       '/owner/more/configuration/finance/deposit',
       '/owner/more/configuration/hostel/tenant-defaults',
       '/owner/more/configuration/agreements',
       '/owner/more/configuration/notifications',
-      '/owner/more/configuration/automation',
     ]) {
       expect(routes).toContain(moved);
     }

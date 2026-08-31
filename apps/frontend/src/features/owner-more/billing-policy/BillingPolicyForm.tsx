@@ -161,7 +161,7 @@ export function BillingPolicyForm({
   useEffect(() => {
     const billing = policyQuery.data?.policy?.billing;
     if (!billing) return;
-    const loaded = policyToFormValues(billing);
+    const loaded = policyToFormValues(billing, policyQuery.data?.policy?.automation);
     setValues(loaded);
     setBaseline(loaded);
   }, [policyQuery.data]);
@@ -249,6 +249,20 @@ export function BillingPolicyForm({
             after 0 more days" in their head and imagine a month to see what it
             meant for a tenant. Here is the month.
           */}
+          <div className={card}>
+            <div className="px-4 pb-1 pt-3.5">
+              {/* Was a row on a separate "Automation" screen. An owner never
+                  sets out to manage automation — they want rent to raise
+                  itself, which is a property of the rent rules above. */}
+              <Toggle
+                checked={values.autoGenerateRent}
+                onChange={() => set('autoGenerateRent', !values.autoGenerateRent)}
+                label="Raise rent automatically"
+                sub={`Creates every tenant's bill on day ${values.generationDay} without you`}
+              />
+            </div>
+          </div>
+
           <RentMonthPreview
             generationDay={values.generationDay}
             dueDay={values.dueDay}
@@ -449,11 +463,41 @@ export function BillingPolicyForm({
               </>
             )}
           </div>
-          {/* Grace days live in the Rent schedule section, so say where the
-              threshold comes from rather than leaving it implicit. */}
+
+          {values.lateFeeEnabled && <LateFeePreview values={values} />}
+
+          {values.lateFeeEnabled && (
+            <div className={card}>
+              <div className="border-b border-border/60 px-4 pb-1 pt-3.5">
+                {/* Both were rows on the deleted "Automation" screen. The old
+                    one described this as running "after the grace period"
+                    while the grace period was set on a different screen. */}
+                <Toggle
+                  checked={values.autoApplyLateFees}
+                  onChange={() => set('autoApplyLateFees', !values.autoApplyLateFees)}
+                  label="Apply late fees automatically"
+                  sub="Charges them the day rent becomes late, without you"
+                />
+              </div>
+              <div className={rowBase}>
+                <span className="flex-1 text-[13.5px] text-foreground/80">
+                  Suspend after
+                  <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                    Days overdue before the tenant loses app access. 0 never suspends.
+                  </span>
+                </span>
+                <NumberField
+                  value={values.autoDeactivateDays}
+                  onChange={(v) => set('autoDeactivateDays', v)}
+                  suffix="days"
+                  ariaLabel="Suspend after days overdue"
+                />
+              </div>
+            </div>
+          )}
           {values.lateFeeEnabled && sections.length === 1 && (
             <p className={sectionNote}>
-              Applies after the {values.graceDays}-day grace period set in Rent schedule.
+              Applies after the {values.graceDays}-day grace period set in Rent.
             </p>
           )}
         </div>
@@ -545,6 +589,58 @@ function RentMonthPreview({
       {crossesMonthEnd(schedule) && (
         <p className="text-[11px] leading-[1.45] text-muted-foreground">
           This schedule runs into the next month, so the days above are not all in the same one.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * What the rule actually costs a tenant.
+ *
+ * A charge type, an amount and a cap are three abstractions whose product an
+ * owner has to compute in their head — and a per-day fee is the one people
+ * misjudge, because a small daily number reaches the cap faster than it feels
+ * like it should. Worked examples at 1, 7 and 30 days overdue turn the rule
+ * into the three numbers an owner can recognise as right or wrong.
+ */
+function LateFeePreview({ values }: { values: BillingFormValues }) {
+  const sampleRent = 8000;
+  const charge = (daysLate: number) => {
+    const raw =
+      values.chargeType === 'PER_DAY'
+        ? values.lateFeeAmount * daysLate
+        : values.chargeType === 'PERCENTAGE'
+          ? (sampleRent * values.lateFeeAmount) / 100
+          : values.lateFeeAmount;
+    const capped = values.maxLateFee > 0 ? Math.min(raw, values.maxLateFee) : raw;
+    return { capped: Math.round(capped), atCap: values.maxLateFee > 0 && raw > values.maxLateFee };
+  };
+
+  return (
+    <div className={`${card} flex flex-col gap-3 p-4`}>
+      <p className="text-[12px] font-semibold text-foreground">
+        On ₹{sampleRent.toLocaleString('en-IN')} rent, a tenant would pay
+      </p>
+      <div className="grid grid-cols-3 gap-2">
+        {[1, 7, 30].map((days) => {
+          const { capped, atCap } = charge(days);
+          return (
+            <div key={days} className="rounded-xl bg-secondary px-2 py-2.5 text-center">
+              <div className="font-display text-[15px] font-extrabold tabular-nums text-foreground">
+                ₹{capped.toLocaleString('en-IN')}
+              </div>
+              <div className="mt-0.5 text-[10.5px] text-muted-foreground">
+                {days} day{days === 1 ? '' : 's'} late{atCap ? ' · at cap' : ''}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {values.maxLateFee === 0 && values.chargeType === 'PER_DAY' && (
+        <p className="text-[11px] leading-[1.45] text-muted-foreground">
+          With no cap, this keeps growing every day. A tenant three months late would owe
+          ₹{(values.lateFeeAmount * 90).toLocaleString('en-IN')} in fees alone.
         </p>
       )}
     </div>

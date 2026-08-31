@@ -25,11 +25,18 @@
  * **No rooms row.** Rooms are the tab immediately to the left of Settings, so
  * listing them here was a second door to a screen already one tap away.
  *
- * **Rent and late fees are one row.** An owner setting a grace period is
- * already thinking about what happens when it runs out, and the late-fee
- * screen's own note had to point back at the rent screen to say where grace
- * was configured. Splitting one question across two rows made the owner hold
- * half of it in their head.
+ * **No automation row.** Every toggle on that screen was a property of a
+ * setting listed here — raising rent belongs to Rent, applying late fees to
+ * Rent, the reminder engine to Reminders, auto-receipts to Receipts. Its
+ * delivery-channel group was an outright duplicate of the one on Reminders.
+ * "Automation" grouped by what runs on a schedule, which is our implementation
+ * and not a question an owner arrives with.
+ *
+ * **Late fees are their own row.** They were briefly folded into Rent, since
+ * an owner setting a grace period is already thinking about what happens when
+ * it runs out. Separated again because Rent is a calendar and late fees are a
+ * pricing rule: one scroll carrying both made a screen of two unrelated kinds
+ * of decision. The rent screen still says where the grace period comes from.
  *
  * **No receipts row.** Receipt numbering and the footer are set once when a
  * hostel is set up and effectively never revisited, so a permanent row spent
@@ -84,13 +91,19 @@ export function hostelSettingsGroups(hostelId: string): HostelSettingGroup[] {
         {
           key: 'rent',
           label: 'Rent',
-          hint: "When it's raised, when it's due, and what's charged if it's late",
+          hint: "When it's raised, when it's due, and the grace period",
           route: forHostel(`${CONFIG}/finance/rent-schedule`, hostelId),
         },
         {
-          key: 'how-they-pay',
-          label: 'Payments',
-          hint: 'Whether a due can be paid in parts, and your UPI',
+          key: 'late',
+          label: 'Late fees',
+          hint: "What a tenant is charged for paying late, and when it starts",
+          route: forHostel(`${CONFIG}/finance/late-fees`, hostelId),
+        },
+        {
+          key: 'partial',
+          label: 'Partial payments',
+          hint: 'Whether a tenant can clear a due in instalments',
           route: forHostel(`${CONFIG}/finance/part-payments`, hostelId),
         },
         {
@@ -126,12 +139,6 @@ export function hostelSettingsGroups(hostelId: string): HostelSettingGroup[] {
           label: 'Reminders',
           hint: 'What tenants are sent, and on which days',
           route: forHostel(`${CONFIG}/notifications`, hostelId),
-        },
-        {
-          key: 'automation',
-          label: 'Automation',
-          hint: 'What Stayo does without asking you',
-          route: forHostel(`${CONFIG}/automation`, hostelId),
         },
       ],
     },
