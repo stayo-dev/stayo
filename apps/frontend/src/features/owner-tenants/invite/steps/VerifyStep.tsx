@@ -1,6 +1,6 @@
 import { Check } from 'lucide-react';
 import type { OwnerSessionHostel } from '@features/owner-session/useOwnerSession';
-import { buildPreviewDisplay, type InviteSettlementPreviewResponse } from '../settlementPreview';
+import { buildPreviewDisplay, describePreviewBlockers, type InviteSettlementPreviewResponse } from '../settlementPreview';
 import type { InviteWizardData } from '../../types';
 
 interface VerifyStepProps {
@@ -34,6 +34,12 @@ export function VerifyStep({
   const paidAmount = Number(data.paidAmount) || 0;
   const showPaymentSection = data.hasPaidAlready && paidAmount > 0;
   const display = settlementPreview ? buildPreviewDisplay(settlementPreview, { paidAmount, monthlyRent: rent }) : null;
+  /**
+   * Why there is no settlement to show yet. The branch below used to render
+   * `null` here, so an owner who switched the toggle on and typed an amount
+   * got a headed box with nothing inside it.
+   */
+  const blockers = describePreviewBlockers(data);
 
   return (
     <div className="flex flex-col gap-4.5">
@@ -103,6 +109,8 @@ export function VerifyStep({
               <p className="py-2 text-center text-[12.5px] text-muted-foreground">Calculating…</p>
             ) : settlementPreviewError ? (
               <p className="text-[12.5px] font-semibold text-destructive">{settlementPreviewError}</p>
+            ) : blockers ? (
+              <p className="text-[12.5px] leading-[1.5] text-muted-foreground">{blockers}</p>
             ) : display ? (
               <>
                 <span className="font-display text-lg font-extrabold tabular-nums text-foreground">{display.headline}</span>
@@ -126,7 +134,11 @@ export function VerifyStep({
                   <p className="text-[12.5px] font-bold text-success">Fully settled</p>
                 )}
               </>
-            ) : null}
+            ) : (
+              /* Reached only while the request is in flight for the first time
+                 with nothing cached — never an empty panel. */
+              <p className="text-[12.5px] text-muted-foreground">Working this out…</p>
+            )}
           </div>
         </div>
       )}
