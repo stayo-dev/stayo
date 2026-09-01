@@ -78,7 +78,7 @@ function addDays(days: number) {
  * renders from `rule_acceptances` or `agreements` must not work on one route
  * and quietly find `undefined` on the other. See ADR-155.
  */
-import { isAwaitingTenantOnboarding } from "./activation-entry";
+import { isAwaitingTenantOnboarding, hasCompletedActivation } from "./activation-entry";
 
 const ACTIVATION_TENANT_INCLUDE = {
   profiles: true,
@@ -293,6 +293,19 @@ export class TenantInvitationLifecycleService {
     const owner = await prisma.profile.findUnique({ where: { id: ownerId } });
     if (!owner || owner.role !== "OWNER") throw new Error("NOT_FOUND: Owner profile not found");
 
+    // An owner cannot invite themselves as a tenant. Deliberately explicit and
+    // ahead of any DB write — the old behaviour relied on `finalizeOwnerManagedTenancy`
+    // hitting an incidental ROLE_MISMATCH (phone case) or an unhandled P2002 on
+    // profile.email's unique constraint (email-only case), which surfaced as a
+    // raw 500 instead of a clean validation error. Compares against the same
+    // normalized phone/email used everywhere else in this function, so mobile
+    // stays the primary identity and a different email cannot bypass it.
+    const ownerPhone = normalizeIndianPhone(owner.phone);
+    const ownerEmail = normalizeEmail(owner.email);
+    if ((normalizedPhone && ownerPhone === normalizedPhone) || (normalizedEmail && ownerEmail === normalizedEmail)) {
+      throw new Error("VALIDATION_ERROR: You cannot invite yourself as a tenant");
+    }
+
     // Resending your own live invitation is an update, not a new invitation, so it
     // is resolved before the eligibility check — that invitation is the reason the
     // person may already look "taken".
@@ -342,6 +355,24 @@ export class TenantInvitationLifecycleService {
     if (advanceDeposit < 0) throw new Error("VALIDATION_ERROR: Deposit cannot be negative");
     if (maintenanceCharge < 0) throw new Error("VALIDATION_ERROR: Maintenance charge cannot be negative");
     const created = await prisma.$transaction(async (tx: any) => {
+      // Phone-scoped mutex, same pattern as the pay_intent advisory lock in
+      // payment-service.ts. The eligibility check above ran before this
+      // transaction against `tenants.profile_id: null` rows, which the DB's
+      // `tenants_one_live_tenancy_per_profile` partial unique index cannot
+      // protect (it only applies once profile_id is bound). Without this lock,
+      // two concurrent invites for the same never-before-invited phone at two
+      // different hostels could both pass the pre-check before either commits.
+      // Re-checking eligibility here, after the lock, closes that window: the
+      // second transaction blocks until the first commits, then sees its
+      // freshly-inserted tenant row and is refused.
+      const invitePhoneLockKey = `tenancy_invite:${normalizedPhone}`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${invitePhoneLockKey})::bigint)`;
+      await tenancyEligibilityService.assertCanStartNewTenancyByContact(
+        { email: normalizedEmail, phone: normalizedPhone },
+        ownerId,
+        tx
+      );
+
       await tx.$executeRaw`SELECT id FROM rooms WHERE id = ${roomId}::uuid FOR UPDATE`;
       const capacity = await this.getRoomCapacitySnapshot(tx, roomId);
       if (capacity.room.hostels.owner_id !== ownerId) {
@@ -445,9 +476,9 @@ export class TenantInvitationLifecycleService {
       // duplicated. This must run before dispatch below, not after: the
       // invitation is intentionally left SUPERSEDED (not cancelled) so a
       // later click on the very link about to be sent still resolves — see
-      // `resolveByToken`'s CLAIM_REQUIRED branch — into the claim flow
-      // instead of erroring or (worse) silently no-opping against a tenant
-      // who is already ACTIVE.
+      // `resolveByToken`'s SUPERSEDED+OWNER_MANAGED fall-through — into the
+      // same activation screen instead of erroring or (worse) silently
+      // no-opping against a tenant who is already ACTIVE.
       await finalizeOwnerManagedTenancy({
         tx,
         tenantId: tenant.id,
@@ -855,9 +886,11 @@ export class TenantInvitationLifecycleService {
           // A genuinely self-serve tenant's fresh version is PENDING, same as
           // always. An owner-managed tenant is already ACTIVE — this version
           // is created SUPERSEDED for the same reason `createInvitation`
-          // supersedes the original: resolving its token must route through
-          // the claim flow (CLAIM_REQUIRED), not normal activation, which
-          // would silently no-op against a tenant who's already ACTIVE (see
+          // supersedes the original: `resolveByToken`'s SUPERSEDED+
+          // OWNER_MANAGED fall-through is what lets it still resolve into
+          // the normal activation screen despite that status, rather than
+          // resolveByToken's plain SUPERSEDED->INVALID path or silently
+          // no-opping against a tenant who's already ACTIVE (see
           // completeActivation's idempotency guard).
           status: tenantAlreadyOwnerManaged ? "SUPERSEDED" : "PENDING",
           opened_at: null,
@@ -1030,26 +1063,43 @@ export class TenantInvitationLifecycleService {
       // records themselves — including the default case now, where every
       // invitation supersedes itself into an owner-managed tenancy at the
       // moment it's created) or a genuine replacement (e.g. a room change
-      // re-issuing the invite). Only the former still has a live claim path —
-      // the tenant who finally opens that link should land on "claim your
-      // tenancy," not a dead end. See design spec §6 and
-      // owner-managed-tenancy-service.ts's adoption comment.
-      if (invitation.tenant.access_mode === "OWNER_MANAGED") {
-        throw new Error("CLAIM_REQUIRED: This invitation was superseded because the owner is keeping records for this tenancy directly. Use the claim flow to link your account instead.");
+      // re-issuing the invite). Only the former still has a live tenant
+      // behind it who may not have onboarded themselves yet — that tenant's
+      // link must resolve into the exact same activation context a
+      // never-superseded invitation gets, not a dead end and not a separate
+      // claim experience. See owner-managed-tenancy-service.ts's adoption
+      // comment.
+      const entrySubject = {
+        status: invitation.tenant.status,
+        activationCompletedAt: invitation.tenant.activation_completed_at,
+        invitationStatus: invitation.status,
+        ownerAttested: Boolean(invitation.tenant.owner_attestations?.length),
+      };
+      const awaitingOnboarding =
+        invitation.tenant.access_mode === "OWNER_MANAGED" && isAwaitingTenantOnboarding(entrySubject);
+
+      if (!awaitingOnboarding) {
+        if (invitation.tenant.access_mode === "OWNER_MANAGED" && hasCompletedActivation(entrySubject)) {
+          throw new Error("ALREADY_ACTIVE: Account already active");
+        }
+        throw new Error("INVALID: Activation link expired or already used");
       }
-      throw new Error("INVALID: Activation link expired or already used");
-    }
-    if (invitation.status === "ACTIVATED" || invitation.tenant.status === "ACTIVE") {
+      // Falls through to the normal success path below — same as a
+      // never-superseded invitation, minus the CANCELLED/EXPIRED-by-status
+      // checks (a superseded invitation carries no such status of its own)
+      // but still subject to the link's own expiry.
+      if (invitation.expires_at < new Date() && invitation.status !== "ACTIVATION_STARTED") {
+        await eventLog.log("expired_invite_rate", invitation.owner_id, { tenant_id: invitation.tenant_id, invitation_id: invitation.id }, invitation.tenant_id);
+        throw new Error("EXPIRED: Invitation expired");
+      }
+    } else if (invitation.status === "ACTIVATED" || invitation.tenant.status === "ACTIVE") {
       throw new Error("ALREADY_ACTIVE: Account already active");
-    }
-    if (invitation.status === "CANCELLED" || invitation.tenant.status === "CANCELLED") {
+    } else if (invitation.status === "CANCELLED" || invitation.tenant.status === "CANCELLED") {
       throw new Error("CANCELLED: Invitation was cancelled");
-    }
-    if (invitation.status === "EXPIRED" || invitation.tenant.status === "EXPIRED") {
+    } else if (invitation.status === "EXPIRED" || invitation.tenant.status === "EXPIRED") {
       await eventLog.log("expired_invite_rate", invitation.owner_id, { tenant_id: invitation.tenant_id, invitation_id: invitation.id }, invitation.tenant_id);
       throw new Error("EXPIRED: Invitation expired");
-    }
-    if (invitation.expires_at < new Date() && invitation.status !== "ACTIVATION_STARTED") {
+    } else if (invitation.expires_at < new Date() && invitation.status !== "ACTIVATION_STARTED") {
       await eventLog.log("expired_invite_rate", invitation.owner_id, { tenant_id: invitation.tenant_id, invitation_id: invitation.id }, invitation.tenant_id);
       throw new Error("EXPIRED: Invitation expired");
     }
@@ -1094,10 +1144,13 @@ export class TenantInvitationLifecycleService {
    * The invitation-status ladder in `resolveByToken` is deliberately absent
    * here, because every rung of it asks a question about a *link* — is it
    * spent, superseded, expired. None of that bears on someone holding a
-   * session: their invitation is `SUPERSEDED` by construction (adoption marks
-   * it so), which is precisely the `CLAIM_REQUIRED` dead end that sent them
-   * through the claim flow to get this session in the first place. Refusing
-   * them again on the same ground would close the loop.
+   * session: an owner-managed tenancy's invitation is `SUPERSEDED` by
+   * construction (adoption marks it so), and `resolveByToken` already
+   * resolves that case into normal activation on its own now. This method
+   * exists for the narrower case of a signed-in tenant with no token at all
+   * (e.g. navigating straight to `/activate` on an existing session).
+   * Refusing them on link-status grounds that don't apply to a session would
+   * be wrong either way.
    *
    * What does still apply is the hostel gate — an archived or inactive hostel
    * is not somewhere anyone onboards, however they arrived — and the tenancy's
@@ -1420,36 +1473,57 @@ export class TenantInvitationLifecycleService {
         where: { invitation_id: invitation.id, tenant_id: tenant.id, status: "ACTIVE" },
         orderBy: { reserved_at: "desc" },
       });
-      if (!reservation) throw new Error("INVALID_TRANSITION: Active room reservation is missing");
 
-      // Lock reservation row
-      await tx.$executeRaw`
-        SELECT id FROM tenant_invitation_reservations 
-        WHERE id = ${reservation.id}::uuid FOR UPDATE
-      `;
+      // An owner-managed tenancy already had its reservation converted into a
+      // real allocation and released (release_reason "ADOPTED") the moment it
+      // was invited or adopted — see finalizeOwnerManagedTenancy. There is
+      // nothing left to find here for that population, by design, not by
+      // error. Fall back to the tenancy's existing active allocation; only a
+      // tenancy with neither a reservation nor an allocation is genuinely
+      // broken.
+      let roomId: string;
+      let hostelId: string;
+      if (reservation) {
+        // Lock reservation row
+        await tx.$executeRaw`
+          SELECT id FROM tenant_invitation_reservations
+          WHERE id = ${reservation.id}::uuid FOR UPDATE
+        `;
+        roomId = reservation.room_id;
+        hostelId = reservation.hostel_id;
+      } else {
+        const existingAllocation = await tx.roomAllocation.findFirst({
+          where: { tenant_id: tenant.id, is_active: true, end_date: null },
+        });
+        if (!existingAllocation) throw new Error("INVALID_TRANSITION: Active room reservation is missing");
+        roomId = existingAllocation.room_id;
+        hostelId = existingAllocation.hostel_id;
+      }
 
       // The room is assigned on joining, unconditionally. Deposit and maintenance
       // are ordinary dues payable after move-in, not a gate on getting a bed —
       // owners on the platform collect them on their own terms. The capacity check
       // below stays, because that is overbooking protection, not a payment gate.
-      await tx.$executeRaw`SELECT id FROM rooms WHERE id = ${reservation.room_id}::uuid FOR UPDATE`;
+      await tx.$executeRaw`SELECT id FROM rooms WHERE id = ${roomId}::uuid FOR UPDATE`;
       await ensureActiveAllocation(tx, {
         tenantId: tenant.id,
-        roomId: reservation.room_id,
-        hostelId: reservation.hostel_id,
+        roomId,
+        hostelId,
         startDate: tenantRow[0].joined_on || startOfToday(),
       });
 
-      await tx.tenant_invitation_reservations.update({
-        where: { id: reservation.id },
-        data: {
-          status: "RELEASED",
-          released_by: tenant.owner_id || invitation.owner_id,
-          released_at: completedAt,
-          release_reason: "ACTIVATED",
-          updated_at: completedAt,
-        },
-      });
+      if (reservation) {
+        await tx.tenant_invitation_reservations.update({
+          where: { id: reservation.id },
+          data: {
+            status: "RELEASED",
+            released_by: tenant.owner_id || invitation.owner_id,
+            released_at: completedAt,
+            release_reason: "ACTIVATED",
+            updated_at: completedAt,
+          },
+        });
+      }
       await tx.tenant_invitations.update({
         where: { id: invitation.id },
         data: { status: "ACTIVATED", activated_at: completedAt, updated_at: completedAt },
@@ -1469,6 +1543,13 @@ export class TenantInvitationLifecycleService {
         where: { id: tenant.id },
         data: {
           status: "ACTIVE",
+          // Whatever this tenancy started as, completeActivation is only ever
+          // reached after the tenant has walked through ACCOUNT/RULES/
+          // AGREEMENT/PROFILE themselves — that is definitionally self-serve.
+          // This is the only write in the system that flips access_mode back
+          // once owner-managed, now that the phone-OTP claim flow (the only
+          // other place that used to do this) is gone.
+          access_mode: "SELF_SERVE",
           profile_completed: true,
           activation_completed_at: completedAt,
           onboarding_last_activity_at: completedAt,

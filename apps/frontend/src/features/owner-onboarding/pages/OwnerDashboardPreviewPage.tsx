@@ -191,11 +191,6 @@ export function OwnerDashboardPreviewPage() {
         onCollectPayment={qa.collectPayment}
         onInviteTenant={qa.inviteTenant}
         onAddExpense={qa.addExpense}
-        onCreateFoodPoll={qa.createFoodPoll}
-        onAddHostel={() => {
-          qa.closeSheet();
-          navigate('/owner/hostels/new');
-        }}
         canOperate={dash.properties.length > 0}
       />
       <AllActionsSheet

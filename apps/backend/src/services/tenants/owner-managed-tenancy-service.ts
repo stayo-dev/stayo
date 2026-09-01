@@ -5,6 +5,7 @@ import { normalizeIndianPhone } from "@/lib/utils/phone-utils";
 import { ensureActiveAllocation } from "./tenancy-allocation";
 import { planObligationLinking } from "./obligation-linking";
 import { resolveActivationEmail } from "./invited-profile-resolver";
+import { TenancyEligibilityError } from "./tenancy-eligibility-service";
 
 export interface AdoptParams {
   tenantId: string;
@@ -138,10 +139,30 @@ export async function finalizeOwnerManagedTenancy(
   if (!profileId) {
     const existingByPhone = await tx.profile.findUnique({ where: { phone } });
     if (existingByPhone) {
-      if (existingByPhone.role !== "TENANT") {
-        throw new Error(
-          "ROLE_MISMATCH: This phone number belongs to a different kind of Stayo account"
-        );
+      // An OWNER may become a tenant of a hostel they don't own (Hostel A
+      // owner → Hostel B tenant is allowed); they may never become a tenant
+      // of the hostel they DO own. `ownerId` here is always this tenancy's
+      // hostel's actual owner (callers already verified that), so comparing
+      // the matched profile's id against it is hostel-scoped, not a blanket
+      // "owners can never be tenants" rule. See [[Decisions#ADR-162]].
+      const isDifferentHostelOwner = existingByPhone.role === "OWNER" && existingByPhone.id !== ownerId;
+      if (existingByPhone.role !== "TENANT" && !isDifferentHostelOwner) {
+        // Thrown in its structured form rather than as a bare `ROLE_MISMATCH:`
+        // string, which no status map recognised — so this refusal used to
+        // reach an owner as an HTTP 500 after they had filled in all four
+        // steps of the invite wizard. As `TenancyEligibilityError` the route
+        // serialises it as a 409 carrying the disclosure scope, and the wizard
+        // renders the same card the debounced pre-submit check renders.
+        throw new TenancyEligibilityError({
+          eligible: false,
+          code: "PHONE_BELONGS_TO_NON_TENANT",
+          disclosure: {
+            scope: existingByPhone.id === ownerId ? "OWN" : "OTHER",
+            hostelName: null,
+            roomNumber: null,
+            tenantId: null,
+          },
+        });
       }
       // Reuse, never duplicate. Credentials, email and role are left exactly
       // as they are — this must not touch an account the person may already
@@ -238,13 +259,13 @@ export async function finalizeOwnerManagedTenancy(
  * The invitation is marked SUPERSEDED rather than cancelled precisely so a
  * late-clicking tenant can still act on that link. `resolveByToken`
  * (`tenant-invitation-lifecycle-service.ts`) distinguishes the two SUPERSEDED
- * cases: for one whose tenancy is still `OWNER_MANAGED` (this path), it
- * throws the distinct `CLAIM_REQUIRED` code instead of `INVALID`, so the
- * caller can route the tenant into the claim flow (`tenancy-claim-service.ts`)
- * against this exact tenancy rather than erroring. A SUPERSEDED invitation
- * whose tenancy was edited/replaced by other means (room change, resend)
- * still throws `INVALID` as before — SUPERSEDED alone was never the signal;
- * `OWNER_MANAGED` is.
+ * cases: for one whose tenancy is still `OWNER_MANAGED` and not yet onboarded
+ * (this path), it falls through into the same activation context a
+ * never-superseded invitation gets, so the tenant lands on the normal
+ * activation screen against this exact tenancy rather than erroring. A
+ * SUPERSEDED invitation whose tenancy was edited/replaced by other means
+ * (room change, resend) still throws `INVALID` as before — SUPERSEDED alone
+ * was never the signal; `OWNER_MANAGED` is.
  *
  * Name resolution deliberately does NOT use `resolveTenantName` — that helper
  * falls back to the literal string "Tenant" when no name is known anywhere,

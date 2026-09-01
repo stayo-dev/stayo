@@ -5,10 +5,17 @@
  * service layer (`tenancy-eligibility-service.ts`) does the querying and hands
  * plain data in here.
  *
- * Two rules, in order:
- *   1. A person may hold only one live tenancy. Accepting a hostel's invitation
+ * Three rules, in order:
+ *   1. The account behind the phone number must be one this owner may make a
+ *      tenant. An owner may never be a tenant of the hostel they own, and an
+ *      admin account is never a tenant — but an owner of a *different* hostel
+ *      may be ([[Decisions#ADR-162]]), so this is scoped, not a blanket "owners
+ *      can never be tenants". Checked first because such an account typically
+ *      holds no tenancies at all, so the two rules below would wave it
+ *      straight through.
+ *   2. A person may hold only one live tenancy. Accepting a hostel's invitation
  *      means they cannot join another until they leave.
- *   2. Leaving is not enough — the move-out must be COMPLETED (settlement
+ *   3. Leaving is not enough — the move-out must be COMPLETED (settlement
  *      finalised). `FORMER_TENANT` alone is set at the exit date, which can be
  *      before the settlement money has moved.
  */
@@ -32,6 +39,17 @@ export type TenancySnapshot = {
   hasCompletedMoveOut: boolean;
 };
 
+/**
+ * The account a contact resolves to, as far as eligibility cares: who it is,
+ * and what kind of account it is. `null` when no account exists yet — the
+ * ordinary new-tenant case, which the role rule must never refuse.
+ */
+export type AccountSnapshot = {
+  id: string;
+  /** `profile.role` — OWNER | TENANT | ADMIN. */
+  role: string;
+};
+
 export type TenancyDisclosure = {
   /**
    * `OWN` — the person already lives in a hostel belonging to the owner who is
@@ -50,7 +68,10 @@ export type TenancyEligibility =
   | { eligible: true }
   | {
       eligible: false;
-      code: "TENANT_HAS_ACTIVE_TENANCY" | "PREVIOUS_TENANCY_NOT_SETTLED";
+      code:
+        | "PHONE_BELONGS_TO_NON_TENANT"
+        | "TENANT_HAS_ACTIVE_TENANCY"
+        | "PREVIOUS_TENANCY_NOT_SETTLED";
       disclosure: TenancyDisclosure;
     };
 
@@ -91,6 +112,13 @@ export interface EligibilityOptions {
    * and the reason it is not simply skipped at the call site. See ADR-153.
    */
   ignoreTenancyId?: string;
+  /**
+   * The account the contact resolves to, when one exists. Supplying it enables
+   * the account-role rule; omitting it (the claim flow, and any caller that
+   * already knows it is holding a tenant) simply skips that rule rather than
+   * failing open on a guess.
+   */
+  account?: AccountSnapshot | null;
 }
 
 export function evaluateTenancyEligibility(
@@ -101,6 +129,45 @@ export function evaluateTenancyEligibility(
   const considered = options.ignoreTenancyId
     ? tenancies.filter((tenancy) => tenancy.id !== options.ignoreTenancyId)
     : tenancies;
+
+  // The same rule `owner-managed-tenancy-service` enforces when it decides
+  // whether a non-TENANT profile may be bound to a tenancy — but that one
+  // fires deep inside the invite's write transaction, after the owner has
+  // filled in four steps. Evaluating it here makes the identical refusal
+  // available to the pre-submit check, answered while they are still typing
+  // the phone number.
+  //
+  // Hostel-scoped, per [[Decisions#ADR-162]]: an OWNER of a *different* hostel
+  // is a legitimate tenant and must pass. The wizard only ever invites into
+  // the asking owner's own hostels, so "is this the asking owner's own
+  // account?" is exactly the hostel-scoped question — and it is answerable at
+  // the Tenant step, which is before any hostel has been chosen.
+  const account = options.account;
+  if (account) {
+    const role = String(account.role).toUpperCase();
+    const isOwnAccount = Boolean(invitingOwnerId) && account.id === invitingOwnerId;
+    // Fails closed on an absent `invitingOwnerId`: with nobody to compare
+    // against, an owner account is never *known* to be a different hostel's,
+    // so it is refused rather than waved through. Same principle ADR-162
+    // applies to its own hostel-owner comparisons.
+    const isDifferentHostelOwner =
+      role === "OWNER" && Boolean(invitingOwnerId) && account.id !== invitingOwnerId;
+    if (role !== "TENANT" && !isDifferentHostelOwner) {
+      return {
+        eligible: false,
+        code: "PHONE_BELONGS_TO_NON_TENANT",
+        disclosure: {
+          // `OWN` means "this is your own account" — the owner typed their own
+          // number. Nothing else is ever disclosed: not a name, not a hostel,
+          // not whose account it is.
+          scope: isOwnAccount ? "OWN" : "OTHER",
+          hostelName: null,
+          roomNumber: null,
+          tenantId: null,
+        },
+      };
+    }
+  }
 
   const live = considered.find(isLiveTenancy);
   if (live) {

@@ -16,7 +16,6 @@ import { documentTypeLabel, type ReviewDocument } from '../documents/kycDocument
 import { RejectDocumentSheet } from '../documents/RejectDocumentSheet';
 import type { TenantDetailTab } from '../types';
 import { InvitedTenantProfileView } from '../components/InvitedTenantProfileView';
-import { TenantHistoryPanel } from '../components/TenantHistoryPanel';
 import { TenantActionsSheet } from '../actions/TenantActionsSheet';
 import { ProfileHeader } from '../profile/ProfileHeader';
 import { CommunicationCard } from '../profile/CommunicationCard';
@@ -33,12 +32,11 @@ import { CorrectPaymentModal } from '@/app/components/modals/CorrectPaymentModal
 import { useDocumentShares } from '../hooks/useDocumentShares';
 import { AmendAgreementSheet } from '../profile/AmendAgreementSheet';
 import { PendingChangeCard } from '../profile/PendingChangeCard';
-import { ComplianceCard } from '../profile/ComplianceCard';
 import { CreateChargeSheet } from '../profile/CreateChargeSheet';
 import { ChangeRentModal } from '../actions/ChangeRentModal';
 import { MoveOutSheet } from '../actions/MoveOutSheet';
 import { QuickCollectModal } from '../quick-collect/QuickCollectModal';
-import { claimLink, claimInviteMessage, claimWhatsappUrl } from '../claimInvite';
+import { sanitizeIndianPhone } from '../invite/validation';
 import { APP_SURFACE } from '@shared/ui/surface';
 
 const TABS: { id: TenantDetailTab; label: string }[] = [
@@ -141,14 +139,29 @@ export function TenantDetailPage() {
     );
   }
 
-  // Getting an owner-managed tenant onto the app. The link carries no token —
-  // the claim flow proves possession by OTP to their own number — so it is
-  // safe to WhatsApp or read out. See `claimInvite.ts`.
-  const claimUrl = claimLink(window.location.origin);
-  const claimWhatsapp = claimWhatsappUrl(
-    tenant.phone,
-    claimInviteMessage({ tenantName: tenant.name, hostelName: tenant.hostelName ?? '', link: claimUrl }),
-  );
+  // Getting an owner-managed tenant onto the app: their own per-tenancy
+  // activation link (the same one their original WhatsApp invitation
+  // carried), so re-sending it here is not a separate mechanism, just a
+  // second chance to deliver the same link.
+  const activationLink = tenant.invitation?.activationLink || '';
+  const activationWhatsappUrl = (() => {
+    if (!activationLink) return null;
+    const digits = sanitizeIndianPhone(tenant.phone);
+    if (digits.length !== 10) return null;
+    const first = String(tenant.name ?? '').trim().split(/\s+/)[0];
+    const hostel = String(tenant.hostelName ?? '').trim() || 'the hostel';
+    const greeting = first ? `Hi ${first}, this is ${hostel}.` : `Hi, this is ${hostel}.`;
+    const message = [
+      greeting,
+      '',
+      `We keep your rent and payment records on Stayo. You can see them yourself — what's paid, what's due, and your receipts — and pay from your phone.`,
+      '',
+      `Open this to get started: ${activationLink}`,
+      '',
+      `Nothing changes if you'd rather not. Your records stay exactly as they are.`,
+    ].join('\n');
+    return `https://wa.me/91${digits}?text=${encodeURIComponent(message)}`;
+  })();
 
   return (
     <ThemeProvider theme="product">
@@ -161,18 +174,18 @@ export function TenantDetailPage() {
         </div>
 
         <div className="flex flex-col gap-3.5 px-4 pb-10 sm:px-6">
-          {tenant.accessMode === 'OWNER_MANAGED' && (
+          {tenant.accessMode === 'OWNER_MANAGED' && activationLink && (
             /*
              * The one thing an owner cannot otherwise do from here: hand this
              * account over.
              *
-             * The only affordance used to be "Resend invite", and the only one
-             * on the Tenants list is "+ Invite" — which means *create a new
-             * tenancy* and is correctly refused with
-             * `TENANT_HAS_ACTIVE_TENANCY`, because this person already has
-             * one. So an owner doing exactly the right thing hit a dead end,
-             * and the claim flow built for this was unreachable because
-             * nothing pointed at it. See ADR-150.
+             * The only other affordance is "Resend invite", which only shows
+             * for a tenant still in raw INVITED status — an owner-managed
+             * tenant is already ACTIVE, so this card is the only way to
+             * re-share their activation link. It's the same link their
+             * original WhatsApp invitation carried (`tenant.invitation.
+             * activationLink`, resolved server-side to their most recent
+             * invitation regardless of status) — not a separate mechanism.
              */
             <div className="rounded-2xl border border-border bg-card px-4 py-3.5">
               <p className="font-display text-[13.5px] font-bold text-foreground">
@@ -185,9 +198,9 @@ export function TenantDetailPage() {
               </p>
 
               <div className="mt-2.5 flex gap-2">
-                {claimWhatsapp && (
+                {activationWhatsappUrl && (
                   <a
-                    href={claimWhatsapp}
+                    href={activationWhatsappUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary font-display text-[13px] font-bold text-primary-foreground shadow-sm transition-transform active:scale-[0.98]"
@@ -200,14 +213,14 @@ export function TenantDetailPage() {
                   type="button"
                   onClick={async () => {
                     try {
-                      await navigator.clipboard.writeText(claimUrl);
+                      await navigator.clipboard.writeText(activationLink);
                       toast.success('Link copied');
                     } catch {
                       toast.error("Couldn't copy the link");
                     }
                   }}
                   className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-border bg-card px-4 font-display text-[13px] font-bold text-foreground transition-transform active:scale-[0.98] ${
-                    claimWhatsapp ? '' : 'flex-1'
+                    activationWhatsappUrl ? '' : 'flex-1'
                   }`}
                 >
                   <Copy className="h-4 w-4 text-muted-foreground" strokeWidth={2} />
@@ -486,16 +499,8 @@ export function TenantDetailPage() {
                 <StayRow label="Billing frequency" value={tenant.stay.billingFrequency} />
               </div>
 
-              {/* Where they stayed before this. Disclosure is decided
-                  server-side — see ADR-053's amendment; the panel renders
-                  "not shared with you" rather than hiding itself, so the
-                  absence of history and the absence of consent stay
-                  distinguishable to the owner without leaking either. */}
-              <ComplianceCard tenant={tenant} />
-
               <TenantRequestsCard hostelId={tenant.hostelId} tenantId={tenant.id} />
 
-              <TenantHistoryPanel tenantId={tenantId} />
               <div className="flex gap-2.5">
                 <button
                   type="button"

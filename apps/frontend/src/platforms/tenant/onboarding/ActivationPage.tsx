@@ -193,16 +193,6 @@ export function ActivationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // `resolveByToken` throws `CLAIM_REQUIRED` for a superseded invitation
-  // whose tenancy the owner has since started keeping records for directly
-  // (`tenant-invitation-lifecycle-service.ts`) -- the most likely way a real
-  // tenant reaches the claim flow. This is a dead activation link, not a
-  // dead end: send them to /claim instead of the generic "unavailable"
-  // screen below (which still renders once for anything else invalid).
-  useEffect(() => {
-    if (invalidCode === 'CLAIM_REQUIRED') navigate('/claim', { replace: true });
-  }, [invalidCode, navigate]);
-
   const currentStep = ctx?.current_step ?? ctx?.activation_state?.current_step;
   const completed = new Set(ctx?.completed_steps ?? ctx?.activation_state?.completed_steps ?? []);
   const activeStep = (visibleStep || currentStep) as ActivationStep | undefined;
@@ -490,19 +480,6 @@ export function ActivationPage() {
           </div>
         </div>
       </div>
-      </ThemeProvider>
-    );
-  }
-
-  if (invalidCode === 'CLAIM_REQUIRED') {
-    // The redirect effect above fires on the same render this becomes true;
-    // this just avoids a one-frame flash of "Invitation unavailable" while
-    // it does.
-    return (
-      <ThemeProvider theme="product">
-        <div className="min-h-screen bg-background flex items-center justify-center px-4">
-          <StayoLoader size="lg" className="text-accent" />
-        </div>
       </ThemeProvider>
     );
   }

@@ -10,7 +10,7 @@
  * form, before anything is created. This module decides *when* to call it,
  * *what* to send, and how to turn what comes back into the concrete lines the
  * Verify step shows ("Deposit ₹16,000 · Aug rent ₹8,000 · Sep ₹8,000 ·
- * Oct ₹8,000 / Nov onwards outstanding") — it never recomputes the
+ * Oct ₹8,000 / ₹24,000 still due, Nov onwards") — it never recomputes the
  * allocation itself.
  */
 
@@ -55,13 +55,51 @@ export interface InviteSettlementPreviewResponse {
  * would make the request meaningless or invalid, not on form-completeness.
  */
 export function isPreviewRequestReady(data: InviteWizardData): boolean {
-  if (!data.hasPaidAlready) return false;
-  const paidAmount = Number(data.paidAmount) || 0;
-  if (paidAmount <= 0) return false;
-  if (!data.hostelId) return false;
-  if (!data.joiningDate || Number.isNaN(new Date(data.joiningDate).getTime())) return false;
-  if (!(Number(data.agreementMonths) > 0)) return false;
-  return true;
+  return previewBlockers(data).length === 0;
+}
+
+/**
+ * What is still missing before a settlement can be worked out — in the owner's
+ * words, ready to put on screen.
+ *
+ * The readiness check used to be a silent boolean, and the screen rendered
+ * `null` when it said no. So an owner who switched "already paid" on and typed
+ * an amount got a headed box with nothing inside it: no figure, no spinner, no
+ * reason. That became far more common once the invite form stopped shipping
+ * hardcoded defaults, because agreement length now starts genuinely empty.
+ *
+ * Returning the reasons rather than a boolean is what lets the screen say
+ * "add the monthly rent to work this out" instead of showing an empty panel
+ * and leaving the owner to guess which field it wants.
+ */
+export function previewBlockers(data: InviteWizardData): string[] {
+  if (!data.hasPaidAlready) return ['not applicable'];
+
+  const missing: string[] = [];
+  if (!data.hostelId) missing.push('a hostel');
+  if (!data.joiningDate || Number.isNaN(new Date(data.joiningDate).getTime())) missing.push('a joining date');
+  // Rent is what everything else is settled against. Previously this fell back
+  // to 0, which produced a confident, wrong answer: every rupee read as
+  // advance credit because nothing was ever owed.
+  if (!(Number(data.monthlyRent) > 0)) missing.push('the monthly rent');
+  if (!(Number(data.agreementMonths) > 0)) missing.push('how long the agreement runs');
+  if (!(Number(data.paidAmount) > 0)) missing.push('how much they have paid');
+  return missing;
+}
+
+/**
+ * The sentence shown in place of the settlement while it cannot be worked out.
+ * `null` once nothing is missing.
+ */
+export function describePreviewBlockers(data: InviteWizardData): string | null {
+  const missing = previewBlockers(data).filter((m) => m !== 'not applicable');
+  if (missing.length === 0) return null;
+
+  const list =
+    missing.length === 1
+      ? missing[0]
+      : `${missing.slice(0, -1).join(', ')} and ${missing[missing.length - 1]}`;
+  return `Add ${list} to see how this payment settles.`;
 }
 
 /** Builds the exact request body for `POST /tenants/invite-settlement-preview`, or null if not ready yet — see `isPreviewRequestReady`. */
@@ -106,8 +144,18 @@ export interface PreviewDisplay {
   headline: string;
   /** "Deposit ₹16,000", "Aug rent ₹8,000", "Sep ₹8,000", "Oct ₹8,000" */
   lines: PreviewDisplayLine[];
-  /** "Nov onwards outstanding" — null when there's no rent track (no monthly rent) or nothing left owing beyond the plan's horizon. */
+  /** "Nov onwards" — null when there's no rent track (no monthly rent) or nothing left owing beyond the plan's horizon. */
   outstandingLabel: string | null;
+  /**
+   * What is still owed once this payment lands, in rupees. `0` means fully
+   * settled.
+   *
+   * A month name on its own ("Nov onwards outstanding") told an owner *when*
+   * the tenant falls behind but never *how much*, which is the figure they are
+   * checking against the cash in their hand before they commit to the invite.
+   * Taken straight from the backend's own plan — never recomputed here.
+   */
+  remainingOutstanding: number;
   /** > 0 when the amount exceeds every settleable installment (ADR-036: an error, not a balance). */
   overpaidAmount: number;
   /** Plain-language warning for the overpaid case, or the backend's own rejection reason — null when the preview is clean. */
@@ -172,7 +220,7 @@ export function buildPreviewDisplay(
         ? monthAfter(preview.rent_months[preview.rent_months.length - 1])
         : null;
     if (startIso) {
-      outstandingLabel = `${monthShortLabel(startIso)} onwards outstanding`;
+      outstandingLabel = `${monthShortLabel(startIso)} onwards`;
     }
   }
 
@@ -188,6 +236,7 @@ export function buildPreviewDisplay(
     headline: `₹${paidAmount.toLocaleString('en-IN')} received`,
     lines,
     outstandingLabel,
+    remainingOutstanding: Math.max(preview.remaining_outstanding, 0),
     overpaidAmount,
     warning,
   };

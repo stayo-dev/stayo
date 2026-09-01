@@ -146,7 +146,7 @@ describe("TenancyEligibilityService", () => {
     });
 
     it("resolves a profile by email or phone before judging", async () => {
-      prismaMock.profile.findFirst.mockResolvedValue({ id: "profile-1" });
+      prismaMock.profile.findFirst.mockResolvedValue({ id: "profile-1", role: "TENANT" });
       prismaMock.tenants.findMany.mockResolvedValue([tenancyRow()]);
 
       const result = await tenancyEligibilityService.checkEligibilityByContact(
@@ -167,6 +167,48 @@ describe("TenancyEligibilityService", () => {
         tenancyEligibilityService.checkEligibilityByContact({}, "owner-a")
       ).resolves.toEqual({ eligible: true });
       expect(prismaMock.profile.findFirst).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("hasLiveTenancyAtHostel", () => {
+    it("is true when the phone holds a live tenancy at this exact hostel", async () => {
+      prismaMock.tenants.findMany.mockResolvedValue([tenancyRow({ status: "ACTIVE" })]);
+
+      await expect(
+        tenancyEligibilityService.hasLiveTenancyAtHostel("9876543210", "hostel-1")
+      ).resolves.toBe(true);
+
+      expect(prismaMock.tenants.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { phone_1: "+919876543210", hostel_id: "hostel-1", status: { in: ["ACTIVE", "INVITED"] } },
+        })
+      );
+    });
+
+    it("is false when there is no live tenancy at this hostel", async () => {
+      prismaMock.tenants.findMany.mockResolvedValue([]);
+
+      await expect(
+        tenancyEligibilityService.hasLiveTenancyAtHostel("9876543210", "hostel-1")
+      ).resolves.toBe(false);
+    });
+
+    it("does not let a different email change the answer — mobile is the primary identity", async () => {
+      // The query only ever filters by phone_1; a different email on the new
+      // lead has no bearing on this check at all.
+      prismaMock.tenants.findMany.mockResolvedValue([tenancyRow({ status: "ACTIVE" })]);
+
+      const resultWithOneEmailOnFile = await tenancyEligibilityService.hasLiveTenancyAtHostel("9876543210", "hostel-1");
+      const resultAsIfSubmittedWithADifferentEmail = await tenancyEligibilityService.hasLiveTenancyAtHostel("9876543210", "hostel-1");
+
+      expect(resultWithOneEmailOnFile).toBe(resultAsIfSubmittedWithADifferentEmail);
+    });
+
+    it("is false for an unparseable phone number, without querying the database", async () => {
+      await expect(
+        tenancyEligibilityService.hasLiveTenancyAtHostel("not-a-phone", "hostel-1")
+      ).resolves.toBe(false);
+      expect(prismaMock.tenants.findMany).not.toHaveBeenCalled();
     });
   });
 });

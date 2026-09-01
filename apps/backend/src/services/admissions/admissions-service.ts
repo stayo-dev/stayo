@@ -15,6 +15,10 @@ import {
   resolveEnquiryTemplateName,
 } from "@/lib/services/notifications/providers/whatsapp/enquiry-template-contracts";
 import { getLogger } from "@/lib/logger";
+import { tenancyEligibilityService } from "@/src/services/tenants/tenancy-eligibility-service";
+
+/** Prisma's error code for a unique-constraint violation. */
+const PRISMA_UNIQUE_CONSTRAINT_ERROR = "P2002";
 
 const logger = getLogger("admissions.lead-actions");
 
@@ -323,6 +327,13 @@ export class AdmissionsService {
       ? input.decision_maker_type
       : parentPhone ? "BOTH" : "STUDENT";
 
+    // Mobile is the primary identity: someone already living at this hostel
+    // must not be re-captured as a fresh lead, regardless of what email they
+    // submit this time.
+    if (studentPhone && await tenancyEligibilityService.hasLiveTenancyAtHostel(studentPhone, hostel.id)) {
+      throw ApiError.conflict("This person is already a tenant at this hostel. They cannot be added as a new lead.");
+    }
+
     const existing = studentPhone
       ? await prisma.visitorLead.findFirst({
           where: {
@@ -334,21 +345,23 @@ export class AdmissionsService {
         })
       : null;
 
-    const lead = existing
-      ? await prisma.visitorLead.update({
-          where: { id: existing.id },
-          data: {
-            student_name: studentName,
-            student_email: studentEmail || existing.student_email,
-            parent_name: cleanString(input.parent_name, 120) || existing.parent_name,
-            parent_phone: parentPhone || existing.parent_phone,
-            decision_maker_type: decisionMaker,
-            notes: cleanString(input.notes, 1000) || existing.notes,
-            last_activity_at: new Date(),
-            updated_at: new Date(),
-          },
-        })
-      : await prisma.visitorLead.create({
+    const mergeData = (fallback: { student_email: string | null; parent_name: string | null; parent_phone: string | null; notes: string | null }) => ({
+      student_name: studentName,
+      student_email: studentEmail || fallback.student_email,
+      parent_name: cleanString(input.parent_name, 120) || fallback.parent_name,
+      parent_phone: parentPhone || fallback.parent_phone,
+      decision_maker_type: decisionMaker,
+      notes: cleanString(input.notes, 1000) || fallback.notes,
+      last_activity_at: new Date(),
+      updated_at: new Date(),
+    });
+
+    let lead;
+    if (existing) {
+      lead = await prisma.visitorLead.update({ where: { id: existing.id }, data: mergeData(existing) });
+    } else {
+      try {
+        lead = await prisma.visitorLead.create({
           data: {
             hostel_id: hostel.id,
             owner_id: hostel.owner_id,
@@ -362,6 +375,19 @@ export class AdmissionsService {
             notes: cleanString(input.notes, 1000),
           },
         });
+      } catch (error: any) {
+        // Lost a concurrent create race for this hostel+phone (partial unique
+        // index visitor_leads_one_active_lead_per_hostel_phone) — merge into
+        // whichever row won instead of failing the caller with a raw 500.
+        if (error?.code !== PRISMA_UNIQUE_CONSTRAINT_ERROR) throw error;
+        const winner = await prisma.visitorLead.findFirst({
+          where: { hostel_id: hostel.id, student_phone: studentPhone, status: { in: ACTIVE_LEAD_STATUSES } },
+          orderBy: { created_at: "desc" },
+        });
+        if (!winner) throw error;
+        lead = await prisma.visitorLead.update({ where: { id: winner.id }, data: mergeData(winner) });
+      }
+    }
 
     await this.recordActivity(lead.id, "VIEW_HOSTEL", { source: "lead_capture" });
     await invalidateTag(redisKeys.admissions.owner(hostel.owner_id));
@@ -390,6 +416,14 @@ export class AdmissionsService {
       ? input.decision_maker_type
       : parentPhone ? "BOTH" : "STUDENT";
 
+    // Mobile is the primary identity: someone already living at this hostel
+    // must not be re-captured as a fresh lead, regardless of what email they
+    // submit this time. Duplicate leads across owners/admins of the SAME
+    // hostel are already prevented below without an owner_id filter.
+    if (studentPhone && await tenancyEligibilityService.hasLiveTenancyAtHostel(studentPhone, hostel.id)) {
+      throw ApiError.conflict("This person is already a tenant at this hostel. They cannot be added as a new lead.");
+    }
+
     const existing = studentPhone
       ? await prisma.visitorLead.findFirst({
           where: {
@@ -401,23 +435,25 @@ export class AdmissionsService {
         })
       : null;
 
-    const lead = existing
-      ? await prisma.visitorLead.update({
-          where: { id: existing.id },
-          data: {
-            student_name: studentName,
-            student_email: studentEmail || existing.student_email,
-            parent_name: cleanString(input.parent_name, 120) || existing.parent_name,
-            parent_phone: parentPhone || existing.parent_phone,
-            decision_maker_type: decisionMaker,
-            notes: cleanString(input.notes, 1000) || existing.notes,
-            last_activity_at: new Date(),
-            updated_at: new Date(),
-            status: input.status || existing.status,
-            source: cleanString(input.source, 50) || existing.source || "WALK_IN",
-          },
-        })
-      : await prisma.visitorLead.create({
+    const mergeData = (fallback: { student_email: string | null; parent_name: string | null; parent_phone: string | null; notes: string | null; status: string; source: string | null }) => ({
+      student_name: studentName,
+      student_email: studentEmail || fallback.student_email,
+      parent_name: cleanString(input.parent_name, 120) || fallback.parent_name,
+      parent_phone: parentPhone || fallback.parent_phone,
+      decision_maker_type: decisionMaker,
+      notes: cleanString(input.notes, 1000) || fallback.notes,
+      last_activity_at: new Date(),
+      updated_at: new Date(),
+      status: input.status || fallback.status,
+      source: cleanString(input.source, 50) || fallback.source || "WALK_IN",
+    });
+
+    let lead;
+    if (existing) {
+      lead = await prisma.visitorLead.update({ where: { id: existing.id }, data: mergeData(existing) });
+    } else {
+      try {
+        lead = await prisma.visitorLead.create({
           data: {
             hostel_id: hostel.id,
             owner_id: ownerId,
@@ -432,6 +468,21 @@ export class AdmissionsService {
             notes: cleanString(input.notes, 1000),
           },
         });
+      } catch (error: any) {
+        // Lost a concurrent create race for this hostel+phone (partial unique
+        // index visitor_leads_one_active_lead_per_hostel_phone) — merge into
+        // whichever row won instead of failing the caller with a raw 500.
+        // Not owner-scoped, matching the dedup query above: a second owner/
+        // admin of the same hostel racing the first must land here too.
+        if (error?.code !== PRISMA_UNIQUE_CONSTRAINT_ERROR) throw error;
+        const winner = await prisma.visitorLead.findFirst({
+          where: { hostel_id: hostel.id, student_phone: studentPhone, status: { in: ACTIVE_LEAD_STATUSES } },
+          orderBy: { created_at: "desc" },
+        });
+        if (!winner) throw error;
+        lead = await prisma.visitorLead.update({ where: { id: winner.id }, data: mergeData(winner) });
+      }
+    }
 
     await this.recordActivity(lead.id, "WALK_IN_LEAD_CREATED", { source: "owner_creation" });
     await invalidateTag(redisKeys.admissions.owner(ownerId));
