@@ -25,12 +25,6 @@ function unwrap(response: { data: any }) {
 }
 
 export const tenantHistoryService = {
-  /** For an existing tenancy. `tenant_id` resolves to the person server-side. */
-  byTenant: async (tenantId: string): Promise<DisclosedHistory> => {
-    const response = await api.get('/owner/tenant-history', { params: { tenant_id: tenantId } });
-    return unwrap(response) as DisclosedHistory;
-  },
-
   /** For an enquiry or a prospective invite, where no tenancy exists yet. */
   byProfile: async (hostelId: string, profileId: string): Promise<DisclosedHistory> => {
     const response = await api.get('/owner/tenant-history', {

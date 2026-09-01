@@ -91,8 +91,23 @@ describe("TenancyEligibilityService.previewEligibilityByContact", () => {
     });
   });
 
-  it("refuses another owner's phone number without disclosing whose it is", async () => {
+  it("lets another hostel's owner through — they may legitimately rent elsewhere", async () => {
+    // ADR-162: the rule is hostel-scoped. Only the asking owner's own account
+    // (or an admin) is refused; an owner of a different hostel is a tenant like
+    // anyone else.
     prismaMock.profile.findFirst.mockResolvedValue({ id: "owner-b", role: "OWNER" });
+    prismaMock.tenants.findMany.mockResolvedValue([]);
+
+    const result = await tenancyEligibilityService.previewEligibilityByContact(
+      { phone: "9876543210" },
+      "owner-a"
+    );
+
+    expect(result).toEqual({ hasAccount: true, eligibility: { eligible: true } });
+  });
+
+  it("refuses an admin account without disclosing anything about it", async () => {
+    prismaMock.profile.findFirst.mockResolvedValue({ id: "admin-1", role: "ADMIN" });
     prismaMock.tenants.findMany.mockResolvedValue([]);
 
     const result = await tenancyEligibilityService.previewEligibilityByContact(

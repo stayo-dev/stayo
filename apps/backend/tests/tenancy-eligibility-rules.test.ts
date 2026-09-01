@@ -196,39 +196,47 @@ describe("evaluateTenancyEligibility — the tenancy being taken over", () => {
 });
 
 /**
- * Rule 1 — the account behind the phone number must be a tenant account.
+ * Rule 1 — the account behind the phone number must be one this owner may make
+ * a tenant.
  *
- * A phone number is this system's identity key and one number is one person,
- * so an owner (or admin) account cannot also be somebody's tenant. It has to
- * be evaluated ahead of the tenancy rules because an owner account normally
- * holds no tenancies at all, which is exactly the shape those rules wave
- * through.
+ * Hostel-scoped, not a blanket "owners can never be tenants" ([[ADR-162]]): an
+ * owner of a *different* hostel is a legitimate tenant. Only the asking owner's
+ * own account, or an admin, is refused. It has to be evaluated ahead of the
+ * tenancy rules because such an account normally holds no tenancies at all,
+ * which is exactly the shape those rules wave through.
  */
 describe("evaluateTenancyEligibility — account role", () => {
-  const ownerAccount = { id: OWNER_A, role: "OWNER" };
+  const ownAccount = { id: OWNER_A, role: "OWNER" };
 
-  it("refuses an owner account even with a spotless tenancy history", () => {
-    expect(evaluateTenancyEligibility([], OWNER_B, { account: ownerAccount })).toEqual({
+  it("refuses the asking owner's own account even with a spotless history", () => {
+    expect(evaluateTenancyEligibility([], OWNER_A, { account: ownAccount })).toEqual({
       eligible: false,
       code: "PHONE_BELONGS_TO_NON_TENANT",
-      disclosure: { scope: "OTHER", hostelName: null, roomNumber: null, tenantId: null },
+      disclosure: { scope: "OWN", hostelName: null, roomNumber: null, tenantId: null },
     });
   });
 
-  it("refuses an admin account", () => {
+  it("lets an owner of a DIFFERENT hostel through — they may rent elsewhere", () => {
+    expect(
+      evaluateTenancyEligibility([], OWNER_A, { account: { id: OWNER_B, role: "OWNER" } })
+    ).toEqual({ eligible: true });
+  });
+
+  it("refuses an admin account, whoever is asking", () => {
     const result = evaluateTenancyEligibility([], OWNER_A, {
       account: { id: "admin-1", role: "ADMIN" },
     });
-    expect(result).toMatchObject({ eligible: false, code: "PHONE_BELONGS_TO_NON_TENANT" });
+    expect(result).toMatchObject({
+      eligible: false,
+      code: "PHONE_BELONGS_TO_NON_TENANT",
+      disclosure: { scope: "OTHER" },
+    });
   });
 
-  it("scopes the refusal to OWN when the owner typed their own number", () => {
-    const result = evaluateTenancyEligibility([], OWNER_A, { account: ownerAccount });
-    expect(result).toMatchObject({ disclosure: { scope: "OWN" } });
-  });
-
-  it("never discloses anything about a non-tenant account beyond the scope", () => {
-    const result = evaluateTenancyEligibility([], OWNER_B, { account: ownerAccount });
+  it("never discloses anything about the account beyond the scope", () => {
+    const result = evaluateTenancyEligibility([], OWNER_A, {
+      account: { id: "admin-1", role: "ADMIN" },
+    });
     expect(result).toMatchObject({
       disclosure: { hostelName: null, roomNumber: null, tenantId: null },
     });
@@ -236,9 +244,18 @@ describe("evaluateTenancyEligibility — account role", () => {
 
   it("takes precedence over a live tenancy, so the account answer wins", () => {
     const result = evaluateTenancyEligibility([tenancy({ status: "ACTIVE" })], OWNER_A, {
-      account: ownerAccount,
+      account: ownAccount,
     });
     expect(result).toMatchObject({ code: "PHONE_BELONGS_TO_NON_TENANT" });
+  });
+
+  it("still applies the tenancy rules to an owner who passed the role check", () => {
+    // A different hostel's owner is admissible as a person, but not while they
+    // already hold a live tenancy somewhere.
+    const result = evaluateTenancyEligibility([tenancy({ status: "ACTIVE" })], OWNER_A, {
+      account: { id: OWNER_B, role: "OWNER" },
+    });
+    expect(result).toMatchObject({ code: "TENANT_HAS_ACTIVE_TENANCY" });
   });
 
   it("lets an ordinary tenant account through", () => {
@@ -251,6 +268,14 @@ describe("evaluateTenancyEligibility — account role", () => {
     expect(
       evaluateTenancyEligibility([], OWNER_A, { account: { id: "p-1", role: "tenant" } })
     ).toEqual({ eligible: true });
+  });
+
+  it("fails closed when there is no asking owner to compare against", () => {
+    // Without an owner id nothing can be called a *different* hostel's owner,
+    // so an unknown owner is never waved through as one.
+    expect(
+      evaluateTenancyEligibility([], null, { account: { id: OWNER_B, role: "OWNER" } })
+    ).toMatchObject({ code: "PHONE_BELONGS_TO_NON_TENANT", disclosure: { scope: "OTHER" } });
   });
 
   it("skips the rule entirely when no account was supplied", () => {

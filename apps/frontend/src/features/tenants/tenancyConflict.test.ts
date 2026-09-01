@@ -102,16 +102,18 @@ describe('parseTenancyConflict', () => {
 });
 
 /**
- * A phone number that belongs to an owner or admin account. One number is one
- * person, so it cannot also be somebody's tenant — and the refusal must say so
- * without disclosing anything about the account beyond whether it is the asking
- * owner's own.
+ * A phone number the asking owner may not make their tenant — their own owner
+ * account, or an admin account. Hostel-scoped per ADR-162: an owner of a
+ * *different* hostel is never refused, so this code never reaches the UI for
+ * them. The refusal must say so without disclosing anything about the account
+ * beyond whether it is the asking owner's own.
  */
 describe('buildTenancyConflictCopy — PHONE_BELONGS_TO_NON_TENANT', () => {
   it('tells an owner plainly when they have typed their own number', () => {
     const conflict = buildTenancyConflictCopy('PHONE_BELONGS_TO_NON_TENANT', { scope: 'OWN' });
     expect(conflict.title).toBe('That’s your own number');
     expect(conflict.body).toContain('your own Stayo owner account');
+    expect(conflict.body).toContain('hostel you own');
     expect(conflict.tenantId).toBeNull();
   });
 

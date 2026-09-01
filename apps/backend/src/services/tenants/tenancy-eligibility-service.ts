@@ -72,6 +72,25 @@ export class TenancyEligibilityService {
     );
   }
 
+  /**
+   * Whether this phone number currently holds a live (INVITED/ACTIVE) tenancy
+   * at this specific hostel — used to stop a lead being created for someone
+   * who is already that hostel's tenant. Deliberately hostel-scoped, unlike
+   * `loadLiveTenanciesByPhone`: a live tenancy elsewhere must not block a
+   * lead here (that cross-hostel case is `evaluateTenancyEligibility`'s job,
+   * at invitation time).
+   */
+  async hasLiveTenancyAtHostel(phone: string | null | undefined, hostelId: string, tx?: any): Promise<boolean> {
+    const normalized = normalizeIndianPhone(phone ?? null);
+    if (!normalized) return false;
+
+    const tenancies = await this.loadTenanciesWhere(
+      { phone_1: normalized, hostel_id: hostelId, status: { in: ["ACTIVE", "INVITED"] } },
+      tx
+    );
+    return tenancies.length > 0;
+  }
+
   private async loadTenanciesWhere(where: any, tx?: any): Promise<TenancySnapshot[]> {
     const db = tx || prisma;
 
