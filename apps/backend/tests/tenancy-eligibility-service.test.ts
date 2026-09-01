@@ -146,7 +146,7 @@ describe("TenancyEligibilityService", () => {
     });
 
     it("resolves a profile by email or phone before judging", async () => {
-      prismaMock.profile.findFirst.mockResolvedValue({ id: "profile-1" });
+      prismaMock.profile.findFirst.mockResolvedValue({ id: "profile-1", role: "TENANT" });
       prismaMock.tenants.findMany.mockResolvedValue([tenancyRow()]);
 
       const result = await tenancyEligibilityService.checkEligibilityByContact(

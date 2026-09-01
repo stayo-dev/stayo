@@ -7,10 +7,19 @@
  * but never another owner's — that would hand a competitor's tenant roster, and a
  * person's address, to whoever types the right email.
  *
+ * A phone number can also be refused for belonging to an account this owner may
+ * not make their tenant: their own owner account (you cannot be a tenant of the
+ * hostel you own), or an admin account. An owner of a *different* hostel is not
+ * refused — see ADR-162. That refusal discloses nothing but whether the number
+ * is the asking owner's own: no name, no hostel, not even whose account it is.
+ *
  * Pure so it can be tested without a DOM (this app's test runner is node-only).
  */
 
-export type TenancyConflictCode = 'TENANT_HAS_ACTIVE_TENANCY' | 'PREVIOUS_TENANCY_NOT_SETTLED';
+export type TenancyConflictCode =
+  | 'PHONE_BELONGS_TO_NON_TENANT'
+  | 'TENANT_HAS_ACTIVE_TENANCY'
+  | 'PREVIOUS_TENANCY_NOT_SETTLED';
 
 export interface TenancyDisclosure {
   scope: 'OWN' | 'OTHER';
@@ -28,6 +37,7 @@ export interface TenancyConflict {
 }
 
 const CONFLICT_CODES: TenancyConflictCode[] = [
+  'PHONE_BELONGS_TO_NON_TENANT',
   'TENANT_HAS_ACTIVE_TENANCY',
   'PREVIOUS_TENANCY_NOT_SETTLED',
 ];
@@ -50,6 +60,20 @@ export function buildTenancyConflictCopy(
       ? `${hostelName}, room ${roomNumber}`
       : hostelName
     : null;
+
+  if (code === 'PHONE_BELONGS_TO_NON_TENANT') {
+    return {
+      code,
+      title: isOwn ? 'That’s your own number' : 'Not a tenant number',
+      body: isOwn
+        ? 'This is the mobile number on your own Stayo owner account — you can’t be a tenant of a hostel you own. Enter the number the person moving in will use.'
+        : 'This number is registered to a Stayo account that can’t be invited as a tenant. Check the number, or ask them which mobile number they’ll use as a resident.',
+      // Nothing to link to: a non-tenant account is not one of this owner's
+      // tenants, and pointing at it would disclose an account they have no
+      // business seeing.
+      tenantId: null,
+    };
+  }
 
   if (code === 'TENANT_HAS_ACTIVE_TENANCY') {
     return {

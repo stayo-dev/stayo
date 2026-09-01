@@ -5,6 +5,7 @@ import { normalizeIndianPhone } from "@/lib/utils/phone-utils";
 import { ensureActiveAllocation } from "./tenancy-allocation";
 import { planObligationLinking } from "./obligation-linking";
 import { resolveActivationEmail } from "./invited-profile-resolver";
+import { TenancyEligibilityError } from "./tenancy-eligibility-service";
 
 export interface AdoptParams {
   tenantId: string;
@@ -143,13 +144,25 @@ export async function finalizeOwnerManagedTenancy(
       // of the hostel they DO own. `ownerId` here is always this tenancy's
       // hostel's actual owner (callers already verified that), so comparing
       // the matched profile's id against it is hostel-scoped, not a blanket
-      // "owners can never be tenants" rule.
+      // "owners can never be tenants" rule. See [[Decisions#ADR-162]].
       const isDifferentHostelOwner = existingByPhone.role === "OWNER" && existingByPhone.id !== ownerId;
       if (existingByPhone.role !== "TENANT" && !isDifferentHostelOwner) {
-        const message = existingByPhone.role === "OWNER"
-          ? "ROLE_MISMATCH: You already own this hostel and cannot become its tenant"
-          : "ROLE_MISMATCH: This phone number belongs to a different kind of Stayo account";
-        throw new Error(message);
+        // Thrown in its structured form rather than as a bare `ROLE_MISMATCH:`
+        // string, which no status map recognised — so this refusal used to
+        // reach an owner as an HTTP 500 after they had filled in all four
+        // steps of the invite wizard. As `TenancyEligibilityError` the route
+        // serialises it as a 409 carrying the disclosure scope, and the wizard
+        // renders the same card the debounced pre-submit check renders.
+        throw new TenancyEligibilityError({
+          eligible: false,
+          code: "PHONE_BELONGS_TO_NON_TENANT",
+          disclosure: {
+            scope: existingByPhone.id === ownerId ? "OWN" : "OTHER",
+            hostelName: null,
+            roomNumber: null,
+            tenantId: null,
+          },
+        });
       }
       // Reuse, never duplicate. Credentials, email and role are left exactly
       // as they are — this must not touch an account the person may already

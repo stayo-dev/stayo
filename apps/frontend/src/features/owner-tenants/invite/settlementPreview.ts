@@ -10,7 +10,7 @@
  * form, before anything is created. This module decides *when* to call it,
  * *what* to send, and how to turn what comes back into the concrete lines the
  * Verify step shows ("Deposit ₹16,000 · Aug rent ₹8,000 · Sep ₹8,000 ·
- * Oct ₹8,000 / Nov onwards outstanding") — it never recomputes the
+ * Oct ₹8,000 / ₹24,000 still due, Nov onwards") — it never recomputes the
  * allocation itself.
  */
 
@@ -144,8 +144,18 @@ export interface PreviewDisplay {
   headline: string;
   /** "Deposit ₹16,000", "Aug rent ₹8,000", "Sep ₹8,000", "Oct ₹8,000" */
   lines: PreviewDisplayLine[];
-  /** "Nov onwards outstanding" — null when there's no rent track (no monthly rent) or nothing left owing beyond the plan's horizon. */
+  /** "Nov onwards" — null when there's no rent track (no monthly rent) or nothing left owing beyond the plan's horizon. */
   outstandingLabel: string | null;
+  /**
+   * What is still owed once this payment lands, in rupees. `0` means fully
+   * settled.
+   *
+   * A month name on its own ("Nov onwards outstanding") told an owner *when*
+   * the tenant falls behind but never *how much*, which is the figure they are
+   * checking against the cash in their hand before they commit to the invite.
+   * Taken straight from the backend's own plan — never recomputed here.
+   */
+  remainingOutstanding: number;
   /** > 0 when the amount exceeds every settleable installment (ADR-036: an error, not a balance). */
   overpaidAmount: number;
   /** Plain-language warning for the overpaid case, or the backend's own rejection reason — null when the preview is clean. */
@@ -210,7 +220,7 @@ export function buildPreviewDisplay(
         ? monthAfter(preview.rent_months[preview.rent_months.length - 1])
         : null;
     if (startIso) {
-      outstandingLabel = `${monthShortLabel(startIso)} onwards outstanding`;
+      outstandingLabel = `${monthShortLabel(startIso)} onwards`;
     }
   }
 
@@ -226,6 +236,7 @@ export function buildPreviewDisplay(
     headline: `₹${paidAmount.toLocaleString('en-IN')} received`,
     lines,
     outstandingLabel,
+    remainingOutstanding: Math.max(preview.remaining_outstanding, 0),
     overpaidAmount,
     warning,
   };
