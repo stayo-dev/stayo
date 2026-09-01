@@ -5,10 +5,15 @@
  * service layer (`tenancy-eligibility-service.ts`) does the querying and hands
  * plain data in here.
  *
- * Two rules, in order:
- *   1. A person may hold only one live tenancy. Accepting a hostel's invitation
+ * Three rules, in order:
+ *   1. The account behind the phone number must be a tenant account. A phone
+ *      number is this system's identity key, and one number is one person: an
+ *      owner (or admin) account cannot also be somebody's tenant. Checked
+ *      first because an owner account typically has no tenancies at all, so
+ *      the two rules below would wave it straight through.
+ *   2. A person may hold only one live tenancy. Accepting a hostel's invitation
  *      means they cannot join another until they leave.
- *   2. Leaving is not enough — the move-out must be COMPLETED (settlement
+ *   3. Leaving is not enough — the move-out must be COMPLETED (settlement
  *      finalised). `FORMER_TENANT` alone is set at the exit date, which can be
  *      before the settlement money has moved.
  */
@@ -32,6 +37,17 @@ export type TenancySnapshot = {
   hasCompletedMoveOut: boolean;
 };
 
+/**
+ * The account a contact resolves to, as far as eligibility cares: who it is,
+ * and what kind of account it is. `null` when no account exists yet — the
+ * ordinary new-tenant case, which the role rule must never refuse.
+ */
+export type AccountSnapshot = {
+  id: string;
+  /** `profile.role` — OWNER | TENANT | ADMIN. */
+  role: string;
+};
+
 export type TenancyDisclosure = {
   /**
    * `OWN` — the person already lives in a hostel belonging to the owner who is
@@ -50,7 +66,10 @@ export type TenancyEligibility =
   | { eligible: true }
   | {
       eligible: false;
-      code: "TENANT_HAS_ACTIVE_TENANCY" | "PREVIOUS_TENANCY_NOT_SETTLED";
+      code:
+        | "PHONE_BELONGS_TO_NON_TENANT"
+        | "TENANT_HAS_ACTIVE_TENANCY"
+        | "PREVIOUS_TENANCY_NOT_SETTLED";
       disclosure: TenancyDisclosure;
     };
 
@@ -91,6 +110,13 @@ export interface EligibilityOptions {
    * and the reason it is not simply skipped at the call site. See ADR-153.
    */
   ignoreTenancyId?: string;
+  /**
+   * The account the contact resolves to, when one exists. Supplying it enables
+   * the account-role rule; omitting it (the claim flow, and any caller that
+   * already knows it is holding a tenant) simply skips that rule rather than
+   * failing open on a guess.
+   */
+  account?: AccountSnapshot | null;
 }
 
 export function evaluateTenancyEligibility(
@@ -101,6 +127,30 @@ export function evaluateTenancyEligibility(
   const considered = options.ignoreTenancyId
     ? tenancies.filter((tenancy) => tenancy.id !== options.ignoreTenancyId)
     : tenancies;
+
+  // An owner or admin account can never be a tenant. This is the same rule
+  // `owner-managed-tenancy-service` enforces when it refuses to reuse a
+  // non-TENANT profile for a tenancy (`ROLE_MISMATCH`) — but that one fires
+  // deep inside the invite's write transaction, after the owner has filled in
+  // four steps. Evaluating it here means the same refusal is available to the
+  // pre-submit check, so it is answered while they are still typing the phone
+  // number.
+  const account = options.account;
+  if (account && String(account.role).toUpperCase() !== "TENANT") {
+    return {
+      eligible: false,
+      code: "PHONE_BELONGS_TO_NON_TENANT",
+      disclosure: {
+        // `OWN` here means "this is your own account", not "your hostel" — the
+        // owner typed their own number. Nothing else is ever disclosed about a
+        // non-tenant account: not a name, not a hostel, not whose it is.
+        scope: Boolean(invitingOwnerId) && account.id === invitingOwnerId ? "OWN" : "OTHER",
+        hostelName: null,
+        roomNumber: null,
+        tenantId: null,
+      },
+    };
+  }
 
   const live = considered.find(isLiveTenancy);
   if (live) {

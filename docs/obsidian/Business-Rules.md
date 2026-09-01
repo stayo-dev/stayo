@@ -334,18 +334,23 @@ Changed by [[Decisions#ADR-053|ADR-053]]. A person may hold exactly one live ten
 
 **A second, phone-keyed version of the same guarantee was added 2026-08-28 ([[Decisions#ADR-136|ADR-136]]).** The profile-keyed index above only ever constrains rows that carry a `profile_id` — a tenancy created with `profile_id: NULL` (as owner-managed adoption used to, see below) sailed straight past it. Migration `20260827180000_one_live_tenancy_per_phone` adds a second partial unique index, on `tenants.phone_1` for `ACTIVE`/`INVITED` rows, independent of whether `profile_id` is set at all. **Not yet applied to any database** — see [[Database]] and [[TODO]] for the unapplied-migration status and the query that finds violating rows.
 
-Someone may start a new tenancy when **both** hold:
+Someone may start a new tenancy when **all three** hold:
 
+0. The account behind the phone number, if one exists, is a **tenant** account.
 1. They hold no live tenancy.
 2. Every tenancy they **actually moved into** has a `move_out_requests` row in `COMPLETED`.
 
+Rule 0 was added 2026-09-01 ([[Decisions#ADR-161|ADR-161]]) and is evaluated **first**, because an owner or admin account normally holds no tenancies at all — exactly the shape rules 1 and 2 wave through. A phone number is this system's identity key and one number is one person, so an `OWNER` or `ADMIN` profile can never also be somebody's tenant. Supplying the account is opt-in (`EligibilityOptions.account`): callers that already hold a tenant — the claim flow — omit it and skip the rule rather than guessing.
+
 Rule 2 keys on settlement, not on status: `FORMER_TENANT` is set at the exit date, which can precede the settlement money moving. It also keys on *having activated* — an invitation that expired or was cancelled before the tenant ever arrived owes no settlement, and must not trap them on the platform forever.
 
-Refusals: `TENANT_HAS_ACTIVE_TENANCY` and `PREVIOUS_TENANCY_NOT_SETTLED`, both HTTP 409.
+Refusals: `PHONE_BELONGS_TO_NON_TENANT`, `TENANT_HAS_ACTIVE_TENANCY` and `PREVIOUS_TENANCY_NOT_SETTLED`, all HTTP 409.
 
 **Disclosure is scoped to ownership.** The refusal names the hostel and room **only when that hostel belongs to the owner asking**. For any other owner's property it says only "currently a tenant at another property on Stayo" — no hostel name, no room, no tenant id. Otherwise any owner could enumerate a competitor's roster, and a person's home address, by guessing emails. Enforced on both sides: the backend blanks the fields, and the frontend's `parseTenancyConflict` ignores a hostel name that arrives without an `OWN` scope.
 
 **Accepting one invitation voids the others.** Several owners may invite the same person; the first acceptance cancels every other live invitation for them, releases those room reservations back to capacity with `release_reason: 'JOINED_ELSEWHERE'`, and logs `invitation_voided_joined_elsewhere` for the losing owners. A pending invitation from another owner therefore **does not** block a new invite — blocking there would let any owner reserve a person with an invite they never send follow-up on.
+
+**A non-tenant account discloses nothing but whose it is (2026-09-01).** `PHONE_BELONGS_TO_NON_TENANT` carries `scope: OWN` only when the number is the *asking owner's own* — which is the common case, an owner typing their own number to test the form — and `OTHER` for anyone else's. `hostelName`, `roomNumber` and `tenantId` are always `null`: no name, no hostel, not even whose account it is. The owner learns "this number can't be a tenant" and nothing further, which is what stops the refusal becoming an account-enumeration oracle over every owner and admin on the platform.
 
 **Offered pre-submit, since 2026-08-27 ([[Decisions#ADR-129|ADR-129]]).** The same refusal, same OWN/OTHER disclosure scoping, is now also answerable *before* the owner submits the invite form: `GET /api/owners/invitations/eligibility?phone=&email=` wraps `checkEligibility` in a non-throwing, non-mutating `previewEligibilityByContact`. The Invite Tenant wizard's Tenant step debounces this on the phone field. No new information crosses the boundary — this is the same 409 signal offered earlier, plus a bare `has_account` boolean.
 

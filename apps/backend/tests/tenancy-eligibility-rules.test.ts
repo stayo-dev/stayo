@@ -194,3 +194,67 @@ describe("evaluateTenancyEligibility — the tenancy being taken over", () => {
     ).toMatchObject({ eligible: false });
   });
 });
+
+/**
+ * Rule 1 — the account behind the phone number must be a tenant account.
+ *
+ * A phone number is this system's identity key and one number is one person,
+ * so an owner (or admin) account cannot also be somebody's tenant. It has to
+ * be evaluated ahead of the tenancy rules because an owner account normally
+ * holds no tenancies at all, which is exactly the shape those rules wave
+ * through.
+ */
+describe("evaluateTenancyEligibility — account role", () => {
+  const ownerAccount = { id: OWNER_A, role: "OWNER" };
+
+  it("refuses an owner account even with a spotless tenancy history", () => {
+    expect(evaluateTenancyEligibility([], OWNER_B, { account: ownerAccount })).toEqual({
+      eligible: false,
+      code: "PHONE_BELONGS_TO_NON_TENANT",
+      disclosure: { scope: "OTHER", hostelName: null, roomNumber: null, tenantId: null },
+    });
+  });
+
+  it("refuses an admin account", () => {
+    const result = evaluateTenancyEligibility([], OWNER_A, {
+      account: { id: "admin-1", role: "ADMIN" },
+    });
+    expect(result).toMatchObject({ eligible: false, code: "PHONE_BELONGS_TO_NON_TENANT" });
+  });
+
+  it("scopes the refusal to OWN when the owner typed their own number", () => {
+    const result = evaluateTenancyEligibility([], OWNER_A, { account: ownerAccount });
+    expect(result).toMatchObject({ disclosure: { scope: "OWN" } });
+  });
+
+  it("never discloses anything about a non-tenant account beyond the scope", () => {
+    const result = evaluateTenancyEligibility([], OWNER_B, { account: ownerAccount });
+    expect(result).toMatchObject({
+      disclosure: { hostelName: null, roomNumber: null, tenantId: null },
+    });
+  });
+
+  it("takes precedence over a live tenancy, so the account answer wins", () => {
+    const result = evaluateTenancyEligibility([tenancy({ status: "ACTIVE" })], OWNER_A, {
+      account: ownerAccount,
+    });
+    expect(result).toMatchObject({ code: "PHONE_BELONGS_TO_NON_TENANT" });
+  });
+
+  it("lets an ordinary tenant account through", () => {
+    expect(
+      evaluateTenancyEligibility([], OWNER_A, { account: { id: "p-1", role: "TENANT" } })
+    ).toEqual({ eligible: true });
+  });
+
+  it("is case-insensitive about the role, since it arrives as a plain string", () => {
+    expect(
+      evaluateTenancyEligibility([], OWNER_A, { account: { id: "p-1", role: "tenant" } })
+    ).toEqual({ eligible: true });
+  });
+
+  it("skips the rule entirely when no account was supplied", () => {
+    expect(evaluateTenancyEligibility([], OWNER_A, {})).toEqual({ eligible: true });
+    expect(evaluateTenancyEligibility([], OWNER_A, { account: null })).toEqual({ eligible: true });
+  });
+});

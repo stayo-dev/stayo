@@ -187,6 +187,18 @@ Move-in reads **"Flexible"** until chosen, and sends no date — the previous de
 
 See [[Decisions#ADR-157|ADR-157]], [[Changelog]].
 
+### Invite Tenant wizard — the step shows what the system already knew (2026-09-01)
+
+Four changes to the owner's 4-step Invite Tenant wizard (Tenant → Stay → Money → Verify), all of the same kind: the data existed and the screen did not use it. See [[Decisions#ADR-161|ADR-161]].
+
+- **Step 1 — a phone number that can't be a tenant is refused while you type.** Account role is now the first tenancy-eligibility rule (see [[Business-Rules]]), so an `OWNER`/`ADMIN` number is answered by the same debounced check that already caught "already a tenant somewhere" — *"That's your own number"* for the owner's own, *"Not a tenant number"* for anyone else's, and nothing further disclosed. Previously this reached the owner as an HTTP 500 after all four steps.
+- **Step 2 — one hostel, no picker.** An owner with exactly one hostel gets it selected and stated as a line rather than a required dropdown with a single option. Keyed on `length === 1`; never `hostels[0]`.
+- **Step 2 — every room tile carries its free-bed count.** `capacity`/`used`/`available` and the occupants' names were already in `GET /api/rooms?grouped=true` and were dropped in the frontend mapping. Tiles now read `101 / 1 free` or `Full`, a floor tab marks itself `full`, and selecting a room opens a strip naming who is in it — an invitee's held bed marked `Invited`, not counted as a resident. No backend change; occupancy lives in the shared `roomSeatGrid.ts` as new **optional** source fields, so the tenant-facing enquiry picker (which supplies no capacity) renders exactly as before.
+- **Step 2 — joining date and agreement length are one card, ending in a date.** The length is a horizontal snap ring (1–36 months, presets 6/11/12/24, arrow keys, `role="slider"`) instead of a free-text box, and the pair renders a live *"Ends 31 Jul 2027"*. Horizontal rather than a vertical drum because the wizard is inside a vertically-scrolling `BottomSheet`. The ring rests on the shortest term while unset but is styled as unchosen, so resting is never mistaken for choosing.
+- **Step 4 — the "already paid" panel works, and states a balance.** It had been permanently stuck on a placeholder (see [[Bugs]]). It now itemises what the money settles — deposit, then each rent month — and ends on the **remaining balance in rupees**, taken from the backend's `remaining_outstanding` rather than recomputed, where it previously named only the month the tenant falls behind.
+
+**Key files:** `apps/frontend/src/features/owner-tenants/invite/` (`agreementTerm.ts` + `steps/DurationRing.tsx`, `steps/RoomSeatGrid.tsx`, `steps/StayStep.tsx`, `steps/VerifyStep.tsx`, `InviteTenantWizard.tsx`, `settlementPreview.ts`), `apps/frontend/src/shared/ui-patterns/roomSeatGrid.ts`, `apps/frontend/src/features/tenants/tenancyConflict.ts`, `apps/backend/src/services/tenants/tenancy-eligibility-{rules,service}.ts`, `apps/backend/src/services/tenants/owner-managed-tenancy-service.ts`. **Nothing here has been exercised in a running app.** See [[Changelog]], [[APIs]].
+
 ### Claiming an account leads into onboarding, not around it (2026-08-30)
 
 A tenant claiming an owner-managed tenancy ([[Decisions#ADR-134|ADR-134]]) proved their phone, linked their account and settled their ledger — and was never asked for their identity details, ID documents, guardian contacts, or a signature on the residency agreement. They landed on the dashboard as a fully active resident with none of the paperwork every self-serve tenant provides.

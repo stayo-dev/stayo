@@ -5,6 +5,7 @@ import { normalizeIndianPhone } from "@/lib/utils/phone-utils";
 import { ensureActiveAllocation } from "./tenancy-allocation";
 import { planObligationLinking } from "./obligation-linking";
 import { resolveActivationEmail } from "./invited-profile-resolver";
+import { TenancyEligibilityError } from "./tenancy-eligibility-service";
 
 export interface AdoptParams {
   tenantId: string;
@@ -139,9 +140,23 @@ export async function finalizeOwnerManagedTenancy(
     const existingByPhone = await tx.profile.findUnique({ where: { phone } });
     if (existingByPhone) {
       if (existingByPhone.role !== "TENANT") {
-        throw new Error(
-          "ROLE_MISMATCH: This phone number belongs to a different kind of Stayo account"
-        );
+        // Same refusal the pre-submit eligibility check now gives while the
+        // owner is still typing the phone number — thrown in its structured
+        // form so the invite route serialises it as a 409 carrying the
+        // disclosure scope, and the wizard renders the identical card. It used
+        // to be a bare `ROLE_MISMATCH:` string, which no status map recognised,
+        // so an owner who typed their own number filled in all four steps and
+        // was answered with an HTTP 500.
+        throw new TenancyEligibilityError({
+          eligible: false,
+          code: "PHONE_BELONGS_TO_NON_TENANT",
+          disclosure: {
+            scope: existingByPhone.id === ownerId ? "OWN" : "OTHER",
+            hostelName: null,
+            roomNumber: null,
+            tenantId: null,
+          },
+        });
       }
       // Reuse, never duplicate. Credentials, email and role are left exactly
       // as they are — this must not touch an account the person may already

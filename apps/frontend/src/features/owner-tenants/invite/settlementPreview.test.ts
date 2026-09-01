@@ -168,7 +168,7 @@ describe('buildPreviewDisplay', () => {
       { key: 'preview-rent-2026-09', label: 'Sep', amount: 8000 },
       { key: 'preview-rent-2026-10', label: 'Oct', amount: 8000 },
     ]);
-    expect(display.outstandingLabel).toBe('Nov onwards outstanding');
+    expect(display.outstandingLabel).toBe('Nov onwards');
     expect(display.overpaidAmount).toBe(0);
     expect(display.warning).toBeNull();
   });
@@ -187,7 +187,7 @@ describe('buildPreviewDisplay', () => {
       remaining_outstanding: 5000,
     };
     const display = buildPreviewDisplay(partial, { paidAmount: 27000, monthlyRent: 8000 });
-    expect(display.outstandingLabel).toBe('Sep onwards outstanding');
+    expect(display.outstandingLabel).toBe('Sep onwards');
   });
 
   it('flags an over-payment plainly instead of letting it surface only at submit', () => {
@@ -260,5 +260,45 @@ describe('previewBlockers', () => {
   it('still asks for the amount when the toggle is on but nothing is typed', () => {
     expect(describePreviewBlockers(ready({ paidAmount: '' })))
       .toContain('how much they have paid');
+  });
+});
+
+/**
+ * The figure an owner is really checking: after this cash lands, what is still
+ * owed? The panel used to name only the month the tenant falls behind, which
+ * answers "when" and not "how much".
+ */
+describe('buildPreviewDisplay — remaining balance', () => {
+  const base: InviteSettlementPreviewResponse = {
+    allocations: [],
+    unallocated: 0,
+    total_outstanding: 40000,
+    total_to_settle: 16000,
+    remaining_outstanding: 24000,
+    payment_accepted: true,
+    rejection_reason: null,
+    rent_months: [],
+  };
+
+  it('carries the backend’s own remaining figure through, never recomputing it', () => {
+    const display = buildPreviewDisplay(base, { paidAmount: 16000, monthlyRent: 8000 });
+    expect(display.remainingOutstanding).toBe(24000);
+  });
+
+  it('reports 0 when the payment settles everything', () => {
+    const display = buildPreviewDisplay(
+      { ...base, remaining_outstanding: 0 },
+      { paidAmount: 40000, monthlyRent: 8000 },
+    );
+    expect(display.remainingOutstanding).toBe(0);
+  });
+
+  it('never reports a negative balance, so an over-payment reads as settled plus a warning', () => {
+    const display = buildPreviewDisplay(
+      { ...base, remaining_outstanding: -5000, unallocated: 5000 },
+      { paidAmount: 45000, monthlyRent: 8000 },
+    );
+    expect(display.remainingOutstanding).toBe(0);
+    expect(display.overpaidAmount).toBe(5000);
   });
 });

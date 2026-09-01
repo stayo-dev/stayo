@@ -8,6 +8,24 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-01 — The invite wizard's "already paid" panel never showed the settlement it had already fetched (fixed)
+
+**Symptom.** On the Invite Tenant wizard's Verify step, an owner who had recorded money the tenant already handed over saw a headed "Already paid" box containing one line of placeholder text — *"Working this out…"* — and it never resolved. The network tab showed `POST /api/tenants/invite-settlement-preview` firing and answering correctly.
+
+**Root cause.** `InviteTenantWizard.tsx` rendered `<VerifyStep data agreed setAgreed hostels />` and passed none of `settlementPreview`, `isLoadingSettlementPreview`, `settlementPreviewError`. `useInviteWizard` computes and returns all three; they died at the prop boundary. With all three `undefined`, `display` was `null`, loading was falsy and error was `null`, so every render fell through to the last-resort branch — which exists for the one frame before a first response arrives, and became permanent.
+
+**Why nothing caught it.** The three props were declared **optional** on `VerifyStepProps`, so omitting them was valid TypeScript. The frontend test suite is node-only and renders no components, so no test could observe it either. The panel's own fallback made it look like a slow request rather than a missing wire — the most expensive kind of placeholder, one that is indistinguishable from working.
+
+**Fix.** Pass the three props, and make them **required** — the omission is now a build failure, which is the part that stops this recurring. The panel was also reworked while it was open: it now itemises what the money settles and states the **remaining balance as a rupee figure** (`remaining_outstanding`, straight from the backend's plan — never recomputed here), where it previously ended on a bare month name, "Nov onwards outstanding". An owner reconciling cash against a notebook is checking an amount, not a month. See [[Decisions#ADR-161|ADR-161]], [[Changelog]], [[Features]].
+
+## 2026-09-01 — Inviting a phone number that belongs to an owner failed with an HTTP 500 on the last step (fixed)
+
+**Symptom.** An owner who entered their own mobile number (or another owner's) into the Invite Tenant wizard was told nothing on the Tenant step, filled in all four steps, tapped **Send invite**, and got a generic failure banner. Server-side it was a 500.
+
+**Root cause — a guard in the right place doing the wrong thing.** `owner-managed-tenancy-service.ts` did refuse to reuse a non-`TENANT` profile for a tenancy, but it threw a bare `"ROLE_MISMATCH: …"` string from **inside the invite's write transaction**, at the very last step of `createInvitation`. `ROLE_MISMATCH` was in no route's status map, so the invite route's fallback classified it as `INTERNAL_ERROR` / 500. Meanwhile the pre-submit check that exists precisely to answer this earlier — `previewEligibilityByContact` — selected `{ id: true }` from the profile and never looked at `role`, and an owner account normally holds no tenancies, so every tenancy-shaped rule in `evaluateTenancyEligibility` waved it straight through as eligible.
+
+**Fix.** Account role became the first eligibility rule, evaluated ahead of the tenancy rules for exactly that reason, and the profile lookup now selects `role` alongside `id`. The deep guard still stands as a backstop but now throws the structured `TenancyEligibilityError` the routes already know how to serialise, so the submit-time 409 and the debounced pre-submit check render the same card with the same words. `POST /api/leads/[id]/convert-to-invitation` gained the same serialisation, which it had never had. See [[Decisions#ADR-161|ADR-161]], [[Business-Rules]], [[APIs]].
+
 ## 2026-08-30 — Two configuration links pointed at routes that did not exist (fixed)
 
 **Symptom.** Tapping "Room configuration" in the Hostel module did nothing. The row showed a real room and bed count and rendered as *configured*, so nothing suggested it was broken. Separately, the "Check payout account" button on the failed-payout alert also did nothing — and that alert appears **only** when an owner has just been told money did not reach their bank.

@@ -100,3 +100,41 @@ describe('parseTenancyConflict', () => {
     );
   });
 });
+
+/**
+ * A phone number that belongs to an owner or admin account. One number is one
+ * person, so it cannot also be somebody's tenant — and the refusal must say so
+ * without disclosing anything about the account beyond whether it is the asking
+ * owner's own.
+ */
+describe('buildTenancyConflictCopy — PHONE_BELONGS_TO_NON_TENANT', () => {
+  it('tells an owner plainly when they have typed their own number', () => {
+    const conflict = buildTenancyConflictCopy('PHONE_BELONGS_TO_NON_TENANT', { scope: 'OWN' });
+    expect(conflict.title).toBe('That’s your own number');
+    expect(conflict.body).toContain('your own Stayo owner account');
+    expect(conflict.tenantId).toBeNull();
+  });
+
+  it('never names or links the account when it belongs to someone else', () => {
+    const conflict = buildTenancyConflictCopy('PHONE_BELONGS_TO_NON_TENANT', {
+      scope: 'OTHER',
+      // Even if a disclosure were somehow populated, none of it may surface.
+      hostelName: 'Someone Else Residency',
+      roomNumber: '101',
+      tenantId: 'tenant-9',
+    });
+    expect(conflict.body).not.toContain('Someone Else Residency');
+    expect(conflict.body).not.toContain('101');
+    expect(conflict.tenantId).toBeNull();
+  });
+
+  it('is recognised by parseTenancyConflict, so the submit-time 409 renders the same card', () => {
+    const conflict = parseTenancyConflict({
+      response: {
+        data: { error: { code: 'PHONE_BELONGS_TO_NON_TENANT', details: { scope: 'OWN' } } },
+      },
+    });
+    expect(conflict?.code).toBe('PHONE_BELONGS_TO_NON_TENANT');
+    expect(conflict?.title).toBe('That’s your own number');
+  });
+});
