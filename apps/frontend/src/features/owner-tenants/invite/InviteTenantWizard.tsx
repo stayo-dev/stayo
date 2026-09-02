@@ -139,7 +139,17 @@ export function InviteTenantWizard({ open, onClose, initialData, leadId }: Invit
         />
       )}
       {wizard.step === 1 && <StayStep data={wizard.data} setD={wizard.setD} hostels={session.hostels} />}
-      {wizard.step === 2 && <MoneyStep data={wizard.data} setD={wizard.setD} />}
+      {wizard.step === 2 && (
+        <MoneyStep
+          data={wizard.data}
+          setD={wizard.setD}
+          // Same preview Verify uses. Shown here too so "how much has this
+          // tenant already paid?" is asked next to the answer, rather than
+          // validated two steps later.
+          settlementPreview={wizard.settlementPreview}
+          isLoadingSettlementPreview={wizard.isLoadingSettlementPreview}
+        />
+      )}
       {wizard.step === 3 && (
         <VerifyStep
           data={wizard.data}

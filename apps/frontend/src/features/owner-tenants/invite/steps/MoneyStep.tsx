@@ -1,20 +1,31 @@
 import { BILLING_FREQUENCIES, PAYMENT_MODES, type PaymentMode } from '@shared/mocks/payments';
 import type { InviteWizardData } from '../../types';
+import { paidAmountGuidance } from '../paidAmountGuidance';
+import type { InviteSettlementPreviewResponse } from '../settlementPreview';
 
 interface MoneyStepProps {
   data: InviteWizardData;
   setD: (patch: Partial<InviteWizardData>) => void;
+  /**
+   * The settlement the wizard has already fetched. It was passed only to the
+   * final step, so an owner typed an amount here with nothing on screen saying
+   * what was owed — and learned whether it was acceptable two steps later.
+   */
+  settlementPreview?: InviteSettlementPreviewResponse | null;
+  isLoadingSettlementPreview?: boolean;
 }
 
 const labelStyle = 'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground';
 const moneyInputStyle = 'flex-1 min-w-0 bg-transparent px-2 py-3 text-sm font-semibold text-foreground focus:outline-none';
 
 /** Step 3/4 of the Invite Tenant wizard — rent, deposit, billing, maintenance. */
-export function MoneyStep({ data, setD }: MoneyStepProps) {
+export function MoneyStep({ data, setD, settlementPreview, isLoadingSettlementPreview }: MoneyStepProps) {
   const rent = Number(data.monthlyRent) || 0;
   const deposit = Number(data.deposit) || 0;
   const maintenance = Number(data.maintenance) || 0;
   const total = rent + deposit + maintenance;
+
+  const guidance = paidAmountGuidance(data.paidAmount, settlementPreview?.total_outstanding);
 
   return (
     <div className="flex flex-col gap-4.5">
@@ -136,8 +147,35 @@ export function MoneyStep({ data, setD }: MoneyStepProps) {
             </p>
 
             <label className="block">
-              <span className={labelStyle}>Amount already paid</span>
-              <div className="flex items-center rounded-[11px] border border-border bg-card px-3">
+              <div className="mb-1.5 flex items-baseline justify-between gap-2">
+                <span className={`${labelStyle} mb-0`}>Amount already paid</span>
+                {/*
+                  What is owed, from the backend's own settlement plan — never
+                  recomputed here. Tapping it fills the field, which is the
+                  whole gesture for the common case: the tenant handed over
+                  exactly what was due.
+                */}
+                {guidance.owedLabel && guidance.fillAmount !== null && (
+                  <button
+                    type="button"
+                    onClick={() => setD({ paidAmount: String(guidance.fillAmount) })}
+                    className="text-[11.5px] font-bold text-primary"
+                  >
+                    {guidance.owedLabel} · Pay all
+                  </button>
+                )}
+                {guidance.owedLabel && guidance.fillAmount === null && (
+                  <span className="text-[11.5px] font-semibold text-muted-foreground">{guidance.owedLabel}</span>
+                )}
+                {!guidance.owedLabel && isLoadingSettlementPreview && (
+                  <span className="text-[11.5px] text-muted-foreground">Working out what is owed…</span>
+                )}
+              </div>
+              <div
+                className={`flex items-center rounded-[11px] border bg-card px-3 ${
+                  guidance.isBlocking ? 'border-destructive' : 'border-border'
+                }`}
+              >
                 <span className="text-sm font-semibold text-muted-foreground">₹</span>
                 <input
                   value={data.paidAmount}
@@ -147,6 +185,16 @@ export function MoneyStep({ data, setD }: MoneyStepProps) {
                   className={moneyInputStyle}
                 />
               </div>
+              {guidance.message && (
+                <p
+                  className={`mt-1.5 text-[11.5px] font-medium leading-[1.5] ${
+                    guidance.isBlocking ? 'text-destructive' : 'text-muted-foreground'
+                  }`}
+                  role={guidance.isBlocking ? 'alert' : undefined}
+                >
+                  {guidance.message}
+                </p>
+              )}
             </label>
 
             <button

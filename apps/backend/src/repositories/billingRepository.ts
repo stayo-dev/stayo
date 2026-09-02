@@ -2,7 +2,15 @@ import { prisma } from "../../lib/db";
 import { Prisma } from "@prisma/client";
 import { PAYABLE_STATUSES } from "../services/payments/settlement-planner";
 
-export class BillingRepository {
+export /**
+ * Just the slice of the Prisma client these reads need — satisfied by the
+ * global client and by a `$transaction` callback's `tx` alike. Typed as a
+ * `Pick` rather than `any` so `findMany`'s inferred row type, which
+ * `getTenantDues` maps over, survives.
+ */
+type ObligationReadClient = Pick<typeof prisma, "rent_obligations">;
+
+class BillingRepository {
   async getOperationalCashflowMetrics(ownerId: string, start: Date, end: Date, hostelId: string) {
     const now = new Date();
     const todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -324,8 +332,21 @@ export class BillingRepository {
     `;
   }
 
-  async getTenantPendingObligations(tenantId: string, ownerId: string | undefined, hostelId: string) {
-    return await prisma.rent_obligations.findMany({
+  /**
+   * @param client Read through an open transaction when the caller is inside
+   * one. `createInvitation` creates a tenant's obligations and then checks a
+   * payment against them in the same transaction; on the global client that
+   * read cannot see its own uncommitted rows, reports nothing owed, and
+   * refuses the payment. Defaults to the global client, which is correct for
+   * every caller reading committed state.
+   */
+  async getTenantPendingObligations(
+    tenantId: string,
+    ownerId: string | undefined,
+    hostelId: string,
+    client: ObligationReadClient = prisma,
+  ) {
+    return await client.rent_obligations.findMany({
       where: {
         tenant_id: tenantId,
         ...(ownerId ? { owner_id: ownerId } : {}),

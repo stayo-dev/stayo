@@ -317,7 +317,7 @@ export class FinancialService {
    * Returns itemised list of PENDING/PARTIAL obligations with remaining amounts.
    * Does NOT include PAID obligations — they are settled.
    */
-  async getTenantDues(tenantId: string, ownerId: string | undefined, hostelId: string): Promise<{
+  async getTenantDues(tenantId: string, ownerId: string | undefined, hostelId: string, client?: any): Promise<{
     tenant_id: string;
     items: TenantDueItem[];
     /** Everything unpaid, any due date — includes UPCOMING obligations. Kept
@@ -338,7 +338,10 @@ export class FinancialService {
     late_fees_due: number;
     obligation_count: number;
   }> {
-    const obligations = await billingRepository.getTenantPendingObligations(tenantId, ownerId, hostelId);
+    // `client` is an open transaction when the caller is inside one — see the
+    // repository. Without it a caller that has just created obligations reads
+    // a connection that cannot see them yet and concludes nothing is owed.
+    const obligations = await billingRepository.getTenantPendingObligations(tenantId, ownerId, hostelId, client);
 
     let totalLateFeesDue = 0;
     let rentDue = 0;

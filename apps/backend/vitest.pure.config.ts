@@ -98,6 +98,9 @@ export default defineConfig({
       'tests/admissions-lead-actions.test.ts',
       'tests/admissions-lead-duplicate-guards.test.ts',
       'tests/tenant-invitation-lifecycle-service.test.ts',
+      // Dues read inside the transaction that creates the obligations —
+      // mocks `@/lib/db`, so no database is reachable.
+      'tests/tenant-dues-transaction-scope.test.ts',
       'tests/floor-room-plan.test.ts',
       'tests/hostel-deletion-plan.test.ts',
       'tests/expense-anomaly.test.ts',
