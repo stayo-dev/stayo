@@ -16,6 +16,7 @@ import { documentTypeLabel, type ReviewDocument } from '../documents/kycDocument
 import { RejectDocumentSheet } from '../documents/RejectDocumentSheet';
 import type { TenantDetailTab } from '../types';
 import { InvitedTenantProfileView } from '../components/InvitedTenantProfileView';
+import { showsInvitationManagement } from '../invitationManagement';
 import { TenantActionsSheet } from '../actions/TenantActionsSheet';
 import { ProfileHeader } from '../profile/ProfileHeader';
 import { CommunicationCard } from '../profile/CommunicationCard';
@@ -124,7 +125,15 @@ export function TenantDetailPage() {
     );
   }
 
-  if (tenant.status === 'invited') {
+  /*
+    ADR-165 made an invited tenancy ACTIVE from creation, so the old
+    `status === 'invited'` gate could never fire and this screen became
+    unreachable — every invited tenant opened as a settled resident, with no
+    invitation status and no way to resend, cancel or correct the invite before
+    activation. `showsInvitationManagement` reads the signal ADR-165 added for
+    the purpose, and fails closed.
+  */
+  if (showsInvitationManagement(tenant)) {
     return (
       <ThemeProvider theme="product">
         <InvitedTenantProfileView tenant={tenant} />

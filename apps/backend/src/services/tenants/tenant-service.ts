@@ -1141,6 +1141,14 @@ export class TenantService {
       joined_on: legacyTenant.joined_on,
       joined_at: legacyTenant.joined_on,
       status: legacyTenant.status,
+      // ADR-165 made an invited tenancy ACTIVE from the moment it is created,
+      // so `status` can no longer answer "has this person actually taken over
+      // their account yet". These two can, and the owner's tenant screen needs
+      // them to decide between the invitation-management view and the full
+      // profile. Both were on the row already — fetched by `include`, then
+      // dropped here, so every reader saw null.
+      acceptance_status: (legacyTenant as any).acceptance_status ?? null,
+      access_mode: (legacyTenant as any).access_mode ?? null,
       monthly_rent: legacyTenant.monthly_rent,
       rent: Number(legacyTenant.monthly_rent),
       maintenance_charge: legacyTenant.maintenance_charge,

@@ -29,6 +29,7 @@ const read = (...parts: string[]) => readFileSync(join(process.cwd(), ...parts),
 const policyService = read("lib", "services", "hostel-policy-service.ts");
 const propertyService = read("lib", "services", "property-service.ts");
 const portfolioService = read("lib", "services", "portfolio-service.ts");
+const tenantService = read("src", "services", "tenants", "tenant-service.ts");
 
 /** Every column the Hostel identity screen can change. */
 const IDENTITY_FIELDS = [
@@ -91,5 +92,25 @@ describe("hostel_type reaches every screen that reads it", () => {
     // Selecting it is not enough — it must survive the hand-built response
     // object, which is the step that was missed both times.
     expect(source).toMatch(/hostel_type:\s*h(ostel)?(Status)?\??\.hostel_type/);
+  });
+});
+
+/**
+ * The owner's tenant screen decides between the invitation-management view and
+ * the full profile, and [[ADR-165]] moved the signal it needs.
+ *
+ * Inviting now makes a tenancy ACTIVE immediately, so `status` can no longer
+ * answer "has this person taken over their account". `acceptance_status` and
+ * `access_mode` can — and both were on the row (fetched by `include`) but
+ * dropped from the overview's hand-built response, so every reader saw null and
+ * the invitation screen became unreachable.
+ *
+ * Third instance of the same shape in one day: a field present in the database,
+ * correct on the write path, and missing from one reader's projection. Pinned
+ * for the same reason as the others.
+ */
+describe("the owner tenant overview projects what the screen switches on", () => {
+  it.each(["acceptance_status", "access_mode"])("returns `%s`", (field) => {
+    expect(tenantService).toMatch(new RegExp(`${field}:\\s*\\(legacyTenant as any\\)\\.${field}`));
   });
 });
