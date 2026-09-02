@@ -13,6 +13,7 @@ import { financialReadModelService } from "../../../src/services/payments/financ
 import { obligationEngine } from "../../../src/services/payments/obligation-engine";
 import { getLogger } from "../../../lib/logger";
 import { currentAgreementWhere } from "./agreement-status";
+import { requiredKycDocTypes, recomputeDocumentVerified } from "./kyc-status";
 import { eventLog } from "../../../lib/services/event-log-service";
 import { imagekit } from "../../../lib/imagekit";
 import { tenantRepository } from "../../repositories/tenantRepository";
@@ -726,6 +727,13 @@ export class TenantService {
           data: { is_profile_completed: true },
         });
       }
+
+      // A profile_type switch changes which documents KYC requires
+      // (STUDENT: College ID, WORKING_PROFESSIONAL: Work ID), so a tenant must
+      // not stay verified on a document their new type no longer asks for.
+      if (Object.prototype.hasOwnProperty.call(tenantUpdate, "profile_type")) {
+        await recomputeDocumentVerified(tx, current.id);
+      }
     });
 
     return this.getTenantByProfile(profileId, { sub: profileId, role: "TENANT" });
@@ -1105,9 +1113,7 @@ export class TenantService {
       : null;
 
     const latestRuleAcceptance = legacyTenant.rule_acceptances?.[0] ?? null;
-    const requiredDocumentTypes = String(legacyTenant.profile_type || "STUDENT").toUpperCase() === "WORKING_PROFESSIONAL"
-      ? ["AADHAAR", "WORK_ID"]
-      : ["AADHAAR", "COLLEGE_ID"];
+    const requiredDocumentTypes = requiredKycDocTypes(legacyTenant.profile_type);
     const activeDocuments = (legacyTenant.identification_documents ?? []).filter((doc: any) => requiredDocumentTypes.includes(doc.doc_type));
 
     return {
@@ -1202,6 +1208,12 @@ export class TenantService {
         current_payable_amount: currentPayableAmount,
         deposit_balance: advanceBalance,
       },
+      // The per-obligation breakdown FinancialReadModelService already computed
+      // (currently-payable + upcoming, i.e. everything except settled). The
+      // owner tenant profile reads this instead of the truncated `/full`
+      // `rent_obligations` list so "Next payment" and the payment schedule use
+      // the same canonical records the tenant portal reads.
+      read_model_items: readModel.items,
       profile: legacyTenant.profile
         ? {
             id: legacyTenant.profile.id,

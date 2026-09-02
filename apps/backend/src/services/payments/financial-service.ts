@@ -254,6 +254,43 @@ export class FinancialService {
     }));
   }
 
+  /**
+   * Activated RENT obligations due today or within `maxBeforeDays` days and not
+   * yet overdue. Feeds the before-due / due-day reminder pass. Same row shape as
+   * getOperationalOverdueObligations.
+   */
+  async getOperationalUpcomingObligations(
+    asOfDate: Date,
+    ownerId: string,
+    hostelId: string,
+    maxBeforeDays: number,
+  ): Promise<Awaited<ReturnType<FinancialService["getOperationalOverdueObligations"]>>> {
+    const rows = await billingRepository.getOperationalUpcomingObligations(asOfDate, ownerId, hostelId, maxBeforeDays);
+
+    return rows.map((r: any) => ({
+      obligation_id:    r.obligation_id,
+      tenant_id:        r.tenant_id,
+      owner_id:         r.owner_id,
+      hostel_id:        r.hostel_id ?? null,
+      allocation_id:    r.allocation_id,
+      rent_month:       r.rent_month,
+      billing_period_start: (r as any).billing_period_start ?? null,
+      billing_period_end: (r as any).billing_period_end ?? null,
+      installment_label: (r as any).installment_label ?? null,
+      installment_sequence: (r as any).installment_sequence ?? null,
+      billing_plan_id: (r as any).billing_plan_id ?? null,
+      due_date:         r.due_date,
+      amount:           Number(r.amount || 0),
+      remaining_amount: Number(r.remaining_amount || 0),
+      tenant_name:      r.tenant_name,
+      personal_email:   r.personal_email,
+      phone:            r.phone,
+      late_fee:         Number((r as any).late_fee || 0),
+      total_amount:     Number((r as any).total_amount || 0),
+      access_mode:      (r as any).access_mode ?? null,
+    }));
+  }
+
 
   /**
    * Historical outstanding — all tenants, no lifecycle filter.

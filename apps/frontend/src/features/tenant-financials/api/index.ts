@@ -32,8 +32,4 @@ export const tenantFinancialsService = {
     const response = await api.post('/payments/create-intent', data);
     return unwrap(response);
   },
-  getScore: async () => {
-    const response = await api.get('/tenants/me/score');
-    return unwrap(response);
-  },
 };

@@ -1,0 +1,44 @@
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Migration 080: One active identification document per (tenant, doc_type)
+--
+-- Tenant KYC is "the newest active document of each required type". The upload
+-- routes already try to hold this — they set the previous active row of that
+-- type to is_active = false inside the same transaction as the insert (see
+-- `createSupersedingDocument` in
+-- src/services/tenants/identification-document-service.ts). This makes that
+-- guarantee hold under concurrency too: two uploads of the same Aadhaar racing
+-- (a double-tap, a resubmitted form, two tabs) can otherwise both archive
+-- "nothing" and then both insert, leaving two active rows — and a rejected one
+-- could then keep satisfying KYC. See migrations 078 / 079 for the same pattern.
+--
+-- Archived rows (is_active = false) are unconstrained — full submission history
+-- is kept, audit-first, exactly as before.
+--
+-- Pre-flight check before applying in production (fails loudly, on purpose, if
+-- violated — resolve any hits manually first, keeping the newest by created_at):
+--   SELECT tenant_id, doc_type, count(*)
+--   FROM identification_documents
+--   WHERE is_active = true
+--   GROUP BY tenant_id, doc_type
+--   HAVING count(*) > 1;
+--
+-- De-dupe (run once, only if the check above returns rows):
+--   WITH ranked AS (
+--     SELECT id, row_number() OVER (
+--              PARTITION BY tenant_id, doc_type
+--              ORDER BY created_at DESC, id DESC
+--            ) AS rn
+--     FROM identification_documents
+--     WHERE is_active = true
+--   )
+--   UPDATE identification_documents d
+--   SET is_active = false, updated_at = now()
+--   FROM ranked r
+--   WHERE d.id = r.id AND r.rn > 1;
+--
+-- Apply via the Supabase SQL editor or psql, per migrations/README.md.
+-- ══════════════════════════════════════════════════════════════════════════════
+
+CREATE UNIQUE INDEX IF NOT EXISTS identification_documents_one_active_per_type
+  ON identification_documents (tenant_id, doc_type)
+  WHERE is_active;

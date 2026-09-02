@@ -8,7 +8,7 @@
  * neutral Stayo mock hostels used elsewhere in this app.
  */
 
-export type TenantStatus = 'active' | 'overdue' | 'invited' | 'pending-docs';
+export type TenantStatus = 'active' | 'dues' | 'overdue' | 'invited' | 'pending-docs';
 
 export interface TenantObligation {
   id: string;
@@ -68,10 +68,6 @@ export interface MockTenant {
   overdueMonths: number;
   joinedDate: string;
   guardian?: MockGuardian;
-  riskScore: number;
-  riskLabel: string;
-  riskInsight: string;
-  paymentRatePercent: number;
   agreementStatus: string;
   kycStatus: string;
   obligations: TenantObligation[];
@@ -113,10 +109,6 @@ export const mockTenants: MockTenant[] = [
     overdueMonths: 0,
     joinedDate: '1 Aug 2026',
     guardian: { name: 'Chinthala Ravinder', relation: 'Father', phone: '+91 98669 12032' },
-    riskScore: 95,
-    riskLabel: 'Excellent',
-    riskInsight: 'Excellent payment reliability. Standard auto-reminders are sufficient.',
-    paymentRatePercent: 100,
     agreementStatus: 'Signed',
     kycStatus: 'Pending',
     obligations: rentSchedule('cp', 8200, 0),
@@ -155,10 +147,6 @@ export const mockTenants: MockTenant[] = [
     outstanding: 0,
     overdueMonths: 0,
     joinedDate: '15 Jun 2026',
-    riskScore: 98,
-    riskLabel: 'Excellent',
-    riskInsight: 'Never missed a payment. No action needed.',
-    paymentRatePercent: 100,
     agreementStatus: 'Signed',
     kycStatus: 'Verified',
     obligations: rentSchedule('dp', 8100, 5),
@@ -191,10 +179,6 @@ export const mockTenants: MockTenant[] = [
     outstanding: 24000,
     overdueMonths: 3,
     joinedDate: '1 May 2026',
-    riskScore: 48,
-    riskLabel: 'Needs attention',
-    riskInsight: '3 months overdue and KYC documents incomplete — recommend a direct call.',
-    paymentRatePercent: 62,
     agreementStatus: 'Signed',
     kycStatus: 'Pending',
     obligations: [
@@ -235,10 +219,6 @@ export const mockTenants: MockTenant[] = [
     outstanding: 40000,
     overdueMonths: 5,
     joinedDate: '1 Mar 2026',
-    riskScore: 30,
-    riskLabel: 'High risk',
-    riskInsight: '5 months overdue — recommend escalating to a formal notice.',
-    paymentRatePercent: 41,
     agreementStatus: 'Signed',
     kycStatus: 'Verified',
     obligations: [
@@ -277,10 +257,6 @@ export const mockTenants: MockTenant[] = [
     outstanding: 21000,
     overdueMonths: 0,
     joinedDate: '—',
-    riskScore: 0,
-    riskLabel: 'Not yet scored',
-    riskInsight: 'Invitation sent — awaiting KYC and deposit before move-in.',
-    paymentRatePercent: 0,
     agreementStatus: 'Not signed',
     kycStatus: 'Not started',
     obligations: [{ id: 'bg-ob-0', type: 'DEPOSIT', month: 'Move-in', amount: 21000, dueLabel: 'Due at move-in', status: 'PENDING' }],
@@ -310,10 +286,6 @@ export const mockTenants: MockTenant[] = [
     outstanding: 11000,
     overdueMonths: 0,
     joinedDate: '20 Jul 2026',
-    riskScore: 70,
-    riskLabel: 'Good',
-    riskInsight: 'Payments on time so far; police verification still missing.',
-    paymentRatePercent: 100,
     agreementStatus: 'Signed',
     kycStatus: 'Pending',
     obligations: rentSchedule('ak', 11000, 0),

@@ -7,6 +7,8 @@ import { getSession } from "@/lib/auth";
 import { eventLog } from "@/lib/services/event-log-service";
 import { backendUrl } from "@/lib/config/domains";
 import crypto from "crypto";
+import { recomputeDocumentVerified } from "@/src/services/tenants/kyc-status";
+import { appendMessage } from "@/src/services/tenants/document-thread";
 
 export async function PATCH(
   req: NextRequest,
@@ -43,59 +45,53 @@ export async function PATCH(
       return NextResponse.json({ error: { message: "Archived documents cannot be rejected" } }, { status: 409 });
     }
 
-    // Get owner's name
     const ownerProfile = await prisma.profile.findUnique({
       where: { id: session.sub },
       select: { name: true },
     });
     const ownerName = ownerProfile?.name || "Owner";
-
-    // Initialize/append message thread in rejection_reason
-    let messages = [];
-    try {
-      if (doc.rejection_reason && doc.rejection_reason.startsWith("[") && doc.rejection_reason.endsWith("]")) {
-        messages = JSON.parse(doc.rejection_reason);
-      } else if (doc.rejection_reason) {
-        messages = [{ sender: "owner", sender_name: ownerName, message: doc.rejection_reason, timestamp: doc.updated_at || doc.created_at }];
-      }
-    } catch {
-      messages = [];
-    }
-
-    messages.push({
+    const thread = appendMessage(doc.rejection_reason, {
       sender: "owner",
       sender_name: ownerName,
       message: reason,
-      timestamp: new Date().toISOString(),
     });
 
-    const updatedDoc = await prisma.identificationDocument.update({
-      where: { id: docId },
-      data: {
-        document_status: "REJECTED",
-        is_verified: false,
-        rejection_reason: JSON.stringify(messages),
-        rejected_by: session.sub,
-        rejected_at: new Date(),
-      },
+    const result = await prisma.$transaction(async (tx) => {
+      // Only a still-PENDING active row can be rejected. A concurrent decision
+      // from another tab loses the race and gets a 409.
+      const applied = await tx.identificationDocument.updateMany({
+        where: { id: docId, is_active: true, document_status: "PENDING" },
+        data: {
+          document_status: "REJECTED",
+          is_verified: false,
+          rejection_reason: thread,
+          rejected_by: session.sub,
+          rejected_at: new Date(),
+        },
+      });
+      if (applied.count === 0) return { conflict: true as const };
+
+      await tx.notifications.create({
+        data: {
+          id: crypto.randomUUID(),
+          profile_id: doc.tenant.profile_id,
+          title: "Document Rejected",
+          message: `Your uploaded ${doc.doc_type} was rejected: "${reason}". Please review and upload a valid copy.`,
+          type: "WARNING",
+        },
+      });
+
+      const documentVerified = await recomputeDocumentVerified(tx, tenantId);
+      const updatedDoc = await tx.identificationDocument.findUnique({ where: { id: docId } });
+      return { conflict: false as const, updatedDoc, documentVerified };
     });
 
-    // Notify the tenant
-    await prisma.notifications.create({
-      data: {
-        id: crypto.randomUUID(),
-        profile_id: doc.tenant.profile_id,
-        title: "Document Rejected",
-        message: `Your uploaded ${doc.doc_type} was rejected: "${reason}". Please review and upload a valid copy.`,
-        type: "WARNING",
-      },
-    });
-
-    // Set tenant's document_verified flag to false
-    await prisma.tenants.update({
-      where: { id: tenantId },
-      data: { document_verified: false },
-    });
+    if (result.conflict) {
+      return NextResponse.json(
+        { error: { message: "This document has already been reviewed. Refresh to see its current status." } },
+        { status: 409 },
+      );
+    }
 
     await eventLog.log("document_rejected", doc.tenant.owner_id || null, {
       tenant_id: tenantId,
@@ -104,11 +100,12 @@ export async function PATCH(
       rejected_by: session.sub,
     }, tenantId);
 
-    const { file_url, file_path, file_id, ...safeDoc } = updatedDoc;
+    const { file_url, file_path, file_id, ...safeDoc } = result.updatedDoc as any;
     return NextResponse.json({
       success: true,
       data: {
         ...safeDoc,
+        document_verified: result.documentVerified,
         download_url: backendUrl(`/api/tenants/${tenantId}/documents/${docId}/download`),
       },
     });
