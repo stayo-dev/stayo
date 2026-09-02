@@ -445,6 +445,27 @@ Adoption writes `SUPERSEDED` plus a `tenant_owner_attestations` row, so the two 
 
 `activation_completed_at` is deliberately **left stamped at adoption**. `residency-history-service` (`ever_moved_in`), `tenancy-eligibility-service` (`wasActivated`) and the owner WhatsApp assistant's "activated today" reports all read it; the rule above is additive and changes none of them.
 
+## Tenant KYC — what counts, and what it never blocks (2026-09-02, [[Decisions#ADR-169|ADR-169]])
+
+**Required documents** are a function of `tenants.profile_type` (`requiredKycDocTypes` in `src/services/tenants/kyc-status.ts`):
+
+| profile_type | required |
+|---|---|
+| `STUDENT` (and the default) | Aadhaar + College ID |
+| `WORKING_PROFESSIONAL` | Aadhaar + Work ID |
+
+**`tenants.document_verified` is derived, never set directly.** It is `true` **only when, for every required type, there is a currently-`is_active` document with `document_status = "APPROVED"` and `is_verified = true`.** A missing, `PENDING`, `REJECTED`, or archived (`is_active = false`) document does not count — including an old approved one that a re-upload superseded. `recomputeDocumentVerified(tx, tenantId)` is the single writer, called inside the transaction of every route that approves, rejects, re-uploads a document, or changes `profile_type`. **Changing `profile_type` re-evaluates it** — a student verified on College ID is *not* verified as a Working Professional until Work ID is approved.
+
+**KYC is collected during onboarding but never blocks it.** The Student activation Identity step uploads Aadhaar + College ID (auto-upload, land `PENDING`) via `POST /api/tenants/activate/documents`. "Verify & Continue" checks only that each required type has been *uploaded* (`PENDING` or `APPROVED` — a `REJECTED` type re-blocks and must be re-uploaded). It never calls a verify endpoint and never waits for the owner. This is consistent with `document_verified` being an independent state machine that does not gate activation.
+
+**Owner review is a state transition.** `verify` / `reject` only act on a `PENDING` active document (409 otherwise); `APPROVED → REJECTED` and `REJECTED → APPROVED` are not reachable through the endpoints — a **new upload** (new `PENDING` row, old row archived) is the only way to revisit a decided document. `bulk-verify` and the `MARK_DOCUMENTS_VERIFIED` compliance action approve only the required active types and **refuse (`409 INCOMPLETE_KYC`) if a required type was never uploaded** — neither can manufacture verification.
+
+**At most one active document per `(tenant, doc_type)`** — enforced by migration 080's partial unique index; a re-upload archives the prior active row in the same transaction.
+
+**This is separate from the Portable Vault** (`identity_documents` / `identity_document_shares`, [[#The portable profile — identity is person-level, verification is not (2026-08-15, phase B)]]). Vault verdicts are per-hostel-share; tenant KYC approval is per-tenancy. They are not merged.
+
+**Owner KYC is a different, untouched system.** `owner_documents` (Aadhaar / PAN / PHOTO, admin-reviewed) and the owner listing/marketing-approval flow are out of scope for ADR-169 — a Go-Live gate on owner KYC is a deferred follow-up.
+
 ## Claim flow removed — every invitation resolves into the one activation screen (2026-09-01, [[Decisions#ADR-163|ADR-163]])
 
 Phase 2 (2026-08-27) built a separate phone-OTP "claim" experience (`/claim`, `tenancy-claim-service.ts`) because `resolveByToken` had nowhere else to send a tenant whose invitation was superseded by immediate owner-management. That flow — and the dedicated OTP-proof machinery it needed (`lib/tenants/claim-eligibility.ts`, `TENANCY_CLAIM` as an OTP purpose) — is now deleted outright, not merely rerouted.
