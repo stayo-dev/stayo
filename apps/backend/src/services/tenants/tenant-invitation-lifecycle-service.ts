@@ -482,10 +482,15 @@ export class TenantInvitationLifecycleService {
         if (!data.payment_method) {
           throw new Error("VALIDATION_ERROR: A payment method is required to record an amount already paid");
         }
+        // Read through `tx`: the obligations this is checking against were
+        // created a few lines above, inside this same transaction, and are not
+        // committed yet. On the global client this returned nothing, reported
+        // ₹0.00 owed, and refused every amount an owner entered.
         const owed = await financialService.getTenantDues(
           tenant.id,
           ownerId,
-          capacity.room.hostel_id
+          capacity.room.hostel_id,
+          tx
         );
         const due = Number(owed?.total_due || 0);
         if (paidAmount > due + 0.01) {

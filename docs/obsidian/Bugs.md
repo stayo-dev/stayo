@@ -60,6 +60,24 @@ Log of significant bugs — open and fixed. Not meant to replace an issue tracke
 **Verification:** 90 backend tests (new + updated) passing under `vitest.pure.config.ts`; `tsc --noEmit` shows zero new errors introduced (pre-existing unrelated errors unchanged). Not verified against a live database (no `DATABASE_URL_TEST` in this environment) and no real-concurrency integration test was run — the advisory lock and partial index are verified by code review and by mirroring already-shipped patterns, not by a live race test.
 
 **See:** [[Business-Rules]], [[Database]], [[Decisions#ADR-162|ADR-162]], [[Changelog]]
+## 2026-09-02 — Recording a payment while inviting a tenant was refused every single time (fixed)
+
+**Symptom.** An owner inviting a tenant who has already paid — a deposit handed over at the door, or months of rent from a tenant who joined before Stayo — entered the amount, reached the wizard's Verify step, and was refused: *"Cannot record ₹15000.00 — only ₹0.00 is owed"*. The invite could not be sent at all without clearing the amount. Reported as possibly a partial-payments problem; it was not.
+
+**Root cause.** A read outside the transaction that wrote the rows it needed. `createInvitation` does all of this in one `prisma.$transaction`: it creates the tenant's obligations through `initializeOnboardingFinancials(tx, …)` (which calls `tx.rent_obligations.create`), then checks the owner's amount against what is owed. That check called `financialService.getTenantDues(…)` → `billingRepository.getTenantPendingObligations(…)` → **`prisma.rent_obligations.findMany`** — the *global* client, a different connection, which under READ COMMITTED cannot see rows an open transaction has not committed.
+
+So the query returned no obligations, `total_due` was `0`, and the guard `paidAmount > due + 0.01` rejected **any** positive amount. Not an edge case and not partial-payment related: the feature could never have worked for any invite, for any amount.
+
+**The tell was in the same function.** `financialPaymentFacade.receivePayment` is handed `tx` and reads `tx.rent_obligations.findMany`, so the allocation *after* the guard would have seen exactly the rows the guard could not. One code path in one function passed the transaction and the other did not.
+
+**Fix.** `getTenantPendingObligations` and `getTenantDues` take an optional client — typed `Pick<typeof prisma, "rent_obligations">`, so a `$transaction` callback's `tx` satisfies it and `findMany`'s inferred row type survives — defaulting to the global client, which is correct for every other caller since they read committed state. The invite guard passes `tx`. No other caller sits inside a write transaction; that was checked rather than assumed.
+
+**Why it survived.** The feature shipped in `1c404bd` (2026-08-28) with **no tests at all** — three files, none of them a test. Nothing exercised it, and the failure is invisible to type checking: passing the wrong Prisma client is well-typed. `tests/tenant-dues-transaction-scope.test.ts` now pins it by mocking `@/lib/db` so the global client returns nothing, which is exactly the production condition.
+
+**Also fixed, in the UI.** The Money step asked for the amount with nothing on screen saying what was owed, because the settlement preview the wizard already fetches was passed only to the final step. An owner typed blind and found out two screens later. The preview now anchors the field — *"₹15,000 owed today · Pay all"*, which fills it in one tap — and an amount above what is owed is flagged **beside the field**, which is the same refusal the server makes, said where it can still be corrected. See [[Features]].
+
+**See:** [[Changelog]], [[Features]]
+
 ## 2026-09-02 — Three surfaces on the owner's Profile silently picked a hostel (fixed)
 
 **Symptom.** Nothing looked wrong. A two-hostel owner posting "Water tank cleaning tomorrow" from Profile → Notices had it delivered to one hostel's tenants, chosen for them, with no hostel named anywhere on the screen. The same owner could read "GST number not added" under *Needs attention*, tap it, and land on a hostel identity form — potentially for the other hostel. Searching "late fees" had the same shape.
