@@ -36,22 +36,16 @@ import { CreateChargeSheet } from '../profile/CreateChargeSheet';
 import { ChangeRentModal } from '../actions/ChangeRentModal';
 import { MoveOutSheet } from '../actions/MoveOutSheet';
 import { QuickCollectModal } from '../quick-collect/QuickCollectModal';
+import { PaymentScheduleList } from '../profile/PaymentScheduleList';
 import { sanitizeIndianPhone } from '../invite/validation';
 import { APP_SURFACE } from '@shared/ui/surface';
 
 const TABS: { id: TenantDetailTab; label: string }[] = [
-  { id: 'charges', label: 'Charges' },
+  { id: 'charges', label: 'Payments' },
   { id: 'activity', label: 'Activity' },
   { id: 'documents', label: 'Documents' },
   { id: 'stay', label: 'Stay' },
 ];
-
-const OBLIGATION_TONE: Record<string, 'destructive' | 'warning' | 'success' | 'neutral'> = {
-  PENDING: 'destructive',
-  OVERDUE: 'destructive',
-  UPCOMING: 'warning',
-  PAID: 'success',
-};
 
 /**
  * Tenant Detail — a real route (`/owner/tenants/:tenantId`), not a modal.
@@ -311,36 +305,10 @@ export function TenantDetailPage() {
           </div>
 
           {activeTab === 'charges' && (
-            <div className="rounded-[18px] border border-border bg-card p-4 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]">
-              <div className="mb-1 flex items-center gap-2.5">
-                <span className="flex-1 font-display text-[15px] font-bold text-foreground">Charges</span>
-                <button
-                  type="button"
-                  onClick={() => setCreateChargeOpen(true)}
-                  className="rounded-lg bg-secondary px-3 py-1.5 font-display text-[11.5px] font-bold text-primary"
-                >
-                  + Add Charge
-                </button>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                {tenant.obligations.length >= 5
-                  ? 'Showing the 5 most recent charges — open the full ledger for the rest.'
-                  : `Showing all ${tenant.obligations.length} charge${tenant.obligations.length === 1 ? '' : 's'}.`}
-              </p>
-              <div className="flex flex-col gap-2 pt-2">
-                {tenant.obligations.map((ob) => (
-                  <div key={ob.id} className="flex items-center gap-2.5 rounded-[14px] border border-border bg-muted/50 p-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="font-display text-[15px] font-extrabold tabular-nums text-foreground">₹{ob.amount.toLocaleString('en-IN')}</div>
-                      <div className="mt-0.5 text-[11.5px] text-muted-foreground">
-                        {ob.dueLabel} · Type: {ob.type} · {ob.month}
-                      </div>
-                    </div>
-                    <StatusPill tone={OBLIGATION_TONE[ob.status]}>{ob.status}</StatusPill>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <PaymentScheduleList
+              schedule={tenant.paymentSchedule}
+              onAddCharge={() => setCreateChargeOpen(true)}
+            />
           )}
 
           {activeTab === 'activity' && (
@@ -545,7 +513,8 @@ export function TenantDetailPage() {
           room: tenant.room,
           outstanding: tenant.outstanding,
           deposit: tenant.stay.deposit,
-          obligations: tenant.obligations,
+          // Only still-owed rows are selectable to settle.
+          obligations: tenant.obligations.filter((o) => o.status !== 'PAID'),
         }}
       />
       <ChangeRentModal

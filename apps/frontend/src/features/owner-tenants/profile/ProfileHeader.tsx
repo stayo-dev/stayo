@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { StatusPill } from '@shared/ui-patterns/StatusPill';
 import { TenantAvatar } from '@shared/ui/TenantAvatar';
-import { nextPaymentDue } from './overdueDisplay';
 import type { RealTenantDetail } from '../hooks/useTenantDetail';
 
 /**
@@ -35,7 +34,7 @@ export function ProfileHeader({ tenant }: ProfileHeaderProps) {
   const [zoomed, setZoomed] = useState(false);
 
   const showPhoto = Boolean(tenant.photoUrl) && !imageFailed;
-  const next = nextPaymentDue(tenant.obligationDueDates, new Date());
+  const next = tenant.nextPayment;
 
   return (
     <>
@@ -105,8 +104,14 @@ export function ProfileHeader({ tenant }: ProfileHeaderProps) {
                 next.isOverdue ? 'text-destructive' : 'text-foreground'
               }`}
             >
-              {next.label}
+              {next.amount ? `${next.amount} · ${next.timing}` : next.timing}
             </div>
+            {(next.dateLabel || next.periodLabel) && (
+              <div className="mt-0.5 text-[10.5px] leading-snug text-muted-foreground">
+                {next.multiMonth && next.periodLabel ? next.periodLabel : next.dateLabel}
+                {next.projected ? ' · projected' : ''}
+              </div>
+            )}
           </div>
         </div>
       </div>

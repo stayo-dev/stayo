@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { getLogger } from "@/lib/logger";
+import { resolvePreferences } from "@/lib/preferences";
 import { addUtcMonths, dueDateForMonth, lastDayOfUtcMonth } from "./rent-schedule-dates";
 
 const logger = getLogger("onboarding-financials");
@@ -43,7 +44,7 @@ export class OnboardingFinancialsService {
       monthlyRent?: number;
       maintenanceCharge: number;
       maintenanceType: string;
-      /** Hostel's configured due day (1-28), applied to every backdated rent month after the joining month. Defaults to 5, matching the hostel-preferences default (lib/preferences.ts). */
+      /** Hostel's configured due day (1-28), applied to every backdated rent month after the joining month. When omitted it is read from the hostel's `preferences_config` (falling back to 5). */
       dueDay?: number;
     }
   ): Promise<OnboardingFinancialInitResult> {
@@ -53,7 +54,6 @@ export class OnboardingFinancialsService {
     const joiningDate = params.joiningDate instanceof Date ? params.joiningDate : new Date(params.joiningDate);
     const maintenanceType = String(params.maintenanceType || "MONTHLY").toUpperCase();
     const maintenanceCharge = money(params.maintenanceCharge);
-    const dueDay = Math.trunc(Number(params.dueDay || 5));
 
     if (!tenantId) throw new Error("VALIDATION_ERROR: tenantId is required");
     if (!ownerId) throw new Error("VALIDATION_ERROR: ownerId is required");
@@ -77,10 +77,17 @@ export class OnboardingFinancialsService {
     const rentAmount = money(params.monthlyRent ?? tenant.monthly_rent);
     const hasMaintenance = maintenanceType !== "NONE" && maintenanceCharge > 0;
     const hasAdvance = advanceDeposit > 0;
-    // Generate current-month rent immediately if joining_date <= today
+    // Generate rent as soon as the joining MONTH has started (not the exact
+    // joining date). A tenant who joins on the 20th of the current month still
+    // owes this month's rent — gating on `joiningDate <= today` left that
+    // obligation uncreated until the next monthly cron run, so the profile
+    // showed "Nothing due" for weeks. A joining date in a *future* month still
+    // creates nothing here (the elapsed-months loop below is empty in that case).
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const shouldCreateRent = rentAmount > 0 && joiningDate <= today;
+    const currentMonthAnchor = rentMonthFor(today);
+    const joiningMonthAnchor = rentMonthFor(joiningDate);
+    const shouldCreateRent = rentAmount > 0 && joiningMonthAnchor.getTime() <= currentMonthAnchor.getTime();
 
     if (!hasMaintenance && !hasAdvance && !shouldCreateRent) {
       return { createdObligations: [], createdObligationIds: [], skipped: true, reason: "NO_FINANCIALS_REQUIRED" };
@@ -189,7 +196,21 @@ export class OnboardingFinancialsService {
     let rentBackfillTruncated = false;
 
     if (shouldCreateRent) {
-      const currentMonth = rentMonthFor(today);
+      // Due day is a per-hostel setting; only needed for backdated months
+      // after the joining month (the joining month uses the literal joining
+      // date). Read the hostel's configured value when the caller didn't pass
+      // one, instead of assuming the default 5.
+      let dueDay = Math.trunc(Number(params.dueDay || 0));
+      if (!dueDay) {
+        const hostel = await tx.hostels.findUnique({
+          where: { id: hostelId },
+          select: { preferences_config: true },
+        });
+        dueDay = Math.trunc(Number(resolvePreferences(hostel ?? {}).due_day || 5));
+      }
+      if (!Number.isFinite(dueDay) || dueDay < 1) dueDay = 5;
+
+      const currentMonth = currentMonthAnchor;
       const elapsedMonths: Date[] = [];
       for (let cursor = rentMonth; cursor.getTime() <= currentMonth.getTime(); cursor = addUtcMonths(cursor, 1)) {
         elapsedMonths.push(cursor);

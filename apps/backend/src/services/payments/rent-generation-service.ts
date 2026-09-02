@@ -164,18 +164,33 @@ export class RentGenerationService {
       const errors: string[] = [];
 
       // ── BATCH obligation generation (replaces N×2 per-allocation queries) ──
-      // 1. One round-trip to fetch all existing obligations this rentMonth
+      // 1. One round-trip to fetch all existing obligations this rentMonth.
+      //    Matched by BOTH allocation_id and tenant_id: onboarding-created
+      //    obligations (onboarding-financials-service) are written with
+      //    allocation_id = NULL, so an allocation-only check misses them and
+      //    the cron creates a duplicate RENT/MAINTENANCE row for the same
+      //    tenant + month. Mirrors agreement-rent-schedule-service's guard.
       const allocationIds = allocations.map(a => a.id);
-      const existingObligations = await prisma.rent_obligations.findMany({
-        where: { allocation_id: { in: allocationIds }, rent_month: rentMonth },
-        select: { allocation_id: true, obligation_type: true },
-      });
-      // O(1) lookup set: "allocId:obligationType"
-      const existingSet = new Set(
-        existingObligations.map(o => `${o.allocation_id}:${o.obligation_type ?? 'RENT'}`)
-      );
-
       const tenantIds = Array.from(new Set(allocations.map((a: any) => a.tenant?.id).filter(Boolean))) as string[];
+      const existingObligations = await prisma.rent_obligations.findMany({
+        where: {
+          rent_month: rentMonth,
+          is_superseded: false,
+          OR: [
+            { allocation_id: { in: allocationIds } },
+            ...(tenantIds.length > 0 ? [{ tenant_id: { in: tenantIds } }] : []),
+          ],
+        },
+        select: { allocation_id: true, tenant_id: true, obligation_type: true },
+      });
+      // O(1) lookup set: keyed by "allocId:type" and "tenantId:type"
+      const existingSet = new Set<string>();
+      for (const o of existingObligations) {
+        const type = o.obligation_type ?? 'RENT';
+        if (o.allocation_id) existingSet.add(`${o.allocation_id}:${type}`);
+        if (o.tenant_id) existingSet.add(`tenant:${o.tenant_id}:${type}`);
+      }
+
       const agreementRows = tenantIds.length > 0
         ? await prisma.agreement.findMany({
             where: {
@@ -412,7 +427,7 @@ export class RentGenerationService {
             triggerType, generatedBy: triggerType === "manual" ? ownerId : null
           });
           const stat = ensureLedgerStat(ownerId, hostelId, "RENT");
-          if (!existingSet.has(`${alloc.id}:RENT`)) {
+          if (!existingSet.has(`${alloc.id}:RENT`) && !existingSet.has(`tenant:${alloc.tenant.id}:RENT`)) {
             rentRows.push({
               tenant_id: alloc.tenant.id, allocation_id: alloc.id,
               owner_id: alloc.tenant.owner_id, rent_month: rentMonth,
@@ -454,7 +469,7 @@ export class RentGenerationService {
               triggerType, generatedBy: triggerType === "manual" ? ownerId : null
             });
             const stat = ensureLedgerStat(ownerId, hostelId, "MAINTENANCE");
-            if (!existingSet.has(`${alloc.id}:MAINTENANCE`)) {
+            if (!existingSet.has(`${alloc.id}:MAINTENANCE`) && !existingSet.has(`tenant:${alloc.tenant.id}:MAINTENANCE`)) {
               maintRows.push({
                 tenant_id: alloc.tenant.id, allocation_id: alloc.id,
                 owner_id: alloc.tenant.owner_id, rent_month: rentMonth,
@@ -886,16 +901,27 @@ export class RentGenerationService {
       }
     });
 
-    // Check which already have obligations for this month
+    // Check which already have obligations for this month — matched by
+    // allocation_id OR tenant_id so onboarding-created (allocation_id NULL)
+    // RENT rows also count as "already generated".
+    const previewTenantIds = Array.from(new Set(allocations.map((a: any) => a.tenant?.id).filter(Boolean))) as string[];
     const existingObligations = await prisma.rent_obligations.findMany({
       where: {
-        allocation_id: { in: allocations.map(a => a.id) },
-        rent_month: rentMonth
+        rent_month: rentMonth,
+        is_superseded: false,
+        obligation_type: "RENT",
+        OR: [
+          { allocation_id: { in: allocations.map(a => a.id) } },
+          ...(previewTenantIds.length > 0 ? [{ tenant_id: { in: previewTenantIds } }] : []),
+        ],
       },
-      select: { allocation_id: true }
+      select: { allocation_id: true, tenant_id: true }
     });
 
-    const existingSet = new Set(existingObligations.map(o => o.allocation_id));
+    const existingAllocSet = new Set(existingObligations.map(o => o.allocation_id).filter(Boolean));
+    const existingTenantSet = new Set(existingObligations.map(o => o.tenant_id).filter(Boolean));
+    const alreadyGenerated = (alloc: any) =>
+      existingAllocSet.has(alloc.id) || existingTenantSet.has(alloc.tenant?.id);
 
     const preview = allocations.map(alloc => {
       const rentAmount = Number(alloc.tenant.monthly_rent) || Number(alloc.room.base_rent) || 0;
@@ -904,8 +930,8 @@ export class RentGenerationService {
         tenant_name: alloc.tenant.profiles?.name || "Unknown",
         room_no: alloc.room.room_no,
         rent_amount: rentAmount,
-        already_generated: existingSet.has(alloc.id),
-        will_skip: rentAmount <= 0 || existingSet.has(alloc.id)
+        already_generated: alreadyGenerated(alloc),
+        will_skip: rentAmount <= 0 || alreadyGenerated(alloc)
       };
     });
 
