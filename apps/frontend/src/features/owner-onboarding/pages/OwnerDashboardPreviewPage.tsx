@@ -2,10 +2,8 @@ import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { OwnerHomeDashboard } from '@features/owner-dashboard/components/OwnerHomeDashboard';
 import { findHostelInProgress } from '@features/owner-dashboard/hostelInProgress';
-import { HostelOptionsSheet } from '@features/owner-dashboard/components/HostelOptionsSheet';
 import { useOwnerDashboard } from '@features/owner-dashboard/hooks/useOwnerDashboard';
-import { useHostelOrder } from '@features/owner-dashboard/property-order/useHostelOrder';
-import { moveItem } from '@features/owner-dashboard/property-order/hostelSort';
+import { useProfileHeader } from '@features/owner-more/hooks/useProfileHeader';
 import { UniversalSearchOverlay } from '@features/owner-search/UniversalSearchOverlay';
 import { getInitials } from '@features/tenants/utils/normalize';
 import { useHomeQuickActions } from '@features/owner-dashboard/quick-actions/useHomeQuickActions';
@@ -46,8 +44,7 @@ export function OwnerDashboardPreviewPage() {
   const navigate = useNavigate();
   const qa = useHomeQuickActions();
   const dash = useOwnerDashboard();
-  const reorder = useHostelOrder();
-  const [hostelMenuFor, setHostelMenuFor] = useState<string | null>(null);
+  const profile = useProfileHeader();
   const [searchOpen, setSearchOpen] = useState(false);
 
   // Spotlight anchors. Refs rather than selectors so a refactor cannot leave
@@ -55,7 +52,6 @@ export function OwnerDashboardPreviewPage() {
   const gettingStartedRef = useRef<HTMLElement>(null);
   const actionCenterRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLButtonElement>(null);
-  const hostelsRef = useRef<HTMLDivElement>(null);
 
   // A hostel whose build was left unfinished — derived from the data itself
   // rather than a stored "onboarding step", which would drift the moment an
@@ -85,59 +81,30 @@ export function OwnerDashboardPreviewPage() {
 
   if (dash.isLoading) return <DashboardLoadingSkeleton />;
 
-  const menuHostel = dash.properties.find((p) => p.id === hostelMenuFor);
-
-  /**
-   * Keyboard/screen-reader path for reordering — dragging is pointer-only, so
-   * without this the feature would be unusable without a mouse or touch.
-   * Operates on the server's canonical order, not the currently displayed
-   * sort, so "Move up" means the same thing regardless of view. See ADR-042.
-   */
-  const moveHostel = (hostelId: string, direction: -1 | 1) => {
-    const ids = [...dash.properties]
-      .sort((a, b) => (a.displayOrder ?? Infinity) - (b.displayOrder ?? Infinity))
-      .map((p) => p.id);
-    const from = ids.indexOf(hostelId);
-    if (from === -1) return;
-    const next = moveItem(ids, from, from + direction);
-    if (next !== ids) reorder.mutate(next);
-    setHostelMenuFor(null);
-  };
-
-  const menuIndex = menuHostel
-    ? [...dash.properties]
-        .sort((a, b) => (a.displayOrder ?? Infinity) - (b.displayOrder ?? Infinity))
-        .findIndex((p) => p.id === menuHostel.id)
-    : -1;
-
   return (
     <>
       <OwnerHomeDashboard
         ownerName={dash.ownerName}
+        // Profile left the bottom nav for the Hostels tab; the avatar is how
+        // an owner reaches it now.
+        onOpenProfile={() => navigate('/owner/more')}
+        // Same hook and cached query the Profile screen's own header uses, so
+        // the avatar cannot disagree with itself across the two screens.
+        ownerPhotoUrl={profile.photoUrl}
+        ownerInitials={profile.initials}
         properties={dash.properties}
         alertCount={dash.alertCount}
         actionCenter={dash.actionCenter}
         collection={dash.collection}
         spendAnomaly={dash.spendAnomaly}
         sections={sections}
-        onSelectProperty={(hostelId) => navigate(`/owner/hostels/${hostelId}/overview`)}
         onOpenAlerts={() => navigate('/owner/alerts')}
         onOpenQuickActions={qa.openSheet}
         onViewAllActions={qa.openAllActions}
-        onPropertyMenu={(hostelId) => setHostelMenuFor(hostelId)}
-        // Add means add. This used to resume `hostelInProgress` — any hostel
-        // in the account with zero rooms — so while one of those existed the
-        // button could never create a new hostel: it handed the builder an
-        // existing id, and resuming starts at the Rooms stage, which looked
-        // like the wizard skipping its first two steps. Resuming lives on the
-        // getting-started card, which says "finish setting up your hostel";
-        // a half-built hostel is also editable from its own Rooms tab.
-        onAddHostel={() => navigate('/owner/hostels/new')}
         hostelInProgress={hostelInProgress}
         gettingStartedRef={gettingStartedRef}
         actionCenterRef={actionCenterRef}
         searchRef={searchRef}
-        hostelsRef={hostelsRef}
         gettingStarted={
           gettingStarted.state.visible
             ? {
@@ -155,7 +122,6 @@ export function OwnerDashboardPreviewPage() {
               }
             : null
         }
-        onReorderProperties={(orderedIds) => reorder.mutate(orderedIds)}
         onOpenSearch={() => setSearchOpen(true)}
         onOpenCollectionQueue={() => navigate('/owner/money/collect')}
         onOpenAgreements={() => navigate('/owner/agreements/review')}
@@ -230,11 +196,6 @@ export function OwnerDashboardPreviewPage() {
             body: 'Your remaining steps live here, and each one ticks itself off as you go. Nothing to remember.',
           },
           {
-            ref: hostelsRef,
-            title: 'Your hostels',
-            body: 'Every hostel you add sits here. Tap one to open it, or drag to put them in the order you think about them.',
-          },
-          {
             ref: actionCenterRef,
             title: 'Your daily view',
             body: 'Rent to collect, tenants to activate and empty beds all show up here once people move in.',
@@ -249,15 +210,6 @@ export function OwnerDashboardPreviewPage() {
 
       <QuickCollectModal open={qa.collectOpen} onClose={qa.closeCollect} initialTenant={qa.collectTenant} />
       <InviteTenantWizard open={qa.inviteOpen} onClose={qa.closeInvite} />
-      <HostelOptionsSheet
-        open={Boolean(hostelMenuFor)}
-        onClose={() => setHostelMenuFor(null)}
-        hostelId={hostelMenuFor}
-        hostelName={menuHostel?.name ?? 'Hostel'}
-        index={menuIndex}
-        total={dash.properties.length}
-        onMove={moveHostel}
-      />
     </>
   );
 }

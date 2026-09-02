@@ -10,15 +10,12 @@ const empty = {
 };
 
 describe('deriveHomeSections', () => {
-  it('shows the hostels section on a completely empty account', () => {
-    // The bug this module exists to prevent: Home hid the property list
-    // whenever there were no properties, and the only "Add hostel" button in
-    // the app lived inside it.
-    expect(deriveHomeSections(empty).hostels).toBe(true);
-  });
-
-  it('shows the hostels section in every other state too', () => {
-    expect(deriveHomeSections({ ...empty, hostelCount: 3, tenantCount: 40 }).hostels).toBe(true);
+  it('no longer decides anything about hostels', () => {
+    // The hostels list moved to its own tab. ADR-139's guarantee — that an
+    // owner with no hostels can always reach "+ Add hostel" — moved with it
+    // and is asserted in `hostelsTab.ts`; a permanent tab keeps it more
+    // strongly than a button below a screenful of scrolling did.
+    expect('hostels' in deriveHomeSections(empty)).toBe(false);
   });
 
   it('hides the Action Center until there is a tenant to act on', () => {
@@ -49,11 +46,11 @@ describe('deriveHomeSections', () => {
   });
 
   it('treats a half-built hostel as out of setup mode', () => {
-    // The hostel is real and appears in the list; the checklist, not the
-    // greeting, is what asks them to finish adding rooms.
+    // The hostel is real; the checklist is what asks them to finish adding
+    // rooms. (The hostels list itself is no longer a Home section — see the
+    // test above.)
     const sections = deriveHomeSections({ ...empty, hostelCount: 1, roomCapacity: 0 });
     expect(sections.setupMode).toBe(false);
-    expect(sections.hostels).toBe(true);
   });
 
   it('never treats a negative or fractional count as presence', () => {

@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { Home, Users, Wallet, UtensilsCrossed, User } from 'lucide-react';
+import { Home, Users, Wallet, UtensilsCrossed, Building2 } from 'lucide-react';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
 import { APP_GRID, APP_FRAME } from '@shared/ui/surface';
@@ -37,7 +37,7 @@ function ownerTabs(basePath: string) {
     { to: `${basePath}/tenants`, label: 'Tenants', icon: Users },
     { to: `${basePath}/money`, label: 'Money', icon: Wallet },
     { to: `${basePath}/food`, label: 'Food', icon: UtensilsCrossed },
-    { to: `${basePath}/more`, label: 'Profile', icon: User },
+    { to: `${basePath}/hostels`, label: 'Hostels', icon: Building2 },
   ];
 }
 
