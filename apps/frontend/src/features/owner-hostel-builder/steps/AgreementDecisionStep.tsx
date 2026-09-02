@@ -28,7 +28,7 @@ const CONSEQUENCES: Record<'yes' | 'no', { title: string; points: string[] }> = 
     points: [
       'They accept your hostel rules, then sign the residency agreement.',
       'Your signature below is reused automatically for every tenant here — you will not be asked again.',
-      'Uses the standard agreement; edit its wording anytime from More › Configuration › Agreements.',
+      'Uses the standard agreement; edit its wording anytime from this hostel’s Settings tab.',
     ],
   },
   no: {
@@ -36,7 +36,7 @@ const CONSEQUENCES: Record<'yes' | 'no', { title: string; points: string[] }> = 
     points: [
       'The rules and agreement steps are skipped during onboarding.',
       'Rent, dues, deposits and move-out settlement are unaffected.',
-      'You can turn this on later from More › Configuration › Agreements.',
+      'You can turn this on later from this hostel’s Settings tab.',
     ],
   },
 };

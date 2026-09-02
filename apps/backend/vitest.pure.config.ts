@@ -101,6 +101,10 @@ export default defineConfig({
       // Dues read inside the transaction that creates the obligations —
       // mocks `@/lib/db`, so no database is reachable.
       'tests/tenant-dues-transaction-scope.test.ts',
+      // Reads two service files as text to assert the Hostel identity form's
+      // fields survive both the write and the read endpoint — no client, no
+      // database.
+      'tests/hostel-identity-field-round-trip.test.ts',
       'tests/floor-room-plan.test.ts',
       'tests/hostel-deletion-plan.test.ts',
       'tests/expense-anomaly.test.ts',
