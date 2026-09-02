@@ -1,12 +1,15 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { Home, Users, Wallet, UtensilsCrossed, Settings2 } from 'lucide-react';
+import { Home, Users, Wallet, UtensilsCrossed, User } from 'lucide-react';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
 import { APP_GRID, APP_FRAME } from '@shared/ui/surface';
 
 /**
  * Owner app shell — bottom-nav chrome per BottomNav.dc.html: exactly 5 tabs
- * (Home / Tenants / Money / Food / Configure). There is no "Alerts" tab in
+ * (Home / Tenants / Money / Food / Profile). The fifth tab was labelled
+ * "Configure" while the screen it opens is the owner's own profile — their
+ * details, password and payout account — so the tab and its destination now
+ * call themselves the same thing. The route is unchanged (`/owner/more`). There is no "Alerts" tab in
  * the design — alerts are reached via the bell icon on Home instead; an
  * earlier pass of this file added a 6th "Alerts" tab that didn't match the
  * source, corrected here. `/owner/alerts` still exists as a route, just
@@ -34,7 +37,7 @@ function ownerTabs(basePath: string) {
     { to: `${basePath}/tenants`, label: 'Tenants', icon: Users },
     { to: `${basePath}/money`, label: 'Money', icon: Wallet },
     { to: `${basePath}/food`, label: 'Food', icon: UtensilsCrossed },
-    { to: `${basePath}/more`, label: 'Configure', icon: Settings2 },
+    { to: `${basePath}/more`, label: 'Profile', icon: User },
   ];
 }
 

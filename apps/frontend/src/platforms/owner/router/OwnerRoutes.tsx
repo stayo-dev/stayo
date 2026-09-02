@@ -68,9 +68,7 @@ const MoreHostelIdentityPage = lazy(() =>
   import('@features/owner-more/pages/MoreHostelIdentityPage').then((m) => ({ default: m.MoreHostelIdentityPage })),
 );
 const MoreNoticesPage = lazy(() => import('@features/owner-more/pages/MoreNoticesPage').then((m) => ({ default: m.MoreNoticesPage })));
-const MoreServiceRequestsPage = lazy(() => import('@features/owner-more/pages/MoreServiceRequestsPage').then((m) => ({ default: m.MoreServiceRequestsPage })));
 const MoreHelpPage = lazy(() => import('@features/owner-more/pages/MoreHelpPage').then((m) => ({ default: m.MoreHelpPage })));
-const MoreAboutPage = lazy(() => import('@features/owner-more/pages/MoreAboutPage').then((m) => ({ default: m.MoreAboutPage })));
 const MoreConfigurationHubPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigurationHubPage').then((m) => ({ default: m.MoreConfigurationHubPage })),
 );
@@ -219,9 +217,16 @@ export function OwnerRoutes() {
         <Route path="/owner/more/hostel" element={<MoreHostelIdentityPage />} />
         <Route path="/owner/more/hostel/:hostelId" element={<MoreHostelIdentityPage />} />
         <Route path="/owner/more/notices" element={<MoreNoticesPage />} />
-        <Route path="/owner/more/service-requests" element={<MoreServiceRequestsPage />} />
+        {/* The owner's copy of the service-request queue is deleted:
+            `/owner/alerts/requests` is the same queue over the same service,
+            with search, a tenant chat sheet and deep-links from notifications
+            that this one never had. Redirected rather than removed — the help
+            catalogue and older notifications still point here. */}
+        <Route path="/owner/more/service-requests" element={<Navigate to="/owner/alerts/requests" replace />} />
         <Route path="/owner/more/help" element={<MoreHelpPage />} />
-        <Route path="/owner/more/about" element={<MoreAboutPage />} />
+        {/* About was three links and a version string read from @shared/mocks;
+            the links now sit at the foot of Help. */}
+        <Route path="/owner/more/about" element={<Navigate to="/owner/more/help" replace />} />
 
         <Route path="/owner/more/configuration/hostel/tenant-defaults" element={<MoreConfigInviteDefaultsPage />} />
         {/* The old single-value screen. Kept routed because search and older

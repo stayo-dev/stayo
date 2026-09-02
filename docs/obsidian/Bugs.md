@@ -8,6 +8,18 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-02 — Three surfaces on the owner's Profile silently picked a hostel (fixed)
+
+**Symptom.** Nothing looked wrong. A two-hostel owner posting "Water tank cleaning tomorrow" from Profile → Notices had it delivered to one hostel's tenants, chosen for them, with no hostel named anywhere on the screen. The same owner could read "GST number not added" under *Needs attention*, tap it, and land on a hostel identity form — potentially for the other hostel. Searching "late fees" had the same shape.
+
+**Root cause.** `MoreNoticesPage` and `MoreServiceRequestsPage` read `session.primaryHostelId` directly, which is `hostels[0]?.id ?? null`. The needs-attention checks did the same, and the three routes they linked to — plus all eight entries in the search index — carried **no `?hostelId=`**, so their destinations fell back to the same first hostel independently. This is the frontend face of the "must not fall back to first hostel" invariant that `architectural-invariants-check.ts` enforces server-side ([[Decisions#ADR-003|ADR-003]]); the same class as the Food-tab bug logged 2026-08-30, in a different module.
+
+`useConfiguredHostelId` was written specifically to close this and takes the id from a `:hostelId` param or a `?hostelId=` query. None of these four callers used it. The screens *reachable* from a hostel's Settings tab had been migrated; the screens reachable from Profile had not, because Profile has no hostel to pass.
+
+**Fix.** Structural rather than a patch, per [[Decisions#ADR-159|ADR-159]]: **anything that needs to know which hostel it means no longer lives on Profile.** Notices moved to the hostel's Settings tab and now calls `useConfiguredHostelId()`. The attention checks moved with it as a pure `attentionItems()` whose every link carries `?hostelId=`, asserted by a test. Search was deleted outright — its whole index was per-hostel screens that had already moved. Requests was deleted as a duplicate of `/owner/alerts/requests`. Profile keeps four rows, none of which can name a hostel, which is now asserted: every route it links to is checked for the absence of a hostel id.
+
+**Why it survived.** Each surface was individually plausible — an owner with one hostel, which is most of them, sees correct behaviour forever. The failure needs a second hostel to become visible at all, and even then it is silent: the wrong tenants receive a real announcement and nobody is told.
+
 ## 2026-08-30 — Two configuration links pointed at routes that did not exist (fixed)
 
 **Symptom.** Tapping "Room configuration" in the Hostel module did nothing. The row showed a real room and bed count and rendered as *configured*, so nothing suggested it was broken. Separately, the "Check payout account" button on the failed-payout alert also did nothing — and that alert appears **only** when an owner has just been told money did not reach their bank.
