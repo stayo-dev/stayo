@@ -64,6 +64,9 @@ const MoreConfigInviteDefaultsPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigInviteDefaultsPage').then((m) => ({ default: m.MoreConfigInviteDefaultsPage })),
 );
 const MoreProfilePage = lazy(() => import('@features/owner-more/pages/MoreProfilePage').then((m) => ({ default: m.MoreProfilePage })));
+const HostelsPage = lazy(() =>
+  import('@features/owner-dashboard/pages/HostelsPage').then((m) => ({ default: m.HostelsPage })),
+);
 const MoreHostelIdentityPage = lazy(() =>
   import('@features/owner-more/pages/MoreHostelIdentityPage').then((m) => ({ default: m.MoreHostelIdentityPage })),
 );
@@ -184,6 +187,10 @@ export function OwnerRoutes() {
       <Route element={<OwnerAppShell />}>
         <Route path="/owner" element={<Navigate to="/owner/home" replace />} />
         <Route path="/owner/home" element={<OwnerDashboardPreviewPage />} />
+        {/* The Hostels tab. Inside the shell so the bottom nav stays visible —
+            unlike `/owner/hostels/:hostelId`, which is a full-screen drilldown
+            takeover mounted outside it. */}
+        <Route path="/owner/hostels" element={<HostelsPage />} />
 
         {/* Today's rent-collection work queue (ADR-045). */}
         <Route path="/owner/money/collect" element={<CollectionQueuePage />} />

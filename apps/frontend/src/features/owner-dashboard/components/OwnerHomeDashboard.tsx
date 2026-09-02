@@ -10,7 +10,6 @@ import { useFoodSchedule } from '@features/owner-food/hooks/useFoodSchedule';
 import { useMealTimings } from '@features/owner-food/hooks/useMealTimings';
 import { cellAt, dayKeyFor, isFilled } from '@features/owner-food/weekGrid';
 import { currentAndNextMeal } from '@features/food/mealTimings';
-import { PropertyList } from '../property-order/PropertyList';
 import { GettingStartedCard } from '../getting-started/GettingStartedCard';
 import type { GettingStarted, StepId, VerificationStatus } from '../getting-started/gettingStarted';
 import type { HomeSections } from '../homeSections';
@@ -54,12 +53,9 @@ interface OwnerHomeDashboardProps {
    * spending being normal is not work. See `expense-anomaly.ts`.
    */
   spendAnomaly?: { category: string; changePct: number; riseAmount: string } | null;
-  onSelectProperty?: (hostelId: string) => void;
   onOpenAlerts?: () => void;
   onOpenQuickActions?: () => void;
   onViewAllActions?: () => void;
-  onPropertyMenu?: (hostelId: string) => void;
-  onAddHostel?: () => void;
   /** A hostel that exists but still has floors without rooms. */
   hostelInProgress?: { name: string; summary: string } | null;
   /** New-owner walkthrough. Absent once all three steps are satisfied. */
@@ -77,9 +73,11 @@ interface OwnerHomeDashboardProps {
   gettingStartedRef?: React.Ref<HTMLElement>;
   actionCenterRef?: React.Ref<HTMLDivElement>;
   searchRef?: React.Ref<HTMLButtonElement>;
-  hostelsRef?: React.Ref<HTMLDivElement>;
+  /** Opens Profile. The avatar replaced the bottom-nav tab. */
+  onOpenProfile: () => void;
+  ownerPhotoUrl?: string | null;
+  ownerInitials: string;
   /** Full ordered list of hostel ids after a manual reorder. See ADR-042. */
-  onReorderProperties?: (orderedIds: string[]) => void;
   /** Opens Universal Search. See ADR-044. */
   onOpenSearch?: () => void;
   /** Opens today's prioritised collection queue. See ADR-045. */
@@ -113,19 +111,17 @@ export function OwnerHomeDashboard({
   collection = mockCollection,
   spendAnomaly = null,
   sections = { search: true, actionCenter: true, monthCard: true, hostels: true, setupMode: false },
-  onSelectProperty,
   onOpenAlerts,
   onOpenQuickActions,
   onViewAllActions,
-  onPropertyMenu,
-  onAddHostel,
   hostelInProgress,
   gettingStarted,
   gettingStartedRef,
   actionCenterRef,
   searchRef,
-  hostelsRef,
-  onReorderProperties,
+  onOpenProfile,
+  ownerPhotoUrl,
+  ownerInitials,
   onOpenSearch,
   onOpenCollectionQueue,
   onOpenAgreements,
@@ -146,18 +142,57 @@ export function OwnerHomeDashboard({
 
   return (
     <div className="flex flex-col gap-7 px-4 pb-8 pt-6 sm:px-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <img src="/stayo-wordmark.svg" alt="Stayo" className="mb-2 h-[15px] w-auto" />
-          <h1 className="font-display text-[22px] font-extrabold leading-tight tracking-tight text-foreground">
-            Good morning, {ownerName}
-          </h1>
-          <p className="mt-1.5 text-[13px] font-medium text-muted-foreground">
-            {sections.setupMode
-              ? 'Let\u2019s get your hostel running'
-              : `${properties.length} ${properties.length === 1 ? 'hostel' : 'hostels'} · ${collection.month}`}
-          </p>
-        </div>
+      {/*
+        One row doing three jobs: identity, search and alerts.
+
+        This was three stacked elements — a wordmark, "Good morning, <name>"
+        and "1 hostel · September" — above a separate search row, spending
+        roughly 100px before any content. The wordmark named the app the owner
+        had already opened, the greeting said nothing that ever changes, and
+        the hostel count now has a tab of its own. Collapsing them lifts the
+        rent card and all three action tiles above the fold, which is the only
+        thing on this screen worth that space.
+
+        The avatar is where Profile lives now that it has left the bottom nav.
+        Home only: two taps from the other tabs, which is the right price for a
+        screen an owner opens rarely.
+      */}
+      <div className="flex items-center gap-2.5">
+        <button
+          type="button"
+          onClick={onOpenProfile}
+          aria-label="Your profile"
+          className="h-10 w-10 flex-none overflow-hidden rounded-full border border-[#EAE1D8] bg-primary"
+        >
+          {ownerPhotoUrl ? (
+            <img src={ownerPhotoUrl} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <span className="flex h-full w-full items-center justify-center font-display text-[13px] font-bold text-primary-foreground">
+              {ownerInitials}
+            </span>
+          )}
+        </button>
+
+        {/* Was a non-interactive <div>+<span> — looked like a search field,
+            did nothing. Now opens Universal Search (ADR-044). Hidden until the
+            account has somebody in it: searching an empty hostel returns
+            nothing, and offering it on day one implies data that isn't there.
+            While hidden the row is avatar and bell alone. */}
+        {sections.search ? (
+          <button
+            ref={searchRef}
+            type="button"
+            onClick={onOpenSearch}
+            aria-label="Search tenants, rooms and hostels"
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-[#EAE1D8] bg-card px-3.5 py-[11px] text-left transition-colors active:bg-muted"
+          >
+            <Search className="h-3.5 w-3.5 flex-none text-muted-foreground" strokeWidth={1.6} />
+            <span className="truncate text-[13px] text-muted-foreground">Search tenant, room, phone…</span>
+          </button>
+        ) : (
+          <div className="flex-1" />
+        )}
+
         <button
           type="button"
           onClick={onOpenAlerts}
@@ -171,23 +206,6 @@ export function OwnerHomeDashboard({
           )}
         </button>
       </div>
-
-      {/* Was a non-interactive <div>+<span> — looked like a search field,
-          did nothing. Now opens Universal Search (ADR-044). Hidden until the
-          account has somebody in it: searching an empty hostel returns
-          nothing, and offering it on day one implies data that isn't there. */}
-      {sections.search && (
-      <button
-        ref={searchRef}
-        type="button"
-        onClick={onOpenSearch}
-        aria-label="Search tenants, rooms and hostels"
-        className="flex items-center gap-2 rounded-xl border border-[#EAE1D8] bg-card px-3.5 py-[11px] text-left transition-colors active:bg-muted"
-      >
-        <Search className="h-3.5 w-3.5 flex-none text-muted-foreground" strokeWidth={1.6} />
-        <span className="text-[13px] text-muted-foreground">Search tenant, room, phone…</span>
-      </button>
-      )}
 
       {gettingStarted && (
         <GettingStartedCard
@@ -365,22 +383,6 @@ export function OwnerHomeDashboard({
         </div>
       </section>
       )}
-
-      {/* Never conditional. This section was previously rendered only when
-          `properties.length > 0`, and it carries the only "+ Add hostel"
-          button on the screen — so an owner with no hostels had no way to
-          create one, and the account was a dead end. The checklist's step one
-          was the sole remaining path, and a stale browser flag could hide
-          that too. See ADR-139. */}
-      <div ref={hostelsRef}>
-        <PropertyList
-          properties={properties}
-          onSelectProperty={onSelectProperty}
-          onPropertyMenu={onPropertyMenu}
-          onAddHostel={onAddHostel}
-          onReorder={onReorderProperties}
-        />
-      </div>
 
       <button
         type="button"
