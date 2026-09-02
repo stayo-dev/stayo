@@ -9,21 +9,12 @@ import { eventLog } from "@/lib/services/event-log-service";
 import { backendUrl } from "@/lib/config/domains";
 import { currentAgreementWhere } from "@/src/services/tenants/agreement-status";
 import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
+import { requiredKycDocTypes, recomputeDocumentVerified } from "@/src/services/tenants/kyc-status";
+import { createSupersedingDocument, publicDocument } from "@/src/services/tenants/identification-document-service";
 
-const allowedTypesForProfile = (profileType?: string | null) => {
-  const type = String(profileType || "STUDENT").toUpperCase();
-  return type === "WORKING_PROFESSIONAL" ? ["AADHAAR", "WORK_ID"] : ["AADHAAR", "COLLEGE_ID"];
-};
+const allowedTypesForProfile = requiredKycDocTypes;
 const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 const MAX_SIZE = 5 * 1024 * 1024;
-
-function publicDocument(doc: any, tenantId: string) {
-  const { file_url, file_path, file_id, ...safeDoc } = doc;
-  return {
-    ...safeDoc,
-    download_url: backendUrl(`/api/tenants/${tenantId}/documents/${doc.id}/download`),
-  };
-}
 
 export async function GET(req: NextRequest) {
   const session = await getSession(req);
@@ -113,31 +104,20 @@ export async function POST(req: NextRequest) {
     });
 
     const created = await prisma.$transaction(async (tx) => {
-      await tx.identificationDocument.updateMany({
-        where: { tenant_id: tenant.id, doc_type: docType, is_active: true },
-        data: { is_active: false },
+      const document = await createSupersedingDocument(tx, {
+        tenantId: tenant.id,
+        docType,
+        docNumber,
+        file: { url: upload.url, filePath: upload.filePath, fileId: upload.fileId },
+        mimeType: file.type,
+        fileSize: file.size,
+        uploadedBy: session.sub,
       });
 
-      const document = await tx.identificationDocument.create({
-        data: {
-          tenant_id: tenant.id,
-          doc_type: docType,
-          doc_number: docNumber,
-          file_url: upload.url,
-          file_path: upload.filePath,
-          file_id: upload.fileId,
-          mime_type: file.type,
-          file_size: file.size,
-          document_status: "PENDING",
-          is_verified: false,
-          uploaded_by: session.sub,
-        },
-      });
-
-      await tx.tenants.update({
-        where: { id: tenant.id },
-        data: { document_verified: false },
-      });
+      // A fresh upload can only lower verification (the new row is PENDING);
+      // recompute rather than blindly setting false, so the shared helper stays
+      // the single writer of the flag.
+      await recomputeDocumentVerified(tx, tenant.id);
 
       return document;
     });

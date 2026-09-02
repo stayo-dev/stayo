@@ -44,6 +44,12 @@ export default defineConfig({
       'tests/platform-lead-templates.test.ts',
       'tests/platform-lead-stage-mapper.test.ts',
       'tests/owner-document-review.test.ts',
+      // Tenant KYC: the shared status helper, and the document routes (which
+      // all `vi.mock('@/lib/db')` — no client is constructed).
+      'tests/kyc-status.test.ts',
+      'tests/tenant-document-verification.test.ts',
+      'tests/tenant-kyc-bulk-verify.test.ts',
+      'tests/activate-documents-route.test.ts',
       'tests/tenancy-eligibility-rules.test.ts',
       'tests/active-tenancy-selection.test.ts',
       'tests/redis-key-parity.test.ts',

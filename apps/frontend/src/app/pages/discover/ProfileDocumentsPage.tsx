@@ -12,6 +12,21 @@ import { C, FONT } from './discoverTheme';
 
 const dateLabel = (v: unknown) => (v ? new Date(String(v)).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 
+/** The owner's most recent message from a rejected document's thread. */
+function latestRejectionReason(raw: unknown): string | null {
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  const text = raw.trim();
+  if (!text.startsWith('[')) return text;
+  try {
+    const arr = JSON.parse(text);
+    if (!Array.isArray(arr)) return null;
+    const owner = [...arr].reverse().find((m) => m && m.sender === 'owner' && m.message);
+    return owner?.message ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Documents, split into two genuinely different systems rather than
  * unified (that would be real backend work, out of scope for this
@@ -96,21 +111,61 @@ export function ProfileDocumentsPage() {
               {tenantProfile.documents.map((d: any) => {
                 const isAgreement = d.doc_type === 'RENTAL_AGREEMENT';
                 const verified = isAgreement || d.document_status === 'VERIFIED' || d.is_verified;
-                const label = isAgreement ? 'Signed' : verified ? 'Verified' : d.document_status === 'REJECTED' ? 'Rejected' : 'Pending';
+                const rejected = !isAgreement && d.document_status === 'REJECTED';
+                const label = isAgreement ? 'Signed' : verified ? 'Verified' : rejected ? 'Rejected' : 'Pending';
+                const docLabel = d.doc_type_label ?? tenantProfile.docLabel[d.doc_type] ?? d.doc_type;
+
+                // A rejected document is the tenant's to fix — the whole row
+                // becomes an "Upload again" control, with the owner's reason.
+                if (rejected) {
+                  const reason = latestRejectionReason(d.rejection_reason);
+                  return (
+                    <label key={d.id} className="flex w-full cursor-pointer items-center gap-3 px-4 py-3.5 text-left">
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                        className="hidden"
+                        disabled={tenantProfile.isUploadingDocument}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = '';
+                          if (!file) return;
+                          tenantProfile
+                            .uploadDocument({ docType: d.doc_type, file })
+                            .then(() => stayoToast.success(`${docLabel} re-uploaded`))
+                            .catch(() => stayoToast.error('Could not upload — please try again'));
+                        }}
+                      />
+                      <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px]" style={{ background: '#F7E4DF', color: '#B3402F' }}>
+                        {tenantProfile.isUploadingDocument ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13.5px] font-semibold" style={{ color: C.inkSoft }}>{docLabel}</div>
+                        <div className="mt-0.5 text-[11.5px]" style={{ color: '#B3402F' }}>
+                          Rejected{reason ? ` — ${reason}` : ''}
+                        </div>
+                      </div>
+                      <span className="flex flex-none items-center gap-1.5 rounded-full px-2.5 py-1 text-[10.5px] font-bold" style={{ background: '#F7E4DF', color: '#B3402F' }}>
+                        <Upload className="h-3 w-3" /> Upload again
+                      </span>
+                    </label>
+                  );
+                }
+
                 return (
                   <div key={d.id} className="flex items-center gap-3 px-4 py-3.5">
                     <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px]" style={{ background: '#F4EEE7', color: C.clay }}>
                       <FileText className="h-4 w-4" />
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="text-[13.5px] font-semibold" style={{ color: C.inkSoft }}>{d.doc_type_label ?? tenantProfile.docLabel[d.doc_type] ?? d.doc_type}</div>
+                      <div className="text-[13.5px] font-semibold" style={{ color: C.inkSoft }}>{docLabel}</div>
                       <div className="mt-0.5 text-[11.5px]" style={{ color: C.textFaint }}>{label} · {dateLabel(d.uploaded_at ?? d.created_at)}</div>
                     </div>
                     <span
                       className="flex-none rounded-full px-2.5 py-1 text-[10.5px] font-bold"
                       style={{
-                        background: verified ? '#EAF3EE' : label === 'Rejected' ? '#F7E4DF' : '#FBF1DE',
-                        color: verified ? C.green : label === 'Rejected' ? '#B3402F' : C.amber,
+                        background: verified ? '#EAF3EE' : '#FBF1DE',
+                        color: verified ? C.green : C.amber,
                       }}
                     >
                       {label}

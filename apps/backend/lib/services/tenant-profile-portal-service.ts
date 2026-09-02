@@ -3,18 +3,9 @@ import { normalizeIndianPhone } from "@/lib/utils/phone-utils";
 import { backendUrl } from "@/lib/config/domains";
 import { currentAgreementWhere } from "@/src/services/tenants/agreement-status";
 import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
+import { requiredKycDocTypes as requiredDocumentTypes, KYC_DOC_TYPE_LABEL } from "@/src/services/tenants/kyc-status";
 
-const DOC_TYPE_LABELS: Record<string, string> = {
-  AADHAAR: "Aadhaar",
-  COLLEGE_ID: "College ID",
-  WORK_ID: "Work ID",
-};
-
-function requiredDocumentTypes(profileType?: string | null) {
-  return String(profileType || "STUDENT").toUpperCase() === "WORKING_PROFESSIONAL"
-    ? ["AADHAAR", "WORK_ID"]
-    : ["AADHAAR", "COLLEGE_ID"];
-}
+const DOC_TYPE_LABELS: Record<string, string> = KYC_DOC_TYPE_LABEL;
 
 export async function getTenantPortalProfile(profileId: string) {
   const tenant = await prisma.tenants.findFirst({
