@@ -29,6 +29,8 @@ export interface PortfolioPerformanceRanking {
   hostel_name: string;
   city: string | null;
   status: string;
+  /** Null until the owner is asked. Drives the Hostels tab's "who stays here?" prompt. */
+  hostel_type: string | null;
   archived_at: string | null;
   archive_reason: string | null;
   revenue: number;
@@ -111,10 +113,24 @@ export class PortfolioPerformanceService {
     // Fetch all hostels including archived for lifecycle-aware UI
     const hostelStatusRows = await prisma.hostels.findMany({
       where: { owner_id: ownerId },
-      select: { id: true, status: true, archived_at: true, archive_reason: true },
+      select: { id: true, status: true, archived_at: true, archive_reason: true, hostel_type: true },
     });
-    const hostelStatusMap = new Map(
-      hostelStatusRows.map((h) => [h.id, { status: h.status, archived_at: h.archived_at, archive_reason: h.archive_reason }])
+    // Typed explicitly: `new Map(rows.map(...))` inferred the value as `{}`,
+    // so every read off it below was an error, and adding a field simply added
+    // another. The annotation fixes all of them at the source.
+    const hostelStatusMap = new Map<
+      string,
+      { status: string; archived_at: Date | null; archive_reason: string | null; hostel_type: string | null }
+    >(
+      hostelStatusRows.map((h) => [
+        h.id,
+        {
+          status: h.status,
+          archived_at: h.archived_at,
+          archive_reason: h.archive_reason,
+          hostel_type: h.hostel_type,
+        },
+      ])
     );
 
     const [activeTenantRows, cashflowGrid, expenseGrid, moveOutResult, pendingInviteResult] = (await Promise.all([
@@ -364,6 +380,7 @@ export class PortfolioPerformanceService {
         status: hostelStatus?.status ?? 'ACTIVE',
         archived_at: hostelStatus?.archived_at?.toISOString() ?? null,
         archive_reason: hostelStatus?.archive_reason ?? null,
+        hostel_type: hostelStatus?.hostel_type ?? null,
         revenue,
         expenses,
         profit: revenue - expenses,

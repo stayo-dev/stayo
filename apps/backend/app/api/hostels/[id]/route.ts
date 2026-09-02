@@ -27,6 +27,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         pincode: true,
         upi_id: true,
         gst_number: true,
+        // Who the hostel takes. Read back so the identity form can show the
+        // current answer, and so onboarding's gender derivation has an input.
+        hostel_type: true,
         logo_url: true,
         status: true,
         is_active: true,
@@ -79,6 +82,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         pincode: true,
         upi_id: true,
         gst_number: true,
+        // Who the hostel takes. Read back so the identity form can show the
+        // current answer, and so onboarding's gender derivation has an input.
+        hostel_type: true,
         logo_url: true,
         status: true,
         is_active: true,

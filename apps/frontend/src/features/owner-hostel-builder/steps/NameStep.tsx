@@ -1,4 +1,5 @@
 import { StayoLoader } from '@shared/ui/brand';
+import { HOSTEL_TYPE_OPTIONS, type HostelTypeCode } from '../hostelType';
 import { titleCaseText } from '@shared/lib/textFormat';
 import {
   eyebrow,
@@ -10,11 +11,17 @@ import {
 } from '@features/owner-onboarding/components/stepStyles';
 
 /**
- * The only thing asked before the hostel exists.
+ * The only things asked before the hostel exists.
  *
  * A name is enough to create the `hostels` row, which is what makes every
  * later step resumable — address, pincode and phone are genuinely "later"
  * and are editable from the hostel's own settings.
+ *
+ * Who the hostel takes is asked here too, and it is not cosmetic. The backend
+ * has always known how to skip a tenant's gender question when the hostel type
+ * answers it (`identity-field-policy.ts`), but nothing ever asked the owner —
+ * so `hostels.hostel_type` stayed NULL and every tenant was asked anyway. One
+ * tap here is the whole of that fix.
  *
  * There is no `<form>` here: `HostelBuilderPage` wraps every step in one, so
  * Enter submits from any field and the sticky footer button drives it.
@@ -24,22 +31,19 @@ export function NameStep({
   onNameChange,
   city,
   onCityChange,
+  hostelType,
+  onHostelTypeChange,
   isSubmitting,
   error,
-  needsPassword,
-  password,
-  onPasswordChange,
 }: {
   name: string;
   onNameChange: (value: string) => void;
   city: string;
   onCityChange: (value: string) => void;
+  hostelType: HostelTypeCode | null;
+  onHostelTypeChange: (value: HostelTypeCode) => void;
   isSubmitting: boolean;
   error: string | null;
-  /** The owner already has a hostel, so this one needs a password. */
-  needsPassword: boolean;
-  password: string;
-  onPasswordChange: (value: string) => void;
 }) {
   return (
     <div>
@@ -54,10 +58,7 @@ export function NameStep({
         <label className="block">
           <span className={fieldLabel}>HOSTEL NAME</span>
           <input
-            // Only when there's no password field. Both carrying `autoFocus`
-            // meant React focused whichever mounted last, so the owner's
-            // cursor landed in a field they had not asked for.
-            autoFocus={!needsPassword}
+            autoFocus
             value={name}
             onChange={(e) => onNameChange(e.target.value)}
             // On blur, not per keystroke — this is the name tenants know the
@@ -90,26 +91,32 @@ export function NameStep({
           />
         </label>
 
-        {needsPassword && (
-          <label className="block">
-            <span className={fieldLabel}>CONFIRM YOUR PASSWORD</span>
-            <input
-              autoFocus
-              type="password"
-              value={password}
-              onChange={(e) => onPasswordChange(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="current-password"
-              enterKeyHint="go"
-              className={textInput}
-            />
-            {/* Only from the second hostel onward — by then the account holds
-                real tenants and money worth protecting. */}
-            <span className={fieldHint}>
-              You already have a hostel on this account, so we ask for your password before adding another.
-            </span>
-          </label>
-        )}
+        <div className="block">
+          <span className={fieldLabel}>WHO STAYS HERE?</span>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {HOSTEL_TYPE_OPTIONS.map((option) => {
+              const selected = hostelType === option.code;
+              return (
+                <button
+                  key={option.code}
+                  type="button"
+                  onClick={() => onHostelTypeChange(option.code)}
+                  aria-pressed={selected}
+                  className={`rounded-xl border-[1.5px] px-3 py-2.5 text-left transition-colors ${
+                    selected ? 'border-primary bg-primary/5' : 'border-border bg-card'
+                  }`}
+                >
+                  <span className="block font-display text-[13.5px] font-bold text-foreground">{option.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <span className={fieldHint}>
+            {hostelType
+              ? HOSTEL_TYPE_OPTIONS.find((o) => o.code === hostelType)?.hint
+              : 'A boys-only or girls-only hostel has already answered this for every tenant, so they are never asked.'}
+          </span>
+        </div>
 
         {error && <p className="text-[13px] font-semibold text-destructive">{error}</p>}
         {isSubmitting && (

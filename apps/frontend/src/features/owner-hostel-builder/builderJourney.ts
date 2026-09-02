@@ -87,8 +87,7 @@ export function continueBlocker(
   stage: BuilderStage,
   state: {
     hostelName: string;
-    needsPassword: boolean;
-    password: string;
+    hostelType?: string | null;
     floorBlocker: string | null;
     agreementChoice?: AgreementChoice;
     hasSignature?: boolean;
@@ -96,7 +95,10 @@ export function continueBlocker(
 ): string | null {
   if (stage === 'name') {
     if (!state.hostelName.trim()) return 'Enter a name to continue';
-    if (state.needsPassword && !state.password.trim()) return 'Confirm your password to continue';
+    // Asked once, here, because it is the answer that decides whether every
+    // future tenant of this hostel is asked their gender. Left unset it is
+    // not a neutral default — it silently means "ask everyone, forever".
+    if (!state.hostelType) return 'Choose who stays here to continue';
     return null;
   }
   if (stage === 'fill') return state.floorBlocker;

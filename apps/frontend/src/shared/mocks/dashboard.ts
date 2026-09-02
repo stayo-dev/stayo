@@ -42,6 +42,8 @@ export interface MockProperty {
    * and any older caller still type-check. See ADR-042.
    */
   occupancyPercent?: number;
+  /** `hostels.hostel_type` — null until the owner is asked. */
+  hostelType?: string | null;
   revenueValue?: number;
   outstandingValue?: number;
   displayOrder?: number | null;

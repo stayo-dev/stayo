@@ -44,3 +44,8 @@ apps/backend/scratch/
 # Added by ggshield
 .cache_ggshield
 .superpowers/
+
+# A root-owned .next left behind by a sudo build on 2026-09-01, moved aside so
+# Next could recreate one it owns. Ignored because `/.next/` does not match it,
+# and `git add apps/` otherwise sweeps 1.4G of build cache into a commit.
+/apps/backend/.next.root-owned-*/

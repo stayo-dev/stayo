@@ -266,6 +266,13 @@ export class PropertyService {
     if (data.pincode !== undefined) mapped.pincode = data.pincode;
     if (data.upi_id !== undefined) mapped.upi_id = data.upi_id;
     if (data.gst_number !== undefined) mapped.gst_number = data.gst_number;
+    if (data.hostel_type !== undefined) {
+      // Validated against the same four codes `identity-field-policy.ts` reads.
+      // Anything unrecognised is stored as NULL rather than guessed: an unknown
+      // type must mean "ask the tenant their gender", never "assume it".
+      const code = String(data.hostel_type || "").trim().toUpperCase();
+      mapped.hostel_type = ["BOYS", "GIRLS", "CO_LIVING", "WORKING_PROS"].includes(code) ? code : null;
+    }
 
     if (data.status !== undefined) {
       if (!["ACTIVE", "INACTIVE", "ARCHIVED"].includes(data.status)) {

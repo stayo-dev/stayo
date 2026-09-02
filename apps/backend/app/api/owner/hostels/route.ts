@@ -4,7 +4,6 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { verifyIdentityConfirmation, consumeIdentityTokenInTx } from "@/src/services/payments/identity-confirmation-guard";
 
 /**
  * 🏨 GET /api/owner/hostels
@@ -119,6 +118,19 @@ export async function GET(req: NextRequest) {
   }
 }
 
+/**
+ * The four values `hostels.hostel_type` is written with — the same set
+ * `identity-field-policy.ts` reads when deciding whether onboarding must ask a
+ * tenant their gender. Anything else is stored as NULL rather than guessed:
+ * an unrecognised type must mean "ask", never "assume".
+ */
+const HOSTEL_TYPES = ["BOYS", "GIRLS", "CO_LIVING", "WORKING_PROS"] as const;
+
+function normalizeHostelType(value: unknown): string | null {
+  const code = String(value || "").trim().toUpperCase();
+  return (HOSTEL_TYPES as readonly string[]).includes(code) ? code : null;
+}
+
 export async function POST(req: NextRequest) {
   const session = await getSession(req);
   if (!session || !["OWNER", "ADMIN"].includes(session.role)) {
@@ -132,20 +144,14 @@ export async function POST(req: NextRequest) {
     const name = (body.name || body.hostel_name || "New Hostel").trim();
     const phone = body.phone || body.hostel_phone || "";
 
-    // Step-up confirmation, but only once there is something to protect.
-    //
-    // Re-entering a password guards an account that already holds hostels,
-    // tenants and money. An owner creating their *first* hostel has none of
-    // that and authenticated minutes ago during signup, so the prompt was
-    // pure friction at the emptiest possible moment — and it sat directly in
-    // the path of the Add Hostel builder that now replaces onboarding's
-    // hostel setup. Second and subsequent hostels are still gated.
-    const existingHostelCount = await prisma.hostels.count({
-      where: { owner_id: session.sub, status: { in: ["ACTIVE", "INACTIVE"] } },
-    });
-    const identity = existingHostelCount > 0
-      ? await verifyIdentityConfirmation(body.identity_token, "CREATE_HOSTEL", "create_hostel", session.sub)
-      : null;
+    // No step-up confirmation. Creating a hostel is **additive and
+    // reversible** — it can be archived, it moves no money and it takes
+    // nothing away — unlike the six actions that still carry a password gate,
+    // every one of which touches funds. The prompt only ever fired from the
+    // second hostel onward, so its entire effect was to tax owners growing
+    // their business. Creation is recorded in the event log instead, which is
+    // what the gate was really providing: an answer to "who added this, and
+    // when". See ADR-168.
 
     const hostel = await prisma.$transaction(async (tx: any) => {
       // Owner-scoped duplicate hostel check
@@ -163,8 +169,6 @@ export async function POST(req: NextRequest) {
         throw new Error("VALIDATION_ERROR: A hostel with this name already exists");
       }
 
-      if (identity) await consumeIdentityTokenInTx(tx, identity.jti);
-
       return tx.hostels.create({
         data: {
           owner_id: session.sub,
@@ -174,11 +178,31 @@ export async function POST(req: NextRequest) {
           city: body.city || null,
           state: body.state || null,
           pincode: body.pincode || null,
+          // Who the hostel takes. Long a nullable column the backend already
+          // knew how to use — `identity-field-policy.ts` derives a tenant's
+          // gender from it — but which nothing ever wrote, so it stayed NULL
+          // and every tenant was asked their gender regardless. The builder
+          // now asks once, here.
+          hostel_type: normalizeHostelType(body.hostel_type),
           status: "ACTIVE",
           is_active: true,
         },
       });
     });
+
+    // What the removed password gate was really for: a durable answer to who
+    // created this hostel and when. Non-fatal — an audit write must never be
+    // the reason a hostel fails to exist.
+    try {
+      const { eventLog } = await import("@/lib/services/event-log-service");
+      await eventLog.log("hostel.created", session.sub, {
+        hostel_id: hostel.id,
+        name: hostel.name,
+        hostel_type: hostel.hostel_type ?? null,
+      });
+    } catch (auditError) {
+      console.error("[owner.hostels.POST] audit log failed", auditError);
+    }
 
     // Owner-acquisition funnel phase 2: if this owner was born from a lead
     // activation link, advance the lead to HOSTEL_CREATED. Non-fatal by

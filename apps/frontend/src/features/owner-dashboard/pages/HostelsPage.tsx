@@ -148,6 +148,29 @@ export function HostelsPage() {
             </div>
           </button>
 
+          {/*
+            Unset type is not a cosmetic gap: while it is null, every tenant of
+            this hostel is asked their gender during onboarding, because nothing
+            can derive it. Every hostel created before the builder started
+            asking is in this state, and only the owner knows the answer — so it
+            is prompted rather than guessed from the name.
+          */}
+          {single.needsType && (
+            <button
+              type="button"
+              onClick={() => navigate(`/owner/more/hostel?hostelId=${single.id}`)}
+              className={`${card} flex items-center gap-3 border-primary/30 bg-primary/5 p-4 text-left`}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block font-display text-[13.5px] font-bold text-foreground">Who stays here?</span>
+                <span className="mt-0.5 block text-[11.5px] leading-[1.45] text-muted-foreground">
+                  Set this and your tenants stop being asked their gender when they join.
+                </span>
+              </span>
+              <ChevronRight className="h-4 w-4 flex-none text-muted-foreground/50" strokeWidth={2} />
+            </button>
+          )}
+
           {/* Without these the tab would show numbers and offer nothing to do
               about them. Same destinations as the drilldown's own tabs. */}
           <div className={`${card} overflow-hidden`}>
