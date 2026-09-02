@@ -74,8 +74,10 @@ export interface MockTenant {
   activity: TenantActivityItem[];
   documents: TenantDocument[];
   stay: TenantStayDetails;
-  /** `OWNER_MANAGED` when the tenant never registered and the owner is keeping the records; `SELF_SERVE`/null otherwise. Not a tenancy status — see `accessModeLabel`. */
+  /** `OWNER_MANAGED` when the tenant has no app login yet; `SELF_SERVE`/null otherwise. Not a tenancy status — see `accessModeLabel`. */
   accessMode?: string | null;
+  /** `PENDING` | `ACCEPTED` | `NOT_REQUIRED` (legacy) — whether the tenant personally accepted (ADR-165). */
+  acceptanceStatus?: string | null;
 }
 
 const RENT_MONTHS = ['Aug 2026', 'Sept 2026', 'Oct 2026', 'Nov 2026', 'Dec 2026'];

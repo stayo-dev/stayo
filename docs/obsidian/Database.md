@@ -295,6 +295,29 @@ Also dropped by migration 062: `tenants.reservation_policy` and `tenants.minimum
 
 > ⚠️ **These four migrations are the ones that took production down on 2026-08-14** (see [[Bugs]]). Prisma selects the *full* column set for any query without an explicit `select`, and `getSession()` runs one such query (`getActiveTenancy` → `tenants.findMany`) on **every authenticated request, for every role**. So a `tenants` column that exists in `schema.prisma` but not in the database 500s the entire authenticated API, not just the tenant Profile tab. Nothing in the deploy applies migrations — the Vercel build is `next build`, and this repo's migrations are run by hand (see [[Architecture]]) — so **schema.prisma and the production database drift silently until the next request**. `guardian_name`/`guardian_phone`/`guardian_relation` already existed (read by `getTenantPortalProfile`) but were never wired to tenant self-editing until 2026-08-14 — see [[Business-Rules]].
 
+## Tenant acceptance is an explicit state — `acceptance_status`, `tenant_accepted_at` (2026-09-02, migration `20260902120000_tenant_acceptance_status`, [[Decisions#ADR-165|ADR-165]])
+
+```prisma
+enum TenantAcceptanceStatus {
+  NOT_REQUIRED  // legacy row / created outside the invitation flow — the default
+  PENDING       // invited, operationally live, tenant has NOT personally accepted
+  ACCEPTED      // tenant personally completed activation (`completeActivation`)
+}
+
+model tenants {
+  acceptance_status  TenantAcceptanceStatus @default(NOT_REQUIRED)
+  tenant_accepted_at DateTime?              @db.Timestamptz(6)
+}
+```
+
+A **third axis**, independent of `TenantStatus` (operationally live) and `TenantAccessMode` (has a login). A new invitation stands the tenancy up `ACTIVE` / `OWNER_MANAGED` exactly as before but sets `acceptance_status = PENDING` and does **not** stamp `activation_completed_at` / `tenant_accepted_at` and does **not** write a `tenant_owner_attestations` row. `completeActivation` — the tenant, personally — is the only writer of `ACCEPTED` + `tenant_accepted_at` (and, since ADR-165, the only writer of `activation_completed_at` for a new-model row).
+
+**Grandfathering is the `NOT_REQUIRED` default, not a backfill.** Every existing `OWNER_MANAGED` row keeps `acceptance_status = NOT_REQUIRED` and is invisible to the owner field-lock, the auto-expiry sweep, and the new PENDING/ACCEPTED invariants; the activation predicates fall back to the old `invitationStatus` / `ownerAttested` / `activation_completed_at` proxies for it.
+
+Migration: `CREATE TYPE` + `ALTER TABLE ... ADD COLUMN acceptance_status TenantAcceptanceStatus NOT NULL DEFAULT 'NOT_REQUIRED'` (safe on a live table) + `tenant_accepted_at TIMESTAMPTZ` + partial index `tenants_acceptance_status_pending_idx WHERE acceptance_status = 'PENDING'`. Per the drift-vs-outage note above, `acceptance_status` is read on hot paths (`resolveByToken`, `completeActivation`, the tenant list), so the migration must land **with or before** the code.
+
+`tenant_owner_attestations` — **no new rows are written** as of ADR-165 (both writers removed). The table + relation stay for grandfathered reads; scheduled for removal once no `NOT_REQUIRED` `OWNER_MANAGED` rows remain. See [[TODO]].
+
 ## Owner-managed tenants — `access_mode`, `display_name`, `tenant_owner_attestations` (2026-08-27, Phase 1, migration 20260827100000, **NOT applied to any database**)
 
 Two additive columns on `tenants` plus one new table, from `prisma/migrations/20260827100000_owner_managed_tenants/`. **This migration exists only as a Prisma migration file in the repo — it has not been run against any database (dev, test, or production) as of this writing.** Given the 2026-08-14/2026-08-22 outage pattern documented above and below (a `schema.prisma` column with no matching database column 500s every unselected read of that table, and `tenants` is read on effectively every authenticated request via `getSession()`), the code declaring these fields must not reach a real environment ahead of the migration being applied there.

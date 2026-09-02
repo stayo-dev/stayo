@@ -183,7 +183,7 @@ export const HELP_GUIDES: HelpGuide[] = [
     question: 'Where do I see complaints from my tenants?',
     answer:
       'Everything your residents raise about the hostel lands in Service requests. These are yours to resolve — Stayo carries them so you have one list, and does not answer them for you.',
-    action: { label: 'Open Service requests', to: '/owner/more/service-requests' },
+    action: { label: 'Open Service requests', to: '/owner/alerts/requests' },
     keywords: ['complaint', 'service request', 'tenant issue', 'maintenance', 'ticket'],
   },
   {
@@ -398,7 +398,7 @@ export function canSubmitReport(subject: string, description: string): boolean {
 export function hostelChannel(audience: HelpAudience): HelpAction {
   return audience === 'tenant'
     ? { label: 'Tell your hostel instead', to: '/tenant/complaints' }
-    : { label: 'Open Service requests', to: '/owner/more/service-requests' };
+    : { label: 'Open Service requests', to: '/owner/alerts/requests' };
 }
 
 /**

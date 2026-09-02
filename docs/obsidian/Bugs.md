@@ -20,9 +20,27 @@ Log of significant bugs — open and fixed. Not meant to replace an issue tracke
 
 **Also found: the monthly cron could create a duplicate.** Its existence check keyed on `allocation_id + rent_month`, missing the `allocation_id: NULL` rows `onboarding-financials-service` writes — so it produced a second RENT row for the same tenant + month (a tenant in the dev DB had two Aug-2026 RENT rows, one from each path).
 
-**Fix.** The cron iterates all operational owners' hostels (hostel-`id` cursor, unchanged per-hostel lock/ledger/unique-constraint idempotency); the dedup check also matches `tenant_id + rent_month + obligation_type`; `onboarding-financials-service` reads the hostel due day and uses a month-based gate; the owner profile reads `billingTimelineService` (same as the tenant portal) with a projected next installment. See [[Decisions#ADR-166|ADR-166]], [[Changelog]], [[Business-Rules]].
+**Fix.** The cron iterates all operational owners' hostels (hostel-`id` cursor, unchanged per-hostel lock/ledger/unique-constraint idempotency); the dedup check also matches `tenant_id + rent_month + obligation_type`; `onboarding-financials-service` reads the hostel due day and uses a month-based gate; the owner profile reads `billingTimelineService` (same as the tenant portal) with a projected next installment. See [[Decisions#ADR-167|ADR-167]], [[Changelog]], [[Business-Rules]].
 
 **Not fixed / not verified here.** The multi-owner cron was not run against the live dev database in this change, and the backend DB-integration tests could not run in this environment (`DATABASE_URL_TEST` unset). Whether `RENT_CRON_OWNER_ID` is set in the deployed `stayo-testing` backend, and whether Vercel cron is actually invoking the endpoint on schedule, are open items in [[TODO]].
+
+## 2026-09-02 — `resolveByToken` would have dead-ended every new tenant's own activation link at `ALREADY_ACTIVE` (fixed as part of [[Decisions#ADR-165|ADR-165]])
+
+**What it was.** `resolveByToken`'s status ladder had a rung: `else if (invitation.status === "ACTIVATED" || invitation.tenant.status === "ACTIVE") throw "ALREADY_ACTIVE"`. Since an owner-invited tenancy is `ACTIVE` from the moment it is created, this rung was only survivable because the *prior* rung caught the invitation's `SUPERSEDED` status first and fell through. ADR-165 keeps the invitation `PENDING` (so the expiry/nudge machinery and the re-invite dedup keep working), which means execution now reaches that `else if` — and `tenant.status === "ACTIVE"` is true for every live-but-unaccepted tenancy, so the tenant's own link would report their account as already active and never open the wizard.
+
+**Root cause.** "Has the tenant personally finished onboarding?" was encoded implicitly as `SUPERSEDED` + `OWNER_MANAGED` + a `tenant_owner_attestations` row, and each activation guard read some subset of those proxies; the crudest fallback was `tenant.status === "ACTIVE"`.
+
+**Fix.** An explicit `tenants.acceptance_status` (`PENDING`/`ACCEPTED`), authoritative for new-model rows. The rung now reads `invitation.status === "ACTIVATED" || hasCompletedActivation(entrySubject)`, where `hasCompletedActivation` returns false for `PENDING`. The `SUPERSEDED` fall-through stays for grandfathered rows.
+
+**Lesson.** A status column that means "is this live" was repeatedly asked "is this person done", in four places. The fix was one field that answers only the second question. Not verified against a live database in this environment. See [[Decisions#ADR-165|ADR-165]], [[Business-Rules]].
+
+## 2026-09-02 — Owner edits to a not-yet-accepted tenant's guardian/college fields became change requests nobody could approve (fixed as part of [[Decisions#ADR-165|ADR-165]])
+
+**What it was.** For an owner-managed tenancy (`ACTIVE`, no tenant login), an owner editing a Category-B field (`guardian_name`, `college_name`, `date_of_birth`, …) via `PUT /api/tenants/[id]` produced a pending `change_request` requiring **tenant** approval — which a login-less tenant can never give. The requests piled up silently. The correction window (`isInCorrectionWindow`) didn't apply because it keys on `status === "INVITED"` and the tenancy was `ACTIVE`.
+
+**Fix.** `updateTenant` now hard-rejects a defined `TENANT_ONLY_FIELDS` set while `acceptance_status = PENDING`, with a message naming the fields and telling the owner the tenant must add them after accepting. Grandfathered (`NOT_REQUIRED`) rows keep today's imperfect behaviour — noted here as a residual gap for `name`/`email` on any owner-managed row, a candidate follow-up (auto-expire L2 change requests whose tenant profile has `auth_user_id IS NULL`).
+
+**See:** [[Decisions#ADR-165|ADR-165]], [[Business-Rules]].
 
 ## 2026-09-01 — The invite wizard's "already paid" panel never showed the settlement it had already fetched (fixed)
 
@@ -58,6 +76,17 @@ Log of significant bugs — open and fixed. Not meant to replace an issue tracke
 **Verification:** 90 backend tests (new + updated) passing under `vitest.pure.config.ts`; `tsc --noEmit` shows zero new errors introduced (pre-existing unrelated errors unchanged). Not verified against a live database (no `DATABASE_URL_TEST` in this environment) and no real-concurrency integration test was run — the advisory lock and partial index are verified by code review and by mirroring already-shipped patterns, not by a live race test.
 
 **See:** [[Business-Rules]], [[Database]], [[Decisions#ADR-162|ADR-162]], [[Changelog]]
+## 2026-09-02 — Three surfaces on the owner's Profile silently picked a hostel (fixed)
+
+**Symptom.** Nothing looked wrong. A two-hostel owner posting "Water tank cleaning tomorrow" from Profile → Notices had it delivered to one hostel's tenants, chosen for them, with no hostel named anywhere on the screen. The same owner could read "GST number not added" under *Needs attention*, tap it, and land on a hostel identity form — potentially for the other hostel. Searching "late fees" had the same shape.
+
+**Root cause.** `MoreNoticesPage` and `MoreServiceRequestsPage` read `session.primaryHostelId` directly, which is `hostels[0]?.id ?? null`. The needs-attention checks did the same, and the three routes they linked to — plus all eight entries in the search index — carried **no `?hostelId=`**, so their destinations fell back to the same first hostel independently. This is the frontend face of the "must not fall back to first hostel" invariant that `architectural-invariants-check.ts` enforces server-side ([[Decisions#ADR-003|ADR-003]]); the same class as the Food-tab bug logged 2026-08-30, in a different module.
+
+`useConfiguredHostelId` was written specifically to close this and takes the id from a `:hostelId` param or a `?hostelId=` query. None of these four callers used it. The screens *reachable* from a hostel's Settings tab had been migrated; the screens reachable from Profile had not, because Profile has no hostel to pass.
+
+**Fix.** Structural rather than a patch, per [[Decisions#ADR-166|ADR-166]]: **anything that needs to know which hostel it means no longer lives on Profile.** Notices moved to the hostel's Settings tab and now calls `useConfiguredHostelId()`. The attention checks moved with it as a pure `attentionItems()` whose every link carries `?hostelId=`, asserted by a test. Search was deleted outright — its whole index was per-hostel screens that had already moved. Requests was deleted as a duplicate of `/owner/alerts/requests`. Profile keeps four rows, none of which can name a hostel, which is now asserted: every route it links to is checked for the absence of a hostel id.
+
+**Why it survived.** Each surface was individually plausible — an owner with one hostel, which is most of them, sees correct behaviour forever. The failure needs a second hostel to become visible at all, and even then it is silent: the wrong tenants receive a real announcement and nobody is told.
 
 ## 2026-08-30 — Two configuration links pointed at routes that did not exist (fixed)
 

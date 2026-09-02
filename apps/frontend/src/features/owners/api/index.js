@@ -22,6 +22,21 @@ export const ownerService = {
         const response = await api.put('/owner/payout-account', payload);
         return response.data?.data ?? response.data;
     },
+    /**
+     * The owner's own photo. Multipart, so the browser sets its own
+     * `multipart/form-data` boundary — do not set Content-Type by hand here.
+     * Stored on `profile_identity.photo_url`, not on `profile`.
+     */
+    uploadProfilePhoto: async (file) => {
+        const form = new FormData();
+        form.append('file', file);
+        const response = await api.post('/owner/me/photo', form);
+        return response.data?.data ?? response.data;
+    },
+    removeProfilePhoto: async () => {
+        const response = await api.delete('/owner/me/photo');
+        return response.data?.data ?? response.data;
+    },
     updateOwner: async (data) => {
         const response = await api.patch('/owner/me/profile', data);
         return response.data;

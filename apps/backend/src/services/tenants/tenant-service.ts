@@ -27,6 +27,7 @@ import { isEmailProven, isPhoneProven } from "@/lib/services/auth/contact-verifi
 import { assertCapability } from "../../../lib/services/move-out-service";
 import {
   partitionFieldsByCategory,
+  partitionTenantOnlyFields,
   createTenantSnapshot,
   changeRequestService,
   isInCorrectionWindow,
@@ -210,18 +211,26 @@ export class TenantService {
      * "awaiting activation" tenants now filter on this instead.
      */
     accessMode?: string;
+    /**
+     * `PENDING` (invited, live, not personally accepted) | `ACCEPTED` |
+     * `NOT_REQUIRED` (legacy). The clean way to find "awaiting acceptance"
+     * tenants — prefer this over `accessMode=OWNER_MANAGED`, which also matches
+     * grandfathered rows. ADR-165.
+     */
+    acceptanceStatus?: string;
     search?: string;
     ownerId?: string;
     hostelId: string; // URL-driven hostel isolation
     limit?: number;
     offset?: number;
   }) {
-    const { status, accessMode, search, ownerId, hostelId, limit = 50, offset = 0 } = params;
+    const { status, accessMode, acceptanceStatus, search, ownerId, hostelId, limit = 50, offset = 0 } = params;
 
     const where: any = {
       ...(ownerId && { owner_id: ownerId }),
       ...(hostelId && { hostel_id: hostelId }),
       ...(accessMode && { access_mode: accessMode as any }),
+      ...(acceptanceStatus && { acceptance_status: acceptanceStatus as any }),
     };
 
     if (status) {
@@ -1304,6 +1313,7 @@ export class TenantService {
         id: true,
         owner_id: true,
         status: true,
+        acceptance_status: true,
         tenant_invitations: {
           where: { status: { in: ["PENDING", "OPENED", "ACTIVATION_STARTED"] as any } },
           select: { id: true },
@@ -1314,13 +1324,62 @@ export class TenantService {
     const legacyTenant = this.withLegacyTenantRelations(tenant);
     if (!tenant) throw new Error("NOT_FOUND: Tenant not found");
     if (tenant.owner_id !== ownerId) throw new Error("FORBIDDEN: You can only manage your own tenants");
-    if (tenant.status !== "INVITED") {
-      throw new Error("VALIDATION: Only INVITED tenants can be cancelled. Use checkout for ACTIVE tenants.");
+
+    // Cancellable = an invitation that has not been personally accepted:
+    //   - a legacy INVITED tenancy (never went operationally live), or
+    //   - a new-model tenancy that is ACTIVE but `acceptance_status = PENDING`.
+    // An accepted tenant, or a grandfathered owner-managed one, must go through
+    // the move-out workflow so settlement is enforced.
+    const isNewModelPending =
+      tenant.status === "ACTIVE" && (tenant as any).acceptance_status === "PENDING";
+    if (tenant.status !== "INVITED" && !isNewModelPending) {
+      throw new Error(
+        "VALIDATION: Only an unaccepted invitation can be cancelled. Use the move-out workflow for an accepted tenant."
+      );
     }
 
     const now = new Date();
     const invitationIds = (tenant.tenant_invitations || []).map((invitation: any) => invitation.id);
     let releasedReservationCount = 0;
+
+    if (isNewModelPending) {
+      // Was operationally live: void future obligations only, keep past dues and
+      // every recorded payment for settlement, free the room. See ADR-165.
+      const { closeUnacceptedTenancy } = await import("./unaccepted-tenancy-closure");
+      let waivedCount = 0;
+      await prisma.$transaction(async (tx: any) => {
+        const result = await closeUnacceptedTenancy(tx, {
+          tenantId,
+          actorId: ownerId,
+          terminalStatus: "CANCELLED",
+          invitationStatus: "CANCELLED",
+          reason:
+            "Invitation cancelled by owner — future obligations voided; recorded payments and past dues kept for settlement",
+        });
+        releasedReservationCount = result.cancelledInvitationIds.length;
+        waivedCount = result.waivedObligationIds.length;
+      });
+
+      await allocationReconciliationService.reconcileTenant(tenantId).catch((err: any) => {
+        logger.error("reconcile_after_cancel_invitation_failed", {
+          tenant_id: tenantId,
+          error: String(err?.message || err),
+        });
+      });
+      await eventLog.log("INVITATION_CANCELLED_BY_OWNER", ownerId, {
+        tenant_id: tenantId,
+        invitation_ids: invitationIds,
+        was_operationally_live: true,
+        waived_future_obligations: waivedCount,
+      }, tenantId);
+      await eventSystem.trigger("tenant_status_changed", {
+        owner_id: ownerId,
+        tenant_id: tenantId,
+        status: "CANCELLED",
+      });
+      return { success: true, tenant_id: tenantId, new_status: "CANCELLED" };
+    }
+
     await prisma.$transaction(async (tx: any) => {
       if (invitationIds.length > 0) {
         await tx.tenant_invitations.updateMany({
@@ -1482,9 +1541,25 @@ export class TenantService {
     // Extract reason and metadata if provided (e.g. from PUT request or parsed data)
     const { reason, metadata, ...dataFields } = data;
 
+    // While the tenant has not personally accepted their invitation
+    // (`acceptance_status = PENDING`), the owner cannot fill in tenant-only
+    // details on their behalf — guardian, ID/document verification, college,
+    // and personal-identity fields. These would otherwise become change
+    // requests the login-less tenant can never approve. See ADR-165.
+    if ((tenant as any).acceptance_status === "PENDING") {
+      const blocked = partitionTenantOnlyFields(dataFields);
+      if (blocked.length > 0) {
+        const who = (tenant as any).display_name || "the tenant";
+        throw new Error(
+          `VALIDATION: These details can only be added by ${who} after they accept ` +
+          `their invitation: ${blocked.join(", ")}`
+        );
+      }
+    }
+
     // Partition input fields by category
     const partitioned = partitionFieldsByCategory(dataFields);
-    
+
     // Throw validation error for any unclassified fields
     const unclassifiedKeys = Object.keys(partitioned.unclassified);
     if (unclassifiedKeys.length > 0) {
@@ -1493,7 +1568,11 @@ export class TenantService {
 
     // Check for correction window
     const hasPayments = tenant.payments.length > 0;
-    const correctionWindow = isInCorrectionWindow({ status: tenant.status, hasPayments });
+    const correctionWindow = isInCorrectionWindow({
+      status: tenant.status,
+      hasPayments,
+      acceptanceStatus: (tenant as any).acceptance_status,
+    });
 
     // Separate immediate changes vs pending changes
     let immediateChanges: Record<string, any> = {};
@@ -1581,18 +1660,22 @@ export class TenantService {
   async deleteTenant(id: string, ownerId: string) {
     const tenant = await tenantRepository.findUnique({
       where: { id },
-      select: { id: true, owner_id: true, status: true },
+      select: { id: true, owner_id: true, status: true, acceptance_status: true },
     });
     if (!tenant) throw new Error("NOT_FOUND: Tenant not found");
     if (tenant.owner_id !== ownerId) throw new Error("FORBIDDEN: You can only delete your own tenants");
 
     // Lifecycle-correct soft delete:
-    // INVITED => CANCELLED (never activated, treat as cancelled invitation)
-    if (tenant.status === "INVITED") {
+    // INVITED, or ACTIVE-but-unaccepted => cancel the invitation (see
+    // cancelInvitation for how each frees the room / handles obligations).
+    if (
+      tenant.status === "INVITED" ||
+      (tenant.status === "ACTIVE" && (tenant as any).acceptance_status === "PENDING")
+    ) {
       return this.cancelInvitation(id, ownerId);
     }
 
-    // ACTIVE => must use move-out workflow
+    // ACTIVE and accepted => must use move-out workflow
     if (tenant.status === "ACTIVE") {
       throw new Error(
         "VALIDATION: Cannot remove an active tenant directly. " +

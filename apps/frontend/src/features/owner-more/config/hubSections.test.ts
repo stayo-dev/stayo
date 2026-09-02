@@ -1,10 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { hubGroups, visibleAttention, MAX_ATTENTION_ROWS } from './hubSections';
+import { hubGroups } from './hubSections';
 
 describe('hubGroups', () => {
-  it('groups every destination under a heading in the owner\'s words', () => {
-    const groups = hubGroups();
-    expect(groups.map((g) => g.label)).toEqual(['Your account', 'Your tenants', 'Support']);
+  it('holds the owner\'s own account and nothing else', () => {
+    expect(hubGroups().map((g) => g.label)).toEqual(['Account', 'Support']);
+  });
+
+  it('labels every row with a single keyword', () => {
+    // The heading carries the context, so the row only has to carry the noun.
+    for (const row of hubGroups().flatMap((g) => g.rows)) {
+      expect(row.label.split(/\s+/)).toHaveLength(1);
+      expect(row.label).toBe(row.label.trim());
+    }
   });
 
   it('carries a label and a route per row, and nothing else', () => {
@@ -17,36 +24,41 @@ describe('hubGroups', () => {
     }
   });
 
-  it('holds nothing about a hostel — those live on the hostel itself', () => {
-    // Hostels are managed from Home. A second hostel section here made an
-    // owner guess which of two places a setting lived in, and let a
-    // multi-hostel owner edit the wrong hostel's rules. See
-    // hostelSettingsSections, which now owns all of these.
+  it('links to exactly the four screens an owner\'s account has', () => {
+    expect(hubGroups().flatMap((g) => g.rows).map((r) => r.route)).toEqual([
+      '/owner/more/profile',
+      '/owner/more/password',
+      '/owner/more/payout-account',
+      '/owner/more/help',
+    ]);
+  });
+
+  it('needs no hostel to be correct', () => {
+    // The load-bearing property of this screen. Every row that had to know
+    // which hostel it meant — notices, the hostel identity warnings, every
+    // search result — now lives on the hostel that owns it. Nothing left here
+    // can pick the wrong one, because nothing left here picks at all.
     const routes = hubGroups().flatMap((g) => g.rows).map((r) => r.route);
-    for (const moved of [
-      '/owner/more/hostel',
-      '/owner/more/configuration/finance',
-      '/owner/more/configuration/agreements',
-      '/owner/more/configuration/notifications',
-      '/owner/more/configuration/automation',
-    ]) {
-      expect(routes).not.toContain(moved);
+    for (const route of routes) {
+      expect(route).not.toContain('hostel');
+      expect(route).not.toContain('hostelId');
     }
-    // Nothing under /configuration survives here at all: the per-hostel rows
-    // moved to the hostel, and the account menu was flattened into this list.
-    expect(routes.some((r) => r.startsWith('/owner/more/configuration'))).toBe(false);
+  });
+
+  it('no longer offers a second door to screens that moved', () => {
+    // Notices belongs to a hostel; Requests is `/owner/alerts/requests`, which
+    // has search, tenant chat and notification deep-links this one never did;
+    // About was three links and a mocked version string, now the foot of Help.
+    const routes = hubGroups().flatMap((g) => g.rows).map((r) => r.route);
+    expect(routes).not.toContain('/owner/more/notices');
+    expect(routes).not.toContain('/owner/more/service-requests');
+    expect(routes).not.toContain('/owner/more/about');
   });
 
   it('has no duplicate rows or routes', () => {
-    // Quick actions used to repeat three destinations that were already listed
-    // directly beneath them.
     const rows = hubGroups().flatMap((g) => g.rows);
     expect(new Set(rows.map((r) => r.key)).size).toBe(rows.length);
     expect(new Set(rows.map((r) => r.route)).size).toBe(rows.length);
-  });
-
-  it('stays short enough to read without scrolling past furniture', () => {
-    expect(hubGroups().flatMap((g) => g.rows).length).toBeLessThanOrEqual(12);
   });
 
   it('offers the two things an owner could not do at all before', () => {
@@ -56,38 +68,19 @@ describe('hubGroups', () => {
     expect(routes).toContain('/owner/more/password');
     expect(routes).toContain('/owner/more/payout-account');
   });
-});
 
-describe('visibleAttention', () => {
-  it('shows what genuinely needs attention', () => {
-    const items = [{ title: 'GST number not added', sub: 'Hostel', route: '/x' }];
-    expect(visibleAttention(items)).toHaveLength(1);
-  });
-
-  it('caps the list rather than rebuilding the wall of blocks', () => {
-    const items = Array.from({ length: 6 }, (_, i) => ({ title: `t${i}`, sub: 's', route: '/x' }));
-    expect(visibleAttention(items)).toHaveLength(MAX_ATTENTION_ROWS);
-  });
-
-  it('survives an empty or missing list', () => {
-    expect(visibleAttention([])).toEqual([]);
-    expect(visibleAttention(undefined)).toEqual([]);
+  it('stays short enough to read without scrolling', () => {
+    expect(hubGroups().flatMap((g) => g.rows).length).toBeLessThanOrEqual(6);
   });
 });
 
 describe('the merged settings screens', () => {
-  it('lists what the separate Settings and Account menus used to hold', () => {
+  it('no longer routes anyone to a menu of menus', () => {
     // Three screens — the hub, "Settings" and "Account & security" — led back
     // into each other's destinations. An owner had to know which of the three
-    // held a row. Both extra menus are deleted; their real rows are here.
-    const routes = hubGroups().flatMap((g) => g.rows).map((r) => r.route);
-    expect(routes).toContain('/owner/more/profile');
-    expect(routes).toContain('/owner/more/notices');
-    expect(routes).toContain('/owner/more/service-requests');
-  });
-
-  it('no longer routes anyone to a menu of menus', () => {
+    // held a row. Both extra menus are deleted.
     const routes = hubGroups().flatMap((g) => g.rows).map((r) => r.route);
     expect(routes).not.toContain('/owner/more/settings');
+    expect(routes.some((r) => r.startsWith('/owner/more/configuration'))).toBe(false);
   });
 });
