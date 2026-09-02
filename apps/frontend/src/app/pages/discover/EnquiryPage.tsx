@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Lock, Phone, ShieldCheck } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Lock, Phone, ShieldCheck } from 'lucide-react';
 
+import { audienceConfirmation } from './audienceConfirmation';
 import { useAuth } from '@context/AuthContext';
 import { authApi } from '@lib/authApi';
 import { useCreateEnquiry, useDiscoverListing, useIsSeeker } from '@features/discover/hooks/useDiscover';
@@ -171,6 +172,7 @@ export function EnquiryPage() {
    * whether a number has been verified — it changes what the button does.
    */
   const action = sendAction({ isSeeker, needsPhoneVerification });
+
   const handleSend = () => {
     if (action === 'sign_in') {
       openSignIn();
@@ -185,6 +187,16 @@ export function EnquiryPage() {
   };
 
   const hostel = data?.hostel;
+  /*
+    Who this hostel takes, stated before an enquiry is spent on it. A
+    boys-only or girls-only hostel has already settled the question, so this
+    discloses and asks for an acknowledgement — it never collects a gender,
+    which would put a second copy of a fact the hostel already establishes
+    into a place it could drift from. Co-ed hostels show nothing.
+  */
+  const audience = audienceConfirmation(hostel?.hostel_type);
+  const [audienceAcknowledged, setAudienceAcknowledged] = useState(false);
+  const audienceBlocks = audience.required && !audienceAcknowledged;
   const capacity = seeded.roomCapacity;
 
   useEffect(() => {
@@ -340,6 +352,37 @@ export function EnquiryPage() {
           </section>
         )}
 
+        {audience.required && (
+          <button
+            type="button"
+            onClick={() => setAudienceAcknowledged((v) => !v)}
+            aria-pressed={audienceAcknowledged}
+            className="flex w-full items-start gap-2.5 rounded-xl border px-3.5 py-3 text-left"
+            style={{
+              borderColor: audienceAcknowledged ? C.clay : C.line,
+              background: audienceAcknowledged ? '#F4EFE9' : C.cardWarm,
+            }}
+          >
+            <span
+              className="mt-0.5 flex h-4.5 w-4.5 flex-none items-center justify-center rounded-[5px] border-[1.5px]"
+              style={{
+                borderColor: audienceAcknowledged ? C.clay : C.line,
+                background: audienceAcknowledged ? C.clay : 'transparent',
+              }}
+            >
+              {audienceAcknowledged && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[12.5px] font-bold" style={{ color: C.text }}>
+                {audience.statement}
+              </span>
+              <span className="mt-0.5 block text-[11.5px]" style={{ color: C.textMuted }}>
+                {audience.acknowledgement}
+              </span>
+            </span>
+          </button>
+        )}
+
         {error && (
           <p
             className="rounded-xl px-3.5 py-3 text-[12.5px] font-medium"
@@ -361,11 +404,15 @@ export function EnquiryPage() {
         className="sticky bottom-0 flex-none border-t px-5 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-3"
         style={{ background: C.cardWarm, borderColor: C.line }}
       >
-        <PrimaryButton full disabled={authLoading || createEnquiry.isPending} onClick={handleSend}>
+        <PrimaryButton
+          full
+          disabled={authLoading || createEnquiry.isPending || audienceBlocks}
+          onClick={handleSend}
+        >
           {createEnquiry.isPending ? 'Sending…' : action === 'sign_in' ? 'Sign in to send' : 'Send enquiry'}
         </PrimaryButton>
         <p className="mt-2 text-center text-[11px]" style={{ color: C.textMuted }}>
-          Free · no booking or payment
+          {audienceBlocks ? 'Confirm the line above to send' : 'Free · no booking or payment'}
         </p>
       </div>
 

@@ -14,6 +14,7 @@ const hostel = (over: Partial<HostelLike> = {}): HostelLike => ({
   vacant: 34,
   activeTenants: 12,
   totalCapacity: 46,
+  hostelType: 'BOYS',
   ...over,
 });
 
@@ -70,6 +71,20 @@ describe('singleHostelOverview', () => {
 
     expect(view!.beds).toBe('No rooms added yet');
     expect(view!.needsRooms).toBe(true);
+  });
+
+  it('flags a hostel whose type was never set', () => {
+    // Not cosmetic: while this is unset, every tenant of the hostel is asked
+    // their gender during onboarding, because nothing can derive it. Every
+    // hostel created before the builder started asking is in this state.
+    expect(singleHostelOverview([hostel({ hostelType: null })])!.needsType).toBe(true);
+    expect(singleHostelOverview([hostel({ hostelType: '  ' })])!.needsType).toBe(true);
+  });
+
+  it('does not flag a hostel that has a type', () => {
+    for (const code of ['BOYS', 'GIRLS', 'CO_LIVING', 'WORKING_PROS']) {
+      expect(singleHostelOverview([hostel({ hostelType: code })])!.needsType).toBe(false);
+    }
   });
 
   it('does not flag dues when nothing is outstanding', () => {

@@ -80,7 +80,7 @@ export function hostelSettingsGroups(hostelId: string): HostelSettingGroup[] {
         {
           key: 'identity',
           label: 'Identity',
-          hint: 'Name, address, phone and logo — what tenants and receipts show',
+          hint: 'Name, address, phone, logo and who stays here',
           route: forHostel('/owner/more/hostel', hostelId),
         },
         {

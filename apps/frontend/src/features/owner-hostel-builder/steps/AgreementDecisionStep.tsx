@@ -87,12 +87,17 @@ export function AgreementDecisionStep({
   hasSignature,
   existingSignatureUrl,
   onSignatureChange,
+  reusableSignature,
+  onReuseSignature,
 }: {
   choice: AgreementChoice;
   onChoiceChange: (choice: AgreementChoice) => void;
   hasSignature: boolean;
   existingSignatureUrl: string | null;
   onSignatureChange: (blob: Blob | null) => void;
+  /** A signature this owner already captured on another hostel, if any. */
+  reusableSignature: { url: string; from_hostel_name: string | null } | null;
+  onReuseSignature: (url: string) => void;
 }) {
   const consequence = choice ? CONSEQUENCES[choice] : null;
 
@@ -133,6 +138,41 @@ export function AgreementDecisionStep({
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {choice === 'yes' && reusableSignature && !hasSignature && (
+        /*
+          `owner_signature_url` lives on the per-hostel agreement template, so
+          an owner running three hostels was asked to draw the same signature
+          three times. It is the same person signing the same way; the repeat
+          asked for nothing but patience. Offered, never applied automatically
+          — the owner confirms, and can still draw a fresh one below.
+        */
+        <div className="mt-5 max-w-[460px] rounded-xl border border-primary/30 bg-primary/5 p-3.5">
+          <div className="font-display text-[12.5px] font-bold text-foreground">
+            Use the signature you already have?
+          </div>
+          <p className="mt-1 text-[11.5px] leading-relaxed text-muted-foreground">
+            {reusableSignature.from_hostel_name
+              ? `The one on your ${reusableSignature.from_hostel_name} agreement.`
+              : 'The one from your existing hostel agreement.'}
+          </p>
+          <div className="mt-2.5 overflow-hidden rounded-lg border border-border bg-card p-2">
+            <img
+              src={reusableSignature.url}
+              alt="Your existing signature"
+              className="mx-auto h-16 w-auto object-contain"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => onReuseSignature(reusableSignature.url)}
+            className="mt-2.5 w-full rounded-xl bg-primary py-2.5 text-center font-display text-[13px] font-bold text-primary-foreground"
+          >
+            Use this signature
+          </button>
+          <p className="mt-2 text-center text-[11px] text-muted-foreground">Or draw a new one below</p>
         </div>
       )}
 

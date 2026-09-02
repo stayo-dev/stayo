@@ -38,6 +38,8 @@ export interface HostelLike {
   vacant?: number;
   activeTenants?: number;
   totalCapacity?: number;
+  /** `hostels.hostel_type`, null until the owner answers "who stays here?". */
+  hostelType?: string | null;
 }
 
 export type HostelsTabMode = 'empty' | 'single' | 'list';
@@ -75,6 +77,13 @@ export interface SingleHostelOverview {
    * fill, and the owner's next action is building rooms, not finding tenants.
    */
   needsRooms: boolean;
+  /**
+   * The owner has never been asked who this hostel takes. Not cosmetic: while
+   * it is unset, every tenant of this hostel is asked their gender during
+   * onboarding, because nothing can derive it. Hostels created before the
+   * builder started asking are all in this state.
+   */
+  needsType: boolean;
 }
 
 export function singleHostelOverview(
@@ -99,5 +108,6 @@ export function singleHostelOverview(
     vacant: Number(h.vacant ?? 0),
     beds: needsRooms ? 'No rooms added yet' : `${filled} of ${capacity} beds filled`,
     needsRooms,
+    needsType: !String(h.hostelType || '').trim(),
   };
 }

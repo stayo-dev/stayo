@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useHostelPolicy, useUpdateHostelIdentity, useUpdateHostelPolicy, useUploadHostelLogo, useRemoveHostelLogo } from '@features/settings/settingsHooks';
+import { HOSTEL_TYPE_OPTIONS } from '@features/owner-hostel-builder/hostelType';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
 import { SaveBar } from '../components/SaveBar';
 import { hasChanges } from '../config/dirtyState';
@@ -16,6 +17,8 @@ interface IdentityFields {
   pincode: string;
   upiId: string;
   gstNumber: string;
+  /** `hostels.hostel_type` — decides whether tenants are asked their gender. */
+  hostelType: string;
   /** `policy.branding.legal_name` — the only field here that is not on the
    *  hostel row itself, and the only one that had no editor anywhere. */
   legalName: string;
@@ -30,6 +33,7 @@ const EMPTY_IDENTITY: IdentityFields = {
   pincode: '',
   upiId: '',
   gstNumber: '',
+  hostelType: '',
   legalName: '',
 };
 
@@ -87,6 +91,7 @@ export function MoreHostelIdentityPage() {
         pincode: hostel.pincode ?? '',
         upiId: hostel.upi_id ?? '',
         gstNumber: hostel.gst_number ?? '',
+        hostelType: hostel.hostel_type ?? '',
         legalName: (policyQuery.data?.policy as any)?.branding?.legal_name ?? '',
       };
       setFields(loaded);
@@ -97,7 +102,7 @@ export function MoreHostelIdentityPage() {
   const set = <K extends keyof IdentityFields>(key: K, value: IdentityFields[K]) =>
     setFields((prev) => ({ ...prev, [key]: value }));
 
-  const { name, phone, address, city, state, pincode, upiId, gstNumber, legalName } = fields;
+  const { name, phone, address, city, state, pincode, upiId, gstNumber, hostelType, legalName } = fields;
   const dirty = hasChanges(baseline, fields);
 
   const save = () => {
@@ -115,6 +120,7 @@ export function MoreHostelIdentityPage() {
         pincode: pincode.trim() || null,
         upi_id: upiId.trim() || null,
         gst_number: gstNumber.trim() || null,
+        hostel_type: hostelType || null,
       },
       {
         onSuccess: () => {
@@ -196,7 +202,41 @@ export function MoreHostelIdentityPage() {
                 </div>
               </div>
 
-              <label className="block">
+              {/*
+            Who this hostel takes. Long a nullable column the backend already
+            knew how to use — it derives a tenant's gender from it and skips the
+            question during onboarding — but which nothing ever wrote, so it
+            stayed NULL and every tenant was asked anyway. New hostels are asked
+            in the builder; this is where the rest get set.
+          */}
+          <div className="block">
+            <span className={labelStyle}>Who stays here</span>
+            <div className="mt-1.5 grid grid-cols-2 gap-2">
+              {HOSTEL_TYPE_OPTIONS.map((option) => {
+                const selected = hostelType === option.code;
+                return (
+                  <button
+                    key={option.code}
+                    type="button"
+                    onClick={() => set('hostelType', option.code)}
+                    aria-pressed={selected}
+                    className={`rounded-xl border-[1.5px] px-3 py-2.5 text-left text-[13px] font-semibold transition-colors ${
+                      selected ? 'border-primary bg-primary/5 text-foreground' : 'border-border bg-card text-foreground'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            <span className={hintStyle}>
+              {hostelType
+                ? HOSTEL_TYPE_OPTIONS.find((o) => o.code === hostelType)?.hint
+                : 'Unset means every tenant is asked their gender when they join.'}
+            </span>
+          </div>
+
+          <label className="block">
                 <span className={labelStyle}>Hostel name</span>
                 <input value={name} onChange={(e) => set('name', e.target.value)} className={inputStyle} />
                 <span className={hintStyle}>Required. Tenants see this everywhere — invites, receipts and reminders.</span>

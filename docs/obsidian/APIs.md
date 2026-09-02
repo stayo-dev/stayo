@@ -10,6 +10,19 @@ All endpoints live under `apps/backend/app/api/` (Next.js 14 App Router). This i
 
 **Headline finding:** 37 route files are deliberate `410 Gone` "tombstone" stubs, left over from a prior multi-hostel SaaS billing/subscription model that this codebase has moved away from (a "single-business migration" per in-code comments). They are intact files, not empty placeholders — kept so a stale caller/cron fails loudly instead of silently 404ing. See the dedicated section near the bottom.
 
+### `GET /api/owner/signature` (2026-09-02)
+
+The owner's most recent agreement signature across their hostels, so the Add Hostel builder can offer to reuse it rather than asking them to draw the same mark once per hostel. `owner_signature_url` lives on `AgreementTemplate`, which is per hostel. Returns `{ signature: null }` when there is none. Scoped to templates on hostels the caller owns. See [[Decisions#ADR-168|ADR-168]].
+
+### `POST /api/owner/hostels` — changed (2026-09-02)
+
+- **No longer step-up gated.** `identity_token` is not read and no `IDENTITY_REQUIRED` is raised; creation writes a `hostel.created` event-log entry instead. See [[Decisions#ADR-168|ADR-168]].
+- **Accepts `hostel_type`** — `BOYS` / `GIRLS` / `CO_LIVING` / `WORKING_PROS`; anything unrecognised is stored as NULL rather than guessed.
+
+### `PATCH /api/hostels/:id` and `GET /api/hostels/:id` — changed (2026-09-02)
+
+Both now carry `hostel_type`, validated on write against the same four codes. The portfolio summary returns it too, so the Hostels tab can prompt for a hostel that has none.
+
 ## Auth (`/api/auth/*`)
 
 **Since [[Decisions#ADR-031\|ADR-031]] (2026-07-28), Supabase Auth is the single authentication provider** — see [[Backend#Auth/session model|Backend's Auth/session model]] for the full architecture (dual-accept JWT verification, JIT identity linking via `profiles.auth_user_id`, `resolveSupabaseSession`). Login stays backend-mediated (the frontend never calls `supabase.auth.signInWithPassword()` directly) so rate-limiting, tenant-status checks, and the JIT linking step can still run; the response body now additionally returns `access_token`/`refresh_token`/`expires_in` so the frontend can call `supabase.auth.setSession()`.
