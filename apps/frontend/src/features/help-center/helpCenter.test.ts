@@ -25,7 +25,7 @@ const REAL_ROUTES = new Set([
   '/owner/money/collect',
   '/owner/money/payouts',
   '/owner/more/hostel',
-  '/owner/more/service-requests',
+  '/owner/alerts/requests',
   '/owner/home',
   '/owner/rooms/vacant',
   '/owner/tenants',
@@ -142,7 +142,7 @@ describe('whose problem is it', () => {
   it('points each audience at its own hostel channel', () => {
     // The owner is not redirected to someone else — the owner *is* the hostel.
     expect(hostelChannel('tenant').to).toBe('/tenant/complaints');
-    expect(hostelChannel('owner').to).toBe('/owner/more/service-requests');
+    expect(hostelChannel('owner').to).toBe('/owner/alerts/requests');
     expect(REAL_ROUTES.has(hostelChannel('tenant').to)).toBe(true);
     expect(REAL_ROUTES.has(hostelChannel('owner').to)).toBe(true);
   });

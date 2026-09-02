@@ -31,7 +31,3 @@ export const mockFaqs = [
   { id: 'faq-3', question: 'How do I record a payment I collected in cash?', answer: 'Use Collect Payment from the Tenants tab, Money tab, or Home\'s Quick Actions.' },
 ];
 
-export const mockAbout = {
-  version: 'Stayo v2.0',
-  tagline: 'Manage. Automate. Grow.',
-};

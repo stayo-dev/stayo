@@ -53,17 +53,23 @@ const dateLabel = (value: string) =>
 
 export function HelpCenter({
   audience,
-  backTo,
-  backLabel,
+  backTo = '/',
+  backLabel = 'Back',
   chrome = 'page',
 }: {
   audience: HelpAudience;
-  backTo: string;
-  backLabel: string;
+  /**
+   * Where this screen's own back button goes. Read **only** under
+   * `chrome="page"` — an embedded host draws its own header, so passing these
+   * alongside `chrome="embedded"` sets values nothing reads. Optional for that
+   * reason; every `page` caller passes them.
+   */
+  backTo?: string;
+  backLabel?: string;
   /**
    * `page` draws its own header and fills the viewport — for Discover, which
    * has no shell. `embedded` leaves both to the host, for the owner app, whose
-   * More section already supplies a header and a bottom nav.
+   * Profile section already supplies a header and a bottom nav.
    */
   chrome?: 'page' | 'embedded';
 }) {

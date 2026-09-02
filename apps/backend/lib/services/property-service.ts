@@ -44,7 +44,16 @@ export class PropertyService {
     });
 
     if (!profile) throw new Error("NOT_FOUND: Owner profile not found");
-    
+
+    // Read separately with an explicit `select` rather than `include`-ing the
+    // relation: `profile_identity` is the table that exists precisely so
+    // rarely-read columns stay off the row `getSession()` loads on every
+    // request, and pulling all of it here to read one field would undo that.
+    const identity = await prisma.profile_identity.findUnique({
+      where: { profile_id: userId },
+      select: { photo_url: true },
+    });
+
     const singleHostel = profile.hostels.length === 1 ? profile.hostels.at(0) : null;
 
     return {
@@ -59,6 +68,7 @@ export class PropertyService {
         state: profile.state,
         pincode: profile.pincode,
         emergency_contact: profile.emergency_contact,
+        photo_url: identity?.photo_url ?? null,
       },
       hostels: profile.hostels.map((hostel: any) => ({
         id: hostel.id,

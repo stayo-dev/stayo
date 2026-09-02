@@ -83,6 +83,12 @@ export function hostelSettingsGroups(hostelId: string): HostelSettingGroup[] {
           hint: 'Name, address, phone and logo — what tenants and receipts show',
           route: forHostel('/owner/more/hostel', hostelId),
         },
+        {
+          key: 'notices',
+          label: 'Notices',
+          hint: 'Announcements and events your tenants see',
+          route: forHostel('/owner/more/notices', hostelId),
+        },
       ],
     },
     {

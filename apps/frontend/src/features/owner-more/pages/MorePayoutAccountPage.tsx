@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Landmark, ShieldCheck } from 'lucide-react';
 import { ownerService } from '@features/owners/api';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
+import { SaveBar } from '../components/SaveBar';
 import {
   validatePayoutDraft,
   toPayoutPayload,
@@ -23,7 +24,7 @@ const EMPTY: PayoutDraft = {
 };
 
 /**
- * Configure → Where your money goes.
+ * Profile → Payouts.
  *
  * The columns (`profiles.payout_*`, migration 070) and the API
  * (`GET/PUT /api/owner/payout-account`) have both existed and worked for some
@@ -38,12 +39,21 @@ const EMPTY: PayoutDraft = {
  * masked — it will not hand back a full account number to a page — so there is
  * nothing to pre-fill with, and re-typing it is the point anyway: a wrong
  * digit here sends rent to a stranger and nothing downstream catches it.
+ *
+ * **The form is not the screen.** It used to be: an owner who had already
+ * saved an account opened this page and found five empty fields as its body,
+ * which reads as *nothing is set up* — the opposite of the truth, on the one
+ * screen where being wrong about that is frightening. With an account on file
+ * the page now states it and offers to change it; the form appears on request.
+ * With no account on file the form opens straight away, because there the
+ * empty state *is* the message, and it keeps the warning that says so.
  */
 export function MorePayoutAccountPage() {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<PayoutDraft>(EMPTY);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const payoutQuery = useQuery({
     queryKey: ['owner', 'payout-account'],
@@ -56,6 +66,7 @@ export function MorePayoutAccountPage() {
     mutationFn: () => ownerService.savePayoutAccount(toPayoutPayload(draft)),
     onSuccess: () => {
       setDraft(EMPTY);
+      setEditing(false);
       setSaved(true);
       queryClient.invalidateQueries({ queryKey: ['owner', 'payout-account'] });
     },
@@ -79,119 +90,151 @@ export function MorePayoutAccountPage() {
     save.mutate();
   };
 
+  const dirty = Object.values(draft).some((v) => v.trim().length > 0);
+  // With nothing on file the form is the message, so it opens straight away.
+  const showForm = editing || (!payoutQuery.isLoading && !current);
+
   return (
-    <div className="flex flex-col gap-5 px-4 pb-8 pt-6 sm:px-6">
+    <div className={`flex flex-col gap-5 px-4 pt-6 sm:px-6 ${dirty ? 'pb-40' : 'pb-8'}`}>
       <MoreScreenHeader
         backTo="/owner/more"
-        backLabel="Configuration"
-        title="Where your money goes"
+        backLabel="Profile"
+        title="Payouts"
         subtitle="The bank account Stayo settles your rent into"
       />
 
-      <div className="flex items-start gap-3 rounded-[14px] border border-border bg-card px-4 py-3.5">
-        <Landmark className="mt-0.5 h-4 w-4 flex-none text-primary" strokeWidth={2} />
-        <div className="min-w-0">
-          <p className="text-[13.5px] font-semibold text-foreground">
-            {payoutQuery.isLoading ? 'Loading…' : payoutRowSummary(current)}
-          </p>
-          <p className="mt-0.5 text-[11.5px] leading-[1.5] text-muted-foreground">
-            {current
-              ? `Holder ${current.holder_name ?? '—'} · IFSC ${current.ifsc ?? '—'}`
-              : 'Until this is added, collected rent stays with Stayo instead of reaching you.'}
-          </p>
+      <div className="overflow-hidden rounded-[14px] border border-border bg-card">
+        <div className="flex items-start gap-3 px-4 py-3.5">
+          <Landmark className="mt-0.5 h-4 w-4 flex-none text-primary" strokeWidth={2} />
+          <div className="min-w-0 flex-1">
+            <p className="text-[13.5px] font-semibold text-foreground">
+              {payoutQuery.isLoading ? 'Loading…' : payoutRowSummary(current)}
+            </p>
+            <p className="mt-0.5 text-[11.5px] leading-[1.5] text-muted-foreground">
+              {current
+                ? `Holder ${current.holder_name ?? '—'} · IFSC ${current.ifsc ?? '—'}`
+                : 'Until this is added, collected rent stays with Stayo instead of reaching you.'}
+            </p>
+          </div>
         </div>
+
+        {/*
+          Only offered once there is something to change. Before that the form
+          below is already open and a button to open it would do nothing.
+        */}
+        {current && !showForm && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="w-full border-t border-border/60 px-4 py-3 text-left text-[13.5px] font-semibold text-primary"
+          >
+            Change account
+          </button>
+        )}
       </div>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="pl-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {current ? 'Change the account' : 'Add your account'}
-        </h2>
-
-        <label className="flex flex-col gap-1.5">
-          <span className={label}>Account holder's name</span>
-          <input
-            className={field}
-            value={draft.holderName}
-            onChange={(e) => set('holderName')(e.target.value)}
-            placeholder="Exactly as your bank has it"
-            autoComplete="name"
-          />
-        </label>
-
-        <label className="flex flex-col gap-1.5">
-          <span className={label}>Account number</span>
-          <input
-            className={field}
-            value={draft.accountNo}
-            onChange={(e) => set('accountNo')(e.target.value)}
-            inputMode="numeric"
-            placeholder="Digits only"
-          />
-        </label>
-
-        <label className="flex flex-col gap-1.5">
-          <span className={label}>Account number again</span>
-          <input
-            className={field}
-            value={draft.accountNoConfirm}
-            onChange={(e) => set('accountNoConfirm')(e.target.value)}
-            inputMode="numeric"
-            placeholder="Type it a second time"
-          />
-          <span className="text-[11px] leading-[1.5] text-muted-foreground">
-            Asked twice on purpose. A wrong digit sends your rent to someone else's account, and it
-            cannot be traced back.
-          </span>
-        </label>
-
-        <label className="flex flex-col gap-1.5">
-          <span className={label}>IFSC</span>
-          <input
-            className={`${field} uppercase`}
-            value={draft.ifsc}
-            onChange={(e) => set('ifsc')(e.target.value)}
-            placeholder="HDFC0001204"
-            autoCapitalize="characters"
-          />
-        </label>
-
-        <label className="flex flex-col gap-1.5">
-          <span className={label}>Bank name <span className="font-normal">(optional)</span></span>
-          <input
-            className={field}
-            value={draft.bankName}
-            onChange={(e) => set('bankName')(e.target.value)}
-            placeholder="HDFC Bank"
-          />
-        </label>
-
-        {error && (
-          <p className="rounded-xl bg-destructive/10 px-3.5 py-2.5 text-[12.5px] font-medium text-destructive" role="alert">
-            {error}
-          </p>
-        )}
-
-        {saved && (
-          <p className="flex items-center gap-2 rounded-xl bg-[#E6F0E8] px-3.5 py-2.5 text-[12.5px] font-medium text-[#3F7D58]">
-            <ShieldCheck className="h-4 w-4 flex-none" strokeWidth={2} />
-            Saved. Your next settlement goes to this account.
-          </p>
-        )}
-
-        <button
-          type="button"
-          onClick={submit}
-          disabled={save.isPending}
-          className="mt-1 rounded-[13px] bg-primary px-4 py-3 text-[14px] font-bold text-primary-foreground disabled:opacity-60"
-        >
-          {save.isPending ? 'Saving…' : current ? 'Update account' : 'Save account'}
-        </button>
-
-        <p className="text-[11px] leading-[1.55] text-muted-foreground">
-          Every change is recorded, including who made it and when. Stayo will never ask you for this
-          over WhatsApp or a phone call.
+      {saved && (
+        <p className="flex items-center gap-2 rounded-xl bg-[#E6F0E8] px-3.5 py-2.5 text-[12.5px] font-medium text-[#3F7D58]">
+          <ShieldCheck className="h-4 w-4 flex-none" strokeWidth={2} />
+          Saved. Your next settlement goes to this account.
         </p>
-      </section>
+      )}
+
+      {showForm && (
+        <section className="flex flex-col gap-3">
+          <h2 className="pl-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {current ? 'Change the account' : 'Add your account'}
+          </h2>
+
+          <label className="flex flex-col gap-1.5">
+            <span className={label}>Account holder&apos;s name</span>
+            <input
+              className={field}
+              value={draft.holderName}
+              onChange={(e) => set('holderName')(e.target.value)}
+              placeholder="Exactly as your bank has it"
+              autoComplete="name"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1.5">
+            <span className={label}>Account number</span>
+            <input
+              className={field}
+              value={draft.accountNo}
+              onChange={(e) => set('accountNo')(e.target.value)}
+              inputMode="numeric"
+              placeholder="Digits only"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1.5">
+            <span className={label}>Account number again</span>
+            <input
+              className={field}
+              value={draft.accountNoConfirm}
+              onChange={(e) => set('accountNoConfirm')(e.target.value)}
+              inputMode="numeric"
+              placeholder="Type it a second time"
+            />
+            <span className="text-[11px] leading-[1.5] text-muted-foreground">
+              Asked twice on purpose. A wrong digit sends your rent to someone else&apos;s account, and
+              it cannot be traced back.
+            </span>
+          </label>
+
+          <label className="flex flex-col gap-1.5">
+            <span className={label}>IFSC</span>
+            <input
+              className={`${field} uppercase`}
+              value={draft.ifsc}
+              onChange={(e) => set('ifsc')(e.target.value)}
+              placeholder="HDFC0001204"
+              autoCapitalize="characters"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1.5">
+            <span className={label}>
+              Bank name <span className="font-normal">(optional)</span>
+            </span>
+            <input
+              className={field}
+              value={draft.bankName}
+              onChange={(e) => set('bankName')(e.target.value)}
+              placeholder="HDFC Bank"
+            />
+          </label>
+
+          {error && (
+            <p
+              className="rounded-xl bg-destructive/10 px-3.5 py-2.5 text-[12.5px] font-medium text-destructive"
+              role="alert"
+            >
+              {error}
+            </p>
+          )}
+
+          <p className="text-[11px] leading-[1.55] text-muted-foreground">
+            Every change is recorded, including who made it and when. Stayo will never ask you for
+            this over WhatsApp or a phone call.
+          </p>
+        </section>
+      )}
+
+      <SaveBar
+        visible={dirty}
+        pending={save.isPending}
+        onSave={submit}
+        onDiscard={() => {
+          setDraft(EMPTY);
+          setError(null);
+          // Back to the stated account rather than an empty form, when there
+          // is one to go back to.
+          if (current) setEditing(false);
+        }}
+        label={current ? 'Update account' : 'Save account'}
+      />
     </div>
   );
 }
