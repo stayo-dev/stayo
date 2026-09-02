@@ -14,7 +14,11 @@ export function toTenantListItem(t: NormalizedTenant, hostelId: string, hostelNa
   // grandfathered owner-managed row. The label distinguishes the two.
   const isInvited = t.accessMode === 'OWNER_MANAGED';
   const isAwaitingAcceptance = t.acceptanceStatus === 'PENDING';
-  const isOverdue = !isInvited && t.outstandingAmount > 0 && ['OVERDUE', 'PARTIAL', 'PENDING'].includes(t.paymentStatus.toUpperCase());
+  // Genuinely past due — `paymentStatus` is OVERDUE only when an obligation's
+  // due_date has passed. A tenant with this month's rent generated but not yet
+  // due is PENDING with a balance, which is "Dues", not "Overdue".
+  const isOverdue = !isInvited && t.paymentStatus.toUpperCase() === 'OVERDUE';
+  const hasDues = !isInvited && !isOverdue && t.outstandingAmount > 0;
   let status: MockTenant['status'];
   let statusLabel: string;
   if (isInvited) {
@@ -23,6 +27,9 @@ export function toTenantListItem(t: NormalizedTenant, hostelId: string, hostelNa
   } else if (isOverdue) {
     status = 'overdue';
     statusLabel = 'Overdue';
+  } else if (hasDues) {
+    status = 'dues';
+    statusLabel = 'Payment Due';
   } else if (!t.documentVerified) {
     status = 'pending-docs';
     statusLabel = 'Docs Pending';
@@ -48,10 +55,6 @@ export function toTenantListItem(t: NormalizedTenant, hostelId: string, hostelNa
     outstanding: t.outstandingAmount,
     overdueMonths: t.overdueDays,
     joinedDate: t.joinDate ?? '',
-    riskScore: t.score ?? 0,
-    riskLabel: '',
-    riskInsight: '',
-    paymentRatePercent: 0,
     agreementStatus: t.hasAgreement ? 'Signed' : 'Pending',
     kycStatus: t.documentVerified ? 'Verified' : 'Pending',
     accessMode: t.accessMode,

@@ -102,7 +102,15 @@ export type ActivationContext = {
     owner_signature_name?: string | null;
     owner_signed_at?: string | null;
   } | null;
-  documents: { uploaded_count?: number; verification_status?: string };
+  documents: {
+    uploaded_count?: number;
+    uploaded_types?: string[];
+    verification_status?: string;
+    /** Required KYC types for this tenant's profile_type. */
+    required?: string[];
+    /** Per-type state, for the Identity step's Documents section. */
+    items?: Array<{ doc_type: string; document_status: string; rejection_reason?: string | null }>;
+  };
   missing_fields?: { tier_1_required?: string[] };
 };
 

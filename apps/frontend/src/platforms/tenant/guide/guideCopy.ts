@@ -41,6 +41,6 @@ export const TAB_COPY: Record<Exclude<GuideBeat, 'welcome'>, Note> = {
   },
   money: {
     title: 'Every month, and every receipt',
-    body: 'One row per rent month, showing what is paid and what is still due. Each paid month has a receipt you can share. The standing at the top is your payment record — it rises as you pay on time.',
+    body: 'One row per rent month, showing what is paid and what is still due. Each paid month has a receipt you can share.',
   },
 };

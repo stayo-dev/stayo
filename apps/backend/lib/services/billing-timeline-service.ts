@@ -280,7 +280,40 @@ export class BillingTimelineService {
     }
 
     const months = billingScheduleService.periodMonths(activeFrequency);
-    const nextRentMonth = new Date(Date.UTC(latestRentMonth.getUTCFullYear(), latestRentMonth.getUTCMonth() + months, 1));
+    // `billingScheduleService.normalizePolicy` reads `raw.billing.payment_frequency`
+    // (or a flat blob) — so the normalized HostelPolicy is a valid input and
+    // carries the hostel's real academic-year config, unlike the previous
+    // `policy.preferences_config` access which was always undefined.
+    const policyForSchedule = (policyResponse?.policy ?? {}) as any;
+
+    // Default: one billing period after the latest already-billed month.
+    let nextRentMonth = new Date(Date.UTC(latestRentMonth.getUTCFullYear(), latestRentMonth.getUTCMonth() + months, 1));
+
+    // But if the CURRENT billing period has started and has no RENT obligation
+    // yet (the monthly generator hasn't run, or a mid-month join predates it),
+    // the real "next payment" is this period, not the one after the last row.
+    // Without this the projection tells an owner October when September is what
+    // is actually owed. Guarded on an active tenancy with billing started.
+    const nowMonthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+    const currentPeriod = billingScheduleService.getPeriodForAnchor(nowMonthStart, activeFrequency, policyForSchedule);
+    const hasRentForCurrentPeriod = rentObligations.some((ob: any) => {
+      const m = new Date(ob.rent_month);
+      return m.getTime() >= currentPeriod.start.getTime() && m.getTime() <= currentPeriod.end.getTime();
+    });
+    if (!hasRentForCurrentPeriod && currentPeriod.start.getTime() <= nowMonthStart.getTime()
+        && currentPeriod.start.getTime() < nextRentMonth.getTime()) {
+      const activeAllocation = await prisma.roomAllocation.findFirst({
+        where: { tenant_id: tenantId, is_active: true, end_date: null },
+        select: { start_date: true },
+      });
+      const billingStarted = activeAllocation?.start_date
+        ? new Date(activeAllocation.start_date).getTime() <= currentPeriod.end.getTime()
+        : true;
+      if (billingStarted && Number(tenant.monthly_rent) > 0) {
+        nextRentMonth = new Date(Date.UTC(currentPeriod.start.getUTCFullYear(), currentPeriod.start.getUTCMonth(), 1));
+      }
+    }
+
     const nextGenDate = new Date(Date.UTC(nextRentMonth.getUTCFullYear(), nextRentMonth.getUTCMonth(), autoRentDay));
 
     const nextInstallment = billingScheduleService.buildInstallment({
@@ -290,7 +323,7 @@ export class BillingTimelineService {
       maintenanceAmount: String(tenant.maintenance_type || "MONTHLY") === "MONTHLY" && tenant.maintenance_charge ? Number(tenant.maintenance_charge) : 0,
       dueDay,
       autoRentDay,
-      policy: policyResponse?.policy?.preferences_config || {},
+      policy: policyForSchedule,
     });
 
     const nextRentGeneration = {

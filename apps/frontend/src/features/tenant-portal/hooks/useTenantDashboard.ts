@@ -9,7 +9,6 @@ export const tenantQueryKeys = {
   readModel: () => ['tenant', 'me', 'financial-read-model'] as const,
   payments: () => ['tenant', 'me', 'payments'] as const,
   room: () => ['tenant', 'me', 'room'] as const,
-  score: () => ['tenant', 'me', 'score'] as const,
   advance: () => ['tenant', 'me', 'advance'] as const,
   moveOut: () => ['tenant', 'me', 'move-out'] as const,
   notifications: () => ['tenant', 'me', 'notifications'] as const,
@@ -59,13 +58,6 @@ export function useTenantDashboard() {
       return () => window.clearTimeout(id);
     }
   }, [criticalLoading]);
-
-  const scoreQ = useQuery({
-    queryKey: tenantQueryKeys.score(),
-    queryFn: () => tenantPortalApi.getMyScore(),
-    staleTime: 120_000,
-    enabled: loadSecondary,
-  });
 
   const advanceQ = useQuery({
     queryKey: tenantQueryKeys.advance(),
@@ -121,7 +113,6 @@ export function useTenantDashboard() {
     readModelQ.refetch();
     paymentsQ.refetch();
     roomQ.refetch();
-    scoreQ.refetch();
     advanceQ.refetch();
     moveOutQ.refetch();
     notificationsQ.refetch();
@@ -136,7 +127,6 @@ export function useTenantDashboard() {
     readModel: readModelQ.data,
     payments: paymentsQ.data,
     room: roomQ.data,
-    score: scoreQ.data,
     advance: advanceQ.data,
     moveOut: moveOutQ.data,
     notifications: notificationsQ.data,

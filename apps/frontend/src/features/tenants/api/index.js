@@ -79,6 +79,22 @@ export const tenantService = {
         });
         return unwrap(response);
     },
+    uploadActivationDocument: async (token, docType, file) => {
+        const formData = new FormData();
+        if (token) formData.append('token', token);
+        formData.append('doc_type', docType);
+        formData.append('file', file);
+        const response = await api.post('/tenants/activate/documents', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        return unwrap(response);
+    },
+    getActivationDocuments: async (token) => {
+        const response = await api.get('/tenants/activate/documents', {
+            params: token ? { token } : {},
+        });
+        return unwrap(response);
+    },
     activateAccount: async (data) => {
         const response = await api.post('/tenants/activate', data);
         return unwrap(response);
@@ -130,10 +146,6 @@ export const tenantService = {
         const response = await api.get('/tenants/me/onboarding-settings');
         return response.data.success !== undefined ? (response.data.data !== undefined ? response.data.data : response.data) : response.data;
     },
-    getMyScore: async () => {
-        const response = await api.get('/tenants/me/score');
-        return response.data.success !== undefined ? (response.data.data !== undefined ? response.data.data : response.data) : response.data;
-    },
     /**
      * Where an invited tenant is stuck, for the owner. Read-only — the
      * backend reuses the same `computeState()` the tenant's own activation
@@ -143,10 +155,6 @@ export const tenantService = {
         const response = await api.get(`/tenants/${tenantId}/activation-state`);
         const data = response.data.success !== undefined ? (response.data.data !== undefined ? response.data.data : response.data) : response.data;
         return data?.activation_state ?? data;
-    },
-    getTenantScore: async (tenantId) => {
-        const response = await api.get(`/tenants/${tenantId}/score`);
-        return response.data.success !== undefined ? (response.data.data !== undefined ? response.data.data : response.data) : response.data;
     },
     getMyFinancialLedger: async () => {
         const response = await api.get('/tenants/me/financial-ledger');
