@@ -15,7 +15,7 @@ import { selectCurrentTenancy } from "@/lib/tenancy/active-tenancy";
 import { recordWhatsAppDelivery, readWhatsAppDeliveredAt } from "./invitation-delivery-trust";
 import { isPhoneAlreadyProven } from "./invitation-phone-trust";
 import { resolveInvitedProfile, resolveActivationEmail } from "./invited-profile-resolver";
-import { finalizeOwnerManagedTenancy } from "./owner-managed-tenancy-service";
+import { initializeActiveUnacceptedTenancy } from "./owner-managed-tenancy-service";
 import {
   TenancyEligibilityError,
   tenancyEligibilityService,
@@ -177,30 +177,6 @@ export class TenantInvitationLifecycleService {
   }
 
   /**
-   * The `dispatchInvitationNotification` result shape for a caller that opted
-   * out of sending anything (`suppressInvitationNotification`) — e.g. "Just add
-   * to my records". No send was attempted, so both channels read as not sent
-   * and `needs_email` stays false: nothing failed, so there is nothing for the
-   * owner to retry or fall back on.
-   *
-   * `whatsapp_sent: false` here is what keeps `recordWhatsAppDelivery`
-   * consistent with a real failed/unsent invitation: it clears/leaves null the
-   * `whatsapp_delivered_at` proof column, so activation still asks this
-   * invitee for an OTP rather than trusting a message that was never sent.
-   */
-  private suppressedDeliveryResult() {
-    return {
-      whatsapp_sent: false,
-      whatsapp_error: undefined as string | undefined,
-      provider_message_id: null as string | null,
-      email_sent: false,
-      email_error: undefined as string | undefined,
-      needs_email: false,
-      notification_suppressed: true,
-    };
-  }
-
-  /**
    * Can this phone number be invited by this owner?
    *
    * Delegates the rule to `tenancyEligibilityService`, so "one live tenancy per
@@ -244,13 +220,10 @@ export class TenantInvitationLifecycleService {
   }
 
   async createInvitation(data: any, ownerId: string) {
-    // Every existing caller omits this, so `suppressInvitationNotification` is
-    // `false` and the invite is always dispatched. The invitation is
-    // mandatory now — "just add to my records without inviting" is not a
-    // choice the wizard offers — but the parameter itself is left in place
-    // for a caller with a genuinely different reason to opt out (it always
-    // defaulted to false; nothing here changes that default).
-    const suppressInvitationNotification = Boolean(data.suppressInvitationNotification);
+    // The invitation is always dispatched. Tenant acceptance is mandatory
+    // (ADR-165) and there is no "just add to my records without inviting"
+    // path — that would be the owner standing in for the tenant's acceptance,
+    // which nothing is allowed to do.
     const normalizedEmail = data.email ? normalizeEmail(data.email) : null;
     const normalizedPhone = normalizeIndianPhone(data.phone);
     const name = String(data.name || "").trim();
@@ -294,9 +267,9 @@ export class TenantInvitationLifecycleService {
     if (!owner || owner.role !== "OWNER") throw new Error("NOT_FOUND: Owner profile not found");
 
     // An owner cannot invite themselves as a tenant. Deliberately explicit and
-    // ahead of any DB write — the old behaviour relied on `finalizeOwnerManagedTenancy`
-    // hitting an incidental ROLE_MISMATCH (phone case) or an unhandled P2002 on
-    // profile.email's unique constraint (email-only case), which surfaced as a
+    // ahead of any DB write — the old behaviour relied on the tenancy-finalize
+    // path hitting an incidental ROLE_MISMATCH (phone case) or an unhandled P2002
+    // on profile.email's unique constraint (email-only case), which surfaced as a
     // raw 500 instead of a clean validation error. Compares against the same
     // normalized phone/email used everywhere else in this function, so mobile
     // stays the primary identity and a different email cannot bypass it.
@@ -464,22 +437,17 @@ export class TenantInvitationLifecycleService {
         });
       }
 
-      // Inviting someone now means "this person is my tenant" — the owner
-      // manages this profile from this moment until the invitee activates it
-      // themselves. That is not a choice ("Just add to my records" no longer
-      // exists as a separate path); it is what every tenancy is, so the
-      // reservation just created above is converted into a real room
-      // allocation immediately, rent generates on schedule, and the room
-      // reads occupied — none of that waits on the tenant to act.
-      // `finalizeOwnerManagedTenancy` is the same write path `adopt()` uses
-      // for a tenant who ignored their invitation; reused rather than
-      // duplicated. This must run before dispatch below, not after: the
-      // invitation is intentionally left SUPERSEDED (not cancelled) so a
-      // later click on the very link about to be sent still resolves — see
-      // `resolveByToken`'s SUPERSEDED+OWNER_MANAGED fall-through — into the
-      // same activation screen instead of erroring or (worse) silently
-      // no-opping against a tenant who is already ACTIVE.
-      await finalizeOwnerManagedTenancy({
+      // The tenancy is operationally live from this moment — the reservation
+      // becomes a real room allocation, rent generates on schedule, the room
+      // reads occupied and reminders fire — but the tenant has NOT accepted.
+      // `acceptance_status` is set to PENDING and nothing else about acceptance
+      // is touched: no `activation_completed_at`, no owner attestation, and the
+      // invitation row stays PENDING (not SUPERSEDED) so its own token opens
+      // the activation wizard through `resolveByToken`'s ordinary success path,
+      // the expiry ladder / nudge cron keep seeing it, and a re-invite for the
+      // same contact is resolved as an update. Only the tenant, via
+      // `completeActivation`, ever moves this to ACCEPTED. See ADR-165.
+      await initializeActiveUnacceptedTenancy({
         tx,
         tenantId: tenant.id,
         ownerId,
@@ -492,7 +460,6 @@ export class TenantInvitationLifecycleService {
         profileEmail: normalizedEmail,
         invitationEmail: normalizedEmail,
         reservation: { id: reservation.id },
-        invitationId: invitation.id,
       });
 
       // Money the tenant has already handed over, recorded in the same breath
@@ -564,21 +531,17 @@ export class TenantInvitationLifecycleService {
     }
 
     const activationLink = frontendUrl(`/activate/${created.invitation.token}`);
-    const delivery = suppressInvitationNotification
-      ? this.suppressedDeliveryResult()
-      : await this.dispatchInvitationNotification(
-          created.invitation,
-          created.tenant,
-          created.room,
-          owner,
-          activationLink
-        );
+    const delivery = await this.dispatchInvitationNotification(
+      created.invitation,
+      created.tenant,
+      created.room,
+      owner,
+      activationLink
+    );
 
     // A successful WhatsApp send is what later lets activation skip the OTP for
     // this number — see invitation-delivery-trust. Recorded rather than
-    // inferred, and only on success. When suppressed, `whatsapp_sent` is
-    // already `false`, so this correctly leaves/sets the proof column null —
-    // the invitee never received anything, so activation must still ask.
+    // inferred, and only on success.
     await recordWhatsAppDelivery(created.invitation.id, delivery.whatsapp_sent);
 
     await eventLog.log("tenant_invited", ownerId, {
@@ -592,7 +555,6 @@ export class TenantInvitationLifecycleService {
       email_sent: delivery.email_sent,
       email_error: delivery.email_error,
       needs_email: delivery.needs_email,
-      notification_suppressed: suppressInvitationNotification,
     }, created.tenant.id);
 
     return {
@@ -609,11 +571,6 @@ export class TenantInvitationLifecycleService {
   }
 
   async resendInvitation(invitationId: string, actor?: { id: string; role: string }, overrides?: any) {
-    // Reachable from createInvitation's "there's already a live invitation for
-    // this contact, so resend/update it instead" branch, which forwards its
-    // whole `data` payload as `overrides` — so an owner-managed submission that
-    // set `suppressInvitationNotification` still has that flag here.
-    const suppressInvitationNotification = Boolean(overrides?.suppressInvitationNotification);
     const invitation = await prisma.tenant_invitations.findUnique({
       where: { id: invitationId },
       include: {
@@ -632,12 +589,19 @@ export class TenantInvitationLifecycleService {
       throw new Error("FORBIDDEN: You can only resend your own invitations");
     }
     // An owner-managed tenancy is ACTIVE from the moment it's invited (see
-    // createInvitation) but hasn't been claimed — resend/edit must keep
+    // createInvitation) but has not been accepted — resend/edit must keep
     // serving it (adding an email after a failed WhatsApp send, correcting
     // terms) rather than treating "already ACTIVE" as the terminal state it
-    // is for a tenant who genuinely self-registered.
+    // is for a tenant who genuinely self-registered. Covers both the new model
+    // (`acceptance_status = PENDING`) and grandfathered rows (OWNER_MANAGED,
+    // `acceptance_status = NOT_REQUIRED`).
     const tenantAlreadyOwnerManaged =
       invitation.tenant.status === "ACTIVE" && invitation.tenant.access_mode === "OWNER_MANAGED";
+    // A grandfathered owner-managed tenancy (pre-ADR-165): its child invitation
+    // is still created SUPERSEDED and relies on `resolveByToken`'s fall-through.
+    // A new-model PENDING tenancy gets an ordinary PENDING child invitation.
+    const isLegacyOwnerManaged =
+      tenantAlreadyOwnerManaged && invitation.tenant.acceptance_status !== "PENDING";
     if (invitation.status === "ACTIVATED" || (invitation.tenant.status === "ACTIVE" && !tenantAlreadyOwnerManaged)) {
       throw new Error("BAD_REQUEST: Tenant is already active");
     }
@@ -883,16 +847,13 @@ export class TenantInvitationLifecycleService {
           email: email ? normalizeEmail(email) : invitation.email,
           token,
           expires_at: expiresAt,
-          // A genuinely self-serve tenant's fresh version is PENDING, same as
-          // always. An owner-managed tenant is already ACTIVE — this version
-          // is created SUPERSEDED for the same reason `createInvitation`
-          // supersedes the original: `resolveByToken`'s SUPERSEDED+
-          // OWNER_MANAGED fall-through is what lets it still resolve into
-          // the normal activation screen despite that status, rather than
-          // resolveByToken's plain SUPERSEDED->INVALID path or silently
-          // no-opping against a tenant who's already ACTIVE (see
-          // completeActivation's idempotency guard).
-          status: tenantAlreadyOwnerManaged ? "SUPERSEDED" : "PENDING",
+          // Self-serve and new-model owner-managed (`acceptance_status =
+          // PENDING`) both get an ordinary PENDING child invitation — its token
+          // opens the wizard through `resolveByToken`'s normal success path and
+          // the expiry/nudge machinery keeps seeing it. Only a *grandfathered*
+          // owner-managed tenancy (pre-ADR-165) still needs SUPERSEDED plus the
+          // `resolveByToken` fall-through.
+          status: isLegacyOwnerManaged ? "SUPERSEDED" : "PENDING",
           opened_at: null,
           activation_started_at: null,
           activated_at: null,
@@ -955,19 +916,16 @@ export class TenantInvitationLifecycleService {
     const owner = await prisma.profile.findUnique({ where: { id: invitation.owner_id }, select: { name: true } });
     const activationLink = frontendUrl(`/activate/${token}`);
 
-    const delivery = suppressInvitationNotification
-      ? this.suppressedDeliveryResult()
-      : await this.dispatchInvitationNotification(
-          updated.updatedInvitation,
-          updated.updatedTenant,
-          updated.targetRoom,
-          owner || { name: "The Owner" },
-          activationLink
-        );
+    const delivery = await this.dispatchInvitationNotification(
+      updated.updatedInvitation,
+      updated.updatedTenant,
+      updated.targetRoom,
+      owner || { name: "The Owner" },
+      activationLink
+    );
 
     // A resend can change the phone number, so this both sets the proof on a
-    // successful send and clears a stale one from the previous number. When
-    // suppressed, `whatsapp_sent` is already `false`, so this still clears it.
+    // successful send and clears a stale one from the previous number.
     await recordWhatsAppDelivery(updated.updatedInvitation.id, delivery.whatsapp_sent);
 
     // Automatically write to activity/system event logs
@@ -987,13 +945,10 @@ export class TenantInvitationLifecycleService {
       email_sent: delivery.email_sent,
       email_error: delivery.email_error,
       needs_email: delivery.needs_email,
-      notification_suppressed: suppressInvitationNotification,
     }, updated.updatedInvitation.tenant_id);
 
     return {
-      message: suppressInvitationNotification
-        ? "Invitation updated. No message sent."
-        : delivery.whatsapp_sent
+      message: delivery.whatsapp_sent
         ? "Invitation resent via WhatsApp"
         : delivery.email_sent
         ? "Invitation resent via Email"
@@ -1058,23 +1013,27 @@ export class TenantInvitationLifecycleService {
     if (invitation.tenant.hostels?.status === "INACTIVE") {
       throw new Error("FORBIDDEN: Cannot activate tenant in an inactive hostel");
     }
+
+    // "Has the tenant personally finished onboarding?" — answered by the
+    // explicit `acceptance_status` (new model) or the invitation/attestation
+    // proxies (grandfathered rows), never by `tenant.status === "ACTIVE"` alone,
+    // which is true for a live-but-unaccepted tenancy. See activation-entry.ts.
+    const entrySubject = {
+      status: invitation.tenant.status,
+      activationCompletedAt: invitation.tenant.activation_completed_at,
+      invitationStatus: invitation.status,
+      ownerAttested: Boolean(invitation.tenant.owner_attestations?.length),
+      acceptanceStatus: invitation.tenant.acceptance_status,
+    };
+
     if (invitation.status === "SUPERSEDED") {
-      // An invitation is superseded two ways: adoption (the owner is keeping
-      // records themselves — including the default case now, where every
-      // invitation supersedes itself into an owner-managed tenancy at the
-      // moment it's created) or a genuine replacement (e.g. a room change
-      // re-issuing the invite). Only the former still has a live tenant
-      // behind it who may not have onboarded themselves yet — that tenant's
-      // link must resolve into the exact same activation context a
-      // never-superseded invitation gets, not a dead end and not a separate
-      // claim experience. See owner-managed-tenancy-service.ts's adoption
-      // comment.
-      const entrySubject = {
-        status: invitation.tenant.status,
-        activationCompletedAt: invitation.tenant.activation_completed_at,
-        invitationStatus: invitation.status,
-        ownerAttested: Boolean(invitation.tenant.owner_attestations?.length),
-      };
+      // An invitation is superseded two ways: a grandfathered owner-managed
+      // tenancy (pre-ADR-165: adoption, or the old auto-supersede-on-invite) or
+      // a genuine replacement (e.g. a room change re-issuing the invite). Only
+      // the former still has a live tenant behind it who may not have onboarded
+      // themselves yet — that tenant's link must resolve into the exact same
+      // activation context a never-superseded invitation gets. New-model
+      // invitations are never SUPERSEDED, so this branch is legacy-only now.
       const awaitingOnboarding =
         invitation.tenant.access_mode === "OWNER_MANAGED" && isAwaitingTenantOnboarding(entrySubject);
 
@@ -1092,7 +1051,10 @@ export class TenantInvitationLifecycleService {
         await eventLog.log("expired_invite_rate", invitation.owner_id, { tenant_id: invitation.tenant_id, invitation_id: invitation.id }, invitation.tenant_id);
         throw new Error("EXPIRED: Invitation expired");
       }
-    } else if (invitation.status === "ACTIVATED" || invitation.tenant.status === "ACTIVE") {
+    } else if (invitation.status === "ACTIVATED" || hasCompletedActivation(entrySubject)) {
+      // Not `invitation.tenant.status === "ACTIVE"`: a new-model tenancy is
+      // ACTIVE with `acceptance_status = PENDING` from the moment it's invited,
+      // and its own token must open the wizard, not hit this wall.
       throw new Error("ALREADY_ACTIVE: Account already active");
     } else if (invitation.status === "CANCELLED" || invitation.tenant.status === "CANCELLED") {
       throw new Error("CANCELLED: Invitation was cancelled");
@@ -1144,11 +1106,10 @@ export class TenantInvitationLifecycleService {
    * The invitation-status ladder in `resolveByToken` is deliberately absent
    * here, because every rung of it asks a question about a *link* — is it
    * spent, superseded, expired. None of that bears on someone holding a
-   * session: an owner-managed tenancy's invitation is `SUPERSEDED` by
-   * construction (adoption marks it so), and `resolveByToken` already
-   * resolves that case into normal activation on its own now. This method
-   * exists for the narrower case of a signed-in tenant with no token at all
-   * (e.g. navigating straight to `/activate` on an existing session).
+   * session. A new-model owner-managed tenancy keeps its invitation `PENDING`
+   * and `acceptance_status = PENDING` until the tenant finishes; this method
+   * just loads the subject for a signed-in tenant with no token at all (e.g.
+   * navigating straight to `/activate` on an existing session).
    * Refusing them on link-status grounds that don't apply to a session would
    * be wrong either way.
    *
@@ -1406,9 +1367,9 @@ export class TenantInvitationLifecycleService {
     await prisma.$transaction(async (tx: any) => {
       // 1. Proactive row lock on the tenant row
       const tenantRow = await tx.$queryRaw`
-        SELECT id, status, joined_on, owner_id, activation_completed_at,
+        SELECT id, status, joined_on, owner_id, activation_completed_at, acceptance_status,
                EXISTS(SELECT 1 FROM tenant_owner_attestations a WHERE a.tenant_id = tenants.id) AS owner_attested
-        FROM tenants 
+        FROM tenants
         WHERE id = ${tenant.id}::uuid FOR UPDATE
       `;
       if (!tenantRow || tenantRow.length === 0) {
@@ -1438,6 +1399,7 @@ export class TenantInvitationLifecycleService {
         activationCompletedAt: tenantRow[0].activation_completed_at,
         invitationStatus: invitation?.status ?? null,
         ownerAttested: Boolean(tenantRow[0].owner_attested),
+        acceptanceStatus: tenantRow[0].acceptance_status,
       });
       if (
         !awaitingTenantOnboarding &&
@@ -1475,12 +1437,11 @@ export class TenantInvitationLifecycleService {
       });
 
       // An owner-managed tenancy already had its reservation converted into a
-      // real allocation and released (release_reason "ADOPTED") the moment it
-      // was invited or adopted — see finalizeOwnerManagedTenancy. There is
-      // nothing left to find here for that population, by design, not by
-      // error. Fall back to the tenancy's existing active allocation; only a
-      // tenancy with neither a reservation nor an allocation is genuinely
-      // broken.
+      // real allocation and released (release_reason "INVITE_LINKED") the moment
+      // it was invited — see initializeActiveUnacceptedTenancy. There is nothing
+      // left to find here for that population, by design, not by error. Fall
+      // back to the tenancy's existing active allocation; only a tenancy with
+      // neither a reservation nor an allocation is genuinely broken.
       let roomId: string;
       let hostelId: string;
       if (reservation) {
@@ -1545,11 +1506,17 @@ export class TenantInvitationLifecycleService {
           status: "ACTIVE",
           // Whatever this tenancy started as, completeActivation is only ever
           // reached after the tenant has walked through ACCOUNT/RULES/
-          // AGREEMENT/PROFILE themselves — that is definitionally self-serve.
-          // This is the only write in the system that flips access_mode back
-          // once owner-managed, now that the phone-OTP claim flow (the only
-          // other place that used to do this) is gone.
+          // AGREEMENT/PROFILE themselves — that is definitionally self-serve,
+          // and it is the tenant personally accepting. This is the only write
+          // in the system that sets `acceptance_status = ACCEPTED` / stamps
+          // `tenant_accepted_at` and the only one that flips `access_mode` back
+          // off OWNER_MANAGED. `activation_completed_at` is likewise stamped
+          // here and nowhere else now (ADR-165). A grandfathered NOT_REQUIRED
+          // tenancy that somehow reaches here becomes ACCEPTED too — it did
+          // just complete the ceremony.
           access_mode: "SELF_SERVE",
+          acceptance_status: "ACCEPTED",
+          tenant_accepted_at: completedAt,
           profile_completed: true,
           activation_completed_at: completedAt,
           onboarding_last_activity_at: completedAt,

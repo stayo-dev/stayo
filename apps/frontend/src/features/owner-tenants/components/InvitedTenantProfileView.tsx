@@ -25,8 +25,6 @@ import { InvitationTimeline } from '../invitation/InvitationTimeline';
 import { TermEditSheet, type TermFieldKind } from '../invitation/TermEditSheet';
 import { RoomPickerSheet, type RoomChoice } from '../invitation/RoomPickerSheet';
 import { ReviewChangesSheet } from '../invitation/ReviewChangesSheet';
-import { AdoptTenantSheet } from '../adopt/AdoptTenantSheet';
-import { shouldOfferAdoption, adoptionPromptText } from '../adopt/adoptPrompt';
 import {
   computeMoveInTotal,
   deriveInvitationProgress,
@@ -44,19 +42,12 @@ import {
  * Two questions drive the whole screen: *is the offer right?* and *has the
  * tenant acted on it?* Everything else was cut — the agreement preview (a
  * toast stub), the read-only "account status" checklist (nothing the owner can
- * act on), and the owner-side Activate button. A tenant becomes ACTIVE only by
- * finishing their own registration; the button that flipped them from here
- * bypassed that entirely.
+ * act on), and the owner-side Activate button.
  *
- * "Keep records myself" (below, once the invite has gone quiet) is not that
- * button reborn. Activate claimed the tenant had registered when they had
- * not; adoption never claims that — the backend records the owner's action as
- * an attestation, not a consent record, and marks the tenancy
- * `access_mode = OWNER_MANAGED` instead of pretending registration happened.
- * The invitation is left superseded rather than cancelled, so the tenant can
- * still open it and claim their own account later. That distinction —
- * asserting a fact about what didn't happen, versus faking that it did — is
- * why adoption is permitted here and Activate was not.
+ * There is no owner path to accept on the tenant's behalf (ADR-165): tenant
+ * acceptance is mandatory and personal. If the invite goes quiet the owner's
+ * only levers are Resend and Cancel — the tenancy is already operationally
+ * live (room, rent, reminders), so nothing is blocked while it waits.
  *
  * Edits collect locally as `edits` over the server's values and go out in one
  * deliberate send. That is not merely a UX preference: saving an invitation
@@ -72,7 +63,6 @@ export function InvitedTenantProfileView({ tenant }: { tenant: RealTenantDetail 
   const [roomPickerOpen, setRoomPickerOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
-  const [adoptOpen, setAdoptOpen] = useState(false);
   const [note, setNote] = useState('');
   const [isResending, setIsResending] = useState(false);
 
@@ -104,11 +94,6 @@ export function InvitedTenantProfileView({ tenant }: { tenant: RealTenantDetail 
   const missing = useMemo(() => missingTerms(draft), [draft]);
   const progress = useMemo(() => deriveInvitationProgress(invitation, Date.now()), [invitation]);
   const expiry = describeExpiry(invitation?.expiresAt);
-  const sentDaysAgo = invitation?.sentAt
-    ? Math.floor((Date.now() - new Date(invitation.sentAt).getTime()) / 86_400_000)
-    : 0;
-  const offerAdoption =
-    Boolean(invitation) && shouldOfferAdoption({ openedAt: invitation?.openedAt ?? null, sentDaysAgo });
   const moveInTotal = computeMoveInTotal(draft);
   const isRegistering = progress.headline === 'Tenant is creating their account';
 
@@ -269,21 +254,6 @@ export function InvitedTenantProfileView({ tenant }: { tenant: RealTenantDetail 
               {expiry.label}
             </span>
           </div>
-
-          {offerAdoption && (
-            <div className="mb-3 flex flex-col gap-2.5 rounded-2xl border border-border bg-muted/40 p-3.5">
-              <p className="text-[12.5px] leading-relaxed text-foreground">
-                {adoptionPromptText(draft.name, sentDaysAgo)}
-              </p>
-              <button
-                type="button"
-                onClick={() => setAdoptOpen(true)}
-                className="flex min-h-[44px] items-center justify-center rounded-xl border border-border bg-card font-display text-[13px] font-bold text-foreground active:scale-[0.98] transition-transform"
-              >
-                Keep records myself
-              </button>
-            </div>
-          )}
 
           <InvitationTimeline steps={progress.steps} />
 
@@ -497,14 +467,6 @@ export function InvitedTenantProfileView({ tenant }: { tenant: RealTenantDetail 
         onClose={() => setCancelOpen(false)}
         tenantName={tenant.name}
         onConfirm={handleCancelInvitation}
-      />
-
-      <AdoptTenantSheet
-        open={adoptOpen}
-        onClose={() => setAdoptOpen(false)}
-        tenantId={tenant.id}
-        hostelId={tenant.hostelId}
-        tenantName={draft.name}
       />
     </div>
   );

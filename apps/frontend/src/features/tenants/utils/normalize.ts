@@ -38,8 +38,12 @@ export interface NormalizedTenant {
   securityDeposit: number;
   guardianPhone: string | null;
   advanceBalance: number;
-  /** `SELF_SERVE` (default) or `OWNER_MANAGED` — the tenant never registered; the owner attested the tenancy instead. */
+  /** `SELF_SERVE` (default) or `OWNER_MANAGED` — the tenant has no app login yet. */
   accessMode: string | null;
+  /** `PENDING` | `ACCEPTED` | `NOT_REQUIRED` (legacy). Whether the tenant has personally accepted (ADR-165). */
+  acceptanceStatus: string | null;
+  /** When the tenant personally accepted, ISO string; null while pending. */
+  acceptedAt: string | null;
   raw: Record<string, unknown>;
 }
 
@@ -92,6 +96,8 @@ export function normalizeTenant(s: Record<string, unknown>): NormalizedTenant {
     guardianPhone: s.phone_2 != null ? String(s.phone_2) : s.guardian_phone != null ? String(s.guardian_phone) : profile?.emergency_contact != null ? String(profile.emergency_contact) : null,
     advanceBalance: Number(s.advance_balance ?? s.deposit_balance ?? 0),
     accessMode: s.access_mode != null ? String(s.access_mode) : null,
+    acceptanceStatus: s.acceptance_status != null ? String(s.acceptance_status) : null,
+    acceptedAt: s.tenant_accepted_at != null ? String(s.tenant_accepted_at) : null,
     raw: s,
   };
 }

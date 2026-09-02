@@ -101,6 +101,7 @@ export class TenancyEligibilityService {
         status: true,
         owner_id: true,
         activation_completed_at: true,
+        acceptance_status: true,
         hostels: { select: { name: true } },
         room_allocations: {
           where: { is_active: true, end_date: null },
@@ -121,7 +122,18 @@ export class TenancyEligibilityService {
       ownerId: tenancy.owner_id ?? null,
       hostelName: tenancy.hostels?.name ?? null,
       roomNumber: tenancy.room_allocations?.[0]?.room?.room_no ?? null,
-      wasActivated: Boolean(tenancy.activation_completed_at),
+      // "Did this tenancy reach a state where a settlement could be owed?"
+      // `activation_completed_at` alone is no longer sufficient (ADR-165): a
+      // new-model owner-managed tenant does not get it stamped until they
+      // personally accept, yet is operationally live — in a room, owing rent —
+      // from invite time. A currently-live tenancy, or one the tenant did
+      // accept, both count. A PENDING tenancy that ended CANCELLED/EXPIRED
+      // without acceptance is treated like "cancelled before move-in" per this
+      // field's contract and does not block a fresh stay.
+      wasActivated:
+        Boolean(tenancy.activation_completed_at) ||
+        String(tenancy.status) === "ACTIVE" ||
+        String(tenancy.acceptance_status) === "ACCEPTED",
       hasCompletedMoveOut: (tenancy.move_out_requests?.length ?? 0) > 0,
     }));
   }
