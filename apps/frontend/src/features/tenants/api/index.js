@@ -79,6 +79,22 @@ export const tenantService = {
         });
         return unwrap(response);
     },
+    uploadActivationDocument: async (token, docType, file) => {
+        const formData = new FormData();
+        if (token) formData.append('token', token);
+        formData.append('doc_type', docType);
+        formData.append('file', file);
+        const response = await api.post('/tenants/activate/documents', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        return unwrap(response);
+    },
+    getActivationDocuments: async (token) => {
+        const response = await api.get('/tenants/activate/documents', {
+            params: token ? { token } : {},
+        });
+        return unwrap(response);
+    },
     activateAccount: async (data) => {
         const response = await api.post('/tenants/activate', data);
         return unwrap(response);
