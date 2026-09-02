@@ -66,6 +66,8 @@ export interface RealTenantDetail {
    * `status === 'invited'` — is how "hasn't activated yet" is known.
    */
   accessMode: 'SELF_SERVE' | 'OWNER_MANAGED' | null;
+  /** `PENDING` | `ACCEPTED` | `NOT_REQUIRED` (legacy) — has the tenant personally accepted (ADR-165). */
+  acceptanceStatus: 'PENDING' | 'ACCEPTED' | 'NOT_REQUIRED' | null;
   room: string;
   joinedDate: string;
   hostelName: string;
@@ -336,6 +338,10 @@ export function useTenantDetail(tenantId: string | undefined) {
           : tenantRaw.access_mode === 'OWNER_MANAGED' || tenantRaw.access_mode === 'SELF_SERVE'
             ? tenantRaw.access_mode
             : null,
+      acceptanceStatus: ((): 'PENDING' | 'ACCEPTED' | 'NOT_REQUIRED' | null => {
+        const raw = String(o.acceptance_status ?? tenantRaw.acceptance_status ?? '').toUpperCase();
+        return raw === 'PENDING' || raw === 'ACCEPTED' || raw === 'NOT_REQUIRED' ? raw : null;
+      })(),
       room: roomLabel,
       joinedDate: formatDate(o.joined_on ?? o.joined_at),
       hostelName,

@@ -174,27 +174,26 @@ export function TenantDetailPage() {
         </div>
 
         <div className="flex flex-col gap-3.5 px-4 pb-10 sm:px-6">
-          {tenant.accessMode === 'OWNER_MANAGED' && activationLink && (
+          {(tenant.acceptanceStatus === 'PENDING' ||
+            (tenant.accessMode === 'OWNER_MANAGED' && tenant.acceptanceStatus !== 'ACCEPTED')) &&
+            activationLink && (
             /*
-             * The one thing an owner cannot otherwise do from here: hand this
-             * account over.
-             *
-             * The only other affordance is "Resend invite", which only shows
-             * for a tenant still in raw INVITED status — an owner-managed
-             * tenant is already ACTIVE, so this card is the only way to
-             * re-share their activation link. It's the same link their
-             * original WhatsApp invitation carried (`tenant.invitation.
-             * activationLink`, resolved server-side to their most recent
-             * invitation regardless of status) — not a separate mechanism.
+             * A new-model tenant is operationally live (room, rent, reminders)
+             * from the moment they were invited, but has NOT personally
+             * accepted (`acceptance_status = PENDING`, ADR-165). The owner
+             * cannot accept for them and cannot fill their guardian / ID /
+             * college details — only re-share the link. It's the same link
+             * their original WhatsApp invitation carried
+             * (`tenant.invitation.activationLink`, resolved server-side).
              */
             <div className="rounded-2xl border border-border bg-card px-4 py-3.5">
               <p className="font-display text-[13.5px] font-bold text-foreground">
-                You're keeping these records
+                Waiting for {tenant.name.split(' ')[0]} to accept
               </p>
               <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
-                {tenant.name.split(' ')[0]} isn't on Stayo yet. Send them a link and they can see
-                their own rent, dues and receipts — you keep everything you've recorded, and
-                nothing changes if they never open it.
+                They're already in the room — rent, reminders and receipts are running. Share
+                their personal link so they can confirm their own details (guardian, ID,
+                college) and finish setup. Only they can add those.
               </p>
 
               <div className="mt-2.5 flex gap-2">

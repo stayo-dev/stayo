@@ -9,20 +9,22 @@ import { prisma } from "@/lib/db";
 /**
  * POST /api/tenants/[id]/cancel-invitation
  *
- * Owner action: Cancel an INVITED tenant's invitation.
+ * Owner action: cancel an invitation the tenant has not personally accepted.
  *
- * Lifecycle: INVITED → CANCELLED
+ * Lifecycle: INVITED → CANCELLED, or ACTIVE + acceptance_status=PENDING → CANCELLED
  *
  * Effects:
  *   - tenant.status set to CANCELLED
- *   - Active room allocation ended (is_active=false, end_date=now)
- *   - All PENDING/PARTIAL obligations waived
- *   - Occupancy impact removed immediately
+ *   - Active room allocation ended (is_active=false, end_date=now) — room freed
+ *   - Legacy INVITED: all PENDING/PARTIAL obligations waived
+ *   - New-model PENDING (was operationally live): only FUTURE unpaid obligations
+ *     voided; past dues and every recorded payment kept for settlement
  *   - Dashboard snapshot invalidated
  *   - Audit event INVITATION_CANCELLED_BY_OWNER written
  *
  * Rejects:
- *   - Non-INVITED tenants (use /checkout for ACTIVE tenants)
+ *   - Accepted tenants and grandfathered owner-managed tenants (use the
+ *     move-out workflow so settlement is enforced)
  *   - Cross-owner requests
  */
 export async function POST(

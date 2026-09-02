@@ -7,20 +7,19 @@ import type { MockTenant } from '@shared/mocks/tenants';
 import type { TenantFilterChip } from '../types';
 
 export function toTenantListItem(t: NormalizedTenant, hostelId: string, hostelName: string): MockTenant {
-  // Used to be `t.status === 'INVITED'`. A tenancy is ACTIVE from the moment
-  // it's invited now (see createInvitation's owner-managed adoption), so
-  // status alone no longer says "hasn't taken charge of their account yet" —
-  // access_mode does. Without this, the row's "Invited" badge, the dashed
-  // placeholder avatar, and the "Invited" filter chip's count would all
-  // silently go to zero forever, same failure shape as the dashboard tile
-  // this fixes alongside.
+  // A tenancy is ACTIVE from the moment it's invited (see createInvitation), so
+  // `status` alone no longer says "hasn't taken charge of their account yet".
+  // `access_mode === 'OWNER_MANAGED'` covers both a new-model tenant who has
+  // not personally accepted (`acceptanceStatus === 'PENDING'`) and a
+  // grandfathered owner-managed row. The label distinguishes the two.
   const isInvited = t.accessMode === 'OWNER_MANAGED';
+  const isAwaitingAcceptance = t.acceptanceStatus === 'PENDING';
   const isOverdue = !isInvited && t.outstandingAmount > 0 && ['OVERDUE', 'PARTIAL', 'PENDING'].includes(t.paymentStatus.toUpperCase());
   let status: MockTenant['status'];
   let statusLabel: string;
   if (isInvited) {
     status = 'invited';
-    statusLabel = 'Invited';
+    statusLabel = isAwaitingAcceptance ? 'Awaiting acceptance' : 'Invited';
   } else if (isOverdue) {
     status = 'overdue';
     statusLabel = 'Overdue';
@@ -56,6 +55,7 @@ export function toTenantListItem(t: NormalizedTenant, hostelId: string, hostelNa
     agreementStatus: t.hasAgreement ? 'Signed' : 'Pending',
     kycStatus: t.documentVerified ? 'Verified' : 'Pending',
     accessMode: t.accessMode,
+    acceptanceStatus: t.acceptanceStatus,
     obligations: [],
     activity: [],
     documents: [],

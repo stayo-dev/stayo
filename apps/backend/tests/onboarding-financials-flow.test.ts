@@ -13,12 +13,13 @@ vi.mock("@/lib/db", () => {
     tenant_invitations: { create: vi.fn(), update: vi.fn() },
     tenant_invitation_reservations: { create: vi.fn(), update: vi.fn() },
     rooms: { findFirst: vi.fn(), findUnique: vi.fn() },
-    // createInvitation now finalizes the tenancy as owner-managed inside the
-    // same transaction (see finalizeOwnerManagedTenancy) — these back that:
-    // linking/creating the profile, converting the reservation to a real
-    // allocation, and recording the attestation.
+    // createInvitation stands the tenancy up live-but-unaccepted inside the
+    // same transaction (see initializeActiveUnacceptedTenancy) — these back
+    // that: linking/creating the profile and converting the reservation to a
+    // real allocation.
     profile: { findUnique: vi.fn(), create: vi.fn() },
-    roomAllocation: { findFirst: vi.fn(), create: vi.fn() },
+    roomAllocation: { findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
+    rent_obligations: { findMany: vi.fn(async () => []), updateMany: vi.fn() },
     tenant_owner_attestations: { create: vi.fn() },
   };
   const mockPrisma = {
@@ -183,7 +184,7 @@ describe("onboarding financial flow routing", () => {
       id: "reservation-1",
       ...data,
     }));
-    // finalizeOwnerManagedTenancy's writes — see the tx mock's comment above.
+    // initializeActiveUnacceptedTenancy's writes — see the tx mock's comment above.
     tx.tenants.update.mockResolvedValue({});
     tx.tenant_invitations.update.mockResolvedValue({});
     tx.tenant_invitation_reservations.update.mockResolvedValue({});
@@ -191,7 +192,7 @@ describe("onboarding financial flow routing", () => {
     tx.profile.create.mockResolvedValue({ id: "profile-1" });
     tx.roomAllocation.findFirst.mockResolvedValue(null);
     tx.roomAllocation.create.mockResolvedValue({ id: "allocation-1" });
-    tx.tenant_owner_attestations.create.mockResolvedValue({ id: "attestation-1" });
+    tx.rent_obligations.findMany.mockResolvedValue([]);
   });
 
   it("manual invite reaches the shared onboarding financial initializer", async () => {
