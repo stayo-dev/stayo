@@ -187,6 +187,14 @@ export type HostelPolicyResponse = {
     upi_id: string | null;
     gst_number: string | null;
     logo_url: string | null;
+    /**
+     * Who the hostel takes. Read back here because this is the endpoint the
+     * Hostel identity form loads from — `PATCH /hostels/:id` was already
+     * persisting it, but the form's own refetch came back without the field,
+     * reset the selector to "Not set", and made a successful save look like a
+     * failed one.
+     */
+    hostel_type: string | null;
   };
   policy: HostelPolicy;
   compatibility_preferences: Record<string, any>;
@@ -820,6 +828,9 @@ export class HostelPolicyService {
         upi_id: true,
         gst_number: true,
         logo_url: true,
+        // Selected explicitly, like every other column here — this query
+        // deliberately does not take the whole row.
+        hostel_type: true,
         currency: true,
         rent_cycle: true,
         receipt_prefix: true,
@@ -845,6 +856,7 @@ export class HostelPolicyService {
         upi_id: hostel.upi_id,
         gst_number: hostel.gst_number,
         logo_url: hostel.logo_url,
+        hostel_type: hostel.hostel_type ?? null,
       },
       policy,
       compatibility_preferences: toCompatibilityPreferences(policy),
@@ -867,6 +879,9 @@ export class HostelPolicyService {
         upi_id: true,
         gst_number: true,
         logo_url: true,
+        // Selected explicitly, like every other column here — this query
+        // deliberately does not take the whole row.
+        hostel_type: true,
         currency: true,
         rent_cycle: true,
         receipt_prefix: true,

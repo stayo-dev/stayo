@@ -88,6 +88,27 @@ Log of significant bugs — open and fixed. Not meant to replace an issue tracke
 **Verification:** 90 backend tests (new + updated) passing under `vitest.pure.config.ts`; `tsc --noEmit` shows zero new errors introduced (pre-existing unrelated errors unchanged). Not verified against a live database (no `DATABASE_URL_TEST` in this environment) and no real-concurrency integration test was run — the advisory lock and partial index are verified by code review and by mirroring already-shipped patterns, not by a live race test.
 
 **See:** [[Business-Rules]], [[Database]], [[Decisions#ADR-162|ADR-162]], [[Changelog]]
+## 2026-09-02 — A saved hostel type read back as unset, twice, from two different endpoints (fixed)
+
+**Symptom.** An owner set "Who stays here?" on the Hostel identity screen and the selector snapped back to "Not set" on save. Fixed — and then the Hostels tab kept prompting *"Who stays here? Set this and your tenants stop being asked their gender"* for the very hostel that had just been answered.
+
+**Root cause, both times: the write was correct and a reader was missing the field.** `hostel_type` was added to `PATCH /hostels/:id` and to `GET /hostels/:id`, and it persisted correctly — verified against the live API, which returned `200` and read the value straight back. But the two screens read from neither of those:
+
+| Screen | Reads | Returned |
+|---|---|---|
+| Hostel identity form | `GET /hostels/:id/preferences` | field absent |
+| Hostels tab | `GET /owner/portfolio/summary` | `null` |
+
+The identity form saved, refetched, got a hostel object with no `hostel_type` key at all, and reset the field. The data was never wrong; only the screen was.
+
+The second miss compounded it: `lib/services/portfolio-service.ts` and `lib/services/portfolio-performance-service.ts` are near-duplicates, and the fix went into the latter while the Hostels tab's route uses the former. [[CLAUDE.md]] warns about exactly that pair — *"both trees are live — check imports before assuming one is dead code"* — and it was not checked.
+
+**Why neither was caught.** Each half is correct in isolation: the write path was right, the read path compiled, and every existing test passed. Prisma's explicit `select` makes an unlisted column simply `undefined` at runtime — silently, with no error anywhere — and a hand-built response projection can drop a field the select did include. Nothing in the type system connects a column to the screens that read it.
+
+**Fix.** Both readers now select `hostel_type` and return it, verified live against each endpoint. `tests/hostel-identity-field-round-trip.test.ts` (new) reads the service sources as text and asserts the join the type system cannot: every field the identity form edits must be accepted by the write path, selected by the read path, **and present in the read path's projection** — that last step being where it was dropped both times. Every reader of `hostel_type` is pinned by name. Both bugs were re-introduced deliberately to confirm the test fails on the right assertion.
+
+**See:** [[Changelog]], [[Decisions#ADR-168|ADR-168]]
+
 ## 2026-09-02 — Recording a payment while inviting a tenant was refused every single time (fixed)
 
 **Symptom.** An owner inviting a tenant who has already paid — a deposit handed over at the door, or months of rent from a tenant who joined before Stayo — entered the amount, reached the wizard's Verify step, and was refused: *"Cannot record ₹15000.00 — only ₹0.00 is owed"*. The invite could not be sent at all without clearing the amount. Reported as possibly a partial-payments problem; it was not.

@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ChevronDown } from 'lucide-react';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useHostelPolicy, useUpdateHostelIdentity, useUpdateHostelPolicy, useUploadHostelLogo, useRemoveHostelLogo } from '@features/settings/settingsHooks';
 import { HOSTEL_TYPE_OPTIONS } from '@features/owner-hostel-builder/hostelType';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
 import { SaveBar } from '../components/SaveBar';
+import { legalNameToStore } from '../config/legalName';
 import { hasChanges } from '../config/dirtyState';
 
 interface IdentityFields {
@@ -37,16 +39,16 @@ const EMPTY_IDENTITY: IdentityFields = {
   legalName: '',
 };
 
-const card = 'overflow-hidden rounded-[20px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]';
-const sectionLabel = 'pl-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground';
 /**
  * Sentence case, not SHOUTING CAPS. Nine stacked uppercase labels read as nine
  * warnings; owners here are not technical and the form should feel like
  * answering questions, not filling a database row.
  */
-const labelStyle = 'mb-1 block text-[12.5px] font-semibold text-foreground';
-const hintStyle = 'mt-1.5 block text-[11px] leading-[1.45] text-muted-foreground';
-const inputStyle = 'w-full rounded-xl border border-border bg-card px-3.5 py-3 text-sm font-medium text-foreground focus:border-primary focus:outline-none';
+const labelStyle = 'text-[12px] font-semibold text-muted-foreground';
+const hintStyle = 'mt-1 block text-[11px] leading-[1.45] text-muted-foreground';
+const inputStyle =
+  'w-full rounded-[11px] border border-border bg-card px-3.5 py-2.5 text-[14px] text-foreground outline-none focus:border-primary';
+const sectionLabel = 'pl-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground';
 
 /**
  * More → Settings → Hostel Identity. Real data via `useHostelPolicy`
@@ -124,8 +126,12 @@ export function MoreHostelIdentityPage() {
       },
       {
         onSuccess: () => {
-          if (legalName.trim() !== (baseline?.legalName ?? '')) {
-            updatePolicyMutation.mutate({ branding: { legal_name: legalName.trim() || null } });
+          // A registered name identical to the hostel name is a duplicate,
+          // not an answer — it freezes the receipt's name against a later
+          // rename. Stored as null so the hostel name keeps doing the work.
+          const nextLegalName = legalNameToStore(legalName, name);
+          if (nextLegalName !== (baseline?.legalName?.trim() || null)) {
+            updatePolicyMutation.mutate({ branding: { legal_name: nextLegalName } });
           }
           stayoToast.success('Hostel identity updated');
           navigate(-1);
@@ -144,7 +150,7 @@ export function MoreHostelIdentityPage() {
   };
 
   return (
-    <div className={`flex flex-col gap-5 px-4 pt-6 sm:px-6 ${dirty ? 'pb-40' : 'pb-24'}`}>
+    <div className={`flex flex-col gap-6 px-4 pt-6 sm:px-6 ${dirty ? 'pb-40' : 'pb-24'}`}>
       <MoreScreenHeader title="Hostel identity" />
 
       {policyQuery.isLoading ? (
@@ -152,195 +158,215 @@ export function MoreHostelIdentityPage() {
       ) : (
         <>
           {/*
+            No cards. Every field sat inside a white card on a near-white
+            ground, so a white input had nothing to sit against and the edge
+            that says *type here* washed out — the same fault Details had.
+            Fields now sit on the page under a section heading, which is also
+            what Password and Payouts do, so the owner's account screens read
+            as one design rather than four.
+
             Sections are the questions an owner is answering, not the tables
-            the fields land in. "Details" told them nothing about what the
-            details were for; "Payments & Tax" put the UPI they are paid into
-            beside a GST number that only appears on receipts.
+            the fields land in.
           */}
-          <div className="flex flex-col gap-2">
-            <span className={sectionLabel}>What tenants see</span>
-            <div className={`${card} flex flex-col gap-4 p-4`}>
-              <div className="flex items-center gap-3.5">
-                <span className="flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-2xl bg-secondary">
-                  {hostel?.logo_url ? (
-                    <img src={hostel.logo_url} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    <span className="font-display text-lg font-bold text-primary">{name ? name[0]?.toUpperCase() : 'H'}</span>
-                  )}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
-                  {/*
-                    One primary action. Upload and Remove used to sit side by
-                    side at equal width and weight, so a destructive action was
-                    as loud as the one an owner actually came for.
-                  */}
+          <section className="flex flex-col gap-3">
+            <h2 className={sectionLabel}>What tenants see</h2>
+
+            <div className="flex items-center gap-3.5">
+              <span className="flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-2xl bg-secondary">
+                {hostel?.logo_url ? (
+                  <img src={hostel.logo_url} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="font-display text-lg font-bold text-primary">
+                    {name ? name[0]?.toUpperCase() : 'H'}
+                  </span>
+                )}
+              </span>
+              <div className="min-w-0 flex-1">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={(e) => handleFile(e.target.files?.[0])}
+                />
+                {/*
+                  One primary action, and Remove is its own control rather than
+                  underlined red text inside the hint sentence — a destructive
+                  action should not sit in running copy, where it is reached by
+                  someone aiming at the words around it.
+                */}
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     disabled={uploadLogoMutation.isPending}
                     onClick={() => fileInputRef.current?.click()}
-                    className="rounded-xl border border-border bg-card px-4 py-2 font-display text-[12.5px] font-bold text-foreground disabled:opacity-50"
+                    className="rounded-xl border border-border bg-card px-3.5 py-2 font-display text-[12.5px] font-bold text-foreground disabled:opacity-50"
                   >
                     {uploadLogoMutation.isPending ? 'Uploading…' : hostel?.logo_url ? 'Change logo' : 'Add logo'}
                   </button>
-                  <span className={hintStyle}>
-                    Shown on receipts and your Stayo listing.
-                    {hostel?.logo_url && (
-                      <>
-                        {' '}
-                        <button
-                          type="button"
-                          disabled={removeLogoMutation.isPending}
-                          onClick={() => removeLogoMutation.mutate(undefined, { onSuccess: () => stayoToast.success('Logo removed') })}
-                          className="font-semibold text-destructive underline underline-offset-2 disabled:opacity-50"
-                        >
-                          Remove
-                        </button>
-                      </>
-                    )}
-                  </span>
+                  {hostel?.logo_url && (
+                    <button
+                      type="button"
+                      disabled={removeLogoMutation.isPending}
+                      onClick={() =>
+                        removeLogoMutation.mutate(undefined, {
+                          onSuccess: () => stayoToast.success('Logo removed'),
+                        })
+                      }
+                      className="px-1.5 py-2 text-[12px] font-semibold text-muted-foreground disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  )}
                 </div>
+                <span className={hintStyle}>Shown on receipts and your Stayo listing.</span>
               </div>
+            </div>
 
+            <label className="flex flex-col gap-1.5">
+              <span className={labelStyle}>Hostel name</span>
+              <input value={name} onChange={(e) => set('name', e.target.value)} className={inputStyle} />
+              <span className={hintStyle}>Tenants see this everywhere — invites, receipts and reminders.</span>
+            </label>
+
+            {/*
+              A dropdown, not a 2×2 grid of buttons. It is one choice from four
+              short options, and as a grid it took ~100px and rendered heavier
+              than the hostel's own name directly below it — which is the more
+              important field on the screen.
+            */}
+            <label className="flex flex-col gap-1.5">
+              <span className={labelStyle}>Who stays here</span>
+              <div className="relative">
+                <select
+                  value={hostelType}
+                  onChange={(e) => set('hostelType', e.target.value)}
+                  className={`${inputStyle} appearance-none pr-10`}
+                >
+                  <option value="">Not set</option>
+                  {HOSTEL_TYPE_OPTIONS.map((option) => (
+                    <option key={option.code} value={option.code}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                  strokeWidth={2}
+                />
+              </div>
+              <span className={hintStyle}>
+                {hostelType
+                  ? HOSTEL_TYPE_OPTIONS.find((o) => o.code === hostelType)?.hint
+                  : 'While this is unset, every tenant is asked their gender when they join.'}
+              </span>
+            </label>
+
+            <label className="flex flex-col gap-1.5">
+              <span className={labelStyle}>Phone</span>
+              <input
+                value={phone}
+                onChange={(e) => set('phone', e.target.value)}
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="Number tenants can call"
+                className={inputStyle}
+              />
+            </label>
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <h2 className={sectionLabel}>Where you are</h2>
+
+            <label className="flex flex-col gap-1.5">
+              <span className={labelStyle}>Street address</span>
               {/*
-            Who this hostel takes. Long a nullable column the backend already
-            knew how to use — it derives a tenant's gender from it and skips the
-            question during onboarding — but which nothing ever wrote, so it
-            stayed NULL and every tenant was asked anyway. New hostels are asked
-            in the builder; this is where the rest get set.
-          */}
-          <div className="block">
-            <span className={labelStyle}>Who stays here</span>
-            <div className="mt-1.5 grid grid-cols-2 gap-2">
-              {HOSTEL_TYPE_OPTIONS.map((option) => {
-                const selected = hostelType === option.code;
-                return (
-                  <button
-                    key={option.code}
-                    type="button"
-                    onClick={() => set('hostelType', option.code)}
-                    aria-pressed={selected}
-                    className={`rounded-xl border-[1.5px] px-3 py-2.5 text-left text-[13px] font-semibold transition-colors ${
-                      selected ? 'border-primary bg-primary/5 text-foreground' : 'border-border bg-card text-foreground'
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-            <span className={hintStyle}>
-              {hostelType
-                ? HOSTEL_TYPE_OPTIONS.find((o) => o.code === hostelType)?.hint
-                : 'Unset means every tenant is asked their gender when they join.'}
-            </span>
-          </div>
+                A textarea, because a real address is two or three lines. The
+                hint now says what belongs here: the field was collecting the
+                city, state and pincode that are asked for again directly
+                below, so owners were typing the same facts twice.
+              */}
+              <textarea
+                value={address}
+                onChange={(e) => set('address', e.target.value)}
+                rows={2}
+                className={`${inputStyle} resize-none`}
+              />
+              <span className={hintStyle}>Building and street only — city, state and pincode are below.</span>
+            </label>
 
-          <label className="block">
-                <span className={labelStyle}>Hostel name</span>
-                <input value={name} onChange={(e) => set('name', e.target.value)} className={inputStyle} />
-                <span className={hintStyle}>Required. Tenants see this everywhere — invites, receipts and reminders.</span>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1.5">
+                <span className={labelStyle}>City</span>
+                <input value={city} onChange={(e) => set('city', e.target.value)} className={inputStyle} />
               </label>
-
-              <label className="block">
-                <span className={labelStyle}>Phone</span>
-                <input
-                  value={phone}
-                  onChange={(e) => set('phone', e.target.value)}
-                  inputMode="tel"
-                  autoComplete="tel"
-                  placeholder="Number tenants can call"
-                  className={inputStyle}
-                />
+              <label className="flex flex-col gap-1.5">
+                <span className={labelStyle}>State</span>
+                <input value={state} onChange={(e) => set('state', e.target.value)} className={inputStyle} />
               </label>
             </div>
-          </div>
 
-          <div className="flex flex-col gap-2">
-            <span className={sectionLabel}>Where you are</span>
-            <div className={`${card} flex flex-col gap-4 p-4`}>
-              <label className="block">
-                <span className={labelStyle}>Address</span>
-                {/*
-                  A textarea, because a real address is two or three lines. The
-                  single-line input truncated most of it out of sight, so an
-                  owner could not check what they had typed.
-                */}
-                <textarea
-                  value={address}
-                  onChange={(e) => set('address', e.target.value)}
-                  rows={2}
-                  className={`${inputStyle} resize-none`}
-                />
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block">
-                  <span className={labelStyle}>City</span>
-                  <input value={city} onChange={(e) => set('city', e.target.value)} className={inputStyle} />
-                </label>
-                <label className="block">
-                  <span className={labelStyle}>State</span>
-                  <input value={state} onChange={(e) => set('state', e.target.value)} className={inputStyle} />
-                </label>
-              </div>
-              <label className="block w-1/2 pr-1.5">
-                <span className={labelStyle}>Pincode</span>
-                {/* Half width: a six-digit field stretched across the screen
-                    reads as though more is expected. */}
-                <input
-                  value={pincode}
-                  onChange={(e) => set('pincode', e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
-                  inputMode="numeric"
-                  maxLength={6}
-                  className={inputStyle}
-                />
-              </label>
-            </div>
-          </div>
+            {/* Half width: a six-digit field stretched across the screen reads
+                as though more is expected. */}
+            <label className="flex w-1/2 flex-col gap-1.5 pr-1.5">
+              <span className={labelStyle}>Pincode</span>
+              <input
+                value={pincode}
+                onChange={(e) => set('pincode', e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
+                inputMode="numeric"
+                maxLength={6}
+                className={inputStyle}
+              />
+            </label>
+          </section>
 
-          <div className="flex flex-col gap-2">
-            <span className={sectionLabel}>On receipts and paperwork</span>
-            <div className={`${card} flex flex-col gap-4 p-4`}>
-              <label className="block">
-                <span className={labelStyle}>Registered name</span>
-                <input
-                  value={legalName}
-                  onChange={(e) => set('legalName', e.target.value)}
-                  placeholder={name || 'Same as hostel name'}
-                  className={inputStyle}
-                />
-                <span className={hintStyle}>
-                  Only if your legal name differs from the hostel's name. Leave blank to use the hostel name.
-                </span>
-              </label>
-              <label className="block">
-                <span className={labelStyle}>GST number</span>
-                <input
-                  value={gstNumber}
-                  onChange={(e) => set('gstNumber', e.target.value.toUpperCase())}
-                  placeholder="22AAAAA0000A1Z5"
-                  autoCapitalize="characters"
-                  className={`${inputStyle} uppercase`}
-                />
-                <span className={hintStyle}>Printed on every receipt once set. Leave blank if you do not charge GST.</span>
-              </label>
-            </div>
-          </div>
+          <section className="flex flex-col gap-3">
+            <h2 className={sectionLabel}>On receipts and paperwork</h2>
 
-          <div className="flex flex-col gap-2">
-            <span className={sectionLabel}>How tenants pay you</span>
-            <div className={`${card} flex flex-col gap-4 p-4`}>
-              <label className="block">
-                <span className={labelStyle}>UPI ID</span>
-                <input value={upiId} onChange={(e) => set('upiId', e.target.value)} placeholder="name@bank" className={inputStyle} />
-                <span className={hintStyle}>
-                  Shown to tenants when they pay by UPI. This is not where Stayo settles your rent — that is your bank
-                  account, under Configuration.
-                </span>
-              </label>
-            </div>
-          </div>
+            <label className="flex flex-col gap-1.5">
+              <span className={labelStyle}>Registered name</span>
+              <input
+                value={legalName}
+                onChange={(e) => set('legalName', e.target.value)}
+                placeholder={name || 'Same as hostel name'}
+                className={inputStyle}
+              />
+              <span className={hintStyle}>
+                Only if your legal entity is named differently. Left blank, receipts use the hostel name — and keep
+                following it if you rename the hostel.
+              </span>
+            </label>
 
+            <label className="flex flex-col gap-1.5">
+              <span className={labelStyle}>GST number</span>
+              <input
+                value={gstNumber}
+                onChange={(e) => set('gstNumber', e.target.value.toUpperCase())}
+                placeholder="22AAAAA0000A1Z5"
+                autoCapitalize="characters"
+                className={`${inputStyle} uppercase`}
+              />
+              <span className={hintStyle}>Printed on every receipt once set. Leave blank if you do not charge GST.</span>
+            </label>
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <h2 className={sectionLabel}>How tenants pay you</h2>
+
+            <label className="flex flex-col gap-1.5">
+              <span className={labelStyle}>UPI ID</span>
+              <input
+                value={upiId}
+                onChange={(e) => set('upiId', e.target.value)}
+                placeholder="name@bank"
+                className={inputStyle}
+              />
+              <span className={hintStyle}>
+                Shown to tenants paying by UPI. This is not where Stayo settles your rent — that is your bank account,
+                under Profile → Payouts.
+              </span>
+            </label>
+          </section>
         </>
       )}
 
@@ -351,7 +377,6 @@ export function MoreHostelIdentityPage() {
         onDiscard={() => baseline && setFields(baseline)}
         label="Save changes"
       />
-
     </div>
   );
 }
