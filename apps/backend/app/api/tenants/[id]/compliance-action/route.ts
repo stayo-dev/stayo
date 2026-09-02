@@ -7,6 +7,11 @@ import { prisma } from "@/lib/db";
 import { invitationService } from "@/src/services/tenants/invitation-service";
 import crypto from "crypto";
 import { frontendUrl } from "@/lib/config/domains";
+import {
+  approveRequiredActiveKycDocs,
+  recomputeDocumentVerified,
+  kycGapMessage,
+} from "@/src/services/tenants/kyc-status";
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getSession(req);
@@ -82,22 +87,29 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
 
     if (action === "MARK_DOCUMENTS_VERIFIED") {
-      const docs = await prisma.identificationDocument.updateMany({
-        where: { tenant_id: tenant.id, is_active: true },
-        data: {
-          document_status: "APPROVED",
-          is_verified: true,
-          approved_by: session.sub,
-          approved_at: new Date(),
-        },
+      // An owner override for documents they verified offline — but it must
+      // satisfy the same KYC invariants as the per-document flow: it only
+      // approves the *required* active types, and refuses when a required type
+      // was never uploaded. It can never conjure verification from nothing.
+      const outcome = await prisma.$transaction(async (tx) => {
+        const { approved, gap } = await approveRequiredActiveKycDocs(tx, tenant, session.sub);
+        if (gap.missing.length > 0) return { incomplete: true as const, gap };
+        const documentVerified = await recomputeDocumentVerified(tx, tenant.id);
+        return { incomplete: false as const, approved, documentVerified };
       });
 
-      await prisma.tenants.update({
-        where: { id: tenant.id },
-        data: { document_verified: docs.count > 0 },
-      });
+      if (outcome.incomplete) {
+        return apiError(
+          kycGapMessage(outcome.gap) ?? "Required documents are missing",
+          "INCOMPLETE_KYC",
+          409,
+        );
+      }
 
-      return apiResponse({ verified_documents: docs.count });
+      return apiResponse({
+        verified_documents: outcome.approved,
+        document_verified: outcome.documentVerified,
+      });
     }
 
     if (action === "RESEND_RULES" || action === "REMIND_DOCUMENTS") {

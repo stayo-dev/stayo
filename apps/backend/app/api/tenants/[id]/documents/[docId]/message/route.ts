@@ -6,6 +6,8 @@ import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { backendUrl } from "@/lib/config/domains";
 import crypto from "crypto";
+import { appendMessage } from "@/src/services/tenants/document-thread";
+import { recomputeDocumentVerified } from "@/src/services/tenants/kyc-status";
 
 export async function POST(
   req: NextRequest,
@@ -65,37 +67,26 @@ export async function POST(
       return NextResponse.json({ error: { message: "Forbidden" } }, { status: 403 });
     }
 
-    // Parse existing messages or convert old rejection_reason
-    let messages = [];
-    try {
-      if (doc.rejection_reason && doc.rejection_reason.startsWith("[") && doc.rejection_reason.endsWith("]")) {
-        messages = JSON.parse(doc.rejection_reason);
-      } else if (doc.rejection_reason) {
-        messages = [{
-          sender: "owner",
-          sender_name: "Owner",
-          message: doc.rejection_reason,
-          timestamp: doc.updated_at || doc.created_at,
-        }];
-      }
-    } catch {
-      messages = [];
-    }
-
-    messages.push({
+    const nextThread = appendMessage(doc.rejection_reason, {
       sender,
       sender_name: senderName,
       message: text,
-      timestamp: new Date().toISOString(),
     });
 
-    // Update document. If tenant replied, keep it PENDING for owner's review!
-    const updatedDoc = await prisma.identificationDocument.update({
-      where: { id: docId },
-      data: {
-        rejection_reason: JSON.stringify(messages),
-        ...(sender === "tenant" ? { document_status: "PENDING" } : {}),
-      },
+    // If the tenant replied, the document goes back to PENDING for the owner's
+    // review — which can only lower verification, so recompute after.
+    const updatedDoc = await prisma.$transaction(async (tx) => {
+      const updated = await tx.identificationDocument.update({
+        where: { id: docId },
+        data: {
+          rejection_reason: nextThread,
+          ...(sender === "tenant" ? { document_status: "PENDING", is_verified: false } : {}),
+        },
+      });
+      if (sender === "tenant") {
+        await recomputeDocumentVerified(tx, tenantId);
+      }
+      return updated;
     });
 
     // Trigger standard notifications
