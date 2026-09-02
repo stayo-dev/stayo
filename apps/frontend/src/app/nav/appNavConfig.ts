@@ -1,4 +1,4 @@
-import { CircleUserRound, Compass, DoorOpen, Home, User, UtensilsCrossed, Wallet } from 'lucide-react';
+import { CircleUserRound, DoorOpen, Home, User, UtensilsCrossed, Wallet } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export interface AppNavTab {
@@ -23,20 +23,24 @@ export interface AppNavTab {
  * `useAppNav` for how "live" is decided — this file is pure data, no auth
  * logic, so `AppBottomNav` (the only nav implementation — there is no inner
  * Dashboard strip) reads one definition.
+ *
+ * The `Explore` tab (→ `/discover`) was dropped in v1 (ADR-170) along with
+ * the rest of the Stayo Discover marketplace. `EXPLORE_PROFILE_TABS` keeps
+ * its name for the smallest possible diff when v2 restores Explore.
  */
 export const EXPLORE_PROFILE_TABS: AppNavTab[] = [
-  { to: '/discover', label: 'Explore', Icon: Compass, end: true },
   { to: '/profile', label: 'Profile', Icon: User, end: false },
 ];
 
 /**
  * The single-level active-tenant nav — Home | Room | Food | Payments |
- * Profile | Explore, all six in one primary bar. Supersedes the old
+ * Profile, all in one primary bar. Supersedes the old
  * Explore/Dashboard/Profile outer bar + Home/Money/Room/Food/Complaints
  * inner strip split (ADR-078): there is no "Dashboard" item and no second
  * nav layer anymore. Complaints is deliberately not here — it stays the
  * tenant → owner system, reachable contextually from Room instead of as a
- * primary tab (see `TenantComplaintsPage`).
+ * primary tab (see `TenantComplaintsPage`). The `Explore` tab was removed
+ * in v1 (ADR-170) with the rest of the marketplace.
  */
 export const ACTIVE_TENANT_TABS: AppNavTab[] = [
   { to: '/tenant/home', label: 'Home', Icon: Home, end: false },
@@ -44,7 +48,6 @@ export const ACTIVE_TENANT_TABS: AppNavTab[] = [
   { to: '/tenant/food', label: 'Food', Icon: UtensilsCrossed, end: false },
   { to: '/tenant/money', label: 'Payments', Icon: Wallet, end: false },
   { to: '/profile', label: 'Profile', Icon: User, end: false },
-  { to: '/discover', label: 'Explore', Icon: Compass, end: true },
 ];
 
 /** A tenancy is "live" for nav purposes if it hasn't ended or fallen through. */

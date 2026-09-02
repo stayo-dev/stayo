@@ -31,7 +31,9 @@ Canonical UI: Vite + React 19 SPA. This page reflects a direct read of `apps/fro
 
 Entry: `app/Router.tsx` → `app/router/AppRouter.tsx`, composing four route-group functions:
 
-**Public routes** (two lazy shells): `PublicShell` — `/`, `/about`, `/facilities`, `/rooms`, `/gallery`, `/location`, `/contact`, `/rules`, `/legal/*`, `/pricing`, `/visit/:hostelSlug`, `/verify/r/:token`. `AuthShell` — `/login`, `/forgot-password`, `/reset-password`, `/activate(/:token)`, `/invite/:token`, `/complete-profile`.
+> **v1 (2026-09-03, [[Decisions#ADR-170|ADR-170]]):** `DiscoverRoutes()` is **unmounted** from `AppRouter.tsx` — the Stayo Discover marketplace is shelved for v2. `ProfileRoutes()` (the `/profile/*` hub it used to nest) is mounted directly under `SeekerAppShell`, so the Tenant Dashboard still shares one provider tree. `/` renders `LandingPage` (owner marketing/login) instead of the `WelcomePage` audience fork; a signed-in owner with a hostel is auto-forwarded to `/owner/home`. `DiscoverRoutes.tsx` + `app/pages/discover/*` stay on disk.
+
+**Public routes** (two lazy shells): `PublicShell` — `/` (`LandingPage` in v1), `/owners`, `/about`, `/company`, `/contact`, `/legal/*`, `/visit/:hostelSlug`, `/verify/r/:token`. `AuthShell` — `/login`, `/forgot-password`, `/reset-password`, `/activate(/:token)`, `/invite/:token`, `/complete-profile`.
 
 **Owner routes** (`platforms/owner/router/OwnerRoutes.tsx`, wrapped in `OwnerBoundary` → `OwnerProviderShell` → `App`): `/dashboard`, `/hostels/:hostelId(/:tab)`, `/tenants`, `/tenants/import`, `/hostels/:hostelId/tenants/:tenantId`, `/move-outs`, `/agreements/renewals`, `/agreements/lifecycle-recovery`, `/alerts`, `/billing`, `/settings`, `/activity`. All view components lazy-imported from `app/components/views/*`.
 
@@ -51,9 +53,9 @@ Structure under `platforms/admin/`:
 | `drawer/` | `AdminDrawer` chrome + `drawerParam.ts` (**tested**) — the drawer is addressable via `?detail=<kind>:<id>` |
 | `owners/`, `listings/`, `kyc/` | Per-screen pure logic, each with tests |
 
-Eleven routes: `/admin` (Overview), `/leads`, `/owners`, `/kyc`, `/listings`, `/revenue`, `/settlements`, `/subscriptions`, `/reports`, `/broadcasts`, `/settings`. Four redirects keep old links alive: `documents→kyc`, `hostels→listings`, `marketing-reviews→listings?tab=content`, `more→settings`.
+Routes: `/admin` (Overview), `/leads`, `/owners`, `/kyc`, `/reviews`, `/revenue`, `/settlements`, `/subscriptions`, `/reports`, `/broadcasts`, `/settings`. **v1 ([[Decisions#ADR-170|ADR-170]]): `/admin/listings*` is removed** (marketplace shelved) — its nav item, page header and the Overview review-queue row are gone; `/admin/listings/*`, `/admin/hostels`, `/admin/marketing-reviews` all redirect to `/admin`. `ListingsPage.tsx` / `ListingPreviewPage.tsx` + the `listings/` panels are kept on disk. `/admin/reviews` (resident-review moderation) is **unaffected**.
 
-**Real as of 2026-08-16**: Overview, Leads, Owners, Hostel Listings (incl. the marketing content-review tab), KYC Approvals. The remaining screens render `NotWiredYet` — see [[Features]] for which and why. **`platforms/warden/`** is reserved, `.gitkeep` only — no code.
+**Real as of 2026-08-16**: Overview, Leads, Owners, ~~Hostel Listings~~ (v1: removed), KYC Approvals. The remaining screens render `NotWiredYet` — see [[Features]] for which and why. **`platforms/warden/`** is reserved, `.gitkeep` only — no code.
 
 **Typography note**: the console uses `.font-admin` (Manrope) from `styles/admin-console.css`, *not* the shared `.font-display`, which resolves to Playfair Display — the pre-rebuild console was rendering off-design because of this.
 
@@ -209,6 +211,8 @@ Notes that matter when touching this:
 ## StayO rebuild additions (new structure, layered on top of the above)
 
 The StayO redesign is being built in place inside this same tree, per the design source in `Stayo Homepage Design (5)/` and `Stayo SaaS redesign/` at the repo root. Full engineering-decision narrative lives in `docs/migration/frontend-foundation-tracker.md`; summary here:
+
+> **v1 scope (2026-09-03, [[Decisions#ADR-170|ADR-170]]):** several bullets below describe **Stayo Discover** (`app/pages/discover/*`, `features/discover/*`), the **`WelcomePage` audience fork**, and the **owner Marketing page** (`features/hostel-drilldown/marketing/*`). All three are **shelved for v2** — routes unmounted, `Explore` nav tab and the Marketing drill-down tab removed, `/api/discover/*` + marketing/listing APIs return `410` unless `MARKETPLACE_ENABLED=true`. Every file stays on disk. Read those bullets as design/implementation history, inactive in v1.
 
 - **`app/providers/ThemeProvider.tsx`** — `useAppTheme()`/`<ThemeProvider theme="marketing"|"product">`. Sets `data-app-theme` on both a wrapper element and `document.documentElement` (the latter so portaled content — Radix `Dialog`, `vaul` drawers, `sonner` toasts — still resolves the right token scope, since portals render outside the wrapper's DOM subtree).
 - **`styles/tokens/{marketing,product,fonts}.css` + `styles/stayo-theme.css`** — new StayO design tokens, scoped under `[data-app-theme]`, coexisting with the untouched legacy `styles/theme.css`/`fonts.css`. Google Fonts (Manrope/Inter) are loaded via a `<link>` in `index.html`, not a CSS `@import` — see the tracker doc for why a nested `@import` there gets silently dropped by the browser.

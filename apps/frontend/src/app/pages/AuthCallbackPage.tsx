@@ -96,15 +96,16 @@ export function AuthCallbackPage() {
       if (role === 'admin') return navigate('/admin', { replace: true });
       if (role === 'owner') return navigate('/owner/home', { replace: true });
 
-      // A returnTo path takes priority — it's the enquiry/page the visitor
-      // was actually on. Otherwise, a TENANT-role sign-in only belongs in
-      // the Dashboard if they have a live tenancy (INVITED/ACTIVE) — a
-      // Discover-only marketplace account has nothing to show at
-      // /tenant/home (ProtectedTenantRoute would just bounce it back).
+      // A returnTo path takes priority — it's the page the visitor was
+      // actually on. Otherwise, a TENANT-role sign-in only belongs in the
+      // Dashboard if they have a live tenancy (INVITED/ACTIVE); without one
+      // there is nothing at /tenant/home (ProtectedTenantRoute would just
+      // bounce it back). v1 (ADR-170): no marketplace, so the fallback is
+      // the shared Profile hub.
       if (returnTo) return navigate(returnTo, { replace: true });
       const tenantStatus = data.tenant_status ?? null;
       const liveTenancy = tenantStatus === 'INVITED' || tenantStatus === 'ACTIVE';
-      navigate(liveTenancy ? '/tenant/home' : '/discover', { replace: true });
+      navigate(liveTenancy ? '/tenant/home' : '/profile', { replace: true });
     };
 
     const finish = async () => {

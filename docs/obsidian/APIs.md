@@ -373,6 +373,8 @@ Public (no session — added to `middleware.ts`'s `PUBLIC_ROUTES`), backing the 
 
 ## Stayo Discover — Public Marketplace (`/api/discover/*`)
 
+> **SHELVED for v1 (2026-09-03, [[Decisions#ADR-170|ADR-170]]).** `middleware.ts` returns **`410 { error.code: 'MARKETPLACE_DISABLED' }`** for every `/api/discover/*` path unless `process.env.MARKETPLACE_ENABLED === 'true'`. Route handlers and `src/services/discovery/*` are unchanged on disk. **Exception:** `GET /api/discover/hostels/[slug]/reviews` and `/api/platform-admin/reviews*` are **not** blocked — existing resident reviews stay readable/moderatable; only new review POSTs (under `/api/discover`) are gone with the rest.
+
 **Added 2026-08-15 ([[Decisions#ADR-073|ADR-073]]).** The public hostel-browsing surface backing `/discover`. Split auth: browse is public, everything else needs a seeker session.
 
 ### Reviews
@@ -453,6 +455,8 @@ All routes share one visibility predicate, `DISCOVERABLE` in `src/services/disco
 Frontend: `features/profile/api`'s `profileService.listSupportTickets`/`createSupportTicket` (Profile's own `/profile/tickets` page); `features/platform-admin/api`'s `platformAdminService.getSupportTickets`/`resolveSupportTicket` (originally `AdminSupportTicketsPage`, reached from More; **since the 2026-08-16 console rebuild this queue is the admin console's Reports & Bugs screen** at `/admin/reports`, with `/admin/support-tickets` redirecting there — see [[Decisions#ADR-079|ADR-079]] and [[Decisions#ADR-080|ADR-080]]).
 
 ## Hostel Marketing Page & Approval (`/api/owner/hostels/[id]/marketing*`, `/api/platform-admin/marketing-reviews*`)
+
+> **SHELVED for v1 (2026-09-03, [[Decisions#ADR-170|ADR-170]]).** `middleware.ts` returns **`410 MARKETPLACE_DISABLED`** for `/api/owner/hostels/{id}/marketing/*`, `/api/platform-admin/marketing-reviews/*`, `/api/platform-admin/platform-listings/*`, and `/api/platform-admin/hostels/{id}/{approve,reject,suspend}-listing` / `listing-review` unless `MARKETPLACE_ENABLED === 'true'`. Handlers and `src/services/marketing/*` unchanged on disk.
 
 **Added 2026-08-15 ([[Decisions#ADR-076|ADR-076]]).** Owner-authored Discovery listing content, and the review cycle every version passes through.
 
