@@ -88,6 +88,20 @@ Log of significant bugs — open and fixed. Not meant to replace an issue tracke
 **Verification:** 90 backend tests (new + updated) passing under `vitest.pure.config.ts`; `tsc --noEmit` shows zero new errors introduced (pre-existing unrelated errors unchanged). Not verified against a live database (no `DATABASE_URL_TEST` in this environment) and no real-concurrency integration test was run — the advisory lock and partial index are verified by code review and by mirroring already-shipped patterns, not by a live race test.
 
 **See:** [[Business-Rules]], [[Database]], [[Decisions#ADR-162|ADR-162]], [[Changelog]]
+## 2026-09-02 — The invitation-management screen became unreachable when acceptance moved (fixed)
+
+**Symptom.** After sending an invitation, opening that tenant showed the **full tenant profile** — a settled resident — instead of the invitation view. The owner could not see the invitation's status or expiry, resend or nudge it, cancel it, or correct a wrong phone or rent before the tenant activated.
+
+**Root cause.** `TenantDetailPage` gated the screen on `tenant.status === 'invited'`. That was correct until [[Decisions#ADR-165|ADR-165]] made an invited tenancy **ACTIVE from the moment it is created** — the bed is held, rent generates, reminders fire — with the person's own acceptance tracked separately in `acceptance_status`. From then on the condition could never be true, and `InvitedTenantProfileView` (641 lines, fully working: status, expiry, resend, copy link, cancel, batched term edits) became dead code reachable by nothing.
+
+`useTenantDetail`'s own doc comment already recorded the correct signal — *"Since inviting now makes a tenancy immediately ACTIVE, this, not `status === 'invited'`, is how 'hasn't activated yet' is known"* — but the page was never updated to follow it.
+
+**A second cause underneath it.** Even had the page been fixed, the signal was not there to read: `getOwnerTenantOverview` fetched the tenant row with `include` (so `acceptance_status` and `access_mode` were both loaded) and then dropped them from its hand-built response object. Every reader saw `null`. **This is the third instance in one day of the same shape** — a column present in the database, correct on the write path, missing from one reader's projection — after `hostel_type` was missed by two different readers.
+
+**Fix.** The overview projects both fields, verified live (`access_mode` now returns `SELF_SERVE` where it returned `None`). The page gates on `showsInvitationManagement`, a pure function over `acceptance_status` with a fallback for pre-ADR-165 `INVITED` rows. It **fails closed**: absent signals mean the ordinary profile, because showing cancel and resend to a settled tenant acts on a real tenancy and is a worse error than the one being fixed. `tests/hostel-identity-field-round-trip.test.ts` now pins these two fields alongside `hostel_type`; the bug was re-introduced to confirm the assertion fails.
+
+**See:** [[Changelog]], [[Decisions#ADR-165|ADR-165]]
+
 ## 2026-09-02 — A saved hostel type read back as unset, twice, from two different endpoints (fixed)
 
 **Symptom.** An owner set "Who stays here?" on the Hostel identity screen and the selector snapped back to "Not set" on save. Fixed — and then the Hostels tab kept prompting *"Who stays here? Set this and your tenants stop being asked their gender"* for the very hostel that had just been answered.
