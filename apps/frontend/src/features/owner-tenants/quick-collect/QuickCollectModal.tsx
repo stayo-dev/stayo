@@ -132,7 +132,11 @@ export function QuickCollectModal({ open, onClose, initialTenant }: QuickCollect
   const [mode, setMode] = useState<'suggested' | 'customize'>('suggested');
   const [selectedObligationIds, setSelectedObligationIds] = useState<string[]>([]);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('Cash');
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  // A payment can only have happened today or earlier — you cannot record one
+  // that hasn't occurred yet. `todayIso` caps the picker; the handler also
+  // clamps a typed/pasted value so the constraint can't be bypassed.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [date, setDate] = useState(() => todayIso);
   const [note, setNote] = useState('');
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState(false);
@@ -618,7 +622,14 @@ export function QuickCollectModal({ open, onClose, initialTenant }: QuickCollect
 
           <label className="block">
             <span className={labelStyle}>Payment Date *</span>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mt-1.5 w-full rounded-[11px] border border-border bg-card px-3.5 py-3 text-sm font-semibold text-foreground focus:border-primary focus:outline-none" />
+            <input
+              type="date"
+              value={date}
+              max={todayIso}
+              onChange={(e) => setDate(e.target.value && e.target.value > todayIso ? todayIso : e.target.value)}
+              className="mt-1.5 w-full rounded-[11px] border border-border bg-card px-3.5 py-3 text-sm font-semibold text-foreground focus:border-primary focus:outline-none"
+            />
+            <span className="mt-1 block text-[11px] text-muted-foreground">When the money was actually received — today or earlier.</span>
           </label>
 
           <label className="block">

@@ -5,6 +5,7 @@ import { accessModeLabel } from '../accessMode';
 
 const TONE_BY_STATUS: Record<MockTenant['status'], StatusTone> = {
   active: 'success',
+  dues: 'warning',
   overdue: 'destructive',
   invited: 'warning',
   'pending-docs': 'warning',

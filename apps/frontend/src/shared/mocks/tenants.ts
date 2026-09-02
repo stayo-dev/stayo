@@ -8,7 +8,7 @@
  * neutral Stayo mock hostels used elsewhere in this app.
  */
 
-export type TenantStatus = 'active' | 'overdue' | 'invited' | 'pending-docs';
+export type TenantStatus = 'active' | 'dues' | 'overdue' | 'invited' | 'pending-docs';
 
 export interface TenantObligation {
   id: string;

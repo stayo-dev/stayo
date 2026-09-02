@@ -57,7 +57,7 @@ export interface RealTenantDetail {
   /** Uploaded during onboarding. Present on the response all along, never rendered. */
   photoUrl: string | null;
   phone: string;
-  status: 'active' | 'overdue' | 'invited' | 'pending-docs';
+  status: 'active' | 'dues' | 'overdue' | 'invited' | 'pending-docs';
   statusLabel: string;
   /**
    * `OWNER_MANAGED` means the tenant has not taken charge of their account yet
@@ -211,9 +211,12 @@ export function useTenantDetail(tenantId: string | undefined) {
     if (isInvited) {
       status = 'invited';
       statusLabel = 'Invited';
-    } else if (outstanding > 0) {
+    } else if (overdueAmount > 0) {
       status = 'overdue';
       statusLabel = 'Overdue';
+    } else if (outstanding > 0) {
+      status = 'dues';
+      statusLabel = 'Payment Due';
     } else if (!documentVerified) {
       status = 'pending-docs';
       statusLabel = 'Docs Pending';

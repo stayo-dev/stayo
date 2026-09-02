@@ -24,6 +24,7 @@ interface ProfileHeaderProps {
 
 const STATUS_TONE = {
   active: 'success',
+  dues: 'warning',
   overdue: 'destructive',
   invited: 'warning',
   'pending-docs': 'warning',

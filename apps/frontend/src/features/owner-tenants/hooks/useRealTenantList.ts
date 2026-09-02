@@ -15,7 +15,11 @@ export function toTenantListItem(t: NormalizedTenant, hostelId: string, hostelNa
   // silently go to zero forever, same failure shape as the dashboard tile
   // this fixes alongside.
   const isInvited = t.accessMode === 'OWNER_MANAGED';
-  const isOverdue = !isInvited && t.outstandingAmount > 0 && ['OVERDUE', 'PARTIAL', 'PENDING'].includes(t.paymentStatus.toUpperCase());
+  // Genuinely past due — `paymentStatus` is OVERDUE only when an obligation's
+  // due_date has passed. A tenant with this month's rent generated but not yet
+  // due is PENDING with a balance, which is "Dues", not "Overdue".
+  const isOverdue = !isInvited && t.paymentStatus.toUpperCase() === 'OVERDUE';
+  const hasDues = !isInvited && !isOverdue && t.outstandingAmount > 0;
   let status: MockTenant['status'];
   let statusLabel: string;
   if (isInvited) {
@@ -24,6 +28,9 @@ export function toTenantListItem(t: NormalizedTenant, hostelId: string, hostelNa
   } else if (isOverdue) {
     status = 'overdue';
     statusLabel = 'Overdue';
+  } else if (hasDues) {
+    status = 'dues';
+    statusLabel = 'Payment Due';
   } else if (!t.documentVerified) {
     status = 'pending-docs';
     statusLabel = 'Docs Pending';
