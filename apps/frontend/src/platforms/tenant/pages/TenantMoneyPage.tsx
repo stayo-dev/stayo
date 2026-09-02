@@ -4,7 +4,7 @@ import { GuideNote } from '../guide/GuideNote';
 import { useTenantGuide } from '../guide/useTenantGuide';
 import { TAB_COPY } from '../guide/guideCopy';
 import { useMutation } from '@tanstack/react-query';
-import { Share2, Receipt, Wallet, Info, ShieldCheck, Undo2 } from 'lucide-react';
+import { Share2, Receipt, Wallet, ShieldCheck, Undo2 } from 'lucide-react';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { paymentService } from '@features/payments/api';
 import { useTenantFinancials } from '@features/tenant-financials/hooks/useTenantFinancials';
@@ -13,34 +13,6 @@ import { PaySheet } from '@features/tenant-financials/components/PaySheet';
 
 const card = 'rounded-[16px] border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_4px_14px_rgba(40,30,20,0.05)]';
 const sectionLabel = 'text-[13px] font-bold tracking-[0.06em] text-[#9C9186]';
-
-// Real grades from `tenant-score-service.ts`: EXCELLENT/GOOD/FAIR/NEEDS_ATTENTION/HIGH_RISK
-// (a payment-risk score, starts at 100 and is deducted for late payments — NOT
-// a "new tenant builds up over time" narrative). The design mockup's demo
-// state shows a "New tenant" framing, but that doesn't match how the real
-// score works (a fresh tenant with no history starts at the top, EXCELLENT,
-// not the bottom) — so tier copy here reflects the real scoring semantics
-// instead of the mockup's specific illustrative scenario.
-const STANDING_TIERS = [
-  { key: 'ATTENTION', label: 'Building' },
-  { key: 'FAIR', label: 'Fair' },
-  { key: 'GOOD', label: 'Good' },
-  { key: 'EXCELLENT', label: 'Excellent' },
-];
-
-const STANDING_COPY = [
-  { heading: 'Building Consistency', sub: 'On-time payments will lift your standing' },
-  { heading: 'Fair standing', sub: "You're on the right track" },
-  { heading: 'Good standing', sub: "You're a reliable payer" },
-  { heading: 'Excellent standing', sub: 'Outstanding track record' },
-];
-
-function standingIndex(grade: string | undefined) {
-  if (grade === 'EXCELLENT') return 3;
-  if (grade === 'GOOD') return 2;
-  if (grade === 'FAIR') return 1;
-  return 0; // NEEDS_ATTENTION / HIGH_RISK / unknown
-}
 
 const TIMELINE_DOT: Record<string, string> = {
   paid: 'bg-success',
@@ -90,7 +62,6 @@ export function TenantMoneyPage() {
 
   if (fin.isLoading) return <LoadingSkeleton />;
 
-  const tierIndex = standingIndex(fin.score?.grade);
   const depositPct = fin.securityDeposit.configured > 0 ? Math.round((fin.securityDeposit.paid / fin.securityDeposit.configured) * 100) : 0;
   const rentDue = fin.readModel?.rent_due ?? 0;
   const lateFeeDue = fin.readModel?.late_fees_due ?? 0;
@@ -151,41 +122,6 @@ export function TenantMoneyPage() {
           </button>
         </div>
       </div>
-
-      {fin.score && (
-        <div className="flex flex-col gap-2.5">
-          <span className={sectionLabel}>Payment standing</span>
-          <div className={`${card} p-[17px]`}>
-            <div className="flex items-center justify-between gap-2.5">
-              <div>
-                <div className="font-display text-base font-bold text-foreground">{STANDING_COPY[tierIndex].heading}</div>
-                <div className="mt-0.5 text-[12px] text-muted-foreground">{STANDING_COPY[tierIndex].sub}</div>
-              </div>
-              <span className="flex-none rounded-full bg-secondary/60 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
-                Score {fin.score.score}
-              </span>
-            </div>
-            <div className="mt-3.5 flex gap-1.5">
-              {STANDING_TIERS.map((t, i) => (
-                <div key={t.key} className={`h-[7px] flex-1 rounded-full ${i <= tierIndex ? 'bg-primary' : 'bg-[#E7DDD1]'}`} />
-              ))}
-            </div>
-            <div className="mt-1.5 flex justify-between">
-              {STANDING_TIERS.map((t, i) => (
-                <span key={t.key} className={`text-[10px] font-semibold ${i === tierIndex ? 'text-primary' : 'text-[#B0A597]'}`}>{t.label}</span>
-              ))}
-            </div>
-            <div className="mt-3 flex items-start gap-2 rounded-xl bg-[#F6F0E8] p-[13px]">
-              <Info className="mt-0.5 h-3.5 w-3.5 flex-none text-[#9C7A52]" />
-              <p className="text-[11px] leading-relaxed text-[#6B6259]">
-                {tierIndex < 3
-                  ? <>Clear this month on time and you'll move to <b className="font-semibold text-[#4A433C]">{STANDING_TIERS[tierIndex + 1].label}</b>. Every on-time payment lifts your standing.</>
-                  : "You're at the top tier — keep it up with on-time payments."}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {installmentTotal > 0 && (
         <div className="flex flex-col gap-2.5">

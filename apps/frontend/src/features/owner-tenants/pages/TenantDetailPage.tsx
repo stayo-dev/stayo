@@ -26,7 +26,6 @@ import { DocumentPreviewSheet } from '../profile/DocumentPreviewSheet';
 import { toDocumentGroups } from '../profile/documentGroups';
 import { ReviewRequestCard } from '../profile/ReviewRequestCard';
 import { DocumentThread } from '../profile/DocumentThread';
-import { RiskCard } from '../profile/RiskCard';
 import { TenantRequestsCard } from '../profile/TenantRequestsCard';
 import { CorrectPaymentModal } from '@/app/components/modals/CorrectPaymentModal';
 import { useDocumentShares } from '../hooks/useDocumentShares';
@@ -240,8 +239,6 @@ export function TenantDetailPage() {
             hostelId={tenant.hostelId}
             history={contactHistory}
           />
-
-          <RiskCard tenant={tenant} />
 
           <PrivateNotesCard tenantId={tenant.id} />
 

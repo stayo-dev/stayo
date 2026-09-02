@@ -34,7 +34,6 @@ export interface NormalizedTenant {
   overdueDays: number;
   hasAgreement: boolean;
   depositStatus: string;
-  score: number | null;
   securityDeposit: number;
   guardianPhone: string | null;
   advanceBalance: number;
@@ -87,7 +86,6 @@ export function normalizeTenant(s: Record<string, unknown>): NormalizedTenant {
     overdueDays: s.overdue_days != null ? Number(s.overdue_days) : 0,
     hasAgreement: Boolean(s.has_agreement),
     depositStatus: String(s.deposit_status ?? 'UNKNOWN'),
-    score: s.score != null ? Number(s.score) : null,
     securityDeposit: Number(s.security_deposit ?? s.advance_deposit ?? 0),
     guardianPhone: s.phone_2 != null ? String(s.phone_2) : s.guardian_phone != null ? String(s.guardian_phone) : profile?.emergency_contact != null ? String(profile.emergency_contact) : null,
     advanceBalance: Number(s.advance_balance ?? s.deposit_balance ?? 0),

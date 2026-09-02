@@ -70,23 +70,7 @@ export interface RealTenantDetail {
   room: string;
   joinedDate: string;
   hostelName: string;
-  agreementStatus: string;
   guardian?: MockGuardian;
-  /** Null when there isn't enough history to judge — never a fabricated 100. */
-  riskScore: number | null;
-  /** How many more paid cycles before a score means anything. */
-  riskCyclesNeeded: number;
-  riskLabel: string;
-  riskInsight: string;
-  /**
-   * Every insight the score service produced, not just the first.
-   * `suggestions` is deliberately not carried: that array is written in the
-   * second person addressed to the tenant ("Pay before due date to improve
-   * your score") because the same service backs `/api/tenants/me/score`.
-   */
-  riskInsights: string[];
-  riskTrend: string;
-  kycStatus: string;
   outstanding: number;
   /** From FinancialReadModelService — the authority on *whether* they're overdue. */
   overdueAmount: number;
@@ -134,20 +118,6 @@ export interface RealTenantDetail {
     billingFrequency: string;
   };
 }
-
-const GRADE_LABEL: Record<string, string> = {
-  EXCELLENT: 'Excellent',
-  GOOD: 'Good',
-  FAIR: 'Fair',
-  NEEDS_ATTENTION: 'Needs Attention',
-  HIGH_RISK: 'High Risk',
-};
-
-const TREND_LABEL: Record<string, string> = {
-  IMPROVING: 'Improving',
-  STABLE: 'Stable',
-  DECLINING: 'Declining',
-};
 
 function activityTone(type: string): TenantActivityItem['tone'] {
   if (type === 'payment') return 'positive';
@@ -229,7 +199,6 @@ export function useTenantDetail(tenantId: string | undefined) {
       ? { name: String(o.guardian_name), relation: String(o.guardian_relation || 'Guardian'), phone: String(o.guardian_phone || '') }
       : undefined;
 
-    const grade = score?.grade ? String(score.grade) : '';
     const activity: Array<TenantActivityItem & { type: string }> = Array.isArray(o.recent_activity)
       ? o.recent_activity.map((a: any) => ({
           id: String(a.id),
