@@ -134,6 +134,31 @@ export async function middleware(req: NextRequest) {
     return NextResponse.json({}, { headers: corsHeaders });
   }
 
+  // 1b. v1 scope (ADR-170): the public marketplace (Stayo Discover) and the
+  //     owner listing/marketing flow that feeds it are shelved for v2. The
+  //     route handlers and services are intact on disk — this gate is the one
+  //     chokepoint. Flip MARKETPLACE_ENABLED=true to bring them back.
+  if (
+    process.env.MARKETPLACE_ENABLED !== "true" &&
+    (pathname.startsWith("/api/discover") ||
+      /^\/api\/owner\/hostels\/[^/]+\/marketing(\/|$)/.test(pathname) ||
+      pathname.startsWith("/api/platform-admin/marketing-reviews") ||
+      pathname.startsWith("/api/platform-admin/platform-listings") ||
+      /^\/api\/platform-admin\/hostels\/[^/]+\/(approve|reject|suspend)-listing(\/|$)/.test(pathname) ||
+      /^\/api\/platform-admin\/hostels\/[^/]+\/listing-review(\/|$)/.test(pathname))
+  ) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: {
+          code: "MARKETPLACE_DISABLED",
+          message: "Not available yet — the Stayo marketplace ships in a later version.",
+        },
+      },
+      { status: 410, headers: corsHeaders },
+    );
+  }
+
   // 2. Allow public routes — except the handful of writes that live under a
   //    public prefix and still need an account (see the module for why).
   const isPublicPrefix = PUBLIC_ROUTES.some((route) => pathname.startsWith(route));

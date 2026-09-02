@@ -103,18 +103,17 @@ describe('conversionRate', () => {
 });
 
 describe('buildReviewQueue', () => {
-  it('keeps the design\'s three rows', () => {
-    expect(buildReviewQueue({ kyc: 4, listings: 2 })).toHaveLength(3);
+  it('keeps its rows (the Discovery listings row was dropped in v1 — ADR-170)', () => {
+    expect(buildReviewQueue({ kyc: 4 })).toHaveLength(2);
   });
 
   it('routes each row to the screen that clears it', () => {
-    const rows = buildReviewQueue({ kyc: 4, listings: 2 });
+    const rows = buildReviewQueue({ kyc: 4 });
     expect(rows.find((r) => r.key === 'kyc')?.to).toBe('/admin/kyc');
-    expect(rows.find((r) => r.key === 'listings')?.to).toBe('/admin/listings');
   });
 
   it('shows the bug-report row as unavailable, not as an empty queue', () => {
-    const reports = buildReviewQueue({ kyc: 0, listings: 0 }).find((r) => r.key === 'reports');
+    const reports = buildReviewQueue({ kyc: 0 }).find((r) => r.key === 'reports');
     expect(reports?.unavailable).toBe(true);
     expect(reports?.count).toBe('—');
   });

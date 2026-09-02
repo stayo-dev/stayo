@@ -5,7 +5,6 @@ import { queryClient } from '@lib/queryClient';
 import { AuthProvider } from '@context/AuthContext';
 import { StayoLoadingScreen } from '@shared/ui/brand';
 
-const WelcomePage = lazy(() => import('@/app/pages/public/WelcomePage').then((m) => ({ default: m.WelcomePage })));
 const LandingPage = lazy(() => import('@/app/pages/public/LandingPage').then((m) => ({ default: m.LandingPage })));
 const LeadSignupCallbackPage = lazy(() => import('@/app/pages/public/LeadSignupCallbackPage').then((m) => ({ default: m.LeadSignupCallbackPage })));
 const OwnerActivationPage = lazy(() => import('@/app/pages/public/OwnerActivationPage').then((m) => ({ default: m.OwnerActivationPage })));
@@ -77,13 +76,14 @@ export function PublicRoutes() {
     <>
       {/* ── Public hostel landing pages (SEO crawlable) ──────────────── */}
       <Route element={<PublicShell />}>
-        {/* ADR-071: `/` asks which audience you are before it pitches at you.
-            The owner marketing page it used to hold now lives at `/owners`,
-            which is where "Start free" hands off to. Every other route that
-            means "the owner home" points at `/owners` too — `/` is a fork,
-            not a destination, so landing a signed-out owner there after a
-            session expiry or a logo click would have been a step backwards. */}
-        <Route path="/" element={<WelcomePage />} />
+        {/* ADR-170: v1 is owner-only (the marketplace is shelved), so `/` is
+            the owner landing page again — the pre-ADR-071 arrangement. A
+            returning owner with a hostel is forwarded to `/owner/home` by
+            LandingPage itself; a logged-out visitor gets the owner
+            marketing/login page and the crawlable `/`. The audience-fork
+            `WelcomePage` is kept on disk, unrouted, for when v2 restores the
+            tenant-facing side. `/owners` stays as an alias. */}
+        <Route path="/" element={<LandingPage />} />
         <Route path="/owners" element={<LandingPage />} />
         {/* ADR-035: one login surface. `/login` is the landing page with the
             Stayo login popup already open — kept as a real URL because

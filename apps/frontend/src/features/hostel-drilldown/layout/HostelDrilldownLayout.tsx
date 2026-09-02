@@ -10,7 +10,7 @@ const TABS = [
   { to: 'overview', label: 'Overview' },
   { to: 'rooms', label: 'Rooms' },
   { to: 'tenants', label: 'Tenants' },
-  { to: 'marketing', label: 'Marketing' },
+  // 'marketing' (the Stayo Discover listing editor) was removed in v1 — ADR-170.
   { to: 'settings', label: 'Settings' },
 ];
 
@@ -25,7 +25,7 @@ const TABS = [
  * by navigation is the same protection the backend's architectural invariants
  * enforce server-side (never fall back to "first hostel").
  *
- * The tab row scrolls. Five fixed-width tabs need more than a 360px phone has,
+ * The tab row scrolls. Fixed-width tabs can need more than a 360px phone has,
  * and a row that overflows silently is how the tenant nav hid its sixth tab
  * entirely — see [[Bugs]] 2026-08-30. `snap-x` plus a visible edge keeps the
  * overflow discoverable rather than invisible.
