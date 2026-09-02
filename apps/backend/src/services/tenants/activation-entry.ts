@@ -17,25 +17,21 @@
  * guardian details and residency agreement a new tenant provides were never
  * asked for.
  *
- * **Why the obvious field does not answer it.** `activation_completed_at`
- * looks like the answer and is not: adoption stamps it at the moment the owner
- * creates the tenancy (`owner-managed-tenancy-service.ts`), so it is already
- * set for precisely the tenants who have never onboarded. It records "this
- * tenancy is set up", not "this person went through onboarding".
+ * **The authoritative signal (ADR-165).** `tenants.acceptance_status`:
+ * `PENDING` — invited, operationally live, tenant has NOT accepted; `ACCEPTED`
+ * — the tenant personally completed activation (`completeActivation`, and only
+ * that, writes it). For a new-model tenancy this field alone answers the
+ * question and `activation_completed_at` is stamped only alongside `ACCEPTED`.
  *
- * What does separate the two is which write last touched the invitation.
- * `completeActivation` moves it to `ACTIVATED`, and that is the only write in
- * the system that fires when a *tenant* finishes the ceremony. Adoption moves
- * it to `SUPERSEDED` and records a `tenant_owner_attestations` row — the owner
- * attesting on the tenant's behalf, which is the opposite claim.
- *
- * A tenancy with no invitation at all (created directly, never invited) has
- * neither signal, so it falls back to the timestamp — correct there, because
- * nothing else could have stamped it — unless an attestation says an owner set
- * it up.
+ * **Grandfathered rows** carry `acceptance_status = NOT_REQUIRED`. For them the
+ * old proxies still apply: `completeActivation` moved the invitation to
+ * `ACTIVATED` when a *tenant* finished; adoption moved it to `SUPERSEDED` and
+ * wrote a `tenant_owner_attestations` row (the owner attesting on the tenant's
+ * behalf, the opposite claim) and also stamped `activation_completed_at`. A
+ * tenancy with no invitation and no attestation falls back to the timestamp.
  *
  * Pure, because these are the guards on a legal ceremony and the branches
- * matter more than the plumbing around them. See ADR-155.
+ * matter more than the plumbing around them. See ADR-155, ADR-165.
  */
 
 export interface ActivationEntrySubject {
@@ -53,9 +49,18 @@ export interface ActivationEntrySubject {
   invitationStatus?: string | null;
   /**
    * Whether a `tenant_owner_attestations` row exists — i.e. an owner set this
-   * tenancy up on the tenant's behalf.
+   * tenancy up on the tenant's behalf. Grandfathered rows only (pre-ADR-165);
+   * no new attestations are written.
    */
   ownerAttested?: boolean | null;
+  /**
+   * `tenants.acceptance_status` (ADR-165). The authoritative signal for the
+   * current model:
+   *   PENDING  — invited, operationally live, tenant has NOT accepted.
+   *   ACCEPTED — the tenant personally completed activation.
+   *   NOT_REQUIRED / absent — legacy row; fall back to the proxies above.
+   */
+  acceptanceStatus?: string | null;
 }
 
 export type ActivationEntryVerdict =
@@ -73,19 +78,28 @@ export type ActivationEntryVerdict =
 export function isAwaitingTenantOnboarding(subject: ActivationEntrySubject): boolean {
   // The tenant finished the ceremony. Only `completeActivation` writes this.
   if (String(subject.invitationStatus ?? "").toUpperCase() === "ACTIVATED") return false;
+
+  // Current model: the explicit field is the whole answer.
+  const acceptance = String(subject.acceptanceStatus ?? "").toUpperCase();
+  if (acceptance === "ACCEPTED") return false;
+  if (acceptance === "PENDING") return true;
+
+  // Grandfathered rows (acceptance_status NOT_REQUIRED / absent).
   return Boolean(subject.ownerAttested);
 }
 
 /** Whether the tenant has been through onboarding themselves. */
 export function hasCompletedActivation(subject: ActivationEntrySubject): boolean {
   if (String(subject.invitationStatus ?? "").toUpperCase() === "ACTIVATED") return true;
+  if (String(subject.acceptanceStatus ?? "").toUpperCase() === "ACCEPTED") return true;
 
-  // An owner set this tenancy up. Whatever the timestamp says, the tenant has
-  // not been asked for their identity, documents, guardian or signature.
+  // An owner set this tenancy up, or acceptance is still PENDING. Whatever the
+  // timestamp says, the tenant has not been asked for their identity,
+  // documents, guardian or signature.
   if (isAwaitingTenantOnboarding(subject)) return false;
 
-  // No invitation and no attestation: nothing but the tenant's own completion
-  // could have stamped this.
+  // No invitation, no attestation, no acceptance requirement: nothing but the
+  // tenant's own completion could have stamped this.
   return Boolean(subject.activationCompletedAt);
 }
 

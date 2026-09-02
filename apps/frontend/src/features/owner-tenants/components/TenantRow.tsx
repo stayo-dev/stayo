@@ -1,7 +1,7 @@
 import { StatusPill, type StatusTone } from '@shared/ui-patterns/StatusPill';
 import type { MockTenant } from '@shared/mocks/tenants';
 import { TenantAvatar } from '@shared/ui/TenantAvatar';
-import { accessModeLabel } from '../accessMode';
+import { acceptanceBadge } from '../accessMode';
 
 const TONE_BY_STATUS: Record<MockTenant['status'], StatusTone> = {
   active: 'success',
@@ -21,9 +21,10 @@ interface TenantRowProps {
 export function TenantRow({ tenant, onClick, showHostel }: TenantRowProps) {
   const meta = tenant.room === '—' ? `No room · ₹${tenant.rent.toLocaleString('en-IN')}/mo` : `Room ${tenant.room} · ₹${tenant.rent.toLocaleString('en-IN')}/mo`;
   const metaSuffix = tenant.kycStatus === 'Pending' || tenant.kycStatus === 'Not started' ? ' · docs pending' : '';
-  // States a fact about reach, not a tenancy status — kept off the status
-  // pill, beside the room/rent line instead.
-  const accessLabel = accessModeLabel(tenant.accessMode);
+  // "Awaiting acceptance" (new model) or "Not on app" (legacy) — a fact about
+  // reach, not a tenancy status, so kept off the status pill and beside the
+  // room/rent line instead.
+  const accessLabel = acceptanceBadge(tenant);
 
   return (
     <button

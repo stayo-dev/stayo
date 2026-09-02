@@ -101,8 +101,10 @@ export default defineConfig({
       'tests/identity-field-policy.test.ts',
       'tests/agreement-commitment.test.ts',
       'tests/activation-account-state.test.ts',
-      // The guards deciding who may enter the activation ceremony. ADR-154.
+      // The guards deciding who may enter the activation ceremony. ADR-154, ADR-165.
       'tests/activation-entry.test.ts',
+      // The owner field-lock while acceptance is pending. ADR-165.
+      'tests/owner-field-lock.test.ts',
       'tests/activation-subject.test.ts',
       'tests/invitation-expiry-reminder-contract.test.ts',
       'tests/move-out-quick-exit-plan.test.ts',

@@ -1696,6 +1696,8 @@ tenants represents a persisted HMS domain record.
 | monthly_rent | Decimal? | no | Domain field persisted by the application. |
 | joined_on | DateTime? | no | Domain field persisted by the application. |
 | status | TenantStatus | no | Domain field persisted by the application. Has a database default. |
+| acceptance_status | TenantAcceptanceStatus | no | ADR-165. `NOT_REQUIRED` (default, legacy) / `PENDING` (invited, live, not personally accepted) / `ACCEPTED`. Migration `20260902120000_tenant_acceptance_status`. |
+| tenant_accepted_at | DateTime? | no | When the tenant personally completed activation. Stamped only by `completeActivation`, alongside `acceptance_status = ACCEPTED`. |
 | owner_id | String? | no | Foreign key or scoped identifier. |
 | payment_frequency | PaymentFrequency | no | Domain field persisted by the application. Has a database default. |
 | payment_frequency_effective_from | DateTime? | no | Domain field persisted by the application. |

@@ -1129,6 +1129,17 @@ See [[Frontend]], [[Changelog]], [[Bugs]].
 - **Verification status:** pure tests cover `adoptPrompt`, `accessMode`, `resolveTenantName`/`resolveTenantPhone` and the conditional activation invariants. **Not exercised against a live database** — the migration adding `access_mode`/`display_name`/`tenant_owner_attestations` has not been applied anywhere, so the full adopt → rent-generation → occupancy → reminder path described above is unverified end to end. See [[TODO]].
 - **See:** [[Business-Rules]], [[Database]], [[APIs]], [[Decisions]], [[Bugs]], [[Changelog]]
 
+## Tenant acceptance is mandatory — invite goes live, but the tenant must accept it themselves (2026-09-02, [[Decisions#ADR-165|ADR-165]])
+
+**Removes the "portable" owner-managed-forever tenant.** An owner still invites a tenant and the tenancy is live at once — the tenant is in the room, rent generates, reminders fire, the owner can set up terms and internal notes. But a new `acceptance_status` (`PENDING` → `ACCEPTED`) now tracks whether the tenant has personally accepted, and:
+
+- **The owner cannot accept for them, and cannot enter their guardian / ID / college details.** "Keep records myself", "Just add to my records", and `POST /api/tenants/[id]/adopt` are gone. The tenant list shows an **"Awaiting acceptance"** badge; the tenant detail card reads *"Waiting for {name} to accept — they're already in the room… only they can add [guardian, ID, college]"* with Share-link and Cancel actions.
+- **The tenant accepts by walking their own `/activate/:token` wizard** — the same one every invitee uses. On completion `acceptance_status = ACCEPTED`, both timestamps are stamped, and `access_mode` flips to `SELF_SERVE`.
+- **An invite nobody accepts is cleaned up.** The owner can Cancel it; a daily cron auto-expires it 7 days past link expiry. Both free the room and cancel *upcoming* rent, while any payment already recorded and any past dues stay on the books for settlement.
+- **Existing owner-managed tenants are grandfathered** — `acceptance_status = NOT_REQUIRED`, no behaviour change, no data migration.
+- **Files:** `apps/backend/src/services/tenants/{owner-managed-tenancy-service (initializeActiveUnacceptedTenancy), unaccepted-tenancy-closure, unaccepted-tenancy-expiry-service}.ts`, `activation-entry.ts`, `change-management/field-classification.ts` (`TENANT_ONLY_FIELDS`), `app/api/cron/expire-unaccepted-tenancies/route.ts`; frontend `features/owner-tenants/{accessMode (acceptanceBadge), activation/activationProgress, hooks/{useRealTenantList,usePendingActivations,useTenantDetail}, pages/TenantDetailPage, components/InvitedTenantProfileView}.tsx`.
+- **See:** [[Decisions#ADR-165|ADR-165]], [[Business-Rules]], [[APIs]], [[Database]], [[Changelog]], [[Bugs]]
+
 ## Owner-managed tenants — claim flow removed, activation unified (2026-09-01, [[Decisions#ADR-163|ADR-163]])
 
 **A separate phone-OTP "claim" flow shipped 2026-08-27 (Phase 2) and was removed 2026-09-01.** It existed to solve one problem: an owner-managed tenancy's own invitation is `SUPERSEDED` from the moment it's created (see the entry above), so `resolveByToken` had nowhere else to send the tenant's WhatsApp activation link. That problem is now solved directly inside `resolveByToken`/`completeActivation` instead of via a parallel flow — see [[Business-Rules]] and [[Decisions#ADR-163|ADR-163]] for the mechanism.

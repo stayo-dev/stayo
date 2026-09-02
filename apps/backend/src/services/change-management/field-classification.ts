@@ -243,15 +243,49 @@ export function partitionFieldsByCategory(
 }
 
 /**
+ * Fields only the tenant may fill, and only after they personally accept their
+ * invitation (`acceptance_status = ACCEPTED`). While acceptance is `PENDING`
+ * the owner is standing in for a person who has not consented to anything, so
+ * these are hard-rejected rather than turned into (un-approvable) change
+ * requests. See ADR-165. Names are as they appear in the `PUT /api/tenants/[id]`
+ * payload / `classifyTenantField`.
+ */
+export const TENANT_ONLY_FIELDS: ReadonlySet<string> = new Set([
+  // Guardian
+  "guardian_name", "guardian_phone", "guardian_relation", "phone_2", "phone_3",
+  // College / education
+  "college_name", "course", "roll_number", "year_of_study", "branch", "section",
+  // Personal identity
+  "date_of_birth", "gender", "photo_url", "permanent_address", "pan_number", "nationality",
+  "emergency_contact",
+  // ID / document verification — the owner cannot verify documents a tenant
+  // who has not accepted has had no way to upload.
+  "document_verified",
+]);
+
+/** The subset of `data`'s keys that are tenant-only. */
+export function partitionTenantOnlyFields(data: Record<string, unknown>): string[] {
+  return Object.keys(data).filter((k) => TENANT_ONLY_FIELDS.has(k));
+}
+
+/**
  * Check if a tenant is in the Administrative Correction Window.
  *
  * When a tenant is INVITED (pre-activation) and has no payment history,
  * the owner can freely edit all fields as Category A — no approval needed.
+ *
+ * A live-but-unaccepted tenancy (`acceptance_status = PENDING`) is deliberately
+ * NOT in the window: it is `ACTIVE`, not `INVITED`, so this already returned
+ * false for it, but the explicit guard keeps that true if the status model
+ * ever changes. Tenant-only fields are blocked outright for it (see
+ * `TENANT_ONLY_FIELDS`); the rest go through the ordinary category routing.
  */
 export function isInCorrectionWindow(tenant: {
   status: string;
   hasPayments: boolean;
+  acceptanceStatus?: string | null;
 }): boolean {
+  if (tenant.acceptanceStatus === "PENDING") return false;
   return tenant.status === "INVITED" && !tenant.hasPayments;
 }
 

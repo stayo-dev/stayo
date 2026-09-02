@@ -1813,6 +1813,8 @@ model tenants {
   mobile_verified                   Boolean                             @default(false)
   document_verified                 Boolean                             @default(false)
   access_mode                       TenantAccessMode                    @default(SELF_SERVE)
+  acceptance_status                 TenantAcceptanceStatus              @default(NOT_REQUIRED)
+  tenant_accepted_at                DateTime?                           @db.Timestamptz(6)
   display_name                      String?
   complaints                        complaints[]
   rule_acceptances                  TenantPolicyAcceptance[]
@@ -2188,6 +2190,19 @@ enum TenantStatus {
 enum TenantAccessMode {
   SELF_SERVE
   OWNER_MANAGED
+}
+
+// Whether the tenant has personally accepted their invitation. Independent of
+// `TenantStatus` (operationally live) and `TenantAccessMode` (has a login).
+//   NOT_REQUIRED — legacy row / created outside the invitation flow. The
+//                  default, so existing OWNER_MANAGED tenancies are grandfathered
+//                  and every acceptance-scoped guard/sweep ignores them.
+//   PENDING      — invited, operationally live, tenant has NOT personally accepted.
+//   ACCEPTED     — tenant personally completed activation (`completeActivation`).
+enum TenantAcceptanceStatus {
+  NOT_REQUIRED
+  PENDING
+  ACCEPTED
 }
 
 enum MoveOutStatus {

@@ -8,6 +8,24 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-02 — `resolveByToken` would have dead-ended every new tenant's own activation link at `ALREADY_ACTIVE` (fixed as part of [[Decisions#ADR-165|ADR-165]])
+
+**What it was.** `resolveByToken`'s status ladder had a rung: `else if (invitation.status === "ACTIVATED" || invitation.tenant.status === "ACTIVE") throw "ALREADY_ACTIVE"`. Since an owner-invited tenancy is `ACTIVE` from the moment it is created, this rung was only survivable because the *prior* rung caught the invitation's `SUPERSEDED` status first and fell through. ADR-165 keeps the invitation `PENDING` (so the expiry/nudge machinery and the re-invite dedup keep working), which means execution now reaches that `else if` — and `tenant.status === "ACTIVE"` is true for every live-but-unaccepted tenancy, so the tenant's own link would report their account as already active and never open the wizard.
+
+**Root cause.** "Has the tenant personally finished onboarding?" was encoded implicitly as `SUPERSEDED` + `OWNER_MANAGED` + a `tenant_owner_attestations` row, and each activation guard read some subset of those proxies; the crudest fallback was `tenant.status === "ACTIVE"`.
+
+**Fix.** An explicit `tenants.acceptance_status` (`PENDING`/`ACCEPTED`), authoritative for new-model rows. The rung now reads `invitation.status === "ACTIVATED" || hasCompletedActivation(entrySubject)`, where `hasCompletedActivation` returns false for `PENDING`. The `SUPERSEDED` fall-through stays for grandfathered rows.
+
+**Lesson.** A status column that means "is this live" was repeatedly asked "is this person done", in four places. The fix was one field that answers only the second question. Not verified against a live database in this environment. See [[Decisions#ADR-165|ADR-165]], [[Business-Rules]].
+
+## 2026-09-02 — Owner edits to a not-yet-accepted tenant's guardian/college fields became change requests nobody could approve (fixed as part of [[Decisions#ADR-165|ADR-165]])
+
+**What it was.** For an owner-managed tenancy (`ACTIVE`, no tenant login), an owner editing a Category-B field (`guardian_name`, `college_name`, `date_of_birth`, …) via `PUT /api/tenants/[id]` produced a pending `change_request` requiring **tenant** approval — which a login-less tenant can never give. The requests piled up silently. The correction window (`isInCorrectionWindow`) didn't apply because it keys on `status === "INVITED"` and the tenancy was `ACTIVE`.
+
+**Fix.** `updateTenant` now hard-rejects a defined `TENANT_ONLY_FIELDS` set while `acceptance_status = PENDING`, with a message naming the fields and telling the owner the tenant must add them after accepting. Grandfathered (`NOT_REQUIRED`) rows keep today's imperfect behaviour — noted here as a residual gap for `name`/`email` on any owner-managed row, a candidate follow-up (auto-expire L2 change requests whose tenant profile has `auth_user_id IS NULL`).
+
+**See:** [[Decisions#ADR-165|ADR-165]], [[Business-Rules]].
+
 ## 2026-09-01 — The invite wizard's "already paid" panel never showed the settlement it had already fetched (fixed)
 
 **Symptom.** On the Invite Tenant wizard's Verify step, an owner who had recorded money the tenant already handed over saw a headed "Already paid" box containing one line of placeholder text — *"Working this out…"* — and it never resolved. The network tab showed `POST /api/tenants/invite-settlement-preview` firing and answering correctly.

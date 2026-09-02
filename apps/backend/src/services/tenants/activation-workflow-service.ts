@@ -38,9 +38,10 @@ type ActivationStep = "ACCOUNT" | "RULES" | "AGREEMENT" | "PROFILE" | "ACTIVATE"
 type ActivationCredential = string | ActivationSubjectRef;
 
 /**
- * The three fields `activation-entry` needs, read off a resolved tenancy.
- * Kept in one place so entry and completion can never disagree about what
- * "already onboarded" means. See ADR-155.
+ * The fields `activation-entry` needs, read off a resolved tenancy. Kept in one
+ * place so entry and completion can never disagree about what "already
+ * onboarded" means. `acceptance_status` is the authoritative one for new-model
+ * tenancies; the rest are grandfathered proxies. See ADR-155, ADR-165.
  */
 function toEntrySubject(tenant: any, invitation?: any | null) {
   return {
@@ -48,6 +49,7 @@ function toEntrySubject(tenant: any, invitation?: any | null) {
     activationCompletedAt: tenant?.activation_completed_at,
     invitationStatus: invitation?.status ?? null,
     ownerAttested: (tenant?.owner_attestations?.length ?? 0) > 0,
+    acceptanceStatus: tenant?.acceptance_status,
   };
 }
 
