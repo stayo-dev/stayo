@@ -8,6 +8,22 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-02 — Rent generation stopped entirely the moment a second owner onboarded a tenant (fixed)
+
+**Symptom.** An owner tenant profile showed **"Next Payment: Nothing due"** for a tenant on ₹7,500/mo. A live-DB check (`xhoqkhwsnqfwhjsffybs`, "Stayo dev") found the tenant had **zero `rent_obligations` rows** — and so did every active tenant of the *second* of that database's two owners. There were **no September 2026 obligations for anyone**, and `rent_generation_logs` had only two rows ever, both August, both for the first owner.
+
+**Root cause.** `GET /api/cron/generate-rent` called `resolveSingleOperationalOwnerId()`, which returns a value **only when exactly one** owner has an active tenant; otherwise the route returned **HTTP 409 and generated nothing at all**, writing no log. It relied on `RENT_CRON_OWNER_ID` (or `PRIMARY_OWNER_ID` / `PRODUCTION_OWNER_ID`) being set to disambiguate — and it wasn't. The two August runs succeeded only because the first owner was briefly the *only* operational owner; once the second owner's tenant activated (2026-08-31), every nightly run 409'd. `generate-rent` was the **only** cron with a single-owner gate — `rent-reminders`, `agreement-lifecycle`, `daily-briefings`, `move-out-releases` all already sweep every owner.
+
+**Compounding, at onboarding.** `onboarding-financials-service` gates first-obligation creation on `joiningDate <= today` (an exact-date compare), so a tenant created a day or two before their join date got **no** obligation from onboarding either — and it hard-coded `dueDay = 5` regardless of the hostel's configured value.
+
+**Downstream, in the UI.** Even where obligations existed, the owner profile's "Next payment" came from `GET /api/tenants/:id/full` — `rent_obligations { take: 5, orderBy: { due_date: "desc" } }`, no status filter, no payments — so it rendered "Nothing due" whenever those 5 rows were empty or all settled, and for a signed-agreement tenant it read the 5 *furthest-future* rows.
+
+**Also found: the monthly cron could create a duplicate.** Its existence check keyed on `allocation_id + rent_month`, missing the `allocation_id: NULL` rows `onboarding-financials-service` writes — so it produced a second RENT row for the same tenant + month (a tenant in the dev DB had two Aug-2026 RENT rows, one from each path).
+
+**Fix.** The cron iterates all operational owners' hostels (hostel-`id` cursor, unchanged per-hostel lock/ledger/unique-constraint idempotency); the dedup check also matches `tenant_id + rent_month + obligation_type`; `onboarding-financials-service` reads the hostel due day and uses a month-based gate; the owner profile reads `billingTimelineService` (same as the tenant portal) with a projected next installment. See [[Decisions#ADR-167|ADR-167]], [[Changelog]], [[Business-Rules]].
+
+**Not fixed / not verified here.** The multi-owner cron was not run against the live dev database in this change, and the backend DB-integration tests could not run in this environment (`DATABASE_URL_TEST` unset). Whether `RENT_CRON_OWNER_ID` is set in the deployed `stayo-testing` backend, and whether Vercel cron is actually invoking the endpoint on schedule, are open items in [[TODO]].
+
 ## 2026-09-02 — `resolveByToken` would have dead-ended every new tenant's own activation link at `ALREADY_ACTIVE` (fixed as part of [[Decisions#ADR-165|ADR-165]])
 
 **What it was.** `resolveByToken`'s status ladder had a rung: `else if (invitation.status === "ACTIVATED" || invitation.tenant.status === "ACTIVE") throw "ALREADY_ACTIVE"`. Since an owner-invited tenancy is `ACTIVE` from the moment it is created, this rung was only survivable because the *prior* rung caught the invitation's `SUPERSEDED` status first and fell through. ADR-165 keeps the invitation `PENDING` (so the expiry/nudge machinery and the re-invite dedup keep working), which means execution now reaches that `else if` — and `tenant.status === "ACTIVE"` is true for every live-but-unaccepted tenancy, so the tenant's own link would report their account as already active and never open the wizard.

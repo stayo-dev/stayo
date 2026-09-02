@@ -1,6 +1,7 @@
 import { prisma } from "../db";
 import { eventLog } from "./event-log-service";
 import { eventSystem } from "../events";
+import { applyDueDayChangeInTx } from "@/src/services/payments/due-day-change-service";
 
 export type MaintenanceType = "MONTHLY" | "ONE_TIME" | "NONE";
 export type RentCycle = "MONTHLY";
@@ -890,21 +891,50 @@ export class HostelPolicyService {
     const preferencesConfig = policyToStorage(next, existingConfig);
     const compatibility = toCompatibilityPreferences(next);
 
-    await prisma.hostels.update({
-      where: { id: hostel.id },
-      data: {
-        currency: next.operations.currency,
-        timezone: next.operations.timezone,
-        rent_cycle: next.billing.rent_cycle,
-        auto_rent_day: next.billing.auto_rent_day,
-        receipt_prefix: next.receipts.prefix,
-        upi_id: next.payments.upi_id,
-        phonepe_merchant_id: next.payments.phonepe_merchant_id,
-        gst_number: next.branding.gst_number,
-        logo_url: next.branding.logo_url,
-        preferences_config: preferencesConfig,
-      },
+    // A due-day change re-dates the hostel's future, unpaid rent/maintenance
+    // obligations so recurring rent follows the new day going forward. History
+    // (paid / partially-paid rows, past months) is never rewritten. Runs in the
+    // same transaction as the policy write so the two can't disagree.
+    const dueDayChanged = current.billing.due_day !== next.billing.due_day;
+    let dueDayObligationsUpdated = 0;
+
+    await prisma.$transaction(async (tx: any) => {
+      await tx.hostels.update({
+        where: { id: hostel.id },
+        data: {
+          currency: next.operations.currency,
+          timezone: next.operations.timezone,
+          rent_cycle: next.billing.rent_cycle,
+          auto_rent_day: next.billing.auto_rent_day,
+          receipt_prefix: next.receipts.prefix,
+          upi_id: next.payments.upi_id,
+          phonepe_merchant_id: next.payments.phonepe_merchant_id,
+          gst_number: next.branding.gst_number,
+          logo_url: next.branding.logo_url,
+          preferences_config: preferencesConfig,
+        },
+      });
+
+      if (dueDayChanged) {
+        const repriced = await applyDueDayChangeInTx(tx, {
+          hostelId: hostel.id,
+          newDueDay: next.billing.due_day,
+          actorId: changedBy,
+          reason: "Hostel due-day setting changed",
+        });
+        dueDayObligationsUpdated = repriced.obligationsUpdated;
+      }
     });
+
+    if (dueDayChanged) {
+      await eventLog.log("DUE_DAY_CHANGED", ownerId, {
+        hostel_id: hostel.id,
+        changed_by: changedBy,
+        old_due_day: current.billing.due_day,
+        new_due_day: next.billing.due_day,
+        obligations_updated: dueDayObligationsUpdated,
+      }).catch((e: any) => console.error("Failed to log DUE_DAY_CHANGED:", e));
+    }
 
     await eventLog.log("HOSTEL_POLICY_UPDATED", ownerId, {
       hostel_id: hostel.id,

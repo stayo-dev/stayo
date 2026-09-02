@@ -38,13 +38,6 @@ export function useTenantFinancials() {
     staleTime: 30_000,
   });
 
-  const scoreQuery = useQuery({
-    queryKey: ['tenant', 'score'],
-    queryFn: () => tenantFinancialsService.getScore(),
-    enabled: session.isAuthenticated,
-    staleTime: 60_000,
-  });
-
   const billingFrequencyQuery = useQuery({
     queryKey: ['tenant', 'billing-frequency'],
     queryFn: () => tenantFinancialsService.getBillingFrequency(),
@@ -95,7 +88,6 @@ export function useTenantFinancials() {
     securityDeposit: readModel?.security_deposit ?? { configured: 0, paid: 0, due: 0 },
     timeline: items,
     history,
-    score: scoreQuery.data ?? null,
     billingFrequency: billingFrequencyQuery.data ?? null,
     payStage,
     payError,

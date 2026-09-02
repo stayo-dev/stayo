@@ -1202,6 +1202,12 @@ export class TenantService {
         current_payable_amount: currentPayableAmount,
         deposit_balance: advanceBalance,
       },
+      // The per-obligation breakdown FinancialReadModelService already computed
+      // (currently-payable + upcoming, i.e. everything except settled). The
+      // owner tenant profile reads this instead of the truncated `/full`
+      // `rent_obligations` list so "Next payment" and the payment schedule use
+      // the same canonical records the tenant portal reads.
+      read_model_items: readModel.items,
       profile: legacyTenant.profile
         ? {
             id: legacyTenant.profile.id,
