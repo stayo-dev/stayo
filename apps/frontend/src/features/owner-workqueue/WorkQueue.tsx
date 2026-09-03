@@ -1,9 +1,11 @@
-import type { ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useMemo, type ReactNode } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, Check, Info } from 'lucide-react';
 import { cn } from '@shared/lib/cn';
 import { APP_SURFACE, APP_GRID } from '@shared/ui/surface';
 import { useIsDesktop } from '@/app/components/ui/use-desktop';
+import { MasterDetail } from '@/app/layouts/MasterDetail';
+import { findFocusedItem } from './workQueueFocus';
 
 /**
  * The one work-queue interaction model (ADR-046).
@@ -18,6 +20,22 @@ import { useIsDesktop } from '@/app/components/ui/use-desktop';
  *
  * A queue supplies data and actions; it does not get to invent layout,
  * ordering semantics or empty states.
+ *
+ * **Desktop (`lg+`, ADR-171):**
+ * - `desktopLayout="master-detail"` (default) — the queue is the list column of
+ *   a `<MasterDetail>`; clicking a row selects it into `?focus=<id>` (a query
+ *   param, not a nested route — the queue routes are untouched — so the
+ *   selection is deep-linkable and browser-back clears the pane), and the pane
+ *   shows that row expanded with its full context and every action. Used by the
+ *   three queues that render inside `OwnerAppShell`.
+ * - `desktopLayout="centered"` — the Phase 2.3 treatment: the single column,
+ *   `APP_FRAME` dropped, capped/centred at `max-w-[860px]`. Used by
+ *   `PendingActivationsPage`, which is declared *outside* `OwnerAppShell` and so
+ *   has no console height context for the split panes. It moves onto
+ *   master-detail once its route moves into the shell.
+ *
+ * Below `lg` every consumer renders the same single-column `APP_SURFACE`
+ * layout, unchanged.
  */
 
 export interface WorkQueueAction {
@@ -106,14 +124,25 @@ function WorkQueueCard({
   item,
   position,
   onExplain,
+  onSelect,
+  active,
 }: {
   item: WorkQueueItem;
   position: number;
   onExplain?: (item: WorkQueueItem) => void;
+  /** Desktop master-detail: select the row into the pane instead of navigating. */
+  onSelect?: () => void;
+  active?: boolean;
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04)]">
-      <button type="button" onClick={item.onOpen} className="flex w-full items-start gap-3 p-4 text-left">
+    <div
+      className={
+        active
+          ? 'overflow-hidden rounded-2xl border border-primary bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04)] ring-1 ring-primary/50'
+          : 'overflow-hidden rounded-2xl border border-border bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04)]'
+      }
+    >
+      <button type="button" onClick={onSelect ?? item.onOpen} className="flex w-full items-start gap-3 p-4 text-left">
         {/* The number makes "work top to bottom" literal. */}
         <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-secondary font-display text-[12px] font-bold text-primary">
           {position}
@@ -152,7 +181,10 @@ function WorkQueueCard({
         </div>
       </button>
 
-      {item.reasons && item.reasons.length > 0 && (
+      {/* In master-detail select mode the reasons + actions live in the pane, so
+          the list card stays compact. Below `lg` (and in the centred desktop
+          layout) `onSelect` is undefined and the card renders exactly as before. */}
+      {!onSelect && item.reasons && item.reasons.length > 0 && (
         <button
           type="button"
           onClick={() => onExplain?.(item)}
@@ -163,12 +195,203 @@ function WorkQueueCard({
         </button>
       )}
 
-      {item.actions.length > 0 && (
+      {!onSelect && item.actions.length > 0 && (
         <div className="flex items-stretch gap-1.5 border-t border-border/60 p-2">
           {item.actions.map((a) => (
             <ActionButton key={a.id} action={a} />
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+/** The transient states, shared by every layout. */
+function QueueStates({
+  state,
+  onRetry,
+  emptyTitle,
+  emptyBody,
+}: {
+  state: 'loading' | 'error' | 'empty' | 'ready';
+  onRetry?: () => void;
+  emptyTitle: string;
+  emptyBody: string;
+}) {
+  return (
+    <>
+      {state === 'loading' && <WorkQueueSkeleton />}
+
+      {state === 'error' && (
+        <div className="rounded-2xl border border-border bg-card p-6 text-center">
+          <p className="text-[13px] font-semibold text-destructive">Could not load this list.</p>
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-3 rounded-xl bg-muted px-4 py-2 font-display text-[12.5px] font-bold text-foreground"
+            >
+              Try again
+            </button>
+          )}
+        </div>
+      )}
+
+      {state === 'empty' && (
+        <div className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-card px-6 py-12 text-center">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-success/15">
+            <Check className="h-7 w-7 text-success" strokeWidth={3} />
+          </span>
+          <p className="font-display text-[16px] font-extrabold text-foreground">{emptyTitle}</p>
+          <p className="text-[12px] leading-relaxed text-muted-foreground">{emptyBody}</p>
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * The prioritised sections. Renders identical markup in every layout; the
+ * numbered position counter runs across all sections so "work top to bottom"
+ * stays literal.
+ */
+function QueueSections({
+  sections,
+  onExplain,
+  onSelect,
+  activeId,
+}: {
+  sections: WorkQueueSection[];
+  onExplain?: (item: WorkQueueItem) => void;
+  onSelect?: (id: string) => void;
+  activeId?: string | null;
+}) {
+  let position = 0;
+  return (
+    <>
+      {sections.map((section) => {
+        const { Icon } = section;
+        return (
+          <section key={section.id} className="flex flex-col gap-2.5">
+            <div className="flex items-center gap-2 pl-0.5">
+              <Icon className={cn('h-4 w-4 flex-none', section.tone)} strokeWidth={2.2} />
+              <h2 className="flex-1 font-display text-[13px] font-bold text-foreground">{section.label}</h2>
+              {section.summary && (
+                <span className="text-[11px] font-semibold tabular-nums text-muted-foreground">{section.summary}</span>
+              )}
+            </div>
+            {section.items.map((item) => {
+              position += 1;
+              return (
+                <WorkQueueCard
+                  key={item.id}
+                  item={item}
+                  position={position}
+                  onExplain={onExplain}
+                  onSelect={onSelect ? () => onSelect(item.id) : undefined}
+                  active={activeId != null && item.id === activeId}
+                />
+              );
+            })}
+          </section>
+        );
+      })}
+    </>
+  );
+}
+
+/**
+ * The desktop master-detail pane — the focused row, expanded. Built purely from
+ * the `WorkQueueItem` the queue already supplies, so every queue gets the same
+ * pane for free and no queue needs a new data fetch.
+ */
+function WorkQueueDetail({
+  item,
+  onExplain,
+  onClearFocus,
+}: {
+  item: WorkQueueItem;
+  onExplain?: (item: WorkQueueItem) => void;
+  onClearFocus: () => void;
+}) {
+  return (
+    <div className="mx-auto flex max-w-[600px] flex-col gap-5 px-8 py-7">
+      <button
+        type="button"
+        onClick={onClearFocus}
+        className="-ml-1 flex items-center gap-1 self-start text-[12.5px] font-semibold text-muted-foreground"
+      >
+        <ChevronLeft className="h-4 w-4" strokeWidth={2} />
+        Back to queue
+      </button>
+
+      <div>
+        <h2 className="font-display text-[20px] font-extrabold leading-tight text-foreground">{item.title}</h2>
+        <p className="mt-0.5 text-[13px] text-muted-foreground">{item.subtitle}</p>
+      </div>
+
+      {(item.headline || item.urgency) && (
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          {item.headline && (
+            <span
+              className={cn('font-display text-[22px] font-extrabold tabular-nums', HEADLINE_TONE[item.headlineTone ?? 'default'])}
+            >
+              {item.headline}
+            </span>
+          )}
+          {item.urgency && <span className="text-[12.5px] font-semibold text-foreground/70">{item.urgency}</span>}
+        </div>
+      )}
+
+      {item.meta && item.meta.length > 0 && (
+        <div className="flex flex-col gap-1 rounded-2xl border border-border bg-card p-4 text-[12.5px] text-muted-foreground">
+          {item.meta.map((m) => (
+            <span key={m}>{m}</span>
+          ))}
+        </div>
+      )}
+
+      {item.reasons && item.reasons.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-4">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Why this is here</div>
+          <ul className="flex flex-col gap-1 text-[12.5px] text-foreground">
+            {item.reasons.map((r) => (
+              <li key={r} className="flex gap-1.5">
+                <span aria-hidden="true" className="text-muted-foreground">
+                  ·
+                </span>
+                {r}
+              </li>
+            ))}
+          </ul>
+          {onExplain && (
+            <button
+              type="button"
+              onClick={() => onExplain(item)}
+              className="mt-1 self-start text-[12px] font-bold text-primary"
+            >
+              Full priority breakdown
+            </button>
+          )}
+        </div>
+      )}
+
+      {item.actions.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {item.actions.map((a) => (
+            <ActionButton key={a.id} action={a} />
+          ))}
+        </div>
+      )}
+
+      {item.onOpen && (
+        <button
+          type="button"
+          onClick={item.onOpen}
+          className="self-start rounded-xl border border-border bg-card px-4 py-2 font-display text-[12.5px] font-bold text-foreground"
+        >
+          Open full record →
+        </button>
       )}
     </div>
   );
@@ -189,6 +412,7 @@ export function WorkQueue({
   emptyBody,
   onRetry,
   onExplain,
+  desktopLayout = 'master-detail',
   children,
 }: {
   title: string;
@@ -200,12 +424,78 @@ export function WorkQueue({
   emptyBody: string;
   onRetry?: () => void;
   onExplain?: (item: WorkQueueItem) => void;
+  /** `'master-detail'` (default) or `'centered'` — see the file header. */
+  desktopLayout?: 'master-detail' | 'centered';
   children?: ReactNode;
 }) {
   const navigate = useNavigate();
   const isDesktop = useIsDesktop();
-  let position = 0;
+  const [searchParams, setSearchParams] = useSearchParams();
 
+  const focusId = searchParams.get('focus');
+  const focused = useMemo(() => findFocusedItem(sections, focusId), [sections, focusId]);
+
+  const setFocus = useCallback(
+    (id: string | null) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (id) next.set('focus', id);
+          else next.delete('focus');
+          return next;
+        },
+        // push when focusing a row (browser-back clears the pane); replace when
+        // clearing so we don't leave an empty entry behind.
+        { replace: id == null },
+      );
+    },
+    [setSearchParams],
+  );
+
+  // ── Desktop master-detail (lg+, ADR-171 Phase 2 item 4) ──────────────────
+  if (isDesktop && desktopLayout === 'master-detail') {
+    return (
+      <>
+        <MasterDetail
+          hasSelection={focused != null}
+          emptyState={
+            state === 'ready' ? (
+              <div className="flex h-full items-center justify-center p-10 text-center">
+                <p className="max-w-[260px] text-sm text-muted-foreground">
+                  Select a row to see the full context and its actions.
+                </p>
+              </div>
+            ) : (
+              // Loading / error / all-clear — the list column carries the state,
+              // the pane stays blank rather than prompting for a selection.
+              <div className="h-full" />
+            )
+          }
+          detail={
+            focused ? (
+              <WorkQueueDetail item={focused} onExplain={onExplain} onClearFocus={() => setFocus(null)} />
+            ) : undefined
+          }
+          list={
+            <div className="flex flex-col gap-4 px-4 pb-16 pt-5">
+              <div className="min-w-0">
+                <h1 className="font-display text-[19px] font-extrabold leading-tight text-foreground">{title}</h1>
+                {state === 'ready' && subtitle && <p className="mt-0.5 text-[12px] text-muted-foreground">{subtitle}</p>}
+              </div>
+
+              <QueueStates state={state} onRetry={onRetry} emptyTitle={emptyTitle} emptyBody={emptyBody} />
+
+              {state === 'ready' && <QueueSections sections={sections} onSelect={setFocus} activeId={focusId} />}
+            </div>
+          }
+        />
+        {children}
+      </>
+    );
+  }
+
+  // ── Below lg (every consumer): the unchanged single-column layout ─────────
+  //    and desktop `centered` (Phase 2.3): APP_FRAME dropped, capped at 860px.
   return (
     // Same graph-paper backdrop as PendingVerificationsPage/TenantDetailPage
     // (the other routes that self-scope the StayO theme outside
@@ -214,10 +504,6 @@ export function WorkQueue({
     // here rather than per-page keeps all four consistent instead of
     // drifting. See the file header comment on why there's a single
     // implementation at all.
-    //
-    // Desktop (lg+, ADR-171 Phase 2.3): the 480px `APP_FRAME` is dropped so the
-    // queue fills the console content area; content is capped and centred at a
-    // comfortable reading width instead. Below lg, `APP_SURFACE` is unchanged.
     <div className={isDesktop ? `min-h-screen bg-background ${APP_GRID}` : APP_SURFACE}>
       <div className={isDesktop ? 'flex flex-col gap-4 pb-28 pt-5 mx-auto w-full max-w-[860px] px-8' : 'flex flex-col gap-4 px-4 pb-28 pt-5 sm:px-6'}>
         <div className="flex items-center gap-2">
@@ -235,52 +521,9 @@ export function WorkQueue({
           </div>
         </div>
 
-        {state === 'loading' && <WorkQueueSkeleton />}
+        <QueueStates state={state} onRetry={onRetry} emptyTitle={emptyTitle} emptyBody={emptyBody} />
 
-        {state === 'error' && (
-          <div className="rounded-2xl border border-border bg-card p-6 text-center">
-            <p className="text-[13px] font-semibold text-destructive">Could not load this list.</p>
-            {onRetry && (
-              <button
-                type="button"
-                onClick={onRetry}
-                className="mt-3 rounded-xl bg-muted px-4 py-2 font-display text-[12.5px] font-bold text-foreground"
-              >
-                Try again
-              </button>
-            )}
-          </div>
-        )}
-
-        {state === 'empty' && (
-          <div className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-card px-6 py-12 text-center">
-            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-success/15">
-              <Check className="h-7 w-7 text-success" strokeWidth={3} />
-            </span>
-            <p className="font-display text-[16px] font-extrabold text-foreground">{emptyTitle}</p>
-            <p className="text-[12px] leading-relaxed text-muted-foreground">{emptyBody}</p>
-          </div>
-        )}
-
-        {state === 'ready' &&
-          sections.map((section) => {
-            const { Icon } = section;
-            return (
-              <section key={section.id} className="flex flex-col gap-2.5">
-                <div className="flex items-center gap-2 pl-0.5">
-                  <Icon className={cn('h-4 w-4 flex-none', section.tone)} strokeWidth={2.2} />
-                  <h2 className="flex-1 font-display text-[13px] font-bold text-foreground">{section.label}</h2>
-                  {section.summary && (
-                    <span className="text-[11px] font-semibold tabular-nums text-muted-foreground">{section.summary}</span>
-                  )}
-                </div>
-                {section.items.map((item) => {
-                  position += 1;
-                  return <WorkQueueCard key={item.id} item={item} position={position} onExplain={onExplain} />;
-                })}
-              </section>
-            );
-          })}
+        {state === 'ready' && <QueueSections sections={sections} onExplain={onExplain} />}
 
         {children}
       </div>
