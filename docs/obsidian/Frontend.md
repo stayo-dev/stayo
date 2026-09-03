@@ -273,7 +273,20 @@ StayO is getting a real desktop application layout for owner + tenant. **The bre
 | `app/components/ui/adaptive-surface.tsx` + `adaptiveSurface.ts` | `<AdaptiveSurface variant>` — `BottomSheet` on mobile; on desktop `surfaceForVariant()` picks dialog (wizard/confirm/preview) / right `Sheet` (form) / dropdown (menu) / popover (picker/explain). Not a blanket dialog swap. |
 | `features/owner-session/useSelectedHostel.ts` + `selectedHostel.ts` | Owner hostel context. `resolveSelectedHostel()` precedence: `:hostelId` param > `?hostelId=` query > `localStorage` > `null` ("All hostels"); discards an unowned id. `selectHostel()` writes the query param — never an implicit "current hostel" (backend invariant). |
 
-**Do not `import` the desktop primitives yet** unless you are executing Phase 1+ of the plan. `MasterDetail`/`AppConsoleShell`/`adaptive-surface` are in `app/` (not `shared/ui/`) because `check-architecture.mjs` forbids `shared/` → `app/` imports.
+**Phase 1 landed 2026-09-03 — the shell is mounted at `lg+`; below `lg` nothing changed.** Three layout files gained a `useIsDesktop()` / `useTenantDesktopShell()` branch; the mobile `return` in each is byte-for-byte the pre-Phase-1 version.
+
+| File | `< 1024px` | `≥ 1024px` |
+|---|---|---|
+| `app/layouts/OwnerAppShell.tsx` | today's `ThemeProvider` + 480px `APP_FRAME` + fixed bottom nav | `<AppConsoleShell nav={buildOwnerNav()} identity onSignOut><Outlet/></AppConsoleShell>` — `session = useOwnerSession()`, `signOut = useMoreNav().signOut` |
+| `app/layouts/AppShell.tsx` | today's `GRID_GROUND` div + `<AppBottomNav/>` | for a signed-in tenant with a live/exiting dashboard (`useTenantDesktopShell()`): `<AppConsoleShell nav={buildTenantNav()} …>{children}</AppConsoleShell>` inside `NavAnchorProvider`; **`AppBottomNav` not rendered**. Signed-out / no-tenancy / exited → old layout at every width. |
+| `app/layouts/TenantAppShell.tsx` | today's `ThemeProvider` + `APP_FRAME` frame | passthrough — `<><ExitingBanner/><ErrorBoundary><Outlet/></ErrorBoundary></>` (the console one level up owns the theme, grid, and scrolling `<main>`) |
+| `app/nav/useTenantDesktopShell.ts` (new, + test) | — | `useIsDesktop() && canOpenDashboard(tenancyState(user))`. Pure half `tenantHasDesktopShell(state)` is tested. Called by both `AppShell` and `TenantAppShell` so their branches can't drift. |
+
+**Why `AppShell` (not `TenantAppShell`) is the tenant integration point:** `/profile` is a **sibling** route of `/tenant/*` under `SeekerAppShell`, not a child — it never renders through `TenantProviderShell`/`TenantAppShell`. `AppShell` is the only component wrapping *both* trees and the sole owner of `AppBottomNav`, so mounting the console there is what lets the Profile sidebar tab render with the same shell as the other four **without any route-tree change**. `/profile`'s route position, its `DiscoverAuthProvider`, and its inline-style palette are all untouched — it just gains the shared frame at `lg+`.
+
+**Still deferred (Phase 2+):** hostel switcher (`contextSlot` empty), notifications bell, topbar action slot, all per-page desktop layouts, master-detail, `<AdaptiveSurface>` migration, `/profile` rail+pane, legacy restyle. At `lg+` today, owner **takeover routes** (Tenant Detail, Hostel drilldown, work queues, builder — declared outside `OwnerAppShell` in `OwnerRoutes.tsx`) and tenant `/profile/*` / `/tenant/complaints` etc. still render phone-width inside the console; single-column card pages look sparse. That is expected and is Phase 2's job.
+
+**Do not `import` the desktop primitives** unless executing a plan phase. `MasterDetail`/`AppConsoleShell`/`adaptive-surface` are in `app/` (not `shared/ui/`) because `check-architecture.mjs` forbids `shared/` → `app/` imports.
 
 ## See also
 - [[APIs]] for the endpoint shapes feature wrappers call
