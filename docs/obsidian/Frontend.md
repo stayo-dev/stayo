@@ -256,6 +256,25 @@ The StayO redesign is being built in place inside this same tree, per the design
 
 - **Discover's graph-paper ground (2026-08-15 fix).** `DiscoverShell` now applies `GRID_GROUND` from `discoverTheme.ts` — the same `#EBDCCF` 1px / 52px grid as `OwnerAppShell`, `TenantAppShell` and `HostelDrilldownLayout`. The constant had existed since Discover was built but **was never referenced**, so this was the one product surface on flat cream. Nine full-height Discover page roots also painted an opaque `background: C.paper` over the shell and had it stripped; the two genuinely-layered paper surfaces (SearchPage's filter sheet, ListingPage's body sheet over the hero) keep theirs. **If you add a Discover page, do not set a background on its root** — the shell owns it.
 
+## Desktop shell (in progress — [[Decisions#ADR-171|ADR-171]])
+
+StayO is getting a real desktop application layout for owner + tenant. **The breakpoint is `lg` (1024px)** — below it, everything renders exactly as documented above (the 480px `APP_FRAME` phone layout, `AppBottomNav`, `TenantSubPage` takeovers). At `lg+`, a shared shell mounts. Full design: `~/.claude/plans/quizzical-wobbling-mitten.md` (unified architecture) + `stayo-tenant-side-map.md` (tenant screen map).
+
+**Phase 0 landed 2026-09-03 — foundation primitives only, nothing imports them yet, zero visible change:**
+
+| File | Role |
+|---|---|
+| `app/components/ui/use-desktop.ts` | `useIsDesktop()` / `getIsDesktop()` — `min-width: 1024px`. Distinct from `use-mobile.ts` (768px), which stays a narrow touch check. |
+| `app/nav/navTypes.ts` | `NavItem` / `NavGroup` types + `isNavItemActive()` (same matching as `adminNav.ts`). |
+| `app/nav/ownerNav.ts` / `tenantNav.ts` | `buildOwnerNav(counts)` (Home/Tenants/Money/Food/Hostels/Settings) / `buildTenantNav()` (= `ACTIVE_TENANT_TABS`, icons asserted equal). Modelled on `adminNav.ts`. |
+| `app/layouts/appHeaders.ts` | `headerFor(pathname)` — per-route topbar title/subtitle, longest-prefix match, generic fallback. Modelled on `pageHeaders.ts`. |
+| `app/layouts/AppConsoleShell.tsx` | The shared desktop shell — generalised from `platforms/admin/layout/AdminConsoleShell.tsx`. 248px dark `--sidebar`-token sidebar (wordmark, `contextSlot`, nav, identity + sign-out) + `h-14` topbar (`headerFor` title, `actions` slot, notifications bell) + `h-screen overflow-hidden` grid content. **Owns `<ThemeProvider theme="product">`** so `/profile` (no theme scope on mobile) resolves product tokens at `lg+`. Presentational — takes `children`, no route wiring. |
+| `app/layouts/MasterDetail.tsx` + `masterDetailBranch.ts` | List column (fixed 380px / 420px at `xl`) + `<Outlet/>` detail pane at `lg+`; below `lg` renders only the branch matching the route (today's behaviour). URL is the only selection state. |
+| `app/components/ui/adaptive-surface.tsx` + `adaptiveSurface.ts` | `<AdaptiveSurface variant>` — `BottomSheet` on mobile; on desktop `surfaceForVariant()` picks dialog (wizard/confirm/preview) / right `Sheet` (form) / dropdown (menu) / popover (picker/explain). Not a blanket dialog swap. |
+| `features/owner-session/useSelectedHostel.ts` + `selectedHostel.ts` | Owner hostel context. `resolveSelectedHostel()` precedence: `:hostelId` param > `?hostelId=` query > `localStorage` > `null` ("All hostels"); discards an unowned id. `selectHostel()` writes the query param — never an implicit "current hostel" (backend invariant). |
+
+**Do not `import` the desktop primitives yet** unless you are executing Phase 1+ of the plan. `MasterDetail`/`AppConsoleShell`/`adaptive-surface` are in `app/` (not `shared/ui/`) because `check-architecture.mjs` forbids `shared/` → `app/` imports.
+
 ## See also
 - [[APIs]] for the endpoint shapes feature wrappers call
 - [[Features]] for what's built on top of this structure
