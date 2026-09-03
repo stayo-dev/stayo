@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Clock, Hourglass, CalendarDays, Phone, MessageCircle, Wallet } from 'lucide-react';
-import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
+import { AdaptiveSurface } from '@/app/components/ui/adaptive-surface';
 import { QuickCollectModal } from '@features/owner-tenants/quick-collect/QuickCollectModal';
 import { getInitials } from '@features/tenants/utils/normalize';
 import { WorkQueue, type WorkQueueSection, type WorkQueueItem } from '@features/owner-workqueue/WorkQueue';
@@ -110,8 +110,12 @@ export function CollectionQueuePage() {
       onRetry={() => refetch()}
       onExplain={(item) => setWhy(rowsById.get(item.id) ?? null)}
     >
-      {/* The full "why", on demand. Ordering is never a black box. */}
-      <BottomSheet
+      {/* The full "why", on demand. Ordering is never a black box. A
+          `BottomSheet` below `lg`; a right-side drawer at `lg+`
+          (`AdaptiveSurface variant="form"`, ADR-171 Phase 2.4) so the queue
+          stays visible while the score breakdown is read. */}
+      <AdaptiveSurface
+        variant="form"
         open={why != null}
         onOpenChange={(v) => !v && setWhy(null)}
         title={why ? `Why ${why.tenantName} is here` : ''}
@@ -142,7 +146,7 @@ export function CollectionQueuePage() {
             </p>
           </div>
         )}
-      </BottomSheet>
+      </AdaptiveSurface>
 
       <QuickCollectModal
         open={collectFor != null}
