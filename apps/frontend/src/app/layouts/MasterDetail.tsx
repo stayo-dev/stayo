@@ -42,7 +42,10 @@ export function MasterDetail({ list, hasSelection, emptyState, detail }: MasterD
   if (branch === 'detail') return <>{detailNode}</>;
 
   return (
-    <div className="flex min-h-0 flex-1">
+    // `h-full`, not `flex-1` — the console's `<main>` has a definite height
+    // (it is a bounded flex child), so each pane can own its own scroll rather
+    // than the whole thing scrolling as one column.
+    <div className="flex h-full min-h-0">
       <div className="w-[380px] flex-none overflow-y-auto border-r border-border xl:w-[420px]">{list}</div>
       <div className="min-w-0 flex-1 overflow-y-auto">
         {hasSelection ? detailNode : (emptyState ?? <MasterDetailEmpty />)}

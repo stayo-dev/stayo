@@ -286,6 +286,20 @@ StayO is getting a real desktop application layout for owner + tenant. **The bre
 
 **Still deferred (Phase 2+):** hostel switcher (`contextSlot` empty), notifications bell, topbar action slot, all per-page desktop layouts, master-detail, `<AdaptiveSurface>` migration, `/profile` rail+pane, legacy restyle. At `lg+` today, owner **takeover routes** (Tenant Detail, Hostel drilldown, work queues, builder — declared outside `OwnerAppShell` in `OwnerRoutes.tsx`) and tenant `/profile/*` / `/tenant/complaints` etc. still render phone-width inside the console; single-column card pages look sparse. That is expected and is Phase 2's job.
 
+**Phase 2.1 landed 2026-09-03 — Owner Tenants is the first `<MasterDetail>`; below `lg` the `/owner/tenants` experience is unchanged.**
+
+- **Route change (`platforms/owner/router/OwnerRoutes.tsx`):** `/owner/tenants/:tenantId` moved from a sibling declared *outside* `OwnerAppShell` to a **nested child** of `/owner/tenants`, *inside* `OwnerAppShell`:
+  ```tsx
+  <Route path="/owner/tenants" element={<TenantsWorkspace />}>
+    <Route path=":tenantId" element={<TenantDetailPage />} />
+  </Route>
+  ```
+  `/owner/tenants/verifications` + `/owner/tenants/activations` stay outside, untouched — static segments out-rank the nested `:tenantId` in RR7 (7.13.0), so they still win.
+- **`features/owner-tenants/pages/TenantsWorkspace.tsx` (new)** — the `/owner/tenants` element. Renders `<MasterDetail hasSelection={useMatch('/owner/tenants/:tenantId') != null} list={<TenantsPage/>} emptyState={…}>`; `<MasterDetail>` renders the detail via `<Outlet/>`. `TenantsPage`, `TenantList`, `TenantRow`, `TenantDetailPage` are **all unchanged** (no selected-row highlight yet).
+- **`lg+`:** one `AppConsoleShell` (sidebar never remounts on list↔detail nav) + list pane (`w-[380px]`, `TenantsPage`) + detail pane (`TenantDetailPage` via `<Outlet/>`, or the empty-state). `TenantDetailPage` keeps its own `APP_FRAME` so its content is a 480px column in the wide pane — Phase 2 broad widens it.
+- **`< lg`:** `MasterDetail` renders only the branch the URL is on — `TenantsPage` at `/owner/tenants` (identical to before), or the `TenantDetailPage` full-screen takeover at `/owner/tenants/:tenantId`. Because `:tenantId` is now *inside* `OwnerAppShell`, its mobile branch drops the bottom nav + frame for that path via **`isOwnerFullBleedPath(pathname)`** (`app/layouts/ownerShellRoutes.ts`, pure + tested — mirrors the tenant side's `hidesOuterNav()`; grows as Hostels/queues join `<MasterDetail>`).
+- **`app/layouts/MasterDetail.tsx`** desktop container `flex min-h-0 flex-1` → `flex h-full min-h-0` so each pane scrolls independently inside the console's definite-height `<main>`.
+
 **Do not `import` the desktop primitives** unless executing a plan phase. `MasterDetail`/`AppConsoleShell`/`adaptive-surface` are in `app/` (not `shared/ui/`) because `check-architecture.mjs` forbids `shared/` → `app/` imports.
 
 ## See also

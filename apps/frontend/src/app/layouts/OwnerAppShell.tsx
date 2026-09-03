@@ -1,10 +1,11 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Home, Users, Wallet, UtensilsCrossed, Building2 } from 'lucide-react';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
 import { APP_GRID, APP_FRAME } from '@shared/ui/surface';
 import { useIsDesktop } from '@/app/components/ui/use-desktop';
 import { AppConsoleShell } from './AppConsoleShell';
+import { isOwnerFullBleedPath } from './ownerShellRoutes';
 import { buildOwnerNav } from '@/app/nav/ownerNav';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useMoreNav } from '@features/owner-more/hooks/useMoreNav';
@@ -53,6 +54,7 @@ interface OwnerAppShellProps {
 
 export function OwnerAppShell({ basePath = '/owner' }: OwnerAppShellProps) {
   const isDesktop = useIsDesktop();
+  const { pathname } = useLocation();
   const session = useOwnerSession();
   const { signOut } = useMoreNav();
   const tabs = ownerTabs(basePath);
@@ -60,8 +62,8 @@ export function OwnerAppShell({ basePath = '/owner' }: OwnerAppShellProps) {
   // Desktop (lg+): the shared console shell — sidebar + topbar. It provides its
   // own <ThemeProvider theme="product"> and grid ground, so the 480px frame is
   // simply not applied and the page fills the content area. Owner takeover
-  // routes (Tenant Detail, Hostel drilldown, work queues, builder) live outside
-  // this component in OwnerRoutes.tsx and are untouched.
+  // routes still declared outside this component in OwnerRoutes.tsx (Hostel
+  // drilldown, most work queues, builder) are untouched.
   if (isDesktop) {
     return (
       <AppConsoleShell
@@ -71,6 +73,22 @@ export function OwnerAppShell({ basePath = '/owner' }: OwnerAppShellProps) {
       >
         <Outlet />
       </AppConsoleShell>
+    );
+  }
+
+  // Mobile full-screen takeover routes that are now nested *inside* this shell
+  // (Phase 2.1: the Tenant Detail pane, `/owner/tenants/:tenantId`, nested under
+  // `/owner/tenants` so <MasterDetail> can render it) must still render with no
+  // bottom nav / no 480px frame — byte-equivalent to when they were declared
+  // outside OwnerAppShell. `TenantDetailPage` brings its own ThemeProvider +
+  // APP_SURFACE; this is just the theme scope + error boundary around it.
+  if (isOwnerFullBleedPath(pathname)) {
+    return (
+      <ThemeProvider theme="product">
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
+      </ThemeProvider>
     );
   }
 

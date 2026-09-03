@@ -11,7 +11,9 @@ const OwnerProviderShell = lazy(() => import('./OwnerProviderShell').then((m) =>
 const OwnerDashboardPreviewPage = lazy(() =>
   import('@features/owner-onboarding/pages/OwnerDashboardPreviewPage').then((m) => ({ default: m.OwnerDashboardPreviewPage })),
 );
-const TenantsPage = lazy(() => import('@features/owner-tenants/pages/TenantsPage').then((m) => ({ default: m.TenantsPage })));
+const TenantsWorkspace = lazy(() =>
+  import('@features/owner-tenants/pages/TenantsWorkspace').then((m) => ({ default: m.TenantsWorkspace })),
+);
 const TenantDetailPage = lazy(() =>
   import('@features/owner-tenants/pages/TenantDetailPage').then((m) => ({ default: m.TenantDetailPage })),
 );
@@ -194,7 +196,16 @@ export function OwnerRoutes() {
         <Route path="/owner/money/payouts" element={<MoneyInPage />} />
         <Route path="/owner/agreements/review" element={<AgreementQueuePage />} />
         <Route path="/owner/rooms/vacant" element={<VacancyQueuePage />} />
-        <Route path="/owner/tenants" element={<TenantsPage />} />
+        {/* Tenants list + detail as a master-detail at lg+ (ADR-171 Phase 2.1).
+            `:tenantId` is nested so <MasterDetail> renders it through <Outlet/>;
+            it stays inside OwnerAppShell so the console sidebar does not remount
+            on list<->detail navigation. Below lg it is still a full-screen
+            takeover — OwnerAppShell drops its bottom nav / frame for this path
+            (isOwnerFullBleedPath). The sibling /verifications + /activations
+            routes below out-rank :tenantId in RR7 and are unaffected. */}
+        <Route path="/owner/tenants" element={<TenantsWorkspace />}>
+          <Route path=":tenantId" element={<TenantDetailPage />} />
+        </Route>
 
         <Route path="/owner/money" element={<MoneyPage />} />
         <Route path="/owner/food" element={<FoodPage />} />
@@ -254,11 +265,11 @@ export function OwnerRoutes() {
         <Route path="/owner/more/configuration/finance/receipt-footer" element={<MoreConfigReceiptFooterPage />} />
       </Route>
 
-      {/* Declared before the :tenantId route so "verifications" is not
-          swallowed as a tenant id. */}
+      {/* Their own full-screen takeover routes (own ThemeProvider + WorkQueue
+          chrome), outside OwnerAppShell. Static segments out-rank the nested
+          `/owner/tenants/:tenantId` above, so these still win — no swallowing. */}
       <Route path="/owner/tenants/verifications" element={<PendingVerificationsPage />} />
       <Route path="/owner/tenants/activations" element={<PendingActivationsPage />} />
-      <Route path="/owner/tenants/:tenantId" element={<TenantDetailPage />} />
 
       {/* Alerts categories — full-screen takeovers with their own back
           button, same treatment as Tenant Detail. Static per-category routes
