@@ -72,7 +72,14 @@ export function HostelDrilldownLayout() {
           </div>
         </div>
 
-        <div className="flex gap-5 overflow-x-auto border-b border-border px-4 [scrollbar-width:none] sm:gap-5.5 sm:px-6 [&::-webkit-scrollbar]:hidden">
+        {/* At `lg+` (ADR-171 Phase 2.7) this tab row is the drilldown pane's
+            sticky header — it stays put while a tab's content scrolls under it.
+            Below `lg` the string is unchanged: a plain scrolling border-b row. */}
+        <div
+          className={`flex gap-5 overflow-x-auto border-b border-border px-4 [scrollbar-width:none] sm:gap-5.5 sm:px-6 [&::-webkit-scrollbar]:hidden${
+            isDesktop ? ' sticky top-0 z-10 bg-background' : ''
+          }`}
+        >
           {TABS.map((t) => (
             <NavLink
               key={t.to}

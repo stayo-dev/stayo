@@ -167,6 +167,19 @@ export function TenantDetailPage() {
     return `https://wa.me/91${digits}?text=${encodeURIComponent(message)}`;
   })();
 
+  const tabButtons = TABS.map((t) => (
+    <button
+      key={t.id}
+      type="button"
+      onClick={() => setActiveTab(t.id)}
+      className={`flex-1 rounded-xl py-2.5 text-center font-display text-[12.5px] font-bold ${
+        activeTab === t.id ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
+      }`}
+    >
+      {t.label}
+    </button>
+  ));
+
   return (
     <ThemeProvider theme="product">
       {/* Desktop (lg+, ADR-171 Phase 2.3): rendered as the right pane of the
@@ -301,21 +314,19 @@ export function TenantDetailPage() {
             </div>
           )}
 
-          {/* tabs */}
-          <div className="sticky top-0 z-10 flex gap-1 rounded-[14px] bg-muted p-1">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setActiveTab(t.id)}
-                className={`flex-1 rounded-xl py-2.5 text-center font-display text-[12.5px] font-bold ${
-                  activeTab === t.id ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+          {/* Tabs. Below `lg`: the sticky pill group, unchanged. At `lg+`
+              (ADR-171 Phase 2.7): the same pill group inside a sticky in-pane
+              header band — it breaks out to the pane column's edges and carries
+              a solid background + bottom border so it reads as the detail
+              pane's tab header when the profile cards scroll under it. The
+              `activeTab` state, labels and panels are untouched. */}
+          {isDesktop ? (
+            <div className="sticky top-0 z-10 -mx-4 border-b border-border bg-background px-4 pb-2 pt-1 sm:-mx-6 sm:px-6">
+              <div className="flex gap-1 rounded-[14px] bg-muted p-1">{tabButtons}</div>
+            </div>
+          ) : (
+            <div className="sticky top-0 z-10 flex gap-1 rounded-[14px] bg-muted p-1">{tabButtons}</div>
+          )}
 
           {activeTab === 'charges' && (
             <PaymentScheduleList

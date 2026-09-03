@@ -6,6 +6,7 @@ import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { useIsMobile } from '@/app/components/ui/use-mobile';
+import { useIsDesktop } from '@/app/components/ui/use-desktop';
 import { HostelSwitcher } from '../components/HostelSwitcher';
 import { PublishChecklist } from '../components/schedule/PublishChecklist';
 import { MenuPreviewSheet } from '../components/mealplan/MenuPreviewSheet';
@@ -50,7 +51,13 @@ function formatMonthLabel(month: string): string {
  */
 export function MealPlanPage() {
   const session = useOwnerSession();
+  // `useIsMobile` (768px) keeps deciding grid-vs-accordion, unchanged — the
+  // `< lg` experience is untouched. `useIsDesktop` (1024px, the console
+  // breakpoint) only adds the bounded desktop content column at `lg+` so the
+  // already-built `MealPlanGrid` gets real width inside the owner console
+  // instead of the leftover mobile padding (ADR-171 Phase 2.7).
   const isMobile = useIsMobile();
+  const isDesktop = useIsDesktop();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const hostelId = searchParams.get('hostelId') ?? session.primaryHostelId ?? undefined;
@@ -246,7 +253,13 @@ export function MealPlanPage() {
   };
 
   return (
-    <div className="flex flex-col gap-3.5 px-4 pb-8 pt-6 sm:px-6">
+    <div
+      className={
+        isDesktop
+          ? 'mx-auto flex w-full max-w-[1240px] flex-col gap-3.5 px-8 pb-12 pt-8'
+          : 'flex flex-col gap-3.5 px-4 pb-8 pt-6 sm:px-6'
+      }
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <button
