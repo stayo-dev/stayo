@@ -8,6 +8,7 @@ import { AppConsoleShell } from './AppConsoleShell';
 import { isOwnerFullBleedPath } from './ownerShellRoutes';
 import { buildOwnerNav } from '@/app/nav/ownerNav';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
+import { HostelSwitcher } from '@features/owner-session/HostelSwitcher';
 import { useMoreNav } from '@features/owner-more/hooks/useMoreNav';
 
 /**
@@ -61,13 +62,16 @@ export function OwnerAppShell({ basePath = '/owner' }: OwnerAppShellProps) {
 
   // Desktop (lg+): the shared console shell — sidebar + topbar. It provides its
   // own <ThemeProvider theme="product"> and grid ground, so the 480px frame is
-  // simply not applied and the page fills the content area. Owner takeover
-  // routes still declared outside this component in OwnerRoutes.tsx (Hostel
-  // drilldown, most work queues, builder) are untouched.
+  // simply not applied and the page fills the content area. The sidebar's
+  // `contextSlot` carries the `HostelSwitcher` (ADR-171 §6, Phase 2.6) — the
+  // one owner hostel-context control, backed by the existing `useSelectedHostel`
+  // state. Owner takeover routes still declared outside this component in
+  // OwnerRoutes.tsx (Hostel drilldown, most work queues, builder) are untouched.
   if (isDesktop) {
     return (
       <AppConsoleShell
         nav={buildOwnerNav()}
+        contextSlot={session.hostels.length > 0 ? <HostelSwitcher /> : undefined}
         identity={{ name: session.ownerName ?? 'Owner', sublabel: 'Owner' }}
         onSignOut={signOut}
       >
