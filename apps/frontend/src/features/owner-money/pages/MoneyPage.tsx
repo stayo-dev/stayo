@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ChevronDown, Upload } from 'lucide-react';
+import { useIsDesktop } from '@/app/components/ui/use-desktop';
 import { QuickCollectModal } from '@features/owner-tenants/quick-collect/QuickCollectModal';
 import type { QuickCollectTenant } from '@features/owner-tenants/types';
 import type { MockExpense } from '@shared/mocks/expenses';
@@ -86,6 +87,11 @@ function MoneyLoadingSkeleton() {
 export function MoneyPage() {
   const money = useMoneyPage();
   const real = useRealMoney();
+  // Desktop (lg+): the page content sits in a centred max-w column and the
+  // Overview cards lay out on a 12-col grid instead of a single stack. Below lg
+  // every conditional below picks the mobile string — the layout is unchanged.
+  // See ADR-171 Phase 2.2.
+  const isDesktop = useIsDesktop();
   /**
    * Date range for the Expenses tab. These chips were static <span>s with
    * "This month" hardcoded active — they looked like a control and did
@@ -225,7 +231,13 @@ export function MoneyPage() {
   if (real.isLoading) return <MoneyLoadingSkeleton />;
 
   return (
-    <div className="flex flex-col gap-3.5 px-4 pb-8 pt-6 sm:px-6">
+    <div
+      className={
+        isDesktop
+          ? 'mx-auto flex w-full max-w-[1180px] flex-col gap-5 px-8 pb-12 pt-8'
+          : 'flex flex-col gap-3.5 px-4 pb-8 pt-6 sm:px-6'
+      }
+    >
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-[22px] font-extrabold tracking-tight text-foreground">Money</h1>
@@ -266,7 +278,7 @@ export function MoneyPage() {
         </div>
       </div>
 
-      <div className="flex rounded-[11px] bg-[#EDE6DE] p-[3px]">
+      <div className={`flex rounded-[11px] bg-[#EDE6DE] p-[3px] ${isDesktop ? 'w-fit self-start' : ''}`}>
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -282,27 +294,39 @@ export function MoneyPage() {
       </div>
 
       {money.tab === 'pulse' && (
-        <div className="flex flex-col gap-3">
-          <StatusBanner
-            collectionRatePercent={real.overview.collectionRatePercent}
-            netCashFlow={real.overview.netCashFlow}
-            perTenant={real.overview.perTenant}
-          />
-          <MoneyStatTiles
-            tiles={[
-              { key: 'collected', label: 'Collected', value: real.overview.collected, valueClassName: 'text-success', info: 'Payments received this month, across all hostels.' },
-              { key: 'due', label: 'Due', value: real.overview.due, valueClassName: 'text-destructive', info: 'Rent not yet collected for the current billing cycle.' },
-              { key: 'expenses', label: 'Expenses', value: `₹${real.totalExpenses.toLocaleString('en-IN')}`, info: 'Total business spend recorded so far this month.' },
-            ]}
-          />
-          <CollectionRateCard collectionRatePercent={real.overview.collectionRatePercent} due={real.overview.due} />
-          <ActionQueueCard
-            overdueTenants={real.overdueTenants}
-            onViewAll={() => money.setTab('collections')}
-            onCollect={(t) => money.openCollect(toQuickCollectTenant(t))}
-          />
-          <CashflowForecastCard forecast={real.forecast} />
-          <div className={`rounded-2xl px-3.5 py-2.5 text-xs font-semibold ${real.overview.overdueCount > 0 ? 'border border-warning/25 bg-warning/10 text-warning' : 'border border-success/25 bg-success/10 text-success'}`}>
+        <div className={isDesktop ? 'grid grid-cols-1 gap-4 lg:grid-cols-12' : 'flex flex-col gap-3'}>
+          <div className={isDesktop ? 'lg:col-span-12' : undefined}>
+            <StatusBanner
+              collectionRatePercent={real.overview.collectionRatePercent}
+              netCashFlow={real.overview.netCashFlow}
+              perTenant={real.overview.perTenant}
+            />
+          </div>
+          <div className={isDesktop ? 'lg:col-span-12' : undefined}>
+            <MoneyStatTiles
+              tiles={[
+                { key: 'collected', label: 'Collected', value: real.overview.collected, valueClassName: 'text-success', info: 'Payments received this month, across all hostels.' },
+                { key: 'due', label: 'Due', value: real.overview.due, valueClassName: 'text-destructive', info: 'Rent not yet collected for the current billing cycle.' },
+                { key: 'expenses', label: 'Expenses', value: `₹${real.totalExpenses.toLocaleString('en-IN')}`, info: 'Total business spend recorded so far this month.' },
+              ]}
+            />
+          </div>
+          <div className={isDesktop ? 'lg:col-span-5' : undefined}>
+            <CollectionRateCard collectionRatePercent={real.overview.collectionRatePercent} due={real.overview.due} />
+          </div>
+          <div className={isDesktop ? 'lg:col-span-7' : undefined}>
+            <ActionQueueCard
+              overdueTenants={real.overdueTenants}
+              onViewAll={() => money.setTab('collections')}
+              onCollect={(t) => money.openCollect(toQuickCollectTenant(t))}
+            />
+          </div>
+          <div className={isDesktop ? 'lg:col-span-12' : undefined}>
+            <CashflowForecastCard forecast={real.forecast} />
+          </div>
+          <div
+            className={`rounded-2xl px-3.5 py-2.5 text-xs font-semibold ${isDesktop ? 'lg:col-span-12 ' : ''}${real.overview.overdueCount > 0 ? 'border border-warning/25 bg-warning/10 text-warning' : 'border border-success/25 bg-success/10 text-success'}`}
+          >
             {real.overview.overdueCount > 0 ? `${real.overview.overdueCount} tenant${real.overview.overdueCount === 1 ? '' : 's'} overdue` : 'No tenants overdue right now'}
           </div>
         </div>
@@ -321,7 +345,7 @@ export function MoneyPage() {
               inside a payout's own breakdown instead. */}
           <PayoutStrip />
           <CollectionsFilters hostels={real.hostelOptions} hostelFilter={hostelFilter} onHostelFilterChange={setHostelFilter} sort={collectionsSort} onSortChange={setCollectionsSort} />
-          <div className="flex flex-col gap-2">
+          <div className={isDesktop && overdueTenants.length > 0 ? 'grid gap-2 lg:grid-cols-2' : 'flex flex-col gap-2'}>
             {overdueTenants.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">Nothing overdue here — nice work.</p>
             ) : (
@@ -435,7 +459,9 @@ export function MoneyPage() {
                   : 'No expenses logged in this range yet.'}
               </p>
             ) : (
-              filteredExpenses.map((e) => <ExpenseRow key={e.id} expense={e} onOpenDetail={() => money.openExpenseDetail(e)} />)
+              <div className={isDesktop ? 'grid gap-2 lg:grid-cols-2' : 'flex flex-col gap-2'}>
+                {filteredExpenses.map((e) => <ExpenseRow key={e.id} expense={e} onOpenDetail={() => money.openExpenseDetail(e)} />)}
+              </div>
             )}
           </div>
           <WhereItWentSection

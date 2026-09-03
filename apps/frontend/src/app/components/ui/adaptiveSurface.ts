@@ -29,9 +29,13 @@ const DESKTOP_PRIMITIVE: Record<SurfaceVariant, SurfacePrimitive> = {
   preview: 'dialog',
 };
 
-/** Below the desktop breakpoint every variant is a bottom sheet — today's behaviour, unchanged. */
-export function surfaceForVariant(variant: SurfaceVariant, isMobile: boolean): SurfacePrimitive {
-  return isMobile ? 'bottom-sheet' : DESKTOP_PRIMITIVE[variant];
+/**
+ * Below the desktop breakpoint (`lg`, 1024px — the one desktop breakpoint) every
+ * variant is a bottom sheet — today's behaviour, unchanged. `belowLg` is what
+ * `<AdaptiveSurface>` passes as `!useIsDesktop()`.
+ */
+export function surfaceForVariant(variant: SurfaceVariant, belowLg: boolean): SurfacePrimitive {
+  return belowLg ? 'bottom-sheet' : DESKTOP_PRIMITIVE[variant];
 }
 
 /** Desktop width hint per primitive, for the caller that wants one. */

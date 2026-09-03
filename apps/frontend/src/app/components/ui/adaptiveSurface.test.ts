@@ -4,7 +4,7 @@ import { surfaceForVariant, type SurfaceVariant } from './adaptiveSurface';
 const ALL: SurfaceVariant[] = ['wizard', 'form', 'menu', 'picker', 'explain', 'confirm', 'preview'];
 
 describe('surfaceForVariant', () => {
-  it('is a bottom sheet for every variant on mobile', () => {
+  it('is a bottom sheet for every variant below lg', () => {
     for (const v of ALL) {
       expect(surfaceForVariant(v, true)).toBe('bottom-sheet');
     }

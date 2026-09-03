@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
-import { useIsMobile } from './use-mobile';
+import { useIsDesktop } from './use-desktop';
 import {
   Dialog,
   DialogContent,
@@ -22,16 +22,16 @@ import { surfaceForVariant, SURFACE_WIDTH } from './adaptiveSurface';
 /**
  * One JSX tree, the right container for the viewport and the job.
  *
- * Below `md` (`useIsMobile`) every variant is the app's shared `BottomSheet` —
- * today's behaviour, untouched. On a desktop viewport the variant chooses:
+ * Below `lg` (`useIsDesktop`, 1024px — the one desktop breakpoint, ADR-171)
+ * every variant is the app's shared `BottomSheet`, unchanged. At `lg+` the
+ * variant chooses:
  *
  *   wizard / confirm / preview → centered `Dialog`
  *   form                       → right-side `Sheet` (context stays visible)
  *
  * `menu`, `picker` and `explain` from `adaptiveSurface.ts` are deliberately not
  * handled here — a dropdown/popover needs an anchor element and belongs at the
- * call site (`DropdownMenu` / a popover), not in a modal container. Introduced
- * for Phase 2's sheet conversions; nothing imports it yet.
+ * call site (`DropdownMenu` / a popover), not in a modal container.
  */
 export type AdaptiveSurfaceVariant = 'wizard' | 'form' | 'confirm' | 'preview';
 
@@ -57,8 +57,8 @@ export function AdaptiveSurface({
   footer,
   hideHeader,
 }: AdaptiveSurfaceProps) {
-  const isMobile = useIsMobile();
-  const primitive = surfaceForVariant(variant, isMobile);
+  const isDesktop = useIsDesktop();
+  const primitive = surfaceForVariant(variant, !isDesktop);
 
   if (primitive === 'bottom-sheet') {
     return (

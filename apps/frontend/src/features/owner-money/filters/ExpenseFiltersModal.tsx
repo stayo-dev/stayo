@@ -1,5 +1,5 @@
 import { Check, RotateCcw } from 'lucide-react';
-import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
+import { AdaptiveSurface } from '@/app/components/ui/adaptive-surface';
 import { PAYMENT_METHOD_OPTIONS } from '@shared/mocks/expenses';
 import { cn } from '@shared/lib/cn';
 import type { ExpenseFilterState } from '../types';
@@ -118,7 +118,7 @@ export function ExpenseFiltersModal({
     });
 
   return (
-    <BottomSheet
+    <AdaptiveSurface variant="form"
       open={open}
       onOpenChange={(v) => !v && onClose()}
       title={
@@ -273,6 +273,6 @@ export function ExpenseFiltersModal({
           </div>
         </div>
       </div>
-    </BottomSheet>
+    </AdaptiveSurface>
   );
 }

@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
+import { AdaptiveSurface } from '@/app/components/ui/adaptive-surface';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import type { MockExpense } from '@shared/mocks/expenses';
 import { expenseService } from '@features/expenses/api';
@@ -52,7 +52,7 @@ export function ExpenseDetailModal({ open, expense, onClose, onEdit, onDuplicate
   const busy = markPendingMutation.isPending || deleteMutation.isPending;
 
   return (
-    <BottomSheet
+    <AdaptiveSurface variant="form"
       open={open}
       onOpenChange={(v) => !v && onClose()}
       title={
@@ -174,6 +174,6 @@ export function ExpenseDetailModal({ open, expense, onClose, onEdit, onDuplicate
           </button>
         </div>
       </div>
-    </BottomSheet>
+    </AdaptiveSurface>
   );
 }
