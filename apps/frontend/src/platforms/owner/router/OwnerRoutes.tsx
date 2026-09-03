@@ -66,6 +66,9 @@ const MoreProfilePage = lazy(() => import('@features/owner-more/pages/MoreProfil
 const HostelsPage = lazy(() =>
   import('@features/owner-dashboard/pages/HostelsPage').then((m) => ({ default: m.HostelsPage })),
 );
+const HostelsWorkspace = lazy(() =>
+  import('@features/owner-dashboard/pages/HostelsWorkspace').then((m) => ({ default: m.HostelsWorkspace })),
+);
 const MoreHostelIdentityPage = lazy(() =>
   import('@features/owner-more/pages/MoreHostelIdentityPage').then((m) => ({ default: m.MoreHostelIdentityPage })),
 );
@@ -186,10 +189,28 @@ export function OwnerRoutes() {
       <Route element={<OwnerAppShell />}>
         <Route path="/owner" element={<Navigate to="/owner/home" replace />} />
         <Route path="/owner/home" element={<OwnerDashboardPreviewPage />} />
-        {/* The Hostels tab. Inside the shell so the bottom nav stays visible —
-            unlike `/owner/hostels/:hostelId`, which is a full-screen drilldown
-            takeover mounted outside it. */}
-        <Route path="/owner/hostels" element={<HostelsPage />} />
+        {/* Hostels list + drilldown as a master-detail at lg+ (ADR-171 Phase 2.3).
+            The `:hostelId` drilldown is nested so <MasterDetail> renders it
+            through <Outlet/> and the console sidebar does not remount on
+            list<->drilldown navigation. Below lg it stays a full-screen
+            takeover — OwnerAppShell drops its bottom nav / frame for the
+            drilldown paths (isOwnerFullBleedPath), the list keeps the nav.
+            `/owner/hostels/new` + `:hostelId/build` (the builder) stay standalone
+            outside the shell — static `new` out-ranks `:hostelId` in RR7, and
+            `build` has no nested child so the standalone route wins. */}
+        <Route path="/owner/hostels" element={<HostelsWorkspace />}>
+          <Route path=":hostelId" element={<HostelDrilldownLayout />}>
+            <Route index element={<Navigate to="overview" replace />} />
+            <Route path="overview" element={<HostelOverviewPage />} />
+            <Route path="rooms" element={<HostelRoomsPage />} />
+            <Route path="tenants" element={<HostelTenantsPage />} />
+            {/* 'marketing' (the Stayo Discover listing editor) is shelved for v1 —
+                ADR-170. A stale link now redirects to Overview; HostelMarketingPage
+                and its feature tree are kept on disk for v2. */}
+            <Route path="marketing" element={<Navigate to="overview" replace />} />
+            <Route path="settings" element={<HostelSettingsPage />} />
+          </Route>
+        </Route>
 
         {/* Today's rent-collection work queue (ADR-045). */}
         <Route path="/owner/money/collect" element={<CollectionQueuePage />} />
@@ -282,23 +303,12 @@ export function OwnerRoutes() {
       <Route path="/owner/alerts/renewals" element={<AlertsRenewalsPage />} />
       <Route path="/owner/alerts/requests" element={<AlertsRequestsPage />} />
 
-      {/* Add Hostel — a full-screen build flow, not a drilldown tab. Declared
-          before the drilldown so `/owner/hostels/new` is not read as a hostel
-          id, and resumable at `:hostelId/build`. */}
+      {/* Add Hostel / resume builder — a full-screen build flow, not a drilldown
+          tab, mounted outside OwnerAppShell. `/owner/hostels/new` is static so it
+          out-ranks the nested `:hostelId`; `:hostelId/build` has no nested child
+          so this standalone route wins the match. */}
       <Route path="/owner/hostels/new" element={<HostelBuilderPage />} />
       <Route path="/owner/hostels/:hostelId/build" element={<HostelBuilderPage />} />
-
-      <Route path="/owner/hostels/:hostelId" element={<HostelDrilldownLayout />}>
-        <Route index element={<Navigate to="overview" replace />} />
-        <Route path="overview" element={<HostelOverviewPage />} />
-        <Route path="rooms" element={<HostelRoomsPage />} />
-        <Route path="tenants" element={<HostelTenantsPage />} />
-        {/* 'marketing' (the Stayo Discover listing editor) is shelved for v1 —
-            ADR-170. A stale link now redirects to Overview; HostelMarketingPage
-            and its feature tree are kept on disk for v2. */}
-        <Route path="marketing" element={<Navigate to="overview" replace />} />
-        <Route path="settings" element={<HostelSettingsPage />} />
-      </Route>
     </Route>
   );
 }

@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { portfolioService } from '@features/dashboard/api';
 import { queryKeys } from '@lib/queryKeys';
-import { APP_SURFACE } from '@shared/ui/surface';
+import { APP_SURFACE, APP_GRID } from '@shared/ui/surface';
+import { useIsDesktop } from '@/app/components/ui/use-desktop';
 
 const TABS = [
   { to: 'overview', label: 'Overview' },
@@ -33,6 +34,7 @@ const TABS = [
 export function HostelDrilldownLayout() {
   const { hostelId } = useParams<{ hostelId: string }>();
   const navigate = useNavigate();
+  const isDesktop = useIsDesktop();
 
   const portfolioQuery = useQuery({
     queryKey: queryKeys.portfolio.summary(),
@@ -46,15 +48,21 @@ export function HostelDrilldownLayout() {
 
   return (
     <ThemeProvider theme="product">
-      <div className={APP_SURFACE}>
-        <div className="flex items-center gap-2.5 px-4 pb-1.5 pt-6 sm:px-6">
-          <button type="button" onClick={() => navigate('/owner/home')} aria-label="Back" className="flex h-8.5 w-8.5 flex-none items-center justify-center rounded-full border border-border bg-card">
-            <ArrowLeft className="h-4 w-4 text-muted-foreground" strokeWidth={1.9} />
-          </button>
-          <span className="text-[13px] font-medium text-muted-foreground">Properties</span>
-        </div>
+      {/* Desktop (lg+, ADR-171 Phase 2.3): rendered as the right pane of the
+          Hostels master-detail, so the 480px APP_FRAME is dropped and the
+          "back to Properties" row is redundant beside the always-visible list.
+          Below lg it is the unchanged full-screen takeover. */}
+      <div className={isDesktop ? `min-h-screen bg-background ${APP_GRID}` : APP_SURFACE}>
+        {!isDesktop && (
+          <div className="flex items-center gap-2.5 px-4 pb-1.5 pt-6 sm:px-6">
+            <button type="button" onClick={() => navigate('/owner/home')} aria-label="Back" className="flex h-8.5 w-8.5 flex-none items-center justify-center rounded-full border border-border bg-card">
+              <ArrowLeft className="h-4 w-4 text-muted-foreground" strokeWidth={1.9} />
+            </button>
+            <span className="text-[13px] font-medium text-muted-foreground">Properties</span>
+          </div>
+        )}
 
-        <div className="px-4 pb-2.5 pt-1 sm:px-6">
+        <div className={isDesktop ? 'px-4 pb-2.5 pt-6 sm:px-6' : 'px-4 pb-2.5 pt-1 sm:px-6'}>
           <h1 className="font-display text-[21px] font-extrabold tracking-tight text-foreground">{card?.name ?? 'Hostel'}</h1>
           <div className="mt-1 flex items-center gap-1.5">
             <span className={`h-1.5 w-1.5 rounded-full ${isRunning === false ? 'bg-muted-foreground' : 'bg-success'}`} />

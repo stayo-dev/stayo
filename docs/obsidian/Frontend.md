@@ -308,6 +308,25 @@ StayO is getting a real desktop application layout for owner + tenant. **The bre
 - **Routes unchanged:** `/owner/money`, `/owner/money/collect` (`CollectionQueuePage`), `/owner/money/payouts` (`MoneyInPage`) are all still single routes inside `OwnerAppShell` — no nesting, no moving. `CollectionQueuePage` still renders its `WorkQueue` (own `APP_FRAME`) — a 480px column inside the console at `lg+`, unchanged (the `WorkQueue` conversion is a later Phase 2 step).
 - **Known `AdaptiveSurface` dialog limitation:** the `wizard`/`dialog` variant caps its *body* at `max-h-[70vh]` but not header+footer, so a very tall dialog on a very short screen could clip the footer. Not hit by the Add-Expense steps; fix in the primitive if it bites.
 
+**Phase 2.3 landed 2026-09-03 — Owner Hostels `<MasterDetail>`, work-queue desktop width, Tenants polish; `< lg` unchanged.**
+
+- **Route change (`platforms/owner/router/OwnerRoutes.tsx`):** the Hostel Drilldown moved from a sibling declared *outside* `OwnerAppShell` to a **nested child** of `/owner/hostels`, *inside* `OwnerAppShell` — same shape as Phase 2.1's Tenants:
+  ```tsx
+  <Route path="/owner/hostels" element={<HostelsWorkspace />}>
+    <Route path=":hostelId" element={<HostelDrilldownLayout />}>
+      <Route index element={<Navigate to="overview" replace />} />
+      <Route path="overview|rooms|tenants|marketing|settings" … />
+    </Route>
+  </Route>
+  ```
+  `/owner/hostels/new` + `/owner/hostels/:hostelId/build` (the **Hostel Builder**) stay standalone **outside** `OwnerAppShell` — static `new` out-ranks the nested `:hostelId` in RR7 (7.13.0); `build` has no nested child so its standalone route wins the match.
+- **`features/owner-dashboard/pages/HostelsWorkspace.tsx` (new)** — the `/owner/hostels` element. `<MasterDetail hasSelection={useMatch('/owner/hostels/:hostelId/*') != null} list={<HostelsPage/>} emptyState={…}>`; the detail renders via `<Outlet/>`. `HostelsPage`, `PropertyList`, `HostelDrilldownLayout`'s tab logic are **unchanged**.
+- **`features/hostel-drilldown/layout/HostelDrilldownLayout.tsx`:** gains `useIsDesktop()`. At `lg+` it drops the 480px `APP_FRAME` (`min-h-screen bg-background APP_GRID`) and hides the "← Properties" back row (redundant beside the always-visible list); the hostel name/status block + scrolling tab row + `<Outlet/>` are unchanged. Below `lg` every class is the exact pre-change string — full-screen takeover with the back button.
+- **`isOwnerFullBleedPath(pathname)`** (`app/layouts/ownerShellRoutes.ts`) extended: now also true for `/owner/hostels/:id` and `/owner/hostels/:id/(overview|rooms|tenants|settings|marketing)` — so `< lg` `OwnerAppShell` sheds its bottom nav + frame for the drilldown pane, as it already did for Tenant Detail. `/owner/hostels` (list) and the builder paths stay `false`.
+- **`features/owner-workqueue/WorkQueue.tsx`:** gains `useIsDesktop()`. At `lg+` the ~480px `APP_FRAME` is dropped and content is capped/centred at `max-w-[860px] px-8`; below `lg` the classes are byte-identical to before. This covers `/owner/money/collect`, `/owner/agreements/review`, `/owner/rooms/vacant` (inside `OwnerAppShell`) **and**, as a consequence of the one shared component, `/owner/tenants/verifications` + `/owner/tenants/activations` (outside `OwnerAppShell` — they get the wider column at `lg+` but no console chrome; folding them into `<MasterDetail>` is a later phase).
+- **Tenants polish:** `TenantList` / `TenantRow` gain an `active` / `selectedTenantId` prop — the URL-selected row shows `border-primary ring-1 ring-primary/50` (`TenantsWorkspace` derives the id from `useMatch` and passes it through `TenantsPage`). `TenantDetailPage` gains `useIsDesktop()`: at `lg+` it drops `APP_FRAME`, centres content at `max-w-[760px]`, and hides its "Back to Tenants" row; below `lg` unchanged. Its 6 owner-tenants form sheets (`ChangeRentModal`, `MoveOutSheet`, `CreateChargeSheet`, `AmendAgreementSheet`, `ChangeRoomSheet`, `RejectDocumentSheet`) swap `BottomSheet` → `AdaptiveSurface variant="form"` (right-side `Sheet` at `lg+`, identical `BottomSheet` below). `TenantActionsSheet` (→ dropdown), `QuickCollectModal` / `ChangeFrequencyModal` / `CorrectPaymentModal` (shared/app-level) and `DocumentPreviewSheet` (custom children) are **not** converted here.
+- **Not touched:** every data hook (`useTenantDetail`, `useOwnerDashboard`, `portfolioService.getSummary`, `useHostelRooms`, …), hostel-selection semantics (still URL-driven, never "first hostel"), the drilldown's own tab routing, and all backend contracts.
+
 **Do not `import` the desktop primitives** unless executing a plan phase. `MasterDetail`/`AppConsoleShell`/`adaptive-surface` are in `app/` (not `shared/ui/`) because `check-architecture.mjs` forbids `shared/` → `app/` imports.
 
 ## See also

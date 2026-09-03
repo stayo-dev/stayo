@@ -2,7 +2,8 @@ import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Check, Info } from 'lucide-react';
 import { cn } from '@shared/lib/cn';
-import { APP_SURFACE } from '@shared/ui/surface';
+import { APP_SURFACE, APP_GRID } from '@shared/ui/surface';
+import { useIsDesktop } from '@/app/components/ui/use-desktop';
 
 /**
  * The one work-queue interaction model (ADR-046).
@@ -202,6 +203,7 @@ export function WorkQueue({
   children?: ReactNode;
 }) {
   const navigate = useNavigate();
+  const isDesktop = useIsDesktop();
   let position = 0;
 
   return (
@@ -212,8 +214,12 @@ export function WorkQueue({
     // here rather than per-page keeps all four consistent instead of
     // drifting. See the file header comment on why there's a single
     // implementation at all.
-    <div className={APP_SURFACE}>
-      <div className="flex flex-col gap-4 px-4 pb-28 pt-5 sm:px-6">
+    //
+    // Desktop (lg+, ADR-171 Phase 2.3): the 480px `APP_FRAME` is dropped so the
+    // queue fills the console content area; content is capped and centred at a
+    // comfortable reading width instead. Below lg, `APP_SURFACE` is unchanged.
+    <div className={isDesktop ? `min-h-screen bg-background ${APP_GRID}` : APP_SURFACE}>
+      <div className={isDesktop ? 'flex flex-col gap-4 pb-28 pt-5 mx-auto w-full max-w-[860px] px-8' : 'flex flex-col gap-4 px-4 pb-28 pt-5 sm:px-6'}>
         <div className="flex items-center gap-2">
           <button
             type="button"

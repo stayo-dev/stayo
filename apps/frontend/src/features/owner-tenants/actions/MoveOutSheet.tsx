@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ArrowRight, Check, ChevronDown } from 'lucide-react';
-import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
+import { AdaptiveSurface } from '@/app/components/ui/adaptive-surface';
 import { PAYMENT_MODES, type PaymentMode } from '@shared/mocks/payments';
 import { moveOutService } from '@features/move-out/api';
 import { queryKeys } from '@lib/queryKeys';
@@ -327,7 +327,7 @@ export function MoveOutSheet({ open, onClose, tenantId, hostelId, tenantName, ro
   const blocked = moveOutBlock({ tenantStatus, activeRequest: active });
 
   return (
-    <BottomSheet open={open} onOpenChange={(v) => !v && onClose()} title={`Move out · ${tenantName}`}>
+    <AdaptiveSurface variant="form" open={open} onOpenChange={(v) => !v && onClose()} title={`Move out · ${tenantName}`}>
       <div className="flex flex-col gap-4 pb-2">
         {blocked && (
           <div className="rounded-xl border border-border bg-muted/40 px-3.5 py-3">
@@ -604,7 +604,7 @@ export function MoveOutSheet({ open, onClose, tenantId, hostelId, tenantName, ro
           </>
         )}
       </div>
-    </BottomSheet>
+    </AdaptiveSurface>
   );
 }
 

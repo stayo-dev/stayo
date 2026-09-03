@@ -25,4 +25,26 @@ describe('isOwnerFullBleedPath', () => {
   it('is false when there is a deeper segment', () => {
     expect(isOwnerFullBleedPath('/owner/tenants/abc123/anything')).toBe(false);
   });
+
+  it('is true for the Hostel Drilldown pane and its tabs', () => {
+    expect(isOwnerFullBleedPath('/owner/hostels/abc123')).toBe(true);
+    expect(isOwnerFullBleedPath('/owner/hostels/abc123/overview')).toBe(true);
+    expect(isOwnerFullBleedPath('/owner/hostels/abc123/rooms')).toBe(true);
+    expect(isOwnerFullBleedPath('/owner/hostels/abc123/tenants')).toBe(true);
+    expect(isOwnerFullBleedPath('/owner/hostels/abc123/settings')).toBe(true);
+  });
+
+  it('is false for the Hostels list itself', () => {
+    expect(isOwnerFullBleedPath('/owner/hostels')).toBe(false);
+  });
+
+  it('is false for the Hostel Builder routes (they live outside OwnerAppShell anyway)', () => {
+    expect(isOwnerFullBleedPath('/owner/hostels/new')).toBe(false);
+    expect(isOwnerFullBleedPath('/owner/hostels/abc123/build')).toBe(false);
+  });
+
+  it('is false for an unknown hostel drilldown sub-segment', () => {
+    expect(isOwnerFullBleedPath('/owner/hostels/abc123/anything')).toBe(false);
+    expect(isOwnerFullBleedPath('/owner/hostels/abc123/overview/deep')).toBe(false);
+  });
 });

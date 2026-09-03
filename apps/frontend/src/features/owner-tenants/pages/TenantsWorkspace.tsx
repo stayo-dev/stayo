@@ -26,11 +26,12 @@ export function TenantsWorkspace() {
   // nested `:tenantId` and render their own pages), so this match is
   // unambiguous — null on the list, set on a detail route.
   const detailMatch = useMatch('/owner/tenants/:tenantId');
+  const selectedTenantId = detailMatch?.params.tenantId ?? null;
 
   return (
     <MasterDetail
       hasSelection={detailMatch != null}
-      list={<TenantsPage />}
+      list={<TenantsPage selectedTenantId={selectedTenantId} />}
       emptyState={
         <div className="flex h-full flex-col items-center justify-center gap-2 p-10 text-center">
           <span className="flex h-11 w-11 items-center justify-center rounded-full bg-secondary text-primary">

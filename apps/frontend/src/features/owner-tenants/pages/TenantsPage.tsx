@@ -24,7 +24,7 @@ function TenantsLoadingSkeleton() {
 }
 
 /** Tenants tab — list screen, per Stayo App.dc.html. Thin orchestrator: real data via `useRealTenantList`, the invite flow is its own self-contained wizard (still mock this slice). */
-export function TenantsPage() {
+export function TenantsPage({ selectedTenantId }: { selectedTenantId?: string | null } = {}) {
   const navigate = useNavigate();
   const filters = useRealTenantList();
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -73,7 +73,7 @@ export function TenantsPage() {
       </div>
 
       <TenantFilters filters={filters} />
-      <TenantList tenants={filters.tenants} onSelect={goToTenant} onInvite={() => setInviteOpen(true)} showHostel={filters.hostelId === 'all'} />
+      <TenantList tenants={filters.tenants} onSelect={goToTenant} onInvite={() => setInviteOpen(true)} showHostel={filters.hostelId === 'all'} selectedTenantId={selectedTenantId} />
 
       <InviteTenantWizard
         open={inviteOpen}

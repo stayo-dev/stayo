@@ -8,10 +8,12 @@ interface TenantListProps {
   onSelect: (tenant: MockTenant) => void;
   onInvite: () => void;
   showHostel?: boolean;
+  /** URL-selected tenant (desktop master-detail) — highlights its row. Null/undefined below `lg`. */
+  selectedTenantId?: string | null;
 }
 
 /** Tenant rows or the "no tenants" empty state, per Stayo App.dc.html. */
-export function TenantList({ tenants, onSelect, onInvite, showHostel }: TenantListProps) {
+export function TenantList({ tenants, onSelect, onInvite, showHostel, selectedTenantId }: TenantListProps) {
   if (tenants.length === 0) {
     return (
       <EmptyState
@@ -34,7 +36,7 @@ export function TenantList({ tenants, onSelect, onInvite, showHostel }: TenantLi
   return (
     <div className="flex flex-col gap-2">
       {tenants.map((t) => (
-        <TenantRow key={t.id} tenant={t} onClick={() => onSelect(t)} showHostel={showHostel} />
+        <TenantRow key={t.id} tenant={t} onClick={() => onSelect(t)} showHostel={showHostel} active={t.id === selectedTenantId} />
       ))}
     </div>
   );
