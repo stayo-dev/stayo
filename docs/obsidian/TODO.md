@@ -14,6 +14,18 @@ ADR-171 was scheduling-only — it changed no route code. These were found durin
 - [ ] **GitHub scheduled workflows auto-disable after 60 days of repo inactivity**, which would silently take four of the six MVP jobs — including `reconcile-payments` and `expire-unaccepted-tenancies` — with them. Fine while the repo is active daily; worth a note in the runbook, or a reason to move back to Vercel Pro crons.
 - [ ] **Re-schedule `hostel-invariants` and `migration-audit` once something reads their output.** Descheduled because they write to `financial_invariant_failures` / `migration_audit_runs`, which no surface renders and no alert watches. They are useful jobs attached to nothing — weekly, plus somewhere to see the result, would make them worth running again.
 
+## v2 — un-shelve the Stayo Discover marketplace (2026-09-03, [[Decisions#ADR-170|ADR-170]])
+
+v1 removed the public marketplace + owner listing/marketing surfaces from the frontend and gated the APIs behind `MARKETPLACE_ENABLED`. All code is on disk. To bring it back:
+
+- [ ] **Backend:** set `MARKETPLACE_ENABLED=true` in the deployed backend env (and `.env` / `.env.test` locally). Confirm `/api/discover/hostels`, `/api/owner/hostels/<id>/marketing`, `/api/platform-admin/marketing-reviews` stop returning `410`. Then delete the `1b.` marketplace gate in `apps/backend/middleware.ts` once it is permanently on.
+- [ ] **Router:** re-register `DiscoverRoutes()` in `apps/frontend/src/app/router/AppRouter.tsx` (it currently mounts `ProfileRoutes()` directly — keep `/profile` working after re-nesting or leave it hoisted).
+- [ ] **`/`:** decide whether `/` returns to the `WelcomePage` audience fork (revert `PublicRoutes.tsx` + remove the returning-owner auto-forward added to `LandingPage.tsx`) or stays owner-first with a separate tenant entry point.
+- [ ] **Nav:** restore the `{ to: '/discover', label: 'Explore', Icon: Compass }` entries in `apps/frontend/src/app/nav/appNavConfig.ts` (`EXPLORE_PROFILE_TABS` + `ACTIVE_TENANT_TABS`) and revert `appNavConfig.test.ts` / `tenancyState.test.ts` / `crossSurfaceLogin.test.ts` / `crossSurfaceLogin.ts` / `AuthCallbackPage.tsx` / `ProtectedTenantRoute.tsx` / `TenantFarewellPage.tsx` / `guideCopy.ts` back to routing no-tenancy users at `/discover`.
+- [ ] **Owner:** restore the `marketing` tab in `HostelDrilldownLayout.tsx` and the real `<Route path="marketing">` (with its lazy `HostelMarketingPage` import) in `OwnerRoutes.tsx`.
+- [ ] **Admin:** restore `/admin/listings*` routes + imports in `AdminRoutes.tsx`, the `Hostel Listings` nav item in `adminNav.ts`, its `pageHeaders.ts` entry, the Overview review-queue `listings` row in `overviewModel.ts` + `OverviewPage.tsx`, and revert `adminNav.test.ts` / `overviewModel.test.ts`.
+- [ ] **Docs:** flip the "SHELVED for v1" banners in [[Features]], [[APIs]], [[Frontend]] back off.
+
 ## An owner-turned-tenant-of-another-hostel cannot yet reach that tenant portal (2026-09-01, [[Decisions#ADR-162|ADR-162]])
 
 - [ ] `profile.role` is a single global field (`OWNER | TENANT | ADMIN`) that `getSession()`/`resolveSupabaseSession()` derive the entire authenticated session's role from. ADR-162 fixed `owner-managed-tenancy-service.ts` (and, at the time, `tenancy-claim-service.ts` — since removed, see [[Decisions#ADR-163|ADR-163]]) to stop refusing an owner of Hostel A from becoming a tenant of Hostel B — but doing so does not change that profile's `role` column, so the resulting account still authenticates as `OWNER` and cannot pass `resolveTenantScope` (which requires `session.role === "TENANT"`) to actually use the Hostel B tenant portal. Needs a real decision: a per-hostel role model, a session "acting as" mechanism, or something else — not a code patch to guess at.

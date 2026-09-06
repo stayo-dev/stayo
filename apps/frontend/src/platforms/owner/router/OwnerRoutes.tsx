@@ -34,9 +34,6 @@ const HostelBuilderPage = lazy(() =>
 const HostelTenantsPage = lazy(() =>
   import('@features/hostel-drilldown/pages/HostelTenantsPage').then((m) => ({ default: m.HostelTenantsPage })),
 );
-const HostelMarketingPage = lazy(() =>
-  import('@features/hostel-drilldown/pages/HostelMarketingPage').then((m) => ({ default: m.HostelMarketingPage })),
-);
 const HostelSettingsPage = lazy(() =>
   import('@features/hostel-drilldown/pages/HostelSettingsPage').then((m) => ({ default: m.HostelSettingsPage })),
 );
@@ -285,7 +282,10 @@ export function OwnerRoutes() {
         <Route path="overview" element={<HostelOverviewPage />} />
         <Route path="rooms" element={<HostelRoomsPage />} />
         <Route path="tenants" element={<HostelTenantsPage />} />
-        <Route path="marketing" element={<HostelMarketingPage />} />
+        {/* 'marketing' (the Stayo Discover listing editor) is shelved for v1 —
+            ADR-170. A stale link now redirects to Overview; HostelMarketingPage
+            and its feature tree are kept on disk for v2. */}
+        <Route path="marketing" element={<Navigate to="overview" replace />} />
         <Route path="settings" element={<HostelSettingsPage />} />
       </Route>
     </Route>

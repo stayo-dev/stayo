@@ -8,7 +8,7 @@ export const PAGE_HEADERS: Record<string, { title: string; subtitle: string }> =
   '/admin/leads': { title: 'Leads', subtitle: 'Owner sign-ups from the landing page' },
   '/admin/owners': { title: 'Owners', subtitle: 'Every owner and the hostels they hold' },
   '/admin/kyc': { title: 'KYC Approvals', subtitle: 'Verify owner onboarding before they go live' },
-  '/admin/listings': { title: 'Hostel Listings', subtitle: 'Review and publish hostels to the Discovery page' },
+  // '/admin/listings' (Hostel Listings) shelved for v1 — ADR-170.
   '/admin/reviews': { title: 'Reviews', subtitle: 'Resident reviews — nothing reaches a listing until you publish it' },
   '/admin/revenue': { title: 'Revenue & Analytics', subtitle: 'Platform earnings, GMV and commission' },
   '/admin/settlements': { title: 'Settlements', subtitle: 'Pay collected rent out to owners · nightly run' },
