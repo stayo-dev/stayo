@@ -4,6 +4,16 @@ tags: [todo, backlog]
 
 # TODO / Backlog
 
+## Cron gaps left open by the MVP trim (2026-09-06, [[Decisions#ADR-171|ADR-171]])
+
+ADR-171 was scheduling-only — it changed no route code. These were found during that audit and deliberately not fixed in the same change.
+
+- [ ] **Three cron routes fail open on a missing `CRON_SECRET`.** `admissions`, `reconcile-payments` and `data-retention` guard with `if (cronSecret && ...)`, so an unset or empty secret makes them fully public; the other ten return `500` instead. `reconcile-payments` is in the MVP set, and `data-retention` **permanently deletes records with no archive path** — the registry already names an auth review as a precondition for ever scheduling it. `tenant-analytics` has a milder variant: comparing against `Bearer ${process.env.CRON_SECRET}` with the var unset makes the literal string `Bearer undefined` a valid credential. Make all of them fail closed.
+- [ ] **`generate-rent` can silently truncate a billing run.** It stops at `SOFT_TIMEOUT_MS` (240 s) and returns `has_more: true` + `next_cursor` for a follow-up call **nothing in the repo makes** — the only other `has_more` hits are unrelated admin pagination. A partial run of the P0 billing job is neither retried nor alerted. Not reached at current scale. Needs either a self-chaining follow-up or an alert on `has_more: true`.
+- [ ] **Nothing alerts on cron failure, on either runner.** A failed GitHub Actions run is a red mark in a tab nobody opens; a failed Vercel Cron is a log line. This is precisely what let a job 404 nightly for twelve days ([[Bugs]]). Cheapest useful version: fail the workflow loudly to a WhatsApp/email channel that is already wired.
+- [ ] **GitHub scheduled workflows auto-disable after 60 days of repo inactivity**, which would silently take four of the six MVP jobs — including `reconcile-payments` and `expire-unaccepted-tenancies` — with them. Fine while the repo is active daily; worth a note in the runbook, or a reason to move back to Vercel Pro crons.
+- [ ] **Re-schedule `hostel-invariants` and `migration-audit` once something reads their output.** Descheduled because they write to `financial_invariant_failures` / `migration_audit_runs`, which no surface renders and no alert watches. They are useful jobs attached to nothing — weekly, plus somewhere to see the result, would make them worth running again.
+
 ## An owner-turned-tenant-of-another-hostel cannot yet reach that tenant portal (2026-09-01, [[Decisions#ADR-162|ADR-162]])
 
 - [ ] `profile.role` is a single global field (`OWNER | TENANT | ADMIN`) that `getSession()`/`resolveSupabaseSession()` derive the entire authenticated session's role from. ADR-162 fixed `owner-managed-tenancy-service.ts` (and, at the time, `tenancy-claim-service.ts` — since removed, see [[Decisions#ADR-163|ADR-163]]) to stop refusing an owner of Hostel A from becoming a tenant of Hostel B — but doing so does not change that profile's `role` column, so the resulting account still authenticates as `OWNER` and cannot pass `resolveTenantScope` (which requires `session.role === "TENANT"`) to actually use the Hostel B tenant portal. Needs a real decision: a per-hostel role model, a session "acting as" mechanism, or something else — not a code patch to guess at.

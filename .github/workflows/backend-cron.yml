@@ -1,10 +1,22 @@
 name: Backend Cron (Vercel Hobby overflow)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Vercel Hobby (free) allows only 2 cron jobs. The 2 most critical ones
-# (generate-rent, rent-reminders) run via Vercel Cron — see
-# apps/backend/vercel.json. This workflow covers the OTHER 8 so the full
-# schedule works on the free tier.
+# Vercel Hobby (free) allows only 2 cron jobs, once per day each. The 2 most
+# critical ones (generate-rent, rent-reminders) run via Vercel Cron — see
+# apps/backend/vercel.json. This workflow covers the OTHER 4 jobs in the MVP
+# cron set so the full schedule works on the free tier.
+#
+# The MVP set is deliberately small (see docs/operations/cron-registry.md).
+# Every other /api/cron/* route still exists and is still CRON_SECRET-gated,
+# but is intentionally UNSCHEDULED — do not add one back here without adding
+# it to the registry first.
+#
+# ORDERING MATTERS: move-out-releases runs at 18:00 UTC, a full 30 minutes
+# BEFORE generate-rent (18:30 UTC, on Vercel). generate-rent bills every
+# allocation whose tenant is still ACTIVE and has no move-out awareness of its
+# own, while move-out-releases is what flips a past-exit-date tenant to
+# FORMER_TENANT. Running them in the other order bills tenants who have
+# already left. Do not move either without re-reading that pair.
 #
 # Each run GETs a CRON_SECRET-protected /api/cron/* endpoint exactly the way
 # Vercel Cron does: header `Authorization: Bearer <CRON_SECRET>`.
@@ -17,10 +29,12 @@ name: Backend Cron (Vercel Hobby overflow)
 # Notes:
 #   • GitHub scheduled runs are best-effort and can be delayed a few minutes
 #     under load — fine for these daily jobs, not for second-level precision.
+#     The 30-minute move-out → rent-generation gap exists to absorb that.
 #   • Scheduled workflows are auto-disabled after 60 days with no repo activity;
 #     a push re-enables them.
-#   • On upgrading to Vercel Pro: move these 8 back into vercel.json's `crons`
-#     (Pro allows 40) and delete/disable this workflow.
+#   • On upgrading to Vercel Pro: move these back into vercel.json's `crons`
+#     (Pro allows 40) and delete/disable this workflow — keeping the ordering
+#     constraint above intact.
 # ─────────────────────────────────────────────────────────────────────────────
 
 on:
@@ -32,23 +46,15 @@ on:
         default: all
         options:
           - all
-          - hostel-invariants
-          - migration-audit
-          - agreement-lifecycle
-          - daily-briefings
-          - reconcile-payments
-          - food-carry-forward
           - move-out-releases
-          - admissions
+          - reconcile-payments
+          - invitation-expiry-reminders
+          - expire-unaccepted-tenancies
   schedule:
-    - cron: "0 1 * * *"    # hostel-invariants
-    - cron: "15 1 * * *"   # migration-audit
-    - cron: "30 1 * * *"   # agreement-lifecycle
-    - cron: "0 2 * * *"    # daily-briefings
-    - cron: "30 3 * * *"   # reconcile-payments
-    - cron: "0 4 * * *"    # food-carry-forward
-    - cron: "30 18 * * *"  # move-out-releases
-    - cron: "45 18 * * *"  # admissions
+    - cron: "0 18 * * *"   # move-out-releases          (23:30 IST) — before generate-rent
+    - cron: "0 3 * * *"    # invitation-expiry-reminders (08:30 IST)
+    - cron: "30 3 * * *"   # reconcile-payments          (09:00 IST)
+    - cron: "0 4 * * *"    # expire-unaccepted-tenancies (09:30 IST) — 1h after the reminder
 
 jobs:
   run-cron:
@@ -66,20 +72,16 @@ jobs:
           set -euo pipefail
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             if [ "$DISPATCH_ENDPOINT" = "all" ]; then
-              EP="hostel-invariants migration-audit agreement-lifecycle daily-briefings reconcile-payments food-carry-forward move-out-releases admissions"
+              EP="move-out-releases invitation-expiry-reminders reconcile-payments expire-unaccepted-tenancies"
             else
               EP="$DISPATCH_ENDPOINT"
             fi
           else
             case "$FIRED_SCHEDULE" in
-              "0 1 * * *")   EP="hostel-invariants" ;;
-              "15 1 * * *")  EP="migration-audit" ;;
-              "30 1 * * *")  EP="agreement-lifecycle" ;;
-              "0 2 * * *")   EP="daily-briefings" ;;
+              "0 18 * * *")  EP="move-out-releases" ;;
+              "0 3 * * *")   EP="invitation-expiry-reminders" ;;
               "30 3 * * *")  EP="reconcile-payments" ;;
-              "0 4 * * *")   EP="food-carry-forward" ;;
-              "30 18 * * *") EP="move-out-releases" ;;
-              "45 18 * * *") EP="admissions" ;;
+              "0 4 * * *")   EP="expire-unaccepted-tenancies" ;;
               *)             EP="" ;;
             esac
           fi

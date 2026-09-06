@@ -10,18 +10,6 @@
     {
       "path": "/api/cron/rent-reminders",
       "schedule": "0 2 * * *"
-    },
-    {
-      "path": "/api/cron/food-expiry",
-      "schedule": "0 1 * * *"
-    },
-    {
-      "path": "/api/cron/invitation-expiry-reminders",
-      "schedule": "0 3 * * *"
-    },
-    {
-      "path": "/api/cron/expire-unaccepted-tenancies",
-      "schedule": "0 4 * * *"
     }
   ]
 }
