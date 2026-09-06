@@ -8,6 +8,18 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-06 — A scheduled job called a route that had not existed for twelve days, and a second pair raced each other nightly (fixed)
+
+**Symptom.** Two independent scheduling faults, both invisible because nothing watches cron output.
+
+**(1) A daily 404.** `.github/workflows/backend-cron.yml` ran `/api/cron/food-carry-forward` at `0 4 * * *`. That route was renamed to `food-expiry` on 2026-08-25 ([[Decisions#ADR-114|ADR-114]]) when its schedule-cloning responsibility was removed. The rename correctly updated the route, [[Food]], [[APIs]] and `vercel.json` — but not the workflow, which kept calling the old path, taking a 404 and failing its job every night for twelve days. **No user impact**: the surviving work (closing expired voting periods and polls) had moved to `food-expiry` on Vercel Cron and kept running. The cost was a permanently red Actions tab, which is itself the reason nobody noticed.
+
+**(2) A nightly race on rent.** `generate-rent` (Vercel) and `move-out-releases` (GitHub Actions) were both scheduled at `30 18 * * *` — the same minute, on two runners, with no ordering between them. `generate-rent` bills every allocation whose tenant is `ACTIVE` and has **no exit-date filter anywhere in the route**. `move-out-releases` is the only thing that flips a past-exit-date tenant to `FORMER_TENANT`: `move-out-service.ts:467` closes an *immediate* exit inline, but a **future-dated** exit is deliberately left `ACTIVE` with a live allocation, and `tenant-service.ts:1539` hard-blocks setting `FORMER_TENANT` directly. Whenever rent generation won the race, a tenant whose exit date had just passed was billed for a further month on a room that had not been released.
+
+**Root cause, shared.** Two schedulers with no shared source of truth — `vercel.json` and a GitHub Actions workflow — plus a registry (`docs/operations/cron-registry.md`) that had not been updated since the initial commit while `vercel.json` changed five times. The registry listed neither the workflow's existence nor three jobs that were actually scheduled, and asserted a rule (*"do not introduce GitHub Actions"*) that the repo had contradicted from its first commit. Nothing validated that a scheduled endpoint resolves to a route, and nothing alerted on a failing run.
+
+**Fix.** [[Decisions#ADR-171|ADR-171]] trims the schedule to the six MVP jobs, deletes the dead entry, and moves `move-out-releases` to `0 18 * * *` — a deliberate 30-minute lead over `generate-rent`, sized to absorb GitHub's best-effort scheduling delay. The registry is rewritten against the actual schedulers and now requires confirming `app/api/cron/<name>/route.ts` exists and exports `GET` before adding a workflow entry. **Still open:** no alerting on cron failure at all, on either runner — which is what let both of these run unnoticed. See [[TODO]].
+
 ## 2026-09-02 — `document_verified` could be true with documents missing, pending, rejected, or for the wrong profile type (fixed)
 
 **Symptom.** `tenants.document_verified` — the flag four surfaces derive KYC status from — could be `true` when the tenant had not actually cleared KYC.
