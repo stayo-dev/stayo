@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { AlertTriangle, ArrowLeft, ArrowRight, Check, Heart } from 'lucide-react';
 import api from '@lib/api-client';
+import { AdaptiveSurface } from '@/app/components/ui/adaptive-surface';
 import { C, FONT } from '@/app/pages/discover/discoverTheme';
 import {
   CLOSURE_REASONS,
@@ -55,8 +56,6 @@ export function CloseAccountSheet({
     onSuccess: () => setStep('done'),
   });
 
-  if (!open) return null;
-
   const items = whatYouLose(losses);
   const offer = retentionOffer(reason);
 
@@ -68,9 +67,23 @@ export function CloseAccountSheet({
   };
 
   return (
-    <div className="fixed inset-0 z-[95] flex flex-col" style={{ background: C.paper }}>
+    <AdaptiveSurface
+      variant="wizard"
+      open={open}
+      onOpenChange={(next) => !next && onClose()}
+      title={step === 'done' ? 'Account closed' : 'Close your account'}
+      hideHeader
+    >
+    <div className="flex flex-col" style={{ background: C.paper }}>
+      {/*
+        `sticky top-0` (added for this phase) rather than relying on being a
+        flex-column sibling in a `fixed inset-0` root — this now nests inside
+        `AdaptiveSurface`'s own scrolling container (a `BottomSheet` drawer
+        below `lg`, a centered `Dialog` at `lg+`), which isn't the `fixed
+        inset-0` layout this header's positioning used to depend on.
+      */}
       <header
-        className="flex flex-none items-center gap-3 border-b px-5 pb-3.5 pt-[max(2.5rem,env(safe-area-inset-top))]"
+        className="sticky top-0 z-10 flex flex-none items-center gap-3 border-b px-5 pb-3.5 pt-[max(2.5rem,env(safe-area-inset-top))]"
         style={{ background: C.cardWarm, borderColor: C.line }}
       >
         {step !== 'done' && (
@@ -344,5 +357,6 @@ export function CloseAccountSheet({
         )}
       </main>
     </div>
+    </AdaptiveSurface>
   );
 }
