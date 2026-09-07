@@ -5,7 +5,6 @@ import { FOOD_SLOTS, type MealSlotKey } from '@shared/mocks/food';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
-import { useIsMobile } from '@/app/components/ui/use-mobile';
 import { useIsDesktop } from '@/app/components/ui/use-desktop';
 import { HostelSwitcher } from '../components/HostelSwitcher';
 import { PublishChecklist } from '../components/schedule/PublishChecklist';
@@ -51,12 +50,15 @@ function formatMonthLabel(month: string): string {
  */
 export function MealPlanPage() {
   const session = useOwnerSession();
-  // `useIsMobile` (768px) keeps deciding grid-vs-accordion, unchanged — the
-  // `< lg` experience is untouched. `useIsDesktop` (1024px, the console
-  // breakpoint) only adds the bounded desktop content column at `lg+` so the
-  // already-built `MealPlanGrid` gets real width inside the owner console
-  // instead of the leftover mobile padding (ADR-171 Phase 2.7).
-  const isMobile = useIsMobile();
+  // Grid vs. day-accordion now keys off the console breakpoint `useIsDesktop`
+  // (1024px), not `useIsMobile` (768px) — ADR-171 Phase 2.8. Reason: the 7-day
+  // `MealPlanGrid` needs ~720px+ and the owner shell's 480px `APP_FRAME` still
+  // applies below `lg`, so in the old 768–1023px band the grid rendered
+  // squeezed inside a horizontal-scroll box. That band now gets `MealPlanMobile`
+  // (the accordion), which is designed for narrow widths. `< 768px` is
+  // unchanged (accordion either way); `>= 1024px` is unchanged (grid either
+  // way). `useIsDesktop` also gates the bounded desktop content column (Phase
+  // 2.7).
   const isDesktop = useIsDesktop();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -343,7 +345,7 @@ export function MealPlanPage() {
         </div>
       </div>
 
-      {isMobile ? (
+      {!isDesktop ? (
         <MealPlanMobile
           activeDay={activeDay}
           onSelectDay={setActiveDay}

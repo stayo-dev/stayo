@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useIsDesktop } from '@/app/components/ui/use-desktop';
+import { useSelectedHostel } from '@features/owner-session/useSelectedHostel';
 import { useRealTenantList } from '../hooks/useRealTenantList';
 import { TenantFilters } from '../components/TenantFilters';
 import { TenantList } from '../components/TenantList';
@@ -26,7 +28,12 @@ function TenantsLoadingSkeleton() {
 /** Tenants tab — list screen, per Stayo App.dc.html. Thin orchestrator: real data via `useRealTenantList`, the invite flow is its own self-contained wizard (still mock this slice). */
 export function TenantsPage({ selectedTenantId }: { selectedTenantId?: string | null } = {}) {
   const navigate = useNavigate();
-  const filters = useRealTenantList();
+  // Desktop (lg+): the sidebar `HostelSwitcher` is the hostel scope
+  // (ADR-171 Phase 2.8) — `null` ("All hostels") maps to the list's `'all'`
+  // fan-out. Below lg, `useRealTenantList`'s own in-page selector drives it.
+  const isDesktop = useIsDesktop();
+  const { selectedHostelId } = useSelectedHostel();
+  const filters = useRealTenantList(isDesktop ? selectedHostelId ?? 'all' : undefined);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -72,7 +79,7 @@ export function TenantsPage({ selectedTenantId }: { selectedTenantId?: string | 
         </button>
       </div>
 
-      <TenantFilters filters={filters} />
+      <TenantFilters filters={filters} hideHostelSelector={isDesktop} />
       <TenantList tenants={filters.tenants} onSelect={goToTenant} onInvite={() => setInviteOpen(true)} showHostel={filters.hostelId === 'all'} selectedTenantId={selectedTenantId} />
 
       <InviteTenantWizard

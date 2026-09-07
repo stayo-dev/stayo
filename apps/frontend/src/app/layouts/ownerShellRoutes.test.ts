@@ -11,9 +11,9 @@ describe('isOwnerFullBleedPath', () => {
     expect(isOwnerFullBleedPath('/owner/tenants')).toBe(false);
   });
 
-  it('is false for the sibling queue routes (they live outside OwnerAppShell anyway)', () => {
-    expect(isOwnerFullBleedPath('/owner/tenants/verifications')).toBe(false);
-    expect(isOwnerFullBleedPath('/owner/tenants/activations')).toBe(false);
+  it('is true for the KYC / activation queues (moved inside OwnerAppShell in Phase 2.8)', () => {
+    expect(isOwnerFullBleedPath('/owner/tenants/verifications')).toBe(true);
+    expect(isOwnerFullBleedPath('/owner/tenants/activations')).toBe(true);
   });
 
   it('is false for any other owner route', () => {

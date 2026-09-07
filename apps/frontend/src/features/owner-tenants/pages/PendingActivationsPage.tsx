@@ -104,11 +104,11 @@ export function PendingActivationsPage() {
         emptyTitle="Everyone is activated"
         emptyBody="No invited tenant is waiting to complete activation."
         onRetry={() => refetch()}
-        // This route is declared *outside* `OwnerAppShell` (sibling of
-        // `/owner/tenants/:tenantId`), so at `lg+` there is no console
-        // definite-height context for `<MasterDetail>`'s split panes. Keep the
-        // Phase 2.3 centred column until the route moves into the shell.
-        desktopLayout="centered"
+        // ADR-171 Phase 2.8: this route now lives *inside* `OwnerAppShell`, so
+        // the console `<main>` gives `<MasterDetail>` its definite-height
+        // context. The queue joins the same desktop master-detail as the other
+        // three `WorkQueue` queues (Collection / Agreements / Vacancy).
+        desktopLayout="master-detail"
       />
     </ThemeProvider>
   );
