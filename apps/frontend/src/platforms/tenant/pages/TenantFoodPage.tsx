@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useIsDesktop } from '@/app/components/ui/use-desktop';
 import { TenantPageHeader } from '../components/TenantPageHeader';
 import { GuideNote } from '../guide/GuideNote';
 import { useTenantGuide } from '../guide/useTenantGuide';
@@ -62,6 +63,11 @@ function FoodLoadingSkeleton() {
  * ever showed).
  */
 export function TenantFoodPage() {
+  // Desktop (lg+, ADR-171 Phase 3.4): "My weekly menu" swaps from the day
+  // accordion to a read-only 7-day grid (days across columns, meal slots as
+  // rows) — same data, same cell formatting, no editing controls. Below lg,
+  // the accordion is rendered exactly as before this phase.
+  const isDesktop = useIsDesktop();
   const schedule = useTenantFoodSchedule();
   const polls = useTenantFoodPolls();
   const mealTimings = useTenantMealTimings();
@@ -101,7 +107,7 @@ export function TenantFoodPage() {
           </div>
         }
       />
-      <div className="flex flex-col gap-6 px-5 pb-8 pt-5">
+      <div className="flex flex-col gap-6 px-5 pb-8 pt-5 lg:mx-auto lg:w-full lg:max-w-[1100px] lg:px-8 lg:pt-8">
         {guide.show && <GuideNote {...TAB_COPY.food} onDismiss={guide.dismiss} />}
 
         {mealsForDay(today).length > 0 && (
@@ -143,58 +149,124 @@ export function TenantFoodPage() {
                 <span className="h-1.5 w-1.5 rounded-full bg-info" /> {currentMonth.monthLabel}
               </span>
             </div>
-            <p className="-mt-1.5 text-[11.5px] font-medium text-muted-foreground">Tap a day to see all meals</p>
-            <div className={`${card} px-3.5 py-1`}>
-              {DAY_ORDER.map((day, i) => {
-                const isToday = day === today;
-                const isExpanded = day === expandedDay;
-                return (
-                  <div key={day} className={i > 0 ? 'border-t border-border' : ''}>
-                    <button
-                      type="button"
-                      onClick={() => setExpandedDay((d) => (d === day ? null : day))}
-                      className="flex w-full items-center gap-3 py-[11px] text-left"
-                    >
-                      <span className={`flex h-[42px] w-[42px] flex-none flex-col items-center justify-center rounded-[11px] ${isToday ? 'bg-foreground' : 'border border-border bg-secondary/40'}`}>
-                        <span className={`text-[8.5px] font-bold uppercase tracking-wide ${isToday ? 'text-[#C9BFB4]' : 'text-[#A2978B]'}`}>{DAY_LABEL[day]}</span>
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate font-display text-[14px] font-bold tracking-[-0.01em] text-foreground">{DAY_LABEL_FULL[day]}</div>
+            {isDesktop ? (
+              /*
+                Read-only 7-day grid — days across columns, meal slots as rows,
+                same visual language as the Owner Meal Plan desktop grid
+                (sticky label column, bordered cells, `overflow-x-auto`), but
+                built from scratch rather than reusing `MealPlanGrid`/
+                `MealPlanCell`: those are wired for drag-and-drop reordering,
+                Add food/Copy to days/Clear actions and a trash drop zone —
+                none of which belong on a read-only tenant screen. Only the
+                presentational pieces are shared (`mealIcon`, `formatCellItems`
+                via the page's own `cellItems()` adapter, the `FOOD_SLOTS`/
+                `MEAL_CATEGORY_META` tokens already used above), so a dish
+                looks identical on both sides without pulling in any editing
+                behaviour.
+              */
+              <div className="overflow-x-auto rounded-2xl border border-border bg-card">
+                <div className="grid min-w-[860px] grid-cols-[140px_repeat(7,1fr)]">
+                  <div className="sticky left-0 z-10 border-b border-r border-border bg-card p-3" />
+                  {DAY_ORDER.map((day) => {
+                    const isToday = day === today;
+                    return (
+                      <div
+                        key={day}
+                        className={`flex flex-col items-center gap-0.5 border-b border-border p-3 text-center ${isToday ? 'bg-secondary/30' : ''}`}
+                      >
+                        <span className="font-display text-[12.5px] font-bold text-foreground">{DAY_LABEL[day]}</span>
+                        {isToday && <span className="text-[9px] font-bold uppercase tracking-wide text-primary">Today</span>}
                       </div>
-                      {isToday && <span className="flex-none rounded-full bg-success-bg px-2.5 py-1 text-[9.5px] font-bold text-success">Today</span>}
-                      <ChevronDown className={`h-4 w-4 flex-none text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                    </button>
-                    {isExpanded && (
-                      <div className="flex flex-col gap-1.5 pb-3">
-                        {mealsForDay(day).map(({ slot, cell }) => {
-                          const Icon = mealIcon(slot);
-                          const entry = mealTimings.mealTimings[slot];
-                          const status = isToday ? mealStatusAt(entry, now) : null;
-                          const pill = status ? STATUS_PILL[status] : null;
+                    );
+                  })}
+
+                  {SLOT_ORDER.filter((slot) => mealTimings.mealTimings[slot]?.enabled).map((slot) => {
+                    const Icon = mealIcon(slot);
+                    const timing = mealTimings.mealTimings[slot];
+                    return (
+                      <div key={slot} className="contents">
+                        <div className="sticky left-0 z-10 flex flex-col gap-0.5 border-b border-r border-border bg-card p-3">
+                          <span className="flex items-center gap-1.5">
+                            <span className="flex h-7 w-7 flex-none items-center justify-center rounded-md bg-secondary text-primary">
+                              <Icon className="h-3.5 w-3.5" strokeWidth={1.9} />
+                            </span>
+                            <span className="text-[12.5px] font-bold text-foreground">{MEAL_CATEGORY_META[slot].label}</span>
+                          </span>
+                          <span className="pl-9 text-[10px] text-muted-foreground">{formatTimeRange(timing)}</span>
+                        </div>
+                        {DAY_ORDER.map((day) => {
+                          const cell = currentMonth.grid[day]?.[slot];
+                          const isServingNow = day === today && mealStatusAt(timing, now) === 'SERVING_NOW';
                           return (
                             <div
-                              key={slot}
-                              className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left ${status === 'SERVING_NOW' ? 'bg-secondary/40' : ''}`}
+                              key={`${day}:${slot}`}
+                              className={`border-b border-border p-2.5 text-[12px] leading-snug text-foreground ${isServingNow ? 'bg-secondary/30' : ''}`}
                             >
-                              <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] bg-secondary text-primary">
-                                <Icon className="h-4 w-4" strokeWidth={1.75} />
-                              </span>
-                              <div className="min-w-0 flex-1">
-                                <div className={`text-[10px] font-semibold uppercase tracking-wide ${status === 'SERVING_NOW' ? 'text-success' : 'text-[#A2978B]'}`}>
-                                  {MEAL_CATEGORY_META[slot].label} · {formatTimeRange(entry)}
-                                </div>
-                                <div className="mt-0.5 font-display text-[14.5px] font-bold tracking-[-0.01em] text-foreground">{cellItems(cell)}</div>
-                              </div>
-                              {pill && <span className={`flex-none rounded-full px-2.5 py-1 text-[10px] font-bold ${pill.className}`}>{pill.label}</span>}
+                              {cellItems(cell)}
                             </div>
                           );
                         })}
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <>
+                <p className="-mt-1.5 text-[11.5px] font-medium text-muted-foreground">Tap a day to see all meals</p>
+                <div className={`${card} px-3.5 py-1`}>
+                  {DAY_ORDER.map((day, i) => {
+                    const isToday = day === today;
+                    const isExpanded = day === expandedDay;
+                    return (
+                      <div key={day} className={i > 0 ? 'border-t border-border' : ''}>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedDay((d) => (d === day ? null : day))}
+                          className="flex w-full items-center gap-3 py-[11px] text-left"
+                        >
+                          <span className={`flex h-[42px] w-[42px] flex-none flex-col items-center justify-center rounded-[11px] ${isToday ? 'bg-foreground' : 'border border-border bg-secondary/40'}`}>
+                            <span className={`text-[8.5px] font-bold uppercase tracking-wide ${isToday ? 'text-[#C9BFB4]' : 'text-[#A2978B]'}`}>{DAY_LABEL[day]}</span>
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate font-display text-[14px] font-bold tracking-[-0.01em] text-foreground">{DAY_LABEL_FULL[day]}</div>
+                          </div>
+                          {isToday && <span className="flex-none rounded-full bg-success-bg px-2.5 py-1 text-[9.5px] font-bold text-success">Today</span>}
+                          <ChevronDown className={`h-4 w-4 flex-none text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                        </button>
+                        {isExpanded && (
+                          <div className="flex flex-col gap-1.5 pb-3">
+                            {mealsForDay(day).map(({ slot, cell }) => {
+                              const Icon = mealIcon(slot);
+                              const entry = mealTimings.mealTimings[slot];
+                              const status = isToday ? mealStatusAt(entry, now) : null;
+                              const pill = status ? STATUS_PILL[status] : null;
+                              return (
+                                <div
+                                  key={slot}
+                                  className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left ${status === 'SERVING_NOW' ? 'bg-secondary/40' : ''}`}
+                                >
+                                  <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] bg-secondary text-primary">
+                                    <Icon className="h-4 w-4" strokeWidth={1.75} />
+                                  </span>
+                                  <div className="min-w-0 flex-1">
+                                    <div className={`text-[10px] font-semibold uppercase tracking-wide ${status === 'SERVING_NOW' ? 'text-success' : 'text-[#A2978B]'}`}>
+                                      {MEAL_CATEGORY_META[slot].label} · {formatTimeRange(entry)}
+                                    </div>
+                                    <div className="mt-0.5 font-display text-[14.5px] font-bold tracking-[-0.01em] text-foreground">{cellItems(cell)}</div>
+                                  </div>
+                                  {pill && <span className={`flex-none rounded-full px-2.5 py-1 text-[10px] font-bold ${pill.className}`}>{pill.label}</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </div>
         )}
 
