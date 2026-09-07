@@ -63,8 +63,12 @@ export function FormPanel({ config, onBack, onClose }: FormPanelProps) {
   };
 
   return (
-    <div className="stayo-panel-slide-in fixed inset-0 z-[46] flex flex-col bg-background">
-      <div className="flex flex-none items-center gap-3 border-b border-[#EEE4D8] px-[18px] pb-3 pt-14">
+    // Below `lg`: unchanged full-screen slide-in. At `lg+` (ADR-171 Phase 3.1):
+    // a docked right-side panel — see DetailScreen.tsx for the full rationale.
+    // Same width/offset as the other four overlay components so a Room/
+    // Complaints/Profile session doesn't jump width between drill-in and form.
+    <div className="stayo-panel-slide-in fixed inset-0 z-[46] flex flex-col bg-background lg:left-auto lg:top-14 lg:right-0 lg:bottom-0 lg:w-[420px] lg:border-l lg:border-border lg:shadow-lg">
+      <div className="flex flex-none items-center gap-3 border-b border-[#EEE4D8] px-[18px] pb-3 pt-14 lg:pt-5">
         <button type="button" onClick={onBack} className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px] border border-[#EFE6DA] bg-card">
           <ChevronLeft className="h-[18px] w-[18px] text-[#4A433C]" strokeWidth={2} />
         </button>

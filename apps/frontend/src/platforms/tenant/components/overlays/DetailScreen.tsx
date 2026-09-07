@@ -12,8 +12,18 @@ interface DetailScreenProps {
 export function DetailScreen({ config, onBack }: DetailScreenProps) {
   const pillTone = config.pillTone ? TONE_COLOR[config.pillTone] : null;
   return (
-    <div className="stayo-panel-slide-in fixed inset-0 z-[45] flex flex-col bg-background">
-      <div className="flex flex-none items-center gap-3 border-b border-[#EEE4D8] px-[18px] pb-3 pt-14">
+    // Below `lg` (1024px): unchanged full-screen slide-in. At `lg+` (ADR-171
+    // Phase 3.1): the same element becomes a docked right-side panel — offset
+    // below the console topbar (`lg:top-14` matches `AppConsoleShell`'s `h-14`
+    // header) and right-anchored at a fixed width (matching `AdaptiveSurface`'s
+    // drawer convention), so the sidebar/topbar/underlying page stay visible.
+    // `position: fixed` is kept (not swapped for in-flow layout) because these
+    // panels are plain conditional siblings inside each page's own root div,
+    // not portalled or given a positioned wrapper — anchoring to the viewport's
+    // right edge, below the topbar, achieves the same visual result without
+    // restructuring any consuming page.
+    <div className="stayo-panel-slide-in fixed inset-0 z-[45] flex flex-col bg-background lg:left-auto lg:top-14 lg:right-0 lg:bottom-0 lg:w-[420px] lg:border-l lg:border-border lg:shadow-lg">
+      <div className="flex flex-none items-center gap-3 border-b border-[#EEE4D8] px-[18px] pb-3 pt-14 lg:pt-5">
         <button type="button" onClick={onBack} className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px] border border-[#EFE6DA] bg-card">
           <ChevronLeft className="h-[18px] w-[18px] text-[#4A433C]" strokeWidth={2} />
         </button>
