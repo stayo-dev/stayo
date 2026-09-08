@@ -79,10 +79,19 @@ export function toTenantListItem(t: NormalizedTenant, hostelId: string, hostelNa
  * `GET /api/tenants` is hostel-scoped — "All Hostels" fans out in parallel
  * across every real hostel the owner has (never a single assumed hostel,
  * per the CLAUDE.md invariant) and merges client-side.
+ *
+ * `hostelScopeOverride` (ADR-171 Phase 2.8): when passed (`'all'` or a real
+ * hostel id), it drives the scope instead of the internal `hostelId` state —
+ * the owner desktop console passes `useSelectedHostel()` here so the sidebar
+ * `HostelSwitcher` is the single hostel control. Omit it (mobile) and the
+ * in-page selector drives the local state exactly as before. The fan-out /
+ * merge / query-key logic is identical either way.
  */
-export function useRealTenantList() {
+export function useRealTenantList(hostelScopeOverride?: string) {
   const session = useOwnerSession();
-  const [hostelId, setHostelId] = useState('all');
+  const [localHostelId, setLocalHostelId] = useState('all');
+  const hostelId = hostelScopeOverride ?? localHostelId;
+  const setHostelId = setLocalHostelId;
   const [search, setSearch] = useState('');
   const [chip, setChip] = useState<TenantFilterChip>('all');
 

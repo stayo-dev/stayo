@@ -1,5 +1,5 @@
 import { Check, Smartphone } from 'lucide-react';
-import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
+import { AdaptiveSurface } from '@/app/components/ui/adaptive-surface';
 import type { PayStage } from '../hooks/useTenantFinancials';
 import { StayoLoader } from '@shared/ui/brand';
 
@@ -26,7 +26,7 @@ interface PaySheetProps {
  */
 export function PaySheet({ stage, amount, error, onClose, onConfirm }: PaySheetProps) {
   return (
-    <BottomSheet open={stage !== 'closed'} onOpenChange={(open) => !open && onClose()} title="Pay rent" hideHeader>
+    <AdaptiveSurface variant="form" open={stage !== 'closed'} onOpenChange={(open) => !open && onClose()} title="Pay rent" hideHeader>
       {stage === 'form' && (
         <div className="flex flex-col pb-2">
           <div className="font-display text-[20px] font-extrabold tracking-[-0.02em] text-foreground">Pay rent</div>
@@ -81,6 +81,6 @@ export function PaySheet({ stage, amount, error, onClose, onConfirm }: PaySheetP
           </button>
         </div>
       )}
-    </BottomSheet>
+    </AdaptiveSurface>
   );
 }

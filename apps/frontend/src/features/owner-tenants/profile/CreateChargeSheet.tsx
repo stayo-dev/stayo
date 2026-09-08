@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CalendarDays, ChevronDown, Receipt } from 'lucide-react';
-import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
+import { AdaptiveSurface } from '@/app/components/ui/adaptive-surface';
 import { StayoLoader } from '@shared/ui/brand';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { queryKeys } from '@lib/queryKeys';
@@ -142,7 +142,7 @@ export function CreateChargeSheet({
   };
 
   return (
-    <BottomSheet open={open} onOpenChange={(next) => !next && close()} title="Add a charge">
+    <AdaptiveSurface variant="form" open={open} onOpenChange={(next) => !next && close()} title="Add a charge">
       <div className="flex flex-col gap-4">
         <p className="px-0.5 text-[11.5px] text-muted-foreground">
           A one-off charge for <b className="font-bold text-foreground">{tenantName}</b>. It appears
@@ -337,6 +337,6 @@ export function CreateChargeSheet({
           )}
         </button>
       </div>
-    </BottomSheet>
+    </AdaptiveSurface>
   );
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Check, Plus } from 'lucide-react';
-import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
+import { AdaptiveSurface } from '@/app/components/ui/adaptive-surface';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { playSuccessFeedback } from '@shared/ui-patterns/successFeedback';
 import { useAddExpenseWizard } from '../hooks/useAddExpenseWizard';
@@ -73,7 +73,8 @@ export function AddExpenseModal({ open, onClose, seed, editingId }: AddExpenseMo
   // ── Success state ────────────────────────────────────────────
   if (showSuccess) {
     return (
-      <BottomSheet
+      <AdaptiveSurface
+        variant="wizard"
         open={open}
         onOpenChange={(v) => !v && handleDone()}
         title="Expense saved"
@@ -110,13 +111,14 @@ export function AddExpenseModal({ open, onClose, seed, editingId }: AddExpenseMo
             {wizard.isEditing ? 'Expense updated successfully.' : 'Expense recorded successfully.'}
           </span>
         </div>
-      </BottomSheet>
+      </AdaptiveSurface>
     );
   }
 
   // ── Wizard state ─────────────────────────────────────────────
   return (
-    <BottomSheet
+    <AdaptiveSurface
+      variant="wizard"
       open={open}
       onOpenChange={(v) => !v && onClose()}
       title={
@@ -169,6 +171,6 @@ export function AddExpenseModal({ open, onClose, seed, editingId }: AddExpenseMo
       )}
       {wizard.step === 1 && <FinancialStep data={wizard.data} setD={wizard.setD} />}
       {wizard.step === 2 && <ReviewStep data={wizard.data} setD={wizard.setD} />}
-    </BottomSheet>
+    </AdaptiveSurface>
   );
 }

@@ -2,6 +2,7 @@ import { Link, Outlet } from 'react-router-dom';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
 import { useAppNav } from '@/app/nav/useAppNav';
+import { useTenantDesktopShell } from '@/app/nav/useTenantDesktopShell';
 import { APP_GRID, APP_FRAME } from '@shared/ui/surface';
 
 /**
@@ -13,12 +14,27 @@ import { APP_GRID, APP_FRAME } from '@shared/ui/surface';
  * Room/Profile/Explore, see `ACTIVE_TENANT_TABS`) directly, so there is no
  * second nav layer to stack beneath it.
  *
- * Desktop: same treatment as `OwnerAppShell` — `Stayo Tenant.dc.html` has no
- * `@media`/desktop rules (fixed 402x874 mobile device-frame mockup), so on
- * `sm:`+ viewports this centers the same mobile layout in a bordered 480px
- * frame rather than inventing a new breakpoint.
+ * Desktop (`lg`+, 1024px — [[Decisions#ADR-171|ADR-171]] Phase 1): `AppShell`
+ * (one level up) has already mounted `AppConsoleShell`, which owns the
+ * `ThemeProvider`, the grid ground and the scrolling `<main>`. This component
+ * then sheds its mobile frame chrome and renders straight into that content
+ * area. Below `lg` everything is byte-for-byte unchanged: the 480px `APP_FRAME`,
+ * its own `ThemeProvider`, the `ExitingBanner`.
  */
 export function TenantAppShell() {
+  const desktopShell = useTenantDesktopShell();
+
+  if (desktopShell) {
+    return (
+      <>
+        <ExitingBanner />
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
+      </>
+    );
+  }
+
   return (
     <ThemeProvider theme="product">
       <div className={`flex min-h-screen flex-col bg-background text-foreground ${APP_GRID} ${APP_FRAME}`}>

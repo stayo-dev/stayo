@@ -16,10 +16,12 @@ interface TenantRowProps {
   onClick: () => void;
   /** Show which hostel this tenant belongs to — only needed when the list is showing tenants from more than one hostel at once ("All Hostels" filter). */
   showHostel?: boolean;
+  /** Row is the URL-selected tenant in the desktop master-detail — never true below `lg`. */
+  active?: boolean;
 }
 
 /** Single tenant row, per Stayo App.dc.html's Tenants tab list rows. */
-export function TenantRow({ tenant, onClick, showHostel }: TenantRowProps) {
+export function TenantRow({ tenant, onClick, showHostel, active }: TenantRowProps) {
   const meta = tenant.room === '—' ? `No room · ₹${tenant.rent.toLocaleString('en-IN')}/mo` : `Room ${tenant.room} · ₹${tenant.rent.toLocaleString('en-IN')}/mo`;
   const metaSuffix = tenant.kycStatus === 'Pending' || tenant.kycStatus === 'Not started' ? ' · docs pending' : '';
   // "Awaiting acceptance" (new model) or "Not on app" (legacy) — a fact about
@@ -31,7 +33,7 @@ export function TenantRow({ tenant, onClick, showHostel }: TenantRowProps) {
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-[18px] border border-border bg-card p-3.5 text-left shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]"
+      className={`flex w-full items-center gap-3 rounded-[18px] border ${active ? 'border-primary ring-1 ring-primary/50' : 'border-border'} bg-card p-3.5 text-left shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]`}
     >
       {/* An invited tenant has no photo yet, and the dashed ring is what marks
           them as not-yet-arrived — so that treatment stays. */}

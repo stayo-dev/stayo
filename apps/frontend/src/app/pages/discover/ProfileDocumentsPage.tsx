@@ -50,9 +50,14 @@ export function ProfileDocumentsPage() {
   }, []);
 
   return (
-    <div className="flex min-h-[100dvh] flex-col">
+    <div className="flex min-h-[100dvh] flex-col lg:min-h-0">
+      {/*
+        The console topbar already carries "Documents" at lg+
+        (`appHeaders.ts`'s `/profile/documents` entry) — this back+title row
+        is mobile-only chrome from when this page had no shell around it.
+      */}
       <header
-        className="sticky top-0 z-30 flex items-center gap-3 border-b px-5 pb-3.5 pt-[max(3.25rem,env(safe-area-inset-top))]"
+        className="sticky top-0 z-30 flex items-center gap-3 border-b px-5 pb-3.5 pt-[max(3.25rem,env(safe-area-inset-top))] lg:hidden"
         style={{ background: C.cardWarm, borderColor: C.line }}
       >
         <button
@@ -69,7 +74,7 @@ export function ProfileDocumentsPage() {
         </h1>
       </header>
 
-      <main className="flex-1 space-y-6 px-5 py-5">
+      <main className="flex-1 space-y-6 px-5 py-5 lg:mx-auto lg:w-full lg:max-w-[640px] lg:px-0 lg:pt-8">
         <section>
           <h2 className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: '#9C9186' }}>
             Your document vault
