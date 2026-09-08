@@ -150,7 +150,7 @@ export function MoreHostelIdentityPage() {
   };
 
   return (
-    <div className={`flex flex-col gap-6 px-4 pt-6 sm:px-6 ${dirty ? 'pb-40' : 'pb-24'}`}>
+    <div className={`flex flex-col gap-6 px-4 pt-6 sm:px-6 lg:mx-auto lg:w-full lg:max-w-[760px] lg:px-0 lg:pt-8 ${dirty ? 'pb-40' : 'pb-24'}`}>
       <MoreScreenHeader title="Hostel identity" />
 
       {policyQuery.isLoading ? (
