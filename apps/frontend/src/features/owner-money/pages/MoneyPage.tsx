@@ -314,13 +314,13 @@ export function MoneyPage() {
         </div>
       </div>
 
-      <div className={`flex rounded-[11px] bg-[#EDE6DE] p-[3px] ${isDesktop ? 'w-fit self-start' : ''}`}>
+      <div className={`flex gap-1 rounded-[11px] bg-[#EDE6DE] p-[3px] ${isDesktop ? 'w-fit self-start' : ''}`}>
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => money.setTab(t.id)}
-            className={`flex-1 rounded-[9px] py-2 text-center font-display text-[12.5px] font-bold ${
+            className={`flex-1 rounded-[9px] px-4 py-2 text-center font-display text-[12.5px] font-bold ${
               money.tab === t.id ? 'bg-card text-foreground shadow-[0_1px_3px_rgba(40,30,20,0.08)]' : 'text-[#8A7F75]'
             }`}
           >

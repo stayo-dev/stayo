@@ -388,7 +388,7 @@ export function OwnerHomeDashboard({
         type="button"
         aria-label="Add"
         onClick={onOpenQuickActions}
-        className="fixed bottom-[6.5rem] right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary shadow-[0_10px_24px_rgba(180,106,85,0.4)] sm:right-[calc(50%-240px+1.25rem)]"
+        className="fixed bottom-[6.5rem] right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary shadow-[0_10px_24px_rgba(180,106,85,0.4)] sm:right-[calc(50%-240px+1.25rem)] lg:bottom-8 lg:right-8"
       >
         <Plus className="h-5.5 w-5.5 text-primary-foreground" strokeWidth={2.2} />
       </button>
