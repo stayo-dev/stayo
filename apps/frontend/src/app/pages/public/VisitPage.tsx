@@ -161,13 +161,13 @@ export function VisitPage() {
     );
   }
 
-  if (isLoading) return <div className="min-h-screen bg-[var(--warm-ivory)]" />;
+  if (isLoading) return <div className="min-h-screen bg-[var(--secondary)]" />;
   if (isError || !data) {
     return (
-      <main className="min-h-screen bg-[var(--warm-ivory)] px-5 py-10">
+      <main className="min-h-screen bg-[var(--secondary)] px-5 py-10">
         <div className="mx-auto max-w-md rounded-2xl border bg-white p-5">
-          <h1 className="text-xl font-bold text-[var(--brand-navy)]">Admissions link unavailable</h1>
-          <p className="mt-2 text-sm text-[var(--neutral-gray)]">Please ask the hostel owner for the latest QR link.</p>
+          <h1 className="text-xl font-bold text-[var(--foreground)]">Admissions link unavailable</h1>
+          <p className="mt-2 text-sm text-[var(--muted-foreground)]">Please ask the hostel owner for the latest QR link.</p>
         </div>
       </main>
     );

@@ -34,7 +34,7 @@ export function ActivePollCard({ poll, onToggleVote, isVoting }: ActivePollCardP
               type="button"
               disabled={isVoting}
               onClick={() => onToggleVote(option.id)}
-              className={`flex items-center gap-3 rounded-[14px] p-[13px_14px] text-left disabled:opacity-60 ${active ? 'border-[1.5px] border-primary bg-secondary/40' : 'border border-[#EAE1D8] bg-card'}`}
+              className={`flex items-center gap-3 rounded-[14px] p-[13px_14px] text-left disabled:opacity-60 ${active ? 'border-[1.5px] border-primary bg-secondary/40' : 'border border-border bg-card'}`}
             >
               <span className="flex-1 font-display text-[14px] font-bold text-foreground">{option.label}</span>
               <span

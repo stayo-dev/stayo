@@ -71,7 +71,7 @@ export function ReviewsPage() {
           className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-full"
           style={{ background: '#F4EEE7' }}
         >
-          <ChevronLeft className="h-5 w-5" style={{ color: '#6B6259' }} />
+          <ChevronLeft className="h-5 w-5" style={{ color: 'var(--muted-foreground)' }} />
         </button>
         <div className="min-w-0">
           <h1 className="text-[18px] font-extrabold tracking-[-0.02em]" style={{ fontFamily: FONT.display, color: C.text }}>

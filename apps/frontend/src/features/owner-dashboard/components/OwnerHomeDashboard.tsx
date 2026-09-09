@@ -59,7 +59,13 @@ interface OwnerHomeDashboardProps {
   /** A hostel that exists but still has floors without rooms. */
   hostelInProgress?: { name: string; summary: string } | null;
   /** New-owner walkthrough. Absent once all three steps are satisfied. */
-  gettingStarted?: { state: GettingStarted; verification: VerificationStatus; onStep: (id: StepId) => void } | null;
+  gettingStarted?: {
+    state: GettingStarted;
+    verification: VerificationStatus;
+    onStep: (id: StepId) => void;
+    /** Present only once the tour has run and finished — see `useGettingStarted`. */
+    onReplayTour?: () => void;
+  } | null;
   /**
    * Which cards have earned the right to render. A brand-new owner used to be
    * shown the entire dashboard with nothing in it — "Collect Rent ₹0", three
@@ -162,7 +168,7 @@ export function OwnerHomeDashboard({
           type="button"
           onClick={onOpenProfile}
           aria-label="Your profile"
-          className="h-10 w-10 flex-none overflow-hidden rounded-full border border-[#EAE1D8] bg-primary"
+          className="h-10 w-10 flex-none overflow-hidden rounded-full border border-border bg-primary"
         >
           {ownerPhotoUrl ? (
             <img src={ownerPhotoUrl} alt="" className="h-full w-full object-cover" />
@@ -184,7 +190,7 @@ export function OwnerHomeDashboard({
             type="button"
             onClick={onOpenSearch}
             aria-label="Search tenants, rooms and hostels"
-            className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-[#EAE1D8] bg-card px-3.5 py-[11px] text-left transition-colors active:bg-muted"
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-border bg-card px-3.5 py-[11px] text-left transition-colors active:bg-muted"
           >
             <Search className="h-3.5 w-3.5 flex-none text-muted-foreground" strokeWidth={1.6} />
             <span className="truncate text-[13px] text-muted-foreground">Search tenant, room, phone…</span>
@@ -196,7 +202,7 @@ export function OwnerHomeDashboard({
         <button
           type="button"
           onClick={onOpenAlerts}
-          className="relative flex h-11 w-11 flex-none items-center justify-center rounded-full border border-[#EAE1D8] bg-card"
+          className="relative flex h-11 w-11 flex-none items-center justify-center rounded-full border border-border bg-card"
         >
           <Bell className="h-5 w-5 text-[#4A423B]" strokeWidth={1.7} />
           {alertCount > 0 && (
@@ -213,6 +219,7 @@ export function OwnerHomeDashboard({
           state={gettingStarted.state}
           verification={gettingStarted.verification}
           onStep={gettingStarted.onStep}
+          onReplayTour={gettingStarted.onReplayTour}
         />
       )}
 

@@ -91,7 +91,7 @@ export function FormPanel({ config, onBack, onClose }: FormPanelProps) {
                     key={o.id}
                     type="button"
                     onClick={() => setOptionId(o.id)}
-                    className={`flex items-center gap-3 rounded-2xl p-[14px_15px] text-left ${active ? 'border-[1.5px] border-primary bg-[#FBF3EF]' : 'border border-[#EAE1D8] bg-card'}`}
+                    className={`flex items-center gap-3 rounded-2xl p-[14px_15px] text-left ${active ? 'border-[1.5px] border-primary bg-[#FBF3EF]' : 'border border-border bg-card'}`}
                   >
                     {o.icon && (
                       <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] bg-[#F5E9E3] text-primary">{o.icon}</span>

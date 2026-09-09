@@ -390,11 +390,11 @@ export function CompleteProfilePage() {
         <aside className="rounded-2xl overflow-hidden border border-border shadow-sm h-fit">
           <div
             className="px-5 py-4 relative overflow-hidden"
-            style={{ background: 'linear-gradient(135deg, #1B2D5B 0%, #243A72 100%)' }}
+            style={{ background: 'linear-gradient(135deg, #A45D44 0%, #B46A55 100%)' }}
           >
             <div
               className="absolute inset-0 opacity-10"
-              style={{ backgroundImage: 'radial-gradient(circle at 80% 20%, #F07B1D 0%, transparent 60%)' }}
+              style={{ backgroundImage: 'radial-gradient(circle at 80% 20%, #D2986C 0%, transparent 60%)' }}
             />
             <div className="relative flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-white/15 ring-1 ring-white/20 flex items-center justify-center shrink-0">

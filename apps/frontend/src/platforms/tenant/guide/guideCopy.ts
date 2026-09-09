@@ -22,7 +22,7 @@ export const WELCOME_COPY: Record<WelcomeStopId, Note> = {
   },
   nav: {
     title: 'Everything else lives down here',
-    body: 'Room is your bed, your roommates and where you report a problem. Food is this week menu and the kitchen polls. Payments is every month and every receipt. Profile is your details and documents.',
+    body: 'Room is your bed, your roommates and where you report a problem. Food is this week’s menu and the kitchen polls. Payments is every month and every receipt. Profile is your details and documents.',
   },
 };
 
@@ -37,7 +37,7 @@ export const TAB_COPY: Record<Exclude<GuideBeat, 'welcome'>, Note> = {
   },
   food: {
     title: 'This week at the kitchen',
-    body: 'Today meals are at the top, each showing whether it is upcoming, being served, or done. Below that is the whole week — tap a day to open it. When the kitchen runs a poll on what to cook, it turns up here and on Home, and your vote counts.',
+    body: 'Today’s meals are at the top, each showing whether it is upcoming, being served, or done. Below that is the whole week — tap a day to open it. When the kitchen runs a poll on what to cook, it turns up here and on Home, and your vote counts.',
   },
   money: {
     title: 'Every month, and every receipt',

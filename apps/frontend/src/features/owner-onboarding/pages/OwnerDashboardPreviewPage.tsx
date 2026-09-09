@@ -119,6 +119,10 @@ export function OwnerDashboardPreviewPage() {
                     navigate('/owner/money/collect');
                   }
                 },
+                // Only once the tour has already had its turn — see
+                // `useGettingStarted`. An owner who dismissed it while doing
+                // something else otherwise has no route back to it.
+                onReplayTour: gettingStarted.canReplaySpotlight ? gettingStarted.replaySpotlight : undefined,
               }
             : null
         }
