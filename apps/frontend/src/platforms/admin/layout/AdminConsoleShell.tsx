@@ -10,6 +10,7 @@ import { platformAdminService } from '@features/platform-admin/api';
 import { ACTIONABLE_STATUSES } from '@/platforms/admin/leads/leadQueue';
 import { buildAdminNav, isNavItemActive } from './adminNav';
 import { headerFor } from './pageHeaders';
+import { ClerkUserButton } from '@/app/components/ClerkUserButton';
 import { AdminToast, useAdminToast } from '../ui/Toast';
 import { AdminToastContext } from './toastContext';
 
@@ -242,6 +243,8 @@ export function AdminConsoleShell() {
                   </>
                 )}
               </div>
+              {/* ADR-176 Phase 2: renders nothing without a Clerk session. */}
+              <ClerkUserButton />
             </header>
 
             <main className="min-w-0 flex-1 overflow-auto bg-[#EFE9E2] px-4 pb-11 pt-[26px] [background-image:linear-gradient(#E3D8CB_1px,transparent_1px),linear-gradient(90deg,#E3D8CB_1px,transparent_1px)] [background-size:52px_52px] sm:px-[30px]">

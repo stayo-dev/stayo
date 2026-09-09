@@ -576,3 +576,66 @@ changed phone is proved with `send-phone-otp` / `verify-phone-otp` first.
 `DELETE /api/push/subscriptions` — body `{ endpoint }`. Scoped to the session's own profile, so an endpoint cannot be unsubscribed by another account.
 
 Rows are also deleted automatically by the sender when the push service returns **404/410** (permanently gone). A 5xx or timeout does **not** prune — that would quietly delete live devices during an outage.
+
+## Clerk auth webhook (2026-09-09)
+
+### `POST /webhooks/clerk`
+
+Clerk user-lifecycle webhook ([[Decisions#ADR-176|ADR-176]]). **Note the path: it is not under `/api`.**
+
+- **Production URL:** `https://api.yourstayo.com/webhooks/clerk` — point Clerk's dashboard here.
+- **Not reachable via `yourstayo.com`.** The frontend rewrites only `/api/:path*` to this backend (`apps/frontend/vercel.json`), so the apex domain has no route for it.
+- **Public by construction, not by allow-list.** `middleware.ts` matches `/api/:path*` only, so this route never enters the session pipeline — there is no `PUBLIC_ROUTES` entry, and none should be added (it would be dead config).
+- **Auth:** the Svix signature over the **raw** body (`svix-id`, `svix-timestamp`, `svix-signature`), verified in `lib/auth/clerk-webhook-verification.ts` using the `svix` library and `CLERK_WEBHOOK_SIGNING_SECRET`. Verified before the event is interpreted. There is no bypass flag.
+- **Handles:** `user.created`, `user.updated`, `user.deleted`. Any other event type is acknowledged with 200 and dropped.
+
+Effects (all in `src/services/auth/clerk-user-sync-service.ts`, all idempotent):
+
+| Event | Effect |
+|---|---|
+| `user.created` | Upserts a `users` row on `clerk_user_id`; links to a `profiles` row matched by email if one is free. Never creates a profile. |
+| `user.updated` | Syncs the four allow-listed fields. Ignored if Clerk's `updated_at` is older than what we hold. Creates the row if `user.created` was never delivered. |
+| `user.deleted` | Sets `is_active = false` + `deactivated_at`. **Never deletes**, and never touches the linked profile. |
+
+Status codes are a retry protocol for Svix, which retries on non-2xx:
+
+| Code | Meaning |
+|---|---|
+| `200` | Processed, **or** deliberately ignored (unhandled type, stale replay, delete of an unknown account). Nothing to retry. |
+| `400` | Malformed event. Retrying identical bytes cannot help. |
+| `401` | Signature missing or invalid. Rejected caller — never retry. |
+| `500` | Our failure, **including a missing signing secret**. Retry is correct; the handlers are idempotent. |
+
+Env var: `CLERK_WEBHOOK_SIGNING_SECRET` (`whsec_…`), loaded from the repo-root `.env` like every other backend secret. **Currently unset — no Clerk account exists yet, and no real delivery has reached this endpoint.**
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Database]], [[Business-Rules]], [[Backend]], [[Changelog]]
+
+## Clerk handshake (2026-09-09)
+
+### `GET /me`
+
+The canonical Clerk handshake ([[Decisions#ADR-176|ADR-176]] Phase 2.6). **Not under `/api`** — same as `/webhooks/clerk`.
+
+- **Production URL:** `https://api.yourstayo.com/me`.
+- **Why not `/api/me`:** `middleware.ts` gates `/api/:path*` on a **Supabase** session, so `/api/me` would 401 every Clerk caller. Adding it to `PUBLIC_ROUTES` is worse than it sounds — that list is *prefix-matched*, so an `/api/me` entry would also expose the existing `/api/metrics`. Outside the matcher, no security config is touched at all.
+- **Reachability caveat:** `yourstayo.com` rewrites only `/api/:path*` to this backend, so the SPA's API client cannot reach `/me` today. **Nothing calls this endpoint yet.** Phase 3 must add a rewrite for `/me` or call the api. subdomain directly.
+- **Auth:** `Authorization: Bearer <Clerk session token>` (from the SPA's `getToken()`), verified by `@clerk/backend`'s `verifyToken` against Clerk's JWKS using `CLERK_SECRET_KEY`. Bearer rather than cookies because SPA and API are different origins.
+
+Response `200`:
+
+```json
+{ "userId": "…", "clerkUserId": "user_2…", "role": "OWNER" | null,
+  "profile": { "id": "…" | null, "linked": true | false }, "isActive": true }
+```
+
+| Code | Meaning |
+|---|---|
+| `200` | Resolved. The `users` row existed or was created. |
+| `401` | No Bearer token, or it failed verification. |
+| `500` | `CLERK_SECRET_KEY` unset, or the handshake threw. |
+
+**Idempotent, and safe under a race.** Read-then-create, with the unique index on `clerk_user_id` as the actual guarantee: two concurrent first-requests both miss the read and both insert; the loser catches `P2002` and re-reads. Without that, "never create duplicate users" would rest on a check-then-act the database is free to interleave.
+
+**It assigns no role and creates no profile.** `role` is *read* from the linked `profiles` row and is `null` for an account with no business identity — a normal state. Profile linking (by email, only when the Clerk JWT template supplies one — the default session token does not) reuses `findLinkableProfileId`, the same rule the webhook uses, including its refusal to steal a profile already bound to another Clerk account.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Database]], [[Business-Rules]], [[Backend]], [[Frontend]], [[Changelog]]

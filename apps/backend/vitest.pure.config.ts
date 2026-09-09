@@ -145,6 +145,13 @@ export default defineConfig({
       // double-billing defect. ADR-149.
       'tests/obligation-linking.test.ts',
       'tests/agreement-content.test.ts',
+      // Clerk auth webhook (ADR-176). The verification test signs with the real
+      // `svix` library in-process; the sync test `vi.mock`s `@/lib/db`. Neither
+      // constructs a client or reaches a database.
+      'tests/clerk-webhook-verification.test.ts',
+      'tests/clerk-user-sync.test.ts',
+      'tests/clerk-webhook-endpoint.test.ts',
+      'tests/clerk-me-handshake.test.ts',
     ],
     alias: {
       // More specific than the catch-all `@` entry below, and must come

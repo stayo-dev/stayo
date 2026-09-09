@@ -432,3 +432,35 @@ StayO is getting a real desktop application layout for owner + tenant. **The bre
 - [[APIs]] for the endpoint shapes feature wrappers call
 - [[Features]] for what's built on top of this structure
 - [[Architecture]] for the full request-flow picture
+
+## Clerk in the SPA (2026-09-09, ADR-176 Phase 2)
+
+`apps/frontend` is Vite + React 19, so the Clerk integration uses **`@clerk/clerk-react`** — `@clerk/nextjs` cannot run here. (The Next.js app is `apps/backend`, which is the API; its `app/(dashboard)` and root landing page are stale pre-Stayo leftovers, not the product UI.)
+
+| File | Role |
+|---|---|
+| `lib/auth/clerkConfig.ts` | Resolves `VITE_CLERK_PUBLISHABLE_KEY` — the **only** Clerk variable this app reads. `readClerkConfig()` is the single point of contact with `import.meta.env` (a static property access, so Vite inlines the literal); `resolveClerkConfig(value)` is pure and holds the rules, including rejecting an `sk_` secret key outright. |
+| `lib/auth/sessionAuthority.ts` | Pure. `decideRouteAccess()` — **accepts the Clerk state and ignores it**, see below. Plus `clerkPresence()` and `shouldExplainUnlinkedClerkSession()` for display. |
+| `app/providers/clerkSessionContext.ts` | The session context, in a module that imports **nothing** from Clerk. |
+| `app/providers/ClerkRuntime.tsx` | Everything touching `@clerk/clerk-react` at module scope — reached only by dynamic `import()`. |
+| `app/providers/ClerkAuthProvider.tsx` | Mounts Clerk when configured; renders children untouched when not. Mounted **per-route** — in `ClerkAuthScreen` and `ProtectedAppProviders` — never in `RootProviders`. |
+| `app/pages/auth/*` | `/sign-in` and `/sign-up`, sharing `ClerkAuthScreen` (which carries the unconfigured branch). |
+| `app/components/ClerkUserButton.tsx` | `ClerkUserButton` (admin header) and `ClerkAccountSlot` (fixed, for the mobile owner/tenant shells). Both render `null` without a Clerk session. |
+
+**A Clerk session authorises nothing.** Roles come from `profiles` through `AuthContext`, which is still Supabase-backed. `ProtectedRoute` delegates to `decideRouteAccess`, and `sessionAuthority.test.ts` asserts across a 4×4 matrix that varying the Clerk state changes no decision — the mechanical proof that this phase changed nobody's access. Phase 3 rewrites that test deliberately.
+
+**Three rules keep Clerk off the public landing page**, and each exists because a violation of it was measured, not imagined:
+
+1. **Mount per-route, never globally.** `ClerkAuthScreen` mounts it for `/sign-in` and `/sign-up`; `ProtectedAppProviders` mounts it for every authenticated tree (owner, admin, and tenant via `SeekerAppShell`). Mounted in `RootProviders`, it suspended `/` on the Clerk chunk *before* the router could fetch its own route chunk — two serialised fetches on the page that must be fastest.
+2. **The SDK sits behind dynamic `import()`.** `ClerkRuntime` and `<UserButton>` each do, leaving Clerk in its own ~113 KB chunk.
+3. **Nothing on the public path may statically import a Clerk-owning module.** The session hook lives in `clerkSessionContext.ts`, which imports nothing from Clerk, and is imported *from there* — never re-exported through `ClerkAuthProvider`. That re-export is a static edge into the module owning the `lazy()`, and `ProtectedRoute` importing it that way put `clerkConfig` and the ClerkRuntime import straight back into the entry chunk. It happened twice.
+
+`clerkBundleIsolation.test.ts` walks the static import graph from `main.tsx` and fails if any of the three is broken. Entry-chunk cost is +1.3 KB over a no-Clerk build (`sessionAuthority` and the context module, which route guards need on every render).
+
+**Routes are `/sign-in/*` and `/sign-up/*`.** The splat is required: `<SignIn routing="path">` renders its own sub-steps (email-code entry, SSO callback, session tasks) as child paths, which 404 without it.
+
+**Env vars: `VITE_` prefix, and this app's own `.env`.** Vite exposes only `VITE_`-prefixed variables to browser code — a production build inlines `import.meta.env` as literally `{BASE_URL, DEV, MODE, PROD, SSR, VITE_*}` and nothing else. It also reads `apps/frontend/.env`, not the repo-root one (`loadEnv` runs from `process.cwd()`). So the Clerk keys in the root `.env` are backend-only: `CLERK_SECRET_KEY` must never reach this app, and the root's Next-style publishable key is invisible here. `clerkConfig.ts` briefly read that Next-style name to explain the mistake — **that check could never fire**, since the name is absent from `import.meta.env` by construction, and it has been removed.
+
+**Which sign-in strategies appear is Clerk Dashboard configuration**, not code. `<SignIn>` renders whatever the instance allows, so passwordless email OTP is a dashboard setting this repo cannot enforce or verify.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Architecture]], [[Features]], [[APIs]], [[Performance]]

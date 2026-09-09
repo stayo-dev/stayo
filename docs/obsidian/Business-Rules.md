@@ -895,3 +895,19 @@ The strip's voice priority is **failed › paid today › pending › settled �
 **Removing a hostel archives it.** `DELETE /api/hostels/:id` sets `status: ARCHIVED` with `archived_at`/`archived_by`/`archive_reason`. Nothing about a tenancy, payment or obligation is destroyed — this system keeps financial history — so no surface may describe it as permanent deletion. The backend refuses while **any tenant is still allocated**; `ArchiveHostelModal` states that reason, blocks the action, and offers a route to check the tenants out. Restoring is possible via `PATCH {status: "ACTIVE"}` and is wired — the dashboard's ARCHIVED tab offers Reactivate on every archived card.
 
 **An archived hostel with no history at all can be deleted for good** ([[Decisions#ADR-100|ADR-100]], `DELETE /api/hostels/:id/permanent`). Two conditions, both server-enforced: it must **already be archived**, and it must have **zero** tenants, payments, rent obligations, room allocations, agreements, receipts, expenses and enquiries. Anything with history stays archived forever, and the refusal says so — a hostel that carried tenancies is never destroyable, because its money records have to outlive it. Only rooms, floors and the hostel row are removed. This is the one irreversible action in the owner app.
+
+## Identity vs authority — the Clerk boundary (2026-09-09)
+
+From [[Decisions#ADR-176|ADR-176]]. These rules are what make a public, vendor-driven webhook safe to expose.
+
+**The auth provider owns identity; this database owns authority.** Clerk answers *who is this login?*. `profiles.role` answers *what may they do?*. No auth-provider payload can write a role, a hostel, a tenancy or an amount. The mechanism is an allow-list — `ALLOWED_PROFILE_FIELDS` in `src/services/auth/clerk-user-sync-service.ts` permits exactly `email`, `first_name`, `last_name`, `image_url` — and it is asserted by test, not by convention. Roles are deliberately **not** stored in Clerk metadata: that would move an authorisation decision outside our migrations, tests and audit trail.
+
+**A webhook never provisions a business account.** `user.created` links to an existing `profiles` row by email, or leaves `profile_id` null. It does not create profiles. This is the no-auto-provisioning rule of [[Decisions#ADR-031|ADR-031]], upheld by [[Decisions#ADR-073|ADR-073]], carried across the vendor change. ([[Decisions#ADR-078|ADR-078]]'s narrow Google-signup provisioning path is session-gated and is not a precedent for a webhook.)
+
+**One business identity, one login.** `users.profile_id` is unique. A profile already bound to a different `clerk_user_id` is **not** re-pointed — the conflict is logged and the new login is left unlinked. Two logins claiming one identity (a duplicate signup, an email reused after a move-out) is a human decision, not an overwrite.
+
+**Deleting a login deactivates it; it never deletes records.** `user.deleted` sets `is_active = false` and stamps `deactivated_at`, and touches neither the row nor the linked profile. Obligations, payments, receipts and residency history outlive the login that created them — the same audit-first principle as *Obligation lifecycle* above, applied to identity. An ex-resident's settled ledger must not be erasable from a vendor's dashboard.
+
+**Webhook delivery is at-least-once and unordered.** Every handler is idempotent, and `users.clerk_updated_at` holds the provider's own timestamp so an overtaken delivery cannot overwrite newer data with older. When either timestamp is unknown the update is applied — a redundant write to idempotent data beats silently halting sync.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Database]], [[APIs]], [[Features]]
