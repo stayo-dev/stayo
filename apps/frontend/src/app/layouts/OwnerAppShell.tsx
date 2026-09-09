@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Home, Users, Wallet, UtensilsCrossed, Building2 } from 'lucide-react';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
+import { ClerkAccountSlot } from '@/app/components/ClerkUserButton';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
 import { APP_GRID, APP_FRAME } from '@shared/ui/surface';
 import { useIsDesktop } from '@/app/components/ui/use-desktop';
@@ -99,6 +100,9 @@ export function OwnerAppShell({ basePath = '/owner' }: OwnerAppShellProps) {
   return (
     <ThemeProvider theme="product">
       <div className={`flex min-h-screen flex-col bg-background text-foreground ${APP_GRID} ${APP_FRAME}`}>
+        {/* ADR-176 Phase 2: renders nothing without a Clerk session. */}
+        <ClerkAccountSlot />
+
         <main className="flex-1 pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))]">
           <ErrorBoundary>
             <Outlet />

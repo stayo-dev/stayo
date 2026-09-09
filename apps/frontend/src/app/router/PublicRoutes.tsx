@@ -21,6 +21,8 @@ const ActivationPage = lazy(() => import('@/platforms/tenant/onboarding/Activati
 const CompleteProfilePage = lazy(() => import('@/portal/pages/CompleteProfilePage').then((m) => ({ default: m.CompleteProfilePage })));
 const AuthRouteShell = lazy(() => import('@/app/providers/AuthRouteShell').then((m) => ({ default: m.AuthRouteShell })));
 const ReceiptVerificationPage = lazy(() => import('@/app/pages/public/ReceiptVerificationPage').then((m) => ({ default: m.ReceiptVerificationPage })));
+const ClerkSignInPage = lazy(() => import('@/app/pages/auth/ClerkSignInPage').then((m) => ({ default: m.ClerkSignInPage })));
+const ClerkSignUpPage = lazy(() => import('@/app/pages/auth/ClerkSignUpPage').then((m) => ({ default: m.ClerkSignUpPage })));
 
 /**
  * Public pages are full-screen takeovers with no persistent chrome, so there is
@@ -91,6 +93,14 @@ export function PublicRoutes() {
             activation all need somewhere to redirect to. Lives here rather
             than under AuthShell because the popup needs AuthProvider. */}
         <Route path="/login" element={<LandingPage />} />
+        {/* ADR-176 Phase 2: Clerk's own sign-in/sign-up, public like `/login`.
+            The `/*` splat is required — `<SignIn routing="path">` renders its
+            sub-steps (email-code entry, SSO callback, session tasks) as child
+            paths, and without it they 404. These are additive: `/login` remains
+            the live Supabase surface, and completing a Clerk sign-in does not
+            yet authorise anything (see lib/auth/sessionAuthority.ts). */}
+        <Route path="/sign-in/*" element={<ClerkSignInPage />} />
+        <Route path="/sign-up/*" element={<ClerkSignUpPage />} />
         <Route path="/lead-signup/callback" element={<LeadSignupCallbackPage />} />
         <Route path="/activation/:token" element={<OwnerActivationPage />} />
         <Route path="/owner-invite/:token" element={<OwnerInviteRedirect />} />

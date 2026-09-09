@@ -1314,3 +1314,14 @@ From [[Decisions#ADR-176|ADR-176]]. The first step of moving authentication off 
 - **What it does not do yet — and this matters:** **Supabase Auth is still the live session authority.** No user-visible behaviour changes; nothing reads `users` on a request path. Sessions are still minted and verified exactly as before. Phases 2–4 (Clerk sessions in `middleware.ts`, repointing the ~36 Supabase-auth files, backfill, then removal) are listed in the ADR and are not started.
 - **Verification status:** 59 tests across signature verification (signing with the real `svix` library in-process), the sync rules (`@/lib/db` mocked), and endpoint invariants that pin the middleware matcher and the frontend rewrite list. **Not verified end to end:** no Clerk account exists, `CLERK_WEBHOOK_SIGNING_SECRET` is unset, and no real delivery has ever reached the endpoint. Migration 081 is **not yet applied**.
 - **See:** [[Decisions#ADR-176|ADR-176]], [[Database]], [[APIs]], [[Business-Rules]], [[Changelog]]
+
+### Clerk authentication — Phase 2: the sign-in surface in the SPA (2026-09-09)
+
+From [[Decisions#ADR-176|ADR-176]]. Adds Clerk's frontend to `apps/frontend` without moving anyone onto it.
+
+- **What shipped:** `ClerkProvider` around the SPA router, public `/sign-in` and `/sign-up` routes, `UserButton` in the owner, tenant and admin shells, and a route guard rewired through a tested decision module.
+- **Built with `@clerk/clerk-react`, not `@clerk/nextjs`** — the canonical UI is a Vite SPA. See [[Frontend]].
+- **What it deliberately does not do:** authorise anything. A Clerk session is identity, not authority; roles stay in `profiles`. A 4×4 matrix test proves varying the Clerk state changes no route decision.
+- **What users see today: nothing.** `VITE_CLERK_PUBLISHABLE_KEY` is unset, so Clerk no-ops entirely — `UserButton` renders `null`, and `/sign-in` says Clerk is unavailable and points back at `/login`. Supabase Auth is untouched and remains the live session authority.
+- **Verification status:** 37 new tests (2183 total, all passing), architecture/brand/branding checks and a production build all pass, no new `tsc` errors. **Not seen in a running browser** — with no Clerk instance configured, `<SignIn>` has never mounted, and the dashboard's email-OTP setting is unverified.
+- **See:** [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[Business-Rules]], [[Changelog]]

@@ -432,3 +432,27 @@ StayO is getting a real desktop application layout for owner + tenant. **The bre
 - [[APIs]] for the endpoint shapes feature wrappers call
 - [[Features]] for what's built on top of this structure
 - [[Architecture]] for the full request-flow picture
+
+## Clerk in the SPA (2026-09-09, ADR-176 Phase 2)
+
+`apps/frontend` is Vite + React 19, so the Clerk integration uses **`@clerk/clerk-react`** — `@clerk/nextjs` cannot run here. (The Next.js app is `apps/backend`, which is the API; its `app/(dashboard)` and root landing page are stale pre-Stayo leftovers, not the product UI.)
+
+| File | Role |
+|---|---|
+| `lib/auth/clerkConfig.ts` | Pure. Resolves `VITE_CLERK_PUBLISHABLE_KEY`, and names the two failure modes worth naming: an `sk_` secret key pasted into a client var, and the `NEXT_PUBLIC_`-instead-of-`VITE_` mix-up (silent, because Vite only inlines `VITE_*`). |
+| `lib/auth/sessionAuthority.ts` | Pure. `decideRouteAccess()` — **accepts the Clerk state and ignores it**, see below. Plus `clerkPresence()` and `shouldExplainUnlinkedClerkSession()` for display. |
+| `app/providers/clerkSessionContext.ts` | The session context, in a module that imports **nothing** from Clerk. |
+| `app/providers/ClerkRuntime.tsx` | Everything touching `@clerk/clerk-react` at module scope — reached only by dynamic `import()`. |
+| `app/providers/ClerkAuthProvider.tsx` | Mounts Clerk when configured; renders children untouched when not. In `RootProviders`, inside `BrowserRouter`. |
+| `app/pages/auth/*` | `/sign-in` and `/sign-up`, sharing `ClerkAuthScreen` (which carries the unconfigured branch). |
+| `app/components/ClerkUserButton.tsx` | `ClerkUserButton` (admin header) and `ClerkAccountSlot` (fixed, for the mobile owner/tenant shells). Both render `null` without a Clerk session. |
+
+**A Clerk session authorises nothing.** Roles come from `profiles` through `AuthContext`, which is still Supabase-backed. `ProtectedRoute` delegates to `decideRouteAccess`, and `sessionAuthority.test.ts` asserts across a 4×4 matrix that varying the Clerk state changes no decision — the mechanical proof that this phase changed nobody's access. Phase 3 rewrites that test deliberately.
+
+**Two lazy-loading rules, both load-bearing.** `/` is the public marketing page, so the Clerk SDK must not reach the entry bundle: `ClerkRuntime` and `<UserButton>` each sit behind a dynamic `import()`, leaving the SDK in its own ~113 KB chunk. The context hook is a *separate module* because the first attempt kept it in `ClerkRuntime`, and `ProtectedRoute`'s static import of it silently defeated the `lazy()` — the SDK went straight back into the entry chunk. Net entry-bundle cost is +3 KB.
+
+**Routes are `/sign-in/*` and `/sign-up/*`.** The splat is required: `<SignIn routing="path">` renders its own sub-steps (email-code entry, SSO callback, session tasks) as child paths, which 404 without it.
+
+**Which sign-in strategies appear is Clerk Dashboard configuration**, not code. `<SignIn>` renders whatever the instance allows, so passwordless email OTP is a dashboard setting this repo cannot enforce or verify.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Architecture]], [[Features]], [[APIs]], [[Performance]]
