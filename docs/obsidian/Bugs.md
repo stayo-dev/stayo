@@ -2300,4 +2300,6 @@ Related: [[Decisions#ADR-176|ADR-176]], [[Backend]], [[Changelog]]
 
 **The trap worth remembering: `script-src-elem` *overrides* `script-src` for `<script>` elements — it does not add to it.** Setting it to the Clerk origin alone, which is what "add the minimum" suggests, would have silently blocked Razorpay's checkout and Google's scripts. It must mirror `script-src`. `src/lib/auth/cspClerkAllowlist.test.ts` asserts that superset relationship, and was mutation-checked against exactly that mistake.
 
+**Second CSP gap, found after the first fix deployed:** Clerk loaded, then failed to spawn its token-refresh Web Worker — `Creating a worker from 'blob:…' violates … script-src`. Clerk v5 *does* use a worker (`startPollingForToken`), contrary to an assumption made while writing the first fix. Fixed with `worker-src 'self' blob:`. **`blob:` belongs only in `worker-src`** — putting it in `script-src` would fix the same symptom while letting any blob URL execute as a page script.
+
 Related: [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[Changelog]]
