@@ -439,7 +439,7 @@ StayO is getting a real desktop application layout for owner + tenant. **The bre
 
 | File | Role |
 |---|---|
-| `lib/auth/clerkConfig.ts` | Pure. Resolves `VITE_CLERK_PUBLISHABLE_KEY`, and names the two failure modes worth naming: an `sk_` secret key pasted into a client var, and the `NEXT_PUBLIC_`-instead-of-`VITE_` mix-up (silent, because Vite only inlines `VITE_*`). |
+| `lib/auth/clerkConfig.ts` | Resolves `VITE_CLERK_PUBLISHABLE_KEY` — the **only** Clerk variable this app reads. `readClerkConfig()` is the single point of contact with `import.meta.env` (a static property access, so Vite inlines the literal); `resolveClerkConfig(value)` is pure and holds the rules, including rejecting an `sk_` secret key outright. |
 | `lib/auth/sessionAuthority.ts` | Pure. `decideRouteAccess()` — **accepts the Clerk state and ignores it**, see below. Plus `clerkPresence()` and `shouldExplainUnlinkedClerkSession()` for display. |
 | `app/providers/clerkSessionContext.ts` | The session context, in a module that imports **nothing** from Clerk. |
 | `app/providers/ClerkRuntime.tsx` | Everything touching `@clerk/clerk-react` at module scope — reached only by dynamic `import()`. |
@@ -452,6 +452,8 @@ StayO is getting a real desktop application layout for owner + tenant. **The bre
 **Two lazy-loading rules, both load-bearing.** `/` is the public marketing page, so the Clerk SDK must not reach the entry bundle: `ClerkRuntime` and `<UserButton>` each sit behind a dynamic `import()`, leaving the SDK in its own ~113 KB chunk. The context hook is a *separate module* because the first attempt kept it in `ClerkRuntime`, and `ProtectedRoute`'s static import of it silently defeated the `lazy()` — the SDK went straight back into the entry chunk. Net entry-bundle cost is +3 KB.
 
 **Routes are `/sign-in/*` and `/sign-up/*`.** The splat is required: `<SignIn routing="path">` renders its own sub-steps (email-code entry, SSO callback, session tasks) as child paths, which 404 without it.
+
+**Env vars: `VITE_` prefix, and this app's own `.env`.** Vite exposes only `VITE_`-prefixed variables to browser code — a production build inlines `import.meta.env` as literally `{BASE_URL, DEV, MODE, PROD, SSR, VITE_*}` and nothing else. It also reads `apps/frontend/.env`, not the repo-root one (`loadEnv` runs from `process.cwd()`). So the Clerk keys in the root `.env` are backend-only: `CLERK_SECRET_KEY` must never reach this app, and the root's Next-style publishable key is invisible here. `clerkConfig.ts` briefly read that Next-style name to explain the mistake — **that check could never fire**, since the name is absent from `import.meta.env` by construction, and it has been removed.
 
 **Which sign-in strategies appear is Clerk Dashboard configuration**, not code. `<SignIn>` renders whatever the instance allows, so passwordless email OTP is a dashboard setting this repo cannot enforce or verify.
 
