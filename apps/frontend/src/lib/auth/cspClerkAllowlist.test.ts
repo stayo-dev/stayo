@@ -86,6 +86,17 @@ describe('nothing else was loosened', () => {
     expect(csp['frame-src']).toContain('https://www.google.com');
   });
 
+  it('allows Clerk\'s blob worker via worker-src, not via script-src', () => {
+    // Clerk spawns a Web Worker from a blob: URL for token-refresh polling.
+    // Without worker-src the browser falls back to script-src and blocks it.
+    //
+    // blob: belongs ONLY here. In script-src it would let any blob URL run as a
+    // page script — a materially weaker policy for the same fix.
+    expect(csp['worker-src']).toEqual(["'self'", 'blob:']);
+    expect(csp['script-src'], 'blob: must not be in script-src').not.toContain('blob:');
+    expect(csp['script-src-elem'], 'blob: must not be in script-src-elem').not.toContain('blob:');
+  });
+
   it('uses no Clerk wildcard', () => {
     // `https://*.clerk.com` would admit every Clerk tenant, not just ours.
     for (const [name, values] of Object.entries(csp)) {
