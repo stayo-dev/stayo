@@ -2289,3 +2289,15 @@ The timing made it worse: `tenants.status` flips to `FORMER_TENANT` in **`vacate
 **Still open:** the Preview environment variables themselves are missing and should be restored — this fix stops that from breaking *builds*, but a Preview deployment with no config cannot actually serve requests.
 
 Related: [[Decisions#ADR-176|ADR-176]], [[Backend]], [[Changelog]]
+
+## Clerk never loaded in production — CSP blocked clerk-js, so Google OAuth never started (2026-09-09)
+
+**Symptom.** `failed_to_load_clerk_js` in the console; `https://clerk.yourstayo.com/npm/@clerk/clerk-js/…` refused by Content-Security-Policy. Clicking "Continue with Google" did nothing, which read as a broken Google integration — but Google was never reached. Clerk was not there to redirect.
+
+**Cause.** A **Production** Clerk instance serves `clerk-js` from the instance's own Frontend API origin (`https://clerk.yourstayo.com`), not from a shared Clerk CDN. That origin was absent from `script-src` in `apps/frontend/vercel.json` — the only place the CSP is defined.
+
+**Fix.** Added exactly three things, no wildcards: `https://clerk.yourstayo.com` to `script-src`, an explicit `script-src-elem` and the same origin to it, and `https://clerk.yourstayo.com` + `https://api.clerk.com` to `connect-src`. `frame-src` is untouched — Clerk uses a top-level redirect, not an iframe.
+
+**The trap worth remembering: `script-src-elem` *overrides* `script-src` for `<script>` elements — it does not add to it.** Setting it to the Clerk origin alone, which is what "add the minimum" suggests, would have silently blocked Razorpay's checkout and Google's scripts. It must mirror `script-src`. `src/lib/auth/cspClerkAllowlist.test.ts` asserts that superset relationship, and was mutation-checked against exactly that mistake.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[Changelog]]
