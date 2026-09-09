@@ -19,10 +19,10 @@ interface PublicLayoutProps {
 /** Shared header/footer layout for all public hostel sub-pages. */
 export function PublicLayout({ children, title, subtitle }: PublicLayoutProps) {
   return (
-    <div className="min-h-screen flex flex-col" style={{ fontFamily: 'var(--font-body)', background: '#FFFDF5' }}>
+    <div className="min-h-screen flex flex-col" style={{ fontFamily: 'var(--font-body)', background: 'var(--background)' }}>
 
       {/* ── Top contact bar ────────────────────────────────────────────── */}
-      <div className="bg-[#1B2D5B] text-white py-2 px-4 text-sm">
+      <div className="bg-foreground text-white py-2 px-4 text-sm">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-center md:justify-between gap-4">
           <div className="flex items-center gap-6">
             <a href="tel:+917675080090" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
@@ -46,11 +46,11 @@ export function PublicLayout({ children, title, subtitle }: PublicLayoutProps) {
       <header className="bg-white shadow-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3 no-underline">
-            <div className="w-10 h-10 bg-[#F07B1D] rounded-full flex items-center justify-center">
+            <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
               <Home className="w-5 h-5 text-white" />
             </div>
             <span
-              className="text-lg font-semibold text-[#1B2D5B]"
+              className="text-lg font-semibold text-foreground"
               style={{ fontFamily: 'var(--font-display)' }}
             >
               Stayo
@@ -62,7 +62,7 @@ export function PublicLayout({ children, title, subtitle }: PublicLayoutProps) {
               <Link
                 key={l.to}
                 to={l.to}
-                className="text-[#2C2C2A] hover:text-[#F07B1D] no-underline text-sm font-medium transition-colors"
+                className="text-foreground hover:text-primary no-underline text-sm font-medium transition-colors"
               >
                 {l.label}
               </Link>
@@ -72,7 +72,7 @@ export function PublicLayout({ children, title, subtitle }: PublicLayoutProps) {
           <Link
             to="/login?signin=1"
             className="no-underline font-semibold text-sm px-5 py-2 rounded-lg transition-colors hover:bg-[#d96e18]"
-            style={{ background: '#F07B1D', color: '#fff' }}
+            style={{ background: 'var(--primary)', color: '#fff' }}
           >
             Tenant Login
           </Link>
@@ -83,7 +83,7 @@ export function PublicLayout({ children, title, subtitle }: PublicLayoutProps) {
       {(title || subtitle) && (
         <div
           className="text-white text-center py-14 px-6"
-          style={{ background: 'linear-gradient(135deg, #1B2D5B 0%, #2d5a96 100%)' }}
+          style={{ background: 'linear-gradient(135deg, #A45D44 0%, #B46A55 100%)' }}
         >
           <div className="max-w-2xl mx-auto">
             {title && (
@@ -103,12 +103,12 @@ export function PublicLayout({ children, title, subtitle }: PublicLayoutProps) {
       <main className="flex-1">{children}</main>
 
       {/* ── Footer ─────────────────────────────────────────────────────── */}
-      <footer className="bg-[#1B2D5B] text-white py-12 px-4">
+      <footer className="bg-foreground text-white py-12 px-4">
         <div className="max-w-7xl mx-auto">
           <div className="grid md:grid-cols-3 gap-8 mb-8">
             <div>
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-[#F07B1D] rounded-full flex items-center justify-center">
+                <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
                   <Home className="w-5 h-5 text-white" />
                 </div>
                 <span className="text-lg font-semibold" style={{ fontFamily: 'var(--font-display)' }}>

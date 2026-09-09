@@ -56,7 +56,7 @@ export const M = {
   /** Sheet chrome: grab handle, close button, header rule. */
   grab: '#DDD2C6',
   closeBg: '#EFE7DE',
-  closeText: '#6B6259',
+  closeText: 'var(--muted-foreground)',
   sheetLine: '#EAE1D8',
   sheetBg: '#F7F3EF',
 

@@ -4,9 +4,10 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "build": "node scripts/check-architecture.mjs && vite build && node ../../scripts/check-production-branding.mjs dist",
+    "build": "node scripts/check-architecture.mjs && node scripts/check-brand-fossils.mjs && vite build && node ../../scripts/check-production-branding.mjs dist",
     "check:branding": "node ../../scripts/check-production-branding.mjs dist",
     "check:architecture": "node scripts/check-architecture.mjs",
+    "check:brand": "node scripts/check-brand-fossils.mjs",
     "dev": "vite",
     "test": "vitest run",
     "test:watch": "vitest",

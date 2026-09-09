@@ -8,6 +8,20 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-09 — Every portal in the owner and tenant apps rendered in the previous project's brand (fixed)
+
+**Symptom.** Reported by the product owner as "entirely off branded", with screenshots: the owner dashboard in Stayo clay and Manrope, and directly on top of it the **Invite Tenant** bottom sheet and the **Getting Started** orientation spotlight in a **navy** primary with a **serif** display face. Both surfaces are written entirely against the design tokens (`bg-primary`, `font-display`) — nothing in either file names a colour.
+
+**Root cause — the unscoped `:root` was still the previous project's theme, and portals always resolve it.** `styles/theme.css` held the pre-Stayo single-hostel palette and type pair at `:root`; the Stayo tokens lived only under `[data-app-theme="marketing"|"product"]`, introduced deliberately *beside* the old set (`stayo-theme.css`'s own comment says so) to avoid restyling unmigrated screens in one go. `ThemeProvider` stamps that attribute on a wrapper element **and** on `<html>` — the second one specifically so portals are covered, since a `vaul` drawer (`BottomSheet`) or a `createPortal` overlay (`Spotlight`) renders under `<body>`, outside the wrapper's DOM subtree, and CSS custom properties cascade through the DOM tree rather than the React tree. When `<html>` lost the attribute, the page kept its brand (wrapper intact) and only portals fell through — producing exactly the two-brands-at-once screenshot rather than a wholly wrong page, which is why it read as "the sheet is broken" rather than "the theme is off".
+
+**Why `<html>` lost it.** The sync was save-and-restore: capture the previous value at mount, put it back on unmount. That is unsound while two providers overlap, which happens briefly on a route change between a marketing shell and a product shell — the outgoing shell's cleanup restored what *it* saw at its own mount time and deleted the attribute the incoming shell had just set.
+
+**This is the fourth instance of the same mechanism.** The un-wrapped `LandingPage` ([[Changelog]] 2026-07-24), `PendingActivationsPage` (below, 2026-08-12), the admin console rendering the wrong display face ([[Decisions#ADR-080|ADR-080]]), and now every portal. In each case a screen written correctly against tokens rendered somewhere the Stayo tokens did not reach, and the failure was silent because the fallback was a complete, plausible-looking theme.
+
+**Fix — remove the fallback rather than wrap around it.** `:root` now carries the Stayo product palette and Manrope + Inter, so no surface can resolve the old identity; the legacy alias variables and ~130 hard-coded fossil hexes are deleted from the source; `ThemeProvider`'s `<html>` sync is a mounted-provider stack, so the last provider wins regardless of cleanup order; and `scripts/check-brand-fossils.mjs` fails the build if any retired value reappears. See [[Decisions#ADR-172|ADR-172]].
+
+**Not verified in a running browser.** The mechanism is established from the code and from the built CSS (`dist/` has zero fossil values, `:root{--primary:#b46a55}`), but no dev server or authenticated session was exercised, so the specific sequence that left `<html>` unscoped in the reported screenshots is **inferred, not observed**. The removal of the fallback makes the outcome correct either way; the stack fix addresses the mechanism.
+
 ## 2026-09-02 — `document_verified` could be true with documents missing, pending, rejected, or for the wrong profile type (fixed)
 
 **Symptom.** `tenants.document_verified` — the flag four surfaces derive KYC status from — could be `true` when the tenant had not actually cleared KYC.

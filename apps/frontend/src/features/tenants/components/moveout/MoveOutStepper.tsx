@@ -36,14 +36,14 @@ export function MoveOutStepper({ request }: Props) {
       {/* Horizontal Progress Bar */}
       {!isRejected && (
         <div className="p-5 rounded-2xl border border-border bg-card shadow-sm space-y-6 relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1.5 bg-[#243A72]/5" />
+          <div className="absolute top-0 left-0 w-full h-1.5 bg-primary/5" />
           <div className="relative pt-2">
             {/* Background Line */}
             <div className="absolute top-[18px] left-[10%] right-[10%] h-1 bg-secondary rounded-full -translate-y-1/2" />
             
             {/* Active Progress Line */}
             <div 
-              className="absolute top-[18px] left-[10%] h-1 bg-[#243A72] rounded-full -translate-y-1/2 transition-all duration-500 ease-out"
+              className="absolute top-[18px] left-[10%] h-1 bg-primary rounded-full -translate-y-1/2 transition-all duration-500 ease-out"
               style={{ width: `${(progressIdx / (STEPS.length - 1)) * 80}%` }}
             />
 
@@ -62,12 +62,12 @@ export function MoveOutStepper({ request }: Props) {
                         isCompleted 
                           ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/20' 
                           : isActive 
-                            ? 'bg-[#243A72] text-white shadow-md shadow-[#243A72]/20 ring-4 ring-[#243A72]/15' 
+                            ? 'bg-primary text-white shadow-md shadow-primary/20 ring-4 ring-primary/15' 
                             : 'bg-secondary border border-transparent text-muted-foreground'
                       }`}
                     >
                       {isActive && (
-                        <span className="absolute inset-0 rounded-full animate-ping bg-[#243A72]/20 opacity-75" />
+                        <span className="absolute inset-0 rounded-full animate-ping bg-primary/20 opacity-75" />
                       )}
                       
                       <span className="relative z-10">
@@ -84,7 +84,7 @@ export function MoveOutStepper({ request }: Props) {
                     {/* Step Labels */}
                     <div className="mt-3.5 text-center px-1">
                       <p className={`text-[11px] font-bold tracking-tight transition-colors duration-300 ${
-                        isActive ? 'text-[#243A72] font-extrabold' : isCompleted ? 'text-foreground font-semibold' : 'text-muted-foreground'
+                        isActive ? 'text-primary font-extrabold' : isCompleted ? 'text-foreground font-semibold' : 'text-muted-foreground'
                       }`}>
                         {step.label}
                       </p>
@@ -148,7 +148,7 @@ export function MoveOutStepper({ request }: Props) {
                 key={step.key}
                 className={`flex items-start gap-4 p-3.5 rounded-xl border transition-all duration-300 ${
                   isActive
-                    ? 'border-[#243A72]/20 bg-[#243A72]/5 shadow-sm'
+                    ? 'border-primary/20 bg-primary/5 shadow-sm'
                     : isCompleted
                       ? 'border-border bg-card/50'
                       : 'border-border/60 opacity-60 bg-card/10'
@@ -159,7 +159,7 @@ export function MoveOutStepper({ request }: Props) {
                     isCompleted 
                       ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' 
                       : isActive 
-                        ? 'bg-[#243A72] text-white shadow-sm shadow-[#243A72]/20' 
+                        ? 'bg-primary text-white shadow-sm shadow-primary/20' 
                         : 'bg-secondary text-muted-foreground'
                   }`}
                 >
@@ -174,12 +174,12 @@ export function MoveOutStepper({ request }: Props) {
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-1.5">
                     <p className={`text-sm font-semibold ${
-                      isActive ? 'text-[#243A72]' : 'text-foreground'
+                      isActive ? 'text-primary' : 'text-foreground'
                     }`}>
                       {step.label}
                     </p>
                     {isActive && (
-                      <span className="inline-flex items-center rounded-full bg-[#243A72]/15 px-1.5 py-0.5 text-[9px] font-bold text-[#243A72] uppercase animate-pulse">
+                      <span className="inline-flex items-center rounded-full bg-primary/15 px-1.5 py-0.5 text-[9px] font-bold text-primary uppercase animate-pulse">
                         Active
                       </span>
                     )}

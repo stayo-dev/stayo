@@ -359,12 +359,12 @@ export function ActivationIntroScreen({
         <div className="ob-actor-c absolute z-[4] h-[60px] w-[62px]" style={{ bottom: 192, transformOrigin: 'bottom center' }}>
           <div className="absolute inset-0" style={{ transform: 'scaleX(-1)' }}>
             <div className="ob-wheel absolute rounded-full" style={{ bottom: 0, left: 3, width: 24, height: 24, border: '3px solid #23201C' }}>
-              <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2" style={{ background: '#6B6259' }} />
-              <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2" style={{ background: '#6B6259' }} />
+              <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2" style={{ background: 'var(--muted-foreground)' }} />
+              <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2" style={{ background: 'var(--muted-foreground)' }} />
             </div>
             <div className="ob-wheel absolute rounded-full" style={{ bottom: 0, left: 35, width: 24, height: 24, border: '3px solid #23201C' }}>
-              <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2" style={{ background: '#6B6259' }} />
-              <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2" style={{ background: '#6B6259' }} />
+              <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2" style={{ background: 'var(--muted-foreground)' }} />
+              <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2" style={{ background: 'var(--muted-foreground)' }} />
             </div>
             <div className="absolute" style={{ bottom: 11, left: 14, width: 30, height: 3, background: '#B46A55', transformOrigin: 'left', transform: 'rotate(-4deg)' }} />
             <div className="absolute" style={{ bottom: 11, left: 15, width: 3, height: 20, background: '#B46A55', transformOrigin: 'bottom', transform: 'rotate(26deg)' }} />

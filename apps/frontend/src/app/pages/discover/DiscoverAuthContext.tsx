@@ -91,9 +91,12 @@ export function DiscoverAuthProvider({ children }: { children: ReactNode }) {
       {/*
         `LoginModal` is token-driven (`bg-primary`, `text-foreground`…), and
         Discover renders outside any ThemeProvider — it hard-codes its palette
-        the way WelcomePage does. So the modal was resolving `theme.css`'s
-        unscoped `:root`, where `--primary` is still the **retired navy**
-        `#1B2D5B`, and the sheet came up in the old identity.
+        the way WelcomePage does. So the modal resolved `theme.css`'s unscoped
+        `:root`, which used to hold the retired navy identity, and the sheet
+        came up in the old brand. That `:root` now carries the Stayo product
+        tokens (ADR-172), so the fallback is no longer a branding bug — but
+        the scope below is still correct and still wanted: this is a marketing
+        surface, and marketing's Terra Cotta is not product's Warm Clay.
 
         Scoping it to `marketing` resolves the real brand tokens instead
         (`--primary: #a45d44`, Terra Cotta). ThemeProvider is required rather

@@ -446,7 +446,7 @@ export function AddTenantModal({ onClose, hostelId, preselectedRoomId }: AddTena
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-3 rounded-xl bg-[#243A72] text-white text-sm font-semibold active:scale-[0.98] transition-transform"
+              className="flex-1 py-3 rounded-xl bg-primary text-white text-sm font-semibold active:scale-[0.98] transition-transform"
             >
               Close
             </button>

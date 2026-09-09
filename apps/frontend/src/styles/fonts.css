@@ -1,1 +1,12 @@
-/* Playfair Display + Poppins are loaded via <link> in index.html */
+/*
+ * The brand type pair — Manrope (display/UI/wordmark, 600-800) and Inter
+ * (body) — is loaded via <link> in index.html, not an @import here: a CSS
+ * @import must be the first statement in its stylesheet, which this file
+ * cannot guarantee once it is nested inside globals.css's import chain.
+ *
+ * This file used to note the loading of the pre-Stayo pair. Those faces were
+ * removed from index.html on 2026-09-09 along with the rest of the retired
+ * theme; the token declarations live in ./theme.css and ./tokens/fonts.css.
+ * Kept as the documented home for that fact rather than deleted, since
+ * globals.css's import order is the thing worth explaining.
+ */

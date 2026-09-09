@@ -76,7 +76,7 @@ export function TenantFilters({ filters, hideHostelSelector }: TenantFiltersProp
               type="button"
               onClick={() => filters.setChip(c.id)}
               className={`flex-none whitespace-nowrap rounded-full px-3.5 py-1.5 font-display text-xs font-semibold ${
-                active ? 'bg-foreground text-background' : 'border border-[#EAE1D8] bg-card text-[#6B6259]'
+                active ? 'bg-foreground text-background' : 'border border-border bg-card text-muted-foreground'
               }`}
             >
               {c.label} {filters.counts[c.id]}

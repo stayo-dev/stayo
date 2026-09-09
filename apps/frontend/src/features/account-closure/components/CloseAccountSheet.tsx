@@ -94,7 +94,7 @@ export function CloseAccountSheet({
             className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-full"
             style={{ background: '#F4EEE7' }}
           >
-            <ArrowLeft className="h-[18px] w-[18px]" style={{ color: '#6B6259' }} />
+            <ArrowLeft className="h-[18px] w-[18px]" style={{ color: 'var(--muted-foreground)' }} />
           </button>
         )}
         <h1 className="text-[17px] font-extrabold tracking-[-0.01em]" style={{ fontFamily: FONT.display, color: C.text }}>
