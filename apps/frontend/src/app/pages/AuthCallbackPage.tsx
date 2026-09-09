@@ -1,5 +1,7 @@
 import { ClerkAuthProvider } from '@/app/providers/ClerkAuthProvider';
-import { hasClerkSession } from '@lib/auth/clerkBrowser';
+import { signOutClerk } from '@lib/auth/clerkBrowser';
+import { decideCallbackAction } from '@lib/auth/sessionAuthority';
+import { useClerkSessionState } from '@/app/providers/clerkSessionContext';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@lib/supabaseClient';
@@ -64,6 +66,13 @@ export function AuthCallbackPage() {
 }
 
 function AuthCallbackInner() {
+  /**
+   * Clerk's SDK loads asynchronously, so this must not decide anything until it
+   * has settled — see `decideCallbackAction`. `clerk` is null until the provider
+   * mounts and `{ isLoaded: false }` while loading; either way this effect
+   * re-runs when it changes.
+   */
+  const clerk = useClerkSessionState();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   /**
@@ -112,7 +121,16 @@ function AuthCallbackInner() {
        * whichever token exists and `GET /auth/me` accepts both, returning the
        * same shape. Only "is there a session at all" is decided here.
        */
-      if (!data.session && !hasClerkSession()) {
+      const action = decideCallbackAction({ hasSupabaseSession: Boolean(data.session), clerk });
+
+      if (action === 'wait') {
+        // Clerk has not finished loading. Do not conclude anything yet; the
+        // effect re-runs when it settles.
+        started.current = false;
+        return;
+      }
+
+      if (action === 'no-session') {
         if (!cancelled) setError('Google sign-in did not complete. Please try again.');
         return;
       }
@@ -139,6 +157,7 @@ function AuthCallbackInner() {
          * other 403.
          */
         await supabase.auth.signOut();
+        await signOutClerk();
         if (status === 403 && serverMessage) {
           setError(serverMessage);
         } else if (status === 401) {
@@ -156,7 +175,7 @@ function AuthCallbackInner() {
     return () => {
       cancelled = true;
     };
-  }, [navigate]);
+  }, [navigate, clerk]);
 
   if (error) {
     return (

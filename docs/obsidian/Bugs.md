@@ -2303,3 +2303,15 @@ Related: [[Decisions#ADR-176|ADR-176]], [[Backend]], [[Changelog]]
 **Second CSP gap, found after the first fix deployed:** Clerk loaded, then failed to spawn its token-refresh Web Worker — `Creating a worker from 'blob:…' violates … script-src`. Clerk v5 *does* use a worker (`startPollingForToken`), contrary to an assumption made while writing the first fix. Fixed with `worker-src 'self' blob:`. **`blob:` belongs only in `worker-src`** — putting it in `script-src` would fix the same symptom while letting any blob URL execute as a page script.
 
 Related: [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[Changelog]]
+
+## Every Google sign-in reported "did not complete" — the callback judged Clerk before it loaded (2026-09-09)
+
+**Symptom.** After a successful Google round-trip, `/auth/callback` showed *"Google sign-in did not complete. Please try again."* Found while testing an account with no Stayo profile, which should have shown *"No Stayo account exists for this email"* — but the same bug would have failed a **valid** owner identically, so it was never about that account.
+
+**Cause.** `AuthCallbackPage` decided with `hasClerkSession()`, which reads `window.Clerk.session`. Clerk's SDK loads asynchronously, so on the first render after the redirect that is still empty. The effect also carried a `started.current` one-shot guard, so it never re-checked. Result: every Clerk sign-in was judged "no session" a fraction of a second before the session existed.
+
+**Fix.** The decision has three outcomes, not two — `wait` is a real state. `decideCallbackAction()` (`lib/auth/sessionAuthority.ts`) returns `wait` while Clerk is loading, and the effect re-runs when Clerk settles; a Supabase session still resolves immediately without waiting. A rejection now also calls `signOutClerk()`, so someone the product refuses is not left holding a live Clerk session that re-fails on every navigation.
+
+**The general shape worth remembering:** a boolean read of an asynchronously-initialised global is a race whenever it is consulted once. `hasClerkSession()` is fine for rendering (it re-renders); it was wrong inside a one-shot effect.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[Changelog]]
