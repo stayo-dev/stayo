@@ -609,3 +609,33 @@ Status codes are a retry protocol for Svix, which retries on non-2xx:
 Env var: `CLERK_WEBHOOK_SIGNING_SECRET` (`whsec_…`), loaded from the repo-root `.env` like every other backend secret. **Currently unset — no Clerk account exists yet, and no real delivery has reached this endpoint.**
 
 Related: [[Decisions#ADR-176|ADR-176]], [[Database]], [[Business-Rules]], [[Backend]], [[Changelog]]
+
+## Clerk handshake (2026-09-09)
+
+### `GET /me`
+
+The canonical Clerk handshake ([[Decisions#ADR-176|ADR-176]] Phase 2.6). **Not under `/api`** — same as `/webhooks/clerk`.
+
+- **Production URL:** `https://api.yourstayo.com/me`.
+- **Why not `/api/me`:** `middleware.ts` gates `/api/:path*` on a **Supabase** session, so `/api/me` would 401 every Clerk caller. Adding it to `PUBLIC_ROUTES` is worse than it sounds — that list is *prefix-matched*, so an `/api/me` entry would also expose the existing `/api/metrics`. Outside the matcher, no security config is touched at all.
+- **Reachability caveat:** `yourstayo.com` rewrites only `/api/:path*` to this backend, so the SPA's API client cannot reach `/me` today. **Nothing calls this endpoint yet.** Phase 3 must add a rewrite for `/me` or call the api. subdomain directly.
+- **Auth:** `Authorization: Bearer <Clerk session token>` (from the SPA's `getToken()`), verified by `@clerk/backend`'s `verifyToken` against Clerk's JWKS using `CLERK_SECRET_KEY`. Bearer rather than cookies because SPA and API are different origins.
+
+Response `200`:
+
+```json
+{ "userId": "…", "clerkUserId": "user_2…", "role": "OWNER" | null,
+  "profile": { "id": "…" | null, "linked": true | false }, "isActive": true }
+```
+
+| Code | Meaning |
+|---|---|
+| `200` | Resolved. The `users` row existed or was created. |
+| `401` | No Bearer token, or it failed verification. |
+| `500` | `CLERK_SECRET_KEY` unset, or the handshake threw. |
+
+**Idempotent, and safe under a race.** Read-then-create, with the unique index on `clerk_user_id` as the actual guarantee: two concurrent first-requests both miss the read and both insert; the loser catches `P2002` and re-reads. Without that, "never create duplicate users" would rest on a check-then-act the database is free to interleave.
+
+**It assigns no role and creates no profile.** `role` is *read* from the linked `profiles` row and is `null` for an account with no business identity — a normal state. Profile linking (by email, only when the Clerk JWT template supplies one — the default session token does not) reuses `findLinkableProfileId`, the same rule the webhook uses, including its refusal to steal a profile already bound to another Clerk account.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Database]], [[Business-Rules]], [[Backend]], [[Frontend]], [[Changelog]]

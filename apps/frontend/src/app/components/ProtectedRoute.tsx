@@ -1,7 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@context/AuthContext';
 import { StayoLoadingScreen } from '@shared/ui/brand';
-import { useClerkSessionState } from '@/app/providers/ClerkAuthProvider';
+import { useClerkSessionState } from '@/app/providers/clerkSessionContext';
 import { decideRouteAccess, shouldExplainUnlinkedClerkSession } from '@lib/auth/sessionAuthority';
 
 interface ProtectedRouteProps {

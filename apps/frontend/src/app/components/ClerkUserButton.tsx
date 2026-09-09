@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { useClerkSessionState } from '@/app/providers/ClerkAuthProvider';
+import { useClerkSessionState } from '@/app/providers/clerkSessionContext';
 import { clerkPresence } from '@lib/auth/sessionAuthority';
 
 /**

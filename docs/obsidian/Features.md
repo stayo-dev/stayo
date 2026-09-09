@@ -1325,3 +1325,14 @@ From [[Decisions#ADR-176|ADR-176]]. Adds Clerk's frontend to `apps/frontend` wit
 - **What users see today: nothing.** `VITE_CLERK_PUBLISHABLE_KEY` is unset, so Clerk no-ops entirely — `UserButton` renders `null`, and `/sign-in` says Clerk is unavailable and points back at `/login`. Supabase Auth is untouched and remains the live session authority.
 - **Verification status:** 37 new tests (2183 total, all passing), architecture/brand/branding checks and a production build all pass, no new `tsc` errors. **Not seen in a running browser** — with no Clerk instance configured, `<SignIn>` has never mounted, and the dashboard's email-OTP setting is unverified.
 - **See:** [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[Business-Rules]], [[Changelog]]
+
+### Clerk authentication — Phase 2.6: `/` stops paying for Clerk, and the `/me` handshake lands (2026-09-09)
+
+From [[Decisions#ADR-176|ADR-176]]. Prepares Phase 3 without moving anyone onto Clerk.
+
+- **The public landing page no longer loads the Clerk SDK.** Clerk mounts per-route — `/sign-in`, `/sign-up`, and the authenticated trees — instead of globally. `clerkBundleIsolation.test.ts` walks the static import graph from `main.tsx` and fails if that regresses; it was mutation-checked by reintroducing the leak.
+- **`GET /me`** ([[APIs]]) resolves a verified Clerk session to our `users` row and returns id, role, profile linkage and active status. Idempotent, race-safe via the unique index on `clerk_user_id`.
+- **It assigns no role and creates no profile.** `role` is read from the linked `profiles` row and is `null` for an account with no business identity.
+- **What users see today: still nothing.** No Clerk instance is configured; `/me` is not called by anything, and cannot be reached by the SPA until Phase 3 adds a rewrite.
+- **Verification status:** backend 1416 pure tests (21 new) with the same 3 pre-existing failures; frontend 2194 tests across 144 files (8 new); production build clean with zero Clerk in the entry chunk. **Not verified end to end** — `/me` has never seen a real Clerk token.
+- **See:** [[Decisions#ADR-176|ADR-176]], [[APIs]], [[Frontend]], [[Business-Rules]], [[Changelog]]

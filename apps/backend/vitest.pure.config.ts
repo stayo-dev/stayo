@@ -151,6 +151,7 @@ export default defineConfig({
       'tests/clerk-webhook-verification.test.ts',
       'tests/clerk-user-sync.test.ts',
       'tests/clerk-webhook-endpoint.test.ts',
+      'tests/clerk-me-handshake.test.ts',
     ],
     alias: {
       // More specific than the catch-all `@` entry below, and must come

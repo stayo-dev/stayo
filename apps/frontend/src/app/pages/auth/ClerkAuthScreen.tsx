@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { readClerkConfig } from '@lib/auth/clerkConfig';
+import { ClerkAuthProvider } from '@/app/providers/ClerkAuthProvider';
 
 /**
  * The shared frame for `/sign-in` and `/sign-up` (ADR-176, Phase 2).
@@ -10,6 +11,11 @@ import { readClerkConfig } from '@lib/auth/clerkConfig';
  * `ForgotPasswordPage` is: without it these routes resolve `theme.css`'s
  * unscoped `:root` tokens — the legacy palette — and look like a different
  * product than the login popup they sit beside.
+ *
+ * Mounts `ClerkAuthProvider` itself (ADR-176 Phase 2.6) rather than inheriting
+ * one from the root. These two routes are the only public URLs that need the
+ * SDK, and both are lazy route chunks — so `/` never loads Clerk, while
+ * navigating to `/sign-in` fetches it on demand.
  *
  * The unconfigured branch is not a placeholder. Clerk is additive in this
  * phase, so `VITE_CLERK_PUBLISHABLE_KEY` being unset is a supported state, and
@@ -31,7 +37,7 @@ export function ClerkAuthScreen({
     <ThemeProvider theme="marketing">
       <div className="min-h-screen flex flex-col items-center justify-center gap-6 px-4 py-12 bg-background text-foreground">
         {config.configured ? (
-          children
+          <ClerkAuthProvider>{children}</ClerkAuthProvider>
         ) : (
           <div className="max-w-md w-full text-center space-y-4">
             <h1 className="text-2xl font-semibold">{title} is not available yet</h1>

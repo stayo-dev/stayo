@@ -443,13 +443,19 @@ StayO is getting a real desktop application layout for owner + tenant. **The bre
 | `lib/auth/sessionAuthority.ts` | Pure. `decideRouteAccess()` — **accepts the Clerk state and ignores it**, see below. Plus `clerkPresence()` and `shouldExplainUnlinkedClerkSession()` for display. |
 | `app/providers/clerkSessionContext.ts` | The session context, in a module that imports **nothing** from Clerk. |
 | `app/providers/ClerkRuntime.tsx` | Everything touching `@clerk/clerk-react` at module scope — reached only by dynamic `import()`. |
-| `app/providers/ClerkAuthProvider.tsx` | Mounts Clerk when configured; renders children untouched when not. In `RootProviders`, inside `BrowserRouter`. |
+| `app/providers/ClerkAuthProvider.tsx` | Mounts Clerk when configured; renders children untouched when not. Mounted **per-route** — in `ClerkAuthScreen` and `ProtectedAppProviders` — never in `RootProviders`. |
 | `app/pages/auth/*` | `/sign-in` and `/sign-up`, sharing `ClerkAuthScreen` (which carries the unconfigured branch). |
 | `app/components/ClerkUserButton.tsx` | `ClerkUserButton` (admin header) and `ClerkAccountSlot` (fixed, for the mobile owner/tenant shells). Both render `null` without a Clerk session. |
 
 **A Clerk session authorises nothing.** Roles come from `profiles` through `AuthContext`, which is still Supabase-backed. `ProtectedRoute` delegates to `decideRouteAccess`, and `sessionAuthority.test.ts` asserts across a 4×4 matrix that varying the Clerk state changes no decision — the mechanical proof that this phase changed nobody's access. Phase 3 rewrites that test deliberately.
 
-**Two lazy-loading rules, both load-bearing.** `/` is the public marketing page, so the Clerk SDK must not reach the entry bundle: `ClerkRuntime` and `<UserButton>` each sit behind a dynamic `import()`, leaving the SDK in its own ~113 KB chunk. The context hook is a *separate module* because the first attempt kept it in `ClerkRuntime`, and `ProtectedRoute`'s static import of it silently defeated the `lazy()` — the SDK went straight back into the entry chunk. Net entry-bundle cost is +3 KB.
+**Three rules keep Clerk off the public landing page**, and each exists because a violation of it was measured, not imagined:
+
+1. **Mount per-route, never globally.** `ClerkAuthScreen` mounts it for `/sign-in` and `/sign-up`; `ProtectedAppProviders` mounts it for every authenticated tree (owner, admin, and tenant via `SeekerAppShell`). Mounted in `RootProviders`, it suspended `/` on the Clerk chunk *before* the router could fetch its own route chunk — two serialised fetches on the page that must be fastest.
+2. **The SDK sits behind dynamic `import()`.** `ClerkRuntime` and `<UserButton>` each do, leaving Clerk in its own ~113 KB chunk.
+3. **Nothing on the public path may statically import a Clerk-owning module.** The session hook lives in `clerkSessionContext.ts`, which imports nothing from Clerk, and is imported *from there* — never re-exported through `ClerkAuthProvider`. That re-export is a static edge into the module owning the `lazy()`, and `ProtectedRoute` importing it that way put `clerkConfig` and the ClerkRuntime import straight back into the entry chunk. It happened twice.
+
+`clerkBundleIsolation.test.ts` walks the static import graph from `main.tsx` and fails if any of the three is broken. Entry-chunk cost is +1.3 KB over a no-Clerk build (`sessionAuthority` and the context module, which route guards need on every render).
 
 **Routes are `/sign-in/*` and `/sign-up/*`.** The splat is required: `<SignIn routing="path">` renders its own sub-steps (email-code entry, SSO callback, session tasks) as child paths, which 404 without it.
 

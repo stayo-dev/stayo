@@ -126,7 +126,7 @@ export type SyncOutcome =
  *
  * Returns null rather than creating one — see rule 2 in the module header.
  */
-async function findLinkableProfileId(
+export async function findLinkableProfileId(
   email: string | null,
   clerkUserId: string,
 ): Promise<string | null> {
@@ -290,5 +290,119 @@ export async function syncClerkUser(event: ClerkWebhookEvent): Promise<SyncOutco
       return handleUserDeleted(event.data);
     default:
       return "ignored_unhandled_type";
+  }
+}
+
+// ── the /me handshake ───────────────────────────────────────────────────────
+
+/**
+ * What `GET /me` tells the caller about themselves.
+ *
+ * `role` is *read* from the linked profile and never written here. That is the
+ * whole point of the split: Clerk says who you are, our database says what you
+ * may do (ADR-176). A snapshot with `role: null` is a normal, expected state —
+ * a Clerk account we know about that has not been given a business identity.
+ */
+export interface ClerkIdentitySnapshot {
+  /** Our `users.id`, not Clerk's. */
+  userId: string;
+  clerkUserId: string;
+  isActive: boolean;
+  profileId: string | null;
+  profileLinked: boolean;
+  /** From the linked `profiles` row; null when unlinked. Never assigned here. */
+  role: string | null;
+  /** True only when this call created the row. Second call for the same id: false. */
+  created: boolean;
+}
+
+const IDENTITY_SELECT = {
+  id: true,
+  clerk_user_id: true,
+  is_active: true,
+  profile_id: true,
+  profile: { select: { role: true } },
+} as const;
+
+type IdentityRow = {
+  id: string;
+  clerk_user_id: string;
+  is_active: boolean;
+  profile_id: string | null;
+  profile: { role: string } | null;
+};
+
+function toSnapshot(row: IdentityRow, created: boolean): ClerkIdentitySnapshot {
+  return {
+    userId: row.id,
+    clerkUserId: row.clerk_user_id,
+    isActive: row.is_active,
+    profileId: row.profile_id ?? null,
+    profileLinked: Boolean(row.profile_id),
+    role: row.profile?.role ?? null,
+    created,
+  };
+}
+
+/**
+ * Idempotently resolve a verified Clerk session to a `users` row.
+ *
+ * Read-then-create, with the unique index on `clerk_user_id` as the actual
+ * guarantee rather than the read. Two requests racing — which is the normal
+ * case, since a SPA can fire this from several components at once on first
+ * load — both miss the read and both attempt the insert; one wins, the other
+ * gets P2002 and re-reads. Without that catch the loser would 500, and the
+ * "never create duplicate users" requirement would rest on a check-then-act
+ * that the database is free to interleave.
+ *
+ * It never creates a `profiles` row. When the token carries an email (only if
+ * the Clerk JWT template provides one) it links to an *existing* profile under
+ * the same rule the webhook uses — one implementation, in
+ * `findLinkableProfileId`, which also refuses to steal a profile already bound
+ * to another Clerk account.
+ */
+export async function ensureUserForClerkSession(identity: {
+  clerkUserId: string;
+  email?: string;
+}): Promise<ClerkIdentitySnapshot> {
+  const existing = (await prisma.users.findUnique({
+    where: { clerk_user_id: identity.clerkUserId },
+    select: IDENTITY_SELECT,
+  })) as IdentityRow | null;
+
+  if (existing) return toSnapshot(existing, false);
+
+  const email = identity.email ? identity.email.trim().toLowerCase() : null;
+  const profileId = await findLinkableProfileId(email, identity.clerkUserId);
+
+  try {
+    const created = (await prisma.users.create({
+      data: {
+        clerk_user_id: identity.clerkUserId,
+        email,
+        profile_id: profileId,
+      },
+      select: IDENTITY_SELECT,
+    })) as IdentityRow;
+
+    logger.info("clerk.me.user_created", {
+      clerk_user_id: identity.clerkUserId,
+      linked_profile: Boolean(profileId),
+    });
+    return toSnapshot(created, true);
+  } catch (error) {
+    // P2002 = unique constraint. Another request won the race; its row is the
+    // one true row, so read it back rather than surfacing an error.
+    if ((error as { code?: string })?.code !== "P2002") throw error;
+
+    const raced = (await prisma.users.findUnique({
+      where: { clerk_user_id: identity.clerkUserId },
+      select: IDENTITY_SELECT,
+    })) as IdentityRow | null;
+
+    if (!raced) throw error;
+
+    logger.info("clerk.me.create_raced", { clerk_user_id: identity.clerkUserId });
+    return toSnapshot(raced, false);
   }
 }

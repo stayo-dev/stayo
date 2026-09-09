@@ -1,7 +1,6 @@
 import { Suspense, lazy, useMemo, type PropsWithChildren } from 'react';
 import { readClerkConfig } from '@lib/auth/clerkConfig';
 import { StayoLoadingScreen } from '@shared/ui/brand';
-import { useClerkSessionContext } from './clerkSessionContext';
 
 /**
  * Clerk, mounted so that it can neither take the app down nor slow it down
@@ -25,15 +24,6 @@ import { useClerkSessionContext } from './clerkSessionContext';
 const ClerkRuntime = lazy(() =>
   import('./ClerkRuntime').then((m) => ({ default: m.ClerkRuntime })),
 );
-
-/**
- * The Clerk session, or `null` when Clerk is not configured. Safe to call from
- * anywhere in the tree, inside a `ClerkProvider` or not.
- *
- * For display and diagnostics only — authorisation goes through
- * `decideRouteAccess`, which deliberately ignores this. See `sessionAuthority`.
- */
-export { useClerkSessionContext as useClerkSessionState };
 
 export function ClerkAuthProvider({ children }: PropsWithChildren) {
   // Resolved once: the publishable key is inlined at build time and cannot

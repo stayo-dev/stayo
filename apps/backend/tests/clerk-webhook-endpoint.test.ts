@@ -22,6 +22,32 @@ const read = (p: string) => fs.readFileSync(path.join(backend, p), "utf8");
 
 const ROUTE = "app/webhooks/clerk/route.ts";
 
+/**
+ * Every `data: { … }` literal in a source file — the object Prisma actually
+ * writes — with braces balanced so nested objects are included.
+ */
+function dataLiterals(source: string): string[] {
+  const blocks: string[] = [];
+  const re = /\bdata:\s*\{/g;
+  let m: RegExpExecArray | null;
+
+  while ((m = re.exec(source))) {
+    let depth = 0;
+    let i = m.index + m[0].length - 1;
+    const start = i;
+    for (; i < source.length; i++) {
+      if (source[i] === "{") depth++;
+      else if (source[i] === "}") {
+        depth--;
+        if (depth === 0) break;
+      }
+    }
+    blocks.push(source.slice(start, i + 1));
+  }
+  return blocks;
+}
+
+
 describe("route placement", () => {
   it("serves exactly /webhooks/clerk", () => {
     expect(fs.existsSync(path.join(backend, ROUTE))).toBe(true);
@@ -107,7 +133,20 @@ describe("the webhook cannot escalate or destroy", () => {
 
   it("never writes a role from a Clerk payload", () => {
     // Roles are ours. Clerk holds identity; authority is decided in our database.
-    expect(service).not.toMatch(/role:\s/);
+    //
+    // Checked against the *write payloads* rather than the whole file: the
+    // service legitimately mentions `role` when it reads one back (a `select`,
+    // and building the /me snapshot). An earlier version of this test matched
+    // /role:\s/ anywhere and started failing the moment the handshake read a
+    // role it never wrote — a false positive that would have been tempting to
+    // silence rather than sharpen.
+    for (const block of dataLiterals(service)) {
+      expect(block).not.toMatch(/\brole\b/);
+    }
+  });
+
+  it("has write payloads to check, so the assertion above is not vacuous", () => {
+    expect(dataLiterals(service).length).toBeGreaterThanOrEqual(3);
   });
 
   it("never writes to profiles — the webhook reads them to link, nothing more", () => {

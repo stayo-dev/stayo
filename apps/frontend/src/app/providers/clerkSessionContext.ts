@@ -12,9 +12,14 @@ import type { ClerkSessionState } from '@lib/auth/sessionAuthority';
  *
  * The default of `null` is the "Clerk not configured" state that
  * `clerkPresence()` already understands.
+ *
+ * Import the hook from HERE, never re-exported from `ClerkAuthProvider`:
+ * a re-export is a static edge into the module that owns the `lazy()`, and
+ * `ProtectedRoute` importing it that way silently pulled `clerkConfig` and the
+ * ClerkRuntime dynamic import back into the entry chunk (ADR-176 Phase 2.6).
  */
 export const ClerkSessionContext = createContext<ClerkSessionState | null>(null);
 
-export function useClerkSessionContext(): ClerkSessionState | null {
+export function useClerkSessionState(): ClerkSessionState | null {
   return useContext(ClerkSessionContext);
 }
