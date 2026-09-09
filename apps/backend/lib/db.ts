@@ -154,4 +154,55 @@ globalForPrisma.prisma = prisma;
 const supabaseUrl = process.env.SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
-export const supabase = createClient(supabaseUrl, supabaseServiceKey);
+/**
+ * Constructed on first use, not at import.
+ *
+ * `createClient("")` throws `supabaseUrl is required`, and this module is
+ * imported — directly or transitively — by nearly every API route. `next build`
+ * imports each route to collect its page data without ever calling into it, so
+ * an eager client turned "no env at build time" into a hard build failure,
+ * reported against whichever route happened to be collected first (usually
+ * `/api/agreements/[id]/renewal-offer`, which has nothing to do with it).
+ *
+ * That is exactly what broke every Preview deployment on 2026-09-09: Preview
+ * had no environment variables, so the build died even though no code had run.
+ * A build should not need runtime credentials, and now it does not — the throw
+ * moves to the first actual query, where the message is about the real problem
+ * and the stack points at the real caller.
+ *
+ * Deliberately a Proxy rather than a `getSupabase()` function: `supabase` is
+ * imported and used as an object in several services, and changing that shape
+ * would have meant touching each call site for no benefit. Methods are bound so
+ * destructuring (`const { from } = supabase`) keeps working.
+ */
+let supabaseClient: ReturnType<typeof createClient> | null = null;
+
+function resolveSupabaseClient(): ReturnType<typeof createClient> {
+  if (supabaseClient) return supabaseClient;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error(
+      "SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are not set — the service-role " +
+        "Supabase client cannot be created. This is a runtime configuration " +
+        "problem, not a build one; check the environment variables for this " +
+        "deployment.",
+    );
+  }
+
+  supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
+  return supabaseClient;
+}
+
+export const supabase: ReturnType<typeof createClient> = new Proxy(
+  {} as ReturnType<typeof createClient>,
+  {
+    get(_target, property, receiver) {
+      const client = resolveSupabaseClient();
+      const value = Reflect.get(client as object, property, receiver);
+      return typeof value === "function" ? value.bind(client) : value;
+    },
+    has(_target, property) {
+      return Reflect.has(resolveSupabaseClient() as object, property);
+    },
+  },
+);

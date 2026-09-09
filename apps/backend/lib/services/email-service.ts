@@ -5,7 +5,22 @@ import type { HostelPreferences } from "../preferences";
 import { frontendUrl } from "../config/domains";
 import { EMAIL, emailShell, emailButton, emailNote, emailLinkFallback } from "./email-theme";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+/**
+ * Constructed on first send, not at import — the same reason `lib/db.ts` defers
+ * its Supabase client: `new Resend(undefined)` throws "Missing API key", and
+ * `next build` imports every route to collect page data without calling into
+ * it. An eager constructor here turned "no env at build time" into a failed
+ * build, blamed on whichever route was collected first.
+ *
+ * A missing key is still an error — it just surfaces on the first attempt to
+ * send, where the message and stack point at the real caller.
+ */
+let resendClient: Resend | null = null;
+
+function resend(): Resend {
+  if (!resendClient) resendClient = new Resend(process.env.RESEND_API_KEY);
+  return resendClient;
+}
 // No verified sending domain on the Stayo Resend account yet — resend.dev's
 // sandbox sender works without domain verification but Resend restricts it
 // to sending only to the account owner's own email. Update this once a real
@@ -75,7 +90,7 @@ export class EmailService {
     }
 
     try {
-      const { data, error } = await resend.emails.send({
+      const { data, error } = await resend().emails.send({
         from: resolveEmailFrom(process.env.EMAIL_FROM),
         to: [to],
         subject,
