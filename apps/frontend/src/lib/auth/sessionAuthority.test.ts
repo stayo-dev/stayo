@@ -10,6 +10,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  decideCallbackAction,
   decideRouteAccess,
   clerkPresence,
   shouldExplainUnlinkedClerkSession,
@@ -165,5 +166,48 @@ describe('shouldExplainUnlinkedClerkSession', () => {
     expect(
       shouldExplainUnlinkedClerkSession({ profileLoading: false, profile: null, clerk: null }),
     ).toBe(false);
+  });
+});
+
+describe('decideCallbackAction — /auth/callback must not judge Clerk too early', () => {
+  it('waits while Clerk is still loading', () => {
+    // The bug this encodes: Clerk's SDK loads asynchronously, so on the first
+    // render after a Google redirect `window.Clerk.session` is not populated.
+    // Concluding here reported "Google sign-in did not complete" for a
+    // perfectly good sign-in — and the callback effect ran once, so it never
+    // re-checked. Every Google sign-in failed this way.
+    expect(
+      decideCallbackAction({ hasSupabaseSession: false, clerk: { isLoaded: false, isSignedIn: false } }),
+    ).toBe('wait');
+  });
+
+  it('resolves once Clerk reports a session', () => {
+    expect(
+      decideCallbackAction({ hasSupabaseSession: false, clerk: { isLoaded: true, isSignedIn: true } }),
+    ).toBe('resolve');
+  });
+
+  it('reports no session when Clerk has loaded and is signed out', () => {
+    expect(
+      decideCallbackAction({ hasSupabaseSession: false, clerk: { isLoaded: true, isSignedIn: false } }),
+    ).toBe('no-session');
+  });
+
+  it('reports no session when Clerk is not configured — nothing is coming', () => {
+    expect(decideCallbackAction({ hasSupabaseSession: false, clerk: null })).toBe('no-session');
+  });
+
+  it('resolves immediately on a Supabase session, without waiting for Clerk', () => {
+    // Password sign-in still lands here; it must not be delayed by Clerk.
+    expect(
+      decideCallbackAction({ hasSupabaseSession: true, clerk: { isLoaded: false, isSignedIn: false } }),
+    ).toBe('resolve');
+    expect(decideCallbackAction({ hasSupabaseSession: true, clerk: null })).toBe('resolve');
+  });
+
+  it('never returns wait once Clerk has settled, so the page cannot hang', () => {
+    for (const clerk of [null, { isLoaded: true, isSignedIn: true }, { isLoaded: true, isSignedIn: false }]) {
+      expect(decideCallbackAction({ hasSupabaseSession: false, clerk })).not.toBe('wait');
+    }
   });
 });

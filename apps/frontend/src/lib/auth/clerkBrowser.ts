@@ -84,3 +84,20 @@ export function subscribeToClerkSession(onChange: () => void): () => void {
     return () => {};
   }
 }
+
+/**
+ * End the Clerk session, if there is one.
+ *
+ * Used when the backend refuses a sign-in (no Stayo account, disabled login).
+ * Leaving a live Clerk session behind for someone the product will not admit
+ * means every later navigation re-attempts and re-fails; signing out makes the
+ * rejection final and the next attempt clean. Never throws.
+ */
+export async function signOutClerk(): Promise<void> {
+  try {
+    const clerk = clerkGlobal() as (ClerkGlobal & { signOut?: () => Promise<void> }) | null;
+    await clerk?.signOut?.();
+  } catch {
+    /* already gone, or Clerk never loaded */
+  }
+}

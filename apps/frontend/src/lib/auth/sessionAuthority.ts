@@ -96,3 +96,35 @@ export function shouldExplainUnlinkedClerkSession(input: {
   if (input.profile) return false;
   return clerkPresence(input.clerk) === "signed-in";
 }
+
+/**
+ * What `/auth/callback` should do on this render (ADR-176 Phase 3).
+ *
+ * Split out because getting it wrong is invisible until a real redirect lands:
+ * Clerk's SDK loads asynchronously, so on the first render after a Google
+ * round-trip `window.Clerk.session` is not populated yet. Deciding then reports
+ * "no session" for a perfectly good sign-in — and because the callback runs its
+ * effect once, it never re-checks. Every Google sign-in failed this way, valid
+ * account or not.
+ *
+ * So there are three outcomes, not two: **wait** is a real state.
+ */
+export type CallbackAction = "wait" | "resolve" | "no-session";
+
+export function decideCallbackAction(input: {
+  hasSupabaseSession: boolean;
+  clerk: ClerkSessionState | null;
+}): CallbackAction {
+  // A Supabase session is conclusive on its own — no reason to wait for Clerk.
+  if (input.hasSupabaseSession) return "resolve";
+
+  switch (clerkPresence(input.clerk)) {
+    case "loading":
+      return "wait";
+    case "signed-in":
+      return "resolve";
+    // Not configured, or configured and genuinely signed out: nothing is coming.
+    default:
+      return "no-session";
+  }
+}
