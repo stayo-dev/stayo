@@ -154,6 +154,7 @@ export default defineConfig({
       'tests/clerk-me-handshake.test.ts',
       'tests/auth-me-dual-session.test.ts',
       'tests/clerk-controlled-onboarding.test.ts',
+      'tests/build-without-env.test.ts',
     ],
     alias: {
       // More specific than the catch-all `@` entry below, and must come

@@ -2267,3 +2267,25 @@ The timing made it worse: `tenants.status` flips to `FORMER_TENANT` in **`vacate
 - **Found alongside, same cause:** `ListingPage.tsx` called `describeAvailability(amenity)` **without importing it**, and read `C.muted`, which does not exist on the Discover palette. The first would have thrown a `ReferenceError` while rendering amenities on any listing that has them. Both also survived a green `vite build`.
 - **Lesson:** a green build here proves the bundle was produced, not that the code is sound. Three genuine reference errors sat in two of the most-visited pages. **`tsc --noEmit` belongs in the build**, or at minimum in CI — this bug and the two on `ListingPage` were all found by running it once, by hand.
 - **See:** [[Decisions#ADR-118|ADR-118]], [[Changelog]]
+
+## Backend builds required runtime env, so every Vercel Preview failed (2026-09-09)
+
+**Symptom.** Every backend Preview deployment failed with `Error: supabaseUrl is required`, blamed on `/api/agreements/[id]/renewal-offer` — a route with nothing to do with it. Production was unaffected and kept deploying green, which made it look like a bad branch rather than a broken environment.
+
+**Attribution took longer than it should have.** Other open PRs showed green backend checks, so the failure looked branch-specific. Their checks had last run days earlier (Sep 6, Aug 23); the environment changed between 05:41Z and 10:39Z on Sep 9. **Check *when* a passing check last ran before concluding a failure is yours.** What settled it: pushing a commit whose tree is byte-identical to `main` (`git commit-tree`) and watching it fail identically. Do not push `main`'s own SHA for this — a failing preview posts a red status onto `main`'s commit.
+
+**Cause.** Three clients were constructed at **module scope** from env:
+
+| File | Constructor | Threw |
+|---|---|---|
+| `lib/db.ts` | `createClient(supabaseUrl, …)` | `supabaseUrl is required` |
+| `lib/services/email-service.ts` | `new Resend(process.env.RESEND_API_KEY)` | `Missing API key` |
+| `.../whatsapp/meta-provider.ts` | `constructor(config = configFromEnv())` | `WhatsAppConfigError` |
+
+`next build` imports every route module to collect page data and never calls into it, so an eager constructor makes a *build* depend on *runtime* credentials. The last one is the subtlest: the constructor default only ran because `whatsAppTemplateDeliveryService` is itself a module-scope singleton.
+
+**Fix.** Each resolves on first use — a Proxy for `supabase` (kept the object shape, so no call site changed), a function for `resend()`, a private getter for the WhatsApp config. Missing config is still fatal, now at the call site that needs it, with a message naming the variable. Verified by building with the repo-root `.env` moved aside: it failed before, succeeds after, and still builds normally with env present. Pinned by `tests/build-without-env.test.ts`.
+
+**Still open:** the Preview environment variables themselves are missing and should be restored — this fix stops that from breaking *builds*, but a Preview deployment with no config cannot actually serve requests.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Backend]], [[Changelog]]

@@ -274,10 +274,31 @@ export function buildOtpTemplatePayload(input: {
 }
 
 export class MetaWhatsAppProvider {
-  private readonly config: WhatsAppProviderConfig;
+  private readonly injectedConfig: WhatsAppProviderConfig | null;
+  private resolvedConfig: WhatsAppProviderConfig | null = null;
 
-  constructor(config: WhatsAppProviderConfig = configFromEnv()) {
-    this.config = config;
+  /**
+   * Config is read on first use, not in the constructor.
+   *
+   * `configFromEnv()` throws when the WhatsApp env vars are absent, and this
+   * class is instantiated at module scope by the delivery singletons
+   * (`whatsAppTemplateDeliveryService`, `whatsappReminderDeliveryService`).
+   * `next build` imports every route to collect page data without calling into
+   * it, so constructing eagerly turned "no env at build time" into a failed
+   * build — reported against an unrelated route that merely imported the chain.
+   *
+   * Missing config is still an error; it now surfaces on the first send, where
+   * the message names the variable and the stack points at the real caller.
+   * Tests that inject a config keep working unchanged.
+   */
+  constructor(config?: WhatsAppProviderConfig) {
+    this.injectedConfig = config ?? null;
+  }
+
+  private get config(): WhatsAppProviderConfig {
+    if (this.injectedConfig) return this.injectedConfig;
+    if (!this.resolvedConfig) this.resolvedConfig = configFromEnv();
+    return this.resolvedConfig;
   }
 
   async sendTemplate(message: WhatsAppTemplateMessage): Promise<WhatsAppSendResult> {
