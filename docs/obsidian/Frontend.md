@@ -464,3 +464,17 @@ StayO is getting a real desktop application layout for owner + tenant. **The bre
 **Which sign-in strategies appear is Clerk Dashboard configuration**, not code. `<SignIn>` renders whatever the instance allows, so passwordless email OTP is a dashboard setting this repo cannot enforce or verify.
 
 Related: [[Decisions#ADR-176|ADR-176]], [[Architecture]], [[Features]], [[APIs]], [[Performance]]
+
+## Google sign-in is Clerk's (2026-09-09, ADR-176 Phase 3)
+
+Every `supabase.auth.signInWithOAuth({ provider: 'google' })` is gone — `AuthContext`, `HostelLeadModal`, and the unused `GoogleSignInModal` (deleted). `<ClerkGoogleSignIn>` (`shared/ui-patterns/`) replaces them and calls `signIn.authenticateWithRedirect({ strategy: 'oauth_google' })`.
+
+**The SDK stays off the landing page.** `LoginModal` is in the entry chunk (`AppRouter → SeekerAppShell → DiscoverAuthContext`), so `ClerkGoogleSignIn` statically imports only `clerkConfig` (env parsing, no SDK) and reaches everything else through a dynamic `import()` of `ClerkGoogleButton`. That module mounts `ClerkProvider` **directly** rather than reusing `app/providers/ClerkAuthProvider` — `src/shared` must stay a leaf, and `check-architecture.mjs` fails the build otherwise.
+
+**Sessions are read from `window.Clerk`, not React context** (`lib/auth/clerkBrowser.ts`). `api-client` is a plain module and `AuthProvider` sits above `ClerkAuthProvider` on every shell; inverting that nesting would have dragged Clerk onto `/`. `pickSessionSource()` holds the rule — **Supabase wins whenever it has a session, even if Clerk also does** — so a half-finished Clerk sign-in can never displace a live session.
+
+`AuthCallbackPage` now lands both: it mounts Clerk (so the global exists on a cold load) and proceeds when *either* provider has a session.
+
+**Known gap:** Google *signup* for a brand-new person does not work yet — see the ADR. Existing users are unaffected.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[APIs]], [[Features]], [[Changelog]]

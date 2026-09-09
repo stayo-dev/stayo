@@ -110,13 +110,30 @@ describe('the public entry does not statically reach Clerk', () => {
     expect(importers).toEqual([]);
   });
 
-  it('never reaches the modules that own the Clerk SDK or its config', () => {
-    // clerkConfig inlines the publishable key and holds the lazy() trigger;
-    // ClerkRuntime is the SDK itself.
+  it('never reaches the modules that own the Clerk SDK', () => {
+    // ClerkRuntime *is* the SDK; ClerkAuthProvider owns the `lazy()` that
+    // fetches it. Either one on the entry path puts Clerk on the landing
+    // page's critical path.
     const reachable = [...graph.files].map((f) => path.relative(SRC, f));
     expect(reachable).not.toContain('app/providers/ClerkRuntime.tsx');
     expect(reachable).not.toContain('app/providers/ClerkAuthProvider.tsx');
-    expect(reachable).not.toContain('lib/auth/clerkConfig.ts');
+  });
+
+  it('may reach clerkConfig — but only because it imports nothing from Clerk', () => {
+    // `LoginModal` is in the entry chunk (AppRouter → SeekerAppShell →
+    // DiscoverAuthContext) and needs to know whether Clerk is configured to
+    // decide if the Google button is usable. That is allowed *only* while
+    // clerkConfig stays SDK-free: it is env parsing, a few hundred bytes, and
+    // pulls in no runtime. If that ever changes, this assertion fails and the
+    // exemption above must be withdrawn rather than widened.
+    const config = fs.readFileSync(path.join(SRC, 'lib/auth/clerkConfig.ts'), 'utf8');
+    expect(config).not.toContain('@clerk/');
+
+    const configGraph = walk(path.join(SRC, 'lib/auth/clerkConfig.ts'));
+    expect(configGraph.packages.has('@clerk/clerk-react')).toBe(false);
+    expect([...configGraph.files].map((f) => path.relative(SRC, f))).not.toContain(
+      'app/providers/ClerkRuntime.tsx',
+    );
   });
 
   it('still reaches the Clerk-free session context, which route guards need', () => {

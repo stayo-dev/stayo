@@ -1336,3 +1336,14 @@ From [[Decisions#ADR-176|ADR-176]]. Prepares Phase 3 without moving anyone onto 
 - **What users see today: still nothing.** No Clerk instance is configured; `/me` is not called by anything, and cannot be reached by the SPA until Phase 3 adds a rewrite.
 - **Verification status:** backend 1416 pure tests (21 new) with the same 3 pre-existing failures; frontend 2194 tests across 144 files (8 new); production build clean with zero Clerk in the entry chunk. **Not verified end to end** — `/me` has never seen a real Clerk token.
 - **See:** [[Decisions#ADR-176|ADR-176]], [[APIs]], [[Frontend]], [[Business-Rules]], [[Changelog]]
+
+### Clerk authentication — Phase 3 (minimal): Google is Clerk's, sessions are dual (2026-09-09)
+
+From [[Decisions#ADR-176|ADR-176]]. Fixes the live symptom that "Continue with Google" still navigated to Supabase.
+
+- **Every Google button now launches Clerk.** All three Supabase OAuth call sites removed; the unused `GoogleSignInModal` deleted.
+- **`/api/auth/me` accepts either provider**, so a Clerk sign-in produces a working Stayo session. Supabase remains the authority for existing sessions and its path is unchanged.
+- **Roles still come from `profiles`.** A Clerk session with no profile is refused, not provisioned.
+- **Known gap:** brand-new Google *signup* is not functional — the Supabase flow auto-provisioned a tenant profile and the Clerk flow deliberately does not yet. Sign-in for existing users works.
+- **Verification:** 2254 frontend tests (25 new), 1423 backend pure tests, build green, and the bundle contains zero Google-provider call sites. **No real Google round-trip has been performed.**
+- **See:** [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[APIs]], [[Changelog]]

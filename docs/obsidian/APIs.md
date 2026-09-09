@@ -639,3 +639,19 @@ Response `200`:
 **It assigns no role and creates no profile.** `role` is *read* from the linked `profiles` row and is `null` for an account with no business identity — a normal state. Profile linking (by email, only when the Clerk JWT template supplies one — the default session token does not) reuses `findLinkableProfileId`, the same rule the webhook uses, including its refusal to steal a profile already bound to another Clerk account.
 
 Related: [[Decisions#ADR-176|ADR-176]], [[Database]], [[Business-Rules]], [[Backend]], [[Frontend]], [[Changelog]]
+
+### `GET /api/auth/me` — dual session authority (2026-09-09)
+
+Changed by [[Decisions#ADR-176|ADR-176]] Phase 3. **The Supabase path is unchanged**; Clerk is consulted only when it finds nothing.
+
+| Credential | Behaviour |
+|---|---|
+| Supabase session (middleware headers) | Exactly as before — including its specific rejection codes. |
+| `Authorization: Bearer <Clerk token>` | Verified by `verifyClerkSession()`, resolved through `ensureUserForClerkSession()` to a `profiles` row. |
+| Neither | `401 UNAUTHORIZED`, as before. |
+
+Clerk-path rejections, both `403`: `NO_STAYO_ACCOUNT` (Clerk knows them, we have no profile) and `ACCOUNT_DISABLED` (the login was deactivated by `user.deleted`). The response body is identical for both providers, so callers need no branch.
+
+**`middleware.ts`** gains `CLERK_BEARER_ROUTES` — currently just `/api/auth/me`, **exact**-matched via a `Set`. Its only effect: a token rejected by *both* the Supabase and legacy verifiers falls through as anonymous rather than 401, so the route can verify it as a Clerk token. This does **not** make the route public — `PUBLIC_ROUTES` is prefix-matched and an entry there would also have exposed `/api/auth/me`-prefixed siblings.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[Business-Rules]], [[Changelog]]

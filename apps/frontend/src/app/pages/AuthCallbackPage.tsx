@@ -1,3 +1,5 @@
+import { ClerkAuthProvider } from '@/app/providers/ClerkAuthProvider';
+import { hasClerkSession } from '@lib/auth/clerkBrowser';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@lib/supabaseClient';
@@ -73,7 +75,21 @@ function clearProvisionIntent() {
  * misconfigured (it happened — see docs/obsidian/Bugs.md) and no amount of
  * retrying will help, so this stops telling them to try again.
  */
+/**
+ * Mounts Clerk around the callback so `window.Clerk` is present even on a cold
+ * load of this URL (a Clerk redirect arrives as a full navigation, and the SDK
+ * global only exists once a provider has mounted). Cheap here and nowhere near
+ * the landing page — this route is only ever reached mid-sign-in.
+ */
 export function AuthCallbackPage() {
+  return (
+    <ClerkAuthProvider>
+      <AuthCallbackInner />
+    </ClerkAuthProvider>
+  );
+}
+
+function AuthCallbackInner() {
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   /**
@@ -110,7 +126,20 @@ export function AuthCallbackPage() {
 
     const finish = async () => {
       const { data } = await supabase.auth.getSession();
-      if (!data.session) {
+
+      /*
+       * ADR-176 Phase 3 — this page now lands two different sign-ins.
+       *
+       * Google goes through Clerk, so the usual arrival has NO Supabase
+       * session and a Clerk one instead. The Supabase branch is kept because
+       * password sign-in and any redirect still in flight during the migration
+       * come back through here too — it is not dead until the final cutover.
+       *
+       * Nothing below needs to know which it was: `api-client` attaches
+       * whichever token exists and `GET /auth/me` accepts both, returning the
+       * same shape. Only "is there a session at all" is decided here.
+       */
+      if (!data.session && !hasClerkSession()) {
         if (!cancelled) setError('Google sign-in did not complete. Please try again.');
         return;
       }
