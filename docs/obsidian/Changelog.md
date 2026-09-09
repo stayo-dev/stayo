@@ -10,6 +10,12 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-09**: **Authentication never creates a Stayo account** ([[Decisions#ADR-176|ADR-176]] Phase 3.1, superseding [[Decisions#ADR-078|ADR-078]]'s Google auto-provisioning). Onboarding stays controlled: owners after admin approval, tenants after an owner's invitation. An unknown email resolves to `NO_STAYO_ACCOUNT` — a dead end by design.
+  - **The provisioning path is deleted, not just unused:** `AuthCallbackPage`'s `POST /auth/google/provision` branch, the `GOOGLE_PROVISION_INTENT_KEY`/`GOOGLE_RETURN_TO_KEY` plumbing, and `authCallbackDecision.ts` (`shouldProvisionAccount` + its 5 tests). The backend endpoint is left in place, unreferenced — removing it is a separate decision about the Supabase surface.
+  - **Linking is not provisioning.** The webhook still matches a Clerk account to a `profiles` row by email, but that row was created by an invitation or approval beforehand.
+  - **Corrects this changelog's own previous entry**, which called the missing signup path "a known gap, deliberate" and implied a Clerk provisioning path was needed next. The behaviour was right; the framing was wrong.
+  - **Verified:** 9 new backend tests covering Google / email OTP / phone OTP as one case — the backend never learns the method, so provider-specific provisioning cannot creep back in unnoticed. 2249 frontend tests and 1432 backend pure tests pass, same 3 pre-existing backend failures; build green; `tsc` unchanged at baseline.
+
 - **2026-09-09**: **Google sign-in moves to Clerk, and `/api/auth/me` starts accepting both providers** ([[Decisions#ADR-176|ADR-176]] Phase 3, minimal). Fixes the live symptom that "Continue with Google" still navigated to `supabase.co/auth/v1/authorize?provider=google`.
   - **Dual session authority.** `/api/auth/me` tries Supabase first — that path is unchanged — and falls back to a Clerk bearer token. `middleware.ts` gains an exact-matched `CLERK_BEARER_ROUTES` set so a token both verifiers reject reaches the route instead of 401-ing; the route is **not** made public (`PUBLIC_ROUTES` is prefix-matched and would have exposed siblings).
   - **A Clerk session still cannot invent authority.** No linked profile → `NO_STAYO_ACCOUNT`; a webhook-deactivated login → `ACCOUNT_DISABLED`. No role is assigned and no profile created.

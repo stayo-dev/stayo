@@ -4,8 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@lib/supabaseClient';
 import api from '@lib/api-client';
-import { GOOGLE_PROVISION_INTENT_KEY, GOOGLE_RETURN_TO_KEY } from '@context/AuthContext';
-import { shouldProvisionAccount } from './authCallbackDecision';
 import { StayoLoadingScreen } from '@shared/ui/brand';
 
 /**
@@ -18,19 +16,8 @@ import { StayoLoadingScreen } from '@shared/ui/brand';
  * actually received the 403 then saw `allowed: false` and rendered "No account
  * found" instead of creating the account. The POST never happened at all.
  *
- * So the flag is now cleared only by `clearProvisionIntent()`, once the flow
  * has genuinely finished — see below.
  */
-function readProvisionIntent(): { allowed: boolean; returnTo: string | null } {
-  try {
-    return {
-      allowed: sessionStorage.getItem(GOOGLE_PROVISION_INTENT_KEY) === '1',
-      returnTo: sessionStorage.getItem(GOOGLE_RETURN_TO_KEY),
-    };
-  } catch {
-    return { allowed: false, returnTo: null };
-  }
-}
 
 /**
  * Clear the intent once this sign-in has resolved either way.
@@ -39,14 +26,6 @@ function readProvisionIntent(): { allowed: boolean; returnTo: string | null } {
  * within the same tab starts clean, but a re-run of this effect cannot strip
  * the intent out from under itself.
  */
-function clearProvisionIntent() {
-  try {
-    sessionStorage.removeItem(GOOGLE_PROVISION_INTENT_KEY);
-    sessionStorage.removeItem(GOOGLE_RETURN_TO_KEY);
-  } catch {
-    /* private mode — nothing to clear */
-  }
-}
 
 /**
  * Lands here after `supabase.auth.signInWithOAuth({provider:'google'})`'s
@@ -59,14 +38,9 @@ function clearProvisionIntent() {
  * *specific* rejection reason (no account for this email / account disabled
  * / tenancy not activated) to show the right message.
  *
- * Since 2026-08-16: a `NO_STAYO_ACCOUNT` rejection is no longer necessarily
- * a dead end. If `AuthContext.loginWithGoogleAllowProvision()` marked this
- * attempt as provisioning-allowed (`GOOGLE_PROVISION_INTENT_KEY`), this page
- * calls `POST /api/auth/google/provision` — which creates the account only
- * if this is genuinely a new email — then retries `/auth/me`, which now
- * resolves normally. `resolveSupabaseSession()` itself is untouched; the
- * provisioning path is a separate, narrower function
- * (`lib/auth/supabase-provision.ts` on the backend).
+ * Since ADR-176 Phase 3.1 a `NO_STAYO_ACCOUNT` rejection is a dead end again,
+ * deliberately: authentication never creates a Stayo account. Owners exist
+ * after admin approval, tenants after an owner's invitation.
  *
  * `/auth/me` answers 403 with a specific code for those cases and 401 for a
  * token the server could not verify at all. The distinction matters to the
@@ -107,7 +81,6 @@ function AuthCallbackInner() {
 
     const proceed = (data: any, returnTo: string | null) => {
       // Landed somewhere real: this sign-in is done with its intent.
-      clearProvisionIntent();
       const role = String(data.role || '').toLowerCase();
       if (role === 'admin') return navigate('/admin', { replace: true });
       if (role === 'owner') return navigate('/owner/home', { replace: true });
@@ -144,38 +117,27 @@ function AuthCallbackInner() {
         return;
       }
 
-      const { allowed: provisionAllowed, returnTo } = readProvisionIntent();
 
       try {
         const response = await api.get('/auth/me');
         if (cancelled) return;
-        proceed(response.data, returnTo);
+        proceed(response.data, null);
       } catch (err: any) {
         if (cancelled) return;
         const status = err?.response?.status;
         const code = err?.response?.data?.error?.code;
         const serverMessage = err?.response?.data?.error?.message;
 
-        if (shouldProvisionAccount({ status, code, provisionAllowed })) {
-          try {
-            await api.post('/auth/google/provision');
-            const retry = await api.get('/auth/me');
-            if (cancelled) return;
-            proceed(retry.data, returnTo);
-            return;
-          } catch (provisionErr: any) {
-            if (cancelled) return;
-            clearProvisionIntent();
-            await supabase.auth.signOut();
-            setError(
-              provisionErr?.response?.data?.error?.message ||
-                'Could not create your Stayo account. Please try again.',
-            );
-            return;
-          }
-        }
-
-        clearProvisionIntent();
+        /*
+         * ADR-176 Phase 3.1 — authentication never creates a Stayo account.
+         *
+         * This used to call `POST /auth/google/provision` when the sign-in was
+         * marked provisioning-allowed, creating a marketplace tenant for an
+         * unknown Google email (ADR-078). Onboarding is controlled: owners
+         * exist after admin approval, tenants after an owner's invitation. An
+         * unknown email is now simply NO_STAYO_ACCOUNT, handled below like any
+         * other 403.
+         */
         await supabase.auth.signOut();
         if (status === 403 && serverMessage) {
           setError(serverMessage);

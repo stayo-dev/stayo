@@ -1347,3 +1347,12 @@ From [[Decisions#ADR-176|ADR-176]]. Fixes the live symptom that "Continue with G
 - **Known gap:** brand-new Google *signup* is not functional — the Supabase flow auto-provisioned a tenant profile and the Clerk flow deliberately does not yet. Sign-in for existing users works.
 - **Verification:** 2254 frontend tests (25 new), 1423 backend pure tests, build green, and the bundle contains zero Google-provider call sites. **No real Google round-trip has been performed.**
 - **See:** [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[APIs]], [[Changelog]]
+
+### Clerk authentication — Phase 3.1: controlled onboarding (2026-09-09)
+
+From [[Decisions#ADR-176|ADR-176]]. Authentication proves identity; it never enrols anyone.
+
+- **Unknown email → `NO_STAYO_ACCOUNT`**, whether they used Google, email OTP or phone OTP.
+- **Owners exist after admin approval; tenants after an owner's invitation.** No sign-in path creates either.
+- **Google auto-provisioning is removed**, superseding [[Decisions#ADR-078|ADR-078]]. Existing invited/approved users sign in exactly as before.
+- **See:** [[Decisions#ADR-176|ADR-176]], [[Business-Rules]], [[Frontend]], [[Changelog]]

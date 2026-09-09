@@ -153,6 +153,7 @@ export default defineConfig({
       'tests/clerk-webhook-endpoint.test.ts',
       'tests/clerk-me-handshake.test.ts',
       'tests/auth-me-dual-session.test.ts',
+      'tests/clerk-controlled-onboarding.test.ts',
     ],
     alias: {
       // More specific than the catch-all `@` entry below, and must come
