@@ -1303,3 +1303,14 @@ See [[Frontend]], [[Changelog]], [[Bugs]].
 - **Also in this change:** creating a hostel no longer requires a password (audit-logged instead — see the ADR for why creation differs from the six money-moving actions that keep their gate), and the owner's agreement signature can be reused across hostels instead of being drawn once per hostel.
 - **Verification status:** 17 new tests, including one asserting the owner-side and server-side derivation rules cannot drift apart. Frontend 138 files / 2125 pass, build green, `tsc` 43 before and after; backend pure 1298 pass, `tsc` 547 → 544. **Not verified:** no hostel has been created, no enquiry sent and no signature reused through a running app.
 - **See:** [[Decisions#ADR-168|ADR-168]], [[Changelog]], [[APIs]]
+
+### Clerk authentication — Phase 1: the identity anchor and its webhook (2026-09-09)
+
+From [[Decisions#ADR-176|ADR-176]]. The first step of moving authentication off Supabase Auth and onto Clerk, so that the auth layer and the database can be replaced independently of each other.
+
+- **What shipped:** the `users` table (migration 081), `POST /webhooks/clerk`, and the sync service behind it. Clerk `user.created` / `user.updated` / `user.deleted` now have somewhere to land.
+- **What it is for:** breaking the coupling ADR-031 created, where Supabase was both our Postgres host and our identity provider. `clerk_user_id` is the only vendor-shaped column in the schema.
+- **What it deliberately does not do:** hold any business data. Roles, hostels, tenancies and money stay on `profiles`. A Clerk payload can write four display fields and nothing else.
+- **What it does not do yet — and this matters:** **Supabase Auth is still the live session authority.** No user-visible behaviour changes; nothing reads `users` on a request path. Sessions are still minted and verified exactly as before. Phases 2–4 (Clerk sessions in `middleware.ts`, repointing the ~36 Supabase-auth files, backfill, then removal) are listed in the ADR and are not started.
+- **Verification status:** 59 tests across signature verification (signing with the real `svix` library in-process), the sync rules (`@/lib/db` mocked), and endpoint invariants that pin the middleware matcher and the frontend rewrite list. **Not verified end to end:** no Clerk account exists, `CLERK_WEBHOOK_SIGNING_SECRET` is unset, and no real delivery has ever reached the endpoint. Migration 081 is **not yet applied**.
+- **See:** [[Decisions#ADR-176|ADR-176]], [[Database]], [[APIs]], [[Business-Rules]], [[Changelog]]

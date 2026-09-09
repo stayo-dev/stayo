@@ -576,3 +576,36 @@ changed phone is proved with `send-phone-otp` / `verify-phone-otp` first.
 `DELETE /api/push/subscriptions` — body `{ endpoint }`. Scoped to the session's own profile, so an endpoint cannot be unsubscribed by another account.
 
 Rows are also deleted automatically by the sender when the push service returns **404/410** (permanently gone). A 5xx or timeout does **not** prune — that would quietly delete live devices during an outage.
+
+## Clerk auth webhook (2026-09-09)
+
+### `POST /webhooks/clerk`
+
+Clerk user-lifecycle webhook ([[Decisions#ADR-176|ADR-176]]). **Note the path: it is not under `/api`.**
+
+- **Production URL:** `https://api.yourstayo.com/webhooks/clerk` — point Clerk's dashboard here.
+- **Not reachable via `yourstayo.com`.** The frontend rewrites only `/api/:path*` to this backend (`apps/frontend/vercel.json`), so the apex domain has no route for it.
+- **Public by construction, not by allow-list.** `middleware.ts` matches `/api/:path*` only, so this route never enters the session pipeline — there is no `PUBLIC_ROUTES` entry, and none should be added (it would be dead config).
+- **Auth:** the Svix signature over the **raw** body (`svix-id`, `svix-timestamp`, `svix-signature`), verified in `lib/auth/clerk-webhook-verification.ts` using the `svix` library and `CLERK_WEBHOOK_SIGNING_SECRET`. Verified before the event is interpreted. There is no bypass flag.
+- **Handles:** `user.created`, `user.updated`, `user.deleted`. Any other event type is acknowledged with 200 and dropped.
+
+Effects (all in `src/services/auth/clerk-user-sync-service.ts`, all idempotent):
+
+| Event | Effect |
+|---|---|
+| `user.created` | Upserts a `users` row on `clerk_user_id`; links to a `profiles` row matched by email if one is free. Never creates a profile. |
+| `user.updated` | Syncs the four allow-listed fields. Ignored if Clerk's `updated_at` is older than what we hold. Creates the row if `user.created` was never delivered. |
+| `user.deleted` | Sets `is_active = false` + `deactivated_at`. **Never deletes**, and never touches the linked profile. |
+
+Status codes are a retry protocol for Svix, which retries on non-2xx:
+
+| Code | Meaning |
+|---|---|
+| `200` | Processed, **or** deliberately ignored (unhandled type, stale replay, delete of an unknown account). Nothing to retry. |
+| `400` | Malformed event. Retrying identical bytes cannot help. |
+| `401` | Signature missing or invalid. Rejected caller — never retry. |
+| `500` | Our failure, **including a missing signing secret**. Retry is correct; the handlers are idempotent. |
+
+Env var: `CLERK_WEBHOOK_SIGNING_SECRET` (`whsec_…`), loaded from the repo-root `.env` like every other backend secret. **Currently unset — no Clerk account exists yet, and no real delivery has reached this endpoint.**
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Database]], [[Business-Rules]], [[Backend]], [[Changelog]]

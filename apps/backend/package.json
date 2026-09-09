@@ -64,6 +64,7 @@
     "sanity": "^3.99.0",
     "sharp": "^0.35.0",
     "styled-components": "^6.4.2",
+    "svix": "^1.88.0",
     "tailwind-merge": "^3.5.0",
     "web-push": "^3.6.7",
     "xlsx": "^0.18.5",
