@@ -911,3 +911,17 @@ From [[Decisions#ADR-176|ADR-176]]. These rules are what make a public, vendor-d
 **Webhook delivery is at-least-once and unordered.** Every handler is idempotent, and `users.clerk_updated_at` holds the provider's own timestamp so an overtaken delivery cannot overwrite newer data with older. When either timestamp is unknown the update is applied — a redundant write to idempotent data beats silently halting sync.
 
 Related: [[Decisions#ADR-176|ADR-176]], [[Database]], [[APIs]], [[Features]]
+
+## Controlled onboarding — authentication never creates an account (2026-09-09)
+
+From [[Decisions#ADR-176|ADR-176]] Phase 3.1. **Supersedes [[Decisions#ADR-078|ADR-078]]'s Google auto-provisioning.**
+
+**Owners exist after admin approval. Tenants exist after an owner's invitation.** There is no third way in. Signing in — Google, email OTP, phone OTP — proves identity; it does not enrol anyone.
+
+A Clerk sign-in whose email has no `profiles` row resolves to **`NO_STAYO_ACCOUNT`** (403). That is a dead end by design. It creates at most a `users` row, which is identity and carries no authority.
+
+**Linking is not provisioning.** The `user.created` webhook still matches a Clerk account to an existing `profiles` row by email — but that row was created by an invitation or approval *before* the person signed in. Matching an account to a record someone already made is not the same as making the record.
+
+The backend never learns which method was used: every Clerk sign-in arrives as a session token and resolves down one path. That is deliberate — it is what stops provider-specific provisioning creeping back in.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[APIs]], [[Frontend]], [[Features]]

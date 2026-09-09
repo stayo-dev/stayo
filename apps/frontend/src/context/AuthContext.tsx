@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { LogIn } from 'lucide-react';
 import api from '@lib/api-client';
 import { supabase } from '@lib/supabaseClient';
+import { hasClerkSession, subscribeToClerkSession, pickSessionSource } from '@lib/auth/clerkBrowser';
 import { queryClient } from '@lib/queryClient';
 import { useIdleSessionTimeout } from '@shared/hooks/useIdleSessionTimeout';
 import { clearIntentionalSignOut, markIntentionalSignOut } from '@lib/sessionSignOutIntent';
@@ -54,20 +55,6 @@ interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<AuthUser>;
-  /**
-   * ADR-031: signInWithOAuth is a full-page redirect (Google → Supabase →
-   * back to /auth/callback), so this can't resolve with an AuthUser the
-   * way the old popup-code-flow version did — the browser navigates away
-   * before anything could come back. AuthCallbackPage picks the session up
-   * afterward via the auth-state listener below.
-   */
-  loginWithGoogle: () => Promise<void>;
-  /**
-   * Google sign-in that also creates a new Stayo account when the email has
-   * none yet (2026-08-16) — see the function's own doc comment. Owner mode
-   * must never call this.
-   */
-  loginWithGoogleAllowProvision: (returnTo?: string) => Promise<void>;
   /**
    * Self-serve tenant signup (ADR-035) — creates a marketplace account and
    * logs it straight in. Lives here rather than in a feature API wrapper
@@ -247,25 +234,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
+    /**
+     * ADR-176 Phase 3 — dual session authority.
+     *
+     * `hydrate()` is provider-agnostic: `api-client` attaches whichever token
+     * exists (Supabase first, Clerk second), and `GET /auth/me` accepts both
+     * and returns the same shape. So the only thing that changes here is *when*
+     * to re-hydrate — a Clerk sign-in must wake this up the way a Supabase one
+     * already does, or someone who signed in with Google would sit on a stale
+     * signed-out state until a full reload.
+     *
+     * Clerk is read through `window.Clerk` rather than its hooks because
+     * `AuthProvider` sits above `ClerkAuthProvider` on every shell; inverting
+     * that would drag the SDK onto the public landing page (Phase 2.6).
+     */
+    const resolve = (hasSupabaseSession: boolean) => {
+      const source = pickSessionSource({
+        hasSupabaseSession,
+        hasClerkSession: hasClerkSession(),
+      });
+
+      if (source === 'none') {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      hydrate().finally(() => {
+        if (mounted) setLoading(false);
+      });
+    };
+
     const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
+      // An explicit Supabase sign-out still clears everything: during the
+      // migration a browser holds at most one of these, never both.
       if (event === 'SIGNED_OUT') {
         setUser(null);
         setLoading(false);
         return;
       }
-      if (session) {
-        hydrate().finally(() => {
-          if (mounted) setLoading(false);
-        });
-      } else {
-        setUser(null);
-        setLoading(false);
-      }
+      resolve(Boolean(session));
+    });
+
+    // Clerk's session can appear after this effect runs (its SDK loads
+    // asynchronously, and a Google redirect lands with the session already
+    // established). A no-op when Clerk was never mounted.
+    const unsubscribeClerk = subscribeToClerkSession(async () => {
+      if (!mounted) return;
+      const { data } = await supabase.auth.getSession();
+      resolve(Boolean(data.session));
     });
 
     return () => {
       mounted = false;
       subscription.subscription.unsubscribe();
+      unsubscribeClerk();
     };
   }, []);
 
@@ -355,35 +378,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const loginWithGoogle = async (): Promise<void> => {
-    queryClient.clear();
-    clearSessionScopedStorage();
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
-    });
-    if (error) throw new Error(error.message || 'Google authentication failed');
-    // No further code runs — signInWithOAuth navigates the browser away.
-  };
-
-  /**
-   * Same redirect as `loginWithGoogle()`, but marks this attempt as allowed
-   * to create a brand-new Stayo account if the email has none yet
-   * (`AuthCallbackPage` reads `GOOGLE_PROVISION_INTENT_KEY` on return and
-   * calls `POST /api/auth/google/provision` only when it's set). Owner mode
-   * must never call this — only `mode="tenant"` in `LoginModal` does.
-   * `returnTo` defaults to the current page so a visitor mid-enquiry lands
-   * back on it, not a generic landing page.
+  /*
+   * Google sign-in moved to Clerk (ADR-176 Phase 3).
+   *
+   * `loginWithGoogle` / `loginWithGoogleAllowProvision` used to call
+   * `supabase.auth.signInWithOAuth({ provider: 'google' })` from here. Google
+   * is now Clerk's, launched by `<ClerkGoogleSignIn>` — which has to be a
+   * component rather than a context method, because Clerk's `useSignIn()` only
+   * works inside a `ClerkProvider` and this context is mounted above one.
+   *
+   * Deliberately not re-exported as a no-op: a caller that still expects a
+   * Google method here should fail to compile, not silently do nothing.
    */
-  const loginWithGoogleAllowProvision = async (returnTo?: string): Promise<void> => {
-    try {
-      sessionStorage.setItem(GOOGLE_PROVISION_INTENT_KEY, '1');
-      sessionStorage.setItem(GOOGLE_RETURN_TO_KEY, returnTo || `${window.location.pathname}${window.location.search}`);
-    } catch {
-      /* sessionStorage may be unavailable in strict privacy modes — provisioning still works, just without a return path */
-    }
-    await loginWithGoogle();
-  };
 
   // Server-driven session termination (idle timeout past the app's own
   // 30-min rule, or a Redis-revoked session) — distinct from client-side
@@ -410,7 +416,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, login, loginWithGoogle, loginWithGoogleAllowProvision, signUpTenant, updateUser, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, signUpTenant, updateUser, logout, loading }}>
       {children}
       {showIdleWarning && user && (
         <SessionSecurityModal

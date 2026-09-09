@@ -152,6 +152,8 @@ export default defineConfig({
       'tests/clerk-user-sync.test.ts',
       'tests/clerk-webhook-endpoint.test.ts',
       'tests/clerk-me-handshake.test.ts',
+      'tests/auth-me-dual-session.test.ts',
+      'tests/clerk-controlled-onboarding.test.ts',
       'tests/build-without-env.test.ts',
     ],
     alias: {

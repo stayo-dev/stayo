@@ -51,6 +51,22 @@ const PUBLIC_ROUTES = [
   "/api/verify",
 ];
 
+/**
+ * Routes that may carry a **Clerk** bearer token instead of a Supabase one
+ * (ADR-176 Phase 3, minimal dual session authority).
+ *
+ * Middleware verifies Supabase (and legacy) tokens only; a Clerk session JWT
+ * fails both and would be rejected here, before the route ever sees it. Rather
+ * than teach the edge runtime a third verifier, these few paths fall through
+ * as anonymous when verification fails, and the route does its own Clerk
+ * verification with `verifyClerkSession()`.
+ *
+ * Deliberately tiny and exact-matched. Falling through means "no identity
+ * headers", so a route on this list MUST authenticate the caller itself —
+ * every other path keeps 401-ing on an unverifiable token exactly as before.
+ */
+const CLERK_BEARER_ROUTES = new Set(["/api/auth/me"]);
+
 const PUBLIC_CSRF_ROUTES = [
   // `/api/auth/forgot-password` prefix-matches its `/phone` child too.
   "/api/auth/forgot-password",
@@ -261,6 +277,10 @@ export async function middleware(req: NextRequest) {
     const legacyPayload = await verifyToken(token);
     if (!legacyPayload) {
       if (identityOptional) return asAnonymous();
+      // Neither Supabase nor legacy recognised it. On the Clerk-bearer routes
+      // that is an expected case, not an attack: hand the request on with no
+      // identity headers and let the route verify it as a Clerk token.
+      if (CLERK_BEARER_ROUTES.has(pathname)) return asAnonymous();
       return NextResponse.json(
         { error: { message: "Invalid session", code: "UNAUTHORIZED" } },
         { status: 401, headers: corsHeaders }

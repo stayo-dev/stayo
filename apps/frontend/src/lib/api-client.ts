@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { supabase } from './supabaseClient';
 import { shouldSuppressExpiryNotice } from './sessionSignOutIntent';
+import { getClerkToken } from './auth/clerkBrowser';
 
 // StayO requires an explicit API base URL in every environment (dev, staging,
 // production) via VITE_API_URL — no hardcoded host, no silent fallback. See
@@ -177,6 +178,14 @@ api.interceptors.request.use(
       const { data } = await supabase.auth.getSession();
       if (data.session?.access_token) {
         config.headers.Authorization = `Bearer ${data.session.access_token}`;
+      } else {
+        // ADR-176 Phase 3: no Supabase session, so try Clerk. Supabase is
+        // checked first deliberately — every already-signed-in user keeps the
+        // session they have, and a half-finished Clerk sign-in can never
+        // displace a working one. Absent Clerk, this is null and the request
+        // goes out unauthenticated exactly as it did before.
+        const clerkToken = await getClerkToken();
+        if (clerkToken) config.headers.Authorization = `Bearer ${clerkToken}`;
       }
     }
     if (isUnsafeMethod(config.method) && !isPublicAuthRequest(config.url)) await ensureCsrfToken();
