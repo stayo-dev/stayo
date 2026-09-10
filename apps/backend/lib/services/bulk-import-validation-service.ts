@@ -442,12 +442,10 @@ export class BulkImportValidationService {
       }
     }
 
-    // Fallback using standard JS parsing if it looks like a date string
-    const fallbackDate = new Date(trimmed);
-    if (!isNaN(fallbackDate.getTime())) {
-      return fallbackDate;
-    }
-
+    // No permissive `new Date(trimmed)` fallback. It accepts "May", "next
+    // monday" and other junk, inventing a joining date — which becomes wrong
+    // back-rent, which becomes wrong money. Only the explicit formats above
+    // and the Excel serial branch are trusted.
     return null;
   }
 

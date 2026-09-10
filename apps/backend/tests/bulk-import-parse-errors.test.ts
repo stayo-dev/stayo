@@ -22,7 +22,7 @@ vi.mock("@/lib/services/hostel-billing-preferences-service", () => ({
   },
 }));
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 import { bulkImportValidationService } from "@/lib/services/bulk-import-validation-service";
 
@@ -65,4 +65,58 @@ describe("parseFile — too many rows", () => {
     const rows = await bulkImportValidationService.parseFile(buffer, "ok.xlsx");
     expect(rows).toHaveLength(150);
   });
+});
+
+describe("joining dates that cannot be trusted", () => {
+  const HOSTEL_ID = "11111111-1111-1111-1111-111111111111";
+  const OWNER_ID = "22222222-2222-2222-2222-222222222222";
+
+  beforeEach(() => {
+    mockPrisma.profile.findMany.mockResolvedValue([]);
+    mockPrisma.tenant_invitations.findMany.mockResolvedValue([]);
+    mockPrisma.rooms.findMany.mockResolvedValue([
+      {
+        id: "33333333-3333-3333-3333-333333333333",
+        room_no: "101",
+        is_active: true,
+        capacity: 5,
+        base_rent: 8500,
+        _count: { room_allocations: 0, tenant_invitation_reservations: 0 },
+      },
+    ]);
+  });
+
+  async function validateJoiningDate(joining_date: string) {
+    const result = await bulkImportValidationService.validateRows(
+      [
+        {
+          name: "Ravi",
+          phone: "9876500001",
+          email: "ravi@example.com",
+          room_no: "101",
+          joining_date,
+        } as any,
+      ],
+      HOSTEL_ID,
+      OWNER_ID,
+      {}
+    );
+    return [...result.validRows, ...result.invalidRows][0];
+  }
+
+  it.each(["May", "next monday", "soon", "12", "abcd"])(
+    "rejects %s rather than inventing a date",
+    async (value) => {
+      const row = await validateJoiningDate(value);
+      expect(row.errors.some((e) => e.field === "joining_date")).toBe(true);
+    }
+  );
+
+  it.each(["2026-01-05", "05/01/2026", "05-01-2026"])(
+    "still accepts %s",
+    async (value) => {
+      const row = await validateJoiningDate(value);
+      expect(row.errors.filter((e) => e.field === "joining_date")).toEqual([]);
+    }
+  );
 });
