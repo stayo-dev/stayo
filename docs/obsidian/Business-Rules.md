@@ -953,6 +953,17 @@ These are rules the product must keep true, because published legal text now ass
 - **Easebuzz verification suite** — the Privacy Policy now discloses sharing owner KYC (typically name, PAN, bank-account and business details) with the payment partner's onboarding and verification service. When the suite is actually wired, confirm the data sent matches that clause, and extend it if residents' details are verified too.
 - **Internal contradiction:** `POST /api/platform-admin/hostels/[id]/subscription` still creates new subscriptions in status `TRIAL` with a 14-day `trial_ends_at`/`next_renewal_at`. Nothing reads `trial_ends_at` and no job bills from `next_renewal_at`, so owners never experience a trial — but the admin console labels every new subscription "Trial", contrary to the policy.
 
+## Bulk import — the workbook and the rooms it defines (2026-09-11)
+
+See [[Decisions#ADR-181|ADR-181]] for why the template is generated per hostel.
+
+- **The Rooms sheet is the source of truth for rooms in an import.** Rooms it lists that the hostel does not have are created; rooms whose capacity or rent the owner edited are updated; the rest are left alone. Rooms the hostel has that the sheet omits are **not** touched.
+- **A room is never shrunk below the people already in it** — occupants plus beds held by a pending invitation. That is a blocking issue at preview, not a failure at execution.
+- **Rooms are created before tenants, on the first chunk only**, and each affected floor is submitted with its *complete* contents. `propertyService.saveRoomsForFloor` takes the floor as it should be and retires any room on it that is missing from the list, so sending only the new rooms would switch off the rest — and for the same reason a floor is never split into chunks.
+- **A floor is created when the sheet names one the hostel does not have** ("Ground floor" for 0, "Floor 2" for 2). A room belonging to no floor has its edits applied directly; nothing moves.
+- **A room failure never aborts the tenant import.** It is reported alongside the result; the rows that can land, land.
+- **A workbook is bound to the hostel it was built for** by an id on its locked cover sheet. Importing it into another hostel is refused, because every hostel has a room 101 and the mistake would otherwise place tenants in the wrong rooms silently. A file the owner made themselves carries no stamp and is accepted.
+
 ## Bulk import — how an imported tenant's terms and money land (2026-09-10)
 
 Verified against code on `feat/bulk-tenant-import`. See [[Bugs]] 2026-09-10 for what was broken, [[APIs]] for the endpoints, [[Backend]] for where it lives.
