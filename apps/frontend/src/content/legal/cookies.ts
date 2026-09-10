@@ -23,9 +23,11 @@ import type { LegalDocument } from './types';
  *
  * `hms_session` and `hms_refresh_token` are httpOnly. Per ADR-031, the
  * primary session mechanism is now the Supabase client SDK's own
- * (localStorage-backed) session store — these two cookies are kept as a
- * harmless fallback for the SSE/legacy-cookie token-extraction path in
- * `middleware.ts`. `hms_csrf` is not httpOnly by design (it has to be
+ * (localStorage-backed) session store. `middleware.ts` still reads
+ * `hms_session` as a fallback when a request carries no Bearer header — which
+ * is how direct document links authenticate (see clause 1's table). Nothing
+ * reads `hms_refresh_token`. (SSE authenticates with a `?token=` query
+ * parameter, not a cookie.) `hms_csrf` is not httpOnly by design (it has to be
  * JS-readable so `api-client.ts` can echo it back as a request header) and is
  * actively used on every state-changing request. All three exist solely to
  * keep a session working and secure — none is analytics, advertising or
@@ -40,7 +42,8 @@ import type { LegalDocument } from './types';
  *    `__client_uat` (session timestamp), plus one linking cookie whose name
  *    depends on instance type (`__client` in production, a development cookie
  *    otherwise) — per the provider's own documentation. Clause 1.4 covers them.
- *    The vendor is not named, consistent with how every processor is described. See the implementation report for the exact commands and output.
+ *    The vendor is not named, consistent with how every processor is described.
+ *    Decision record: docs/obsidian/Decisions.md ADR-180.
  */
 
 export const cookiesDocument: LegalDocument = {

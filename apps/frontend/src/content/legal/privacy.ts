@@ -132,6 +132,12 @@ export const privacyDocument: LegalDocument = {
         ],
       ],
     },
+    {
+      type: 'clause',
+      id: 'clause-what-we-collect-2',
+      number: '2.2',
+      text: 'We also use a small number of cookies, and your browser’s own storage, to keep you signed in and secure and to remember choices you make. None of them is used for analytics, advertising or tracking. Our Cookie & Tracking Notice lists each one and what it does.',
+    },
 
     /* 3 — What we never collect */
     { type: 'subheading', id: 'what-we-never-collect', text: '3. What we never collect' },

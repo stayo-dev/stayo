@@ -194,5 +194,14 @@ export const refundsDocument: LegalDocument = {
         { label: 'Grievance Officer (escalation)', value: COMPANY.legal.grievanceOfficer.email },
       ],
     },
+
+    /* 3 — Changes */
+    { type: 'subheading', id: 'changes', text: '3. Changes to this policy' },
+    {
+      type: 'clause',
+      id: 'clause-changes-1',
+      number: '3.1',
+      text: 'If we change this policy, we will update it and its effective date. If a change reduces what you are entitled to, we will tell you before it takes effect, and it will not apply to a payment made before then.',
+    },
   ],
 };

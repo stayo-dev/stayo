@@ -70,7 +70,7 @@ export const serviceDeliveryDocument: LegalDocument = {
       type: 'clause',
       id: 'clause-what-is-delivered-2',
       number: '2.2',
-      text: 'Records the Platform generates. Payment receipts, rental agreements, rent-due records and the enquiries you have sent are generated at the time of the event they record, and are kept in your account on the Platform, where you can see them whenever you sign in.',
+      text: 'Records the Platform generates. Payment receipts, rental agreements, rent-due records and the enquiries you have sent are generated at the time of the event they record, and are kept in your account on the Platform, where you can see them for as long as you have access to your account under clause 2.1.',
     },
     {
       type: 'clause',
@@ -107,7 +107,7 @@ export const serviceDeliveryDocument: LegalDocument = {
       type: 'clause',
       id: 'clause-what-the-hostel-delivers-2',
       number: '3.2',
-      text: 'A successful payment through the Platform is proof that the payment reached the hostel — it is not, by itself, a guarantee of physical access to the room or amenity it relates to. That access is governed by your agreement with the hostel.',
+      text: 'A successful payment through the Platform confirms that the payment was made to the hostel — it is not, by itself, a guarantee of physical access to the room or amenity it relates to. That access is governed by your agreement with the hostel.',
     },
 
     /* 4 — If something was not delivered */
@@ -116,7 +116,7 @@ export const serviceDeliveryDocument: LegalDocument = {
       type: 'clause',
       id: 'clause-if-something-goes-wrong-1',
       number: '4.1',
-      text: `If account access, a receipt, an agreement or a confirmation that the Platform should have given you did not arrive, write to us at ${COMPANY.emails.support} with what you were expecting and when. If the problem is with a hostel not giving you the physical access it owes you under your own agreement with it, raise it with the hostel first, then escalate to our Grievance Officer if it is not resolved — the same route our Payments, Refunds & Cancellations policy describes.`,
+      text: `If you cannot get into your account, or a receipt, agreement or confirmation the Platform should show you is missing or wrong, write to us at ${COMPANY.emails.support} with what you were expecting and when. If the problem is with a hostel not giving you the physical access it owes you under your own agreement with it, raise it with the hostel first, then escalate to our Grievance Officer if it is not resolved — the same route our Payments, Refunds & Cancellations policy describes.`,
     },
     {
       type: 'contact_list',
