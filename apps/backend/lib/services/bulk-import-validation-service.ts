@@ -136,7 +136,10 @@ export class BulkImportValidationService {
       amount_includes_deposit: this.parseYesNo(
         this.readCell(row, ["Paid Includes Deposit", "paid_includes_deposit", "amount_includes_deposit"])
       ),
-      payment_method: this.readCell(row, ["Payment Method", "payment_method"]) || undefined,
+      // Uppercased so a sheet's "cash" lands in the same collections-report
+      // bucket as the wizard's "CASH" — payment_method is a plain String
+      // column, not an enum, so nothing else normalizes it.
+      payment_method: this.readCell(row, ["Payment Method", "payment_method"]).toUpperCase() || undefined,
       payment_reference: this.readCell(row, ["Payment Reference", "payment_reference", "reference"]) || undefined,
     }));
   }

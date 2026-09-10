@@ -140,7 +140,7 @@ export async function POST(
       );
     }
 
-    const result = await executeInvitationBatch(session.sub, batch.hostel_id, batchId);
+    const result = await executeInvitationBatch(session.sub, batchId);
 
     return apiResponse(
       {
@@ -203,7 +203,6 @@ function getValidationPayload(raw: unknown): {
 
 async function executeInvitationBatch(
   ownerId: string,
-  hostelId: string,
   batchId: string
 ) {
   let successCount = 0;
@@ -250,11 +249,20 @@ async function executeInvitationBatch(
         room_id: data.room_id,
         monthly_rent: data.monthly_rent,
         advance_deposit: data.advance_deposit,
-        maintenance_charge: data.maintenance_charge,
+        // createInvitation reads `maintenance_amount`, not
+        // `maintenance_charge` — only its edit path accepts both. Sending
+        // the wrong key here silently fell back to the hostel default,
+        // which was the exact class of drop this plan exists to fix.
+        maintenance_amount: data.maintenance_charge,
         maintenance_type: data.maintenance_type,
         agreement_duration_months: data.agreement_duration_months,
         paid_amount: data.amount_paid,
-        amount_includes_deposit: data.amount_includes_deposit,
+        // amount_includes_deposit is parsed and stored (TenantImportRow,
+        // both sanitizers) for a later plan's workbook, but createInvitation
+        // never reads it — settlement is plain FIFO over all dues including
+        // the deposit. Forwarding an unread key here would be the same
+        // defect class as the one Task 6 just removed elsewhere in this
+        // route.
         payment_method: data.payment_method,
         payment_reference: data.payment_reference,
         joining_date: data.joining_date,
@@ -339,6 +347,9 @@ function sanitizeImportRowForPreview(row: { row: number; data: TenantImportRow }
       advance_deposit: row.data.advance_deposit,
       maintenance_charge: row.data.maintenance_charge,
       maintenance_type: row.data.maintenance_type,
+      agreement_duration_months: row.data.agreement_duration_months,
+      amount_paid: row.data.amount_paid,
+      payment_method: row.data.payment_method,
       joining_date: row.data.joining_date,
       rent_source: row.data.rent_source,
       warnings: (row as any).warnings || [],

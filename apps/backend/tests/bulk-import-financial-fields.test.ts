@@ -108,12 +108,18 @@ function confirmRequest(body: Record<string, unknown> = {}) {
 }
 
 describe("confirm passes every financial term to createInvitation", () => {
-  it("does not drop maintenance", async () => {
+  it("does not drop maintenance — and sends the key the service reads", async () => {
     await POST(confirmRequest(), { params: { batch_id: BATCH_ID } });
 
     expect(mockLifecycle.createInvitation).toHaveBeenCalledTimes(1);
     const [payload] = mockLifecycle.createInvitation.mock.calls[0];
-    expect(payload.maintenance_charge).toBe(500);
+    // createInvitation reads `data.maintenance_amount`; `maintenance_charge`
+    // is only accepted by the separate edit path. A payload-key-only
+    // assertion on `maintenance_charge` would stay green even if the route
+    // sent the wrong key to this service — see the source-guard test below,
+    // which catches that class of drop directly.
+    expect(payload.maintenance_amount).toBe(500);
+    expect(payload.maintenance_charge).toBeUndefined();
     expect(payload.maintenance_type).toBe("MONTHLY");
   });
 
@@ -122,8 +128,13 @@ describe("confirm passes every financial term to createInvitation", () => {
 
     const [payload] = mockLifecycle.createInvitation.mock.calls[0];
     expect(payload.paid_amount).toBe(76500);
-    expect(payload.amount_includes_deposit).toBe(true);
     expect(payload.payment_method).toBe("CASH");
+    // createInvitation never reads amount_includes_deposit — settlement is
+    // plain FIFO over all dues including the deposit. Forwarding an ignored
+    // key is exactly the billing_start_mode defect removed above; it stays
+    // parsed and stored (TenantImportRow, both sanitizers) for a later
+    // plan's workbook, but must not reach this payload.
+    expect(payload).not.toHaveProperty("amount_includes_deposit");
   });
 
   it("does not drop the agreement duration", async () => {
@@ -190,5 +201,121 @@ describe("row bookkeeping", () => {
       expect.objectContaining({ where: { id: "row-uuid-1" } })
     );
     expect(mockPrisma.bulk_import_rows.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("payload keys the confirm route sends are keys the service reads", () => {
+  it("every data.<field> the route maps into the createInvitation payload is referenced by tenant-invitation-lifecycle-service.ts", async () => {
+    // A payload-key assertion (e.g. `payload.maintenance_amount`) only
+    // proves the confirm route SENT that key — not that the service reads
+    // it under that name. The maintenance_charge/maintenance_amount defect
+    // was invisible to exactly that kind of assertion. This test reads both
+    // source files as text and cross-checks them directly, following the
+    // precedent in tests/whatsapp-prisma-accessors.test.ts and
+    // tests/hostel-identity-field-round-trip.test.ts.
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+
+    const routeSource = readFileSync(
+      join(process.cwd(), "app/api/bulk-import/[batch_id]/confirm/route.ts"),
+      "utf8"
+    );
+    const serviceSource = readFileSync(
+      join(process.cwd(), "src/services/tenants/tenant-invitation-lifecycle-service.ts"),
+      "utf8"
+    );
+
+    const callMatch = routeSource.match(
+      /tenantInvitationLifecycleService\.createInvitation\(\{([\s\S]*?)\},\s*ownerId\)/
+    );
+    expect(callMatch).not.toBeNull();
+    const callBody = callMatch![1];
+
+    // Every `<payloadKey>: data.<rowField>` line in the call — this is
+    // exactly the shape a field-name drop takes, so it is exactly what this
+    // guard walks.
+    const sentKeys = [...callBody.matchAll(/^\s*(\w+):\s*data\.\w+,?\s*$/gm)].map(
+      (m) => m[1]
+    );
+    expect(sentKeys.length).toBeGreaterThan(5);
+
+    // `notes` is a pre-existing, separate gap: createInvitation never reads
+    // `data.notes` at all (unrelated to this batch's fix — flagged in the
+    // fix report, not fixed here). Excluded so this guard stays scoped to
+    // the class of bug it exists to catch.
+    const checked = sentKeys.filter((key) => key !== "notes");
+
+    const unread = checked.filter((key) => !serviceSource.includes(`data.${key}`));
+    expect(unread).toEqual([]);
+  });
+});
+
+describe("sanitizeImportRowForStorage — the storage hop both routes share", () => {
+  it("survives every financial field, not just the ones a test happens to mock", async () => {
+    // Task 8 switched execution to bulk_import_rows.mapped_data, which the
+    // tests above mock directly — nothing above exercises the actual
+    // persistence hop this function performs. Re-trimming its allowlist
+    // tomorrow would leave the suite green and restore the original bug.
+    const { sanitizeImportRowForStorage } = await import(
+      "@/lib/services/bulk-import/sanitize-row"
+    );
+
+    const row = {
+      name: "Ravi Kumar",
+      phone: "+919876500001",
+      email: "ravi@example.com",
+      room_no: "101",
+      room_id: "33333333-3333-3333-3333-333333333333",
+      monthly_rent: 8500,
+      advance_deposit: 25500,
+      security_deposit: 25500,
+      maintenance_charge: 500,
+      maintenance_type: "MONTHLY",
+      agreement_duration_months: 11,
+      amount_paid: 76500,
+      amount_includes_deposit: true,
+      payment_method: "CASH",
+      payment_reference: "REF-1",
+      joining_date: "2026-01-05",
+      rent_source: "SHEET",
+      notes: "some note",
+    } as const;
+
+    const stored = sanitizeImportRowForStorage(row as any);
+
+    expect(stored.name).toBe("Ravi Kumar");
+    expect(stored.phone).toBe("+919876500001");
+    expect(stored.email).toBe("ravi@example.com");
+    expect(stored.room_no).toBe("101");
+    expect(stored.room_id).toBe("33333333-3333-3333-3333-333333333333");
+    expect(stored.monthly_rent).toBe(8500);
+    expect(stored.advance_deposit).toBe(25500);
+    expect(stored.security_deposit).toBe(25500);
+    expect(stored.maintenance_charge).toBe(500);
+    expect(stored.maintenance_type).toBe("MONTHLY");
+    expect(stored.agreement_duration_months).toBe(11);
+    expect(stored.amount_paid).toBe(76500);
+    expect(stored.amount_includes_deposit).toBe(true);
+    expect(stored.payment_method).toBe("CASH");
+    expect(stored.payment_reference).toBe("REF-1");
+    expect(stored.joining_date).toBe("2026-01-05");
+    expect(stored.rent_source).toBe("SHEET");
+    expect(stored.notes).toBe("some note");
+  });
+
+  it("is the one copy both upload/route.ts and revalidate/route.ts import", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+
+    for (const routePath of [
+      "app/api/bulk-import/upload/route.ts",
+      "app/api/bulk-import/revalidate/route.ts",
+    ]) {
+      const source = readFileSync(join(process.cwd(), routePath), "utf8");
+      expect(source).toContain(
+        'import { sanitizeImportRowForStorage } from "@/lib/services/bulk-import/sanitize-row"'
+      );
+      expect(source).not.toMatch(/function sanitizeImportRowForStorage/);
+    }
   });
 });
