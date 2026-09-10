@@ -41,7 +41,7 @@ function nodeIndex(step: ActivationVisualStep, agreementRequired = true): number
 }
 
 /** Step 1..5's carried item color (none, welcome pack, folder, key fob, keychain) — from the source's `avatarLook()`. */
-const AVATAR_ITEMS: (string | null)[] = [null, '#EBD9C4', '#A45D44', '#2F2F2F', '#E0B15E'];
+const AVATAR_ITEMS: (string | null)[] = [null, '#EBD9C4', '#2d4480', '#2F2F2F', '#E0B15E'];
 
 type AvatarLook = { skin: string; hair: string; longHair: boolean; top: string; arm: string; skirt: boolean; itemColor: string | null };
 
@@ -52,8 +52,8 @@ function avatarLook(gender: string, stepIndex: number): AvatarLook {
     skin: '#E8B88C',
     hair: female ? '#3A2A22' : '#2F2F2F',
     longHair: female,
-    top: female ? '#A45D44' : '#B46A55',
-    arm: female ? '#8F4E39' : '#A45D44',
+    top: female ? '#2d4480' : '#3b5fa8',
+    arm: female ? '#8F4E39' : '#2d4480',
     skirt: female,
     itemColor: AVATAR_ITEMS[Math.min(stepIndex, AVATAR_ITEMS.length - 1)],
   };
@@ -137,7 +137,7 @@ export function ActivationProgress({
   return (
     <div>
       <div className="flex items-center justify-between">
-        <span className="font-display text-xs font-extrabold" style={{ color: '#A45D44' }}>
+        <span className="font-display text-xs font-extrabold" style={{ color: '#2d4480' }}>
           Step {activeIdx + 1} of {nodes.length}
         </span>
         <span className="text-[11px] font-medium" style={{ color: '#5A5147' }}>
@@ -153,8 +153,8 @@ export function ActivationProgress({
             left: '10%',
             height: 4,
             width: `${(activeIdx / (nodes.length - 1)) * 80}%`,
-            background: 'linear-gradient(90deg,#B46A55,#D2986C)',
-            boxShadow: '0 0 8px rgba(180,106,85,.4)',
+            background: 'linear-gradient(90deg,#3b5fa8,#2d4480)',
+            boxShadow: '0 0 8px rgba(59,95,168,.4)',
           }}
         />
 
@@ -186,9 +186,9 @@ export function ActivationProgress({
                 <span
                   className="relative z-[1] flex h-7 w-7 items-center justify-center rounded-full transition-all"
                   style={{
-                    background: active ? '#B46A55' : done ? '#1F9D57' : '#F1EAE0',
-                    border: active ? '2px solid #B46A55' : done ? '2px solid #1F9D57' : '2px solid #E2D8CA',
-                    boxShadow: active ? '0 4px 12px rgba(180,106,85,.4)' : 'none',
+                    background: active ? '#3b5fa8' : done ? '#1F9D57' : '#F1EAE0',
+                    border: active ? '2px solid #3b5fa8' : done ? '2px solid #1F9D57' : '2px solid #E2D8CA',
+                    boxShadow: active ? '0 4px 12px rgba(59,95,168,.4)' : 'none',
                     color: active || done ? '#fff' : '#B29C88',
                   }}
                 >
@@ -202,7 +202,7 @@ export function ActivationProgress({
                     </svg>
                   )}
                 </span>
-                <span className="mt-[5px] text-center text-[9.5px] font-bold leading-[1.15]" style={{ color: active ? '#A45D44' : done ? '#1F7A52' : '#9A8F84' }}>
+                <span className="mt-[5px] text-center text-[9.5px] font-bold leading-[1.15]" style={{ color: active ? '#2d4480' : done ? '#1F7A52' : '#9A8F84' }}>
                   {node.label}
                 </span>
               </button>

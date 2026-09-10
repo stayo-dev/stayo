@@ -397,7 +397,8 @@ export function ActivationPage() {
     setPhotoUploading(true);
     setError('');
     try {
-      const uploadRes = await tenantService.uploadActivationPhoto(token, file);
+      const compressedFile = await compressImageIfNeeded(file);
+      const uploadRes = await tenantService.uploadActivationPhoto(token, compressedFile);
       if (uploadRes?.photo_url) {
         setProfilePhotoPreview(uploadRes.photo_url);
         setProfilePhotoFile(null);
@@ -418,6 +419,49 @@ export function ActivationPage() {
     }
   };
 
+  const compressImageIfNeeded = async (file: File): Promise<File> => {
+    const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!IMAGE_MIME_TYPES.includes(file.type)) return file;
+    if (file.size < 500 * 1024) return file;
+
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const maxDim = 1600;
+          let width = img.width;
+          let height = img.height;
+          if (width > height && width > maxDim) {
+            height = (height * maxDim) / width;
+            width = maxDim;
+          } else if (height > maxDim) {
+            width = (width * maxDim) / height;
+            height = maxDim;
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                resolve(new File([blob], file.name, { type: 'image/webp', lastModified: file.lastModified }));
+              } else {
+                resolve(file);
+              }
+            },
+            'image/webp',
+            0.8
+          );
+        };
+        img.src = e.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleDocUpload = async (docType: string, file?: File) => {
     if (!file) return;
     const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
@@ -436,9 +480,16 @@ export function ActivationPage() {
     });
     setDocUploading(docType);
     try {
-      await tenantService.uploadActivationDocument(token, docType, file);
-      const fresh = await tenantService.getActivationDocuments(token);
-      setDocItems(Array.isArray(fresh?.items) ? fresh.items : []);
+      const compressedFile = await compressImageIfNeeded(file);
+      const uploadRes = await tenantService.uploadActivationDocument(token, docType, compressedFile);
+      setDocItems((prev) => {
+        const updated = [...prev];
+        const index = updated.findIndex((d) => d.doc_type === docType);
+        if (index >= 0) {
+          updated[index] = { ...updated[index], document_status: uploadRes?.document_status || 'PENDING' };
+        }
+        return updated;
+      });
     } catch (err: any) {
       setDocErrors((prev) => ({
         ...prev,

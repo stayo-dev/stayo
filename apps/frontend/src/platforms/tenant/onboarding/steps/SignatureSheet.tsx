@@ -278,7 +278,7 @@ export function SignatureSheet({ mode, name: initialName, relation: initialRelat
               {copy.sub}
             </div>
           </div>
-          <div className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px]" style={{ background: '#F3E7E0', color: '#B46A55' }}>
+          <div className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px]" style={{ background: '#F3E7E0', color: '#3b5fa8' }}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 17.5V21h3.5L17 10.5 13.5 7 3 17.5z" />
               <path d="M14.5 6l3.5 3.5" />
@@ -298,7 +298,7 @@ export function SignatureSheet({ mode, name: initialName, relation: initialRelat
                   value={relation}
                   onChange={(e) => setRelation(e.target.value)}
                   className="w-full appearance-none rounded-[10px] text-[13px] font-semibold"
-                  style={{ border: '1.5px solid #B46A55', padding: '10px 12px', background: 'transparent', color: relation ? '#2A2521' : '#8A7F75' }}
+                  style={{ border: '1.5px solid #3b5fa8', padding: '10px 12px', background: 'transparent', color: relation ? '#2A2521' : '#8A7F75' }}
                 >
                   <option value="">Select</option>
                   {RELATIONS.map((r) => (
@@ -353,7 +353,7 @@ export function SignatureSheet({ mode, name: initialName, relation: initialRelat
               onClick={() => fileRef.current?.click()}
               disabled={uploading}
               className="flex items-center gap-[5px] rounded-full border bg-white font-display text-[11.5px] font-bold disabled:opacity-60"
-              style={{ borderColor: '#E7DDCE', padding: '6px 12px', color: '#A45D44' }}
+              style={{ borderColor: '#E7DDCE', padding: '6px 12px', color: '#2d4480' }}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
@@ -364,7 +364,7 @@ export function SignatureSheet({ mode, name: initialName, relation: initialRelat
               type="button"
               onClick={clear}
               className="flex items-center gap-[5px] rounded-full border bg-white font-display text-[11.5px] font-bold"
-              style={{ borderColor: '#E7DDCE', padding: '6px 12px', color: scribbled ? '#A45D44' : '#B0A493' }}
+              style={{ borderColor: '#E7DDCE', padding: '6px 12px', color: scribbled ? '#2d4480' : '#B0A493' }}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" />
@@ -376,7 +376,7 @@ export function SignatureSheet({ mode, name: initialName, relation: initialRelat
 
           <div
             className="relative min-h-0 flex-1 overflow-hidden rounded-2xl bg-white"
-            style={{ border: `1.5px solid ${scribbled ? '#B46A55' : '#E7DDCE'}`, boxShadow: 'inset 0 1px 3px rgba(40,30,20,.05)' }}
+            style={{ border: `1.5px solid ${scribbled ? '#3b5fa8' : '#E7DDCE'}`, boxShadow: 'inset 0 1px 3px rgba(40,30,20,.05)' }}
           >
             {existingSignatureUrl && !scribbled && (
               <img src={existingSignatureUrl} alt="Current signature" className="pointer-events-none absolute inset-0 m-auto max-h-[70%] max-w-[80%] object-contain" />
@@ -436,7 +436,7 @@ export function SignatureSheet({ mode, name: initialName, relation: initialRelat
             className="flex items-center justify-center gap-[7px] rounded-xl text-center font-display text-[13.5px] font-bold text-white"
             style={{
               flex: 1.4,
-              background: canApply ? '#B46A55' : '#D8B3A2',
+              background: canApply ? '#3b5fa8' : '#D8B3A2',
               padding: '14px 0',
               boxShadow: canApply ? '0 6px 16px rgba(180,106,85,.32)' : 'none',
             }}
