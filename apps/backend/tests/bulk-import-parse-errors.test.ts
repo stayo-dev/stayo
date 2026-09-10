@@ -5,6 +5,9 @@ const { mockPrisma } = vi.hoisted(() => ({
     profile: { findMany: vi.fn() },
     tenant_invitations: { findMany: vi.fn() },
     rooms: { findMany: vi.fn() },
+    // Unused today. Task 10 of this plan adds prisma.hostels.findUnique to
+    // validateRows; this is one of three pure-test files whose mocks need
+    // the stub in place ahead of that change.
     hostels: { findUnique: vi.fn() },
   } as any,
 }));
@@ -104,6 +107,15 @@ describe("joining dates that cannot be trusted", () => {
     return [...result.validRows, ...result.invalidRows][0];
   }
 
+  // These five inputs assert the desired behaviour and guard future
+  // regressions, but they are not all fix-driven: against the unfixed
+  // `parseDate` (the permissive `new Date(trimmed)` fallback), only "12"
+  // actually failed on this V8/Node version. "May", "next monday", "soon"
+  // and "abcd" were already rejected pre-fix because native `new Date()`
+  // already returns Invalid Date for them here — the fallback's bug showed
+  // through "12" specifically, since `new Date("12")` parses to a real
+  // (bogus) date on this runtime and 12 is too small to hit the
+  // Excel-serial branch (which requires > 20000).
   it.each(["May", "next monday", "soon", "12", "abcd"])(
     "rejects %s rather than inventing a date",
     async (value) => {
@@ -119,4 +131,11 @@ describe("joining dates that cannot be trusted", () => {
       expect(row.errors.filter((e) => e.field === "joining_date")).toEqual([]);
     }
   );
+
+  it("tells the owner the Indian format, not ISO first", async () => {
+    const row = await validateJoiningDate("abcd");
+    const message = row.errors.find((e) => e.field === "joining_date")?.message;
+    expect(message).toContain("DD/MM/YYYY");
+    expect(message).not.toContain("YYYY-MM-DD");
+  });
 });

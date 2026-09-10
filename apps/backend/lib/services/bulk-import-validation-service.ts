@@ -303,7 +303,7 @@ export class BulkImportValidationService {
         errors.push({
           row: rowNumber,
           field: "joining_date",
-          message: "Invalid owner default joining date (use YYYY-MM-DD or DD/MM/YYYY)",
+          message: "Invalid default joining date — use DD/MM/YYYY, e.g. 05/01/2026 for 5 January 2026",
           value: defaultJoiningDate,
         });
       }
@@ -314,7 +314,7 @@ export class BulkImportValidationService {
         errors.push({
           row: rowNumber,
           field: "joining_date",
-          message: "Invalid joining date (use YYYY-MM-DD or DD/MM/YYYY)",
+          message: "Invalid joining date — use DD/MM/YYYY, e.g. 05/01/2026 for 5 January 2026",
           value: row.joining_date,
         });
       } else if (parsedJoiningDate) {
