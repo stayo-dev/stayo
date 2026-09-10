@@ -202,10 +202,12 @@ require a published takedown route for UGC.
 
 ### 6.1 Terms of Use — core
 
-- Stayo is a **technology platform and collection agent**. The accommodation contract is
+- Stayo is a **technology platform**, never in the flow of tenant funds (revised with D1/§2.1 —
+  the "collection agent" framing predates the sub-merchant model). The accommodation contract is
   resident ↔ hostel owner. Stayo generates and stores the agreement; it is not a party to it.
-- Contracting entity named as a **sole proprietorship concern of [PROPRIETOR NAME]**, with
-  principal place of business.
+- Contracting entity named as a **sole proprietorship concern of Chidiri Shiva Prakash**, with
+  principal place of business at 12-75/1, Balaji Nagar, Block 2, Kodangal, Vikarabad District,
+  Telangana 509338.
 - **Limitation of liability** capped at fees actually received from that user in the preceding
   three months, with a nominal floor (proposed ₹5,000) for residents who pay Stayo nothing directly.
 - **Eligibility: 18+.** A guardian holds the account for a minor. This is the clean answer to
