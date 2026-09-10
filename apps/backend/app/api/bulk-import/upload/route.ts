@@ -5,6 +5,7 @@ import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { bulkImportValidationService } from "@/lib/services/bulk-import-validation-service";
 import { isAcceptedImportFile } from "@/lib/services/bulk-import/file-type";
+import { readHostelStamp } from "@/lib/services/bulk-import/hostel-stamp";
 import { sanitizeImportRowForStorage } from "@/lib/services/bulk-import/sanitize-row";
 import { prisma } from "@/lib/db";
 import crypto from "crypto";
@@ -66,6 +67,22 @@ export async function POST(req: NextRequest) {
     }
 
     const fileBuffer = Buffer.from(await file.arrayBuffer());
+
+    // Every hostel has a room 101, so importing the wrong hostel's workbook
+    // would place tenants in the wrong rooms and report nothing wrong. A file
+    // the owner made themselves carries no stamp and is still accepted.
+    const stamp = readHostelStamp(fileBuffer);
+    if (stamp && stamp !== hostelId) {
+      const stamped = await prisma.hostels.findFirst({
+        where: { id: stamp, owner_id: session.sub },
+        select: { name: true },
+      });
+      return apiError(
+        `This file was made for ${stamped?.name ?? "a different hostel"}. Room numbers repeat across hostels, so importing it here could put tenants in the wrong rooms. Switch to that hostel, or download a fresh template for ${hostel.name}.`,
+        "VALIDATION_ERROR",
+        400
+      );
+    }
 
     const importDefaults = parseImportDefaults(formData);
 

@@ -176,6 +176,7 @@ export default defineConfig({
       'tests/bulk-import-rooms-sheet.test.ts',
       'tests/bulk-import-room-plan.test.ts',
       'tests/bulk-import-template-builder.test.ts',
+      'tests/bulk-import-hostel-stamp.test.ts',
       'tests/build-without-env.test.ts',
     ],
     alias: {
