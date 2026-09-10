@@ -19,7 +19,8 @@ A bulk-import backend already exists in this repo and is **not reachable from an
 | `app/api/bulk-import/{template,upload,revalidate,[batch_id],[batch_id]/confirm,google-form-prompt}` | Live, unreferenced by any UI |
 | `lib/services/bulk-import-validation-service.ts` (536 lines) | Live, parse + validate only |
 | `bulk_import_batches`, `bulk_import_rows` | Real tables, with per-row execution status and idempotent retry |
-| `bulkImportService` in `features/owners/api/index.js:230` | Exported, **called by nothing** |
+| `bulkImportService` in `features/owners/api/index.js:230` | Exported, **called by nothing** in `apps/frontend` |
+| `apps/backend/app/(dashboard)/owner/bulk-import/page.tsx` (+ `[batchId]/`) | **Correction (2026-09-10):** a legacy owner UI *does* exist, inside the backend app, posting to these endpoints. So the field-drop defects below may be reachable in production today, not merely latent. Plan 3 must decide its fate (decommission vs redirect) |
 | Single-invite financial machinery | Mature and tested — reused wholesale here |
 
 ### The constraint that shapes everything
@@ -59,6 +60,11 @@ The template is **not a static file**. It is built from the hostel's live data s
 | Notes | no | — |
 
 The last three mirror `amount_paid` / `amount_includes_deposit` / `payment_method` on the existing `POST /api/tenants/invite-settlement-preview` exactly.
+
+> **Correction (2026-09-10), found during Plan 1 execution.** Two premises in this spec were wrong and are corrected here:
+>
+> 1. **`createInvitation` reads `data.maintenance_amount`, not `maintenance_charge`** (`tenant-invitation-lifecycle-service.ts:324`). Only the *edit* path accepts both names. Anything writing to the invite path must send `maintenance_amount` or the value is silently replaced by the hostel default.
+> 2. **`amount_includes_deposit` has no consumer on the invite path.** `createInvitation` reads only `paid_amount`, `payment_method` and `payment_reference`; the validator's `paid_includes_deposit` is likewise unread. Settlement is plain FIFO across every due including the deposit obligation, so **"Paid Includes Deposit = NO" is not yet honoured**. Plan 2 must either implement it or drop the column — the §3 bullet on deposit double-count describes intent, not current behaviour.
 
 **A new tenant and an existing tenant use the same row shape.** The only difference is a past joining date and a non-zero Amount Already Paid. No mode switch, no second template.
 
