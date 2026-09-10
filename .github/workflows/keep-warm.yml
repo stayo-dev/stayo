@@ -10,13 +10,24 @@ name: Backend Keep-Warm
 # (which also runs `SELECT 1` against the DB, so it warms the DB connection
 # too) often enough that the function rarely gets the chance to go cold.
 #
-# Vercel's own Cron Jobs are capped at once/day on the Hobby plan (see
-# backend-cron.yml), so this uses GitHub Actions scheduling instead — no
-# Vercel plan change needed. Reuses the same `vars.BACKEND_URL` repo
-# variable as backend-cron.yml.
+# Vercel's own Cron Jobs are capped at once/day on the Hobby plan, and a
+# sub-daily schedule fails the deployment outright rather than degrading — so
+# a 5-minute ping cannot be a Vercel cron while the account is on Hobby. This
+# is therefore the LAST remaining GitHub Actions schedule in the repo: all six
+# business crons moved into apps/backend/vercel.json on 2026-09-08 (ADR-173)
+# and backend-cron.yml was deleted.
+#
+# Requires repo variable BACKEND_URL (Settings → Secrets and variables →
+# Actions), falling back to https://api.yourstayo.com if unset. No secret
+# needed — /api/health is public.
 #
 # Note: scheduled workflows are auto-disabled after 60 days with no repo
-# activity; a push re-enables them (same caveat as backend-cron.yml).
+# activity; a push re-enables them. That now costs only cold-start latency,
+# not a missed business job.
+#
+# On upgrading to Vercel Pro (per-minute cron precision and frequency), this
+# can move into vercel.json too, and the repo stops depending on GitHub for
+# scheduling entirely.
 # ─────────────────────────────────────────────────────────────────────────────
 
 on:

@@ -8,6 +8,20 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-08 — Rent generation billed a departed tenant because its exit filter reads the one field a future-dated move-out never writes (fixed)
+
+**Symptom.** A tenant whose exit date had passed was billed for a further month, on a bed that had already been released — the fault [[Decisions#ADR-171|ADR-171]] identified as a cron race and mitigated with a 30-minute scheduling gap.
+
+**Root cause — not the absence of a filter, but a filter aimed at the wrong column.** ADR-171 and the 2026-09-06 entry below both record that `generate-rent` has "no exit-date filter of any kind". That is wrong, and the truth is more interesting: `rent-generation-service.ts` selects allocations with `is_active: true` and `OR: [{ end_date: null }, { end_date: { gte: rentMonth } }]`. The filter exists. It is defeated by an explicit branch in the write path — `move-out-service.ts` `vacate()` tests `isFutureExit` and, for a future-dated exit, deliberately does **not** close the allocation:
+
+> `// Future exit: do NOT terminate allocation and do NOT mark as FORMER_TENANT yet.`
+
+so the allocation keeps `is_active: true` and `end_date: null`, the tenant keeps `status: "ACTIVE"`, and only `tenants.exit_date` is written. The departed tenant matches `end_date: null` and is billed. Every condition in the query is satisfied by design.
+
+**Why it hid.** The query *looks* correct in isolation — it reads as move-out-aware, and it is, for the immediate-exit path where `vacate()` does close the allocation. Only the future-exit branch, in a different service, makes it a no-op. Nothing types or tests the join between the field a write path populates and the field a read path filters on: this is the same shape as the `hostel_type` round-trip bug of 2026-09-02, where a column correct on the write path was absent from a reader's projection.
+
+**Fix.** [[Decisions#ADR-172|ADR-172]] filters on `tenants.exit_date` — the field the future-exit branch actually writes — mirroring the `end_date` clause so proration is unchanged. Rent generation is now correct regardless of when, or whether, `move-out-releases` has run, which retires the cron-ordering constraint as the thing standing between an owner and a wrong invoice. **Not verified against Postgres** — no `DATABASE_URL_TEST` in this environment — so the predicate is reasoned and typechecked, not exercised.
+
 ## 2026-09-06 — A scheduled job called a route that had not existed for twelve days, and a second pair raced each other nightly (fixed)
 
 **Symptom.** Two independent scheduling faults, both invisible because nothing watches cron output.

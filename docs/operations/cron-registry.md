@@ -10,54 +10,81 @@ drop the trigger" posture.
 
 ## Where crons actually run
 
-Two schedulers, deliberately:
+**One scheduler, since 2026-09-08 (ADR-173):** all six jobs are `crons` entries
+in `apps/backend/vercel.json`. `.github/workflows/backend-cron.yml` is deleted.
 
-| Scheduler | File | Jobs |
-|---|---|---|
-| Vercel Cron | `apps/backend/vercel.json` | 2 |
-| GitHub Actions | `.github/workflows/backend-cron.yml` | 4 |
+Vercel's Hobby plan allows **100 cron jobs per project**, each **once per day**,
+with **per-hour (±59 min) scheduling precision**, and rejects a sub-daily
+schedule *at deploy time* rather than degrading. The repo previously split the
+schedule across two runners to work around a **2-cron** Hobby cap that no longer
+exists.
 
-Vercel's Hobby plan allows **2 cron jobs, once per day each**, and rejects
-anything more frequent *at deploy time* — an over-quota or sub-daily schedule
-fails the deployment outright rather than degrading. The two most business-
+**Scheduling on Hobby — the one rule that matters.** A job scheduled at `H:00`
+fires anywhere in `[H:00, H:59]`. So two jobs that must not overlap need a
+**two-hour** slot gap, which guarantees at least 61 minutes of separation in the
+worst case. A one-hour gap guarantees nothing.
+
+`.github/workflows/keep-warm.yml` pings `/api/health` every 5 minutes to avoid
+cold starts. It is **the only GitHub Actions schedule left in the repo** and it
+cannot move to Vercel while the account is on Hobby, because a 5-minute cron
+fails deployment. It is infrastructure, not a business job, and its
+auto-disable-after-60-days risk now costs only latency, not a missed job.
+`.github/workflows/db-backup.yml` is `workflow_dispatch` only.
+
+On upgrading to Pro (per-minute precision and frequency), the two-hour gaps can
+be tightened and `keep-warm.yml` folded in as well. The two most business-
 critical jobs therefore live on Vercel Cron; the rest run from GitHub Actions,
 which calls the same `CRON_SECRET`-gated endpoints with the same
 `Authorization: Bearer` header Vercel Cron uses. On upgrading to Pro, fold the
 GitHub Actions four back into `vercel.json` and delete that workflow — keeping
 the ordering constraint below intact.
 
-`.github/workflows/keep-warm.yml` pings `/api/health` every 5 minutes to avoid
-cold starts. It is infrastructure, not a business job, and is out of scope here.
-`.github/workflows/db-backup.yml` is `workflow_dispatch` only; its schedule
-entries are commented out.
+## Ordering constraint — retired 2026-09-08, gap kept as defence-in-depth
 
-## Ordering constraint (do not break this)
+**This is no longer load-bearing.** ADR-172 made `generate-rent` correct on its
+own: it filters on `tenants.exit_date`, which is the field a future-dated
+move-out actually writes, so the order these two run in no longer changes any
+billing outcome. The 30-minute gap stays because nothing depends on removing it.
 
-`move-out-releases` runs at **18:00 UTC**, 30 minutes before `generate-rent` at
-**18:30 UTC**. This is load-bearing:
+The history, because it explains the filter: `generate-rent` bills every
+allocation whose tenant is `ACTIVE`. Its allocation query has always carried an
+exit clause — `end_date: null OR end_date >= rentMonth` — but `move-out-service.ts`
+`vacate()` takes an explicit `if (!isFutureExit)` branch that leaves a
+**future-dated** exit's allocation open (`is_active: true`, `end_date: null`)
+and the tenant `ACTIVE`, writing only `tenants.exit_date`; `move-out-releases`
+is the only thing that later closes it, and `tenant-service.ts` hard-blocks
+setting `FORMER_TENANT` directly. So the departed tenant satisfied every
+condition in the query, and whichever cron won the race decided whether they
+were billed for another month. Earlier versions of this page, ADR-171 and
+[[Bugs]] all describe this as `generate-rent` having *no* exit filter; it had
+one, aimed at a column the future-exit path never populates.
 
-- `generate-rent` bills every allocation whose tenant is `ACTIVE`. It has **no
-  move-out awareness of its own** — no exit-date filter anywhere in the route.
-- `move-out-releases` is the **only** thing that flips a tenant whose exit date
-  has passed to `FORMER_TENANT`. `move-out-service.ts` closes *immediate* exits
-  inline, but a **future-dated** exit deliberately leaves the tenant `ACTIVE`
-  with a live allocation until this cron sweeps it, and `tenant-service.ts`
-  hard-blocks setting `FORMER_TENANT` directly.
-
-Run them in the other order — or in the same minute, as they were until
-2026-09-06 — and a tenant who has already left is billed for a further month.
-The 30-minute gap also absorbs GitHub's best-effort scheduling delay.
+**If you ever co-locate ordering-sensitive jobs on Vercel Hobby cron, a
+30-minute gap is not enough** — Hobby scheduling precision is per-hour (±59 min),
+so a job scheduled at `H:00` may fire as late as `H:59`. Two hours between slots
+guarantees at least 61 minutes of separation in the worst case.
 
 ## Active jobs — the MVP set
 
-| Job | Route | Runner | Schedule (UTC / IST) | Criticality | Owner |
-|---|---|---|---|---|---|
-| Rent generation | `/api/cron/generate-rent` | Vercel | `30 18 * * *` / 00:00 | P0 Business Critical | Billing |
-| Rent reminders & late fees | `/api/cron/rent-reminders` | Vercel | `0 2 * * *` / 07:30 | P0 Business Critical | Collections |
-| Move-out releases | `/api/cron/move-out-releases` | GitHub | `0 18 * * *` / 23:30 | P0 Business Critical | Move-outs |
-| Invitation expiry reminders | `/api/cron/invitation-expiry-reminders` | GitHub | `0 3 * * *` / 08:30 | P1 Important Operations | Tenant Onboarding |
-| Payment reconciliation | `/api/cron/reconcile-payments` | GitHub | `30 3 * * *` / 09:00 | P0 Business Critical | Payments |
-| Unaccepted tenancy expiry | `/api/cron/expire-unaccepted-tenancies` | GitHub | `0 4 * * *` / 09:30 | P0 Business Critical | Tenant Onboarding |
+All six run on Vercel Cron. IST times are the **earliest** a job can fire; Hobby
+may delay any of them by up to 59 minutes.
+
+| Job | Route | Schedule (UTC / IST) | Criticality | Owner |
+|---|---|---|---|---|
+| Move-out releases | `/api/cron/move-out-releases` | `0 16 * * *` / 21:30 | P0 Business Critical | Move-outs |
+| Rent generation | `/api/cron/generate-rent` | `30 18 * * *` / 00:00 | P0 Business Critical | Billing |
+| Rent reminders & late fees | `/api/cron/rent-reminders` | `0 2 * * *` / 07:30 | P0 Business Critical | Collections |
+| Invitation expiry reminders | `/api/cron/invitation-expiry-reminders` | `0 3 * * *` / 08:30 | P1 Important Operations | Tenant Onboarding |
+| Payment reconciliation | `/api/cron/reconcile-payments` | `30 3 * * *` / 09:00 | P0 Business Critical | Payments |
+| Unaccepted tenancy expiry | `/api/cron/expire-unaccepted-tenancies` | `0 5 * * *` / 10:30 | P0 Business Critical | Tenant Onboarding |
+
+**Two slots moved in the consolidation, both non-billing.** `move-out-releases`
+`0 18` → `0 16` (a 91-minute worst-case lead on rent generation instead of 30),
+and `expire-unaccepted-tenancies` `0 4` → `0 5` (so the expiry warning at `0 3`
+cannot land in the same window as the sweep that acts on it). **Rent generation
+and rent reminders were deliberately left untouched** — `generate-rent` derives
+its `rentMonth` from the UTC calendar month, so moving it across a UTC day
+boundary changes which month gets billed.
 
 Why each one is in the MVP set — i.e. what is *wrong in the product* if it never runs:
 
@@ -141,11 +168,16 @@ manual calls fail loudly rather than 404.
 Every cron route is bearer-gated on `CRON_SECRET`. `middleware.ts` excludes
 `/api/cron` so each route owns its own check.
 
-Ten routes **fail closed** — a missing `CRON_SECRET` returns `500`. Three
-**fail open** — `admissions`, `reconcile-payments`, and `data-retention` use
-`if (cronSecret && ...)`, so an unset secret makes them public. Of those,
-`reconcile-payments` is in the MVP set and `data-retention` is destructive.
-Not changed in ADR-171 (that trim was scheduling-only); tracked in [[TODO]].
+Eleven routes **fail closed** — a missing `CRON_SECRET` returns `500`.
+`reconcile-payments` joined them on 2026-09-08 (ADR-172); it is the only member
+of the MVP set that had ever failed open.
+
+Two still **fail open** — `admissions` and `data-retention` use
+`if (cronSecret && ...)`, so an unset secret makes them public. `data-retention`
+is destructive, which is why the auth review remains a precondition for ever
+scheduling it. `tenant-analytics` has a milder variant: it compares against
+`` `Bearer ${process.env.CRON_SECRET}` ``, so with the var unset the literal
+string `Bearer undefined` is a valid credential. All three tracked in [[TODO]].
 
 ## Governance rule
 
@@ -158,15 +190,25 @@ No new cron ships without updating this registry. Every new cron requires:
 - Recovery procedure
 - An entry in the Active table above
 
-If you add a job to `.github/workflows/backend-cron.yml`, confirm
+If you add a job to `apps/backend/vercel.json`, confirm
 `apps/backend/app/api/cron/<name>/route.ts` exists and exports `GET`. The
-`food-carry-forward` incident above was exactly this check going unmade.
+`food-carry-forward` incident above was exactly this check going unmade — and
+Vercel will not catch it for you: a cron pointing at a non-existent path
+deploys fine and simply 404s every day.
+
+Check the two-hour rule before choosing a slot, and note that `generate-rent`
+and `rent-reminders` are pinned to their current UTC times by month-boundary
+arithmetic — do not move them without re-reading `rentMonth` in
+`rent-generation-service.ts`.
 
 ## Recovery procedures
 
 Every job is idempotent and safe to re-run by hand with the `CRON_SECRET`
-bearer. GitHub Actions jobs can also be re-run from the Actions tab via
-`workflow_dispatch`, choosing a single endpoint or `all`.
+bearer. Since 2026-09-08 all six are Vercel crons, so the supported manual
+trigger is `vercel crons run /api/cron/<name>` (the job must already be deployed
+to production — the CLI reads cron definitions from the deployed project, not
+from your local `vercel.json`). `vercel crons ls` lists what is actually
+scheduled, which is the fastest way to diff reality against this registry.
 
 | Job | Recovery procedure |
 |---|---|

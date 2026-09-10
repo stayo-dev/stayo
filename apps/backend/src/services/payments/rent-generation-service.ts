@@ -118,12 +118,30 @@ export class RentGenerationService {
       const lastDay = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 0)).getUTCDate();
       const monthEndDate = new Date(Date.UTC(now.getFullYear(), now.getMonth(), lastDay, 23, 59, 59, 999));
 
-      // Find allocations that are active AND haven't ended before this month
+      // Find allocations that are active AND haven't ended before this month.
+      //
+      // The tenant `exit_date` clause is load-bearing and NOT redundant with the
+      // allocation `end_date` clause below. On a FUTURE-dated move-out,
+      // move-out-service.vacate() deliberately leaves the allocation open
+      // (`is_active: true`, `end_date: null`) and the tenant `ACTIVE`, writing
+      // only `tenants.exit_date`; the allocation is closed later by the
+      // move-out-releases cron. Without this clause, an allocation whose tenant
+      // left in a previous month is still billed whenever that cron has not yet
+      // swept it — which is why the two crons previously had to be ordered.
+      // Filtering on exit_date makes rent generation correct on its own,
+      // independent of cron ordering or scheduling jitter.
       const whereClause: any = {
         is_active: true,
         hostel_id: hostelId,
         start_date: { lte: monthEndDate },
-        tenant: { status: "ACTIVE", owner_id: ownerId },
+        tenant: {
+          status: "ACTIVE",
+          owner_id: ownerId,
+          OR: [
+            { exit_date: null },
+            { exit_date: { gte: rentMonth } }
+          ]
+        },
         OR: [
           { end_date: null },
           { end_date: { gte: rentMonth } }
