@@ -128,6 +128,13 @@ describe('whose problem is it', () => {
     }
   });
 
+  it('keeps a complaint naming either payment gateway with Stayo', () => {
+    // The bare name only: "payment failed" or "money deducted" would already
+    // classify as STAYO and would hide whether the gateway keyword works.
+    expect(classifyProblem('razorpay'), 'razorpay').toBe('STAYO');
+    expect(classifyProblem('easebuzz'), 'easebuzz').toBe('STAYO');
+  });
+
   it('treats a tool failure as ours even when the subject is the hostel', () => {
     // "the app won't let me report my geyser" is a bug in our software, not a
     // plumbing job — the geyser is incidental to what has actually failed.
@@ -152,6 +159,15 @@ describe('suggesting a category', () => {
   it('reads money problems as payment issues', () => {
     expect(suggestCategory('my refund has not come back')).toBe('PAYMENT_ISSUE');
     expect(suggestCategory('razorpay took the money twice')).toBe('PAYMENT_ISSUE');
+  });
+
+  it('recognises the new payment gateway by name alone, as it does the old one', () => {
+    // The bare name, with no other keyword ("money", "payment"...) that would
+    // match regardless - otherwise this passes without the gateway keyword at all.
+    // Keyword lists read what a user types, so they keep the old gateway's name
+    // and gain the new one; they are never published copy.
+    expect(suggestCategory('razorpay')).toBe('PAYMENT_ISSUE');
+    expect(suggestCategory('easebuzz')).toBe('PAYMENT_ISSUE');
   });
 
   it('reads sign-in problems as account issues', () => {
