@@ -4,9 +4,11 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { bulkImportValidationService } from "@/lib/services/bulk-import-validation-service";
+import { isAcceptedImportFile } from "@/lib/services/bulk-import/file-type";
+import { sanitizeImportRowForStorage } from "@/lib/services/bulk-import/sanitize-row";
 import { prisma } from "@/lib/db";
 import crypto from "crypto";
-import type { ImportDefaults, TenantImportRow } from "@/lib/services/bulk-import-validation-service";
+import type { ImportDefaults } from "@/lib/services/bulk-import-validation-service";
 
 /**
  * 📤 Bulk Import - Upload and Validate
@@ -46,15 +48,9 @@ export async function POST(req: NextRequest) {
       return apiError("Hostel not found or access denied", "NOT_FOUND", 404);
     }
 
-    const allowedTypes = [
-      "application/vnd.ms-excel",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "text/csv",
-    ];
-
-    if (!allowedTypes.includes(file.type)) {
+    if (!isAcceptedImportFile(file.name, file.type)) {
       return apiError(
-        "Invalid file type. Please upload Excel (.xlsx, .xls) or CSV file",
+        "That file type can't be imported. Upload the Excel workbook you downloaded (.xlsx), or a .csv.",
         "VALIDATION_ERROR",
         400
       );
@@ -197,9 +193,6 @@ function parseImportDefaults(formData: FormData): ImportDefaults {
     maintenance_type: ["MONTHLY", "ONE_TIME", "NONE"].includes(maintenanceType)
       ? maintenanceType as ImportDefaults["maintenance_type"]
       : undefined,
-    billing_start_mode: formData.get("billing_start_mode") === "IMPORT_DATE"
-      ? "IMPORT_DATE"
-      : "JOINING_DATE",
   };
 }
 
@@ -228,16 +221,3 @@ function sanitizeValidatedRow(row: any) {
   };
 }
 
-function sanitizeImportRowForStorage(row: TenantImportRow): Partial<TenantImportRow> {
-  return {
-    name: row.name,
-    phone: row.phone,
-    email: row.email,
-    room_no: row.room_no,
-    room_id: row.room_id,
-    monthly_rent: row.monthly_rent,
-    advance_deposit: row.advance_deposit,
-    joining_date: row.joining_date,
-    notes: row.notes,
-  };
-}
