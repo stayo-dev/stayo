@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { bulkImportValidationService } from "@/lib/services/bulk-import-validation-service";
+import { isAcceptedImportFile } from "@/lib/services/bulk-import/file-type";
 import { prisma } from "@/lib/db";
 import crypto from "crypto";
 import type { ImportDefaults, TenantImportRow } from "@/lib/services/bulk-import-validation-service";
@@ -46,15 +47,9 @@ export async function POST(req: NextRequest) {
       return apiError("Hostel not found or access denied", "NOT_FOUND", 404);
     }
 
-    const allowedTypes = [
-      "application/vnd.ms-excel",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "text/csv",
-    ];
-
-    if (!allowedTypes.includes(file.type)) {
+    if (!isAcceptedImportFile(file.name, file.type)) {
       return apiError(
-        "Invalid file type. Please upload Excel (.xlsx, .xls) or CSV file",
+        "That file type can't be imported. Upload the Excel workbook you downloaded (.xlsx), or a .csv.",
         "VALIDATION_ERROR",
         400
       );
