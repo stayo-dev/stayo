@@ -30,6 +30,9 @@ export const ISSUE_CODES = [
   "FORMULA_IN_CELL",
   "DATE_UNREADABLE",
   "HOSTEL_STAMP_MISMATCH",
+  "ROOM_SHEET_DUPLICATE",
+  "ROOM_CAPACITY_BELOW_OCCUPANCY",
+  "ROOM_SHEET_NUMBER_INVALID",
 ] as const;
 
 export type IssueCode = (typeof ISSUE_CODES)[number];
@@ -87,6 +90,9 @@ const SEVERITY: Record<IssueCode, IssueSeverity> = {
   ROOM_MISSING: "BLOCKER",
   ROOM_INACTIVE: "BLOCKER",
   NUMBER_INVALID: "BLOCKER",
+  ROOM_SHEET_DUPLICATE: "BLOCKER",
+  ROOM_CAPACITY_BELOW_OCCUPANCY: "BLOCKER",
+  ROOM_SHEET_NUMBER_INVALID: "BLOCKER",
   ROOM_NOT_FOUND: "BLOCKER",
   ROOM_CAPACITY_EXCEEDED: "BLOCKER",
   ROOM_NO_RENT: "BLOCKER",
@@ -119,6 +125,27 @@ function isBlank(value: string | undefined): boolean {
 type Copy = { title: string; detail: string; field?: string; fix: FixAffordance };
 
 const COPY: Record<IssueCode, (c: IssueContext) => Copy> = {
+  ROOM_SHEET_DUPLICATE: (c) => ({
+    title: `Room ${c.roomNo ?? "—"} is listed more than once on the Rooms sheet.`,
+    detail: c.otherRows?.length
+      ? `It also appears on ${c.otherRows.length === 1 ? "row" : "rows"} ${c.otherRows.join(", ")}. Keep one and remove the rest.`
+      : `Keep one and remove the rest.`,
+    field: "room_no",
+    fix: { kind: "SKIP_ROW" },
+  }),
+  ROOM_CAPACITY_BELOW_OCCUPANCY: (c) => ({
+    title: `Room ${c.roomNo ?? "—"} already has more people than that.`,
+    detail: `You've set ${c.capacity ?? "—"} beds, but ${c.occupied ?? "—"} people already live there. Raise the number of beds, or move someone out first.`,
+    field: "capacity",
+    fix: { kind: "EDIT_FIELD" },
+  }),
+  ROOM_SHEET_NUMBER_INVALID: (c) => ({
+    title: isBlank(c.value)
+      ? `Room ${c.roomNo ?? "—"} needs a ${c.fieldLabel ?? "number"}.`
+      : `"${c.value}" isn't a valid ${c.fieldLabel ?? "number"} for room ${c.roomNo ?? "—"}.`,
+    detail: c.hint ?? `Enter digits only.`,
+    fix: { kind: "EDIT_FIELD" },
+  }),
   NAME_MISSING: (c) => ({
     title: isBlank(c.value)
       ? `This tenant's name is missing.`
@@ -267,6 +294,9 @@ const GROUP_TITLE: Record<IssueCode, (count: number) => string> = {
   ROOM_MISSING: (n) => `${n} rows have no room.`,
   ROOM_INACTIVE: (n) => `${n} rows use a room that's switched off.`,
   NUMBER_INVALID: (n) => `${n} rows have an amount or number we can't read.`,
+  ROOM_SHEET_DUPLICATE: (n) => `${n} rooms are listed more than once.`,
+  ROOM_CAPACITY_BELOW_OCCUPANCY: (n) => `${n} rooms have fewer beds than the people already living in them.`,
+  ROOM_SHEET_NUMBER_INVALID: (n) => `${n} rooms have a number we can't read.`,
   ROOM_NOT_FOUND: (n) => `${n} rows use a room that isn't in this hostel.`,
   ROOM_CAPACITY_EXCEEDED: (n) => `${n} rows put a tenant in a room that's already full.`,
   ROOM_NO_RENT: (n) => `${n} rows are for rooms with no rent set.`,

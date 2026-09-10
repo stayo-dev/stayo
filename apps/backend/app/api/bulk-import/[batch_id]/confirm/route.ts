@@ -1,12 +1,14 @@
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import type { TenantImportRow } from "@/lib/services/bulk-import-validation-service";
 import { tenantInvitationLifecycleService } from "@/src/services/tenants/tenant-invitation-lifecycle-service";
+import { applyRoomPlan } from "@/src/services/bulk-import/room-import-service";
+import type { RoomPlan } from "@/lib/services/bulk-import/room-plan";
 
 /**
  * Bulk import batch preview.
@@ -140,7 +142,27 @@ export async function POST(
       );
     }
 
-    const result = await executeInvitationBatch(session.sub, batchId);
+    const chunkSize = Math.min(
+      Math.max(Math.trunc(Number(body?.chunk_size)) || DEFAULT_CHUNK_SIZE, 1),
+      MAX_CHUNK_SIZE
+    );
+
+    // Rooms first, and only once: the tenants reference them. Recorded on the
+    // batch so a re-POST after a dropped connection does not create them
+    // twice. A room failure is reported but never aborts the tenant import —
+    // the rows that can land should land.
+    const roomPlan = getValidationPayload(batch.validation_errors).room_plan;
+    let rooms = (batch.import_summary as any)?.rooms ?? { created: 0, updated: 0, errors: [] };
+    if (roomPlan && !(batch.import_summary as any)?.rooms) {
+      const applied = await applyRoomPlan(roomPlan as RoomPlan, session.sub, batch.hostel_id);
+      rooms = applied;
+      await prisma.bulk_import_batches.update({
+        where: { id: batchId },
+        data: { import_summary: { ...((batch.import_summary as any) ?? {}), rooms: applied } },
+      });
+    }
+
+    const result = await executeInvitationBatch(session.sub, batchId, chunkSize);
 
     return apiResponse(
       {
@@ -149,6 +171,8 @@ export async function POST(
           id: batch.hostel.id,
           name: batch.hostel.name,
         },
+        progress: result.progress,
+        rooms,
         result: {
           total_requested: result.totalRequested,
           success_count: result.successCount,
@@ -183,6 +207,7 @@ export async function POST(
 function getValidationPayload(raw: unknown): {
   defaults?: Record<string, unknown>;
   valid_rows: Array<{ row: number; data: TenantImportRow; warnings?: string[] }>;
+  room_plan?: RoomPlan;
   invalid?: Array<Record<string, unknown>>;
   duplicates?: Array<Record<string, unknown>>;
   requires_historical_join_date_confirmation?: boolean;
@@ -195,15 +220,29 @@ function getValidationPayload(raw: unknown): {
   return {
     defaults: payload.defaults,
     valid_rows: Array.isArray(payload.valid_rows) ? payload.valid_rows : [],
+    room_plan: payload.room_plan,
     invalid: Array.isArray(payload.invalid) ? payload.invalid : [],
     duplicates: Array.isArray(payload.duplicates) ? payload.duplicates : [],
     requires_historical_join_date_confirmation: Boolean(payload.requires_historical_join_date_confirmation),
   };
 }
 
+/**
+ * How many tenants one confirm request creates.
+ *
+ * Each row is a transaction plus a notification dispatch, so a whole batch in
+ * one request could not finish inside the function's time limit. The client
+ * re-POSTs while `remaining > 0`; rows already SUCCESS are skipped, so a
+ * dropped connection loses nothing — every bit of state is in
+ * `bulk_import_rows`.
+ */
+const DEFAULT_CHUNK_SIZE = 25;
+const MAX_CHUNK_SIZE = 25;
+
 async function executeInvitationBatch(
   ownerId: string,
-  batchId: string
+  batchId: string,
+  chunkSize: number
 ) {
   let successCount = 0;
   let failureCount = 0;
@@ -211,34 +250,36 @@ async function executeInvitationBatch(
   const results: any[] = [];
   const errors: any[] = [];
 
-  await prisma.bulk_import_batches.update({
+  const batchBefore = await prisma.bulk_import_batches.update({
     where: { id: batchId },
     data: { status: "PROCESSING" },
+    select: { import_summary: true },
   });
+  const priorSummary = batchBefore?.import_summary;
 
   // `bulk_import_rows` is the authority on what to execute — one row, one
   // primary key. The batch's `validation_errors` JSON is a preview artefact,
   // and matching on email+phone would update two rows that happened to share
   // both.
-  const rows = await prisma.bulk_import_rows.findMany({
-    where: { batch_id: batchId },
-    orderBy: { row_number: "asc" },
-  });
+  const [total, , rows] = await Promise.all([
+    prisma.bulk_import_rows.count({ where: { batch_id: batchId } }),
+    prisma.bulk_import_rows.count({ where: { batch_id: batchId, execution_status: "SUCCESS" } }),
+    // Only PENDING rows. A FAILED row has already been attempted and counts
+    // as processed — re-selecting it here would refill every later chunk with
+    // the same failures (they sort first by row number), so a batch with more
+    // failures than a chunk holds would never advance and the client's
+    // `remaining > 0` loop would never end. Retrying a failure is a separate,
+    // deliberate action.
+    prisma.bulk_import_rows.findMany({
+      where: { batch_id: batchId, execution_status: "PENDING" },
+      orderBy: { row_number: "asc" },
+      take: chunkSize,
+    }),
+  ]);
 
+  // Rows already attempted are excluded by the query above — that is what
+  // makes a re-POST safe after a dropped connection.
   for (const row of rows) {
-    if (row.execution_status === "SUCCESS") {
-      successCount++;
-      results.push({
-        row: row.row_number,
-        success: true,
-        tenant_id: row.tenant_id,
-        invitation_id: row.invitation_id,
-        reservation_id: row.reservation_id,
-        action: "IDEMPOTENT_RETRY",
-      });
-      continue;
-    }
-
     const data = row.mapped_data as TenantImportRow;
 
     try {
@@ -309,29 +350,61 @@ async function executeInvitationBatch(
     }
   }
 
+  // Totals across every chunk so far, not just this one.
+  const [succeededTotal, failedTotal] = await Promise.all([
+    prisma.bulk_import_rows.count({ where: { batch_id: batchId, execution_status: "SUCCESS" } }),
+    prisma.bulk_import_rows.count({ where: { batch_id: batchId, execution_status: "FAILED" } }),
+  ]);
+  const processed = succeededTotal + failedTotal;
+  const remaining = Math.max(total - processed, 0);
+  const done = remaining === 0;
+
+  // A terminal status only when nothing is left. Marking the batch COMPLETED
+  // after the first chunk would tell the owner the import had finished while
+  // most of their tenants were still unprocessed.
   await prisma.bulk_import_batches.update({
     where: { id: batchId },
     data: {
-      status: failureCount === 0 ? "COMPLETED" : successCount > 0 ? "PARTIAL" : "FAILED",
-      imported_rows: successCount,
-      failed_rows: failureCount,
+      status: !done
+        ? "PROCESSING"
+        : failedTotal === 0
+          ? "COMPLETED"
+          : succeededTotal > 0
+            ? "PARTIAL"
+            : "FAILED",
+      imported_rows: succeededTotal,
+      failed_rows: failedTotal,
+      // Merged, not replaced: the rooms this batch created were recorded here
+      // by the first chunk, and overwriting them would make every later chunk
+      // create them again — which fails, because a floor would then be
+      // submitted with the same room number twice.
       import_summary: {
-        total_requested: rows.length,
-        success_count: successCount,
-        failure_count: failureCount,
-        email_failure_count: emailFailureCount,
+        ...((priorSummary as any) ?? {}),
+        total_requested: total,
+        success_count: succeededTotal,
+        failure_count: failedTotal,
+        email_failure_count:
+          Number((priorSummary as any)?.email_failure_count ?? 0) + emailFailureCount,
       },
-      imported_at: new Date(),
+      ...(done ? { imported_at: new Date() } : {}),
     },
   });
 
   return {
-    totalRequested: rows.length,
+    totalRequested: total,
     successCount,
     failureCount,
     emailFailureCount,
     results,
     errors,
+    progress: {
+      total,
+      processed,
+      remaining,
+      succeeded: succeededTotal,
+      failed: failedTotal,
+      stage: done ? ("DONE" as const) : ("TENANTS" as const),
+    },
   };
 }
 

@@ -330,3 +330,62 @@ describe("existing tenants are recognised whatever format their phone is stored 
     expect(r.isDuplicate).toBe(false);
   });
 });
+
+describe("a tenant may live in a room the same workbook adds", () => {
+  // The template tells the owner to add a missing room on the Rooms sheet and
+  // then pick it for a tenant. Validating tenants against the database alone
+  // would reject the exact flow the template asks for.
+  it("accepts a tenant in a room the Rooms sheet will create", async () => {
+    const result = await bulkImportValidationService.validateRows(
+      [row({ room_no: "301", monthly_rent: 7000 })],
+      HOSTEL_ID,
+      OWNER_ID,
+      {},
+      [{ room_no: "301", capacity: 2, base_rent: 7000 }]
+    );
+
+    expect(result.validRows).toHaveLength(1);
+    expect(result.invalidRows).toEqual([]);
+  });
+
+  it("still rejects a room that is in neither the hostel nor the sheet", async () => {
+    const result = await bulkImportValidationService.validateRows(
+      [row({ room_no: "999" })],
+      HOSTEL_ID,
+      OWNER_ID,
+      {},
+      [{ room_no: "301", capacity: 2, base_rent: 7000 }]
+    );
+
+    expect(result.invalidRows[0].issues.map((i) => i.code)).toContain("ROOM_NOT_FOUND");
+  });
+
+  it("counts beds in a new room, so the sheet cannot overfill it", async () => {
+    const result = await bulkImportValidationService.validateRows(
+      [
+        row({ room_no: "301", monthly_rent: 7000 }),
+        row({ room_no: "301", monthly_rent: 7000 }),
+        row({ room_no: "301", monthly_rent: 7000 }),
+      ],
+      HOSTEL_ID,
+      OWNER_ID,
+      {},
+      [{ room_no: "301", capacity: 2, base_rent: 7000 }]
+    );
+
+    expect(result.validRows).toHaveLength(2);
+    expect(result.invalidRows[0].issues.map((i) => i.code)).toContain("ROOM_CAPACITY_EXCEEDED");
+  });
+
+  it("prefers the hostel's own room when the sheet lists one that already exists", async () => {
+    const result = await bulkImportValidationService.validateRows(
+      [row({ room_no: "101" })],
+      HOSTEL_ID,
+      OWNER_ID,
+      {},
+      [{ room_no: "101", capacity: 9, base_rent: 1 }]
+    );
+
+    expect(result.validRows[0].data.room_id).toBe("room-101");
+  });
+});

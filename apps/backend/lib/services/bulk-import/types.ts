@@ -27,6 +27,12 @@ export interface TenantImportRow {
   gender?: string;
   rent_source?: "ROOM_CONFIG" | "SHEET";
   /**
+   * The template's worked example, still in the sheet. Kept in the parsed
+   * array so row numbers stay true to the spreadsheet, and skipped by
+   * validation so nobody imports a tenant called "Example".
+   */
+  is_example?: boolean;
+  /**
    * The owner's original text for numeric cells, so a cell that could not be
    * read ("TBD") is quoted back to them as typed rather than as NaN. Not
    * persisted — `sanitize-row.ts` is an allowlist that omits it.
