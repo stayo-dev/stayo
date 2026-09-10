@@ -48,7 +48,7 @@ The template is **not a static file**. It is built from the hostel's live data s
 | Email | conditional | required only when invite delivery is by email — **a change**: validation currently rejects any row without an email, even though `createInvitation` requires only phone and WhatsApp delivery exists |
 | Room | yes | dropdown; typo'd room numbers become impossible |
 | Monthly Rent | no | room's `base_rent` |
-| Joining Date | yes | real historical date for existing residents |
+| Joining Date | yes | real historical date for existing residents. **DD/MM/YYYY** (Indian format) is what the template shows and what every message asks for; ISO `YYYY-MM-DD` stays accepted on input because Excel and our own CSV export emit it |
 | Security Deposit | no | hostel billing default |
 | Maintenance Charge | no | hostel billing default |
 | Maintenance Type | no | dropdown `MONTHLY / ONE_TIME / NONE` |
@@ -148,7 +148,7 @@ Severity decides the flow — and it is why the >24-month case is not a wall:
 | `OVERPAID` | NEEDS_CHOICE | "You entered ₹90,000 paid, but only ₹76,500 is owed from 5 Jan. ₹13,500 extra." | reduce amount / change joining date |
 | `BACKFILL_CAPPED` | NEEDS_CHOICE | "Joined 5 Jan 2023 — 32 months. We'll bill the most recent 24 (from Oct 2023). Earlier months won't be imported." | confirm / change date |
 | `FORMULA_IN_CELL` | BLOCKER | "This cell contains a formula. Paste as values." | edit inline |
-| `DATE_UNREADABLE` | BLOCKER | "'May' isn't a full date. Use 05/01/2026." | date picker |
+| `DATE_UNREADABLE` | BLOCKER | "'May' isn't a full date. Use DD/MM/YYYY — 05/01/2026 means 5 January 2026." | date picker |
 | `HOSTEL_STAMP_MISMATCH` | BLOCKER (file) | "This file was made for Sri Adithya Boys Hostel." | switch hostel / new template |
 
 Every entry names **the actual value**, **the actual hostel/room**, and **what to do**. No error may render as a bare code or a raw exception message.

@@ -18,7 +18,8 @@
 - **Run tests with:** `cd apps/backend && npx vitest run --config vitest.pure.config.ts tests/<file>.test.ts`
 - **`npx tsc --noEmit` is not a usable signal in `apps/backend`** — hundreds of pre-existing errors. Filter to your own files and compare against a `git stash` baseline.
 - **`prisma` is exported as `any`** (`lib/db.ts`). Accessor typos compile and fail at runtime. The model is `prisma.profile` (singular); `@@map("profiles")` names the table, not the delegate.
-- **Money:** amounts in this subsystem are rupees as `number` (the existing `money()` helper rounds to 2dp). Do not convert to paise — the surrounding onboarding services use rupees.
+- **Money:** amounts in this subsystem are rupees as `number` (the existing `money()` helper rounds to 2dp). Do not convert to paise — the surrounding onboarding services use rupees. Format for display with `toLocaleString("en-IN")` so grouping is Indian: lakhs and crores, `12,34,567` — not the Western `1,234,567`.
+- **Indian formats in all owner-facing copy.** Dates are **DD/MM/YYYY**, and any example must disambiguate itself (`05/01/2026 means 5 January 2026`) — never lead with `YYYY-MM-DD`. `parseDate` already reads slash-dates as day/month/year and still *accepts* ISO on input (Excel and the CSV export emit it); this rule is about what we ask the owner to type, not what we parse.
 - **Do not touch** `apps/frontend`, the workbook/template builder, chunked execution, or deferred dispatch. Those are Plans 2 and 3.
 - **Commit after every task.** Conventional-commit prefixes (`fix:`, `refactor:`, `test:`).
 
@@ -1456,6 +1457,14 @@ describe("copy", () => {
     expect(issue.severity).toBe("NEEDS_CHOICE");
   });
 
+  it("asks for dates in Indian format", () => {
+    const issue = buildIssue("DATE_UNREADABLE", 3, { value: "May" });
+
+    expect(issue.detail).toContain("DD/MM/YYYY");
+    expect(issue.detail).not.toContain("YYYY-MM-DD");
+    expect(issue.detail).toContain("5 January 2026");
+  });
+
   it("says how many months will be billed when backfill is capped", () => {
     const issue = buildIssue("BACKFILL_CAPPED", 9, {
       monthsElapsed: 32,
@@ -1682,7 +1691,7 @@ const COPY: Record<IssueCode, (c: IssueContext) => Copy> = {
   }),
   DATE_UNREADABLE: (c) => ({
     title: `"${c.value ?? ""}" isn't a full date.`,
-    detail: `Use a complete date like 05/01/2026 or 2026-01-05. The joining date decides how much rent is owed, so a guess would be wrong money.`,
+    detail: `Use DD/MM/YYYY — 05/01/2026 means 5 January 2026. The joining date decides how much rent is owed, so a guess would be wrong money.`,
     field: "joining_date",
     fix: { kind: "PICK_DATE" },
   }),
