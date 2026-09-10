@@ -141,7 +141,15 @@ require a published takedown route for UGC.
   identification) plus platform-integrity items.
 - **UGC / reviews**: licence grant, moderation is Stayo's, published takedown route via the
   grievance channel.
-- Governing law India; **Hyderabad** jurisdiction (retained from current terms).
+- Governing law India; **Hyderabad** jurisdiction (confirmed 2026-09-10).
+
+  **Drafted as non-exclusive, deliberately.** Under s.20 CPC parties may agree to one of the
+  courts that would *otherwise* have jurisdiction; an *exclusive* clause naming a court with no
+  nexus is void as ousting jurisdiction. The registered principal place of business is Vikarabad
+  District, so Hyderabad's nexus is currently weak. Wording it as *"the courts at Hyderabad,
+  Telangana shall have jurisdiction"* rather than *"exclusive jurisdiction"* keeps the preferred
+  forum without giving anyone a clause to strike. It can be tightened to exclusive once Stayo has
+  a real place of business in Hyderabad — which is the cheaper fix, and worth doing.
 - **New: arbitration clause** — sole arbitrator, Hyderabad seat, Arbitration & Conciliation Act
   1996. The single most effective clause for avoiding drawn-out consumer litigation.
 
@@ -415,13 +423,14 @@ remain:
 - ~~principal place of business~~ — **supplied**: 12-75/1, Balaji Nagar, Block 2, Kodangal,
   Vikarabad District, Telangana 509338;
 - ~~Grievance Officer~~ — **supplied**: Chidiri Shiva Prakash, `grievance@yourstayo.com`;
-- **exclusive jurisdiction city** — the current terms say Hyderabad, but the principal place of
-  business is in Vikarabad District. An exclusive-jurisdiction clause should name a court with
-  actual nexus to the parties or the cause, so this must be resolved deliberately rather than
-  inherited from the old copy;
-- **whether Stayo receives any share of transaction fees or TDR from Easebuzz**, or whether the
-  owner subscription is its only revenue. A revenue share is disclosable under the e-commerce
-  rules and changes the fee clauses;
+- ~~jurisdiction~~ — **settled**: Hyderabad, drafted **non-exclusive** for the nexus reason in
+  §6.1. Establishing an actual Hyderabad place of business would let it be tightened to exclusive
+  and is recommended;
+- ~~revenue share~~ — **settled**: the owner subscription is Stayo's **only** revenue; it takes no
+  share of transaction fees or TDR on resident payments. The terms state this affirmatively —
+  *Stayo earns nothing from your rent* — which is a genuine trust asset and forecloses any
+  suggestion that Stayo profits from payment volume. If the Easebuzz commercials ever change to
+  include a share, this claim must change with them;
 - support hours and Level 1 response SLA;
 - subscription trial length, and whether subscription fees are refundable on mid-cycle cancellation;
 - the refund-floor turnaround Stayo commits to;
