@@ -243,7 +243,7 @@ export function groupIssuesByCode(issues: RowIssue[]) {
     }
   }
 
-  return [...groups.values()].map(({ firstTitle, ...group }) => ({
+  return Array.from(groups.values()).map(({ firstTitle, ...group }) => ({
     ...group,
     rows: [...group.rows].sort((a, b) => a - b),
     title: group.rows.length === 1 ? firstTitle : GROUP_TITLE[group.code](group.rows.length),

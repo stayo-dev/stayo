@@ -1,4 +1,4 @@
-import type { TenantImportRow } from "../bulk-import-validation-service";
+import type { TenantImportRow } from "./types";
 
 /**
  * What is persisted for a validated row.

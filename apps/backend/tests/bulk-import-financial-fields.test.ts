@@ -234,7 +234,7 @@ describe("payload keys the confirm route sends are keys the service reads", () =
     // Every `<payloadKey>: data.<rowField>` line in the call — this is
     // exactly the shape a field-name drop takes, so it is exactly what this
     // guard walks.
-    const sentKeys = [...callBody.matchAll(/^\s*(\w+):\s*data\.\w+,?\s*$/gm)].map(
+    const sentKeys = Array.from(callBody.matchAll(/^\s*(\w+):\s*data\.\w+,?\s*$/gm)).map(
       (m) => m[1]
     );
     expect(sentKeys.length).toBeGreaterThan(5);
