@@ -138,27 +138,9 @@ export const HELP_GUIDES: HelpGuide[] = [
   },
 
   // ---- Owner --------------------------------------------------------------
-  {
-    id: 'owner-listing-not-live',
-    audience: ['owner'],
-    question: 'My photos or amenities are not showing on Discover',
-    answer:
-      'Listing edits go to Stayo for a quick review before they go public — that is what keeps every listing on Discover trustworthy. Your hostel page shows whether the current version is in review or live.',
-    action: { label: 'Open my hostel', to: '/owner/more/hostel' },
-    keywords: [
-      'discover', 'listing', 'photos', 'amenities', 'not showing', 'review',
-      'pending', 'live', 'publish', 'facilities',
-    ],
-  },
-  {
-    id: 'owner-cannot-edit-listing',
-    audience: ['owner'],
-    question: 'I cannot edit my amenities or listing right now',
-    answer:
-      'While a version is in review it is locked, so your submitted copy and the live copy cannot drift apart. It unlocks as soon as Stayo approves or returns it — usually the same day.',
-    action: { label: 'Check review status', to: '/owner/more/hostel' },
-    keywords: ['cannot edit', 'locked', 'disabled', 'greyed', 'amenities', 'read only'],
-  },
+  // The two "Discover listing" entries (owner-listing-not-live,
+  // owner-cannot-edit-listing) were removed in v1 — ADR-170, the marketplace
+  // is shelved. Restore them from git history when v2 brings Discover back.
   {
     id: 'owner-payment-not-showing',
     audience: ['owner'],
@@ -183,7 +165,7 @@ export const HELP_GUIDES: HelpGuide[] = [
     question: 'Where do I see complaints from my tenants?',
     answer:
       'Everything your residents raise about the hostel lands in Service requests. These are yours to resolve — Stayo carries them so you have one list, and does not answer them for you.',
-    action: { label: 'Open Service requests', to: '/owner/more/service-requests' },
+    action: { label: 'Open Service requests', to: '/owner/alerts/requests' },
     keywords: ['complaint', 'service request', 'tenant issue', 'maintenance', 'ticket'],
   },
   {
@@ -398,7 +380,7 @@ export function canSubmitReport(subject: string, description: string): boolean {
 export function hostelChannel(audience: HelpAudience): HelpAction {
   return audience === 'tenant'
     ? { label: 'Tell your hostel instead', to: '/tenant/complaints' }
-    : { label: 'Open Service requests', to: '/owner/more/service-requests' };
+    : { label: 'Open Service requests', to: '/owner/alerts/requests' };
 }
 
 /**

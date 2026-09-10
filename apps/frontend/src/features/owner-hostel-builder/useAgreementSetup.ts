@@ -37,7 +37,9 @@ export function useAgreementSetupState(hostelId: string | null) {
 
 export type SaveAgreementDecisionInput =
   | { choice: 'no' }
-  | { choice: 'yes'; signatureFile: File; hasActiveTemplate: boolean };
+  | { choice: 'yes'; signatureFile: File; signatureUrl?: undefined; hasActiveTemplate: boolean }
+  /** Reusing a signature already captured on another of this owner's hostels. */
+  | { choice: 'yes'; signatureUrl: string; signatureFile?: undefined; hasActiveTemplate: boolean };
 
 /**
  * Saves the owner's one-time answer to "does this hostel use a tenant
@@ -61,7 +63,18 @@ export function useSaveAgreementDecision(hostelId: string) {
       if (!input.hasActiveTemplate) {
         await configApi.publishAgreementTemplate(hostelId);
       }
-      await configApi.uploadOwnerSignature(hostelId, input.signatureFile);
+
+      // Reuse points the new template at a signature this owner already
+      // captured, rather than re-uploading the same image: the URL is already
+      // in ImageKit, and fetching it back into a blob only to post it again
+      // would spend a round trip and a duplicate asset to end up in the same
+      // place.
+      if (input.signatureUrl) {
+        await configApi.reuseOwnerSignature(hostelId, input.signatureUrl);
+      } else if (input.signatureFile) {
+        await configApi.uploadOwnerSignature(hostelId, input.signatureFile);
+      }
+
       return ownerService.updateHostelPolicy(hostelId, { tenant_rules: { agreement_required: true } });
     },
     onSuccess: () => {

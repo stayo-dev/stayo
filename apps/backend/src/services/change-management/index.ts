@@ -15,6 +15,8 @@ export {
   isInCorrectionWindow,
   getEffectiveCategory,
   getFieldsByCategory,
+  partitionTenantOnlyFields,
+  TENANT_ONLY_FIELDS,
   CATEGORY_LABELS,
   EXPIRATION_DAYS,
   FIELD_REGISTRY,

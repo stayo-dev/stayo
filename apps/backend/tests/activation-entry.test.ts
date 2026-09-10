@@ -90,6 +90,26 @@ describe("canEnterActivation", () => {
   it("reads status case-insensitively, since it arrives from the database as text", () => {
     expect(canEnterActivation({ status: "invited", activationCompletedAt: null })).toEqual({ allowed: true });
   });
+
+  // ADR-165: a new-model tenancy is ACTIVE + acceptance_status=PENDING from the
+  // moment it's invited, with no attestation and no timestamp.
+  it("lets a live-but-unaccepted (PENDING) tenancy in", () => {
+    expect(canEnterActivation({
+      status: "ACTIVE",
+      activationCompletedAt: null,
+      invitationStatus: "PENDING",
+      acceptanceStatus: "PENDING",
+    })).toEqual({ allowed: true });
+  });
+
+  it("refuses a tenancy whose tenant has personally accepted (ACCEPTED)", () => {
+    expect(canEnterActivation({
+      status: "ACTIVE",
+      activationCompletedAt: at,
+      invitationStatus: "ACTIVATED",
+      acceptanceStatus: "ACCEPTED",
+    })).toMatchObject({ allowed: false, code: "ALREADY_ACTIVE" });
+  });
 });
 
 describe("hasCompletedActivation", () => {
@@ -127,6 +147,19 @@ describe("hasCompletedActivation", () => {
   it("accepts the timestamp as a string, as JSON delivers it", () => {
     expect(hasCompletedActivation({ status: "ACTIVE", activationCompletedAt: at.toISOString() })).toBe(true);
   });
+
+  // ADR-165: acceptance_status is authoritative for new-model rows.
+  it("is false while acceptance_status is PENDING, whatever the status", () => {
+    expect(hasCompletedActivation({
+      status: "ACTIVE", activationCompletedAt: null, invitationStatus: "PENDING", acceptanceStatus: "PENDING",
+    })).toBe(false);
+  });
+
+  it("is true once acceptance_status is ACCEPTED", () => {
+    expect(hasCompletedActivation({
+      status: "ACTIVE", activationCompletedAt: at, invitationStatus: "ACTIVATED", acceptanceStatus: "ACCEPTED",
+    })).toBe(true);
+  });
 });
 
 describe("ACTIVATABLE_STATUSES", () => {
@@ -160,6 +193,19 @@ describe("isAwaitingTenantOnboarding", () => {
     expect(isAwaitingTenantOnboarding({ status: "INVITED", activationCompletedAt: null })).toBe(false);
     expect(isAwaitingTenantOnboarding({
       status: "ACTIVE", activationCompletedAt: null, invitationStatus: "PENDING", ownerAttested: false,
+    })).toBe(false);
+  });
+
+  // ADR-165: new-model rows carry no attestation; acceptance_status is the signal.
+  it("is true for a new-model PENDING tenancy (no attestation, no timestamp)", () => {
+    expect(isAwaitingTenantOnboarding({
+      status: "ACTIVE", activationCompletedAt: null, invitationStatus: "PENDING", acceptanceStatus: "PENDING",
+    })).toBe(true);
+  });
+
+  it("is false once acceptance_status is ACCEPTED", () => {
+    expect(isAwaitingTenantOnboarding({
+      status: "ACTIVE", activationCompletedAt: at, invitationStatus: "ACTIVATED", acceptanceStatus: "ACCEPTED",
     })).toBe(false);
   });
 });

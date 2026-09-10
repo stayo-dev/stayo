@@ -7,23 +7,29 @@ import type { MockTenant } from '@shared/mocks/tenants';
 import type { TenantFilterChip } from '../types';
 
 export function toTenantListItem(t: NormalizedTenant, hostelId: string, hostelName: string): MockTenant {
-  // Used to be `t.status === 'INVITED'`. A tenancy is ACTIVE from the moment
-  // it's invited now (see createInvitation's owner-managed adoption), so
-  // status alone no longer says "hasn't taken charge of their account yet" —
-  // access_mode does. Without this, the row's "Invited" badge, the dashed
-  // placeholder avatar, and the "Invited" filter chip's count would all
-  // silently go to zero forever, same failure shape as the dashboard tile
-  // this fixes alongside.
+  // A tenancy is ACTIVE from the moment it's invited (see createInvitation), so
+  // `status` alone no longer says "hasn't taken charge of their account yet".
+  // `access_mode === 'OWNER_MANAGED'` covers both a new-model tenant who has
+  // not personally accepted (`acceptanceStatus === 'PENDING'`) and a
+  // grandfathered owner-managed row. The label distinguishes the two.
   const isInvited = t.accessMode === 'OWNER_MANAGED';
-  const isOverdue = !isInvited && t.outstandingAmount > 0 && ['OVERDUE', 'PARTIAL', 'PENDING'].includes(t.paymentStatus.toUpperCase());
+  const isAwaitingAcceptance = t.acceptanceStatus === 'PENDING';
+  // Genuinely past due — `paymentStatus` is OVERDUE only when an obligation's
+  // due_date has passed. A tenant with this month's rent generated but not yet
+  // due is PENDING with a balance, which is "Dues", not "Overdue".
+  const isOverdue = !isInvited && t.paymentStatus.toUpperCase() === 'OVERDUE';
+  const hasDues = !isInvited && !isOverdue && t.outstandingAmount > 0;
   let status: MockTenant['status'];
   let statusLabel: string;
   if (isInvited) {
     status = 'invited';
-    statusLabel = 'Invited';
+    statusLabel = isAwaitingAcceptance ? 'Awaiting acceptance' : 'Invited';
   } else if (isOverdue) {
     status = 'overdue';
     statusLabel = 'Overdue';
+  } else if (hasDues) {
+    status = 'dues';
+    statusLabel = 'Payment Due';
   } else if (!t.documentVerified) {
     status = 'pending-docs';
     statusLabel = 'Docs Pending';
@@ -49,13 +55,10 @@ export function toTenantListItem(t: NormalizedTenant, hostelId: string, hostelNa
     outstanding: t.outstandingAmount,
     overdueMonths: t.overdueDays,
     joinedDate: t.joinDate ?? '',
-    riskScore: t.score ?? 0,
-    riskLabel: '',
-    riskInsight: '',
-    paymentRatePercent: 0,
     agreementStatus: t.hasAgreement ? 'Signed' : 'Pending',
     kycStatus: t.documentVerified ? 'Verified' : 'Pending',
     accessMode: t.accessMode,
+    acceptanceStatus: t.acceptanceStatus,
     obligations: [],
     activity: [],
     documents: [],
@@ -76,10 +79,19 @@ export function toTenantListItem(t: NormalizedTenant, hostelId: string, hostelNa
  * `GET /api/tenants` is hostel-scoped — "All Hostels" fans out in parallel
  * across every real hostel the owner has (never a single assumed hostel,
  * per the CLAUDE.md invariant) and merges client-side.
+ *
+ * `hostelScopeOverride` (ADR-171 Phase 2.8): when passed (`'all'` or a real
+ * hostel id), it drives the scope instead of the internal `hostelId` state —
+ * the owner desktop console passes `useSelectedHostel()` here so the sidebar
+ * `HostelSwitcher` is the single hostel control. Omit it (mobile) and the
+ * in-page selector drives the local state exactly as before. The fan-out /
+ * merge / query-key logic is identical either way.
  */
-export function useRealTenantList() {
+export function useRealTenantList(hostelScopeOverride?: string) {
   const session = useOwnerSession();
-  const [hostelId, setHostelId] = useState('all');
+  const [localHostelId, setLocalHostelId] = useState('all');
+  const hostelId = hostelScopeOverride ?? localHostelId;
+  const setHostelId = setLocalHostelId;
   const [search, setSearch] = useState('');
   const [chip, setChip] = useState<TenantFilterChip>('all');
 

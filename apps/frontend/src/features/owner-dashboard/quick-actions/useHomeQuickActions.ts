@@ -8,8 +8,7 @@ import type { QuickCollectTenant } from '@features/owner-tenants/types';
  * Tenant -> InviteTenantWizard — both reused as-is, same "another mount
  * point" precedent MoneyPage already set for QuickCollectModal). Add Expense
  * navigates to its own tab with router state, since that modal's own page
- * already owns that flow. Food menu just navigates to its tab — the mock
- * poll sheet it used to open via router state no longer exists.
+ * already owns that flow.
  */
 export function useHomeQuickActions() {
   const navigate = useNavigate();
@@ -51,10 +50,6 @@ export function useHomeQuickActions() {
     closeSheet();
     navigate('/owner/money', { state: { openAddExpense: true } });
   };
-  const createFoodPoll = () => {
-    closeSheet();
-    navigate('/owner/food');
-  };
 
   return {
     sheetOpen,
@@ -75,6 +70,5 @@ export function useHomeQuickActions() {
     collectPaymentFor,
     inviteTenant,
     addExpense,
-    createFoodPoll,
   };
 }

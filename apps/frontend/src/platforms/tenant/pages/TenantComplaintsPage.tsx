@@ -88,8 +88,14 @@ export function TenantComplaintsPage() {
 
   return (
     <div className="min-h-screen">
-      <div className="flex flex-col gap-6 px-[22px] pb-8 pt-6">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-6 px-[22px] pb-8 pt-6 lg:mx-auto lg:w-full lg:max-w-[640px] lg:px-8 lg:pt-8">
+        {/*
+          The console topbar already carries "Complaints" + the same subtitle
+          at lg+ (see `appHeaders.ts`'s `/tenant/complaints` entry), and the
+          sidebar's "Room" item is the way back — so this mobile-only back
+          button + title row would be a duplicated header at lg+.
+        */}
+        <div className="flex items-center gap-3 lg:hidden">
           <button
             type="button"
             aria-label="Back"

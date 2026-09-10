@@ -898,6 +898,12 @@ model profile {
 
   push_subscriptions push_subscriptions[]
 
+  /// The Clerk login bound to this business identity, if one has been linked
+  /// yet (ADR-176). Nullable in both directions: a profile can exist with no
+  /// login (owner-created tenant not yet signed up), and a login can exist with
+  /// no profile (signed up, not yet provisioned a role).
+  login              users?    @relation("ProfileLogin")
+
   @@index([email])
   @@index([name])
   @@index([owner_id, created_at])
@@ -905,6 +911,53 @@ model profile {
   @@index([password_reset_required, is_active])
   @@index([phone])
   @@map("profiles")
+}
+
+/// The auth-agnostic identity anchor (ADR-176, migration 081).
+///
+/// Clerk is the single source of truth for identity and sessions; this row is
+/// how that identity lands in our database without the database knowing
+/// anything about the vendor. `clerk_user_id` is the only vendor-shaped column
+/// — swapping auth providers again means adding one column and backfilling it,
+/// not reshaping the schema.
+///
+/// It holds NO business data on purpose. Roles (OWNER/TENANT/ADMIN), hostels,
+/// tenancies and money live on `profile` and its relations. This model answers
+/// "who is this login?", never "what may they do?".
+model users {
+  id               String    @id @default(uuid()) @db.Uuid
+  /// Clerk's stable user id ("user_2abc..."). Never reused, never re-minted.
+  clerk_user_id    String    @unique
+
+  /// The complete set of fields `user.created`/`user.updated` may write —
+  /// mirrored from Clerk, asserted against ALLOWED_PROFILE_FIELDS in
+  /// src/services/auth/clerk-user-sync-service.ts by tests/clerk-user-sync.test.ts.
+  email            String?
+  first_name       String?
+  last_name        String?
+  image_url        String?
+
+  /// Soft-deactivation. `user.deleted` sets these; nothing deletes the row.
+  is_active        Boolean   @default(true)
+  deactivated_at   DateTime? @db.Timestamptz(6)
+
+  /// The business identity, when one exists. Nullable by design: Clerk may know
+  /// a person before we have provisioned them any role, and a webhook must never
+  /// invent a profile (the no-auto-provisioning rule of ADR-031 / ADR-073).
+  profile_id       String?   @unique @db.Uuid
+  profile          profile?  @relation("ProfileLogin", fields: [profile_id], references: [id], onDelete: SetNull)
+
+  /// Clerk's own `updated_at` for the user object. Svix delivery is
+  /// at-least-once and unordered; this rejects a stale replay from overwriting
+  /// newer data.
+  clerk_updated_at DateTime? @db.Timestamptz(6)
+
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([email])
+  @@index([is_active])
+  @@map("users")
 }
 
 model PhoneVerificationOtp {
@@ -1302,6 +1355,15 @@ model visitor_leads {
   hostel_id                 String              @db.Uuid
   owner_id                  String              @db.Uuid
   student_name              String
+  /// At most one row in an "active" status (see `ACTIVE_LEAD_STATUSES` in
+  /// admissions-service.ts) may exist per (hostel_id, student_phone) —
+  /// enforced by the partial unique index
+  /// `visitor_leads_one_active_lead_per_hostel_phone` (migration 079), not
+  /// expressible in Prisma schema syntax (no `extendedIndexes` preview
+  /// feature enabled here). LOST/REJECTED/JOINED rows do not block a fresh
+  /// lead for the same hostel+phone. Null phone is excluded from the
+  /// constraint. See `createLead`/`createDirectLead` for the enforcement +
+  /// P2002 fallback path.
   student_phone             String?
   student_email             String?
   parent_name               String?
@@ -1804,6 +1866,8 @@ model tenants {
   mobile_verified                   Boolean                             @default(false)
   document_verified                 Boolean                             @default(false)
   access_mode                       TenantAccessMode                    @default(SELF_SERVE)
+  acceptance_status                 TenantAcceptanceStatus              @default(NOT_REQUIRED)
+  tenant_accepted_at                DateTime?                           @db.Timestamptz(6)
   display_name                      String?
   complaints                        complaints[]
   rule_acceptances                  TenantPolicyAcceptance[]
@@ -2179,6 +2243,19 @@ enum TenantStatus {
 enum TenantAccessMode {
   SELF_SERVE
   OWNER_MANAGED
+}
+
+// Whether the tenant has personally accepted their invitation. Independent of
+// `TenantStatus` (operationally live) and `TenantAccessMode` (has a login).
+//   NOT_REQUIRED — legacy row / created outside the invitation flow. The
+//                  default, so existing OWNER_MANAGED tenancies are grandfathered
+//                  and every acceptance-scoped guard/sweep ignores them.
+//   PENDING      — invited, operationally live, tenant has NOT personally accepted.
+//   ACCEPTED     — tenant personally completed activation (`completeActivation`).
+enum TenantAcceptanceStatus {
+  NOT_REQUIRED
+  PENDING
+  ACCEPTED
 }
 
 enum MoveOutStatus {

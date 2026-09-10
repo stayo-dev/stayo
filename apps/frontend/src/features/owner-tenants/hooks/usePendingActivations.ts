@@ -51,6 +51,8 @@ export function usePendingActivations() {
       const perHostel = await Promise.all(
         hostelIds.map(async (id) => {
           const hostelName = session.hostels.find((h) => h.id === id)?.name ?? '';
+          // OWNER_MANAGED covers both new-model PENDING tenancies and
+          // grandfathered rows; `isAwaitingActivation` below narrows it.
           const raw = await tenantService.getAll(id, { accessMode: 'OWNER_MANAGED' });
           return normalizeTenants(raw).map((t) => ({ ...t, hostelId: id, hostelName }));
         }),
@@ -79,7 +81,7 @@ export function usePendingActivations() {
         // Requirement: a tenant disappears from this queue the moment the
         // backend reports activation complete, without waiting for the list
         // query's access-mode string to catch up.
-        .filter(({ t, state }) => isAwaitingActivation(t.accessMode, state))
+        .filter(({ t, state }) => isAwaitingActivation({ accessMode: t.accessMode, acceptanceStatus: t.acceptanceStatus }, state))
         .map(({ t, state }) => ({
           tenantId: t.id,
           name: t.name,

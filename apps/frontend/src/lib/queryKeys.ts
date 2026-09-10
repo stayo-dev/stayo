@@ -13,8 +13,6 @@ export const queryKeys = {
     /** Today's collection queue; hostel-scoped when a hostel is chosen. See ADR-045. */
     collectionQueue: (hostelId?: string) => ownerKey('collection-queue', hostelId ?? 'all'),
     pendingDocuments: () => ownerKey('pending-documents'),
-    /** A tenant's disclosed residency history — see ADR-053's amendment. */
-    tenantHistory: (tenantId: string) => ownerKey('tenant-history', tenantId),
     /** Same disclosed history, looked up by hostel+profile — the enquiry/invite path, before a tenancy exists. */
     tenantHistoryByProfile: (hostelId: string, profileId: string) => ownerKey('tenant-history', hostelId, profileId),
     /** Pre-submit tenancy-eligibility check for a phone/email typed into the invite wizard. */

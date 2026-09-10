@@ -19,11 +19,6 @@ const PUBLIC_ROUTES = [
   "/api/auth/send-phone-otp",
   "/api/auth/verify-phone-otp",
   "/api/auth/onboarding-login",
-  // Claiming a tenancy an owner kept the books for: OTP-gated, reachable by
-  // someone with no account yet. `confirm` is registered in
-  // IDENTITY_OPTIONAL_UNDER_PUBLIC below so a signed-in tenant's session
-  // still comes through instead of being stripped.
-  "/api/tenancy-claim",
   "/api/leads/self-serve",
   "/api/leads/invitation",
   "/api/leads/track",
@@ -55,6 +50,22 @@ const PUBLIC_ROUTES = [
   "/api/cron",
   "/api/verify",
 ];
+
+/**
+ * Routes that may carry a **Clerk** bearer token instead of a Supabase one
+ * (ADR-176 Phase 3, minimal dual session authority).
+ *
+ * Middleware verifies Supabase (and legacy) tokens only; a Clerk session JWT
+ * fails both and would be rejected here, before the route ever sees it. Rather
+ * than teach the edge runtime a third verifier, these few paths fall through
+ * as anonymous when verification fails, and the route does its own Clerk
+ * verification with `verifyClerkSession()`.
+ *
+ * Deliberately tiny and exact-matched. Falling through means "no identity
+ * headers", so a route on this list MUST authenticate the caller itself —
+ * every other path keeps 401-ing on an unverifiable token exactly as before.
+ */
+const CLERK_BEARER_ROUTES = new Set(["/api/auth/me"]);
 
 const PUBLIC_CSRF_ROUTES = [
   // `/api/auth/forgot-password` prefix-matches its `/phone` child too.
@@ -137,6 +148,31 @@ export async function middleware(req: NextRequest) {
   // 1. Handle Preflight Options Request (CORS)
   if (req.method === "OPTIONS") {
     return NextResponse.json({}, { headers: corsHeaders });
+  }
+
+  // 1b. v1 scope (ADR-170): the public marketplace (Stayo Discover) and the
+  //     owner listing/marketing flow that feeds it are shelved for v2. The
+  //     route handlers and services are intact on disk — this gate is the one
+  //     chokepoint. Flip MARKETPLACE_ENABLED=true to bring them back.
+  if (
+    process.env.MARKETPLACE_ENABLED !== "true" &&
+    (pathname.startsWith("/api/discover") ||
+      /^\/api\/owner\/hostels\/[^/]+\/marketing(\/|$)/.test(pathname) ||
+      pathname.startsWith("/api/platform-admin/marketing-reviews") ||
+      pathname.startsWith("/api/platform-admin/platform-listings") ||
+      /^\/api\/platform-admin\/hostels\/[^/]+\/(approve|reject|suspend)-listing(\/|$)/.test(pathname) ||
+      /^\/api\/platform-admin\/hostels\/[^/]+\/listing-review(\/|$)/.test(pathname))
+  ) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: {
+          code: "MARKETPLACE_DISABLED",
+          message: "Not available yet — the Stayo marketplace ships in a later version.",
+        },
+      },
+      { status: 410, headers: corsHeaders },
+    );
   }
 
   // 2. Allow public routes — except the handful of writes that live under a
@@ -241,6 +277,10 @@ export async function middleware(req: NextRequest) {
     const legacyPayload = await verifyToken(token);
     if (!legacyPayload) {
       if (identityOptional) return asAnonymous();
+      // Neither Supabase nor legacy recognised it. On the Clerk-bearer routes
+      // that is an expected case, not an attack: hand the request on with no
+      // identity headers and let the route verify it as a Clerk token.
+      if (CLERK_BEARER_ROUTES.has(pathname)) return asAnonymous();
       return NextResponse.json(
         { error: { message: "Invalid session", code: "UNAUTHORIZED" } },
         { status: 401, headers: corsHeaders }

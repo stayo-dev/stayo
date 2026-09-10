@@ -1,6 +1,6 @@
 import { Check } from 'lucide-react';
 import type { OwnerSessionHostel } from '@features/owner-session/useOwnerSession';
-import { buildPreviewDisplay, type InviteSettlementPreviewResponse } from '../settlementPreview';
+import { buildPreviewDisplay, describePreviewBlockers, type InviteSettlementPreviewResponse } from '../settlementPreview';
 import type { InviteWizardData } from '../../types';
 
 interface VerifyStepProps {
@@ -8,10 +8,22 @@ interface VerifyStepProps {
   agreed: boolean;
   setAgreed: (v: boolean) => void;
   hostels: OwnerSessionHostel[];
-  /** From `useInviteWizard` — undefined while nothing's been entered on the Money step yet. */
-  settlementPreview?: InviteSettlementPreviewResponse;
-  isLoadingSettlementPreview?: boolean;
-  settlementPreviewError?: string | null;
+  /**
+   * The settlement panel's three inputs, from `useInviteWizard`.
+   *
+   * Required, not optional — and that is the fix, not an opinion about style.
+   * They were optional, `InviteTenantWizard` never passed any of them, and
+   * TypeScript had no complaint: the request fired, the answer arrived, and it
+   * died at this prop boundary, leaving the panel stuck on its last-resort
+   * "working this out" line forever. Required props make the same omission a
+   * build failure.
+   *
+   * `settlementPreview` is still `undefined` when nothing has been entered on
+   * the Money step, which is how a caller tells "not applicable" from "loading".
+   */
+  settlementPreview: InviteSettlementPreviewResponse | undefined;
+  isLoadingSettlementPreview: boolean;
+  settlementPreviewError: string | null;
 }
 
 const row = 'flex items-center justify-between border-t border-border/60 px-3.5 py-2.5 first:border-t-0';
@@ -34,6 +46,12 @@ export function VerifyStep({
   const paidAmount = Number(data.paidAmount) || 0;
   const showPaymentSection = data.hasPaidAlready && paidAmount > 0;
   const display = settlementPreview ? buildPreviewDisplay(settlementPreview, { paidAmount, monthlyRent: rent }) : null;
+  /**
+   * Why there is no settlement to show yet. The branch below used to render
+   * `null` here, so an owner who switched the toggle on and typed an amount
+   * got a headed box with nothing inside it.
+   */
+  const blockers = describePreviewBlockers(data);
 
   return (
     <div className="flex flex-col gap-4.5">
@@ -103,30 +121,66 @@ export function VerifyStep({
               <p className="py-2 text-center text-[12.5px] text-muted-foreground">Calculating…</p>
             ) : settlementPreviewError ? (
               <p className="text-[12.5px] font-semibold text-destructive">{settlementPreviewError}</p>
+            ) : blockers ? (
+              <p className="text-[12.5px] leading-[1.5] text-muted-foreground">{blockers}</p>
             ) : display ? (
               <>
                 <span className="font-display text-lg font-extrabold tabular-nums text-foreground">{display.headline}</span>
+
+                {/*
+                  What the money actually buys, installment by installment. An
+                  owner recording cash they have already taken is checking this
+                  against a notebook, so it has to name the same things the
+                  notebook does — the deposit, and which months are covered.
+                */}
                 {display.lines.length > 0 && (
-                  <p className="text-[12.5px] leading-relaxed text-muted-foreground">
-                    {display.lines.map((line, i) => (
-                      <span key={line.key}>
-                        {i > 0 && ' · '}
-                        {line.label} <span className="font-semibold tabular-nums text-foreground">₹{line.amount.toLocaleString('en-IN')}</span>
-                      </span>
+                  <ul className="flex flex-col gap-1 border-t border-border pt-2">
+                    {display.lines.map((line) => (
+                      <li key={line.key} className="flex items-baseline justify-between gap-2 text-[12.5px]">
+                        <span className="text-muted-foreground">{line.label}</span>
+                        <span className="font-semibold tabular-nums text-foreground">
+                          ₹{line.amount.toLocaleString('en-IN')}
+                        </span>
+                      </li>
                     ))}
-                  </p>
+                  </ul>
                 )}
+
+                {/*
+                  The balance, as a figure. This panel used to end on a month
+                  name — "Nov onwards outstanding" — which answers when the
+                  tenant falls behind but never how much, and how much is the
+                  number the owner is verifying before they commit.
+                */}
                 {display.warning ? (
                   <p className="rounded-xl border border-destructive/25 bg-destructive/10 px-3 py-2 text-[12px] font-semibold text-destructive">
                     {display.warning}
                   </p>
-                ) : display.outstandingLabel ? (
-                  <p className="text-[12.5px] font-bold text-warning">{display.outstandingLabel}</p>
+                ) : display.remainingOutstanding > 0 ? (
+                  <div className="flex items-baseline justify-between gap-2 border-t border-border pt-2">
+                    <span className="text-[12.5px] font-bold text-foreground">
+                      Still due
+                      {display.outstandingLabel && (
+                        <span className="ml-1 font-medium text-muted-foreground">
+                          from {display.outstandingLabel}
+                        </span>
+                      )}
+                    </span>
+                    <span className="font-display text-[15px] font-extrabold tabular-nums text-warning">
+                      ₹{display.remainingOutstanding.toLocaleString('en-IN')}
+                    </span>
+                  </div>
                 ) : (
-                  <p className="text-[12.5px] font-bold text-success">Fully settled</p>
+                  <p className="border-t border-border pt-2 text-[12.5px] font-bold text-success">
+                    Fully settled — nothing outstanding
+                  </p>
                 )}
               </>
-            ) : null}
+            ) : (
+              /* Reached only while the request is in flight for the first time
+                 with nothing cached — never an empty panel. */
+              <p className="text-[12.5px] text-muted-foreground">Working this out…</p>
+            )}
           </div>
         </div>
       )}

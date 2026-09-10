@@ -1,4 +1,5 @@
 import { createTenantSnapshot } from "./diff-engine";
+import { recomputeDocumentVerified } from "../tenants/kyc-status";
 
 export interface EntityAdapter<T = any> {
   entityType: string;
@@ -78,6 +79,14 @@ export class TenantProfileAdapter implements EntityAdapter {
         profiles: true,
       },
     });
+
+    // A profile_type change alters which documents KYC requires — re-derive
+    // document_verified so the tenant is not left verified on a document their
+    // new type no longer asks for (e.g. College ID after switching to
+    // Working Professional).
+    if (Object.prototype.hasOwnProperty.call(tenantUpdate, "profile_type")) {
+      await recomputeDocumentVerified(tx, entityId);
+    }
 
     return updatedTenant;
   }

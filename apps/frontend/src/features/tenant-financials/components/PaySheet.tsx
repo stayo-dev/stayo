@@ -1,5 +1,5 @@
 import { Check, Smartphone } from 'lucide-react';
-import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
+import { AdaptiveSurface } from '@/app/components/ui/adaptive-surface';
 import type { PayStage } from '../hooks/useTenantFinancials';
 import { StayoLoader } from '@shared/ui/brand';
 
@@ -28,7 +28,7 @@ interface PaySheetProps {
  */
 export function PaySheet({ stage, amount, error, onClose, onConfirm }: PaySheetProps) {
   return (
-    <BottomSheet open={stage !== 'closed'} onOpenChange={(open) => !open && onClose()} title="Pay rent" hideHeader>
+    <AdaptiveSurface variant="form" open={stage !== 'closed'} onOpenChange={(open) => !open && onClose()} title="Pay rent" hideHeader>
       {stage === 'form' && (
         <div className="flex flex-col pb-2">
           <div className="font-display text-[20px] font-extrabold tracking-[-0.02em] text-foreground">Pay rent</div>
@@ -43,7 +43,7 @@ export function PaySheet({ stage, amount, error, onClose, onConfirm }: PaySheetP
           {error && (
             <div className="mt-3 rounded-xl bg-destructive/10 px-3.5 py-2.5 text-[12.5px] font-semibold text-destructive">{error}</div>
           )}
-          <div className="mt-[18px] flex items-center gap-3 rounded-[14px] border border-[#EAE1D8] bg-card px-[15px] py-3.5">
+          <div className="mt-[18px] flex items-center gap-3 rounded-[14px] border border-border bg-card px-[15px] py-3.5">
             <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[9px]" style={{ background: '#EAF0FB', color: '#3B5B9E' }}>
               <Smartphone className="h-4 w-4" />
             </span>
@@ -83,6 +83,6 @@ export function PaySheet({ stage, amount, error, onClose, onConfirm }: PaySheetP
           </button>
         </div>
       )}
-    </BottomSheet>
+    </AdaptiveSurface>
   );
 }

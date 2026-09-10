@@ -67,7 +67,7 @@ export interface TenantScoreResult {
 }
 
 /** Below this there is not enough behaviour to distinguish a person from a stranger. */
-export const MIN_CYCLES_FOR_SCORE = 3;
+export const MIN_CYCLES_FOR_SCORE = 2;
 
 const RELIABILITY_WEIGHT = 65;
 const COMMITMENT_WEIGHT = 35;

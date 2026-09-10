@@ -8,13 +8,14 @@
  * so a long random string in a link is the only thing that can prove the
  * person opening it is the person invited.
  *
- * A tenant arriving from the claim flow is not a stranger. They proved their
- * phone by OTP, their tenancy was matched to them, an account was created and
- * a session minted. And their invitation was deliberately `SUPERSEDED` at
- * adoption, which `resolveByToken` refuses with `CLAIM_REQUIRED` — correctly,
- * since that link is dead. Minting a fresh token for someone already holding a
- * session would add a credential to hand around in order to re-prove something
- * already proven.
+ * A signed-in tenant with no token is not a stranger — they already hold a
+ * session. An owner-managed tenant's own invitation is `SUPERSEDED` at
+ * adoption/invite time, but `resolveByToken` resolves that case into normal
+ * activation on its own now (see its own doc comment), so this session path
+ * exists for the narrower case of someone who reaches `/activate` with a
+ * session and genuinely no token in hand. Minting a fresh token for someone
+ * already holding a session would add a credential to hand around in order
+ * to re-prove something already proven.
  *
  * So the session is the credential on that path. The token path is untouched:
  * a request carrying a token is resolved exactly as before, byte for byte,

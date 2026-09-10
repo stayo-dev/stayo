@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status") || undefined;
     const accessMode = searchParams.get("accessMode") || undefined;
+    const acceptanceStatus = searchParams.get("acceptanceStatus") || undefined;
     const search = searchParams.get("search") || undefined;
     const { limit, offset } = safePagination(searchParams.get("limit"), searchParams.get("offset"));
 
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest) {
     }
 
     const result = await tenantService.getAllTenants({
-      status, accessMode, search, ownerId: scope.owner_id, limit, offset,
+      status, accessMode, acceptanceStatus, search, ownerId: scope.owner_id, limit, offset,
       hostelId,
     });
 

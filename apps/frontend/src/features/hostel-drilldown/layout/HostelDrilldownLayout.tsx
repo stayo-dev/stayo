@@ -4,13 +4,14 @@ import { useQuery } from '@tanstack/react-query';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { portfolioService } from '@features/dashboard/api';
 import { queryKeys } from '@lib/queryKeys';
-import { APP_SURFACE } from '@shared/ui/surface';
+import { APP_SURFACE, APP_GRID } from '@shared/ui/surface';
+import { useIsDesktop } from '@/app/components/ui/use-desktop';
 
 const TABS = [
   { to: 'overview', label: 'Overview' },
   { to: 'rooms', label: 'Rooms' },
   { to: 'tenants', label: 'Tenants' },
-  { to: 'marketing', label: 'Marketing' },
+  // 'marketing' (the Stayo Discover listing editor) was removed in v1 — ADR-170.
   { to: 'settings', label: 'Settings' },
 ];
 
@@ -25,7 +26,7 @@ const TABS = [
  * by navigation is the same protection the backend's architectural invariants
  * enforce server-side (never fall back to "first hostel").
  *
- * The tab row scrolls. Five fixed-width tabs need more than a 360px phone has,
+ * The tab row scrolls. Fixed-width tabs can need more than a 360px phone has,
  * and a row that overflows silently is how the tenant nav hid its sixth tab
  * entirely — see [[Bugs]] 2026-08-30. `snap-x` plus a visible edge keeps the
  * overflow discoverable rather than invisible.
@@ -33,6 +34,7 @@ const TABS = [
 export function HostelDrilldownLayout() {
   const { hostelId } = useParams<{ hostelId: string }>();
   const navigate = useNavigate();
+  const isDesktop = useIsDesktop();
 
   const portfolioQuery = useQuery({
     queryKey: queryKeys.portfolio.summary(),
@@ -46,15 +48,21 @@ export function HostelDrilldownLayout() {
 
   return (
     <ThemeProvider theme="product">
-      <div className={APP_SURFACE}>
-        <div className="flex items-center gap-2.5 px-4 pb-1.5 pt-6 sm:px-6">
-          <button type="button" onClick={() => navigate('/owner/home')} aria-label="Back" className="flex h-8.5 w-8.5 flex-none items-center justify-center rounded-full border border-border bg-card">
-            <ArrowLeft className="h-4 w-4 text-muted-foreground" strokeWidth={1.9} />
-          </button>
-          <span className="text-[13px] font-medium text-muted-foreground">Properties</span>
-        </div>
+      {/* Desktop (lg+, ADR-171 Phase 2.3): rendered as the right pane of the
+          Hostels master-detail, so the 480px APP_FRAME is dropped and the
+          "back to Properties" row is redundant beside the always-visible list.
+          Below lg it is the unchanged full-screen takeover. */}
+      <div className={isDesktop ? `min-h-screen bg-background ${APP_GRID}` : APP_SURFACE}>
+        {!isDesktop && (
+          <div className="flex items-center gap-2.5 px-4 pb-1.5 pt-6 sm:px-6">
+            <button type="button" onClick={() => navigate('/owner/home')} aria-label="Back" className="flex h-8.5 w-8.5 flex-none items-center justify-center rounded-full border border-border bg-card">
+              <ArrowLeft className="h-4 w-4 text-muted-foreground" strokeWidth={1.9} />
+            </button>
+            <span className="text-[13px] font-medium text-muted-foreground">Properties</span>
+          </div>
+        )}
 
-        <div className="px-4 pb-2.5 pt-1 sm:px-6">
+        <div className={isDesktop ? 'px-4 pb-2.5 pt-6 sm:px-6' : 'px-4 pb-2.5 pt-1 sm:px-6'}>
           <h1 className="font-display text-[21px] font-extrabold tracking-tight text-foreground">{card?.name ?? 'Hostel'}</h1>
           <div className="mt-1 flex items-center gap-1.5">
             <span className={`h-1.5 w-1.5 rounded-full ${isRunning === false ? 'bg-muted-foreground' : 'bg-success'}`} />
@@ -64,7 +72,14 @@ export function HostelDrilldownLayout() {
           </div>
         </div>
 
-        <div className="flex gap-5 overflow-x-auto border-b border-border px-4 [scrollbar-width:none] sm:gap-5.5 sm:px-6 [&::-webkit-scrollbar]:hidden">
+        {/* At `lg+` (ADR-171 Phase 2.7) this tab row is the drilldown pane's
+            sticky header — it stays put while a tab's content scrolls under it.
+            Below `lg` the string is unchanged: a plain scrolling border-b row. */}
+        <div
+          className={`flex gap-5 overflow-x-auto border-b border-border px-4 [scrollbar-width:none] sm:gap-5.5 sm:px-6 [&::-webkit-scrollbar]:hidden${
+            isDesktop ? ' sticky top-0 z-10 bg-background' : ''
+          }`}
+        >
           {TABS.map((t) => (
             <NavLink
               key={t.to}

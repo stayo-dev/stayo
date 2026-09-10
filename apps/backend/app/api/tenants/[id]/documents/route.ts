@@ -6,19 +6,8 @@ import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { backendUrl } from "@/lib/config/domains";
 import { currentAgreementWhere } from "@/src/services/tenants/agreement-status";
-
-const requiredDocumentTypes = (profileType?: string | null) => {
-  const type = String(profileType || "STUDENT").toUpperCase();
-  return type === "WORKING_PROFESSIONAL" ? ["AADHAAR", "WORK_ID"] : ["AADHAAR", "COLLEGE_ID"];
-};
-
-function publicDocument(doc: any, tenantId: string) {
-  const { file_url, file_path, file_id, ...safeDoc } = doc;
-  return {
-    ...safeDoc,
-    download_url: backendUrl(`/api/tenants/${tenantId}/documents/${doc.id}/download`),
-  };
-}
+import { requiredKycDocTypes as requiredDocumentTypes } from "@/src/services/tenants/kyc-status";
+import { publicDocument } from "@/src/services/tenants/identification-document-service";
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {

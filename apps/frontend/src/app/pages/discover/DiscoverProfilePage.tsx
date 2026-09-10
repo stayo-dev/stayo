@@ -159,6 +159,7 @@ export function DiscoverProfilePage() {
         className="sticky top-0 z-20 px-5 pb-3.5 pt-[max(2.5rem,env(safe-area-inset-top))] backdrop-blur-md"
         style={{ background: 'rgba(247,243,239,.88)', borderBottom: `1px solid ${C.line}` }}
       >
+        <div className="lg:mx-auto lg:w-full lg:max-w-[640px]">
         {/* Only when the viewer arrived from somewhere with no way back. This
             hub is normally a bottom-nav destination and needs no back control;
             a tenant sent here from their Dashboard has no nav at all. */}
@@ -191,9 +192,10 @@ export function DiscoverProfilePage() {
             </p>
           </div>
           </div>
+        </div>
       </header>
 
-      <div className="space-y-5 px-5 pb-10 pt-4">
+      <div className="space-y-5 px-5 pb-10 pt-4 lg:mx-auto lg:w-full lg:max-w-[640px] lg:px-8 lg:pt-8">
         {/*
           ONE hero, chosen by `heroMode`. The page used to stack the portable-
           profile pitch on top of the card naming the room someone already

@@ -13,6 +13,7 @@ import { AgreementStep } from './steps/AgreementStep';
 import { WelcomeIdentityStep, type ProfileDraft } from './steps/WelcomeIdentityStep';
 import { PasswordActivateStep } from './steps/PasswordActivateStep';
 import { WelcomeSummaryStep } from './steps/WelcomeSummaryStep';
+import { kycDocLabel, missingKycDocs, type OnboardingDocItem } from './onboardingKyc';
 import {
   activationMessages,
   clearProfileDraft,
@@ -66,6 +67,11 @@ export function ActivationPage() {
   const [profileDraftStatus, setProfileDraftStatus] = useState<'idle' | 'restored' | 'saving' | 'saved'>('idle');
   const [photoUploading, setPhotoUploading] = useState(false);
   const [paymentFrequency, setPaymentFrequency] = useState('MONTHLY');
+  // KYC documents collected on the Identity step (auto-upload, PENDING, never
+  // blocks onboarding on owner approval).
+  const [docItems, setDocItems] = useState<OnboardingDocItem[]>([]);
+  const [docUploading, setDocUploading] = useState<string | null>(null);
+  const [docErrors, setDocErrors] = useState<Record<string, string>>({});
   const [welcomeLocalPhase, setWelcomeLocalPhase] = useState<'welcome' | 'identity'>('welcome');
   /** Last ACCOUNT-submit failure, surfaced inline under the OTP box (design's `otpError` row). */
   const [accountOtpError, setAccountOtpError] = useState('');
@@ -129,6 +135,7 @@ export function ActivationPage() {
       const draft = readProfileDraft(key);
       setCtx(data);
       setPaymentFrequency(String(data?.tenant?.payment_frequency || 'MONTHLY'));
+      setDocItems(Array.isArray(data?.documents?.items) ? data.documents.items : []);
       setProfilePhotoPreview(String(data.tenant?.photo_url || draft?.photoUrl || ''));
       setInvalid(false);
       setInvalidCode('');
@@ -192,16 +199,6 @@ export function ActivationPage() {
     loadContext();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
-
-  // `resolveByToken` throws `CLAIM_REQUIRED` for a superseded invitation
-  // whose tenancy the owner has since started keeping records for directly
-  // (`tenant-invitation-lifecycle-service.ts`) -- the most likely way a real
-  // tenant reaches the claim flow. This is a dead activation link, not a
-  // dead end: send them to /claim instead of the generic "unavailable"
-  // screen below (which still renders once for anything else invalid).
-  useEffect(() => {
-    if (invalidCode === 'CLAIM_REQUIRED') navigate('/claim', { replace: true });
-  }, [invalidCode, navigate]);
 
   const currentStep = ctx?.current_step ?? ctx?.activation_state?.current_step;
   const completed = new Set(ctx?.completed_steps ?? ctx?.activation_state?.completed_steps ?? []);
@@ -421,6 +418,37 @@ export function ActivationPage() {
     }
   };
 
+  const handleDocUpload = async (docType: string, file?: File) => {
+    if (!file) return;
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+    if (!allowed.includes(file.type)) {
+      setDocErrors((prev) => ({ ...prev, [docType]: 'Use a JPG, PNG, WEBP, or PDF file' }));
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setDocErrors((prev) => ({ ...prev, [docType]: 'File must be under 5MB' }));
+      return;
+    }
+    setDocErrors((prev) => {
+      const next = { ...prev };
+      delete next[docType];
+      return next;
+    });
+    setDocUploading(docType);
+    try {
+      await tenantService.uploadActivationDocument(token, docType, file);
+      const fresh = await tenantService.getActivationDocuments(token);
+      setDocItems(Array.isArray(fresh?.items) ? fresh.items : []);
+    } catch (err: any) {
+      setDocErrors((prev) => ({
+        ...prev,
+        [docType]: err?.response?.data?.error?.message || err?.message || 'Upload failed — please try again',
+      }));
+    } finally {
+      setDocUploading(null);
+    }
+  };
+
   const submitProfile = async (): Promise<boolean> => {
     if (isStudent) {
       if (!profile.guardian_name?.trim()) {
@@ -448,6 +476,13 @@ export function ActivationPage() {
     }
     if (!profilePhotoFile && !profilePhotoPreview) {
       setError('Profile photo is required');
+      return false;
+    }
+    // Documents must be uploaded to continue — but only uploaded. Owner
+    // verification runs separately and never blocks onboarding.
+    const missingDocs = missingKycDocs(profile.profile_type, docItems);
+    if (missingDocs.length > 0) {
+      setError(`Please upload your ${missingDocs.map(kycDocLabel).join(' and ')} to continue.`);
       return false;
     }
 
@@ -490,19 +525,6 @@ export function ActivationPage() {
           </div>
         </div>
       </div>
-      </ThemeProvider>
-    );
-  }
-
-  if (invalidCode === 'CLAIM_REQUIRED') {
-    // The redirect effect above fires on the same render this becomes true;
-    // this just avoids a one-frame flash of "Invitation unavailable" while
-    // it does.
-    return (
-      <ThemeProvider theme="product">
-        <div className="min-h-screen bg-background flex items-center justify-center px-4">
-          <StayoLoader size="lg" className="text-accent" />
-        </div>
       </ThemeProvider>
     );
   }
@@ -586,7 +608,10 @@ export function ActivationPage() {
             otpCountdown={otpCountdown}
             onSendOtp={handleSendOtp}
             paymentFrequency={paymentFrequency}
-            setPaymentFrequency={setPaymentFrequency}
+            docItems={docItems}
+            docUploading={docUploading}
+            docErrors={docErrors}
+            onDocUpload={handleDocUpload}
             profile={profile}
             setProfile={setProfile}
             isGuardianPhoneVerified={Boolean(isGuardianPhoneVerified)}

@@ -2,7 +2,15 @@ import { prisma } from "../../lib/db";
 import { Prisma } from "@prisma/client";
 import { PAYABLE_STATUSES } from "../services/payments/settlement-planner";
 
-export class BillingRepository {
+export /**
+ * Just the slice of the Prisma client these reads need — satisfied by the
+ * global client and by a `$transaction` callback's `tx` alike. Typed as a
+ * `Pick` rather than `any` so `findMany`'s inferred row type, which
+ * `getTenantDues` maps over, survives.
+ */
+type ObligationReadClient = Pick<typeof prisma, "rent_obligations">;
+
+class BillingRepository {
   async getOperationalCashflowMetrics(ownerId: string, start: Date, end: Date, hostelId: string) {
     const now = new Date();
     const todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -218,6 +226,79 @@ export class BillingRepository {
     `;
   }
 
+  /**
+   * RENT obligations that are activated (PENDING/PARTIAL) and NOT yet overdue —
+   * due today or within the next `maxBeforeDays` days. Feeds the before-due /
+   * due-day reminder pass. Mirrors getOperationalOverdueObligations but for the
+   * forward window; `UPCOMING` (future-period, not-yet-activated) rows stay
+   * excluded because their due date is not yet actionable.
+   */
+  async getOperationalUpcomingObligations(asOfDate: Date, ownerId: string, hostelId: string, maxBeforeDays: number) {
+    const today = new Date(Date.UTC(asOfDate.getUTCFullYear(), asOfDate.getUTCMonth(), asOfDate.getUTCDate()));
+    const horizon = new Date(today.getTime() + Math.max(0, Math.floor(maxBeforeDays)) * 86_400_000);
+
+    return await prisma.$queryRaw<Array<{
+      obligation_id: string;
+      tenant_id: string;
+      owner_id: string;
+      hostel_id: string | null;
+      allocation_id: string | null;
+      rent_month: Date;
+      billing_period_start: Date | null;
+      billing_period_end: Date | null;
+      installment_label: string | null;
+      installment_sequence: number | null;
+      billing_plan_id: string | null;
+      due_date: Date;
+      amount: number;
+      remaining_amount: number;
+      tenant_name: string | null;
+      personal_email: string | null;
+      phone: string | null;
+      late_fee: number;
+      total_amount: number;
+      access_mode: string | null;
+    }>>`
+      SELECT
+        o.id                                                AS obligation_id,
+        o.tenant_id,
+        o.owner_id,
+        o.hostel_id                                         AS hostel_id,
+        o.allocation_id,
+        o.rent_month,
+        o.billing_period_start,
+        o.billing_period_end,
+        o.installment_label,
+        o.installment_sequence,
+        o.billing_plan_id,
+        o.due_date,
+        o.total_amount::float                               AS amount,
+        o.late_fee::float                                   AS late_fee,
+        o.total_amount::float                               AS total_amount,
+        (o.total_amount - COALESCE(pay_agg.total_paid, 0))::float AS remaining_amount,
+        CASE WHEN t.profile_id IS NULL THEN t.display_name ELSE p.name END  AS tenant_name,
+        t.personal_email,
+        CASE WHEN t.profile_id IS NULL THEN t.phone_1 ELSE p.phone END      AS phone,
+        t.access_mode                                       AS access_mode
+      FROM rent_obligations o
+      JOIN tenants t ON t.id = o.tenant_id
+      LEFT JOIN profiles p ON p.id = t.profile_id
+      LEFT JOIN (
+        SELECT obligation_id, SUM(amount_paid)::float AS total_paid
+        FROM payments
+        GROUP BY obligation_id
+      ) pay_agg ON pay_agg.obligation_id = o.id
+      WHERE o.status IN ('PENDING', 'PARTIAL')
+        AND o.obligation_type = 'RENT'
+        AND o.due_date >= ${today}::date
+        AND o.due_date <= ${horizon}::date
+        AND o.is_superseded = false
+        AND o.total_amount - COALESCE(pay_agg.total_paid, 0) > 0
+        AND o.owner_id = ${ownerId}::uuid
+        AND o.hostel_id = ${hostelId}::uuid
+    `;
+  }
+
   async getHistoricalOutstanding(ownerId: string, hostelId: string) {
     const now = new Date();
     const todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -251,8 +332,21 @@ export class BillingRepository {
     `;
   }
 
-  async getTenantPendingObligations(tenantId: string, ownerId: string | undefined, hostelId: string) {
-    return await prisma.rent_obligations.findMany({
+  /**
+   * @param client Read through an open transaction when the caller is inside
+   * one. `createInvitation` creates a tenant's obligations and then checks a
+   * payment against them in the same transaction; on the global client that
+   * read cannot see its own uncommitted rows, reports nothing owed, and
+   * refuses the payment. Defaults to the global client, which is correct for
+   * every caller reading committed state.
+   */
+  async getTenantPendingObligations(
+    tenantId: string,
+    ownerId: string | undefined,
+    hostelId: string,
+    client: ObligationReadClient = prisma,
+  ) {
+    return await client.rent_obligations.findMany({
       where: {
         tenant_id: tenantId,
         ...(ownerId ? { owner_id: ownerId } : {}),

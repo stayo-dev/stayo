@@ -140,7 +140,7 @@ export function MoreConfigAgreementEditorPage() {
 
   if (isLoading || !draft) {
     return (
-      <div className="flex flex-col gap-4 px-4 pt-6 sm:px-6">
+      <div className="flex flex-col gap-4 px-4 pt-6 sm:px-6 lg:mx-auto lg:w-full lg:max-w-[760px] lg:px-0 lg:pt-8">
         <MoreScreenHeader title="Agreement" />
         <div className="h-72 animate-pulse rounded-2xl bg-muted" />
       </div>
@@ -150,7 +150,7 @@ export function MoreConfigAgreementEditorPage() {
   const categories = draft.categories ?? [];
 
   return (
-    <div className="flex flex-col gap-4 px-4 pb-28 pt-6 sm:px-6">
+    <div className="flex flex-col gap-4 px-4 pb-28 pt-6 sm:px-6 lg:mx-auto lg:w-full lg:max-w-[760px] lg:px-0 lg:pt-8">
       <MoreScreenHeader
         title="Agreement"
         subtitle={

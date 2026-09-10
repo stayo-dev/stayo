@@ -7,11 +7,7 @@ import { getSession } from "@/lib/auth";
 import { eventLog } from "@/lib/services/event-log-service";
 import { backendUrl } from "@/lib/config/domains";
 import crypto from "crypto";
-
-const requiredDocumentTypes = (profileType?: string | null) =>
-  String(profileType || "STUDENT").toUpperCase() === "WORKING_PROFESSIONAL"
-    ? ["AADHAAR", "WORK_ID"]
-    : ["AADHAAR", "COLLEGE_ID"];
+import { requiredKycDocTypes, recomputeDocumentVerified } from "@/src/services/tenants/kyc-status";
 
 export async function PATCH(
   req: NextRequest,
@@ -39,41 +35,45 @@ export async function PATCH(
     if (!doc.is_active) {
       return NextResponse.json({ error: { message: "Archived documents cannot be verified" } }, { status: 409 });
     }
-    if (!requiredDocumentTypes(doc.tenant.profile_type).includes(doc.doc_type)) {
+    if (!requiredKycDocTypes(doc.tenant.profile_type).includes(doc.doc_type)) {
       return NextResponse.json({ error: { message: "This document type is not required for this tenant" } }, { status: 400 });
     }
 
-    const updatedDoc = await prisma.identificationDocument.update({
-      where: { id: docId },
-      data: {
-        document_status: "APPROVED",
-        is_verified: true,
-        approved_by: session.sub,
-        approved_at: new Date(),
-      },
-    });
-
-    // Notify the tenant
-    await prisma.notifications.create({
-      data: {
-        id: crypto.randomUUID(),
-        profile_id: doc.tenant.profile_id,
-        title: "Document Approved",
-        message: `Your uploaded ${doc.doc_type} has been verified and approved by the owner.`,
-        type: "INFO",
-      },
-    });
-
-    // Check if all active documents are verified, then set document_verified status
-    const allDocs = await prisma.identificationDocument.findMany({
-      where: { tenant_id: tenantId, is_active: true, doc_type: { in: requiredDocumentTypes(doc.tenant.profile_type) } },
-    });
-    const allVerified = allDocs.length === requiredDocumentTypes(doc.tenant.profile_type).length && allDocs.every((d) => d.is_verified);
-    if (allVerified) {
-      await prisma.tenants.update({
-        where: { id: tenantId },
-        data: { document_verified: true },
+    const result = await prisma.$transaction(async (tx) => {
+      // Conditional write: only a still-PENDING active row transitions. A
+      // concurrent Approve/Reject from another tab loses this race and gets a
+      // 409 rather than silently flipping an already-decided document.
+      const applied = await tx.identificationDocument.updateMany({
+        where: { id: docId, is_active: true, document_status: "PENDING" },
+        data: {
+          document_status: "APPROVED",
+          is_verified: true,
+          approved_by: session.sub,
+          approved_at: new Date(),
+        },
       });
+      if (applied.count === 0) return { conflict: true as const };
+
+      await tx.notifications.create({
+        data: {
+          id: crypto.randomUUID(),
+          profile_id: doc.tenant.profile_id,
+          title: "Document Approved",
+          message: `Your uploaded ${doc.doc_type} has been verified and approved by the owner.`,
+          type: "INFO",
+        },
+      });
+
+      const documentVerified = await recomputeDocumentVerified(tx, tenantId);
+      const updatedDoc = await tx.identificationDocument.findUnique({ where: { id: docId } });
+      return { conflict: false as const, updatedDoc, documentVerified };
+    });
+
+    if (result.conflict) {
+      return NextResponse.json(
+        { error: { message: "This document has already been reviewed. Refresh to see its current status." } },
+        { status: 409 },
+      );
     }
 
     await eventLog.log("document_verified", doc.tenant.owner_id || null, {
@@ -83,11 +83,12 @@ export async function PATCH(
       approved_by: session.sub,
     }, tenantId);
 
-    const { file_url, file_path, file_id, ...safeDoc } = updatedDoc;
+    const { file_url, file_path, file_id, ...safeDoc } = result.updatedDoc as any;
     return NextResponse.json({
       success: true,
       data: {
         ...safeDoc,
+        document_verified: result.documentVerified,
         download_url: backendUrl(`/api/tenants/${tenantId}/documents/${docId}/download`),
       },
     });

@@ -8,9 +8,17 @@ import { PAYMENT_DOMAIN } from "@/src/services/payments/financial-domain";
 
 export async function GET(req: NextRequest) {
   try {
-    // Vercel Cron Security: Ensure the request comes from Vercel
+    // Vercel Cron Security: Ensure the request comes from Vercel.
+    // Fails CLOSED — an unset CRON_SECRET must not leave this endpoint public.
     const authHeader = req.headers.get("authorization");
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    const cronSecret = process.env.CRON_SECRET;
+
+    if (!cronSecret) {
+      console.error("[cron.reconcile-payments] CRON_SECRET not configured");
+      return new NextResponse("Server misconfigured", { status: 500 });
+    }
+
+    if (authHeader !== `Bearer ${cronSecret}`) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 

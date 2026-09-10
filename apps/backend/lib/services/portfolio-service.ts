@@ -20,6 +20,10 @@ export interface HostelCard {
   is_stale: boolean;
   /// Owner-controlled Home ordering. `null` means never reordered — see ADR-042.
   display_order: number | null;
+  /// Who the hostel takes. `null` means the owner has not been asked yet, which
+  /// is what the Hostels tab prompts for — and while it is null, every tenant of
+  /// this hostel is asked their gender during onboarding.
+  hostel_type: string | null;
 }
 
 export interface PortfolioSummary {
@@ -43,7 +47,7 @@ export class PortfolioService {
   async getPortfolioSummary(ownerId: string, includeArchived = false): Promise<PortfolioSummary> {
     const hostels = await prisma.hostels.findMany({
       where: { owner_id: ownerId, ...(includeArchived ? {} : { status: { in: ["ACTIVE", "INACTIVE"] } }) },
-      select: { id: true, name: true, city: true, is_active: true, status: true, display_order: true },
+      select: { id: true, name: true, city: true, is_active: true, status: true, display_order: true, hostel_type: true },
       // NULLs last, then name — so a hostel the owner has never reordered keeps
       // exactly the position it had before display_order existed, and a newly
       // created hostel appends rather than jumping to the top. See ADR-042.
@@ -97,6 +101,7 @@ export class PortfolioService {
         overdue_count:     overdueCount,
         collection_rate:   collectionRate,
         display_order:     h.display_order,
+        hostel_type:       h.hostel_type ?? null,
         snapshot_date:     typeof s.snapshot_date === "string"
           ? s.snapshot_date
           : today.toISOString().slice(0, 10),

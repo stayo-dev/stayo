@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { backendUrl } from "@/lib/config/domains";
+import { requiredKycDocTypes } from "@/src/services/tenants/kyc-status";
 
 export async function GET(req: NextRequest) {
   try {
@@ -60,10 +61,7 @@ export async function GET(req: NextRequest) {
     });
 
     const items = documents.map((doc) => {
-      const requiredTypes = String(doc.tenant.profile_type || "STUDENT").toUpperCase() === "WORKING_PROFESSIONAL"
-        ? ["AADHAAR", "WORK_ID"]
-        : ["AADHAAR", "COLLEGE_ID"];
-      if (!requiredTypes.includes(doc.doc_type)) return null;
+      if (!requiredKycDocTypes(doc.tenant.profile_type).includes(doc.doc_type)) return null;
       const activeAlloc = doc.tenant.room_allocations[0];
       return {
         id: doc.id,

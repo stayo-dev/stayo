@@ -14,16 +14,16 @@ describe('buildOuterTabs', () => {
     expect(tabs.find((t) => t.to === '/profile')?.label).toBe('Profile');
   });
 
-  it('keeps Explore alongside it either way', () => {
+  it('is Profile-only without a live tenancy (Explore was dropped in v1 — ADR-170)', () => {
     for (const signedIn of [true, false]) {
       const tabs = buildOuterTabs({ signedIn, liveTenancy: false });
-      expect(tabs.map((t) => t.to)).toEqual(['/discover', '/profile']);
+      expect(tabs.map((t) => t.to)).toEqual(['/profile']);
     }
   });
 
   it('uses the full tenant bar once there is a live tenancy', () => {
     const tabs = buildOuterTabs({ signedIn: true, liveTenancy: true });
-    expect(tabs).toHaveLength(6);
+    expect(tabs).toHaveLength(5);
     expect(tabs.find((t) => t.to === '/profile')?.label).toBe('Profile');
   });
 

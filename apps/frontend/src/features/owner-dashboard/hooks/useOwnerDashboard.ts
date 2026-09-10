@@ -145,6 +145,10 @@ export function useOwnerDashboard() {
         outstandingValue: h.pending_dues,
         displayOrder: h.display_order ?? null,
         status: h.status,
+        // Null until the owner answers "who stays here?". Drives the Hostels
+        // tab's prompt, and decides whether every tenant of this hostel is
+        // asked their gender during onboarding.
+        hostelType: (h as any).hostel_type ?? null,
         activeTenants: h.active_tenants,
         // Zero beds means no rooms exist yet — the signal that a hostel's
         // build was never finished. Derived, not a stored setup flag.

@@ -8,6 +8,191 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-09 — Every portal in the owner and tenant apps rendered in the previous project's brand (fixed)
+
+**Symptom.** Reported by the product owner as "entirely off branded", with screenshots: the owner dashboard in Stayo clay and Manrope, and directly on top of it the **Invite Tenant** bottom sheet and the **Getting Started** orientation spotlight in a **navy** primary with a **serif** display face. Both surfaces are written entirely against the design tokens (`bg-primary`, `font-display`) — nothing in either file names a colour.
+
+**Root cause — the unscoped `:root` was still the previous project's theme, and portals always resolve it.** `styles/theme.css` held the pre-Stayo single-hostel palette and type pair at `:root`; the Stayo tokens lived only under `[data-app-theme="marketing"|"product"]`, introduced deliberately *beside* the old set (`stayo-theme.css`'s own comment says so) to avoid restyling unmigrated screens in one go. `ThemeProvider` stamps that attribute on a wrapper element **and** on `<html>` — the second one specifically so portals are covered, since a `vaul` drawer (`BottomSheet`) or a `createPortal` overlay (`Spotlight`) renders under `<body>`, outside the wrapper's DOM subtree, and CSS custom properties cascade through the DOM tree rather than the React tree. When `<html>` lost the attribute, the page kept its brand (wrapper intact) and only portals fell through — producing exactly the two-brands-at-once screenshot rather than a wholly wrong page, which is why it read as "the sheet is broken" rather than "the theme is off".
+
+**Why `<html>` lost it.** The sync was save-and-restore: capture the previous value at mount, put it back on unmount. That is unsound while two providers overlap, which happens briefly on a route change between a marketing shell and a product shell — the outgoing shell's cleanup restored what *it* saw at its own mount time and deleted the attribute the incoming shell had just set.
+
+**This is the fourth instance of the same mechanism.** The un-wrapped `LandingPage` ([[Changelog]] 2026-07-24), `PendingActivationsPage` (below, 2026-08-12), the admin console rendering the wrong display face ([[Decisions#ADR-080|ADR-080]]), and now every portal. In each case a screen written correctly against tokens rendered somewhere the Stayo tokens did not reach, and the failure was silent because the fallback was a complete, plausible-looking theme.
+
+**Fix — remove the fallback rather than wrap around it.** `:root` now carries the Stayo product palette and Manrope + Inter, so no surface can resolve the old identity; the legacy alias variables and ~130 hard-coded fossil hexes are deleted from the source; `ThemeProvider`'s `<html>` sync is a mounted-provider stack, so the last provider wins regardless of cleanup order; and `scripts/check-brand-fossils.mjs` fails the build if any retired value reappears. See [[Decisions#ADR-172|ADR-172]].
+
+**Not verified in a running browser.** The mechanism is established from the code and from the built CSS (`dist/` has zero fossil values, `:root{--primary:#b46a55}`), but no dev server or authenticated session was exercised, so the specific sequence that left `<html>` unscoped in the reported screenshots is **inferred, not observed**. The removal of the fallback makes the outcome correct either way; the stack fix addresses the mechanism.
+
+## 2026-09-08 — Rent generation billed a departed tenant because its exit filter reads the one field a future-dated move-out never writes (fixed)
+
+**Symptom.** A tenant whose exit date had passed was billed for a further month, on a bed that had already been released — the fault [[Decisions#ADR-177|ADR-177]] identified as a cron race and mitigated with a 30-minute scheduling gap.
+
+**Root cause — not the absence of a filter, but a filter aimed at the wrong column.** ADR-177 and the 2026-09-06 entry below both record that `generate-rent` has "no exit-date filter of any kind". That is wrong, and the truth is more interesting: `rent-generation-service.ts` selects allocations with `is_active: true` and `OR: [{ end_date: null }, { end_date: { gte: rentMonth } }]`. The filter exists. It is defeated by an explicit branch in the write path — `move-out-service.ts` `vacate()` tests `isFutureExit` and, for a future-dated exit, deliberately does **not** close the allocation:
+
+> `// Future exit: do NOT terminate allocation and do NOT mark as FORMER_TENANT yet.`
+
+so the allocation keeps `is_active: true` and `end_date: null`, the tenant keeps `status: "ACTIVE"`, and only `tenants.exit_date` is written. The departed tenant matches `end_date: null` and is billed. Every condition in the query is satisfied by design.
+
+**Why it hid.** The query *looks* correct in isolation — it reads as move-out-aware, and it is, for the immediate-exit path where `vacate()` does close the allocation. Only the future-exit branch, in a different service, makes it a no-op. Nothing types or tests the join between the field a write path populates and the field a read path filters on: this is the same shape as the `hostel_type` round-trip bug of 2026-09-02, where a column correct on the write path was absent from a reader's projection.
+
+**Fix.** [[Decisions#ADR-178|ADR-178]] filters on `tenants.exit_date` — the field the future-exit branch actually writes — mirroring the `end_date` clause so proration is unchanged. Rent generation is now correct regardless of when, or whether, `move-out-releases` has run, which retires the cron-ordering constraint as the thing standing between an owner and a wrong invoice. **Not verified against Postgres** — no `DATABASE_URL_TEST` in this environment — so the predicate is reasoned and typechecked, not exercised.
+
+## 2026-09-06 — A scheduled job called a route that had not existed for twelve days, and a second pair raced each other nightly (fixed)
+
+**Symptom.** Two independent scheduling faults, both invisible because nothing watches cron output.
+
+**(1) A daily 404.** `.github/workflows/backend-cron.yml` ran `/api/cron/food-carry-forward` at `0 4 * * *`. That route was renamed to `food-expiry` on 2026-08-25 ([[Decisions#ADR-114|ADR-114]]) when its schedule-cloning responsibility was removed. The rename correctly updated the route, [[Food]], [[APIs]] and `vercel.json` — but not the workflow, which kept calling the old path, taking a 404 and failing its job every night for twelve days. **No user impact**: the surviving work (closing expired voting periods and polls) had moved to `food-expiry` on Vercel Cron and kept running. The cost was a permanently red Actions tab, which is itself the reason nobody noticed.
+
+**(2) A nightly race on rent.** `generate-rent` (Vercel) and `move-out-releases` (GitHub Actions) were both scheduled at `30 18 * * *` — the same minute, on two runners, with no ordering between them. `generate-rent` bills every allocation whose tenant is `ACTIVE` and has **no exit-date filter anywhere in the route**. `move-out-releases` is the only thing that flips a past-exit-date tenant to `FORMER_TENANT`: `move-out-service.ts:467` closes an *immediate* exit inline, but a **future-dated** exit is deliberately left `ACTIVE` with a live allocation, and `tenant-service.ts:1539` hard-blocks setting `FORMER_TENANT` directly. Whenever rent generation won the race, a tenant whose exit date had just passed was billed for a further month on a room that had not been released.
+
+**Root cause, shared.** Two schedulers with no shared source of truth — `vercel.json` and a GitHub Actions workflow — plus a registry (`docs/operations/cron-registry.md`) that had not been updated since the initial commit while `vercel.json` changed five times. The registry listed neither the workflow's existence nor three jobs that were actually scheduled, and asserted a rule (*"do not introduce GitHub Actions"*) that the repo had contradicted from its first commit. Nothing validated that a scheduled endpoint resolves to a route, and nothing alerted on a failing run.
+
+**Fix.** [[Decisions#ADR-177|ADR-177]] trims the schedule to the six MVP jobs, deletes the dead entry, and moves `move-out-releases` to `0 18 * * *` — a deliberate 30-minute lead over `generate-rent`, sized to absorb GitHub's best-effort scheduling delay. The registry is rewritten against the actual schedulers and now requires confirming `app/api/cron/<name>/route.ts` exists and exports `GET` before adding a workflow entry. **Still open:** no alerting on cron failure at all, on either runner — which is what let both of these run unnoticed. See [[TODO]].
+
+## 2026-09-02 — `document_verified` could be true with documents missing, pending, rejected, or for the wrong profile type (fixed)
+
+**Symptom.** `tenants.document_verified` — the flag four surfaces derive KYC status from — could be `true` when the tenant had not actually cleared KYC.
+
+**Root causes (several).** (1) `PATCH /api/tenants/:id/documents/bulk-verify` set `document_verified: true` from `activeDocs.length > 0` — one uploaded document of any type was enough. (2) `MARK_DOCUMENTS_VERIFIED` (`compliance-action`) approved *every* active document and set the flag from `docs.count > 0`, ignoring which types were required — a pure bypass. (3) Changing `profile_type` (STUDENT ⇄ WORKING_PROFESSIONAL) never recomputed the flag, so a student verified on **College ID** stayed "verified" as a Working Professional, whose required set is Aadhaar + **Work ID**. (4) `requiredDocumentTypes(profile_type)` was copy-pasted into ~12 routes/services, each deriving the flag slightly differently, so there was no single correct definition to fix.
+
+**Fix.** One module, `src/services/tenants/kyc-status.ts`: `requiredKycDocTypes` / `isKycComplete` / `describeKycGap`, and `recomputeDocumentVerified(tx, tenantId)` as the **only** writer of the flag after invitation creation — `true` only when every required type has an **active, APPROVED** document. Every approve/reject/upload/`profile_type`-change path calls it inside its transaction. `bulk-verify` and `MARK_DOCUMENTS_VERIFIED` share `approveRequiredActiveKycDocs`: approve only required active types, `409 INCOMPLETE_KYC` when a required type has no active row. See [[Decisions#ADR-169|ADR-169]].
+
+**Also fixed alongside:** two owner tabs could Approve + Reject the same PENDING document (last write won, including `APPROVED → REJECTED`); the review endpoints are now conditional writes on `document_status = "PENDING"` and return `409` on a lost race. And `identification_documents` had only a non-unique `(tenant_id, doc_type, is_active)` index, so concurrent uploads of one type could leave two active rows — migration 080 adds the partial unique index (not yet applied).
+
+**Follow-up (same day): the onboarding Documents UI was built into a dead file.** The first pass added the "Documents" upload section to `src/portal/pages/ActivateAccountPage.tsx` — which has been `@deprecated` and **not routed** since 2026-08-13 (the live wizard is `platforms/tenant/onboarding/ActivationPage.tsx` + `steps/`). So the KYC backend shipped but no real tenant ever saw a document-upload step during onboarding. Fixed by porting the section into the live `steps/WelcomeIdentityStep.tsx` (wiring the already-built `uploadActivationDocument` client + `activate/documents` route + `onboardingKyc.ts`) and reverting `ActivateAccountPage.tsx` to its committed state. Lesson: check `app/router/PublicRoutes.tsx` for which component a route actually mounts before editing a page under `src/portal/` — that tree is a mix of live-and-allowlisted and deprecated-but-kept files.
+
+## 2026-09-02 — Rent generation stopped entirely the moment a second owner onboarded a tenant (fixed)
+
+**Symptom.** An owner tenant profile showed **"Next Payment: Nothing due"** for a tenant on ₹7,500/mo. A live-DB check (`xhoqkhwsnqfwhjsffybs`, "Stayo dev") found the tenant had **zero `rent_obligations` rows** — and so did every active tenant of the *second* of that database's two owners. There were **no September 2026 obligations for anyone**, and `rent_generation_logs` had only two rows ever, both August, both for the first owner.
+
+**Root cause.** `GET /api/cron/generate-rent` called `resolveSingleOperationalOwnerId()`, which returns a value **only when exactly one** owner has an active tenant; otherwise the route returned **HTTP 409 and generated nothing at all**, writing no log. It relied on `RENT_CRON_OWNER_ID` (or `PRIMARY_OWNER_ID` / `PRODUCTION_OWNER_ID`) being set to disambiguate — and it wasn't. The two August runs succeeded only because the first owner was briefly the *only* operational owner; once the second owner's tenant activated (2026-08-31), every nightly run 409'd. `generate-rent` was the **only** cron with a single-owner gate — `rent-reminders`, `agreement-lifecycle`, `daily-briefings`, `move-out-releases` all already sweep every owner.
+
+**Compounding, at onboarding.** `onboarding-financials-service` gates first-obligation creation on `joiningDate <= today` (an exact-date compare), so a tenant created a day or two before their join date got **no** obligation from onboarding either — and it hard-coded `dueDay = 5` regardless of the hostel's configured value.
+
+**Downstream, in the UI.** Even where obligations existed, the owner profile's "Next payment" came from `GET /api/tenants/:id/full` — `rent_obligations { take: 5, orderBy: { due_date: "desc" } }`, no status filter, no payments — so it rendered "Nothing due" whenever those 5 rows were empty or all settled, and for a signed-agreement tenant it read the 5 *furthest-future* rows.
+
+**Also found: the monthly cron could create a duplicate.** Its existence check keyed on `allocation_id + rent_month`, missing the `allocation_id: NULL` rows `onboarding-financials-service` writes — so it produced a second RENT row for the same tenant + month (a tenant in the dev DB had two Aug-2026 RENT rows, one from each path).
+
+**Fix.** The cron iterates all operational owners' hostels (hostel-`id` cursor, unchanged per-hostel lock/ledger/unique-constraint idempotency); the dedup check also matches `tenant_id + rent_month + obligation_type`; `onboarding-financials-service` reads the hostel due day and uses a month-based gate; the owner profile reads `billingTimelineService` (same as the tenant portal) with a projected next installment. See [[Decisions#ADR-167|ADR-167]], [[Changelog]], [[Business-Rules]].
+
+**Not fixed / not verified here.** The multi-owner cron was not run against the live dev database in this change, and the backend DB-integration tests could not run in this environment (`DATABASE_URL_TEST` unset). Whether `RENT_CRON_OWNER_ID` is set in the deployed `stayo-testing` backend, and whether Vercel cron is actually invoking the endpoint on schedule, are open items in [[TODO]].
+
+## 2026-09-02 — `resolveByToken` would have dead-ended every new tenant's own activation link at `ALREADY_ACTIVE` (fixed as part of [[Decisions#ADR-165|ADR-165]])
+
+**What it was.** `resolveByToken`'s status ladder had a rung: `else if (invitation.status === "ACTIVATED" || invitation.tenant.status === "ACTIVE") throw "ALREADY_ACTIVE"`. Since an owner-invited tenancy is `ACTIVE` from the moment it is created, this rung was only survivable because the *prior* rung caught the invitation's `SUPERSEDED` status first and fell through. ADR-165 keeps the invitation `PENDING` (so the expiry/nudge machinery and the re-invite dedup keep working), which means execution now reaches that `else if` — and `tenant.status === "ACTIVE"` is true for every live-but-unaccepted tenancy, so the tenant's own link would report their account as already active and never open the wizard.
+
+**Root cause.** "Has the tenant personally finished onboarding?" was encoded implicitly as `SUPERSEDED` + `OWNER_MANAGED` + a `tenant_owner_attestations` row, and each activation guard read some subset of those proxies; the crudest fallback was `tenant.status === "ACTIVE"`.
+
+**Fix.** An explicit `tenants.acceptance_status` (`PENDING`/`ACCEPTED`), authoritative for new-model rows. The rung now reads `invitation.status === "ACTIVATED" || hasCompletedActivation(entrySubject)`, where `hasCompletedActivation` returns false for `PENDING`. The `SUPERSEDED` fall-through stays for grandfathered rows.
+
+**Lesson.** A status column that means "is this live" was repeatedly asked "is this person done", in four places. The fix was one field that answers only the second question. Not verified against a live database in this environment. See [[Decisions#ADR-165|ADR-165]], [[Business-Rules]].
+
+## 2026-09-02 — Owner edits to a not-yet-accepted tenant's guardian/college fields became change requests nobody could approve (fixed as part of [[Decisions#ADR-165|ADR-165]])
+
+**What it was.** For an owner-managed tenancy (`ACTIVE`, no tenant login), an owner editing a Category-B field (`guardian_name`, `college_name`, `date_of_birth`, …) via `PUT /api/tenants/[id]` produced a pending `change_request` requiring **tenant** approval — which a login-less tenant can never give. The requests piled up silently. The correction window (`isInCorrectionWindow`) didn't apply because it keys on `status === "INVITED"` and the tenancy was `ACTIVE`.
+
+**Fix.** `updateTenant` now hard-rejects a defined `TENANT_ONLY_FIELDS` set while `acceptance_status = PENDING`, with a message naming the fields and telling the owner the tenant must add them after accepting. Grandfathered (`NOT_REQUIRED`) rows keep today's imperfect behaviour — noted here as a residual gap for `name`/`email` on any owner-managed row, a candidate follow-up (auto-expire L2 change requests whose tenant profile has `auth_user_id IS NULL`).
+
+**See:** [[Decisions#ADR-165|ADR-165]], [[Business-Rules]].
+
+## 2026-09-01 — The invite wizard's "already paid" panel never showed the settlement it had already fetched (fixed)
+
+**Symptom.** On the Invite Tenant wizard's Verify step, an owner who had recorded money the tenant already handed over saw a headed "Already paid" box containing one line of placeholder text — *"Working this out…"* — and it never resolved. The network tab showed `POST /api/tenants/invite-settlement-preview` firing and answering correctly.
+
+**Root cause.** `InviteTenantWizard.tsx` rendered `<VerifyStep data agreed setAgreed hostels />` and passed none of `settlementPreview`, `isLoadingSettlementPreview`, `settlementPreviewError`. `useInviteWizard` computes and returns all three; they died at the prop boundary. With all three `undefined`, `display` was `null`, loading was falsy and error was `null`, so every render fell through to the last-resort branch — which exists for the one frame before a first response arrives, and became permanent.
+
+**Why nothing caught it.** The three props were declared **optional** on `VerifyStepProps`, so omitting them was valid TypeScript. The frontend test suite is node-only and renders no components, so no test could observe it either. The panel's own fallback made it look like a slow request rather than a missing wire — the most expensive kind of placeholder, one that is indistinguishable from working.
+
+**Fix.** Pass the three props, and make them **required** — the omission is now a build failure, which is the part that stops this recurring. The panel was also reworked while it was open: it now itemises what the money settles and states the **remaining balance as a rupee figure** (`remaining_outstanding`, straight from the backend's plan — never recomputed here), where it previously ended on a bare month name, "Nov onwards outstanding". An owner reconciling cash against a notebook is checking an amount, not a month. See [[Decisions#ADR-164|ADR-164]], [[Changelog]], [[Features]].
+
+## 2026-09-01 — Inviting a phone number that belongs to an owner failed with an HTTP 500 on the last step (fixed)
+
+**Symptom.** An owner who entered their own mobile number (or another owner's) into the Invite Tenant wizard was told nothing on the Tenant step, filled in all four steps, tapped **Send invite**, and got a generic failure banner. Server-side it was a 500.
+
+**Root cause — a guard in the right place doing the wrong thing.** `owner-managed-tenancy-service.ts` did refuse to reuse a non-`TENANT` profile for a tenancy, but it threw a bare `"ROLE_MISMATCH: …"` string from **inside the invite's write transaction**, at the very last step of `createInvitation`. `ROLE_MISMATCH` was in no route's status map, so the invite route's fallback classified it as `INTERNAL_ERROR` / 500. Meanwhile the pre-submit check that exists precisely to answer this earlier — `previewEligibilityByContact` — selected `{ id: true }` from the profile and never looked at `role`, and an owner account normally holds no tenancies, so every tenancy-shaped rule in `evaluateTenancyEligibility` waved it straight through as eligible.
+
+**Fix.** Account eligibility became the first rule, evaluated ahead of the tenancy rules for exactly that reason, and the profile lookup now selects `role` alongside `id`. The deep guard still stands as a backstop but now throws the structured `TenancyEligibilityError` the routes already know how to serialise, so the submit-time 409 and the debounced pre-submit check render the same card with the same words. `POST /api/leads/[id]/convert-to-invitation` gained the same serialisation, which it had never had. **The rule itself is [[Decisions#ADR-162|ADR-162]]'s, not this fix's:** it is hostel-scoped, so only the asking owner's own account (or an admin) is refused — an owner of a *different* hostel may be a tenant. See [[Decisions#ADR-164|ADR-164]], [[Business-Rules]], [[APIs]].
+## 2026-09-01 — Lead/tenant/invitation identity guards: a missing tenant check, a crashing self-invite, and an over-broad owner/tenant block (fixed)
+
+**Found:** during an audit of the owner→lead→invitation→tenant flow requested specifically to check mobile-as-primary-identity, duplicate-lead, self-invite, and owner/tenant-relationship rules. Not reported by a user — found by tracing the code against the intended business rules.
+
+**Bug 1 — lead creation never checked the `tenants` table at all.** `admissions-service.ts`'s `createDirectLead` and `createLead` deduped only against other `visitor_leads` rows (by `hostel_id` + `student_phone`). A phone number that already had an `ACTIVE` or `INVITED` tenancy at that exact hostel could still be captured as a brand-new lead there, with no check against `tenants` whatsoever. **Fix:** both functions now call `tenancyEligibilityService.hasLiveTenancyAtHostel(phone, hostelId)` before the existing lead-dedup lookup and refuse if it matches. See [[Business-Rules]], [[Decisions#ADR-162|ADR-162]].
+
+**Bug 2 — an owner inviting their own email (different phone) crashed with a raw 500.** Self-invite was blocked only as a side effect of `owner-managed-tenancy-service.ts`'s phone-collision check throwing `ROLE_MISMATCH` when the phone matched an existing non-TENANT profile — which caught the phone case but not the email-only case. Inviting with the owner's own email and an unrelated phone instead hit `profile.create()`'s unhandled `P2002` on `profile.email`'s unique constraint, surfacing as an unhandled server error rather than a validation message. **Fix:** `tenant-invitation-lifecycle-service.ts`'s `createInvitation` now explicitly compares the invited contact against the owner's own registered phone/email immediately after loading the owner's profile, before any write, and throws a clean `VALIDATION_ERROR`.
+
+**Bug 3 — the owner/tenant-relationship check was global-role-scoped, not hostel-scoped, and silently blocked a rule the product wants allowed.** `tenancy-claim-service.ts` and `owner-managed-tenancy-service.ts` refused to bind **any** non-`TENANT`-role profile to a tenancy. That accidentally enforced "an owner cannot become their own hostel's tenant" but, as a side effect neither test nor code comment called out, also refused "an owner of Hostel A may become a tenant of Hostel B" — a combination the product explicitly wants allowed. Root cause: `profile.role` is one global field: `OWNER`, `TENANT`, or `ADMIN`, never both, and the check compared against that field alone instead of against the specific hostel being joined. **Fix:** both checks now compare the matched profile's id against *this tenancy's actual hostel owner* rather than against role alone — refusing only when they're the same hostel's owner. **Residual, deliberately unaddressed:** login/session role is still derived from the same global `profile.role`, so a profile that becomes both an owner (of A) and a tenant (of B) still authenticates as `OWNER` and cannot reach the tenant portal for B yet — see [[TODO]] and [[Decisions#ADR-162|ADR-162]].
+
+**Bug 4 (race condition, not a normal-path bug) — `createInvitation`'s eligibility pre-check ran outside the write transaction.** Two concurrent invites for the same never-before-seen phone at two different hostels could both pass `tenancyEligibilityService.assertCanStartNewTenancyByContact`'s plain `SELECT` before either transaction committed its `tenants` insert (which writes `profile_id: null`, so the DB's `tenants_one_live_tenancy_per_profile` partial index — which only applies once `profile_id` is bound — cannot catch it). **Fix:** the transaction now opens with a phone-scoped `pg_advisory_xact_lock` (same pattern as `payment-service.ts`'s `pay_intent:` lock) and re-runs the eligibility check inside the lock before inserting.
+
+**Also closed, application-level race only:** two concurrent lead submissions for the same `(hostel_id, student_phone)` could both pass the `visitor_leads` dedup `findFirst` before either inserted. New partial unique index `visitor_leads_one_active_lead_per_hostel_phone` (migration 079, **not yet applied to any database**), same pattern as [[Decisions#ADR-161|ADR-161]]'s `platform_leads` fix; a lost race is caught (`P2002`) and merged into the winning row instead of a 500.
+
+**Verification:** 90 backend tests (new + updated) passing under `vitest.pure.config.ts`; `tsc --noEmit` shows zero new errors introduced (pre-existing unrelated errors unchanged). Not verified against a live database (no `DATABASE_URL_TEST` in this environment) and no real-concurrency integration test was run — the advisory lock and partial index are verified by code review and by mirroring already-shipped patterns, not by a live race test.
+
+**See:** [[Business-Rules]], [[Database]], [[Decisions#ADR-162|ADR-162]], [[Changelog]]
+## 2026-09-02 — The invitation-management screen became unreachable when acceptance moved (fixed)
+
+**Symptom.** After sending an invitation, opening that tenant showed the **full tenant profile** — a settled resident — instead of the invitation view. The owner could not see the invitation's status or expiry, resend or nudge it, cancel it, or correct a wrong phone or rent before the tenant activated.
+
+**Root cause.** `TenantDetailPage` gated the screen on `tenant.status === 'invited'`. That was correct until [[Decisions#ADR-165|ADR-165]] made an invited tenancy **ACTIVE from the moment it is created** — the bed is held, rent generates, reminders fire — with the person's own acceptance tracked separately in `acceptance_status`. From then on the condition could never be true, and `InvitedTenantProfileView` (641 lines, fully working: status, expiry, resend, copy link, cancel, batched term edits) became dead code reachable by nothing.
+
+`useTenantDetail`'s own doc comment already recorded the correct signal — *"Since inviting now makes a tenancy immediately ACTIVE, this, not `status === 'invited'`, is how 'hasn't activated yet' is known"* — but the page was never updated to follow it.
+
+**A second cause underneath it.** Even had the page been fixed, the signal was not there to read: `getOwnerTenantOverview` fetched the tenant row with `include` (so `acceptance_status` and `access_mode` were both loaded) and then dropped them from its hand-built response object. Every reader saw `null`. **This is the third instance in one day of the same shape** — a column present in the database, correct on the write path, missing from one reader's projection — after `hostel_type` was missed by two different readers.
+
+**Fix.** The overview projects both fields, verified live (`access_mode` now returns `SELF_SERVE` where it returned `None`). The page gates on `showsInvitationManagement`, a pure function over `acceptance_status` with a fallback for pre-ADR-165 `INVITED` rows. It **fails closed**: absent signals mean the ordinary profile, because showing cancel and resend to a settled tenant acts on a real tenancy and is a worse error than the one being fixed. `tests/hostel-identity-field-round-trip.test.ts` now pins these two fields alongside `hostel_type`; the bug was re-introduced to confirm the assertion fails.
+
+**See:** [[Changelog]], [[Decisions#ADR-165|ADR-165]]
+
+## 2026-09-02 — A saved hostel type read back as unset, twice, from two different endpoints (fixed)
+
+**Symptom.** An owner set "Who stays here?" on the Hostel identity screen and the selector snapped back to "Not set" on save. Fixed — and then the Hostels tab kept prompting *"Who stays here? Set this and your tenants stop being asked their gender"* for the very hostel that had just been answered.
+
+**Root cause, both times: the write was correct and a reader was missing the field.** `hostel_type` was added to `PATCH /hostels/:id` and to `GET /hostels/:id`, and it persisted correctly — verified against the live API, which returned `200` and read the value straight back. But the two screens read from neither of those:
+
+| Screen | Reads | Returned |
+|---|---|---|
+| Hostel identity form | `GET /hostels/:id/preferences` | field absent |
+| Hostels tab | `GET /owner/portfolio/summary` | `null` |
+
+The identity form saved, refetched, got a hostel object with no `hostel_type` key at all, and reset the field. The data was never wrong; only the screen was.
+
+The second miss compounded it: `lib/services/portfolio-service.ts` and `lib/services/portfolio-performance-service.ts` are near-duplicates, and the fix went into the latter while the Hostels tab's route uses the former. [[CLAUDE.md]] warns about exactly that pair — *"both trees are live — check imports before assuming one is dead code"* — and it was not checked.
+
+**Why neither was caught.** Each half is correct in isolation: the write path was right, the read path compiled, and every existing test passed. Prisma's explicit `select` makes an unlisted column simply `undefined` at runtime — silently, with no error anywhere — and a hand-built response projection can drop a field the select did include. Nothing in the type system connects a column to the screens that read it.
+
+**Fix.** Both readers now select `hostel_type` and return it, verified live against each endpoint. `tests/hostel-identity-field-round-trip.test.ts` (new) reads the service sources as text and asserts the join the type system cannot: every field the identity form edits must be accepted by the write path, selected by the read path, **and present in the read path's projection** — that last step being where it was dropped both times. Every reader of `hostel_type` is pinned by name. Both bugs were re-introduced deliberately to confirm the test fails on the right assertion.
+
+**See:** [[Changelog]], [[Decisions#ADR-168|ADR-168]]
+
+## 2026-09-02 — Recording a payment while inviting a tenant was refused every single time (fixed)
+
+**Symptom.** An owner inviting a tenant who has already paid — a deposit handed over at the door, or months of rent from a tenant who joined before Stayo — entered the amount, reached the wizard's Verify step, and was refused: *"Cannot record ₹15000.00 — only ₹0.00 is owed"*. The invite could not be sent at all without clearing the amount. Reported as possibly a partial-payments problem; it was not.
+
+**Root cause.** A read outside the transaction that wrote the rows it needed. `createInvitation` does all of this in one `prisma.$transaction`: it creates the tenant's obligations through `initializeOnboardingFinancials(tx, …)` (which calls `tx.rent_obligations.create`), then checks the owner's amount against what is owed. That check called `financialService.getTenantDues(…)` → `billingRepository.getTenantPendingObligations(…)` → **`prisma.rent_obligations.findMany`** — the *global* client, a different connection, which under READ COMMITTED cannot see rows an open transaction has not committed.
+
+So the query returned no obligations, `total_due` was `0`, and the guard `paidAmount > due + 0.01` rejected **any** positive amount. Not an edge case and not partial-payment related: the feature could never have worked for any invite, for any amount.
+
+**The tell was in the same function.** `financialPaymentFacade.receivePayment` is handed `tx` and reads `tx.rent_obligations.findMany`, so the allocation *after* the guard would have seen exactly the rows the guard could not. One code path in one function passed the transaction and the other did not.
+
+**Fix.** `getTenantPendingObligations` and `getTenantDues` take an optional client — typed `Pick<typeof prisma, "rent_obligations">`, so a `$transaction` callback's `tx` satisfies it and `findMany`'s inferred row type survives — defaulting to the global client, which is correct for every other caller since they read committed state. The invite guard passes `tx`. No other caller sits inside a write transaction; that was checked rather than assumed.
+
+**Why it survived.** The feature shipped in `1c404bd` (2026-08-28) with **no tests at all** — three files, none of them a test. Nothing exercised it, and the failure is invisible to type checking: passing the wrong Prisma client is well-typed. `tests/tenant-dues-transaction-scope.test.ts` now pins it by mocking `@/lib/db` so the global client returns nothing, which is exactly the production condition.
+
+**Also fixed, in the UI.** The Money step asked for the amount with nothing on screen saying what was owed, because the settlement preview the wizard already fetches was passed only to the final step. An owner typed blind and found out two screens later. The preview now anchors the field — *"₹15,000 owed today · Pay all"*, which fills it in one tap — and an amount above what is owed is flagged **beside the field**, which is the same refusal the server makes, said where it can still be corrected. See [[Features]].
+
+**See:** [[Changelog]], [[Features]]
+
+## 2026-09-02 — Three surfaces on the owner's Profile silently picked a hostel (fixed)
+
+**Symptom.** Nothing looked wrong. A two-hostel owner posting "Water tank cleaning tomorrow" from Profile → Notices had it delivered to one hostel's tenants, chosen for them, with no hostel named anywhere on the screen. The same owner could read "GST number not added" under *Needs attention*, tap it, and land on a hostel identity form — potentially for the other hostel. Searching "late fees" had the same shape.
+
+**Root cause.** `MoreNoticesPage` and `MoreServiceRequestsPage` read `session.primaryHostelId` directly, which is `hostels[0]?.id ?? null`. The needs-attention checks did the same, and the three routes they linked to — plus all eight entries in the search index — carried **no `?hostelId=`**, so their destinations fell back to the same first hostel independently. This is the frontend face of the "must not fall back to first hostel" invariant that `architectural-invariants-check.ts` enforces server-side ([[Decisions#ADR-003|ADR-003]]); the same class as the Food-tab bug logged 2026-08-30, in a different module.
+
+`useConfiguredHostelId` was written specifically to close this and takes the id from a `:hostelId` param or a `?hostelId=` query. None of these four callers used it. The screens *reachable* from a hostel's Settings tab had been migrated; the screens reachable from Profile had not, because Profile has no hostel to pass.
+
+**Fix.** Structural rather than a patch, per [[Decisions#ADR-166|ADR-166]]: **anything that needs to know which hostel it means no longer lives on Profile.** Notices moved to the hostel's Settings tab and now calls `useConfiguredHostelId()`. The attention checks moved with it as a pure `attentionItems()` whose every link carries `?hostelId=`, asserted by a test. Search was deleted outright — its whole index was per-hostel screens that had already moved. Requests was deleted as a duplicate of `/owner/alerts/requests`. Profile keeps four rows, none of which can name a hostel, which is now asserted: every route it links to is checked for the absence of a hostel id.
+
+**Why it survived.** Each surface was individually plausible — an owner with one hostel, which is most of them, sees correct behaviour forever. The failure needs a second hostel to become visible at all, and even then it is silent: the wrong tenants receive a real announcement and nobody is told.
+
 ## 2026-08-30 — Two configuration links pointed at routes that did not exist (fixed)
 
 **Symptom.** Tapping "Room configuration" in the Hostel module did nothing. The row showed a real room and bed count and rendered as *configured*, so nothing suggested it was broken. Separately, the "Check payout account" button on the failed-payout alert also did nothing — and that alert appears **only** when an owner has just been told money did not reach their bank.
@@ -2108,3 +2293,63 @@ The timing made it worse: `tenants.status` flips to `FORMER_TENANT` in **`vacate
 - **Found alongside, same cause:** `ListingPage.tsx` called `describeAvailability(amenity)` **without importing it**, and read `C.muted`, which does not exist on the Discover palette. The first would have thrown a `ReferenceError` while rendering amenities on any listing that has them. Both also survived a green `vite build`.
 - **Lesson:** a green build here proves the bundle was produced, not that the code is sound. Three genuine reference errors sat in two of the most-visited pages. **`tsc --noEmit` belongs in the build**, or at minimum in CI — this bug and the two on `ListingPage` were all found by running it once, by hand.
 - **See:** [[Decisions#ADR-118|ADR-118]], [[Changelog]]
+
+## Backend builds required runtime env, so every Vercel Preview failed (2026-09-09)
+
+**Symptom.** Every backend Preview deployment failed with `Error: supabaseUrl is required`, blamed on `/api/agreements/[id]/renewal-offer` — a route with nothing to do with it. Production was unaffected and kept deploying green, which made it look like a bad branch rather than a broken environment.
+
+**Attribution took longer than it should have.** Other open PRs showed green backend checks, so the failure looked branch-specific. Their checks had last run days earlier (Sep 6, Aug 23); the environment changed between 05:41Z and 10:39Z on Sep 9. **Check *when* a passing check last ran before concluding a failure is yours.** What settled it: pushing a commit whose tree is byte-identical to `main` (`git commit-tree`) and watching it fail identically. Do not push `main`'s own SHA for this — a failing preview posts a red status onto `main`'s commit.
+
+**Cause.** Three clients were constructed at **module scope** from env:
+
+| File | Constructor | Threw |
+|---|---|---|
+| `lib/db.ts` | `createClient(supabaseUrl, …)` | `supabaseUrl is required` |
+| `lib/services/email-service.ts` | `new Resend(process.env.RESEND_API_KEY)` | `Missing API key` |
+| `.../whatsapp/meta-provider.ts` | `constructor(config = configFromEnv())` | `WhatsAppConfigError` |
+
+`next build` imports every route module to collect page data and never calls into it, so an eager constructor makes a *build* depend on *runtime* credentials. The last one is the subtlest: the constructor default only ran because `whatsAppTemplateDeliveryService` is itself a module-scope singleton.
+
+**Fix.** Each resolves on first use — a Proxy for `supabase` (kept the object shape, so no call site changed), a function for `resend()`, a private getter for the WhatsApp config. Missing config is still fatal, now at the call site that needs it, with a message naming the variable. Verified by building with the repo-root `.env` moved aside: it failed before, succeeds after, and still builds normally with env present. Pinned by `tests/build-without-env.test.ts`.
+
+**Still open:** the Preview environment variables themselves are missing and should be restored — this fix stops that from breaking *builds*, but a Preview deployment with no config cannot actually serve requests.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Backend]], [[Changelog]]
+
+## Clerk never loaded in production — CSP blocked clerk-js, so Google OAuth never started (2026-09-09)
+
+**Symptom.** `failed_to_load_clerk_js` in the console; `https://clerk.yourstayo.com/npm/@clerk/clerk-js/…` refused by Content-Security-Policy. Clicking "Continue with Google" did nothing, which read as a broken Google integration — but Google was never reached. Clerk was not there to redirect.
+
+**Cause.** A **Production** Clerk instance serves `clerk-js` from the instance's own Frontend API origin (`https://clerk.yourstayo.com`), not from a shared Clerk CDN. That origin was absent from `script-src` in `apps/frontend/vercel.json` — the only place the CSP is defined.
+
+**Fix.** Added exactly three things, no wildcards: `https://clerk.yourstayo.com` to `script-src`, an explicit `script-src-elem` and the same origin to it, and `https://clerk.yourstayo.com` + `https://api.clerk.com` to `connect-src`. `frame-src` is untouched — Clerk uses a top-level redirect, not an iframe.
+
+**The trap worth remembering: `script-src-elem` *overrides* `script-src` for `<script>` elements — it does not add to it.** Setting it to the Clerk origin alone, which is what "add the minimum" suggests, would have silently blocked Razorpay's checkout and Google's scripts. It must mirror `script-src`. `src/lib/auth/cspClerkAllowlist.test.ts` asserts that superset relationship, and was mutation-checked against exactly that mistake.
+
+**Second CSP gap, found after the first fix deployed:** Clerk loaded, then failed to spawn its token-refresh Web Worker — `Creating a worker from 'blob:…' violates … script-src`. Clerk v5 *does* use a worker (`startPollingForToken`), contrary to an assumption made while writing the first fix. Fixed with `worker-src 'self' blob:`. **`blob:` belongs only in `worker-src`** — putting it in `script-src` would fix the same symptom while letting any blob URL execute as a page script.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[Changelog]]
+
+## Every Google sign-in reported "did not complete" — the callback judged Clerk before it loaded (2026-09-09)
+
+**Symptom.** After a successful Google round-trip, `/auth/callback` showed *"Google sign-in did not complete. Please try again."* Found while testing an account with no Stayo profile, which should have shown *"No Stayo account exists for this email"* — but the same bug would have failed a **valid** owner identically, so it was never about that account.
+
+**Cause.** `AuthCallbackPage` decided with `hasClerkSession()`, which reads `window.Clerk.session`. Clerk's SDK loads asynchronously, so on the first render after the redirect that is still empty. The effect also carried a `started.current` one-shot guard, so it never re-checked. Result: every Clerk sign-in was judged "no session" a fraction of a second before the session existed.
+
+**Fix.** The decision has three outcomes, not two — `wait` is a real state. `decideCallbackAction()` (`lib/auth/sessionAuthority.ts`) returns `wait` while Clerk is loading, and the effect re-runs when Clerk settles; a Supabase session still resolves immediately without waiting. A rejection now also calls `signOutClerk()`, so someone the product refuses is not left holding a live Clerk session that re-fails on every navigation.
+
+**The general shape worth remembering:** a boolean read of an asynchronously-initialised global is a race whenever it is consulted once. `hasClerkSession()` is fine for rendering (it re-renders); it was wrong inside a one-shot effect.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[Changelog]]
+
+## Migration 081 applied to the wrong Supabase project; production failed with P2021 (2026-09-09)
+
+**Symptom.** First real Clerk sign-in: `GET /api/auth/me` → **500**, page stuck on "Finishing sign-in…". Vercel runtime log: `PrismaClientKnownRequestError … The table 'public.users' does not exist in the current database. code: 'P2021'`.
+
+**Cause — process, not code.** The migration *had* been applied and verified: table, FK, unique constraints, indexes. But it went to `xhoqkhwsnqfwhjsffybs`, the project ref in the repo-root `.env`. **The deployed backend uses `qgfyfbdccjnibdhhvnsr`.** Two different databases; the local `.env` does not describe production.
+
+**How to avoid it.** `GET https://api.yourstayo.com/api/health` reports the deployed build's `auth.supabase.project_ref`. **Read it before any production migration.** It already existed for exactly this class of mistake and was not consulted. Production credentials live only in Vercel, so these migrations must run from the correct project's Supabase SQL editor.
+
+**Second defect, found while diagnosing.** In `app/api/auth/me/route.ts` the Clerk resolution sat *outside* the route's `try/catch`, so the throw became an opaque 500 with **no log line** — the cause was invisible from the outside and took several rounds of guessing to reach. It is now guarded, returns `CLERK_RESOLUTION_FAILED`, and logs the Prisma `code` (P2021 = table missing, P2022 = column missing), which names a migration gap immediately.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Database]], [[Backend]], [[Changelog]]

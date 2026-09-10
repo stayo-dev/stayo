@@ -278,6 +278,8 @@ CREATE UNIQUE INDEX tenants_one_live_tenancy_per_profile
 
 One **live** tenancy per person; every past stay survives as its own row with its own payments, obligations, agreements and allocations. Because activation is what sets `profile_id`, this index also prevents two owners driving the same person to activation.
 
+**Does not by itself protect against two concurrent brand-new invitations for the same phone at two different hostels**: `createInvitation` inserts a `tenants` row with `profile_id: null` (it isn't bound until claim/activation), so this partial index — which only fires `WHERE profile_id IS NOT NULL` — cannot see it. That gap is closed application-side by a transaction-scoped `pg_advisory_xact_lock` keyed on the phone, added 2026-09-01 — see [[Decisions#ADR-162|ADR-162]].
+
 `profile.tenants` is therefore a **list** in Prisma. Never take `[0]`. Read it through `lib/tenancy/active-tenancy.ts`:
 
 | Helper | Use for |
@@ -292,6 +294,29 @@ Also dropped by migration 062: `tenants.reservation_policy` and `tenants.minimum
 **Identity/academic columns added 2026-08-14** for the Profile tab's Personal information / Academic details screens, all nullable, no backfill: `nationality`, `pan_number` (migration `20260814120000_add_tenant_identity_fields`), `expected_completion_date` (`@db.Date`, migration `20260814140000_add_tenant_expected_completion_date`). Two columns from that same migration were dropped again the same day: `aadhaar_number` (`20260814120100_drop_tenant_aadhaar_number`) — Aadhaar is deliberately tracked only via `identification_documents` (`doc_type: 'AADHAAR'`), not a `tenants` column; don't re-add it without checking `TenantProfileUpdateSchema`'s own code comment first — and `blood_group` (`20260814180000_drop_tenant_blood_group`), which came from the design mockup's card layout rather than from an operational need.
 
 > ⚠️ **These four migrations are the ones that took production down on 2026-08-14** (see [[Bugs]]). Prisma selects the *full* column set for any query without an explicit `select`, and `getSession()` runs one such query (`getActiveTenancy` → `tenants.findMany`) on **every authenticated request, for every role**. So a `tenants` column that exists in `schema.prisma` but not in the database 500s the entire authenticated API, not just the tenant Profile tab. Nothing in the deploy applies migrations — the Vercel build is `next build`, and this repo's migrations are run by hand (see [[Architecture]]) — so **schema.prisma and the production database drift silently until the next request**. `guardian_name`/`guardian_phone`/`guardian_relation` already existed (read by `getTenantPortalProfile`) but were never wired to tenant self-editing until 2026-08-14 — see [[Business-Rules]].
+
+## Tenant acceptance is an explicit state — `acceptance_status`, `tenant_accepted_at` (2026-09-02, migration `20260902120000_tenant_acceptance_status`, [[Decisions#ADR-165|ADR-165]])
+
+```prisma
+enum TenantAcceptanceStatus {
+  NOT_REQUIRED  // legacy row / created outside the invitation flow — the default
+  PENDING       // invited, operationally live, tenant has NOT personally accepted
+  ACCEPTED      // tenant personally completed activation (`completeActivation`)
+}
+
+model tenants {
+  acceptance_status  TenantAcceptanceStatus @default(NOT_REQUIRED)
+  tenant_accepted_at DateTime?              @db.Timestamptz(6)
+}
+```
+
+A **third axis**, independent of `TenantStatus` (operationally live) and `TenantAccessMode` (has a login). A new invitation stands the tenancy up `ACTIVE` / `OWNER_MANAGED` exactly as before but sets `acceptance_status = PENDING` and does **not** stamp `activation_completed_at` / `tenant_accepted_at` and does **not** write a `tenant_owner_attestations` row. `completeActivation` — the tenant, personally — is the only writer of `ACCEPTED` + `tenant_accepted_at` (and, since ADR-165, the only writer of `activation_completed_at` for a new-model row).
+
+**Grandfathering is the `NOT_REQUIRED` default, not a backfill.** Every existing `OWNER_MANAGED` row keeps `acceptance_status = NOT_REQUIRED` and is invisible to the owner field-lock, the auto-expiry sweep, and the new PENDING/ACCEPTED invariants; the activation predicates fall back to the old `invitationStatus` / `ownerAttested` / `activation_completed_at` proxies for it.
+
+Migration: `CREATE TYPE` + `ALTER TABLE ... ADD COLUMN acceptance_status TenantAcceptanceStatus NOT NULL DEFAULT 'NOT_REQUIRED'` (safe on a live table) + `tenant_accepted_at TIMESTAMPTZ` + partial index `tenants_acceptance_status_pending_idx WHERE acceptance_status = 'PENDING'`. Per the drift-vs-outage note above, `acceptance_status` is read on hot paths (`resolveByToken`, `completeActivation`, the tenant list), so the migration must land **with or before** the code.
+
+`tenant_owner_attestations` — **no new rows are written** as of ADR-165 (both writers removed). The table + relation stay for grandfathered reads; scheduled for removal once no `NOT_REQUIRED` `OWNER_MANAGED` rows remain. See [[TODO]].
 
 ## Owner-managed tenants — `access_mode`, `display_name`, `tenant_owner_attestations` (2026-08-27, Phase 1, migration 20260827100000, **NOT applied to any database**)
 
@@ -336,7 +361,7 @@ Indexes: `tenant_id`, `hostel_id`. Both FKs `ON DELETE CASCADE ON UPDATE CASCADE
 
 Enforced by `scripts/activation-invariants-check.ts`, made conditional on `access_mode` in the same change — see [[Business-Rules]].
 
-**Not yet built (Phase 2, per the design spec's §7):** the OTP-gated claim flow that flips `OWNER_MANAGED → SELF_SERVE` and links a real `profile_id`. See [[TODO]].
+**`OWNER_MANAGED → SELF_SERVE`, and linking a real `profile_id`, now happens via the same activation wizard every tenant uses** (`completeActivation`, 2026-09-01) — a dedicated OTP-gated claim flow (Phase 2, shipped 2026-08-27) briefly existed for this and was removed. See [[Decisions#ADR-163|ADR-163]], [[Business-Rules]].
 
 ### Identity is centralised on `profiles`, keyed by canonical phone (2026-08-28, migration `20260827180000_one_live_tenancy_per_phone`, **NOT applied to any database**)
 
@@ -491,7 +516,7 @@ The existing `docs/` reference pages are **out of date** relative to the live sc
 
 `pain_point TEXT NULL` and `current_tooling TEXT NULL` were added by migration `20260807000000_platform_leads_qualification` for a longer qualification conversation that was then cut back to three questions before shipping. **Nothing currently writes them** — they are live, nullable and unpopulated, kept rather than dropped from a production table so a future qualification pass needs no new migration. This is the same state `city` and `bed_count` were already in. Deliberately free-form TEXT rather than enums: the option lists are marketing copy and get reworded, so these are not safe to aggregate without normalising first. See [[Features]] and [[APIs]].
 
-### `platform_leads` — one active lead per phone (2026-08-31, migration 078, [[Decisions#ADR-157|ADR-157]])
+### `platform_leads` — one active lead per phone (2026-08-31, migration 078, [[Decisions#ADR-161|ADR-161]])
 
 A partial unique index, `platform_leads_one_active_lead_per_phone`, enforces `ON platform_leads (phone) WHERE status <> 'LOST' AND phone <> ''`. Not expressible as a declarative Prisma constraint (no `extendedIndexes` preview feature enabled in this schema) — same situation as `tenants_one_live_tenancy_per_profile` (`migrations/062_tenancy_per_row.sql`), documented only as a `///` doc-comment on the `phone` field rather than a schema attribute. Two carve-outs, both deliberate:
 
@@ -499,6 +524,14 @@ A partial unique index, `platform_leads_one_active_lead_per_phone`, enforces `ON
 - **Empty phone is excluded** because `platform-listing-leads.ts`'s `buildPlatformLeadFromEnquiry` (Discover's "demand evidence" sales leads, one raised per newly-enquired *listed* hostel) deliberately writes `phone: ""` and dedupes by `hostel_name` instead — a bare phone-only index would have let only the very first such row across the whole table succeed, silently breaking that unrelated feature for every hostel after the first.
 
 Enforced at the DB level specifically so a concurrent double-submit (two requests for the same phone racing each other) cannot slip two active rows past an application-level check alone — `POST /api/leads/self-serve` and `POST /api/platform-admin/leads` both still do their own `findFirst` pre-check first as the fast/friendly path, and both catch a `P2002` from losing the race. See [[Business-Rules]], [[APIs]], [[Features]].
+
+### `visitor_leads` — one active lead per (hostel, phone) (2026-09-01, migration 079, [[Decisions#ADR-162|ADR-162]])
+
+A partial unique index, `visitor_leads_one_active_lead_per_hostel_phone`, enforces `ON visitor_leads (hostel_id, student_phone) WHERE student_phone IS NOT NULL AND status IN (<the same status list as ACTIVE_LEAD_STATUSES in admissions-service.ts>)`. Same shape and same reason as `platform_leads_one_active_lead_per_phone` above (not expressible as a declarative Prisma constraint here — a `///` doc-comment on `visitor_leads.student_phone` instead), but keyed on `(hostel_id, student_phone)` rather than `phone` alone: a `visitor_leads` row belongs to one hostel, and the same phone can legitimately be an open lead at two *different* hostels simultaneously. `LOST`/`REJECTED`/`JOINED` are excluded from the constraint, unchanged from the existing `ACTIVE_LEAD_STATUSES` semantics — a `JOINED` lead (already converted to a tenant) is guarded separately, by `hasLiveTenancyAtHostel` querying `tenants` directly at lead-creation time, not by this index. `createDirectLead`/`createLead` (`admissions-service.ts`) catch a `P2002` from losing a concurrent create race and merge into the winning row, mirroring `POST /api/leads/self-serve`'s established fallback. **Not applied to any database as of this writing** — like every migration in this repo, it is a SQL file to run manually (`migrations/README.md`); the application-level `findFirst`-then-create pre-check works regardless, but the race-safety half is inactive until the index is applied. See [[Business-Rules]], [[Bugs]], [[Decisions#ADR-162|ADR-162]].
+
+### `identification_documents` — one active document per (tenant, doc_type) (2026-09-02, migration 080, [[Decisions#ADR-169|ADR-169]])
+
+A partial unique index, `identification_documents_one_active_per_type`, enforces `ON identification_documents (tenant_id, doc_type) WHERE is_active`. Tenant KYC is "the newest active document of each required type"; the upload routes already archive the prior active row (`is_active = false`) in the same transaction as the insert (`createSupersedingDocument` in `src/services/tenants/identification-document-service.ts`), and this makes that hold under concurrency — two uploads of the same Aadhaar racing can otherwise both archive nothing and both insert, and a rejected row could then keep satisfying KYC. Archived rows (`is_active = false`) are unconstrained, so full submission history is kept. Not expressible as a declarative Prisma constraint (partial index) — the schema is unchanged; the file (`migrations/080_identification_documents_one_active_per_type.sql`, with a pre-flight duplicate check and a de-dupe query) carries a pre-flight check + de-dupe query and, like every migration here, must be run by hand (`migrations/README.md`). **Not applied to any database as of this writing** — the archive-then-create + `P2002` retry works regardless; the race-safety half is inactive until the index lands. See [[Business-Rules]], [[Bugs]], [[Decisions#ADR-169|ADR-169]].
 
 ### `owner_documents.review_note` (2026-08-07)
 
@@ -585,3 +618,31 @@ The tenant's optional room preference on an enquiry, entered as a compact floor/
 Subscriptions expire and rotate silently. A **404/410** from the push service means gone forever and the row is deleted rather than retried; softer failures increment `failure_count`. `ON DELETE CASCADE` so a deleted profile leaves no endpoints still receiving messages about an account that no longer exists.
 
 The field added to the `profile` model is a **relation**, not a scalar, so Prisma does not select it by default and it cannot break existing `profile` queries — but the migration must still be applied **before** the code is deployed.
+
+## `users` — the auth-agnostic identity anchor (2026-09-09, migration 081)
+
+Added by [[Decisions#ADR-176|ADR-176]], Phase 1 of the Supabase Auth → Clerk migration. **Nothing reads this table on a request path yet** — it is populated by the Clerk webhook and otherwise inert.
+
+It exists to hold the answer to *"who is this login?"* without the database knowing anything about the auth vendor. `clerk_user_id` is the **only** vendor-shaped column; everything else is neutral, so a future provider change means adding a column and backfilling it, not reshaping the schema.
+
+| Column | Notes |
+|---|---|
+| `id` | uuid PK |
+| `clerk_user_id` | **unique, not null.** Clerk's stable user id (`user_2abc…`). The join key for every auth question. |
+| `email`, `first_name`, `last_name`, `image_url` | Mirrored from Clerk. This is the complete set a webhook may write — see `ALLOWED_PROFILE_FIELDS`. |
+| `is_active`, `deactivated_at` | Soft-deactivation. `user.deleted` sets these; **no code path deletes a row.** |
+| `profile_id` | **unique, nullable**, FK → `profiles(id)` `ON DELETE SET NULL`. The business identity, when one exists. |
+| `clerk_updated_at` | Clerk's own `updated_at`, used to reject stale/out-of-order Svix deliveries. |
+| `created_at`, `updated_at` | |
+
+Indexes: `users_email_idx` (the profile-matching lookup), `users_is_active_idx`.
+
+**It deliberately holds no business data.** Roles (`OWNER`/`TENANT`/`ADMIN`), hostels, tenancies and money stay on `profiles` and its relations. That separation is what makes the public webhook safe: a Clerk payload cannot reach any authority-bearing column. See [[Business-Rules]].
+
+**`profile_id` is nullable in both directions, on purpose.** Clerk can know about a person before we have provisioned them a role (`profile_id` null), and a profile can exist with no login at all — an owner-created tenant who has never signed up (`profile.login` null). Neither is an error state.
+
+**`profiles` is unchanged by this migration.** The foreign key lives on the *new* table, so no existing query is affected. The only edit to the `profile` model is the `login` back-relation, which — like `push_subscriptions` above — is a **relation, not a scalar**, so Prisma does not select it by default and it cannot break existing `profile` queries. This is the deliberate avoidance of the 2026-08-22 failure in [[Bugs]], where a scalar field declared ahead of its column broke every query on the model.
+
+**Deploy order binds:** apply migration 081 *before* deploying code that reads `users`.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Decisions#ADR-031|ADR-031]], [[APIs]], [[Backend]], [[Business-Rules]]

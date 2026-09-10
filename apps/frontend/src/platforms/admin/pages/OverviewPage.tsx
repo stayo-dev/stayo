@@ -24,11 +24,6 @@ export function OverviewPage() {
     queryFn: () => platformAdminService.getOwnerDocuments('PENDING'),
     ...POLL,
   });
-  const pendingHostels = useQuery({
-    queryKey: ['admin', 'hostels', { verification: 'PENDING' }],
-    queryFn: () => platformAdminService.getHostels({ verification: 'PENDING' }),
-    ...POLL,
-  });
   const activity = useQuery({
     queryKey: ['admin', 'notifications'],
     queryFn: () => platformAdminService.getNotifications(),
@@ -40,7 +35,6 @@ export function OverviewPage() {
   const funnel = buildFunnel(counts);
   const reviewQueue = buildReviewQueue({
     kyc: new Set((pendingDocs.data ?? []).map((d) => d.profile.id)).size,
-    listings: pendingHostels.data?.length ?? 0,
   });
 
   return (

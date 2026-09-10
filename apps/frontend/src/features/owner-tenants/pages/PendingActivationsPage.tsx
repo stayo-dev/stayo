@@ -104,6 +104,11 @@ export function PendingActivationsPage() {
         emptyTitle="Everyone is activated"
         emptyBody="No invited tenant is waiting to complete activation."
         onRetry={() => refetch()}
+        // ADR-171 Phase 2.8: this route now lives *inside* `OwnerAppShell`, so
+        // the console `<main>` gives `<MasterDetail>` its definite-height
+        // context. The queue joins the same desktop master-detail as the other
+        // three `WorkQueue` queues (Collection / Agreements / Vacancy).
+        desktopLayout="master-detail"
       />
     </ThemeProvider>
   );

@@ -1,3 +1,4 @@
+import { ClerkGoogleSignIn } from '@shared/ui-patterns/ClerkGoogleSignIn';
 import { useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { X, Check, ArrowRight, ArrowLeft } from 'lucide-react';
@@ -157,21 +158,18 @@ export function HostelLeadModal({ open, onClose, prefillName, googleEmail }: Hos
    * or be abandoned without costing us anything — hence the token is parked in
    * sessionStorage for the callback page to pick up after the redirect.
    */
-  const connectGoogle = async () => {
-    setLinkingGoogle(true);
+  /**
+   * Parks the lead token for the callback page, then lets `<ClerkGoogleSignIn>`
+   * take over the redirect (ADR-176 Phase 3 — Google is Clerk's, never
+   * Supabase's). Still optional enrichment: the lead is already saved, so
+   * abandoning this costs nothing.
+   */
+  const parkLeadToken = () => {
     setError('');
     try {
       if (trackingToken) window.sessionStorage.setItem(PENDING_LEAD_TOKEN_KEY, trackingToken);
     } catch {
-      // Storage blocked — the OAuth round-trip simply won't link the email.
-    }
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${window.location.origin}/lead-signup/callback` },
-    });
-    if (oauthError) {
-      setLinkingGoogle(false);
-      setError('Could not open Google sign-in. Your enquiry is saved either way.');
+      // Storage blocked — the round-trip simply won't link the email.
     }
   };
 
@@ -327,14 +325,18 @@ export function HostelLeadModal({ open, onClose, prefillName, googleEmail }: Hos
 
               <div className="flex flex-col gap-2.5">
                 {!googleEmail && (
+                  <ClerkGoogleSignIn redirectUrlComplete="/lead-signup/callback">
+                    {({ disabled, onClick, busy }) => (
                   <button
-                    type="button"
-                    onClick={connectGoogle}
-                    disabled={linkingGoogle}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border-[1.5px] border-border bg-card px-5 py-3 font-display text-[15px] font-bold text-foreground transition-colors hover:border-primary disabled:opacity-60"
-                  >
-                    {linkingGoogle ? 'Opening Google…' : 'Add my email with Google'}
-                  </button>
+                        type="button"
+                        onClick={() => { parkLeadToken(); onClick(); }}
+                        disabled={disabled || busy || linkingGoogle}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border-[1.5px] border-border bg-card px-5 py-3 font-display text-[15px] font-bold text-foreground transition-colors hover:border-primary disabled:opacity-60"
+                      >
+                        {linkingGoogle ? 'Opening Google…' : 'Add my email with Google'}
+                      </button>
+                    )}
+                  </ClerkGoogleSignIn>
                 )}
                 {trackingToken && (
                   <a href={`/enquiry/${trackingToken}`} className="text-[13px] font-bold text-primary underline">

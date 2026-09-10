@@ -4,8 +4,9 @@ import { createContext, useContext, useEffect, type PropsWithChildren } from 're
  * The two StayO token scopes extracted from the design source — see
  * src/styles/tokens/marketing.css and product.css. There is no "legacy"
  * value here on purpose: screens that haven't migrated yet simply render
- * outside any ThemeProvider and keep resolving theme.css's unscoped :root
- * tokens, untouched.
+ * outside any ThemeProvider and resolve theme.css's unscoped :root. Since
+ * ADR-172 that root holds the Stayo product tokens, so rendering outside a
+ * scope is merely unspecific — it is no longer off-brand.
  */
 export type AppTheme = 'marketing' | 'product';
 
@@ -43,22 +44,22 @@ interface ThemeProviderProps extends PropsWithChildren {
  * Dialog, the vaul-based Drawer (BottomSheet), and sonner's Toaster all
  * render via a portal appended to document.body, outside this wrapper div's
  * DOM subtree — CSS custom properties only cascade through the real DOM
- * tree, not the React tree, so a portaled sheet/toast would silently fall
- * back to theme.css's legacy :root values without this. Setting it on <html>
- * (an ancestor of the portal too) fixes that for every portaled component,
- * not just this one. Only one ThemeProvider is ever mounted at a time in
- * practice (one route = one shell), so this doesn't race between scopes.
+ * tree, not the React tree, so a portaled sheet or toast resolves whatever
+ * <html> says. Setting it there covers every portaled component at once.
+ *
+ * That sync is stack-based rather than save-and-restore. Two providers *can*
+ * be mounted at once — briefly, across a route change — and the naive version
+ * let the outgoing shell's cleanup delete the incoming shell's attribute; see
+ * `mounted` below.
  */
 export function ThemeProvider({ theme, children }: ThemeProviderProps) {
   useEffect(() => {
-    const previous = document.documentElement.dataset.appTheme;
-    document.documentElement.dataset.appTheme = theme;
+    mounted.push(theme);
+    applyTopOfStack();
     return () => {
-      if (previous) {
-        document.documentElement.dataset.appTheme = previous;
-      } else {
-        delete document.documentElement.dataset.appTheme;
-      }
+      const at = mounted.lastIndexOf(theme);
+      if (at !== -1) mounted.splice(at, 1);
+      applyTopOfStack();
     };
   }, [theme]);
 
@@ -69,4 +70,29 @@ export function ThemeProvider({ theme, children }: ThemeProviderProps) {
       </div>
     </ThemeContext.Provider>
   );
+}
+
+/**
+ * Which providers are currently mounted, oldest first. A single "restore the
+ * previous value" closure per provider is not enough: during a route change
+ * React can mount the incoming shell before the outgoing one has run its
+ * cleanup, and the outgoing cleanup then restores what it saw at *its* mount
+ * time — deleting the attribute the incoming shell just set. `<html>` ends up
+ * with no scope at all, which is invisible in the page itself (the wrapper
+ * div above still carries it) and shows up only in portaled content: a
+ * `vaul` sheet or a `createPortal` overlay renders outside that div. That is
+ * how the Invite Tenant sheet and the onboarding Spotlight came up unstyled.
+ *
+ * A stack makes the last mounted provider the winner regardless of the order
+ * cleanups happen to run in, and empties correctly when the last one leaves.
+ */
+const mounted: AppTheme[] = [];
+
+function applyTopOfStack() {
+  const top = mounted[mounted.length - 1];
+  if (top) {
+    document.documentElement.dataset.appTheme = top;
+  } else {
+    delete document.documentElement.dataset.appTheme;
+  }
 }

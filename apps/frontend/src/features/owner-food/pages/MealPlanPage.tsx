@@ -5,7 +5,7 @@ import { FOOD_SLOTS, type MealSlotKey } from '@shared/mocks/food';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
-import { useIsMobile } from '@/app/components/ui/use-mobile';
+import { useIsDesktop } from '@/app/components/ui/use-desktop';
 import { HostelSwitcher } from '../components/HostelSwitcher';
 import { PublishChecklist } from '../components/schedule/PublishChecklist';
 import { MenuPreviewSheet } from '../components/mealplan/MenuPreviewSheet';
@@ -50,7 +50,16 @@ function formatMonthLabel(month: string): string {
  */
 export function MealPlanPage() {
   const session = useOwnerSession();
-  const isMobile = useIsMobile();
+  // Grid vs. day-accordion now keys off the console breakpoint `useIsDesktop`
+  // (1024px), not `useIsMobile` (768px) — ADR-171 Phase 2.8. Reason: the 7-day
+  // `MealPlanGrid` needs ~720px+ and the owner shell's 480px `APP_FRAME` still
+  // applies below `lg`, so in the old 768–1023px band the grid rendered
+  // squeezed inside a horizontal-scroll box. That band now gets `MealPlanMobile`
+  // (the accordion), which is designed for narrow widths. `< 768px` is
+  // unchanged (accordion either way); `>= 1024px` is unchanged (grid either
+  // way). `useIsDesktop` also gates the bounded desktop content column (Phase
+  // 2.7).
+  const isDesktop = useIsDesktop();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const hostelId = searchParams.get('hostelId') ?? session.primaryHostelId ?? undefined;
@@ -246,7 +255,13 @@ export function MealPlanPage() {
   };
 
   return (
-    <div className="flex flex-col gap-3.5 px-4 pb-8 pt-6 sm:px-6">
+    <div
+      className={
+        isDesktop
+          ? 'mx-auto flex w-full max-w-[1240px] flex-col gap-3.5 px-8 pb-12 pt-8'
+          : 'flex flex-col gap-3.5 px-4 pb-8 pt-6 sm:px-6'
+      }
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <button
@@ -330,7 +345,7 @@ export function MealPlanPage() {
         </div>
       </div>
 
-      {isMobile ? (
+      {!isDesktop ? (
         <MealPlanMobile
           activeDay={activeDay}
           onSelectDay={setActiveDay}

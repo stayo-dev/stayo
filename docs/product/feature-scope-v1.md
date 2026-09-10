@@ -476,6 +476,8 @@ Basic Branding
 
 The following features are intentionally excluded from Version 1.
 
+> **Enforced in code as of 2026-09-03** (see `docs/obsidian/Decisions.md` ADR-170). The Stayo Discover marketplace, the owner listing/marketing flow, the audience-fork `WelcomePage` at `/`, and the "Explore" nav tab were built ahead of v1 and are now **shelved for v2**: frontend routes are unmounted and the backend APIs (`/api/discover/*`, `/api/owner/hostels/*/marketing/*`, `/api/platform-admin/marketing-reviews/*`) return `410` unless `MARKETPLACE_ENABLED=true`. All code is retained on disk.
+
 Marketplace Discovery
 
 Public Hostel Search

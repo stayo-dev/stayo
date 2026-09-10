@@ -8,29 +8,38 @@ interface CollectionsFiltersProps {
   onHostelFilterChange: (id: string) => void;
   sort: CollectionsSort;
   onSortChange: (sort: CollectionsSort) => void;
+  /**
+   * Desktop (`lg+`, ADR-171 Phase 2.6): the hostel scope is owned by the sidebar
+   * `HostelSwitcher`, so the per-hostel chip row here is hidden to avoid a
+   * duplicate control. The sort chips stay. Undefined/false below `lg` — the
+   * mobile control is unchanged.
+   */
+  hideHostelFilter?: boolean;
 }
 
 /** Hostel filter chips + sort chips for the Collections list, per Stayo App.dc.html. */
-export function CollectionsFilters({ hostels, hostelFilter, onHostelFilterChange, sort, onSortChange }: CollectionsFiltersProps) {
+export function CollectionsFilters({ hostels, hostelFilter, onHostelFilterChange, sort, onSortChange, hideHostelFilter }: CollectionsFiltersProps) {
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-        {hostels.map((h) => {
-          const active = hostelFilter === h.id;
-          return (
-            <button
-              key={h.id}
-              type="button"
-              onClick={() => onHostelFilterChange(h.id)}
-              className={`flex-none whitespace-nowrap rounded-full px-3.5 py-1.5 font-display text-xs font-semibold ${
-                active ? 'bg-foreground text-background' : 'border border-border bg-card text-muted-foreground'
-              }`}
-            >
-              {h.name}
-            </button>
-          );
-        })}
-      </div>
+      {!hideHostelFilter && (
+        <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+          {hostels.map((h) => {
+            const active = hostelFilter === h.id;
+            return (
+              <button
+                key={h.id}
+                type="button"
+                onClick={() => onHostelFilterChange(h.id)}
+                className={`flex-none whitespace-nowrap rounded-full px-3.5 py-1.5 font-display text-xs font-semibold ${
+                  active ? 'bg-foreground text-background' : 'border border-border bg-card text-muted-foreground'
+                }`}
+              >
+                {h.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="flex gap-1.5 overflow-x-auto pb-0.5">
         {SORT_OPTIONS.map((s) => {
           const active = sort === s;

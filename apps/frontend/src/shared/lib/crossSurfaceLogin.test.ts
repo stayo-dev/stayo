@@ -27,8 +27,8 @@ describe('crossSurfaceHandoff — signing in on the owner site', () => {
     expect(handoff?.message).toMatch(/resident account/i);
   });
 
-  it('sends a seeker with no tenancy back to browsing', () => {
-    expect(crossSurfaceHandoff({ role: 'TENANT' }, 'owner')?.path).toBe('/discover');
+  it('sends a resident with no active tenancy to the Profile hub (v1 — no marketplace)', () => {
+    expect(crossSurfaceHandoff({ role: 'TENANT' }, 'owner')?.path).toBe('/profile');
   });
 
   it('says nothing to an owner or admin, who belong here', () => {

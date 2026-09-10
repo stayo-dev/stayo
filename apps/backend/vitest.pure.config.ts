@@ -25,6 +25,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: [
+      'tests/rent-generation-exit-date-join.test.ts',
       'tests/push-policy.test.ts',
       'tests/push-send-window.test.ts',
       'tests/push-delivery.test.ts',
@@ -44,6 +45,12 @@ export default defineConfig({
       'tests/platform-lead-templates.test.ts',
       'tests/platform-lead-stage-mapper.test.ts',
       'tests/owner-document-review.test.ts',
+      // Tenant KYC: the shared status helper, and the document routes (which
+      // all `vi.mock('@/lib/db')` — no client is constructed).
+      'tests/kyc-status.test.ts',
+      'tests/tenant-document-verification.test.ts',
+      'tests/tenant-kyc-bulk-verify.test.ts',
+      'tests/activate-documents-route.test.ts',
       'tests/tenancy-eligibility-rules.test.ts',
       'tests/active-tenancy-selection.test.ts',
       'tests/redis-key-parity.test.ts',
@@ -90,7 +97,15 @@ export default defineConfig({
       'tests/enquiry-template-contracts.test.ts',
       'tests/admissions-lead-transition-guards.test.ts',
       'tests/admissions-lead-actions.test.ts',
+      'tests/admissions-lead-duplicate-guards.test.ts',
       'tests/tenant-invitation-lifecycle-service.test.ts',
+      // Dues read inside the transaction that creates the obligations —
+      // mocks `@/lib/db`, so no database is reachable.
+      'tests/tenant-dues-transaction-scope.test.ts',
+      // Reads two service files as text to assert the Hostel identity form's
+      // fields survive both the write and the read endpoint — no client, no
+      // database.
+      'tests/hostel-identity-field-round-trip.test.ts',
       'tests/floor-room-plan.test.ts',
       'tests/hostel-deletion-plan.test.ts',
       'tests/expense-anomaly.test.ts',
@@ -100,8 +115,10 @@ export default defineConfig({
       'tests/identity-field-policy.test.ts',
       'tests/agreement-commitment.test.ts',
       'tests/activation-account-state.test.ts',
-      // The guards deciding who may enter the activation ceremony. ADR-154.
+      // The guards deciding who may enter the activation ceremony. ADR-154, ADR-165.
       'tests/activation-entry.test.ts',
+      // The owner field-lock while acceptance is pending. ADR-165.
+      'tests/owner-field-lock.test.ts',
       'tests/activation-subject.test.ts',
       'tests/invitation-expiry-reminder-contract.test.ts',
       'tests/move-out-quick-exit-plan.test.ts',
@@ -110,8 +127,6 @@ export default defineConfig({
       'tests/tenant-transfer-authorization.test.ts',
       'tests/tenant-score-model.test.ts',
       'tests/tenant-identity.test.ts',
-      'tests/claim-eligibility.test.ts',
-      'tests/tenancy-claim-service.test.ts',
       // The resident/guardian command center. Its formatters, vocabulary and
       // reminder policy take plain arguments and touch nothing external —
       // which is the design, not a coincidence: decision logic lives in pure
@@ -131,6 +146,16 @@ export default defineConfig({
       // double-billing defect. ADR-149.
       'tests/obligation-linking.test.ts',
       'tests/agreement-content.test.ts',
+      // Clerk auth webhook (ADR-176). The verification test signs with the real
+      // `svix` library in-process; the sync test `vi.mock`s `@/lib/db`. Neither
+      // constructs a client or reaches a database.
+      'tests/clerk-webhook-verification.test.ts',
+      'tests/clerk-user-sync.test.ts',
+      'tests/clerk-webhook-endpoint.test.ts',
+      'tests/clerk-me-handshake.test.ts',
+      'tests/auth-me-dual-session.test.ts',
+      'tests/clerk-controlled-onboarding.test.ts',
+      'tests/build-without-env.test.ts',
     ],
     alias: {
       // More specific than the catch-all `@` entry below, and must come
@@ -138,9 +163,7 @@ export default defineConfig({
       // to `./*` (see `paths`), but Vitest's plain string alias has no such
       // fallback chain — `@/utils/default-rules` would otherwise resolve to
       // a nonexistent root-level `utils/`, since the real file lives under
-      // `src/utils/`. `tenancy-claim-service.ts` imports it that way (via
-      // `@/utils/default-rules`), so this was a real gap, just never
-      // previously exercised by a pure test.
+      // `src/utils/`.
       '@/utils': path.resolve(__dirname, './src/utils'),
       '@': path.resolve(__dirname, './'),
     },

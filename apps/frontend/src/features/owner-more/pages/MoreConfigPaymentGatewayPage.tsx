@@ -18,7 +18,7 @@ export function MoreConfigPaymentGatewayPage() {
   const upiId = policyQuery.data?.policy?.payments?.upi_id;
 
   return (
-    <div className="flex flex-col gap-5 px-4 pb-8 pt-6 sm:px-6">
+    <div className="flex flex-col gap-5 px-4 pb-8 pt-6 sm:px-6 lg:mx-auto lg:w-full lg:max-w-[760px] lg:px-0 lg:pt-8">
       <MoreScreenHeader title="Payment gateway" subtitle="How tenants pay you" />
 
       <div className={`${card} px-[22px] py-[26px] text-center`}>

@@ -139,8 +139,32 @@ export function InviteTenantWizard({ open, onClose, initialData, leadId }: Invit
         />
       )}
       {wizard.step === 1 && <StayStep data={wizard.data} setD={wizard.setD} hostels={session.hostels} />}
-      {wizard.step === 2 && <MoneyStep data={wizard.data} setD={wizard.setD} />}
-      {wizard.step === 3 && <VerifyStep data={wizard.data} agreed={wizard.agreed} setAgreed={wizard.setAgreed} hostels={session.hostels} />}
+      {wizard.step === 2 && (
+        <MoneyStep
+          data={wizard.data}
+          setD={wizard.setD}
+          // Same preview Verify uses. Shown here too so "how much has this
+          // tenant already paid?" is asked next to the answer, rather than
+          // validated two steps later.
+          settlementPreview={wizard.settlementPreview}
+          isLoadingSettlementPreview={wizard.isLoadingSettlementPreview}
+        />
+      )}
+      {wizard.step === 3 && (
+        <VerifyStep
+          data={wizard.data}
+          agreed={wizard.agreed}
+          setAgreed={wizard.setAgreed}
+          hostels={session.hostels}
+          // The settlement the hook has already fetched. These three were
+          // simply never passed: the preview request fired and its answer was
+          // dropped here, so the panel below sat on "working this out" forever.
+          // `VerifyStep` now requires them, so this cannot silently recur.
+          settlementPreview={wizard.settlementPreview}
+          isLoadingSettlementPreview={wizard.isLoadingSettlementPreview}
+          settlementPreviewError={wizard.settlementPreviewError}
+        />
+      )}
     </BottomSheet>
   );
 }

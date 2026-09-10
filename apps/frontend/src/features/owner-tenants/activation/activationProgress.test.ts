@@ -139,6 +139,23 @@ describe('isAwaitingActivation', () => {
     expect(isAwaitingActivation(null, state())).toBe(false);
     expect(isAwaitingActivation(undefined, state())).toBe(false);
   });
+
+  // ADR-165: the explicit acceptance_status is authoritative when present.
+  it('object form: PENDING acceptance is awaiting, ACCEPTED is not', () => {
+    expect(isAwaitingActivation({ acceptanceStatus: 'PENDING', accessMode: 'OWNER_MANAGED' }, state())).toBe(true);
+    expect(isAwaitingActivation({ acceptanceStatus: 'ACCEPTED', accessMode: 'SELF_SERVE' }, state())).toBe(false);
+  });
+
+  it('object form: a grandfathered owner-managed row (no acceptance_status) still counts', () => {
+    expect(isAwaitingActivation({ acceptanceStatus: null, accessMode: 'OWNER_MANAGED' }, state())).toBe(true);
+    expect(isAwaitingActivation({ acceptanceStatus: 'NOT_REQUIRED', accessMode: 'OWNER_MANAGED' }, state())).toBe(true);
+  });
+
+  it('object form: activation_completed still wins', () => {
+    expect(
+      isAwaitingActivation({ acceptanceStatus: 'PENDING', accessMode: 'OWNER_MANAGED' }, state({ activation_completed: true })),
+    ).toBe(false);
+  });
 });
 
 describe('kycBadge — an independent state machine', () => {

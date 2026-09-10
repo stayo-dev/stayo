@@ -40,8 +40,9 @@ export const REMINDER_WINDOW_HOURS = 36;
  *   those links are not on a clock, so a "expires in 24 hours" message would be
  *   a deadline that does not exist. `ACTIVATED`, `CANCELLED`, `EXPIRED` and
  *   `SUPERSEDED` have nothing to remind anyone about.
- * - **The tenancy is still `INVITED`.** An invitation row can outlive the
- *   reason for it.
+ * - **The tenant has not personally accepted** — the tenancy is `INVITED`, or
+ *   it is `ACTIVE` with `acceptance_status = PENDING` (new model). An invitation
+ *   row can outlive the reason for it.
  * - **A phone on file**, since this goes out over WhatsApp.
  * - **Expiring inside the window** — between now and now+24h. Already-expired
  *   links are skipped: telling someone their link died yesterday is not a
@@ -66,7 +67,15 @@ export class InvitationExpiryReminderService {
         status: { in: ["PENDING", "OPENED"] },
         expires_at: { gt: now, lte: horizon },
         phone: { not: null },
-        tenant: { status: "INVITED" },
+        // A legacy INVITED tenancy, OR a new-model tenancy that is
+        // operationally live but the tenant has not personally accepted
+        // (`acceptance_status = PENDING`, `status = ACTIVE`). ADR-165.
+        tenant: {
+          OR: [
+            { status: "INVITED" },
+            { status: "ACTIVE", acceptance_status: "PENDING" },
+          ],
+        },
       },
       include: { tenant: { include: { hostels: { select: { name: true } } } } },
       orderBy: { expires_at: "asc" },

@@ -16,7 +16,7 @@ import { documentTypeLabel, type ReviewDocument } from '../documents/kycDocument
 import { RejectDocumentSheet } from '../documents/RejectDocumentSheet';
 import type { TenantDetailTab } from '../types';
 import { InvitedTenantProfileView } from '../components/InvitedTenantProfileView';
-import { TenantHistoryPanel } from '../components/TenantHistoryPanel';
+import { showsInvitationManagement } from '../invitationManagement';
 import { TenantActionsSheet } from '../actions/TenantActionsSheet';
 import { ProfileHeader } from '../profile/ProfileHeader';
 import { CommunicationCard } from '../profile/CommunicationCard';
@@ -27,33 +27,26 @@ import { DocumentPreviewSheet } from '../profile/DocumentPreviewSheet';
 import { toDocumentGroups } from '../profile/documentGroups';
 import { ReviewRequestCard } from '../profile/ReviewRequestCard';
 import { DocumentThread } from '../profile/DocumentThread';
-import { RiskCard } from '../profile/RiskCard';
 import { TenantRequestsCard } from '../profile/TenantRequestsCard';
 import { CorrectPaymentModal } from '@/app/components/modals/CorrectPaymentModal';
 import { useDocumentShares } from '../hooks/useDocumentShares';
 import { AmendAgreementSheet } from '../profile/AmendAgreementSheet';
 import { PendingChangeCard } from '../profile/PendingChangeCard';
-import { ComplianceCard } from '../profile/ComplianceCard';
 import { CreateChargeSheet } from '../profile/CreateChargeSheet';
 import { ChangeRentModal } from '../actions/ChangeRentModal';
 import { MoveOutSheet } from '../actions/MoveOutSheet';
 import { QuickCollectModal } from '../quick-collect/QuickCollectModal';
-import { claimLink, claimInviteMessage, claimWhatsappUrl } from '../claimInvite';
-import { APP_SURFACE } from '@shared/ui/surface';
+import { PaymentScheduleList } from '../profile/PaymentScheduleList';
+import { sanitizeIndianPhone } from '../invite/validation';
+import { APP_SURFACE, APP_GRID } from '@shared/ui/surface';
+import { useIsDesktop } from '@/app/components/ui/use-desktop';
 
 const TABS: { id: TenantDetailTab; label: string }[] = [
-  { id: 'charges', label: 'Charges' },
+  { id: 'charges', label: 'Payments' },
   { id: 'activity', label: 'Activity' },
   { id: 'documents', label: 'Documents' },
   { id: 'stay', label: 'Stay' },
 ];
-
-const OBLIGATION_TONE: Record<string, 'destructive' | 'warning' | 'success' | 'neutral'> = {
-  PENDING: 'destructive',
-  OVERDUE: 'destructive',
-  UPCOMING: 'warning',
-  PAID: 'success',
-};
 
 /**
  * Tenant Detail — a real route (`/owner/tenants/:tenantId`), not a modal.
@@ -64,6 +57,7 @@ export function TenantDetailPage() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const isDesktop = useIsDesktop();
   const { tenant, isLoading, isError } = useTenantDetail(tenantId);
 
   const [activeTab, setActiveTab] = useState<TenantDetailTab>('charges');
@@ -133,7 +127,15 @@ export function TenantDetailPage() {
     );
   }
 
-  if (tenant.status === 'invited') {
+  /*
+    ADR-165 made an invited tenancy ACTIVE from creation, so the old
+    `status === 'invited'` gate could never fire and this screen became
+    unreachable — every invited tenant opened as a settled resident, with no
+    invitation status and no way to resend, cancel or correct the invite before
+    activation. `showsInvitationManagement` reads the signal ADR-165 added for
+    the purpose, and fails closed.
+  */
+  if (showsInvitationManagement(tenant)) {
     return (
       <ThemeProvider theme="product">
         <InvitedTenantProfileView tenant={tenant} />
@@ -141,53 +143,86 @@ export function TenantDetailPage() {
     );
   }
 
-  // Getting an owner-managed tenant onto the app. The link carries no token —
-  // the claim flow proves possession by OTP to their own number — so it is
-  // safe to WhatsApp or read out. See `claimInvite.ts`.
-  const claimUrl = claimLink(window.location.origin);
-  const claimWhatsapp = claimWhatsappUrl(
-    tenant.phone,
-    claimInviteMessage({ tenantName: tenant.name, hostelName: tenant.hostelName ?? '', link: claimUrl }),
-  );
+  // Getting an owner-managed tenant onto the app: their own per-tenancy
+  // activation link (the same one their original WhatsApp invitation
+  // carried), so re-sending it here is not a separate mechanism, just a
+  // second chance to deliver the same link.
+  const activationLink = tenant.invitation?.activationLink || '';
+  const activationWhatsappUrl = (() => {
+    if (!activationLink) return null;
+    const digits = sanitizeIndianPhone(tenant.phone);
+    if (digits.length !== 10) return null;
+    const first = String(tenant.name ?? '').trim().split(/\s+/)[0];
+    const hostel = String(tenant.hostelName ?? '').trim() || 'the hostel';
+    const greeting = first ? `Hi ${first}, this is ${hostel}.` : `Hi, this is ${hostel}.`;
+    const message = [
+      greeting,
+      '',
+      `We keep your rent and payment records on Stayo. You can see them yourself — what's paid, what's due, and your receipts — and pay from your phone.`,
+      '',
+      `Open this to get started: ${activationLink}`,
+      '',
+      `Nothing changes if you'd rather not. Your records stay exactly as they are.`,
+    ].join('\n');
+    return `https://wa.me/91${digits}?text=${encodeURIComponent(message)}`;
+  })();
+
+  const tabButtons = TABS.map((t) => (
+    <button
+      key={t.id}
+      type="button"
+      onClick={() => setActiveTab(t.id)}
+      className={`flex-1 rounded-xl py-2.5 text-center font-display text-[12.5px] font-bold ${
+        activeTab === t.id ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
+      }`}
+    >
+      {t.label}
+    </button>
+  ));
 
   return (
     <ThemeProvider theme="product">
-      <div className={APP_SURFACE}>
-        <div className="flex items-center gap-2.5 px-4 pb-3 pt-6 sm:px-6">
-          <button type="button" onClick={() => navigate(-1)} aria-label="Back" className="flex h-8.5 w-8.5 flex-none items-center justify-center rounded-full border border-border bg-card">
-            <ArrowLeft className="h-4 w-4 text-muted-foreground" strokeWidth={1.9} />
-          </button>
-          <span className="text-[13.5px] font-semibold text-muted-foreground">Back to Tenants</span>
-        </div>
+      {/* Desktop (lg+, ADR-171 Phase 2.3): rendered as the right pane of the
+          Tenants master-detail, so the 480px APP_FRAME is dropped for a wider
+          reading column and the "Back to Tenants" row is redundant beside the
+          always-visible list. Below lg it is the unchanged full-screen takeover. */}
+      <div className={isDesktop ? `min-h-screen bg-background ${APP_GRID}` : APP_SURFACE}>
+        {!isDesktop && (
+          <div className="flex items-center gap-2.5 px-4 pb-3 pt-6 sm:px-6">
+            <button type="button" onClick={() => navigate(-1)} aria-label="Back" className="flex h-8.5 w-8.5 flex-none items-center justify-center rounded-full border border-border bg-card">
+              <ArrowLeft className="h-4 w-4 text-muted-foreground" strokeWidth={1.9} />
+            </button>
+            <span className="text-[13.5px] font-semibold text-muted-foreground">Back to Tenants</span>
+          </div>
+        )}
 
-        <div className="flex flex-col gap-3.5 px-4 pb-10 sm:px-6">
-          {tenant.accessMode === 'OWNER_MANAGED' && (
+        <div className={`flex flex-col gap-3.5 px-4 pb-10 sm:px-6${isDesktop ? ' mx-auto w-full max-w-[760px] pt-6' : ''}`}>
+          {(tenant.acceptanceStatus === 'PENDING' ||
+            (tenant.accessMode === 'OWNER_MANAGED' && tenant.acceptanceStatus !== 'ACCEPTED')) &&
+            activationLink && (
             /*
-             * The one thing an owner cannot otherwise do from here: hand this
-             * account over.
-             *
-             * The only affordance used to be "Resend invite", and the only one
-             * on the Tenants list is "+ Invite" — which means *create a new
-             * tenancy* and is correctly refused with
-             * `TENANT_HAS_ACTIVE_TENANCY`, because this person already has
-             * one. So an owner doing exactly the right thing hit a dead end,
-             * and the claim flow built for this was unreachable because
-             * nothing pointed at it. See ADR-150.
+             * A new-model tenant is operationally live (room, rent, reminders)
+             * from the moment they were invited, but has NOT personally
+             * accepted (`acceptance_status = PENDING`, ADR-165). The owner
+             * cannot accept for them and cannot fill their guardian / ID /
+             * college details — only re-share the link. It's the same link
+             * their original WhatsApp invitation carried
+             * (`tenant.invitation.activationLink`, resolved server-side).
              */
             <div className="rounded-2xl border border-border bg-card px-4 py-3.5">
               <p className="font-display text-[13.5px] font-bold text-foreground">
-                You're keeping these records
+                Waiting for {tenant.name.split(' ')[0]} to accept
               </p>
               <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
-                {tenant.name.split(' ')[0]} isn't on Stayo yet. Send them a link and they can see
-                their own rent, dues and receipts — you keep everything you've recorded, and
-                nothing changes if they never open it.
+                They're already in the room — rent, reminders and receipts are running. Share
+                their personal link so they can confirm their own details (guardian, ID,
+                college) and finish setup. Only they can add those.
               </p>
 
               <div className="mt-2.5 flex gap-2">
-                {claimWhatsapp && (
+                {activationWhatsappUrl && (
                   <a
-                    href={claimWhatsapp}
+                    href={activationWhatsappUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary font-display text-[13px] font-bold text-primary-foreground shadow-sm transition-transform active:scale-[0.98]"
@@ -200,14 +235,14 @@ export function TenantDetailPage() {
                   type="button"
                   onClick={async () => {
                     try {
-                      await navigator.clipboard.writeText(claimUrl);
+                      await navigator.clipboard.writeText(activationLink);
                       toast.success('Link copied');
                     } catch {
                       toast.error("Couldn't copy the link");
                     }
                   }}
                   className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-border bg-card px-4 font-display text-[13px] font-bold text-foreground transition-transform active:scale-[0.98] ${
-                    claimWhatsapp ? '' : 'flex-1'
+                    activationWhatsappUrl ? '' : 'flex-1'
                   }`}
                 >
                   <Copy className="h-4 w-4 text-muted-foreground" strokeWidth={2} />
@@ -233,8 +268,6 @@ export function TenantDetailPage() {
             hostelId={tenant.hostelId}
             history={contactHistory}
           />
-
-          <RiskCard tenant={tenant} />
 
           <PrivateNotesCard tenantId={tenant.id} />
 
@@ -281,53 +314,25 @@ export function TenantDetailPage() {
             </div>
           )}
 
-          {/* tabs */}
-          <div className="sticky top-0 z-10 flex gap-1 rounded-[14px] bg-muted p-1">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setActiveTab(t.id)}
-                className={`flex-1 rounded-xl py-2.5 text-center font-display text-[12.5px] font-bold ${
-                  activeTab === t.id ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+          {/* Tabs. Below `lg`: the sticky pill group, unchanged. At `lg+`
+              (ADR-171 Phase 2.7): the same pill group inside a sticky in-pane
+              header band — it breaks out to the pane column's edges and carries
+              a solid background + bottom border so it reads as the detail
+              pane's tab header when the profile cards scroll under it. The
+              `activeTab` state, labels and panels are untouched. */}
+          {isDesktop ? (
+            <div className="sticky top-0 z-10 -mx-4 border-b border-border bg-background px-4 pb-2 pt-1 sm:-mx-6 sm:px-6">
+              <div className="flex gap-1 rounded-[14px] bg-muted p-1">{tabButtons}</div>
+            </div>
+          ) : (
+            <div className="sticky top-0 z-10 flex gap-1 rounded-[14px] bg-muted p-1">{tabButtons}</div>
+          )}
 
           {activeTab === 'charges' && (
-            <div className="rounded-[18px] border border-border bg-card p-4 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]">
-              <div className="mb-1 flex items-center gap-2.5">
-                <span className="flex-1 font-display text-[15px] font-bold text-foreground">Charges</span>
-                <button
-                  type="button"
-                  onClick={() => setCreateChargeOpen(true)}
-                  className="rounded-lg bg-secondary px-3 py-1.5 font-display text-[11.5px] font-bold text-primary"
-                >
-                  + Add Charge
-                </button>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                {tenant.obligations.length >= 5
-                  ? 'Showing the 5 most recent charges — open the full ledger for the rest.'
-                  : `Showing all ${tenant.obligations.length} charge${tenant.obligations.length === 1 ? '' : 's'}.`}
-              </p>
-              <div className="flex flex-col gap-2 pt-2">
-                {tenant.obligations.map((ob) => (
-                  <div key={ob.id} className="flex items-center gap-2.5 rounded-[14px] border border-border bg-muted/50 p-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="font-display text-[15px] font-extrabold tabular-nums text-foreground">₹{ob.amount.toLocaleString('en-IN')}</div>
-                      <div className="mt-0.5 text-[11.5px] text-muted-foreground">
-                        {ob.dueLabel} · Type: {ob.type} · {ob.month}
-                      </div>
-                    </div>
-                    <StatusPill tone={OBLIGATION_TONE[ob.status]}>{ob.status}</StatusPill>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <PaymentScheduleList
+              schedule={tenant.paymentSchedule}
+              onAddCharge={() => setCreateChargeOpen(true)}
+            />
           )}
 
           {activeTab === 'activity' && (
@@ -486,16 +491,8 @@ export function TenantDetailPage() {
                 <StayRow label="Billing frequency" value={tenant.stay.billingFrequency} />
               </div>
 
-              {/* Where they stayed before this. Disclosure is decided
-                  server-side — see ADR-053's amendment; the panel renders
-                  "not shared with you" rather than hiding itself, so the
-                  absence of history and the absence of consent stay
-                  distinguishable to the owner without leaking either. */}
-              <ComplianceCard tenant={tenant} />
-
               <TenantRequestsCard hostelId={tenant.hostelId} tenantId={tenant.id} />
 
-              <TenantHistoryPanel tenantId={tenantId} />
               <div className="flex gap-2.5">
                 <button
                   type="button"
@@ -540,7 +537,8 @@ export function TenantDetailPage() {
           room: tenant.room,
           outstanding: tenant.outstanding,
           deposit: tenant.stay.deposit,
-          obligations: tenant.obligations,
+          // Only still-owed rows are selectable to settle.
+          obligations: tenant.obligations.filter((o) => o.status !== 'PAID'),
         }}
       />
       <ChangeRentModal

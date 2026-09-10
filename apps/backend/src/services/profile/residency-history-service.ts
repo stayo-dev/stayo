@@ -44,6 +44,7 @@ const TENANCY_SELECT = {
   exit_date: true,
   monthly_rent: true,
   activation_completed_at: true,
+  acceptance_status: true,
   created_at: true,
   hostels: { select: { id: true, name: true, city: true } },
   room_allocations: {
@@ -104,7 +105,10 @@ function toStay(tenancy: any) {
      * in is not a stay. Kept in the payload rather than filtered silently, so
      * a reader can tell "never arrived" from "left".
      */
-    ever_moved_in: Boolean(tenancy.activation_completed_at),
+    ever_moved_in:
+      Boolean(tenancy.activation_completed_at) ||
+      tenancy.status === "ACTIVE" ||
+      tenancy.acceptance_status === "ACCEPTED",
   };
 }
 

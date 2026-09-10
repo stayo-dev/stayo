@@ -11,7 +11,9 @@ const OwnerProviderShell = lazy(() => import('./OwnerProviderShell').then((m) =>
 const OwnerDashboardPreviewPage = lazy(() =>
   import('@features/owner-onboarding/pages/OwnerDashboardPreviewPage').then((m) => ({ default: m.OwnerDashboardPreviewPage })),
 );
-const TenantsPage = lazy(() => import('@features/owner-tenants/pages/TenantsPage').then((m) => ({ default: m.TenantsPage })));
+const TenantsWorkspace = lazy(() =>
+  import('@features/owner-tenants/pages/TenantsWorkspace').then((m) => ({ default: m.TenantsWorkspace })),
+);
 const TenantDetailPage = lazy(() =>
   import('@features/owner-tenants/pages/TenantDetailPage').then((m) => ({ default: m.TenantDetailPage })),
 );
@@ -33,9 +35,6 @@ const HostelBuilderPage = lazy(() =>
 );
 const HostelTenantsPage = lazy(() =>
   import('@features/hostel-drilldown/pages/HostelTenantsPage').then((m) => ({ default: m.HostelTenantsPage })),
-);
-const HostelMarketingPage = lazy(() =>
-  import('@features/hostel-drilldown/pages/HostelMarketingPage').then((m) => ({ default: m.HostelMarketingPage })),
 );
 const HostelSettingsPage = lazy(() =>
   import('@features/hostel-drilldown/pages/HostelSettingsPage').then((m) => ({ default: m.HostelSettingsPage })),
@@ -64,13 +63,17 @@ const MoreConfigInviteDefaultsPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigInviteDefaultsPage').then((m) => ({ default: m.MoreConfigInviteDefaultsPage })),
 );
 const MoreProfilePage = lazy(() => import('@features/owner-more/pages/MoreProfilePage').then((m) => ({ default: m.MoreProfilePage })));
+const HostelsPage = lazy(() =>
+  import('@features/owner-dashboard/pages/HostelsPage').then((m) => ({ default: m.HostelsPage })),
+);
+const HostelsWorkspace = lazy(() =>
+  import('@features/owner-dashboard/pages/HostelsWorkspace').then((m) => ({ default: m.HostelsWorkspace })),
+);
 const MoreHostelIdentityPage = lazy(() =>
   import('@features/owner-more/pages/MoreHostelIdentityPage').then((m) => ({ default: m.MoreHostelIdentityPage })),
 );
 const MoreNoticesPage = lazy(() => import('@features/owner-more/pages/MoreNoticesPage').then((m) => ({ default: m.MoreNoticesPage })));
-const MoreServiceRequestsPage = lazy(() => import('@features/owner-more/pages/MoreServiceRequestsPage').then((m) => ({ default: m.MoreServiceRequestsPage })));
 const MoreHelpPage = lazy(() => import('@features/owner-more/pages/MoreHelpPage').then((m) => ({ default: m.MoreHelpPage })));
-const MoreAboutPage = lazy(() => import('@features/owner-more/pages/MoreAboutPage').then((m) => ({ default: m.MoreAboutPage })));
 const MoreConfigurationHubPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigurationHubPage').then((m) => ({ default: m.MoreConfigurationHubPage })),
 );
@@ -186,13 +189,52 @@ export function OwnerRoutes() {
       <Route element={<OwnerAppShell />}>
         <Route path="/owner" element={<Navigate to="/owner/home" replace />} />
         <Route path="/owner/home" element={<OwnerDashboardPreviewPage />} />
+        {/* Hostels list + drilldown as a master-detail at lg+ (ADR-171 Phase 2.3).
+            The `:hostelId` drilldown is nested so <MasterDetail> renders it
+            through <Outlet/> and the console sidebar does not remount on
+            list<->drilldown navigation. Below lg it stays a full-screen
+            takeover — OwnerAppShell drops its bottom nav / frame for the
+            drilldown paths (isOwnerFullBleedPath), the list keeps the nav.
+            `/owner/hostels/new` + `:hostelId/build` (the builder) stay standalone
+            outside the shell — static `new` out-ranks `:hostelId` in RR7, and
+            `build` has no nested child so the standalone route wins. */}
+        <Route path="/owner/hostels" element={<HostelsWorkspace />}>
+          <Route path=":hostelId" element={<HostelDrilldownLayout />}>
+            <Route index element={<Navigate to="overview" replace />} />
+            <Route path="overview" element={<HostelOverviewPage />} />
+            <Route path="rooms" element={<HostelRoomsPage />} />
+            <Route path="tenants" element={<HostelTenantsPage />} />
+            {/* 'marketing' (the Stayo Discover listing editor) is shelved for v1 —
+                ADR-170. A stale link now redirects to Overview; HostelMarketingPage
+                and its feature tree are kept on disk for v2. */}
+            <Route path="marketing" element={<Navigate to="overview" replace />} />
+            <Route path="settings" element={<HostelSettingsPage />} />
+          </Route>
+        </Route>
 
         {/* Today's rent-collection work queue (ADR-045). */}
         <Route path="/owner/money/collect" element={<CollectionQueuePage />} />
         <Route path="/owner/money/payouts" element={<MoneyInPage />} />
         <Route path="/owner/agreements/review" element={<AgreementQueuePage />} />
         <Route path="/owner/rooms/vacant" element={<VacancyQueuePage />} />
-        <Route path="/owner/tenants" element={<TenantsPage />} />
+        {/* KYC-verification + activation queues (ADR-171 Phase 2.8): moved
+            *inside* OwnerAppShell so they get the desktop console. Declared
+            before `/owner/tenants` and its nested `:tenantId` — and static
+            segments out-rank the dynamic `:tenantId` in RR7 regardless of
+            order — so `/owner/tenants/verifications` and `.../activations`
+            still win their own match, never read as a tenant id. Below lg they
+            stay full-screen takeovers (isOwnerFullBleedPath covers them). */}
+        <Route path="/owner/tenants/verifications" element={<PendingVerificationsPage />} />
+        <Route path="/owner/tenants/activations" element={<PendingActivationsPage />} />
+        {/* Tenants list + detail as a master-detail at lg+ (ADR-171 Phase 2.1).
+            `:tenantId` is nested so <MasterDetail> renders it through <Outlet/>;
+            it stays inside OwnerAppShell so the console sidebar does not remount
+            on list<->detail navigation. Below lg it is still a full-screen
+            takeover — OwnerAppShell drops its bottom nav / frame for this path
+            (isOwnerFullBleedPath). */}
+        <Route path="/owner/tenants" element={<TenantsWorkspace />}>
+          <Route path=":tenantId" element={<TenantDetailPage />} />
+        </Route>
 
         <Route path="/owner/money" element={<MoneyPage />} />
         <Route path="/owner/food" element={<FoodPage />} />
@@ -219,9 +261,16 @@ export function OwnerRoutes() {
         <Route path="/owner/more/hostel" element={<MoreHostelIdentityPage />} />
         <Route path="/owner/more/hostel/:hostelId" element={<MoreHostelIdentityPage />} />
         <Route path="/owner/more/notices" element={<MoreNoticesPage />} />
-        <Route path="/owner/more/service-requests" element={<MoreServiceRequestsPage />} />
+        {/* The owner's copy of the service-request queue is deleted:
+            `/owner/alerts/requests` is the same queue over the same service,
+            with search, a tenant chat sheet and deep-links from notifications
+            that this one never had. Redirected rather than removed — the help
+            catalogue and older notifications still point here. */}
+        <Route path="/owner/more/service-requests" element={<Navigate to="/owner/alerts/requests" replace />} />
         <Route path="/owner/more/help" element={<MoreHelpPage />} />
-        <Route path="/owner/more/about" element={<MoreAboutPage />} />
+        {/* About was three links and a version string read from @shared/mocks;
+            the links now sit at the foot of Help. */}
+        <Route path="/owner/more/about" element={<Navigate to="/owner/more/help" replace />} />
 
         <Route path="/owner/more/configuration/hostel/tenant-defaults" element={<MoreConfigInviteDefaultsPage />} />
         {/* The old single-value screen. Kept routed because search and older
@@ -245,12 +294,6 @@ export function OwnerRoutes() {
         <Route path="/owner/more/configuration/finance/receipt-footer" element={<MoreConfigReceiptFooterPage />} />
       </Route>
 
-      {/* Declared before the :tenantId route so "verifications" is not
-          swallowed as a tenant id. */}
-      <Route path="/owner/tenants/verifications" element={<PendingVerificationsPage />} />
-      <Route path="/owner/tenants/activations" element={<PendingActivationsPage />} />
-      <Route path="/owner/tenants/:tenantId" element={<TenantDetailPage />} />
-
       {/* Alerts categories — full-screen takeovers with their own back
           button, same treatment as Tenant Detail. Static per-category routes
           rather than a single `/owner/alerts/:category`: Leads has grouping
@@ -262,20 +305,12 @@ export function OwnerRoutes() {
       <Route path="/owner/alerts/renewals" element={<AlertsRenewalsPage />} />
       <Route path="/owner/alerts/requests" element={<AlertsRequestsPage />} />
 
-      {/* Add Hostel — a full-screen build flow, not a drilldown tab. Declared
-          before the drilldown so `/owner/hostels/new` is not read as a hostel
-          id, and resumable at `:hostelId/build`. */}
+      {/* Add Hostel / resume builder — a full-screen build flow, not a drilldown
+          tab, mounted outside OwnerAppShell. `/owner/hostels/new` is static so it
+          out-ranks the nested `:hostelId`; `:hostelId/build` has no nested child
+          so this standalone route wins the match. */}
       <Route path="/owner/hostels/new" element={<HostelBuilderPage />} />
       <Route path="/owner/hostels/:hostelId/build" element={<HostelBuilderPage />} />
-
-      <Route path="/owner/hostels/:hostelId" element={<HostelDrilldownLayout />}>
-        <Route index element={<Navigate to="overview" replace />} />
-        <Route path="overview" element={<HostelOverviewPage />} />
-        <Route path="rooms" element={<HostelRoomsPage />} />
-        <Route path="tenants" element={<HostelTenantsPage />} />
-        <Route path="marketing" element={<HostelMarketingPage />} />
-        <Route path="settings" element={<HostelSettingsPage />} />
-      </Route>
     </Route>
   );
 }

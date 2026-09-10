@@ -3,8 +3,10 @@ import { EMPTY_INVITE_WIZARD_DATA, type InviteWizardData } from '../types';
 import {
   buildPreviewDisplay,
   buildPreviewRequestBody,
+  describePreviewBlockers,
   isPaymentDetailsValid,
   isPreviewRequestReady,
+  previewBlockers,
   previewRequestKey,
   type InviteSettlementPreviewResponse,
 } from './settlementPreview';
@@ -166,7 +168,7 @@ describe('buildPreviewDisplay', () => {
       { key: 'preview-rent-2026-09', label: 'Sep', amount: 8000 },
       { key: 'preview-rent-2026-10', label: 'Oct', amount: 8000 },
     ]);
-    expect(display.outstandingLabel).toBe('Nov onwards outstanding');
+    expect(display.outstandingLabel).toBe('Nov onwards');
     expect(display.overpaidAmount).toBe(0);
     expect(display.warning).toBeNull();
   });
@@ -185,7 +187,7 @@ describe('buildPreviewDisplay', () => {
       remaining_outstanding: 5000,
     };
     const display = buildPreviewDisplay(partial, { paidAmount: 27000, monthlyRent: 8000 });
-    expect(display.outstandingLabel).toBe('Sep onwards outstanding');
+    expect(display.outstandingLabel).toBe('Sep onwards');
   });
 
   it('flags an over-payment plainly instead of letting it surface only at submit', () => {
@@ -211,5 +213,92 @@ describe('buildPreviewDisplay', () => {
     };
     const display = buildPreviewDisplay(rejected, { paidAmount: 0.4, monthlyRent: 8000 });
     expect(display.warning).toBe('This hostel accepts part payments of ₹500 or more');
+  });
+});
+
+describe('previewBlockers', () => {
+  const ready = (over: Partial<InviteWizardData> = {}): InviteWizardData => ({
+    ...EMPTY_INVITE_WIZARD_DATA,
+    hostelId: 'h-1',
+    joiningDate: '2026-09-01',
+    monthlyRent: '8000',
+    agreementMonths: '11',
+    hasPaidAlready: true,
+    paidAmount: '16000',
+    ...over,
+  });
+
+  it('is empty once the owner has said enough to settle against', () => {
+    expect(previewBlockers(ready())).toEqual([]);
+    expect(describePreviewBlockers(ready())).toBeNull();
+  });
+
+  it('names the missing field rather than rendering an empty panel', () => {
+    // The screen used to show a headed box with nothing in it: no figure, no
+    // spinner, no reason, leaving the owner to guess which field it wanted.
+    expect(describePreviewBlockers(ready({ agreementMonths: '' })))
+      .toBe('Add how long the agreement runs to see how this payment settles.');
+  });
+
+  it('refuses to settle against a rent of zero', () => {
+    // This used to fall back to 0, which produced a confident wrong answer:
+    // every rupee read as advance credit because nothing was ever owed.
+    expect(previewBlockers(ready({ monthlyRent: '' }))).toContain('the monthly rent');
+    expect(isPreviewRequestReady(ready({ monthlyRent: '' }))).toBe(false);
+  });
+
+  it('lists several missing fields readably', () => {
+    expect(describePreviewBlockers(ready({ monthlyRent: '', agreementMonths: '' })))
+      .toBe('Add the monthly rent and how long the agreement runs to see how this payment settles.');
+  });
+
+  it('says nothing at all while the toggle is off', () => {
+    expect(describePreviewBlockers(ready({ hasPaidAlready: false }))).toBeNull();
+    expect(isPreviewRequestReady(ready({ hasPaidAlready: false }))).toBe(false);
+  });
+
+  it('still asks for the amount when the toggle is on but nothing is typed', () => {
+    expect(describePreviewBlockers(ready({ paidAmount: '' })))
+      .toContain('how much they have paid');
+  });
+});
+
+/**
+ * The figure an owner is really checking: after this cash lands, what is still
+ * owed? The panel used to name only the month the tenant falls behind, which
+ * answers "when" and not "how much".
+ */
+describe('buildPreviewDisplay — remaining balance', () => {
+  const base: InviteSettlementPreviewResponse = {
+    allocations: [],
+    unallocated: 0,
+    total_outstanding: 40000,
+    total_to_settle: 16000,
+    remaining_outstanding: 24000,
+    payment_accepted: true,
+    rejection_reason: null,
+    rent_months: [],
+  };
+
+  it('carries the backend’s own remaining figure through, never recomputing it', () => {
+    const display = buildPreviewDisplay(base, { paidAmount: 16000, monthlyRent: 8000 });
+    expect(display.remainingOutstanding).toBe(24000);
+  });
+
+  it('reports 0 when the payment settles everything', () => {
+    const display = buildPreviewDisplay(
+      { ...base, remaining_outstanding: 0 },
+      { paidAmount: 40000, monthlyRent: 8000 },
+    );
+    expect(display.remainingOutstanding).toBe(0);
+  });
+
+  it('never reports a negative balance, so an over-payment reads as settled plus a warning', () => {
+    const display = buildPreviewDisplay(
+      { ...base, remaining_outstanding: -5000, unallocated: 5000 },
+      { paidAmount: 45000, monthlyRent: 8000 },
+    );
+    expect(display.remainingOutstanding).toBe(0);
+    expect(display.overpaidAmount).toBe(5000);
   });
 });

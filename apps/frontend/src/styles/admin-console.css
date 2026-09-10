@@ -1,12 +1,13 @@
 /*
  * Admin console styles, ported from `Stayo Admin.dc.html`.
  *
- * The console deliberately does NOT reuse `.font-display`: that resolves to
- * --font-display, which is Playfair Display for the marketing and product
- * themes. The design specifies Manrope for display/numerics and Inter for
- * body text, both already loaded in index.html. Routing the console through
- * the shared token would make a typography change intended for owners
- * silently restyle the admin console — and did, before this rebuild.
+ * The console keeps its own `.font-admin` rather than reusing the shared
+ * `.font-display`. Both now resolve to Manrope — since 2026-09-09 the whole
+ * product is on the brand pair (Manrope + Inter, ADR-172) and the retired
+ * serif face is gone — so this is no longer a correctness fix. It is kept
+ * because the console is a separate surface with its own design source, and
+ * routing it through the owner-facing token would let a typography change
+ * intended for owners silently restyle the admin console, which it once did.
  */
 .admin-console {
   font-family: Inter, system-ui, sans-serif;

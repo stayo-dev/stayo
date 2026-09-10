@@ -3,6 +3,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { Eye, EyeOff, X } from 'lucide-react';
 import { cn } from '@shared/lib/cn';
 import { useAuth } from '@context/AuthContext';
+import { ClerkGoogleSignIn } from './ClerkGoogleSignIn';
 import { StayoLoader, StayoMark, StayoWordmark } from '@shared/ui/brand';
 import {
   MIN_SIGNUP_PASSWORD_LENGTH,
@@ -81,14 +82,13 @@ const errorInputClass = 'border-destructive focus:border-destructive';
  * `vaul` directly: `shared/` can't import `app/` (scripts/check-architecture.mjs).
  */
 export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login' }: LoginModalProps) {
-  const { login, loginWithGoogle, loginWithGoogleAllowProvision, signUpTenant } = useAuth();
+  const { login, signUpTenant } = useAuth();
 
   const [tab, setTab] = useState<'login' | 'signup'>(initialTab);
   const [form, setForm] = useState<LoginModalForm>(EMPTY_FORM);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [googleSubmitting, setGoogleSubmitting] = useState(false);
   const [error, setError] = useState('');
   /** Per-field signup messages, shown under the field they belong to. */
   const [fieldErrors, setFieldErrors] = useState<TenantSignupErrors>({});
@@ -106,7 +106,6 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
     setError('');
     setFieldErrors({});
     setSubmitting(false);
-    setGoogleSubmitting(false);
   }, [open, initialTab, isOwner]);
 
   const handleOpenChange = (next: boolean) => {
@@ -177,22 +176,11 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
    * form); owner mode never does — owner accounts are only ever created
    * through the onboarding funnel.
    */
-  const submitGoogle = async () => {
-    setError('');
-    setFieldErrors({});
-    setGoogleSubmitting(true);
-    try {
-      if (isOwner) {
-        await loginWithGoogle();
-      } else {
-        await loginWithGoogleAllowProvision();
-      }
-      // No further code runs on success — signInWithOAuth navigates the browser away.
-    } catch (err) {
-      setError(getMessage(err, 'Google sign-in failed.'));
-      setGoogleSubmitting(false);
-    }
-  };
+  /*
+   * Google is Clerk's (ADR-176 Phase 3). There is no `submitGoogle` handler any
+   * more — `<ClerkGoogleSignIn>` owns the redirect and mounts the Clerk SDK on
+   * demand, so the landing page that renders this modal still ships without it.
+   */
 
   return (
     <Dialog.Root open={open} onOpenChange={handleOpenChange}>
@@ -356,15 +344,19 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
                 <span className="font-display text-[11px] font-bold tracking-wider text-muted-foreground">OR</span>
                 <span className="h-px flex-1 bg-border" />
               </div>
-              <button
-                type="button"
-                onClick={submitGoogle}
-                disabled={googleSubmitting}
-                className="flex w-full items-center justify-center gap-2.5 rounded-xl border-[1.5px] border-border bg-card px-4 py-3 font-display text-[14.5px] font-bold text-foreground transition-colors hover:border-primary disabled:opacity-75"
-              >
-                {googleSubmitting ? <StayoLoader size="sm" label={null} /> : <GoogleMark />}
-                {googleSubmitting ? 'Please wait…' : 'Continue with Google'}
-              </button>
+              <ClerkGoogleSignIn>
+                {({ disabled, onClick, busy }) => (
+                  <button
+                    type="button"
+                    onClick={onClick}
+                    disabled={disabled || busy}
+                    className="flex w-full items-center justify-center gap-2.5 rounded-xl border-[1.5px] border-border bg-card px-4 py-3 font-display text-[14.5px] font-bold text-foreground transition-colors hover:border-primary disabled:opacity-75"
+                  >
+                    {busy ? <StayoLoader size="sm" label={null} /> : <GoogleMark />}
+                    {busy ? 'Please wait…' : 'Continue with Google'}
+                  </button>
+                )}
+              </ClerkGoogleSignIn>
 
               {/* Said once, here, because it's the question this form raises:
                   there's no phone field, and an enquiry obviously needs one. */}
@@ -422,15 +414,19 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
                 <span className="font-display text-[11px] font-bold tracking-wider text-muted-foreground">OR</span>
                 <span className="h-px flex-1 bg-border" />
               </div>
-              <button
-                type="button"
-                onClick={submitGoogle}
-                disabled={googleSubmitting}
-                className="flex w-full items-center justify-center gap-2.5 rounded-xl border-[1.5px] border-border bg-card px-4 py-3 font-display text-[14.5px] font-bold text-foreground transition-colors hover:border-primary disabled:opacity-75"
-              >
-                {googleSubmitting ? <StayoLoader size="sm" label={null} /> : <GoogleMark />}
-                {googleSubmitting ? 'Please wait…' : 'Continue with Google'}
-              </button>
+              <ClerkGoogleSignIn>
+                {({ disabled, onClick, busy }) => (
+                  <button
+                    type="button"
+                    onClick={onClick}
+                    disabled={disabled || busy}
+                    className="flex w-full items-center justify-center gap-2.5 rounded-xl border-[1.5px] border-border bg-card px-4 py-3 font-display text-[14.5px] font-bold text-foreground transition-colors hover:border-primary disabled:opacity-75"
+                  >
+                    {busy ? <StayoLoader size="sm" label={null} /> : <GoogleMark />}
+                    {busy ? 'Please wait…' : 'Continue with Google'}
+                  </button>
+                )}
+              </ClerkGoogleSignIn>
               <a
                 href="/forgot-password"
                 className="mt-4 text-center text-[12.5px] font-semibold text-primary hover:underline"

@@ -10,6 +10,7 @@ import { imagekit } from "@/lib/imagekit";
 import { normalizeIndianPhone } from "@/lib/utils/phone-utils";
 import { withOnboardingMetrics } from "@/lib/onboarding-metrics";
 import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
+import { recomputeDocumentVerified } from "@/src/services/tenants/kyc-status";
 
 /**
  * 👨‍🎓 COMPLETE TENANT PROFILE (Onboarding)
@@ -225,6 +226,12 @@ export async function POST(req: NextRequest) {
           create: { profile_id: session.sub, ...(portable as any) },
           update: { ...(portable as any), updated_at: new Date() },
         });
+      }
+
+      // profile_type is (re)written above; re-derive KYC verification against
+      // the type's required documents so it can never go stale after a switch.
+      if (tenantOwner?.id) {
+        await recomputeDocumentVerified(tx, tenantOwner.id);
       }
 
       return tenantUpdate;

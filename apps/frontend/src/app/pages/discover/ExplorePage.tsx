@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BadgeCheck,
@@ -23,8 +23,10 @@ import {
 
 import { useDiscoverAuth } from './DiscoverAuthContext';
 import { useShareHostel } from '@shared/hooks/useShareHostel';
+import { subscribeToScroll } from '@shared/lib/scroll';
 import { HostelCard } from './components/HostelCard';
 import { DiscoverEmpty, HostelCardSkeleton, PrimaryButton } from './components/DiscoverShell';
+import { DiscoverSearchBar } from './components/DiscoverSearchBar';
 import { C, FONT, PAGE_SHELL, RESULTS_GRID } from './discoverTheme';
 import { FootprintTrail } from './components/FootprintTrail';
 
@@ -81,6 +83,24 @@ export function ExplorePage() {
     }
   });
   const [cityOpen, setCityOpen] = useState(false);
+
+  // Once the hero's search bar has scrolled out of view, a slimmer copy slides
+  // down and pins to the top so search stays reachable while browsing the list.
+  // The trigger is the hero bar's own rect, not a pixel threshold, so it lands
+  // correctly at every breakpoint. `window.scrollY` is permanently 0 on this
+  // app — see `@shared/lib/scroll` — hence `subscribeToScroll`, which also
+  // fires once on mount so a restored scroll position settles right.
+  const heroSearchRef = useRef<HTMLDivElement>(null);
+  const [stuck, setStuck] = useState(false);
+
+  useEffect(
+    () =>
+      subscribeToScroll(() => {
+        const el = heroSearchRef.current;
+        setStuck(el ? el.getBoundingClientRect().bottom <= 8 : false);
+      }),
+    [],
+  );
 
   useEffect(() => {
     try {
@@ -156,6 +176,48 @@ export function ExplorePage() {
       <FootprintTrail />
 
       <div className="relative z-[1]">
+      {/* ── Pinned search ─────────────────────────────────────────────────
+          Always mounted; only the transform toggles, so the bar slides both
+          ways and never flashes on mount. `z-40` matches the bottom nav —
+          they sit at opposite edges and never meet. */}
+      <div
+        className={`fixed inset-x-0 top-0 z-40 transition-transform duration-300 motion-reduce:transition-none ${
+          stuck ? 'translate-y-0' : '-translate-y-full pointer-events-none'
+        }`}
+        style={{
+          background: 'rgba(247,243,239,.92)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          borderBottom: `1px solid ${C.line}`,
+          boxShadow: stuck ? '0 6px 20px rgba(40,30,20,.10)' : 'none',
+        }}
+      >
+        <div className={`${PAGE_SHELL} relative py-2.5`}>
+          {/* Wordmark on the left — the pinned bar sits on a light ground, so
+              the terracotta mark, not the white one. Absolutely placed so the
+              search stays centred on the page. Desktop only: the phone bar has
+              no room to spare. */}
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            aria-label="Stayo home"
+            className="absolute left-5 top-1/2 hidden -translate-y-1/2 lg:left-8 lg:block"
+          >
+            <img src="/stayo-wordmark.svg" alt="Stayo" className="h-6 w-auto" />
+          </button>
+          <DiscoverSearchBar
+            variant="sticky"
+            city={city}
+            cityCount={cities.length}
+            cityOpen={cityOpen}
+            onToggleCity={() => setCityOpen((open) => !open)}
+            onOpenSearch={openSearch}
+            renderCityPicker={() => cityPicker('light')}
+            onHome={() => navigate('/')}
+          />
+        </div>
+      </div>
+
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <header
         className="relative overflow-hidden rounded-b-[28px] pb-5 pt-[max(3.5rem,env(safe-area-inset-top))] lg:rounded-b-[40px] lg:pb-14 lg:pt-0"
@@ -237,81 +299,19 @@ export function ExplorePage() {
             Real rent, beds free today, owner at the other end.
           </p>
 
-          {/* Phone: one tap opens the full search screen. */}
-          <button
-            type="button"
-            onClick={openSearch}
-            className="mt-5 flex w-full items-center gap-2.5 rounded-[15px] bg-white px-4 py-4 text-left lg:hidden"
-            style={{ boxShadow: '0 8px 22px rgba(0,0,0,.22)' }}
-          >
-            {/* One line. The second line used to list the cities that have
-                hostels, directly under a control that showed the selected
-                city — two location readouts, neither obviously the current
-                one. The city list is a picker now, not a caption. */}
-            <Search className="h-[17px] w-[17px] flex-none" strokeWidth={1.8} style={{ color: C.clay }} />
-            <span className="min-w-0 flex-1 truncate text-[14px] font-semibold" style={{ color: C.inkSoft }}>
-              Search area, college or hostel
-            </span>
-          </button>
-
-          {/* Laptop: a two-field bar — where, then what — because at this
-              width there is room to show that city and query are separate
-              choices instead of hiding both behind one placeholder. */}
-          <div className="relative mx-auto mt-9 hidden w-full max-w-[760px] lg:block">
-            <div
-              className="flex items-center gap-1 rounded-full bg-white p-2 text-left"
-              style={{ boxShadow: '0 18px 40px rgba(0,0,0,.28)' }}
-            >
-              <button
-                type="button"
-                onClick={() => setCityOpen((open) => !open)}
-                aria-expanded={cityOpen}
-                disabled={cities.length === 0}
-                className="flex min-w-[210px] flex-col items-start rounded-full px-6 py-2 text-left transition-colors hover:bg-[#F7F3EF] disabled:hover:bg-transparent"
-              >
-                <span className="text-[10.5px] font-bold uppercase tracking-[0.1em]" style={{ color: C.textMuted }}>
-                  Where
-                </span>
-                <span className="flex items-center gap-1.5 text-[14.5px] font-bold" style={{ color: C.text }}>
-                  {city ?? 'Everywhere'}
-                  {cities.length > 0 && <ChevronDown className="h-3.5 w-3.5" style={{ color: C.textGhost }} />}
-                </span>
-              </button>
-
-              <span className="h-9 w-px flex-none" style={{ background: C.line }} />
-
-              <button
-                type="button"
-                onClick={openSearch}
-                className="flex min-w-0 flex-1 flex-col items-start rounded-full px-6 py-2 text-left transition-colors hover:bg-[#F7F3EF]"
-              >
-                <span className="text-[10.5px] font-bold uppercase tracking-[0.1em]" style={{ color: C.textMuted }}>
-                  What
-                </span>
-                <span className="truncate text-[14.5px] font-semibold" style={{ color: C.textFaint }}>
-                  Area, college or hostel name
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={openSearch}
-                aria-label="Search hostels"
-                className="flex h-[52px] w-[52px] flex-none items-center justify-center rounded-full transition-transform hover:scale-105"
-                style={{ background: C.clayDeep }}
-              >
-                <Search className="h-5 w-5 text-white" strokeWidth={2.2} />
-              </button>
-            </div>
-
-            {cityOpen && cities.length > 0 && (
-              <div
-                className="absolute left-0 right-0 top-[calc(100%+12px)] z-30 flex flex-wrap justify-center gap-2 rounded-[24px] bg-white p-4 text-left"
-                style={{ boxShadow: '0 20px 44px rgba(0,0,0,.22)' }}
-              >
-                {cityPicker('light')}
-              </div>
-            )}
+          {/* The mobile pill and the laptop "Where / What" bar both live in
+              `DiscoverSearchBar` now — the same component renders the slim copy
+              that pins to the top on scroll (see the `stuck` bar above). */}
+          <div ref={heroSearchRef}>
+            <DiscoverSearchBar
+              variant="hero"
+              city={city}
+              cityCount={cities.length}
+              cityOpen={cityOpen}
+              onToggleCity={() => setCityOpen((open) => !open)}
+              onOpenSearch={openSearch}
+              renderCityPicker={() => cityPicker('light')}
+            />
           </div>
         </div>
       </header>

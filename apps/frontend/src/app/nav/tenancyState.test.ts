@@ -85,7 +85,7 @@ describe('buildOuterTabs', () => {
       .toEqual(ACTIVE_TENANT_TABS);
   });
 
-  it('drops to Explore/Profile once the exit is settled', () => {
+  it('drops to the Profile-only bar once the exit is settled', () => {
     expect(buildOuterTabs({ signedIn: true, liveTenancy: false, tenancyState: 'EXITED' }))
       .toEqual(EXPLORE_PROFILE_TABS);
   });

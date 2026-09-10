@@ -15,6 +15,13 @@ function clampBatchSize(value: string | null) {
   return Math.min(Math.floor(parsed), MAX_BATCH_SIZE);
 }
 
+/**
+ * Optional single-owner filter. `?ownerId` (or the legacy env vars) narrows the
+ * run to one owner for manual/debug purposes. When absent, the cron processes
+ * EVERY operational owner's active hostels — this is the normal path. It used to
+ * hard-require a single operational owner and 409 otherwise, which silently
+ * stopped all rent generation the moment a second owner onboarded a tenant.
+ */
 function configuredOwnerId(searchParams: URLSearchParams) {
   return (
     searchParams.get("ownerId") ||
@@ -25,39 +32,22 @@ function configuredOwnerId(searchParams: URLSearchParams) {
   );
 }
 
-async function resolveSingleOperationalOwnerId(explicitOwnerId: string | null) {
-  if (explicitOwnerId) return explicitOwnerId;
-
-  const ownerRows = await prisma.hostels.findMany({
-    where: {
-      status: "ACTIVE",
-      room_allocations: {
-        some: {
-          is_active: true,
-          tenant: { status: "ACTIVE" },
-        },
-      },
-    },
-    distinct: ["owner_id"],
-    select: { owner_id: true },
-  });
-
-  if (ownerRows.length === 1) return ownerRows[0].owner_id;
-  return null;
-}
-
 /**
  * 🕐 CRON — Monthly Rent Generation
  * GET /api/cron/generate-rent
- * 
- * Called by Vercel Cron on the 1st of every month.
- * Protected by CRON_SECRET bearer token.
- * 
- * Idempotent: safe to call multiple times.
+ *
+ * Called by Vercel Cron daily; idempotent and catch-up safe — it always targets
+ * the current calendar month and re-running creates nothing new (per-hostel
+ * `system_locks` lock + `rent_generation_ledgers` + the DB unique constraints on
+ * `rent_obligations`).
+ *
+ * Scope: all ACTIVE hostels that have at least one active allocation to an ACTIVE
+ * tenant, across every owner. Paginated by hostel `id` (stable cursor). A single
+ * invocation drains as many batches as fit inside SOFT_TIMEOUT_MS; if it runs out
+ * of budget it returns `has_more: true` + `next_cursor` for a follow-up call.
  */
 export async function GET(req: NextRequest) {
   const startedAt = Date.now();
-  // Verify cron secret
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
 
@@ -73,81 +63,105 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const limit = clampBatchSize(searchParams.get("limit"));
-    const cursor = searchParams.get("cursor");
     const includeEmptyHostels = searchParams.get("includeEmptyHostels") === "true";
     const explicitOwnerId = configuredOwnerId(searchParams);
-    const ownerId = await resolveSingleOperationalOwnerId(explicitOwnerId);
 
-    if (!ownerId) {
-      console.warn("[CRON] Rent generation owner scope is ambiguous. Configure RENT_CRON_OWNER_ID for production.");
-      return NextResponse.json({
-        success: false,
-        error: "Rent generation owner scope is ambiguous. Configure RENT_CRON_OWNER_ID.",
-      }, { status: 409 });
-    }
+    const operationalFilter = includeEmptyHostels
+      ? {}
+      : {
+          room_allocations: {
+            some: {
+              is_active: true,
+              tenant: { status: "ACTIVE" as const },
+            },
+          },
+        };
 
-    const hostels = await prisma.hostels.findMany({
-      where: {
-        status: "ACTIVE",
-        owner_id: ownerId,
-        ...(cursor ? { id: { gt: cursor } } : {}),
-        ...(includeEmptyHostels
-          ? {}
-          : {
-              room_allocations: {
-                some: {
-                  is_active: true,
-                  tenant: { status: "ACTIVE" },
-                },
-              },
-            }),
-      },
-      select: { id: true, owner_id: true, name: true },
-      orderBy: { id: "asc" },
-      take: limit + 1,
-    });
+    const baseWhere: any = {
+      status: "ACTIVE",
+      ...(explicitOwnerId ? { owner_id: explicitOwnerId } : {}),
+      ...operationalFilter,
+    };
 
-    const hasMoreByLimit = hostels.length > limit;
-    const batch = hasMoreByLimit ? hostels.slice(0, limit) : hostels;
-    const results = [];
+    const results: any[] = [];
+    const ownersTouched = new Set<string>();
+    let cursor = searchParams.get("cursor");
     let stoppedForTimeBudget = false;
+    let hasMore = false;
 
-    console.log("[CRON] Monthly rent generation batch start:", {
-      owner_id: ownerId,
-      hostels_in_batch: batch.length,
-      limit,
-      cursor,
-      include_empty_hostels: includeEmptyHostels,
-    });
+    // Drain batches within the time budget. Each batch pages by hostel `id`.
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const hostels = await prisma.hostels.findMany({
+        where: {
+          ...baseWhere,
+          ...(cursor ? { id: { gt: cursor } } : {}),
+        },
+        select: { id: true, owner_id: true, name: true },
+        orderBy: { id: "asc" },
+        take: limit + 1,
+      });
 
-    for (const hostel of batch) {
-      if (Date.now() - startedAt > SOFT_TIMEOUT_MS) {
-        stoppedForTimeBudget = true;
-        console.warn("[CRON] Rent generation soft timeout reached; stopping batch before Vercel timeout", {
-          processed: results.length,
-          limit,
-        });
+      if (hostels.length === 0) break;
+
+      const hasMoreByLimit = hostels.length > limit;
+      const batch = hasMoreByLimit ? hostels.slice(0, limit) : hostels;
+
+      console.log("[CRON] Monthly rent generation batch start:", {
+        hostels_in_batch: batch.length,
+        limit,
+        cursor,
+        explicit_owner_id: explicitOwnerId,
+        include_empty_hostels: includeEmptyHostels,
+      });
+
+      for (const hostel of batch) {
+        if (Date.now() - startedAt > SOFT_TIMEOUT_MS) {
+          stoppedForTimeBudget = true;
+          console.warn("[CRON] Rent generation soft timeout reached; stopping before Vercel timeout", {
+            processed: results.length,
+          });
+          break;
+        }
+
+        try {
+          const result = await rentGenerationService.generateMonthlyRent(
+            undefined,
+            hostel.owner_id,
+            "cron",
+            hostel.id
+          );
+          results.push({ hostel_id: hostel.id, hostel_name: hostel.name, owner_id: hostel.owner_id, ...result });
+        } catch (hostelError: any) {
+          console.error("[CRON] Rent generation failed for hostel:", {
+            hostel_id: hostel.id,
+            hostel_name: hostel.name,
+            owner_id: hostel.owner_id,
+            error: hostelError?.message || String(hostelError),
+          });
+          results.push({
+            hostel_id: hostel.id,
+            hostel_name: hostel.name,
+            owner_id: hostel.owner_id,
+            created: 0,
+            skipped: 0,
+            failed: 1,
+            error: hostelError?.message || "Rent generation failed for hostel",
+          });
+        }
+        if (hostel.owner_id) ownersTouched.add(hostel.owner_id);
+        cursor = hostel.id;
+      }
+
+      if (stoppedForTimeBudget) {
+        hasMore = true;
         break;
       }
-
-      try {
-        const result = await rentGenerationService.generateMonthlyRent(undefined, hostel.owner_id, "cron", hostel.id);
-        results.push({ hostel_id: hostel.id, hostel_name: hostel.name, ...result });
-      } catch (hostelError: any) {
-        console.error("[CRON] Rent generation failed for hostel:", {
-          hostel_id: hostel.id,
-          hostel_name: hostel.name,
-          error: hostelError?.message || String(hostelError),
-        });
-        results.push({
-          hostel_id: hostel.id,
-          hostel_name: hostel.name,
-          created: 0,
-          skipped: 0,
-          failed: 1,
-          error: hostelError?.message || "Rent generation failed for hostel",
-        });
+      if (!hasMoreByLimit) {
+        hasMore = false;
+        break;
       }
+      // more hostels remain and we still have time — continue draining
     }
 
     const summary = results.reduce(
@@ -160,27 +174,23 @@ export async function GET(req: NextRequest) {
       { created: 0, skipped: 0, failed: 0, locked: 0 }
     );
 
-    const lastProcessed = results[results.length - 1]?.hostel_id || cursor || null;
-    const hasMore = hasMoreByLimit || stoppedForTimeBudget;
-
-    console.log("[CRON] Monthly rent generation batch complete:", {
+    console.log("[CRON] Monthly rent generation run complete:", {
       ...summary,
-      owner_id: ownerId,
+      owners_touched: ownersTouched.size,
       hostels_processed: results.length,
       has_more: hasMore,
-      next_cursor: hasMore ? lastProcessed : null,
+      next_cursor: hasMore ? cursor : null,
       duration_ms: Date.now() - startedAt,
     });
 
     return NextResponse.json({
       success: true,
       ...summary,
-      owner_id: ownerId,
+      owners_touched: Array.from(ownersTouched),
       hostels_processed: results.length,
-      hostels_in_scope: batch.length,
       batch_limit: limit,
       has_more: hasMore,
-      next_cursor: hasMore ? lastProcessed : null,
+      next_cursor: hasMore ? cursor : null,
       duration_ms: Date.now() - startedAt,
       results,
     });

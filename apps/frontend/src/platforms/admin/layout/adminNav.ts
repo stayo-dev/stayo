@@ -1,5 +1,5 @@
 import {
-  LayoutGrid, TrendingUp, Users, ShieldCheck, Building2,
+  LayoutGrid, TrendingUp, Users, ShieldCheck,
   BarChart3, Wallet, CreditCard, Bug, Megaphone, Settings, Star } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -54,7 +54,7 @@ export function buildAdminNav(counts: AdminNavCounts): AdminNavGroup[] {
       label: 'Review',
       items: [
         item('/admin/kyc', 'KYC Approvals', ShieldCheck, counts.kyc ?? 0, 'amber'),
-        item('/admin/listings', 'Hostel Listings', Building2, counts.listings ?? 0, 'accent'),
+        // 'Hostel Listings' (Stayo Discover marketplace admin) shelved for v1 — ADR-170.
         item('/admin/reviews', 'Reviews', Star, counts.reviews ?? 0, 'amber'),
       ],
     },

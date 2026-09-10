@@ -184,6 +184,18 @@ export async function POST(req: Request) {
 
     // ── 7 + 8. Atomic: consume identity token + write payment in ONE transaction ─
     const parsedDate = payment_date ? new Date(payment_date) : undefined;
+    if (parsedDate) {
+      if (Number.isNaN(parsedDate.getTime())) {
+        return apiError("payment_date is not a valid date", "VALIDATION_ERROR", 400);
+      }
+      // A payment can't have happened in the future. Compare on the calendar
+      // day (UTC) so "today" in any timezone is accepted.
+      const todayEnd = new Date();
+      todayEnd.setUTCHours(23, 59, 59, 999);
+      if (parsedDate.getTime() > todayEnd.getTime()) {
+        return apiError("payment_date cannot be in the future", "VALIDATION_ERROR", 400);
+      }
+    }
 
     let resolvedTenantId = tenant_id;
     if (!resolvedTenantId && targetObligationIds && targetObligationIds.length > 0) {

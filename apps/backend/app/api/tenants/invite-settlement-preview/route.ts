@@ -6,6 +6,7 @@ import { z } from "zod";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { buildInviteSettlementPreview } from "@/lib/billing/invite-settlement-preview";
+import { resolvePreferences } from "@/lib/preferences";
 
 /**
  * 📍 POST /api/tenants/invite-settlement-preview
@@ -64,8 +65,8 @@ export async function POST(req: NextRequest) {
     });
     if (!hostel) return apiError("Hostel not found", "NOT_FOUND", 404);
 
-    const prefs = (hostel.preferences_config as any) || {};
-    const dueDay = Number(prefs.due_day) >= 1 && Number(prefs.due_day) <= 28 ? Number(prefs.due_day) : 5;
+    const resolvedDueDay = Number(resolvePreferences(hostel).due_day);
+    const dueDay = resolvedDueDay >= 1 && resolvedDueDay <= 28 ? resolvedDueDay : 5;
 
     const preview = buildInviteSettlementPreview({
       monthlyRent: data.monthly_rent,

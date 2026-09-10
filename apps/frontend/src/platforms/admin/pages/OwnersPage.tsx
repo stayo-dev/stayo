@@ -48,7 +48,7 @@ export function OwnersPage() {
   return (
     <div className="flex animate-[adFade_.25s_ease] flex-col gap-5">
       <div className="flex items-center gap-3">
-        <div className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl border border-[#EAE1D8] bg-white px-[15px] py-[11px] sm:max-w-[420px]">
+        <div className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl border border-border bg-white px-[15px] py-[11px] sm:max-w-[420px]">
           <Search className="h-4 w-4 flex-none text-[#988D82]" />
           <input
             value={search}

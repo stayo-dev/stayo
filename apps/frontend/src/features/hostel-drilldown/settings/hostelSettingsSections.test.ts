@@ -78,6 +78,14 @@ describe('hostelSettingsGroups', () => {
     }
   });
 
+  it('owns notices, which used to be posted from the owner\'s Profile', () => {
+    // Announcements and events belong to one hostel, but Profile decided which
+    // by reading `session.primaryHostelId` — so a two-hostel owner posted to
+    // whichever came first, with nothing on screen saying so.
+    const routes = groups().flatMap((g) => g.rows).map((r) => r.route.split('?')[0]);
+    expect(routes).toContain('/owner/more/notices');
+  });
+
   it('tells every configuration screen which hostel it is editing', () => {
     // Those screens all fell back to the owner's primary hostel. Without this
     // query, opening a second hostel's Settings and changing its late fee

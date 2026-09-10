@@ -16,17 +16,17 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
 
-    <!-- ── Google Fonts (legacy public sub-page theme) ────────────────── -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap" />
-
-    <!-- ── Google Fonts (Stayo marketing theme) ────────────────────────
+    <!-- ── Google Fonts (Stayo brand pair) ─────────────────────────────
+         Manrope carries display, UI and numerics at 600-800; Inter carries
+         body copy. Per Stayo-Brand-Assetes/README.md. The retired theme's
+         own type pair was dropped on 2026-09-09 (ADR-172), which also removes
+         a second Google Fonts request from every page load.
          Loaded via <link>, not a CSS @import — a CSS @import must be the
          first statement in its stylesheet, which tokens/fonts.css can't
          guarantee once it's nested inside globals.css's import chain (it
-         silently gets dropped by the browser otherwise). Same pattern the
-         legacy fonts above already use, for the same reason. -->
+         silently gets dropped by the browser otherwise). -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" />
 
     <!-- ── Canonical ──────────────────────────────────────────────────── -->

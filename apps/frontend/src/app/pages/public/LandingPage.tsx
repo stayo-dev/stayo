@@ -69,6 +69,18 @@ export function LandingPage() {
   // password reset — still has one to point at.
   const isLoginRoute = location.pathname === '/login';
 
+  // v1 (ADR-170): the brand/logo links to `/`, and a signed-in owner who
+  // clicks it wants their dashboard, not the acquisition pitch. Auto-forward
+  // once the owner session has settled. `/owners` and `/login` are explicit
+  // destinations and are deliberately left to render.
+  const isRootRoute = location.pathname === '/';
+  useEffect(() => {
+    if (!isRootRoute || session.isLoading) return;
+    if (session.isAuthenticated && session.hostels.length > 0) {
+      navigate('/owner/home', { replace: true });
+    }
+  }, [isRootRoute, session.isLoading, session.isAuthenticated, session.hostels.length, navigate]);
+
   // Arrived by choosing "owner" on the welcome screen (ADR-071). They have
   // already told us what the "Are you a hostel owner?" prompt asks, so the
   // lead conversation opens straight away and that prompt never fires — being

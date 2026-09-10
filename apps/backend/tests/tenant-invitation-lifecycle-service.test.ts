@@ -21,6 +21,11 @@ const mocks = vi.hoisted(() => ({
   visitorLeadUpdateMany: vi.fn().mockResolvedValue({ count: 1 }),
   eventLogLog: vi.fn().mockResolvedValue(undefined),
   getRoomCapacitySnapshot: vi.fn().mockResolvedValue({ occupied: 0, room: { capacity: 4 } }),
+  // Only needed by the new createInvitation self-invite-guard tests below —
+  // completeActivation's own suite never reaches these.
+  roomsFindFirst: vi.fn(),
+  profileFindUnique: vi.fn(),
+  tenantInvitationsFindFirst: vi.fn(),
   transaction: vi.fn(async (cb: any) =>
     cb({
       $queryRaw: mocks.queryRaw,
@@ -36,7 +41,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/db", () => ({
-  prisma: { $transaction: mocks.transaction },
+  prisma: {
+    $transaction: mocks.transaction,
+    rooms: { findFirst: mocks.roomsFindFirst },
+    profile: { findUnique: mocks.profileFindUnique },
+    tenant_invitations: { findFirst: mocks.tenantInvitationsFindFirst },
+  },
 }));
 
 vi.mock("@/lib/services/room-capacity-service", () => ({
@@ -138,5 +148,61 @@ describe("TenantInvitationLifecycleService.completeActivation — JOINED wiring"
 
     expect(mocks.tenantsUpdate).not.toHaveBeenCalled();
     expect(mocks.visitorLeadUpdateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("TenantInvitationLifecycleService.createInvitation — owner cannot invite themselves", () => {
+  let lifecycleService: TenantInvitationLifecycleService;
+
+  const ownerRoom = () => ({
+    id: "room-1",
+    is_active: true,
+    hostels: { id: "hostel-1", owner_id: "owner-1", status: "ACTIVE" },
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    lifecycleService = new TenantInvitationLifecycleService();
+    mocks.roomsFindFirst.mockResolvedValue(ownerRoom());
+    mocks.profileFindUnique.mockResolvedValue({
+      id: "owner-1",
+      role: "OWNER",
+      phone: "+919876543210",
+      email: "owner@example.com",
+    });
+    mocks.tenantInvitationsFindFirst.mockResolvedValue(null);
+  });
+
+  it("rejects when the invited phone matches the owner's own registered phone", async () => {
+    await expect(
+      lifecycleService.createInvitation(
+        { name: "Rahul", phone: "9876543210", room_id: "room-1" },
+        "owner-1",
+      ),
+    ).rejects.toThrow(/cannot invite yourself/i);
+    expect(mocks.tenantInvitationsFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("rejects when the invited email matches the owner's own email, even with a different phone", async () => {
+    await expect(
+      lifecycleService.createInvitation(
+        { name: "Rahul", phone: "9000000000", email: "Owner@Example.com", room_id: "room-1" },
+        "owner-1",
+      ),
+    ).rejects.toThrow(/cannot invite yourself/i);
+  });
+
+  it("does not flag an invitation whose phone and email are unrelated to the owner's own identity", async () => {
+    const error: any = await lifecycleService
+      .createInvitation(
+        { name: "Rahul", phone: "9000000000", email: "rahul@example.com", room_id: "room-1" },
+        "owner-1",
+      )
+      .catch((e: any) => e);
+
+    // Falls through to later validation (unmocked eligibility/billing internals
+    // in this focused suite) — the point of this test is only that it is NOT
+    // refused as a self-invite.
+    expect(String(error?.message || "")).not.toMatch(/cannot invite yourself/i);
   });
 });

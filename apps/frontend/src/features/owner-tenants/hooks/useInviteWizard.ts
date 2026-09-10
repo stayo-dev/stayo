@@ -62,15 +62,11 @@ function getErrorMessage(error: unknown, fallback: string) {
  * / `email_sent` / `needs_email` / `activation_link`, all of which this hook
  * used to discard while the UI claimed success regardless.
  *
- * The invitation is mandatory and always sent — there is no path here that
- * suppresses it (the backend's `suppressInvitationNotification` still exists
- * for a different kind of caller, but `buildInvitePayload` never sets it).
- * The tenancy itself is live and owner-managed from the moment the backend
- * creates it — see `tenant-invitation-lifecycle-service.ts`'s
- * `createInvitation` — so there is no separate "keep the records myself"
- * step here either; that used to be a second mutation fired after this one
- * succeeded, and it is gone because the backend now does it unconditionally,
- * inside the same transaction, before this mutation's response even returns.
+ * The invitation is mandatory and always sent (ADR-165). The tenancy is
+ * operationally live from the moment the backend creates it — room, rent,
+ * reminders — but the tenant must personally accept via their link
+ * (`acceptance_status = PENDING` until they do). There is no owner path to
+ * accept on their behalf, so no "keep the records myself" step here.
  */
 export function useInviteWizard(options: UseInviteWizardOptions = {}) {
   const { initialData, leadId } = options;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
+import { AdaptiveSurface } from '@/app/components/ui/adaptive-surface';
 import { MAX_REJECT_REASON_LENGTH, documentTypeLabel, isRejectReasonValid } from './kycDocuments';
 
 interface RejectDocumentSheetProps {
@@ -43,7 +43,7 @@ export function RejectDocumentSheet({
   const tooLong = reason.trim().length > MAX_REJECT_REASON_LENGTH;
 
   return (
-    <BottomSheet
+    <AdaptiveSurface variant="form"
       open={open}
       onOpenChange={(v) => !v && onClose()}
       title="Reject document"
@@ -111,6 +111,6 @@ export function RejectDocumentSheet({
           </span>
         </label>
       </div>
-    </BottomSheet>
+    </AdaptiveSurface>
   );
 }
