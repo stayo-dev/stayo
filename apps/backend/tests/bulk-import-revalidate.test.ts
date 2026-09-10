@@ -52,7 +52,7 @@ function request(body: Record<string, unknown>) {
 beforeEach(() => {
   vi.clearAllMocks();
   mockPrisma.hostels.findFirst.mockResolvedValue({ id: HOSTEL_ID, name: "Sri Adithya Boys Hostel" });
-  mockPrisma.bulk_import_batches.findFirst.mockResolvedValue({ id: BATCH_ID });
+  mockPrisma.bulk_import_batches.findFirst.mockResolvedValue({ id: BATCH_ID, validation_errors: null });
   mockValidation.bulkImportValidationService.validateRows.mockResolvedValue({
     totalRows: 1,
     validRows: [{ row: 2, data: ROW, errors: [], warnings: [], issues: [], isDuplicate: false }],
@@ -93,3 +93,35 @@ describe("revalidating an edited batch", () => {
     expect(mockPrisma.__tx.bulk_import_batches.update).not.toHaveBeenCalled();
   });
 });
+
+describe("what an edit must not destroy", () => {
+  it("carries the Rooms plan through, since the workbook is gone", async () => {
+    mockPrisma.bulk_import_batches.findFirst.mockResolvedValue({
+      id: BATCH_ID,
+      validation_errors: { room_plan: { create: [{ room_no: "301", capacity: 2 }], update: [], unchanged: [], issues: [] } },
+    });
+
+    await POST(request({ rows: [ROW], hostel_id: HOSTEL_ID, batch_id: BATCH_ID }));
+
+    const written = mockPrisma.__tx.bulk_import_batches.update.mock.calls[0][0].data;
+    expect(written.validation_errors.room_plan.create[0].room_no).toBe("301");
+  });
+
+  it("refuses to edit a batch that has already started creating tenants", async () => {
+    // The lookup is scoped to VALIDATED, so an executing batch simply is not
+    // found — its rows are the record that stops a re-POST double-inviting.
+    mockPrisma.bulk_import_batches.findFirst.mockResolvedValue(null);
+
+    const res = await POST(request({ rows: [ROW], hostel_id: HOSTEL_ID, batch_id: BATCH_ID }));
+    expect(res.status).toBe(404);
+    expect(mockPrisma.__tx.bulk_import_rows.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("only ever looks for a VALIDATED batch", async () => {
+    await POST(request({ rows: [ROW], hostel_id: HOSTEL_ID, batch_id: BATCH_ID }));
+    expect(mockPrisma.bulk_import_batches.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ status: "VALIDATED" }) })
+    );
+  });
+});
+

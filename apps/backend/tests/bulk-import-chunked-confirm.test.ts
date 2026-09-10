@@ -196,6 +196,35 @@ describe("chunked confirm", () => {
     expect(mockRooms.applyRoomPlan).toHaveBeenCalledTimes(1);
   });
 
+  it("still finishes when more rows fail than a chunk holds", async () => {
+    // A FAILED row is already attempted. If the chunk query re-selected it,
+    // the failures — which sort first by row number — would refill every
+    // later chunk and the client's `remaining > 0` loop would never end.
+    mockLifecycle.createInvitation.mockRejectedValue(new Error("VALIDATION_ERROR: nope"));
+
+    const first = await confirm({ chunk_size: 25 });
+    expect(first.progress).toMatchObject({ processed: 25, remaining: 35 });
+
+    await confirm({ chunk_size: 25 });
+    const last = await confirm({ chunk_size: 25 });
+
+    expect(last.progress).toMatchObject({ remaining: 0, failed: TOTAL, stage: "DONE" });
+    expect(mockLifecycle.createInvitation).toHaveBeenCalledTimes(TOTAL);
+  });
+
+  it("keeps the rooms it already created when it writes the summary", async () => {
+    // The first chunk records the rooms here. Replacing the summary instead of
+    // merging into it would make the next chunk create them all over again.
+    mockPrisma.bulk_import_batches.update.mockResolvedValue({
+      import_summary: { rooms: { created: 2, updated: 0, errors: [] } },
+    });
+
+    await confirm({ chunk_size: 25 });
+
+    const written = mockPrisma.bulk_import_batches.update.mock.calls.at(-1)![0].data;
+    expect(written.import_summary).toMatchObject({ rooms: { created: 2 } });
+  });
+
   it("marks the batch PARTIAL when some rows failed", async () => {
     mockLifecycle.createInvitation.mockImplementation(async (payload: any) => {
       if (payload.email === "t1@example.com") throw new Error("VALIDATION_ERROR: nope");

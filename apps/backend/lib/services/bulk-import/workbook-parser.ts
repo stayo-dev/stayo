@@ -94,9 +94,19 @@ export function parseTenantWorkbook(fileBuffer: Buffer, filename: string): Tenan
       defval: "",
     });
 
-    const columnCount = Math.max(
-      0,
-      ...jsonData.map((row) => Object.keys(row ?? {}).length)
+    // Row count first: a file over the row limit gets that message rather
+    // than a column complaint. Reduce, not spread — spreading a very large
+    // array into Math.max throws RangeError, on precisely the files these
+    // guards exist for.
+    if (jsonData.length > MAX_IMPORT_ROWS) {
+      throw new Error(
+        `VALIDATION_ERROR: This file has ${jsonData.length} rows. The most we can import at once is ${MAX_IMPORT_ROWS}. Split it into smaller files and import them one after another.`
+      );
+    }
+
+    const columnCount = jsonData.reduce(
+      (widest, row) => Math.max(widest, Object.keys(row ?? {}).length),
+      0
     );
     if (columnCount > MAX_COLUMNS) {
       throw new Error(
@@ -115,18 +125,18 @@ export function parseTenantWorkbook(fileBuffer: Buffer, filename: string): Tenan
       }
     }
 
-    if (jsonData.length > MAX_IMPORT_ROWS) {
-      throw new Error(
-        `VALIDATION_ERROR: This file has ${jsonData.length} rows. The most we can import at once is ${MAX_IMPORT_ROWS}. Split it into smaller files and import them one after another.`
-      );
-    }
-
     if (!jsonData || jsonData.length === 0) {
       throw new Error("VALIDATION_ERROR: No data rows found in the file");
     }
 
-    const tenants = normalizeRows(jsonData).filter((row) => row.name !== EXAMPLE_ROW_NAME);
-    if (!tenants.length) {
+    // The example is marked, not removed. Row numbers reported to the owner
+    // come from a row's position, so dropping one would point every later
+    // error at the wrong line of their spreadsheet. Validation skips marked
+    // rows entirely.
+    const tenants = normalizeRows(jsonData).map((row) =>
+      row.name === EXAMPLE_ROW_NAME ? { ...row, is_example: true } : row
+    );
+    if (!tenants.length || tenants.every((row) => row.is_example)) {
       throw new Error(
         `VALIDATION_ERROR: This file doesn't have any tenants in it yet. Add one row per tenant on the ${TENANTS_SHEET} sheet, then upload it again.`
       );

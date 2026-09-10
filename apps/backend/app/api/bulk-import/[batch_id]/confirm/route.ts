@@ -250,10 +250,12 @@ async function executeInvitationBatch(
   const results: any[] = [];
   const errors: any[] = [];
 
-  await prisma.bulk_import_batches.update({
+  const batchBefore = await prisma.bulk_import_batches.update({
     where: { id: batchId },
     data: { status: "PROCESSING" },
+    select: { import_summary: true },
   });
+  const priorSummary = batchBefore?.import_summary;
 
   // `bulk_import_rows` is the authority on what to execute — one row, one
   // primary key. The batch's `validation_errors` JSON is a preview artefact,
@@ -262,15 +264,21 @@ async function executeInvitationBatch(
   const [total, , rows] = await Promise.all([
     prisma.bulk_import_rows.count({ where: { batch_id: batchId } }),
     prisma.bulk_import_rows.count({ where: { batch_id: batchId, execution_status: "SUCCESS" } }),
+    // Only PENDING rows. A FAILED row has already been attempted and counts
+    // as processed — re-selecting it here would refill every later chunk with
+    // the same failures (they sort first by row number), so a batch with more
+    // failures than a chunk holds would never advance and the client's
+    // `remaining > 0` loop would never end. Retrying a failure is a separate,
+    // deliberate action.
     prisma.bulk_import_rows.findMany({
-      where: { batch_id: batchId, execution_status: { not: "SUCCESS" } },
+      where: { batch_id: batchId, execution_status: "PENDING" },
       orderBy: { row_number: "asc" },
       take: chunkSize,
     }),
   ]);
 
-  // Rows already SUCCESS are excluded by the query above — that is what makes
-  // a re-POST safe after a dropped connection.
+  // Rows already attempted are excluded by the query above — that is what
+  // makes a re-POST safe after a dropped connection.
   for (const row of rows) {
     const data = row.mapped_data as TenantImportRow;
 
@@ -366,11 +374,17 @@ async function executeInvitationBatch(
             : "FAILED",
       imported_rows: succeededTotal,
       failed_rows: failedTotal,
+      // Merged, not replaced: the rooms this batch created were recorded here
+      // by the first chunk, and overwriting them would make every later chunk
+      // create them again — which fails, because a floor would then be
+      // submitted with the same room number twice.
       import_summary: {
+        ...((priorSummary as any) ?? {}),
         total_requested: total,
         success_count: succeededTotal,
         failure_count: failedTotal,
-        email_failure_count: emailFailureCount,
+        email_failure_count:
+          Number((priorSummary as any)?.email_failure_count ?? 0) + emailFailureCount,
       },
       ...(done ? { imported_at: new Date() } : {}),
     },

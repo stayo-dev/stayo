@@ -102,7 +102,15 @@ export async function POST(req: NextRequest) {
       rows,
       hostelId,
       session.sub,
-      importDefaults
+      importDefaults,
+      // Rooms this same workbook adds. A tenant may live in one of them: the
+      // template tells the owner to add a missing room on the Rooms sheet and
+      // then pick it, so they must validate.
+      roomPlan.create.map((room) => ({
+        room_no: room.room_no,
+        capacity: room.capacity,
+        base_rent: room.base_rent,
+      }))
     );
 
     const batchId = crypto.randomUUID();

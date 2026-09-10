@@ -57,13 +57,28 @@ export async function POST(req: NextRequest) {
     // sends the batch it is editing, that batch is updated in place instead.
     const existing = batch_id
       ? await prisma.bulk_import_batches.findFirst({
-          where: { id: String(batch_id), owner_id: session.sub, hostel_id },
-          select: { id: true },
+          // VALIDATED only. An executed batch's rows are its record of what
+          // was already created — deleting them would lose the idempotency
+          // that stops a re-POST inviting the same tenants twice.
+          where: {
+            id: String(batch_id),
+            owner_id: session.sub,
+            hostel_id,
+            status: "VALIDATED",
+          },
+          select: { id: true, validation_errors: true },
         })
       : null;
     if (batch_id && !existing) {
-      return apiError("Batch not found", "NOT_FOUND", 404);
+      return apiError(
+        "That import can't be edited any more — it has already started creating tenants. Upload the file again to start a new one.",
+        "NOT_FOUND",
+        404
+      );
     }
+    // The Rooms plan belongs to the uploaded workbook, which we no longer
+    // hold, so it must survive an edit to a tenant row.
+    const previousRoomPlan = (existing?.validation_errors as any)?.room_plan;
     const batchId = existing?.id ?? crypto.randomUUID();
     const validRowsForImport = validation.validRows.map((r) => ({
       row: r.row,
@@ -101,6 +116,9 @@ export async function POST(req: NextRequest) {
             warnings: r.warnings,
           })),
           requires_historical_join_date_confirmation: hasHistoricalJoinDateWarnings,
+          // The Rooms plan belongs to the uploaded workbook, which we no
+          // longer hold. Editing a tenant row must not discard it.
+          ...(previousRoomPlan ? { room_plan: previousRoomPlan } : {}),
         } as any,
         import_source_version: "tenant_invitation_lifecycle_v1",
         uploaded_by: session.sub,

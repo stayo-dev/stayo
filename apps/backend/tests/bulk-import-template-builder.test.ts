@@ -140,3 +140,21 @@ describe("the worked example row", () => {
     expect(rows[0].name).toBe("Ravi Kumar");
   });
 });
+
+describe("row numbers stay true to the spreadsheet", () => {
+  it("reports a tenant's own sheet row, even with the example row left in", async () => {
+    const { buf } = await build();
+    const wb = XLSX.read(buf as Buffer, { type: "buffer", raw: true });
+    // Row 2 is the example; the owner's first tenant is on row 3.
+    wb.Sheets[TENANTS_SHEET]["A3"] = { t: "s", v: "Ravi Kumar" };
+    wb.Sheets[TENANTS_SHEET]["B3"] = { t: "s", v: "not-a-phone" };
+    wb.Sheets[TENANTS_SHEET]["D3"] = { t: "s", v: "101" };
+    wb.Sheets[TENANTS_SHEET]["!ref"] = "A1:O3";
+    const edited = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+
+    const rows = parseTenantWorkbook(edited, "t.xlsx");
+    expect(rows).toHaveLength(2);
+    expect(rows[0].is_example).toBe(true);
+    expect(rows[1].name).toBe("Ravi Kumar");
+  });
+});

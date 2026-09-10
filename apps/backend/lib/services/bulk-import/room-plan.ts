@@ -99,6 +99,21 @@ export function buildRoomPlan(sheet: RoomImportRow[], existing: ExistingRoom[]):
     }
     if (unreadable) return;
 
+    // base_rent is an Int column. A fractional or negative rent would either
+    // fail the whole floor with a raw database message, or persist as
+    // nonsense.
+    if (row.base_rent !== undefined && (!Number.isInteger(row.base_rent) || row.base_rent < 0)) {
+      plan.issues.push(
+        buildIssue("ROOM_SHEET_NUMBER_INVALID", rowNumber, {
+          roomNo: row.room_no,
+          value: row.raw_values?.base_rent ?? String(row.base_rent),
+          fieldLabel: "rent",
+          hint: "Enter the rent in whole rupees, like 8500 — no paise.",
+        })
+      );
+      return;
+    }
+
     if (
       row.capacity !== undefined &&
       (!Number.isInteger(row.capacity) || row.capacity < MIN_BEDS || row.capacity > MAX_BEDS)

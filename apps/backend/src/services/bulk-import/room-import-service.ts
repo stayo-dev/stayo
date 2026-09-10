@@ -50,8 +50,11 @@ export async function applyRoomPlan(
       where: { hostel_id: hostelId },
       select: { id: true, name: true, sort_order: true },
     }),
+    // Not filtered to active: the plan matched against every room the hostel
+    // has, so an edit to a retired room would otherwise be dropped with no
+    // write, no count and no error. saveRoomsForFloor revives it.
     prisma.rooms.findMany({
-      where: { hostel_id: hostelId, is_active: true },
+      where: { hostel_id: hostelId },
       select: {
         id: true,
         room_no: true,
