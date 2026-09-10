@@ -34,7 +34,12 @@ describe("the Supabase path is unchanged", () => {
 
     expect(clerkAt).toBeGreaterThan(supabaseAt);
     // The Clerk call must sit inside the `if (!session)` branch.
-    const branch = ROUTE.slice(ROUTE.indexOf("if (!session) {"), ROUTE.indexOf("try {"));
+    // Anchored on the profile lookup rather than the first `try {` — the Clerk
+    // block now has a try of its own, and anchoring there truncated this slice.
+    const branch = ROUTE.slice(
+      ROUTE.indexOf("if (!session) {"),
+      ROUTE.indexOf("const profile = await prisma.profile.findUnique"),
+    );
     expect(branch).toContain("clerkResolution(req)");
   });
 
@@ -58,6 +63,23 @@ describe("the Clerk path cannot invent authority", () => {
   it("never assigns a role — the profile is looked up, not created", () => {
     expect(ROUTE).not.toMatch(/\brole:\s*['"]/);
     expect(ROUTE).not.toMatch(/prisma\.profile\.(create|upsert)/);
+  });
+
+  it("never lets a Clerk-path failure escape as an unlogged 500", () => {
+    // This block sits outside the route's main try/catch, so an unguarded throw
+    // here produced an opaque 500 with no log line — which is what made the
+    // first real Clerk sign-in un-diagnosable from the outside.
+    const guarded = ROUTE.slice(ROUTE.indexOf("let clerk:"), ROUTE.indexOf("if (clerk.rejection)"));
+    expect(guarded).toContain("try {");
+    expect(guarded).toContain("catch");
+    expect(guarded).toContain("logger.error");
+    expect(guarded).toContain("CLERK_RESOLUTION_FAILED");
+  });
+
+  it("logs the Prisma error code, which names a migration gap directly", () => {
+    // P2021 = table missing, P2022 = column missing. Either says "migration"
+    // faster than any stack trace.
+    expect(ROUTE).toContain("?.code");
   });
 
   it("reads the profile by the id the resolver returned", () => {

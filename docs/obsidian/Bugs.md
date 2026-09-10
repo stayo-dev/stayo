@@ -2341,3 +2341,15 @@ Related: [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[Changelog]]
 **The general shape worth remembering:** a boolean read of an asynchronously-initialised global is a race whenever it is consulted once. `hasClerkSession()` is fine for rendering (it re-renders); it was wrong inside a one-shot effect.
 
 Related: [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[Changelog]]
+
+## Migration 081 applied to the wrong Supabase project; production failed with P2021 (2026-09-09)
+
+**Symptom.** First real Clerk sign-in: `GET /api/auth/me` → **500**, page stuck on "Finishing sign-in…". Vercel runtime log: `PrismaClientKnownRequestError … The table 'public.users' does not exist in the current database. code: 'P2021'`.
+
+**Cause — process, not code.** The migration *had* been applied and verified: table, FK, unique constraints, indexes. But it went to `xhoqkhwsnqfwhjsffybs`, the project ref in the repo-root `.env`. **The deployed backend uses `qgfyfbdccjnibdhhvnsr`.** Two different databases; the local `.env` does not describe production.
+
+**How to avoid it.** `GET https://api.yourstayo.com/api/health` reports the deployed build's `auth.supabase.project_ref`. **Read it before any production migration.** It already existed for exactly this class of mistake and was not consulted. Production credentials live only in Vercel, so these migrations must run from the correct project's Supabase SQL editor.
+
+**Second defect, found while diagnosing.** In `app/api/auth/me/route.ts` the Clerk resolution sat *outside* the route's `try/catch`, so the throw became an opaque 500 with **no log line** — the cause was invisible from the outside and took several rounds of guessing to reach. It is now guarded, returns `CLERK_RESOLUTION_FAILED`, and logs the Prisma `code` (P2021 = table missing, P2022 = column missing), which names a migration gap immediately.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Database]], [[Backend]], [[Changelog]]
