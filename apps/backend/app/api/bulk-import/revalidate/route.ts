@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const { rows, hostel_id, filename, import_defaults } = body;
+    const { rows, hostel_id, filename, import_defaults, batch_id } = body;
 
     if (!rows || !Array.isArray(rows)) {
       return apiError("Rows array is required", "VALIDATION_ERROR", 400);
@@ -51,7 +51,20 @@ export async function POST(req: NextRequest) {
       import_defaults || {}
     );
 
-    const batchId = crypto.randomUUID();
+    // Editing rows used to create a *new* batch every time, orphaning the
+    // previous one with a full copy of every tenant's name, phone and email in
+    // `validation_errors`. A dozen edits left a dozen copies. When the client
+    // sends the batch it is editing, that batch is updated in place instead.
+    const existing = batch_id
+      ? await prisma.bulk_import_batches.findFirst({
+          where: { id: String(batch_id), owner_id: session.sub, hostel_id },
+          select: { id: true },
+        })
+      : null;
+    if (batch_id && !existing) {
+      return apiError("Batch not found", "NOT_FOUND", 404);
+    }
+    const batchId = existing?.id ?? crypto.randomUUID();
     const validRowsForImport = validation.validRows.map((r) => ({
       row: r.row,
       data: sanitizeImportRowForStorage(r.data),
@@ -62,39 +75,45 @@ export async function POST(req: NextRequest) {
     );
 
     await prisma.$transaction(async (tx: any) => {
-      await tx.bulk_import_batches.create({
-        data: {
-          id: batchId,
-          owner_id: session.sub,
-          hostel_id: hostel_id,
-          filename: filename || "edited-batch.csv",
-          file_size: JSON.stringify(rows).length,
-          total_rows: validation.totalRows,
-          valid_rows: validation.summary.valid,
-          failed_rows: validation.summary.invalid,
-          duplicate_rows: validation.summary.duplicates,
-          status: "VALIDATED",
-          validation_errors: {
-            defaults: import_defaults || {},
-            valid_rows: validRowsForImport,
-            invalid: validation.invalidRows.map((r) => ({
-              row: r.row,
-              data: sanitizeImportRowForStorage(r.data),
-              errors: r.errors,
-              warnings: r.warnings,
-            })),
-            duplicates: validation.duplicates.map((r) => ({
-              row: r.row,
-              data: sanitizeImportRowForStorage(r.data),
-              reason: r.duplicateReason,
-              warnings: r.warnings,
-            })),
-            requires_historical_join_date_confirmation: hasHistoricalJoinDateWarnings,
-          } as any,
-          import_source_version: "tenant_invitation_lifecycle_v1",
-          uploaded_by: session.sub,
-        },
-      });
+      const batchFields = {
+        owner_id: session.sub,
+        hostel_id: hostel_id,
+        filename: filename || "edited-batch.csv",
+        file_size: JSON.stringify(rows).length,
+        total_rows: validation.totalRows,
+        valid_rows: validation.summary.valid,
+        failed_rows: validation.summary.invalid,
+        duplicate_rows: validation.summary.duplicates,
+        status: "VALIDATED",
+        validation_errors: {
+          defaults: import_defaults || {},
+          valid_rows: validRowsForImport,
+          invalid: validation.invalidRows.map((r) => ({
+            row: r.row,
+            data: sanitizeImportRowForStorage(r.data),
+            errors: r.errors,
+            warnings: r.warnings,
+          })),
+          duplicates: validation.duplicates.map((r) => ({
+            row: r.row,
+            data: sanitizeImportRowForStorage(r.data),
+            reason: r.duplicateReason,
+            warnings: r.warnings,
+          })),
+          requires_historical_join_date_confirmation: hasHistoricalJoinDateWarnings,
+        } as any,
+        import_source_version: "tenant_invitation_lifecycle_v1",
+        uploaded_by: session.sub,
+      };
+
+      if (existing) {
+        await tx.bulk_import_batches.update({ where: { id: batchId }, data: batchFields });
+        // The edited rows replace the previous set outright; leaving the old
+        // ones would execute rows the owner has since corrected.
+        await tx.bulk_import_rows.deleteMany({ where: { batch_id: batchId } });
+      } else {
+        await tx.bulk_import_batches.create({ data: { id: batchId, ...batchFields } });
+      }
 
       for (const row of validation.validRows) {
         await tx.bulk_import_rows.create({

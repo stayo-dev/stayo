@@ -6,6 +6,18 @@ const logger = getLogger("bulk-import-validation");
 
 export const MAX_IMPORT_ROWS = 150;
 
+/**
+ * Shape limits on an uploaded workbook.
+ *
+ * A spreadsheet is a zip archive, and a small file can describe an enormous
+ * one. These caps are far above any real import — a hostel does not have 200
+ * sheets or a 100,000-character note — so an owner never meets them, and a
+ * file built to exhaust memory does.
+ */
+const MAX_SHEETS = 20;
+const MAX_COLUMNS = 60;
+const MAX_CELL_LENGTH = 2000;
+
 /** Sheet names in the generated workbook. Shared with the template builder. */
 export const COVER_SHEET = "Read me";
 export const ROOMS_SHEET = "Rooms";
@@ -69,6 +81,11 @@ export function parseTenantWorkbook(fileBuffer: Buffer, filename: string): Tenan
     if (!workbook.SheetNames.length) {
       throw new Error("VALIDATION_ERROR: Excel file is empty or has no sheets");
     }
+    if (workbook.SheetNames.length > MAX_SHEETS) {
+      throw new Error(
+        `VALIDATION_ERROR: This file has ${workbook.SheetNames.length} sheets. An import file should have a handful — the template has three. Delete the extra sheets, or start from a fresh template.`
+      );
+    }
     const sheetName = pickTenantSheet(workbook);
 
     const worksheet = workbook.Sheets[sheetName];
@@ -76,6 +93,27 @@ export function parseTenantWorkbook(fileBuffer: Buffer, filename: string): Tenan
       raw: true,
       defval: "",
     });
+
+    const columnCount = Math.max(
+      0,
+      ...jsonData.map((row) => Object.keys(row ?? {}).length)
+    );
+    if (columnCount > MAX_COLUMNS) {
+      throw new Error(
+        `VALIDATION_ERROR: The ${TENANTS_SHEET} sheet has ${columnCount} columns. We read at most ${MAX_COLUMNS}. Delete the columns you're not using, or start from a fresh template.`
+      );
+    }
+
+    for (const row of jsonData) {
+      for (const [column, value] of Object.entries(row ?? {})) {
+        const length = String(value ?? "").length;
+        if (length > MAX_CELL_LENGTH) {
+          throw new Error(
+            `VALIDATION_ERROR: A cell in "${column}" has too much text in it (${length.toLocaleString("en-IN")} characters; the most we read is ${MAX_CELL_LENGTH.toLocaleString("en-IN")}). Shorten it and upload again.`
+          );
+        }
+      }
+    }
 
     if (jsonData.length > MAX_IMPORT_ROWS) {
       throw new Error(
