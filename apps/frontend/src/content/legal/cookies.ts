@@ -46,10 +46,10 @@ export const cookiesDocument: LegalDocument = {
     "Stayo's Cookie & Tracking Notice — the cookies and browser storage Stayo uses and what each is for, why there is no cookie consent banner, and what happens if you block or delete cookies.",
   summary: [
     'A cookie is a small piece of text a website stores in your browser and reads back on later visits.',
-    'We set three cookies. One is a security token you need in order to save or change anything while signed in. The other two are left over from an earlier way of signing in to Stayo, and are kept only for compatibility.',
+    'We set three cookies, all to do with signing in and security: a security token you need in order to save or change anything while signed in; a copy of your sign-in that lets you open documents directly from a link; and one left over from an earlier way of signing in, which nothing reads any more.',
     'Your sign-in itself is kept in your browser’s storage, not in a cookie. We also use that storage to remember a few things on your device, such as the city you last searched. None of it is used for tracking.',
     'We do not set analytics, advertising or behavioural-tracking cookies, and we do not use any third-party tracking pixel.',
-    'Because nothing we store is used to track you or to advertise to you, we do not show a cookie consent banner — see below for why.',
+    'Everything we set is our own, and is used only for signing in, security or remembering your own choices. Nothing is used for tracking, analytics or advertising, and that is why we do not show a cookie consent banner — see below.',
     'You can block or delete cookies in your browser. Blocking them stops you saving or changing anything while signed in, and in many browsers also stops you staying signed in.',
   ],
   content: [
@@ -68,7 +68,7 @@ export const cookiesDocument: LegalDocument = {
       type: 'clause',
       id: 'clause-cookies-we-set-1',
       number: '1.1',
-      text: 'Stayo sets three cookies, all through our own servers — for example when you sign in, or create or activate an account. The security token is also issued on its own whenever the Platform needs a fresh one. Only one of the three is strictly necessary; the table says which, and why.',
+      text: 'Stayo sets three cookies, all through our own servers — for example when you sign in, or create or activate an account. The security token is also issued on its own whenever the Platform needs a fresh one. Two of the three are strictly necessary; the table says which, and why.',
     },
     {
       type: 'table',
@@ -81,8 +81,8 @@ export const cookiesDocument: LegalDocument = {
         ],
         [
           'hms_session',
-          'A copy of your sign-in credential, left over from an earlier way of signing in to Stayo. Your sign-in now works through your browser’s storage instead (see section 2). We still set this cookie for compatibility with that earlier method, and our servers will accept it as a fallback if a request arrives without the usual sign-in details.',
-          'No — kept for compatibility with an earlier sign-in method.',
+          'A copy of your sign-in credential. Most of the Platform now signs you in through your browser’s storage instead (see section 2). But when you open a document directly from a link — for example a Resident’s identity document in an Owner’s verification queue, or your own signed agreement on your profile — your browser sends only its cookies, and this cookie is how our servers know it is you. Our servers also accept it as a fallback if any other request arrives without the usual sign-in details.',
+          'Yes — without it, documents opened directly from a link will not load until you next sign in.',
         ],
         [
           'hms_refresh_token',
@@ -163,19 +163,19 @@ export const cookiesDocument: LegalDocument = {
       type: 'clause',
       id: 'clause-why-no-banner-1',
       number: '4.1',
-      text: 'Cookie consent rules exist to give you a real choice about cookies you could reasonably decline — most often analytics and advertising cookies. Cookies and storage that are strictly necessary for the service you have asked for, like staying signed in, are treated differently: the law requires that you be told about them, not that you be asked to agree to them, because there is no working alternative to offer if you say no.',
+      text: 'A cookie consent banner exists to let you say no to cookies and similar browser storage that are used for something other than the service you are using — above all, tracking you, measuring you for analytics, or advertising to you. Stayo uses nothing of that kind (see section 3).',
     },
     {
       type: 'clause',
       id: 'clause-why-no-banner-2',
       number: '4.2',
-      text: 'The security token and your sign-in session are in that strictly-necessary category. The conveniences in section 2 only remember choices you made on your own device. The two compatibility cookies are not strictly necessary — we have said so plainly in section 1 rather than dress them up — but they are not what consent banners are for either: they are set only by Stayo, only as part of signing you in, they carry nothing but your own sign-in credential, and they are never used for analytics, advertising or tracking. If you would rather not keep them, deleting just those two has no effect on your account; they will be set again the next time you sign in.',
+      text: 'Everything Stayo keeps in your browser is first-party — set by Stayo, and read only by Stayo — and serves one of three purposes: signing you in (your sign-in session in browser storage, and the hms_session cookie), security (the hms_csrf cookie), or remembering your own choices and where you are in a task (the conveniences and short-lived details in section 2). Of these, your sign-in session, hms_session and hms_csrf are strictly necessary: parts of the service you asked for do not work without them. The conveniences are not strictly necessary, but they only remember what you chose or what you were in the middle of, and are never used to track you. The one remaining cookie, hms_refresh_token, is not necessary either: it is left over from an earlier way of signing in, and nothing reads it. Deleting it has no effect on your account, although it will be set again the next time you sign in.',
     },
     {
       type: 'clause',
       id: 'clause-why-no-banner-3',
       number: '4.3',
-      text: 'We have deliberately chosen not to show a cookie consent banner. A banner asking your permission when there is nothing tracking you to say no to is not a real choice — it is theatre, and it trains people to dismiss consent prompts without reading them, which makes consent worse everywhere, including on the sites where it does matter. This notice is how we give you notice instead.',
+      text: 'That is why we have deliberately chosen not to show a cookie consent banner: nothing we set is used for tracking, analytics or advertising, so a banner would have nothing real to ask you. A banner asking your permission anyway is not a real choice — it is theatre, and it trains people to dismiss consent prompts without reading them, which makes consent worse everywhere, including on the sites where it does matter. This notice is how we give you notice instead.',
     },
 
     /* 5 — Controlling cookies */
@@ -188,13 +188,13 @@ export const cookiesDocument: LegalDocument = {
     },
     {
       type: 'notice',
-      text: 'If you block cookies for Stayo, you will not be able to save or change anything while you are signed in, because the security token cannot be stored and our servers will refuse the change. You will also not be able to reset a forgotten password. In many browsers, the setting that blocks all cookies also blocks the browser storage that holds your sign-in, so in practice you are also likely to find you cannot stay signed in.',
+      text: 'If you block cookies for Stayo, you will not be able to save or change anything while you are signed in, because the security token cannot be stored and our servers will refuse the change. You will also not be able to reset a forgotten password, and documents opened directly from a link will not load. In many browsers, the setting that blocks all cookies also blocks the browser storage that holds your sign-in, so in practice you are also likely to find you cannot stay signed in.',
     },
     {
       type: 'clause',
       id: 'clause-controlling-cookies-2',
       number: '5.2',
-      text: 'Deleting Stayo’s cookies, rather than blocking them, does not by itself sign you out: your sign-in is held in browser storage, and a fresh security token is fetched automatically the next time you need one. However, the option most browsers offer for clearing cookies also clears other site data, including that storage — if you use it, you will be signed out on that device and will need to sign in again.',
+      text: 'Deleting Stayo’s cookies, rather than blocking them, does not by itself sign you out: your sign-in is held in browser storage, and a fresh security token is fetched automatically the next time you need one. Documents opened directly from a link will not load until you next sign in, because that is when the hms_session cookie is set again. However, the option most browsers offer for clearing cookies also clears other site data, including that storage — if you use it, you will be signed out on that device and will need to sign in again.',
     },
     {
       type: 'clause',
