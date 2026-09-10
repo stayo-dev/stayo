@@ -192,9 +192,6 @@ function parseImportDefaults(formData: FormData): ImportDefaults {
     maintenance_type: ["MONTHLY", "ONE_TIME", "NONE"].includes(maintenanceType)
       ? maintenanceType as ImportDefaults["maintenance_type"]
       : undefined,
-    billing_start_mode: formData.get("billing_start_mode") === "IMPORT_DATE"
-      ? "IMPORT_DATE"
-      : "JOINING_DATE",
   };
 }
 

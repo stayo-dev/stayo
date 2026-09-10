@@ -345,7 +345,6 @@ function sanitizeImportRowForPreview(row: { row: number; data: TenantImportRow }
       maintenance_charge: row.data.maintenance_charge,
       maintenance_type: row.data.maintenance_type,
       joining_date: row.data.joining_date,
-      billing_start_mode: row.data.billing_start_mode,
       rent_source: row.data.rent_source,
       warnings: (row as any).warnings || [],
     },

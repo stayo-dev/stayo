@@ -144,3 +144,39 @@ describe("confirm passes every financial term to createInvitation", () => {
     expect(payload.joining_date).toBe("2026-01-05");
   });
 });
+
+describe("billing_start_mode is gone", () => {
+  it("is not part of the payload sent to createInvitation", async () => {
+    await POST(confirmRequest(), { params: { batch_id: BATCH_ID } });
+
+    const [payload] = mockLifecycle.createInvitation.mock.calls[0];
+    expect(payload).not.toHaveProperty("billing_start_mode");
+  });
+
+  it("is not referenced anywhere in the bulk-import tree", async () => {
+    const { readFileSync, readdirSync, statSync } = await import("node:fs");
+    const { join } = await import("node:path");
+
+    const roots = [
+      join(process.cwd(), "app/api/bulk-import"),
+      join(process.cwd(), "lib/services"),
+    ];
+    const offenders: string[] = [];
+
+    function walk(dir: string) {
+      for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry);
+        if (statSync(full).isDirectory()) {
+          walk(full);
+        } else if (full.endsWith(".ts")) {
+          if (readFileSync(full, "utf8").includes("billing_start_mode")) {
+            offenders.push(full);
+          }
+        }
+      }
+    }
+
+    for (const root of roots) walk(root);
+    expect(offenders).toEqual([]);
+  });
+});
