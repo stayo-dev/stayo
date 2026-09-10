@@ -163,6 +163,9 @@ export default defineConfig({
       // The two field drops that made imported tenants look massively
       // overdue: no maintenance obligation, no already-paid settlement.
       'tests/bulk-import-financial-fields.test.ts',
+      // The owner-facing issue vocabulary: severity, copy that names real
+      // values, and grouping so a 3-year-old hostel decides once, not 32 times.
+      'tests/bulk-import-issues.test.ts',
       'tests/build-without-env.test.ts',
     ],
     alias: {
