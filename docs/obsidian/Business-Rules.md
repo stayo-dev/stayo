@@ -833,6 +833,8 @@ Only `lead_received` was submitted as English (IND); everything else is plain En
 
 ## Owner payouts — what the owner is shown, and why it adds up
 
+> **Superseded business model (2026-09-10, [[Decisions#ADR-180|ADR-180]]).** Everything in this section describes the *collection-agent* model, in which resident rent is captured into Stayo's account and Stayo transfers it on. Under the Easebuzz **sub-merchant** model now adopted, resident payments settle directly to each owner's own merchant account and Stayo holds no resident money, so there is no "With Stayo" state and no payout for Stayo to make. The code below still exists and this section still describes it accurately; it does not describe the business. Whether it is removed or repointed at the aggregator's settlement data is an open decision.
+
 **Files:** `src/services/settlements/owner-payout-read-model.ts` (composition), `owner-payout-month.ts` + `payout-promise.ts` (pure), `gateway-ledger.ts` (ingestion), `apps/frontend/src/features/owner-money/payouts/payoutState.ts` (the voice). See [[Decisions#ADR-090|ADR-090]], [[Decisions#ADR-091|ADR-091]].
 
 ### Every rupee is in exactly one of four states
@@ -927,6 +929,30 @@ The backend never learns which method was used: every Clerk sign-in arrives as a
 
 Related: [[Decisions#ADR-176|ADR-176]], [[APIs]], [[Frontend]], [[Features]]
 
+## Legal policy positions — what the published documents commit Stayo to (2026-09-10)
+
+**Files:** `apps/frontend/src/content/legal/*` (the documents), `src/content/company.ts` (entity facts and `PAYMENT_PARTNER`), `apps/frontend/scripts/check-legal.mjs` (the build guard). See [[Decisions#ADR-180|ADR-180]] and [[Features]].
+
+These are rules the product must keep true, because published legal text now asserts them. Changing the behaviour means changing the document in the same change.
+
+- **Stayo is never in the flow of resident money.** Owners are sub-merchants and merchant of record; a resident's payment settles directly to the owner and discharges their obligation on successful payment. No document may say Stayo receives, holds, refunds or reverses resident money. Stayo's only revenue is the owner subscription, with no share of transaction fees.
+- **The refund floor is an owner obligation.** Duplicate, failed-but-debited and wrong-amount charges are always corrected, and a booking token is refunded in full if the hostel cancels or the room materially differs from its listing. Stayo's remedies against a hostel that refuses are suspension, delisting and grievance escalation. Refund turnaround is committed only for the hostel's on-platform action; money reaching the payer follows their bank's timeline.
+- **Account holders must be 18 or over;** a guardian holds a minor's account (DPDP s.9). No behavioural tracking or profiling of minors.
+- **Closing an account anonymises it immediately and never erases financial records** (`account-closure-service.ts`). Nothing deletes data on a timer — the data-retention cron is frozen — so records are deleted on request, keeping what the law requires. An owner who cancels keeps their data and can export it at any time.
+- **Grievances:** a named Grievance Officer at `grievance@yourstayo.com`; acknowledgement within 24 hours and resolution within 15 days (IT Rules 2021), or 48 hours and one month for consumer complaints (Consumer Protection (E-Commerce) Rules 2020).
+- **Only strictly-necessary and preference storage, and no analytics** — the basis for showing no cookie consent banner. Adding any analytics, advertising or tracking script falsifies the Cookie Notice; `check-legal.mjs` fails the build if one appears.
+
+- **Subscriptions: no free trial, arranged with the Stayo team, invoiced, and not refundable** (decided 2026-09-10). An owner subscribes by contacting the team, who onboard the hostel and agree plan, price and cycle in writing. Each cycle is invoiced and paid as agreed; nothing is charged automatically, which matches the code (an admin records each payment by hand in `platform-admin/hostels/[id]/invoices`; `autopay_enabled` is display-only). Fees are not refunded on cancellation or change of mind, but Stayo's own billing errors — a double charge, an over-charge, or a charge for a cycle after cancellation took effect — are refunded.
+
+**Resolved 2026-09-10:** trial length (there is none) and mid-cycle refundability (none; billing errors excepted).
+
+**Unknown / needs clarification:**
+- **"Failed-but-debited" floor item** — whether it should oblige the hostel when the failure is purely gateway-side and the hostel never received the money. Under investigation by the internal team with Easebuzz; the published clause stands until that decision.
+- The 5-business-day window for a hostel to review and initiate a floor refund.
+- The one-working-day first response for support.
+- **Easebuzz verification suite** — the Privacy Policy now discloses sharing owner KYC (typically name, PAN, bank-account and business details) with the payment partner's onboarding and verification service. When the suite is actually wired, confirm the data sent matches that clause, and extend it if residents' details are verified too.
+- **Internal contradiction:** `POST /api/platform-admin/hostels/[id]/subscription` still creates new subscriptions in status `TRIAL` with a 14-day `trial_ends_at`/`next_renewal_at`. Nothing reads `trial_ends_at` and no job bills from `next_renewal_at`, so owners never experience a trial — but the admin console labels every new subscription "Trial", contrary to the policy.
+
 ## Bulk import — how an imported tenant's terms and money land (2026-09-10)
 
 Verified against code on `feat/bulk-tenant-import`. See [[Bugs]] 2026-09-10 for what was broken, [[APIs]] for the endpoints, [[Backend]] for where it lives.
@@ -943,4 +969,3 @@ Verified against code on `feat/bulk-tenant-import`. See [[Bugs]] 2026-09-10 for 
 - **Rooms:** an inactive room blocks the row at preview (it would fail at confirm). A room with no base rent blocks the row only when the sheet gives no rent for that tenant either.
 - **Existing tenants are matched on the last 10 digits of the phone.** `profiles.phone` is stored as bare digits and `tenant_invitations.phone` as E.164, so exact matching missed every profile and let a re-import create a second tenancy.
 - **Notes** from the sheet are kept in `bulk_import_rows.mapped_data` but never reach the tenant — `createInvitation` reads no notes key and `tenants` has no notes column. Unknown / needs clarification: where an imported note should live (a `tenant_notes` row is the likely home).
-

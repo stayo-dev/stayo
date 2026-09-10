@@ -308,7 +308,7 @@ const STAYO_SIGNALS = [
   'frozen', 'stuck', 'blank', 'loading', 'spinner', 'error', 'bug', 'glitch',
   'login', 'log in', 'sign in', 'signin', 'signed out', 'logged out', 'password',
   'otp', 'account', 'verify', 'verification', 'notification',
-  'gateway', 'razorpay', 'transaction failed', 'payment failed', 'money deducted',
+  'gateway', 'razorpay', 'easebuzz', 'transaction failed', 'payment failed', 'money deducted',
   'receipt', 'download', 'refresh', 'not loading', 'not opening',
 ];
 
@@ -342,7 +342,7 @@ export function classifyProblem(text: string): ProblemOwner {
  */
 export function suggestCategory(text: string): TicketCategory {
   const haystack = ` ${String(text ?? '').toLowerCase()} `;
-  if (containsAny(haystack, ['payment', 'paid', 'refund', 'money', 'razorpay', 'upi', 'receipt', 'deducted', 'payout', 'rent'])) {
+  if (containsAny(haystack, ['payment', 'paid', 'refund', 'money', 'razorpay', 'easebuzz', 'upi', 'receipt', 'deducted', 'payout', 'rent'])) {
     return 'PAYMENT_ISSUE';
   }
   if (containsAny(haystack, ['login', 'log in', 'sign in', 'password', 'otp', 'account', 'verify', 'signed out', 'locked out', 'email', 'phone number'])) {

@@ -14,8 +14,10 @@ interface PaySheetProps {
 /**
  * 3-stage pay sheet (form → paying → paid), shared by Home's "Pay Rent" quick
  * action and Money's own Pay buttons. Real flow: `POST /payments/create-intent`
- * then redirect to the Razorpay checkout URL, which handles method selection
- * on its hosted page.
+ * then redirect to the payment provider's hosted checkout URL, which handles
+ * method selection on its own page. The provider is deliberately not named in
+ * the UI: trust copy stays provider-neutral (see src/content/company.ts,
+ * PAYMENT_PARTNER), and naming it would go stale the next time it changes.
  *
  * There is deliberately NO method picker here. Stayo collects by UPI only, and
  * the old picker was cosmetic — it was never sent anywhere, because this API
@@ -57,7 +59,7 @@ export function PaySheet({ stage, amount, error, onClose, onConfirm }: PaySheetP
           >
             Pay ₹{amount.toLocaleString('en-IN')} securely
           </button>
-          <p className="mt-[11px] text-center text-[11px] text-[#B0A597]">Secured by Razorpay · UPI</p>
+          <p className="mt-[11px] text-center text-[11px] text-[#B0A597]">Secured payment · UPI</p>
         </div>
       )}
 

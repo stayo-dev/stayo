@@ -1356,3 +1356,24 @@ From [[Decisions#ADR-176|ADR-176]]. Authentication proves identity; it never enr
 - **Owners exist after admin approval; tenants after an owner's invitation.** No sign-in path creates either.
 - **Google auto-provisioning is removed**, superseding [[Decisions#ADR-078|ADR-078]]. Existing invited/approved users sign in exactly as before.
 - **See:** [[Decisions#ADR-176|ADR-176]], [[Business-Rules]], [[Frontend]], [[Changelog]]
+
+## Legal document set (2026-09-10)
+
+Seven documents, each with a version, an effective date and a labelled "In short" summary, rendered by `LegalPage` from the typed registry in `apps/frontend/src/content/legal/`. See [[Decisions#ADR-180|ADR-180]] and [[Business-Rules]].
+
+| Document | Route | Kept-alive older URLs |
+|---|---|---|
+| Terms of Use (core + Schedule A owners + Schedule B residents) | `/legal/terms` | `/terms` |
+| Privacy Policy | `/legal/privacy` | `/privacy` |
+| Payments, Refunds & Cancellations | `/legal/refunds` | `/refund-policy`, `/legal/refund-policy` |
+| Cookie & Tracking Notice | `/legal/cookies` | — |
+| Service Delivery & Access | `/legal/service-delivery` | `/shipping-policy`, `/legal/shipping-policy` |
+| Data Deletion & Retention | `/legal/data-deletion` | — |
+| Contact & Grievance Redressal | `/legal/contact` | `/contact` still serves the older `ContactPage` until Phase 3 |
+
+- `/legal` is a hub of cards derived from the registry. Every clause has a deep-link anchor (`#clause-4-2`), and the page scrolls to it on load.
+- Older URLs stay live because payment aggregators and Meta may have registered them.
+- Trust copy names no payment provider: the pay sheet reads "Secured payment · UPI", and the homepage trust strip reads "Secure, RBI-authorised Payments". The strip previously said "Secure Payments via PhonePe", a provider Stayo does not use.
+- **Build guard:** `npm run build` runs `scripts/check-legal.mjs`, which fails on a named gateway, a UPI app presented as the processor, a placeholder in legal copy, a GSTIN claim, or third-party analytics.
+- **Not yet built:** the document-library redesign, unified footer and in-app policy rows (Phase 2); grievance ticket intake to replace the `mailto:` contact form (Phase 3); versioned acceptance records and clickwrap capture (Phase 4).
+

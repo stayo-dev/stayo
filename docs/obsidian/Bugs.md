@@ -2390,3 +2390,14 @@ Related: [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[Changelog]]
 **Second defect, found while diagnosing.** In `app/api/auth/me/route.ts` the Clerk resolution sat *outside* the route's `try/catch`, so the throw became an opaque 500 with **no log line** — the cause was invisible from the outside and took several rounds of guessing to reach. It is now guarded, returns `CLERK_RESOLUTION_FAILED`, and logs the Prisma `code` (P2021 = table missing, P2022 = column missing), which names a migration gap immediately.
 
 Related: [[Decisions#ADR-176|ADR-176]], [[Database]], [[Backend]], [[Changelog]]
+
+## Published legal policies contradicted the product, and nothing guarded published copy (2026-09-10)
+
+**Symptom.** The legal pages promised behaviour the code did not have: refunds "credited back within 7 to 10 business days" (refunds are a hostel's bank transfer recorded in a ledger, with no SLA); deletion "within 30 business days" including billing records (closure anonymises immediately and keeps financial records by design); "all payments made to Stayo for rent are non-refundable" (Stayo is not the landlord, and deposit refundability is set per hostel); a footer "Cookie Policy" that linked to the privacy page. "Razorpay" was named throughout. A backend copy at `apps/backend/app/legal` published "Sunrise Residency / example-hostel.in" as live terms.
+
+**Found while fixing it,** and each also false: Terms and Refunds promised owners a window to export data "before it is deleted", though the data-retention cron is frozen and nothing deletes on a timer. The Privacy Policy said receipts are emailed, though `EmailService.sendReceipt` has no callers and receipts go by WhatsApp. The public homepage said "Secure Payments via PhonePe". The first cookie inventory predated the ADR-176 sign-in provider's cookies, which only became visible once `main` was merged in.
+
+**Root cause.** Published copy was treated as prose, not as a claim about the system. It had no test, no owner and no invariant, so it drifted from the code in both directions — promising features never built, and not noticing features that were.
+
+**Fix.** Every document was rewritten against the code, with file-level evidence recorded in each module's header. `src/content/legal/*.test.ts` pins each corrected claim and fails on the specific mistake, and `scripts/check-legal.mjs` fails the build on the regressions a text scan can catch. See [[Decisions#ADR-180|ADR-180]] and [[Changelog]].
+

@@ -108,17 +108,27 @@ export function PublicRoutes() {
         <Route path="/about" element={<AboutPage />} />
         <Route path="/company" element={<CompanyPage />} />
         <Route path="/contact" element={<ContactPage />} />
+        {/*
+          * Legal documents. Every canonical route AND every older URL is listed
+          * literally: payment aggregators and Meta may have registered the old
+          * ones. src/content/legal/routes.test.ts fails if the registry declares
+          * a path this table does not serve. /contact stays on ContactPage
+          * until Phase 3; the contact document renders at /legal/contact.
+          */}
         <Route path="/legal" element={<LegalPage />} />
         <Route path="/legal/terms" element={<LegalPage />} />
-        <Route path="/legal/privacy" element={<LegalPage />} />
-        <Route path="/legal/refund-policy" element={<LegalPage />} />
-        <Route path="/legal/shipping-policy" element={<LegalPage />} />
-        <Route path="/legal/contact" element={<LegalPage />} />
-        <Route path="/legal/data-deletion" element={<LegalPage />} />
         <Route path="/terms" element={<LegalPage />} />
+        <Route path="/legal/privacy" element={<LegalPage />} />
         <Route path="/privacy" element={<LegalPage />} />
-        <Route path="/shipping-policy" element={<LegalPage />} />
+        <Route path="/legal/refunds" element={<LegalPage />} />
+        <Route path="/legal/refund-policy" element={<LegalPage />} />
         <Route path="/refund-policy" element={<LegalPage />} />
+        <Route path="/legal/cookies" element={<LegalPage />} />
+        <Route path="/legal/service-delivery" element={<LegalPage />} />
+        <Route path="/legal/shipping-policy" element={<LegalPage />} />
+        <Route path="/shipping-policy" element={<LegalPage />} />
+        <Route path="/legal/data-deletion" element={<LegalPage />} />
+        <Route path="/legal/contact" element={<LegalPage />} />
         <Route path="/visit/:hostelSlug" element={<VisitPage />} />
         <Route path="/verify/r/:token" element={<ReceiptVerificationPage />} />
       </Route>
