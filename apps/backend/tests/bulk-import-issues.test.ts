@@ -142,6 +142,72 @@ describe("grouping", () => {
   });
 });
 
+describe("copy for blank or missing values", () => {
+  it("says a blank mobile number is missing, not that \"\" is invalid", () => {
+    const issue = buildIssue("PHONE_INVALID", 5, { value: "" });
+
+    expect(issue.title).not.toContain('""');
+    expect(issue.title.toLowerCase()).toContain("missing");
+  });
+
+  it("says a blank joining date is missing, not that \"\" is unreadable", () => {
+    const issue = buildIssue("DATE_UNREADABLE", 5, { value: "  " });
+
+    expect(issue.title).not.toMatch(/"\s*"/);
+    expect(issue.title.toLowerCase()).toContain("missing");
+  });
+
+  it("does not claim ₹0 was paid when the amount is unknown", () => {
+    const issue = buildIssue("PAYMENT_METHOD_MISSING", 5, {});
+
+    expect(issue.title).not.toContain("₹0");
+  });
+
+  it("still names the amount when it is known, in lakh grouping", () => {
+    const issue = buildIssue("PAYMENT_METHOD_MISSING", 5, { amountPaid: 1234567 });
+
+    expect(issue.title).toContain("₹12,34,567");
+  });
+});
+
+describe("group titles", () => {
+  it("does not reuse one row's specific title for the whole group", () => {
+    const groups = groupIssuesByCode([
+      buildIssue("ROOM_NOT_FOUND", 2, { roomNo: "1O1", hostelName: "Sri Adithya Boys Hostel" }),
+      buildIssue("ROOM_NOT_FOUND", 3, { roomNo: "305", hostelName: "Sri Adithya Boys Hostel" }),
+      buildIssue("ROOM_NOT_FOUND", 4, { roomNo: "G9", hostelName: "Sri Adithya Boys Hostel" }),
+    ]);
+
+    const group = groups.find((g) => g.code === "ROOM_NOT_FOUND")!;
+    expect(group.title).not.toContain("1O1");
+    expect(group.title).toContain("3");
+  });
+
+  it("keeps the row's own specific title when the group has one row", () => {
+    const groups = groupIssuesByCode([
+      buildIssue("ROOM_NOT_FOUND", 2, { roomNo: "1O1", hostelName: "Sri Adithya Boys Hostel" }),
+    ]);
+
+    expect(groups[0].title).toContain("1O1");
+  });
+
+  it("gives every code a group title with no developer vocabulary", () => {
+    const codes = [
+      "ROOM_NOT_FOUND", "ROOM_CAPACITY_EXCEEDED", "ROOM_NO_RENT",
+      "PHONE_INVALID", "DUPLICATE_IN_FILE", "DUPLICATE_IN_SYSTEM",
+      "PAYMENT_METHOD_MISSING", "OVERPAID", "BACKFILL_CAPPED",
+      "FORMULA_IN_CELL", "DATE_UNREADABLE", "HOSTEL_STAMP_MISMATCH",
+    ] as const;
+
+    for (const code of codes) {
+      const [group] = groupIssuesByCode([buildIssue(code, 2, {}), buildIssue(code, 3, {})]);
+      expect(group.title).not.toContain("_");
+      expect(group.title).not.toMatch(/undefined|NaN/);
+      expect(group.title.length).toBeGreaterThan(10);
+    }
+  });
+});
+
 describe("validateRows emits issues", () => {
   const HOSTEL_ID = "11111111-1111-1111-1111-111111111111";
   const OWNER_ID = "22222222-2222-2222-2222-222222222222";

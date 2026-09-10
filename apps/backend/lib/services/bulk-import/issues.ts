@@ -91,6 +91,11 @@ function rupees(value: number | undefined): string {
   return amount.toLocaleString("en-IN", { maximumFractionDigits: 0 });
 }
 
+/** A cell the owner left empty (or filled with spaces) — say "missing", never quote `""`. */
+function isBlank(value: string | undefined): boolean {
+  return String(value ?? "").trim() === "";
+}
+
 type Copy = { title: string; detail: string; field?: string; fix: FixAffordance };
 
 const COPY: Record<IssueCode, (c: IssueContext) => Copy> = {
@@ -115,7 +120,9 @@ const COPY: Record<IssueCode, (c: IssueContext) => Copy> = {
     fix: { kind: "EDIT_FIELD" },
   }),
   PHONE_INVALID: (c) => ({
-    title: `"${c.value ?? ""}" isn't a 10-digit mobile number.`,
+    title: isBlank(c.value)
+      ? `This tenant's mobile number is missing.`
+      : `"${c.value}" isn't a 10-digit mobile number.`,
     detail: `The tenant's invitation is sent to this number, so it has to be right. Enter 10 digits, with or without +91.`,
     field: "phone",
     fix: { kind: "EDIT_FIELD" },
@@ -133,7 +140,9 @@ const COPY: Record<IssueCode, (c: IssueContext) => Copy> = {
     fix: { kind: "OPEN_TENANT" },
   }),
   PAYMENT_METHOD_MISSING: (c) => ({
-    title: `You entered ₹${rupees(c.amountPaid)} already paid, but no payment method.`,
+    title: c.amountPaid != null
+      ? `You entered ₹${rupees(c.amountPaid)} already paid, but no payment method.`
+      : `You entered an amount already paid, but no payment method.`,
     detail: `Tell us how they paid so it's recorded correctly against their dues.`,
     field: "payment_method",
     fix: { kind: "PICK_OPTION", options: ["CASH", "UPI", "BANK_TRANSFER", "CARD", "CHEQUE"] },
@@ -146,7 +155,7 @@ const COPY: Record<IssueCode, (c: IssueContext) => Copy> = {
   }),
   BACKFILL_CAPPED: (c) => ({
     title: `This tenant joined more than 2 years ago.`,
-    detail: `That's ${c.monthsElapsed ?? "—"} months. We'll bill the most recent ${c.cappedTo ?? 24}${c.firstBilledMonth ? `, starting ${c.firstBilledMonth}` : ""}. Earlier months won't be imported.`,
+    detail: `That's ${c.monthsElapsed ?? "—"} months. We'll bill the most recent ${c.cappedTo ?? 24} months${c.firstBilledMonth ? `, starting ${c.firstBilledMonth}` : ""}. Earlier months won't be imported.`,
     field: "joining_date",
     fix: { kind: "ACKNOWLEDGE" },
   }),
@@ -156,7 +165,9 @@ const COPY: Record<IssueCode, (c: IssueContext) => Copy> = {
     fix: { kind: "EDIT_FIELD" },
   }),
   DATE_UNREADABLE: (c) => ({
-    title: `"${c.value ?? ""}" isn't a full date.`,
+    title: isBlank(c.value)
+      ? `This tenant's joining date is missing.`
+      : `"${c.value}" isn't a full date.`,
     detail: `Use DD/MM/YYYY — 05/01/2026 means 5 January 2026. The joining date decides how much rent is owed, so a guess would be wrong money.`,
     field: "joining_date",
     fix: { kind: "PICK_DATE" },
@@ -186,6 +197,29 @@ export function buildIssue(
 }
 
 /**
+ * How a group of rows sharing one problem is headed.
+ *
+ * A single row's title names its own values ("Room 1O1 isn't in …"), which is
+ * right for one row and wrong as the heading of twelve rows with twelve
+ * different rooms. So a group of two or more gets a count-based title here;
+ * a group of one keeps the row's own, more specific title.
+ */
+const GROUP_TITLE: Record<IssueCode, (count: number) => string> = {
+  ROOM_NOT_FOUND: (n) => `${n} rows use a room that isn't in this hostel.`,
+  ROOM_CAPACITY_EXCEEDED: (n) => `${n} rows put a tenant in a room that's already full.`,
+  ROOM_NO_RENT: (n) => `${n} rows are for rooms with no rent set.`,
+  PHONE_INVALID: (n) => `${n} rows have a missing or wrong mobile number.`,
+  DUPLICATE_IN_FILE: (n) => `${n} rows repeat someone already in your file.`,
+  DUPLICATE_IN_SYSTEM: (n) => `${n} people in your file are already tenants on Stayo.`,
+  PAYMENT_METHOD_MISSING: (n) => `${n} rows have an amount paid but no payment method.`,
+  OVERPAID: (n) => `${n} rows show more paid than the tenant owes.`,
+  BACKFILL_CAPPED: (n) => `${n} tenants joined more than 2 years ago.`,
+  FORMULA_IN_CELL: (n) => `${n} rows contain a spreadsheet formula.`,
+  DATE_UNREADABLE: (n) => `${n} rows have a missing or unreadable joining date.`,
+  HOSTEL_STAMP_MISMATCH: () => `This file was made for a different hostel.`,
+};
+
+/**
  * One decision per problem, not one per row.
  *
  * A hostel running three years hits BACKFILL_CAPPED on nearly every row.
@@ -193,7 +227,7 @@ export function buildIssue(
  * abandons the import.
  */
 export function groupIssuesByCode(issues: RowIssue[]) {
-  const groups = new Map<IssueCode, { code: IssueCode; severity: IssueSeverity; rows: number[]; title: string }>();
+  const groups = new Map<IssueCode, { code: IssueCode; severity: IssueSeverity; rows: number[]; firstTitle: string }>();
 
   for (const issue of issues) {
     const existing = groups.get(issue.code);
@@ -204,13 +238,14 @@ export function groupIssuesByCode(issues: RowIssue[]) {
         code: issue.code,
         severity: issue.severity,
         rows: [issue.row],
-        title: issue.title,
+        firstTitle: issue.title,
       });
     }
   }
 
-  return [...groups.values()].map((group) => ({
+  return [...groups.values()].map(({ firstTitle, ...group }) => ({
     ...group,
     rows: [...group.rows].sort((a, b) => a - b),
+    title: group.rows.length === 1 ? firstTitle : GROUP_TITLE[group.code](group.rows.length),
   }));
 }
