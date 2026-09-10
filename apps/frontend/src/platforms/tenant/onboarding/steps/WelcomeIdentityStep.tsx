@@ -2,7 +2,7 @@ import { FormEvent, useState } from 'react';
 import { canSubmitIdentity, needsPhoneOtp, type PhoneTrust } from './identityVerification';
 import DateOfBirthField from './DateOfBirthField';
 import { useSky } from '../skyContext';
-import { AlertCircle, Camera, CheckCircle2, FileText, Receipt, Send } from 'lucide-react';
+import { AlertCircle, Camera, CheckCircle2, FileText, Receipt, Send, User } from 'lucide-react';
 import { StayoLoader } from '@shared/ui/brand';
 import type { ActivationContext, ActivationStep } from '../activationTypes';
 import { currency, fmtDate } from '../activationTypes';
@@ -134,7 +134,7 @@ function PhoneField({
   sent: boolean;
 }) {
   const mobileValid = value.length === 10;
-  const border = verified ? '#1F9D57' : mobileValid ? '#B46A55' : '#E7DDCE';
+  const border = verified ? '#1F9D57' : mobileValid ? '#3b5fa8' : '#E7DDCE';
   return (
     <div className="flex items-center gap-2.5" style={{ ...cardWrap, border: `1.5px solid ${border}`, transition: 'border-color .2s' }}>
       <span className="flex-none text-sm font-bold" style={{ color: '#8A7F75' }}>
@@ -164,7 +164,7 @@ function PhoneField({
           onClick={onSend}
           disabled={sending || countdown > 0}
           className="flex flex-none items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold text-white disabled:opacity-60"
-          style={{ background: '#B46A55', boxShadow: '0 4px 11px rgba(180,106,85,.28)' }}
+          style={{ background: '#3b5fa8', boxShadow: '0 4px 11px rgba(180,106,85,.28)' }}
         >
           <Send className="h-3 w-3" />
           {sending ? 'Sending' : countdown > 0 ? `${countdown}s` : sent ? 'Resend' : 'Send'}
@@ -202,7 +202,7 @@ function OtpBlock({
           <Send className="h-3 w-3" />
           Code sent to +91 {phone}
         </span>
-        <button type="button" onClick={onResend} disabled={sending || countdown > 0} className="font-display text-[11.5px] font-bold disabled:opacity-60" style={{ color: '#A45D44' }}>
+        <button type="button" onClick={onResend} disabled={sending || countdown > 0} className="font-display text-[11.5px] font-bold disabled:opacity-60" style={{ color: '#2d4480' }}>
           {countdown > 0 ? `Resend in ${countdown}s` : 'Resend'}
         </button>
       </div>
@@ -329,9 +329,9 @@ export function WelcomeIdentityStep({
     <div className="mt-4">
       <div
         className="flex items-center gap-2.5 rounded-[10px] p-[11px_13px]"
-        style={{ background: '#F6F1EA', borderLeft: '3px solid #B46A55' }}
+        style={{ background: '#F6F1EA', borderLeft: '3px solid #3b5fa8' }}
       >
-        <div className="flex h-7 w-7 flex-none items-center justify-center rounded-lg" style={{ background: '#F3E7E0', color: '#B46A55' }}>
+        <div className="flex h-7 w-7 flex-none items-center justify-center rounded-lg" style={{ background: '#F3E7E0', color: '#3b5fa8' }}>
           <Receipt className="h-3.5 w-3.5" />
         </div>
         <div className="min-w-0">
@@ -377,7 +377,7 @@ export function WelcomeIdentityStep({
     return (
       <form onSubmit={handleSubmit} style={{ animation: 'obFade .25s ease' }}>
         <div className="flex items-start gap-[11px]">
-          <div className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px]" style={{ background: '#F3E7E0', color: '#B46A55' }}>
+          <div className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px]" style={{ background: '#F3E7E0', color: '#3b5fa8' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="8" r="4" />
               <path d="M4.5 20c0-4 3.8-6 7.5-6s7.5 2 7.5 6" />
@@ -399,17 +399,18 @@ export function WelcomeIdentityStep({
         {/* Profile photo — circular avatar + edit badge */}
         <div className="mt-4.5 flex flex-col items-center gap-2.5">
           <label className="relative cursor-pointer" style={{ width: 88, height: 88 }}>
-            <div className="h-full w-full overflow-hidden rounded-full" style={{ padding: 3, background: 'linear-gradient(135deg,#B46A55,#D2986C)' }}>
+            <div className="h-full w-full overflow-hidden rounded-full" style={{ padding: 3, background: 'linear-gradient(135deg,#3b5fa8,#2d4480)' }}>
               {profilePhotoPreview ? (
                 <img src={profilePhotoPreview} alt="Profile" className="h-full w-full rounded-full object-cover" />
               ) : (
-                /* Empty state is the bare gradient disc — the design leaves this slot filled, not hollow. */
-                <div className="h-full w-full rounded-full" />
+                <div className="h-full w-full rounded-full flex items-center justify-center">
+                  <User className="w-8 h-8 text-white opacity-70" />
+                </div>
               )}
             </div>
             <span
               className="absolute flex items-center justify-center rounded-full"
-              style={{ bottom: -2, right: -2, width: 28, height: 28, background: '#B46A55', border: '3px solid #fff', boxShadow: '0 3px 8px rgba(180,106,85,.4)' }}
+              style={{ bottom: -2, right: -2, width: 28, height: 28, background: '#3b5fa8', border: '3px solid #fff', boxShadow: '0 3px 8px rgba(59,95,168,.4)' }}
             >
               <Camera className="h-3.5 w-3.5 text-white" />
             </span>
@@ -499,7 +500,7 @@ export function WelcomeIdentityStep({
                     type="button"
                     onClick={() => setProfile({ ...profile, gender: g })}
                     className="flex-1 rounded-[10px] px-1.5 py-2.5 text-center text-[12.5px] font-semibold"
-                    style={{ background: on ? '#F3E7E0' : '#F6F1EA', border: on ? '1.5px solid #B46A55' : '1px solid #E7DDCE', color: on ? '#A45D44' : '#4A433C' }}
+                    style={{ background: on ? '#F3E7E0' : '#F6F1EA', border: on ? '1.5px solid #3b5fa8' : '1px solid #E7DDCE', color: on ? '#2d4480' : '#4A433C' }}
                   >
                     {g}
                   </button>
@@ -550,7 +551,7 @@ export function WelcomeIdentityStep({
               sent={guardianOtpSent}
             />
             {isGuardianPhoneVerified && (
-              <button type="button" onClick={() => setGuardianOverrideUnlocked(true)} className="mt-1.5 text-[11px] font-semibold" style={{ color: '#B46A55' }}>
+              <button type="button" onClick={() => setGuardianOverrideUnlocked(true)} className="mt-1.5 text-[11px] font-semibold" style={{ color: '#3b5fa8' }}>
                 Edit guardian mobile
               </button>
             )}
@@ -597,7 +598,7 @@ export function WelcomeIdentityStep({
               const verified = status === 'APPROVED' || status === 'VERIFIED';
               const pending = status === 'PENDING';
               const rejected = status === 'REJECTED';
-              const tone = verified || pending ? '#1F7A52' : rejected ? '#D0473A' : '#B46A55';
+              const tone = verified || pending ? '#1F7A52' : rejected ? '#D0473A' : '#3b5fa8';
               return (
                 <label key={docType} className="flex cursor-pointer items-center gap-2.5" style={{ ...cardWrap, padding: '10px 13px' }}>
                   <span className="flex h-8 w-8 flex-none items-center justify-center rounded-lg" style={{ background: '#F3E7E0', color: tone }}>
@@ -624,7 +625,7 @@ export function WelcomeIdentityStep({
                       </div>
                     )}
                   </div>
-                  <span className="flex-none text-[11px] font-bold" style={{ color: '#A45D44' }}>
+                  <span className="flex-none text-[11px] font-bold" style={{ color: '#2d4480' }}>
                     {rejected ? 'Upload again' : verified || pending ? 'Replace' : 'Upload'}
                   </span>
                   <input

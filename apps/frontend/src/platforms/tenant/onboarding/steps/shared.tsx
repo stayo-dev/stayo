@@ -151,7 +151,7 @@ export function PrimaryActionButton({
       onClick={onClick}
       disabled={disabled}
       className="flex flex-1 items-center justify-center gap-2 rounded-[11px] py-3.5 font-display text-sm font-bold text-white disabled:opacity-60"
-      style={{ background: dark ? '#1B1714' : '#B46A55', boxShadow: dark ? '0 6px 16px rgba(27,23,20,.3)' : '0 6px 16px rgba(180,106,85,.3)' }}
+      style={{ background: dark ? '#1B1714' : '#3b5fa8', boxShadow: dark ? '0 6px 16px rgba(27,23,20,.3)' : '0 6px 16px rgba(59,95,168,.3)' }}
     >
       {children}
     </button>

@@ -238,7 +238,7 @@ export function AgreementStep({
       )}
 
       <div className="flex items-start gap-[11px]">
-        <div className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px]" style={{ background: '#F3E7E0', color: '#B46A55' }}>
+        <div className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px]" style={{ background: '#F3E7E0', color: '#3b5fa8' }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
             <path d="M7 3h7l4 4v14H7z" />
             <path d="M14 3v4h4M10 12h6M10 16h6" />
@@ -342,13 +342,13 @@ export function AgreementStep({
         }`}
         style={{
           background: tenantHasSignature ? '#F1FAF4' : '#fff',
-          border: tenantHasSignature ? '1.5px solid #1F9D57' : '1.5px solid #B46A55',
+          border: tenantHasSignature ? '1.5px solid #1F9D57' : '1.5px solid #3b5fa8',
           boxShadow: tenantHasSignature ? 'none' : '0 4px 14px rgba(180,106,85,.15)',
         }}
       >
         <div
           className="flex h-10 w-10 flex-none items-center justify-center rounded-xl"
-          style={{ background: tenantHasSignature ? '#DCEFE4' : '#F3E7E0', color: tenantHasSignature ? '#1F7A52' : '#B46A55' }}
+          style={{ background: tenantHasSignature ? '#DCEFE4' : '#F3E7E0', color: tenantHasSignature ? '#1F7A52' : '#3b5fa8' }}
         >
           {tenantHasSignature ? (
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -366,7 +366,7 @@ export function AgreementStep({
             <span className="font-display text-sm font-extrabold" style={{ color: '#1A1A1A' }}>
               Sign as Tenant
             </span>
-            <span className="flex-none rounded-full px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase" style={{ color: '#A45D44', background: '#F3E7E0', letterSpacing: '.06em' }}>
+            <span className="flex-none rounded-full px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase" style={{ color: '#2d4480', background: '#F3E7E0', letterSpacing: '.06em' }}>
               Required
             </span>
           </div>
@@ -385,7 +385,7 @@ export function AgreementStep({
               Edit
             </div>
           ) : (
-            <div className="flex items-center gap-1.5 rounded-full px-3.5 py-2 font-display text-xs font-extrabold text-white" style={{ background: '#B46A55', boxShadow: '0 4px 11px rgba(180,106,85,.3)' }}>
+            <div className="flex items-center gap-1.5 rounded-full px-3.5 py-2 font-display text-xs font-extrabold text-white" style={{ background: '#3b5fa8', boxShadow: '0 4px 11px rgba(180,106,85,.3)' }}>
               Sign
               <svg className="ob-nudge-x" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14M13 6l6 6-6 6" />

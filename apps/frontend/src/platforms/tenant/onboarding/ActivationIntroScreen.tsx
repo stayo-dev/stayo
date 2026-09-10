@@ -191,7 +191,7 @@ export function ActivationIntroScreen({
         </div>
 
         <div className="ob-up mt-[13px] flex items-center gap-2.5" style={{ animationDelay: '.18s' }}>
-          <img src="/stayo-icon.png" alt="Stayo" className="h-12 w-12 rounded-[14px]" style={{ boxShadow: '0 8px 20px rgba(180,106,85,.42)' }} />
+          <img src="/stayo-icon.png" alt="Stayo" className="h-12 w-12 rounded-[14px]" style={{ boxShadow: '0 8px 20px rgba(59,95,168,.42)' }} />
           <span className="text-xl" style={{ color: sky.pillText, opacity: 0.55 }}>
             ×
           </span>
@@ -230,7 +230,7 @@ export function ActivationIntroScreen({
           style={{ background: sky.cardBg, borderColor: sky.cardBorder, boxShadow: '0 10px 30px rgba(15,12,11,.35)', padding: '14px 16px', animationDelay: '.42s' }}
         >
           <div className="flex items-center gap-2.5">
-            <div className="flex h-10 w-10 flex-none items-center justify-center rounded-xl" style={{ background: 'rgba(180,106,85,.9)', boxShadow: '0 4px 12px rgba(180,106,85,.4)' }}>
+            <div className="flex h-10 w-10 flex-none items-center justify-center rounded-xl" style={{ background: 'rgba(59,95,168,.9)', boxShadow: '0 4px 12px rgba(59,95,168,.4)' }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 11l9-8 9 8" />
                 <path d="M5 10v10h14V10" />
@@ -271,7 +271,7 @@ export function ActivationIntroScreen({
           />
           <div
             className="absolute rounded-[5px] font-display text-[12px] font-extrabold tracking-[.16em] text-white"
-            style={{ top: 42, left: '50%', transform: 'translateX(-50%)', background: '#B46A55', padding: '4px 13px', boxShadow: '0 0 18px rgba(180,106,85,.6)' }}
+            style={{ top: 42, left: '50%', transform: 'translateX(-50%)', background: '#3b5fa8', padding: '4px 13px', boxShadow: '0 0 18px rgba(59,95,168,.6)' }}
           >
             STAYO
           </div>
@@ -307,7 +307,7 @@ export function ActivationIntroScreen({
           </div>
           <div className="ob-chk-out absolute z-[6]" style={{ bottom: 80, left: '50%', transform: 'translateX(-50%)', opacity: 0, transformOrigin: 'bottom center' }}>
             <div className="relative flex items-center gap-1.5 whitespace-nowrap rounded-[11px] bg-white" style={{ padding: '6px 12px', boxShadow: '0 6px 16px rgba(20,16,13,.24)' }}>
-              <span className="h-1.5 w-1.5 flex-none rounded-full" style={{ background: '#B46A55', boxShadow: '0 0 7px #B46A55' }} />
+              <span className="h-1.5 w-1.5 flex-none rounded-full" style={{ background: '#3b5fa8', boxShadow: '0 0 7px #3b5fa8' }} />
               <span className="font-display text-[10.5px] font-extrabold" style={{ color: '#1A1A1A' }}>
                 Checking out…
               </span>
@@ -322,12 +322,12 @@ export function ActivationIntroScreen({
             <div className="ob-dust absolute rounded-full" style={{ left: 2, bottom: -3, width: 30, height: 8, background: 'rgba(20,16,13,.2)' }} />
             <div className="absolute rounded-full" style={{ top: 0, left: 10, width: 17, height: 17, background: '#E8B88C' }} />
             <div className="absolute rounded-t-full" style={{ top: -2, left: 8, width: 22, height: 10, background: '#2F2F2F' }} />
-            <div className="ob-armb-a absolute rounded-full" style={{ top: 20, left: 16, width: 5, height: 19, background: '#A45D44', transformOrigin: 'top center' }} />
-            <div className="absolute rounded-[7px]" style={{ top: 17, left: 9, width: 19, height: 26, background: '#B46A55' }} />
-            <div className="absolute rounded-[5px]" style={{ top: 19, left: 5, width: 9, height: 21, background: '#A45D44' }} />
+            <div className="ob-armb-a absolute rounded-full" style={{ top: 20, left: 16, width: 5, height: 19, background: '#2d4480', transformOrigin: 'top center' }} />
+            <div className="absolute rounded-[7px]" style={{ top: 17, left: 9, width: 19, height: 26, background: '#3b5fa8' }} />
+            <div className="absolute rounded-[5px]" style={{ top: 19, left: 5, width: 9, height: 21, background: '#2d4480' }} />
             <div className="ob-legb-a absolute rounded-full" style={{ top: 40, left: 13, width: 6, height: 21, background: '#2F2F2F', transformOrigin: 'top center' }} />
             <div className="ob-legf-a absolute rounded-full" style={{ top: 40, left: 19, width: 6, height: 21, background: '#3A322C', transformOrigin: 'top center' }} />
-            <div className="ob-armf-a absolute rounded-full" style={{ top: 20, left: 21, width: 5, height: 19, background: '#B46A55', transformOrigin: 'top center' }} />
+            <div className="ob-armf-a absolute rounded-full" style={{ top: 20, left: 21, width: 5, height: 19, background: '#3b5fa8', transformOrigin: 'top center' }} />
           </div>
         </div>
 
@@ -345,7 +345,7 @@ export function ActivationIntroScreen({
               <div className="ob-armf-b absolute rounded-full" style={{ top: 20, left: 21, width: 5, height: 19, background: '#4A433C', transformOrigin: 'top center' }} />
             </div>
             {/* wheeled suitcase */}
-            <div className="absolute rounded-[3px]" style={{ bottom: 0, left: -14, width: 15, height: 23, background: '#D2986C', border: '1px solid rgba(0,0,0,.22)' }}>
+            <div className="absolute rounded-[3px]" style={{ bottom: 0, left: -14, width: 15, height: 23, background: '#2d4480', border: '1px solid rgba(0,0,0,.22)' }}>
               <div className="absolute inset-x-0.5 top-[3px] h-px" style={{ background: 'rgba(0,0,0,.18)' }} />
               <div className="absolute rounded-[2px]" style={{ top: -15, left: 6, width: 3, height: 16, background: '#2F2F2F' }} />
               <div className="absolute rounded-[2px]" style={{ top: -15, left: 2, width: 11, height: 3, background: '#2F2F2F' }} />
@@ -366,16 +366,16 @@ export function ActivationIntroScreen({
               <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2" style={{ background: '#6B6259' }} />
               <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2" style={{ background: '#6B6259' }} />
             </div>
-            <div className="absolute" style={{ bottom: 11, left: 14, width: 30, height: 3, background: '#B46A55', transformOrigin: 'left', transform: 'rotate(-4deg)' }} />
-            <div className="absolute" style={{ bottom: 11, left: 15, width: 3, height: 20, background: '#B46A55', transformOrigin: 'bottom', transform: 'rotate(26deg)' }} />
-            <div className="absolute" style={{ bottom: 11, left: 38, width: 3, height: 20, background: '#B46A55', transformOrigin: 'bottom', transform: 'rotate(-18deg)' }} />
+            <div className="absolute" style={{ bottom: 11, left: 14, width: 30, height: 3, background: '#3b5fa8', transformOrigin: 'left', transform: 'rotate(-4deg)' }} />
+            <div className="absolute" style={{ bottom: 11, left: 15, width: 3, height: 20, background: '#3b5fa8', transformOrigin: 'bottom', transform: 'rotate(26deg)' }} />
+            <div className="absolute" style={{ bottom: 11, left: 38, width: 3, height: 20, background: '#3b5fa8', transformOrigin: 'bottom', transform: 'rotate(-18deg)' }} />
             <div className="absolute rounded-[2px]" style={{ bottom: 29, left: 8, width: 12, height: 3, background: '#23201C' }} />
             <div className="absolute rounded-[2px]" style={{ bottom: 27, left: 30, width: 11, height: 4, background: '#23201C' }} />
             <div className="absolute" style={{ bottom: 30, left: 20, width: 20, height: 26 }}>
-              <div className="absolute rounded-[7px]" style={{ top: -2, left: 8, width: 14, height: 20, background: '#A45D44', transform: 'rotate(14deg)' }} />
+              <div className="absolute rounded-[7px]" style={{ top: -2, left: 8, width: 14, height: 20, background: '#2d4480', transform: 'rotate(14deg)' }} />
               <div className="absolute rounded-full" style={{ top: -14, left: 12, width: 15, height: 15, background: '#E8B88C' }} />
               <div className="absolute rounded-t-full" style={{ top: -16, left: 11, width: 18, height: 8, background: '#2F2F2F' }} />
-              <div className="absolute rounded-full" style={{ top: 2, left: -4, width: 16, height: 4, background: '#A45D44', transformOrigin: 'right', transform: 'rotate(18deg)' }} />
+              <div className="absolute rounded-full" style={{ top: 2, left: -4, width: 16, height: 4, background: '#2d4480', transformOrigin: 'right', transform: 'rotate(18deg)' }} />
               <div className="ob-legf-c absolute rounded-full" style={{ top: 16, left: 2, width: 5, height: 15, background: '#2F2F2F', transformOrigin: 'top' }} />
               <div className="ob-legb-c absolute rounded-full" style={{ top: 16, left: 8, width: 5, height: 15, background: '#23201C', transformOrigin: 'top' }} />
             </div>
@@ -392,7 +392,7 @@ export function ActivationIntroScreen({
           type="button"
           onClick={onBeginAdmission}
           className="ob-up rounded-xl text-center font-display text-sm font-bold text-white"
-          style={{ background: '#B46A55', padding: '13px 0', boxShadow: '0 8px 20px rgba(180,106,85,.34)', animationDelay: '.62s' }}
+          style={{ background: '#3b5fa8', padding: '13px 0', boxShadow: '0 8px 20px rgba(59,95,168,.34)', animationDelay: '.62s' }}
         >
           Begin Admission →
         </button>

@@ -27,16 +27,16 @@ export function WelcomeSummaryStep({ ctx, tenantName, entering, onEnter }: Welco
     <div className="px-1 pb-1 pt-1.5 text-center" style={{ animation: 'obFade .3s ease' }}>
       <div className="relative mx-auto mt-1.5" style={{ width: 96, height: 96 }}>
         <div className="absolute inset-0 rounded-full" style={{ background: '#DCEFE4', opacity: 0.6 }} />
-        <div className="absolute overflow-hidden rounded-full" style={{ inset: 12, boxShadow: '0 10px 26px rgba(180,106,85,.4)' }}>
+        <div className="absolute overflow-hidden rounded-full" style={{ inset: 12, boxShadow: '0 10px 26px rgba(59,95,168,.4)' }}>
           <img src="/stayo-icon.png" alt="Stayo" className="h-full w-full object-cover" />
         </div>
-        <div className="absolute rounded-[2px]" style={{ top: -4, left: 6, width: 7, height: 7, background: '#D2986C', transform: 'rotate(20deg)' }} />
+        <div className="absolute rounded-[2px]" style={{ top: -4, left: 6, width: 7, height: 7, background: '#2d4480', transform: 'rotate(20deg)' }} />
         <div className="absolute rounded-full" style={{ top: 8, right: -6, width: 6, height: 6, background: '#1F9D57' }} />
-        <div className="absolute rounded-full" style={{ bottom: 2, left: -8, width: 6, height: 6, background: '#B46A55' }} />
+        <div className="absolute rounded-full" style={{ bottom: 2, left: -8, width: 6, height: 6, background: '#3b5fa8' }} />
         <div className="absolute rounded-[2px]" style={{ bottom: -4, right: 10, width: 7, height: 7, background: '#E0B15E', transform: 'rotate(-15deg)' }} />
       </div>
 
-      <p className="mt-4.5 text-[10px] font-extrabold uppercase" style={{ color: '#B46A55', letterSpacing: '.14em' }}>
+      <p className="mt-4.5 text-[10px] font-extrabold uppercase" style={{ color: '#3b5fa8', letterSpacing: '.14em' }}>
         Admission Complete
       </p>
       <h2 className="font-display mt-1.5 text-[22px] font-extrabold leading-tight tracking-tight" style={{ color: '#1A1A1A' }}>
@@ -100,7 +100,7 @@ export function WelcomeSummaryStep({ ctx, tenantName, entering, onEnter }: Welco
           'Message your hostel manager anytime from the app.',
         ].map((n) => (
           <div key={n} className="mt-2 flex items-start gap-2.5">
-            <span className="mt-1.5 h-1.5 w-1.5 flex-none rounded-full" style={{ background: '#B46A55' }} />
+            <span className="mt-1.5 h-1.5 w-1.5 flex-none rounded-full" style={{ background: '#3b5fa8' }} />
             <span className="text-xs leading-snug" style={{ color: '#5A5147' }}>
               {n}
             </span>
