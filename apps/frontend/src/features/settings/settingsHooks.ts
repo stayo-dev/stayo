@@ -115,6 +115,8 @@ export interface HostelInfo {
   id: string; name: string; phone: string | null; address: string | null;
   city: string | null; state: string | null; pincode: string | null;
   upi_id: string | null; gst_number: string | null; logo_url: string | null;
+  /** `hostels.hostel_type` — BOYS/GIRLS/CO_LIVING/WORKING_PROS, null until asked. */
+  hostel_type: string | null;
 }
 
 export interface LateFeeRule {

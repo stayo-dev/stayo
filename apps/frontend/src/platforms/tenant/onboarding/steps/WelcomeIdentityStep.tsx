@@ -2,10 +2,11 @@ import { FormEvent, useState } from 'react';
 import { canSubmitIdentity, needsPhoneOtp, type PhoneTrust } from './identityVerification';
 import DateOfBirthField from './DateOfBirthField';
 import { useSky } from '../skyContext';
-import { AlertCircle, Camera, CheckCircle2, Receipt, Send } from 'lucide-react';
+import { AlertCircle, Camera, CheckCircle2, FileText, Receipt, Send } from 'lucide-react';
 import { StayoLoader } from '@shared/ui/brand';
 import type { ActivationContext, ActivationStep } from '../activationTypes';
 import { currency, fmtDate } from '../activationTypes';
+import { kycDocLabel, requiredKycDocTypes, type OnboardingDocItem } from '../onboardingKyc';
 import { BackButton, PrimaryActionButton, StepActionBar } from './shared';
 
 export type ProfileDraft = {
@@ -55,8 +56,13 @@ interface WelcomeIdentityStepProps {
   otpSending: boolean;
   otpCountdown: number;
   onSendOtp: () => void;
+  /** Owner-set at invite time — shown read-only, never chosen here. */
   paymentFrequency: string;
-  setPaymentFrequency: (v: string) => void;
+  /** KYC documents collected on the Identity step (auto-upload, PENDING, never blocks onboarding). */
+  docItems: OnboardingDocItem[];
+  docUploading: string | null;
+  docErrors: Record<string, string>;
+  onDocUpload: (docType: string, file?: File) => void;
   profile: ProfileDraft;
   setProfile: (next: ProfileDraft) => void;
   isGuardianPhoneVerified: boolean;
@@ -243,7 +249,10 @@ export function WelcomeIdentityStep({
   otpCountdown,
   onSendOtp,
   paymentFrequency,
-  setPaymentFrequency,
+  docItems,
+  docUploading,
+  docErrors,
+  onDocUpload,
   profile,
   setProfile,
   isGuardianPhoneVerified,
@@ -308,39 +317,41 @@ export function WelcomeIdentityStep({
     </div>
   );
 
+  // Read-only: the billing cycle is set by the owner at invite time. Shown as
+  // information — no dropdown, no choice to make here.
+  const FREQUENCY_LABEL: Record<string, string> = {
+    MONTHLY: 'Monthly',
+    QUARTERLY: 'Every 3 months',
+    HALF_YEARLY: 'Every 6 months',
+    ACADEMIC_YEARLY: 'Yearly',
+  };
   const billingCard = (
     <div className="mt-4">
-      <div className="flex items-center gap-2.5">
+      <div
+        className="flex items-center gap-2.5 rounded-[10px] p-[11px_13px]"
+        style={{ background: '#F6F1EA', borderLeft: '3px solid #B46A55' }}
+      >
         <div className="flex h-7 w-7 flex-none items-center justify-center rounded-lg" style={{ background: '#F3E7E0', color: '#B46A55' }}>
           <Receipt className="h-3.5 w-3.5" />
         </div>
-        <span className="text-[12.5px] font-bold" style={{ color: sky.onSkyTitle }}>
-          Select Billing Cycle <span style={{ color: '#D0473A' }}>*</span>
-        </span>
-      </div>
-      <div className="relative mt-1.5">
-        <select
-          value={paymentFrequency}
-          onChange={(e) => setPaymentFrequency(e.target.value)}
-          className="w-full appearance-none rounded-[10px] text-sm font-semibold"
-          style={{ background: '#F6F1EA', border: '1.5px solid #B46A55', color: '#2A2521', padding: '12px 13px' }}
-        >
-          <option value="MONTHLY">Monthly (Pay rent every month)</option>
-          <option value="QUARTERLY">Quarterly (Every 3 months)</option>
-          <option value="HALF_YEARLY">Half-yearly (Every 6 months)</option>
-          <option value="ACADEMIC_YEARLY">Academic Yearly (Every 12 months)</option>
-        </select>
-        <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-sm" style={{ color: '#8A7F75' }}>
-          ⌄
-        </span>
-      </div>
-      <div className="mt-1.5 text-[11.5px] leading-relaxed" style={{ color: sky.onSkyBody }}>
-        Changing this later requires a change request to the hostel owner.
+        <div className="min-w-0">
+          <div className="text-[11px] font-bold uppercase" style={{ color: '#7A6F63', letterSpacing: '.05em' }}>
+            Billing cycle
+          </div>
+          <div className="font-display mt-0.5 text-sm font-extrabold" style={{ color: '#2A2521' }}>
+            {FREQUENCY_LABEL[paymentFrequency] || paymentFrequency}
+          </div>
+        </div>
       </div>
     </div>
   );
 
   // --- activeStep === 'PROFILE', or local 'identity' phase pre-ACCOUNT ---
+  const isStudent = String(profile.profile_type || ctx.tenant?.profile_type || 'STUDENT').toUpperCase() === 'STUDENT';
+  const requiredMark = <span style={{ color: '#D0473A' }}>*</span>;
+  const optionalMark = <span className="font-medium normal-case" style={{ color: '#9A8F84' }}>(optional)</span>;
+  const requiredDocs = requiredKycDocTypes(profile.profile_type);
+
   const renderIdentity = (showAccountFields: boolean) => {
     const handleSubmit = async (e: FormEvent) => {
       e.preventDefault();
@@ -406,7 +417,7 @@ export function WelcomeIdentityStep({
           </label>
           <div className="text-center">
             <div className="text-[12.5px] font-bold" style={{ color: '#3A342E' }}>
-              Profile Photo
+              Profile Photo {requiredMark}
             </div>
             <div className="mt-0.5 text-[11px]" style={{ color: '#8A7F75' }}>
               {photoUploading
@@ -477,7 +488,7 @@ export function WelcomeIdentityStep({
           {genderRequired && (
           <div>
             <div className="mb-1.5 text-[11px] font-bold uppercase" style={label}>
-              Gender
+              Gender {requiredMark}
             </div>
             <div className="flex gap-2">
               {GENDERS.map((g) => {
@@ -500,7 +511,7 @@ export function WelcomeIdentityStep({
 
           <div>
             <div className="mb-1.5 text-[11px] font-bold uppercase" style={label}>
-              Date of Birth
+              Date of Birth {requiredMark}
             </div>
             <DateOfBirthField
               value={profile.date_of_birth}
@@ -510,7 +521,7 @@ export function WelcomeIdentityStep({
 
           <div>
             <div className="mb-1.5 text-[11px] font-bold uppercase" style={label}>
-              Guardian Full Name
+              Guardian Full Name {isStudent ? requiredMark : optionalMark}
             </div>
             <div style={cardWrap}>
               <input
@@ -525,7 +536,7 @@ export function WelcomeIdentityStep({
 
           <div>
             <div className="mb-1.5 text-[11px] font-bold uppercase" style={label}>
-              Guardian Mobile
+              Guardian Mobile {isStudent ? requiredMark : optionalMark}
             </div>
             <PhoneField
               value={profile.guardian_phone || ''}
@@ -567,6 +578,70 @@ export function WelcomeIdentityStep({
             )}
           </div>
 
+        </div>
+
+        {/* Documents — auto-upload on pick, land PENDING, never wait for owner approval. */}
+        <div className="mt-4">
+          <div className="mb-1.5 text-[11px] font-bold uppercase" style={label}>
+            Documents
+          </div>
+          <div className="mb-2 text-[11px] leading-relaxed" style={{ color: sky.onSkyBody }}>
+            Required for admission — your hostel verifies these separately.
+          </div>
+          <div className="flex flex-col gap-2">
+            {requiredDocs.map((docType) => {
+              const item = docItems.find((d) => String(d.doc_type).toUpperCase() === docType);
+              const status = String(item?.document_status || 'MISSING').toUpperCase();
+              const uploading = docUploading === docType;
+              const err = docErrors[docType];
+              const verified = status === 'APPROVED' || status === 'VERIFIED';
+              const pending = status === 'PENDING';
+              const rejected = status === 'REJECTED';
+              const tone = verified || pending ? '#1F7A52' : rejected ? '#D0473A' : '#B46A55';
+              return (
+                <label key={docType} className="flex cursor-pointer items-center gap-2.5" style={{ ...cardWrap, padding: '10px 13px' }}>
+                  <span className="flex h-8 w-8 flex-none items-center justify-center rounded-lg" style={{ background: '#F3E7E0', color: tone }}>
+                    {uploading ? <StayoLoader size="sm" label={null} /> : <FileText className="h-4 w-4" />}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[12.5px] font-bold" style={{ color: '#3A342E' }}>
+                      {kycDocLabel(docType)} {requiredMark}
+                    </div>
+                    <div className="mt-0.5 text-[11px] font-semibold" style={{ color: tone }}>
+                      {uploading
+                        ? 'Uploading…'
+                        : verified
+                          ? '✓ Verified'
+                          : pending
+                            ? '✓ Uploaded · Pending verification'
+                            : rejected
+                              ? `Rejected${item?.rejection_reason ? ` — ${item.rejection_reason}` : ''}`
+                              : 'Not uploaded yet'}
+                    </div>
+                    {err && (
+                      <div className="mt-0.5 text-[11px] font-semibold" style={{ color: '#D0473A' }}>
+                        {err}
+                      </div>
+                    )}
+                  </div>
+                  <span className="flex-none text-[11px] font-bold" style={{ color: '#A45D44' }}>
+                    {rejected ? 'Upload again' : verified || pending ? 'Replace' : 'Upload'}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,application/pdf"
+                    className="hidden"
+                    disabled={uploading}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      onDocUpload(docType, file);
+                    }}
+                  />
+                </label>
+              );
+            })}
+          </div>
         </div>
 
         {(profileDraftStatus === 'restored' || profileDraftStatus === 'saving') && (

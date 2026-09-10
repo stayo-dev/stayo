@@ -9,7 +9,7 @@ import { batchGetHostelContexts, getTenantOperationalContext } from "@/lib/hoste
 import { formatMonthYear, formatDate } from "@/lib/format";
 import { financialService } from "./financial-service";
 import { financialLifecycleService } from "./financial-lifecycle-service";
-import { selectReminderForOverdueDay } from "@/lib/services/collection-strategy-service";
+import { selectReminderForOverdueDay, selectReminderForDay, resolveCollectionStrategy } from "@/lib/services/collection-strategy-service";
 import { whatsappReminderDeliveryService } from "@/lib/services/notifications/whatsapp-reminder-delivery";
 import { getLogger } from "@/lib/logger";
 import { resolveTenantName, resolveTenantPhone } from "@/lib/tenants/tenant-identity";
@@ -76,12 +76,10 @@ export class ReminderService {
       : [];
     const remindersByObligation = new Map(lastReminders.map((r) => [r.obligation_id, r]));
 
-    const hostelIds = Array.from(
-      new Set(overdueOperational.map((ob) => (ob as any).hostel_id).filter(Boolean))
-    ) as string[];
-
-    // Batch-load all needed hostel contexts in ONE query (replaces N×findFirst calls)
-    const hostelContextMap = await batchGetHostelContexts(hostelIds);
+    // Batch-load contexts for EVERY active hostel in ONE query — the overdue
+    // pass only needs the ones with overdue rows, but the before-due pass below
+    // needs every hostel's reminder config to decide whether to look ahead.
+    const hostelContextMap = await batchGetHostelContexts(hostels.map((h: any) => h.id));
 
     let remindersSent = 0;
     let lateFeesAdded = 0;
@@ -308,6 +306,101 @@ export class ReminderService {
       }
     }
 
+    // ── Before-due & due-day reminder pass ────────────────────────────────
+    // The pass above only touches obligations already past their due date.
+    // This one sends the hostel's configured "N days before" and "on the due
+    // day" nudges. Every date is derived from the obligation's own `due_date`
+    // (via getOperationalUpcomingObligations), never from a join/onboarding
+    // date. It never creates a late fee and never advances the overdue
+    // escalation ladder (logged as reminder_type "PRE_DUE").
+    let beforeDueSent = 0;
+    try {
+      const dayMs = 86_400_000;
+      const startOfToday = new Date(Date.UTC(todayMid.getUTCFullYear(), todayMid.getUTCMonth(), todayMid.getUTCDate()));
+
+      const upcomingByHostel = await Promise.all(
+        hostels.map(async (hostel: any) => {
+          if (!hostel.owner_id) return [];
+          const ctx = hostelContextMap.get(hostel.id);
+          const cfg: any = ctx ? ctx.prefs : resolvePreferences(null);
+          const strategy = resolveCollectionStrategy(cfg);
+          if (!strategy.enabled) return [];
+          const maxBefore = strategy.before_due_days.length > 0 ? Math.max(...strategy.before_due_days) : 0;
+          const wantsDueDay = (cfg.send_due_day_reminder ?? true);
+          if (maxBefore === 0 && !wantsDueDay) return [];
+          const rows = await financialService.getOperationalUpcomingObligations(
+            todayMid, hostel.owner_id, hostel.id, maxBefore
+          );
+          return rows.map((r: any) => ({ row: r, cfg, hostelName: ctx?.hostel?.name || "Your Hostel" }));
+        })
+      );
+      const upcoming = upcomingByHostel.flat();
+
+      // Which of these already got a PRE_DUE reminder today? (idempotency)
+      const upcomingObligationIds = upcoming.map((u) => u.row.obligation_id);
+      const sentToday = upcomingObligationIds.length > 0
+        ? await prisma.reminder_logs.findMany({
+            where: {
+              obligation_id: { in: upcomingObligationIds },
+              reminder_type: "PRE_DUE",
+              sent_at: { gte: startOfToday },
+            },
+            select: { obligation_id: true },
+          })
+        : [];
+      const alreadySentToday = new Set(sentToday.map((r: any) => r.obligation_id));
+
+      for (const { row: ob, cfg, hostelName } of upcoming) {
+        if (!ob.owner_id || !ob.hostel_id) continue;
+        if (alreadySentToday.has(ob.obligation_id)) continue;
+
+        const dueMid = new Date(Date.UTC(
+          new Date(ob.due_date).getUTCFullYear(),
+          new Date(ob.due_date).getUTCMonth(),
+          new Date(ob.due_date).getUTCDate(),
+        ));
+        const daysUntilDue = Math.round((dueMid.getTime() - startOfToday.getTime()) / dayMs);
+        if (daysUntilDue < 0) continue; // belongs to the overdue pass
+        const offset = -daysUntilDue; // negative = before due, 0 = due today
+
+        const reminderType = selectReminderForDay(offset, cfg);
+        if (!reminderType) continue;
+
+        try {
+          const delivery = await this.triggerNotification(
+            {
+              id: ob.obligation_id,
+              hostel_id: ob.hostel_id,
+              hostel_name: hostelName,
+              amount: ob.remaining_amount ?? ob.amount,
+              rent_month: ob.rent_month,
+              due_date: ob.due_date,
+              days_overdue: offset,
+              send_date_key: startOfToday.toISOString().slice(0, 10),
+              tenant: {
+                id: ob.tenant_id,
+                owner_id: ob.owner_id,
+                personal_email: ob.personal_email,
+                access_mode: ob.access_mode ?? null,
+                profiles: { name: ob.tenant_name, phone: ob.phone },
+              },
+            },
+            "DUE_SOON",
+            cfg,
+            "PRE_DUE",
+          );
+          if (delivery.in_app.sent || delivery.email.sent || delivery.whatsapp.sent) {
+            beforeDueSent++;
+          }
+        } catch (err: any) {
+          console.error(`[REMINDER] Before-due error for obligation ${ob.obligation_id}:`, err?.message);
+        }
+      }
+    } catch (err: any) {
+      console.error("[REMINDER] Before-due pass failed:", err?.message);
+    }
+    remindersSent += beforeDueSent;
+
     if (remindersSent > 0 || lateFeesAdded > 0) {
       // Trigger live updates to owners dashboard so they see realtime notifications and late fees collected incrementing
       const affectedOwners = Array.from(new Set(overdueOperational.map((ob) => ob.owner_id).filter(Boolean)));
@@ -322,6 +415,7 @@ export class ReminderService {
     const summary = {
       evaluated_obligations: overdueOperational.length,
       reminders_sent: remindersSent,
+      before_due_sent: beforeDueSent,
       late_fees_added: lateFeesAdded
     };
 
@@ -414,8 +508,23 @@ export class ReminderService {
     return { sent, tenant_name: resolveTenantName(tenant), channels };
   }
 
-  private async triggerNotification(obligation: any, type: string, config: any): Promise<NotificationDeliveryResult> {
+  private async triggerNotification(
+    obligation: any,
+    type: string,
+    config: any,
+    /**
+     * Value written to `reminder_logs.reminder_type`, when it must differ from
+     * the delivery `type`. Before-due reminders deliver as "DUE_SOON" (email
+     * copy / WhatsApp template) but log as "PRE_DUE" so they never collide with
+     * the overdue escalation ladder (DUE_SOON → WARNING → FINAL_NOTICE), whose
+     * next step is chosen from the last `reminder_logs` row.
+     */
+    logType?: string,
+  ): Promise<NotificationDeliveryResult> {
     const tenant = obligation.tenant;
+    const daysOverdue = typeof obligation.days_overdue === "number" ? obligation.days_overdue : 1;
+    const isBeforeDue = daysOverdue < 0;
+    const isDueToday = daysOverdue === 0;
     const ownerId = tenant.owner_id;
     const tenantName = resolveTenantName(tenant);
     const tenantPhone = resolveTenantPhone(tenant);
@@ -462,9 +571,14 @@ export class ReminderService {
       } else {
         const quiet = !withinSendWindow(new Date());
         const amount = Number(obligation.amount ?? 0);
+        const whenPhrase = isBeforeDue
+          ? `is due ${formatDate(obligation.due_date, config)}`
+          : isDueToday
+            ? `is due today (${formatDate(obligation.due_date, config)})`
+            : `was due ${formatDate(obligation.due_date, config)}`;
         const message =
           `Rent for ${formatMonthYear(obligation.rent_month, config)} — ` +
-          `₹${amount.toLocaleString("en-IN")} was due ${formatDate(obligation.due_date, config)}.`;
+          `₹${amount.toLocaleString("en-IN")} ${whenPhrase}.`;
 
         result.in_app.attempted = true;
         result.push.attempted = !quiet;
@@ -582,7 +696,10 @@ export class ReminderService {
             amount: Number(obligation.amount),
             rentMonth: obligation.rent_month,
             dueDate: obligation.due_date,
-            daysOverdue: Number(obligation.days_overdue || 1),
+            // Negative = "due in N days" (RENT_DUE_REMINDER), 0 = "due today"
+            // (RENT_DUE_TODAY), positive = overdue (RENT_OVERDUE_REMINDER) —
+            // selectRentReminderTemplate keys off the sign.
+            daysOverdue,
             sendDateKey: obligation.send_date_key || new Date().toISOString().slice(0, 10),
             prefs: config,
           });
@@ -651,7 +768,7 @@ export class ReminderService {
           id: randomUUID(),
           obligation_id: obligation.id,
           tenant_id: tenant.id,
-          reminder_type: type,
+          reminder_type: logType ?? type,
           channel: deliveredChannel,
           hostel_id: obligation.hostel_id,
         },

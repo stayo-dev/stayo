@@ -7,6 +7,7 @@ import { stayoToast } from '@shared/ui-patterns/Toast';
 import { foodService } from '@features/food/api';
 import { formatTimeRange } from '@features/food/mealTimings';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
+import { useIsDesktop } from '@/app/components/ui/use-desktop';
 import { HostelSwitcher } from '../components/HostelSwitcher';
 import { useFoodSchedule } from '../hooks/useFoodSchedule';
 import { useMealTimings } from '../hooks/useMealTimings';
@@ -40,7 +41,11 @@ function dishes(cell: WeekGridCell | null | undefined): string {
  */
 export function KitchenSheetPage() {
   const session = useOwnerSession();
+  const isDesktop = useIsDesktop();
   const [searchParams, setSearchParams] = useSearchParams();
+  // The hostel rides on `?hostelId=`. At `lg+` (ADR-171 Phase 2.8) the sidebar
+  // `HostelSwitcher` writes that param, so the in-page one is hidden to avoid a
+  // duplicate; below `lg` it is unchanged.
   const hostelId = searchParams.get('hostelId') ?? session.primaryHostelId;
   const currentMonth = useMemo(() => new Date().toISOString().slice(0, 7), []);
   const schedule = useFoodSchedule(hostelId ?? undefined, currentMonth);
@@ -96,13 +101,15 @@ export function KitchenSheetPage() {
           </h1>
           <p className="text-[13px] font-medium text-muted-foreground">{hostelName}</p>
         </div>
-        <div className="print:hidden">
-          <HostelSwitcher
-            hostels={session.hostels}
-            selectedId={hostelId}
-            onSelect={(id) => setSearchParams({ hostelId: id }, { replace: true })}
-          />
-        </div>
+        {!isDesktop && (
+          <div className="print:hidden">
+            <HostelSwitcher
+              hostels={session.hostels}
+              selectedId={hostelId}
+              onSelect={(id) => setSearchParams({ hostelId: id }, { replace: true })}
+            />
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col divide-y divide-border border-y border-border">

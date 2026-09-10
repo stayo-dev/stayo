@@ -156,7 +156,7 @@ export function LeadsPage() {
               active={stage}
               onChange={(k) => setParam('stage', k === 'all' ? null : k)}
             />
-            <div className="flex min-w-[240px] flex-1 items-center gap-2 rounded-xl border border-[#EAE1D8] bg-white px-3.5 py-2 sm:max-w-[320px]">
+            <div className="flex min-w-[240px] flex-1 items-center gap-2 rounded-xl border border-border bg-white px-3.5 py-2 sm:max-w-[320px]">
               <Search className="h-3.5 w-3.5 flex-none text-[#988D82]" />
               <input
                 value={search}

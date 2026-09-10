@@ -10,6 +10,19 @@ All endpoints live under `apps/backend/app/api/` (Next.js 14 App Router). This i
 
 **Headline finding:** 37 route files are deliberate `410 Gone` "tombstone" stubs, left over from a prior multi-hostel SaaS billing/subscription model that this codebase has moved away from (a "single-business migration" per in-code comments). They are intact files, not empty placeholders — kept so a stale caller/cron fails loudly instead of silently 404ing. See the dedicated section near the bottom.
 
+### `GET /api/owner/signature` (2026-09-02)
+
+The owner's most recent agreement signature across their hostels, so the Add Hostel builder can offer to reuse it rather than asking them to draw the same mark once per hostel. `owner_signature_url` lives on `AgreementTemplate`, which is per hostel. Returns `{ signature: null }` when there is none. Scoped to templates on hostels the caller owns. See [[Decisions#ADR-168|ADR-168]].
+
+### `POST /api/owner/hostels` — changed (2026-09-02)
+
+- **No longer step-up gated.** `identity_token` is not read and no `IDENTITY_REQUIRED` is raised; creation writes a `hostel.created` event-log entry instead. See [[Decisions#ADR-168|ADR-168]].
+- **Accepts `hostel_type`** — `BOYS` / `GIRLS` / `CO_LIVING` / `WORKING_PROS`; anything unrecognised is stored as NULL rather than guessed.
+
+### `PATCH /api/hostels/:id` and `GET /api/hostels/:id` — changed (2026-09-02)
+
+Both now carry `hostel_type`, validated on write against the same four codes. The portfolio summary returns it too, so the Hostels tab can prompt for a hostel that has none.
+
 ## Auth (`/api/auth/*`)
 
 **Since [[Decisions#ADR-031\|ADR-031]] (2026-07-28), Supabase Auth is the single authentication provider** — see [[Backend#Auth/session model|Backend's Auth/session model]] for the full architecture (dual-accept JWT verification, JIT identity linking via `profiles.auth_user_id`, `resolveSupabaseSession`). Login stays backend-mediated (the frontend never calls `supabase.auth.signInWithPassword()` directly) so rate-limiting, tenant-status checks, and the JIT linking step can still run; the response body now additionally returns `access_token`/`refresh_token`/`expires_in` so the frontend can call `supabase.auth.setSession()`.
@@ -42,13 +55,15 @@ Tenant activation (`/api/tenants/activate`, see below) also mints a Supabase ses
 
 ## Tenants — core, invitation, activation, self-service
 
-`/api/tenants` (GET/POST list+create), `/api/tenants/[id]` (GET/PUT/DELETE), `/api/tenants/[id]/full` (aggregated profile), `/api/tenants/by-profile/[profileId]`, `/api/tenants/profile` (GET/PATCH self), `/api/tenants/invite`, `/api/tenants/resend-invitation`, `/api/tenants/[id]/cancel-invitation`, `/api/tenants/[id]/compliance-action` (RESEND_INVITE/REGENERATE_INVITE_TOKEN/EXTEND_INVITATION_EXPIRY/MARK_DOCUMENTS_VERIFIED/RESEND_RULES/REMIND_DOCUMENTS), `/api/tenants/[id]/reactivate`, `/api/tenants/owner/reactivation-requests(/[id]/decision)`, `/api/tenants/owner/tenants/[id]/overview` (**extended 2026-08-11**: now also returns `hostel_id` — previously absent, which left every hostel-scoped owner editor opened from a tenant screen with an empty hostel id — and an `invitation` block for tenants who are still `INVITED`: `{ id, status, activation_link, sent_at, expires_at, opened_at, activation_started_at, cancelled_at, name/email/phone, notes, revision, reserved_room, reservation_expires_at, agreement_duration_months, agreement_start_date }`. `activation_link` is built server-side via `frontendUrl('/activate/<token>')` so the raw token never reaches the client; `reserved_room` comes from the invitation's `ACTIVE` `tenant_invitation_reservations` row, which is the only place an invited tenant's bed exists before activation. The raw `tenant_invitations` array is still returned unchanged for older callers), `/api/tenants/[id]/notes` (GET/POST/DELETE — owner-private notes; **first frontend caller since 2026-08-11**, see [[Bugs]]), `/api/tenants/[id]/score`, `/api/tenants/[id]/photo`, `/api/tenants/increment-year` (GET preview/POST execute), `/api/tenants/transfer` (POST + GET history), `/api/tenants/export` (CSV), `/api/tenants/[id]/activation-state` (**GET — since 2026-08-01**. Owner/Admin-only, owner-scoped read of where an invited tenant is in the activation workflow: `current_step`, `completed_steps`, `blocked_steps`, `progress_percent`, `missing_fields`. Reuses `activationWorkflowService.computeState()` — the same state machine the tenant's own wizard runs on — via the new read-only `getOwnerActivationState()`. Deliberately **not** built on `GET /api/tenants/activate/context`, which is token-keyed *and* mutates: it marks the invitation OPENED and auto-accepts the hostel rules on the tenant's behalf. KYC is not part of the step logic — `document_verified` is an independent state machine that never gates activation), `/api/tenants/pending-documents`, `/api/tenants/onboarding/complete`.
+`/api/tenants` (GET/POST list+create), `/api/tenants/[id]` (GET/PUT/DELETE), `/api/tenants/[id]/full` (aggregated profile), `/api/tenants/by-profile/[profileId]`, `/api/tenants/profile` (GET/PATCH self), `/api/tenants/invite`, `/api/tenants/resend-invitation`, `/api/tenants/[id]/cancel-invitation`, `/api/tenants/[id]/compliance-action` (RESEND_INVITE/REGENERATE_INVITE_TOKEN/EXTEND_INVITATION_EXPIRY/MARK_DOCUMENTS_VERIFIED/RESEND_RULES/REMIND_DOCUMENTS), `/api/tenants/[id]/reactivate`, `/api/tenants/owner/reactivation-requests(/[id]/decision)`, `/api/tenants/owner/tenants/[id]/overview` (**extended 2026-08-11**: now also returns `hostel_id` — previously absent, which left every hostel-scoped owner editor opened from a tenant screen with an empty hostel id — and an `invitation` block for tenants who are still `INVITED`: `{ id, status, activation_link, sent_at, expires_at, opened_at, activation_started_at, cancelled_at, name/email/phone, notes, revision, reserved_room, reservation_expires_at, agreement_duration_months, agreement_start_date }`. `activation_link` is built server-side via `frontendUrl('/activate/<token>')` so the raw token never reaches the client; `reserved_room` comes from the invitation's `ACTIVE` `tenant_invitation_reservations` row, which is the only place an invited tenant's bed exists before activation. The raw `tenant_invitations` array is still returned unchanged for older callers. **Extended 2026-09-02 ([[Decisions#ADR-167|ADR-167]]):** also returns `read_model_items` — the per-obligation breakdown `FinancialReadModelService` already computed and previously discarded, so the owner tenant profile's payment schedule + "Next payment" use the same records the tenant portal reads), `/api/tenants/[id]/notes` (GET/POST/DELETE — owner-private notes; **first frontend caller since 2026-08-11**, see [[Bugs]]), `/api/tenants/[id]/score`, `/api/tenants/[id]/photo`, `/api/tenants/increment-year` (GET preview/POST execute), `/api/tenants/transfer` (POST + GET history), `/api/tenants/export` (CSV), `/api/tenants/[id]/activation-state` (**GET — since 2026-08-01**. Owner/Admin-only, owner-scoped read of where an invited tenant is in the activation workflow: `current_step`, `completed_steps`, `blocked_steps`, `progress_percent`, `missing_fields`. Reuses `activationWorkflowService.computeState()` — the same state machine the tenant's own wizard runs on — via the new read-only `getOwnerActivationState()`. Deliberately **not** built on `GET /api/tenants/activate/context`, which is token-keyed *and* mutates: it marks the invitation OPENED and auto-accepts the hostel rules on the tenant's behalf. KYC is not part of the step logic — `document_verified` is an independent state machine that never gates activation), `/api/tenants/pending-documents`, `/api/tenants/onboarding/complete`.
 
 **`GET /api/cron/invitation-expiry-reminders`** (2026-08-25) — **daily**, `CRON_SECRET` bearer. Sends `stayo_tenant_invitation_expiry_reminder` to `PENDING`/`OPENED` invitations expiring within **36h** whose tenant has not personally accepted — the tenancy is `INVITED`, **or** `ACTIVE` with `acceptance_status = PENDING` (new model, [[Decisions#ADR-165|ADR-165]]) — and which have a phone on file. Excludes `ACTIVATION_STARTED` and already-expired links. De-duplicated per invitation via `system_event_logs`.
 
 **`GET /api/cron/expire-unaccepted-tenancies`** (2026-09-02, [[Decisions#ADR-165|ADR-165]]) — **daily**, one hour after the reminder above, `CRON_SECRET` bearer. Closes tenancies that went operationally live at invite time (`status = ACTIVE`, `acceptance_status = PENDING`) but whose tenant never personally accepted and whose activation link expired more than `GRACE_DAYS` (default 7, env `UNACCEPTED_TENANCY_GRACE_DAYS`) ago and who are not mid-activation. Frees the room, voids only *future* unpaid `RENT`/`MAINTENANCE` obligations, keeps past dues + every recorded payment + the deposit for settlement (`closeUnacceptedTenancy`), sets `status = EXPIRED`, notifies the owner. Idempotent. Service: `unacceptedTenancyExpiryService.run`.
 
-**Activation (public, token-gated, no session):** `/api/tenants/activate` (GET validate token / POST activate / PATCH multi-step activation workflow), `/api/tenants/activate/context`, `/api/tenants/activate/photo`, `/api/tenants/activate/signature`.
+**Activation (public, token-gated, no session):** `/api/tenants/activate` (GET validate token / POST activate / PATCH multi-step activation workflow), `/api/tenants/activate/context`, `/api/tenants/activate/photo`, `/api/tenants/activate/signature`, `/api/tenants/activate/documents`.
+
+**`/api/tenants/activate/documents` — added 2026-09-02 ([[Decisions#ADR-169|ADR-169]]).** Token OR session (via `activationSubjectFromRequest`, exactly like `/activate/photo`). `POST` multipart (`token?`, `doc_type`, `file`, `doc_number?`) uploads a tenant KYC document during onboarding — the tenant has no session until the ACTIVATE step, so `/me/documents` cannot serve this. `doc_type` must be one the tenant's `profile_type` requires (`requiredKycDocTypes`); JPG/PNG/WEBP/PDF ≤ 5 MB; writes the same `identification_documents` row and ImageKit path as `/me/documents`, always `document_status: "PENDING"`, superseding the prior active row of that type, then `recomputeDocumentVerified`. `GET` returns `{ required, items: [{ doc_type, document_status, rejection_reason }] }` for the wizard. **Onboarding never blocks on owner approval** — "Verify & Continue" only checks each required type has been uploaded. `GET /api/tenants/activate/context` `documents` now also carries `required` + `items` (per-type status + latest owner rejection message).
 
 **Changed 2026-08-30 ([[Decisions#ADR-155|ADR-155]]): all four accept a session where no token is presented.** The token authenticates a stranger; a signed-in tenant with no token in hand is not one. So a request carrying **no token** is resolved from the caller's own live tenancy via `getActiveTenancy(session.sub)` (role `TENANT` only), never from a tenancy id in the request. (As of [[Decisions#ADR-163|ADR-163]], 2026-09-01: an `OWNER_MANAGED` tenancy whose invitation is `SUPERSEDED` no longer needs this session path at all to get into activation — `resolveByToken` resolves that case directly from the token, the same way it resolves anyone else's. Session mode remains for a signed-in tenant who genuinely has no token.) **A token always wins when one is present**, even alongside a session, so an ordinary invite link cannot be diverted into session mode by a stray cookie and the invited-tenant flow is byte-identical to before. A request with neither still returns the same `400 VALIDATION_ERROR` "Activation token is required" it always did. `PATCH … step: "ACCOUNT"` is refused in session mode with `INVALID_TRANSITION` — that step binds the tenancy to an account through a token-path call, and a session-mode caller is bound already. Entry is additionally gated by `canEnterActivation`, which no longer reads `status === "ACTIVE"` as "already onboarded" — see [[Business-Rules]].
 
@@ -72,7 +87,15 @@ Tenant activation (`/api/tenants/activate`, see below) also mints a Supabase ses
 
 **Documents** (`/api/tenants/[id]/documents/*`): list, `bulk-verify`, `[docId]/download` (proxies ImageKit or agreement PDF), `[docId]/message`, `[docId]/reject`, `[docId]/verify`.
 
-**Financial ledger/timeline** (`/api/tenants/[id]/financial-*`): `financial-ledger` (GET balance+history / POST record credit-or-debit), `financial-ledger/adjust` (apply future-credit against a specific obligation), `financial-ledger/refund-status` (PATCH), `financial-timeline` (unified read-only feed), `billing-timeline`.
+**Changed 2026-09-02 ([[Decisions#ADR-169|ADR-169]]).** All of these now derive `tenants.document_verified` through the shared `recomputeDocumentVerified` (in `src/services/tenants/kyc-status.ts`) instead of setting it inline — it is `true` only when every `requiredKycDocTypes(profile_type)` type has a currently-**active**, **APPROVED** document.
+- `PATCH …/[docId]/verify` and `…/reject` are **conditional writes on `document_status = "PENDING"`** — a concurrent decision from another tab returns **`409`** rather than flipping an already-decided document. `APPROVED→REJECTED` / `REJECTED→APPROVED` are not reachable here; a new upload (new PENDING row) is. `reject` still requires a reason (≤ 800), appended to the JSON thread in `rejection_reason`.
+- `PATCH …/bulk-verify` now only approves the **required active** types, and returns **`409 INCOMPLETE_KYC`** (with a `gap` breakdown) when a required type has no active document — it can no longer mark a tenant verified with a type missing. Response: `{ approved_count, document_ids, document_verified }`.
+- `…/[docId]/message`: a tenant reply still returns the document to `PENDING` (and now also clears `is_verified` + recomputes).
+- `…/[docId]/download`: unchanged — 404 if the doc is not this tenant's or is archived; TENANT must match `profile_id`, OWNER must match `owner_id`.
+
+`POST /api/tenants/[id]/compliance-action` **`MARK_DOCUMENTS_VERIFIED`** (changed 2026-09-02): shares `bulk-verify`'s core — approves only the required active types, **`409 INCOMPLETE_KYC`** if any required type is missing an active row, recomputes `document_verified` (no longer `docs.count > 0`). Stays as an owner override for offline-verified documents.
+
+**Financial ledger/timeline** (`/api/tenants/[id]/financial-*`): `financial-ledger` (GET balance+history / POST record credit-or-debit), `financial-ledger/adjust` (apply future-credit against a specific obligation), `financial-ledger/refund-status` (PATCH), `financial-timeline` (unified read-only feed), `billing-timeline` (`billingTimelineService.getTenantTimeline` — rich per-obligation events with due date / actual paid date / method / billing period + a projected `next_rent_generation`; **first owner-side consumer added 2026-09-02, [[Decisions#ADR-167|ADR-167]]** — the owner tenant profile's Payments tab reads it, same as the tenant portal).
 
 **Tenant self-service** (`/api/tenants/me/*`, all TENANT-scoped): `profile` (GET/PATCH — **as of 2026-08-14, PATCH rejects `phone_1`/`phone`/`personal_email`/`permanent_address`/`date_of_birth`** with a `VALIDATION_ERROR` telling the caller to use `profile-requests` instead — these are governed fields, see [[Business-Rules]]), `complete-profile` (onboarding, multipart), `photo`, `room`, `score`, `documents` (GET/POST), `financial-ledger`, `financial-read-model` (the canonical `FinancialReadModel`, same source the owner overview reads — see [[Business-Rules]]), `billing-timeline`, `billing-frequency` (GET/POST, validated against cooldown/minimum-commitment/billing-period-cleanliness rules), `payments/history`, `onboarding-settings`, `reactivation-request`, `profile-requests` (**new 2026-08-14** — GET lists the tenant's own submitted governed-field change requests; POST body `{fields: {phone_1?, personal_email?, permanent_address?, date_of_birth?}, reason}` creates one `PENDING`, 400 if a request is already pending or `reason` is empty. See below and [[Business-Rules]]).
 
@@ -207,6 +230,15 @@ Added 2026-07-26 for the real StayO tenant app (Home/Money/Room/Profile tabs) �
 ## Bulk Import
 
 `/api/bulk-import/upload` (parses XLSX/CSV, max 5MB), `/api/bulk-import/revalidate`, `/api/bulk-import/template`, `/api/bulk-import/[batch_id]` (status + funnel), `/api/bulk-import/[batch_id]/confirm` (GET preview / POST execute, idempotent retry-safe), `/api/bulk-import/google-form-prompt` (**OWNER only**).
+
+**Changes 2026-09-10 (backend correctness pass — see [[Bugs]], [[Business-Rules]]):**
+- **Upload acceptance is by extension** (`.xlsx`/`.xls`/`.csv`), not MIME type — browsers report `.xlsx` as `application/octet-stream`. Content is still validated by the parser. Limit is **150 rows**; a larger file now gets that message rather than *"Failed to parse file"*.
+- **Rows carry structured `issues`** alongside the legacy `errors`/`warnings`: `{ code, severity: BLOCKER | NEEDS_CHOICE | NOTICE, field?, row, title, detail, fix: { kind, options? } }`, copy written for owners with Indian date/money formats. Catalogue: `lib/services/bulk-import/issues.ts` (17 codes, exported as `ISSUE_CODES`; `OVERPAID` and `HOSTEL_STAMP_MISMATCH` are defined but not yet emitted). **Every row with a blocking `errors` entry also carries at least one `BLOCKER` issue** — an invariant pinned by `tests/bulk-import-row-validation.test.ts`, so a review screen built on `issues` cannot show a blocked row as clean. **Caveats for the UI:** `issues` appear only in the *immediate* upload/revalidate `preview` response — they are **not persisted** in the batch's `validation_errors` JSON, so `GET …/confirm` (the reload path) does not return them; and the service's `summary.blockers`/`summary.choices` counts are computed but **not exposed** by any route yet.
+- **`billing_start_mode` removed** from the upload form fields and the confirm preview — it was never read by any billing decision.
+- **The stored `joining_date` is ISO `YYYY-MM-DD`**, taken from the date validation parsed — never the raw cell text, which `createInvitation`'s `new Date()` would misread (DD/MM as MM/DD; Excel serials as a far-future year).
+- **`GET …/confirm` preview** now includes `amount_paid`, `payment_method`, `agreement_duration_months` and `rent_source` (`SHEET` when the owner typed the rent, else `ROOM_CONFIG`).
+- **`POST …/confirm`** executes from `bulk_import_rows` by primary key (previously matched `(email, phone)` with `updateMany`) and forwards the full term set to `createInvitation`, sending maintenance as **`maintenance_amount`** — the key that service reads. `amount_includes_deposit` is deliberately not forwarded (nothing reads it).
+- A legacy owner page at `apps/backend/app/(dashboard)/owner/bulk-import/` still posts `billing_start_mode`; it is now ignored.
 
 ## Dashboard & Analytics
 
@@ -350,6 +382,8 @@ Public (no session — added to `middleware.ts`'s `PUBLIC_ROUTES`), backing the 
 
 ## Stayo Discover — Public Marketplace (`/api/discover/*`)
 
+> **SHELVED for v1 (2026-09-03, [[Decisions#ADR-170|ADR-170]]).** `middleware.ts` returns **`410 { error.code: 'MARKETPLACE_DISABLED' }`** for every `/api/discover/*` path unless `process.env.MARKETPLACE_ENABLED === 'true'`. Route handlers and `src/services/discovery/*` are unchanged on disk. **Exception:** `GET /api/discover/hostels/[slug]/reviews` and `/api/platform-admin/reviews*` are **not** blocked — existing resident reviews stay readable/moderatable; only new review POSTs (under `/api/discover`) are gone with the rest.
+
 **Added 2026-08-15 ([[Decisions#ADR-073|ADR-073]]).** The public hostel-browsing surface backing `/discover`. Split auth: browse is public, everything else needs a seeker session.
 
 ### Reviews
@@ -431,6 +465,8 @@ Frontend: `features/profile/api`'s `profileService.listSupportTickets`/`createSu
 
 ## Hostel Marketing Page & Approval (`/api/owner/hostels/[id]/marketing*`, `/api/platform-admin/marketing-reviews*`)
 
+> **SHELVED for v1 (2026-09-03, [[Decisions#ADR-170|ADR-170]]).** `middleware.ts` returns **`410 MARKETPLACE_DISABLED`** for `/api/owner/hostels/{id}/marketing/*`, `/api/platform-admin/marketing-reviews/*`, `/api/platform-admin/platform-listings/*`, and `/api/platform-admin/hostels/{id}/{approve,reject,suspend}-listing` / `listing-review` unless `MARKETPLACE_ENABLED === 'true'`. Handlers and `src/services/marketing/*` unchanged on disk.
+
 **Added 2026-08-15 ([[Decisions#ADR-076|ADR-076]]).** Owner-authored Discovery listing content, and the review cycle every version passes through.
 
 | Path | Methods | Summary |
@@ -469,9 +505,17 @@ No migration — `hostel_marketing_revisions.content` is a JSON column and this 
 
 `/api/admin/finance-ops` (**ADMIN only**) + `/attempts(/[id])`, `/anomalies`, `/webhook-events`, `/reconciliation-runs`. `/api/admin/finance/reconciliation/issues` + `/[issueId]` + `/scan` — **note: this sibling group requires role OWNER, not ADMIN**, despite the shared `/admin/finance` URL prefix — a role-scope inconsistency worth confirming is intentional. **Update 2026-07-26:** `ADMIN` is now a real, assignable role (Platform Admin Console, above) — `/api/admin/finance-ops/*` is consequently no longer purely theoretical/unreachable as previously noted here, though no frontend still consumes it and it remains a functionally separate, older subsystem from `/api/platform-admin/*`.
 
-## Cron Jobs (Vercel Cron, `CRON_SECRET` bearer-gated)
+## Cron Jobs (`CRON_SECRET` bearer-gated; 2 on Vercel Cron, 4 on GitHub Actions)
 
-**Active:** `generate-rent`, `rent-reminders`, `agreement-lifecycle`, `daily-briefings`, `hostel-invariants`, `migration-audit`, `move-out-releases`, `reconcile-payments`, `admissions`, `food-expiry` (renamed from `food-carry-forward` on 2026-08-25, [[Decisions#ADR-114|ADR-114]] — its schedule-cloning responsibility was removed, it now only closes expired voting periods/polls; route originally added 2026-07-26, registered in `vercel.json` on 2026-08-05 at `0 1 * * *`, unchanged schedule. See [[Food]], [[Bugs]]). **Marked FROZEN (do not schedule) but functional:** `data-retention`. **Marked DORMANT (analytics-repair-only):** `tenant-analytics` (POST). **Decommissioned (410):** `onboarding-nudges`, `process-autopay-retries`, `process-overflow`, `reconcile-addons`.
+**Trimmed to the MVP set on 2026-09-06 ([[Decisions#ADR-177|ADR-177]]).** Nine jobs were scheduled; six now are. Canonical registry: `docs/operations/cron-registry.md`.
+
+**Active (6), all on Vercel Cron** (`apps/backend/vercel.json`) since 2026-09-08 ([[Decisions#ADR-179|ADR-179]]), when the six were consolidated onto one scheduler and `.github/workflows/backend-cron.yml` was deleted: `move-out-releases` (`0 16 * * *` / 21:30 IST), `generate-rent` (`30 18 * * *` / 00:00), `rent-reminders` (`0 2 * * *` / 07:30), `invitation-expiry-reminders` (`0 3 * * *` / 08:30), `reconcile-payments` (`30 3 * * *` / 09:00), `expire-unaccepted-tenancies` (`0 5 * * *` / 10:30). Hobby's cap is **100 crons per project**, once-daily each with **±59 min precision** — not the 2 the split was built around — so IST times are the earliest a job can fire, and any two jobs that must not overlap need a **two-hour** slot gap. The `move-out-releases` → `generate-rent` ordering is **defence-in-depth, not load-bearing** ([[Decisions#ADR-178|ADR-178]]): `generate-rent` filters on `tenants.exit_date` itself, so their order changes no billing outcome. (The earlier claim that it "has no exit-date filter" was inaccurate — it had one, on `roomAllocation.end_date`, which a future-dated move-out never populates. See [[Bugs]].)
+
+**Descheduled 2026-09-06, routes retained and still gated:** `admissions` (redundant — availability reads already filter reservations on `expires_at > now()`), `daily-briefings`, `agreement-lifecycle`, `food-expiry` (renamed from `food-carry-forward` on 2026-08-25, [[Decisions#ADR-114|ADR-114]] — see [[Food]]), `hostel-invariants`, `migration-audit`. The workflow had also been calling a seventh, `food-carry-forward`, which had not existed since that rename — see [[Bugs]]. **Marked FROZEN (do not schedule) but functional:** `data-retention`. **Marked DORMANT (analytics-repair-only):** `tenant-analytics` (POST). **Decommissioned (410):** `onboarding-nudges`, `process-autopay-retries`, `process-overflow`, `reconcile-addons`.
+
+- **`GET /api/cron/generate-rent`** — daily. **Changed 2026-09-02 ([[Decisions#ADR-167|ADR-167]]):** no longer requires a single operational owner (it used to return **HTTP 409 and generate nothing** whenever ≥2 owners had an active tenant and `RENT_CRON_OWNER_ID` was unset — see [[Bugs]]). Now iterates **every** `ACTIVE` hostel with an active allocation to an `ACTIVE` tenant, across all owners, paginated by hostel `id` cursor and bounded by a 240 s soft budget; response carries `owners_touched`, `hostels_processed`, `has_more`, `next_cursor`. `?ownerId` (or `RENT_CRON_OWNER_ID` / `PRIMARY_OWNER_ID` / `PRODUCTION_OWNER_ID`) is now an optional single-owner *filter* for manual runs. Idempotency is per-hostel and unchanged.
+- **`GET /api/cron/reconcile-payments`** — daily. **Changed 2026-09-08 ([[Decisions#ADR-178|ADR-178]]): now fails closed.** It guarded with `if (process.env.CRON_SECRET && ...)`, so an unset or empty `CRON_SECRET` made this payment-mutating sweep fully public; it now returns **`500 Server misconfigured`** when the secret is absent, matching the ten routes that already behave that way. `admissions`, `data-retention` and `tenant-analytics` still carry the same defect — see [[TODO]].
+- **`GET /api/cron/rent-reminders`** — daily. **Changed 2026-09-02:** `processDailyReminders` now runs a **before-due / due-day pass** in addition to the overdue pass — sends the hostel's configured `before_due_days` / `send_due_day_reminder` nudges (keyed on each obligation's own `due_date`), logged as `reminder_type: "PRE_DUE"`. Response summary gains `before_due_sent`. See [[Business-Rules]] Notification triggers.
 
 ## Misc / Platform Utility
 
@@ -546,3 +590,82 @@ changed phone is proved with `send-phone-otp` / `verify-phone-otp` first.
 `DELETE /api/push/subscriptions` — body `{ endpoint }`. Scoped to the session's own profile, so an endpoint cannot be unsubscribed by another account.
 
 Rows are also deleted automatically by the sender when the push service returns **404/410** (permanently gone). A 5xx or timeout does **not** prune — that would quietly delete live devices during an outage.
+
+## Clerk auth webhook (2026-09-09)
+
+### `POST /webhooks/clerk`
+
+Clerk user-lifecycle webhook ([[Decisions#ADR-176|ADR-176]]). **Note the path: it is not under `/api`.**
+
+- **Production URL:** `https://api.yourstayo.com/webhooks/clerk` — point Clerk's dashboard here.
+- **Not reachable via `yourstayo.com`.** The frontend rewrites only `/api/:path*` to this backend (`apps/frontend/vercel.json`), so the apex domain has no route for it.
+- **Public by construction, not by allow-list.** `middleware.ts` matches `/api/:path*` only, so this route never enters the session pipeline — there is no `PUBLIC_ROUTES` entry, and none should be added (it would be dead config).
+- **Auth:** the Svix signature over the **raw** body (`svix-id`, `svix-timestamp`, `svix-signature`), verified in `lib/auth/clerk-webhook-verification.ts` using the `svix` library and `CLERK_WEBHOOK_SIGNING_SECRET`. Verified before the event is interpreted. There is no bypass flag.
+- **Handles:** `user.created`, `user.updated`, `user.deleted`. Any other event type is acknowledged with 200 and dropped.
+
+Effects (all in `src/services/auth/clerk-user-sync-service.ts`, all idempotent):
+
+| Event | Effect |
+|---|---|
+| `user.created` | Upserts a `users` row on `clerk_user_id`; links to a `profiles` row matched by email if one is free. Never creates a profile. |
+| `user.updated` | Syncs the four allow-listed fields. Ignored if Clerk's `updated_at` is older than what we hold. Creates the row if `user.created` was never delivered. |
+| `user.deleted` | Sets `is_active = false` + `deactivated_at`. **Never deletes**, and never touches the linked profile. |
+
+Status codes are a retry protocol for Svix, which retries on non-2xx:
+
+| Code | Meaning |
+|---|---|
+| `200` | Processed, **or** deliberately ignored (unhandled type, stale replay, delete of an unknown account). Nothing to retry. |
+| `400` | Malformed event. Retrying identical bytes cannot help. |
+| `401` | Signature missing or invalid. Rejected caller — never retry. |
+| `500` | Our failure, **including a missing signing secret**. Retry is correct; the handlers are idempotent. |
+
+Env var: `CLERK_WEBHOOK_SIGNING_SECRET` (`whsec_…`), loaded from the repo-root `.env` like every other backend secret. **Currently unset — no Clerk account exists yet, and no real delivery has reached this endpoint.**
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Database]], [[Business-Rules]], [[Backend]], [[Changelog]]
+
+## Clerk handshake (2026-09-09)
+
+### `GET /me`
+
+The canonical Clerk handshake ([[Decisions#ADR-176|ADR-176]] Phase 2.6). **Not under `/api`** — same as `/webhooks/clerk`.
+
+- **Production URL:** `https://api.yourstayo.com/me`.
+- **Why not `/api/me`:** `middleware.ts` gates `/api/:path*` on a **Supabase** session, so `/api/me` would 401 every Clerk caller. Adding it to `PUBLIC_ROUTES` is worse than it sounds — that list is *prefix-matched*, so an `/api/me` entry would also expose the existing `/api/metrics`. Outside the matcher, no security config is touched at all.
+- **Reachability caveat:** `yourstayo.com` rewrites only `/api/:path*` to this backend, so the SPA's API client cannot reach `/me` today. **Nothing calls this endpoint yet.** Phase 3 must add a rewrite for `/me` or call the api. subdomain directly.
+- **Auth:** `Authorization: Bearer <Clerk session token>` (from the SPA's `getToken()`), verified by `@clerk/backend`'s `verifyToken` against Clerk's JWKS using `CLERK_SECRET_KEY`. Bearer rather than cookies because SPA and API are different origins.
+
+Response `200`:
+
+```json
+{ "userId": "…", "clerkUserId": "user_2…", "role": "OWNER" | null,
+  "profile": { "id": "…" | null, "linked": true | false }, "isActive": true }
+```
+
+| Code | Meaning |
+|---|---|
+| `200` | Resolved. The `users` row existed or was created. |
+| `401` | No Bearer token, or it failed verification. |
+| `500` | `CLERK_SECRET_KEY` unset, or the handshake threw. |
+
+**Idempotent, and safe under a race.** Read-then-create, with the unique index on `clerk_user_id` as the actual guarantee: two concurrent first-requests both miss the read and both insert; the loser catches `P2002` and re-reads. Without that, "never create duplicate users" would rest on a check-then-act the database is free to interleave.
+
+**It assigns no role and creates no profile.** `role` is *read* from the linked `profiles` row and is `null` for an account with no business identity — a normal state. Profile linking (by email, only when the Clerk JWT template supplies one — the default session token does not) reuses `findLinkableProfileId`, the same rule the webhook uses, including its refusal to steal a profile already bound to another Clerk account.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Database]], [[Business-Rules]], [[Backend]], [[Frontend]], [[Changelog]]
+
+### `GET /api/auth/me` — dual session authority (2026-09-09)
+
+Changed by [[Decisions#ADR-176|ADR-176]] Phase 3. **The Supabase path is unchanged**; Clerk is consulted only when it finds nothing.
+
+| Credential | Behaviour |
+|---|---|
+| Supabase session (middleware headers) | Exactly as before — including its specific rejection codes. |
+| `Authorization: Bearer <Clerk token>` | Verified by `verifyClerkSession()`, resolved through `ensureUserForClerkSession()` to a `profiles` row. |
+| Neither | `401 UNAUTHORIZED`, as before. |
+
+Clerk-path rejections, both `403`: `NO_STAYO_ACCOUNT` (Clerk knows them, we have no profile) and `ACCOUNT_DISABLED` (the login was deactivated by `user.deleted`). The response body is identical for both providers, so callers need no branch.
+
+**`middleware.ts`** gains `CLERK_BEARER_ROUTES` — currently just `/api/auth/me`, **exact**-matched via a `Set`. Its only effect: a token rejected by *both* the Supabase and legacy verifiers falls through as anonymous rather than 401, so the route can verify it as a Clerk token. This does **not** make the route public — `PUBLIC_ROUTES` is prefix-matched and an entry there would also have exposed `/api/auth/me`-prefixed siblings.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[Business-Rules]], [[Changelog]]

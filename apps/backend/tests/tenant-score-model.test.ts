@@ -43,7 +43,7 @@ function tenancy(overrides: Partial<Tenancy> = {}): Tenancy {
 
 describe("cold start", () => {
   it("refuses to score a tenant with too little history", () => {
-    const result = computeTenantScore({ cycles: onTimeCycles(2), tenancies: [tenancy()], now: NOW });
+    const result = computeTenantScore({ cycles: onTimeCycles(MIN_CYCLES_FOR_SCORE - 1), tenancies: [tenancy()], now: NOW });
     expect(result.status).toBe("INSUFFICIENT_HISTORY");
     expect(result.score).toBeNull();
     expect(result.grade).toBeNull();

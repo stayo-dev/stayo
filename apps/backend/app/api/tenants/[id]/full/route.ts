@@ -4,11 +4,7 @@ import { getSession } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
 import { backendUrl } from "@/lib/config/domains";
 import { currentAgreementWhere } from "@/src/services/tenants/agreement-status";
-
-const requiredDocumentTypes = (profileType?: string | null) => {
-  const type = String(profileType || "STUDENT").toUpperCase();
-  return type === "WORKING_PROFESSIONAL" ? ["AADHAAR", "WORK_ID"] : ["AADHAAR", "COLLEGE_ID"];
-};
+import { requiredKycDocTypes as requiredDocumentTypes } from "@/src/services/tenants/kyc-status";
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {

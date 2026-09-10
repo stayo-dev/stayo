@@ -92,6 +92,8 @@ import {
   nextActivationStep,
   requiredActivationSteps,
 } from "./agreement-requirement";
+import { requiredKycDocTypes, recomputeDocumentVerified } from "./kyc-status";
+import { latestOwnerMessage } from "./document-thread";
 import {
   DEFAULT_AGREEMENT_TEMPLATE,
   DEFAULT_TERMS_AND_CONDITIONS,
@@ -753,6 +755,20 @@ export class ActivationWorkflowService {
         uploaded_types: requiredDocuments.map((d: any) => d.doc_type),
         verification_status: tenant.document_verified ? "VERIFIED" : "PENDING",
         required_after_activation: requiredDocumentTypes,
+        // Per-type state, so the Identity step can show each required document
+        // as Missing / Pending / Rejected / Verified and offer re-upload. KYC
+        // is collected here but never blocks onboarding (spec §4, §17).
+        required: requiredDocumentTypes,
+        items: requiredDocumentTypes.map((docType: string) => {
+          const doc = requiredDocuments.find((d: any) => d.doc_type === docType);
+          if (!doc) return { doc_type: docType, document_status: "MISSING", rejection_reason: null };
+          return {
+            doc_type: docType,
+            document_status: doc.document_status,
+            rejection_reason:
+              doc.document_status === "REJECTED" ? latestOwnerMessage(doc.rejection_reason) : null,
+          };
+        }),
       },
       agreement: activeAgreement ? {
         id: activeAgreement.id,
@@ -801,9 +817,7 @@ export class ActivationWorkflowService {
   }
 
   private requiredDocumentTypes(profileType?: string | null) {
-    return String(profileType || "STUDENT").toUpperCase() === "WORKING_PROFESSIONAL"
-      ? ["AADHAAR", "WORK_ID"]
-      : ["AADHAAR", "COLLEGE_ID"];
+    return requiredKycDocTypes(profileType);
   }
 
   async mutate(ref: ActivationCredential, step: ActivationStep, data: any, context: { ip: string; userAgent: string }) {
@@ -1397,6 +1411,10 @@ export class ActivationWorkflowService {
           guardian_relation: data?.guardian_relation || undefined,
         }),
       });
+      // profile_type is written just above; keep document_verified honest
+      // against the type's required documents (never inferred here — this only
+      // recomputes from existing rows, and onboarding never blocks on it).
+      await recomputeDocumentVerified(tx, tenant.id);
     });
     await eventLog.log("profile_completed", tenant.owner_id || null, { tenant_id: tenant.id, hostel_id: tenant.hostel_id }, tenant.id);
 

@@ -63,7 +63,7 @@ graph LR
   LibSvc --> ImageKit[ImageKit]
   LibSvc --> WhatsApp[WhatsApp Cloud API]
   API --> Redis[(Upstash Redis - optional cache)]
-  Cron[Vercel Cron, 13 active jobs] --> API
+  Cron[Cron - 2 Vercel + 4 GitHub Actions, 6 MVP jobs] --> API
 ```
 
 ### Diagram TODO

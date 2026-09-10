@@ -8,7 +8,6 @@ import { MoveOutStepper } from '@features/tenants/components/moveout/MoveOutStep
 import { Link } from 'react-router-dom';
 import { canonicalMoveOutStatus } from '@/shared/types/moveout';
 import { StayoLoader } from '@shared/ui/brand';
-import { ExitImpactNotice } from '@features/tenant-exit/ExitImpactNotice';
 
 const fmt = (n: number) => `₹${Number(n ?? 0).toLocaleString('en-IN')}`;
 const GOOGLE_REVIEW_URL = 'https://search.google.com/local/writereview?placeid=ChIJW1hB1g13yzsRscG4r7mVPt4';
@@ -136,7 +135,7 @@ export function TenantMoveOutPage() {
   if (isLoading || isDashboardLoading) {
     return (
       <div className="flex justify-center py-20">
-        <StayoLoader size="lg" className="text-[#243A72]" />
+        <StayoLoader size="lg" className="text-primary" />
       </div>
     );
   }
@@ -158,7 +157,7 @@ export function TenantMoveOutPage() {
         </p>
         <Link
           to="/tenant"
-          className="inline-flex items-center justify-center gap-2 w-full py-3.5 rounded-xl bg-[#243A72] text-white font-semibold hover:bg-[#1B2D5B] transition-colors"
+          className="inline-flex items-center justify-center gap-2 w-full py-3.5 rounded-xl bg-primary text-white font-semibold hover:bg-primary/90 transition-colors"
         >
           Back to Dashboard
         </Link>
@@ -185,7 +184,7 @@ export function TenantMoveOutPage() {
                 href={GOOGLE_REVIEW_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-2 w-full py-3.5 rounded-xl bg-[#243A72] text-white font-semibold shadow-lg shadow-blue-500/10 hover:bg-[#1B2D5B] transition-colors"
+                className="inline-flex items-center justify-center gap-2 w-full py-3.5 rounded-xl bg-primary text-white font-semibold shadow-lg shadow-primary/10 hover:bg-primary/90 transition-colors"
               >
                 Write a Google Review
               </a>
@@ -271,7 +270,7 @@ export function TenantMoveOutPage() {
                       onClick={() => handleRatingSelect(item.key, face.score)}
                       className={`flex-1 py-2 px-3 rounded-lg border text-xs font-semibold flex items-center justify-center transition-all ${
                         selected
-                          ? 'border-[#243A72] bg-[#243A72]/5 text-[#243A72]'
+                          ? 'border-primary bg-primary/5 text-primary'
                           : 'border-border bg-background text-muted-foreground hover:bg-secondary/10'
                       }`}
                     >
@@ -301,7 +300,7 @@ export function TenantMoveOutPage() {
           type="button"
           disabled={feedbackMutation.isPending}
           onClick={handleFeedbackSubmit}
-          className="w-full py-3.5 rounded-xl bg-[#243A72] text-white font-semibold shadow-lg shadow-blue-500/10 hover:bg-[#1B2D5B] transition-colors"
+          className="w-full py-3.5 rounded-xl bg-primary text-white font-semibold shadow-lg shadow-primary/10 hover:bg-primary/90 transition-colors"
         >
           {feedbackMutation.isPending ? 'Submitting...' : 'Submit Feedback'}
         </button>
@@ -406,7 +405,7 @@ export function TenantMoveOutPage() {
               )}
               <div className="flex justify-between pt-2 border-t border-border font-bold">
                 <span>{tenantOwesMoney ? 'Amount to pay' : 'Refund amount'}</span>
-                <span className={tenantOwesMoney ? 'text-destructive' : 'text-[#243A72]'}>{fmt(Math.abs(netAmount))}</span>
+                <span className={tenantOwesMoney ? 'text-destructive' : 'text-primary'}>{fmt(Math.abs(netAmount))}</span>
               </div>
             </div>
             <p className="text-xs text-muted-foreground mt-3">
@@ -546,7 +545,7 @@ export function TenantMoveOutPage() {
         <header className="overflow-hidden rounded-2xl border border-blue-500/20 bg-card shadow-sm">
           <div 
             className="px-5 py-5 text-white relative overflow-hidden"
-            style={{ background: 'linear-gradient(135deg, #1B2D5B 0%, #243A72 100%)' }}
+            style={{ background: 'linear-gradient(135deg, #A45D44 0%, #B46A55 100%)' }}
           >
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -mr-16 -mt-16" />
             <div className="relative flex items-center gap-3">
@@ -575,7 +574,7 @@ export function TenantMoveOutPage() {
             }}
             className={`w-full p-4 rounded-xl border text-left flex items-center justify-between transition-all ${
               isTodayChoice
-                ? 'border-[#243A72] bg-[#243A72]/5 text-[#243A72]'
+                ? 'border-primary bg-primary/5 text-primary'
                 : 'border-border bg-card text-foreground hover:bg-secondary/10'
             }`}
           >
@@ -584,7 +583,7 @@ export function TenantMoveOutPage() {
               <p className="text-xs text-muted-foreground mt-0.5">Process your exit immediately</p>
             </div>
             <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${
-              isTodayChoice ? 'border-[#243A72] bg-[#243A72]' : 'border-muted-foreground'
+              isTodayChoice ? 'border-primary bg-primary' : 'border-muted-foreground'
             }`}>
               {isTodayChoice && <div className="w-2.5 h-2.5 rounded-full bg-white" />}
             </div>
@@ -595,7 +594,7 @@ export function TenantMoveOutPage() {
             onClick={() => setDateChoice('LATER')}
             className={`w-full p-4 rounded-xl border text-left flex items-center justify-between transition-all ${
               isLaterChoice
-                ? 'border-[#243A72] bg-[#243A72]/5 text-[#243A72]'
+                ? 'border-primary bg-primary/5 text-primary'
                 : 'border-border bg-card text-foreground hover:bg-secondary/10'
             }`}
           >
@@ -604,7 +603,7 @@ export function TenantMoveOutPage() {
               <p className="text-xs text-muted-foreground mt-0.5">Select a future date for your exit</p>
             </div>
             <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${
-              isLaterChoice ? 'border-[#243A72] bg-[#243A72]' : 'border-muted-foreground'
+              isLaterChoice ? 'border-primary bg-primary' : 'border-muted-foreground'
             }`}>
               {isLaterChoice && <div className="w-2.5 h-2.5 rounded-full bg-white" />}
             </div>
@@ -623,7 +622,7 @@ export function TenantMoveOutPage() {
                 value={plannedDate}
                 min={new Date().toISOString().slice(0, 10)}
                 onChange={(e) => setPlannedDate(e.target.value)}
-                className="w-full rounded-xl border border-border bg-background py-3 pl-10 pr-3 text-sm text-foreground focus:border-[#243A72] focus:ring-1 focus:ring-[#243A72]"
+                className="w-full rounded-xl border border-border bg-background py-3 pl-10 pr-3 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"
               />
             </div>
           </div>
@@ -633,7 +632,7 @@ export function TenantMoveOutPage() {
           type="button"
           disabled={!dateChoice || (isLaterChoice && !plannedDate)}
           onClick={() => setWizardStep(2)}
-          className="w-full py-3.5 rounded-xl bg-[#243A72] text-white font-semibold hover:bg-[#1B2D5B] transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+          className="w-full py-3.5 rounded-xl bg-primary text-white font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
         >
           <span>Continue</span>
           <ChevronRight className="w-4 h-4" />
@@ -650,9 +649,6 @@ export function TenantMoveOutPage() {
           <h1 className="text-2xl font-bold text-foreground">Why Are You Leaving?</h1>
           <p className="text-sm text-muted-foreground">Select a reason for requesting move-out.</p>
         </div>
-
-        {/* Told before the decision, not after it. */}
-        <ExitImpactNotice />
 
         {is4thYear && (
           <div className="p-3.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-xs leading-relaxed">
@@ -673,7 +669,7 @@ export function TenantMoveOutPage() {
                 onClick={() => setReason(r.value)}
                 className={`py-2 px-3 rounded-full border text-xs font-semibold transition-all ${
                   selected
-                    ? 'border-[#243A72] bg-[#243A72] text-white'
+                    ? 'border-primary bg-primary text-white'
                     : disabled
                       ? 'border-border bg-secondary/50 text-muted-foreground opacity-40 cursor-not-allowed'
                       : 'border-border bg-card text-foreground hover:bg-secondary/10'
@@ -710,7 +706,7 @@ export function TenantMoveOutPage() {
             type="button"
             disabled={!reason}
             onClick={() => setWizardStep(3)}
-            className="flex-1 py-3 rounded-xl bg-[#243A72] text-white font-semibold hover:bg-[#1B2D5B] transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+            className="flex-1 py-3 rounded-xl bg-primary text-white font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
           >
             <span>Continue</span>
             <ChevronRight className="w-4 h-4" />
@@ -745,7 +741,7 @@ export function TenantMoveOutPage() {
           </div>
           <div className="flex justify-between pt-2.5 border-t border-border font-extrabold text-base">
             <span>{refundDirection ? 'Expected Refund' : 'Expected Dues'}</span>
-            <span className={refundDirection ? 'text-[#243A72]' : 'text-destructive'}>
+            <span className={refundDirection ? 'text-primary' : 'text-destructive'}>
               {fmt(Math.abs(expectedRefund))}
             </span>
           </div>
@@ -768,7 +764,7 @@ export function TenantMoveOutPage() {
           type="button"
           disabled={submitMutation.isPending}
           onClick={() => submitMutation.mutate()}
-          className="flex-1 py-3 rounded-xl bg-[#243A72] text-white font-semibold hover:bg-[#1B2D5B] transition-colors disabled:opacity-50"
+          className="flex-1 py-3 rounded-xl bg-primary text-white font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
           {submitMutation.isPending ? 'Submitting...' : 'Confirm Request'}
         </button>

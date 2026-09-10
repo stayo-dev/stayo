@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, ChevronLeft, Home, MessageSquare, Utensils, Wallet } from 'lucide-react';
 import api from '@lib/api-client';
+import { useIsDesktop } from '@/app/components/ui/use-desktop';
 import { C, FONT, GRID_GROUND } from '@/app/pages/discover/discoverTheme';
 import { SCREEN_HEADER_CLASS, SCREEN_HEADER_STYLE, ScreenTitle, SectionHead } from '@features/stayo-ui/ListSection';
 import { alertKind, groupAlerts, shortAge, unreadCount, type AlertKind, type AlertRow } from './alerts';
@@ -36,6 +37,10 @@ const TINT: Record<AlertKind, { bg: string; fg: string }> = {
 export function AlertsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  // Desktop (lg+, ADR-171 Phase 3.5): the console's <main> already paints the
+  // same #EBDCCF/52px graph-paper texture via APP_GRID — GRID_GROUND would
+  // just be a second, misaligned copy of the identical pattern underneath it.
+  const isDesktop = useIsDesktop();
 
   useEffect(() => {
     document.title = 'Alerts — Stayo';
@@ -60,8 +65,13 @@ export function AlertsPage() {
   });
 
   return (
-    <div className="flex min-h-[100dvh] flex-col" style={GRID_GROUND}>
-      <header className={SCREEN_HEADER_CLASS} style={SCREEN_HEADER_STYLE}>
+    <div className="flex min-h-[100dvh] flex-col lg:min-h-0" style={isDesktop ? undefined : GRID_GROUND}>
+      {/*
+        The console topbar already carries "Alerts" + a subtitle at lg+
+        (`appHeaders.ts`'s `/profile/alerts` entry) — this back+title row is
+        mobile-only chrome from when this page had no shell around it.
+      */}
+      <header className={`${SCREEN_HEADER_CLASS} lg:hidden`} style={SCREEN_HEADER_STYLE}>
         <button
           type="button"
           aria-label="Back to Profile"
@@ -69,7 +79,7 @@ export function AlertsPage() {
           className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-full"
           style={{ background: '#F4EEE7' }}
         >
-          <ChevronLeft className="h-5 w-5" style={{ color: '#6B6259' }} />
+          <ChevronLeft className="h-5 w-5" style={{ color: 'var(--muted-foreground)' }} />
         </button>
         <ScreenTitle>Alerts</ScreenTitle>
         {unread > 0 && (
@@ -82,7 +92,7 @@ export function AlertsPage() {
         )}
       </header>
 
-      <main className="mx-auto w-full max-w-[640px] flex-1 space-y-5 px-5 py-5">
+      <main className="mx-auto w-full max-w-[640px] flex-1 space-y-5 px-5 py-5 lg:px-0 lg:pt-8">
         {alertsQuery.isLoading && <div className="h-24 animate-pulse rounded-2xl bg-white/60" />}
 
         {!alertsQuery.isLoading && rows.length === 0 && (

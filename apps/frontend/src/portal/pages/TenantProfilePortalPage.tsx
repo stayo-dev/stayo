@@ -388,11 +388,11 @@ export function TenantProfilePortalPage() {
       <header className="overflow-hidden rounded-2xl shadow-sm">
         <div
           className="px-5 py-4 relative overflow-hidden"
-          style={{ background: 'linear-gradient(135deg, #1B2D5B 0%, #243A72 100%)' }}
+          style={{ background: 'linear-gradient(135deg, #A45D44 0%, #B46A55 100%)' }}
         >
           <div
             className="absolute inset-0 opacity-10"
-            style={{ backgroundImage: 'radial-gradient(circle at 80% 20%, #F07B1D 0%, transparent 60%)' }}
+            style={{ backgroundImage: 'radial-gradient(circle at 80% 20%, #D2986C 0%, transparent 60%)' }}
           />
           <div className="relative flex items-center gap-4">
             <div className="w-14 h-14 rounded-full overflow-hidden bg-white/15 ring-2 ring-white/20 shrink-0">

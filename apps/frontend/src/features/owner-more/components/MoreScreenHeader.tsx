@@ -19,10 +19,10 @@ export function MoreScreenHeader({ backTo, backLabel = 'Back', title, subtitle }
   return (
     <div className="flex flex-col gap-1">
       <button type="button" onClick={() => (backTo ? navigate(backTo) : navigate(-1))} className="flex w-fit items-center gap-2 py-1">
-        <span className="flex h-8.5 w-8.5 items-center justify-center rounded-full border border-[#EAE1D8] bg-card">
-          <span className="text-base leading-none text-[#6B6259]">‹</span>
+        <span className="flex h-8.5 w-8.5 items-center justify-center rounded-full border border-border bg-card">
+          <span className="text-base leading-none text-muted-foreground">‹</span>
         </span>
-        <span className="text-[13px] font-medium text-[#6B6259]">{backLabel}</span>
+        <span className="text-[13px] font-medium text-muted-foreground">{backLabel}</span>
       </button>
       <h1 className="mt-1 font-display text-[22px] font-extrabold tracking-tight text-foreground">{title}</h1>
       {subtitle && <p className="text-[12.5px] text-muted-foreground">{subtitle}</p>}

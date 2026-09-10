@@ -1,6 +1,5 @@
-import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Compass, Home } from 'lucide-react';
+import { Home } from 'lucide-react';
 import { useAuth } from '@context/AuthContext';
 import { moveOutService } from '@features/move-out/api';
 
@@ -8,19 +7,17 @@ import { moveOutService } from '@features/move-out/api';
  * Where a tenancy ends.
  *
  * There was nothing here before. A tenant who moved out hit
- * `ProtectedTenantRoute`, failed `hasLiveTenancy`, and was redirected to
- * /discover — no message, no explanation, dashboard tab gone from the nav.
- * Someone opening the app to check whether their deposit had come back landed
- * on a browse page as though they had never lived anywhere, and their own
+ * `ProtectedTenantRoute`, failed `hasLiveTenancy`, and was redirected away —
+ * no message, no explanation, dashboard tab gone from the nav. Someone
+ * opening the app to check whether their deposit had come back landed
+ * elsewhere as though they had never lived anywhere, and their own
  * settlement record went with it.
  *
- * So this screen does three things, in this order, because that is the order
- * the questions arrive in: it says what happened, it shows the money, and
- * only then does it offer the next hostel. Leading with "explore other
- * hostels" would read as being swept out the door. (ADR-122)
+ * So this screen says what happened and shows the money. The "browse for a
+ * new place" card that used to sit at the foot of it was removed in v1
+ * (ADR-170) along with the rest of the Stayo Discover marketplace. (ADR-122)
  */
 export function TenantFarewellPage() {
-  const navigate = useNavigate();
   const { user } = useAuth();
   const requestId = user?.exit_request_id ?? null;
 
@@ -110,22 +107,6 @@ export function TenantFarewellPage() {
             We couldn’t load your settlement record. Your former hostel can send you a copy.
           </p>
         )}
-
-        {/* Only now: what next. */}
-        <div className="rounded-2xl border border-border bg-secondary/25 p-4">
-          <p className="font-display text-[14px] font-bold text-foreground">Looking for a new place?</p>
-          <p className="mt-1 text-[12.5px] leading-snug text-muted-foreground">
-            Your Stayo account stays yours. Browse hostels, save the ones you like, and enquire — no new sign-up.
-          </p>
-          <button
-            type="button"
-            onClick={() => navigate('/discover')}
-            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary py-3 font-display text-sm font-bold text-primary-foreground"
-          >
-            <Compass className="h-4 w-4" />
-            Explore hostels
-          </button>
-        </div>
       </div>
     </div>
   );

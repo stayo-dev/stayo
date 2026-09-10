@@ -22,7 +22,7 @@ export function MoreConfigAgreementTemplatesPage() {
   const draftCount = templates.filter((t) => t.status !== 'PUBLISHED').length;
 
   return (
-    <div className="flex flex-col gap-5 px-4 pb-8 pt-6 sm:px-6">
+    <div className="flex flex-col gap-5 px-4 pb-8 pt-6 sm:px-6 lg:mx-auto lg:w-full lg:max-w-[760px] lg:px-0 lg:pt-8">
       <MoreScreenHeader
         title="Templates"
         subtitle={

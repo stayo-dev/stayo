@@ -1,24 +1,38 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 /**
- * Owner KYC verification — permission and guard coverage (audit item P0-4).
+ * Owner KYC verification — permission, guard and concurrency coverage.
  *
- * These routes have existed for a long time and had no tests. They are about
- * to get their first real UI, so the rules that stop one owner acting on
- * another owner's tenant — and that stop a rejection being recorded with no
- * reason the tenant can act on — are pinned here first.
+ * These routes stop one owner acting on another owner's tenant, stop a
+ * rejection being recorded with no reason, and (since the KYC cleanup) stop a
+ * second review from another tab flipping an already-decided document. The
+ * `document_verified` flag is now derived by the shared `recomputeDocumentVerified`
+ * helper rather than set inline.
  */
 
-const { mockPrisma, mockSession, mockEventLog } = vi.hoisted(() => ({
-  mockPrisma: {
-    identificationDocument: { findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn() },
-    tenants: { update: vi.fn() },
-    notifications: { create: vi.fn() },
-    profile: { findUnique: vi.fn() },
-  },
-  mockSession: vi.fn(),
-  mockEventLog: { log: vi.fn().mockResolvedValue({}) },
-}));
+const { mockPrisma, mockSession, mockEventLog } = vi.hoisted(() => {
+  const identificationDocument = {
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
+    updateMany: vi.fn(),
+    update: vi.fn(),
+  };
+  const tenants = { findUnique: vi.fn(), update: vi.fn() };
+  const notifications = { create: vi.fn() };
+  const profile = { findUnique: vi.fn() };
+  const prisma: any = {
+    identificationDocument,
+    tenants,
+    notifications,
+    profile,
+    $transaction: vi.fn(async (fn: any) => fn(prisma)),
+  };
+  return {
+    mockPrisma: prisma,
+    mockSession: vi.fn(),
+    mockEventLog: { log: vi.fn().mockResolvedValue({}) },
+  };
+});
 
 vi.mock("@/lib/db", () => ({ prisma: mockPrisma }));
 vi.mock("../lib/db", () => ({ prisma: mockPrisma }));
@@ -59,16 +73,19 @@ function document(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("owner KYC verification — permissions and guards", () => {
+describe("owner KYC verification — permissions, guards and concurrency", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSession.mockResolvedValue({ sub: OWNER_A, role: "OWNER" });
     mockPrisma.identificationDocument.findUnique.mockResolvedValue(document());
-    mockPrisma.identificationDocument.update.mockImplementation(async ({ data }: any) => ({ ...document(), ...data }));
+    // Conditional review write succeeds by default (one PENDING row transitions).
+    mockPrisma.identificationDocument.updateMany.mockResolvedValue({ count: 1 });
+    // recomputeDocumentVerified reads these:
+    mockPrisma.tenants.findUnique.mockResolvedValue({ id: TENANT_ID, profile_type: "STUDENT", document_verified: false });
     mockPrisma.identificationDocument.findMany.mockResolvedValue([]);
+    mockPrisma.tenants.update.mockResolvedValue({});
     mockPrisma.profile.findUnique.mockResolvedValue({ name: "Priya" });
     mockPrisma.notifications.create.mockResolvedValue({});
-    mockPrisma.tenants.update.mockResolvedValue({});
   });
 
   describe("approve", () => {
@@ -76,9 +93,20 @@ describe("owner KYC verification — permissions and guards", () => {
       const res = await verifyDocument(request(), params);
 
       expect(res.status).toBe(200);
-      expect(mockPrisma.identificationDocument.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ document_status: "APPROVED", is_verified: true }) }),
+      expect(mockPrisma.identificationDocument.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: DOC_ID, document_status: "PENDING" }),
+          data: expect.objectContaining({ document_status: "APPROVED", is_verified: true }),
+        }),
       );
+    });
+
+    it("returns 409 when the document is no longer PENDING (a concurrent decision won)", async () => {
+      mockPrisma.identificationDocument.updateMany.mockResolvedValue({ count: 0 });
+
+      const res = await verifyDocument(request(), params);
+
+      expect(res.status).toBe(409);
     });
 
     it("refuses an owner acting on another owner's tenant", async () => {
@@ -87,34 +115,32 @@ describe("owner KYC verification — permissions and guards", () => {
       const res = await verifyDocument(request(), params);
 
       expect(res.status).toBe(403);
-      expect(mockPrisma.identificationDocument.update).not.toHaveBeenCalled();
+      expect(mockPrisma.identificationDocument.updateMany).not.toHaveBeenCalled();
     });
 
     it("refuses an unauthenticated caller", async () => {
       mockSession.mockResolvedValue(null);
-
       expect((await verifyDocument(request(), params)).status).toBe(401);
-      expect(mockPrisma.identificationDocument.update).not.toHaveBeenCalled();
     });
 
     it("refuses a tenant approving their own document", async () => {
       mockSession.mockResolvedValue({ sub: "profile-1", role: "TENANT" });
-
       expect((await verifyDocument(request(), params)).status).toBe(401);
-      expect(mockPrisma.identificationDocument.update).not.toHaveBeenCalled();
     });
 
     it("refuses an archived document", async () => {
       mockPrisma.identificationDocument.findUnique.mockResolvedValue(document({ is_active: false }));
-
       expect((await verifyDocument(request(), params)).status).toBe(409);
     });
 
     it("marks the tenant document-verified only once every required type is approved", async () => {
       mockPrisma.identificationDocument.findMany.mockResolvedValue([
-        { is_verified: true },
-        { is_verified: true },
+        { doc_type: "AADHAAR", document_status: "APPROVED", is_verified: true, is_active: true },
+        { doc_type: "COLLEGE_ID", document_status: "APPROVED", is_verified: true, is_active: true },
       ]);
+      mockPrisma.identificationDocument.findUnique.mockImplementation(async ({ include }: any) =>
+        include ? document() : { ...document(), document_status: "APPROVED" },
+      );
 
       await verifyDocument(request(), params);
 
@@ -124,22 +150,24 @@ describe("owner KYC verification — permissions and guards", () => {
     });
 
     it("leaves the tenant unverified while a required type is still outstanding", async () => {
-      mockPrisma.identificationDocument.findMany.mockResolvedValue([{ is_verified: true }]);
-
+      mockPrisma.identificationDocument.findMany.mockResolvedValue([
+        { doc_type: "AADHAAR", document_status: "APPROVED", is_verified: true, is_active: true },
+      ]);
       await verifyDocument(request(), params);
-
       expect(mockPrisma.tenants.update).not.toHaveBeenCalled();
     });
 
     it("tells the tenant their document was approved", async () => {
       await verifyDocument(request(), params);
-
       expect(mockPrisma.notifications.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ profile_id: "profile-1", title: "Document Approved" }) }),
       );
     });
 
     it("never returns the underlying file url to the client", async () => {
+      mockPrisma.identificationDocument.findUnique.mockImplementation(async ({ include }: any) =>
+        include ? document() : { ...document(), document_status: "APPROVED" },
+      );
       const body = await (await verifyDocument(request(), params)).json();
 
       expect(body.data.file_url).toBeUndefined();
@@ -148,11 +176,10 @@ describe("owner KYC verification — permissions and guards", () => {
   });
 
   describe("reject", () => {
-    it("refuses a rejection with no reason — the tenant would have nothing to act on", async () => {
+    it("refuses a rejection with no reason", async () => {
       const res = await rejectDocument(request({}), params);
-
       expect(res.status).toBe(400);
-      expect(mockPrisma.identificationDocument.update).not.toHaveBeenCalled();
+      expect(mockPrisma.identificationDocument.updateMany).not.toHaveBeenCalled();
     });
 
     it("refuses a whitespace-only reason", async () => {
@@ -167,7 +194,7 @@ describe("owner KYC verification — permissions and guards", () => {
       const res = await rejectDocument(request({ reason: "Photo is blurry" }), params);
 
       expect(res.status).toBe(200);
-      const data = mockPrisma.identificationDocument.update.mock.calls[0][0].data;
+      const data = mockPrisma.identificationDocument.updateMany.mock.calls[0][0].data;
       expect(data.document_status).toBe("REJECTED");
       expect(JSON.parse(data.rejection_reason)).toEqual([
         expect.objectContaining({ sender: "owner", message: "Photo is blurry" }),
@@ -177,30 +204,35 @@ describe("owner KYC verification — permissions and guards", () => {
     it("appends to an existing thread rather than overwriting the history", async () => {
       mockPrisma.identificationDocument.findUnique.mockResolvedValue(
         document({
-          rejection_reason: JSON.stringify([{ sender: "owner", sender_name: "Priya", message: "First try", timestamp: "2026-08-01T09:00:00.000Z" }]),
+          rejection_reason: JSON.stringify([
+            { sender: "owner", sender_name: "Priya", message: "First try", timestamp: "2026-08-01T09:00:00.000Z" },
+          ]),
         }),
       );
 
       await rejectDocument(request({ reason: "Still blurry" }), params);
 
-      const thread = JSON.parse(mockPrisma.identificationDocument.update.mock.calls[0][0].data.rejection_reason);
+      const thread = JSON.parse(mockPrisma.identificationDocument.updateMany.mock.calls[0][0].data.rejection_reason);
       expect(thread).toHaveLength(2);
       expect(thread[0].message).toBe("First try");
       expect(thread[1].message).toBe("Still blurry");
     });
 
-    it("refuses an owner rejecting another owner's tenant document", async () => {
-      mockSession.mockResolvedValue({ sub: OWNER_B, role: "OWNER" });
-
-      const res = await rejectDocument(request({ reason: "nope" }), params);
-
-      expect(res.status).toBe(403);
-      expect(mockPrisma.identificationDocument.update).not.toHaveBeenCalled();
+    it("returns 409 when the document is no longer PENDING", async () => {
+      mockPrisma.identificationDocument.updateMany.mockResolvedValue({ count: 0 });
+      expect((await rejectDocument(request({ reason: "nope" }), params)).status).toBe(409);
     });
 
-    it("clears the tenant's verified flag", async () => {
-      await rejectDocument(request({ reason: "Photo is blurry" }), params);
+    it("refuses an owner rejecting another owner's tenant document", async () => {
+      mockSession.mockResolvedValue({ sub: OWNER_B, role: "OWNER" });
+      const res = await rejectDocument(request({ reason: "nope" }), params);
+      expect(res.status).toBe(403);
+      expect(mockPrisma.identificationDocument.updateMany).not.toHaveBeenCalled();
+    });
 
+    it("clears the tenant's verified flag via recompute", async () => {
+      mockPrisma.tenants.findUnique.mockResolvedValue({ id: TENANT_ID, profile_type: "STUDENT", document_verified: true });
+      await rejectDocument(request({ reason: "Photo is blurry" }), params);
       expect(mockPrisma.tenants.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { document_verified: false } }),
       );
@@ -208,7 +240,6 @@ describe("owner KYC verification — permissions and guards", () => {
 
     it("tells the tenant why it was rejected", async () => {
       await rejectDocument(request({ reason: "Photo is blurry" }), params);
-
       const notification = mockPrisma.notifications.create.mock.calls[0][0].data;
       expect(notification.profile_id).toBe("profile-1");
       expect(notification.message).toContain("Photo is blurry");

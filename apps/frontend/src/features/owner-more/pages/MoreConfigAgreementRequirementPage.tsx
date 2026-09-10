@@ -81,7 +81,7 @@ export function MoreConfigAgreementRequirementPage() {
 
   if (policyQuery.isLoading) {
     return (
-      <div className="flex flex-col gap-4 px-4 py-6 sm:px-6">
+      <div className="flex flex-col gap-4 px-4 py-6 sm:px-6 lg:mx-auto lg:w-full lg:max-w-[760px] lg:px-0 lg:pt-8">
         <div className="h-8 w-56 animate-pulse rounded-lg bg-muted" />
         <div className="h-28 animate-pulse rounded-2xl bg-muted" />
         <div className="h-40 animate-pulse rounded-2xl bg-muted" />

@@ -10,7 +10,10 @@ import { primaryFloorAction, primaryFloorLabel } from '../floorStrip';
 import { defaultFloorName } from '../hostelBuilder';
 import { isAgreementSettled, type AgreementChoice } from '../agreementSetup';
 import { useAgreementSetupState, useSaveAgreementDecision } from '../useAgreementSetup';
+import { useQuery } from '@tanstack/react-query';
+import { configApi } from '@features/owner-more/api/configApi';
 import { NameStep } from '../steps/NameStep';
+import type { HostelTypeCode } from '../hostelType';
 import { FloorsStep } from '../steps/FloorsStep';
 import { FillFloorStep } from '../steps/FillFloorStep';
 import { ReviewStep } from '../steps/ReviewStep';
@@ -44,13 +47,24 @@ export function HostelBuilderPage() {
   const builder = useHostelBuilder(existingHostelId);
 
   const [city, setCity] = useState('');
-  const [password, setPassword] = useState('');
+  const [hostelType, setHostelType] = useState<HostelTypeCode | null>(null);
   const [floorCount, setFloorCount] = useState(3);
   const [floorNames, setFloorNames] = useState<string[]>(() =>
     Array.from({ length: 3 }, (_, i) => defaultFloorName(i)),
   );
   const [agreementChoice, setAgreementChoice] = useState<AgreementChoice>(null);
   const [signatureBlob, setSignatureBlob] = useState<Blob | null>(null);
+  /** Set when the owner accepts the signature they already have on another hostel. */
+  const [reusedSignatureUrl, setReusedSignatureUrl] = useState<string | null>(null);
+
+  // Only asked for while the agreement step is in play, and only to make an
+  // offer — a null answer simply means the owner draws one, as before.
+  const existingSignature = useQuery({
+    queryKey: ['owner', 'existing-signature'],
+    queryFn: () => configApi.existingOwnerSignature(),
+    staleTime: 5 * 60_000,
+  });
+  const reusableSignature = existingSignature.data?.signature ?? null;
 
   const agreementState = useAgreementSetupState(builder.hostelId || null);
   const saveAgreement = useSaveAgreementDecision(builder.hostelId);
@@ -58,7 +72,7 @@ export function HostelBuilderPage() {
     agreementRequired: agreementState.agreementRequired,
     signatureConfigured: agreementState.signatureConfigured,
   });
-  const hasSignature = Boolean(signatureBlob) || agreementState.signatureConfigured;
+  const hasSignature = Boolean(signatureBlob) || Boolean(reusedSignatureUrl) || agreementState.signatureConfigured;
 
   const {
     stage,
@@ -108,7 +122,7 @@ export function HostelBuilderPage() {
           setStage('floors');
           return;
         }
-        await createHostel.mutateAsync({ name: hostelName, city, password: password || undefined });
+        await createHostel.mutateAsync({ name: hostelName, city, hostelType });
         return;
       }
       if (stage === 'floors') {
@@ -133,6 +147,12 @@ export function HostelBuilderPage() {
       if (stage === 'agreement') {
         if (agreementChoice === 'no') {
           await saveAgreement.mutateAsync({ choice: 'no' });
+        } else if (agreementChoice === 'yes' && reusedSignatureUrl) {
+          await saveAgreement.mutateAsync({
+            choice: 'yes',
+            signatureUrl: reusedSignatureUrl,
+            hasActiveTemplate: agreementState.hasActiveTemplate,
+          });
         } else if (agreementChoice === 'yes' && signatureBlob) {
           const file = new File([signatureBlob], 'owner_signature.png', { type: 'image/png' });
           await saveAgreement.mutateAsync({
@@ -195,8 +215,7 @@ export function HostelBuilderPage() {
 
   const whyBlocked = continueBlocker(stage, {
     hostelName,
-    needsPassword: builder.needsPassword,
-    password,
+    hostelType,
     floorBlocker: blocker,
     agreementChoice,
     hasSignature,
@@ -304,18 +323,10 @@ export function HostelBuilderPage() {
               onNameChange={setHostelName}
               city={city}
               onCityChange={setCity}
+              hostelType={hostelType}
+              onHostelTypeChange={setHostelType}
               isSubmitting={createHostel.isPending}
-              error={
-                // The first 403 is not a failure the owner caused — it is the
-                // step-up prompt arriving. Show the raw message only once they
-                // have actually typed a password and it still did not work.
-                createHostel.isError && !(builder.needsPassword && !password)
-                  ? errorMessage(createHostel.error, 'Could not create the hostel')
-                  : null
-              }
-              needsPassword={builder.needsPassword}
-              password={password}
-              onPasswordChange={setPassword}
+              error={createHostel.isError ? errorMessage(createHostel.error, 'Could not create the hostel') : null}
             />
           ) : stage === 'floors' ? (
             <FloorsStep count={floorCount} onCountChange={setCount} names={floorNames} onRename={(i, name) => {
@@ -351,7 +362,17 @@ export function HostelBuilderPage() {
               onChoiceChange={setAgreementChoice}
               hasSignature={hasSignature}
               existingSignatureUrl={agreementState.signatureUrl}
-              onSignatureChange={setSignatureBlob}
+              onSignatureChange={(blob) => {
+                setSignatureBlob(blob);
+                // Drawing a fresh mark supersedes the reuse offer, so the two
+                // can never both be pending at save time.
+                if (blob) setReusedSignatureUrl(null);
+              }}
+              reusableSignature={reusableSignature}
+              onReuseSignature={(url) => {
+                setReusedSignatureUrl(url);
+                setSignatureBlob(null);
+              }}
             />
           )}
           </form>

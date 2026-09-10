@@ -260,7 +260,7 @@ function CreateListingModal({ onClose, onCreated, onError }: {
                 className={`rounded-full border px-3.5 py-2 text-[12px] font-semibold ${
                   form.hostel_type === t.key
                     ? 'border-[#221E1A] bg-[#221E1A] text-white'
-                    : 'border-[#EAE1D8] bg-white text-[#5A5147]'
+                    : 'border-border bg-white text-[#5A5147]'
                 }`}
               >
                 {t.label}

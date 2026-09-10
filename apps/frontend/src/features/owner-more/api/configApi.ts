@@ -67,6 +67,30 @@ export const configApi = {
   },
 
   /**
+   * Points this hostel's active template at a signature the owner already
+   * captured on another hostel. Same field `uploadOwnerSignature` writes, set
+   * from an existing URL rather than a fresh upload — the image is already in
+   * ImageKit, and re-posting it would create a duplicate asset to reach the
+   * same result.
+   */
+  reuseOwnerSignature: async (hostelId: string, ownerSignatureUrl: string) => {
+    const response = await api.post(`/owner/hostels/${hostelId}/agreement-template`, {
+      action: 'publish',
+      owner_signature_url: ownerSignatureUrl,
+    });
+    return response.data;
+  },
+
+  /**
+   * The owner's most recent signature across their hostels, so the builder can
+   * offer to reuse it instead of asking them to draw the same mark again.
+   */
+  existingOwnerSignature: async () => {
+    const response = await api.get('/owner/signature');
+    return response.data?.data ?? response.data;
+  },
+
+  /**
    * Uploads the owner's signature stamp, captured once per hostel. The
    * backend attaches it to the hostel's currently-active template — publish
    * this template first if one does not exist yet, or the upload has nothing

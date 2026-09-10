@@ -327,7 +327,7 @@ export function SettlementsPage() {
                         className={`rounded-[10px] border px-3 py-2 text-[12px] font-semibold ${
                           method === m
                             ? 'border-[#221E1A] bg-[#221E1A] text-white'
-                            : 'border-[#EAE1D8] bg-white text-[#5A5147]'
+                            : 'border-border bg-white text-[#5A5147]'
                         }`}
                       >
                         {METHOD_LABEL[m]}

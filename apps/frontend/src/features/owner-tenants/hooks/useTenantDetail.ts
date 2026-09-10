@@ -4,6 +4,7 @@ import { tenantService } from '@features/tenants/api';
 import { getInitials } from '@features/tenants/utils/normalize';
 import type { TenantObligation, TenantActivityItem, MockGuardian } from '@shared/mocks/tenants';
 import { documentTypeLabel, toReviewDocument, type ReviewDocument } from '../documents/kycDocuments';
+import { groupPaymentSchedule, describeNextPayment, type PaymentSchedule, type NextPaymentLabel } from '../profile/paymentSchedule';
 
 /**
  * A tenant document in a shape the review UI can act on — not just display.
@@ -56,7 +57,7 @@ export interface RealTenantDetail {
   /** Uploaded during onboarding. Present on the response all along, never rendered. */
   photoUrl: string | null;
   phone: string;
-  status: 'active' | 'overdue' | 'invited' | 'pending-docs';
+  status: 'active' | 'dues' | 'overdue' | 'invited' | 'pending-docs';
   statusLabel: string;
   /**
    * `OWNER_MANAGED` means the tenant has not taken charge of their account yet
@@ -71,23 +72,7 @@ export interface RealTenantDetail {
   room: string;
   joinedDate: string;
   hostelName: string;
-  agreementStatus: string;
   guardian?: MockGuardian;
-  /** Null when there isn't enough history to judge — never a fabricated 100. */
-  riskScore: number | null;
-  /** How many more paid cycles before a score means anything. */
-  riskCyclesNeeded: number;
-  riskLabel: string;
-  riskInsight: string;
-  /**
-   * Every insight the score service produced, not just the first.
-   * `suggestions` is deliberately not carried: that array is written in the
-   * second person addressed to the tenant ("Pay before due date to improve
-   * your score") because the same service backs `/api/tenants/me/score`.
-   */
-  riskInsights: string[];
-  riskTrend: string;
-  kycStatus: string;
   outstanding: number;
   /** From FinancialReadModelService — the authority on *whether* they're overdue. */
   overdueAmount: number;
@@ -97,6 +82,10 @@ export interface RealTenantDetail {
   obligations: TenantObligation[];
   /** Raw due date + status per obligation, so days-overdue is derivable. */
   obligationDueDates: Array<{ due_date: string | null; status: string }>;
+  /** Overdue / Upcoming / Paid split + projected next payment, from the shared billing-timeline read model. */
+  paymentSchedule: PaymentSchedule;
+  /** Formatted "next payment" for the header — accurate even when no obligation row exists yet. */
+  nextPayment: NextPaymentLabel;
   /**
    * `type` is carried alongside the display fields so a payment row can offer
    * the correction flow. For `type: 'payment'` the item's `id` **is** the
@@ -132,20 +121,6 @@ export interface RealTenantDetail {
   };
 }
 
-const GRADE_LABEL: Record<string, string> = {
-  EXCELLENT: 'Excellent',
-  GOOD: 'Good',
-  FAIR: 'Fair',
-  NEEDS_ATTENTION: 'Needs Attention',
-  HIGH_RISK: 'High Risk',
-};
-
-const TREND_LABEL: Record<string, string> = {
-  IMPROVING: 'Improving',
-  STABLE: 'Stable',
-  DECLINING: 'Declining',
-};
-
 function activityTone(type: string): TenantActivityItem['tone'] {
   if (type === 'payment') return 'positive';
   if (type === 'reminder' || type === 'moveout') return 'negative';
@@ -160,11 +135,12 @@ function formatDate(value: unknown): string {
 }
 
 /**
- * Real Tenant Detail data — composes the 4 endpoints found to matter during
- * planning research: owner/tenants/:id/overview (header/guardian/stay/
- * activity), :id/score (real risk score, replacing the mock's fabricated
- * one), :id/documents (real verification status), :id/full (rent_obligations,
- * capped at 5 by the backend — no fuller history endpoint exists).
+ * Real Tenant Detail data — composes: owner/tenants/:id/overview
+ * (header/guardian/stay/activity/financial scalars + `read_model_items`),
+ * :id/documents (verification status), :id/billing-timeline (the full
+ * obligation/payment schedule — same read model the tenant portal uses; drives
+ * the Payments tab + "Next payment"), and :id/full (kept only as a fallback for
+ * the obligation list if billing-timeline fails).
  */
 export function useTenantDetail(tenantId: string | undefined) {
   const session = useOwnerSession();
@@ -172,13 +148,16 @@ export function useTenantDetail(tenantId: string | undefined) {
   const query = useQuery({
     queryKey: ['owner', 'tenant', tenantId, 'detail'],
     queryFn: async () => {
-      const [overview, score, documentsResult, full] = await Promise.all([
+      const [overview, documentsResult, full, billingTimeline] = await Promise.all([
         tenantService.getOwnerTenantOverview(tenantId!),
-        tenantService.getTenantScore(tenantId!).catch(() => null),
         tenantService.getDocuments(tenantId!).catch(() => ({ documents: [], required_documents: [] })),
         tenantService.getFull(tenantId!).catch(() => null),
+        // The rich obligation/payment schedule — same read model the tenant
+        // portal uses. `getFull` (capped at 5, no status/payment detail) is
+        // kept only as a fallback while this rolls out.
+        tenantService.getTenantBillingTimeline(tenantId!).catch(() => null),
       ]);
-      return { overview, score, documentsResult, full };
+      return { overview, documentsResult, full, billingTimeline };
     },
     enabled: Boolean(tenantId) && session.isAuthenticated,
     staleTime: 30_000,
@@ -188,10 +167,15 @@ export function useTenantDetail(tenantId: string | undefined) {
   let tenant: RealTenantDetail | undefined;
 
   if (query.data?.overview) {
-    const { overview, score, documentsResult, full } = query.data;
+    const { overview, documentsResult, full, billingTimeline } = query.data;
     const o = overview as Record<string, any>;
 
     const outstanding = Number(o.outstanding ?? o.financial_summary?.outstanding ?? 0);
+    // `overdue_amount` (from FinancialReadModelService) is the authority on
+    // whether the tenant is genuinely PAST due — `outstanding` also counts
+    // upcoming, not-yet-due obligations, so keying the pill on it labelled a
+    // tenant "Overdue" the moment this month's rent was generated.
+    const overdueAmount = Number(o.overdue_amount ?? 0);
     const isInvited = String(o.status ?? '').toUpperCase() === 'INVITED';
     const documentVerified = Boolean(o.document_verified ?? o.compliance?.document_verification_status === 'VERIFIED');
     let status: RealTenantDetail['status'];
@@ -199,9 +183,12 @@ export function useTenantDetail(tenantId: string | undefined) {
     if (isInvited) {
       status = 'invited';
       statusLabel = 'Invited';
-    } else if (outstanding > 0) {
+    } else if (overdueAmount > 0) {
       status = 'overdue';
       statusLabel = 'Overdue';
+    } else if (outstanding > 0) {
+      status = 'dues';
+      statusLabel = 'Payment Due';
     } else if (!documentVerified) {
       status = 'pending-docs';
       statusLabel = 'Docs Pending';
@@ -214,7 +201,6 @@ export function useTenantDetail(tenantId: string | undefined) {
       ? { name: String(o.guardian_name), relation: String(o.guardian_relation || 'Guardian'), phone: String(o.guardian_phone || '') }
       : undefined;
 
-    const grade = score?.grade ? String(score.grade) : '';
     const activity: Array<TenantActivityItem & { type: string }> = Array.isArray(o.recent_activity)
       ? o.recent_activity.map((a: any) => ({
           id: String(a.id),
@@ -254,25 +240,57 @@ export function useTenantDetail(tenantId: string | undefined) {
         })),
     ];
 
-    const rawObligations: any[] = Array.isArray(full?.rent_obligations) ? full.rent_obligations : [];
-    const obligations: TenantObligation[] = rawObligations.map((ob: any) => ({
-      id: String(ob.id),
-      type: String(ob.obligation_type ?? 'RENT'),
-      month: formatDate(ob.rent_month) || String(ob.rent_month ?? ''),
-      amount: Number(ob.total_amount ?? ob.amount ?? 0),
-      dueLabel: `Due: ${formatDate(ob.due_date)}`,
-      status: (['PENDING', 'UPCOMING', 'PAID', 'OVERDUE'].includes(ob.status) ? ob.status : 'PENDING') as TenantObligation['status'],
-    }));
+    // Prefer the billing-timeline read model (rich per-obligation rows incl.
+    // paid date, method and billing period, and a projected next installment);
+    // fall back to the capped `/full` list if the timeline call failed.
+    const timelineItems: any[] = Array.isArray(billingTimeline?.items) ? billingTimeline.items : [];
+    const nextRentGeneration = billingTimeline?.next_rent_generation ?? null;
+    const paymentSchedule = groupPaymentSchedule(timelineItems, nextRentGeneration, new Date());
+    const scheduleRows: any[] = [
+      ...paymentSchedule.overdue,
+      ...paymentSchedule.upcoming,
+      ...paymentSchedule.paid,
+    ];
+
+    const fallbackObligations: any[] = Array.isArray(full?.rent_obligations) ? full.rent_obligations : [];
+    const usingTimeline = scheduleRows.length > 0 || timelineItems.length > 0;
+
+    const obligations: TenantObligation[] = usingTimeline
+      ? scheduleRows.map((row) => ({
+          id: String(row.id),
+          type: row.type,
+          month: row.billingPeriodLabel || '',
+          amount: Number(row.amount ?? 0),
+          dueLabel: `Due: ${formatDate(row.dueDate)}`,
+          status: (['PENDING', 'UPCOMING', 'PAID', 'OVERDUE'].includes(String(row.state).toUpperCase())
+            ? String(row.state).toUpperCase()
+            : row.state === 'paid' ? 'PAID' : row.state === 'overdue' ? 'OVERDUE' : row.state === 'upcoming' ? 'UPCOMING' : 'PENDING'
+          ) as TenantObligation['status'],
+        }))
+      : fallbackObligations.map((ob: any) => ({
+          id: String(ob.id),
+          type: String(ob.obligation_type ?? 'RENT'),
+          month: formatDate(ob.rent_month) || String(ob.rent_month ?? ''),
+          amount: Number(ob.total_amount ?? ob.amount ?? 0),
+          dueLabel: `Due: ${formatDate(ob.due_date)}`,
+          status: (['PENDING', 'UPCOMING', 'PAID', 'OVERDUE'].includes(ob.status) ? ob.status : 'PENDING') as TenantObligation['status'],
+        }));
 
     /**
-     * Kept unformatted alongside the display rows. The OVERDUE tile needs a
-     * real date to count days from — reading it back out of the `dueLabel`
-     * string is how that tile ended up rendering a boolean instead.
+     * Unformatted { due_date, status } pairs — the OVERDUE tile and the
+     * next-payment logic count real days from these. Sourced from the full
+     * timeline (not the capped 5) so "Nothing due" only shows when the tenant
+     * genuinely owes nothing.
      */
-    const obligationDueDates = rawObligations.map((ob: any) => ({
-      due_date: ob.due_date ? String(ob.due_date) : null,
-      status: String(ob.status ?? 'PENDING'),
-    }));
+    const obligationDueDates = usingTimeline
+      ? scheduleRows.map((row) => ({
+          due_date: row.dueDate ? String(row.dueDate) : null,
+          status: row.state === 'paid' ? 'PAID' : row.state === 'overdue' ? 'OVERDUE' : row.state === 'waived' ? 'WAIVED' : 'PENDING',
+        }))
+      : fallbackObligations.map((ob: any) => ({
+          due_date: ob.due_date ? String(ob.due_date) : null,
+          status: String(ob.status ?? 'PENDING'),
+        }));
 
     const inv = (o.invitation ?? null) as Record<string, any> | null;
 
@@ -345,21 +363,15 @@ export function useTenantDetail(tenantId: string | undefined) {
       room: roomLabel,
       joinedDate: formatDate(o.joined_on ?? o.joined_at),
       hostelName,
-      agreementStatus: o.has_active_agreement ? 'Signed' : 'Pending',
       guardian,
-      riskScore: score?.score == null ? null : Number(score.score),
-      riskCyclesNeeded: Number(score?.cycles_needed ?? 0),
-      riskLabel: GRADE_LABEL[grade] ?? '—',
-      riskInsight: score?.insights?.[0] ?? 'No insights yet.',
-      riskInsights: Array.isArray(score?.insights) ? score.insights.map(String) : [],
-      riskTrend: TREND_LABEL[String(score?.trend ?? '')] ?? '—',
-      kycStatus: documentVerified ? 'Verified' : 'Pending',
       outstanding,
-      overdueAmount: Number(o.overdue_amount ?? 0),
+      overdueAmount,
       currentPayableAmount: Number(o.current_payable_amount ?? 0),
       futureCredit: Number(o.advance_balance ?? 0),
       obligations,
       obligationDueDates,
+      paymentSchedule,
+      nextPayment: describeNextPayment(paymentSchedule.next, new Date()),
       activity,
       documents,
       agreement: agreementRaw

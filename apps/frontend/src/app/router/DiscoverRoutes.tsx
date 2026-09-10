@@ -12,6 +12,14 @@ const ReviewsPage = lazy(() => import('@/app/pages/discover/ReviewsPage').then((
 /**
  * Stayo Discover — the public marketplace (ADR-073).
  *
+ * ⚠️ UNMOUNTED FOR v1 (ADR-170). This function is no longer called from
+ * `AppRouter.tsx` — the marketplace is shelved until v2. The file, its page
+ * components (`src/app/pages/discover/*`) and its feature layer
+ * (`src/features/discover/*`) are all kept intact on disk; reviving is a
+ * matter of re-registering this tree and flipping the backend's
+ * `MARKETPLACE_ENABLED` flag. `ProfileRoutes()` (the shared Profile hub that
+ * this used to nest) is now mounted directly in `AppRouter.tsx`.
+ *
  * Almost everyone using Discover has no tenancy, so there is deliberately
  * **no route guard here.** Explore, search and listing detail are public;
  * Saved, Enquiries and Profile are authenticated *content*, and each renders

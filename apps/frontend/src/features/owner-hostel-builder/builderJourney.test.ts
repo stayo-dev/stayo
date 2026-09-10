@@ -49,18 +49,24 @@ describe('builderJourney', () => {
 });
 
 describe('continueBlocker', () => {
-  const base = { hostelName: 'Sunrise Residency', needsPassword: false, password: '', floorBlocker: null };
+  const base = { hostelName: 'Sunrise Residency', hostelType: 'BOYS', floorBlocker: null };
 
   it('says a name is needed instead of just dimming the button', () => {
     expect(continueBlocker('name', { ...base, hostelName: '   ' })).toBe('Enter a name to continue');
   });
 
-  it('asks for the password only once the server has demanded one', () => {
-    expect(continueBlocker('name', { ...base, needsPassword: false })).toBeNull();
-    expect(continueBlocker('name', { ...base, needsPassword: true, password: '' })).toBe(
-      'Confirm your password to continue',
-    );
-    expect(continueBlocker('name', { ...base, needsPassword: true, password: 'hunter2' })).toBeNull();
+  it('will not create a hostel without knowing who stays in it', () => {
+    // Not a cosmetic field: unset means "ask every tenant their gender,
+    // forever", which is the state every existing hostel is stuck in because
+    // nothing ever asked. See hostelType.ts.
+    expect(continueBlocker('name', { ...base, hostelType: null })).toBe('Choose who stays here to continue');
+    expect(continueBlocker('name', { ...base, hostelType: 'CO_LIVING' })).toBeNull();
+  });
+
+  it('no longer asks for a password', () => {
+    // Creating a hostel is additive and reversible; the step-up gate stays on
+    // the six actions that move money. Creation is audit-logged instead.
+    expect(continueBlocker('name', base)).toBeNull();
   });
 
   it('passes the floor blocker straight through on the Rooms step', () => {

@@ -75,19 +75,19 @@ export function ResetPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-5 py-10" style={{ backgroundColor: '#FFFDF5' }}>
+    <div className="min-h-screen flex items-center justify-center px-5 py-10" style={{ backgroundColor: 'var(--background)' }}>
       <div className="w-full max-w-md">
-        <Link to="/login?signin=1" className="mb-8 inline-flex items-center gap-2 text-sm font-semibold" style={{ color: '#1B2D5B' }}>
+        <Link to="/login?signin=1" className="mb-8 inline-flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
           <ArrowLeft className="h-4 w-4" />
           Back to sign in
         </Link>
 
         <div className="rounded-3xl border bg-white p-6 shadow-sm" style={{ borderColor: '#eadfce' }}>
           <div className="mb-6">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl" style={{ backgroundColor: '#FFF3E8', color: '#F07B1D' }}>
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl" style={{ backgroundColor: 'var(--accent)', color: 'var(--primary)' }}>
               <LockKeyhole className="h-5 w-5" />
             </div>
-            <h1 className="text-2xl font-bold" style={{ color: '#1B2D5B', fontFamily: 'var(--font-display)' }}>
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--foreground)', fontFamily: 'var(--font-display)' }}>
               Reset password
             </h1>
             <p className="mt-2 text-sm leading-6 text-neutral-600">
@@ -104,14 +104,14 @@ export function ResetPasswordPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <label className="block">
-              <span className="text-sm font-semibold" style={{ color: '#1B2D5B' }}>New password</span>
+              <span className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>New password</span>
               <input
                 type="password"
                 autoComplete="new-password"
                 required
                 value={newPassword}
                 onChange={(event) => setNewPassword(event.target.value)}
-                className="mt-2 w-full rounded-xl border bg-white px-4 py-3 text-sm outline-none transition focus:border-[#1B2D5B]"
+                className="mt-2 w-full rounded-xl border bg-white px-4 py-3 text-sm outline-none transition focus:border-primary"
                 style={{ borderColor: '#e5e0d8' }}
                 placeholder="At least 8 characters"
               />
@@ -125,14 +125,14 @@ export function ResetPasswordPage() {
             </div>
 
             <label className="block">
-              <span className="text-sm font-semibold" style={{ color: '#1B2D5B' }}>Confirm password</span>
+              <span className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Confirm password</span>
               <input
                 type="password"
                 autoComplete="new-password"
                 required
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
-                className="mt-2 w-full rounded-xl border bg-white px-4 py-3 text-sm outline-none transition focus:border-[#1B2D5B]"
+                className="mt-2 w-full rounded-xl border bg-white px-4 py-3 text-sm outline-none transition focus:border-primary"
                 style={{ borderColor: '#e5e0d8' }}
                 placeholder="Repeat new password"
               />
@@ -156,7 +156,7 @@ export function ResetPasswordPage() {
               type="submit"
               disabled={isLoading || !hasResetToken}
               className="flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold text-white transition active:scale-[0.98] disabled:opacity-60"
-              style={{ backgroundColor: '#F07B1D' }}
+              style={{ backgroundColor: 'var(--primary)' }}
             >
               {isLoading ? <StayoLoader size="sm" label={null} /> : null}
               Reset password

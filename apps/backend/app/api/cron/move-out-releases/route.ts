@@ -13,13 +13,14 @@ import { obligationEngine } from "@/src/services/payments/obligation-engine";
  * 🕐 CRON — Daily Move-Out Room Releases
  * GET /api/cron/move-out-releases
  *
- * Runs daily at midnight. Processes COMPLETED move-outs where:
+ * Runs daily at 16:00 UTC / 21:30 IST, ahead of generate-rent. Processes
+ * COMPLETED/VACATED move-outs where:
  *   - physical_exit_date, actual_exit_date, or planned_exit_date has passed
  *   - room has NOT been released yet (room_release_date is null)
  *
  * Actions:
  *   1. Deactivate room allocation
- *   2. Set tenant status to LEFT
+ *   2. Set tenant status to FORMER_TENANT
  *   3. Record room_release_date
  *
  * Protected by CRON_SECRET.

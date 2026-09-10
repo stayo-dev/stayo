@@ -76,6 +76,18 @@ See [[Decisions#ADR-089|ADR-089]] and [[APIs]].
 
 **UI simplification (2026-07-22)**: `ObligationCard.tsx` used to show Cancel and Waive as two simultaneously-visible red buttons whenever an obligation was `PENDING` (both `isActionable` and `isEditable` were true for that status), which owners read as two competing "delete" options rather than a state-dependent choice. The card now derives `hasPayments` from the obligation's own `payments[]` array and shows exactly one of the two: **Cancel Charge** when zero payments exist, **Waive Balance** when any payment (even partial) exists — mirroring the backend guard in `cancelObligationInTx` exactly, so the button shown is always the one that will actually succeed. Also renamed `WaiveObligationModal`'s dismiss button from "Cancel" to "Back", since a generic dialog-dismiss button sharing the word "Cancel" with the destructive row action was part of the same confusion. See [[Changelog]].
 
+## Recurring rent generation & the per-hostel due day
+
+**Files:** `src/services/payments/rent-generation-service.ts`, `onboarding-financials-service.ts`, `agreement-rent-schedule-service.ts`, `rent-schedule-dates.ts` (`dueDateForMonth`), `app/api/cron/generate-rent/route.ts`, `due-day-change-service.ts`.
+
+- **The rent due day is per-hostel, not per-tenant.** It lives in `hostels.preferences_config.billing.due_day` (default 5, validated 1–28), editable at `/owner/more/configuration/finance/billing-policy` per hostel (never asked for in the Add-Hostel wizard). Every tenant of a hostel inherits it; tenants carry a per-tenant **rent amount** only. There is no per-tenant due-day column anywhere.
+- **`billing.auto_rent_day`** (default 1, also mirrored to the `hostels.auto_rent_day` column) is the day of month the generator runs — distinct from the due day.
+- **Three creators, one date helper** (`dueDateForMonth(month, dueDay)`, clamped 1–28 and to month length): the invite transaction (`onboarding-financials-service` — SECURITY_DEPOSIT + MAINTENANCE + one RENT per already-started month, joining month's `due_date` = the literal joining date), the monthly cron (`rentGenerationService.generateMonthlyRent`, current month only, per-hostel), and agreement signing (`agreementRentScheduleService.generateForAgreement`, full term up front with future months `UPCOMING`).
+- **The monthly cron sweeps every operational owner (2026-09-02, [[Decisions#ADR-167|ADR-167]]).** `GET /api/cron/generate-rent` used to require a single operational owner and 409 otherwise — it now iterates all `ACTIVE` hostels with an active `ACTIVE`-tenant allocation, paginated by hostel `id`. Idempotency is per-hostel: a `system_locks` row (`rent_gen_<hostelId>_<monthKey>`, 60 s TTL), the `rent_generation_ledgers` control-plane, and the `rent_obligations` unique constraints, plus `createMany({ skipDuplicates: true })`. Its "already generated?" pre-check matches **both** `allocation_id + rent_month` and `tenant_id + rent_month + obligation_type` so onboarding-created rows (written with `allocation_id: NULL`) don't get duplicated.
+- **A tenant who left in a previous month is never billed, even while their tenant row is still `ACTIVE` (2026-09-08, [[Decisions#ADR-178|ADR-178]]).** The allocation query carries two independent exit clauses, and both are needed. `end_date: null OR end_date >= rentMonth` covers an *immediate* move-out, where `move-out-service.ts` `vacate()` closes the allocation inline. It does **not** cover a **future-dated** move-out: that branch deliberately leaves the allocation open (`is_active: true`, `end_date: null`) and the tenant `ACTIVE`, writing only `tenants.exit_date`, until the `move-out-releases` cron sweeps it. So the query also filters `tenant: { exit_date: null OR exit_date >= rentMonth }`. **Proration is unchanged by this** — the `>= rentMonth` form means a tenant leaving mid-month is still billed for that whole month and squared up at settlement; only a prior-month exit is excluded. The practical effect is that rent generation no longer depends on `move-out-releases` having run first, so cron ordering and scheduling jitter cannot produce a wrong invoice.
+- **Onboarding bills the current month even for a near-future join date.** `onboarding-financials-service` gates on the joining *month* being ≤ the current month (was an exact-date compare, which left a tenant joining on the 20th with no obligation until the next cron run). It reads the hostel `due_day` when the caller doesn't pass one (was hard-coded 5).
+- **Changing a hostel's due day re-dates its future unpaid obligations.** `hostelPolicyService.updateHostelPolicy` runs `applyDueDayChangeInTx` in the same transaction as the policy write: future (`rent_month >= this month`), `UNPAID`, zero-payment RENT/MAINTENANCE rows get `due_date = dueDateForMonth(rent_month, newDueDay)`. Paid/partly-paid rows, past months, and each tenant's joining month (detected by `billing_period_start` not being the 1st) are never touched — history is preserved exactly as billed. Mirrors the zero-payment safety rule of `rent-change-service`.
+
 ## Rent Change — immediate, owner-only repricing
 
 **Files:** `src/services/payments/rent-change-service.ts` (`applyRentChangeInTx`), `app/api/tenants/[id]/change-rent/route.ts`. See [[APIs]] for the endpoint contract.
@@ -178,9 +190,10 @@ The owner picks only a **Category** when logging an expense. `operational_type` 
   - **Gentle**: before-due `[2]`, after-due `[1, 7]`.
   - **Standard**: before-due `[3, 1]`, after-due `[1, 5, 10]`.
   - **Aggressive**: before-due `[5, 3, 1]`, after-due `[1, 2, 3, 5, 7, 10, 14]`.
-- **Escalation**: first scheduled day → `DUE_SOON`; last scheduled day (only if ≥3 total steps) → `FINAL_NOTICE`; everything between → `WARNING`.
+- **Escalation** (overdue pass): first scheduled day → `DUE_SOON`; last scheduled day (only if ≥3 total steps) → `FINAL_NOTICE`; everything between → `WARNING`.
 - **Reminders fire only on exact configured day-offsets**, not "≥ N days." Never repeats the same reminder type twice in a row; never re-sends after `FINAL_NOTICE` (terminal).
-- Late-fee generation and reminders share the same daily cron but are independently toggleable per hostel (`auto_send_reminders`, `auto_apply_late_fees`).
+- **Before-due & due-day reminders are actually sent (2026-09-02, [[Decisions#ADR-167|ADR-167]]).** `processDailyReminders` runs a second pass over obligations due within `max(before_due_days)` days (`billingRepository.getOperationalUpcomingObligations` — activated `PENDING`/`PARTIAL` RENT only, `UPCOMING` future-period rows excluded). Each is scored by a **negative day-offset from the obligation's own `due_date`** (never a join/onboarding date), passed through `selectReminderForDay` (offset `<0` → before-due, `0` → due-day gated by `send_due_day_reminder`). WhatsApp selects `RENT_DUE_REMINDER` / `RENT_DUE_TODAY` off the offset sign; email uses the `DUE_SOON` copy. Before this, `selectReminderForDay` existed but was wired only to the settings *preview* routes, so the presets' before-due days did nothing. Logged as `reminder_type: "PRE_DUE"` (a plain string, not in the escalation ladder) and deduped by a same-day `reminder_logs` lookup — it never creates a `LATE_FEE` and never advances the overdue escalation state.
+- Late-fee generation and reminders share the same daily cron but are independently toggleable per hostel (`auto_send_reminders`, `auto_apply_late_fees`). Late fees only accrue on the overdue pass.
 - **Channels**: in-app (default on), email (if tenant has `personal_email`), WhatsApp (**default off** — `config.reminder_whatsapp ?? false`). WhatsApp is explicitly skipped for `LATE_FEE_ADDED` — no template exists yet for that type ("LATE_FEE_TEMPLATE_OUT_OF_SCOPE").
 - **Manual one-tap reminder** (owner-triggered): always targets the tenant's single oldest unpaid+overdue obligation, always sends type `WARNING` regardless of actual overdue-day count.
 - **Reach a tenant with no account (2026-08-27, owner-managed tenants Phase 1).** Recipient name/phone are resolved via `resolveTenantName(tenant)`/`resolveTenantPhone(tenant)` (`lib/tenants/tenant-identity.ts`), never by reading `tenant.profiles?.name`/`.phone` directly. For a `SELF_SERVE` tenant this is unchanged (`profiles.name`/`.phone`). For an `OWNER_MANAGED` tenant, `profiles` is absent by design, so both fall back to `tenants.display_name`/`tenants.phone_1` (phone normalized to E.164). Before this fix an owner-managed tenant's WhatsApp reminder always skipped as `TENANT_PHONE_MISSING` and email addressed them as the literal string "Tenant" — see the access-mode section above. **WhatsApp is the only channel that can reach an `OWNER_MANAGED` tenant** — they have no app and often no email — yet `config.reminder_whatsapp` defaults to `false` per hostel, so adoption surfaces this plainly to the owner (`AdoptTenantSheet`) rather than silently promising delivery that will not happen.
@@ -432,6 +445,27 @@ Two fields look like they answer "has this person been through onboarding" and n
 Adoption writes `SUPERSEDED` plus a `tenant_owner_attestations` row, so the two populations separate cleanly. The predicate lives in `activation-entry.ts` (`hasCompletedActivation`, `isAwaitingTenantOnboarding`) and is the single source for entry (`canEnterActivation`), the activation state machine's `activation_completed`, and `completeActivation`'s idempotency guard.
 
 `activation_completed_at` is deliberately **left stamped at adoption**. `residency-history-service` (`ever_moved_in`), `tenancy-eligibility-service` (`wasActivated`) and the owner WhatsApp assistant's "activated today" reports all read it; the rule above is additive and changes none of them.
+
+## Tenant KYC — what counts, and what it never blocks (2026-09-02, [[Decisions#ADR-169|ADR-169]])
+
+**Required documents** are a function of `tenants.profile_type` (`requiredKycDocTypes` in `src/services/tenants/kyc-status.ts`):
+
+| profile_type | required |
+|---|---|
+| `STUDENT` (and the default) | Aadhaar + College ID |
+| `WORKING_PROFESSIONAL` | Aadhaar + Work ID |
+
+**`tenants.document_verified` is derived, never set directly.** It is `true` **only when, for every required type, there is a currently-`is_active` document with `document_status = "APPROVED"` and `is_verified = true`.** A missing, `PENDING`, `REJECTED`, or archived (`is_active = false`) document does not count — including an old approved one that a re-upload superseded. `recomputeDocumentVerified(tx, tenantId)` is the single writer, called inside the transaction of every route that approves, rejects, re-uploads a document, or changes `profile_type`. **Changing `profile_type` re-evaluates it** — a student verified on College ID is *not* verified as a Working Professional until Work ID is approved.
+
+**KYC is collected during onboarding but never blocks it.** The Student activation Identity step uploads Aadhaar + College ID (auto-upload, land `PENDING`) via `POST /api/tenants/activate/documents`. "Verify & Continue" checks only that each required type has been *uploaded* (`PENDING` or `APPROVED` — a `REJECTED` type re-blocks and must be re-uploaded). It never calls a verify endpoint and never waits for the owner. This is consistent with `document_verified` being an independent state machine that does not gate activation.
+
+**Owner review is a state transition.** `verify` / `reject` only act on a `PENDING` active document (409 otherwise); `APPROVED → REJECTED` and `REJECTED → APPROVED` are not reachable through the endpoints — a **new upload** (new `PENDING` row, old row archived) is the only way to revisit a decided document. `bulk-verify` and the `MARK_DOCUMENTS_VERIFIED` compliance action approve only the required active types and **refuse (`409 INCOMPLETE_KYC`) if a required type was never uploaded** — neither can manufacture verification.
+
+**At most one active document per `(tenant, doc_type)`** — enforced by migration 080's partial unique index; a re-upload archives the prior active row in the same transaction.
+
+**This is separate from the Portable Vault** (`identity_documents` / `identity_document_shares`, [[#The portable profile — identity is person-level, verification is not (2026-08-15, phase B)]]). Vault verdicts are per-hostel-share; tenant KYC approval is per-tenancy. They are not merged.
+
+**Owner KYC is a different, untouched system.** `owner_documents` (Aadhaar / PAN / PHOTO, admin-reviewed) and the owner listing/marketing-approval flow are out of scope for ADR-169 — a Go-Live gate on owner KYC is a deferred follow-up.
 
 ## Claim flow removed — every invitation resolves into the one activation screen (2026-09-01, [[Decisions#ADR-163|ADR-163]])
 
@@ -862,3 +896,51 @@ The strip's voice priority is **failed › paid today › pending › settled �
 **Removing a hostel archives it.** `DELETE /api/hostels/:id` sets `status: ARCHIVED` with `archived_at`/`archived_by`/`archive_reason`. Nothing about a tenancy, payment or obligation is destroyed — this system keeps financial history — so no surface may describe it as permanent deletion. The backend refuses while **any tenant is still allocated**; `ArchiveHostelModal` states that reason, blocks the action, and offers a route to check the tenants out. Restoring is possible via `PATCH {status: "ACTIVE"}` and is wired — the dashboard's ARCHIVED tab offers Reactivate on every archived card.
 
 **An archived hostel with no history at all can be deleted for good** ([[Decisions#ADR-100|ADR-100]], `DELETE /api/hostels/:id/permanent`). Two conditions, both server-enforced: it must **already be archived**, and it must have **zero** tenants, payments, rent obligations, room allocations, agreements, receipts, expenses and enquiries. Anything with history stays archived forever, and the refusal says so — a hostel that carried tenancies is never destroyable, because its money records have to outlive it. Only rooms, floors and the hostel row are removed. This is the one irreversible action in the owner app.
+
+## Identity vs authority — the Clerk boundary (2026-09-09)
+
+From [[Decisions#ADR-176|ADR-176]]. These rules are what make a public, vendor-driven webhook safe to expose.
+
+**The auth provider owns identity; this database owns authority.** Clerk answers *who is this login?*. `profiles.role` answers *what may they do?*. No auth-provider payload can write a role, a hostel, a tenancy or an amount. The mechanism is an allow-list — `ALLOWED_PROFILE_FIELDS` in `src/services/auth/clerk-user-sync-service.ts` permits exactly `email`, `first_name`, `last_name`, `image_url` — and it is asserted by test, not by convention. Roles are deliberately **not** stored in Clerk metadata: that would move an authorisation decision outside our migrations, tests and audit trail.
+
+**A webhook never provisions a business account.** `user.created` links to an existing `profiles` row by email, or leaves `profile_id` null. It does not create profiles. This is the no-auto-provisioning rule of [[Decisions#ADR-031|ADR-031]], upheld by [[Decisions#ADR-073|ADR-073]], carried across the vendor change. ([[Decisions#ADR-078|ADR-078]]'s narrow Google-signup provisioning path is session-gated and is not a precedent for a webhook.)
+
+**One business identity, one login.** `users.profile_id` is unique. A profile already bound to a different `clerk_user_id` is **not** re-pointed — the conflict is logged and the new login is left unlinked. Two logins claiming one identity (a duplicate signup, an email reused after a move-out) is a human decision, not an overwrite.
+
+**Deleting a login deactivates it; it never deletes records.** `user.deleted` sets `is_active = false` and stamps `deactivated_at`, and touches neither the row nor the linked profile. Obligations, payments, receipts and residency history outlive the login that created them — the same audit-first principle as *Obligation lifecycle* above, applied to identity. An ex-resident's settled ledger must not be erasable from a vendor's dashboard.
+
+**Webhook delivery is at-least-once and unordered.** Every handler is idempotent, and `users.clerk_updated_at` holds the provider's own timestamp so an overtaken delivery cannot overwrite newer data with older. When either timestamp is unknown the update is applied — a redundant write to idempotent data beats silently halting sync.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Database]], [[APIs]], [[Features]]
+
+## Controlled onboarding — authentication never creates an account (2026-09-09)
+
+From [[Decisions#ADR-176|ADR-176]] Phase 3.1. **Supersedes [[Decisions#ADR-078|ADR-078]]'s Google auto-provisioning.**
+
+**Owners exist after admin approval. Tenants exist after an owner's invitation.** There is no third way in. Signing in — Google, email OTP, phone OTP — proves identity; it does not enrol anyone.
+
+A Clerk sign-in whose email has no `profiles` row resolves to **`NO_STAYO_ACCOUNT`** (403). That is a dead end by design. It creates at most a `users` row, which is identity and carries no authority.
+
+**Linking is not provisioning.** The `user.created` webhook still matches a Clerk account to an existing `profiles` row by email — but that row was created by an invitation or approval *before* the person signed in. Matching an account to a record someone already made is not the same as making the record.
+
+The backend never learns which method was used: every Clerk sign-in arrives as a session token and resolves down one path. That is deliberate — it is what stops provider-specific provisioning creeping back in.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[APIs]], [[Frontend]], [[Features]]
+
+## Bulk import — how an imported tenant's terms and money land (2026-09-10)
+
+Verified against code on `feat/bulk-tenant-import`. See [[Bugs]] 2026-09-10 for what was broken, [[APIs]] for the endpoints, [[Backend]] for where it lives.
+
+- **Same path as a single invite.** Each imported row goes through `tenant-invitation-lifecycle-service.createInvitation`, so [[Decisions#ADR-165|ADR-165]] holds: an invitation is always created and tenant acceptance is mandatory. There is no import-only "just add to my records" path.
+- **Maintenance** comes from the batch value on the upload form, falling back to the hostel's billing defaults, and is sent as `maintenance_amount`. There is **no per-row maintenance**: the parser reads no maintenance column, so every row in a batch gets the same charge and type.
+- **Back-rent for a historical joining date** is generated per elapsed month by `onboarding-financials-service`, capped at `RENT_BACKFILL_CAP_MONTHS` (24). The billed count is the joining month through the current month *inclusive*, so the preview flags `BACKFILL_CAPPED` (severity `NEEDS_CHOICE` — acknowledged, not blocking) when that count exceeds 24, naming the first month that will be billed.
+- **Amount already paid** (parsed from an *Amount Already Paid* column; the current CSV template does not offer one yet) is settled inside the invitation transaction by `financialPaymentFacade.receivePayment`, **FIFO across every due** — back-rent, maintenance and the deposit obligation. A payment method is required: a row with an amount and no method is blocked at preview (`PAYMENT_METHOD_MISSING`) instead of failing at execution. An amount above what is owed is rejected by `createInvitation` at execution; the preview does not yet flag it.
+- **"Paid Includes Deposit" is parsed and stored but not honoured.** Nothing on the invite path reads it, so the deposit is always inside the FIFO settlement and an owner answering "No" is not obeyed. Unknown / needs clarification: whether to implement it or remove the column.
+- **`payment_method` is uppercased** at parse time, so a sheet's `cash` and the wizard's `CASH` are one bucket in collections reporting (`payments.payment_method` is a plain string, not an enum).
+- **Room capacity:** a row claims a bed only if it will import. Duplicates and rows with any blocking error — including an unreadable joining date — claim nothing, so they cannot push a valid row over capacity.
+- **Joining dates** are read as DD/MM/YYYY (Indian format); ISO `YYYY-MM-DD` and Excel date serials are also accepted. Impossible dates (`31/02/2026`, a US-style `12/25/2025`) are rejected rather than rolled over, and anything else is rejected rather than guessed, because the joining date decides how much back-rent is owed. **The date is stored as ISO** from the validator's own reading, so the date billed is the date validated — `createInvitation` re-parses it with `new Date()`, which would read `05/01/2026` as 1 May.
+- **Numbers from the sheet** accept `8500`, `8,500`, `₹8,500`, `Rs. 8,000` and `INR 8000`. A blank cell uses the default; an unreadable one (`TBD`, `N/A`, `1 year`) blocks the row and is quoted back to the owner as typed, never silently turned into 0 or the room's rent. Rent must be above ₹0; agreement length must be a whole number of months from 1 to 120.
+- **Rooms:** an inactive room blocks the row at preview (it would fail at confirm). A room with no base rent blocks the row only when the sheet gives no rent for that tenant either.
+- **Existing tenants are matched on the last 10 digits of the phone.** `profiles.phone` is stored as bare digits and `tenant_invitations.phone` as E.164, so exact matching missed every profile and let a re-import create a second tenancy.
+- **Notes** from the sheet are kept in `bulk_import_rows.mapped_data` but never reach the tenant — `createInvitation` reads no notes key and `tenants` has no notes column. Unknown / needs clarification: where an imported note should live (a `tenant_notes` row is the likely home).
+

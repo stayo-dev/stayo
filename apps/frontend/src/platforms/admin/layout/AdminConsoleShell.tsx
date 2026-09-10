@@ -10,6 +10,7 @@ import { platformAdminService } from '@features/platform-admin/api';
 import { ACTIONABLE_STATUSES } from '@/platforms/admin/leads/leadQueue';
 import { buildAdminNav, isNavItemActive } from './adminNav';
 import { headerFor } from './pageHeaders';
+import { ClerkUserButton } from '@/app/components/ClerkUserButton';
 import { AdminToast, useAdminToast } from '../ui/Toast';
 import { AdminToastContext } from './toastContext';
 
@@ -104,7 +105,7 @@ export function AdminConsoleShell() {
             <div className="flex flex-1 flex-col gap-5 overflow-auto px-3 pb-3 pt-1.5">
               {navGroups.map((group) => (
                 <div key={group.label} className="flex flex-col gap-[3px]">
-                  <div className="px-2.5 pb-1 pt-0.5 text-[9.5px] font-bold uppercase tracking-[.13em] text-[#6B6259]">
+                  <div className="px-2.5 pb-1 pt-0.5 text-[9.5px] font-bold uppercase tracking-[.13em] text-muted-foreground">
                     {group.label}
                   </div>
                   {group.items.map(({ to, label, icon: Icon, badge, badgeTone, end }) => {
@@ -172,7 +173,7 @@ export function AdminConsoleShell() {
               </div>
               <div className="flex-1" />
 
-              <div className="hidden w-[300px] items-center gap-2 rounded-[11px] border border-[#EAE1D8] bg-white px-3 py-[9px] min-[1100px]:flex">
+              <div className="hidden w-[300px] items-center gap-2 rounded-[11px] border border-border bg-white px-3 py-[9px] min-[1100px]:flex">
                 <Search className="h-3.5 w-3.5 flex-none text-[#988D82]" />
                 {/* Routes to Owners, whose search spans owner name/email/phone
                     plus the city and name of any hostel they run — so one box
@@ -191,7 +192,7 @@ export function AdminConsoleShell() {
                 />
               </div>
 
-              <div className="hidden items-center gap-2 rounded-[11px] border border-[#EAE1D8] bg-white px-[13px] py-[9px] text-[12.5px] font-semibold text-[#5A5147] min-[1300px]:flex">
+              <div className="hidden items-center gap-2 rounded-[11px] border border-border bg-white px-[13px] py-[9px] text-[12.5px] font-semibold text-[#5A5147] min-[1300px]:flex">
                 <Calendar className="h-3.5 w-3.5 text-[#8A7F75]" />
                 Last 30 days
               </div>
@@ -201,7 +202,7 @@ export function AdminConsoleShell() {
                   type="button"
                   onClick={() => setNotifOpen((o) => !o)}
                   aria-label="Notifications"
-                  className="relative flex h-10 w-10 items-center justify-center rounded-[11px] border border-[#EAE1D8] bg-white text-[#5A5147]"
+                  className="relative flex h-10 w-10 items-center justify-center rounded-[11px] border border-border bg-white text-[#5A5147]"
                 >
                   <Bell className="h-[17px] w-[17px]" strokeWidth={1.6} />
                   {(notifications.data?.length ?? 0) > 0 && (
@@ -242,6 +243,8 @@ export function AdminConsoleShell() {
                   </>
                 )}
               </div>
+              {/* ADR-176 Phase 2: renders nothing without a Clerk session. */}
+              <ClerkUserButton />
             </header>
 
             <main className="min-w-0 flex-1 overflow-auto bg-[#EFE9E2] px-4 pb-11 pt-[26px] [background-image:linear-gradient(#E3D8CB_1px,transparent_1px),linear-gradient(90deg,#E3D8CB_1px,transparent_1px)] [background-size:52px_52px] sm:px-[30px]">

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, CheckCircle2, Clock, IndianRupee } from 'lucide-react';
-import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
+import { AdaptiveSurface } from '@/app/components/ui/adaptive-surface';
 import { StayoLoader } from '@shared/ui/brand';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { changeRequestKeys } from '@features/change-management';
@@ -127,7 +127,7 @@ export function AmendAgreementSheet({ open, onClose, tenant, onChangeRent }: Ame
   });
 
   return (
-    <BottomSheet open={open} onOpenChange={(next) => !next && close()} title="Amend agreement">
+    <AdaptiveSurface variant="form" open={open} onOpenChange={(next) => !next && close()} title="Amend agreement">
       {outcome ? (
         <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
           <span
@@ -262,6 +262,6 @@ export function AmendAgreementSheet({ open, onClose, tenant, onChangeRent }: Ame
           </button>
         </div>
       )}
-    </BottomSheet>
+    </AdaptiveSurface>
   );
 }

@@ -9,8 +9,14 @@ interface SuccessPanelProps {
 /** Shared confirmation shown after any Room/Profile form submits — pulsing-ring checkmark, reference card, Track status / Done. */
 export function SuccessPanel({ title, sub, reference, onTrackStatus, onDone }: SuccessPanelProps) {
   return (
-    <div className="fixed inset-0 z-[47] flex flex-col bg-background">
-      <div className="flex flex-1 flex-col items-center overflow-auto px-[22px] pb-6 pt-[70px] text-center">
+    // Below `lg`: unchanged full-screen presentation. At `lg+` (ADR-171 Phase
+    // 3.1): a docked right-side panel — see DetailScreen.tsx for the full
+    // rationale. `lg:pt-10` tightens the top gap since the panel itself is
+    // already offset below the console topbar (`lg:top-14`); `pt-[70px]` was
+    // tuned for a full-height phone screen, not a panel that already starts
+    // lower.
+    <div className="fixed inset-0 z-[47] flex flex-col bg-background lg:left-auto lg:top-14 lg:right-0 lg:bottom-0 lg:w-[420px] lg:border-l lg:border-border lg:shadow-lg">
+      <div className="flex flex-1 flex-col items-center overflow-auto px-[22px] pb-6 pt-[70px] text-center lg:pt-10">
         <div className="relative h-20 w-20">
           <div className="stayo-ring-pulse absolute inset-0 rounded-full bg-[#7FBF9B]" />
           <div className="stayo-pop-in relative flex h-20 w-20 items-center justify-center rounded-full bg-success">

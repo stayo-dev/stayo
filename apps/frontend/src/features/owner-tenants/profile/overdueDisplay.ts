@@ -111,10 +111,11 @@ export interface NextPayment {
 /**
  * When the tenant next owes something.
  *
- * The money strip answers *how much* is outstanding; nothing on the profile
- * answered *when the next one lands*, which is what an owner planning a
- * collection round actually needs. Picking the soonest unsettled charge means
- * an overdue one naturally wins over an upcoming one — it is the earlier date.
+ * @deprecated Superseded by `describeNextPayment` in `./paymentSchedule`, which
+ * is fed from the full billing-timeline read model (not the capped `/full`
+ * list) and can fall back to a projected next installment when no obligation
+ * row exists yet. Kept for its unit tests; the profile header no longer uses
+ * it.
  */
 export function nextPaymentDue(
   obligations: Array<Record<string, any>> | undefined | null,

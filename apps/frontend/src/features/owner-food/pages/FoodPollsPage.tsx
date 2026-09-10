@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, Plus, Vote } from 'lucide-react';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
+import { useIsDesktop } from '@/app/components/ui/use-desktop';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { HostelSwitcher } from '../components/HostelSwitcher';
 import { PollCard } from '../components/polls/PollCard';
@@ -39,7 +40,10 @@ function groupByMonth(polls: PollRow[]): { key: string; label: string; polls: Po
  */
 export function FoodPollsPage() {
   const session = useOwnerSession();
+  const isDesktop = useIsDesktop();
   const [searchParams, setSearchParams] = useSearchParams();
+  // Hostel on `?hostelId=` (Kitchen sheet convention). At `lg+` (ADR-171 Phase
+  // 2.8) the sidebar `HostelSwitcher` writes it; the in-page one is hidden.
   const hostelId = searchParams.get('hostelId') ?? session.primaryHostelId ?? undefined;
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -78,7 +82,9 @@ export function FoodPollsPage() {
             <p className="mt-0.5 text-[12.5px] font-medium text-muted-foreground">Ask what tenants want, and let it settle it</p>
           </div>
         </div>
-        <HostelSwitcher hostels={session.hostels} selectedId={hostelId ?? null} onSelect={(id) => setSearchParams({ hostelId: id }, { replace: true })} />
+        {!isDesktop && (
+          <HostelSwitcher hostels={session.hostels} selectedId={hostelId ?? null} onSelect={(id) => setSearchParams({ hostelId: id }, { replace: true })} />
+        )}
       </div>
 
       <div className="flex items-center justify-end gap-2">

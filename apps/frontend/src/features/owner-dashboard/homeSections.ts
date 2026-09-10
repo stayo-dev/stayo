@@ -8,14 +8,16 @@
  * an empty account, and it buries the one thing they should actually do.
  *
  * So each card here appears at the moment it has something true to say, and
- * Home visibly grows into the dashboard as the owner works: building the
- * hostel makes the hostels section real, the first tenant brings in the Action
- * Center, the first rent owed brings in the month card.
+ * Home visibly grows into the dashboard as the owner works: the first tenant
+ * brings in the Action Center, the first rent owed brings in the month card.
  *
- * The one section that is never conditional is the hostels list. It was
- * previously hidden whenever the owner had no hostels — and since it carries
- * the only "+ Add hostel" button in the app, an owner with zero hostels had no
- * way to create one. See ADR-139.
+ * **The hostels list is no longer one of these sections.** It moved to its own
+ * bottom-nav tab, so this module no longer decides whether it shows. ADR-139's
+ * guarantee moved with it and did not weaken: "+ Add hostel" must always be
+ * reachable by an owner with no hostels, and a permanent tab satisfies that
+ * more strongly than a button below a screenful of scrolling ever did. The
+ * rule is now asserted in `hostelsTab.ts`, which is what decides the empty
+ * state.
  */
 
 export interface HomeSectionSignals {
@@ -37,8 +39,7 @@ export interface HomeSections {
   actionCenter: boolean;
   monthCard: boolean;
   /** Always. This is the fix. */
-  hostels: boolean;
-  /** No hostel yet — the greeting and the hostels list both speak differently. */
+  /** No hostel yet — the getting-started card speaks differently. */
   setupMode: boolean;
 }
 
@@ -54,7 +55,6 @@ export function deriveHomeSections(signals: HomeSectionSignals): HomeSections {
     search: hasTenants,
     actionCenter: hasTenants,
     monthCard: has(signals.collectedThisMonth) || has(signals.monthTarget),
-    hostels: true,
     setupMode: !has(signals.hostelCount),
   };
 }

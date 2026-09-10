@@ -25,7 +25,7 @@ const REAL_ROUTES = new Set([
   '/owner/money/collect',
   '/owner/money/payouts',
   '/owner/more/hostel',
-  '/owner/more/service-requests',
+  '/owner/alerts/requests',
   '/owner/home',
   '/owner/rooms/vacant',
   '/owner/tenants',
@@ -88,12 +88,9 @@ describe('searching for an answer', () => {
     expect(results[0].id).toBe('owner-payout');
   });
 
-  it('finds the listing-review answer however it is phrased', () => {
-    for (const phrasing of ['amenities not showing', 'why is my listing pending', 'photos discover']) {
-      const ids = searchGuides(phrasing, 'owner').map((g) => g.id);
-      expect(ids.some((id) => id.startsWith('owner-listing') || id.startsWith('owner-cannot-edit')), phrasing).toBe(true);
-    }
-  });
+  // The Discover-listing help entries were removed in v1 (ADR-170) with the
+  // rest of the marketplace — the "finds the listing-review answer" case went
+  // with them. Restore both from git history when v2 brings Discover back.
 
   it('returns nothing rather than noise for an unrelated query', () => {
     expect(searchGuides('xylophone', 'tenant')).toEqual([]);
@@ -142,7 +139,7 @@ describe('whose problem is it', () => {
   it('points each audience at its own hostel channel', () => {
     // The owner is not redirected to someone else — the owner *is* the hostel.
     expect(hostelChannel('tenant').to).toBe('/tenant/complaints');
-    expect(hostelChannel('owner').to).toBe('/owner/more/service-requests');
+    expect(hostelChannel('owner').to).toBe('/owner/alerts/requests');
     expect(REAL_ROUTES.has(hostelChannel('tenant').to)).toBe(true);
     expect(REAL_ROUTES.has(hostelChannel('owner').to)).toBe(true);
   });

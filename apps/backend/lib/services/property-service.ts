@@ -44,7 +44,16 @@ export class PropertyService {
     });
 
     if (!profile) throw new Error("NOT_FOUND: Owner profile not found");
-    
+
+    // Read separately with an explicit `select` rather than `include`-ing the
+    // relation: `profile_identity` is the table that exists precisely so
+    // rarely-read columns stay off the row `getSession()` loads on every
+    // request, and pulling all of it here to read one field would undo that.
+    const identity = await prisma.profile_identity.findUnique({
+      where: { profile_id: userId },
+      select: { photo_url: true },
+    });
+
     const singleHostel = profile.hostels.length === 1 ? profile.hostels.at(0) : null;
 
     return {
@@ -59,6 +68,7 @@ export class PropertyService {
         state: profile.state,
         pincode: profile.pincode,
         emergency_contact: profile.emergency_contact,
+        photo_url: identity?.photo_url ?? null,
       },
       hostels: profile.hostels.map((hostel: any) => ({
         id: hostel.id,
@@ -256,6 +266,13 @@ export class PropertyService {
     if (data.pincode !== undefined) mapped.pincode = data.pincode;
     if (data.upi_id !== undefined) mapped.upi_id = data.upi_id;
     if (data.gst_number !== undefined) mapped.gst_number = data.gst_number;
+    if (data.hostel_type !== undefined) {
+      // Validated against the same four codes `identity-field-policy.ts` reads.
+      // Anything unrecognised is stored as NULL rather than guessed: an unknown
+      // type must mean "ask the tenant their gender", never "assume it".
+      const code = String(data.hostel_type || "").trim().toUpperCase();
+      mapped.hostel_type = ["BOYS", "GIRLS", "CO_LIVING", "WORKING_PROS"].includes(code) ? code : null;
+    }
 
     if (data.status !== undefined) {
       if (!["ACTIVE", "INACTIVE", "ARCHIVED"].includes(data.status)) {
