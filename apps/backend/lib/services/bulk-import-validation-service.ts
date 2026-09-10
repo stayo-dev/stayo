@@ -85,7 +85,9 @@ export class BulkImportValidationService {
       const rawData: any[] = XLSX.utils.sheet_to_json(worksheet);
 
       if (rawData.length > MAX_IMPORT_ROWS) {
-        throw new Error(`Import file too large. Maximum ${MAX_IMPORT_ROWS} rows allowed. Your file has ${rawData.length} rows. Please split into multiple files.`);
+        throw new Error(
+          `VALIDATION_ERROR: This file has ${rawData.length} rows. The most we can import at once is ${MAX_IMPORT_ROWS}. Split it into smaller files and import them one after another.`
+        );
       }
 
       const jsonData = XLSX.utils.sheet_to_json<any>(worksheet, {

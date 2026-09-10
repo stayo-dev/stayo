@@ -155,6 +155,9 @@ export default defineConfig({
       'tests/clerk-me-handshake.test.ts',
       'tests/auth-me-dual-session.test.ts',
       'tests/clerk-controlled-onboarding.test.ts',
+      // Bulk import: parse-stage failures must name the real cause. The
+      // row-limit message used to be swallowed by parseFile's own catch.
+      'tests/bulk-import-parse-errors.test.ts',
       'tests/build-without-env.test.ts',
     ],
     alias: {
