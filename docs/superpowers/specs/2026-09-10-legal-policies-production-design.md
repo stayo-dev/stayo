@@ -20,19 +20,48 @@ that matter. This design replaces it.
 
 | # | Decision | Rationale |
 |---|---|---|
-| D1 | **Stayo is a facilitator / collection agent**, never a party to the stay | Matches the code: agreements are tenant↔owner and owner-signed; Stayo generates but does not sign. Far lower liability than merchant-of-record. |
+| D1 | **Stayo is a pure technology platform** — never a party to the stay, and never in the flow of tenant money | *Revised 2026-09-10 (see §2.1).* Under the Easebuzz sub-merchant model each hostel owner is the merchant of record with their own sub-merchant account; tenant payments settle **directly to the owner**. Stayo's only revenue is owner subscriptions. Strictly lower liability than the collection-agent position originally approved. |
 | D2 | **Publish the compliance minimum** of entity details | Consumer Protection (E-Commerce) Rules 2020 and IT Rules 2021 require legal name, registered address and a named Grievance Officer. Payment aggregators verify these against the live site. Supersedes the current "address and registration IDs are deliberately NOT surfaced" stance in `company.ts`. |
 | D3 | **Full versioned policy + acceptance record** | Today nothing proves any user accepted anything. Robust policies that cannot be shown to have been accepted are weak in a dispute. |
 | D4 | **Terms = shared core + Schedule A (Owners) + Schedule B (Residents)** | Owners buy software; residents get a free account and pass money through. One undifferentiated document is why the current one is incoherent. Two fully separate documents would duplicate boilerplate and drift — the exact failure that produced the two divergent `legal.ts` copies. |
-| D5 | **Platform refund floor, hostel terms beyond it** | "Ask the hostel" is not a publishable refund policy and tends to fail aggregator review. A short concrete floor protects residents without making Stayo the arbiter of stay disputes. |
+| D5 | **Platform refund floor, hostel terms beyond it — imposed on owners, not underwritten by Stayo** | *Revised 2026-09-10.* "Ask the hostel" is not a publishable refund policy and tends to fail aggregator review. But Stayo never holds tenant money, so it cannot pay a refund it never received: the floor is a **contractual obligation on the owner**, enforced by suspension and delisting, executed by the owner from their own sub-merchant account. |
 | D6 | **Name Easebuzz as the payment partner**, via a single constant | Aggregator reviewers look for it; refund timelines are meaningless without naming the rails. Centralised so switching is a one-line change. |
+
+### 2.1 The Easebuzz sub-merchant model (confirmed 2026-09-10)
+
+Stayo is onboarding as an **Easebuzz partner**, and each hostel owner is onboarded as an
+**individual sub-merchant with their own Easebuzz account**. A resident's payment settles
+**directly to the owner's sub-merchant account**. Stayo is never in the flow of funds and never
+holds tenant money; owners see and manage their own settlements in their own account. Stayo's
+sole revenue is the owner subscription.
+
+This resolves both risks previously recorded in §14 as deferred:
+
+- **RBI payment-aggregator exposure — resolved.** Easebuzz is the authorised aggregator and the
+  owner is the merchant. Stayo neither collects nor settles third-party funds.
+- **GST-threshold contamination — resolved.** Rent never reaches the proprietor's account, so it
+  can never be read as his own receipts. Only subscription revenue counts toward the ₹20 lakh
+  threshold.
+
+**Code consequence, out of scope here but must be tracked.** The owner-payout/settlement subsystem
+describes the superseded model: `gateway_transactions` is documented as "money the provider
+actually captured into **Stayo's** account", with settlement runs, Stayo-initiated transfers, the
+T+2 working-day promise and a "With Stayo" money state (`src/services/settlements/*`,
+`docs/obsidian/Business-Rules.md` § "Owner payouts"). None of that exists under the sub-merchant
+model. Nothing real is lost — Business-Rules records **zero captured payments in any environment**
+— but a meaningful amount of shipped code now models a business Stayo is not running. That
+cleanup is a separate decision from this legal work.
 
 ### Entity facts fixed by these decisions
 
-- **Trishul Solutions is a sole proprietorship.** No separate legal personality: the contracting
-  party is the proprietor personally, trading as Trishul Solutions. Liability is personal and
-  unlimited, which raises the stakes on the limitation-of-liability and indemnity clauses — they
-  must be genuine, not boilerplate.
+- **Trishul Solutions is a sole proprietorship of Chidiri Shiva Prakash.** No separate legal
+  personality: the contracting party is the proprietor personally, trading as Trishul Solutions.
+  Liability is personal and unlimited, which raises the stakes on the limitation-of-liability and
+  indemnity clauses — they must be genuine, not boilerplate.
+- **Principal place of business** (per Udyam registration): 12-75/1, Balaji Nagar, Block 2,
+  Kodangal, Vikarabad District, Telangana 509338.
+- **Grievance Officer: Chidiri Shiva Prakash**, `grievance@yourstayo.com` — the proprietor acting
+  in the role, standard practice at this size. See §9.1 for what the role obliges.
 - **Not GST-registered.** No GSTIN is claimed anywhere, no GST is shown on any Stayo invoice.
   Fee clauses state that fees are exclusive of taxes and that tax will apply *if and when* Stayo
   becomes liable to register.
@@ -122,17 +151,26 @@ require a published takedown route for UGC.
   (data retained, access suspended, export window) — mirroring `HostelSubscriptionStatus`.
 - Owner **warrants** lawful right to let the property and accuracy of listings, and **indemnifies**
   Stayo against resident claims concerning the premises.
-- **Payout terms stated as they actually work**: T+2 **working** days from capture, bank holidays
-  deliberately not modelled, failed transfers remain owed. Sourced from
-  `src/services/settlements/payout-promise.ts` so the document cannot drift from the engine.
-- The owner is the party responsible for deposit refunds and for their own tax position.
+- **Sub-merchant onboarding.** The owner is onboarded as an Easebuzz sub-merchant and is the
+  **merchant of record** for every resident payment. The terms must state that the owner enters a
+  **direct relationship with Easebuzz**, accepts Easebuzz's own merchant terms, and that
+  settlement timing, holds and transaction fees are governed by that relationship — not by Stayo.
+- **KYC warranty.** The owner warrants that all KYC information submitted through Stayo for
+  sub-merchant onboarding is true and current, and indemnifies Stayo for losses arising from it.
+  Stayo may **suspend or withdraw** platform access if Easebuzz suspends the sub-merchant, or on
+  Easebuzz's instruction — a pass-through obligation Stayo owes its aggregator partner.
+- **The owner issues refunds**, from their own sub-merchant account, and is responsible for
+  honouring the platform refund floor (§6.4), for deposit refunds, and for their own tax position.
+  Stayo never holds, refunds or reverses resident money.
 
 ### 6.3 Schedule B — Residents
 
 - The account is free.
-- **Rent paid through Stayo discharges the resident's obligation to the hostel at the moment of
-  capture.** Stated explicitly, because Stayo holds the money in between; without this clause the
-  resident carries Stayo's settlement risk.
+- **Payment made through the platform settles directly to the hostel's own merchant account and
+  discharges the resident's obligation at the moment of successful payment.** Under the
+  sub-merchant model Stayo is never in the flow of funds, so the resident carries no settlement
+  risk from Stayo — a materially better position than the collection-agent model, and worth
+  stating plainly rather than leaving implied.
 - The hostel's house rules, notice period and deposit terms bind separately and are shown before
   payment.
 - What Stayo is **not** responsible for: room condition, food, safety, hostel conduct.
@@ -144,20 +182,31 @@ Two clearly separated parts, because conflating them is why the current document
 **Part 1 — Money you pay Stayo (owner subscriptions).** Stayo's own refund terms; trial handling;
 whether fees are refundable on mid-cycle cancellation *(placeholder — §12)*.
 
-**Part 2 — Money you pay through Stayo (rent, deposit, booking token).**
+**Part 2 — Money you pay to a hostel through the platform (rent, deposit, booking token).**
 
-- **Platform minimum floor, which no hostel may undercut:**
-  - duplicate captures, failed-but-debited transactions and wrong-amount charges are always corrected;
+The document must be unambiguous that **Stayo neither receives nor refunds this money**. It
+settles directly to the hostel's own merchant account with Easebuzz; the hostel issues any refund
+from that account.
+
+- **Platform minimum floor — a condition of listing, binding on every hostel:**
+  - duplicate payments, failed-but-debited transactions and wrong-amount charges are always corrected;
   - a booking token is refunded in full if the hostel cancels, or if the room materially differs
     from the listing.
-- Beyond the floor, the hostel's own terms govern, and are shown to the resident before payment.
-- **Turnaround stated honestly and separately by mechanism**, since these differ in the code:
-  - aggregator-reversible errors follow the aggregator's own timeline;
-  - owner-side refunds are a **bank transfer initiated by the hostel**, recorded as an intent
-    (`refund_status: PENDING`) and confirmed on transfer (`COMPLETED`). The policy describes this
-    two-step reality rather than promising 7–10 days the system cannot deliver.
+- **How the floor is enforced**, stated honestly: Stayo cannot pay a refund it never received.
+  Stayo's remedies against a hostel that refuses are **suspension and delisting**, plus escalation
+  through the grievance channel (§9), and — for a genuine gateway-level failure such as a
+  double-capture — raising it with the payment partner. Residents are told this plainly rather
+  than being led to expect Stayo to pay.
+- Beyond the floor, the hostel's own terms govern and are shown to the resident before payment.
+- **Turnaround stated separately by mechanism**: gateway-level corrections follow the payment
+  partner's own timeline; hostel-issued refunds follow the commitment in §12.
 - **Payment partner named here**: Easebuzz, an RBI-authorised payment aggregator, referenced from
   the single `PAYMENT_PARTNER` constant.
+
+**Drafting caution.** This part carries the highest risk of over-promising in the whole set. Every
+sentence must survive the test: *can Stayo actually do this without holding the money?* Anything
+that fails that test becomes an owner obligation with a stated enforcement remedy, never a Stayo
+guarantee.
 
 ### 6.5 Privacy Policy
 
@@ -296,6 +345,37 @@ The Contact page becomes a real redressal surface:
 
 The `mailto:` form is replaced, not decorated.
 
+### 9.1 The Grievance Officer role — obligations and exposure
+
+The proprietor, Chidiri Shiva Prakash, holds the role at `grievance@yourstayo.com`.
+
+| Obligation | Source | Window |
+|---|---|---|
+| Acknowledge a complaint | IT Rules 2021, r.3(2)(a) | 24 hours |
+| Dispose of the complaint | IT Rules 2021, r.3(2)(a) | 15 days |
+| Acknowledge a consumer complaint | Consumer Protection (E-Commerce) Rules 2020 | 48 hours |
+| Redress a consumer complaint | Consumer Protection (E-Commerce) Rules 2020 | 1 month |
+| Remove specified unlawful content on complaint (impersonation, non-consensual imagery) | IT Rules 2021, r.3(2)(b) | 24 hours |
+| Publish name and contact; maintain records | IT Rules 2021 / CP E-Commerce Rules | ongoing |
+| Answer Data Principal requests | DPDP Act 2023 | per the DPDP rules |
+
+**Exposure is bounded.** Stayo is a regular intermediary, **not** a Significant Social Media
+Intermediary (that threshold is 50 lakh registered users). The personal criminal liability people
+associate with this area attaches to the *Chief Compliance Officer* of an SSMI under r.4(1)(a) and
+does not apply here. For a regular intermediary the consequence of failing is loss of safe harbour
+under s.79 of the IT Act for the specific content, plus consumer-forum exposure — business risk,
+not personal criminal risk. And as a sole proprietor the founder already carries unlimited
+personal liability for the business, so naming himself adds no meaningful incremental exposure.
+
+**The design discharges most of the burden automatically.** The ticket intake (§9) returns an
+immediate acknowledgement with a reference number, which satisfies the 24- and 48-hour
+acknowledgement obligations without manual action, and the ticket table is the required record.
+What remains genuinely manual is the 15-day resolution.
+
+**The one real hazard is publishing a channel nobody monitors.** An unwatched `grievance@` is
+worse than none — it is documented non-compliance with a timestamp on it. The role must not be
+published until the inbox is monitored.
+
 ## 10. UI/UX — accessible, not advertised
 
 - **One footer.** `MarketingFooter` and `PublicLayout` currently carry different, inconsistent link
@@ -331,9 +411,17 @@ covering both Easebuzz merchant onboarding and Meta Business Verification. Two g
 Built with clearly-marked placeholders, and the invariant script (§13) fails the build while any
 remain:
 
-- proprietor's legal name;
-- principal place of business address;
-- Grievance Officer name;
+- ~~proprietor's legal name~~ — **supplied**: Chidiri Shiva Prakash;
+- ~~principal place of business~~ — **supplied**: 12-75/1, Balaji Nagar, Block 2, Kodangal,
+  Vikarabad District, Telangana 509338;
+- ~~Grievance Officer~~ — **supplied**: Chidiri Shiva Prakash, `grievance@yourstayo.com`;
+- **exclusive jurisdiction city** — the current terms say Hyderabad, but the principal place of
+  business is in Vikarabad District. An exclusive-jurisdiction clause should name a court with
+  actual nexus to the parties or the cause, so this must be resolved deliberately rather than
+  inherited from the old copy;
+- **whether Stayo receives any share of transaction fees or TDR from Easebuzz**, or whether the
+  owner subscription is its only revenue. A revenue share is disclosable under the e-commerce
+  rules and changes the fee clauses;
 - support hours and Level 1 response SLA;
 - subscription trial length, and whether subscription fees are refundable on mid-cycle cancellation;
 - the refund-floor turnaround Stayo commits to;
@@ -366,14 +454,23 @@ remain:
 
 ## 14. Risks and recommendations outside this scope
 
-- **Payment-aggregator regulation.** Collecting rent into Stayo's own account and manually
-  remitting to third-party hostel owners is, strictly, payment-aggregator activity under RBI's
-  PA/PG framework. The standard remedy is the aggregator's own split-settlement product so funds
-  never rest with Stayo. Out of scope here; the policies are written honestly either way.
-- **GST threshold.** Rent passing through the proprietor's account can be read as *his own
-  receipts* against the ₹20 lakh services threshold unless clearly documented as agency
-  collection. A second, independent argument for split settlement.
-- Both risks are recorded so the decision to defer them is a decision, not an oversight.
+**Resolved 2026-09-10 by the sub-merchant model (§2.1)** — recorded because the reasoning matters
+if the model ever changes:
+
+- ~~**Payment-aggregator regulation.**~~ Resolved. Stayo neither collects nor settles third-party
+  funds; Easebuzz is the authorised aggregator and each owner is the merchant of record.
+- ~~**GST threshold contamination.**~~ Resolved. Rent never reaches the proprietor's account.
+
+**Still live:**
+
+- **Entity form.** A sole proprietorship carries unlimited personal liability, and switching to an
+  LLP or private limited company later means re-onboarding with the aggregator, re-papering owner
+  contracts, and every user re-accepting terms under a different counterparty. Doing it **before**
+  the consent subsystem (§8) starts recording acceptances is materially cheaper than after.
+- **Aggregator dependency.** Suspension of Stayo's partner account, or of an owner's sub-merchant
+  account, is now a single point of failure for the payment path. The terms must reserve the right
+  to suspend on the partner's instruction (§6.2) rather than leaving Stayo in breach of its own
+  promises when that happens.
 
 ## 15. Testing
 
