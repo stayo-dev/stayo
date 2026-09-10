@@ -407,6 +407,14 @@ Run: `cd apps/backend && npx vitest run --config vitest.pure.config.ts tests/bul
 
 Expected: the first test FAILS — Priya is rejected for capacity, because the three duplicate Ravi rows consumed all 3 beds. The second test passes.
 
+> **Correction applied during execution (commit `9c13799`).** The code below places the
+> capacity decision inside the room block — but per-row joining-date validation runs *after*
+> that block, so `errors.length === 0` is not yet final there and a row with an unreadable
+> date still claimed a bed. The shipped implementation moves the `rowCanImport` guard, the
+> capacity error push and `roomAssignmentsSeen.set(...)` to the **end** of per-row validation.
+> The room-existence, `is_active` and `base_rent` checks stay where they are. Read the code
+> below as intent, not as the final ordering.
+
 - [ ] **Step 4: Only count rows that can actually import**
 
 In `validateRows`, the room block currently reads:
