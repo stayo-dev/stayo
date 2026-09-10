@@ -942,8 +942,13 @@ These are rules the product must keep true, because published legal text now ass
 - **Grievances:** a named Grievance Officer at `grievance@yourstayo.com`; acknowledgement within 24 hours and resolution within 15 days (IT Rules 2021), or 48 hours and one month for consumer complaints (Consumer Protection (E-Commerce) Rules 2020).
 - **Only strictly-necessary and preference storage, and no analytics** — the basis for showing no cookie consent banner. Adding any analytics, advertising or tracking script falsifies the Cookie Notice; `check-legal.mjs` fails the build if one appears.
 
-**Unknown / needs clarification** — drafted with defaults that the proprietor has not yet confirmed:
-- Subscription trial length, and whether subscription fees are refundable on mid-cycle cancellation.
+- **Subscriptions: no free trial, arranged with the Stayo team, invoiced, and not refundable** (decided 2026-09-10). An owner subscribes by contacting the team, who onboard the hostel and agree plan, price and cycle in writing. Each cycle is invoiced and paid as agreed; nothing is charged automatically, which matches the code (an admin records each payment by hand in `platform-admin/hostels/[id]/invoices`; `autopay_enabled` is display-only). Fees are not refunded on cancellation or change of mind, but Stayo's own billing errors — a double charge, an over-charge, or a charge for a cycle after cancellation took effect — are refunded.
+
+**Resolved 2026-09-10:** trial length (there is none) and mid-cycle refundability (none; billing errors excepted).
+
+**Unknown / needs clarification:**
+- **"Failed-but-debited" floor item** — whether it should oblige the hostel when the failure is purely gateway-side and the hostel never received the money. Under investigation by the internal team with Easebuzz; the published clause stands until that decision.
 - The 5-business-day window for a hostel to review and initiate a floor refund.
 - The one-working-day first response for support.
-- Whether the "failed-but-debited" floor item should oblige the hostel when the failure is purely gateway-side and the hostel never received the money.
+- **Easebuzz verification suite** — the Privacy Policy now discloses sharing owner KYC (typically name, PAN, bank-account and business details) with the payment partner's onboarding and verification service. When the suite is actually wired, confirm the data sent matches that clause, and extend it if residents' details are verified too.
+- **Internal contradiction:** `POST /api/platform-admin/hostels/[id]/subscription` still creates new subscriptions in status `TRIAL` with a 14-day `trial_ends_at`/`next_renewal_at`. Nothing reads `trial_ends_at` and no job bills from `next_renewal_at`, so owners never experience a trial — but the admin console labels every new subscription "Trial", contrary to the policy.

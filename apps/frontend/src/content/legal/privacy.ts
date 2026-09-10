@@ -180,6 +180,7 @@ export const privacyDocument: LegalDocument = {
       ordered: false,
       items: [
         `Payments: ${PAYMENT_PARTNER.descriptor}, to process rent, deposit and booking-token payments you make to a hostel, and to reconcile the reference each payment generates. This partner’s specific identity is not published here; it is available on request from ${COMPANY.emails.privacy}.`,
+        `Merchant onboarding and verification: to set a hostel owner up to receive payments directly, and to verify identity or bank-account details where the platform needs to, we share the details that check requires with the onboarding and verification service of ${PAYMENT_PARTNER.descriptor}. For an owner these are typically their name, PAN, bank-account and business details, which Indian payment regulations require the payment partner to verify before it can pay out to them.`,
         'Authentication: cloud identity providers that manage secure sign-in, session tokens and password resets, so we do not have to build or store password handling ourselves.',
         'Email delivery: a transactional email provider that sends invitations, account notifications, rent reminders and password-reset emails on our behalf.',
         'Media storage: a cloud storage and content-delivery provider that stores photographs, listing images and the documents you upload.',

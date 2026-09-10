@@ -49,3 +49,11 @@ describe('processor disclosures match what each service actually does', () => {
     expect(text()).toMatch(/Web fonts:[^"]*IP address/);
   });
 });
+
+describe('owner onboarding with the payment partner is disclosed', () => {
+  it('says owner KYC is shared for merchant onboarding and verification', () => {
+    const text = JSON.stringify(privacyDocument.content);
+    expect(text).toMatch(/Merchant onboarding and verification:[^"]*PAN/);
+  });
+});
+

@@ -94,3 +94,31 @@ describe('Payments, Refunds & Cancellations', () => {
     expect(ids).toContain('money-you-pay-a-hostel');
   });
 });
+
+/**
+ * Decided by the proprietor 2026-09-10: no free trial, subscriptions arranged
+ * with the Stayo team, and no refund of subscription fees. The code agrees on
+ * billing — owners are invoiced and an admin records payment by hand; nothing
+ * is charged automatically — so the documents may not say otherwise.
+ */
+describe('subscription terms match how Stayo actually bills owners', () => {
+  const both = () => JSON.stringify([refundsDocument.content, termsDocument.content]);
+
+  it('offers no free trial', () => {
+    expect(both()).not.toMatch(/where we offer a free trial/i);
+    expect(both()).toMatch(/there is no free trial/i);
+  });
+
+  it('does not claim to charge a stored payment instrument automatically', () => {
+    expect(both()).not.toMatch(/renews automatically[^.]*payment instrument/i);
+    expect(both()).not.toMatch(/we may retry it/i);
+  });
+
+  it('refunds no subscription fees, but still corrects Stayo’s own billing errors', () => {
+    expect(text()).toMatch(/subscription fees are not refundable/i);
+    // The absolute "under all circumstances" form is the unfair-term risk in spec §2.2.
+    expect(text()).not.toMatch(/under (all|any) circumstances/i);
+    expect(text()).toMatch(/charge you twice/i);
+  });
+});
+

@@ -29,23 +29,25 @@ import type { LegalDocument } from './types';
  *
  * **Two figures below are this module's honest limits, not decisions:**
  *
- * - **Trial length** (clause `money-you-pay-stayo-2`) — the proprietor has
- *   not fixed a number. The clause is written to be true and complete
- *   whatever that number turns out to be, or whether a trial is offered at
- *   all: it defers to what is shown at the time, rather than stating a figure.
- * - **Mid-cycle subscription refundability** (clause `money-you-pay-stayo-4`)
- *   — also undecided. The clause states the conservative, commonly-used
- *   default (fees already charged are for the cycle already entered; cancelling
- *   stops the next charge, it does not itself entitle you to a refund of the
- *   current one) without foreclosing a discretionary exception, and
- *   deliberately avoids the absolute "non-refundable under all circumstances"
- *   framing flagged as an unfair-term risk in spec §2.2.
+ * - **No free trial; subscriptions are arranged with the Stayo team**
+ *   (clauses `money-you-pay-stayo-2`/`-3`). Decided by the proprietor
+ *   2026-09-10. Matches the code: owners are "billed/collected outside the
+ *   app for V1" and an admin records each payment by hand
+ *   (`platform-admin/hostels/[id]/invoices`); `autopay_enabled` is only ever
+ *   displayed, so nothing is charged automatically. Note the admin route still
+ *   creates new subscriptions in status TRIAL with a 14-day window — an
+ *   internal label nothing reads, contradicting the policy only inside the
+ *   admin console.
+ * - **Subscription fees are not refundable** (clause `money-you-pay-stayo-4`).
+ *   Decided by the proprietor 2026-09-10. Drafted so that a cancellation or
+ *   change of mind is never refunded, while Stayo's own billing errors
+ *   (double charge, over-charge, charge after cancellation) are still
+ *   corrected — the absolute "non-refundable under all circumstances" form is
+ *   the unfair-contract-term risk flagged in spec §2.2, and a forum would
+ *   order an error corrected regardless.
  * - **The floor-approval turnaround** (clause `money-you-pay-a-hostel-6`) is
- *   stated as a firm number of business days because the brief for this task
- *   requires a firm window to be stated; the design spec (§12) separately
- *   lists "the refund-floor turnaround Stayo commits to" as an item the
- *   proprietor has not yet confirmed. Treat the figure here as a proposal
- *   pending sign-off, not a settled fact — see the implementation report.
+ *   a firm number of business days pending the proprietor's sign-off; see
+ *   docs/obsidian/Business-Rules.md, "Unknown / needs clarification".
  */
 
 export const refundsDocument: LegalDocument = {
@@ -98,25 +100,25 @@ export const refundsDocument: LegalDocument = {
       type: 'clause',
       id: 'clause-money-you-pay-stayo-2',
       number: '1.2',
-      text: 'Where we offer a free trial, its length and what happens when it ends are shown to you before the trial starts. Unless you cancel before the trial ends, the subscription begins automatically as a paid subscription, at the price and billing cycle you were shown, charged to the payment instrument you authorised.',
+      text: `There is no free trial. You subscribe by contacting the Stayo team at ${COMPANY.emails.contact}. We onboard your hostel with you and agree your plan, price and billing cycle in writing before you are billed.`,
     },
     {
       type: 'clause',
       id: 'clause-money-you-pay-stayo-3',
       number: '1.3',
-      text: 'A subscription renews automatically at the start of each billing cycle, using the payment instrument you have authorised for autopay, until you cancel it. The plan, price and billing cycle that apply to you are shown before you subscribe and remain visible from your billing settings.',
+      text: 'Your subscription continues from one billing cycle to the next until you cancel it. We invoice you for each cycle, and you pay as agreed with the Stayo team. Nothing is charged automatically.',
     },
     {
       type: 'clause',
       id: 'clause-money-you-pay-stayo-4',
       number: '1.4',
-      text: 'Fees already charged for a billing cycle pay for access during that cycle. Cancelling mid-cycle stops the next charge from being made; it does not, by itself, entitle you to a refund of the amount already charged for the cycle you are in. We may, at our discretion, make an exception in a particular case — for example a billing error on our part — but that is a discretion we exercise, not a standing entitlement.',
+      text: 'Subscription fees are not refundable. That includes cancelling partway through a billing cycle: cancelling stops the next invoice, and your access continues until the end of the cycle you have already paid for. This does not stop us correcting our own billing mistakes — if we charge you twice for the same cycle, charge you more than the amount agreed, or charge you for a cycle that began after your cancellation took effect, we refund the difference.',
     },
     {
       type: 'clause',
       id: 'clause-money-you-pay-stayo-5',
       number: '1.5',
-      text: 'If a subscription payment fails, we may retry it and we will tell you. While it stays unpaid, Owner features may be suspended, but your data — your rooms, residents, obligations and records — is retained; access is restored once the subscription is brought up to date. When you cancel, or a lapsed subscription is not revived, access continues until the end of the cycle already paid for. Cancelling does not delete your data — you can download your records at any time, and our Data Deletion & Retention notice explains how to have them deleted.',
+      text: 'If a subscription invoice is not paid when it is due, we will remind you. While it stays unpaid, Owner features may be suspended, but your data — your rooms, residents, obligations and records — is retained; access is restored once the subscription is brought up to date. When you cancel, or a lapsed subscription is not revived, access continues until the end of the cycle already paid for. Cancelling does not delete your data — you can download your records at any time, and our Data Deletion & Retention notice explains how to have them deleted.',
     },
     {
       type: 'clause',
