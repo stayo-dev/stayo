@@ -6,6 +6,43 @@ const logger = getLogger("bulk-import-validation");
 
 export const MAX_IMPORT_ROWS = 150;
 
+/** Sheet names in the generated workbook. Shared with the template builder. */
+export const COVER_SHEET = "Read me";
+export const ROOMS_SHEET = "Rooms";
+export const TENANTS_SHEET = "Tenants";
+
+/**
+ * Which sheet holds the tenants.
+ *
+ * The generated template puts a locked cover sheet first, so taking
+ * `SheetNames[0]` would parse the instructions as tenant rows — every row
+ * invalid, for a reason no error message could explain. Owners also upload
+ * their own single-sheet files, so fall back to the first sheet carrying a
+ * recognisable tenant header.
+ */
+function pickTenantSheet(workbook: XLSX.WorkBook): string {
+  const byName = workbook.SheetNames.find(
+    (n) => n.trim().toLowerCase() === TENANTS_SHEET.toLowerCase()
+  );
+  if (byName) return byName;
+
+  const skip = new Set([COVER_SHEET.toLowerCase(), ROOMS_SHEET.toLowerCase()]);
+  const candidate = workbook.SheetNames.filter((n) => !skip.has(n.trim().toLowerCase())).find((n) => {
+    const head = XLSX.utils.sheet_to_json<any>(workbook.Sheets[n], { header: 1 })[0] as string[] | undefined;
+    if (!head) return false;
+    const headers = head.map((h) => String(h || "").trim().toLowerCase());
+    return (
+      headers.some((h) => ["name", "full name"].includes(h)) &&
+      headers.some((h) => ["phone", "phone number", "mobile"].includes(h))
+    );
+  });
+  if (candidate) return candidate;
+
+  throw new Error(
+    `VALIDATION_ERROR: We couldn't find a "${TENANTS_SHEET}" sheet in this file. Download a fresh template and fill in the ${TENANTS_SHEET} sheet.`
+  );
+}
+
 /**
  * Reads the first sheet of an uploaded workbook into tenant rows.
  *
@@ -17,11 +54,11 @@ export const MAX_IMPORT_ROWS = 150;
 export function parseTenantWorkbook(fileBuffer: Buffer, filename: string): TenantImportRow[] {
   try {
     const workbook = XLSX.read(fileBuffer, { type: "buffer", raw: true });
-    const sheetName = workbook.SheetNames[0];
 
-    if (!sheetName) {
+    if (!workbook.SheetNames.length) {
       throw new Error("VALIDATION_ERROR: Excel file is empty or has no sheets");
     }
+    const sheetName = pickTenantSheet(workbook);
 
     const worksheet = workbook.Sheets[sheetName];
     const jsonData = XLSX.utils.sheet_to_json<any>(worksheet, {

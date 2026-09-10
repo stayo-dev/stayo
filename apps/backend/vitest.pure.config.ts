@@ -171,6 +171,8 @@ export default defineConfig({
       // impossible dates rolled over, "Rs. 8,000" read as 0.8, inactive rooms
       // passing preview, and blocked rows with no issue to explain them.
       'tests/bulk-import-row-validation.test.ts',
+      // A cover sheet must not be parsed as the tenant list.
+      'tests/bulk-import-workbook-sheets.test.ts',
       'tests/build-without-env.test.ts',
     ],
     alias: {
