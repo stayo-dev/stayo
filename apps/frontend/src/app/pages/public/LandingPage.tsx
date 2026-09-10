@@ -35,7 +35,7 @@ const FEATURES = [
 
 const TRUST_ITEMS = [
   'Verified Owner Onboarding',
-  'Secure Payments via PhonePe',
+  'Secure, RBI-authorised Payments',
   'WhatsApp-first Communication',
   'Digital Agreements & KYC',
   'Bank-grade Data Security',
