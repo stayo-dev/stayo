@@ -30,7 +30,17 @@ import type { LegalDocument } from './types';
  * actively used on every state-changing request. All three exist solely to
  * keep a session working and secure — none is analytics, advertising or
  * behavioural tracking, so the "no consent banner" conclusion in spec §6.6
- * holds. See the implementation report for the exact commands and output.
+ * holds.
+ *
+ * 4. Re-verified after merging main (ADR-176, Clerk): a sign-in provider now
+ *    mounts on /sign-in, /sign-up and inside ProtectedAppProviders (owner,
+ *    admin, and the SeekerAppShell profile/resident app), never on the public
+ *    route tree, and only when a publishable key is configured. Its SDK sets
+ *    authentication cookies — `__session` (signed JWT, ~60s, app domain) and
+ *    `__client_uat` (session timestamp), plus one linking cookie whose name
+ *    depends on instance type (`__client` in production, a development cookie
+ *    otherwise) — per the provider's own documentation. Clause 1.4 covers them.
+ *    The vendor is not named, consistent with how every processor is described. See the implementation report for the exact commands and output.
  */
 
 export const cookiesDocument: LegalDocument = {
@@ -46,7 +56,7 @@ export const cookiesDocument: LegalDocument = {
     "Stayo's Cookie & Tracking Notice — the cookies and browser storage Stayo uses and what each is for, why there is no cookie consent banner, and what happens if you block or delete cookies.",
   summary: [
     'A cookie is a small piece of text a website stores in your browser and reads back on later visits.',
-    'We set three cookies, all to do with signing in and security: a security token you need in order to save or change anything while signed in; a copy of your sign-in that lets you open documents directly from a link; and one left over from an earlier way of signing in, which nothing reads any more.',
+    'We set three cookies, all to do with signing in and security: a security token you need in order to save or change anything while signed in; a copy of your sign-in that lets you open documents directly from a link; and one left over from an earlier way of signing in, which nothing reads any more. When you open a sign-in screen or use the signed-in app, the sign-in provider we use also sets a few cookies of its own to keep you signed in securely.',
     'Your sign-in itself is kept in your browser’s storage, not in a cookie. We also use that storage to remember a few things on your device, such as the city you last searched. None of it is used for tracking.',
     'We do not set analytics, advertising or behavioural-tracking cookies, and we do not use any third-party tracking pixel.',
     'Everything we set is our own, and is used only for signing in, security or remembering your own choices. Nothing is used for tracking, analytics or advertising, and that is why we do not show a cookie consent banner — see below.',
@@ -68,7 +78,7 @@ export const cookiesDocument: LegalDocument = {
       type: 'clause',
       id: 'clause-cookies-we-set-1',
       number: '1.1',
-      text: 'Stayo sets three cookies, all through our own servers — for example when you sign in, or create or activate an account. The security token is also issued on its own whenever the Platform needs a fresh one. Two of the three are strictly necessary; the table says which, and why.',
+      text: 'Stayo sets three cookies of its own, all through our own servers — for example when you sign in, or create or activate an account. The security token is also issued on its own whenever the Platform needs a fresh one. Two of the three are strictly necessary; the table says which, and why. The sign-in provider we use sets further cookies, described in clause 1.4.',
     },
     {
       type: 'table',
@@ -101,7 +111,40 @@ export const cookiesDocument: LegalDocument = {
       type: 'clause',
       id: 'clause-cookies-we-set-3',
       number: '1.3',
-      text: 'All three cookies are Stayo’s own, and all three exist only for signing in and security. None of them is used for analytics, advertising or tracking, and when you sign out we ask your browser to delete all three.',
+      text: 'All three of these cookies are Stayo’s own, and all three exist only for signing in and security. None of them is used for analytics, advertising or tracking, and when you sign out we ask your browser to delete all three.',
+    },
+    {
+      type: 'clause',
+      id: 'clause-cookies-we-set-4',
+      number: '1.4',
+      text: 'Signing in is handled by a specialist sign-in provider working on our behalf — our Privacy Policy lists it among the service providers we use. Its software runs on the sign-in and sign-up screens and inside the signed-in Stayo app: your profile, your resident dashboard, and the owner and admin apps. It is not loaded on Stayo’s public pages, such as the home page, the contact page or these policies. Where it runs, it sets these cookies:',
+    },
+    {
+      type: 'table',
+      columns: ['Cookie', 'Purpose', 'Essential?'],
+      rows: [
+        [
+          '__session',
+          'A short-lived, signed proof that you are signed in. It lasts about a minute and is renewed automatically while you use the app, so a copied value stops working almost at once.',
+          'Yes — without it you cannot stay signed in through the sign-in provider.',
+        ],
+        [
+          '__client_uat',
+          'A timestamp of when your sign-in was last updated, so the app can tell quickly whether you are signed in, signed out, or due a refreshed session.',
+          'Yes — it is part of how your session is kept current.',
+        ],
+        [
+          'One further sign-in cookie',
+          'Links your browser to your sign-in, so you are not asked to sign in again on every visit. Its name, and whether it is stored under Stayo’s web address or the address the provider uses for Stayo’s sign-in, depend on how the provider is configured.',
+          'Yes — without it you would be signed out between visits.',
+        ],
+      ],
+    },
+    {
+      type: 'clause',
+      id: 'clause-cookies-we-set-5',
+      number: '1.5',
+      text: 'These cookies are set and read by the sign-in provider’s software on our behalf, and checked by our servers to confirm you are signed in. We use them only to sign you in securely; they are not analytics, advertising or tracking cookies. The provider may add a short suffix to their names.',
     },
 
     /* 2 — What we keep in your browser's storage */
@@ -169,7 +212,7 @@ export const cookiesDocument: LegalDocument = {
       type: 'clause',
       id: 'clause-why-no-banner-2',
       number: '4.2',
-      text: 'Everything Stayo keeps in your browser is first-party — set by Stayo, and read only by Stayo — and serves one of three purposes: signing you in (your sign-in session in browser storage, and the hms_session cookie), security (the hms_csrf cookie), or remembering your own choices and where you are in a task (the conveniences and short-lived details in section 2). Of these, your sign-in session, hms_session and hms_csrf are strictly necessary: parts of the service you asked for do not work without them. The conveniences are not strictly necessary, but they only remember what you chose or what you were in the middle of, and are never used to track you. The one remaining cookie, hms_refresh_token, is not necessary either: it is left over from an earlier way of signing in, and nothing reads it. Deleting it has no effect on your account, although it will be set again the next time you sign in.',
+      text: 'Everything kept in your browser for Stayo is set for Stayo alone — by Stayo itself, or by the sign-in provider working on its behalf — and serves one of three purposes: signing you in (your sign-in session in browser storage, the hms_session cookie, and the sign-in provider’s cookies in clause 1.4), security (the hms_csrf cookie), or remembering your own choices and where you are in a task (the conveniences and short-lived details in section 2). Of these, your sign-in session, hms_session, the sign-in provider’s cookies and hms_csrf are strictly necessary: parts of the service you asked for do not work without them. The conveniences are not strictly necessary, but they only remember what you chose or what you were in the middle of, and are never used to track you. The one remaining cookie, hms_refresh_token, is not necessary either: it is left over from an earlier way of signing in, and nothing reads it. Deleting it has no effect on your account, although it will be set again the next time you sign in.',
     },
     {
       type: 'clause',

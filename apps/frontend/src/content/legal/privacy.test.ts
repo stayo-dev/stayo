@@ -35,3 +35,17 @@ describe('the Privacy Policy', () => {
     expect(text()).toContain('grievance@yourstayo.com');
   });
 });
+
+describe('processor disclosures match what each service actually does', () => {
+  const text = () => JSON.stringify(privacyDocument.content);
+
+  it('does not say receipts are emailed — they are sent over WhatsApp', () => {
+    // EmailService.sendReceipt has no callers; receipts go as WhatsApp documents.
+    expect(text()).not.toMatch(/Email delivery:[^"]*receipts/);
+    expect(text()).toMatch(/Messaging:[^"]*receipts/);
+  });
+
+  it('discloses the font-delivery service that receives visitors’ IP addresses', () => {
+    expect(text()).toMatch(/Web fonts:[^"]*IP address/);
+  });
+});

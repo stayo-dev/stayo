@@ -28,3 +28,22 @@ describe('the Service Delivery policy', () => {
     expect(JSON.stringify(serviceDeliveryDocument.content)).toMatch(/no physical (goods|products)/i);
   });
 });
+
+/**
+ * The sign-in provider (ADR-176) sets its own cookies wherever it loads. The
+ * notice was first verified before that code was merged, and said "Stayo sets
+ * three cookies" — true of Stayo's own, false of what a signed-in browser holds.
+ * If the provider is ever removed, delete these assertions with it.
+ */
+describe('the Cookie Notice covers the sign-in provider’s cookies', () => {
+  const text = () => JSON.stringify(cookiesDocument.content);
+
+  it('lists the provider’s session cookies by name', () => {
+    expect(text()).toContain('__session');
+    expect(text()).toContain('__client_uat');
+  });
+
+  it('does not name the provider, consistent with every other processor', () => {
+    expect(text()).not.toMatch(/clerk/i);
+  });
+});
