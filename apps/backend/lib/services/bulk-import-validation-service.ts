@@ -263,46 +263,23 @@ export class BulkImportValidationService {
           value: row.room_no,
         });
       } else {
-        const room = hostelRooms.find((r) => r.room_no === row.room_no);
-        roomForRow = room;
-        if (!room) {
+        roomForRow = hostelRooms.find((r) => r.room_no === row.room_no);
+        if (!roomForRow) {
           errors.push({
             row: rowNumber,
             field: "room_no",
             message: `Room ${row.room_no} not found in hostel`,
             value: row.room_no,
           });
-        } else if (!room.is_active) {
+        } else if (!roomForRow.is_active) {
           warnings.push(`Room ${row.room_no} is inactive`);
-        } else {
-          if (!room.base_rent || room.base_rent <= 0) {
-            errors.push({
-              row: rowNumber,
-              field: "room_no",
-              message: `Room ${row.room_no} does not have rent configured`,
-              value: row.room_no,
-            });
-          }
-
-          const currentOccupancy = room.occupied_count + room.reserved_count;
-          const assignmentsInFile = roomAssignmentsSeen.get(room.id) || 0;
-          // A duplicate row, or one that already failed validation, will never
-          // be imported — so it must neither claim a bed nor be told the room
-          // is full. Counting them made a legitimate later row fail with a
-          // capacity error it did not cause.
-          const rowCanImport = !isDuplicate && errors.length === 0;
-          if (rowCanImport) {
-            if (currentOccupancy + assignmentsInFile + 1 > room.capacity) {
-              errors.push({
-                row: rowNumber,
-                field: "room_no",
-                message: `Room ${row.room_no} capacity would be exceeded (${currentOccupancy + assignmentsInFile + 1}/${room.capacity})`,
-                value: row.room_no,
-              });
-            } else {
-              roomAssignmentsSeen.set(room.id, assignmentsInFile + 1);
-            }
-          }
+        } else if (!roomForRow.base_rent || roomForRow.base_rent <= 0) {
+          errors.push({
+            row: rowNumber,
+            field: "room_no",
+            message: `Room ${row.room_no} does not have rent configured`,
+            value: row.room_no,
+          });
         }
       }
 
@@ -332,7 +309,32 @@ export class BulkImportValidationService {
         }
       }
 
-      const room = row.room_no ? hostelRooms.find((r) => r.room_no === row.room_no) : undefined;
+      // Capacity is decided last, after every per-row check that can still
+      // push an error (including joining-date validation above) has run. A
+      // duplicate row, or one that already failed validation for any reason,
+      // will never be imported — so it must neither claim a bed nor be told
+      // the room is full. Deciding this any earlier in the loop iteration
+      // let a later, unrelated field failure (e.g. an unreadable joining
+      // date) falsely consume a bed and push a legitimate later row into a
+      // false "capacity would be exceeded". Only active rooms compete for
+      // capacity, matching the room-existence/is_active checks above.
+      if (roomForRow && roomForRow.is_active) {
+        const currentOccupancy = roomForRow.occupied_count + roomForRow.reserved_count;
+        const assignmentsInFile = roomAssignmentsSeen.get(roomForRow.id) || 0;
+        const rowCanImport = !isDuplicate && errors.length === 0;
+        if (rowCanImport) {
+          if (currentOccupancy + assignmentsInFile + 1 > roomForRow.capacity) {
+            errors.push({
+              row: rowNumber,
+              field: "room_no",
+              message: `Room ${row.room_no} capacity would be exceeded (${currentOccupancy + assignmentsInFile + 1}/${roomForRow.capacity})`,
+              value: row.room_no,
+            });
+          } else {
+            roomAssignmentsSeen.set(roomForRow.id, assignmentsInFile + 1);
+          }
+        }
+      }
 
       validatedRows.push({
         row: rowNumber,
@@ -340,8 +342,8 @@ export class BulkImportValidationService {
           ...row,
           phone: normalizedPhone || row.phone,
           email: normalizedEmail,
-          room_id: roomForRow?.id || room?.id,
-          monthly_rent: row.monthly_rent ?? (room?.base_rent ? Number(room.base_rent) : undefined),
+          room_id: roomForRow?.id,
+          monthly_rent: row.monthly_rent ?? (roomForRow?.base_rent ? Number(roomForRow.base_rent) : undefined),
           advance_deposit: row.security_deposit ?? row.advance_deposit ?? defaultAdvanceDeposit,
           security_deposit: row.security_deposit ?? row.advance_deposit ?? defaultAdvanceDeposit,
           maintenance_charge: defaultMaintenanceCharge,

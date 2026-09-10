@@ -103,6 +103,37 @@ describe("room capacity accounting", () => {
     expect(result.invalidRows[0].data.name).toBe("Dd");
     expect(result.invalidRows[0].errors[0].message).toMatch(/capacity/i);
   });
+
+  it("a row with an invalid joining date does not consume a bed", async () => {
+    // Row 1 has an unparseable joining date for the 3-bed room 101. Joining-
+    // date validation runs after the capacity decision in the loop, so a row
+    // that fails there must still be excluded from capacity accounting — the
+    // same defect the isDuplicate/errors guard closed, reached through a
+    // different field. Rows 2-4 are three genuinely valid, distinct tenants
+    // and must all fit.
+    const result = await bulkImportValidationService.validateRows(
+      [
+        { ...row("Bad Date", "9876500001", "baddate@example.com"), joining_date: "May" },
+        row("Kavya", "9876500002", "kavya@example.com"),
+        row("Meena", "9876500003", "meena@example.com"),
+        row("Nisha", "9876500004", "nisha@example.com"),
+      ],
+      HOSTEL_ID,
+      OWNER_ID,
+      {}
+    );
+
+    const validNames = result.validRows.map((r) => r.data.name);
+    expect(validNames).toEqual(expect.arrayContaining(["Kavya", "Meena", "Nisha"]));
+    expect(result.validRows).toHaveLength(3);
+
+    for (const name of ["Kavya", "Meena", "Nisha"]) {
+      const validated = [...result.validRows, ...result.invalidRows].find(
+        (r) => r.data.name === name
+      )!;
+      expect(validated.errors.some((e) => /capacity/i.test(e.message))).toBe(false);
+    }
+  });
 });
 
 describe("rent_source", () => {
