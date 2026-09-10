@@ -966,6 +966,17 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Produces: `applyRoomPlan(plan: RoomPlan, ownerId: string, hostelId: string): Promise<{ created: number; updated: number; errors: Array<{ room_no: string; error: string }> }>`
 - Consumes: `propertyService.createFloor`, `propertyService.saveRoomsForFloor`, `buildRoomPlan`.
 
+> **Correction applied during execution.** This task's original design was
+> dangerous. `propertyService.saveRoomsForFloor` takes *the floor as it should
+> be* and retires any room on that floor missing from the list
+> (`plan.deactivate` in `lib/services/property/floor-room-plan.ts`). Submitting
+> only the new rooms — as the step below described — would have switched off
+> every room already on that floor: silently for an empty room, and as a loud
+> `CONFLICT` for an occupied one. For the same reason a floor must **never** be
+> split into chunks of 40; each call is the whole floor by definition. The
+> shipped `applyRoomPlan` submits each affected floor's complete contents, and
+> applies edits to a floorless room directly.
+
 - [ ] **Step 1: Write the failing test** — mock `@/lib/db` and `@/lib/services/property-service`, and assert:
   - rooms are grouped by floor and each floor's rooms are saved in **one** `saveRoomsForFloor` call, not one call per room;
   - a floor named for the sheet's `Floor` value is created only when the hostel has no floor with that name, and the existing floor's id is reused otherwise;
