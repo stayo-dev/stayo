@@ -1,10 +1,49 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
   buildIssue,
   severityOf,
   groupIssuesByCode,
   type RowIssue,
 } from "@/lib/services/bulk-import/issues";
+
+const { mockPrisma } = vi.hoisted(() => {
+  const prisma: any = {
+    profile: { findMany: vi.fn() },
+    tenant_invitations: { findMany: vi.fn() },
+    rooms: { findMany: vi.fn() },
+    hostels: { findUnique: vi.fn() },
+  };
+  return { mockPrisma: prisma };
+});
+
+vi.mock("@/lib/db", () => ({ prisma: mockPrisma }));
+vi.mock("../lib/db", () => ({ prisma: mockPrisma }));
+vi.mock("@/lib/services/hostel-billing-preferences-service", () => ({
+  hostelBillingPreferencesService: {
+    getBillingDefaults: vi.fn().mockResolvedValue({
+      maintenance_type: "NONE",
+      maintenance_charge: 0,
+      security_deposit: 0,
+      advance_deposit: 0,
+    }),
+  },
+}));
+
+beforeEach(() => {
+  mockPrisma.profile.findMany.mockResolvedValue([]);
+  mockPrisma.tenant_invitations.findMany.mockResolvedValue([]);
+  mockPrisma.rooms.findMany.mockResolvedValue([
+    {
+      id: "33333333-3333-3333-3333-333333333333",
+      room_no: "101",
+      is_active: true,
+      capacity: 3,
+      base_rent: 8500,
+      _count: { room_allocations: 0, tenant_invitation_reservations: 0 },
+    },
+  ]);
+  mockPrisma.hostels.findUnique.mockResolvedValue({ name: "Sri Adithya Boys Hostel" });
+});
 
 describe("severity", () => {
   it("blocks rows that cannot import", () => {
@@ -100,5 +139,101 @@ describe("grouping", () => {
     expect(capped).toBeDefined();
     expect(capped!.rows).toEqual([2, 3]);
     expect(groups).toHaveLength(2);
+  });
+});
+
+describe("validateRows emits issues", () => {
+  const HOSTEL_ID = "11111111-1111-1111-1111-111111111111";
+  const OWNER_ID = "22222222-2222-2222-2222-222222222222";
+
+  it("reports a bad phone as a PHONE_INVALID blocker", async () => {
+    const { bulkImportValidationService } = await import(
+      "@/lib/services/bulk-import-validation-service"
+    );
+
+    const result = await bulkImportValidationService.validateRows(
+      [{ name: "Ravi", phone: "98765", email: "ravi@example.com", room_no: "101", joining_date: "2026-09-01" } as any],
+      HOSTEL_ID,
+      OWNER_ID,
+      {}
+    );
+
+    const row = result.invalidRows[0];
+    expect(row.issues.map((i) => i.code)).toContain("PHONE_INVALID");
+    expect(row.issues.find((i) => i.code === "PHONE_INVALID")!.severity).toBe("BLOCKER");
+    expect(row.issues.find((i) => i.code === "PHONE_INVALID")!.title).toContain("98765");
+  });
+
+  it("counts blockers and choices separately", async () => {
+    const { bulkImportValidationService } = await import(
+      "@/lib/services/bulk-import-validation-service"
+    );
+
+    const result = await bulkImportValidationService.validateRows(
+      [
+        { name: "Ravi", phone: "98765", email: "ravi@example.com", room_no: "101", joining_date: "2026-09-01" } as any,
+        { name: "Priya", phone: "9876500002", email: "priya@example.com", room_no: "101", joining_date: "2022-01-05" } as any,
+      ],
+      HOSTEL_ID,
+      OWNER_ID,
+      {}
+    );
+
+    expect(result.summary.blockers).toBe(1);
+    expect(result.summary.choices).toBeGreaterThanOrEqual(1);
+  });
+
+  it("blocks a row that already-paid an amount but named no payment method", async () => {
+    const { bulkImportValidationService } = await import(
+      "@/lib/services/bulk-import-validation-service"
+    );
+
+    const result = await bulkImportValidationService.validateRows(
+      [
+        {
+          name: "Ravi",
+          phone: "9876500003",
+          email: "ravi.paid@example.com",
+          room_no: "101",
+          joining_date: "2026-09-01",
+          amount_paid: 5000,
+        } as any,
+      ],
+      HOSTEL_ID,
+      OWNER_ID,
+      {}
+    );
+
+    const row = result.invalidRows[0];
+    expect(row).toBeDefined();
+    expect(row.issues.map((i) => i.code)).toContain("PAYMENT_METHOD_MISSING");
+    expect(row.issues.find((i) => i.code === "PAYMENT_METHOD_MISSING")!.severity).toBe("BLOCKER");
+    // The legacy errors array must also carry a blocker for this row, since
+    // existing consumers (and createInvitation) still read it, not issues.
+    expect(row.errors.some((e) => e.field === "payment_method")).toBe(true);
+  });
+
+  it("does not flag a row with no amount paid at all", async () => {
+    const { bulkImportValidationService } = await import(
+      "@/lib/services/bulk-import-validation-service"
+    );
+
+    const result = await bulkImportValidationService.validateRows(
+      [
+        {
+          name: "Ravi",
+          phone: "9876500004",
+          email: "ravi.free@example.com",
+          room_no: "101",
+          joining_date: "2026-09-01",
+        } as any,
+      ],
+      HOSTEL_ID,
+      OWNER_ID,
+      {}
+    );
+
+    const row = [...result.validRows, ...result.invalidRows][0];
+    expect(row.issues.map((i) => i.code)).not.toContain("PAYMENT_METHOD_MISSING");
   });
 });

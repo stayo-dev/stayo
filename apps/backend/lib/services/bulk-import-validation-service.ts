@@ -5,6 +5,7 @@ import {
   hostelBillingPreferencesService,
   type MaintenanceType,
 } from "./hostel-billing-preferences-service";
+import { buildIssue, type RowIssue } from "./bulk-import/issues";
 
 const logger = getLogger("bulk-import-validation");
 
@@ -55,6 +56,7 @@ export interface ValidatedRow {
   data: TenantImportRow;
   errors: ValidationError[];
   warnings: string[];
+  issues: RowIssue[];
   isDuplicate: boolean;
   duplicateReason?: string;
 }
@@ -69,6 +71,8 @@ export interface ValidationResult {
     invalid: number;
     duplicates: number;
     warnings: number;
+    blockers: number;
+    choices: number;
   };
 }
 
@@ -186,6 +190,8 @@ export class BulkImportValidationService {
     const existingPhones = await this.getExistingPhones(ownerId);
     const existingEmails = await this.getExistingEmails(ownerId);
     const hostelRooms = await this.getHostelRooms(hostelId);
+    const hostel = await prisma.hostels.findUnique({ where: { id: hostelId }, select: { name: true } });
+    const hostelName = hostel?.name ?? "this hostel";
     const billingDefaults = await hostelBillingPreferencesService.getBillingDefaults(hostelId);
     const phonesSeen = new Set<string>();
     const emailsSeen = new Set<string>();
@@ -202,6 +208,7 @@ export class BulkImportValidationService {
       const rowNumber = i + 2;
       const errors: ValidationError[] = [];
       const warnings: string[] = [];
+      const issues: RowIssue[] = [];
       let isDuplicate = false;
       let duplicateReason: string | undefined;
 
@@ -222,6 +229,7 @@ export class BulkImportValidationService {
           message: "Valid phone number is required (10 digits)",
           value: row.phone,
         });
+        issues.push(buildIssue("PHONE_INVALID", rowNumber, { value: row.phone }));
       } else {
         if (existingPhones.has(normalizedPhone)) {
           isDuplicate = true;
@@ -293,6 +301,11 @@ export class BulkImportValidationService {
             message: `Room ${row.room_no} not found in hostel`,
             value: row.room_no,
           });
+          issues.push(buildIssue("ROOM_NOT_FOUND", rowNumber, {
+            roomNo: row.room_no,
+            hostelName,
+            nearestRooms: this.nearestRoomNumbers(row.room_no, hostelRooms),
+          }));
         } else if (!roomForRow.is_active) {
           warnings.push(`Room ${row.room_no} is inactive`);
         } else if (!roomForRow.base_rent || roomForRow.base_rent <= 0) {
@@ -323,12 +336,30 @@ export class BulkImportValidationService {
           message: "Invalid joining date — use DD/MM/YYYY, e.g. 05/01/2026 for 5 January 2026",
           value: row.joining_date,
         });
+        issues.push(buildIssue("DATE_UNREADABLE", rowNumber, { value: row.joining_date }));
       } else if (parsedJoiningDate) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        if (parsedJoiningDate < today) {
+        const monthsElapsed = this.monthsBetween(parsedJoiningDate, today);
+        if (monthsElapsed > 24) {
+          issues.push(buildIssue("BACKFILL_CAPPED", rowNumber, { monthsElapsed, cappedTo: 24 }));
+          warnings.push("Historical joining date requires owner confirmation before invitations are sent");
+        } else if (parsedJoiningDate < today) {
           warnings.push("Historical joining date requires owner confirmation before invitations are sent");
         }
+      }
+
+      // Amount already paid needs a payment method to be recorded against
+      // dues correctly. Without this check the row previews as clean and
+      // then hard-fails at execute time inside createInvitation.
+      if ((row.amount_paid ?? 0) > 0 && !row.payment_method) {
+        errors.push({
+          row: rowNumber,
+          field: "payment_method",
+          message: "A payment method is required when an amount already paid is entered",
+          value: row.payment_method,
+        });
+        issues.push(buildIssue("PAYMENT_METHOD_MISSING", rowNumber, { amountPaid: row.amount_paid }));
       }
 
       // Capacity is decided last, after every per-row check that can still
@@ -380,6 +411,7 @@ export class BulkImportValidationService {
         },
         errors,
         warnings,
+        issues,
         isDuplicate,
         duplicateReason,
       });
@@ -388,6 +420,7 @@ export class BulkImportValidationService {
     const validRows = validatedRows.filter((r) => r.errors.length === 0 && !r.isDuplicate);
     const invalidRows = validatedRows.filter((r) => r.errors.length > 0);
     const duplicates = validatedRows.filter((r) => r.isDuplicate);
+    const allIssues = validatedRows.flatMap((r) => r.issues);
 
     return {
       totalRows: rows.length,
@@ -399,8 +432,42 @@ export class BulkImportValidationService {
         invalid: invalidRows.length,
         duplicates: duplicates.length,
         warnings: validatedRows.reduce((sum, r) => sum + r.warnings.length, 0),
+        blockers: allIssues.filter((i) => i.severity === "BLOCKER").length,
+        choices: allIssues.filter((i) => i.severity === "NEEDS_CHOICE").length,
       },
     };
+  }
+
+  /** Nearest room numbers by edit distance, for a mistyped room ("1O1" → "101"). */
+  private nearestRoomNumbers(target: string, rooms: Array<{ room_no: string }>): string[] {
+    const wanted = String(target || "").toUpperCase();
+    return rooms
+      .map((r) => r.room_no)
+      .map((room_no) => ({ room_no, distance: this.editDistance(wanted, room_no.toUpperCase()) }))
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, 3)
+      .map((r) => r.room_no);
+  }
+
+  private editDistance(a: string, b: string): number {
+    const rows = Array.from({ length: a.length + 1 }, (_, i) =>
+      Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+    );
+    for (let i = 1; i <= a.length; i++) {
+      for (let j = 1; j <= b.length; j++) {
+        rows[i][j] = Math.min(
+          rows[i - 1][j] + 1,
+          rows[i][j - 1] + 1,
+          rows[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+        );
+      }
+    }
+    return rows[a.length][b.length];
+  }
+
+  /** Whole calendar months between two dates — used to cap backfill at 24. */
+  private monthsBetween(from: Date, to: Date): number {
+    return (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
   }
 
   private normalizePhone(phone: string): string | null {
