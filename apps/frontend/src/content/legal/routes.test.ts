@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import fs from 'node:fs';
-import path from 'node:path';
+// `?raw` reads the route table as text through Vite, with no Node APIs, so this
+// typechecks under the app's own tsconfig (which has no Node types).
+import source from '../../app/router/PublicRoutes.tsx?raw';
 import { legalDocuments, allRoutes } from './index';
 
 /**
@@ -9,11 +10,6 @@ import { legalDocuments, allRoutes } from './index';
  * rendering it, or a document could declare a URL no router served.
  */
 describe('public routing for legal documents', () => {
-  const source = fs.readFileSync(
-    path.join(process.cwd(), 'src/app/router/PublicRoutes.tsx'),
-    'utf8',
-  );
-
   it('serves every route and alias the registry declares', () => {
     for (const route of allRoutes(legalDocuments)) {
       expect(source).toContain(`path="${route}"`);
