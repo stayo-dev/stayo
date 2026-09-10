@@ -926,3 +926,18 @@ A Clerk sign-in whose email has no `profiles` row resolves to **`NO_STAYO_ACCOUN
 The backend never learns which method was used: every Clerk sign-in arrives as a session token and resolves down one path. That is deliberate — it is what stops provider-specific provisioning creeping back in.
 
 Related: [[Decisions#ADR-176|ADR-176]], [[APIs]], [[Frontend]], [[Features]]
+
+## Bulk import — how an imported tenant's terms and money land (2026-09-10)
+
+Verified against code on `feat/bulk-tenant-import`. See [[Bugs]] 2026-09-10 for what was broken, [[APIs]] for the endpoints, [[Backend]] for where it lives.
+
+- **Same path as a single invite.** Each imported row goes through `tenant-invitation-lifecycle-service.createInvitation`, so [[Decisions#ADR-165|ADR-165]] holds: an invitation is always created and tenant acceptance is mandatory. There is no import-only "just add to my records" path.
+- **Maintenance** comes from the batch value on the upload form, falling back to the hostel's billing defaults, and is sent as `maintenance_amount`. There is **no per-row maintenance**: the parser reads no maintenance column, so every row in a batch gets the same charge and type.
+- **Back-rent for a historical joining date** is generated per elapsed month by `onboarding-financials-service`, capped at `RENT_BACKFILL_CAP_MONTHS` (24). The preview flags a longer tenure as `BACKFILL_CAPPED`, severity `NEEDS_CHOICE` — the owner acknowledges it, it does not block the row.
+- **Amount already paid** (parsed from an *Amount Already Paid* column; the current CSV template does not offer one yet) is settled inside the invitation transaction by `financialPaymentFacade.receivePayment`, **FIFO across every due** — back-rent, maintenance and the deposit obligation. A payment method is required: a row with an amount and no method is blocked at preview (`PAYMENT_METHOD_MISSING`) instead of failing at execution. An amount above what is owed is rejected by `createInvitation` at execution; the preview does not yet flag it.
+- **"Paid Includes Deposit" is parsed and stored but not honoured.** Nothing on the invite path reads it, so the deposit is always inside the FIFO settlement and an owner answering "No" is not obeyed. Unknown / needs clarification: whether to implement it or remove the column.
+- **`payment_method` is uppercased** at parse time, so a sheet's `cash` and the wizard's `CASH` are one bucket in collections reporting (`payments.payment_method` is a plain string, not an enum).
+- **Room capacity:** a row claims a bed only if it will import. Duplicates and rows with any blocking error — including an unreadable joining date — claim nothing, so they cannot push a valid row over capacity.
+- **Joining dates** are read as DD/MM/YYYY (Indian format); ISO `YYYY-MM-DD` and Excel date serials are also accepted. Anything else is rejected rather than guessed, because the joining date decides how much back-rent is owed.
+- **Notes** from the sheet are kept in `bulk_import_rows.mapped_data` but never reach the tenant — `createInvitation` reads no notes key and `tenants` has no notes column. Unknown / needs clarification: where an imported note should live (a `tenant_notes` row is the likely home).
+
