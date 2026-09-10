@@ -107,7 +107,7 @@ export async function applyRoomPlan(
     if (room?.floor_id) touchedFloorIds.add(room.floor_id);
   }
 
-  for (const floorId of touchedFloorIds) {
+  for (const floorId of Array.from(touchedFloorIds)) {
     const onThisFloor = existingRooms.filter((r: any) => r.floor_id === floorId);
     const creates = createsByFloor.get(floorId) ?? [];
 

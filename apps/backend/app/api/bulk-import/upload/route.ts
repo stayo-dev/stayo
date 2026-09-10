@@ -6,6 +6,8 @@ import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { bulkImportValidationService } from "@/lib/services/bulk-import-validation-service";
 import { isAcceptedImportFile } from "@/lib/services/bulk-import/file-type";
 import { readHostelStamp } from "@/lib/services/bulk-import/hostel-stamp";
+import { parseRoomsSheet } from "@/lib/services/bulk-import/rooms-sheet";
+import { buildRoomPlan } from "@/lib/services/bulk-import/room-plan";
 import { sanitizeImportRowForStorage } from "@/lib/services/bulk-import/sanitize-row";
 import { prisma } from "@/lib/db";
 import crypto from "crypto";
@@ -86,6 +88,11 @@ export async function POST(req: NextRequest) {
 
     const importDefaults = parseImportDefaults(formData);
 
+    // The Rooms sheet, if the workbook has one. Planned here so the owner sees
+    // what will be created before confirming, and so confirm executes the plan
+    // they saw rather than re-deriving it from a file we no longer hold.
+    const roomPlan = await planRoomsFromWorkbook(fileBuffer, hostelId);
+
     const rows = await bulkImportValidationService.parseFile(
       fileBuffer,
       file.name
@@ -137,6 +144,12 @@ export async function POST(req: NextRequest) {
               warnings: r.warnings,
             })),
             requires_historical_join_date_confirmation: hasHistoricalJoinDateWarnings,
+            room_plan: {
+              create: roomPlan.create,
+              update: roomPlan.update,
+              unchanged: roomPlan.unchanged,
+              issues: roomPlan.issues,
+            },
           } as any,
           import_source_version: "tenant_invitation_lifecycle_v1",
           uploaded_by: session.sub,
@@ -173,6 +186,12 @@ export async function POST(req: NextRequest) {
           duplicate_rows: validation.summary.duplicates,
           warnings: validation.summary.warnings,
           requires_historical_join_date_confirmation: hasHistoricalJoinDateWarnings,
+        },
+        rooms: {
+          to_create: roomPlan.create.length,
+          to_update: roomPlan.update.length,
+          unchanged: roomPlan.unchanged.length,
+          issues: roomPlan.issues,
         },
         preview: {
           valid: validation.validRows.map(sanitizeValidatedRow),
@@ -238,3 +257,45 @@ function sanitizeValidatedRow(row: any) {
   };
 }
 
+/**
+ * What the workbook's Rooms sheet means for this hostel.
+ *
+ * Returns an empty plan for a file with no Rooms sheet — an owner's own
+ * spreadsheet — so the tenant import still works exactly as before.
+ */
+async function planRoomsFromWorkbook(fileBuffer: Buffer, hostelId: string) {
+  const sheet = parseRoomsSheet(fileBuffer);
+  if (!sheet.length) return { create: [], update: [], unchanged: [], issues: [] };
+
+  const rooms = await prisma.rooms.findMany({
+    where: { hostel_id: hostelId },
+    select: {
+      id: true,
+      room_no: true,
+      capacity: true,
+      base_rent: true,
+      is_active: true,
+      floor: true,
+      _count: {
+        select: {
+          room_allocations: { where: { is_active: true, end_date: null, tenant: { status: "ACTIVE" } } },
+          tenant_invitation_reservations: { where: { status: "ACTIVE", expires_at: { gt: new Date() } } },
+        },
+      },
+    },
+  });
+
+  return buildRoomPlan(
+    sheet,
+    rooms.map((room: any) => ({
+      id: room.id,
+      room_no: room.room_no,
+      capacity: room.capacity,
+      base_rent: room.base_rent,
+      is_active: room.is_active,
+      floor: room.floor,
+      occupied_count: room._count?.room_allocations ?? 0,
+      reserved_count: room._count?.tenant_invitation_reservations ?? 0,
+    }))
+  );
+}
