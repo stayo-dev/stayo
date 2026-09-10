@@ -74,16 +74,39 @@ export class BulkImportValidationService {
     return parseTenantWorkbook(fileBuffer, filename);
   }
 
+  /**
+   * @param pendingRooms rooms the same workbook's Rooms sheet will create at
+   *   confirm. Tenants must be allowed to reference them: the template's own
+   *   instructions tell the owner to add a missing room on the Rooms sheet and
+   *   then use it, so validating against the database alone would reject the
+   *   exact flow we ask for.
+   */
   async validateRows(
     rows: TenantImportRow[],
     hostelId: string,
     ownerId: string,
-    importDefaults: ImportDefaults = {}
+    importDefaults: ImportDefaults = {},
+    pendingRooms: Array<{ room_no: string; capacity?: number; base_rent?: number }> = []
   ): Promise<ValidationResult> {
     const validatedRows: ValidatedRow[] = [];
     const existingPhones = await this.getExistingPhones(ownerId);
     const existingEmails = await this.getExistingEmails(ownerId);
-    const hostelRooms = await this.getHostelRooms(hostelId);
+    const savedRooms = await this.getHostelRooms(hostelId);
+    const savedRoomNumbers = new Set(savedRooms.map((r) => r.room_no.trim().toUpperCase()));
+    const hostelRooms = [
+      ...savedRooms,
+      ...pendingRooms
+        .filter((r) => !savedRoomNumbers.has(String(r.room_no).trim().toUpperCase()))
+        .map((r) => ({
+          id: `pending:${String(r.room_no).trim()}`,
+          room_no: String(r.room_no).trim(),
+          is_active: true,
+          capacity: Number(r.capacity ?? 1),
+          base_rent: r.base_rent ?? null,
+          occupied_count: 0,
+          reserved_count: 0,
+        })),
+    ];
     const hostel = await prisma.hostels.findUnique({ where: { id: hostelId }, select: { name: true } });
     const hostelName = hostel?.name ?? "this hostel";
     const billingDefaults = await hostelBillingPreferencesService.getBillingDefaults(hostelId);
@@ -112,6 +135,9 @@ export class BulkImportValidationService {
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       const rowNumber = i + 2;
+      // The template's own example row, left in place so the row numbers the
+      // owner sees match their spreadsheet.
+      if (row.is_example) continue;
       const errors: ValidationError[] = [];
       const warnings: string[] = [];
       const issues: RowIssue[] = [];

@@ -49,3 +49,7 @@ apps/backend/scratch/
 # Next could recreate one it owns. Ignored because `/.next/` does not match it,
 # and `git add apps/` otherwise sweeps 1.4G of build cache into a commit.
 /apps/backend/.next.root-owned-*/
+
+# Obsidian writes per-machine workspace and UI state here when docs/obsidian is
+# opened as a vault. The notes are the shared artefact; the window layout is not.
+/docs/obsidian/.obsidian/

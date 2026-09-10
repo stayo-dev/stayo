@@ -11,6 +11,9 @@ const { mockPrisma, mockLifecycle } = vi.hoisted(() => {
       findMany: vi.fn(),
       updateMany: vi.fn(),
       update: vi.fn(),
+      // Confirm is chunked: it counts the batch's rows to report progress and
+      // to decide when the batch is genuinely finished.
+      count: vi.fn(),
     },
   };
   return {
@@ -77,6 +80,10 @@ beforeEach(() => {
   mockPrisma.bulk_import_rows.findFirst.mockResolvedValue(null);
   mockPrisma.bulk_import_rows.updateMany.mockResolvedValue({ count: 1 });
   mockPrisma.bulk_import_rows.update.mockResolvedValue({});
+  // One row in the batch, and after the run it has succeeded.
+  mockPrisma.bulk_import_rows.count.mockImplementation(async ({ where }: any) =>
+    where?.execution_status === "FAILED" ? 0 : 1
+  );
   mockPrisma.bulk_import_rows.findMany.mockResolvedValue([
     {
       id: "row-uuid-1",

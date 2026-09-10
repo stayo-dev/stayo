@@ -259,8 +259,12 @@ export const bulkImportService = {
         const response = await api.post(`/bulk-import/${batchId}/confirm`, options);
         return response.data;
     },
-    downloadTemplate: async () => {
-        const response = await api.get('/bulk-import/template', { responseType: 'blob' });
+    // The template is built from one hostel's rooms, so it needs the hostel.
+    downloadTemplate: async (hostelId) => {
+        const response = await api.get('/bulk-import/template', {
+            params: { hostel_id: hostelId },
+            responseType: 'blob',
+        });
         return response.data;
     },
 };
