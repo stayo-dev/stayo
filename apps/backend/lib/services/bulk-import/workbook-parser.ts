@@ -12,6 +12,17 @@ export const ROOMS_SHEET = "Rooms";
 export const TENANTS_SHEET = "Tenants";
 
 /**
+ * The Name cell of the worked example the template writes.
+ *
+ * The example is worth having — it shows the shape of a row at a glance — but
+ * it parses as a perfectly valid tenant, so an owner who forgets to delete it
+ * would import a person called "Example". Rows still carrying this exact text
+ * are dropped at parse time. Editing the name, which is what an owner who
+ * types over the example does, makes the row real again.
+ */
+export const EXAMPLE_ROW_NAME = "Example — delete this row";
+
+/**
  * Which sheet holds the tenants.
  *
  * The generated template puts a locked cover sheet first, so taking
@@ -76,7 +87,13 @@ export function parseTenantWorkbook(fileBuffer: Buffer, filename: string): Tenan
       throw new Error("VALIDATION_ERROR: No data rows found in the file");
     }
 
-    return normalizeRows(jsonData);
+    const tenants = normalizeRows(jsonData).filter((row) => row.name !== EXAMPLE_ROW_NAME);
+    if (!tenants.length) {
+      throw new Error(
+        `VALIDATION_ERROR: This file doesn't have any tenants in it yet. Add one row per tenant on the ${TENANTS_SHEET} sheet, then upload it again.`
+      );
+    }
+    return tenants;
   } catch (error: any) {
     if (error.message.includes("VALIDATION_ERROR")) {
       throw error;
