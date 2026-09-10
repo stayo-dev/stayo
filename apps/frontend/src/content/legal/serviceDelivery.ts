@@ -29,7 +29,7 @@ export const serviceDeliveryDocument: LegalDocument = {
     "Stayo's Service Delivery & Access policy — Stayo delivers software, not physical goods, so nothing is shipped; what you get is account access, generated records and communications, delivered digitally, while a hostel's physical amenities are provided by the hostel itself.",
   summary: [
     'Stayo is software. We deliver access to that software, not a physical product, so no physical goods are shipped to you at any point.',
-    'What we deliver digitally: account access as soon as it is activated, and the receipts, agreements and confirmations the Platform generates, sent in-app and by email.',
+    'What we deliver digitally: account access once your account is activated; receipts, agreements and other records, kept in your account on the Platform; and a small number of emails, such as invitations, rent reminders and password-reset links.',
     'A hostel’s rooms, beds, food and other physical amenities are provided by the hostel itself, following its own onboarding of you — not by Stayo.',
     'If something you were told to expect from Stayo was not delivered, tell support first.',
   ],
@@ -64,25 +64,31 @@ export const serviceDeliveryDocument: LegalDocument = {
       type: 'clause',
       id: 'clause-what-is-delivered-1',
       number: '2.1',
-      text: 'Account access. An Owner’s access to the Owner side of the Platform is delivered as soon as their subscription is activated. A Resident’s access is delivered as soon as their account is created and, where activation involves the hostel confirming a room, as soon as that activation step is completed.',
+      text: 'Account access. An Owner’s access to the Owner side of the Platform is delivered on account activation — as soon as they activate their account using the activation link we send them. A Resident’s access to their hostel on the Platform is delivered once they have activated their account from the hostel’s invitation, by completing the steps that hostel requires (such as accepting its rules, completing a profile and signing its agreement), or, where the hostel already keeps a record of their stay on the Platform, once they have claimed that record by confirming their phone number. That access continues while their stay with the hostel is current. Anyone who creates an account only to browse and enquire about hostels has access as soon as the account is created.',
     },
     {
       type: 'clause',
       id: 'clause-what-is-delivered-2',
       number: '2.2',
-      text: 'Records the Platform generates. Payment receipts, rental agreements, obligation and rent-due records, and booking or enquiry confirmations are generated in-app at the time of the event they record, and are also sent to you by email where you have given us an address to send them to.',
+      text: 'Records the Platform generates. Payment receipts, rental agreements, rent-due records and the enquiries you have sent are generated at the time of the event they record, and are kept in your account on the Platform, where you can see them whenever you sign in.',
     },
     {
       type: 'clause',
       id: 'clause-what-is-delivered-3',
       number: '2.3',
-      text: `Payment confirmation. When you pay a hostel through the Platform, the receipt is generated as soon as ${PAYMENT_PARTNER.descriptor} confirms the payment succeeded — usually within moments, though this depends on the payment method and the aggregator, not on Stayo.`,
+      text: 'What we send by email. Where we have an email address for you, we email: an invitation to join a hostel, when a hostel invites you as a Resident; the activation link for a new Owner account; reminders when rent is due or overdue, and a notice when a late fee has been added, unless the hostel has switched email reminders off; a link to reset your password, when you ask for one; and a code to confirm a new email address on your account. Receipts, agreements and the other records in clause 2.2 are not emailed — you will find them in your account on the Platform.',
     },
     {
       type: 'clause',
       id: 'clause-what-is-delivered-4',
       number: '2.4',
-      text: 'None of this is shipped, couriered or posted. It is delivered by making it available in your account and, where applicable, by email — there is no separate delivery step and no delivery fee.',
+      text: `Payment confirmation. When you pay a hostel through the Platform, the receipt is generated as soon as ${PAYMENT_PARTNER.descriptor} confirms the payment succeeded — usually within moments, though this depends on the payment method and the aggregator, not on Stayo.`,
+    },
+    {
+      type: 'clause',
+      id: 'clause-what-is-delivered-5',
+      number: '2.5',
+      text: 'None of this is shipped, couriered or posted. It is delivered by making it available in your account and, for the messages listed in clause 2.3, by email — there is no separate delivery step and no delivery fee.',
     },
 
     /* 3 — What the hostel delivers, not Stayo */

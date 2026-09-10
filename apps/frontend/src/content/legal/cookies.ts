@@ -43,13 +43,14 @@ export const cookiesDocument: LegalDocument = {
   audience: 'all',
   material: false,
   metaDescription:
-    "Stayo's Cookie & Tracking Notice — the small number of strictly necessary cookies we set to keep you signed in, why there is no cookie consent banner, and how to control cookies in your browser.",
+    "Stayo's Cookie & Tracking Notice — the cookies and browser storage Stayo uses and what each is for, why there is no cookie consent banner, and what happens if you block or delete cookies.",
   summary: [
     'A cookie is a small piece of text a website stores in your browser and reads back on later visits.',
-    'We set a small number of cookies, and every one of them exists to keep you signed in and keep your session secure — nothing more.',
+    'We set three cookies. One is a security token you need in order to save or change anything while signed in. The other two are left over from an earlier way of signing in to Stayo, and are kept only for compatibility.',
+    'Your sign-in itself is kept in your browser’s storage, not in a cookie. We also use that storage to remember a few things on your device, such as the city you last searched. None of it is used for tracking.',
     'We do not set analytics, advertising or behavioural-tracking cookies, and we do not use any third-party tracking pixel.',
-    'Because every cookie we set is strictly necessary, we do not show a cookie consent banner — see below for why.',
-    'You can block or delete cookies in your browser, but doing so will prevent you from signing in.',
+    'Because nothing we store is used to track you or to advertise to you, we do not show a cookie consent banner — see below for why.',
+    'You can block or delete cookies in your browser. Blocking them stops you saving or changing anything while signed in, and in many browsers also stops you staying signed in.',
   ],
   content: [
     {
@@ -58,7 +59,7 @@ export const cookiesDocument: LegalDocument = {
     },
     {
       type: 'paragraph',
-      text: 'A cookie is a small piece of text that a website asks your browser to store, and to send back to that website on later requests. This notice tells you exactly which cookies Stayo sets, why, and how to control them.',
+      text: 'A cookie is a small piece of text that a website asks your browser to store, and to send back to that website on later requests. A website can also keep information in your browser’s own storage (called local storage and session storage), which is not sent along with every request the way a cookie is. This notice tells you exactly which cookies and browser storage Stayo uses, why, and how to control them.',
     },
 
     /* 1 — The cookies we set */
@@ -67,26 +68,26 @@ export const cookiesDocument: LegalDocument = {
       type: 'clause',
       id: 'clause-cookies-we-set-1',
       number: '1.1',
-      text: 'Stayo sets three cookies, all through our own servers when you sign in or start a session. Every one of them is strictly necessary — the Platform will not work correctly without it, and none of them is optional in the way a marketing or analytics cookie would be.',
+      text: 'Stayo sets three cookies, all through our own servers — for example when you sign in, or create or activate an account. The security token is also issued on its own whenever the Platform needs a fresh one. Only one of the three is strictly necessary; the table says which, and why.',
     },
     {
       type: 'table',
       columns: ['Cookie', 'Purpose', 'Essential?'],
       rows: [
         [
+          'hms_csrf',
+          'A security token. Whenever you save or change something while signed in, the Platform sends this token back with the request, and our servers refuse the change unless the two match. This is how we confirm the request came from you on Stayo, and not from another website acting on your behalf. It is also checked when you ask to reset a forgotten password.',
+          'Yes — without it you cannot save or change anything while signed in, or reset a forgotten password.',
+        ],
+        [
           'hms_session',
-          'Identifies you as signed in, so you are not asked to log in again on every page.',
-          'Yes',
+          'A copy of your sign-in credential, left over from an earlier way of signing in to Stayo. Your sign-in now works through your browser’s storage instead (see section 2). We still set this cookie for compatibility with that earlier method, and our servers will accept it as a fallback if a request arrives without the usual sign-in details.',
+          'No — kept for compatibility with an earlier sign-in method.',
         ],
         [
           'hms_refresh_token',
-          'Lets your session be renewed without interrupting you, and supports sign-in on some app surfaces as a fallback to our primary session mechanism.',
-          'Yes',
-        ],
-        [
-          'hms_csrf',
-          'A security token that lets us confirm a request that changes your data actually came from you, not from another website acting on your behalf.',
-          'Yes',
+          'Also left over from the earlier way of signing in, where it was used to renew your session. Your browser still sends it to our servers, but nothing on them reads it any more.',
+          'No — kept for compatibility with an earlier sign-in method, and not read.',
         ],
       ],
     },
@@ -96,63 +97,119 @@ export const cookiesDocument: LegalDocument = {
       number: '1.2',
       text: 'The hms_session and hms_refresh_token cookies cannot be read by scripts running on the page — only our servers can read them. The hms_csrf cookie is readable by the page, because that is what lets it do its job of confirming a request came from you.',
     },
+    {
+      type: 'clause',
+      id: 'clause-cookies-we-set-3',
+      number: '1.3',
+      text: 'All three cookies are Stayo’s own, and all three exist only for signing in and security. None of them is used for analytics, advertising or tracking, and when you sign out we ask your browser to delete all three.',
+    },
 
-    /* 2 — What we do not set */
-    { type: 'subheading', id: 'what-we-do-not-set', text: '2. What we do not set' },
+    /* 2 — What we keep in your browser's storage */
+    { type: 'subheading', id: 'browser-storage', text: '2. What we keep in your browser’s storage' },
+    {
+      type: 'clause',
+      id: 'clause-browser-storage-1',
+      number: '2.1',
+      text: 'Your sign-in is kept in your browser’s local storage, not in a cookie. When you sign in, the sign-in software running on the page stores your session there, and the Platform sends it with each request to show that it is you. This is strictly necessary: without it you cannot stay signed in.',
+    },
+    {
+      type: 'clause',
+      id: 'clause-browser-storage-2',
+      number: '2.2',
+      text: 'We also use local storage for a few conveniences. Each one only remembers something about how you use the Platform on that device:',
+    },
+    {
+      type: 'list',
+      ordered: false,
+      items: [
+        'the city you last chose when searching for hostels;',
+        'how you have chosen to sort your hostels on the Owner dashboard;',
+        'a draft of the details you have entered while setting up as an Owner, or of your profile while activating a Resident account, so that you do not lose your work if the page reloads part-way through;',
+        'which getting-started tips and guides you have dismissed, so they are not shown to you again;',
+        'when you last turned down the offer to switch on notifications, so we do not keep asking.',
+      ],
+    },
+    {
+      type: 'clause',
+      id: 'clause-browser-storage-3',
+      number: '2.3',
+      text: 'Session storage, which your browser clears when you close the tab, holds short-lived details that carry you from one step to the next — for example, where to return you after signing in with Google, whether you have already seen the welcome screen, or the reference for a request you have just sent us.',
+    },
+    {
+      type: 'clause',
+      id: 'clause-browser-storage-4',
+      number: '2.4',
+      text: 'None of this is used to track you. It is not used for analytics or advertising, and we do not use it to follow you across other websites or to build a profile of you. Clearing your browser’s site data removes all of it; apart from losing the conveniences above, the only effect is that you are signed out on that device.',
+    },
+
+    /* 3 — What we do not set */
+    { type: 'subheading', id: 'what-we-do-not-set', text: '3. What we do not set' },
     {
       type: 'clause',
       id: 'clause-what-we-do-not-set-1',
-      number: '2.1',
+      number: '3.1',
       text: 'We do not set analytics cookies, advertising cookies, or cookies that track your behaviour across sites. We do not load any third-party analytics tool, advertising network, or tracking pixel on the Platform. We do not build an advertising profile of you, and we do not sell or share cookie data with anyone for advertising.',
     },
     {
       type: 'clause',
       id: 'clause-what-we-do-not-set-2',
-      number: '2.2',
+      number: '3.2',
       text: 'If that ever changes — for example, if we add a product analytics or advertising tool in future — we will update this notice first, and we will revisit whether a consent banner is required before any such cookie is set.',
     },
 
-    /* 3 — Why there is no consent banner */
-    { type: 'subheading', id: 'why-no-banner', text: '3. Why there is no consent banner' },
+    /* 4 — Why there is no consent banner */
+    { type: 'subheading', id: 'why-no-banner', text: '4. Why there is no consent banner' },
     {
       type: 'clause',
       id: 'clause-why-no-banner-1',
-      number: '3.1',
-      text: 'Cookie consent rules exist to give you a real choice about cookies you could reasonably decline — most often analytics and advertising cookies. Cookies that are strictly necessary for the service you have asked for, like staying signed in, are treated differently: the law requires that you be told about them, not that you be asked to agree to them, because there is no working alternative to offer if you say no.',
+      number: '4.1',
+      text: 'Cookie consent rules exist to give you a real choice about cookies you could reasonably decline — most often analytics and advertising cookies. Cookies and storage that are strictly necessary for the service you have asked for, like staying signed in, are treated differently: the law requires that you be told about them, not that you be asked to agree to them, because there is no working alternative to offer if you say no.',
     },
     {
       type: 'clause',
       id: 'clause-why-no-banner-2',
-      number: '3.2',
-      text: 'Every cookie Stayo sets is in that strictly-necessary category. We have deliberately chosen not to show a cookie consent banner, because a banner asking your permission for a cookie you cannot actually decline is not a real choice — it is theatre, and it trains people to dismiss consent prompts without reading them, which makes consent worse everywhere, including on the sites where it does matter. This notice is how we give you notice instead.',
+      number: '4.2',
+      text: 'The security token and your sign-in session are in that strictly-necessary category. The conveniences in section 2 only remember choices you made on your own device. The two compatibility cookies are not strictly necessary — we have said so plainly in section 1 rather than dress them up — but they are not what consent banners are for either: they are set only by Stayo, only as part of signing you in, they carry nothing but your own sign-in credential, and they are never used for analytics, advertising or tracking. If you would rather not keep them, deleting just those two has no effect on your account; they will be set again the next time you sign in.',
+    },
+    {
+      type: 'clause',
+      id: 'clause-why-no-banner-3',
+      number: '4.3',
+      text: 'We have deliberately chosen not to show a cookie consent banner. A banner asking your permission when there is nothing tracking you to say no to is not a real choice — it is theatre, and it trains people to dismiss consent prompts without reading them, which makes consent worse everywhere, including on the sites where it does matter. This notice is how we give you notice instead.',
     },
 
-    /* 4 — Controlling cookies */
-    { type: 'subheading', id: 'controlling-cookies', text: '4. Controlling cookies' },
+    /* 5 — Controlling cookies */
+    { type: 'subheading', id: 'controlling-cookies', text: '5. Controlling cookies' },
     {
       type: 'clause',
       id: 'clause-controlling-cookies-1',
-      number: '4.1',
+      number: '5.1',
       text: 'Your browser lets you view, block or delete cookies, including cookies already stored from Stayo. The setting is usually under your browser’s privacy or site-settings menu; where to find it varies by browser and device.',
     },
     {
       type: 'notice',
-      text: 'Because every cookie Stayo sets is required for signing in, blocking or deleting them will sign you out and prevent you from signing back in. There is no setting on the Platform to keep some of these cookies and drop others — they work together as one mechanism.',
+      text: 'If you block cookies for Stayo, you will not be able to save or change anything while you are signed in, because the security token cannot be stored and our servers will refuse the change. You will also not be able to reset a forgotten password. In many browsers, the setting that blocks all cookies also blocks the browser storage that holds your sign-in, so in practice you are also likely to find you cannot stay signed in.',
     },
     {
       type: 'clause',
       id: 'clause-controlling-cookies-2',
-      number: '4.2',
-      text: 'We do not use any other browser storage — such as tracking-oriented use of local storage — as a workaround for a blocked cookie. If you block these cookies, you are simply signed out; we do not attempt to identify or track you by another means.',
+      number: '5.2',
+      text: 'Deleting Stayo’s cookies, rather than blocking them, does not by itself sign you out: your sign-in is held in browser storage, and a fresh security token is fetched automatically the next time you need one. However, the option most browsers offer for clearing cookies also clears other site data, including that storage — if you use it, you will be signed out on that device and will need to sign in again.',
+    },
+    {
+      type: 'clause',
+      id: 'clause-controlling-cookies-3',
+      number: '5.3',
+      text: 'We do not use browser storage, or any other means, to identify or track you as a workaround for blocked cookies. The browser storage described in section 2 is all we keep in your browser besides the cookies in section 1, and it is used only for the purposes described there.',
     },
 
-    /* 5 — Changes to this notice */
-    { type: 'subheading', id: 'changes', text: '5. Changes to this notice' },
+    /* 6 — Changes to this notice */
+    { type: 'subheading', id: 'changes', text: '6. Changes to this notice' },
     {
       type: 'clause',
       id: 'clause-changes-1',
-      number: '5.1',
-      text: 'We may update this notice, most often because the cookies we set have changed. Each version is published on this page with a version number and the date it takes effect. Questions about this notice can be sent to our privacy contact.',
+      number: '6.1',
+      text: 'We may update this notice, most often because the cookies or browser storage we use have changed. Each version is published on this page with a version number and the date it takes effect. Questions about this notice can be sent to our privacy contact.',
     },
     {
       type: 'contact_list',
