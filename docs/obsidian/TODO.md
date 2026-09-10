@@ -4,6 +4,16 @@ tags: [todo, backlog]
 
 # TODO / Backlog
 
+## Cron gaps left open by the MVP trim (2026-09-06, [[Decisions#ADR-177|ADR-177]])
+
+ADR-177 was scheduling-only — it changed no route code. These were found during that audit and deliberately not fixed in the same change.
+
+- [ ] **Three cron routes still fail open on a missing `CRON_SECRET`.** *(Partially fixed 2026-09-08, [[Decisions#ADR-178|ADR-178]]: `reconcile-payments` now returns `500`.)* Still open: `admissions` and `data-retention` guard with `if (cronSecret && ...)`, so an unset or empty secret makes them fully public — and `data-retention` **permanently deletes records with no archive path**, with the registry already naming an auth review as a precondition for ever scheduling it. `tenant-analytics` has a milder variant: comparing against `Bearer ${process.env.CRON_SECRET}` with the var unset makes the literal string `Bearer undefined` a valid credential. Make all three fail closed.
+- [ ] **`generate-rent` can silently truncate a billing run.** It stops at `SOFT_TIMEOUT_MS` (240 s) and returns `has_more: true` + `next_cursor` for a follow-up call **nothing in the repo makes** — the only other `has_more` hits are unrelated admin pagination. A partial run of the P0 billing job is neither retried nor alerted. Not reached at current scale. Needs either a self-chaining follow-up or an alert on `has_more: true`.
+- [ ] **Nothing alerts on cron failure, on either runner.** A failed GitHub Actions run is a red mark in a tab nobody opens; a failed Vercel Cron is a log line. This is precisely what let a job 404 nightly for twelve days ([[Bugs]]). Cheapest useful version: fail the workflow loudly to a WhatsApp/email channel that is already wired.
+- [x] **Fold all six crons into `vercel.json` and retire `.github/workflows/backend-cron.yml`.** Done 2026-09-08, [[Decisions#ADR-179|ADR-179]]. `keep-warm.yml` (5-minute `/api/health` ping) stays on GitHub — a sub-daily schedule fails Hobby deployment — and is now the only GitHub Actions schedule in the repo; it can move too on Pro.
+- [ ] **Re-schedule `hostel-invariants` and `migration-audit` once something reads their output.** Descheduled because they write to `financial_invariant_failures` / `migration_audit_runs`, which no surface renders and no alert watches. They are useful jobs attached to nothing — weekly, plus somewhere to see the result, would make them worth running again.
+
 ## v2 — un-shelve the Stayo Discover marketplace (2026-09-03, [[Decisions#ADR-170|ADR-170]])
 
 v1 removed the public marketplace + owner listing/marketing surfaces from the frontend and gated the APIs behind `MARKETPLACE_ENABLED`. All code is on disk. To bring it back:

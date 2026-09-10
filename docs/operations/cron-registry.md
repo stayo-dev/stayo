@@ -1,162 +1,233 @@
-# HMS Cron Registry
+# Stayo Cron Registry
 
-This is the canonical registry for every HMS cron route. Any `/api/cron/*` route must appear here before it is scheduled, even if it is Dormant, Frozen, or Deprecated.
+This is the canonical registry for every `/api/cron/*` route. A route must appear
+here before it is scheduled, even if it is Dormant, Frozen, or Deprecated.
 
-## Inventory Validation
+**Trimmed to the MVP set on 2026-09-06 (ADR-177).** Nine jobs were scheduled;
+six are now. The other routes still exist and are still `CRON_SECRET`-gated —
+they are simply unscheduled, which is this repo's standard "keep the plumbing,
+drop the trigger" posture.
 
-| Route | Schedule | Purpose | Status |
+## Where crons actually run
+
+**One scheduler, since 2026-09-08 (ADR-179):** all six jobs are `crons` entries
+in `apps/backend/vercel.json`. `.github/workflows/backend-cron.yml` is deleted.
+
+Vercel's Hobby plan allows **100 cron jobs per project**, each **once per day**,
+with **per-hour (±59 min) scheduling precision**, and rejects a sub-daily
+schedule *at deploy time* rather than degrading. The repo previously split the
+schedule across two runners to work around a **2-cron** Hobby cap that no longer
+exists.
+
+**Scheduling on Hobby — the one rule that matters.** A job scheduled at `H:00`
+fires anywhere in `[H:00, H:59]`. So two jobs that must not overlap need a
+**two-hour** slot gap, which guarantees at least 61 minutes of separation in the
+worst case. A one-hour gap guarantees nothing.
+
+`.github/workflows/keep-warm.yml` pings `/api/health` every 5 minutes to avoid
+cold starts. It is **the only GitHub Actions schedule left in the repo** and it
+cannot move to Vercel while the account is on Hobby, because a 5-minute cron
+fails deployment. It is infrastructure, not a business job, and its
+auto-disable-after-60-days risk now costs only latency, not a missed job.
+`.github/workflows/db-backup.yml` is `workflow_dispatch` only.
+
+On upgrading to Pro (per-minute precision and frequency), the two-hour gaps can
+be tightened and `keep-warm.yml` folded in as well. The two most business-
+critical jobs therefore live on Vercel Cron; the rest run from GitHub Actions,
+which calls the same `CRON_SECRET`-gated endpoints with the same
+`Authorization: Bearer` header Vercel Cron uses. On upgrading to Pro, fold the
+GitHub Actions four back into `vercel.json` and delete that workflow — keeping
+the ordering constraint below intact.
+
+## Ordering constraint — retired 2026-09-08, gap kept as defence-in-depth
+
+**This is no longer load-bearing.** ADR-178 made `generate-rent` correct on its
+own: it filters on `tenants.exit_date`, which is the field a future-dated
+move-out actually writes, so the order these two run in no longer changes any
+billing outcome. The 30-minute gap stays because nothing depends on removing it.
+
+The history, because it explains the filter: `generate-rent` bills every
+allocation whose tenant is `ACTIVE`. Its allocation query has always carried an
+exit clause — `end_date: null OR end_date >= rentMonth` — but `move-out-service.ts`
+`vacate()` takes an explicit `if (!isFutureExit)` branch that leaves a
+**future-dated** exit's allocation open (`is_active: true`, `end_date: null`)
+and the tenant `ACTIVE`, writing only `tenants.exit_date`; `move-out-releases`
+is the only thing that later closes it, and `tenant-service.ts` hard-blocks
+setting `FORMER_TENANT` directly. So the departed tenant satisfied every
+condition in the query, and whichever cron won the race decided whether they
+were billed for another month. Earlier versions of this page, ADR-177 and
+[[Bugs]] all describe this as `generate-rent` having *no* exit filter; it had
+one, aimed at a column the future-exit path never populates.
+
+**If you ever co-locate ordering-sensitive jobs on Vercel Hobby cron, a
+30-minute gap is not enough** — Hobby scheduling precision is per-hour (±59 min),
+so a job scheduled at `H:00` may fire as late as `H:59`. Two hours between slots
+guarantees at least 61 minutes of separation in the worst case.
+
+## Active jobs — the MVP set
+
+All six run on Vercel Cron. IST times are the **earliest** a job can fire; Hobby
+may delay any of them by up to 59 minutes.
+
+| Job | Route | Schedule (UTC / IST) | Criticality | Owner |
+|---|---|---|---|---|
+| Move-out releases | `/api/cron/move-out-releases` | `0 16 * * *` / 21:30 | P0 Business Critical | Move-outs |
+| Rent generation | `/api/cron/generate-rent` | `30 18 * * *` / 00:00 | P0 Business Critical | Billing |
+| Rent reminders & late fees | `/api/cron/rent-reminders` | `0 2 * * *` / 07:30 | P0 Business Critical | Collections |
+| Invitation expiry reminders | `/api/cron/invitation-expiry-reminders` | `0 3 * * *` / 08:30 | P1 Important Operations | Tenant Onboarding |
+| Payment reconciliation | `/api/cron/reconcile-payments` | `30 3 * * *` / 09:00 | P0 Business Critical | Payments |
+| Unaccepted tenancy expiry | `/api/cron/expire-unaccepted-tenancies` | `0 5 * * *` / 10:30 | P0 Business Critical | Tenant Onboarding |
+
+**Two slots moved in the consolidation, both non-billing.** `move-out-releases`
+`0 18` → `0 16` (a 91-minute worst-case lead on rent generation instead of 30),
+and `expire-unaccepted-tenancies` `0 4` → `0 5` (so the expiry warning at `0 3`
+cannot land in the same window as the sweep that acts on it). **Rent generation
+and rent reminders were deliberately left untouched** — `generate-rent` derives
+its `rentMonth` from the UTC calendar month, so moving it across a UTC day
+boundary changes which month gets billed.
+
+Why each one is in the MVP set — i.e. what is *wrong in the product* if it never runs:
+
+- **`generate-rent`** — the only writer of `rent_obligations`. No obligations
+  means no dues, no reminders, and nothing for a payment to settle against.
+- **`rent-reminders`** — the **sole writer of late fees**. `reminder-service.ts`
+  is the only non-test importer of `lib/billing/engine.ts`, so without this cron
+  every late-fee rule an owner configures is decorative. Also sends the
+  before-due, due-day, and overdue nudges.
+- **`move-out-releases`** — the only completion path for a future-dated
+  move-out. Without it the room never frees, the tenant stays `ACTIVE`, and
+  `generate-rent` keeps billing them. See the ordering constraint above.
+- **`invitation-expiry-reminders`** — the 24h-before-expiry nudge. Kept because
+  it is the only warning an invitee gets before `expire-unaccepted-tenancies`
+  closes their tenancy; expiring someone silently is a bad first impression.
+  Lowest-criticality member of the set — a pure notification, and a no-op while
+  its Meta template is unapproved.
+- **`reconcile-payments`** — repairs Razorpay attempts stuck `pending` when a
+  webhook is missed or dropped. Without it money is taken and never credited.
+- **`expire-unaccepted-tenancies`** — under ADR-165 an invited tenancy goes
+  operationally live immediately (`status = ACTIVE`, `acceptance_status =
+  PENDING`). This is the only sweep that frees the room and voids future
+  obligations when the tenant never personally accepts. Without it, ghost
+  tenancies hold beds and accrue rent indefinitely.
+
+## Descheduled 2026-09-06 (ADR-177)
+
+Routes retained, triggers removed. Re-scheduling any of these means updating
+this table first.
+
+| Job | Route | Why it left the MVP set |
+|---|---|---|
+| Admissions reservation expiry | `/api/cron/admissions` | **Redundant.** Every availability read already filters `tenant_invitation_reservations` on `expires_at > now()`, so an expired reservation stops blocking a room the moment it lapses, with or without the cron. The sweep only tidies a status column nothing reads. |
+| Owner daily briefings | `/api/cron/daily-briefings` | Pure WhatsApp convenience, gated on an unapproved Meta template. No correctness impact. Deferred, not deleted. |
+| Agreement lifecycle | `/api/cron/agreement-lifecycle` | Renewal reminders and expiry transitions. Nothing to remind about until the first cohort of agreements approaches renewal. |
+| Food expiry | `/api/cron/food-expiry` | Closes voting periods and polls past their deadline. Cosmetic — a stale `OPEN` status on an expired poll. Better handled as a read-time check if it starts to matter. |
+| Hostel invariants | `/api/cron/hostel-invariants` | Migration-era diagnostics. Writes findings to tables nothing surfaces, with no alerting attached, so a violation is discovered only if someone queries for it. Run manually, or weekly, when useful. |
+| Migration audit | `/api/cron/migration-audit` | Same as above — `migration_audit_runs` rows nobody reads. Both stay one `workflow_dispatch` away. |
+
+A dead seventh entry was also removed: the workflow had been calling
+`/api/cron/food-carry-forward` daily since that route was renamed to
+`food-expiry` on 2026-08-25 (ADR-114), 404ing and failing the job every night
+for twelve days. See [[Bugs]].
+
+## Dormant jobs
+
+| Job | Route | Status | Owner |
 |---|---|---|---|
-| `/api/cron/generate-rent` | `30 18 * * *` UTC / 00:00 IST | Generate rent and maintenance obligations for eligible active tenants. | Active |
-| `/api/cron/rent-reminders` | `0 2 * * *` UTC / 07:30 IST | Process rent reminders and eligible late fees. | Active |
-| `/api/cron/reconcile-payments` | `30 3 * * *` UTC / 09:00 IST | Reconcile pending and stuck payment attempts with provider state. | Active |
-| `/api/cron/hostel-invariants` | `0 1 * * *` UTC / 06:30 IST | Run hostel and financial invariant validation. | Active |
-| `/api/cron/migration-audit` | `15 1 * * *` UTC / 06:45 IST | Run migration audit and financial integrity checks. | Active |
-| `/api/cron/move-out-releases` | `30 18 * * *` UTC / 00:00 IST | Release rooms and close tenant state for completed or vacated move-outs whose exit date has passed. | Active |
-| `/api/cron/admissions` | `45 18 * * *` UTC / 00:15 IST | Expire stale admissions room reservations. | Active |
-| `/api/cron/agreement-lifecycle` | `30 1 * * *` UTC / 07:00 IST | Process agreement expiry reminders and lifecycle status transitions. | Active |
-| `/api/cron/daily-briefings` | `0 2 * * *` UTC / 07:30 IST | Send owner daily WhatsApp briefing using `owner_daily_briefing_v1`. | Active |
-| `/api/cron/tenant-analytics` | Not scheduled | Recalculate tenant behavior scores as analytics repair. | Dormant |
-| `/api/cron/data-retention` | Not scheduled | Delete old activity, system event, and reminder logs when retention is configured. | Frozen |
-| `/api/cron/process-overflow` | Not scheduled | Former overflow billing job removed in single-business migration. | Deprecated |
-| `/api/cron/onboarding-nudges` | Not scheduled | Former owner onboarding nudge job removed in single-business migration. | Deprecated |
-| `/api/cron/reconcile-addons` | Not scheduled | Former add-on credit reconciliation removed in single-business migration. | Deprecated |
-| `/api/cron/process-autopay-retries` | Not scheduled | Former autopay retry job removed in single-business migration. | Deprecated |
+| Tenant analytics repair | `/api/cron/tenant-analytics` | Dormant, never scheduled | Tenant Intelligence |
 
-Validation notes:
-- `apps/backend/vercel.json` is the only Vercel config with cron definitions.
-- `frontend/vercel.json` and `apps/frontend/vercel.json` do not define crons.
-- `.github/workflows/db-backup.yml` is manual `workflow_dispatch`; its schedule entries are commented out. Timestamped `.bak` workflow files are repo artifacts, not active scheduled workflows.
-- Redis queue primitives exist, but current business correctness remains owned by cron routes and synchronous service paths.
+Not business critical. Payment writes and tenant score reads already perform
+targeted self-healing recalculation. `POST`-only. Better future fit for
+event-driven tenant intelligence than for a cron.
 
-## Active Jobs
+## Frozen jobs
 
-| Job | Route | Criticality | Schedule | Status | Owner |
-|---|---|---|---|---|---|
-| Rent generation | `/api/cron/generate-rent` | P0 Business Critical | `30 18 * * *` UTC / 00:00 IST | Active | Billing |
-| Rent reminders | `/api/cron/rent-reminders` | P1 Important Operations | `0 2 * * *` UTC / 07:30 IST | Active | Collections |
-| Payment reconciliation | `/api/cron/reconcile-payments` | P0 Business Critical | `30 3 * * *` UTC / 09:00 IST | Active | Payments |
-| Move-out releases | `/api/cron/move-out-releases` | P1 Important Operations | `30 18 * * *` UTC / 00:00 IST | Active | Move-outs |
-| Admissions reservation expiry | `/api/cron/admissions` | P1 Important Operations | `45 18 * * *` UTC / 00:15 IST | Active | Admissions |
-| Agreement lifecycle | `/api/cron/agreement-lifecycle` | P1 Important Operations | `30 1 * * *` UTC / 07:00 IST | Active | Agreement Lifecycle |
-| Owner daily briefings | `/api/cron/daily-briefings` | P1 Important Operations | `0 2 * * *` UTC / 07:30 IST | Active | WhatsApp Assistant |
+| Job | Route | Status | Owner |
+|---|---|---|---|
+| Data retention cleanup | `/api/cron/data-retention` | Frozen, never scheduled | Platform Governance |
 
-## Platform Maintenance Jobs
+Permanently deletes records with no archive path. Must stay unscheduled until
+Stayo has a documented retention policy, backup policy, archive strategy, and a
+cron auth review. Note it currently guards with `if (cronSecret && ...)`, so an
+unset `CRON_SECRET` would leave a destructive endpoint fully public — that is
+part of the auth review, and a reason not to schedule it.
 
-| Job | Route | Criticality | Schedule | Status | Owner |
-|---|---|---|---|---|---|
-| Hostel invariants | `/api/cron/hostel-invariants` | P2 Platform Maintenance | `0 1 * * *` UTC / 06:30 IST | Active | Platform Integrity |
-| Migration audit | `/api/cron/migration-audit` | P2 Platform Maintenance | `15 1 * * *` UTC / 06:45 IST | Active | Platform Integrity |
+## Deprecated jobs
 
-## Dormant Jobs
+All four return `410 Gone` unconditionally; retained so stale monitors and
+manual calls fail loudly rather than 404.
 
-| Job | Route | Criticality | Schedule | Status | Owner |
-|---|---|---|---|---|---|
-| Tenant analytics repair | `/api/cron/tenant-analytics` | P2 Analytics Repair | Not scheduled | Dormant | Tenant Intelligence |
+| Job | Route |
+|---|---|
+| Overflow billing | `/api/cron/process-overflow` |
+| Owner onboarding nudges | `/api/cron/onboarding-nudges` |
+| Add-on reconciliation | `/api/cron/reconcile-addons` |
+| Autopay retries | `/api/cron/process-autopay-retries` |
 
-Dormant note: `tenant-analytics` is not business critical. Payment recording and tenant score reads already perform targeted score recalculation. Future ownership candidates are event-driven updates and the action intelligence engine.
+## Auth
 
-## Frozen Jobs
+Every cron route is bearer-gated on `CRON_SECRET`. `middleware.ts` excludes
+`/api/cron` so each route owns its own check.
 
-| Job | Route | Criticality | Schedule | Status | Owner |
-|---|---|---|---|---|---|
-| Data retention cleanup | `/api/cron/data-retention` | P3 Risk-Gated Maintenance | Not scheduled | Frozen | Platform Governance |
+Eleven routes **fail closed** — a missing `CRON_SECRET` returns `500`.
+`reconcile-payments` joined them on 2026-09-08 (ADR-178); it is the only member
+of the MVP set that had ever failed open.
 
-Frozen note: `data-retention` permanently deletes records and has no archive path. It must remain unscheduled until HMS has a documented retention policy, backup policy, archive strategy, and cron auth review.
+Two still **fail open** — `admissions` and `data-retention` use
+`if (cronSecret && ...)`, so an unset secret makes them public. `data-retention`
+is destructive, which is why the auth review remains a precondition for ever
+scheduling it. `tenant-analytics` has a milder variant: it compares against
+`` `Bearer ${process.env.CRON_SECRET}` ``, so with the var unset the literal
+string `Bearer undefined` is a valid credential. All three tracked in [[TODO]].
 
-## Deprecated Jobs
+## Governance rule
 
-| Job | Route | Criticality | Schedule | Status | Owner |
-|---|---|---|---|---|---|
-| Overflow billing | `/api/cron/process-overflow` | P3 Deprecated | Not scheduled | Deprecated | Billing |
-| Owner onboarding nudges | `/api/cron/onboarding-nudges` | P3 Deprecated | Not scheduled | Deprecated | Onboarding |
-| Add-on reconciliation | `/api/cron/reconcile-addons` | P3 Deprecated | Not scheduled | Deprecated | Billing |
-| Autopay retries | `/api/cron/process-autopay-retries` | P3 Deprecated | Not scheduled | Deprecated | Payments |
+No new cron ships without updating this registry. Every new cron requires:
 
-## Governance Rule
-
-No new cron should be merged without updating this registry.
-
-Every new cron requires:
-- Business purpose
+- Business purpose, stated as *what is wrong in the product if it never runs*
 - Owner domain
 - Criticality
-- Schedule with UTC and IST equivalents
+- Schedule with UTC and IST equivalents, and which runner it lives on
 - Recovery procedure
-- Cron registry entry
+- An entry in the Active table above
 
-Do not introduce GitHub Actions, queues, or merged mega-crons as part of routine cron additions. Architecture changes require a separate design review.
+If you add a job to `apps/backend/vercel.json`, confirm
+`apps/backend/app/api/cron/<name>/route.ts` exists and exports `GET`. The
+`food-carry-forward` incident above was exactly this check going unmade — and
+Vercel will not catch it for you: a cron pointing at a non-existent path
+deploys fine and simply 404s every day.
 
-## Dead Cron Removal Report
+Check the two-hour rule before choosing a slot, and note that `generate-rent`
+and `rent-reminders` are pinned to their current UTC times by month-boundary
+arithmetic — do not move them without re-reading `rentMonth` in
+`rent-generation-service.ts`.
 
-Removed from `apps/backend/vercel.json`:
-- `/api/cron/process-overflow`: route exists only as a 410 Gone deprecated endpoint.
-- `/api/cron/onboarding-nudges`: route exists only as a 410 Gone deprecated endpoint.
+## Recovery procedures
 
-Routes retained in code with explicit deprecation comments so old monitors and manual calls fail clearly.
-
-## Daily Briefing Enablement Report
-
-Enabled `/api/cron/daily-briefings` in `apps/backend/vercel.json`.
-
-Schedule:
-- Target local time: 07:30 IST daily.
-- Vercel cron expression: `0 2 * * *` UTC.
-
-Verification:
-- Route exists and is protected by `CRON_SECRET`.
-- Route calls `briefingEngine.generateBriefingForOwner`.
-- Briefing engine writes `owner_daily_briefing_v1`.
-- Route sends through `MetaWhatsAppProvider.sendTemplate`.
-- Route writes delivery attempts to `whatsapp_logs`.
-- Delivered owner/date records are skipped on repeat runs.
-
-## Active Job Classification Report
-
-| Job | Purpose | Criticality | Schedule | Owner Domain |
-|---|---|---|---|---|
-| Rent generation | Generate rent and maintenance obligations. | P0 | `30 18 * * *` UTC / 00:00 IST | Billing |
-| Rent reminders | Send reminders and apply eligible late fees. | P1 | `0 2 * * *` UTC / 07:30 IST | Collections |
-| Payment reconciliation | Repair stuck payment attempts and sync provider status. | P0 | `30 3 * * *` UTC / 09:00 IST | Payments |
-| Move-out releases | Release rooms and close tenant state after exit date. | P1 | `30 18 * * *` UTC / 00:00 IST | Move-outs |
-| Admissions reservation expiry | Expire stale room reservations. | P1 | `45 18 * * *` UTC / 00:15 IST | Admissions |
-| Agreement lifecycle | Transition expiring/expired agreements and create renewal reminders. | P1 | `30 1 * * *` UTC / 07:00 IST | Agreement Lifecycle |
-| Owner daily briefings | Send morning WhatsApp focus briefing. | P1 | `0 2 * * *` UTC / 07:30 IST | WhatsApp Assistant |
-
-## Dormant Job Report
-
-`/api/cron/tenant-analytics` remains unscheduled and undeleted.
-
-Reason:
-- Not business critical.
-- Payment writes and tenant score reads already perform targeted self-healing recalculation.
-- Better future fit for event-driven tenant intelligence or the action intelligence engine.
-
-## Frozen Job Report
-
-`/api/cron/data-retention` remains unscheduled and undeleted.
-
-Reason:
-- Current implementation permanently deletes records.
-- No archive path exists.
-- Retention policy is undecided.
-- Cron auth needs review before this endpoint can become scheduled.
-
-Required before scheduling:
-- Retention policy
-- Backup policy
-- Archive strategy
-- Auth review
-
-## Recovery Procedures
+Every job is idempotent and safe to re-run by hand with the `CRON_SECRET`
+bearer. Since 2026-09-08 all six are Vercel crons, so the supported manual
+trigger is `vercel crons run /api/cron/<name>` (the job must already be deployed
+to production — the CLI reads cron definitions from the deployed project, not
+from your local `vercel.json`). `vercel crons ls` lists what is actually
+scheduled, which is the fastest way to diff reality against this registry.
 
 | Job | Recovery procedure |
 |---|---|
-| Rent generation | Re-run the route with `CRON_SECRET`; idempotency locks and rent-generation ledgers prevent duplicate obligations. |
-| Rent reminders | Re-run the route with `CRON_SECRET`; verify reminder logs and late-fee output before repeating a failed production run. |
-| Payment reconciliation | Re-run the route with `CRON_SECRET`; inspect payment reconciliation runs and provider snapshots for unresolved attempts. |
-| Move-out releases | Re-run the route with `CRON_SECRET`; unreleased completed/vacated move-outs remain eligible until `room_release_date` is set. |
-| Admissions reservation expiry | Re-run the route with `CRON_SECRET`; active expired reservations are updated in bulk. |
-| Agreement lifecycle | Re-run the route with `CRON_SECRET`; agreement reminder timestamps and status checks prevent duplicate lifecycle notifications. |
-| Owner daily briefings | Re-run the route with `CRON_SECRET`; delivered owner/date records are skipped, failed records may retry. |
-| Hostel invariants | Re-run the route with `CRON_SECRET`; inspect persisted invariant failures before remediation. |
-| Migration audit | Re-run the route with `CRON_SECRET`; inspect the latest `migrationAuditRun` row and its database-backed `artifact` JSON. |
+| Rent generation | Re-run with `CRON_SECRET`; per-hostel `system_locks`, `rent_generation_ledgers`, and unique constraints on `rent_obligations` prevent duplicates. If the response carries `has_more: true`, re-run with `?cursor=<next_cursor>` — the 240 s soft budget truncates rather than failing, and **nothing drains the remainder automatically**. |
+| Rent reminders | Re-run with `CRON_SECRET`; check reminder logs and late-fee output before repeating a failed production run. |
+| Move-out releases | Re-run with `CRON_SECRET`; unreleased `COMPLETED`/`VACATED` move-outs stay eligible while `room_release_date` is null. Run this **before** re-running rent generation. |
+| Invitation expiry reminders | Re-run with `CRON_SECRET`; de-duplicated per invitation via `system_event_logs`. |
+| Payment reconciliation | Re-run with `CRON_SECRET`; inspect payment reconciliation runs and provider snapshots for unresolved attempts. |
+| Unaccepted tenancy expiry | Re-run with `CRON_SECRET`; idempotent, and the grace window (`UNACCEPTED_TENANCY_GRACE_DAYS`, default 7) means a one-day miss changes nothing. |
+
+## Known gaps
+
+- **`generate-rent` can silently truncate.** It stops at `SOFT_TIMEOUT_MS`
+  (240 s) and returns `has_more` / `next_cursor` for a follow-up call that
+  **nothing in the repo makes**. A partial billing run is not alerted on. Fine
+  at current scale; needs a chained follow-up or an alert before it isn't.
+- **No alerting on cron failure.** A failed GitHub Actions run is a red mark in
+  the Actions tab; a failed Vercel Cron is a log line. Neither notifies anyone.
+- **GitHub scheduled workflows auto-disable** after 60 days without repo
+  activity, taking four of the six jobs with them.
+
+Related: [[Decisions#ADR-177|ADR-177]] · [[Architecture]] · [[APIs]] · [[Business-Rules]] · [[Bugs]]

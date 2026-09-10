@@ -25,6 +25,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: [
+      'tests/rent-generation-exit-date-join.test.ts',
       'tests/push-policy.test.ts',
       'tests/push-send-window.test.ts',
       'tests/push-delivery.test.ts',

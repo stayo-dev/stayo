@@ -22,6 +22,32 @@ Log of significant bugs — open and fixed. Not meant to replace an issue tracke
 
 **Not verified in a running browser.** The mechanism is established from the code and from the built CSS (`dist/` has zero fossil values, `:root{--primary:#b46a55}`), but no dev server or authenticated session was exercised, so the specific sequence that left `<html>` unscoped in the reported screenshots is **inferred, not observed**. The removal of the fallback makes the outcome correct either way; the stack fix addresses the mechanism.
 
+## 2026-09-08 — Rent generation billed a departed tenant because its exit filter reads the one field a future-dated move-out never writes (fixed)
+
+**Symptom.** A tenant whose exit date had passed was billed for a further month, on a bed that had already been released — the fault [[Decisions#ADR-177|ADR-177]] identified as a cron race and mitigated with a 30-minute scheduling gap.
+
+**Root cause — not the absence of a filter, but a filter aimed at the wrong column.** ADR-177 and the 2026-09-06 entry below both record that `generate-rent` has "no exit-date filter of any kind". That is wrong, and the truth is more interesting: `rent-generation-service.ts` selects allocations with `is_active: true` and `OR: [{ end_date: null }, { end_date: { gte: rentMonth } }]`. The filter exists. It is defeated by an explicit branch in the write path — `move-out-service.ts` `vacate()` tests `isFutureExit` and, for a future-dated exit, deliberately does **not** close the allocation:
+
+> `// Future exit: do NOT terminate allocation and do NOT mark as FORMER_TENANT yet.`
+
+so the allocation keeps `is_active: true` and `end_date: null`, the tenant keeps `status: "ACTIVE"`, and only `tenants.exit_date` is written. The departed tenant matches `end_date: null` and is billed. Every condition in the query is satisfied by design.
+
+**Why it hid.** The query *looks* correct in isolation — it reads as move-out-aware, and it is, for the immediate-exit path where `vacate()` does close the allocation. Only the future-exit branch, in a different service, makes it a no-op. Nothing types or tests the join between the field a write path populates and the field a read path filters on: this is the same shape as the `hostel_type` round-trip bug of 2026-09-02, where a column correct on the write path was absent from a reader's projection.
+
+**Fix.** [[Decisions#ADR-178|ADR-178]] filters on `tenants.exit_date` — the field the future-exit branch actually writes — mirroring the `end_date` clause so proration is unchanged. Rent generation is now correct regardless of when, or whether, `move-out-releases` has run, which retires the cron-ordering constraint as the thing standing between an owner and a wrong invoice. **Not verified against Postgres** — no `DATABASE_URL_TEST` in this environment — so the predicate is reasoned and typechecked, not exercised.
+
+## 2026-09-06 — A scheduled job called a route that had not existed for twelve days, and a second pair raced each other nightly (fixed)
+
+**Symptom.** Two independent scheduling faults, both invisible because nothing watches cron output.
+
+**(1) A daily 404.** `.github/workflows/backend-cron.yml` ran `/api/cron/food-carry-forward` at `0 4 * * *`. That route was renamed to `food-expiry` on 2026-08-25 ([[Decisions#ADR-114|ADR-114]]) when its schedule-cloning responsibility was removed. The rename correctly updated the route, [[Food]], [[APIs]] and `vercel.json` — but not the workflow, which kept calling the old path, taking a 404 and failing its job every night for twelve days. **No user impact**: the surviving work (closing expired voting periods and polls) had moved to `food-expiry` on Vercel Cron and kept running. The cost was a permanently red Actions tab, which is itself the reason nobody noticed.
+
+**(2) A nightly race on rent.** `generate-rent` (Vercel) and `move-out-releases` (GitHub Actions) were both scheduled at `30 18 * * *` — the same minute, on two runners, with no ordering between them. `generate-rent` bills every allocation whose tenant is `ACTIVE` and has **no exit-date filter anywhere in the route**. `move-out-releases` is the only thing that flips a past-exit-date tenant to `FORMER_TENANT`: `move-out-service.ts:467` closes an *immediate* exit inline, but a **future-dated** exit is deliberately left `ACTIVE` with a live allocation, and `tenant-service.ts:1539` hard-blocks setting `FORMER_TENANT` directly. Whenever rent generation won the race, a tenant whose exit date had just passed was billed for a further month on a room that had not been released.
+
+**Root cause, shared.** Two schedulers with no shared source of truth — `vercel.json` and a GitHub Actions workflow — plus a registry (`docs/operations/cron-registry.md`) that had not been updated since the initial commit while `vercel.json` changed five times. The registry listed neither the workflow's existence nor three jobs that were actually scheduled, and asserted a rule (*"do not introduce GitHub Actions"*) that the repo had contradicted from its first commit. Nothing validated that a scheduled endpoint resolves to a route, and nothing alerted on a failing run.
+
+**Fix.** [[Decisions#ADR-177|ADR-177]] trims the schedule to the six MVP jobs, deletes the dead entry, and moves `move-out-releases` to `0 18 * * *` — a deliberate 30-minute lead over `generate-rent`, sized to absorb GitHub's best-effort scheduling delay. The registry is rewritten against the actual schedulers and now requires confirming `app/api/cron/<name>/route.ts` exists and exports `GET` before adding a workflow entry. **Still open:** no alerting on cron failure at all, on either runner — which is what let both of these run unnoticed. See [[TODO]].
+
 ## 2026-09-02 — `document_verified` could be true with documents missing, pending, rejected, or for the wrong profile type (fixed)
 
 **Symptom.** `tenants.document_verified` — the flag four surfaces derive KYC status from — could be `true` when the tenant had not actually cleared KYC.
