@@ -159,6 +159,7 @@ export default defineConfig({
       // row-limit message used to be swallowed by parseFile's own catch.
       'tests/bulk-import-parse-errors.test.ts',
       'tests/bulk-import-file-type.test.ts',
+      'tests/bulk-import-capacity-accounting.test.ts',
       'tests/build-without-env.test.ts',
     ],
     alias: {

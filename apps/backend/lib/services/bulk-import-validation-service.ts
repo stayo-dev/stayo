@@ -286,15 +286,22 @@ export class BulkImportValidationService {
 
           const currentOccupancy = room.occupied_count + room.reserved_count;
           const assignmentsInFile = roomAssignmentsSeen.get(room.id) || 0;
-          if (currentOccupancy + assignmentsInFile + 1 > room.capacity) {
-            errors.push({
-              row: rowNumber,
-              field: "room_no",
-              message: `Room ${row.room_no} capacity would be exceeded (${currentOccupancy + assignmentsInFile + 1}/${room.capacity})`,
-              value: row.room_no,
-            });
-          } else {
-            roomAssignmentsSeen.set(room.id, assignmentsInFile + 1);
+          // A duplicate row, or one that already failed validation, will never
+          // be imported — so it must neither claim a bed nor be told the room
+          // is full. Counting them made a legitimate later row fail with a
+          // capacity error it did not cause.
+          const rowCanImport = !isDuplicate && errors.length === 0;
+          if (rowCanImport) {
+            if (currentOccupancy + assignmentsInFile + 1 > room.capacity) {
+              errors.push({
+                row: rowNumber,
+                field: "room_no",
+                message: `Room ${row.room_no} capacity would be exceeded (${currentOccupancy + assignmentsInFile + 1}/${room.capacity})`,
+                value: row.room_no,
+              });
+            } else {
+              roomAssignmentsSeen.set(room.id, assignmentsInFile + 1);
+            }
           }
         }
       }
