@@ -8,6 +8,20 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-10 — Bulk import billed from a different joining date than it validated (fixed)
+
+**Symptom.** An owner who typed a joining date in the Indian format the import's own messages ask for — `05/01/2026` for 5 January — would have had the tenant billed from **1 May**, losing four months of back-rent. `13/01/2026` passed preview and failed at confirm; an Excel date cell became the year 46026, so no back-rent at all.
+
+**Root cause — two parsers for one value.** Validation parsed the date correctly (`dates.ts`, day first) but stored the *raw cell text*. `createInvitation` then re-parsed that text with `new Date()`, which follows US month-first order and does not know Excel serials. Each parser was right on its own terms; the value crossing between them was the bug. Asking owners to type DD/MM/YYYY made it worse, not better — which is how this change surfaced it.
+
+**Why it hid.** Every test used ISO dates, the one format both parsers agree on.
+
+**Fix.** The stored `joining_date` is the validator's own parsed date, written as ISO. Pinned by tests that round-trip the stored value through `new Date()`.
+
+**Found in the same review** (post-implementation code review of the bulk-import tree, all fixed): impossible dates rolled over (`31/02/2026` → 3 March); a number parser that read `Rs. 8,000` as 0.8 and `TBD` as 0; inactive rooms passing preview then failing at confirm; a room with no base rent blocking a row whose sheet supplied the rent; the capped-backfill notice firing a month late; existing tenants never matched by phone because `profiles.phone` is bare digits while `tenant_invitations.phone` is E.164 (the same two-format trap recorded against ADR-110); and most blocking errors emitting no structured issue, so a review screen would have shown blocked rows as clean.
+
+**See:** [[Business-Rules]], [[APIs]], [[Changelog]]
+
 ## 2026-09-10 — Bulk import ignored the maintenance an owner set, and could not record rent already paid (fixed)
 
 **Symptom.** The legacy owner page at `apps/backend/app/(dashboard)/owner/bulk-import/` lets an owner set a maintenance charge and type for the batch, and the import preview showed it. Every imported tenant was nonetheless created with the hostel's *default* maintenance — or ₹0 if the hostel's own preference was `NONE` while the import said `MONTHLY`. Separately, an existing resident's already-paid rent could not be imported at all: no column was read for it, so a tenant who had paid up would have been imported owing every backdated month.

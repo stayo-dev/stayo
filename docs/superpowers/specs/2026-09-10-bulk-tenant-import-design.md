@@ -156,6 +156,13 @@ Severity decides the flow — and it is why the >24-month case is not a wall:
 | `FORMULA_IN_CELL` | BLOCKER | "This cell contains a formula. Paste as values." | edit inline |
 | `DATE_UNREADABLE` | BLOCKER | "'May' isn't a full date. Use DD/MM/YYYY — 05/01/2026 means 5 January 2026." | date picker |
 | `HOSTEL_STAMP_MISMATCH` | BLOCKER (file) | "This file was made for Sri Adithya Boys Hostel." | switch hostel / new template |
+| `NAME_MISSING` | BLOCKER | "This tenant's name is missing." / "'R' is too short to be a full name." | edit inline |
+| `EMAIL_INVALID` | BLOCKER | "'ravi@gmail' isn't a valid email address." | edit inline |
+| `ROOM_MISSING` | BLOCKER | "This tenant has no room." | room picker |
+| `ROOM_INACTIVE` | BLOCKER | "Room 102 is switched off in Sri Adithya Boys Hostel." | rooms with a free bed |
+| `NUMBER_INVALID` | BLOCKER | "'TBD' isn't a valid monthly rent." — quotes the cell as typed, never `NaN` | edit inline |
+
+*The last five were added 2026-09-10 after a code review found most blocking errors emitted no issue at all. Invariant: every row with a blocking error carries at least one `BLOCKER` issue.*
 
 Every entry names **the actual value**, **the actual hostel/room**, and **what to do**. No error may render as a bare code or a raw exception message.
 
