@@ -70,3 +70,33 @@ export function validateRegistry(docs: LegalDocument[]): string[] {
 
   return failures;
 }
+
+/**
+ * Where a link to this document should point: the canonical route, unless that
+ * route is served by a different page, in which case the first `/legal/` alias.
+ *
+ * Needed because `/contact` is still rendered by the older ContactPage until
+ * Phase 3 rebuilds it — linking the hub's Contact card there would open a page
+ * that does not show this document at all.
+ */
+export function documentHref(doc: LegalDocument): string {
+  if (doc.route.startsWith('/legal/')) return doc.route;
+  return doc.aliases.find((alias) => alias.startsWith('/legal/')) ?? doc.route;
+}
+
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/**
+ * An ISO yyyy-mm-dd effective date, as it reads in a legal document.
+ *
+ * Parsed by hand rather than through `new Date()`: an ISO date string is read
+ * as UTC midnight, so west of UTC it would display as the previous day — a
+ * policy dated a day before it took effect.
+ */
+export function formatEffectiveDate(iso: string): string {
+  const [year, month, day] = iso.split('-').map(Number);
+  return `${day} ${MONTHS[month - 1]} ${year}`;
+}

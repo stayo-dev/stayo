@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LegalDocument } from './types';
-import { documentAnchors, documentIdForPath, allRoutes, validateRegistry } from './documentHelpers';
+import { documentAnchors, documentIdForPath, allRoutes, validateRegistry, documentHref, formatEffectiveDate } from './documentHelpers';
 
 const doc = (over: Partial<LegalDocument> = {}): LegalDocument => ({
   id: 'terms',
@@ -88,5 +88,31 @@ describe('validateRegistry', () => {
       ],
     });
     expect(validateRegistry([dupe])).toContain('terms: duplicate anchor id "scope"');
+  });
+});
+
+describe('documentHref', () => {
+  it('uses the canonical route when LegalPage renders it', () => {
+    expect(documentHref(doc())).toBe('/legal/terms');
+  });
+
+  it('falls back to a /legal/ alias when the canonical route belongs to another page', () => {
+    // /contact is served by ContactPage until Phase 3; the document lives at /legal/contact.
+    expect(documentHref(doc({ route: '/contact', aliases: ['/legal/contact'] }))).toBe('/legal/contact');
+  });
+
+  it('keeps the canonical route when no /legal/ path exists at all', () => {
+    expect(documentHref(doc({ route: '/contact', aliases: [] }))).toBe('/contact');
+  });
+});
+
+describe('formatEffectiveDate', () => {
+  it('renders an ISO date the way it reads in a legal document', () => {
+    expect(formatEffectiveDate('2026-09-10')).toBe('10 September 2026');
+  });
+
+  it('does not shift the day across time zones', () => {
+    // new Date('2026-01-01') is UTC midnight — the previous day west of UTC.
+    expect(formatEffectiveDate('2026-01-01')).toBe('1 January 2026');
   });
 });
