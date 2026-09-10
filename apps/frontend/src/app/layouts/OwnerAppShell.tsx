@@ -1,8 +1,16 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Home, Users, Wallet, UtensilsCrossed, Building2 } from 'lucide-react';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
+import { ClerkAccountSlot } from '@/app/components/ClerkUserButton';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
 import { APP_GRID, APP_FRAME } from '@shared/ui/surface';
+import { useIsDesktop } from '@/app/components/ui/use-desktop';
+import { AppConsoleShell } from './AppConsoleShell';
+import { isOwnerFullBleedPath } from './ownerShellRoutes';
+import { buildOwnerNav } from '@/app/nav/ownerNav';
+import { useOwnerSession } from '@features/owner-session/useOwnerSession';
+import { HostelSwitcher } from '@features/owner-session/HostelSwitcher';
+import { useMoreNav } from '@features/owner-more/hooks/useMoreNav';
 
 /**
  * Owner app shell — bottom-nav chrome per BottomNav.dc.html: exactly 5 tabs
@@ -25,11 +33,12 @@ import { APP_GRID, APP_FRAME } from '@shared/ui/surface';
  * ever `/owner` — kept as a prop rather than hardcoded in case a second
  * mount point is ever needed again.
  *
- * Desktop: `Stayo App.dc.html` has no `@media`/desktop rules at all (a fixed
- * 402x874 mobile device-frame mockup end to end, confirmed by grep) — there
- * is no desktop layout to extract. On `sm:`+ viewports this shell just
- * centers the same mobile layout in a bordered frame rather than inventing
- * new breakpoints.
+ * Desktop (`lg`+, 1024px — [[Decisions#ADR-171|ADR-171]] Phase 1): this shell
+ * mounts `AppConsoleShell` instead — the shared sidebar+topbar console, with
+ * `buildOwnerNav()` (Home/Tenants/Money/Food/Hostels/Settings). Below `lg`
+ * everything below is byte-for-byte unchanged: the 480px `APP_FRAME`, the
+ * fixed bottom nav, its own `ThemeProvider`. The design source still has zero
+ * `@media` rules; the desktop layout is net-new (see the plan), not extracted.
  */
 function ownerTabs(basePath: string) {
   return [
@@ -46,10 +55,54 @@ interface OwnerAppShellProps {
 }
 
 export function OwnerAppShell({ basePath = '/owner' }: OwnerAppShellProps) {
+  const isDesktop = useIsDesktop();
+  const { pathname } = useLocation();
+  const session = useOwnerSession();
+  const { signOut } = useMoreNav();
   const tabs = ownerTabs(basePath);
+
+  // Desktop (lg+): the shared console shell — sidebar + topbar. It provides its
+  // own <ThemeProvider theme="product"> and grid ground, so the 480px frame is
+  // simply not applied and the page fills the content area. The sidebar's
+  // `contextSlot` carries the `HostelSwitcher` (ADR-171 §6, Phase 2.6) — the
+  // one owner hostel-context control, backed by the existing `useSelectedHostel`
+  // state. Owner takeover routes still declared outside this component in
+  // OwnerRoutes.tsx (Hostel drilldown, most work queues, builder) are untouched.
+  if (isDesktop) {
+    return (
+      <AppConsoleShell
+        nav={buildOwnerNav()}
+        contextSlot={session.hostels.length > 0 ? <HostelSwitcher /> : undefined}
+        identity={{ name: session.ownerName ?? 'Owner', sublabel: 'Owner' }}
+        onSignOut={signOut}
+      >
+        <Outlet />
+      </AppConsoleShell>
+    );
+  }
+
+  // Mobile full-screen takeover routes that are now nested *inside* this shell
+  // (Phase 2.1: the Tenant Detail pane, `/owner/tenants/:tenantId`, nested under
+  // `/owner/tenants` so <MasterDetail> can render it) must still render with no
+  // bottom nav / no 480px frame — byte-equivalent to when they were declared
+  // outside OwnerAppShell. `TenantDetailPage` brings its own ThemeProvider +
+  // APP_SURFACE; this is just the theme scope + error boundary around it.
+  if (isOwnerFullBleedPath(pathname)) {
+    return (
+      <ThemeProvider theme="product">
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider theme="product">
       <div className={`flex min-h-screen flex-col bg-background text-foreground ${APP_GRID} ${APP_FRAME}`}>
+        {/* ADR-176 Phase 2: renders nothing without a Clerk session. */}
+        <ClerkAccountSlot />
+
         <main className="flex-1 pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))]">
           <ErrorBoundary>
             <Outlet />

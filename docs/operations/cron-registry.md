@@ -3,14 +3,14 @@
 This is the canonical registry for every `/api/cron/*` route. A route must appear
 here before it is scheduled, even if it is Dormant, Frozen, or Deprecated.
 
-**Trimmed to the MVP set on 2026-09-06 (ADR-171).** Nine jobs were scheduled;
+**Trimmed to the MVP set on 2026-09-06 (ADR-177).** Nine jobs were scheduled;
 six are now. The other routes still exist and are still `CRON_SECRET`-gated —
 they are simply unscheduled, which is this repo's standard "keep the plumbing,
 drop the trigger" posture.
 
 ## Where crons actually run
 
-**One scheduler, since 2026-09-08 (ADR-173):** all six jobs are `crons` entries
+**One scheduler, since 2026-09-08 (ADR-179):** all six jobs are `crons` entries
 in `apps/backend/vercel.json`. `.github/workflows/backend-cron.yml` is deleted.
 
 Vercel's Hobby plan allows **100 cron jobs per project**, each **once per day**,
@@ -41,7 +41,7 @@ the ordering constraint below intact.
 
 ## Ordering constraint — retired 2026-09-08, gap kept as defence-in-depth
 
-**This is no longer load-bearing.** ADR-172 made `generate-rent` correct on its
+**This is no longer load-bearing.** ADR-178 made `generate-rent` correct on its
 own: it filters on `tenants.exit_date`, which is the field a future-dated
 move-out actually writes, so the order these two run in no longer changes any
 billing outcome. The 30-minute gap stays because nothing depends on removing it.
@@ -55,7 +55,7 @@ and the tenant `ACTIVE`, writing only `tenants.exit_date`; `move-out-releases`
 is the only thing that later closes it, and `tenant-service.ts` hard-blocks
 setting `FORMER_TENANT` directly. So the departed tenant satisfied every
 condition in the query, and whichever cron won the race decided whether they
-were billed for another month. Earlier versions of this page, ADR-171 and
+were billed for another month. Earlier versions of this page, ADR-177 and
 [[Bugs]] all describe this as `generate-rent` having *no* exit filter; it had
 one, aimed at a column the future-exit path never populates.
 
@@ -110,7 +110,7 @@ Why each one is in the MVP set — i.e. what is *wrong in the product* if it nev
   obligations when the tenant never personally accepts. Without it, ghost
   tenancies hold beds and accrue rent indefinitely.
 
-## Descheduled 2026-09-06 (ADR-171)
+## Descheduled 2026-09-06 (ADR-177)
 
 Routes retained, triggers removed. Re-scheduling any of these means updating
 this table first.
@@ -169,7 +169,7 @@ Every cron route is bearer-gated on `CRON_SECRET`. `middleware.ts` excludes
 `/api/cron` so each route owns its own check.
 
 Eleven routes **fail closed** — a missing `CRON_SECRET` returns `500`.
-`reconcile-payments` joined them on 2026-09-08 (ADR-172); it is the only member
+`reconcile-payments` joined them on 2026-09-08 (ADR-178); it is the only member
 of the MVP set that had ever failed open.
 
 Two still **fail open** — `admissions` and `data-retention` use
@@ -230,4 +230,4 @@ scheduled, which is the fastest way to diff reality against this registry.
 - **GitHub scheduled workflows auto-disable** after 60 days without repo
   activity, taking four of the six jobs with them.
 
-Related: [[Decisions#ADR-171|ADR-171]] · [[Architecture]] · [[APIs]] · [[Business-Rules]] · [[Bugs]]
+Related: [[Decisions#ADR-177|ADR-177]] · [[Architecture]] · [[APIs]] · [[Business-Rules]] · [[Bugs]]

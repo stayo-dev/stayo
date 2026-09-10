@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BedDouble, Check, CalendarDays, Building2, AlertCircle } from 'lucide-react';
-import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
+import { AdaptiveSurface } from '@/app/components/ui/adaptive-surface';
 import { StayoLoader } from '@shared/ui/brand';
 import { EmptyState } from '@shared/ui-patterns/EmptyState';
 import { stayoToast } from '@shared/ui-patterns/Toast';
@@ -149,7 +149,7 @@ export function ChangeRoomSheet({
   });
 
   return (
-    <BottomSheet open={open} onOpenChange={(next) => !next && onClose()} title={`Move ${tenantName}`}>
+    <AdaptiveSurface variant="form" open={open} onOpenChange={(next) => !next && onClose()} title={`Move ${tenantName}`}>
       <div className="flex flex-col gap-3">
         <p className="px-0.5 text-[11.5px] text-muted-foreground">
           Currently Room <b className="font-bold text-foreground">{currentRoomNo}</b>
@@ -306,6 +306,6 @@ export function ChangeRoomSheet({
           </>
         )}
       </div>
-    </BottomSheet>
+    </AdaptiveSurface>
   );
 }

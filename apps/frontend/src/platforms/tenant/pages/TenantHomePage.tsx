@@ -1,5 +1,6 @@
 import { useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useIsDesktop } from '@/app/components/ui/use-desktop';
 import { greetingWithName } from '../components/tenantGreeting';
 import { Bell, Megaphone, CalendarDays, CreditCard } from 'lucide-react';
 import { useTenantHome } from '@features/tenant-home/hooks/useTenantHome';
@@ -50,6 +51,11 @@ function LoadingSkeleton() {
  */
 export function TenantHomePage() {
   const navigate = useNavigate();
+  // Desktop (lg+, ADR-171 Phase 3.2): the feed splits into two columns —
+  // rent/food/poll (primary) and announcements/complaint/events (secondary).
+  // Below lg every section renders in the same single column, same order, same
+  // classes as before this phase.
+  const isDesktop = useIsDesktop();
   const home = useTenantHome();
   const { hasUnread } = useTenantNotifications();
   const fin = useTenantFinancials();
@@ -102,6 +108,146 @@ export function TenantHomePage() {
     ? new Date(nextDueItem.rent_month).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
     : new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
   const rentDueDateLabel = nextDueItem ? new Date(nextDueItem.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—';
+
+  /*
+   * Every section below is unchanged content — extracted into variables only
+   * so the exact same JSX can be laid out as one mobile column or split into
+   * the desktop's primary/secondary columns without duplicating any markup.
+   * `fin.amountDue > 0 && (...)` etc. keep their original conditional shape.
+   */
+  const profileNudge = <ProfileCompletionNudge />;
+
+  const rentCard = fin.amountDue > 0 && (
+    <div ref={rentCardRef} className={`${card} p-[18px]`}>
+      <div className="flex items-center gap-2">
+        <span className="h-[7px] w-[7px] flex-none rounded-full bg-warning" />
+        <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-warning">Rent due</span>
+        {fin.isOverdue && (
+          <span className="ml-auto text-[12px] font-semibold text-muted-foreground">{fin.overdueDays} day{fin.overdueDays === 1 ? '' : 's'} overdue</span>
+        )}
+      </div>
+      <div className="mt-3 flex items-end justify-between gap-3">
+        <div>
+          <div className="text-[13px] font-medium text-muted-foreground">{rentPeriodLabel}</div>
+          <div className="mt-0.5 font-display text-[34px] font-extrabold tracking-[-0.03em] tabular-nums text-foreground">
+            ₹{fin.amountDue.toLocaleString('en-IN')}
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-[12px] font-medium text-[#9C9186]">Was due</div>
+          <div className="text-[14px] font-semibold text-[#4A433C]">{rentDueDateLabel}</div>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={fin.openPay}
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#A45D44] py-[15px] text-center font-display text-[15px] font-bold text-white shadow-[0_6px_16px_rgba(164,93,68,0.3)]"
+      >
+        <CreditCard className="h-[17px] w-[17px]" strokeWidth={1.7} />
+        Pay ₹{fin.amountDue.toLocaleString('en-IN')}
+      </button>
+    </div>
+  );
+
+  const pushCard = push.offer && fin.amountDue > 0 && (
+    <PushPromptCard
+      headline="Get told when rent is due"
+      detail="A reminder before the due date, and a confirmation the moment your payment is recorded. Nothing else."
+      onEnable={push.enable}
+      onDismiss={push.dismiss}
+    />
+  );
+
+  const foodBlock = home.todaysMeals.length > 0 && (
+    <div className="flex flex-col gap-2.5">
+      <div className="flex items-baseline justify-between">
+        <span className={sectionLabel}>Food</span>
+        <button type="button" onClick={() => navigate('/tenant/food')} className="text-[13px] font-semibold text-primary">
+          Menu
+        </button>
+      </div>
+      <NextServingCard next={nextServing} now={now} />
+    </div>
+  );
+
+  const pollBlock = activePoll && (
+    <div className="flex flex-col gap-2.5">
+      <span className={sectionLabel}>Active food poll</span>
+      <ActivePollCard poll={activePoll} onToggleVote={(optionId) => polls.toggleVote(activePoll.id, optionId)} isVoting={polls.isVoting} />
+    </div>
+  );
+
+  const announcementsBlock = home.announcements.length > 0 && (
+    <div className="flex flex-col gap-2.5">
+      <span className={sectionLabel}>Announcements</span>
+      <div className={`${card} divide-y divide-border px-4`}>
+        {home.announcements.map((a) => (
+          <div key={a.id} className="flex items-start gap-3 py-3">
+            <span className="mt-0.5 flex h-8.5 w-8.5 flex-none items-center justify-center rounded-[10px] bg-secondary text-primary">
+              <Megaphone className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[13.5px] font-semibold leading-snug text-foreground">{a.title}</div>
+              <div className="mt-0.5 text-[12px] leading-snug text-muted-foreground">{a.body}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const complaintBlock = home.hasComplaint && home.latestComplaint && (
+    <div className="flex flex-col gap-2.5">
+      <span className={sectionLabel}>Complaint status</span>
+      <button
+        type="button"
+        onClick={() => navigate('/tenant/room')}
+        className={`${card} flex items-center justify-between gap-3 p-4 text-left`}
+      >
+        <div className="min-w-0">
+          <div className="font-display text-[14.5px] font-bold text-foreground">
+            {home.latestComplaint.category ?? home.latestComplaint.type.replace('_', ' ')}
+          </div>
+          <div className="mt-0.5 truncate text-[11.5px] text-muted-foreground">
+            {home.latestComplaint.description ?? 'View details'}
+          </div>
+        </div>
+        <span className="flex-none rounded-full bg-warning/10 px-2.5 py-1 text-[10.5px] font-bold text-warning">
+          {home.latestComplaint.status.replace('_', ' ')}
+        </span>
+      </button>
+    </div>
+  );
+
+  const eventsBlock = home.events.length > 0 && (
+    <div className="flex flex-col gap-2.5">
+      <span className={sectionLabel}>Upcoming events</span>
+      <div className={`${card} divide-y divide-border px-4`}>
+        {home.events.map((e) => {
+          const d = new Date(e.event_date);
+          return (
+            <div key={e.id} className="flex items-center gap-3 py-3">
+              <span className="flex h-11 w-11 flex-none flex-col items-center justify-center rounded-[12px] bg-secondary/60">
+                <span className="font-display text-[15px] font-extrabold leading-none text-foreground">{d.getDate()}</span>
+                <span className="mt-0.5 text-[9px] font-bold uppercase tracking-wide text-primary">
+                  {d.toLocaleDateString('en-IN', { month: 'short' })}
+                </span>
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="font-display text-[14.5px] font-bold text-foreground">{e.title}</div>
+                {e.description && <div className="text-[11.5px] text-muted-foreground">{e.description}</div>}
+              </div>
+              <CalendarDays className="h-4 w-4 flex-none text-muted-foreground" />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const footerText = (
+    <p className="pt-0.5 text-center text-[11px] font-medium text-[#B7AC9F]">Stayo{home.hostelName ? ` · ${home.hostelName}` : ''}</p>
+  );
 
   return (
     <div className="flex flex-col gap-6 pb-8">
@@ -157,138 +303,37 @@ export function TenantHomePage() {
         </div>
       </div>
 
-      <div className="flex flex-col gap-6 px-4 sm:px-6">
-      <ProfileCompletionNudge />
-      {fin.amountDue > 0 && (
-        <div ref={rentCardRef} className={`${card} p-[18px]`}>
-          <div className="flex items-center gap-2">
-            <span className="h-[7px] w-[7px] flex-none rounded-full bg-warning" />
-            <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-warning">Rent due</span>
-            {fin.isOverdue && (
-              <span className="ml-auto text-[12px] font-semibold text-muted-foreground">{fin.overdueDays} day{fin.overdueDays === 1 ? '' : 's'} overdue</span>
-            )}
-          </div>
-          <div className="mt-3 flex items-end justify-between gap-3">
-            <div>
-              <div className="text-[13px] font-medium text-muted-foreground">{rentPeriodLabel}</div>
-              <div className="mt-0.5 font-display text-[34px] font-extrabold tracking-[-0.03em] tabular-nums text-foreground">
-                ₹{fin.amountDue.toLocaleString('en-IN')}
-              </div>
+      {isDesktop ? (
+        <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-6 px-8 pt-2">
+          {profileNudge}
+          <div className="grid grid-cols-[1fr_380px] items-start gap-6">
+            <div className="flex min-w-0 flex-col gap-6">
+              {rentCard}
+              {pushCard}
+              {foodBlock}
+              {pollBlock}
             </div>
-            <div className="text-right">
-              <div className="text-[12px] font-medium text-[#9C9186]">Was due</div>
-              <div className="text-[14px] font-semibold text-[#4A433C]">{rentDueDateLabel}</div>
+            <div className="flex min-w-0 flex-col gap-6">
+              {announcementsBlock}
+              {complaintBlock}
+              {eventsBlock}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={fin.openPay}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#A45D44] py-[15px] text-center font-display text-[15px] font-bold text-white shadow-[0_6px_16px_rgba(164,93,68,0.3)]"
-          >
-            <CreditCard className="h-[17px] w-[17px]" strokeWidth={1.7} />
-            Pay ₹{fin.amountDue.toLocaleString('en-IN')}
-          </button>
+          {footerText}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-6 px-4 sm:px-6">
+          {profileNudge}
+          {rentCard}
+          {pushCard}
+          {foodBlock}
+          {pollBlock}
+          {announcementsBlock}
+          {complaintBlock}
+          {eventsBlock}
+          {footerText}
         </div>
       )}
-
-      {push.offer && fin.amountDue > 0 && (
-        <PushPromptCard
-          headline="Get told when rent is due"
-          detail="A reminder before the due date, and a confirmation the moment your payment is recorded. Nothing else."
-          onEnable={push.enable}
-          onDismiss={push.dismiss}
-        />
-      )}
-
-      {home.todaysMeals.length > 0 && (
-        <div className="flex flex-col gap-2.5">
-          <div className="flex items-baseline justify-between">
-            <span className={sectionLabel}>Food</span>
-            <button type="button" onClick={() => navigate('/tenant/food')} className="text-[13px] font-semibold text-primary">
-              Menu
-            </button>
-          </div>
-          <NextServingCard next={nextServing} now={now} />
-        </div>
-      )}
-
-      {activePoll && (
-        <div className="flex flex-col gap-2.5">
-          <span className={sectionLabel}>Active food poll</span>
-          <ActivePollCard poll={activePoll} onToggleVote={(optionId) => polls.toggleVote(activePoll.id, optionId)} isVoting={polls.isVoting} />
-        </div>
-      )}
-
-      {home.announcements.length > 0 && (
-        <div className="flex flex-col gap-2.5">
-          <span className={sectionLabel}>Announcements</span>
-          <div className={`${card} divide-y divide-border px-4`}>
-            {home.announcements.map((a) => (
-              <div key={a.id} className="flex items-start gap-3 py-3">
-                <span className="mt-0.5 flex h-8.5 w-8.5 flex-none items-center justify-center rounded-[10px] bg-secondary text-primary">
-                  <Megaphone className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13.5px] font-semibold leading-snug text-foreground">{a.title}</div>
-                  <div className="mt-0.5 text-[12px] leading-snug text-muted-foreground">{a.body}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {home.hasComplaint && home.latestComplaint && (
-        <div className="flex flex-col gap-2.5">
-          <span className={sectionLabel}>Complaint status</span>
-          <button
-            type="button"
-            onClick={() => navigate('/tenant/room')}
-            className={`${card} flex items-center justify-between gap-3 p-4 text-left`}
-          >
-            <div className="min-w-0">
-              <div className="font-display text-[14.5px] font-bold text-foreground">
-                {home.latestComplaint.category ?? home.latestComplaint.type.replace('_', ' ')}
-              </div>
-              <div className="mt-0.5 truncate text-[11.5px] text-muted-foreground">
-                {home.latestComplaint.description ?? 'View details'}
-              </div>
-            </div>
-            <span className="flex-none rounded-full bg-warning/10 px-2.5 py-1 text-[10.5px] font-bold text-warning">
-              {home.latestComplaint.status.replace('_', ' ')}
-            </span>
-          </button>
-        </div>
-      )}
-
-      {home.events.length > 0 && (
-        <div className="flex flex-col gap-2.5">
-          <span className={sectionLabel}>Upcoming events</span>
-          <div className={`${card} divide-y divide-border px-4`}>
-            {home.events.map((e) => {
-              const d = new Date(e.event_date);
-              return (
-                <div key={e.id} className="flex items-center gap-3 py-3">
-                  <span className="flex h-11 w-11 flex-none flex-col items-center justify-center rounded-[12px] bg-secondary/60">
-                    <span className="font-display text-[15px] font-extrabold leading-none text-foreground">{d.getDate()}</span>
-                    <span className="mt-0.5 text-[9px] font-bold uppercase tracking-wide text-primary">
-                      {d.toLocaleDateString('en-IN', { month: 'short' })}
-                    </span>
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-display text-[14.5px] font-bold text-foreground">{e.title}</div>
-                    {e.description && <div className="text-[11.5px] text-muted-foreground">{e.description}</div>}
-                  </div>
-                  <CalendarDays className="h-4 w-4 flex-none text-muted-foreground" />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      <p className="pt-0.5 text-center text-[11px] font-medium text-[#B7AC9F]">Stayo{home.hostelName ? ` · ${home.hostelName}` : ''}</p>
-      </div>
 
       <Spotlight open={guide.show} stops={welcome} onDone={guide.dismiss} />
 

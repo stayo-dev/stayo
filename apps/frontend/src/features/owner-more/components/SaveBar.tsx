@@ -36,7 +36,7 @@ export function SaveBar({
   if (!visible && !pending) return null;
 
   return (
-    <div className="stayo-save-bar fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] z-20 border-t border-border bg-background px-5 pb-[30px] pt-3 sm:mx-auto sm:max-w-[480px] sm:px-6">
+    <div className="stayo-save-bar fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] z-20 border-t border-border bg-background px-5 pb-[30px] pt-3 sm:mx-auto sm:max-w-[480px] sm:px-6 lg:bottom-0 lg:max-w-[760px]">
       <div className="flex items-center gap-2.5">
         {onDiscard && (
           <button

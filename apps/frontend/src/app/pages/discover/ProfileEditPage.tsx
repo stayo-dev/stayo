@@ -128,9 +128,14 @@ export function ProfileEditPage() {
   const missing = data?.missing_core_fields ?? [];
 
   return (
-    <div className="flex min-h-[100dvh] flex-col">
+    <div className="flex min-h-[100dvh] flex-col lg:min-h-0">
+      {/*
+        The console topbar already carries "Your details" + the same subtitle
+        at lg+ (`appHeaders.ts`'s `/profile/details` entry) — this back+title
+        row is mobile-only chrome from when this page had no shell around it.
+      */}
       <header
-        className="sticky top-0 z-30 flex items-center gap-3 border-b px-5 pb-3.5 pt-[max(3.25rem,env(safe-area-inset-top))]"
+        className="sticky top-0 z-30 flex items-center gap-3 border-b px-5 pb-3.5 pt-[max(3.25rem,env(safe-area-inset-top))] lg:hidden"
         style={{ background: C.cardWarm, borderColor: C.line }}
       >
         <button
@@ -140,7 +145,7 @@ export function ProfileEditPage() {
           className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-full"
           style={{ background: '#F4EEE7' }}
         >
-          <ChevronLeft className="h-5 w-5" style={{ color: '#6B6259' }} />
+          <ChevronLeft className="h-5 w-5" style={{ color: 'var(--muted-foreground)' }} />
         </button>
         <div>
           <h1 className="text-[20px] font-extrabold tracking-[-0.02em]" style={{ fontFamily: FONT.display, color: C.text }}>
@@ -152,7 +157,7 @@ export function ProfileEditPage() {
         </div>
       </header>
 
-      <main className="flex-1 space-y-6 px-5 py-5">
+      <main className="flex-1 space-y-6 px-5 py-5 lg:mx-auto lg:w-full lg:max-w-[760px] lg:px-0 lg:pt-8">
         {/* Why this screen exists, said plainly */}
         <div
           className="flex gap-3 rounded-2xl border p-4"
@@ -247,9 +252,11 @@ export function ProfileEditPage() {
         className="sticky bottom-0 flex-none border-t px-5 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-3"
         style={{ background: C.cardWarm, borderColor: C.line }}
       >
-        <PrimaryButton full disabled={update.isPending} onClick={save}>
-          {update.isPending ? 'Saving…' : saved ? 'Saved' : 'Save details'}
-        </PrimaryButton>
+        <div className="lg:mx-auto lg:w-full lg:max-w-[760px]">
+          <PrimaryButton full disabled={update.isPending} onClick={save}>
+            {update.isPending ? 'Saving…' : saved ? 'Saved' : 'Save details'}
+          </PrimaryButton>
+        </div>
       </div>
     </div>
   );

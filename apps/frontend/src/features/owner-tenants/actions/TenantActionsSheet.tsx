@@ -9,7 +9,7 @@ import {
   BedDouble,
   LogOut,
 } from 'lucide-react';
-import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
+import { AdaptiveSurface } from '@/app/components/ui/adaptive-surface';
 
 interface TenantActionsSheetProps {
   open: boolean;
@@ -57,7 +57,7 @@ const GROUPS: {
   },
 ];
 
-/** Tenant Actions bottom sheet, grouped per Stayo App.dc.html. Every row is real — wired to the same backend flows used elsewhere in the app (Change Rent's identity-confirmed pattern, the tenant's own Activity tab, etc), none are silent no-ops. */
+/** Tenant Actions menu, grouped per Stayo App.dc.html — a `BottomSheet` below `lg`, a right-side drawer at `lg+` (`AdaptiveSurface variant="form"`, ADR-171 Phase 2.4) so the grouped rich rows keep their layout and the profile stays visible behind it. Every row is real — wired to the same backend flows used elsewhere in the app (Change Rent's identity-confirmed pattern, the tenant's own Activity tab, etc), none are silent no-ops. */
 export function TenantActionsSheet({
   open,
   onClose,
@@ -89,7 +89,7 @@ export function TenantActionsSheet({
   };
 
   return (
-    <BottomSheet open={open} onOpenChange={(v) => !v && onClose()} title="Actions">
+    <AdaptiveSurface variant="form" open={open} onOpenChange={(v) => !v && onClose()} title="Actions">
       <div className="flex flex-col gap-3.5">
         {GROUPS.map((group) => (
           <div key={group.label} className="flex flex-col gap-2">
@@ -132,6 +132,6 @@ export function TenantActionsSheet({
           </button>
         </div>
       </div>
-    </BottomSheet>
+    </AdaptiveSurface>
   );
 }

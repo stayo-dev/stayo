@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Download, Share2 } from 'lucide-react';
-import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
+import { AdaptiveSurface } from '@/app/components/ui/adaptive-surface';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { ownerExportService, type ExportPreview } from '@features/owner-payouts/api/exports';
 import {
@@ -99,7 +99,7 @@ export function ExportSheet({ open, onClose, hostels, hostelId }: ExportSheetPro
   const blocked = Boolean(rangeError) || busy !== null;
 
   return (
-    <BottomSheet open={open} onOpenChange={(v) => !v && onClose()} title="Export">
+    <AdaptiveSurface variant="form" open={open} onOpenChange={(v) => !v && onClose()} title="Export">
       <div className="flex flex-col gap-4 pb-2">
         <div>
           <p className="mb-2 text-[12px] font-bold uppercase tracking-wide text-muted-foreground">
@@ -213,6 +213,6 @@ export function ExportSheet({ open, onClose, hostels, hostelId }: ExportSheetPro
           )}
         </div>
       </div>
-    </BottomSheet>
+    </AdaptiveSurface>
   );
 }

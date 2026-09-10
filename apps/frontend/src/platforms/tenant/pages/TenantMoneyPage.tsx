@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { useIsDesktop } from '@/app/components/ui/use-desktop';
 import { TenantPageHeader } from '../components/TenantPageHeader';
 import { GuideNote } from '../guide/GuideNote';
 import { useTenantGuide } from '../guide/useTenantGuide';
@@ -39,6 +40,10 @@ function LoadingSkeleton() {
 /** Tenant Payments tab (route stays `/tenant/money`; label renamed from "Money" for the single-level nav), per Stayo Tenant.dc.html. Real data via `useTenantFinancials()` — the same hook Home's rent-due hero uses, so the two never disagree. */
 export function TenantMoneyPage() {
   const navigate = useNavigate();
+  // Desktop (lg+, ADR-171 Phase 3.2): balance/installment/billing form the
+  // primary column, timeline/deposit/history the secondary one. Below lg,
+  // every section renders in the same single column, same order as before.
+  const isDesktop = useIsDesktop();
   const fin = useTenantFinancials();
   const profile = useTenantProfile();
 
@@ -71,23 +76,9 @@ export function TenantMoneyPage() {
 
   const activeFreq = fin.billingFrequency?.active_frequency ? `${fin.billingFrequency.active_frequency.charAt(0)}${fin.billingFrequency.active_frequency.slice(1).toLowerCase()} plan` : 'Monthly plan';
 
-  return (
-    <div>
-      <TenantPageHeader
-        title="Payments"
-        subtitle={`${new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })} · ${activeFreq}`}
-        right={
-          profile.room?.room_no ? (
-            <span className="flex items-center gap-1.5 rounded-full bg-foreground px-3 py-[7px]">
-              <span className="h-1.5 w-1.5 rounded-full bg-success" />
-              <span className="text-[11px] font-semibold text-background/80">Room {profile.room.room_no}</span>
-            </span>
-          ) : undefined
-        }
-      />
-      <div className="flex flex-col gap-6 px-4 pb-8 pt-5 sm:px-6">
-        {guide.show && <GuideNote {...TAB_COPY.money} onDismiss={guide.dismiss} />}
+  const guideNote = guide.show && <GuideNote {...TAB_COPY.money} onDismiss={guide.dismiss} />;
 
+  const balanceHero = (
       <div className="relative overflow-hidden rounded-[22px] bg-foreground p-5 text-background shadow-[0_12px_30px_rgba(34,30,26,0.24)]">
         <div
           className="pointer-events-none absolute -right-7 -top-7 h-[130px] w-[130px] rounded-full"
@@ -122,186 +113,240 @@ export function TenantMoneyPage() {
           </button>
         </div>
       </div>
+  );
 
-      {installmentTotal > 0 && (
-        <div className="flex flex-col gap-2.5">
-          <span className={sectionLabel}>Current installment</span>
-          <div className={`${card} p-[17px]`}>
-            <div className="flex flex-col gap-2 text-[13px]">
-              <div className="flex items-center justify-between"><span className="text-muted-foreground">Rent portion</span><span className="font-semibold tabular-nums text-foreground">{fmt(rentDue)}</span></div>
-              {maintenanceDue > 0 && (
-                <div className="flex items-center justify-between"><span className="text-muted-foreground">Maintenance</span><span className="font-semibold tabular-nums text-foreground">{fmt(maintenanceDue)}</span></div>
-              )}
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Late fee</span>
-                <span className={`font-semibold tabular-nums ${lateFeeDue > 0 ? 'text-destructive' : 'text-success'}`}>{lateFeeDue > 0 ? fmt(lateFeeDue) : 'Waived'}</span>
-              </div>
-              <div className="mt-1 flex items-center justify-between border-t border-border pt-2">
-                <span className="font-bold text-foreground">Total due</span>
-                <span className="font-display text-[15px] font-extrabold tabular-nums text-foreground">{fmt(installmentTotal)}</span>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={fin.openPay}
-              className="mt-3.5 w-full rounded-xl bg-[#A45D44] py-[13px] text-center font-display text-sm font-bold text-white shadow-[0_6px_16px_rgba(164,93,68,0.28)]"
-            >
-              Pay this installment
-            </button>
-          </div>
-        </div>
-      )}
-
-      {fin.billingFrequency && (
-        <div className="flex flex-col gap-2.5">
-          <span className={sectionLabel}>Billing</span>
-          <div className={`${card} p-4`}>
-            <div className="flex items-center gap-3">
-              <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px] bg-[#F5E9E3] text-primary">
-                <Wallet className="h-4.5 w-4.5" />
-              </span>
-              <div className="flex-1">
-                <div className="font-display text-sm font-bold text-foreground">
-                  {fin.billingFrequency.active_frequency?.charAt(0)}{fin.billingFrequency.active_frequency?.slice(1).toLowerCase()} billing
-                </div>
-                <div className="text-[11.5px] text-muted-foreground">Rent portion {fmt(rentDue)}</div>
-              </div>
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2.5">
-              <div className="rounded-xl bg-[#F7F1EA] px-3 py-[11px]">
-                <div className="text-[10px] font-semibold uppercase text-[#9C9186]">Rent / month</div>
-                <div className="mt-0.5 font-display text-[13.5px] font-bold text-foreground">{fmt(rentDue)}</div>
-              </div>
-              <div className="rounded-xl bg-[#F7F1EA] px-3 py-[11px]">
-                <div className="text-[10px] font-semibold uppercase text-[#9C9186]">Cycle</div>
-                <div className="mt-0.5 font-display text-[13.5px] font-bold text-foreground">
-                  {fin.billingFrequency.active_frequency?.charAt(0)}{fin.billingFrequency.active_frequency?.slice(1).toLowerCase()}
-                </div>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => stayoToast.info('Billing change request opened')}
-              className="mt-3.5 flex w-full items-center justify-center gap-1.5 text-[12.5px] font-semibold text-primary"
-            >
-              Switch to quarterly or annual →
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="flex flex-col gap-2.5">
-        <div className="flex items-baseline justify-between">
-          <span className={sectionLabel}>Installment timeline</span>
-        </div>
-        <div className={`${card} divide-y divide-border px-4`}>
-          {fin.timeline.length === 0 ? (
-            <div className="py-4 text-center text-[12.5px] text-muted-foreground">No installments yet</div>
-          ) : (
-            fin.timeline.slice(0, 8).map((t: any) => (
-              <div key={t.id} className="flex gap-3 py-3">
-                <span className={`mt-1.5 h-2 w-2 flex-none rounded-full ${TIMELINE_DOT[t.state] ?? 'bg-muted-foreground/30'}`} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-display text-[13.5px] font-bold text-foreground">{t.label}</span>
-                    <span className="tabular-nums font-display text-[13px] font-bold text-foreground">
-                      ₹{Number(t.amount).toLocaleString('en-IN')}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 text-[11px] font-medium text-muted-foreground">
-                    {new Date(t.event_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · {t.state.replace('_', ' ')}
-                  </div>
-                </div>
-              </div>
-            ))
+  const installmentCard = installmentTotal > 0 && (
+    <div className="flex flex-col gap-2.5">
+      <span className={sectionLabel}>Current installment</span>
+      <div className={`${card} p-[17px]`}>
+        <div className="flex flex-col gap-2 text-[13px]">
+          <div className="flex items-center justify-between"><span className="text-muted-foreground">Rent portion</span><span className="font-semibold tabular-nums text-foreground">{fmt(rentDue)}</span></div>
+          {maintenanceDue > 0 && (
+            <div className="flex items-center justify-between"><span className="text-muted-foreground">Maintenance</span><span className="font-semibold tabular-nums text-foreground">{fmt(maintenanceDue)}</span></div>
           )}
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Late fee</span>
+            <span className={`font-semibold tabular-nums ${lateFeeDue > 0 ? 'text-destructive' : 'text-success'}`}>{lateFeeDue > 0 ? fmt(lateFeeDue) : 'Waived'}</span>
+          </div>
+          <div className="mt-1 flex items-center justify-between border-t border-border pt-2">
+            <span className="font-bold text-foreground">Total due</span>
+            <span className="font-display text-[15px] font-extrabold tabular-nums text-foreground">{fmt(installmentTotal)}</span>
+          </div>
         </div>
+        <button
+          type="button"
+          onClick={fin.openPay}
+          className="mt-3.5 w-full rounded-xl bg-[#A45D44] py-[13px] text-center font-display text-sm font-bold text-white shadow-[0_6px_16px_rgba(164,93,68,0.28)]"
+        >
+          Pay this installment
+        </button>
       </div>
+    </div>
+  );
 
-      {fin.securityDeposit.configured > 0 && (
-        <div className="flex flex-col gap-2.5">
-          <span className={sectionLabel}>Deposit</span>
-          <div className={`${card} p-4`}>
-            <div className="flex items-center gap-3">
-              <span className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-[9px] bg-[#EAF3EE] text-success">
-                <ShieldCheck className="h-4 w-4" />
-              </span>
-              <div className="flex-1">
-                <div className="text-[13px] font-bold text-foreground">Security deposit</div>
-                <div className="text-[11px] text-muted-foreground">Held for move-in</div>
-              </div>
-              {depositPct >= 100 && (
-                <span className="flex-none rounded-full bg-[#EAF3EE] px-2.5 py-1 text-[10.5px] font-bold text-success">Fully secured</span>
-              )}
+  const billingCard = fin.billingFrequency && (
+    <div className="flex flex-col gap-2.5">
+      <span className={sectionLabel}>Billing</span>
+      <div className={`${card} p-4`}>
+        <div className="flex items-center gap-3">
+          <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px] bg-[#F5E9E3] text-primary">
+            <Wallet className="h-4.5 w-4.5" />
+          </span>
+          <div className="flex-1">
+            <div className="font-display text-sm font-bold text-foreground">
+              {fin.billingFrequency.active_frequency?.charAt(0)}{fin.billingFrequency.active_frequency?.slice(1).toLowerCase()} billing
             </div>
-            <div className="mt-3 flex items-center justify-between">
-              <span className="text-[12px] text-muted-foreground">Held by hostel</span>
-              <span className="font-display text-[19px] font-extrabold tabular-nums text-success">
-                ₹{fin.securityDeposit.paid.toLocaleString('en-IN')}
-              </span>
-            </div>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-              <div className="h-full rounded-full bg-success" style={{ width: `${depositPct}%` }} />
-            </div>
-            {fin.securityDeposit.due > 0 && (
-              <p className="mt-2 text-[11px] text-muted-foreground">₹{fin.securityDeposit.due.toLocaleString('en-IN')} still due</p>
-            )}
+            <div className="text-[11.5px] text-muted-foreground">Rent portion {fmt(rentDue)}</div>
           </div>
         </div>
-      )}
-
-      <div className="flex flex-col gap-2.5">
-        <span className={sectionLabel}>Payment history</span>
-        <div className={`${card} divide-y divide-border px-4`}>
-          {fin.history.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-6 text-center">
-              <Receipt className="h-5 w-5 text-muted-foreground" />
-              <span className="text-[12.5px] text-muted-foreground">No payments recorded yet</span>
+        <div className="mt-3 grid grid-cols-2 gap-2.5">
+          <div className="rounded-xl bg-[#F7F1EA] px-3 py-[11px]">
+            <div className="text-[10px] font-semibold uppercase text-[#9C9186]">Rent / month</div>
+            <div className="mt-0.5 font-display text-[13.5px] font-bold text-foreground">{fmt(rentDue)}</div>
+          </div>
+          <div className="rounded-xl bg-[#F7F1EA] px-3 py-[11px]">
+            <div className="text-[10px] font-semibold uppercase text-[#9C9186]">Cycle</div>
+            <div className="mt-0.5 font-display text-[13.5px] font-bold text-foreground">
+              {fin.billingFrequency.active_frequency?.charAt(0)}{fin.billingFrequency.active_frequency?.slice(1).toLowerCase()}
             </div>
-          ) : (
-            fin.history.slice(0, 10).map((p: any) => (
-              <div key={p.id} className="flex items-center gap-3 py-3">
-                <span className={`flex h-8 w-8 flex-none items-center justify-center rounded-[9px] ${p.is_reversal ? 'bg-muted text-muted-foreground' : 'bg-success/10 text-success'}`}>
-                  {p.is_reversal ? <Undo2 className="h-4 w-4" /> : <Receipt className="h-4 w-4" />}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className={`text-[13px] font-semibold ${p.is_reversal ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
-                    {p.is_reversal ? 'Payment reversed' : 'Payment received'}
-                  </div>
-                  <div className="text-[11px] text-muted-foreground">
-                    {p.payment_date ? new Date(p.payment_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
-                  </div>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => stayoToast.info('Billing change request opened')}
+          className="mt-3.5 flex w-full items-center justify-center gap-1.5 text-[12.5px] font-semibold text-primary"
+        >
+          Switch to quarterly or annual →
+        </button>
+      </div>
+    </div>
+  );
+
+  const timelineSection = (
+    <div className="flex flex-col gap-2.5">
+      <div className="flex items-baseline justify-between">
+        <span className={sectionLabel}>Installment timeline</span>
+      </div>
+      <div className={`${card} divide-y divide-border px-4`}>
+        {fin.timeline.length === 0 ? (
+          <div className="py-4 text-center text-[12.5px] text-muted-foreground">No installments yet</div>
+        ) : (
+          fin.timeline.slice(0, 8).map((t: any) => (
+            <div key={t.id} className="flex gap-3 py-3">
+              <span className={`mt-1.5 h-2 w-2 flex-none rounded-full ${TIMELINE_DOT[t.state] ?? 'bg-muted-foreground/30'}`} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-display text-[13.5px] font-bold text-foreground">{t.label}</span>
+                  <span className="tabular-nums font-display text-[13px] font-bold text-foreground">
+                    ₹{Number(t.amount).toLocaleString('en-IN')}
+                  </span>
                 </div>
-                <span className={`tabular-nums font-display text-[13.5px] font-bold ${p.is_reversal ? 'text-muted-foreground line-through' : 'text-success'}`}>
-                  ₹{Number(p.amount_paid).toLocaleString('en-IN')}
-                </span>
+                <div className="mt-0.5 text-[11px] font-medium text-muted-foreground">
+                  {new Date(t.event_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · {t.state.replace('_', ' ')}
+                </div>
               </div>
-            ))
-          )}
-        </div>
-        {reversedPayments.length > 0 && (
-          <div className="rounded-[13px] bg-[#FBF7F2] p-[13px]">
-            <div className="flex items-center gap-2">
-              <Undo2 className="h-3.5 w-3.5 text-[#9C9186]" />
-              <span className="text-[11px] font-bold text-[#8A7F75]">Reversed · corrected by hostel</span>
             </div>
-            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-              {reversedPayments.length} payment{reversedPayments.length === 1 ? '' : 's'} above {reversedPayments.length === 1 ? 'was' : 'were'} reversed by your hostel — these amounts are not counted toward what you've paid.
-            </p>
-          </div>
+          ))
         )}
       </div>
+    </div>
+  );
 
-      <p className="pt-0.5 text-center text-[11px] font-medium text-[#B7AC9F]">Stayo{profile.hostel?.name ? ` · ${profile.hostel.name}` : ''}</p>
-
-      <PaySheet
-        stage={fin.payStage}
-        amount={fin.amountDue}
-        error={fin.payError}
-        onClose={fin.closePay}
-        onConfirm={fin.confirmPay}
-      />
+  const depositCard = fin.securityDeposit.configured > 0 && (
+    <div className="flex flex-col gap-2.5">
+      <span className={sectionLabel}>Deposit</span>
+      <div className={`${card} p-4`}>
+        <div className="flex items-center gap-3">
+          <span className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-[9px] bg-[#EAF3EE] text-success">
+            <ShieldCheck className="h-4 w-4" />
+          </span>
+          <div className="flex-1">
+            <div className="text-[13px] font-bold text-foreground">Security deposit</div>
+            <div className="text-[11px] text-muted-foreground">Held for move-in</div>
+          </div>
+          {depositPct >= 100 && (
+            <span className="flex-none rounded-full bg-[#EAF3EE] px-2.5 py-1 text-[10.5px] font-bold text-success">Fully secured</span>
+          )}
+        </div>
+        <div className="mt-3 flex items-center justify-between">
+          <span className="text-[12px] text-muted-foreground">Held by hostel</span>
+          <span className="font-display text-[19px] font-extrabold tabular-nums text-success">
+            ₹{fin.securityDeposit.paid.toLocaleString('en-IN')}
+          </span>
+        </div>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+          <div className="h-full rounded-full bg-success" style={{ width: `${depositPct}%` }} />
+        </div>
+        {fin.securityDeposit.due > 0 && (
+          <p className="mt-2 text-[11px] text-muted-foreground">₹{fin.securityDeposit.due.toLocaleString('en-IN')} still due</p>
+        )}
       </div>
+    </div>
+  );
+
+  const historySection = (
+    <div className="flex flex-col gap-2.5">
+      <span className={sectionLabel}>Payment history</span>
+      <div className={`${card} divide-y divide-border px-4`}>
+        {fin.history.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 py-6 text-center">
+            <Receipt className="h-5 w-5 text-muted-foreground" />
+            <span className="text-[12.5px] text-muted-foreground">No payments recorded yet</span>
+          </div>
+        ) : (
+          fin.history.slice(0, 10).map((p: any) => (
+            <div key={p.id} className="flex items-center gap-3 py-3">
+              <span className={`flex h-8 w-8 flex-none items-center justify-center rounded-[9px] ${p.is_reversal ? 'bg-muted text-muted-foreground' : 'bg-success/10 text-success'}`}>
+                {p.is_reversal ? <Undo2 className="h-4 w-4" /> : <Receipt className="h-4 w-4" />}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className={`text-[13px] font-semibold ${p.is_reversal ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
+                  {p.is_reversal ? 'Payment reversed' : 'Payment received'}
+                </div>
+                <div className="text-[11px] text-muted-foreground">
+                  {p.payment_date ? new Date(p.payment_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
+                </div>
+              </div>
+              <span className={`tabular-nums font-display text-[13.5px] font-bold ${p.is_reversal ? 'text-muted-foreground line-through' : 'text-success'}`}>
+                ₹{Number(p.amount_paid).toLocaleString('en-IN')}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+      {reversedPayments.length > 0 && (
+        <div className="rounded-[13px] bg-[#FBF7F2] p-[13px]">
+          <div className="flex items-center gap-2">
+            <Undo2 className="h-3.5 w-3.5 text-[#9C9186]" />
+            <span className="text-[11px] font-bold text-[#8A7F75]">Reversed · corrected by hostel</span>
+          </div>
+          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+            {reversedPayments.length} payment{reversedPayments.length === 1 ? '' : 's'} above {reversedPayments.length === 1 ? 'was' : 'were'} reversed by your hostel — these amounts are not counted toward what you've paid.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+
+  const footerText = (
+    <p className="pt-0.5 text-center text-[11px] font-medium text-[#B7AC9F]">Stayo{profile.hostel?.name ? ` · ${profile.hostel.name}` : ''}</p>
+  );
+
+  const paySheet = (
+    <PaySheet
+      stage={fin.payStage}
+      amount={fin.amountDue}
+      error={fin.payError}
+      onClose={fin.closePay}
+      onConfirm={fin.confirmPay}
+    />
+  );
+
+  return (
+    <div>
+      <TenantPageHeader
+        title="Payments"
+        subtitle={`${new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })} · ${activeFreq}`}
+        right={
+          profile.room?.room_no ? (
+            <span className="flex items-center gap-1.5 rounded-full bg-foreground px-3 py-[7px]">
+              <span className="h-1.5 w-1.5 rounded-full bg-success" />
+              <span className="text-[11px] font-semibold text-background/80">Room {profile.room.room_no}</span>
+            </span>
+          ) : undefined
+        }
+      />
+      {isDesktop ? (
+        <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-6 px-8 pb-8 pt-5">
+          {guideNote}
+          <div className="grid grid-cols-[1fr_380px] items-start gap-6">
+            <div className="flex min-w-0 flex-col gap-6">
+              {balanceHero}
+              {installmentCard}
+              {billingCard}
+            </div>
+            <div className="flex min-w-0 flex-col gap-6">
+              {timelineSection}
+              {depositCard}
+              {historySection}
+            </div>
+          </div>
+          {footerText}
+          {paySheet}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-6 px-4 pb-8 pt-5 sm:px-6">
+          {guideNote}
+          {balanceHero}
+          {installmentCard}
+          {billingCard}
+          {timelineSection}
+          {depositCard}
+          {historySection}
+          {footerText}
+          {paySheet}
+        </div>
+      )}
     </div>
   );
 }

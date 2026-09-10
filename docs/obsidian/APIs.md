@@ -498,14 +498,14 @@ No migration — `hostel_marketing_revisions.content` is a JSON column and this 
 
 ## Cron Jobs (`CRON_SECRET` bearer-gated; 2 on Vercel Cron, 4 on GitHub Actions)
 
-**Trimmed to the MVP set on 2026-09-06 ([[Decisions#ADR-171|ADR-171]]).** Nine jobs were scheduled; six now are. Canonical registry: `docs/operations/cron-registry.md`.
+**Trimmed to the MVP set on 2026-09-06 ([[Decisions#ADR-177|ADR-177]]).** Nine jobs were scheduled; six now are. Canonical registry: `docs/operations/cron-registry.md`.
 
-**Active (6), all on Vercel Cron** (`apps/backend/vercel.json`) since 2026-09-08 ([[Decisions#ADR-173|ADR-173]]), when the six were consolidated onto one scheduler and `.github/workflows/backend-cron.yml` was deleted: `move-out-releases` (`0 16 * * *` / 21:30 IST), `generate-rent` (`30 18 * * *` / 00:00), `rent-reminders` (`0 2 * * *` / 07:30), `invitation-expiry-reminders` (`0 3 * * *` / 08:30), `reconcile-payments` (`30 3 * * *` / 09:00), `expire-unaccepted-tenancies` (`0 5 * * *` / 10:30). Hobby's cap is **100 crons per project**, once-daily each with **±59 min precision** — not the 2 the split was built around — so IST times are the earliest a job can fire, and any two jobs that must not overlap need a **two-hour** slot gap. The `move-out-releases` → `generate-rent` ordering is **defence-in-depth, not load-bearing** ([[Decisions#ADR-172|ADR-172]]): `generate-rent` filters on `tenants.exit_date` itself, so their order changes no billing outcome. (The earlier claim that it "has no exit-date filter" was inaccurate — it had one, on `roomAllocation.end_date`, which a future-dated move-out never populates. See [[Bugs]].)
+**Active (6), all on Vercel Cron** (`apps/backend/vercel.json`) since 2026-09-08 ([[Decisions#ADR-179|ADR-179]]), when the six were consolidated onto one scheduler and `.github/workflows/backend-cron.yml` was deleted: `move-out-releases` (`0 16 * * *` / 21:30 IST), `generate-rent` (`30 18 * * *` / 00:00), `rent-reminders` (`0 2 * * *` / 07:30), `invitation-expiry-reminders` (`0 3 * * *` / 08:30), `reconcile-payments` (`30 3 * * *` / 09:00), `expire-unaccepted-tenancies` (`0 5 * * *` / 10:30). Hobby's cap is **100 crons per project**, once-daily each with **±59 min precision** — not the 2 the split was built around — so IST times are the earliest a job can fire, and any two jobs that must not overlap need a **two-hour** slot gap. The `move-out-releases` → `generate-rent` ordering is **defence-in-depth, not load-bearing** ([[Decisions#ADR-178|ADR-178]]): `generate-rent` filters on `tenants.exit_date` itself, so their order changes no billing outcome. (The earlier claim that it "has no exit-date filter" was inaccurate — it had one, on `roomAllocation.end_date`, which a future-dated move-out never populates. See [[Bugs]].)
 
 **Descheduled 2026-09-06, routes retained and still gated:** `admissions` (redundant — availability reads already filter reservations on `expires_at > now()`), `daily-briefings`, `agreement-lifecycle`, `food-expiry` (renamed from `food-carry-forward` on 2026-08-25, [[Decisions#ADR-114|ADR-114]] — see [[Food]]), `hostel-invariants`, `migration-audit`. The workflow had also been calling a seventh, `food-carry-forward`, which had not existed since that rename — see [[Bugs]]. **Marked FROZEN (do not schedule) but functional:** `data-retention`. **Marked DORMANT (analytics-repair-only):** `tenant-analytics` (POST). **Decommissioned (410):** `onboarding-nudges`, `process-autopay-retries`, `process-overflow`, `reconcile-addons`.
 
 - **`GET /api/cron/generate-rent`** — daily. **Changed 2026-09-02 ([[Decisions#ADR-167|ADR-167]]):** no longer requires a single operational owner (it used to return **HTTP 409 and generate nothing** whenever ≥2 owners had an active tenant and `RENT_CRON_OWNER_ID` was unset — see [[Bugs]]). Now iterates **every** `ACTIVE` hostel with an active allocation to an `ACTIVE` tenant, across all owners, paginated by hostel `id` cursor and bounded by a 240 s soft budget; response carries `owners_touched`, `hostels_processed`, `has_more`, `next_cursor`. `?ownerId` (or `RENT_CRON_OWNER_ID` / `PRIMARY_OWNER_ID` / `PRODUCTION_OWNER_ID`) is now an optional single-owner *filter* for manual runs. Idempotency is per-hostel and unchanged.
-- **`GET /api/cron/reconcile-payments`** — daily. **Changed 2026-09-08 ([[Decisions#ADR-172|ADR-172]]): now fails closed.** It guarded with `if (process.env.CRON_SECRET && ...)`, so an unset or empty `CRON_SECRET` made this payment-mutating sweep fully public; it now returns **`500 Server misconfigured`** when the secret is absent, matching the ten routes that already behave that way. `admissions`, `data-retention` and `tenant-analytics` still carry the same defect — see [[TODO]].
+- **`GET /api/cron/reconcile-payments`** — daily. **Changed 2026-09-08 ([[Decisions#ADR-178|ADR-178]]): now fails closed.** It guarded with `if (process.env.CRON_SECRET && ...)`, so an unset or empty `CRON_SECRET` made this payment-mutating sweep fully public; it now returns **`500 Server misconfigured`** when the secret is absent, matching the ten routes that already behave that way. `admissions`, `data-retention` and `tenant-analytics` still carry the same defect — see [[TODO]].
 - **`GET /api/cron/rent-reminders`** — daily. **Changed 2026-09-02:** `processDailyReminders` now runs a **before-due / due-day pass** in addition to the overdue pass — sends the hostel's configured `before_due_days` / `send_due_day_reminder` nudges (keyed on each obligation's own `due_date`), logged as `reminder_type: "PRE_DUE"`. Response summary gains `before_due_sent`. See [[Business-Rules]] Notification triggers.
 
 ## Misc / Platform Utility
@@ -581,3 +581,82 @@ changed phone is proved with `send-phone-otp` / `verify-phone-otp` first.
 `DELETE /api/push/subscriptions` — body `{ endpoint }`. Scoped to the session's own profile, so an endpoint cannot be unsubscribed by another account.
 
 Rows are also deleted automatically by the sender when the push service returns **404/410** (permanently gone). A 5xx or timeout does **not** prune — that would quietly delete live devices during an outage.
+
+## Clerk auth webhook (2026-09-09)
+
+### `POST /webhooks/clerk`
+
+Clerk user-lifecycle webhook ([[Decisions#ADR-176|ADR-176]]). **Note the path: it is not under `/api`.**
+
+- **Production URL:** `https://api.yourstayo.com/webhooks/clerk` — point Clerk's dashboard here.
+- **Not reachable via `yourstayo.com`.** The frontend rewrites only `/api/:path*` to this backend (`apps/frontend/vercel.json`), so the apex domain has no route for it.
+- **Public by construction, not by allow-list.** `middleware.ts` matches `/api/:path*` only, so this route never enters the session pipeline — there is no `PUBLIC_ROUTES` entry, and none should be added (it would be dead config).
+- **Auth:** the Svix signature over the **raw** body (`svix-id`, `svix-timestamp`, `svix-signature`), verified in `lib/auth/clerk-webhook-verification.ts` using the `svix` library and `CLERK_WEBHOOK_SIGNING_SECRET`. Verified before the event is interpreted. There is no bypass flag.
+- **Handles:** `user.created`, `user.updated`, `user.deleted`. Any other event type is acknowledged with 200 and dropped.
+
+Effects (all in `src/services/auth/clerk-user-sync-service.ts`, all idempotent):
+
+| Event | Effect |
+|---|---|
+| `user.created` | Upserts a `users` row on `clerk_user_id`; links to a `profiles` row matched by email if one is free. Never creates a profile. |
+| `user.updated` | Syncs the four allow-listed fields. Ignored if Clerk's `updated_at` is older than what we hold. Creates the row if `user.created` was never delivered. |
+| `user.deleted` | Sets `is_active = false` + `deactivated_at`. **Never deletes**, and never touches the linked profile. |
+
+Status codes are a retry protocol for Svix, which retries on non-2xx:
+
+| Code | Meaning |
+|---|---|
+| `200` | Processed, **or** deliberately ignored (unhandled type, stale replay, delete of an unknown account). Nothing to retry. |
+| `400` | Malformed event. Retrying identical bytes cannot help. |
+| `401` | Signature missing or invalid. Rejected caller — never retry. |
+| `500` | Our failure, **including a missing signing secret**. Retry is correct; the handlers are idempotent. |
+
+Env var: `CLERK_WEBHOOK_SIGNING_SECRET` (`whsec_…`), loaded from the repo-root `.env` like every other backend secret. **Currently unset — no Clerk account exists yet, and no real delivery has reached this endpoint.**
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Database]], [[Business-Rules]], [[Backend]], [[Changelog]]
+
+## Clerk handshake (2026-09-09)
+
+### `GET /me`
+
+The canonical Clerk handshake ([[Decisions#ADR-176|ADR-176]] Phase 2.6). **Not under `/api`** — same as `/webhooks/clerk`.
+
+- **Production URL:** `https://api.yourstayo.com/me`.
+- **Why not `/api/me`:** `middleware.ts` gates `/api/:path*` on a **Supabase** session, so `/api/me` would 401 every Clerk caller. Adding it to `PUBLIC_ROUTES` is worse than it sounds — that list is *prefix-matched*, so an `/api/me` entry would also expose the existing `/api/metrics`. Outside the matcher, no security config is touched at all.
+- **Reachability caveat:** `yourstayo.com` rewrites only `/api/:path*` to this backend, so the SPA's API client cannot reach `/me` today. **Nothing calls this endpoint yet.** Phase 3 must add a rewrite for `/me` or call the api. subdomain directly.
+- **Auth:** `Authorization: Bearer <Clerk session token>` (from the SPA's `getToken()`), verified by `@clerk/backend`'s `verifyToken` against Clerk's JWKS using `CLERK_SECRET_KEY`. Bearer rather than cookies because SPA and API are different origins.
+
+Response `200`:
+
+```json
+{ "userId": "…", "clerkUserId": "user_2…", "role": "OWNER" | null,
+  "profile": { "id": "…" | null, "linked": true | false }, "isActive": true }
+```
+
+| Code | Meaning |
+|---|---|
+| `200` | Resolved. The `users` row existed or was created. |
+| `401` | No Bearer token, or it failed verification. |
+| `500` | `CLERK_SECRET_KEY` unset, or the handshake threw. |
+
+**Idempotent, and safe under a race.** Read-then-create, with the unique index on `clerk_user_id` as the actual guarantee: two concurrent first-requests both miss the read and both insert; the loser catches `P2002` and re-reads. Without that, "never create duplicate users" would rest on a check-then-act the database is free to interleave.
+
+**It assigns no role and creates no profile.** `role` is *read* from the linked `profiles` row and is `null` for an account with no business identity — a normal state. Profile linking (by email, only when the Clerk JWT template supplies one — the default session token does not) reuses `findLinkableProfileId`, the same rule the webhook uses, including its refusal to steal a profile already bound to another Clerk account.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Database]], [[Business-Rules]], [[Backend]], [[Frontend]], [[Changelog]]
+
+### `GET /api/auth/me` — dual session authority (2026-09-09)
+
+Changed by [[Decisions#ADR-176|ADR-176]] Phase 3. **The Supabase path is unchanged**; Clerk is consulted only when it finds nothing.
+
+| Credential | Behaviour |
+|---|---|
+| Supabase session (middleware headers) | Exactly as before — including its specific rejection codes. |
+| `Authorization: Bearer <Clerk token>` | Verified by `verifyClerkSession()`, resolved through `ensureUserForClerkSession()` to a `profiles` row. |
+| Neither | `401 UNAUTHORIZED`, as before. |
+
+Clerk-path rejections, both `403`: `NO_STAYO_ACCOUNT` (Clerk knows them, we have no profile) and `ACCOUNT_DISABLED` (the login was deactivated by `user.deleted`). The response body is identical for both providers, so callers need no branch.
+
+**`middleware.ts`** gains `CLERK_BEARER_ROUTES` — currently just `/api/auth/me`, **exact**-matched via a `Set`. Its only effect: a token rejected by *both* the Supabase and legacy verifiers falls through as anonymous rather than 401, so the route can verify it as a Clerk token. This does **not** make the route public — `PUBLIC_ROUTES` is prefix-matched and an entry there would also have exposed `/api/auth/me`-prefixed siblings.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[Business-Rules]], [[Changelog]]

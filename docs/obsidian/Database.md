@@ -618,3 +618,31 @@ The tenant's optional room preference on an enquiry, entered as a compact floor/
 Subscriptions expire and rotate silently. A **404/410** from the push service means gone forever and the row is deleted rather than retried; softer failures increment `failure_count`. `ON DELETE CASCADE` so a deleted profile leaves no endpoints still receiving messages about an account that no longer exists.
 
 The field added to the `profile` model is a **relation**, not a scalar, so Prisma does not select it by default and it cannot break existing `profile` queries — but the migration must still be applied **before** the code is deployed.
+
+## `users` — the auth-agnostic identity anchor (2026-09-09, migration 081)
+
+Added by [[Decisions#ADR-176|ADR-176]], Phase 1 of the Supabase Auth → Clerk migration. **Nothing reads this table on a request path yet** — it is populated by the Clerk webhook and otherwise inert.
+
+It exists to hold the answer to *"who is this login?"* without the database knowing anything about the auth vendor. `clerk_user_id` is the **only** vendor-shaped column; everything else is neutral, so a future provider change means adding a column and backfilling it, not reshaping the schema.
+
+| Column | Notes |
+|---|---|
+| `id` | uuid PK |
+| `clerk_user_id` | **unique, not null.** Clerk's stable user id (`user_2abc…`). The join key for every auth question. |
+| `email`, `first_name`, `last_name`, `image_url` | Mirrored from Clerk. This is the complete set a webhook may write — see `ALLOWED_PROFILE_FIELDS`. |
+| `is_active`, `deactivated_at` | Soft-deactivation. `user.deleted` sets these; **no code path deletes a row.** |
+| `profile_id` | **unique, nullable**, FK → `profiles(id)` `ON DELETE SET NULL`. The business identity, when one exists. |
+| `clerk_updated_at` | Clerk's own `updated_at`, used to reject stale/out-of-order Svix deliveries. |
+| `created_at`, `updated_at` | |
+
+Indexes: `users_email_idx` (the profile-matching lookup), `users_is_active_idx`.
+
+**It deliberately holds no business data.** Roles (`OWNER`/`TENANT`/`ADMIN`), hostels, tenancies and money stay on `profiles` and its relations. That separation is what makes the public webhook safe: a Clerk payload cannot reach any authority-bearing column. See [[Business-Rules]].
+
+**`profile_id` is nullable in both directions, on purpose.** Clerk can know about a person before we have provisioned them a role (`profile_id` null), and a profile can exist with no login at all — an owner-created tenant who has never signed up (`profile.login` null). Neither is an error state.
+
+**`profiles` is unchanged by this migration.** The foreign key lives on the *new* table, so no existing query is affected. The only edit to the `profile` model is the `login` back-relation, which — like `push_subscriptions` above — is a **relation, not a scalar**, so Prisma does not select it by default and it cannot break existing `profile` queries. This is the deliberate avoidance of the 2026-08-22 failure in [[Bugs]], where a scalar field declared ahead of its column broke every query on the model.
+
+**Deploy order binds:** apply migration 081 *before* deploying code that reads `users`.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Decisions#ADR-031|ADR-031]], [[APIs]], [[Backend]], [[Business-Rules]]

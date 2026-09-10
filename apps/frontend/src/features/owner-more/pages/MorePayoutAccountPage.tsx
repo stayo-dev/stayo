@@ -95,7 +95,7 @@ export function MorePayoutAccountPage() {
   const showForm = editing || (!payoutQuery.isLoading && !current);
 
   return (
-    <div className={`flex flex-col gap-5 px-4 pt-6 sm:px-6 ${dirty ? 'pb-40' : 'pb-8'}`}>
+    <div className={`flex flex-col gap-5 px-4 pt-6 sm:px-6 lg:mx-auto lg:w-full lg:max-w-[760px] lg:px-0 lg:pt-8 ${dirty ? 'pb-40' : 'pb-8'}`}>
       <MoreScreenHeader
         backTo="/owner/more"
         backLabel="Profile"

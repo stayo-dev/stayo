@@ -66,7 +66,12 @@ interface GettingStartedInput {
 export function useGettingStarted(input: GettingStartedInput) {
   const key = tourKey(input.ownerId);
   const [tourSeenFor, setTourSeenFor] = useState<Record<string, boolean>>({});
-  const tourSeen = tourSeenFor[key] ?? readFlag(key);
+  /**
+   * A deliberate re-run, which outranks the stored dismissal without clearing
+   * it — replaying the tour should not make it come back uninvited tomorrow.
+   */
+  const [replaying, setReplaying] = useState(false);
+  const tourSeen = !replaying && (tourSeenFor[key] ?? readFlag(key));
 
   const state = useMemo(
     () =>
@@ -104,8 +109,23 @@ export function useGettingStarted(input: GettingStartedInput) {
 
   const dismissSpotlight = () => {
     writeFlag(key);
+    setReplaying(false);
     setTourSeenFor((prev) => ({ ...prev, [key]: true }));
   };
 
-  return { state, verification, runSpotlight, dismissSpotlight };
+  const replaySpotlight = () => setReplaying(true);
+
+  return {
+    state,
+    verification,
+    runSpotlight,
+    dismissSpotlight,
+    replaySpotlight,
+    /**
+     * Whether offering a replay makes sense right now: the tour has already
+     * had its turn and is not on screen. The checklist uses this to decide
+     * whether to show its "show me around again" row at all.
+     */
+    canReplaySpotlight: !runSpotlight && tourSeen,
+  };
 }

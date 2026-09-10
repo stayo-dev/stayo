@@ -38,7 +38,8 @@ import { MoveOutSheet } from '../actions/MoveOutSheet';
 import { QuickCollectModal } from '../quick-collect/QuickCollectModal';
 import { PaymentScheduleList } from '../profile/PaymentScheduleList';
 import { sanitizeIndianPhone } from '../invite/validation';
-import { APP_SURFACE } from '@shared/ui/surface';
+import { APP_SURFACE, APP_GRID } from '@shared/ui/surface';
+import { useIsDesktop } from '@/app/components/ui/use-desktop';
 
 const TABS: { id: TenantDetailTab; label: string }[] = [
   { id: 'charges', label: 'Payments' },
@@ -56,6 +57,7 @@ export function TenantDetailPage() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const isDesktop = useIsDesktop();
   const { tenant, isLoading, isError } = useTenantDetail(tenantId);
 
   const [activeTab, setActiveTab] = useState<TenantDetailTab>('charges');
@@ -165,17 +167,36 @@ export function TenantDetailPage() {
     return `https://wa.me/91${digits}?text=${encodeURIComponent(message)}`;
   })();
 
+  const tabButtons = TABS.map((t) => (
+    <button
+      key={t.id}
+      type="button"
+      onClick={() => setActiveTab(t.id)}
+      className={`flex-1 rounded-xl py-2.5 text-center font-display text-[12.5px] font-bold ${
+        activeTab === t.id ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
+      }`}
+    >
+      {t.label}
+    </button>
+  ));
+
   return (
     <ThemeProvider theme="product">
-      <div className={APP_SURFACE}>
-        <div className="flex items-center gap-2.5 px-4 pb-3 pt-6 sm:px-6">
-          <button type="button" onClick={() => navigate(-1)} aria-label="Back" className="flex h-8.5 w-8.5 flex-none items-center justify-center rounded-full border border-border bg-card">
-            <ArrowLeft className="h-4 w-4 text-muted-foreground" strokeWidth={1.9} />
-          </button>
-          <span className="text-[13.5px] font-semibold text-muted-foreground">Back to Tenants</span>
-        </div>
+      {/* Desktop (lg+, ADR-171 Phase 2.3): rendered as the right pane of the
+          Tenants master-detail, so the 480px APP_FRAME is dropped for a wider
+          reading column and the "Back to Tenants" row is redundant beside the
+          always-visible list. Below lg it is the unchanged full-screen takeover. */}
+      <div className={isDesktop ? `min-h-screen bg-background ${APP_GRID}` : APP_SURFACE}>
+        {!isDesktop && (
+          <div className="flex items-center gap-2.5 px-4 pb-3 pt-6 sm:px-6">
+            <button type="button" onClick={() => navigate(-1)} aria-label="Back" className="flex h-8.5 w-8.5 flex-none items-center justify-center rounded-full border border-border bg-card">
+              <ArrowLeft className="h-4 w-4 text-muted-foreground" strokeWidth={1.9} />
+            </button>
+            <span className="text-[13.5px] font-semibold text-muted-foreground">Back to Tenants</span>
+          </div>
+        )}
 
-        <div className="flex flex-col gap-3.5 px-4 pb-10 sm:px-6">
+        <div className={`flex flex-col gap-3.5 px-4 pb-10 sm:px-6${isDesktop ? ' mx-auto w-full max-w-[760px] pt-6' : ''}`}>
           {(tenant.acceptanceStatus === 'PENDING' ||
             (tenant.accessMode === 'OWNER_MANAGED' && tenant.acceptanceStatus !== 'ACCEPTED')) &&
             activationLink && (
@@ -293,21 +314,19 @@ export function TenantDetailPage() {
             </div>
           )}
 
-          {/* tabs */}
-          <div className="sticky top-0 z-10 flex gap-1 rounded-[14px] bg-muted p-1">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setActiveTab(t.id)}
-                className={`flex-1 rounded-xl py-2.5 text-center font-display text-[12.5px] font-bold ${
-                  activeTab === t.id ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+          {/* Tabs. Below `lg`: the sticky pill group, unchanged. At `lg+`
+              (ADR-171 Phase 2.7): the same pill group inside a sticky in-pane
+              header band — it breaks out to the pane column's edges and carries
+              a solid background + bottom border so it reads as the detail
+              pane's tab header when the profile cards scroll under it. The
+              `activeTab` state, labels and panels are untouched. */}
+          {isDesktop ? (
+            <div className="sticky top-0 z-10 -mx-4 border-b border-border bg-background px-4 pb-2 pt-1 sm:-mx-6 sm:px-6">
+              <div className="flex gap-1 rounded-[14px] bg-muted p-1">{tabButtons}</div>
+            </div>
+          ) : (
+            <div className="sticky top-0 z-10 flex gap-1 rounded-[14px] bg-muted p-1">{tabButtons}</div>
+          )}
 
           {activeTab === 'charges' && (
             <PaymentScheduleList

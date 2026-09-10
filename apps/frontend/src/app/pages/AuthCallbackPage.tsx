@@ -1,9 +1,11 @@
+import { ClerkAuthProvider } from '@/app/providers/ClerkAuthProvider';
+import { signOutClerk } from '@lib/auth/clerkBrowser';
+import { decideCallbackAction } from '@lib/auth/sessionAuthority';
+import { useClerkSessionState } from '@/app/providers/clerkSessionContext';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@lib/supabaseClient';
 import api from '@lib/api-client';
-import { GOOGLE_PROVISION_INTENT_KEY, GOOGLE_RETURN_TO_KEY } from '@context/AuthContext';
-import { shouldProvisionAccount } from './authCallbackDecision';
 import { StayoLoadingScreen } from '@shared/ui/brand';
 
 /**
@@ -16,19 +18,8 @@ import { StayoLoadingScreen } from '@shared/ui/brand';
  * actually received the 403 then saw `allowed: false` and rendered "No account
  * found" instead of creating the account. The POST never happened at all.
  *
- * So the flag is now cleared only by `clearProvisionIntent()`, once the flow
  * has genuinely finished — see below.
  */
-function readProvisionIntent(): { allowed: boolean; returnTo: string | null } {
-  try {
-    return {
-      allowed: sessionStorage.getItem(GOOGLE_PROVISION_INTENT_KEY) === '1',
-      returnTo: sessionStorage.getItem(GOOGLE_RETURN_TO_KEY),
-    };
-  } catch {
-    return { allowed: false, returnTo: null };
-  }
-}
 
 /**
  * Clear the intent once this sign-in has resolved either way.
@@ -37,14 +28,6 @@ function readProvisionIntent(): { allowed: boolean; returnTo: string | null } {
  * within the same tab starts clean, but a re-run of this effect cannot strip
  * the intent out from under itself.
  */
-function clearProvisionIntent() {
-  try {
-    sessionStorage.removeItem(GOOGLE_PROVISION_INTENT_KEY);
-    sessionStorage.removeItem(GOOGLE_RETURN_TO_KEY);
-  } catch {
-    /* private mode — nothing to clear */
-  }
-}
 
 /**
  * Lands here after `supabase.auth.signInWithOAuth({provider:'google'})`'s
@@ -57,14 +40,9 @@ function clearProvisionIntent() {
  * *specific* rejection reason (no account for this email / account disabled
  * / tenancy not activated) to show the right message.
  *
- * Since 2026-08-16: a `NO_STAYO_ACCOUNT` rejection is no longer necessarily
- * a dead end. If `AuthContext.loginWithGoogleAllowProvision()` marked this
- * attempt as provisioning-allowed (`GOOGLE_PROVISION_INTENT_KEY`), this page
- * calls `POST /api/auth/google/provision` — which creates the account only
- * if this is genuinely a new email — then retries `/auth/me`, which now
- * resolves normally. `resolveSupabaseSession()` itself is untouched; the
- * provisioning path is a separate, narrower function
- * (`lib/auth/supabase-provision.ts` on the backend).
+ * Since ADR-176 Phase 3.1 a `NO_STAYO_ACCOUNT` rejection is a dead end again,
+ * deliberately: authentication never creates a Stayo account. Owners exist
+ * after admin approval, tenants after an owner's invitation.
  *
  * `/auth/me` answers 403 with a specific code for those cases and 401 for a
  * token the server could not verify at all. The distinction matters to the
@@ -73,7 +51,28 @@ function clearProvisionIntent() {
  * misconfigured (it happened — see docs/obsidian/Bugs.md) and no amount of
  * retrying will help, so this stops telling them to try again.
  */
+/**
+ * Mounts Clerk around the callback so `window.Clerk` is present even on a cold
+ * load of this URL (a Clerk redirect arrives as a full navigation, and the SDK
+ * global only exists once a provider has mounted). Cheap here and nowhere near
+ * the landing page — this route is only ever reached mid-sign-in.
+ */
 export function AuthCallbackPage() {
+  return (
+    <ClerkAuthProvider>
+      <AuthCallbackInner />
+    </ClerkAuthProvider>
+  );
+}
+
+function AuthCallbackInner() {
+  /**
+   * Clerk's SDK loads asynchronously, so this must not decide anything until it
+   * has settled — see `decideCallbackAction`. `clerk` is null until the provider
+   * mounts and `{ isLoaded: false }` while loading; either way this effect
+   * re-runs when it changes.
+   */
+  const clerk = useClerkSessionState();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   /**
@@ -91,7 +90,6 @@ export function AuthCallbackPage() {
 
     const proceed = (data: any, returnTo: string | null) => {
       // Landed somewhere real: this sign-in is done with its intent.
-      clearProvisionIntent();
       const role = String(data.role || '').toLowerCase();
       if (role === 'admin') return navigate('/admin', { replace: true });
       if (role === 'owner') return navigate('/owner/home', { replace: true });
@@ -110,44 +108,56 @@ export function AuthCallbackPage() {
 
     const finish = async () => {
       const { data } = await supabase.auth.getSession();
-      if (!data.session) {
+
+      /*
+       * ADR-176 Phase 3 — this page now lands two different sign-ins.
+       *
+       * Google goes through Clerk, so the usual arrival has NO Supabase
+       * session and a Clerk one instead. The Supabase branch is kept because
+       * password sign-in and any redirect still in flight during the migration
+       * come back through here too — it is not dead until the final cutover.
+       *
+       * Nothing below needs to know which it was: `api-client` attaches
+       * whichever token exists and `GET /auth/me` accepts both, returning the
+       * same shape. Only "is there a session at all" is decided here.
+       */
+      const action = decideCallbackAction({ hasSupabaseSession: Boolean(data.session), clerk });
+
+      if (action === 'wait') {
+        // Clerk has not finished loading. Do not conclude anything yet; the
+        // effect re-runs when it settles.
+        started.current = false;
+        return;
+      }
+
+      if (action === 'no-session') {
         if (!cancelled) setError('Google sign-in did not complete. Please try again.');
         return;
       }
 
-      const { allowed: provisionAllowed, returnTo } = readProvisionIntent();
 
       try {
         const response = await api.get('/auth/me');
         if (cancelled) return;
-        proceed(response.data, returnTo);
+        proceed(response.data, null);
       } catch (err: any) {
         if (cancelled) return;
         const status = err?.response?.status;
         const code = err?.response?.data?.error?.code;
         const serverMessage = err?.response?.data?.error?.message;
 
-        if (shouldProvisionAccount({ status, code, provisionAllowed })) {
-          try {
-            await api.post('/auth/google/provision');
-            const retry = await api.get('/auth/me');
-            if (cancelled) return;
-            proceed(retry.data, returnTo);
-            return;
-          } catch (provisionErr: any) {
-            if (cancelled) return;
-            clearProvisionIntent();
-            await supabase.auth.signOut();
-            setError(
-              provisionErr?.response?.data?.error?.message ||
-                'Could not create your Stayo account. Please try again.',
-            );
-            return;
-          }
-        }
-
-        clearProvisionIntent();
+        /*
+         * ADR-176 Phase 3.1 — authentication never creates a Stayo account.
+         *
+         * This used to call `POST /auth/google/provision` when the sign-in was
+         * marked provisioning-allowed, creating a marketplace tenant for an
+         * unknown Google email (ADR-078). Onboarding is controlled: owners
+         * exist after admin approval, tenants after an owner's invitation. An
+         * unknown email is now simply NO_STAYO_ACCOUNT, handled below like any
+         * other 403.
+         */
         await supabase.auth.signOut();
+        await signOutClerk();
         if (status === 403 && serverMessage) {
           setError(serverMessage);
         } else if (status === 401) {
@@ -165,7 +175,7 @@ export function AuthCallbackPage() {
     return () => {
       cancelled = true;
     };
-  }, [navigate]);
+  }, [navigate, clerk]);
 
   if (error) {
     return (

@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { CalendarRange, ChefHat, Vote } from 'lucide-react';
 import type { MealSlotKey } from '@shared/mocks/food';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
+import { useSelectedHostel } from '@features/owner-session/useSelectedHostel';
+import { useIsDesktop } from '@/app/components/ui/use-desktop';
 import { useFoodSchedule } from '../hooks/useFoodSchedule';
 import { useFoodScheduleHistory } from '../hooks/useFoodScheduleHistory';
 import { useMealTimings } from '../hooks/useMealTimings';
@@ -25,8 +27,14 @@ import { dayKeyFor } from '../weekGrid';
 export function FoodPage() {
   const session = useOwnerSession();
   const navigate = useNavigate();
-  const [selectedHostelId, setSelectedHostelId] = useState<string | null>(null);
-  const hostelId = selectedHostelId ?? session.primaryHostelId;
+  // Desktop (lg+, ADR-171 Phase 2.8): the sidebar `HostelSwitcher` is the
+  // hostel context — Food has no "All hostels", so `null` falls back to the
+  // primary hostel exactly as an absent `?hostelId=` does today. Below lg the
+  // in-page `HostelSwitcher` drives the local state, unchanged.
+  const isDesktop = useIsDesktop();
+  const { selectedHostelId: sidebarHostelId } = useSelectedHostel();
+  const [localHostelId, setLocalHostelId] = useState<string | null>(null);
+  const hostelId = (isDesktop ? sidebarHostelId : localHostelId) ?? session.primaryHostelId;
 
   const currentMonth = useMemo(() => new Date().toISOString().slice(0, 7), []);
   const schedule = useFoodSchedule(hostelId, currentMonth);
@@ -57,7 +65,7 @@ export function FoodPage() {
           >
             <Vote className="h-6 w-6" />
           </Link>
-          <HostelSwitcher hostels={session.hostels} selectedId={hostelId} onSelect={setSelectedHostelId} />
+          {!isDesktop && <HostelSwitcher hostels={session.hostels} selectedId={hostelId} onSelect={setLocalHostelId} />}
         </div>
       </div>
 

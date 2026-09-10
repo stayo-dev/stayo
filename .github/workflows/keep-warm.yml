@@ -14,7 +14,7 @@ name: Backend Keep-Warm
 # sub-daily schedule fails the deployment outright rather than degrading — so
 # a 5-minute ping cannot be a Vercel cron while the account is on Hobby. This
 # is therefore the LAST remaining GitHub Actions schedule in the repo: all six
-# business crons moved into apps/backend/vercel.json on 2026-09-08 (ADR-173)
+# business crons moved into apps/backend/vercel.json on 2026-09-08 (ADR-179)
 # and backend-cron.yml was deleted.
 #
 # Requires repo variable BACKEND_URL (Settings → Secrets and variables →

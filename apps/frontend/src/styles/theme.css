@@ -3,71 +3,88 @@
 :root {
   --font-size: 16px;
 
-  /* ── Marketing / Hostel brand variables ──────────────────────────── */
-  --font-display: 'Playfair Display', serif;
-  --font-body: 'Poppins', sans-serif;
-  --saffron: #F07B1D;
-  --navy: #1B2D5B;
-  --warm-ivory: #FFFDF5;
-  --golden: #FBB040;
-  --charcoal: #2C2C2A;
-  --brand-saffron: var(--saffron);
-  --brand-navy: var(--navy);
-  --pure-white: #FFFFFF;
-  --success-green: #2E7D32;
-  --alert-amber: var(--golden);
-  --danger-red: #C62828;
-  --neutral-gray: #6B6259;
-  --deep-charcoal: #1C1917;
+  /*
+   * Stayo brand tokens — the product default, not a fallback.
+   *
+   * Until 2026-09-09 this block held the pre-Stayo single-hostel theme — a
+   * navy primary, a saffron accent, and a serif/geometric type pair that
+   * predate the brand. Because the Stayo tokens existed only *scoped* under
+   * `[data-app-theme]` (see stayo-theme.css), every surface rendering outside
+   * that scope resolved those instead and shipped in the old brand — portaled
+   * content most visibly, since a `vaul` drawer or a `createPortal` overlay
+   * leaves the shell's wrapper element behind in the DOM. Owners saw a clay
+   * dashboard with an old-brand Invite Tenant sheet on top of it. Run
+   * `npm run check:brand` — scripts/check-brand-fossils.mjs now fails the
+   * build if any of those values reappear anywhere under src/.
+   *
+   * The values below are now the Stayo product palette, identical to
+   * tokens/product.css, sourced from `Stayo-Brand-Assetes/color/colors.txt`:
+   * Warm Clay #B46A55 · Terra Cotta #A45D44 · Dusty Orange #D2986C ·
+   * Latte #EBD9C4 · Charcoal #2F2F2F · Cream #F7F3EE, with Manrope for
+   * display/UI and Inter for body per that pack's typography rule.
+   *
+   * `[data-app-theme]` scopes are still meaningful and still win — marketing
+   * genuinely differs from product. What changed is that falling *outside*
+   * one is no longer a branding bug. See docs/obsidian/Decisions.md ADR-172.
+   */
+  --font-display: 'Manrope', sans-serif;
+  --font-body: 'Inter', sans-serif;
   --font-hero: var(--font-display);
   --font-sans: var(--font-body);
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  /* ─────────────────────────────────────────────────────────────────── */
 
-  /* ── Dashboard Design Tokens (brand-aligned) ─────────────────────── */
-  --background: #FAF8F4;
-  --foreground: #1C1917;
-  --card: #FFFFFF;
-  --card-foreground: #1C1917;
-  --popover: #FFFFFF;
-  --popover-foreground: #1C1917;
-  --primary: #1B2D5B;
-  --primary-foreground: #FFFFFF;
-  --secondary: #F2EDE4;
-  --secondary-foreground: #2C2C2A;
-  --muted: #F2EDE4;
-  --muted-foreground: #6B6259;
-  --accent: #F07B1D;
-  --accent-foreground: #FFFFFF;
-  --destructive: #DC2626;
-  --destructive-foreground: #FFFFFF;
-  --border: #E8E2D8;
+  --background: #f7f3ef;
+  --foreground: #221e1a;
+  --card: #ffffff;
+  --card-foreground: #221e1a;
+  --popover: #ffffff;
+  --popover-foreground: #221e1a;
+  --primary: #b46a55;
+  --primary-foreground: #ffffff;
+  --secondary: #f7f3ef;
+  --secondary-foreground: #221e1a;
+  --muted: #f7f3ef;
+  --muted-foreground: #8a7f75;
+  --accent: #efe6da;
+  --accent-foreground: #221e1a;
+  --destructive: #b3402f;
+  --destructive-foreground: #fbeae7;
+  --border: #efe6da;
   --input: transparent;
-  --input-background: #FAF8F4;
-  --switch-background: #C8C0B4;
-  --font-weight-medium: 500;
+  --input-background: #fffdfb;
+  --field-border: #9f8768;
+  --switch-background: #e2d5c7;
+  --ring: #b46a55;
+  --font-weight-medium: 700;
   --font-weight-normal: 400;
-  --ring: #F07B1D;
-  --chart-1: #F07B1D;
-  --chart-2: #1B2D5B;
-  --chart-3: #FBB040;
-  --chart-4: #8B5CF6;
-  --chart-5: #DC2626;
-  --radius: 0.875rem;
-  --sidebar: #1B2D5B;
-  --sidebar-foreground: #EBE5DC;
-  --sidebar-primary: #F07B1D;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #243A72;
-  --sidebar-accent-foreground: #FFFFFF;
-  --sidebar-border: #243A72;
-  --sidebar-ring: #F07B1D;
-  --success: #059669;
-  --success-foreground: #FFFFFF;
-  --warning: #D97706;
-  --warning-foreground: #FFFFFF;
-  --info: #2563EB;
-  --info-foreground: #FFFFFF;
+  --chart-1: #b46a55;
+  --chart-2: #1f7a52;
+  --chart-3: #b8792b;
+  --chart-4: #3b5fa8;
+  --chart-5: #b3402f;
+  --radius: 1.125rem;
+  --sidebar: #221e1a;
+  --sidebar-foreground: #d8cfc5;
+  --sidebar-primary: #b46a55;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #2a2521;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #2a2521;
+  --sidebar-ring: #b46a55;
+  --success: #1f7a52;
+  --success-foreground: #ffffff;
+  --warning: #b8792b;
+  --warning-foreground: #ffffff;
+  --info: #3b5fa8;
+  --info-foreground: #ffffff;
+
+  /* Soft-tint backgrounds for semantic colors — chips, banners, detail
+     sections. Previously only defined inside the product scope, which is why
+     an unscoped `bg-success-bg` chip rendered transparent. */
+  --success-bg: #eaf3ee;
+  --warning-bg: #fbf1de;
+  --info-bg: #eaf0fb;
+  --destructive-bg: #fbe9e7;
 }
 
 .dark {

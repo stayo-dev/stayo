@@ -14,7 +14,7 @@ import { join } from "node:path";
  * `tenants.exit_date`; `move-out-releases` closes it later. So an exit filter
  * written against `roomAllocation.end_date` alone is satisfied by a departed
  * tenant and bills them for another month — which is exactly what happened
- * (ADR-171 mitigated it by cron ordering, ADR-172 fixed it here).
+ * (ADR-177 mitigated it by cron ordering, ADR-178 fixed it here).
  *
  * Neither half is wrong on its own, so no single-service test and no type
  * check can catch the drift. This asserts the join, reading source as text —

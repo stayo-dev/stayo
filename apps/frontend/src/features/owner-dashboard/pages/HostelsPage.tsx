@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bed, Building2, ChevronRight, Megaphone, Plus, Settings2, Users } from 'lucide-react';
+import { Bed, Building2, ChevronRight, Plus, Settings2, Users } from 'lucide-react';
 import { useOwnerDashboard } from '../hooks/useOwnerDashboard';
 import { useHostelOrder } from '../property-order/useHostelOrder';
 import { moveItem } from '../property-order/hostelSort';
@@ -70,7 +70,7 @@ export function HostelsPage() {
     ? [
         { key: 'rooms', label: single.needsRooms ? 'Add rooms' : 'Rooms & beds', icon: Bed },
         { key: 'tenants', label: 'Tenants', icon: Users },
-        { key: 'marketing', label: 'Listing', icon: Megaphone },
+        // 'Listing' (the Stayo Discover marketing editor) removed in v1 — ADR-170.
         { key: 'settings', label: 'Settings', icon: Settings2 },
       ]
     : [];

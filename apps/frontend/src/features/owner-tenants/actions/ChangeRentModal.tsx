@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
-import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
+import { AdaptiveSurface } from '@/app/components/ui/adaptive-surface';
 import { identityService } from '@features/auth/api';
 import { tenantService } from '@features/tenants/api';
 import { queryKeys } from '@lib/queryKeys';
@@ -85,7 +85,7 @@ export function ChangeRentModal({ open, onClose, tenantId, hostelId, tenantName,
   const isFormValid = Boolean(Number(newRent) > 0 && effectiveMonth && reason.trim());
 
   return (
-    <BottomSheet
+    <AdaptiveSurface variant="form"
       open={open}
       onOpenChange={(v) => !v && onClose()}
       title={step === 'success' ? 'Rent updated' : 'Change Rent'}
@@ -191,6 +191,6 @@ export function ChangeRentModal({ open, onClose, tenantId, hostelId, tenantName,
           </p>
         </div>
       )}
-    </BottomSheet>
+    </AdaptiveSurface>
   );
 }

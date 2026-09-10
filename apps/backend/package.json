@@ -35,6 +35,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@clerk/backend": "^3.17.1",
     "@imagekit/nodejs": "^7.5.0",
     "@pdf-lib/fontkit": "^1.1.1",
     "@prisma/client": "^5.22.0",
@@ -64,6 +65,7 @@
     "sanity": "^3.99.0",
     "sharp": "^0.35.0",
     "styled-components": "^6.4.2",
+    "svix": "^1.88.0",
     "tailwind-merge": "^3.5.0",
     "web-push": "^3.6.7",
     "xlsx": "^0.18.5",

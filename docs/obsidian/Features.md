@@ -590,6 +590,7 @@ The StayO redesign is being built in place inside the same `apps/frontend` tree,
 - **Depends on:** [[APIs]] (`GET /api/owner/portfolio/summary`, `GET /api/owner/kyc-documents`), [[Decisions#ADR-067|ADR-067]]. **No backend or schema change.**
 - **What it does:** three steps — hostel, first tenant, first payment — each derived from real data and ticking itself off; a verification status line below them; and a 3-stop orientation spotlight that runs once on a genuinely empty account. The card disappears permanently once the owner is up and running.
 - **Notes:** no tour library was added. Completion is latched in browser storage because the payment signal resets monthly; the spotlight's dismissal flag is also local, but it is additionally gated on the account being empty, so losing the flag can only re-show it to someone who still has nothing. See [[Decisions#ADR-067|ADR-067]].
+- **Reworked 2026-09-09 ([[Decisions#ADR-173|ADR-173]]).** The spotlight's caption now **follows the highlight and points at it** with an arrow, instead of sitting pinned to the middle of the screen — placement logic moved into the pure, node-tested `shared/ui-patterns/spotlightPlacement.ts` (10 cases: flip above, both viewport clamps, an anchor taller than the screen). **Tapping the lit element advances** rather than silently ending the tour, which is what it used to do. Progress reads "Step 2 of 3" in words with a **Back** button, replacing three dots; `scrollIntoView` fires only when the anchor is genuinely off-screen. The tour is **replayable** from a "Show me around again" row on the checklist (`useGettingStarted().replaySpotlight` / `.canReplaySpotlight`), and replaying does not clear the stored dismissal. The checklist itself **stops striking out finished steps** — a line through the owner's own hostel name reads as *cancelled* — numbers its rows, and moves the KYC status to a tinted footer so it is not mistaken for a fourth task. `SpotlightStop` is unchanged, so the tenant welcome tour inherits all of it. **Not yet watched running on a device** — see [[TODO]].
 
 ### Add Hostel — the owner builds their property, floor by floor
 - **Status:** shipped 2026-08-12
@@ -1222,7 +1223,7 @@ See [[Frontend]], [[Changelog]], [[Bugs]].
 ### Tenant guided journey — a short welcome, then one note per screen
 - **Status:** shipped 2026-08-30
 - **Owner-facing?** no · **Tenant-facing?** yes
-- **Key files:** `platforms/tenant/guide/tenantGuide.ts` + `.test.ts` (new, pure, 12 tests), `useTenantGuide.ts`, `GuideNote.tsx`, `guideCopy.ts` (all new), `app/nav/NavAnchorContext.tsx` (new), `app/layouts/AppShell.tsx`, `app/components/AppBottomNav.tsx`, and the four tenant tab pages (`TenantHomePage`, `TenantRoomPage`, `TenantFoodPage`, `TenantMoneyPage`). `shared/ui-patterns/Spotlight.tsx` is **reused unchanged** — it was already generic and is now shared by both personas.
+- **Key files:** `platforms/tenant/guide/tenantGuide.ts` + `.test.ts` (new, pure, 12 tests), `useTenantGuide.ts`, `GuideNote.tsx`, `guideCopy.ts` (all new), `app/nav/NavAnchorContext.tsx` (new), `app/layouts/AppShell.tsx`, `app/components/AppBottomNav.tsx`, and the four tenant tab pages (`TenantHomePage`, `TenantRoomPage`, `TenantFoodPage`, `TenantMoneyPage`). `shared/ui-patterns/Spotlight.tsx` is **reused unchanged** — it was already generic and is now shared by both personas, so the 2026-09-09 rework of it ([[Decisions#ADR-173|ADR-173]]: caption follows the highlight, tap-to-advance, written progress, Back) reaches the tenant welcome tour without a change here.
 - **Depends on:** [[Decisions#ADR-154|ADR-154]]. **No backend, API or schema change.** No tour library.
 - **What it does:** a one-time 3-stop spotlight on Home — the rent card (first, whenever money is owed), the hostel/room/notifications header, then the bottom nav named as a map of all six tabs — followed by a single inline, dismissible note the first time Room, Food or Payments is opened. The Food note is what makes kitchen polls discoverable; the Room note points at Complaints; the Payments note names the per-month shareable receipt and the standing meter.
 - **Notes — what is *not* here:** no settling-in checklist (the owner's pattern does not transfer: a tenant's screen is already full of real data, so there is nothing to tick off), no backend-persisted progress, and no note on Explore or Profile, which are shared surfaces outside the tenant route tree.
@@ -1302,3 +1303,56 @@ See [[Frontend]], [[Changelog]], [[Bugs]].
 - **Also in this change:** creating a hostel no longer requires a password (audit-logged instead — see the ADR for why creation differs from the six money-moving actions that keep their gate), and the owner's agreement signature can be reused across hostels instead of being drawn once per hostel.
 - **Verification status:** 17 new tests, including one asserting the owner-side and server-side derivation rules cannot drift apart. Frontend 138 files / 2125 pass, build green, `tsc` 43 before and after; backend pure 1298 pass, `tsc` 547 → 544. **Not verified:** no hostel has been created, no enquiry sent and no signature reused through a running app.
 - **See:** [[Decisions#ADR-168|ADR-168]], [[Changelog]], [[APIs]]
+
+### Clerk authentication — Phase 1: the identity anchor and its webhook (2026-09-09)
+
+From [[Decisions#ADR-176|ADR-176]]. The first step of moving authentication off Supabase Auth and onto Clerk, so that the auth layer and the database can be replaced independently of each other.
+
+- **What shipped:** the `users` table (migration 081), `POST /webhooks/clerk`, and the sync service behind it. Clerk `user.created` / `user.updated` / `user.deleted` now have somewhere to land.
+- **What it is for:** breaking the coupling ADR-031 created, where Supabase was both our Postgres host and our identity provider. `clerk_user_id` is the only vendor-shaped column in the schema.
+- **What it deliberately does not do:** hold any business data. Roles, hostels, tenancies and money stay on `profiles`. A Clerk payload can write four display fields and nothing else.
+- **What it does not do yet — and this matters:** **Supabase Auth is still the live session authority.** No user-visible behaviour changes; nothing reads `users` on a request path. Sessions are still minted and verified exactly as before. Phases 2–4 (Clerk sessions in `middleware.ts`, repointing the ~36 Supabase-auth files, backfill, then removal) are listed in the ADR and are not started.
+- **Verification status:** 59 tests across signature verification (signing with the real `svix` library in-process), the sync rules (`@/lib/db` mocked), and endpoint invariants that pin the middleware matcher and the frontend rewrite list. **Not verified end to end:** no Clerk account exists, `CLERK_WEBHOOK_SIGNING_SECRET` is unset, and no real delivery has ever reached the endpoint. Migration 081 is **not yet applied**.
+- **See:** [[Decisions#ADR-176|ADR-176]], [[Database]], [[APIs]], [[Business-Rules]], [[Changelog]]
+
+### Clerk authentication — Phase 2: the sign-in surface in the SPA (2026-09-09)
+
+From [[Decisions#ADR-176|ADR-176]]. Adds Clerk's frontend to `apps/frontend` without moving anyone onto it.
+
+- **What shipped:** `ClerkProvider` around the SPA router, public `/sign-in` and `/sign-up` routes, `UserButton` in the owner, tenant and admin shells, and a route guard rewired through a tested decision module.
+- **Built with `@clerk/clerk-react`, not `@clerk/nextjs`** — the canonical UI is a Vite SPA. See [[Frontend]].
+- **What it deliberately does not do:** authorise anything. A Clerk session is identity, not authority; roles stay in `profiles`. A 4×4 matrix test proves varying the Clerk state changes no route decision.
+- **What users see today: nothing.** `VITE_CLERK_PUBLISHABLE_KEY` is unset, so Clerk no-ops entirely — `UserButton` renders `null`, and `/sign-in` says Clerk is unavailable and points back at `/login`. Supabase Auth is untouched and remains the live session authority.
+- **Verification status:** 37 new tests (2183 total, all passing), architecture/brand/branding checks and a production build all pass, no new `tsc` errors. **Not seen in a running browser** — with no Clerk instance configured, `<SignIn>` has never mounted, and the dashboard's email-OTP setting is unverified.
+- **See:** [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[Business-Rules]], [[Changelog]]
+
+### Clerk authentication — Phase 2.6: `/` stops paying for Clerk, and the `/me` handshake lands (2026-09-09)
+
+From [[Decisions#ADR-176|ADR-176]]. Prepares Phase 3 without moving anyone onto Clerk.
+
+- **The public landing page no longer loads the Clerk SDK.** Clerk mounts per-route — `/sign-in`, `/sign-up`, and the authenticated trees — instead of globally. `clerkBundleIsolation.test.ts` walks the static import graph from `main.tsx` and fails if that regresses; it was mutation-checked by reintroducing the leak.
+- **`GET /me`** ([[APIs]]) resolves a verified Clerk session to our `users` row and returns id, role, profile linkage and active status. Idempotent, race-safe via the unique index on `clerk_user_id`.
+- **It assigns no role and creates no profile.** `role` is read from the linked `profiles` row and is `null` for an account with no business identity.
+- **What users see today: still nothing.** No Clerk instance is configured; `/me` is not called by anything, and cannot be reached by the SPA until Phase 3 adds a rewrite.
+- **Verification status:** backend 1416 pure tests (21 new) with the same 3 pre-existing failures; frontend 2194 tests across 144 files (8 new); production build clean with zero Clerk in the entry chunk. **Not verified end to end** — `/me` has never seen a real Clerk token.
+- **See:** [[Decisions#ADR-176|ADR-176]], [[APIs]], [[Frontend]], [[Business-Rules]], [[Changelog]]
+
+### Clerk authentication — Phase 3 (minimal): Google is Clerk's, sessions are dual (2026-09-09)
+
+From [[Decisions#ADR-176|ADR-176]]. Fixes the live symptom that "Continue with Google" still navigated to Supabase.
+
+- **Every Google button now launches Clerk.** All three Supabase OAuth call sites removed; the unused `GoogleSignInModal` deleted.
+- **`/api/auth/me` accepts either provider**, so a Clerk sign-in produces a working Stayo session. Supabase remains the authority for existing sessions and its path is unchanged.
+- **Roles still come from `profiles`.** A Clerk session with no profile is refused, not provisioned.
+- **Known gap:** brand-new Google *signup* is not functional — the Supabase flow auto-provisioned a tenant profile and the Clerk flow deliberately does not yet. Sign-in for existing users works.
+- **Verification:** 2254 frontend tests (25 new), 1423 backend pure tests, build green, and the bundle contains zero Google-provider call sites. **No real Google round-trip has been performed.**
+- **See:** [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[APIs]], [[Changelog]]
+
+### Clerk authentication — Phase 3.1: controlled onboarding (2026-09-09)
+
+From [[Decisions#ADR-176|ADR-176]]. Authentication proves identity; it never enrols anyone.
+
+- **Unknown email → `NO_STAYO_ACCOUNT`**, whether they used Google, email OTP or phone OTP.
+- **Owners exist after admin approval; tenants after an owner's invitation.** No sign-in path creates either.
+- **Google auto-provisioning is removed**, superseding [[Decisions#ADR-078|ADR-078]]. Existing invited/approved users sign in exactly as before.
+- **See:** [[Decisions#ADR-176|ADR-176]], [[Business-Rules]], [[Frontend]], [[Changelog]]

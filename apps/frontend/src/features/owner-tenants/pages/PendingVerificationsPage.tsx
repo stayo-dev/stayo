@@ -7,7 +7,8 @@ import { usePendingVerifications } from '../hooks/usePendingVerifications';
 import { useDocumentVerification } from '../hooks/useDocumentVerification';
 import { RejectDocumentSheet } from '../documents/RejectDocumentSheet';
 import { documentTypeLabel } from '../documents/kycDocuments';
-import { APP_SURFACE } from '@shared/ui/surface';
+import { APP_SURFACE, APP_GRID } from '@shared/ui/surface';
+import { useIsDesktop } from '@/app/components/ui/use-desktop';
 
 const card =
   'flex flex-col gap-3 rounded-[18px] border border-border bg-card p-3.5 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]';
@@ -35,6 +36,7 @@ function waitedFor(iso: string | null) {
  */
 export function PendingVerificationsPage() {
   const navigate = useNavigate();
+  const isDesktop = useIsDesktop();
   const [searchParams] = useSearchParams();
   const focusTenantId = searchParams.get('tenantId');
 
@@ -48,20 +50,28 @@ export function PendingVerificationsPage() {
 
   return (
     <ThemeProvider theme="product">
-      <div className={APP_SURFACE}>
-        <div className="flex items-center gap-2.5 px-4 pb-1.5 pt-6 sm:px-6">
-          <button
-            type="button"
-            onClick={() => navigate('/owner/home')}
-            aria-label="Back"
-            className="flex h-8.5 w-8.5 flex-none items-center justify-center rounded-full border border-border bg-card"
-          >
-            <ArrowLeft className="h-4 w-4 text-muted-foreground" strokeWidth={1.9} />
-          </button>
-          <span className="text-[13px] font-medium text-muted-foreground">Home</span>
-        </div>
+      {/* Desktop (lg+, ADR-171 Phase 2.4): the 480px APP_FRAME is dropped and
+          content is capped/centred at max-w-[860px] to match the shared
+          WorkQueue treatment (this queue predates WorkQueue and keeps its own
+          layout); the "← Home" back row is hidden. Below lg it is the unchanged
+          full-screen takeover. This route sits outside OwnerAppShell, so it
+          scopes the StayO theme itself and never reaches isOwnerFullBleedPath. */}
+      <div className={isDesktop ? `min-h-screen bg-background ${APP_GRID}` : APP_SURFACE}>
+        {!isDesktop && (
+          <div className="flex items-center gap-2.5 px-4 pb-1.5 pt-6 sm:px-6">
+            <button
+              type="button"
+              onClick={() => navigate('/owner/home')}
+              aria-label="Back"
+              className="flex h-8.5 w-8.5 flex-none items-center justify-center rounded-full border border-border bg-card"
+            >
+              <ArrowLeft className="h-4 w-4 text-muted-foreground" strokeWidth={1.9} />
+            </button>
+            <span className="text-[13px] font-medium text-muted-foreground">Home</span>
+          </div>
+        )}
 
-        <div className="px-4 pb-3 pt-1 sm:px-6">
+        <div className={isDesktop ? 'mx-auto w-full max-w-[860px] px-4 pb-3 pt-6 sm:px-6' : 'px-4 pb-3 pt-1 sm:px-6'}>
           <h1 className="font-display text-[21px] font-extrabold tracking-tight text-foreground">Verify KYC</h1>
           <p className="mt-1 text-[12.5px] text-muted-foreground">
             {isLoading
@@ -72,7 +82,7 @@ export function PendingVerificationsPage() {
           </p>
         </div>
 
-        <div className="flex flex-col gap-3 px-4 pb-10 sm:px-6">
+        <div className={`flex flex-col gap-3 px-4 pb-10 sm:px-6${isDesktop ? ' mx-auto w-full max-w-[860px]' : ''}`}>
           {isLoading && (
             <>
               <div className="h-32 animate-pulse rounded-[18px] bg-muted" />

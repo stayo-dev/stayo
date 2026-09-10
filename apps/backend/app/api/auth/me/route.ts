@@ -6,6 +6,8 @@ import { getSession, apiResponse, apiError } from "@lib/auth";
 import { prisma } from "@lib/db";
 import { sessionLifecycleService } from "@/lib/services/session-lifecycle-service";
 import { resolveSupabaseSession } from "@/lib/auth/supabase-session";
+import { verifyClerkSession } from "@/lib/auth/clerk-session";
+import { ensureUserForClerkSession } from "@/src/services/auth/clerk-user-sync-service";
 
 /**
  * Why this route resolves the Supabase session itself instead of only calling
@@ -32,6 +34,54 @@ async function supabaseRejection(req: NextRequest) {
   });
 
   return result.ok ? null : result;
+}
+
+/**
+ * Resolve a **Clerk** bearer token to the profile it speaks for
+ * (ADR-176 Phase 3, minimal dual session authority).
+ *
+ * Runs only when the Supabase path found nothing, so the existing behaviour is
+ * untouched: a Supabase session never reaches this function. `middleware.ts`
+ * lets an unverifiable token through on this one path precisely so that it can
+ * be tried here (see CLERK_BEARER_ROUTES there) — which means this function is
+ * the *only* thing authenticating such a request, and it must be strict.
+ *
+ * Returns the profile id to continue with, or a rejection to surface. It never
+ * creates a profile: `ensureUserForClerkSession` creates at most a `users` row
+ * (identity), and a Clerk account with no `profiles` row is a real, expected
+ * state — someone who signed in with Google but has no Stayo account. That is
+ * reported as NO_STAYO_ACCOUNT, the same code the Supabase path uses, so
+ * `/auth/callback` shows the message it already has for it.
+ */
+async function clerkResolution(req: NextRequest) {
+  const session = await verifyClerkSession(req);
+  if (!session.ok) return { ok: false as const, profileId: null, rejection: null };
+
+  const snapshot = await ensureUserForClerkSession(session.identity);
+
+  if (!snapshot.isActive) {
+    return {
+      ok: false as const,
+      profileId: null,
+      rejection: {
+        message: "This account has been disabled. Please contact your hostel owner.",
+        code: "ACCOUNT_DISABLED",
+      },
+    };
+  }
+
+  if (!snapshot.profileId) {
+    return {
+      ok: false as const,
+      profileId: null,
+      rejection: {
+        message: "No Stayo account exists for this email.",
+        code: "NO_STAYO_ACCOUNT",
+      },
+    };
+  }
+
+  return { ok: true as const, profileId: snapshot.profileId, rejection: null };
 }
 
 /**
@@ -74,11 +124,19 @@ async function selectRepresentativeTenancy(profileId: string) {
 }
 
 export async function GET(req: NextRequest) {
+  // Supabase first, unchanged. Clerk is only consulted when it finds nothing,
+  // so an existing session behaves exactly as it did before Clerk existed.
   const session = await getSession(req);
+  let profileId = session?.sub ?? null;
+
   if (!session) {
     const rejection = await supabaseRejection(req);
     if (rejection) return apiError(rejection.message, rejection.code, 403);
-    return apiError("Unauthorized", "UNAUTHORIZED", 401);
+
+    const clerk = await clerkResolution(req);
+    if (clerk.rejection) return apiError(clerk.rejection.message, clerk.rejection.code, 403);
+    if (!clerk.ok) return apiError("Unauthorized", "UNAUTHORIZED", 401);
+    profileId = clerk.profileId;
   }
 
   try {
@@ -87,7 +145,7 @@ export async function GET(req: NextRequest) {
     // already does the equivalent idle-touch/check for Supabase-mode
     // sessions via Redis directly, so running this here too would 401 every
     // fresh Supabase login (no matching refresh_tokens row = "expired").
-    if (session.sid && req.headers.get("x-auth-mode") === "legacy") {
+    if (session?.sid && req.headers.get("x-auth-mode") === "legacy") {
       const touched = await sessionLifecycleService.touchSession(session.sid, session.sub);
       if (!touched) {
         return apiError(
@@ -99,7 +157,7 @@ export async function GET(req: NextRequest) {
     }
 
     const profile = await prisma.profile.findUnique({
-      where: { id: session.sub },
+      where: { id: profileId },
       select: {
         id: true,
         email: true,

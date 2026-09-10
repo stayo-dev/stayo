@@ -141,7 +141,7 @@ export function ReceiptVerificationPage() {
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <a
                   href="tel:9392433422"
-                  className="no-underline font-semibold text-sm px-6 py-2.5 rounded-lg border border-[#1B2D5B] text-[#1B2D5B] hover:bg-slate-50 transition-colors inline-flex items-center justify-center gap-2"
+                  className="no-underline font-semibold text-sm px-6 py-2.5 rounded-lg border border-primary text-foreground hover:bg-slate-50 transition-colors inline-flex items-center justify-center gap-2"
                 >
                   <Phone className="w-4 h-4" />
                   <span>Call Warden</span>
@@ -149,7 +149,7 @@ export function ReceiptVerificationPage() {
                 <a
                   href="mailto:support@yourstayo.com"
                   className="no-underline font-semibold text-sm px-6 py-2.5 rounded-lg text-white hover:opacity-90 transition-opacity inline-flex items-center justify-center gap-2"
-                  style={{ background: '#1B2D5B' }}
+                  style={{ background: 'var(--foreground)' }}
                 >
                   <Mail className="w-4 h-4" />
                   <span>Contact Support</span>
@@ -162,7 +162,7 @@ export function ReceiptVerificationPage() {
         {!loading && !error && data && (
           <div className="bg-white/80 backdrop-blur-md rounded-2xl border border-emerald-100 shadow-xl overflow-hidden animate-fadeIn">
             {/* Header Status Bar */}
-            <div className="bg-[#1B2D5B] py-6 px-6 relative overflow-hidden">
+            <div className="bg-foreground py-6 px-6 relative overflow-hidden">
               {/* Background Glow */}
               <div className="absolute right-0 top-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl" />
               
@@ -273,7 +273,7 @@ export function ReceiptVerificationPage() {
 
               {/* Verification Signature Note */}
               <div className="flex gap-2.5 items-start p-3 bg-amber-500/5 rounded-xl border border-amber-500/10 text-xs text-amber-800 leading-relaxed mb-8">
-                <ShieldCheck className="w-4 h-4 text-[#F07B1D] mt-0.5 flex-shrink-0" />
+                <ShieldCheck className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
                 <p className="m-0">
                   This transaction is cryptographically signed and secured using SHA256 HMAC tokens. The record has been matched directly with the live HMS ledger and verified as authentic.
                 </p>
@@ -282,7 +282,7 @@ export function ReceiptVerificationPage() {
               <div className="text-center">
                 <Link
                   to="/"
-                  className="no-underline text-[#1B2D5B] hover:text-[#F07B1D] text-sm font-semibold inline-flex items-center gap-1.5 transition-colors"
+                  className="no-underline text-foreground hover:text-primary text-sm font-semibold inline-flex items-center gap-1.5 transition-colors"
                 >
                   <span>Go to Homepage</span>
                   <span>&rarr;</span>

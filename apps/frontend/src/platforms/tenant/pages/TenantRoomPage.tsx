@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useIsDesktop } from '@/app/components/ui/use-desktop';
 import { TenantPageHeader } from '../components/TenantPageHeader';
 import { GuideNote } from '../guide/GuideNote';
 import { useTenantGuide } from '../guide/useTenantGuide';
@@ -69,6 +70,13 @@ function LoadingSkeleton() {
 export function TenantRoomPage() {
   const navigate = useNavigate();
   const { share: shareHostel } = useShareHostel();
+  // Desktop (lg+, ADR-171 Phase 3.3): room hero/roommates/facilities/room-change
+  // form the primary column, the active ticket/complaints entry/house rules
+  // form the secondary column. Below lg, every section renders in the same
+  // single column, same order, same classes as before this phase. The Phase
+  // 3.1 overlay panels (DetailScreen/FormPanel/TicketsListScreen) are already
+  // lg+-aware on their own and are unaffected by this page-level change.
+  const isDesktop = useIsDesktop();
   const room = useTenantRoom();
   const [shareOpen, setShareOpen] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
@@ -123,11 +131,9 @@ export function TenantRoomPage() {
   const ticketStepIndex = room.activeTicket ? TICKET_STEPS.findIndex((s) => s.key === room.activeTicket!.status) : -1;
   const vacantBeds = Math.max((room.room?.capacity ?? 0) - room.roommates.length - 1, 0);
 
-  return (
-    <div className="min-h-screen">
-      <TenantPageHeader title="My Room" subtitle="Everything about your living space" />
-      <div className="flex flex-col gap-6 px-[22px] pb-8 pt-5">
-        {guide.show && <GuideNote {...TAB_COPY.room} onDismiss={guide.dismiss} />}
+  const guideNote = guide.show && <GuideNote {...TAB_COPY.room} onDismiss={guide.dismiss} />;
+
+  const roomHero = (
         <button
           type="button"
           onClick={() => overlay.push('room_details')}
@@ -168,211 +174,255 @@ export function TenantRoomPage() {
             </div>
           )}
         </button>
+  );
 
-        <div className="flex flex-col gap-2.5">
-          <span className={sectionLabel}>Roommates</span>
-          <div className={`${card} divide-y divide-border px-4`}>
-            <div className="flex items-center gap-3 py-3">
-              <span className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-full bg-secondary font-display text-[14px] font-extrabold text-primary">S</span>
-              <div className="min-w-0 flex-1">
-                <div className="text-[14px] font-semibold text-foreground">You</div>
-              </div>
-              <span className="flex-none rounded-full bg-info-bg px-2.5 py-[3px] text-[10px] font-bold text-info">You</span>
-            </div>
-            {room.roommates.map((mate, i) => (
-              <button key={i} type="button" onClick={() => overlay.push(`mate_${i}`)} className="flex w-full items-center gap-3 py-3 text-left">
-                <span className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-full bg-secondary font-display text-[14px] font-extrabold text-primary">
-                  {mate.name.charAt(0).toUpperCase()}
-                </span>
-                <span className="min-w-0 flex-1 text-[14px] font-semibold text-foreground">{mate.name}</span>
-                <ChevronRight className="h-4 w-4 flex-none text-[#C9BFB4]" />
-              </button>
-            ))}
-            {Array.from({ length: vacantBeds }).map((_, i) => (
-              <button key={`vacant-${i}`} type="button" onClick={() => overlay.push('vacant')} className="flex w-full items-center gap-3 py-3 text-left">
-                <span className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-full border-[1.5px] border-dashed border-[#D9CFC3] font-display text-[14px] font-extrabold text-[#B0A597]">+</span>
-                <span className="min-w-0 flex-1 text-[14px] font-semibold text-[#9A8F84]">Vacant bed</span>
-                <ChevronRight className="h-4 w-4 flex-none text-[#C9BFB4]" />
-              </button>
-            ))}
+  const roommatesCard = (
+    <div className="flex flex-col gap-2.5">
+      <span className={sectionLabel}>Roommates</span>
+      <div className={`${card} divide-y divide-border px-4`}>
+        <div className="flex items-center gap-3 py-3">
+          <span className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-full bg-secondary font-display text-[14px] font-extrabold text-primary">S</span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[14px] font-semibold text-foreground">You</div>
           </div>
+          <span className="flex-none rounded-full bg-info-bg px-2.5 py-[3px] text-[10px] font-bold text-info">You</span>
         </div>
-
-        <div className="flex flex-col gap-2.5">
-          <span className={sectionLabel}>Room facilities</span>
-          {facilities.length === 0 ? (
-            /*
-              Nothing invented. This section used to render six hardcoded rows —
-              hot-water timings, a laundry location, a housekeeping frequency —
-              that were true of no hostel in particular. An absent section is
-              honest; six confident lies are not.
-            */
-            <div className={`${card} px-4 py-5 text-center`}>
-              <div className="text-[13px] font-semibold text-[#6E635A]">Not listed yet</div>
-              <div className="mt-1 text-[11.5px] text-[#9A8F84]">
-                Your hostel hasn’t published its facilities. Ask at the front desk in the meantime.
-              </div>
-            </div>
-          ) : (
-            <div className={`${card} divide-y divide-border px-4`}>
-              {facilities.map((facility) => {
-                const Icon = FACILITY_ICONS[facility.icon] ?? FACILITY_ICONS.generic;
-                return (
-                  <button
-                    key={facility.key}
-                    type="button"
-                    onClick={() => overlay.push(`facility:${facility.key}`)}
-                    className="flex w-full items-center gap-3 py-3 text-left"
-                  >
-                    <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px] bg-[#F5E9E3] text-primary">
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[13.5px] font-semibold text-[#2A2521]">{facility.label}</div>
-                      {facility.detail && (
-                        <div className="mt-0.5 truncate text-[11.5px] font-medium text-[#9A8F84]">{facility.detail}</div>
-                      )}
-                    </div>
-                    {facility.schedule && (
-                      <span className="flex-none rounded-full bg-warning-bg px-2.5 py-1 text-[10.5px] font-bold text-warning">
-                        {facility.schedule}
-                      </span>
-                    )}
-                    <ChevronRight className="h-4 w-4 flex-none text-[#C9BFB4]" />
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {room.room && (
-          <button
-            type="button"
-            onClick={() => overlay.push('svc_room_change')}
-            className={`${card} flex items-center gap-3 px-4 py-3.5 text-left`}
-          >
-            <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] bg-secondary text-primary">
-              <Repeat className="h-4.5 w-4.5" />
+        {room.roommates.map((mate, i) => (
+          <button key={i} type="button" onClick={() => overlay.push(`mate_${i}`)} className="flex w-full items-center gap-3 py-3 text-left">
+            <span className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-full bg-secondary font-display text-[14px] font-extrabold text-primary">
+              {mate.name.charAt(0).toUpperCase()}
             </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[13px] font-semibold text-[#2A2521]">Request room change</span>
-              <span className="block text-[11px] text-muted-foreground">Ask to move to a different room</span>
-            </span>
+            <span className="min-w-0 flex-1 text-[14px] font-semibold text-foreground">{mate.name}</span>
             <ChevronRight className="h-4 w-4 flex-none text-[#C9BFB4]" />
           </button>
-        )}
+        ))}
+        {Array.from({ length: vacantBeds }).map((_, i) => (
+          <button key={`vacant-${i}`} type="button" onClick={() => overlay.push('vacant')} className="flex w-full items-center gap-3 py-3 text-left">
+            <span className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-full border-[1.5px] border-dashed border-[#D9CFC3] font-display text-[14px] font-extrabold text-[#B0A597]">+</span>
+            <span className="min-w-0 flex-1 text-[14px] font-semibold text-[#9A8F84]">Vacant bed</span>
+            <ChevronRight className="h-4 w-4 flex-none text-[#C9BFB4]" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 
-        {room.activeTicket && (
-          <div className="flex flex-col gap-2.5">
-            <div className="flex items-baseline justify-between">
-              <span className={sectionLabel}>Complaints</span>
-              {room.openRequests.length > 1 && (
-                <button type="button" onClick={() => overlay.push('all_tickets')} className="text-[12px] font-semibold text-primary">
-                  {room.openRequests.length} open · view all
-                </button>
-              )}
-            </div>
-            <div className={`${card} p-4`}>
-              <button type="button" onClick={() => overlay.push('maint_ticket')} className="flex w-full items-start gap-2.5 text-left">
+  const facilitiesCard = (
+    <div className="flex flex-col gap-2.5">
+      <span className={sectionLabel}>Room facilities</span>
+      {facilities.length === 0 ? (
+        /*
+          Nothing invented. This section used to render six hardcoded rows —
+          hot-water timings, a laundry location, a housekeeping frequency —
+          that were true of no hostel in particular. An absent section is
+          honest; six confident lies are not.
+        */
+        <div className={`${card} px-4 py-5 text-center`}>
+          <div className="text-[13px] font-semibold text-[#6E635A]">Not listed yet</div>
+          <div className="mt-1 text-[11.5px] text-[#9A8F84]">
+            Your hostel hasn’t published its facilities. Ask at the front desk in the meantime.
+          </div>
+        </div>
+      ) : (
+        <div className={`${card} divide-y divide-border px-4`}>
+          {facilities.map((facility) => {
+            const Icon = FACILITY_ICONS[facility.icon] ?? FACILITY_ICONS.generic;
+            return (
+              <button
+                key={facility.key}
+                type="button"
+                onClick={() => overlay.push(`facility:${facility.key}`)}
+                className="flex w-full items-center gap-3 py-3 text-left"
+              >
+                <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px] bg-[#F5E9E3] text-primary">
+                  <Icon className="h-4 w-4" />
+                </span>
                 <div className="min-w-0 flex-1">
-                  <div className="font-display text-[16px] font-extrabold tracking-[-0.01em] text-foreground">{room.activeTicket.category ?? room.activeTicket.type.replace('_', ' ')}</div>
-                  <div className="mt-0.5 text-[12px] font-medium text-muted-foreground">Ticket · raised {new Date(room.activeTicket.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · tap to track</div>
+                  <div className="text-[13.5px] font-semibold text-[#2A2521]">{facility.label}</div>
+                  {facility.detail && (
+                    <div className="mt-0.5 truncate text-[11.5px] font-medium text-[#9A8F84]">{facility.detail}</div>
+                  )}
                 </div>
-                <span className="flex-none rounded-full bg-warning-bg px-2.5 py-1 text-[11px] font-bold text-warning">{room.activeTicket.status.replace('_', ' ')}</span>
+                {facility.schedule && (
+                  <span className="flex-none rounded-full bg-warning-bg px-2.5 py-1 text-[10.5px] font-bold text-warning">
+                    {facility.schedule}
+                  </span>
+                )}
+                <ChevronRight className="h-4 w-4 flex-none text-[#C9BFB4]" />
               </button>
-              <div className="mt-4 flex items-center">
-                {TICKET_STEPS.map((step, i) => (
-                  <div key={step.key} className="flex flex-1 items-center last:flex-none">
-                    <div className="flex flex-col items-center gap-1">
-                      <span className={`flex h-[22px] w-[22px] items-center justify-center rounded-full text-white ${i <= ticketStepIndex ? 'bg-primary' : 'bg-[#F0EAE2]'}`}>
-                        {i <= ticketStepIndex && <span className="h-2 w-2 rounded-full bg-white" />}
-                      </span>
-                      <span className="whitespace-nowrap text-[9.5px] font-semibold text-muted-foreground">{step.label}</span>
-                    </div>
-                    {i < TICKET_STEPS.length - 1 && <div className={`mx-1.5 mb-[15px] h-0.5 flex-1 ${i < ticketStepIndex ? 'bg-primary' : 'bg-[#EAE1D8]'}`} />}
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 flex items-center justify-between border-t border-border pt-3.5">
-                <button type="button" onClick={() => overlay.push('maint_history')} className="text-[12px] font-medium text-muted-foreground">
-                  <b className="font-bold text-primary">{resolvedRequests.length} resolved</b> · view history
-                </button>
-                <button type="button" onClick={() => overlay.push('maint_new')} className="inline-flex items-center gap-1.5 rounded-[11px] bg-foreground px-3.5 py-2 font-display text-[12.5px] font-bold text-background">
-                  New request
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 
+  const roomChangeButton = room.room && (
+    <button
+      type="button"
+      onClick={() => overlay.push('svc_room_change')}
+      className={`${card} flex items-center gap-3 px-4 py-3.5 text-left`}
+    >
+      <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] bg-secondary text-primary">
+        <Repeat className="h-4.5 w-4.5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[13px] font-semibold text-[#2A2521]">Request room change</span>
+        <span className="block text-[11px] text-muted-foreground">Ask to move to a different room</span>
+      </span>
+      <ChevronRight className="h-4 w-4 flex-none text-[#C9BFB4]" />
+    </button>
+  );
 
-        <button
-          type="button"
-          onClick={() => navigate('/tenant/complaints')}
-          className={`${card} flex items-center gap-3 px-4 py-3.5 text-left`}
-        >
-          <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] bg-secondary text-primary">
-            <MessageSquareWarning className="h-4.5 w-4.5" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[13px] font-semibold text-[#2A2521]">Complaints</span>
-            <span className="block text-[11px] text-muted-foreground">Raise a ticket, report a bug, or track what's open</span>
-          </span>
-          <ChevronRight className="h-4 w-4 flex-none text-[#C9BFB4]" />
-        </button>
-
-        {room.houseRules.length > 0 && (
-          <div className="flex flex-col gap-2.5">
-            <span className={sectionLabel}>House rules</span>
-            <div className="rounded-[16px] border border-[#EFE6DA] bg-[#FBF7F2] px-4">
-              {room.houseRules.map((section, idx) => {
-                const open = openRuleSection === section.title;
-                return (
-                  <div key={section.title} className={`py-3 ${idx > 0 ? 'border-t border-[#EFE6DA]' : ''}`}>
-                    <button type="button" onClick={() => setOpenRuleSection(open ? null : section.title)} className="flex w-full items-center gap-3 text-left">
-                      <span className="flex h-7 w-7 flex-none items-center justify-center rounded-[8px] bg-[#F2E8DC] text-[#9C7A52]">
-                        <ListChecks className="h-3.5 w-3.5" />
-                      </span>
-                      <span className="flex-1 text-[12.5px] font-semibold text-[#4A433C]">{section.title}</span>
-                      <ChevronDown className={`h-3.5 w-3.5 flex-none text-[#B0A597] transition-transform ${open ? 'rotate-180' : ''}`} />
-                    </button>
-                    {open && (
-                      <div className="stayo-accordion-reveal mt-2 flex flex-col gap-1 pl-10">
-                        {section.items.map((item, i) => (
-                          <div key={i} className="flex gap-2 py-0.5 text-[12px] leading-relaxed text-[#6E6459]">
-                            <span className="text-primary">•</span>
-                            <span>{item}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/*
-          Moving out sits last and stays quiet. It settles a deposit, frees the
-          bed and puts a request in front of the owner — consequential enough
-          that it should not compete with Facilities for a thumb, and permanent
-          enough that it should never be a tap away by accident.
-        */}
-        {room.room && (
-          <button
-            type="button"
-            onClick={() => setMoveOutOpen(true)}
-            className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl border border-border py-3 text-[12.5px] font-semibold text-[#9A8F84]"
-          >
-            <LogOut className="h-4 w-4" />
-            Request to move out
+  const activeTicketCard = room.activeTicket && (
+    <div className="flex flex-col gap-2.5">
+      <div className="flex items-baseline justify-between">
+        <span className={sectionLabel}>Complaints</span>
+        {room.openRequests.length > 1 && (
+          <button type="button" onClick={() => overlay.push('all_tickets')} className="text-[12px] font-semibold text-primary">
+            {room.openRequests.length} open · view all
           </button>
         )}
-
-        <p className="pt-0.5 text-center text-[11px] font-medium text-[#B7AC9F]">Stayo{profile.hostel?.name ? ` · ${profile.hostel.name}` : ''}</p>
       </div>
+      <div className={`${card} p-4`}>
+        <button type="button" onClick={() => overlay.push('maint_ticket')} className="flex w-full items-start gap-2.5 text-left">
+          <div className="min-w-0 flex-1">
+            <div className="font-display text-[16px] font-extrabold tracking-[-0.01em] text-foreground">{room.activeTicket.category ?? room.activeTicket.type.replace('_', ' ')}</div>
+            <div className="mt-0.5 text-[12px] font-medium text-muted-foreground">Ticket · raised {new Date(room.activeTicket.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · tap to track</div>
+          </div>
+          <span className="flex-none rounded-full bg-warning-bg px-2.5 py-1 text-[11px] font-bold text-warning">{room.activeTicket.status.replace('_', ' ')}</span>
+        </button>
+        <div className="mt-4 flex items-center">
+          {TICKET_STEPS.map((step, i) => (
+            <div key={step.key} className="flex flex-1 items-center last:flex-none">
+              <div className="flex flex-col items-center gap-1">
+                <span className={`flex h-[22px] w-[22px] items-center justify-center rounded-full text-white ${i <= ticketStepIndex ? 'bg-primary' : 'bg-[#F0EAE2]'}`}>
+                  {i <= ticketStepIndex && <span className="h-2 w-2 rounded-full bg-white" />}
+                </span>
+                <span className="whitespace-nowrap text-[9.5px] font-semibold text-muted-foreground">{step.label}</span>
+              </div>
+              {i < TICKET_STEPS.length - 1 && <div className={`mx-1.5 mb-[15px] h-0.5 flex-1 ${i < ticketStepIndex ? 'bg-primary' : 'bg-[#EAE1D8]'}`} />}
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 flex items-center justify-between border-t border-border pt-3.5">
+          <button type="button" onClick={() => overlay.push('maint_history')} className="text-[12px] font-medium text-muted-foreground">
+            <b className="font-bold text-primary">{resolvedRequests.length} resolved</b> · view history
+          </button>
+          <button type="button" onClick={() => overlay.push('maint_new')} className="inline-flex items-center gap-1.5 rounded-[11px] bg-foreground px-3.5 py-2 font-display text-[12.5px] font-bold text-background">
+            New request
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const complaintsEntryButton = (
+    <button
+      type="button"
+      onClick={() => navigate('/tenant/complaints')}
+      className={`${card} flex items-center gap-3 px-4 py-3.5 text-left`}
+    >
+      <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] bg-secondary text-primary">
+        <MessageSquareWarning className="h-4.5 w-4.5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[13px] font-semibold text-[#2A2521]">Complaints</span>
+        <span className="block text-[11px] text-muted-foreground">Raise a ticket, report a bug, or track what's open</span>
+      </span>
+      <ChevronRight className="h-4 w-4 flex-none text-[#C9BFB4]" />
+    </button>
+  );
+
+  const houseRulesCard = room.houseRules.length > 0 && (
+    <div className="flex flex-col gap-2.5">
+      <span className={sectionLabel}>House rules</span>
+      <div className="rounded-[16px] border border-[#EFE6DA] bg-[#FBF7F2] px-4">
+        {room.houseRules.map((section, idx) => {
+          const open = openRuleSection === section.title;
+          return (
+            <div key={section.title} className={`py-3 ${idx > 0 ? 'border-t border-[#EFE6DA]' : ''}`}>
+              <button type="button" onClick={() => setOpenRuleSection(open ? null : section.title)} className="flex w-full items-center gap-3 text-left">
+                <span className="flex h-7 w-7 flex-none items-center justify-center rounded-[8px] bg-[#F2E8DC] text-[#9C7A52]">
+                  <ListChecks className="h-3.5 w-3.5" />
+                </span>
+                <span className="flex-1 text-[12.5px] font-semibold text-[#4A433C]">{section.title}</span>
+                <ChevronDown className={`h-3.5 w-3.5 flex-none text-[#B0A597] transition-transform ${open ? 'rotate-180' : ''}`} />
+              </button>
+              {open && (
+                <div className="stayo-accordion-reveal mt-2 flex flex-col gap-1 pl-10">
+                  {section.items.map((item, i) => (
+                    <div key={i} className="flex gap-2 py-0.5 text-[12px] leading-relaxed text-[#6E6459]">
+                      <span className="text-primary">•</span>
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  /*
+    Moving out sits last and stays quiet. It settles a deposit, frees the
+    bed and puts a request in front of the owner — consequential enough
+    that it should not compete with Facilities for a thumb, and permanent
+    enough that it should never be a tap away by accident.
+  */
+  const moveOutButton = room.room && (
+    <button
+      type="button"
+      onClick={() => setMoveOutOpen(true)}
+      className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl border border-border py-3 text-[12.5px] font-semibold text-[#9A8F84]"
+    >
+      <LogOut className="h-4 w-4" />
+      Request to move out
+    </button>
+  );
+
+  const footerText = (
+    <p className="pt-0.5 text-center text-[11px] font-medium text-[#B7AC9F]">Stayo{profile.hostel?.name ? ` · ${profile.hostel.name}` : ''}</p>
+  );
+
+  return (
+    <div className="min-h-screen">
+      <TenantPageHeader title="My Room" subtitle="Everything about your living space" />
+      {isDesktop ? (
+        <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-6 px-8 pt-2 pb-8">
+          {guideNote}
+          <div className="grid grid-cols-[1fr_380px] items-start gap-6">
+            <div className="flex min-w-0 flex-col gap-6">
+              {roomHero}
+              {roommatesCard}
+              {facilitiesCard}
+              {roomChangeButton}
+            </div>
+            <div className="flex min-w-0 flex-col gap-6">
+              {activeTicketCard}
+              {complaintsEntryButton}
+              {houseRulesCard}
+            </div>
+          </div>
+          {moveOutButton}
+          {footerText}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-6 px-[22px] pb-8 pt-5">
+          {guideNote}
+          {roomHero}
+          {roommatesCard}
+          {facilitiesCard}
+          {roomChangeButton}
+          {activeTicketCard}
+          {complaintsEntryButton}
+          {houseRulesCard}
+          {moveOutButton}
+          {footerText}
+        </div>
+      )}
 
       {!overlay.isHome && overlay.view !== 'maint_ticket' && detailConfigs[overlay.view] && (
         <DetailScreen config={detailConfigs[overlay.view]} onBack={overlay.back} />

@@ -8,11 +8,25 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-09 — Every portal in the owner and tenant apps rendered in the previous project's brand (fixed)
+
+**Symptom.** Reported by the product owner as "entirely off branded", with screenshots: the owner dashboard in Stayo clay and Manrope, and directly on top of it the **Invite Tenant** bottom sheet and the **Getting Started** orientation spotlight in a **navy** primary with a **serif** display face. Both surfaces are written entirely against the design tokens (`bg-primary`, `font-display`) — nothing in either file names a colour.
+
+**Root cause — the unscoped `:root` was still the previous project's theme, and portals always resolve it.** `styles/theme.css` held the pre-Stayo single-hostel palette and type pair at `:root`; the Stayo tokens lived only under `[data-app-theme="marketing"|"product"]`, introduced deliberately *beside* the old set (`stayo-theme.css`'s own comment says so) to avoid restyling unmigrated screens in one go. `ThemeProvider` stamps that attribute on a wrapper element **and** on `<html>` — the second one specifically so portals are covered, since a `vaul` drawer (`BottomSheet`) or a `createPortal` overlay (`Spotlight`) renders under `<body>`, outside the wrapper's DOM subtree, and CSS custom properties cascade through the DOM tree rather than the React tree. When `<html>` lost the attribute, the page kept its brand (wrapper intact) and only portals fell through — producing exactly the two-brands-at-once screenshot rather than a wholly wrong page, which is why it read as "the sheet is broken" rather than "the theme is off".
+
+**Why `<html>` lost it.** The sync was save-and-restore: capture the previous value at mount, put it back on unmount. That is unsound while two providers overlap, which happens briefly on a route change between a marketing shell and a product shell — the outgoing shell's cleanup restored what *it* saw at its own mount time and deleted the attribute the incoming shell had just set.
+
+**This is the fourth instance of the same mechanism.** The un-wrapped `LandingPage` ([[Changelog]] 2026-07-24), `PendingActivationsPage` (below, 2026-08-12), the admin console rendering the wrong display face ([[Decisions#ADR-080|ADR-080]]), and now every portal. In each case a screen written correctly against tokens rendered somewhere the Stayo tokens did not reach, and the failure was silent because the fallback was a complete, plausible-looking theme.
+
+**Fix — remove the fallback rather than wrap around it.** `:root` now carries the Stayo product palette and Manrope + Inter, so no surface can resolve the old identity; the legacy alias variables and ~130 hard-coded fossil hexes are deleted from the source; `ThemeProvider`'s `<html>` sync is a mounted-provider stack, so the last provider wins regardless of cleanup order; and `scripts/check-brand-fossils.mjs` fails the build if any retired value reappears. See [[Decisions#ADR-172|ADR-172]].
+
+**Not verified in a running browser.** The mechanism is established from the code and from the built CSS (`dist/` has zero fossil values, `:root{--primary:#b46a55}`), but no dev server or authenticated session was exercised, so the specific sequence that left `<html>` unscoped in the reported screenshots is **inferred, not observed**. The removal of the fallback makes the outcome correct either way; the stack fix addresses the mechanism.
+
 ## 2026-09-08 — Rent generation billed a departed tenant because its exit filter reads the one field a future-dated move-out never writes (fixed)
 
-**Symptom.** A tenant whose exit date had passed was billed for a further month, on a bed that had already been released — the fault [[Decisions#ADR-171|ADR-171]] identified as a cron race and mitigated with a 30-minute scheduling gap.
+**Symptom.** A tenant whose exit date had passed was billed for a further month, on a bed that had already been released — the fault [[Decisions#ADR-177|ADR-177]] identified as a cron race and mitigated with a 30-minute scheduling gap.
 
-**Root cause — not the absence of a filter, but a filter aimed at the wrong column.** ADR-171 and the 2026-09-06 entry below both record that `generate-rent` has "no exit-date filter of any kind". That is wrong, and the truth is more interesting: `rent-generation-service.ts` selects allocations with `is_active: true` and `OR: [{ end_date: null }, { end_date: { gte: rentMonth } }]`. The filter exists. It is defeated by an explicit branch in the write path — `move-out-service.ts` `vacate()` tests `isFutureExit` and, for a future-dated exit, deliberately does **not** close the allocation:
+**Root cause — not the absence of a filter, but a filter aimed at the wrong column.** ADR-177 and the 2026-09-06 entry below both record that `generate-rent` has "no exit-date filter of any kind". That is wrong, and the truth is more interesting: `rent-generation-service.ts` selects allocations with `is_active: true` and `OR: [{ end_date: null }, { end_date: { gte: rentMonth } }]`. The filter exists. It is defeated by an explicit branch in the write path — `move-out-service.ts` `vacate()` tests `isFutureExit` and, for a future-dated exit, deliberately does **not** close the allocation:
 
 > `// Future exit: do NOT terminate allocation and do NOT mark as FORMER_TENANT yet.`
 
@@ -20,7 +34,7 @@ so the allocation keeps `is_active: true` and `end_date: null`, the tenant keeps
 
 **Why it hid.** The query *looks* correct in isolation — it reads as move-out-aware, and it is, for the immediate-exit path where `vacate()` does close the allocation. Only the future-exit branch, in a different service, makes it a no-op. Nothing types or tests the join between the field a write path populates and the field a read path filters on: this is the same shape as the `hostel_type` round-trip bug of 2026-09-02, where a column correct on the write path was absent from a reader's projection.
 
-**Fix.** [[Decisions#ADR-172|ADR-172]] filters on `tenants.exit_date` — the field the future-exit branch actually writes — mirroring the `end_date` clause so proration is unchanged. Rent generation is now correct regardless of when, or whether, `move-out-releases` has run, which retires the cron-ordering constraint as the thing standing between an owner and a wrong invoice. **Not verified against Postgres** — no `DATABASE_URL_TEST` in this environment — so the predicate is reasoned and typechecked, not exercised.
+**Fix.** [[Decisions#ADR-178|ADR-178]] filters on `tenants.exit_date` — the field the future-exit branch actually writes — mirroring the `end_date` clause so proration is unchanged. Rent generation is now correct regardless of when, or whether, `move-out-releases` has run, which retires the cron-ordering constraint as the thing standing between an owner and a wrong invoice. **Not verified against Postgres** — no `DATABASE_URL_TEST` in this environment — so the predicate is reasoned and typechecked, not exercised.
 
 ## 2026-09-06 — A scheduled job called a route that had not existed for twelve days, and a second pair raced each other nightly (fixed)
 
@@ -32,7 +46,7 @@ so the allocation keeps `is_active: true` and `end_date: null`, the tenant keeps
 
 **Root cause, shared.** Two schedulers with no shared source of truth — `vercel.json` and a GitHub Actions workflow — plus a registry (`docs/operations/cron-registry.md`) that had not been updated since the initial commit while `vercel.json` changed five times. The registry listed neither the workflow's existence nor three jobs that were actually scheduled, and asserted a rule (*"do not introduce GitHub Actions"*) that the repo had contradicted from its first commit. Nothing validated that a scheduled endpoint resolves to a route, and nothing alerted on a failing run.
 
-**Fix.** [[Decisions#ADR-171|ADR-171]] trims the schedule to the six MVP jobs, deletes the dead entry, and moves `move-out-releases` to `0 18 * * *` — a deliberate 30-minute lead over `generate-rent`, sized to absorb GitHub's best-effort scheduling delay. The registry is rewritten against the actual schedulers and now requires confirming `app/api/cron/<name>/route.ts` exists and exports `GET` before adding a workflow entry. **Still open:** no alerting on cron failure at all, on either runner — which is what let both of these run unnoticed. See [[TODO]].
+**Fix.** [[Decisions#ADR-177|ADR-177]] trims the schedule to the six MVP jobs, deletes the dead entry, and moves `move-out-releases` to `0 18 * * *` — a deliberate 30-minute lead over `generate-rent`, sized to absorb GitHub's best-effort scheduling delay. The registry is rewritten against the actual schedulers and now requires confirming `app/api/cron/<name>/route.ts` exists and exports `GET` before adding a workflow entry. **Still open:** no alerting on cron failure at all, on either runner — which is what let both of these run unnoticed. See [[TODO]].
 
 ## 2026-09-02 — `document_verified` could be true with documents missing, pending, rejected, or for the wrong profile type (fixed)
 
@@ -2279,3 +2293,51 @@ The timing made it worse: `tenants.status` flips to `FORMER_TENANT` in **`vacate
 - **Found alongside, same cause:** `ListingPage.tsx` called `describeAvailability(amenity)` **without importing it**, and read `C.muted`, which does not exist on the Discover palette. The first would have thrown a `ReferenceError` while rendering amenities on any listing that has them. Both also survived a green `vite build`.
 - **Lesson:** a green build here proves the bundle was produced, not that the code is sound. Three genuine reference errors sat in two of the most-visited pages. **`tsc --noEmit` belongs in the build**, or at minimum in CI — this bug and the two on `ListingPage` were all found by running it once, by hand.
 - **See:** [[Decisions#ADR-118|ADR-118]], [[Changelog]]
+
+## Backend builds required runtime env, so every Vercel Preview failed (2026-09-09)
+
+**Symptom.** Every backend Preview deployment failed with `Error: supabaseUrl is required`, blamed on `/api/agreements/[id]/renewal-offer` — a route with nothing to do with it. Production was unaffected and kept deploying green, which made it look like a bad branch rather than a broken environment.
+
+**Attribution took longer than it should have.** Other open PRs showed green backend checks, so the failure looked branch-specific. Their checks had last run days earlier (Sep 6, Aug 23); the environment changed between 05:41Z and 10:39Z on Sep 9. **Check *when* a passing check last ran before concluding a failure is yours.** What settled it: pushing a commit whose tree is byte-identical to `main` (`git commit-tree`) and watching it fail identically. Do not push `main`'s own SHA for this — a failing preview posts a red status onto `main`'s commit.
+
+**Cause.** Three clients were constructed at **module scope** from env:
+
+| File | Constructor | Threw |
+|---|---|---|
+| `lib/db.ts` | `createClient(supabaseUrl, …)` | `supabaseUrl is required` |
+| `lib/services/email-service.ts` | `new Resend(process.env.RESEND_API_KEY)` | `Missing API key` |
+| `.../whatsapp/meta-provider.ts` | `constructor(config = configFromEnv())` | `WhatsAppConfigError` |
+
+`next build` imports every route module to collect page data and never calls into it, so an eager constructor makes a *build* depend on *runtime* credentials. The last one is the subtlest: the constructor default only ran because `whatsAppTemplateDeliveryService` is itself a module-scope singleton.
+
+**Fix.** Each resolves on first use — a Proxy for `supabase` (kept the object shape, so no call site changed), a function for `resend()`, a private getter for the WhatsApp config. Missing config is still fatal, now at the call site that needs it, with a message naming the variable. Verified by building with the repo-root `.env` moved aside: it failed before, succeeds after, and still builds normally with env present. Pinned by `tests/build-without-env.test.ts`.
+
+**Still open:** the Preview environment variables themselves are missing and should be restored — this fix stops that from breaking *builds*, but a Preview deployment with no config cannot actually serve requests.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Backend]], [[Changelog]]
+
+## Clerk never loaded in production — CSP blocked clerk-js, so Google OAuth never started (2026-09-09)
+
+**Symptom.** `failed_to_load_clerk_js` in the console; `https://clerk.yourstayo.com/npm/@clerk/clerk-js/…` refused by Content-Security-Policy. Clicking "Continue with Google" did nothing, which read as a broken Google integration — but Google was never reached. Clerk was not there to redirect.
+
+**Cause.** A **Production** Clerk instance serves `clerk-js` from the instance's own Frontend API origin (`https://clerk.yourstayo.com`), not from a shared Clerk CDN. That origin was absent from `script-src` in `apps/frontend/vercel.json` — the only place the CSP is defined.
+
+**Fix.** Added exactly three things, no wildcards: `https://clerk.yourstayo.com` to `script-src`, an explicit `script-src-elem` and the same origin to it, and `https://clerk.yourstayo.com` + `https://api.clerk.com` to `connect-src`. `frame-src` is untouched — Clerk uses a top-level redirect, not an iframe.
+
+**The trap worth remembering: `script-src-elem` *overrides* `script-src` for `<script>` elements — it does not add to it.** Setting it to the Clerk origin alone, which is what "add the minimum" suggests, would have silently blocked Razorpay's checkout and Google's scripts. It must mirror `script-src`. `src/lib/auth/cspClerkAllowlist.test.ts` asserts that superset relationship, and was mutation-checked against exactly that mistake.
+
+**Second CSP gap, found after the first fix deployed:** Clerk loaded, then failed to spawn its token-refresh Web Worker — `Creating a worker from 'blob:…' violates … script-src`. Clerk v5 *does* use a worker (`startPollingForToken`), contrary to an assumption made while writing the first fix. Fixed with `worker-src 'self' blob:`. **`blob:` belongs only in `worker-src`** — putting it in `script-src` would fix the same symptom while letting any blob URL execute as a page script.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[Changelog]]
+
+## Every Google sign-in reported "did not complete" — the callback judged Clerk before it loaded (2026-09-09)
+
+**Symptom.** After a successful Google round-trip, `/auth/callback` showed *"Google sign-in did not complete. Please try again."* Found while testing an account with no Stayo profile, which should have shown *"No Stayo account exists for this email"* — but the same bug would have failed a **valid** owner identically, so it was never about that account.
+
+**Cause.** `AuthCallbackPage` decided with `hasClerkSession()`, which reads `window.Clerk.session`. Clerk's SDK loads asynchronously, so on the first render after the redirect that is still empty. The effect also carried a `started.current` one-shot guard, so it never re-checked. Result: every Clerk sign-in was judged "no session" a fraction of a second before the session existed.
+
+**Fix.** The decision has three outcomes, not two — `wait` is a real state. `decideCallbackAction()` (`lib/auth/sessionAuthority.ts`) returns `wait` while Clerk is loading, and the effect re-runs when Clerk settles; a Supabase session still resolves immediately without waiting. A rejection now also calls `signOutClerk()`, so someone the product refuses is not left holding a live Clerk session that re-fails on every navigation.
+
+**The general shape worth remembering:** a boolean read of an asynchronously-initialised global is a race whenever it is consulted once. `hasClerkSession()` is fine for rendering (it re-renders); it was wrong inside a one-shot effect.
+
+Related: [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[Changelog]]

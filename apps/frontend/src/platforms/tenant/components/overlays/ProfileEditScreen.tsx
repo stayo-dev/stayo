@@ -171,14 +171,19 @@ export function ProfileEditScreen({
   const pillTheme = pillTone ? TONE_COLOR[pillTone] : null;
 
   return (
-    <div className="stayo-panel-slide-in fixed inset-0 z-[45] flex flex-col" style={GRID_GROUND}>
+    // Below `lg`: unchanged full-screen slide-in. At `lg+` (ADR-171 Phase 3.1):
+    // a docked right-side panel — see DetailScreen.tsx for the full rationale.
+    <div
+      className="stayo-panel-slide-in fixed inset-0 z-[45] flex flex-col lg:left-auto lg:top-14 lg:right-0 lg:bottom-0 lg:w-[420px] lg:border-l lg:border-border lg:shadow-lg"
+      style={GRID_GROUND}
+    >
       {/*
         The header sits on solid paper rather than the grid, so the graph lines
         start where the content does — the same seam every other Stayo screen
         has between its header and its body.
       */}
       <div
-        className="flex flex-none items-center gap-3 border-b px-[18px] pb-3 pt-[max(2.5rem,env(safe-area-inset-top))]"
+        className="flex flex-none items-center gap-3 border-b px-[18px] pb-3 pt-[max(2.5rem,env(safe-area-inset-top))] lg:pt-5"
         style={{ background: C.cardWarm, borderColor: C.line }}
       >
         <button

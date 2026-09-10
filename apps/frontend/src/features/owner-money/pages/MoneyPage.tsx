@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ChevronDown, Upload } from 'lucide-react';
+import { useIsDesktop } from '@/app/components/ui/use-desktop';
+import { useSelectedHostel } from '@features/owner-session/useSelectedHostel';
 import { QuickCollectModal } from '@features/owner-tenants/quick-collect/QuickCollectModal';
 import type { QuickCollectTenant } from '@features/owner-tenants/types';
 import type { MockExpense } from '@shared/mocks/expenses';
@@ -86,6 +88,12 @@ function MoneyLoadingSkeleton() {
 export function MoneyPage() {
   const money = useMoneyPage();
   const real = useRealMoney();
+  // Desktop (lg+): the page content sits in a centred max-w column and the
+  // Overview cards lay out on a 12-col grid instead of a single stack (ADR-171
+  // Phase 2.2); the hostel scope comes from the sidebar `HostelSwitcher` rather
+  // than the in-header `<select>` (Phase 2.6). Below lg every conditional below
+  // picks the mobile string — the layout and the `<select>` are unchanged.
+  const isDesktop = useIsDesktop();
   /**
    * Date range for the Expenses tab. These chips were static <span>s with
    * "This month" hardcoded active — they looked like a control and did
@@ -99,6 +107,28 @@ export function MoneyPage() {
   const [expenseFilters, setExpenseFilters] = useState(EMPTY_EXPENSE_FILTERS);
   const [hostelFilter, setHostelFilter] = useState('all');
   const [collectionsSort, setCollectionsSort] = useState<CollectionsSort>('Most overdue');
+
+  /**
+   * The hostel scope.
+   *
+   * Below `lg` this is the local `hostelFilter` the header `<select>` and the
+   * Collections chips drive, exactly as before. At `lg+` (ADR-171 Phase 2.6)
+   * the sidebar `HostelSwitcher` owns it — read from the shared
+   * `useSelectedHostel` state (URL `?hostelId=` + last-used fallback), no
+   * duplicate in-page control. `hostelFilter` only ever filters already-fetched
+   * lists client-side (`useRealMoney` stays portfolio-wide), so nothing about
+   * data-fetching changes.
+   *
+   * `'business'` (HQ / non-hostel expenses) can't be expressed by the sidebar
+   * switcher — it stays a desktop Expenses-tab checkbox so that view is not lost.
+   */
+  const { selectedHostelId } = useSelectedHostel();
+  const [businessExpensesOnly, setBusinessExpensesOnly] = useState(false);
+  const effectiveHostelFilter = isDesktop
+    ? businessExpensesOnly && money.tab === 'expenses'
+      ? 'business'
+      : selectedHostelId ?? 'all'
+    : hostelFilter;
 
   // Home's Quick Actions -> "Add Expense" navigates here with router state
   // instead of duplicating the wizard's flow — open it once on arrival.
@@ -119,12 +149,12 @@ export function MoneyPage() {
 
   const overdueTenants = useMemo(() => {
     let list = real.overdueTenants;
-    if (hostelFilter !== 'all') list = list.filter((t) => t.hostelId === hostelFilter);
+    if (effectiveHostelFilter !== 'all') list = list.filter((t) => t.hostelId === effectiveHostelFilter);
     if (collectionsSort === 'Most overdue') list = [...list].sort((a, b) => b.overdueMonths - a.overdueMonths);
     if (collectionsSort === 'Highest amount') list = [...list].sort((a, b) => b.outstanding - a.outstanding);
     if (collectionsSort === 'Name') list = [...list].sort((a, b) => a.name.localeCompare(b.name));
     return list;
-  }, [real.overdueTenants, hostelFilter, collectionsSort]);
+  }, [real.overdueTenants, effectiveHostelFilter, collectionsSort]);
 
   /**
    * The headline figure must describe what is actually on screen.
@@ -157,10 +187,10 @@ export function MoneyPage() {
 
   const filteredExpenses = useMemo(() => {
     let list: MockExpense[] = real.expenses;
-    if (hostelFilter === 'business') {
+    if (effectiveHostelFilter === 'business') {
       list = list.filter((e) => !e.hostelId || (e as { expenseScope?: string }).expenseScope === 'BUSINESS');
-    } else if (hostelFilter !== 'all') {
-      list = list.filter((e) => e.hostelId === hostelFilter);
+    } else if (effectiveHostelFilter !== 'all') {
+      list = list.filter((e) => e.hostelId === effectiveHostelFilter);
     }
     if (rangeBounds) {
       list = list.filter((e) => {
@@ -195,7 +225,7 @@ export function MoneyPage() {
     if (expenseFilters.sort === 'Amount: High to low') sorted.sort((a, b) => b.amount - a.amount);
     if (expenseFilters.sort === 'Amount: Low to high') sorted.sort((a, b) => a.amount - b.amount);
     return sorted;
-  }, [real.expenses, hostelFilter, expenseSearch, expenseFilters, rangeBounds]);
+  }, [real.expenses, effectiveHostelFilter, expenseSearch, expenseFilters, rangeBounds]);
 
   /**
    * The owner's actual vendors, highest spend first. The filter sheet used to
@@ -213,10 +243,10 @@ export function MoneyPage() {
   );
 
   const handleOpenAddExpense = () => {
-    if (hostelFilter === 'business') {
+    if (effectiveHostelFilter === 'business') {
       money.openAddExpense({ seed: { expenseScope: 'BUSINESS', hostelId: '' } });
-    } else if (hostelFilter !== 'all') {
-      money.openAddExpense({ seed: { expenseScope: 'HOSTEL', hostelId: hostelFilter } });
+    } else if (effectiveHostelFilter !== 'all') {
+      money.openAddExpense({ seed: { expenseScope: 'HOSTEL', hostelId: effectiveHostelFilter } });
     } else {
       money.openAddExpense();
     }
@@ -225,24 +255,42 @@ export function MoneyPage() {
   if (real.isLoading) return <MoneyLoadingSkeleton />;
 
   return (
-    <div className="flex flex-col gap-3.5 px-4 pb-8 pt-6 sm:px-6">
+    <div
+      className={
+        isDesktop
+          ? 'mx-auto flex w-full max-w-[1180px] flex-col gap-5 px-8 pb-12 pt-8'
+          : 'flex flex-col gap-3.5 px-4 pb-8 pt-6 sm:px-6'
+      }
+    >
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-[22px] font-extrabold tracking-tight text-foreground">Money</h1>
           <div className="mt-0.5 flex items-center gap-1">
-            <select
-              value={hostelFilter}
-              onChange={(e) => setHostelFilter(e.target.value)}
-              className="cursor-pointer border-none bg-transparent text-[12.5px] font-semibold text-muted-foreground focus:outline-none"
-            >
-              <option value="all">All Expenses · {real.overview.month}</option>
-              <option value="business">Business Overall (HQ) · {real.overview.month}</option>
-              {real.hostelOptions.map((h: { id: string; name: string }) => (
-                <option key={h.id} value={h.id}>
-                  {h.name} · {real.overview.month}
-                </option>
-              ))}
-            </select>
+            {isDesktop ? (
+              // Desktop: the hostel scope is the sidebar `HostelSwitcher`; this
+              // line just names the current scope so the figures have context.
+              <span className="text-[12.5px] font-semibold text-muted-foreground">
+                {effectiveHostelFilter === 'all'
+                  ? `All hostels · ${real.overview.month}`
+                  : effectiveHostelFilter === 'business'
+                    ? `Business Overall (HQ) · ${real.overview.month}`
+                    : `${real.hostelOptions.find((h: { id: string; name: string }) => h.id === effectiveHostelFilter)?.name ?? 'Hostel'} · ${real.overview.month}`}
+              </span>
+            ) : (
+              <select
+                value={hostelFilter}
+                onChange={(e) => setHostelFilter(e.target.value)}
+                className="cursor-pointer border-none bg-transparent text-[12.5px] font-semibold text-muted-foreground focus:outline-none"
+              >
+                <option value="all">All Expenses · {real.overview.month}</option>
+                <option value="business">Business Overall (HQ) · {real.overview.month}</option>
+                {real.hostelOptions.map((h: { id: string; name: string }) => (
+                  <option key={h.id} value={h.id}>
+                    {h.name} · {real.overview.month}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -266,13 +314,13 @@ export function MoneyPage() {
         </div>
       </div>
 
-      <div className="flex rounded-[11px] bg-[#EDE6DE] p-[3px]">
+      <div className={`flex gap-1 rounded-[11px] bg-[#EDE6DE] p-[3px] ${isDesktop ? 'w-fit self-start' : ''}`}>
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => money.setTab(t.id)}
-            className={`flex-1 rounded-[9px] py-2 text-center font-display text-[12.5px] font-bold ${
+            className={`flex-1 rounded-[9px] px-4 py-2 text-center font-display text-[12.5px] font-bold ${
               money.tab === t.id ? 'bg-card text-foreground shadow-[0_1px_3px_rgba(40,30,20,0.08)]' : 'text-[#8A7F75]'
             }`}
           >
@@ -282,27 +330,39 @@ export function MoneyPage() {
       </div>
 
       {money.tab === 'pulse' && (
-        <div className="flex flex-col gap-3">
-          <StatusBanner
-            collectionRatePercent={real.overview.collectionRatePercent}
-            netCashFlow={real.overview.netCashFlow}
-            perTenant={real.overview.perTenant}
-          />
-          <MoneyStatTiles
-            tiles={[
-              { key: 'collected', label: 'Collected', value: real.overview.collected, valueClassName: 'text-success', info: 'Payments received this month, across all hostels.' },
-              { key: 'due', label: 'Due', value: real.overview.due, valueClassName: 'text-destructive', info: 'Rent not yet collected for the current billing cycle.' },
-              { key: 'expenses', label: 'Expenses', value: `₹${real.totalExpenses.toLocaleString('en-IN')}`, info: 'Total business spend recorded so far this month.' },
-            ]}
-          />
-          <CollectionRateCard collectionRatePercent={real.overview.collectionRatePercent} due={real.overview.due} />
-          <ActionQueueCard
-            overdueTenants={real.overdueTenants}
-            onViewAll={() => money.setTab('collections')}
-            onCollect={(t) => money.openCollect(toQuickCollectTenant(t))}
-          />
-          <CashflowForecastCard forecast={real.forecast} />
-          <div className={`rounded-2xl px-3.5 py-2.5 text-xs font-semibold ${real.overview.overdueCount > 0 ? 'border border-warning/25 bg-warning/10 text-warning' : 'border border-success/25 bg-success/10 text-success'}`}>
+        <div className={isDesktop ? 'grid grid-cols-1 gap-4 lg:grid-cols-12' : 'flex flex-col gap-3'}>
+          <div className={isDesktop ? 'lg:col-span-12' : undefined}>
+            <StatusBanner
+              collectionRatePercent={real.overview.collectionRatePercent}
+              netCashFlow={real.overview.netCashFlow}
+              perTenant={real.overview.perTenant}
+            />
+          </div>
+          <div className={isDesktop ? 'lg:col-span-12' : undefined}>
+            <MoneyStatTiles
+              tiles={[
+                { key: 'collected', label: 'Collected', value: real.overview.collected, valueClassName: 'text-success', info: 'Payments received this month, across all hostels.' },
+                { key: 'due', label: 'Due', value: real.overview.due, valueClassName: 'text-destructive', info: 'Rent not yet collected for the current billing cycle.' },
+                { key: 'expenses', label: 'Expenses', value: `₹${real.totalExpenses.toLocaleString('en-IN')}`, info: 'Total business spend recorded so far this month.' },
+              ]}
+            />
+          </div>
+          <div className={isDesktop ? 'lg:col-span-5' : undefined}>
+            <CollectionRateCard collectionRatePercent={real.overview.collectionRatePercent} due={real.overview.due} />
+          </div>
+          <div className={isDesktop ? 'lg:col-span-7' : undefined}>
+            <ActionQueueCard
+              overdueTenants={real.overdueTenants}
+              onViewAll={() => money.setTab('collections')}
+              onCollect={(t) => money.openCollect(toQuickCollectTenant(t))}
+            />
+          </div>
+          <div className={isDesktop ? 'lg:col-span-12' : undefined}>
+            <CashflowForecastCard forecast={real.forecast} />
+          </div>
+          <div
+            className={`rounded-2xl px-3.5 py-2.5 text-xs font-semibold ${isDesktop ? 'lg:col-span-12 ' : ''}${real.overview.overdueCount > 0 ? 'border border-warning/25 bg-warning/10 text-warning' : 'border border-success/25 bg-success/10 text-success'}`}
+          >
             {real.overview.overdueCount > 0 ? `${real.overview.overdueCount} tenant${real.overview.overdueCount === 1 ? '' : 's'} overdue` : 'No tenants overdue right now'}
           </div>
         </div>
@@ -320,8 +380,8 @@ export function MoneyPage() {
               would match no line in his passbook. Per-hostel attribution lives
               inside a payout's own breakdown instead. */}
           <PayoutStrip />
-          <CollectionsFilters hostels={real.hostelOptions} hostelFilter={hostelFilter} onHostelFilterChange={setHostelFilter} sort={collectionsSort} onSortChange={setCollectionsSort} />
-          <div className="flex flex-col gap-2">
+          <CollectionsFilters hostels={real.hostelOptions} hostelFilter={effectiveHostelFilter} onHostelFilterChange={setHostelFilter} sort={collectionsSort} onSortChange={setCollectionsSort} hideHostelFilter={isDesktop} />
+          <div className={isDesktop && overdueTenants.length > 0 ? 'grid gap-2 lg:grid-cols-2' : 'flex flex-col gap-2'}>
             {overdueTenants.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">Nothing overdue here — nice work.</p>
             ) : (
@@ -371,6 +431,22 @@ export function MoneyPage() {
               </button>
             ))}
           </div>
+
+          {/* Desktop only: the sidebar HostelSwitcher covers All / per-hostel but
+              cannot express "HQ / business" (expenses tied to no hostel), so that
+              scope stays as a checkbox here. Below lg it lives in the header
+              `<select>` as "Business Overall (HQ)", unchanged. */}
+          {isDesktop && (
+            <label className="flex items-center gap-2 self-start rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-semibold text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={businessExpensesOnly}
+                onChange={(e) => setBusinessExpensesOnly(e.target.checked)}
+                className="h-3.5 w-3.5 accent-primary"
+              />
+              HQ / business expenses only
+            </label>
+          )}
 
           {dateRange === 'custom' && (
             <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-3 shadow-xs sm:flex-row sm:items-center">
@@ -435,7 +511,9 @@ export function MoneyPage() {
                   : 'No expenses logged in this range yet.'}
               </p>
             ) : (
-              filteredExpenses.map((e) => <ExpenseRow key={e.id} expense={e} onOpenDetail={() => money.openExpenseDetail(e)} />)
+              <div className={isDesktop ? 'grid gap-2 lg:grid-cols-2' : 'flex flex-col gap-2'}>
+                {filteredExpenses.map((e) => <ExpenseRow key={e.id} expense={e} onOpenDetail={() => money.openExpenseDetail(e)} />)}
+              </div>
             )}
           </div>
           <WhereItWentSection
@@ -472,7 +550,7 @@ export function MoneyPage() {
         hostels={real.hostelOptions}
         // 'all' and 'business' are view sentinels, not hostel ids — the export
         // takes a real id or nothing, so a sentinel can never reach a WHERE clause.
-        hostelId={hostelFilter === 'all' || hostelFilter === 'business' ? null : hostelFilter}
+        hostelId={effectiveHostelFilter === 'all' || effectiveHostelFilter === 'business' ? null : effectiveHostelFilter}
       />
       <ExpenseDetailModal
         open={money.expenseDetail != null}
