@@ -25,7 +25,7 @@ that matter. This design replaces it.
 | D3 | **Full versioned policy + acceptance record** | Today nothing proves any user accepted anything. Robust policies that cannot be shown to have been accepted are weak in a dispute. |
 | D4 | **Terms = shared core + Schedule A (Owners) + Schedule B (Residents)** | Owners buy software; residents get a free account and pass money through. One undifferentiated document is why the current one is incoherent. Two fully separate documents would duplicate boilerplate and drift — the exact failure that produced the two divergent `legal.ts` copies. |
 | D5 | **Platform refund floor, hostel terms beyond it — imposed on owners, not underwritten by Stayo** | *Revised 2026-09-10.* "Ask the hostel" is not a publishable refund policy and tends to fail aggregator review. But Stayo never holds tenant money, so it cannot pay a refund it never received: the floor is a **contractual obligation on the owner**, enforced by suspension and delisting, executed by the owner from their own sub-merchant account. |
-| D6 | **Name Easebuzz as the payment partner**, via a single constant | Aggregator reviewers look for it; refund timelines are meaningless without naming the rails. Centralised so switching is a one-line change. |
+| D6 | **Do not name the payment aggregator in published copy** — describe it, and hold the name in a single internal constant | *Revised 2026-09-10 after competitor review (§2.2).* Naming is **not** required for aggregator onboarding — what review actually checks is that a specific refund policy, terms, privacy policy and contact page exist. Neither RentOk nor Crib names a gateway. Stayo has already changed aggregator once, and the previous name is still scattered through six documents and a live pay sheet; a name in published copy is a maintenance liability with no compliance benefit. |
 
 ### 2.1 The Easebuzz sub-merchant model (confirmed 2026-09-10)
 
@@ -51,6 +51,55 @@ T+2 working-day promise and a "With Stayo" money state (`src/services/settlement
 model. Nothing real is lost — Business-Rules records **zero captured payments in any environment**
 — but a meaningful amount of shipped code now models a business Stayo is not running. That
 cleanup is a separate decision from this legal work.
+
+### 2.2 Competitor benchmark — what to copy, and what not to
+
+Reviewed 2026-09-10: **RentOk** (Eazyapp Tech Private Limited, Gurugram) and **Crib**
+(Purple Stack Ventures Private Limited, Bengaluru).
+
+**Worth adopting:**
+
+- **Neither names its payment gateway.** RentOk says payments are processed through "a secure
+  payment gateway"; Crib says "a third-party Payment Gateway". This is the settled market
+  convention and it survives aggregator review — which is the evidence for D6.
+- **RentOk scopes its refund policy explicitly out of tenant money**, in one clean sentence: the
+  policy "does not apply to rent, security deposit, maintenance charges, utility payments, vendor
+  payments, merchant payments, or any other amounts collected … between a RentOk user and such
+  user's tenants." Stayo's §6.4 split should be at least this explicit.
+- **RentOk refuses to promise a refund date**, deferring to "the rules, timelines, and technical
+  processes of the relevant bank, card issuer, UPI application, payment gateway, or payment
+  service provider". Better than committing to a number the platform does not control — see the
+  refinement in §6.4.
+
+**Traps to avoid — both competitors share them, and both should be assumed non-compliant:**
+
+1. **Neither names a Grievance Officer.** RentOk points at a "support team" and a `help@` address;
+   Crib names no one. IT Rules 2021 r.3(2) and the Consumer Protection (E-Commerce) Rules 2020
+   require a named officer with contact details. This is the single most common gap in the
+   category, and Stayo closes it (§9.1).
+2. **A liability cap of zero.** Both use, verbatim, *"In no event shall Company's total liability
+   … exceed the amount paid by the User to Company, if any."* For a resident who pays the platform
+   nothing, that computes to ₹0 — and *"if any"* makes the zero explicit. This is precisely the
+   clause that gets struck as unconscionable, leaving **unlimited** liability. It is the direct
+   evidence for the ₹5,000 floor in §6.1.
+3. **Neither states governing law or jurisdiction** in the material reviewed. Without it, a
+   plaintiff picks the forum.
+4. **Neither has an arbitration clause.**
+5. **Neither states an 18+ eligibility rule**, despite both serving student accommodation — the
+   DPDP §9 problem, unaddressed.
+6. **Neither carries DPDP-shaped rights** (access, correction, erasure, nomination) or a
+   consent record.
+7. **RentOk's "first month fee is non-refundable under all circumstances"** is an absolute term of
+   the kind s.2(46) of the Consumer Protection Act 2019 treats as an unfair contract term.
+
+**The most important finding: this is not an industry consensus, it is one template copied twice.**
+RentOk and Crib carry the facilitator and liability clauses in *identical wording* — "We are only
+providing a platform to facilitate these rental payments from the User to the Beneficiary and we
+are not involved in any way in the underlying transactions." Their agreement is not independent
+corroboration that the drafting is sound; it is a shared ancestor. Matching them clause-for-clause
+would inherit all seven gaps above. Where this spec diverges from both competitors — a named
+Grievance Officer, a non-zero liability floor, a jurisdiction clause, arbitration, 18+, DPDP
+rights, a consent record — the divergence is the point.
 
 ### Entity facts fixed by these decisions
 
@@ -230,8 +279,11 @@ from that account.
   double-capture — raising it with the payment partner. Residents are told this plainly rather
   than being led to expect Stayo to pay.
 - Beyond the floor, the hostel's own terms govern and are shown to the resident before payment.
-- **Turnaround stated separately by mechanism**: gateway-level corrections follow the payment
-  partner's own timeline; hostel-issued refunds follow the commitment in §12.
+- **Turnaround: commit to the part Stayo and the hostel control, and only that.** Adapting
+  RentOk's approach (§2.2): state a firm window for the action taken *on the platform* — the
+  hostel approving and initiating the refund — and then say plainly that the money reaching the
+  payer's account follows the timelines of their bank, card issuer or UPI provider, which no party
+  here controls. Promising an end-to-end date invites a complaint every time a bank is slow.
 - **Payment partner named here**: Easebuzz, an RBI-authorised payment aggregator, referenced from
   the single `PAYMENT_PARTNER` constant.
 
@@ -277,8 +329,16 @@ rather than silently.
 - **General trust copy** (homepage, marketing, privacy summary) stays aggregator-neutral:
   "processed securely by an RBI-authorised, PCI-DSS compliant payment aggregator; card and UPI
   credentials never reach Stayo's servers."
-- **Payments/Refunds policy and the privacy recipient list** name Easebuzz explicitly.
-- Both read from **one constant**, `PAYMENT_PARTNER`, beside `COMPANY` in the content config.
+- **Payments/Refunds policy and the privacy recipient list** describe the aggregator by
+  **category, never by name** — "an RBI-authorised payment aggregator". Revised per D6/§2.2.
+- `PAYMENT_PARTNER` in the content config holds both the `name` (for internal and operational
+  reference) and the `descriptor` (the only form that reaches published copy). This makes the
+  build-time invariant simpler and stronger: **no aggregator name may appear anywhere under
+  `src/content/`**, with no exceptions to reason about.
+- DPDP requires disclosing *categories* of recipients, not names, so this is fully compliant. The
+  privacy policy adds that the identity of the payment partner is available on request from
+  `privacy@yourstayo.com`, which closes the transparency gap without pinning a name into copy that
+  outlives the contract.
 - Claims must be verified against what is actually stored before publication: `gateway_transactions`
   keeps `provider_payment_id`, amount, status and a `raw` payload. The wording will be "we do not
   store full card numbers, CVV, PINs or banking passwords" — precise, and true even if the payload
