@@ -13,6 +13,7 @@
  */
 export * from "./types";
 export * from "./workbook-parser";
+export * from "./rooms-sheet";
 export * from "./dates";
 export * from "./identity";
 export * from "./room-resolution";

@@ -173,6 +173,7 @@ export default defineConfig({
       'tests/bulk-import-row-validation.test.ts',
       // A cover sheet must not be parsed as the tenant list.
       'tests/bulk-import-workbook-sheets.test.ts',
+      'tests/bulk-import-rooms-sheet.test.ts',
       'tests/build-without-env.test.ts',
     ],
     alias: {
