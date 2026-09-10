@@ -192,8 +192,8 @@ export function LegalPage() {
 
           <p className="mx-auto mt-10 max-w-2xl text-center text-[12.5px] leading-relaxed text-muted-foreground">
             Stayo is operated by {COMPANY.name}. Questions about any policy? Reach us at{' '}
-            <a href={`mailto:${COMPANY.emails.legal}`} className="font-semibold text-primary hover:underline">
-              {COMPANY.emails.legal}
+            <a href={`mailto:${COMPANY.emails.grievance}`} className="font-semibold text-primary hover:underline">
+              {COMPANY.emails.grievance}
             </a>
             .
           </p>
@@ -291,10 +291,10 @@ export function LegalPage() {
             </p>
             <div className="flex flex-wrap gap-2">
               <a
-                href={`mailto:${COMPANY.emails.legal}`}
+                href={`mailto:${COMPANY.emails.grievance}`}
                 className="rounded-xl border border-border bg-card px-4 py-2 font-display text-[13px] font-bold text-foreground hover:border-primary"
               >
-                {COMPANY.emails.legal}
+                {COMPANY.emails.grievance}
               </a>
               <a
                 href={`tel:${COMPANY.phone.replace(/\s/g, '')}`}

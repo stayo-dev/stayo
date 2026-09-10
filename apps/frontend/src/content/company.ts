@@ -7,7 +7,9 @@
  *
  * Scalable by design: adding a future product = one entry in `products`.
  * Phone below is the real registered Trishul Solutions contact number.
- * Office address and registration IDs are deliberately NOT surfaced publicly.
+ * The registered address and Grievance Officer ARE published — the Consumer
+ * Protection (E-Commerce) Rules 2020 and IT Rules 2021 require it — while the
+ * proprietor's personal phone and email stay unpublished.
  */
 
 export type ProductStatus = 'flagship' | 'coming-soon';
@@ -31,6 +33,36 @@ export interface CompanySocial {
   href: string;
 }
 
+export interface PostalAddress {
+  line1: string;
+  line2: string;
+  locality: string;
+  district: string;
+  state: string;
+  pin: string;
+}
+
+/** One postal line, in the order an Indian address is read. */
+export function formatPostalAddress(a: PostalAddress): string {
+  return `${a.line1}, ${a.line2}, ${a.locality}, ${a.district}, ${a.state} ${a.pin}`;
+}
+
+/**
+ * The aggregator, in the only place it is named.
+ *
+ * `descriptor` is the ONLY form that may appear in a published document;
+ * `name` exists for internal and operational reference. Stayo changed
+ * aggregator once already and the previous name was left scattered through six
+ * documents and a live pay sheet. Naming a gateway in published copy buys
+ * nothing — it is not required for aggregator onboarding, and neither RentOk
+ * nor Crib does it — while guaranteeing stale copy on the next change.
+ * `scripts/check-legal.mjs` fails the build if `name` appears under src/content.
+ */
+export const PAYMENT_PARTNER = {
+  name: 'Easebuzz',
+  descriptor: 'an RBI-authorised payment aggregator',
+} as const;
+
 export const COMPANY = {
   name: 'Trishul Solutions',
   descriptor: 'AI Software Company',
@@ -43,10 +75,34 @@ export const COMPANY = {
     contact: 'contact@yourstayo.com',
     support: 'support@yourstayo.com',
     privacy: 'privacy@yourstayo.com',
-    legal: 'legal@yourstayo.com',
+    grievance: 'grievance@yourstayo.com',
   },
   /** Real registered contact number (office address intentionally not public). */
   phone: '+91 76750 80090',
+
+  /**
+   * Published because the Consumer Protection (E-Commerce) Rules 2020 and the
+   * IT Rules 2021 require an e-commerce entity to display its legal name,
+   * registered address and a named Grievance Officer. The proprietor's
+   * personal phone and email are deliberately NOT here — nothing obliges
+   * publishing those, and legal pages get scraped.
+   */
+  legal: {
+    proprietor: 'Chidiri Shiva Prakash',
+    constitution: 'sole proprietorship',
+    address: {
+      line1: '12-75/1',
+      line2: 'Balaji Nagar',
+      locality: 'Block 2, Kodangal',
+      district: 'Vikarabad District',
+      state: 'Telangana',
+      pin: '509338',
+    } satisfies PostalAddress,
+    grievanceOfficer: {
+      name: 'Chidiri Shiva Prakash',
+      email: 'grievance@yourstayo.com',
+    },
+  },
 
   mission:
     'To build software that removes operational friction for the businesses and the people who keep everyday life running — starting with where the pain is real, and solving it end to end.',
