@@ -32,7 +32,7 @@ import {
 const SURFACE = '#FBF7F1';
 const INK = '#2A2521';
 const MUTED = '#8A7F75';
-const ACCENT = '#B46A55';
+const ACCENT = '#3b5fa8';
 
 function Column({
   label,

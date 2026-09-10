@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer());
     externalCalls = 1;
     const upload = await imagekit.files.upload({
-      file: buffer.toString("base64"),
+      file: buffer,
       fileName: file.name || `${docType.toLowerCase()}.jpg`,
       folder: `owners/${tenant.owner_id}/tenants/${tenant.id}/documents/${docType}`,
       useUniqueFileName: true,
