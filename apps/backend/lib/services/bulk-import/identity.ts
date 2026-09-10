@@ -27,3 +27,15 @@ export function isSpreadsheetFormula(value: unknown): boolean {
   const text = String(value || "").trim();
   return /^[=+\-@]/.test(text);
 }
+
+/**
+ * The comparable identity of an Indian mobile number: its last 10 digits.
+ *
+ * Production stores `profiles.phone` as bare 10 digits and
+ * `tenant_invitations.phone` as E.164 (`+91…`), so comparing the raw strings
+ * — or a normalised E.164 against a profile's bare digits — never matches,
+ * and an existing tenant re-imported would get a second tenancy.
+ */
+export function indianPhoneKey(phone: string | null | undefined): string {
+  return String(phone ?? "").replace(/\D/g, "").slice(-10);
+}

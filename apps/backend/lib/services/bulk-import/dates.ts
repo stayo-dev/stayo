@@ -12,14 +12,15 @@ export function parseImportDate(dateStr: string): Date | null {
 
   const trimmed = String(dateStr).trim();
 
-  // Excel numeric date serial
+  // Excel numeric date serial (a date cell read with `raw: true`).
   const numericDate = Number(trimmed);
   if (!isNaN(numericDate) && numericDate > 20000 && numericDate < 100000) {
-    // Excel epoch is Dec 30, 1899
-    const excelEpoch = new Date(Date.UTC(1899, 11, 30));
-    const date = new Date(excelEpoch.getTime() + numericDate * 86400000);
-    if (!isNaN(date.getTime())) {
-      return date;
+    // Excel epoch is 30 Dec 1899. Compute the calendar day in UTC, then build
+    // a *local* midnight from it, so the date is the same day in every
+    // timezone and `formatImportDate` (local getters) round-trips it.
+    const utc = new Date(Date.UTC(1899, 11, 30) + Math.floor(numericDate) * 86400000);
+    if (!isNaN(utc.getTime())) {
+      return new Date(utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate());
     }
   }
 
@@ -43,8 +44,20 @@ export function parseImportDate(dateStr: string): Date | null {
         year = "20" + year; // Convert "26" to "2026"
       }
 
-      const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-      if (!isNaN(date.getTime())) {
+      const y = parseInt(year);
+      const m = parseInt(month);
+      const d = parseInt(day);
+      const date = new Date(y, m - 1, d);
+      // The Date constructor silently rolls impossible dates over —
+      // 31/02/2026 becomes 3 March, and a US-style 12/25/2025 (month 25)
+      // becomes January 2027. Accept only a date that survives the round
+      // trip unchanged.
+      if (
+        !isNaN(date.getTime()) &&
+        date.getFullYear() === y &&
+        date.getMonth() === m - 1 &&
+        date.getDate() === d
+      ) {
         return date;
       }
     }

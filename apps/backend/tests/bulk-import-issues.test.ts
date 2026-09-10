@@ -3,6 +3,7 @@ import {
   buildIssue,
   severityOf,
   groupIssuesByCode,
+  ISSUE_CODES,
   type RowIssue,
 } from "@/lib/services/bulk-import/issues";
 
@@ -109,12 +110,7 @@ describe("copy", () => {
   });
 
   it("never renders a bare code", () => {
-    const codes = [
-      "ROOM_NOT_FOUND", "ROOM_CAPACITY_EXCEEDED", "ROOM_NO_RENT",
-      "PHONE_INVALID", "DUPLICATE_IN_FILE", "DUPLICATE_IN_SYSTEM",
-      "PAYMENT_METHOD_MISSING", "OVERPAID", "BACKFILL_CAPPED",
-      "FORMULA_IN_CELL", "DATE_UNREADABLE", "HOSTEL_STAMP_MISMATCH",
-    ] as const;
+    const codes = ISSUE_CODES;
 
     for (const code of codes) {
       const issue = buildIssue(code, 2, {});
@@ -192,12 +188,7 @@ describe("group titles", () => {
   });
 
   it("gives every code a group title with no developer vocabulary", () => {
-    const codes = [
-      "ROOM_NOT_FOUND", "ROOM_CAPACITY_EXCEEDED", "ROOM_NO_RENT",
-      "PHONE_INVALID", "DUPLICATE_IN_FILE", "DUPLICATE_IN_SYSTEM",
-      "PAYMENT_METHOD_MISSING", "OVERPAID", "BACKFILL_CAPPED",
-      "FORMULA_IN_CELL", "DATE_UNREADABLE", "HOSTEL_STAMP_MISMATCH",
-    ] as const;
+    const codes = ISSUE_CODES;
 
     for (const code of codes) {
       const [group] = groupIssuesByCode([buildIssue(code, 2, {}), buildIssue(code, 3, {})]);

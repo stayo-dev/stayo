@@ -26,6 +26,12 @@ export interface TenantImportRow {
   emergency_contact?: string;
   gender?: string;
   rent_source?: "ROOM_CONFIG" | "SHEET";
+  /**
+   * The owner's original text for numeric cells, so a cell that could not be
+   * read ("TBD") is quoted back to them as typed rather than as NaN. Not
+   * persisted — `sanitize-row.ts` is an allowlist that omits it.
+   */
+  raw_values?: Partial<Record<"monthly_rent" | "security_deposit" | "amount_paid" | "agreement_duration_months", string>>;
 }
 
 export interface ImportDefaults {

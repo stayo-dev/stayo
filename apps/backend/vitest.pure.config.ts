@@ -166,6 +166,11 @@ export default defineConfig({
       // The owner-facing issue vocabulary: severity, copy that names real
       // values, and grouping so a 3-year-old hostel decides once, not 32 times.
       'tests/bulk-import-issues.test.ts',
+      // validateRows defects found by the post-implementation code review:
+      // joining date billed in a different format than it was validated in,
+      // impossible dates rolled over, "Rs. 8,000" read as 0.8, inactive rooms
+      // passing preview, and blocked rows with no issue to explain them.
+      'tests/bulk-import-row-validation.test.ts',
       'tests/build-without-env.test.ts',
     ],
     alias: {

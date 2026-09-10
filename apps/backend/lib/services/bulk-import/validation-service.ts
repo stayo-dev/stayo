@@ -2,7 +2,7 @@ import { prisma } from "../../db";
 import { hostelBillingPreferencesService } from "../hostel-billing-preferences-service";
 import { buildIssue, type RowIssue } from "./issues";
 import { formatImportDate, monthsBetween, parseImportDate } from "./dates";
-import { isSpreadsheetFormula, isValidImportEmail, normalizeImportPhone } from "./identity";
+import { indianPhoneKey, isSpreadsheetFormula, isValidImportEmail, normalizeImportPhone } from "./identity";
 import { nearestRoomNumbers } from "./room-resolution";
 import { parseTenantWorkbook } from "./workbook-parser";
 import type {
@@ -12,6 +12,54 @@ import type {
   ValidationError,
   ValidationResult,
 } from "./types";
+
+/** Mirrors RENT_BACKFILL_CAP_MONTHS in onboarding-financials-service. */
+const RENT_BACKFILL_CAP_MONTHS = 24;
+
+/** Owner-facing column names, for issue copy. */
+const FIELD_LABELS: Record<string, string> = {
+  name: "name",
+  email: "email",
+  phone: "mobile number",
+  room_no: "room",
+  notes: "notes",
+};
+
+type NumberProblem = { field: string; label: string; value: unknown; message: string; hint: string };
+
+/**
+ * Numeric cells that are present but unusable. A blank cell is `undefined`
+ * and falls back to a default; an unreadable one is `NaN` (see
+ * `parseImportNumber`) and must be shown to the owner, never defaulted.
+ */
+function numberChecks(row: TenantImportRow): NumberProblem[] {
+  const problems: NumberProblem[] = [];
+  const money = "Enter the amount in rupees using digits, like 8500. A ₹ sign and commas are fine.";
+
+  if (row.monthly_rent != null) {
+    if (Number.isNaN(row.monthly_rent)) {
+      problems.push({ field: "monthly_rent", label: "monthly rent", value: row.monthly_rent, message: "Monthly rent is not a number", hint: money });
+    } else if (row.monthly_rent <= 0) {
+      problems.push({ field: "monthly_rent", label: "monthly rent", value: row.monthly_rent, message: "Monthly rent must be more than 0", hint: "Monthly rent must be more than ₹0. Leave it blank to use the room's rent." });
+    }
+  }
+
+  const deposit = row.security_deposit ?? row.advance_deposit;
+  if (deposit != null && (Number.isNaN(deposit) || deposit < 0)) {
+    problems.push({ field: "security_deposit", label: "deposit", value: deposit, message: "Deposit is not a valid amount", hint: `${money} Enter 0 if there is no deposit.` });
+  }
+
+  if (row.amount_paid != null && (Number.isNaN(row.amount_paid) || row.amount_paid < 0)) {
+    problems.push({ field: "amount_paid", label: "amount already paid", value: row.amount_paid, message: "Amount already paid is not a valid amount", hint: `${money} Enter 0 if they have paid nothing yet.` });
+  }
+
+  const months = row.agreement_duration_months;
+  if (months != null && (Number.isNaN(months) || !Number.isInteger(months) || months < 1 || months > 120)) {
+    problems.push({ field: "agreement_duration_months", label: "agreement length", value: months, message: "Agreement length must be a whole number of months between 1 and 120", hint: "Enter the number of months as a whole number, like 11 — not \"1 year\"." });
+  }
+
+  return problems;
+}
 
 /**
  * Validates parsed import rows against the hostel's rooms, the owner's
@@ -39,9 +87,21 @@ export class BulkImportValidationService {
     const hostel = await prisma.hostels.findUnique({ where: { id: hostelId }, select: { name: true } });
     const hostelName = hostel?.name ?? "this hostel";
     const billingDefaults = await hostelBillingPreferencesService.getBillingDefaults(hostelId);
-    const phonesSeen = new Set<string>();
-    const emailsSeen = new Set<string>();
+    // Keyed to the row number that first used the value, so a duplicate can
+    // tell the owner which row it repeats.
+    const phonesSeen = new Map<string, number>();
+    const emailsSeen = new Map<string, number>();
     const roomAssignmentsSeen = new Map<string, number>();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    /** Up to three other active rooms that still have a free bed. */
+    const roomsWithSpace = (exceptRoomId?: string) =>
+      hostelRooms
+        .filter((r) => r.is_active && r.id !== exceptRoomId)
+        .filter((r) => r.occupied_count + r.reserved_count + (roomAssignmentsSeen.get(r.id) || 0) < r.capacity)
+        .slice(0, 3)
+        .map((r) => r.room_no);
     const defaultJoiningDate = importDefaults.joining_date || formatImportDate(new Date());
     const defaultMaintenanceType = importDefaults.maintenance_type || billingDefaults.maintenance_type;
     const defaultMaintenanceCharge = defaultMaintenanceType === "NONE"
@@ -57,6 +117,7 @@ export class BulkImportValidationService {
       const issues: RowIssue[] = [];
       let isDuplicate = false;
       let duplicateReason: string | undefined;
+      let duplicateIssue: RowIssue | undefined;
 
       if (!row.name || row.name.length < 2) {
         errors.push({
@@ -65,6 +126,7 @@ export class BulkImportValidationService {
           message: "Name is required and must be at least 2 characters",
           value: row.name,
         });
+        issues.push(buildIssue("NAME_MISSING", rowNumber, { value: row.name }));
       }
 
       const normalizedPhone = normalizeImportPhone(row.phone);
@@ -77,14 +139,17 @@ export class BulkImportValidationService {
         });
         issues.push(buildIssue("PHONE_INVALID", rowNumber, { value: row.phone }));
       } else {
-        if (existingPhones.has(normalizedPhone)) {
+        const phoneKey = indianPhoneKey(normalizedPhone);
+        if (existingPhones.has(phoneKey)) {
           isDuplicate = true;
           duplicateReason = `Phone number ${normalizedPhone} already exists in system`;
-        } else if (phonesSeen.has(normalizedPhone)) {
+          duplicateIssue = buildIssue("DUPLICATE_IN_SYSTEM", rowNumber, {});
+        } else if (phonesSeen.has(phoneKey)) {
           isDuplicate = true;
           duplicateReason = `Phone number ${normalizedPhone} appears multiple times in this file`;
+          duplicateIssue = buildIssue("DUPLICATE_IN_FILE", rowNumber, { otherRows: [phonesSeen.get(phoneKey)!] });
         } else {
-          phonesSeen.add(normalizedPhone);
+          phonesSeen.set(phoneKey, rowNumber);
         }
       }
 
@@ -96,6 +161,7 @@ export class BulkImportValidationService {
           message: "Email is required",
           value: row.email,
         });
+        issues.push(buildIssue("EMAIL_INVALID", rowNumber, { value: row.email }));
       } else if (!isValidImportEmail(normalizedEmail)) {
         errors.push({
           row: rowNumber,
@@ -103,15 +169,19 @@ export class BulkImportValidationService {
           message: "Invalid email format",
           value: row.email,
         });
+        issues.push(buildIssue("EMAIL_INVALID", rowNumber, { value: row.email }));
       } else if (existingEmails.has(normalizedEmail)) {
         isDuplicate = true;
         duplicateReason = `Email ${normalizedEmail} already exists in system or active invitations`;
+        duplicateIssue ??= buildIssue("DUPLICATE_IN_SYSTEM", rowNumber, {});
       } else if (emailsSeen.has(normalizedEmail)) {
         isDuplicate = true;
         duplicateReason = `Email ${normalizedEmail} appears multiple times in this file`;
+        duplicateIssue ??= buildIssue("DUPLICATE_IN_FILE", rowNumber, { otherRows: [emailsSeen.get(normalizedEmail)!] });
       } else {
-        emailsSeen.add(normalizedEmail);
+        emailsSeen.set(normalizedEmail, rowNumber);
       }
+      if (duplicateIssue) issues.push(duplicateIssue);
 
       for (const [field, value] of Object.entries({
         name: row.name,
@@ -127,6 +197,7 @@ export class BulkImportValidationService {
             message: "Spreadsheet formulas are not allowed in import values",
             value,
           });
+          issues.push(buildIssue("FORMULA_IN_CELL", rowNumber, { fieldLabel: FIELD_LABELS[field] ?? field }));
         }
       }
 
@@ -138,6 +209,7 @@ export class BulkImportValidationService {
           message: "Room number is required",
           value: row.room_no,
         });
+        issues.push(buildIssue("ROOM_MISSING", rowNumber));
       } else {
         roomForRow = hostelRooms.find((r) => r.room_no === row.room_no);
         if (!roomForRow) {
@@ -153,15 +225,41 @@ export class BulkImportValidationService {
             nearestRooms: nearestRoomNumbers(row.room_no, hostelRooms),
           }));
         } else if (!roomForRow.is_active) {
-          warnings.push(`Room ${row.room_no} is inactive`);
-        } else if (!roomForRow.base_rent || roomForRow.base_rent <= 0) {
+          // createInvitation only accepts active rooms, so this was a warning
+          // at preview and a "Room not found" failure at confirm.
+          errors.push({
+            row: rowNumber,
+            field: "room_no",
+            message: `Room ${row.room_no} is inactive`,
+            value: row.room_no,
+          });
+          issues.push(buildIssue("ROOM_INACTIVE", rowNumber, {
+            roomNo: row.room_no,
+            hostelName,
+            roomsWithSpace: roomsWithSpace(roomForRow.id),
+          }));
+        } else if ((!roomForRow.base_rent || roomForRow.base_rent <= 0) && row.monthly_rent == null) {
+          // A room with no base rent only matters when the sheet doesn't give
+          // this tenant's rent either — otherwise the row imports fine.
           errors.push({
             row: rowNumber,
             field: "room_no",
             message: `Room ${row.room_no} does not have rent configured`,
             value: row.room_no,
           });
+          issues.push(buildIssue("ROOM_NO_RENT", rowNumber, { roomNo: row.room_no }));
         }
+      }
+
+      for (const check of numberChecks(row)) {
+        errors.push({ row: rowNumber, field: check.field, message: check.message, value: check.value });
+        issues.push(buildIssue("NUMBER_INVALID", rowNumber, {
+          // The owner's own text if we have it; never "NaN".
+          value: row.raw_values?.[check.field as keyof NonNullable<TenantImportRow["raw_values"]>]
+            ?? (Number.isNaN(check.value as number) ? "" : String(check.value)),
+          fieldLabel: check.label,
+          hint: check.hint,
+        }));
       }
 
       if (!parseImportDate(defaultJoiningDate)) {
@@ -171,6 +269,7 @@ export class BulkImportValidationService {
           message: "Invalid default joining date — use DD/MM/YYYY, e.g. 05/01/2026 for 5 January 2026",
           value: defaultJoiningDate,
         });
+        issues.push(buildIssue("DATE_UNREADABLE", rowNumber, { value: defaultJoiningDate }));
       }
 
       const rowJoiningDate = row.joining_date || defaultJoiningDate;
@@ -184,11 +283,18 @@ export class BulkImportValidationService {
         });
         issues.push(buildIssue("DATE_UNREADABLE", rowNumber, { value: row.joining_date }));
       } else if (parsedJoiningDate) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const monthsElapsed = monthsBetween(parsedJoiningDate, today);
-        if (monthsElapsed > 24) {
-          issues.push(buildIssue("BACKFILL_CAPPED", rowNumber, { monthsElapsed, cappedTo: 24 }));
+        // Billing generates one rent month per month from the joining month
+        // to the current month *inclusive*, and truncates once that count
+        // exceeds RENT_BACKFILL_CAP_MONTHS — so compare the billed count, not
+        // the gap between the dates (which is one smaller).
+        const billedMonths = monthsBetween(parsedJoiningDate, today) + 1;
+        if (billedMonths > RENT_BACKFILL_CAP_MONTHS) {
+          const firstBilled = new Date(today.getFullYear(), today.getMonth() - (RENT_BACKFILL_CAP_MONTHS - 1), 1);
+          issues.push(buildIssue("BACKFILL_CAPPED", rowNumber, {
+            monthsElapsed: billedMonths,
+            cappedTo: RENT_BACKFILL_CAP_MONTHS,
+            firstBilledMonth: firstBilled.toLocaleString("en-IN", { month: "long", year: "numeric" }),
+          }));
           warnings.push("Historical joining date requires owner confirmation before invitations are sent");
         } else if (parsedJoiningDate < today) {
           warnings.push("Historical joining date requires owner confirmation before invitations are sent");
@@ -229,6 +335,12 @@ export class BulkImportValidationService {
               message: `Room ${row.room_no} capacity would be exceeded (${currentOccupancy + assignmentsInFile + 1}/${roomForRow.capacity})`,
               value: row.room_no,
             });
+            issues.push(buildIssue("ROOM_CAPACITY_EXCEEDED", rowNumber, {
+              roomNo: row.room_no,
+              capacity: roomForRow.capacity,
+              occupied: currentOccupancy + assignmentsInFile,
+              roomsWithSpace: roomsWithSpace(roomForRow.id),
+            }));
           } else {
             roomAssignmentsSeen.set(roomForRow.id, assignmentsInFile + 1);
           }
@@ -252,7 +364,14 @@ export class BulkImportValidationService {
           amount_includes_deposit: row.amount_includes_deposit ?? true,
           payment_method: row.payment_method,
           payment_reference: row.payment_reference,
-          joining_date: row.joining_date || defaultJoiningDate,
+          // Stored as ISO, from the date the validator parsed. createInvitation
+          // re-reads it with `new Date()`, which takes "05/01/2026" as 1 May
+          // (US order), cannot read "13/01/2026" at all, and turns an Excel
+          // serial into the year 46026 — so the raw cell text must never
+          // reach it.
+          joining_date: parsedJoiningDate
+            ? formatImportDate(parsedJoiningDate)
+            : row.joining_date || defaultJoiningDate,
           rent_source: row.monthly_rent != null ? "SHEET" : "ROOM_CONFIG",
         },
         errors,
@@ -301,10 +420,12 @@ export class BulkImportValidationService {
       },
       select: { phone: true },
     });
-    return new Set([
-      ...profiles.map((p: any) => p.phone!).filter(Boolean),
-      ...invited.map((i: any) => i.phone).filter(Boolean),
-    ]);
+    // Keyed by last 10 digits: profiles store bare digits, invitations E.164.
+    return new Set(
+      [...profiles.map((p: any) => p.phone), ...invited.map((i: any) => i.phone)]
+        .map(indianPhoneKey)
+        .filter((key) => key.length === 10)
+    );
   }
 
   private async getExistingEmails(ownerId: string): Promise<Set<string>> {

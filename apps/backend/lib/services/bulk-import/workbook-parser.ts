@@ -53,23 +53,33 @@ export function parseTenantWorkbook(fileBuffer: Buffer, filename: string): Tenan
 }
 
 function normalizeRows(rawData: any[]): TenantImportRow[] {
+  const RENT = ["Monthly Rent", "monthly_rent", "rent", "Rent"];
+  const DEPOSIT = ["Deposit", "deposit", "Advance Deposit", "advance_deposit", "Security Deposit", "security_deposit"];
+  const MONTHS = ["Agreement Months", "agreement_months", "agreement_duration_months"];
+  const PAID = ["Amount Already Paid", "amount_already_paid", "amount_paid", "paid_amount"];
   return rawData.map((row) => ({
+    raw_values: {
+      monthly_rent: readCell(row, RENT) || undefined,
+      security_deposit: readCell(row, DEPOSIT) || undefined,
+      agreement_duration_months: readCell(row, MONTHS) || undefined,
+      amount_paid: readCell(row, PAID) || undefined,
+    },
     name: readCell(row, ["Full Name", "full_name", "name", "Name", "NAME"]),
     phone: readCell(row, ["Phone Number", "phone_number", "phone", "Phone", "PHONE", "mobile", "Mobile"]),
     email: readCell(row, ["Username", "Email Address", "Email Address_1", "email_address", "email", "Email", "EMAIL"]),
     room_no: readCell(row, ["Current Room", "current_room", "room_no", "room", "Room", "ROOM", "room_number"]),
-    monthly_rent: parseNumber(readCell(row, ["Monthly Rent", "monthly_rent", "rent", "Rent"])),
-    advance_deposit: parseNumber(readCell(row, ["Deposit", "deposit", "Advance Deposit", "advance_deposit", "Security Deposit", "security_deposit"])),
-    security_deposit: parseNumber(readCell(row, ["Deposit", "deposit", "Advance Deposit", "advance_deposit", "Security Deposit", "security_deposit"])),
+    monthly_rent: parseImportNumber(readCell(row, ["Monthly Rent", "monthly_rent", "rent", "Rent"])),
+    advance_deposit: parseImportNumber(readCell(row, ["Deposit", "deposit", "Advance Deposit", "advance_deposit", "Security Deposit", "security_deposit"])),
+    security_deposit: parseImportNumber(readCell(row, ["Deposit", "deposit", "Advance Deposit", "advance_deposit", "Security Deposit", "security_deposit"])),
     joining_date: readCell(row, ["Joining Date", "joining_date", "Join Date", "join_date"]) || undefined,
     notes: readCell(row, ["Notes", "notes"]) || undefined,
     profile_type: readCell(row, ["profile_type", "type"]) || "STUDENT",
     emergency_contact: readCell(row, ["emergency_contact", "emergency"]) || undefined,
     gender: readCell(row, ["gender", "Gender"]) || undefined,
-    agreement_duration_months: parseNumber(
+    agreement_duration_months: parseImportNumber(
       readCell(row, ["Agreement Months", "agreement_months", "agreement_duration_months"])
     ),
-    amount_paid: parseNumber(
+    amount_paid: parseImportNumber(
       readCell(row, ["Amount Already Paid", "amount_already_paid", "amount_paid", "paid_amount"])
     ),
     amount_includes_deposit: parseYesNo(
@@ -92,10 +102,29 @@ function readCell(row: Record<string, any>, keys: string[]): string {
   return "";
 }
 
-function parseNumber(value: any): number | undefined {
-  if (value === null || value === undefined || value === "") return undefined;
-  const num = Number(String(value).replace(/[^0-9.-]/g, ""));
-  return isNaN(num) ? undefined : num;
+/**
+ * A number from a spreadsheet cell.
+ *
+ *   blank                    → undefined (use the default)
+ *   8500, "8,500", "₹8,500",
+ *   "Rs. 8,000", "INR 8000"  → the number
+ *   anything else ("TBD",
+ *   "N/A", "1 year", "8k")   → NaN, which validation reports to the owner
+ *
+ * The previous parser stripped every non-digit character, so "Rs. 8,000"
+ * became ".8000" → 0.8 and "TBD" became "" → 0: a ₹0.80 rent, a ₹0 payment,
+ * and "1 year" read as a one-month agreement, all previewed as clean.
+ */
+export function parseImportNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "number") return Number.isFinite(value) ? value : NaN;
+  const text = String(value).trim();
+  if (!text) return undefined;
+  const cleaned = text
+    .replace(/^(?:₹|rs\.?|inr)\s*/i, "")
+    .replace(/,/g, "")
+    .replace(/\s+/g, "");
+  return /^-?\d+(?:\.\d+)?$/.test(cleaned) ? Number(cleaned) : NaN;
 }
 
 function parseYesNo(value: any): boolean | undefined {
