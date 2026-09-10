@@ -36,8 +36,8 @@ import {
 
 const INK = '#2A2521';
 const MUTED = '#8A7F75';
-const ACCENT = '#B46A55';
-const DEEP = '#A45D44';
+const ACCENT = '#3b5fa8';
+const DEEP = '#2d4480';
 const SURFACE = '#FBF7F1';
 
 function PromiseList({ title, items, tone }: { title: string; items: string[]; tone: 'you' | 'them' }) {
@@ -45,8 +45,8 @@ function PromiseList({ title, items, tone }: { title: string; items: string[]; t
     <div
       className="min-w-0 flex-1 rounded-xl p-3"
       style={{
-        background: tone === 'you' ? 'rgba(180,106,85,.07)' : 'rgba(31,157,87,.07)',
-        border: `1px solid ${tone === 'you' ? 'rgba(180,106,85,.22)' : 'rgba(31,157,87,.22)'}`,
+        background: tone === 'you' ? 'rgba(59,95,168,.07)' : 'rgba(31,157,87,.07)',
+        border: `1px solid ${tone === 'you' ? 'rgba(59,95,168,.22)' : 'rgba(31,157,87,.22)'}`,
       }}
     >
       <div

@@ -67,7 +67,7 @@ export function PasswordActivateStep({
   return (
     <div className="ob-fade-fast">
       <div className="flex items-start gap-[11px]">
-        <div className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px]" style={{ background: '#F3E7E0', color: '#B46A55' }}>
+        <div className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px]" style={{ background: '#F3E7E0', color: '#3b5fa8' }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
             <rect x="5" y="10" width="14" height="10" rx="2" />
             <path d="M8 10V7a4 4 0 0 1 8 0v3" />
@@ -160,7 +160,7 @@ export function PasswordActivateStep({
             </p>
           </div>
           <div className="mt-2.5 h-1.5 overflow-hidden rounded-full" style={{ background: '#EDE4D6' }}>
-            <div className="h-full rounded-full transition-[width] duration-500 ease-out" style={{ width: activationProgressWidth, background: '#B46A55' }} />
+            <div className="h-full rounded-full transition-[width] duration-500 ease-out" style={{ width: activationProgressWidth, background: '#3b5fa8' }} />
           </div>
         </div>
       )}
