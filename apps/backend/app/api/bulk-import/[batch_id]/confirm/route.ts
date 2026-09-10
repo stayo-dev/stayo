@@ -140,7 +140,7 @@ export async function POST(
       );
     }
 
-    const result = await executeInvitationBatch(validRowsWithData, session.sub, batch.hostel_id, batchId);
+    const result = await executeInvitationBatch(session.sub, batch.hostel_id, batchId);
 
     return apiResponse(
       {
@@ -202,7 +202,6 @@ function getValidationPayload(raw: unknown): {
 }
 
 async function executeInvitationBatch(
-  rows: Array<{ row: number; data: TenantImportRow; warnings?: string[] }>,
   ownerId: string,
   hostelId: string,
   batchId: string
@@ -218,55 +217,55 @@ async function executeInvitationBatch(
     data: { status: "PROCESSING" },
   });
 
+  // `bulk_import_rows` is the authority on what to execute — one row, one
+  // primary key. The batch's `validation_errors` JSON is a preview artefact,
+  // and matching on email+phone would update two rows that happened to share
+  // both.
+  const rows = await prisma.bulk_import_rows.findMany({
+    where: { batch_id: batchId },
+    orderBy: { row_number: "asc" },
+  });
+
   for (const row of rows) {
-    const existingRow = await prisma.bulk_import_rows.findFirst({
-      where: {
-        batch_id: batchId,
-        normalized_email: row.data.email,
-        normalized_phone: row.data.phone,
-      },
-    });
-    if (existingRow?.execution_status === "SUCCESS") {
+    if (row.execution_status === "SUCCESS") {
       successCount++;
       results.push({
-        row: row.row,
+        row: row.row_number,
         success: true,
-        tenant_id: existingRow.tenant_id,
-        invitation_id: existingRow.invitation_id,
-        reservation_id: existingRow.reservation_id,
+        tenant_id: row.tenant_id,
+        invitation_id: row.invitation_id,
+        reservation_id: row.reservation_id,
         action: "IDEMPOTENT_RETRY",
       });
       continue;
     }
 
+    const data = row.mapped_data as TenantImportRow;
+
     try {
       const invitationResult: any = await tenantInvitationLifecycleService.createInvitation({
-        name: row.data.name,
-        email: row.data.email,
-        phone: row.data.phone,
-        room_id: row.data.room_id,
-        monthly_rent: row.data.monthly_rent,
-        advance_deposit: row.data.advance_deposit,
-        maintenance_charge: row.data.maintenance_charge,
-        maintenance_type: row.data.maintenance_type,
-        agreement_duration_months: row.data.agreement_duration_months,
-        paid_amount: row.data.amount_paid,
-        amount_includes_deposit: row.data.amount_includes_deposit,
-        payment_method: row.data.payment_method,
-        payment_reference: row.data.payment_reference,
-        joining_date: row.data.joining_date,
-        notes: row.data.notes,
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        room_id: data.room_id,
+        monthly_rent: data.monthly_rent,
+        advance_deposit: data.advance_deposit,
+        maintenance_charge: data.maintenance_charge,
+        maintenance_type: data.maintenance_type,
+        agreement_duration_months: data.agreement_duration_months,
+        paid_amount: data.amount_paid,
+        amount_includes_deposit: data.amount_includes_deposit,
+        payment_method: data.payment_method,
+        payment_reference: data.payment_reference,
+        joining_date: data.joining_date,
+        notes: data.notes,
         batch_id: batchId,
       }, ownerId);
 
       if (!invitationResult.email_sent) emailFailureCount++;
       successCount++;
-      await prisma.bulk_import_rows.updateMany({
-        where: {
-          batch_id: batchId,
-          normalized_email: row.data.email,
-          normalized_phone: row.data.phone,
-        },
+      await prisma.bulk_import_rows.update({
+        where: { id: row.id },
         data: {
           tenant_id: invitationResult.tenant_id,
           invitation_id: invitationResult.invitation_id,
@@ -278,7 +277,7 @@ async function executeInvitationBatch(
         },
       });
       results.push({
-        row: row.row,
+        row: row.row_number,
         success: true,
         tenant_id: invitationResult.tenant_id,
         invitation_id: invitationResult.invitation_id,
@@ -289,20 +288,16 @@ async function executeInvitationBatch(
     } catch (error: any) {
       failureCount++;
       const message = String(error?.message || "Invitation failed");
-      await prisma.bulk_import_rows.updateMany({
-        where: {
-          batch_id: batchId,
-          normalized_email: row.data.email,
-          normalized_phone: row.data.phone,
-        },
+      await prisma.bulk_import_rows.update({
+        where: { id: row.id },
         data: {
           execution_status: "FAILED",
           error_message: message,
           executed_at: new Date(),
         },
       });
-      errors.push({ row: row.row, error: message });
-      results.push({ row: row.row, success: false, error: message });
+      errors.push({ row: row.row_number, error: message });
+      results.push({ row: row.row_number, success: false, error: message });
     }
   }
 

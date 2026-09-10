@@ -180,3 +180,15 @@ describe("billing_start_mode is gone", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+describe("row bookkeeping", () => {
+  it("updates the row by its primary key, not by email+phone", async () => {
+    // `findMany` is already stubbed in beforeEach with row-uuid-1.
+    await POST(confirmRequest(), { params: { batch_id: BATCH_ID } });
+
+    expect(mockPrisma.bulk_import_rows.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "row-uuid-1" } })
+    );
+    expect(mockPrisma.bulk_import_rows.updateMany).not.toHaveBeenCalled();
+  });
+});

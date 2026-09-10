@@ -85,18 +85,16 @@ export class BulkImportValidationService {
       }
 
       const worksheet = workbook.Sheets[sheetName];
-      const rawData: any[] = XLSX.utils.sheet_to_json(worksheet);
-
-      if (rawData.length > MAX_IMPORT_ROWS) {
-        throw new Error(
-          `VALIDATION_ERROR: This file has ${rawData.length} rows. The most we can import at once is ${MAX_IMPORT_ROWS}. Split it into smaller files and import them one after another.`
-        );
-      }
-
       const jsonData = XLSX.utils.sheet_to_json<any>(worksheet, {
         raw: true,
         defval: "",
       });
+
+      if (jsonData.length > MAX_IMPORT_ROWS) {
+        throw new Error(
+          `VALIDATION_ERROR: This file has ${jsonData.length} rows. The most we can import at once is ${MAX_IMPORT_ROWS}. Split it into smaller files and import them one after another.`
+        );
+      }
 
       if (!jsonData || jsonData.length === 0) {
         throw new Error("VALIDATION_ERROR: No data rows found in the file");
