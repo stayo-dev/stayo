@@ -6,7 +6,7 @@ import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { bulkImportValidationService } from "@/lib/services/bulk-import-validation-service";
 import { prisma } from "@/lib/db";
 import crypto from "crypto";
-import type { TenantImportRow } from "@/lib/services/bulk-import-validation-service";
+import { sanitizeImportRowForStorage } from "@/lib/services/bulk-import/sanitize-row";
 
 /**
  * 🔄 Bulk Import - Revalidate Editable Grid
@@ -164,16 +164,3 @@ function sanitizeValidatedRow(row: any) {
   };
 }
 
-function sanitizeImportRowForStorage(row: TenantImportRow): Partial<TenantImportRow> {
-  return {
-    name: row.name,
-    phone: row.phone,
-    email: row.email,
-    room_no: row.room_no,
-    room_id: row.room_id,
-    monthly_rent: row.monthly_rent,
-    advance_deposit: row.advance_deposit,
-    joining_date: row.joining_date,
-    notes: row.notes,
-  };
-}

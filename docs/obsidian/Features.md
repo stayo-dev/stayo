@@ -15,7 +15,7 @@ This is an inventory of features **confirmed implemented** (live route + live UI
 | Portfolio dashboard | `/dashboard` | `PortfolioView` → `/api/dashboard*`, `/api/owner/portfolio/summary` |
 | Hostel detail / config | `/hostels/:hostelId(/:tab)` | `HostelDetailView` → `/api/hostels/[id]/*` (billing/automation/notification/payment/receipt/security/system config) |
 | Tenant portfolio & profile | `/tenants`, `/hostels/:hostelId/tenants/:tenantId` | `TenantsPortfolioView`, `TenantProfileRoute` → `/api/tenants/*` |
-| Bulk tenant import | `/tenants/import` | `BulkInvitationImportView` → `/api/bulk-import/*` |
+| Bulk tenant import | **No screen in `apps/frontend`** (corrected 2026-09-10 — `/tenants/import` and `BulkInvitationImportView` no longer exist anywhere in the tree). A legacy owner page lives in the backend app at `apps/backend/app/(dashboard)/owner/bulk-import/` (+ `[batchId]/`) and posts to `/api/bulk-import/*`; whether any live navigation links to it is Unknown / needs clarification. The canonical owner flow is being built — design in `docs/superpowers/specs/2026-09-10-bulk-tenant-import-design.md`, backend correctness pass shipped on `feat/bulk-tenant-import` (see [[Bugs]], [[Business-Rules]]) |
 | Move-outs | `/move-outs` | `MoveOutsView` → `/api/move-out/requests/*` — full inspection/dispute/settlement workflow |
 | Agreement renewals | `/agreements/renewals` | `RenewalQueueView` → `/api/agreements/renewal-offers*`, `/api/agreements/renewals` |
 | Agreement lifecycle recovery | `/agreements/lifecycle-recovery` | `AgreementLifecycleRecoveryView` → `/api/agreements/lifecycle-recovery*` |

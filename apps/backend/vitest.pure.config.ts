@@ -155,6 +155,22 @@ export default defineConfig({
       'tests/clerk-me-handshake.test.ts',
       'tests/auth-me-dual-session.test.ts',
       'tests/clerk-controlled-onboarding.test.ts',
+      // Bulk import: parse-stage failures must name the real cause. The
+      // row-limit message used to be swallowed by parseFile's own catch.
+      'tests/bulk-import-parse-errors.test.ts',
+      'tests/bulk-import-file-type.test.ts',
+      'tests/bulk-import-capacity-accounting.test.ts',
+      // The two field drops that made imported tenants look massively
+      // overdue: no maintenance obligation, no already-paid settlement.
+      'tests/bulk-import-financial-fields.test.ts',
+      // The owner-facing issue vocabulary: severity, copy that names real
+      // values, and grouping so a 3-year-old hostel decides once, not 32 times.
+      'tests/bulk-import-issues.test.ts',
+      // validateRows defects found by the post-implementation code review:
+      // joining date billed in a different format than it was validated in,
+      // impossible dates rolled over, "Rs. 8,000" read as 0.8, inactive rooms
+      // passing preview, and blocked rows with no issue to explain them.
+      'tests/bulk-import-row-validation.test.ts',
       'tests/build-without-env.test.ts',
     ],
     alias: {
