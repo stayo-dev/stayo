@@ -227,7 +227,7 @@ export const privacyDocument: LegalDocument = {
       type: 'clause',
       id: 'clause-retention-3',
       number: '7.3',
-      text: 'The specific periods we keep different categories of data for, and why, are set out in our Data Deletion & Retention notice, which this policy incorporates.',
+      text: 'What we keep after an account closes, why, and for how long, is set out in our Data Deletion & Retention notice, which this policy incorporates. We do not delete data automatically on a timer; we keep what the law requires and delete the rest when you ask.',
     },
 
     /* 8 — Your rights */

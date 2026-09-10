@@ -532,7 +532,7 @@ export const termsDocument: LegalDocument = {
       type: 'clause',
       id: 'clause-schedule-a-5',
       number: 'A.5',
-      text: 'You may cancel at any time. Access continues until the end of the cycle you have already paid for, except where our Payments, Refunds & Cancellations policy says otherwise. After cancellation we give you a window in which to export your data before it is deleted; the length of that window and what is deleted are set out in our Data Deletion & Retention notice.',
+      text: 'You may cancel at any time. Access continues until the end of the cycle you have already paid for, except where our Payments, Refunds & Cancellations policy says otherwise. Cancelling does not delete your hostel’s records: you can download them at any time, before or after cancelling, and they stay in place if you subscribe again. How to have them deleted, and what must be kept, is set out in our Data Deletion & Retention notice.',
     },
     {
       type: 'clause',

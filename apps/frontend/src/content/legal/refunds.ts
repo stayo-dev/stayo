@@ -116,7 +116,7 @@ export const refundsDocument: LegalDocument = {
       type: 'clause',
       id: 'clause-money-you-pay-stayo-5',
       number: '1.5',
-      text: 'If a subscription payment fails, we may retry it and we will tell you. While it stays unpaid, Owner features may be suspended, but your data — your rooms, residents, obligations and records — is retained; access is restored once the subscription is brought up to date. When you cancel, or a lapsed subscription is not revived, access continues until the end of the cycle already paid for, and after that we give you a window to export your data before it is deleted, as set out in our Data Deletion & Retention notice.',
+      text: 'If a subscription payment fails, we may retry it and we will tell you. While it stays unpaid, Owner features may be suspended, but your data — your rooms, residents, obligations and records — is retained; access is restored once the subscription is brought up to date. When you cancel, or a lapsed subscription is not revived, access continues until the end of the cycle already paid for. Cancelling does not delete your data — you can download your records at any time, and our Data Deletion & Retention notice explains how to have them deleted.',
     },
     {
       type: 'clause',
