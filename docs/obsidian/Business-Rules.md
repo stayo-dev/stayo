@@ -833,6 +833,8 @@ Only `lead_received` was submitted as English (IND); everything else is plain En
 
 ## Owner payouts — what the owner is shown, and why it adds up
 
+> **Superseded business model (2026-09-10, [[Decisions#ADR-180|ADR-180]]).** Everything in this section describes the *collection-agent* model, in which resident rent is captured into Stayo's account and Stayo transfers it on. Under the Easebuzz **sub-merchant** model now adopted, resident payments settle directly to each owner's own merchant account and Stayo holds no resident money, so there is no "With Stayo" state and no payout for Stayo to make. The code below still exists and this section still describes it accurately; it does not describe the business. Whether it is removed or repointed at the aggregator's settlement data is an open decision.
+
 **Files:** `src/services/settlements/owner-payout-read-model.ts` (composition), `owner-payout-month.ts` + `payout-promise.ts` (pure), `gateway-ledger.ts` (ingestion), `apps/frontend/src/features/owner-money/payouts/payoutState.ts` (the voice). See [[Decisions#ADR-090|ADR-090]], [[Decisions#ADR-091|ADR-091]].
 
 ### Every rupee is in exactly one of four states
@@ -926,3 +928,22 @@ A Clerk sign-in whose email has no `profiles` row resolves to **`NO_STAYO_ACCOUN
 The backend never learns which method was used: every Clerk sign-in arrives as a session token and resolves down one path. That is deliberate — it is what stops provider-specific provisioning creeping back in.
 
 Related: [[Decisions#ADR-176|ADR-176]], [[APIs]], [[Frontend]], [[Features]]
+
+## Legal policy positions — what the published documents commit Stayo to (2026-09-10)
+
+**Files:** `apps/frontend/src/content/legal/*` (the documents), `src/content/company.ts` (entity facts and `PAYMENT_PARTNER`), `apps/frontend/scripts/check-legal.mjs` (the build guard). See [[Decisions#ADR-180|ADR-180]] and [[Features]].
+
+These are rules the product must keep true, because published legal text now asserts them. Changing the behaviour means changing the document in the same change.
+
+- **Stayo is never in the flow of resident money.** Owners are sub-merchants and merchant of record; a resident's payment settles directly to the owner and discharges their obligation on successful payment. No document may say Stayo receives, holds, refunds or reverses resident money. Stayo's only revenue is the owner subscription, with no share of transaction fees.
+- **The refund floor is an owner obligation.** Duplicate, failed-but-debited and wrong-amount charges are always corrected, and a booking token is refunded in full if the hostel cancels or the room materially differs from its listing. Stayo's remedies against a hostel that refuses are suspension, delisting and grievance escalation. Refund turnaround is committed only for the hostel's on-platform action; money reaching the payer follows their bank's timeline.
+- **Account holders must be 18 or over;** a guardian holds a minor's account (DPDP s.9). No behavioural tracking or profiling of minors.
+- **Closing an account anonymises it immediately and never erases financial records** (`account-closure-service.ts`). Nothing deletes data on a timer — the data-retention cron is frozen — so records are deleted on request, keeping what the law requires. An owner who cancels keeps their data and can export it at any time.
+- **Grievances:** a named Grievance Officer at `grievance@yourstayo.com`; acknowledgement within 24 hours and resolution within 15 days (IT Rules 2021), or 48 hours and one month for consumer complaints (Consumer Protection (E-Commerce) Rules 2020).
+- **Only strictly-necessary and preference storage, and no analytics** — the basis for showing no cookie consent banner. Adding any analytics, advertising or tracking script falsifies the Cookie Notice; `check-legal.mjs` fails the build if one appears.
+
+**Unknown / needs clarification** — drafted with defaults that the proprietor has not yet confirmed:
+- Subscription trial length, and whether subscription fees are refundable on mid-cycle cancellation.
+- The 5-business-day window for a hostel to review and initiate a floor refund.
+- The one-working-day first response for support.
+- Whether the "failed-but-debited" floor item should oblige the hostel when the failure is purely gateway-side and the hostel never received the money.

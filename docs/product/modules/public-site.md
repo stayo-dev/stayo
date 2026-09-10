@@ -22,7 +22,7 @@ The public site markets the hostel and exposes SEO pages for visitors. It includ
 ## Data it needs
 
 - Static page content from `apps/frontend/src/app/pages/public`.
-- Legal content from `apps/frontend/src/content/legal.ts`.
+- Legal content from the typed registry in `apps/frontend/src/content/legal/` (one module per document; see `docs/obsidian/Features.md` → "Legal document set" and ADR-180).
 - Browser metadata updates in page effects.
 
 ## Data it produces
@@ -43,7 +43,7 @@ The public site markets the hostel and exposes SEO pages for visitors. It includ
 
 - Public pages are not protected by auth.
 - Canonical URLs and metadata are hardcoded to Sri Adithya domains.
-- Legal text is client-specific.
+- Legal text is Stayo's own (Trishul Solutions), not per-client. It is checked against the code and guarded by `apps/frontend/scripts/check-legal.mjs` in the build.
 
 ## How this works (step by step)
 
@@ -55,7 +55,7 @@ The public site markets the hostel and exposes SEO pages for visitors. It includ
 ## How to reuse this for a new client
 
 - Replace every Sri Adithya name, address, phone, email, and domain.
-- Replace legal text with the client's entity and jurisdiction.
+- Legal text is platform-wide and must not be forked per client — see ADR-180 in `docs/obsidian/Decisions.md`.
 - Replace facility descriptions and gallery images.
 - Confirm SEO titles for the new city and hostel type.
 
