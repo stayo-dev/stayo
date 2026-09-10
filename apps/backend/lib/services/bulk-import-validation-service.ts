@@ -28,7 +28,7 @@ export interface TenantImportRow {
   profile_type?: string;
   emergency_contact?: string;
   gender?: string;
-  rent_source?: "ROOM_CONFIG";
+  rent_source?: "ROOM_CONFIG" | "SHEET";
 }
 
 export interface ImportDefaults {
@@ -348,7 +348,7 @@ export class BulkImportValidationService {
           maintenance_type: defaultMaintenanceType,
           joining_date: row.joining_date || defaultJoiningDate,
           billing_start_mode: defaultBillingStartMode,
-          rent_source: "ROOM_CONFIG",
+          rent_source: row.monthly_rent != null ? "SHEET" : "ROOM_CONFIG",
         },
         errors,
         warnings,

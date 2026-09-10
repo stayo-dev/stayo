@@ -104,3 +104,29 @@ describe("room capacity accounting", () => {
     expect(result.invalidRows[0].errors[0].message).toMatch(/capacity/i);
   });
 });
+
+describe("rent_source", () => {
+  it("is ROOM_CONFIG when the sheet left rent blank", async () => {
+    const result = await bulkImportValidationService.validateRows(
+      [row("Ravi", "9876500001", "ravi@example.com")],
+      HOSTEL_ID,
+      OWNER_ID,
+      {}
+    );
+
+    expect(result.validRows[0].data.rent_source).toBe("ROOM_CONFIG");
+    expect(result.validRows[0].data.monthly_rent).toBe(8500);
+  });
+
+  it("is SHEET when the owner typed a rent", async () => {
+    const result = await bulkImportValidationService.validateRows(
+      [{ ...row("Ravi", "9876500001", "ravi@example.com"), monthly_rent: 9000 }],
+      HOSTEL_ID,
+      OWNER_ID,
+      {}
+    );
+
+    expect(result.validRows[0].data.rent_source).toBe("SHEET");
+    expect(result.validRows[0].data.monthly_rent).toBe(9000);
+  });
+});
