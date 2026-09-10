@@ -62,6 +62,30 @@ cleanup is a separate decision from this legal work.
   Kodangal, Vikarabad District, Telangana 509338.
 - **Grievance Officer: Chidiri Shiva Prakash**, `grievance@yourstayo.com` — the proprietor acting
   in the role, standard practice at this size. See §9.1 for what the role obliges.
+
+**Published contacts vs registration contacts.** The Udyam registration carries the proprietor's
+*personal* contacts (`8008046952`, `spchidiri2006@gmail.com`); `+91 76750 80090` and the
+`@yourstayo.com` addresses are dedicated business contacts. **Only the business contacts are
+published** — nothing obliges a proprietor to publish a personal number or personal email, and
+putting either into legal pages that get scraped is a needless exposure.
+
+Two consequences:
+
+1. **Update the Udyam record to the business contacts.** Udyam is self-declared and editable free
+   online with Aadhaar OTP. Leaving a mismatch between the registration and the live site invites
+   a manual-review question during Easebuzz KYC and Meta Business Verification — avoidable friction
+   for ten minutes of work, and permanent once done.
+2. **The published address is residential, and that is the genuine exposure.** The legal name and
+   the principal place of business *must* be published; the contacts need not be. A residential
+   address on a consumer platform means aggrieved users know where the founder lives, which is a
+   real consideration in a business whose disputes involve deposits and evictions.
+
+   **A Hyderabad coworking or virtual office with a Shop & Establishment registration solves two
+   problems with one action**: it keeps the home address private, *and* it supplies the Hyderabad
+   nexus that would let the jurisdiction clause in §6.1 be tightened from non-exclusive to
+   exclusive. At roughly ₹1,000–2,000/month this is the highest-leverage item in this spec.
+   Recorded as a recommendation, not a blocker — the documents draft with the Udyam address and
+   the swap is a single constant edit.
 - **Not GST-registered.** No GSTIN is claimed anywhere, no GST is shown on any Stayo invoice.
   Fee clauses state that fees are exclusive of taxes and that tax will apply *if and when* Stayo
   becomes liable to register.
