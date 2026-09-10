@@ -160,6 +160,9 @@ export default defineConfig({
       'tests/bulk-import-parse-errors.test.ts',
       'tests/bulk-import-file-type.test.ts',
       'tests/bulk-import-capacity-accounting.test.ts',
+      // The two field drops that made imported tenants look massively
+      // overdue: no maintenance obligation, no already-paid settlement.
+      'tests/bulk-import-financial-fields.test.ts',
       'tests/build-without-env.test.ts',
     ],
     alias: {

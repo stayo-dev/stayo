@@ -20,6 +20,11 @@ export interface TenantImportRow {
   deposit?: number;
   maintenance_charge?: number;
   maintenance_type?: MaintenanceType;
+  agreement_duration_months?: number;
+  amount_paid?: number;
+  amount_includes_deposit?: boolean;
+  payment_method?: string;
+  payment_reference?: string;
   joining_date?: string;
   notes?: string;
   billing_start_mode?: "JOINING_DATE" | "IMPORT_DATE";
@@ -126,6 +131,17 @@ export class BulkImportValidationService {
       profile_type: this.readCell(row, ["profile_type", "type"]) || "STUDENT",
       emergency_contact: this.readCell(row, ["emergency_contact", "emergency"]) || undefined,
       gender: this.readCell(row, ["gender", "Gender"]) || undefined,
+      agreement_duration_months: this.parseNumber(
+        this.readCell(row, ["Agreement Months", "agreement_months", "agreement_duration_months"])
+      ),
+      amount_paid: this.parseNumber(
+        this.readCell(row, ["Amount Already Paid", "amount_already_paid", "amount_paid", "paid_amount"])
+      ),
+      amount_includes_deposit: this.parseYesNo(
+        this.readCell(row, ["Paid Includes Deposit", "paid_includes_deposit", "amount_includes_deposit"])
+      ),
+      payment_method: this.readCell(row, ["Payment Method", "payment_method"]) || undefined,
+      payment_reference: this.readCell(row, ["Payment Reference", "payment_reference", "reference"]) || undefined,
     }));
   }
 
@@ -142,6 +158,14 @@ export class BulkImportValidationService {
     if (value === null || value === undefined || value === "") return undefined;
     const num = Number(String(value).replace(/[^0-9.-]/g, ""));
     return isNaN(num) ? undefined : num;
+  }
+
+  private parseYesNo(value: any): boolean | undefined {
+    const text = String(value ?? "").trim().toUpperCase();
+    if (!text) return undefined;
+    if (["YES", "Y", "TRUE", "1"].includes(text)) return true;
+    if (["NO", "N", "FALSE", "0"].includes(text)) return false;
+    return undefined;
   }
 
   private normalizeMaintenanceType(value: any): "MONTHLY" | "ONE_TIME" | "NONE" | undefined {
@@ -348,6 +372,11 @@ export class BulkImportValidationService {
           security_deposit: row.security_deposit ?? row.advance_deposit ?? defaultAdvanceDeposit,
           maintenance_charge: defaultMaintenanceCharge,
           maintenance_type: defaultMaintenanceType,
+          agreement_duration_months: row.agreement_duration_months,
+          amount_paid: row.amount_paid,
+          amount_includes_deposit: row.amount_includes_deposit ?? true,
+          payment_method: row.payment_method,
+          payment_reference: row.payment_reference,
           joining_date: row.joining_date || defaultJoiningDate,
           billing_start_mode: defaultBillingStartMode,
           rent_source: row.monthly_rent != null ? "SHEET" : "ROOM_CONFIG",
