@@ -213,7 +213,7 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
           {isOwner ? (
             <>
               <Dialog.Title className="mb-1 mt-3.5 font-display text-[22px] font-extrabold text-foreground">
-                Owner Login
+                Login
               </Dialog.Title>
               <Dialog.Description className="mb-5 text-sm leading-normal text-muted-foreground">
                 Log in with your existing Stayo owner credentials.
