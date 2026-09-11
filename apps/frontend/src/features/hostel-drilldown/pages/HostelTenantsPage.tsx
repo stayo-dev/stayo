@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { TenantList } from '@features/owner-tenants/components/TenantList';
+import { ImportTenantsSheet } from '@features/owner-tenants/import/ImportTenantsSheet';
 import { InviteTenantWizard } from '@features/owner-tenants/invite/InviteTenantWizard';
 import { ErrorCard } from '@shared/ui/error/ErrorCard';
 import { useHostelTenants } from '../hooks/useHostelTenants';
@@ -12,6 +13,7 @@ export function HostelTenantsPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const { tenants: hostelTenants, isError, error, refetch } = useHostelTenants(hostelId);
   const filtered = useMemo(() => {
@@ -44,6 +46,9 @@ export function HostelTenantsPage() {
         <button type="button" onClick={() => setInviteOpen(true)} className="flex-none rounded-[10px] bg-primary px-3.5 py-2.5 font-display text-xs font-bold text-primary-foreground">
           + Add
         </button>
+        <button type="button" onClick={() => setImportOpen(true)} className="flex-none rounded-[10px] border border-border px-3 py-2.5 font-display text-xs font-bold text-foreground">
+          Import
+        </button>
       </div>
 
       {isError ? (
@@ -53,6 +58,7 @@ export function HostelTenantsPage() {
       )}
 
       <InviteTenantWizard open={inviteOpen} onClose={() => setInviteOpen(false)} />
+      <ImportTenantsSheet open={importOpen} onClose={() => setImportOpen(false)} hostelId={hostelId} />
     </div>
   );
 }
