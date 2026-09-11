@@ -638,3 +638,84 @@ describe("dates the owner reported as rejected", () => {
     expect(result.issues.map((i: any) => i.code)).toContain("DATE_UNREADABLE");
   });
 });
+
+describe("a default joining date no row is using", () => {
+  /**
+   * The import an owner actually ran. Every date in the sheet was present and
+   * correct — the row's own `05/01/2026` parsed, and even earned the
+   * historical-date warning — yet the whole import was blocked by a complaint
+   * about the *default*, a value the owner never typed and this row never
+   * reaches. Worse, the blocker's fix was a date picker for `joining_date`,
+   * so correcting the cell could not clear it: the next re-check raised it
+   * again. An unfixable error on a correct sheet.
+   */
+  it("cannot block a row that supplies its own date", async () => {
+    const result = await bulkImportValidationService.validateRows(
+      [row({ joining_date: "05/01/2026" })],
+      HOSTEL_ID,
+      OWNER_ID,
+      { joining_date: "not a date" }
+    );
+    const only = [...result.validRows, ...result.invalidRows, ...result.duplicates][0];
+
+    expect(only.issues.map((i: any) => i.code)).not.toContain("DATE_UNREADABLE");
+    expect(only.data.joining_date).toBe("2026-01-05");
+  });
+
+  it("still stops a row that has nothing else to fall back on", async () => {
+    const result = await bulkImportValidationService.validateRows(
+      [row({ joining_date: "" })],
+      HOSTEL_ID,
+      OWNER_ID,
+      { joining_date: "not a date" }
+    );
+    const only = [...result.validRows, ...result.invalidRows, ...result.duplicates][0];
+
+    expect(only.issues.map((i: any) => i.code)).toContain("DATE_UNREADABLE");
+  });
+
+  /**
+   * The default we generate ourselves is a Date from the start — it never
+   * becomes text that has to be read back. There is no longer a code path in
+   * which today's date is unreadable.
+   */
+  it("is never our own generated date", async () => {
+    const result = await bulkImportValidationService.validateRows(
+      [row({ joining_date: "" })],
+      HOSTEL_ID,
+      OWNER_ID,
+      {}
+    );
+    const only = [...result.validRows, ...result.invalidRows, ...result.duplicates][0];
+
+    expect(only.issues.map((i: any) => i.code)).not.toContain("DATE_UNREADABLE");
+    expect(only.data.joining_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+describe("dates carrying characters a spreadsheet added", () => {
+  /**
+   * Each of these renders as an ordinary date. Telling an owner that
+   * "2026-09-11" isn't a full date, when their cell reads exactly that, is an
+   * error with no visible cause and so no fix.
+   */
+  it.each([
+    ["a zero-width space", "2026-09-11​"],
+    ["a left-to-right mark", "‎2026-09-11"],
+    ["en dashes", "2026–09–11"],
+    ["a non-breaking space", " 2026-09-11 "],
+    ["fullwidth digits", "２０２６-０９-１１"],
+    ["a fullwidth slash", "11／09／2026"],
+  ])("reads a date with %s", async (_label, joining_date) => {
+    const result = await validateOne({ joining_date });
+
+    expect(result.issues.map((i: any) => i.code)).not.toContain("DATE_UNREADABLE");
+    expect(result.data.joining_date).toBe("2026-09-11");
+  });
+
+  it("does not turn junk into a date along the way", async () => {
+    const result = await validateOne({ joining_date: "​sometime in Jan​" });
+
+    expect(result.issues.map((i: any) => i.code)).toContain("DATE_UNREADABLE");
+  });
+});

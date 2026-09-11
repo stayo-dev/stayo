@@ -151,7 +151,21 @@ export class BulkImportValidationService {
         .filter((r) => r.occupied_count + r.reserved_count + (roomAssignmentsSeen.get(r.id) || 0) < r.capacity)
         .slice(0, 3)
         .map((r) => r.room_no);
-    const defaultJoiningDate = importDefaults.joining_date || formatImportDate(new Date());
+    // The default is a *fallback*, for rows that leave the date blank.
+    //
+    // Our own generated default never round-trips through text: building a
+    // string only to re-parse it is a step that can fail, and when it did the
+    // owner was shown a blocker naming a date they never typed, on a row whose
+    // own date was fine. The owner's default is parsed once, here, rather than
+    // once per row.
+    const ownerDefaultJoiningDate = importDefaults.joining_date;
+    const now = new Date();
+    const parsedDefaultJoiningDate = ownerDefaultJoiningDate
+      ? parseImportDate(ownerDefaultJoiningDate)
+      : new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const defaultJoiningDate = parsedDefaultJoiningDate
+      ? formatImportDate(parsedDefaultJoiningDate)
+      : String(ownerDefaultJoiningDate ?? "");
     const defaultMaintenanceType = importDefaults.maintenance_type || billingDefaults.maintenance_type;
     const defaultMaintenanceCharge = defaultMaintenanceType === "NONE"
       ? 0
@@ -312,7 +326,11 @@ export class BulkImportValidationService {
         }));
       }
 
-      if (!parseImportDate(defaultJoiningDate)) {
+      // Only a row that actually falls back to the default can be stopped by
+      // it. Raising this for every row blocked an import whose every date was
+      // present and correct, and offered a date picker for a cell that was
+      // already right — so re-checking could never clear it.
+      if (!row.joining_date && !parsedDefaultJoiningDate) {
         errors.push({
           row: rowNumber,
           field: "joining_date",

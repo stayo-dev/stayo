@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Check, ChevronLeft } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { useImportTenants } from './useImportTenants';
-import { STAGES, STAGE_LABELS, canGoBack } from './importStages';
+import { hostelChangeDiscardsBatch, navigationFor, STAGE_LABELS, type Stage } from './importStages';
+import { LookingBackBar, StepBar } from './steps/StepBar';
 import { ChooseHostelStep } from './steps/ChooseHostelStep';
 import { GetSheetStep } from './steps/GetSheetStep';
 import { UploadStep } from './steps/UploadStep';
@@ -30,22 +31,48 @@ interface ImportTenantsSheetProps {
  */
 export function ImportTenantsSheet({ open, onClose, hostelId: initialHostelId = null }: ImportTenantsSheetProps) {
   const [hostelId, setHostelId] = useState<string | null>(initialHostelId);
+  // What the owner is *looking at*, which stops being their progress the
+  // moment they step back. `null` means "wherever I have got to".
+  const [viewing, setViewing] = useState<Stage | null>(null);
   const importer = useImportTenants(hostelId);
 
   useEffect(() => {
     if (open) {
       setHostelId(initialHostelId);
+      setViewing(null);
       importer.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const currentIndex = STAGES.indexOf(importer.stage);
-  const showBack = currentIndex > 0 && canGoBack(importer.state);
+  const nav = navigationFor(importer.state, viewing);
 
-  const goBack = () => {
-    if (importer.stage === 'REVIEW') importer.reset();
-    else if (importer.stage === 'UPLOAD' || importer.stage === 'DOWNLOAD') setHostelId(null);
+  const goTo = (stage: Stage) => setViewing(stage === nav.furthest ? null : stage);
+
+  /**
+   * An action that moves the flow on also gives up the owner's place in it.
+   *
+   * Without this, uploading a corrected sheet from the step they had stepped
+   * back to would leave them staring at the upload box while the review they
+   * asked for sat one step ahead, unmentioned.
+   */
+  const advance = <T extends unknown[]>(run: (...args: T) => void) => (...args: T) => {
+    setViewing(null);
+    run(...args);
+  };
+
+  /**
+   * Picking a hostel from the step the owner stepped back to.
+   *
+   * Re-picking the same one must cost nothing, or Back is a trap. A different
+   * one has to discard the batch: it was validated against the first hostel's
+   * rooms, so importing it into another would put tenants in rooms that are
+   * not theirs.
+   */
+  const chooseHostel = (id: string | null) => {
+    if (hostelChangeDiscardsBatch(importer.state, id)) importer.reset();
+    setHostelId(id);
+    setViewing(null);
   };
 
   return (
@@ -53,48 +80,24 @@ export function ImportTenantsSheet({ open, onClose, hostelId: initialHostelId = 
       open={open}
       onOpenChange={(v) => !v && onClose()}
       title={
-        <span className="flex items-center gap-2">
-          {showBack && (
-            <button type="button" onClick={goBack} aria-label="Back" className="text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          {nav.back && (
+            <button
+              type="button"
+              onClick={() => goTo(nav.back!)}
+              aria-label={`Back to ${STAGE_LABELS[nav.back]}`}
+              className="-ml-1.5 flex items-center gap-0.5 rounded-lg py-1 pl-1 pr-1.5 text-[13px] font-semibold text-muted-foreground"
+            >
               <ChevronLeft className="h-4 w-4" />
+              Back
             </button>
           )}
           Import tenants
         </span>
       }
     >
-      {/* The stepper: compact on a phone — the current label, and dots for the
-          rest — so six stages do not eat the screen. */}
-      <ol className="mb-5 flex items-center gap-1.5" aria-label="Progress">
-        {STAGES.map((s, i) => {
-          const done = i < currentIndex;
-          const here = i === currentIndex;
-          return (
-            <li key={s} className="flex flex-1 items-center gap-1.5 last:flex-none">
-              <span
-                aria-current={here ? 'step' : undefined}
-                className={`flex h-6 w-6 flex-none items-center justify-center rounded-full font-display text-xs font-bold ${
-                  done
-                    ? 'bg-primary text-primary-foreground'
-                    : here
-                      ? 'bg-foreground text-background'
-                      : 'bg-muted text-muted-foreground'
-                }`}
-              >
-                {done ? <Check className="h-3 w-3" strokeWidth={3} /> : i + 1}
-              </span>
-              {here && (
-                <span className="whitespace-nowrap text-[13px] font-semibold text-foreground">
-                  {STAGE_LABELS[s]}
-                </span>
-              )}
-              {i < STAGES.length - 1 && (
-                <span className={`h-0.5 flex-1 rounded-full ${done ? 'bg-primary' : 'bg-muted'}`} />
-              )}
-            </li>
-          );
-        })}
-      </ol>
+      <StepBar nav={nav} onGo={goTo} />
+      <LookingBackBar nav={nav} onGo={goTo} />
 
       {importer.error && (
         <p className="mb-4 rounded-xl border border-destructive/25 bg-destructive/10 px-3.5 py-2.5 text-[12.5px] font-semibold text-destructive">
@@ -102,21 +105,21 @@ export function ImportTenantsSheet({ open, onClose, hostelId: initialHostelId = 
         </p>
       )}
 
-      {importer.stage === 'CHOOSE_HOSTEL' && <ChooseHostelStep onChoose={setHostelId} />}
+      {nav.current === 'CHOOSE_HOSTEL' && <ChooseHostelStep onChoose={chooseHostel} />}
 
-      {importer.stage === 'DOWNLOAD' && (
-        <GetSheetStep onDownload={importer.getTemplate} busy={importer.busy === 'template'} />
+      {nav.current === 'DOWNLOAD' && (
+        <GetSheetStep onDownload={advance(importer.getTemplate)} busy={importer.busy === 'template'} />
       )}
 
-      {importer.stage === 'UPLOAD' && (
+      {nav.current === 'UPLOAD' && (
         <UploadStep
-          onFile={importer.submitFile}
+          onFile={advance(importer.submitFile)}
           busy={importer.busy === 'upload'}
           onDownloadAgain={importer.getTemplate}
         />
       )}
 
-      {importer.stage === 'REVIEW' && importer.queue && (
+      {nav.current === 'REVIEW' && importer.queue && (
         <ReviewStep
           queue={importer.queue}
           rooms={importer.upload?.rooms ?? null}
@@ -125,16 +128,16 @@ export function ImportTenantsSheet({ open, onClose, hostelId: initialHostelId = 
           onRecheck={importer.recheck}
           onDownloadCorrected={importer.getCorrectedSheet}
           onAcknowledgeGroup={importer.acknowledgeGroup}
-          onImport={importer.runImport}
+          onImport={advance(importer.runImport)}
           busy={importer.busy === 'import'}
           rechecking={importer.busy === 'recheck'}
           downloading={importer.busy === 'corrected'}
         />
       )}
 
-      {importer.stage === 'IMPORT' && <ImportRunStep progress={importer.progress} onDone={onClose} />}
+      {nav.current === 'IMPORT' && <ImportRunStep progress={importer.progress} onDone={onClose} />}
 
-      {importer.stage === 'SEND' && (
+      {nav.current === 'SEND' && (
         <SendInvitesStep
           progress={importer.progress}
           waiting={importer.state.queuedInvitations}
