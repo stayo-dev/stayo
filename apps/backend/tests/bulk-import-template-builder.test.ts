@@ -158,3 +158,164 @@ describe("row numbers stay true to the spreadsheet", () => {
     expect(rows[1].name).toBe("Ravi Kumar");
   });
 });
+
+describe("handing the owner their corrected file back", () => {
+  // Small fixes are made on screen, not in Excel — which would leave the
+  // spreadsheet on their machine out of step with what Stayo has, and
+  // re-uploading it would undo the work.
+  const CORRECTED = [
+    {
+      name: "Shiva Prakash Chidiri",
+      phone: "8008046952",
+      email: "",
+      room_no: "101",
+      monthly_rent: 8500,
+      joining_date: "2026-01-05",
+      security_deposit: 25500,
+      maintenance_charge: 500,
+      maintenance_type: "ONE_TIME",
+      agreement_duration_months: 11,
+      amount_paid: 76500,
+      amount_includes_deposit: true,
+      payment_method: "CASH",
+      notes: "Already living here",
+    },
+  ];
+
+  it("writes the real rows instead of the worked example", async () => {
+    const buf = await buildImportWorkbook({ ...INPUT, tenants: CORRECTED });
+    const rows = parseTenantWorkbook(buf as Buffer, "corrected.xlsx");
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].name).toBe("Shiva Prakash Chidiri");
+    expect(rows.some((r) => r.is_example)).toBe(false);
+  });
+
+  it("keeps every value the owner fixed", async () => {
+    const buf = await buildImportWorkbook({ ...INPUT, tenants: CORRECTED });
+    const [row] = parseTenantWorkbook(buf as Buffer, "corrected.xlsx");
+
+    expect(row).toMatchObject({
+      phone: "8008046952",
+      room_no: "101",
+      monthly_rent: 8500,
+      joining_date: "2026-01-05",
+      maintenance_charge: 500,
+      maintenance_type: "ONE_TIME",
+      agreement_duration_months: 11,
+      amount_paid: 76500,
+      payment_method: "CASH",
+    });
+    expect(row.amount_includes_deposit).toBe(true);
+  });
+
+  it("leaves a blank email blank, rather than writing the word undefined", async () => {
+    const buf = await buildImportWorkbook({ ...INPUT, tenants: CORRECTED });
+    const [row] = parseTenantWorkbook(buf as Buffer, "corrected.xlsx");
+    expect(row.email).toBe("");
+  });
+
+  it("is still a working template — rooms, stamp and dropdown intact", async () => {
+    const buf = await buildImportWorkbook({ ...INPUT, tenants: CORRECTED });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf as any);
+
+    expect(String(wb.getWorksheet(COVER_SHEET)!.getCell(HOSTEL_ID_CELL).value)).toBe(INPUT.hostel.id);
+    expect(wb.getWorksheet(TENANTS_SHEET)!.getCell("D2").dataValidation?.formulae?.[0]).toBe("RoomList");
+    expect(parseRoomsSheet(buf as Buffer).map((r) => r.room_no)).toEqual(["101", "G1"]);
+  });
+
+  it("still writes the example when there is nothing to correct", async () => {
+    const buf = await buildImportWorkbook({ ...INPUT, tenants: [] });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf as any);
+    expect(String(wb.getWorksheet(TENANTS_SHEET)!.getCell("A2").value)).toBe(EXAMPLE_ROW_NAME);
+  });
+});
+
+describe("marking the problems in the owner's own sheet", () => {
+  // Past a handful of errors, fixing them one at a time in a web form is
+  // worse than fixing them in the spreadsheet the owner already knows. So the
+  // file comes back with every problem marked where it happened.
+  const WITH_PROBLEMS = [
+    {
+      name: "Shiva",
+      phone: "98765",
+      room_no: "1O1",
+      joining_date: "May",
+      problems: [
+        { field: "phone", severity: "BLOCKER" as const, title: '"98765" isn\'t a 10-digit mobile number.', detail: 'Enter 10 digits.' },
+        { field: "room_no", severity: "BLOCKER" as const, title: "Room 1O1 isn't in Sri Adithya Boys Hostel.", detail: 'Closest: 101.' },
+      ],
+    },
+    {
+      name: "Priya",
+      phone: "9876500002",
+      room_no: "101",
+      problems: [
+        { field: "joining_date", severity: "NEEDS_CHOICE" as const, title: "This tenant joined more than 2 years ago.", detail: "We'll bill the most recent 24 months." },
+      ],
+    },
+  ];
+
+  async function annotated() {
+    const buf = await buildImportWorkbook({ ...INPUT, tenants: WITH_PROBLEMS });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf as any);
+    return { buf, sheet: wb.getWorksheet(TENANTS_SHEET)!, wb };
+  }
+
+  it("colours the exact cell each problem is about", async () => {
+    const { sheet } = await annotated();
+    // Phone is column B, room column D, on the first data row.
+    expect((sheet.getCell("B2").fill as any)?.fgColor?.argb).toBe("FFFFD9D6");
+    expect((sheet.getCell("D2").fill as any)?.fgColor?.argb).toBe("FFFFD9D6");
+  });
+
+  it("uses a different colour for something that only needs a decision", async () => {
+    const { sheet } = await annotated();
+    expect((sheet.getCell("F3").fill as any)?.fgColor?.argb).toBe("FFFFF0CC");
+  });
+
+  it("leaves cells with nothing wrong alone", async () => {
+    const { sheet } = await annotated();
+    expect(sheet.getCell("A2").fill).toBeUndefined();
+    expect(sheet.getCell("B3").fill).toBeUndefined();
+  });
+
+  it("puts the full sentence in the cell, as a note", async () => {
+    const { sheet } = await annotated();
+    expect(String((sheet.getCell("B2").note as any)?.texts?.[0]?.text ?? sheet.getCell("B2").note)).toContain(
+      "10-digit mobile number"
+    );
+  });
+
+  it("adds a column saying what to fix, so nothing depends on hovering", async () => {
+    const { sheet } = await annotated();
+    expect(sheet.getCell("P1").value).toBe("What to fix");
+    expect(String(sheet.getCell("P2").value)).toContain("Room 1O1 isn't in");
+  });
+
+  it("explains the colours on the cover sheet", async () => {
+    const { wb } = await annotated();
+    const cover = wb.getWorksheet(COVER_SHEET)!.getSheetValues().flat().map(String).join(" ");
+    expect(cover).toContain("What the colours mean");
+    expect(cover).toContain("upload this same file again");
+  });
+
+  it("adds no problem column at all when nothing is wrong", async () => {
+    const buf = await buildImportWorkbook({
+      ...INPUT,
+      tenants: [{ name: "Fine", phone: "9876500001", room_no: "101" }],
+    });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf as any);
+    expect(wb.getWorksheet(TENANTS_SHEET)!.getCell("P1").value).toBeNull();
+  });
+
+  it("is still a file our own parser reads back", async () => {
+    const { buf } = await annotated();
+    const rows = parseTenantWorkbook(buf as Buffer, "marked.xlsx");
+    expect(rows.map((r) => r.name)).toEqual(["Shiva", "Priya"]);
+  });
+});

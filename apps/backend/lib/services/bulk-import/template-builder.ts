@@ -31,6 +31,35 @@ const HEADER_FILL: ExcelJS.Fill = {
   fgColor: { argb: "FFF2EDE7" },
 };
 
+/** A tenant row written back into the sheet, in the header's order. */
+export type RowProblem = {
+  /** Which column it belongs to, by field name. */
+  field?: string;
+  severity: "BLOCKER" | "NEEDS_CHOICE" | "NOTICE";
+  title: string;
+  detail: string;
+};
+
+export type TenantRowValues = {
+  /** Problems still outstanding on this row, marked in the sheet. */
+  problems?: RowProblem[];
+  name?: string;
+  phone?: string;
+  email?: string;
+  room_no?: string;
+  monthly_rent?: number;
+  joining_date?: string;
+  security_deposit?: number;
+  maintenance_charge?: number;
+  maintenance_type?: string;
+  agreement_duration_months?: number;
+  amount_paid?: number;
+  amount_includes_deposit?: boolean;
+  payment_method?: string;
+  payment_reference?: string;
+  notes?: string;
+};
+
 export type TemplateInput = {
   hostel: { id: string; name: string };
   /** The hostel's own rent due day, 1–28. */
@@ -44,9 +73,48 @@ export type TemplateInput = {
     occupied_count: number;
   }>;
   tenantCount: number;
+  /**
+   * Rows to write into the Tenants sheet instead of the worked example.
+   *
+   * This is how the owner gets their own file back with the fixes they made
+   * on screen already in it — so the spreadsheet they keep matches what Stayo
+   * has, and re-uploading it does not undo their corrections.
+   */
+  tenants?: TenantRowValues[];
 };
 
 const ROOM_HEADERS = ["Room No", "Floor", "Capacity", "Sharing Type", "Base Rent", "Currently Occupied"];
+
+/**
+ * Which column a problem belongs to.
+ *
+ * The backend names the field on every issue, so a marked cell is always the
+ * one the message is about — the owner never has to work out which column
+ * "isn't a 10-digit mobile number" refers to.
+ */
+const FIELD_COLUMN: Record<string, number> = {
+  name: 1,
+  phone: 2,
+  email: 3,
+  room_no: 4,
+  monthly_rent: 5,
+  joining_date: 6,
+  security_deposit: 7,
+  advance_deposit: 7,
+  maintenance_charge: 8,
+  maintenance_type: 9,
+  agreement_duration_months: 10,
+  amount_paid: 11,
+  amount_includes_deposit: 12,
+  payment_method: 13,
+  payment_reference: 14,
+  notes: 15,
+};
+
+/** Red for something that stops the row, amber for something to decide. */
+const BLOCKER_FILL: ExcelJS.Fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFD9D6" } };
+const CHOICE_FILL: ExcelJS.Fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF0CC" } };
+const BLOCKER_FONT = { color: { argb: "FF9B1C1C" }, bold: true } as const;
 
 const TENANT_HEADERS = [
   "Name",
@@ -65,6 +133,9 @@ const TENANT_HEADERS = [
   "Payment Reference",
   "Notes",
 ];
+
+/** Appended only when something is wrong, so a clean sheet keeps its shape. */
+const PROBLEM_COLUMN = "What to fix";
 
 function styleHeader(row: ExcelJS.Row) {
   row.font = { bold: true };
@@ -102,12 +173,26 @@ function buildCover(sheet: ExcelJS.Worksheet, input: TemplateInput) {
     "Filling in the columns",
     "• Dates are DD/MM/YYYY — 05/01/2026 means 5 January 2026, not 1 May.",
     "• Amounts are in ₹. Digits only, like 8500 — a ₹ sign and commas are fine.",
+    "• Email is optional. We invite tenants on WhatsApp, so a mobile number is what we need.",
     "• Leave Monthly Rent blank to use the room's own rent.",
     "• Already living here? Put their real joining date, and what they have already paid in Amount Already Paid. We will work out what is still owed.",
     "• Paste values, not formulas — we cannot read a formula, only the value it produces.",
     "",
     "Do not edit this sheet. It tells Stayo which hostel this file belongs to.",
   ];
+
+  if ((input.tenants ?? []).some((t) => (t.problems ?? []).length > 0)) {
+    lines.splice(
+      lines.indexOf("Filling in the columns"),
+      0,
+      "What the colours mean",
+      "• Red — this has to be fixed before the row can be imported.",
+      `• Amber — have a look, but the row will import either way.`,
+      `• The "${PROBLEM_COLUMN}" column at the end says what is wrong with each row. Hover a coloured cell to read it there too.`,
+      "• Fix them here, save, and upload this same file again.",
+      ""
+    );
+  }
   lines.forEach((line, i) => {
     const cell = sheet.getCell(`A${7 + i}`);
     cell.value = line;
@@ -156,14 +241,64 @@ function buildRooms(sheet: ExcelJS.Worksheet, input: TemplateInput) {
 }
 
 function buildTenants(sheet: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, input: TemplateInput) {
-  sheet.columns = TENANT_HEADERS.map((h) => ({
-    width: h === "Name" ? 22 : h === "Notes" ? 28 : Math.max(12, h.length + 3),
+  sheet.columns = [...TENANT_HEADERS, PROBLEM_COLUMN].map((h) => ({
+    width: h === PROBLEM_COLUMN ? 52 : h === "Name" ? 22 : h === "Notes" ? 28 : Math.max(12, h.length + 3),
   }));
-  sheet.addRow(TENANT_HEADERS);
+  const anyProblems = (input.tenants ?? []).some((t) => (t.problems ?? []).length > 0);
+  sheet.addRow(anyProblems ? [...TENANT_HEADERS, PROBLEM_COLUMN] : TENANT_HEADERS);
   styleHeader(sheet.getRow(1));
 
+  // Real rows when we have them: this is the owner's corrected file, not a
+  // blank template, so the example would be noise.
+  if (input.tenants?.length) {
+    for (const tenant of input.tenants) {
+      const problems = tenant.problems ?? [];
+      const written = sheet.addRow([
+        tenant.name ?? "",
+        tenant.phone ?? "",
+        tenant.email ?? "",
+        tenant.room_no ?? "",
+        tenant.monthly_rent ?? "",
+        tenant.joining_date ?? "",
+        tenant.security_deposit ?? "",
+        tenant.maintenance_charge ?? "",
+        tenant.maintenance_type ?? "",
+        tenant.agreement_duration_months ?? "",
+        tenant.amount_paid ?? "",
+        tenant.amount_includes_deposit === undefined ? "" : tenant.amount_includes_deposit ? "YES" : "NO",
+        tenant.payment_method ?? "",
+        tenant.payment_reference ?? "",
+        tenant.notes ?? "",
+        ...(anyProblems
+          ? [problems.map((problem) => problem.title).join(" · ")]
+          : []),
+      ]);
+
+      // Mark the exact cell each problem is about, in its own colour, with the
+      // full sentence as a note. An owner scanning a hundred rows should see
+      // where the trouble is without reading any of them.
+      for (const problem of problems) {
+        const column = problem.field ? FIELD_COLUMN[problem.field] : undefined;
+        const blocking = problem.severity === "BLOCKER";
+        if (column) {
+          const cell = written.getCell(column);
+          cell.fill = blocking ? BLOCKER_FILL : CHOICE_FILL;
+          if (blocking) cell.font = BLOCKER_FONT;
+          cell.note = `${problem.title}\n\n${problem.detail}`;
+        }
+      }
+      if (problems.length) {
+        const summary = written.getCell(TENANT_HEADERS.length + 1);
+        summary.fill = problems.some((p) => p.severity === "BLOCKER") ? BLOCKER_FILL : CHOICE_FILL;
+        summary.alignment = { wrapText: true, vertical: "top" };
+      }
+    }
+  }
+
   const exampleRoom = input.rooms[0]?.room_no ?? "101";
-  const example = sheet.addRow([
+  const example = input.tenants?.length
+    ? null
+    : sheet.addRow([
     EXAMPLE_ROW_NAME,
     "9876543210",
     "student@example.com",
@@ -180,7 +315,7 @@ function buildTenants(sheet: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, inpu
     "",
     "Already living here since January",
   ]);
-  example.font = GREY;
+  if (example) example.font = GREY;
 
   // The dropdown's source. The range runs past the rooms that exist today so
   // a room the owner adds on the Rooms sheet appears here too.

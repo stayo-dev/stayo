@@ -206,14 +206,12 @@ export class BulkImportValidationService {
       }
 
       const normalizedEmail = String(row.email || "").trim().toLowerCase();
+      // Optional. `createInvitation` requires a name, a phone and a room —
+      // not an email — and the invitation goes out over WhatsApp to the phone
+      // we just validated. Demanding an email here blocked rows the rest of
+      // the system would have accepted, for tenants who simply do not have one.
       if (!normalizedEmail) {
-        errors.push({
-          row: rowNumber,
-          field: "email",
-          message: "Email is required",
-          value: row.email,
-        });
-        issues.push(buildIssue("EMAIL_INVALID", rowNumber, { value: row.email }));
+        // Nothing to check, and nothing to collide with.
       } else if (!isValidImportEmail(normalizedEmail)) {
         errors.push({
           row: rowNumber,

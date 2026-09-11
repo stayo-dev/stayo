@@ -120,9 +120,15 @@ export function ImportTenantsSheet({ open, onClose, hostelId: initialHostelId = 
         <ReviewStep
           queue={importer.queue}
           rooms={importer.upload?.rooms ?? null}
+          edits={importer.edits}
+          onEdit={importer.applyEdit}
+          onRecheck={importer.recheck}
+          onDownloadCorrected={importer.getCorrectedSheet}
           onAcknowledgeGroup={importer.acknowledgeGroup}
           onImport={importer.runImport}
           busy={importer.busy === 'import'}
+          rechecking={importer.busy === 'recheck'}
+          downloading={importer.busy === 'corrected'}
         />
       )}
 

@@ -196,3 +196,19 @@ describe('what the owner is told at a glance', () => {
     expect(buildReviewQueue(preview()).summary.canImport).toBe(false);
   });
 });
+
+describe('counting rows versus counting problems', () => {
+  // A row with two problems is one row to fix. Reporting "2 rows" sent the
+  // owner looking for a second row that was not there.
+  it('separates how many rows block from how many problems there are', () => {
+    const twoProblems = row(2, [
+      issue({ code: 'EMAIL_INVALID', row: 2 }),
+      issue({ code: 'DATE_UNREADABLE', row: 2, field: 'joining_date' }),
+    ]);
+    const queue = buildReviewQueue(preview({ invalid: [twoProblems] }));
+
+    expect(queue.summary.blockers).toBe(2);
+    expect(queue.summary.needsYou).toBe(1);
+    expect(queue.needsYou).toHaveLength(1);
+  });
+});
