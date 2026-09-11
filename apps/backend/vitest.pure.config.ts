@@ -182,6 +182,7 @@ export default defineConfig({
       'tests/bulk-import-hardening.test.ts',
       'tests/bulk-import-revalidate.test.ts',
       'tests/bulk-import-issue-persistence.test.ts',
+      'tests/bulk-import-deferred-dispatch.test.ts',
       'tests/bulk-import-deposit-flag.test.ts',
       'tests/build-without-env.test.ts',
     ],

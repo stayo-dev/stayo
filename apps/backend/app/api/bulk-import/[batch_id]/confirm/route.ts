@@ -316,6 +316,11 @@ async function executeInvitationBatch(
         joining_date: data.joining_date,
         notes: data.notes,
         batch_id: batchId,
+        // Created, not sent. The owner sends in waves from the import's last
+        // step, so an import of forty residents does not put forty messages
+        // on forty phones at once — and each tenant's expiry clock starts
+        // when their own invitation actually goes out.
+        dispatch: "DEFERRED",
       }, ownerId);
 
       // The sheet's Notes column reached bulk_import_rows and stopped there:

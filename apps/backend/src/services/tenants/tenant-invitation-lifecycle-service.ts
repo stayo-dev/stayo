@@ -219,6 +219,73 @@ export class TenantInvitationLifecycleService {
     return { isUnique: false, reason, code: eligibility.code, disclosure: eligibility.disclosure };
   }
 
+  /**
+   * Sends invitations that were created but held back.
+   *
+   * The expiry clock starts here, not at creation: an invitation that sat
+   * queued for a week must still give the tenant the full window. Idempotent —
+   * anything no longer QUEUED is skipped rather than sent twice, so a
+   * double-tapped "send all" cannot message a tenant twice.
+   */
+  async dispatchQueuedInvitations(
+    ownerId: string,
+    options: { invitationIds?: string[]; batchId?: string; limit?: number } = {}
+  ) {
+    const queued = await prisma.tenant_invitations.findMany({
+      where: {
+        owner_id: ownerId,
+        status: "QUEUED",
+        ...(options.invitationIds?.length ? { id: { in: options.invitationIds } } : {}),
+        ...(options.batchId ? { batch_id: options.batchId } : {}),
+      },
+      orderBy: { created_at: "asc" },
+      ...(options.limit ? { take: Math.max(1, Math.trunc(options.limit)) } : {}),
+    });
+
+    const owner = await prisma.profile.findUnique({ where: { id: ownerId } });
+    if (!owner) throw new Error("NOT_FOUND: Owner profile not found");
+
+    let sent = 0;
+    let failed = 0;
+    const errors: Array<{ invitation_id: string; error: string }> = [];
+
+    for (const invitation of queued) {
+      try {
+        const tenant = await prisma.tenants.findUnique({ where: { id: invitation.tenant_id } });
+        const room = await prisma.rooms.findUnique({ where: { id: invitation.room_id } });
+        if (!tenant || !room) throw new Error("NOT_FOUND: Tenancy or room missing");
+
+        const expiresAt = addDays(DEFAULT_INVITE_DAYS);
+        const live = await prisma.tenant_invitations.update({
+          where: { id: invitation.id },
+          data: { status: "PENDING", expires_at: expiresAt },
+        });
+        await prisma.tenant_invitation_reservations.updateMany({
+          where: { invitation_id: invitation.id, status: "ACTIVE" },
+          data: { expires_at: expiresAt },
+        });
+
+        const activationLink = frontendUrl(`/activate/${live.token}`);
+        const delivery = await this.dispatchInvitationNotification(live, tenant, room, owner, activationLink);
+        await recordWhatsAppDelivery(live.id, delivery.whatsapp_sent);
+        sent++;
+      } catch (error: any) {
+        failed++;
+        errors.push({ invitation_id: invitation.id, error: String(error?.message || error) });
+      }
+    }
+
+    const remaining = await prisma.tenant_invitations.count({
+      where: {
+        owner_id: ownerId,
+        status: "QUEUED",
+        ...(options.batchId ? { batch_id: options.batchId } : {}),
+      },
+    });
+
+    return { sent, failed, remaining, errors };
+  }
+
   async createInvitation(data: any, ownerId: string) {
     // The invitation is always dispatched. Tenant acceptance is mandatory
     // (ADR-165) and there is no "just add to my records without inviting"
@@ -259,6 +326,13 @@ export class TenantInvitationLifecycleService {
     const joiningDate = data.joining_date ? new Date(data.joining_date) : today;
     if (Number.isNaN(joiningDate.getTime())) throw new Error("VALIDATION_ERROR: Invalid joining date");
     const billingStartDate = joiningDate > today ? joiningDate : today;
+    // Deferred: the invitation is created but not sent, and its expiry clock
+    // starts when the owner sends it rather than now. This is NOT the removed
+    // `suppressInvitationNotification` path — acceptance is still mandatory
+    // (ADR-165) and the invitation still expires; only the send moment moves.
+    // Bulk import uses it so an owner's books can be right immediately without
+    // messaging forty people in the same instant.
+    const deferDispatch = data.dispatch === "DEFERRED";
     const token = crypto.randomBytes(32).toString("hex");
     const expiresAt = data.expires_at ? new Date(data.expires_at) : addDays(DEFAULT_INVITE_DAYS);
     if (Number.isNaN(expiresAt.getTime())) throw new Error("VALIDATION_ERROR: Invalid invitation expiry");
@@ -393,7 +467,7 @@ export class TenantInvitationLifecycleService {
           phone: normalizedPhone,
           token,
           expires_at: expiresAt,
-          status: "PENDING",
+          status: deferDispatch ? "QUEUED" : "PENDING",
           monthly_rent: monthlyRent,
           agreement_duration_months: data.agreement_duration_months !== undefined && data.agreement_duration_months !== null
             ? Number(data.agreement_duration_months)
@@ -560,6 +634,22 @@ export class TenantInvitationLifecycleService {
         hostelId: created.room.hostel_id,
         source: "invitation_onboarding",
       });
+    }
+
+    if (deferDispatch) {
+      await eventLog.log("tenant_invited", ownerId, {
+        tenant_id: created.tenant.id,
+        invitation_id: created.invitation.id,
+        dispatch: "QUEUED",
+      });
+      return {
+        tenant_id: created.tenant.id,
+        invitation_id: created.invitation.id,
+        reservation_id: created.reservation.id,
+        email_sent: false,
+        whatsapp_sent: false,
+        queued: true,
+      } as any;
     }
 
     const activationLink = frontendUrl(`/activate/${created.invitation.token}`);
