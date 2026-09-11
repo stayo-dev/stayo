@@ -86,7 +86,9 @@ beforeEach(() => {
     id: BATCH_ID,
     owner_id: "owner-1",
     hostel_id: HOSTEL_ID,
-    hostel: { id: HOSTEL_ID, name: "Sri Adithya Boys Hostel" },
+    // `hostels`, as the schema has it — a mock answering to `hostel` is what
+    // let the wrong name reach production.
+    hostels: { id: HOSTEL_ID, name: "Sri Adithya Boys Hostel" },
     import_summary: null,
     validation_errors: {
       defaults: {},

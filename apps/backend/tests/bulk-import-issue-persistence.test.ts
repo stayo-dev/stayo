@@ -95,7 +95,9 @@ describe("issues survive a reload", () => {
       id: BATCH_ID,
       owner_id: "owner-1",
       hostel_id: HOSTEL_ID,
-      hostel: { id: HOSTEL_ID, name: "Sri Adithya Boys Hostel" },
+      // The relation is `hostels`. A mock that answers to `hostel` was how the
+      // wrong name survived review — see tests/bulk-import-query-shapes.test.ts.
+      hostels: { id: HOSTEL_ID, name: "Sri Adithya Boys Hostel" },
       total_rows: 1,
       valid_rows: 0,
       failed_rows: 1,
@@ -120,7 +122,7 @@ describe("issues survive a reload", () => {
       id: BATCH_ID,
       owner_id: "owner-1",
       hostel_id: HOSTEL_ID,
-      hostel: { id: HOSTEL_ID, name: "H" },
+      hostels: { id: HOSTEL_ID, name: "H" },
       total_rows: 1,
       valid_rows: 0,
       failed_rows: 1,

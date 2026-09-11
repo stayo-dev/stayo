@@ -35,7 +35,7 @@ export async function GET(
         status: { in: ["VALIDATED", "PROCESSING", "PARTIAL", "FAILED", "COMPLETED"] as any },
       },
       include: {
-        hostel: true,
+        hostels: true,
       },
     });
 
@@ -54,8 +54,8 @@ export async function GET(
         batch_id: batch.id,
         filename: batch.filename,
         hostel: {
-          id: batch.hostel.id,
-          name: batch.hostel.name,
+          id: batch.hostels.id,
+          name: batch.hostels.name,
         },
         validation: {
           total_rows: batch.total_rows,
@@ -123,7 +123,7 @@ export async function POST(
         status: { in: ["VALIDATED", "PROCESSING", "PARTIAL", "FAILED", "COMPLETED"] as any },
       },
       include: {
-        hostel: true,
+        hostels: true,
       },
     });
 
@@ -176,8 +176,8 @@ export async function POST(
       {
         batch_id: batchId,
         hostel: {
-          id: batch.hostel.id,
-          name: batch.hostel.name,
+          id: batch.hostels.id,
+          name: batch.hostels.name,
         },
         progress: result.progress,
         rooms,
