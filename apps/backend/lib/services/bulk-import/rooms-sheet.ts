@@ -49,8 +49,11 @@ export function parseRoomsSheet(fileBuffer: Buffer): RoomImportRow[] {
       const rentText = cell(row, ["Base Rent", "base_rent", "Rent", "rent"]);
       const floorText = cell(row, ["Floor", "floor"]);
       return {
-        // +2: one for the header, one because spreadsheet rows are 1-based.
-        sheet_row: index + 2,
+        // SheetJS records each row's real line in `__rowNum__` (0-based, so
+        // +1). Genuinely empty rows are dropped from the array entirely, and
+        // the template leaves forty of them, so a position in the array is not
+        // the line the owner is looking at.
+        sheet_row: Number.isFinite(row.__rowNum__) ? Number(row.__rowNum__) + 1 : index + 2,
         room_no: cell(row, ["Room No", "Room", "room_no", "room", "Room Number", "room_number"]),
         floor: parseImportNumber(floorText),
         capacity: parseImportNumber(capacityText),

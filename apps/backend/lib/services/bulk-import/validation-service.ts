@@ -5,6 +5,7 @@ import { formatImportDate, monthsBetween, parseImportDate } from "./dates";
 import { indianPhoneKey, isSpreadsheetFormula, isValidImportEmail, normalizeImportPhone } from "./identity";
 import { nearestRoomNumbers } from "./room-resolution";
 import { planRowFinancials } from "./financial-plan";
+import { resolvePreferences } from "@/lib/preferences";
 import { parseTenantWorkbook } from "./workbook-parser";
 import type {
   ImportDefaults,
@@ -50,6 +51,14 @@ function numberChecks(row: TenantImportRow): NumberProblem[] {
       problems.push({ field: "monthly_rent", label: "monthly rent", value: row.monthly_rent, message: "Monthly rent is not a number", hint: money });
     } else if (row.monthly_rent <= 0) {
       problems.push({ field: "monthly_rent", label: "monthly rent", value: row.monthly_rent, message: "Monthly rent must be more than 0", hint: "Monthly rent must be more than ₹0. Leave it blank to use the room's rent." });
+    }
+  }
+
+  if (row.maintenance_charge != null) {
+    if (Number.isNaN(row.maintenance_charge)) {
+      problems.push({ field: "maintenance_charge", label: "maintenance charge", value: row.maintenance_charge, message: "Maintenance charge is not a number", hint: money });
+    } else if (row.maintenance_charge < 0) {
+      problems.push({ field: "maintenance_charge", label: "maintenance charge", value: row.maintenance_charge, message: "Maintenance charge cannot be negative", hint: `${money} Enter 0 if there is no maintenance.` });
     }
   }
 
@@ -116,10 +125,17 @@ export class BulkImportValidationService {
           reserved_count: 0,
         })),
     ];
-    const hostel = await prisma.hostels.findUnique({ where: { id: hostelId }, select: { name: true } });
+    const hostel = await prisma.hostels.findUnique({
+      where: { id: hostelId },
+      select: { name: true, preferences_config: true },
+    });
     const hostelName = hostel?.name ?? "this hostel";
     const billingDefaults = await hostelBillingPreferencesService.getBillingDefaults(hostelId);
-    const dueDay = Number((billingDefaults as any)?.due_day) || 5;
+    // BillingDefaults carries no due day — it lives in the hostel's own
+    // preferences, and reading it from the wrong object silently pinned every
+    // preview to the 5th.
+    const resolvedDueDay = Number(resolvePreferences(hostel ?? {}).due_day);
+    const dueDay = resolvedDueDay >= 1 && resolvedDueDay <= 28 ? resolvedDueDay : 5;
     // Keyed to the row number that first used the value, so a duplicate can
     // tell the owner which row it repeats.
     const phonesSeen = new Map<string, number>();
@@ -486,10 +502,16 @@ export class BulkImportValidationService {
    */
   private async getExistingPhones(ownerId: string): Promise<Set<string>> {
     const live = await prisma.tenants.findMany({
-      where: { owner_id: ownerId, status: { in: LIVE_TENANCY_STATUSES } },
-      select: { profile: { select: { phone: true } } },
+      where: { owner_id: ownerId, status: { in: LIVE_TENANCY_STATUSES as any } },
+      // The tenancy's own contact fields as well as the linked profile:
+      // `profile_id` is nullable and orphaned rows exist, so a tenancy can
+      // hold the only copy of the number.
+      select: { phone_1: true, profiles: { select: { phone: true } } },
     });
-    const profiles = live.map((t: any) => ({ phone: t.profile?.phone ?? null }));
+    const profiles = live.flatMap((t: any) => [
+      { phone: t.phone_1 ?? null },
+      { phone: t.profiles?.phone ?? null },
+    ]);
     const invited = await prisma.tenant_invitations.findMany({
       where: {
         owner_id: ownerId,
@@ -509,11 +531,11 @@ export class BulkImportValidationService {
   /** People who cannot be imported again, by email. Live tenancies only. */
   private async getExistingEmails(ownerId: string): Promise<Set<string>> {
     const live = await prisma.tenants.findMany({
-      where: { owner_id: ownerId, status: { in: LIVE_TENANCY_STATUSES } },
-      select: { profile: { select: { email: true } } },
+      where: { owner_id: ownerId, status: { in: LIVE_TENANCY_STATUSES as any } },
+      select: { personal_email: true, profiles: { select: { email: true } } },
     });
     const profiles = live
-      .map((t: any) => ({ email: t.profile?.email ?? null }))
+      .flatMap((t: any) => [{ email: t.personal_email ?? null }, { email: t.profiles?.email ?? null }])
       .filter((p: any) => p.email);
     const invited = await prisma.tenant_invitations.findMany({
       where: {

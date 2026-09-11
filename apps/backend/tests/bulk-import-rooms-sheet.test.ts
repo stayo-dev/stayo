@@ -96,3 +96,24 @@ describe("row numbers survive the blank rows the template leaves", () => {
     expect(rooms.map((r) => r.sheet_row)).toEqual([2, 5]);
   });
 });
+
+describe("row numbers against a real template, not a synthesised sheet", () => {
+  // json_to_sheet writes empty-string cells for blank rows, so an array index
+  // happens to line up. A real workbook drops genuinely empty rows entirely,
+  // which is why the row number has to come from SheetJS's own __rowNum__.
+  it("reports the true line when the sheet has genuinely empty rows", () => {
+    const wb = XLSX.utils.book_new();
+    const sheet = XLSX.utils.aoa_to_sheet([
+      ["Room No", "Capacity"],
+      ["101", 3],
+    ]);
+    // A room typed on line 5, with 3 and 4 left completely empty.
+    XLSX.utils.sheet_add_aoa(sheet, [["201", 2]], { origin: "A5" });
+    XLSX.utils.book_append_sheet(wb, sheet, ROOMS_SHEET);
+    const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+
+    const rooms = parseRoomsSheet(buf);
+    expect(rooms.map((r) => r.room_no)).toEqual(["101", "201"]);
+    expect(rooms.map((r) => r.sheet_row)).toEqual([2, 5]);
+  });
+});

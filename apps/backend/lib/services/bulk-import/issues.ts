@@ -103,7 +103,9 @@ const SEVERITY: Record<IssueCode, IssueSeverity> = {
   HOSTEL_STAMP_MISMATCH: "BLOCKER",
   DUPLICATE_IN_FILE: "NEEDS_CHOICE",
   DUPLICATE_IN_SYSTEM: "NEEDS_CHOICE",
-  OVERPAID: "NEEDS_CHOICE",
+  // Blocks: createInvitation refuses the row until the amount or the joining
+  // date changes, so calling it a choice under-counts what stops an import.
+  OVERPAID: "BLOCKER",
   BACKFILL_CAPPED: "NEEDS_CHOICE",
 };
 

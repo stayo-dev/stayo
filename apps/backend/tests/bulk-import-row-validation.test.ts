@@ -302,7 +302,7 @@ describe("every blocked row can be explained to the owner", () => {
   });
 
   it("explains a person already on Stayo as a choice", async () => {
-    mockPrisma.tenants.findMany.mockResolvedValue([{ profile: { phone: "+919876512345", email: "x@example.com" } }]);
+    mockPrisma.tenants.findMany.mockResolvedValue([{ phone_1: "+919876512345", personal_email: "x@example.com", profiles: null }]);
     const r = await validateOne({ phone: "9876512345" });
     expect(r.issues.map((i) => i.code)).toContain("DUPLICATE_IN_SYSTEM");
   });
@@ -314,7 +314,7 @@ describe("existing tenants are recognised whatever format their phone is stored 
   // against the normalised E.164 row phone therefore never matched a profile,
   // so re-importing an existing tenant created a second tenancy.
   it("matches a profile phone stored as bare 10 digits", async () => {
-    mockPrisma.tenants.findMany.mockResolvedValue([{ profile: { phone: "9876512345", email: "x@example.com" } }]);
+    mockPrisma.tenants.findMany.mockResolvedValue([{ phone_1: "9876512345", personal_email: "x@example.com", profiles: null }]);
     const r = await validateOne({ phone: "+91 98765 12345" });
     expect(r.isDuplicate).toBe(true);
     expect(r.issues.map((i) => i.code)).toContain("DUPLICATE_IN_SYSTEM");
@@ -327,7 +327,7 @@ describe("existing tenants are recognised whatever format their phone is stored 
   });
 
   it("does not match a different number that shares a prefix", async () => {
-    mockPrisma.tenants.findMany.mockResolvedValue([{ profile: { phone: "9876512345", email: "x@example.com" } }]);
+    mockPrisma.tenants.findMany.mockResolvedValue([{ phone_1: "9876512345", personal_email: "x@example.com", profiles: null }]);
     const r = await validateOne({ phone: "9876512346" });
     expect(r.isDuplicate).toBe(false);
   });
@@ -405,7 +405,7 @@ describe("a former tenant can come back", () => {
 
   it("still blocks someone who is living there right now", async () => {
     mockPrisma.tenants.findMany.mockResolvedValue([
-      { profile: { phone: "9876512345", email: "x@example.com" } },
+      { phone_1: null, personal_email: null, profiles: { phone: "9876512345", email: "x@example.com" } },
     ]);
     const r = await validateOne({ phone: "9876512345" });
     expect(r.isDuplicate).toBe(true);
@@ -429,7 +429,7 @@ describe("paying more than the tenant owes", () => {
     return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
   }
 
-  it("flags an amount well above the dues as a choice, not a silent pass", async () => {
+  it("blocks an amount well above the dues instead of failing at execution", async () => {
     const r = await validateOne({
       joining_date: monthsBack(1),
       monthly_rent: 8500,
@@ -439,7 +439,8 @@ describe("paying more than the tenant owes", () => {
 
     const issue = r.issues.find((i) => i.code === "OVERPAID");
     expect(issue).toBeDefined();
-    expect(issue!.severity).toBe("NEEDS_CHOICE");
+    // Blocks: the row cannot import until the amount or the date changes.
+    expect(issue!.severity).toBe("BLOCKER");
     expect(issue!.detail).toContain("5,00,000");
   });
 

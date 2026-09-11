@@ -301,15 +301,9 @@ async function executeInvitationBatch(
         maintenance_type: data.maintenance_type,
         agreement_duration_months: data.agreement_duration_months,
         paid_amount: data.amount_paid,
-        // Honoured now: "No" keeps the deposit owed instead of letting the
-        // settlement swallow it.
+        // "No" keeps the deposit owed: createInvitation filters the
+        // settlement to non-deposit obligations.
         paid_includes_deposit: data.amount_includes_deposit,
-        // amount_includes_deposit is parsed and stored (TenantImportRow,
-        // both sanitizers) for a later plan's workbook, but createInvitation
-        // never reads it — settlement is plain FIFO over all dues including
-        // the deposit. Forwarding an unread key here would be the same
-        // defect class as the one Task 6 just removed elsewhere in this
-        // route.
         payment_method: data.payment_method,
         payment_reference: data.payment_reference,
         joining_date: data.joining_date,
