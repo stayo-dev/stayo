@@ -1,7 +1,5 @@
-import { useMutation } from '@tanstack/react-query';
-import { toast } from 'sonner';
 import { Bell } from 'lucide-react';
-import { reminderService } from '@features/notifications/api';
+import { useSendReminder } from '@features/notifications/useSendReminder';
 import { cn } from '@/app/components/ui/utils';
 
 interface Props {
@@ -11,15 +9,7 @@ interface Props {
 }
 
 export function ReminderActionBar({ tenantId, className }: Props) {
-  const mutation = useMutation({
-    mutationFn: () => reminderService.sendToTenant(tenantId),
-    onSuccess: () => toast.success('Reminder sent'),
-    onError: (e: Error & { response?: { data?: { error?: { message?: string; code?: string } } } }) => {
-      const code = e?.response?.data?.error?.code;
-      if (code === 'NO_REMINDERS_LEFT') toast.error('No reminder credits left');
-      else toast.error(e?.response?.data?.error?.message ?? 'Failed to send reminder');
-    },
-  });
+  const mutation = useSendReminder(tenantId);
 
   return (
     <div

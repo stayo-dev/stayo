@@ -165,6 +165,8 @@ export async function GET(req: NextRequest) {
       return {
         id: t.id,
         name: t.profiles?.name || "Tenant",
+        // The owner recognises a face faster than a name — see shared/ui/TenantAvatar.
+        photo_url: t.photo_url || null,
         phone: t.profiles?.phone || t.phone_1 || "N/A",
         email: realEmailOrNull(t.profiles?.email) ?? realEmailOrNull(t.personal_email) ?? "",
         hostel_name: t.hostels?.name || "N/A",

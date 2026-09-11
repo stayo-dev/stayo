@@ -64,6 +64,7 @@ export function CollectionQueuePage() {
               id: row.tenantId,
               title: row.tenantName,
               subtitle: locationLabel(row),
+              avatar: { name: row.tenantName, initials: getInitials(row.tenantName), photoUrl: row.tenantPhotoUrl },
               headline: formatINR(row.outstanding),
               headlineTone: 'destructive',
               urgency: urgencyLabel(row),

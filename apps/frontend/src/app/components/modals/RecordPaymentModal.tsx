@@ -11,6 +11,8 @@ import { identityService } from '@features/auth/api';
 import { queryKeys } from '@lib/queryKeys';
 import { SettlementPreview } from '@features/tenants/components/financial/SettlementPreview';
 import { StayoLoader } from '@shared/ui/brand';
+import { useHostelPolicy } from '@features/settings/settingsHooks';
+import { blockedExplanation, policyDetail, policyHeadline, readPartialPolicy } from '@features/owner-more/billing-policy/billingPolicy';
 import { playSuccessFeedback } from '@shared/ui-patterns/successFeedback';
 
 export type PaymentContext = {
@@ -251,6 +253,17 @@ export function RecordPaymentModal({
     retry: false,
   });
 
+  /*
+   * The hostel's part-payment rule, read where the money is actually taken.
+   * Quick Collect has shown this for a while; this modal did not, so an owner
+   * whose hostel takes full payments only typed a smaller amount and met a raw
+   * server error with no way to act on it.
+   */
+  const policyQuery = useHostelPolicy(hostelId ?? null);
+  const partialPolicy = readPartialPolicy(policyQuery.data?.policy);
+  /** What this payment has to clear: the chosen obligation, else everything owed. */
+  const outstandingForPolicy = Number(targetObligation?.outstanding ?? duesData?.total_due ?? 0);
+
   const handleSelectTenant = (t: any) => {
     setSelectedTenant(t);
     setAmount('');
@@ -291,6 +304,16 @@ export function RecordPaymentModal({
     }
     if (!parsedAmount || parsedAmount <= 0) {
       setFieldError('Enter a valid payment amount.');
+      return;
+    }
+    // Say no here, in the owner's words, rather than letting the server say
+    // "BAD_REQUEST" three taps later.
+    const minimumAllowed = partialPolicy.enabled
+      ? Math.max(partialPolicy.minimumAmount, Math.round((outstandingForPolicy * partialPolicy.minimumPercentage) / 100))
+      : outstandingForPolicy;
+    if (outstandingForPolicy > 0 && parsedAmount < minimumAllowed && parsedAmount < outstandingForPolicy) {
+      const blocked = blockedExplanation({ policy: partialPolicy, minimumAllowed, entered: parsedAmount });
+      setFieldError(`${blocked.title}. ${blocked.body}`);
       return;
     }
     setStep(previewEnabled ? 'preview' : 'confirm');
@@ -677,6 +700,14 @@ export function RecordPaymentModal({
                   Rent for {new Date(targetObligation.rent_month).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
                 </p>
                 <p className="text-xs text-muted-foreground">Due on {new Date(targetObligation.due_date).toLocaleDateString()}</p>
+              </div>
+            )}
+
+            {/* The rule, stated before the owner types — same wording as Quick Collect. */}
+            {currentTenant && !policyQuery.isLoading && (
+              <div className={`rounded-xl border px-3.5 py-3 ${partialPolicy.enabled ? 'border-border bg-muted/40' : 'border-warning/30 bg-warning/10'}`}>
+                <div className="font-display text-[12.5px] font-bold text-foreground">{policyHeadline(partialPolicy)}</div>
+                <p className="mt-1 text-[11.5px] leading-relaxed text-muted-foreground">{policyDetail(partialPolicy)}</p>
               </div>
             )}
 

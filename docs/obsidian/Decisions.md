@@ -2836,3 +2836,16 @@ See [[Features]], [[Changelog]], [[Business-Rules]].
   - Some fields (the photo picker, every document row) are a visible label over a `display:none` file input, which cannot take focus — those focus their container instead, so focus never silently stays on `<body>`.
   - Anything that gates a submit must be added to `stepIssues.ts`, or the button will appear to do nothing. That is the one way this can regress.
 - **See:** [[Features]], [[Frontend]], [[Changelog]], [[Decisions#ADR-111|ADR-111]], [[Decisions#ADR-184|ADR-184]]
+
+### ADR-186 — A hand-raised charge can be corrected or withdrawn, never erased; both sides see the change (2026-09-11)
+
+- **Status:** Accepted. Applies the existing "obligations are immutable" rule; does not change it.
+- **Context:** an owner who added a charge by mistake had no way to correct or remove it. The backend could already cancel an obligation (`POST /api/payments/obligations/:id/cancel`), but nothing in the owner app called it — and when one *was* cancelled, `billingTimelineService` filtered `CANCELLED` out, so the charge vanished from the tenant's view without trace. A charge that silently disappears is indistinguishable from one that never existed, which is the wrong property for money.
+- **Decision — correct = replace then withdraw; withdraw = cancel with a reason.** No edit-in-place and no delete. Correcting raises the replacement first and then cancels the original, so a failure between the two leaves the tenant owing twice (visible, fixable) rather than owing nothing (silent). The owner gives a reason and their password once — cancelling is the `CANCEL_OBLIGATION` step-up; raising a charge is not.
+- **Decision — only what the owner raised by hand, and only while unpaid.** Rent and security deposit follow the tenancy and are changed through the rent flow, not here. Once any payment lands on a charge the server refuses a cancel; that is a waiver.
+- **Decision — a withdrawn charge stays on both timelines.** The tenant timeline now includes `CANCELLED` obligations with `state: "cancelled"`, `remaining: 0` and the owner's reason; the owner's schedule gains a `cancelled` bucket. Both render the original amount struck through with the reason beneath it.
+- **Consequences / guardrails:**
+  - `paymentSchedule.ts` checks `cancelled` before any other bucket. Without that, a withdrawn charge fell through to `pending` and — being past its due date — would have been counted as overdue and even offered as the next payment. Tests pin all three.
+  - `remaining` is zeroed at the source (the timeline service), so no consumer that sums `remaining` can be inflated by a withdrawn charge.
+  - The reason is shown to the tenant verbatim; the UI says so next to the field.
+- **See:** [[Features]], [[Business-Rules]], [[APIs]], [[Bugs]], [[Changelog]]

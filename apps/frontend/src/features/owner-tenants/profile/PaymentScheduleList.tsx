@@ -25,6 +25,7 @@ const STATE_TONE: Record<string, 'destructive' | 'warning' | 'success' | 'neutra
   upcoming: 'neutral',
   paid: 'success',
   waived: 'neutral',
+  cancelled: 'neutral',
 };
 
 const STATE_LABEL: Record<string, string> = {
@@ -35,14 +36,31 @@ const STATE_LABEL: Record<string, string> = {
   upcoming: 'Upcoming',
   paid: 'Paid',
   waived: 'Waived',
+  cancelled: 'Withdrawn',
 };
 
-function Row({ item }: { item: PaymentScheduleItem }) {
+/**
+ * Which charges an owner may correct or withdraw.
+ *
+ * Rent is generated from the tenancy, not typed by hand — correcting it means
+ * changing the rent, which is its own flow. What is offered here is what the
+ * owner raised themselves and nobody has paid against yet; the server refuses
+ * a cancel once any money has landed on it.
+ */
+function isManageable(item: PaymentScheduleItem): boolean {
+  if (item.type === 'RENT' || item.type === 'SECURITY_DEPOSIT') return false;
+  if (item.state === 'cancelled' || item.state === 'paid' || item.state === 'waived') return false;
+  return item.paid <= 0;
+}
+
+function Row({ item, onManage }: { item: PaymentScheduleItem; onManage?: (item: PaymentScheduleItem, mode: 'edit' | 'remove') => void }) {
   const isPaid = item.state === 'paid' || item.state === 'partial' || item.state === 'waived';
+  const withdrawn = item.state === 'cancelled';
   return (
-    <div className="flex items-start gap-2.5 rounded-[14px] border border-border bg-muted/50 p-3">
+    <div className="flex flex-col gap-2 rounded-[14px] border border-border bg-muted/50 p-3">
+    <div className="flex items-start gap-2.5">
       <div className="min-w-0 flex-1">
-        <div className="font-display text-[15px] font-extrabold tabular-nums text-foreground">
+        <div className={`font-display text-[15px] font-extrabold tabular-nums ${withdrawn ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
           {money(item.amount)}
           {item.state === 'partial' && item.outstanding > 0 && (
             <span className="ml-1.5 text-[11px] font-semibold text-warning">
@@ -63,10 +81,45 @@ function Row({ item }: { item: PaymentScheduleItem }) {
         {STATE_LABEL[item.state] ?? item.state}
       </StatusPill>
     </div>
+
+    {/* The owner's reason, kept with the charge rather than in a log nobody opens. */}
+    {withdrawn && item.cancelledReason && (
+      <p className="text-[11.5px] leading-relaxed text-muted-foreground">{item.cancelledReason}</p>
+    )}
+
+    {onManage && isManageable(item) && (
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => onManage(item, 'edit')}
+          className="min-h-8 flex-1 rounded-lg border border-border bg-card px-2 text-[11.5px] font-bold text-foreground"
+        >
+          Correct
+        </button>
+        <button
+          type="button"
+          onClick={() => onManage(item, 'remove')}
+          className="min-h-8 flex-1 rounded-lg border border-border bg-card px-2 text-[11.5px] font-bold text-destructive"
+        >
+          Withdraw
+        </button>
+      </div>
+    )}
+    </div>
   );
 }
 
-function Section({ title, items, tone }: { title: string; items: PaymentScheduleItem[]; tone: string }) {
+function Section({
+  title,
+  items,
+  tone,
+  onManage,
+}: {
+  title: string;
+  items: PaymentScheduleItem[];
+  tone: string;
+  onManage?: (item: PaymentScheduleItem, mode: 'edit' | 'remove') => void;
+}) {
   if (items.length === 0) return null;
   return (
     <div className="flex flex-col gap-2">
@@ -74,7 +127,7 @@ function Section({ title, items, tone }: { title: string; items: PaymentSchedule
         {title} · {items.length}
       </div>
       {items.map((item) => (
-        <Row key={item.id} item={item} />
+        <Row key={item.id} item={item} onManage={onManage} />
       ))}
     </div>
   );
@@ -83,10 +136,16 @@ function Section({ title, items, tone }: { title: string; items: PaymentSchedule
 interface PaymentScheduleListProps {
   schedule: PaymentSchedule;
   onAddCharge: () => void;
+  /** Correct or withdraw a hand-raised charge. Omitted where the caller cannot act. */
+  onManageCharge?: (item: PaymentScheduleItem, mode: 'edit' | 'remove') => void;
 }
 
-export function PaymentScheduleList({ schedule, onAddCharge }: PaymentScheduleListProps) {
-  const empty = schedule.overdue.length === 0 && schedule.upcoming.length === 0 && schedule.paid.length === 0;
+export function PaymentScheduleList({ schedule, onAddCharge, onManageCharge }: PaymentScheduleListProps) {
+  const empty =
+    schedule.overdue.length === 0 &&
+    schedule.upcoming.length === 0 &&
+    schedule.paid.length === 0 &&
+    schedule.cancelled.length === 0;
 
   return (
     <div className="rounded-[18px] border border-border bg-card p-4 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]">
@@ -107,9 +166,10 @@ export function PaymentScheduleList({ schedule, onAddCharge }: PaymentScheduleLi
         </p>
       ) : (
         <div className="flex flex-col gap-4 pt-2">
-          <Section title="Overdue" items={schedule.overdue} tone="text-destructive" />
-          <Section title="Upcoming" items={schedule.upcoming} tone="text-muted-foreground" />
+          <Section title="Overdue" items={schedule.overdue} tone="text-destructive" onManage={onManageCharge} />
+          <Section title="Upcoming" items={schedule.upcoming} tone="text-muted-foreground" onManage={onManageCharge} />
           <Section title="Paid" items={schedule.paid} tone="text-success" />
+          <Section title="Withdrawn" items={schedule.cancelled} tone="text-muted-foreground" />
         </div>
       )}
     </div>

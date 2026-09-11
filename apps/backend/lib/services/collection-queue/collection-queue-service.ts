@@ -30,6 +30,8 @@ import {
 export interface CollectionQueueRow {
   tenantId: string;
   tenantName: string;
+  /** So the queue shows a face, not initials — see shared/ui/TenantAvatar. */
+  tenantPhotoUrl: string | null;
   phone: string;
   hostelId: string;
   hostelName: string;
@@ -103,6 +105,7 @@ export class CollectionQueueService {
       select: {
         id: true,
         phone_1: true,
+        photo_url: true,
         hostel_id: true,
         profiles: { select: { name: true, phone: true } },
         hostels: { select: { name: true } },
@@ -221,6 +224,7 @@ export class CollectionQueueService {
       rows.push({
         tenantId: t.id,
         tenantName: t.profiles?.name || "Tenant",
+        tenantPhotoUrl: t.photo_url || null,
         phone: t.profiles?.phone || t.phone_1 || "",
         hostelId: t.hostel_id,
         hostelName: t.hostels?.name ?? "",

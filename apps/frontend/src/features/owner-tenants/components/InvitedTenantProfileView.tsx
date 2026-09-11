@@ -1,3 +1,4 @@
+import { TenantAvatar } from '@shared/ui/TenantAvatar';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -246,9 +247,13 @@ export function InvitedTenantProfileView({ tenant }: { tenant: RealTenantDetail 
       <div className="flex flex-col gap-3 px-4 sm:px-6">
         {/* ── Who ───────────────────────────────────────────────────────── */}
         <div className="flex items-center gap-3.5">
-          <span className="flex h-14 w-14 flex-none items-center justify-center rounded-2xl bg-gradient-to-br from-amber-600 to-amber-800 font-display text-lg font-extrabold text-white shadow-md">
-            {tenant.initials}
-          </span>
+          {tenant.photoUrl ? (
+            <TenantAvatar name={draft.name} initials={tenant.initials} photoUrl={tenant.photoUrl} className="h-14 w-14 text-lg shadow-md" />
+          ) : (
+            <span className="flex h-14 w-14 flex-none items-center justify-center rounded-2xl bg-gradient-to-br from-amber-600 to-amber-800 font-display text-lg font-extrabold text-white shadow-md">
+              {tenant.initials}
+            </span>
+          )}
           <div className="min-w-0 flex-1">
             <h1 className="truncate font-display text-[22px] font-extrabold leading-tight text-foreground">
               {draft.name}

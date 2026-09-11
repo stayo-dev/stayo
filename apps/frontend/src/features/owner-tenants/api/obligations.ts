@@ -23,4 +23,18 @@ export const obligationService = {
     const response = await api.post('/payments/obligations', input);
     return response.data?.data !== undefined ? response.data.data : response.data;
   },
+
+  /**
+   * Withdraw a charge. The obligation is never deleted — it is marked
+   * CANCELLED with the owner's reason, stays on the tenant's timeline, and
+   * counts toward nothing. Refused by the server once any payment exists
+   * against it (waive that instead).
+   */
+  cancel: async (obligationId: string, input: { reason: string; identityToken: string }) => {
+    const response = await api.post(`/payments/obligations/${obligationId}/cancel`, {
+      reason: input.reason,
+      identity_token: input.identityToken,
+    });
+    return response.data?.data !== undefined ? response.data.data : response.data;
+  },
 };

@@ -53,7 +53,11 @@ export class BillingTimelineService {
     const obligations = await prisma.rent_obligations.findMany({
       where: {
         tenant_id: tenantId,
-        status: { in: ["UPCOMING", "PENDING", "PARTIAL", "PAID", "OVERDUE", "WAIVED"] },
+        // CANCELLED is included deliberately: a charge the owner withdrew used to
+        // vanish from the tenant's timeline with no trace, which reads as the
+        // hostel quietly editing history. The tenant sees it struck out, with
+        // the owner's reason, and it counts toward nothing.
+        status: { in: ["UPCOMING", "PENDING", "PARTIAL", "PAID", "OVERDUE", "WAIVED", "CANCELLED"] },
         is_superseded: false,
       },
       include: { payments: true },
@@ -77,12 +81,16 @@ export class BillingTimelineService {
       const amount = money(ob.amount);
       const recordedPaid = money((ob.payments || []).reduce((s: number, p: any) => s + Number(p.amount_paid || 0), 0));
       const paid = ob.status === "PAID" && recordedPaid <= 0 ? amount : recordedPaid;
-      const remaining = money(Math.max(amount - paid, 0));
+      // A cancelled charge is owed by nobody. Its original amount is still shown
+      // (struck through) so the tenant can see what was withdrawn, but it must
+      // leave every total and bucket at zero.
+      const remaining = ob.status === "CANCELLED" ? 0 : money(Math.max(amount - paid, 0));
       const dueDate = new Date(ob.due_date);
       const delta = daysUntil(dueDate);
       
       let state = "pending";
-      if (ob.status === "WAIVED") state = "waived";
+      if (ob.status === "CANCELLED") state = "cancelled";
+      else if (ob.status === "WAIVED") state = "waived";
       else if (remaining <= 0 || ob.status === "PAID") state = "paid";
       else if (paid > 0 || ob.status === "PARTIAL") state = "partial";
       else if (delta < 0) state = "overdue";
@@ -181,6 +189,9 @@ export class BillingTimelineService {
           event_date: ob.due_date,
           status: ob.status,
           state,
+          // Present only on a withdrawn charge; the tenant is shown why.
+          cancelled_reason: ob.cancelled_reason ?? null,
+          cancelled_at: ob.cancelled_at ?? null,
           payment_method: null,
           reference_number: null,
         });

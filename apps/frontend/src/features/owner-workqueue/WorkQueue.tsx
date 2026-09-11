@@ -1,3 +1,4 @@
+import { TenantAvatar } from '@shared/ui/TenantAvatar';
 import { useCallback, useMemo, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, Check, Info } from 'lucide-react';
@@ -53,6 +54,11 @@ export interface WorkQueueItem {
   id: string;
   title: string;
   subtitle: string;
+  /**
+   * The person this row is about. Owners recognise a face before a name, and a
+   * queue is read at a glance — see shared/ui/TenantAvatar.
+   */
+  avatar?: { name: string; initials: string; photoUrl?: string | null };
   /** Large emphasised value, e.g. an amount or a bed count. */
   headline?: string;
   headlineTone?: 'default' | 'destructive' | 'success' | 'warning';
@@ -147,6 +153,15 @@ function WorkQueueCard({
         <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-secondary font-display text-[12px] font-bold text-primary">
           {position}
         </span>
+        {item.avatar && (
+          <TenantAvatar
+            name={item.avatar.name}
+            initials={item.avatar.initials}
+            photoUrl={item.avatar.photoUrl}
+            shape="circle"
+            className="h-9 w-9 text-[12px]"
+          />
+        )}
 
         <div className="min-w-0 flex-1">
           <div className="truncate font-display text-[15px] font-bold text-foreground">{item.title}</div>
@@ -325,9 +340,20 @@ function WorkQueueDetail({
         Back to queue
       </button>
 
-      <div>
-        <h2 className="font-display text-[20px] font-extrabold leading-tight text-foreground">{item.title}</h2>
-        <p className="mt-0.5 text-[13px] text-muted-foreground">{item.subtitle}</p>
+      <div className="flex items-center gap-3">
+        {item.avatar && (
+          <TenantAvatar
+            name={item.avatar.name}
+            initials={item.avatar.initials}
+            photoUrl={item.avatar.photoUrl}
+            shape="circle"
+            className="h-12 w-12 text-[15px]"
+          />
+        )}
+        <div className="min-w-0">
+          <h2 className="font-display text-[20px] font-extrabold leading-tight text-foreground">{item.title}</h2>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">{item.subtitle}</p>
+        </div>
       </div>
 
       {(item.headline || item.urgency) && (

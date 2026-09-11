@@ -95,6 +95,8 @@ export interface QuickCollectTenant {
   id: string;
   name: string;
   initials: string;
+  /** Falls back to initials when absent — see shared/ui/TenantAvatar. */
+  photoUrl?: string | null;
   phone: string;
   hostelId: string;
   hostelName: string;

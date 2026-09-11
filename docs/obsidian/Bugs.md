@@ -8,6 +8,20 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-11 — A tenant's photo was held and never shown, and a withdrawn charge vanished (fixed)
+
+**Symptom.** Tenants appeared as initials across the owner app — the tenants list, the collection queue, Quick Collect — including tenants whose photo was sitting in `tenants.photo_url`. Separately, an owner who added a charge by mistake had no way to correct or remove it.
+
+**Root cause — three different ones, same shape.** (1) `TenantRow` hid the photo whenever `status === 'invited'`, on the assumption that an invited tenant has none; a tenant who has finished onboarding has uploaded one, so the assumption outlived its truth. (2) `/api/owner/collection-queue` selected explicit columns and `photo_url` was not among them, so it was `undefined` rather than missing — the failure mode `CLAUDE.md` warns about for Prisma `select`. `/api/payments/quick-collect/search` simply never returned it. (3) Nothing rendered `TenantAvatar` except two screens; every other surface hand-rolled initials.
+
+**Root cause — the vanishing charge.** `billingTimelineService` filtered obligations to `["UPCOMING","PENDING","PARTIAL","PAID","OVERDUE","WAIVED"]`. A cancelled charge therefore disappeared from the tenant's timeline entirely — indistinguishable from one that never existed, which is exactly the wrong property for money.
+
+**Fix.** The avatar is used on every tenant surface and the two endpoints return the photo. Cancelled obligations are included in the timeline with `state: "cancelled"`, `remaining: 0` and the owner's reason, rendered struck through on both sides; the owner gets *Correct* / *Withdraw* on hand-raised charges ([[Decisions#ADR-186|ADR-186]]). `paymentSchedule.ts` gained a `cancelled` bucket so a withdrawn charge can never be counted as owed or offered as the next payment — it previously fell through to `pending` and would have shown as overdue.
+
+**Also found, not a bug.** The reported "partial payments setting isn't applied" could not be reproduced from the data: the hostel in question stores `partial_payments.enabled: false`, consistently in both the nested and legacy copies, while a same-named hostel on a different account has it enabled. What *was* wrong is that the Record Payment modal never showed or enforced the rule, so the refusal arrived as a raw `BAD_REQUEST` from the server; it now states the policy up front.
+
+**See:** [[Features]], [[APIs]], [[Business-Rules]], [[Changelog]]
+
 ## 2026-09-11 — Onboarding photo and KYC uploads were slow and failed with a 400 (fixed)
 
 **Symptom.** During tenant onboarding, the profile photo, Aadhaar and College ID uploads spun for a long time and then failed with an error mentioning **400**. A normal camera photo could not be used as a profile photo at all.

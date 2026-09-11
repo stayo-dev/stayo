@@ -33,6 +33,8 @@ import { useDocumentShares } from '../hooks/useDocumentShares';
 import { AmendAgreementSheet } from '../profile/AmendAgreementSheet';
 import { PendingChangeCard } from '../profile/PendingChangeCard';
 import { CreateChargeSheet } from '../profile/CreateChargeSheet';
+import { ManageChargeSheet } from '../profile/ManageChargeSheet';
+import type { PaymentScheduleItem } from '../profile/paymentSchedule';
 import { ChangeRentModal } from '../actions/ChangeRentModal';
 import { MoveOutSheet } from '../actions/MoveOutSheet';
 import { QuickCollectModal } from '../quick-collect/QuickCollectModal';
@@ -66,6 +68,7 @@ export function TenantDetailPage() {
   const [changeRentOpen, setChangeRentOpen] = useState(false);
   const [moveOutOpen, setMoveOutOpen] = useState(false);
   const [createChargeOpen, setCreateChargeOpen] = useState(false);
+  const [manageCharge, setManageCharge] = useState<{ item: PaymentScheduleItem; mode: 'edit' | 'remove' } | null>(null);
   const [changeBillingOpen, setChangeBillingOpen] = useState(false);
   const [amendAgreementOpen, setAmendAgreementOpen] = useState(false);
   const [changeRoomOpen, setChangeRoomOpen] = useState(false);
@@ -332,6 +335,7 @@ export function TenantDetailPage() {
             <PaymentScheduleList
               schedule={tenant.paymentSchedule}
               onAddCharge={() => setCreateChargeOpen(true)}
+              onManageCharge={(item, mode) => setManageCharge({ item, mode })}
             />
           )}
 
@@ -557,6 +561,14 @@ export function TenantDetailPage() {
         hostelId={tenant.hostelId}
         tenantName={tenant.name}
         roomNo={tenant.room}
+      />
+      <ManageChargeSheet
+        open={manageCharge !== null}
+        mode={manageCharge?.mode ?? 'remove'}
+        charge={manageCharge?.item ?? null}
+        tenantId={tenant.id}
+        hostelId={tenant.hostelId}
+        onClose={() => setManageCharge(null)}
       />
       <CreateChargeSheet
         open={createChargeOpen}

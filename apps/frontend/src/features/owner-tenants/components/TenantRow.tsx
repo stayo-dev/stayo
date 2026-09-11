@@ -2,6 +2,7 @@ import { StatusPill, type StatusTone } from '@shared/ui-patterns/StatusPill';
 import type { MockTenant } from '@shared/mocks/tenants';
 import { TenantAvatar } from '@shared/ui/TenantAvatar';
 import { acceptanceBadge } from '../accessMode';
+import { TenantQuickActions } from './TenantQuickActions';
 
 const TONE_BY_STATUS: Record<MockTenant['status'], StatusTone> = {
   active: 'success',
@@ -30,14 +31,27 @@ export function TenantRow({ tenant, onClick, showHostel, active }: TenantRowProp
   const accessLabel = acceptanceBadge(tenant);
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex w-full items-center gap-3 rounded-[18px] border ${active ? 'border-primary ring-1 ring-primary/50' : 'border-border'} bg-card p-3.5 text-left shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]`}
+    /* The card holds the row *and* the contact strip, so the strip's buttons
+       are siblings of the open-tenant button rather than nested inside it. */
+    <div
+      className={`overflow-hidden rounded-[18px] border ${active ? 'border-primary ring-1 ring-primary/50' : 'border-border'} bg-card shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]`}
     >
-      {/* An invited tenant has no photo yet, and the dashed ring is what marks
-          them as not-yet-arrived — so that treatment stays. */}
-      {tenant.status === 'invited' || !tenant.photoUrl ? (
+    <button type="button" onClick={onClick} className="flex w-full items-center gap-3 p-3.5 text-left">
+      {/*
+       * The dashed ring marks someone not-yet-arrived, and it stays — but it is
+       * a ring around the photo, not a reason to hide one. An invited tenant
+       * who has finished onboarding has already uploaded their face; showing
+       * initials there threw away a photo we hold.
+       */}
+      {tenant.photoUrl ? (
+        <TenantAvatar
+          name={tenant.name}
+          initials={tenant.initials}
+          photoUrl={tenant.photoUrl}
+          shape="circle"
+          className={`h-10 w-10 text-[13px] ${tenant.status === 'invited' ? 'border-[1.5px] border-dashed border-[#D9A891]' : ''}`}
+        />
+      ) : (
         <span
           className={`flex h-10 w-10 flex-none items-center justify-center rounded-full font-display text-[13px] font-bold ${
             tenant.status === 'invited' ? 'border-[1.5px] border-dashed border-[#D9A891] bg-[#F5E9E3] text-primary' : 'bg-secondary text-primary'
@@ -45,14 +59,6 @@ export function TenantRow({ tenant, onClick, showHostel, active }: TenantRowProp
         >
           {tenant.initials}
         </span>
-      ) : (
-        <TenantAvatar
-          name={tenant.name}
-          initials={tenant.initials}
-          photoUrl={tenant.photoUrl}
-          shape="circle"
-          className="h-10 w-10 text-[13px]"
-        />
       )}
       <div className="min-w-0 flex-1">
         {showHostel && (
@@ -80,5 +86,7 @@ export function TenantRow({ tenant, onClick, showHostel, active }: TenantRowProp
         )}
       </div>
     </button>
+    <TenantQuickActions tenantId={tenant.id} name={tenant.name} phone={tenant.phone} outstanding={tenant.outstanding} />
+    </div>
   );
 }

@@ -15,7 +15,9 @@ export type PaymentScheduleState =
   | 'due_soon'
   | 'upcoming'
   | 'pending'
-  | 'waived';
+  | 'waived'
+  /** Withdrawn by the owner. Kept visible, owed by nobody. */
+  | 'cancelled';
 
 export interface PaymentScheduleItem {
   id: string;
@@ -34,6 +36,8 @@ export interface PaymentScheduleItem {
   method: string | null;
   referenceNumber: string | null;
   state: PaymentScheduleState;
+  /** Why the owner withdrew this charge. Only set when `state` is 'cancelled'. */
+  cancelledReason: string | null;
 }
 
 export interface NextScheduledPayment {
@@ -48,6 +52,12 @@ export interface PaymentSchedule {
   overdue: PaymentScheduleItem[];
   upcoming: PaymentScheduleItem[];
   paid: PaymentScheduleItem[];
+  /**
+   * Charges the owner withdrew. Shown rather than deleted: a charge that
+   * silently disappears is indistinguishable from one that was never there,
+   * and the tenant has no way to see what changed.
+   */
+  cancelled: PaymentScheduleItem[];
   next: NextScheduledPayment | null;
 }
 
@@ -104,7 +114,7 @@ export function toScheduleItem(raw: Record<string, any>): PaymentScheduleItem | 
   const outstanding = Number(raw.remaining ?? raw.remaining_amount ?? Math.max(amount - paid, 0));
   const rawState = String(raw.state ?? '').toLowerCase();
   const state: PaymentScheduleState = ([
-    'paid', 'partial', 'overdue', 'due_soon', 'upcoming', 'pending', 'waived',
+    'paid', 'partial', 'overdue', 'due_soon', 'upcoming', 'pending', 'waived', 'cancelled',
   ] as PaymentScheduleState[]).includes(rawState as PaymentScheduleState)
     ? (rawState as PaymentScheduleState)
     : 'pending';
@@ -124,6 +134,7 @@ export function toScheduleItem(raw: Record<string, any>): PaymentScheduleItem | 
     method: raw.payment_method ? String(raw.payment_method) : null,
     referenceNumber: raw.reference_number ? String(raw.reference_number) : null,
     state,
+    cancelledReason: raw.cancelled_reason ? String(raw.cancelled_reason) : null,
   };
 }
 
@@ -145,8 +156,15 @@ export function groupPaymentSchedule(
   const overdue: PaymentScheduleItem[] = [];
   const upcoming: PaymentScheduleItem[] = [];
   const paid: PaymentScheduleItem[] = [];
+  const cancelled: PaymentScheduleItem[] = [];
 
   for (const item of items) {
+    // Checked before anything else: a withdrawn charge is owed by nobody, no
+    // matter how overdue its original date now looks.
+    if (item.state === 'cancelled') {
+      cancelled.push(item);
+      continue;
+    }
     if (SETTLED_STATES.includes(item.state)) {
       paid.push(item);
       continue;
@@ -165,6 +183,7 @@ export function groupPaymentSchedule(
   const byDueDesc = (a: PaymentScheduleItem, b: PaymentScheduleItem) =>
     (dayKey(b.paidDate ?? b.dueDate) ?? -Infinity) - (dayKey(a.paidDate ?? a.dueDate) ?? -Infinity);
 
+  cancelled.sort(byDueDesc);
   overdue.sort(byDueAsc);
   upcoming.sort(byDueAsc);
   paid.sort(byDueDesc);
@@ -194,7 +213,7 @@ export function groupPaymentSchedule(
     };
   }
 
-  return { overdue, upcoming, paid, next };
+  return { overdue, upcoming, paid, cancelled, next };
 }
 
 export interface NextPaymentLabel {

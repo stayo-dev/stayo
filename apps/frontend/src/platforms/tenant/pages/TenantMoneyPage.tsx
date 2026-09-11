@@ -23,6 +23,7 @@ const TIMELINE_DOT: Record<string, string> = {
   upcoming: 'bg-muted-foreground/25',
   waived: 'bg-muted-foreground/40',
   partial: 'bg-warning',
+  cancelled: 'bg-muted-foreground/40',
 };
 
 const fmt = (n: number) => `₹${Number(n ?? 0).toLocaleString('en-IN')}`;
@@ -196,14 +197,24 @@ export function TenantMoneyPage() {
               <span className={`mt-1.5 h-2 w-2 flex-none rounded-full ${TIMELINE_DOT[t.state] ?? 'bg-muted-foreground/30'}`} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-display text-[13.5px] font-bold text-foreground">{t.label}</span>
-                  <span className="tabular-nums font-display text-[13px] font-bold text-foreground">
+                  <span className={`font-display text-[13.5px] font-bold ${t.state === 'cancelled' ? 'text-muted-foreground' : 'text-foreground'}`}>{t.label}</span>
+                  {/* A withdrawn charge keeps its amount, struck through: the tenant
+                      can see what was asked for and that it no longer stands. */}
+                  <span
+                    className={`tabular-nums font-display text-[13px] font-bold ${
+                      t.state === 'cancelled' ? 'text-muted-foreground line-through' : 'text-foreground'
+                    }`}
+                  >
                     ₹{Number(t.amount).toLocaleString('en-IN')}
                   </span>
                 </div>
                 <div className="mt-0.5 text-[11px] font-medium text-muted-foreground">
-                  {new Date(t.event_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · {t.state.replace('_', ' ')}
+                  {new Date(t.event_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} ·{' '}
+                  {t.state === 'cancelled' ? 'withdrawn by your hostel' : t.state.replace('_', ' ')}
                 </div>
+                {t.state === 'cancelled' && t.cancelled_reason && (
+                  <div className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">{t.cancelled_reason}</div>
+                )}
               </div>
             </div>
           ))

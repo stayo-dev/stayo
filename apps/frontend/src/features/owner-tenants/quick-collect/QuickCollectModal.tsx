@@ -12,6 +12,7 @@ import { queryKeys } from '@lib/queryKeys';
 import type { QuickCollectStep, QuickCollectTenant } from '../types';
 import { useNavigate } from 'react-router-dom';
 import { useHostelPolicy } from '@features/settings/settingsHooks';
+import { TenantAvatar } from '@shared/ui/TenantAvatar';
 import {
   readPartialPolicy,
   policyHeadline,
@@ -33,6 +34,7 @@ interface QuickCollectModalProps {
 interface QuickCollectSearchResult {
   id: string;
   name: string;
+  photo_url?: string | null;
   phone: string;
   hostel_id: string;
   hostel_name: string;
@@ -75,6 +77,7 @@ function toQuickCollectTenant(r: QuickCollectSearchResult): QuickCollectTenant {
     id: r.id,
     name: r.name,
     initials: getInitials(r.name),
+    photoUrl: r.photo_url ?? null,
     phone: r.phone,
     hostelId: r.hostel_id,
     hostelName: r.hostel_name,
@@ -365,9 +368,7 @@ export function QuickCollectModal({ open, onClose, initialTenant }: QuickCollect
                     onClick={() => selectTenant(t)}
                     className="flex items-start gap-2.5 rounded-2xl border border-border bg-card p-3 text-left"
                   >
-                    <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-secondary font-display text-xs font-bold text-primary">
-                      {t.initials}
-                    </span>
+                    <TenantAvatar name={t.name} initials={t.initials} photoUrl={t.photoUrl} shape="circle" className="h-9 w-9 text-xs" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
                         <span className="font-display text-sm font-bold text-foreground">{t.name}</span>
@@ -422,9 +423,7 @@ export function QuickCollectModal({ open, onClose, initialTenant }: QuickCollect
           <div className="rounded-2xl border border-border bg-card p-4">
             <div className="flex items-start justify-between">
               <div className="flex gap-2.5">
-                <span className="flex h-9.5 w-9.5 flex-none items-center justify-center rounded-[11px] bg-secondary font-display text-xs font-bold text-primary">
-                  {selectedTenant.initials}
-                </span>
+                <TenantAvatar name={selectedTenant.name} initials={selectedTenant.initials} photoUrl={selectedTenant.photoUrl} className="h-9.5 w-9.5 text-xs" />
                 <div>
                   <div className="font-display text-[15px] font-bold text-foreground">{selectedTenant.name}</div>
                   <div className="text-[11.5px] text-muted-foreground">{selectedTenant.phone}</div>

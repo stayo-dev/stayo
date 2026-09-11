@@ -207,6 +207,17 @@ Four changes to the owner's 4-step Invite Tenant wizard (Tenant → Stay → Mon
 
 See [[Decisions#ADR-163|ADR-163]], [[Business-Rules]], [[APIs]].
 
+### Owner-side: faces, reach, and correcting a charge (2026-09-11)
+
+Three gaps reported together, all of them the product holding information it never showed.
+
+- **A tenant's face, wherever they appear.** `TenantAvatar` existed but was wired into two screens. It now covers the tenants list (including an *invited* tenant who has finished onboarding — their photo was being thrown away for a dashed-ring placeholder), the collection queue, Quick Collect's search and selected tenant, and the invited-tenant profile. Two endpoints were not returning the photo at all: `/api/owner/collection-queue` (its `select` omitted the column) and `/api/payments/quick-collect/search`.
+- **Contact and remind, from the list.** Each tenant card carries Call, WhatsApp and Remind — the owner's own nudge alongside the automatic reminders, without opening the tenant and hunting for a number. Shown only where it applies: no number, no call; nothing owed, no reminder. One shared `useSendReminder` hook now backs both this and the existing full-width reminder bar.
+- **The part-payment rule, where the money is taken.** Quick Collect had shown "Part payments allowed / Full payment only" for a while; the Record Payment modal showed nothing and validated nothing, so an owner typed a smaller amount and met a raw `BAD_REQUEST` several taps later. It now states the rule before the amount is typed and refuses in the owner's own words, using the same `blockedExplanation` copy.
+- **Correct or withdraw a charge** ([[Decisions#ADR-186|ADR-186]]). Hand-raised charges (not rent, not deposit, nothing paid against them) get *Correct* and *Withdraw* on the tenant's Payments tab, both asking for a reason and the owner's password. Withdrawn charges appear in their own section, struck through with the reason — and on the tenant's own timeline the same way, rather than disappearing.
+- **Key files:** Frontend — `shared/ui/TenantAvatar.tsx` (existing, now used widely), `features/owner-tenants/components/TenantQuickActions.tsx` (new), `features/notifications/useSendReminder.ts` (new), `features/owner-tenants/profile/ManageChargeSheet.tsx` (new), `profile/paymentSchedule.ts` (+`cancelled` bucket, tested), `profile/PaymentScheduleList.tsx`, `app/components/modals/RecordPaymentModal.tsx`, `features/owner-workqueue/WorkQueue.tsx` (optional `avatar`), `platforms/tenant/pages/TenantMoneyPage.tsx`. Backend — `lib/services/billing-timeline-service.ts`, `lib/services/collection-queue/collection-queue-service.ts`, `app/api/payments/quick-collect/search/route.ts`.
+- **Depends on:** [[APIs]], [[Business-Rules]], [[Bugs]].
+
 ### Tenant onboarding — guidance to whatever is missing (2026-09-11)
 
 Nothing in the wizard refuses silently any more. Built for the volume ahead: every one of these was otherwise a support call.

@@ -135,3 +135,37 @@ describe('groupPaymentSchedule — multi-month period labels', () => {
     expect(schedule.next?.billingPeriodLabel).toBe('Oct–Dec 2026');
   });
 });
+
+describe('a charge the owner withdrew', () => {
+  const cancelled = {
+    obligation_id: 'ob-cancelled',
+    obligation_type: 'UTILITY',
+    label: 'Water charge',
+    amount: 500,
+    paid: 0,
+    remaining: 0,
+    due_date: '2026-09-11T00:00:00.000Z',
+    state: 'cancelled',
+    status: 'CANCELLED',
+    cancelled_reason: 'Added to the wrong tenant',
+  };
+
+  it('is kept, not dropped — the tenant and owner both see it was withdrawn', () => {
+    const schedule = groupPaymentSchedule([cancelled], new Date('2026-09-20T00:00:00.000Z'));
+    expect(schedule.cancelled.map((i) => i.id)).toEqual(['ob-cancelled']);
+    expect(schedule.cancelled[0].cancelledReason).toBe('Added to the wrong tenant');
+  });
+
+  it('never counts as owed, however long ago it was due', () => {
+    const schedule = groupPaymentSchedule([cancelled], new Date('2026-12-01T00:00:00.000Z'));
+    expect(schedule.overdue).toEqual([]);
+    expect(schedule.upcoming).toEqual([]);
+    expect(schedule.paid).toEqual([]);
+    expect(schedule.cancelled[0].outstanding).toBe(0);
+  });
+
+  it('is not offered as the next scheduled payment', () => {
+    const schedule = groupPaymentSchedule([cancelled], new Date('2026-09-01T00:00:00.000Z'));
+    expect(schedule.next).toBeNull();
+  });
+});

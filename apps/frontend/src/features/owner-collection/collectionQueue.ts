@@ -17,6 +17,8 @@ export interface PriorityFactor {
 export interface CollectionQueueRow {
   tenantId: string;
   tenantName: string;
+  /** Null when the tenant has not uploaded one; the row falls back to initials. */
+  tenantPhotoUrl?: string | null;
   phone: string;
   hostelId: string;
   hostelName: string;
