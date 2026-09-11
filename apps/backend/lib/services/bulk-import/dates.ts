@@ -10,7 +10,7 @@
 export function parseImportDate(dateStr: string): Date | null {
   if (!dateStr) return null;
 
-  const trimmed = String(dateStr).trim();
+  const trimmed = normalizeDateText(dateStr);
 
   // Excel numeric date serial (a date cell read with `raw: true`).
   const numericDate = Number(trimmed);
@@ -68,6 +68,32 @@ export function parseImportDate(dateStr: string): Date | null {
   // back-rent, which becomes wrong money. Only the explicit formats above
   // and the Excel serial branch are trusted.
   return null;
+}
+
+/**
+ * Strips the characters a date picks up on its way through a spreadsheet,
+ * a web page and a clipboard.
+ *
+ * All of these render as an ordinary date — a zero-width space, a
+ * left-to-right mark, an en dash where a hyphen belongs, fullwidth digits
+ * from an IME, a non-breaking space. An owner looking at the cell sees
+ * `2026-09-11` and we told them it "isn't a full date", which is an error
+ * with no visible cause and therefore no fix. Normalising costs nothing and
+ * changes no date's meaning: every substitution below maps a character to the
+ * one it is already pretending to be.
+ */
+function normalizeDateText(value: string): string {
+  return String(value)
+    // Zero-width and directional marks — invisible, and fatal to a regex.
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, "")
+    // Any dash that is not the ASCII hyphen.
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    // Fullwidth digits, as an IME or a pasted Asian-locale cell produces.
+    .replace(/[\uFF10-\uFF19]/g, (d) => String(d.charCodeAt(0) - 0xff10))
+    .replace(/\uFF0F/g, "/")
+    // Every flavour of space, including the non-breaking one.
+    .replace(/[\s\u00A0]+/g, " ")
+    .trim();
 }
 
 /** Storage form, `YYYY-MM-DD`. Not for display — owners see DD/MM/YYYY. */

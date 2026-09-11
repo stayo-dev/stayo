@@ -64,3 +64,75 @@ export function completedStages(state: ImportState): Stage[] {
 export function canGoBack(state: ImportState): boolean {
   return !state.imported;
 }
+
+/** 1-based, for "Step 3 of 6" — owners do not count from zero. */
+export function stepNumber(stage: Stage): number {
+  return STAGES.indexOf(stage) + 1;
+}
+
+export interface Navigation {
+  /** The step on screen. */
+  current: Stage;
+  /** The furthest the owner's real progress has taken them. */
+  furthest: Stage;
+  /** Steps they may jump straight to. */
+  reachable: Stage[];
+  back: Stage | null;
+  forward: Stage | null;
+  /**
+   * True when the flow has stopped being a sequence the owner drives — the
+   * import is running or has run. Nothing is navigable then.
+   */
+  locked: boolean;
+}
+
+/**
+ * Where the owner is, where they may go, and how they get there.
+ *
+ * Two different questions were being answered by one value. `stageFor` says
+ * what their *progress* is; this adds what they are currently *looking at*,
+ * which are not the same thing the moment they step back to re-read something.
+ * Keeping the two apart is what lets Back be a genuine move rather than a
+ * reset — the old Back threw the batch away to return to Upload, so a glance
+ * at the previous step cost the owner their whole upload.
+ *
+ * Going back is free because none of the first four steps change anything:
+ * the workbook, the upload and the review all happen before a single tenant
+ * exists. Once Import has started that stops being true, so navigation locks —
+ * a second pass over Upload would create everyone twice.
+ */
+export function navigationFor(state: ImportState, viewing: Stage | null): Navigation {
+  const furthest = stageFor(state);
+  const furthestIndex = STAGES.indexOf(furthest);
+  const locked = state.importing || state.imported;
+
+  // A stage the owner has not reached yet is not somewhere they can be, and
+  // neither is anywhere but the live one once tenants are being created.
+  const reachable = locked ? [furthest] : STAGES.slice(0, furthestIndex + 1);
+
+  const current = viewing && reachable.includes(viewing) ? viewing : furthest;
+  const currentIndex = STAGES.indexOf(current);
+
+  return {
+    current,
+    furthest,
+    reachable,
+    back: currentIndex > 0 && reachable.includes(STAGES[currentIndex - 1])
+      ? STAGES[currentIndex - 1]
+      : null,
+    forward: currentIndex < furthestIndex ? STAGES[currentIndex + 1] : null,
+    locked,
+  };
+}
+
+/**
+ * Whether stepping back to the hostel picker and choosing differently has to
+ * throw the work away.
+ *
+ * It does, and only then: a batch is validated against one hostel's rooms, so
+ * carrying it to another would import tenants into rooms that are not theirs.
+ * Re-picking the same hostel must cost nothing, or Back becomes a trap again.
+ */
+export function hostelChangeDiscardsBatch(state: ImportState, nextHostelId: string | null): boolean {
+  return Boolean(state.batchId) && nextHostelId !== state.hostelId;
+}

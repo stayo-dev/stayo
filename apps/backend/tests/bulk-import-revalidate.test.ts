@@ -125,3 +125,119 @@ describe("what an edit must not destroy", () => {
   });
 });
 
+
+describe("the rooms the sheet is about to add", () => {
+  const withPlan = (create: any[]) =>
+    mockPrisma.bulk_import_batches.findFirst.mockResolvedValue({
+      id: BATCH_ID,
+      validation_errors: {
+        room_plan: { create, update: [{ id: "r1" }], unchanged: ["101"], issues: [] },
+      },
+    });
+
+  /**
+   * The bug this pins: upload accepted a tenant in room 401 because the same
+   * workbook's Rooms sheet creates it, then the very next re-check called that
+   * room unknown — the owner saw "Room 401 not found" beside "your sheet also
+   * adds 1 room" and had no move that would satisfy both.
+   */
+  it("is known to the re-check, not just the upload", async () => {
+    withPlan([{ room_no: "401", capacity: 3, base_rent: 6500 }]);
+
+    await POST(request({ rows: [ROW], hostel_id: HOSTEL_ID, batch_id: BATCH_ID }));
+
+    const pending = mockValidation.bulkImportValidationService.validateRows.mock.calls[0][4];
+    expect(pending).toEqual([{ room_no: "401", capacity: 3, base_rent: 6500 }]);
+  });
+
+  it("survives a plan written without capacity or rent", async () => {
+    withPlan([{ room_no: "402" }]);
+
+    await POST(request({ rows: [ROW], hostel_id: HOSTEL_ID, batch_id: BATCH_ID }));
+
+    expect(mockValidation.bulkImportValidationService.validateRows.mock.calls[0][4]).toEqual([
+      { room_no: "402", capacity: undefined, base_rent: undefined },
+    ]);
+  });
+
+  it("does not throw on a batch stored before room plans existed", async () => {
+    mockPrisma.bulk_import_batches.findFirst.mockResolvedValue({
+      id: BATCH_ID,
+      validation_errors: { valid_rows: [] },
+    });
+
+    const res = await POST(request({ rows: [ROW], hostel_id: HOSTEL_ID, batch_id: BATCH_ID }));
+
+    expect(res.status).toBe(200);
+    expect(mockValidation.bulkImportValidationService.validateRows.mock.calls[0][4]).toEqual([]);
+  });
+
+  it("reports the plan back, so the review screen keeps saying rooms are coming", async () => {
+    withPlan([{ room_no: "401", capacity: 3 }]);
+
+    const res = await POST(request({ rows: [ROW], hostel_id: HOSTEL_ID, batch_id: BATCH_ID }));
+    const body = await res.json();
+
+    expect(body.data.rooms).toEqual({ to_create: 1, to_update: 1, unchanged: 1, issues: [] });
+  });
+
+  it("omits rooms entirely when there is no plan, rather than reporting zero", async () => {
+    // The client merges this over the upload's result. A zeroed `rooms` would
+    // erase a banner that is still true.
+    const res = await POST(request({ rows: [ROW], hostel_id: HOSTEL_ID }));
+    const body = await res.json();
+
+    expect(body.data).not.toHaveProperty("rooms");
+  });
+});
+
+describe("the owner's import defaults", () => {
+  const withDefaults = (defaults: any) =>
+    mockPrisma.bulk_import_batches.findFirst.mockResolvedValue({
+      id: BATCH_ID,
+      validation_errors: { defaults },
+    });
+
+  /**
+   * Defaults are collected once, at upload. The client does not resend them,
+   * so falling back to `{}` made the default joining date today — quietly
+   * changing how many months of back-rent every row generates, because the
+   * owner corrected a phone number.
+   */
+  it("survive an edit, rather than resetting the joining date to today", async () => {
+    withDefaults({ joining_date: "2026-01-01", monthly_rent: 6500 });
+
+    await POST(request({ rows: [ROW], hostel_id: HOSTEL_ID, batch_id: BATCH_ID }));
+
+    expect(mockValidation.bulkImportValidationService.validateRows.mock.calls[0][3]).toEqual({
+      joining_date: "2026-01-01",
+      monthly_rent: 6500,
+    });
+  });
+
+  it("yield to defaults the client does send", async () => {
+    withDefaults({ joining_date: "2026-01-01" });
+
+    await POST(
+      request({
+        rows: [ROW],
+        hostel_id: HOSTEL_ID,
+        batch_id: BATCH_ID,
+        import_defaults: { joining_date: "2026-02-01" },
+      })
+    );
+
+    expect(mockValidation.bulkImportValidationService.validateRows.mock.calls[0][3]).toEqual({
+      joining_date: "2026-02-01",
+    });
+  });
+
+  it("are written back, so the next edit still has them", async () => {
+    withDefaults({ joining_date: "2026-01-01" });
+
+    await POST(request({ rows: [ROW], hostel_id: HOSTEL_ID, batch_id: BATCH_ID }));
+
+    const written = mockPrisma.__tx.bulk_import_batches.update.mock.calls[0][0].data;
+    expect(written.validation_errors.defaults).toEqual({ joining_date: "2026-01-01" });
+  });
+});

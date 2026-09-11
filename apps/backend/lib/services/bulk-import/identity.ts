@@ -20,12 +20,27 @@ export function isValidImportEmail(email: string): boolean {
 
 /**
  * A cell that would execute as a formula when the file is reopened in a
- * spreadsheet — `=`, `+`, `-` or `@` first. Rejected rather than stored, so a
- * value we later export cannot become a formula-injection vector.
+ * spreadsheet. Rejected rather than stored, so a value we later export cannot
+ * become a formula-injection vector.
+ *
+ * The leading character alone is not enough to decide. `+91 80080 46952` is
+ * how a great many people write an Indian mobile number, and flagging it told
+ * owners their phone cell "contains a formula" — an error with no possible
+ * fix, since the number was right. A formula needs something to act on: a
+ * cell reference, a function name, an operator. Digits, spaces, brackets and
+ * dashes after the sign are just a phone number.
  */
 export function isSpreadsheetFormula(value: unknown): boolean {
   const text = String(value || "").trim();
-  return /^[=+\-@]/.test(text);
+  if (!text) return false;
+
+  // `=` always starts a formula, whatever follows.
+  if (text.startsWith("=")) return true;
+
+  if (!/^[+\-@]/.test(text)) return false;
+
+  // `+`, `-` or `@` followed by nothing but number punctuation is a number.
+  return !/^[+\-@][\d\s()\-]*$/.test(text);
 }
 
 /**
