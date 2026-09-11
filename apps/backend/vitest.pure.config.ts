@@ -181,6 +181,7 @@ export default defineConfig({
       'tests/bulk-import-chunked-confirm.test.ts',
       'tests/bulk-import-hardening.test.ts',
       'tests/bulk-import-revalidate.test.ts',
+      'tests/bulk-import-deposit-flag.test.ts',
       'tests/build-without-env.test.ts',
     ],
     alias: {

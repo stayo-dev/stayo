@@ -282,6 +282,7 @@ async function planRoomsFromWorkbook(fileBuffer: Buffer, hostelId: string) {
       room_no: true,
       capacity: true,
       base_rent: true,
+      room_type: true,
       is_active: true,
       floor: true,
       _count: {
@@ -300,6 +301,7 @@ async function planRoomsFromWorkbook(fileBuffer: Buffer, hostelId: string) {
       room_no: room.room_no,
       capacity: room.capacity,
       base_rent: room.base_rent,
+      room_type: room.room_type,
       is_active: room.is_active,
       floor: room.floor,
       occupied_count: room._count?.room_allocations ?? 0,

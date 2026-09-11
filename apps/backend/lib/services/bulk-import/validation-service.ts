@@ -4,6 +4,8 @@ import { buildIssue, type RowIssue } from "./issues";
 import { formatImportDate, monthsBetween, parseImportDate } from "./dates";
 import { indianPhoneKey, isSpreadsheetFormula, isValidImportEmail, normalizeImportPhone } from "./identity";
 import { nearestRoomNumbers } from "./room-resolution";
+import { planRowFinancials } from "./financial-plan";
+import { resolvePreferences } from "@/lib/preferences";
 import { parseTenantWorkbook } from "./workbook-parser";
 import type {
   ImportDefaults,
@@ -12,6 +14,14 @@ import type {
   ValidationError,
   ValidationResult,
 } from "./types";
+
+/**
+ * A tenancy that still occupies a bed. `INVITED` and `ACTIVE` both do —
+ * under ADR-165 a tenancy is live from invite, before the tenant accepts.
+ * `FORMER_TENANT`, `EXPIRED` and `CANCELLED` do not, so those people can be
+ * imported again.
+ */
+const LIVE_TENANCY_STATUSES = ["INVITED", "ACTIVE"] as const;
 
 /** Mirrors RENT_BACKFILL_CAP_MONTHS in onboarding-financials-service. */
 const RENT_BACKFILL_CAP_MONTHS = 24;
@@ -41,6 +51,14 @@ function numberChecks(row: TenantImportRow): NumberProblem[] {
       problems.push({ field: "monthly_rent", label: "monthly rent", value: row.monthly_rent, message: "Monthly rent is not a number", hint: money });
     } else if (row.monthly_rent <= 0) {
       problems.push({ field: "monthly_rent", label: "monthly rent", value: row.monthly_rent, message: "Monthly rent must be more than 0", hint: "Monthly rent must be more than ₹0. Leave it blank to use the room's rent." });
+    }
+  }
+
+  if (row.maintenance_charge != null) {
+    if (Number.isNaN(row.maintenance_charge)) {
+      problems.push({ field: "maintenance_charge", label: "maintenance charge", value: row.maintenance_charge, message: "Maintenance charge is not a number", hint: money });
+    } else if (row.maintenance_charge < 0) {
+      problems.push({ field: "maintenance_charge", label: "maintenance charge", value: row.maintenance_charge, message: "Maintenance charge cannot be negative", hint: `${money} Enter 0 if there is no maintenance.` });
     }
   }
 
@@ -107,9 +125,17 @@ export class BulkImportValidationService {
           reserved_count: 0,
         })),
     ];
-    const hostel = await prisma.hostels.findUnique({ where: { id: hostelId }, select: { name: true } });
+    const hostel = await prisma.hostels.findUnique({
+      where: { id: hostelId },
+      select: { name: true, preferences_config: true },
+    });
     const hostelName = hostel?.name ?? "this hostel";
     const billingDefaults = await hostelBillingPreferencesService.getBillingDefaults(hostelId);
+    // BillingDefaults carries no due day — it lives in the hostel's own
+    // preferences, and reading it from the wrong object silently pinned every
+    // preview to the 5th.
+    const resolvedDueDay = Number(resolvePreferences(hostel ?? {}).due_day);
+    const dueDay = resolvedDueDay >= 1 && resolvedDueDay <= 28 ? resolvedDueDay : 5;
     // Keyed to the row number that first used the value, so a duplicate can
     // tell the owner which row it repeats.
     const phonesSeen = new Map<string, number>();
@@ -340,6 +366,40 @@ export class BulkImportValidationService {
         issues.push(buildIssue("PAYMENT_METHOD_MISSING", rowNumber, { amountPaid: row.amount_paid }));
       }
 
+      const rowMaintenanceType = row.maintenance_type ?? defaultMaintenanceType;
+
+      // An amount above what the tenant owes is refused by createInvitation at
+      // execution. Catching it here means the owner fixes it in the preview,
+      // with the real figures, instead of one row failing mid-import.
+      if (parsedJoiningDate && (row.amount_paid ?? 0) > 0 && errors.length === 0) {
+        const financials = planRowFinancials(
+          {
+            ...row,
+            joining_date: formatImportDate(parsedJoiningDate),
+            monthly_rent: row.monthly_rent ?? (roomForRow?.base_rent ? Number(roomForRow.base_rent) : 0),
+            security_deposit: row.security_deposit ?? row.advance_deposit ?? defaultAdvanceDeposit,
+            maintenance_charge: rowMaintenanceType === "NONE" ? 0 : row.maintenance_charge ?? defaultMaintenanceCharge,
+            maintenance_type: rowMaintenanceType,
+          },
+          { dueDay, today }
+        );
+        if (financials && financials.unallocated > 0.01) {
+          errors.push({
+            row: rowNumber,
+            field: "amount_paid",
+            message: `Amount already paid exceeds what is owed (₹${financials.totalOwed.toFixed(2)})`,
+            value: row.amount_paid,
+          });
+          issues.push(
+            buildIssue("OVERPAID", rowNumber, {
+              amountPaid: row.amount_paid,
+              amountOwed: financials.totalOwed,
+              joiningDate: formatImportDate(parsedJoiningDate),
+            })
+          );
+        }
+      }
+
       // Capacity is decided last, after every per-row check that can still
       // push an error (including joining-date validation above) has run. A
       // duplicate row, or one that already failed validation for any reason,
@@ -383,8 +443,11 @@ export class BulkImportValidationService {
           monthly_rent: row.monthly_rent ?? (roomForRow?.base_rent ? Number(roomForRow.base_rent) : undefined),
           advance_deposit: row.security_deposit ?? row.advance_deposit ?? defaultAdvanceDeposit,
           security_deposit: row.security_deposit ?? row.advance_deposit ?? defaultAdvanceDeposit,
-          maintenance_charge: defaultMaintenanceCharge,
-          maintenance_type: defaultMaintenanceType,
+          // The row's own value when the sheet gives one; the batch default
+          // otherwise. A NONE row owes no maintenance whatever the default is.
+          maintenance_charge:
+            rowMaintenanceType === "NONE" ? 0 : row.maintenance_charge ?? defaultMaintenanceCharge,
+          maintenance_type: rowMaintenanceType,
           agreement_duration_months: row.agreement_duration_months,
           amount_paid: row.amount_paid,
           amount_includes_deposit: row.amount_includes_deposit ?? true,
@@ -429,15 +492,26 @@ export class BulkImportValidationService {
     };
   }
 
+  /**
+   * People who cannot be imported again, by phone.
+   *
+   * Scoped to a *live* tenancy, not to every profile the owner has ever had.
+   * Matching every profile meant a former tenant moving back could never be
+   * imported — though the single-tenant invite adopts returning tenants
+   * happily, and the database already allows only one live tenancy per person.
+   */
   private async getExistingPhones(ownerId: string): Promise<Set<string>> {
-    const profiles = await prisma.profile.findMany({
-      where: {
-        owner_id: ownerId,
-        role: "TENANT",
-        phone: { not: null },
-      },
-      select: { phone: true },
+    const live = await prisma.tenants.findMany({
+      where: { owner_id: ownerId, status: { in: LIVE_TENANCY_STATUSES as any } },
+      // The tenancy's own contact fields as well as the linked profile:
+      // `profile_id` is nullable and orphaned rows exist, so a tenancy can
+      // hold the only copy of the number.
+      select: { phone_1: true, profiles: { select: { phone: true } } },
     });
+    const profiles = live.flatMap((t: any) => [
+      { phone: t.phone_1 ?? null },
+      { phone: t.profiles?.phone ?? null },
+    ]);
     const invited = await prisma.tenant_invitations.findMany({
       where: {
         owner_id: ownerId,
@@ -454,14 +528,15 @@ export class BulkImportValidationService {
     );
   }
 
+  /** People who cannot be imported again, by email. Live tenancies only. */
   private async getExistingEmails(ownerId: string): Promise<Set<string>> {
-    const profiles = await prisma.profile.findMany({
-      where: {
-        owner_id: ownerId,
-        role: "TENANT",
-      },
-      select: { email: true },
+    const live = await prisma.tenants.findMany({
+      where: { owner_id: ownerId, status: { in: LIVE_TENANCY_STATUSES as any } },
+      select: { personal_email: true, profiles: { select: { email: true } } },
     });
+    const profiles = live
+      .flatMap((t: any) => [{ email: t.personal_email ?? null }, { email: t.profiles?.email ?? null }])
+      .filter((p: any) => p.email);
     const invited = await prisma.tenant_invitations.findMany({
       where: {
         owner_id: ownerId,
@@ -470,7 +545,7 @@ export class BulkImportValidationService {
       select: { email: true },
     });
     return new Set([
-      ...profiles.map((p: any) => p.email.toLowerCase()),
+      ...profiles.map((p: any) => String(p.email).toLowerCase()),
       ...invited.map((i: any) => String(i.email || "").toLowerCase()).filter(Boolean),
     ]);
   }

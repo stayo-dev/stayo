@@ -81,7 +81,7 @@ describe("applyRoomPlan", () => {
   it("applies an edit to an existing room, leaving its neighbours untouched", async () => {
     const result = await applyRoomPlan(
       plan({
-        update: [{ id: "r-101", room_no: "101", from: { capacity: 3, base_rent: 8500 }, to: { base_rent: 9000 } }],
+        update: [{ id: "r-101", room_no: "101", from: { capacity: 3, base_rent: 8500, room_type: "Triple" }, to: { base_rent: 9000 } }],
       }),
       OWNER,
       HOSTEL
@@ -160,7 +160,7 @@ describe("applyRoomPlan", () => {
     ]);
 
     const result = await applyRoomPlan(
-      plan({ update: [{ id: "r-x", room_no: "X1", from: { capacity: 2, base_rent: 5000 }, to: { capacity: 3 } }] }),
+      plan({ update: [{ id: "r-x", room_no: "X1", from: { capacity: 2, base_rent: 5000, room_type: null }, to: { capacity: 3 } }] }),
       OWNER,
       HOSTEL
     );

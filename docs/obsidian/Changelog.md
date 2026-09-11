@@ -10,6 +10,15 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-11**: **Bulk tenant import — the seven gaps are closed** ([[Business-Rules]]). Each had been parsed, stored, and then quietly not honoured, which is exactly what a UI turns into a lie — so they are settled before the owner-facing screens are built.
+  - **"Paid Includes Deposit = No" is obeyed.** Settlement ran FIFO across every due including the deposit, so the answer changed nothing. The invite path now uses `receivePayment`'s obligation filter and measures the amount against the dues excluding the deposit.
+  - **Maintenance is read per row**, not only per batch — one hostel can charge different maintenance for different rooms in one import.
+  - **The Notes column reaches the tenant** as a `tenant_notes` row; it used to stop at `bulk_import_rows`.
+  - **A former tenant can be imported again.** Duplicate detection had no tenancy-status filter, so anyone who had ever been a tenant was blocked forever.
+  - **Overpayment is flagged at preview**, composing the single-invite settlement planner rather than recalculating dues — it used to fail inside `createInvitation` one row at a time, after other rows had been created.
+  - **Sharing Type edits apply**, and Rooms-sheet issues name the owner's real spreadsheet line.
+  - **Verified:** 196 bulk-import tests; full `test:pure` unchanged apart from the 3 known pre-existing failures. The deposit rule carries a guard that reads the service source, because reaching that branch through `createInvitation` needs a transaction, a room, a profile and the whole onboarding-financials chain — without it, deleting the filter would leave the specification green.
+
 - **2026-09-11**: **Bulk tenant import — a real workbook, room import, and execution that can finish** ([[Decisions#ADR-181|ADR-181]], [[Business-Rules]], [[APIs]]). Second of three plans; still no owner-facing screen.
   - **The template is generated per hostel**: a locked cover sheet stamped with the hostel id, the hostel's rooms pre-filled, and a Room dropdown bound to them — so the largest error class, a mistyped room number, cannot be entered. Uploading a workbook built for a different hostel is refused by name.
   - **Rooms are imported** from the workbook's Rooms sheet, so onboarding a running hostel no longer starts with creating forty rooms by hand. Each affected floor is submitted complete, because `saveRoomsForFloor` retires any room missing from the list.
