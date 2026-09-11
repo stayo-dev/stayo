@@ -1287,7 +1287,7 @@ See [[Frontend]], [[Changelog]], [[Bugs]].
 - **See:** [[Decisions#ADR-157|ADR-157]], [[Changelog]], [[Frontend]]
 
 ### Web push notifications — a fourth channel on the existing event stream
-- **Status:** shipped 2026-08-30 (code complete; **not yet verified on a real device**)
+- **Status:** shipped 2026-08-30; **could not be enabled by anyone until 2026-09-11** — production was built without `VITE_VAPID_PUBLIC_KEY` (see [[Bugs]]). Key added and redeployed, a Settings control and silent re-registration added the same day. **Still not verified on a real device.**
 - **Owner-facing?** yes · **Tenant-facing?** yes
 - **Key files:** Backend — `src/services/notifications/push/{push-policy,send-window,push-delivery,push-sender}.ts` (new), `app/api/push/subscriptions/route.ts` (new), `lib/services/notification-service.ts` (the one hook), `src/services/payments/reminder-service.ts` (in-app fix + `push` channel), `prisma/schema.prisma`, `migrations/078_push_subscriptions.sql` (new). Frontend — `public/sw.js` (new), `src/features/push/{pushSupport,pushPrompt,usePushSubscription,PushPromptCard,api/pushApi}.ts[x]` (new), `features/owner-more/config/deriveNotificationSections.ts`, `platforms/tenant/pages/TenantHomePage.tsx`, `features/owner-alerts/pages/AlertsLeadsPage.tsx`.
 - **Depends on:** [[Decisions#ADR-158|ADR-158]]. New dependency `web-push`. New env vars `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (backend, repo-root `.env`) and `VITE_VAPID_PUBLIC_KEY` (frontend).

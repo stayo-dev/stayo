@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { isPushSupported, permissionState } from './pushSupport';
 import { shouldOfferPush, promptKey } from './pushPrompt';
-import { pushApi } from './api/pushApi';
+import { ensurePushSubscription } from './ensurePushSubscription';
 
 function readDismissedAt(key: string | null): Date | null {
   if (!key) return null;
@@ -20,22 +20,6 @@ function writeDismissedAt(key: string | null) {
   } catch {
     /* A prompt that cannot remember a dismissal is a small problem; a crash is not. */
   }
-}
-
-/**
- * The VAPID public key must reach `subscribe()` as bytes, not base64url text.
- * Returns the underlying `ArrayBuffer`: TypeScript 5.7 made `Uint8Array`
- * generic over its buffer, and the generic form no longer satisfies
- * `BufferSource`.
- */
-function urlBase64ToBuffer(base64: string): ArrayBuffer {
-  const padded = (base64 + '='.repeat((4 - (base64.length % 4)) % 4))
-    .replace(/-/g, '+')
-    .replace(/_/g, '/');
-  const raw = window.atob(padded);
-  const bytes = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
-  return bytes.buffer;
 }
 
 /**
@@ -63,39 +47,11 @@ export function usePushSubscription(profileId: string | null) {
 
   const enable = useCallback(async () => {
     try {
-      const vapid = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
-      // Without a key there is nothing to subscribe to; asking for permission
-      // would burn the one-shot prompt for a subscription we cannot create.
-      if (!vapid) {
-        setDismissedNow(true);
-        return;
-      }
-
-      const registration = await navigator.serviceWorker.register('/sw.js');
-      const permission = await Notification.requestPermission();
-      if (permission !== 'granted') {
-        // A block is permanent. Stop offering rather than nagging.
-        setDismissedNow(true);
-        return;
-      }
-
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToBuffer(vapid),
-      });
-      const json = subscription.toJSON() as {
-        endpoint?: string;
-        keys?: { p256dh?: string; auth?: string };
-      };
-      if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return;
-
-      await pushApi.subscribe({
-        endpoint: json.endpoint,
-        keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
-      });
-      setEnabled(true);
+      const status = await ensurePushSubscription({ ask: true });
+      if (status === 'on') setEnabled(true);
+      else setDismissedNow(true);
     } catch {
-      // Never surfaced. The app works fine without push.
+      // Logged by ensurePushSubscription. The card goes; the page carries on.
       setDismissedNow(true);
     }
   }, []);

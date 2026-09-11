@@ -1,3 +1,4 @@
+import { usePushAutoRegister } from '@features/push/usePushAutoRegister';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Home, Users, Wallet, UtensilsCrossed, Building2 } from 'lucide-react';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
@@ -54,6 +55,8 @@ interface OwnerAppShellProps {
 }
 
 export function OwnerAppShell({ basePath = '/owner' }: OwnerAppShellProps) {
+  // Before any layout branch, so it runs on every signed-in owner screen.
+  usePushAutoRegister();
   const isDesktop = useIsDesktop();
   const { pathname } = useLocation();
   const session = useOwnerSession();

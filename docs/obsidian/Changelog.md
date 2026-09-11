@@ -10,6 +10,8 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-11**: **Push notifications can actually be turned on** ([[Bugs]]). Production had been built without `VITE_VAPID_PUBLIC_KEY`, so "Enable" silently did nothing; it is now set and redeployed. Settings › Reminders gains an always-visible *Push notifications* card that says what state this device is in and turns it on in one tap, and a device that already allows notifications is registered automatically on its next visit — previously it had no way in at all.
+
 - **2026-09-11**: **Money's header buttons, and the badge that covered every page's main action** ([[Bugs]]). The Clerk account avatar was pinned to the top-right corner of every owner and tenant screen, on top of "Collect rent", "+ Invite" and the rest; it now lives in-flow on Settings (owner) and the profile header (tenant). Money's header no longer wraps "Collect rent" onto two lines, both buttons are a 44px tap target, export uses a download icon, and the hostel filter says "All hostels".
 
 - **2026-09-11**: **Tenant document previews load again** ([[Bugs]]). With production's same-origin `/api` base, every document link from the backend (absolute, on `api.yourstayo.com`) was judged third-party and loaded without the owner's session — a 401 and a broken image on the review queue and the tenant profile. Links under the API path are now fetched through our own base, so the session still only ever reaches our server.

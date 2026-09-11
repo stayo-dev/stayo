@@ -1,3 +1,4 @@
+import { usePushAutoRegister } from '@features/push/usePushAutoRegister';
 import { Link, Outlet } from 'react-router-dom';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
@@ -22,6 +23,8 @@ import { APP_GRID, APP_FRAME } from '@shared/ui/surface';
  * its own `ThemeProvider`, the `ExitingBanner`.
  */
 export function TenantAppShell() {
+  // Before any layout branch, so it runs on every signed-in tenant screen.
+  usePushAutoRegister();
   const desktopShell = useTenantDesktopShell();
 
   if (desktopShell) {

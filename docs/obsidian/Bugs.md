@@ -8,6 +8,18 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-11 — Push notifications could not be switched on by anyone (fixed)
+
+**Symptom.** Zero rows in `push_subscriptions` in production, twelve days after web push shipped ([[Decisions#ADR-158|ADR-158]]). Tapping "Enable" did nothing; an owner who allowed notifications from the browser's site settings saw no way to turn them on at all.
+
+**Root cause — three silent failures stacked.** (1) The production frontend was built without `VITE_VAPID_PUBLIC_KEY`. Vite inlines it at build time, and the `if (!vapid) { dismiss; return }` guard became unconditional — the minifier deleted the whole subscribe path, so the live "Enable" compiled to "hide the card" (confirmed in the deployed bundle). (2) The soft prompt only appears while `Notification.permission === "default"`, so a browser whose notifications were allowed from site settings could never subscribe — the only entry point hid itself. (3) Every failure, including Brave's push service being off by default, was caught and swallowed, so none of this was visible.
+
+**Fix.** `VITE_VAPID_PUBLIC_KEY` added to the frontend Vercel project and redeployed — verified in the new bundle, and equal to the backend's local public key. In code: one registration path (`ensurePushSubscription`) used by the prompt, a new always-visible **Push notifications** card at the top of Settings › Reminders (with a state and words for each failure: blocked, iPhone-needs-Home-Screen, unsupported, not configured), and a silent re-registration in the owner and tenant shells when permission is already granted but nothing is registered — never prompting. Failures are logged instead of swallowed. `pushSetup.ts` names the seven states and is tested.
+
+**Still open.** No device has yet received a push. The backend's Vercel `VAPID_*` pair cannot be read from here; a real event's push arriving is what proves it matches.
+
+**See:** [[Features]], [[Changelog]], [[Decisions#ADR-158|ADR-158]]
+
 ## 2026-09-11 — The Clerk account badge sat on top of every page's main button (fixed)
 
 **Symptom.** A black "CS" avatar covered "Collect rent" on Money and "+ Invite" on Tenants — the top-right action of every owner (and tenant) screen. On Money, "Collect rent" had also wrapped onto two lines.

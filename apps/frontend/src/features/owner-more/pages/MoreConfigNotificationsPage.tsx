@@ -1,3 +1,4 @@
+import { PushSettingsCard } from '@features/push/PushSettingsCard';
 import { useEffect, useState } from 'react';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useHostelPolicy, useUpdateHostelPolicy } from '@features/settings/settingsHooks';
@@ -122,6 +123,9 @@ export function MoreConfigNotificationsPage() {
   return (
     <div className={`flex flex-col gap-5 px-4 pt-6 sm:px-6 lg:mx-auto lg:w-full lg:max-w-[760px] lg:px-0 lg:pt-8 ${dirty ? 'pb-40' : 'pb-24'}`}>
       <MoreScreenHeader title="Reminders" subtitle="When tenants are nudged about rent" />
+
+      {/* This device's own alerts — always findable here, unlike the one-shot prompt. */}
+      <PushSettingsCard />
 
       <div className={`${card} p-4`}>
         <label className="flex items-start gap-3">
