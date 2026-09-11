@@ -25,8 +25,8 @@ describe('buildKpis', () => {
 
   it('labels the revenue card for the period the API actually returns', () => {
     // The design says "Revenue today", but /dashboard returns a month-to-date
-    // figure. Showing a monthly number under a daily label would misreport.
-    expect(buildKpis(kpis).find((c) => c.key === 'revenue')?.label).toBe('Revenue this month');
+    // figure. ADR-172: it is Stayo subscription revenue, not tenant rent.
+    expect(buildKpis(kpis).find((c) => c.key === 'revenue')?.label).toBe('Subscription revenue');
   });
 
   it('marks the KYC card as needing action only when something is pending', () => {

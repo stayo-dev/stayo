@@ -7,7 +7,7 @@ import { ApiResponse } from "@/src/lib/api-response";
 import { ApiError } from "@/src/lib/api-error";
 import { propertyService } from "@/lib/services/property-service";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
-
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 /**
  * 🏢 HOSTEL — Delete for good
  * DELETE /api/hostels/[id]/permanent
@@ -35,9 +35,12 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "hostels.id.permanent");
     const deleted = await propertyService.permanentlyDeleteHostel(params.id, scope.owner_id);
     return ApiResponse.success(deleted, `${deleted.name} deleted`);
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     const message = typeof error?.message === "string" ? error.message : String(error);
     if (message.startsWith("NOT_FOUND")) {
       return ApiResponse.error(ApiError.notFound(message.split(": ")[1] ?? message));

@@ -6,6 +6,7 @@ import { getSession } from "@/lib/auth";
 import { ApiResponse } from "@/src/lib/api-response";
 import { ApiError } from "@/src/lib/api-error";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { billingTransitionService } from "@/lib/services/billing-transition-service";
 import { verifyIdentityConfirmation } from "@/src/services/payments/identity-confirmation-guard";
 
@@ -36,6 +37,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "tenants.id.change-frequency");
     const body = await req.json().catch(() => ({}));
     const { requested_frequency, reason, identityToken } = body;
 
@@ -55,6 +57,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     return ApiResponse.success(result);
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     console.error("Error in POST [tenants.change-frequency]:", error);
     const msg = typeof error?.message === "string" ? error.message : String(error);
     if (msg.startsWith("IDENTITY_REQUIRED")) {

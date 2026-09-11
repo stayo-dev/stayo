@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { compatibilityPreferencesToPolicyPatch, hostelPolicyService } from "@/lib/services/hostel-policy-service";
 import { recordPolicyChanges } from "@/lib/services/config/config-change-log-service";
 function toApiError(error: any) {
@@ -29,6 +30,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const session = await getSession(req);
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "hostels.id.preferences");
     const body = await req.json();
     const patch = body?.policy && typeof body.policy === "object"
       ? body.policy
@@ -58,6 +60,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     return apiResponse(result);
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     return toApiError(error);
   }
 }

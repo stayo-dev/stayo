@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { assertHostelBelongsToOwner } from "@/lib/security/scoped-query";
 import { prisma } from "@/lib/db";
 import { eventLog } from "@/lib/services/event-log-service";
@@ -66,6 +67,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "hostels.id.meal-timings");
     await assertHostelBelongsToOwner(scope.owner_id, id);
 
     const hostel = await prisma.hostels.findUnique({
@@ -99,6 +101,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     return apiResponse({ meal_timings: nextMealTimings });
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     return toApiError(error);
   }
 }

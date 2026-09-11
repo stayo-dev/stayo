@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { roomAllocationService } from "@/src/services/rooms/room-allocation-service";
 import { AllocationSchema } from "@/lib/validators";
 
@@ -41,6 +42,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    if (session.role === "OWNER") {
+      await assertOwnerSubscriptionActive(session.sub, "allocations.create");
+    }
     const body = await req.json().catch(() => ({}));
     console.log(`[allocations.POST] Creating allocation for owner ${session.sub}`, body);
     
@@ -65,6 +69,8 @@ export async function POST(req: NextRequest) {
       data: allocation
     }, 201);
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     console.error("Detailed API Error [allocations.POST]:", error);
     
     if (error.message.startsWith("VALIDATION_ERROR")) return apiError(error.message.split(": ")[1], "VALIDATION_ERROR", 400);

@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { prisma } from "@/lib/db";
 
 /**
@@ -24,6 +25,7 @@ export async function PATCH(
 
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "food.menu-items.id");
     const body = await req.json().catch(() => ({}));
 
     const item = await prisma.food_menu_items.findFirst({
@@ -44,6 +46,8 @@ export async function PATCH(
     const updated = await prisma.food_menu_items.update({ where: { id }, data });
     return apiResponse(updated);
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     return apiError(error?.message || "Failed to update food menu item");
   }
 }
@@ -67,6 +71,7 @@ export async function DELETE(
 
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "food.menu-items.id");
 
     const item = await prisma.food_menu_items.findFirst({
       where: { id, owner_id: scope.owner_id },
@@ -80,6 +85,8 @@ export async function DELETE(
 
     return apiResponse({ success: true });
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     return apiError(error?.message || "Failed to delete food menu item");
   }
 }

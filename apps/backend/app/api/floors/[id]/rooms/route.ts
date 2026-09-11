@@ -8,6 +8,7 @@ import { ApiError } from "@/src/lib/api-error";
 import { RoomBulkCreateSchema } from "@/lib/validators";
 import { propertyService } from "@/lib/services/property-service";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { assertBodySize } from "@/lib/security/api-guard";
 
 /**
@@ -42,6 +43,7 @@ export async function POST(
     if (sizeError) return sizeError;
 
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "floors.id.rooms");
     const body = await req.json().catch(() => ({}));
 
     const validated = RoomBulkCreateSchema.safeParse(body);
@@ -66,6 +68,8 @@ export async function POST(
 
     return ApiResponse.success({ rooms, rooms_created: rooms.length }, undefined, { status: 201 });
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     const message = typeof error?.message === "string" ? error.message : String(error);
     if (message.startsWith("NOT_FOUND")) {
       return ApiResponse.error(ApiError.notFound(message.split(": ")[1] ?? message));

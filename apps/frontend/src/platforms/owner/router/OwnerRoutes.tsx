@@ -59,6 +59,9 @@ const MorePasswordPage = lazy(() =>
 const MorePayoutAccountPage = lazy(() =>
   import('@features/owner-more/pages/MorePayoutAccountPage').then((m) => ({ default: m.MorePayoutAccountPage })),
 );
+const OwnerSubscriptionPage = lazy(() =>
+  import('@features/owner-subscription/pages/OwnerSubscriptionPage').then((m) => ({ default: m.OwnerSubscriptionPage })),
+);
 const MoreConfigInviteDefaultsPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigInviteDefaultsPage').then((m) => ({ default: m.MoreConfigInviteDefaultsPage })),
 );
@@ -258,6 +261,7 @@ export function OwnerRoutes() {
         <Route path="/owner/more/profile" element={<MoreProfilePage />} />
         <Route path="/owner/more/password" element={<MorePasswordPage />} />
         <Route path="/owner/more/payout-account" element={<MorePayoutAccountPage />} />
+        <Route path="/owner/more/subscription" element={<OwnerSubscriptionPage />} />
         <Route path="/owner/more/hostel" element={<MoreHostelIdentityPage />} />
         <Route path="/owner/more/hostel/:hostelId" element={<MoreHostelIdentityPage />} />
         <Route path="/owner/more/notices" element={<MoreNoticesPage />} />

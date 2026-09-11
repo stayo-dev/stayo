@@ -35,6 +35,12 @@ export const queryKeys = {
     expenses: (params?: object) => ownerKey('expenses', params ?? {}),
     cashflow: (hostelIds: string[], from: string, to: string) =>
       ownerKey('cashflow', [...hostelIds].sort(), from, to),
+
+    /** Owner subscription/billing (ADR-172). Owner-scoped by the session server-side. */
+    subscription: () => ownerKey('subscription'),
+    subscriptionPlans: () => ownerKey('subscription', 'plans'),
+    subscriptionPaymentContext: () => ownerKey('subscription', 'payment-context'),
+    subscriptionUpgradePreview: (planId: string, extraBeds = 0) => ownerKey('subscription', 'upgrade-preview', planId, extraBeds),
   },
 
   notifications: () => ownerKey('notifications'),

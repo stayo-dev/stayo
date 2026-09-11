@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { prisma } from "@/lib/db";
 import { notificationService } from "@/lib/services/notification-service";
 
@@ -33,6 +34,7 @@ export async function POST(
 
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "food.schedules.publish");
 
     const schedule = await prisma.food_schedules.findFirst({
       where: { id, owner_id: scope.owner_id },
@@ -76,6 +78,8 @@ export async function POST(
 
     return apiResponse(updated);
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     return apiError(error?.message || "Failed to publish schedule");
   }
 }

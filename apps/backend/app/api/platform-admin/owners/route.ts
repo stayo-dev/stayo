@@ -120,11 +120,16 @@ export async function GET(req: NextRequest) {
         where: { profile_id: { in: ownerIds }, is_active: true },
         select: { profile_id: true, doc_type: true, status: true },
       }),
-      // Billing is still per hostel; an owner's figure is the roll-up of their
-      // hostels' subscriptions until owner-level subscriptions land.
-      prisma.hostel_subscriptions.findMany({
-        where: { hostel_id: { in: hostelIds } },
-        select: { hostel_id: true, status: true, amount: true, billing_cycle: true, next_renewal_at: true },
+      // ADR-172: billing is owner-level. One subscription per owner; MRR is the
+      // current plan price (paise) of an ACTIVE subscription.
+      prisma.owner_subscriptions.findMany({
+        where: { owner_id: { in: ownerIds } },
+        select: {
+          owner_id: true,
+          status: true,
+          next_renewal_at: true,
+          subscription_plans: { select: { price_paise: true } },
+        },
       }),
       // Real, but sparse: only a few services write activity_logs, so this is
       // "last recorded action", never "last seen". The UI must not present it
@@ -145,7 +150,7 @@ export async function GET(req: NextRequest) {
     const collectedByHostel = byOwner(collectionSums, "hostel_id", (r) => Number(r._sum.amount_paid ?? 0));
     const duesByHostel = byOwner(duesSums, "hostel_id", (r) => Number(r._sum.amount ?? 0));
     const lastActivityByOwner = byOwner(lastActivity, "owner_id", (r) => r._max.timestamp as Date | null);
-    const subscriptionByHostel = new Map(subscriptions.map((s: any) => [s.hostel_id, s] as const));
+    const subscriptionByOwner = new Map(subscriptions.map((s: any) => [s.owner_id, s] as const));
 
     const result = owners.map((owner: any) => {
       const own = hostels.filter((h: any) => h.owner_id === owner.id);
@@ -163,15 +168,12 @@ export async function GET(req: NextRequest) {
           .map((d: any) => String(d.doc_type).toUpperCase()),
       );
 
-      const subs = ids.map((id: string) => subscriptionByHostel.get(id)).filter(Boolean) as any[];
-      const mrr = subs.reduce(
-        (acc: number, s: any) =>
-          String(s.status) === "ACTIVE"
-            ? acc + (String(s.billing_cycle) === "YEARLY" ? Number(s.amount) / 12 : Number(s.amount))
-            : acc,
-        0,
-      );
-      const renewals = subs.map((s: any) => s.next_renewal_at).filter(Boolean) as Date[];
+      const ownerSub: any = subscriptionByOwner.get(owner.id) ?? null;
+      const mrr =
+        ownerSub && String(ownerSub.status) === "ACTIVE"
+          ? Number(ownerSub.subscription_plans?.price_paise ?? 0) / 100
+          : 0;
+      const renewals = ownerSub?.next_renewal_at ? [ownerSub.next_renewal_at as Date] : [];
 
       return {
         id: owner.id,
@@ -199,7 +201,7 @@ export async function GET(req: NextRequest) {
         documents_submitted: ownerDocs.length,
 
         mrr,
-        subscription_statuses: subs.map((s: any) => String(s.status)),
+        subscription_statuses: ownerSub ? [String(ownerSub.status)] : [],
         next_renewal_at: renewals.length > 0 ? new Date(Math.min(...renewals.map((d: Date) => d.getTime()))) : null,
 
         /** Last recorded *action*, not a login — see the note above. */

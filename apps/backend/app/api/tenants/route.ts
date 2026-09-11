@@ -7,6 +7,7 @@ import { ApiResponse } from "@/src/lib/api-response";
 import { ApiError } from "@/src/lib/api-error";
 import { tenantService } from "@/src/services/tenants/tenant-service";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { requireHostelBelongsToOwner } from "@/lib/security/scoped-query";
 import { safePagination, assertBodySize } from "@/lib/security/api-guard";
 
@@ -63,6 +64,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "tenants");
     const sizeError = assertBodySize(req);
     if (sizeError) return sizeError;
 
@@ -81,6 +83,8 @@ export async function POST(req: NextRequest) {
     
     return ApiResponse.success(tenant, undefined, { status: 201 });
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     console.error("Detailed API Error [tenants.POST]:", error);
     
     return Response.json(

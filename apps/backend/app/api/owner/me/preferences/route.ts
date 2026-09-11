@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { prisma } from "@/lib/db";
 import { compatibilityPreferencesToPolicyPatch, hostelPolicyService } from "@/lib/services/hostel-policy-service";
 
@@ -55,6 +56,7 @@ export async function PATCH(req: NextRequest) {
   const session = await getSession(req);
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "owner.me.preferences");
     const body = await req.json();
     const hostelId = await resolveLegacyHostelId(scope.owner_id, explicitHostelId(req, body));
     if (!hostelId) return apiError("hostel_id is required for preference updates", "HOSTEL_CONTEXT_REQUIRED", 400);
@@ -67,6 +69,8 @@ export async function PATCH(req: NextRequest) {
     );
     return apiResponse(result);
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     return toApiError(error);
   }
 }

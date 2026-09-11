@@ -26,6 +26,7 @@ function samePhoneValue(a: unknown, b: unknown): boolean {
 
 import { isEmailProven, isPhoneProven } from "@/lib/services/auth/contact-verification-service";
 import { assertCapability } from "../../../lib/services/move-out-service";
+import { assertOwnerCanActivateTenant } from "@/src/services/platform-billing/tenant-activation-guard";
 import {
   partitionFieldsByCategory,
   partitionTenantOnlyFields,
@@ -873,9 +874,19 @@ export class TenantService {
     const newStatus = actionNorm === "approve" ? "APPROVED" : "REJECTED";
 
     if (actionNorm === "approve") {
-      await prisma.tenants.update({
-        where: { id: request.tenant_id },
-        data: { status: "ACTIVE" }
+      // ADR-172 Phase 3: gate the reactivation on the owner's Stayo subscription
+      // + plan capacity, inside a transaction so the check and the ACTIVE write
+      // are atomic and serialised against concurrent activations.
+      await prisma.$transaction(async (tx: any) => {
+        await assertOwnerCanActivateTenant(ownerId, {
+          tx,
+          tenantId: request.tenant_id,
+          context: "reactivation-request-approval",
+        });
+        await tx.tenants.update({
+          where: { id: request.tenant_id },
+          data: { status: "ACTIVE" },
+        });
       });
       await eventSystem.trigger("tenant_reactivated", { tenantId: request.tenant_id, userId: ownerId });
     }
@@ -1712,14 +1723,24 @@ export class TenantService {
     if (tenant.owner_id !== ownerId) throw new Error("FORBIDDEN: You can only reactivate your own tenants");
     if (tenant.status !== "FORMER_TENANT") throw new Error("VALIDATION: Only tenants with FORMER_TENANT status can be reactivated");
 
-    const updated = await tenantRepository.update({
-      where: { id },
-      data: {
-        status: "ACTIVE",
-        monthly_rent: rent,
-        joined_on: joinedOn,
-      },
-      include: { profiles: true },
+    // ADR-172 Phase 3: gate the direct reactivation on the owner's Stayo
+    // subscription + plan capacity, inside a transaction for atomicity + race
+    // safety with concurrent activations.
+    const updated = await prisma.$transaction(async (tx: any) => {
+      await assertOwnerCanActivateTenant(ownerId, {
+        tx,
+        tenantId: id,
+        context: "direct-reactivate-tenant",
+      });
+      return tx.tenants.update({
+        where: { id },
+        data: {
+          status: "ACTIVE",
+          monthly_rent: rent,
+          joined_on: joinedOn,
+        },
+        include: { profiles: true },
+      });
     });
     await allocationReconciliationService.reconcileTenant(id).catch((err: any) => {
       logger.error("reconcile_after_tenant_reactivate_failed", {

@@ -69,6 +69,7 @@ export function hubGroups(): HubGroup[] {
       rows: [
         { key: 'profile', label: 'Details', route: '/owner/more/profile' },
         { key: 'password', label: 'Password', route: '/owner/more/password' },
+        { key: 'subscription', label: 'Subscription', route: '/owner/more/subscription' },
         { key: 'payout', label: 'Payouts', route: '/owner/more/payout-account' },
       ],
     },

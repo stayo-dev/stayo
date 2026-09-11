@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { assertBodySize } from "@/lib/security/api-guard";
 import { roomOrderService, RoomOrderError } from "@/lib/services/room-order-service";
 
@@ -28,6 +29,7 @@ export async function PATCH(req: NextRequest) {
     if (sizeError) return sizeError;
 
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "rooms.reorder");
     const body = await req.json().catch(() => ({}));
 
     if (!body?.hostelId || typeof body.hostelId !== "string") {
@@ -39,6 +41,8 @@ export async function PATCH(req: NextRequest) {
 
     return apiResponse(result);
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     if (error instanceof RoomOrderError) {
       const status = error.code === "FORBIDDEN" ? 403 : error.code === "STALE_ORDER" ? 409 : 400;
       return apiError(error.message, error.code, status);

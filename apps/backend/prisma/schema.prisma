@@ -883,6 +883,14 @@ model profile {
   // no owner_id/hostel_id here, since this queue belongs to Stayo, not a hostel.
   platform_support_tickets                                          platform_support_tickets[]
 
+  // Owner subscription billing (ADR-172). One subscription per owner; money
+  // (`subscription_payments`) and the financial document (`subscription_invoices`)
+  // are separate entities. Isolated from tenant-rent billing.
+  owner_subscription                                                owner_subscriptions?
+  subscription_payments                                             subscription_payments[]
+  subscription_invoices                                             subscription_invoices[]
+  owner_billing_profile                                             owner_billing_profiles?
+
   /// Where this owner's settled rent is sent. Added to `profiles` by migration
   /// 070 but never declared here — so `/api/owner/payout-account` and the admin
   /// settlement console's payout destination both selected columns Prisma did
@@ -3747,19 +3755,56 @@ enum SubscriptionBillingCycle {
   YEARLY
 }
 
-/// The marketplace plan catalog owners subscribe to — reintroduces a plan
-/// concept, deliberately reshaped around "marketplace tier" rather than the
-/// old metered-usage `plans` table ADR-006 dropped.
+/// The Stayo subscription plan catalog. Owner-level (ADR-172): a plan is chosen
+/// by an owner and covers all of that owner's hostels and tenants — see
+/// `owner_subscriptions`. Introduced per-hostel by ADR-030 and reused here.
+///
+/// Prices are stored as integer `price_paise`. `price_amount` (Decimal rupees)
+/// is retained only for the deprecated per-hostel `hostel_subscriptions` admin
+/// routes and is NOT read by ADR-172 code.
 model subscription_plans {
   id                   String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Stable identifier for the rare code path that must branch on tier
+  /// (FOUNDING, STARTER, GROWTH, PROFESSIONAL, PORTFOLIO). Never encodes a price.
+  code                 String                   @unique
   name                 String
-  price_amount         Decimal                  @db.Decimal(10, 2)
-  billing_cycle        SubscriptionBillingCycle
-  description          String?
+  /// Integer paise. e.g. ₹2,499 -> 249900. The authoritative price for ADR-172.
+  price_paise          Int                      @default(0)
+  currency             String                   @default("INR")
+  billing_cycle        SubscriptionBillingCycle @default(MONTHLY)
+  /// Informational only — drives the "1–50 active tenants" label. Not enforced.
+  capacity_min         Int?
+  /// The plan's hard active-tenant ceiling — `included_beds + max_extra_beds`
+  /// (or NULL when `max_extra_beds` is NULL, i.e. unlimited/FOUNDING). Kept in
+  /// sync by the seed script; informational/display only — the ENFORCED
+  /// ceiling for a specific owner is `included_beds + owner_subscriptions.
+  /// extra_beds` (plan-capacity-service.effectivePlanCapacity), since not
+  /// every owner has bought every allowed extra bed.
+  capacity_max         Int?
+  /// Beds included in `price_paise` with no extra charge (business rules,
+  /// 2026-09-10). NULL only for a plan pre-dating this column.
+  included_beds        Int?
+  /// Maximum PAID extra beds beyond `included_beds`, at `extra_bed_price_paise`
+  /// each. NULL = no ceiling (FOUNDING only). `0` = extra beds not offered on
+  /// this plan — Portfolio ships with `0` because the business has not yet
+  /// defined its extra-bed allowance; see docs/obsidian/Business-Rules.md.
+  max_extra_beds        Int?
+  /// Integer paise per extra bed beyond `included_beds` (₹10 -> 1000). NULL
+  /// when extra beds are not offered on this plan (Portfolio, currently).
+  extra_bed_price_paise Int?
+  /// Shown in the owner-facing plan picker. FOUNDING is false — admin-assigned only.
+  is_public            Boolean                  @default(true)
   is_active            Boolean                  @default(true)
+  description          String?
+  /// DEPRECATED (ADR-172): Decimal rupees, kept only for the legacy per-hostel
+  /// admin routes (`/api/platform-admin/plans`). New code reads `price_paise`.
+  price_amount         Decimal?                 @db.Decimal(10, 2)
   created_at           DateTime                 @default(now()) @db.Timestamptz(6)
   updated_at           DateTime?                @db.Timestamptz(6)
-  hostel_subscriptions hostel_subscriptions[]
+  hostel_subscriptions         hostel_subscriptions[]
+  owner_subscriptions          owner_subscriptions[]   @relation("OwnerSubscriptionCurrentPlan")
+  owner_subscriptions_pending  owner_subscriptions[]   @relation("OwnerSubscriptionPendingPlan")
+  subscription_payments        subscription_payments[]
 }
 
 enum HostelSubscriptionStatus {
@@ -3770,6 +3815,11 @@ enum HostelSubscriptionStatus {
   CANCELLED
 }
 
+/// DEPRECATED by ADR-172 — superseded by owner-level `owner_subscriptions`.
+/// Retained (not dropped) during the transition; no new rows are written by
+/// ADR-172 code. Remove only after the owner-level system is verified in
+/// production. Do not build new features against this table.
+///
 /// One row per hostel — its subscription to Stayo. `hostel_id` is unique:
 /// a hostel has exactly one subscription record at a time (change plan =
 /// update this row, not a new row).
@@ -3798,6 +3848,11 @@ enum PlatformInvoiceStatus {
   FAILED
 }
 
+/// DEPRECATED by ADR-172 — superseded by `subscription_invoices` (a document
+/// tied to an approved `subscription_payments` row, not a hostel). Retained
+/// during the transition; no new rows written by ADR-172 code. Remove only
+/// after the owner-level system is verified in production.
+///
 /// Record of an owner paying Stayo a subscription fee — backs collected/
 /// outstanding/GST figures and the Revenue tab's CSV exports.
 model platform_invoices {
@@ -4030,4 +4085,269 @@ model push_subscriptions {
   profiles      profile   @relation(fields: [profile_id], references: [id], onDelete: Cascade)
 
   @@index([profile_id])
+}
+
+// ============================================================================
+// Owner subscription billing (ADR-172)
+//
+// Supersedes the per-hostel `hostel_subscriptions` / `platform_invoices` shape
+// (ADR-030). One owner has exactly one subscription (`owner_subscriptions`,
+// owner_id UNIQUE) covering all of that owner's hostels and tenants. Money
+// received (`subscription_payments`) and the financial document
+// (`subscription_invoices`) are deliberately separate entities with separate
+// lifecycles — a payment can be REJECTED while the subscription stays ACTIVE.
+//
+// Money is integer paise throughout. This domain is ISOLATED from tenant-rent
+// billing: no foreign key here references `rent_obligations`, `payments`,
+// `payment_groups`, `payment_attempts`, `settlement_*` or `gateway_transactions`.
+//
+// Phase 1 is schema only — no service, no capacity enforcement, no cron, no
+// payment-approval API, no UI. Those are later phases.
+// ============================================================================
+
+enum OwnerSubscriptionStatus {
+  TRIAL
+  PENDING_PAYMENT
+  ACTIVE
+  EXPIRED
+  PAUSED
+  CANCELLED
+}
+
+enum SubscriptionPaymentStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  /// A GATEWAY payment only — the online order was created and is awaiting the
+  /// gateway webhook (or a manual admin escape-hatch review). Never set for
+  /// UPI_MANUAL/CASH (Phase 13, ADR-172 gateway addendum).
+  PENDING
+  /// The gateway reported a terminal failure (declined, error). Owner may
+  /// submit a new payment. Distinct from REJECTED, which implies a human
+  /// admin said no.
+  FAILED
+  /// The owner abandoned/cancelled checkout before completion.
+  CANCELLED
+}
+
+/// UPI_MANUAL and CASH are the manual methods (admin-reviewed). GATEWAY (Phase
+/// 13) is the online-checkout method — server-created order, gateway webhook
+/// is the sole source of truth for activation, never the browser.
+enum SubscriptionPaymentMethod {
+  UPI_MANUAL
+  CASH
+  GATEWAY
+}
+
+/// One row per owner — their single Stayo subscription. `owner_id` is UNIQUE:
+/// one owner = one current subscription, covering every hostel and tenant that
+/// owner owns. Changing plan updates this row; it is never duplicated.
+model owner_subscriptions {
+  id                    String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  owner_id              String                  @unique @db.Uuid
+  plan_id               String                  @db.Uuid
+  status                OwnerSubscriptionStatus @default(TRIAL)
+  /// End of the free-trial window while `status = TRIAL`. Null once a paid
+  /// period begins.
+  trial_ends_at         DateTime?               @db.Timestamptz(6)
+  current_period_start  DateTime?               @db.Date
+  current_period_end    DateTime?               @db.Date
+  next_renewal_at       DateTime?               @db.Date
+  started_at            DateTime?               @db.Timestamptz(6)
+  cancelled_at          DateTime?               @db.Timestamptz(6)
+  /// Admin "do not auto-pause before this" override (ADR-172). While set in the
+  /// future, the lifecycle cron (later phase) must not expire or pause this row.
+  admin_override_until  DateTime?               @db.Timestamptz(6)
+  admin_override_reason String?
+  /// `profiles.id` of the admin who set the override. Plain uuid, no relation —
+  /// same convention as `owner_documents.reviewed_by`.
+  admin_override_by     String?                 @db.Uuid
+  /// A pending DOWNGRADE (ADR-172, Phase 2). Set when an approved payment
+  /// selects a cheaper plan: the current `plan_id` stays effective until the
+  /// period ends, then a renewal promotes `pending_plan_id` to `plan_id`.
+  /// An upgrade is applied immediately and never uses this column.
+  pending_plan_id       String?                 @db.Uuid
+  /// Currently active PAID extra beds beyond the plan's `included_beds`
+  /// (business rules, 2026-09-10). Set from the approved payment's
+  /// `extra_beds` on NEW/UPGRADE/RENEWAL/EXTRA_BEDS approval — never carried
+  /// over implicitly across a plan change; a queued DOWNGRADE does not touch
+  /// it (the renewal payment that applies the downgrade sets its own value).
+  extra_beds            Int                     @default(0)
+  created_at            DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime?               @db.Timestamptz(6)
+
+  profile                     profile              @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+  subscription_plans          subscription_plans   @relation("OwnerSubscriptionCurrentPlan", fields: [plan_id], references: [id])
+  pending_plan                subscription_plans?  @relation("OwnerSubscriptionPendingPlan", fields: [pending_plan_id], references: [id])
+  subscription_payments       subscription_payments[]
+  subscription_invoices       subscription_invoices[]
+
+  @@index([status])
+  @@index([plan_id])
+  @@index([current_period_end])
+  @@index([next_renewal_at])
+}
+
+/// Money the owner sent Stayo for their subscription. A separate entity from
+/// `owner_subscriptions` (entitlement/access) and `subscription_invoices`
+/// (the financial document). Owner-submitted; only an authorized admin moves it
+/// to APPROVED — that approval API is a later phase. Owners can never set
+/// APPROVED themselves.
+model subscription_payments {
+  id                    String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  owner_id              String                    @db.Uuid
+  subscription_id       String                    @db.Uuid
+  plan_id               String                    @db.Uuid
+  amount_paise          Int
+  currency              String                    @default("INR")
+  payment_method        SubscriptionPaymentMethod
+  /// Extra beds requested with this payment, beyond `plan_id`'s
+  /// `included_beds` (business rules, 2026-09-10). Validated server-side
+  /// against the plan's `max_extra_beds` at submission; becomes
+  /// `owner_subscriptions.extra_beds` on approval.
+  extra_beds            Int                       @default(0)
+  /// UPI UTR / bank reference / "CASH-xxxx" — indexed for admin lookup.
+  transaction_reference String?
+  /// URL or storage reference for the uploaded payment proof (screenshot/PDF).
+  proof_file            String?
+  status                SubscriptionPaymentStatus @default(SUBMITTED)
+  /// Nullable in the schema; logically required when `status = REJECTED`
+  /// (enforced in the service layer in a later phase). Reused for the
+  /// gateway's FAILED/CANCELLED terminal reason text (Phase 13).
+  rejection_reason      String?
+  submitted_at          DateTime                  @default(now()) @db.Timestamptz(6)
+  reviewed_at           DateTime?                 @db.Timestamptz(6)
+  /// `profiles.id` of the admin who reviewed. Plain uuid, no relation. NULL
+  /// for a GATEWAY payment auto-approved by the webhook (Phase 13) — there is
+  /// no human admin in that path; that NULL is exactly how the UI tells an
+  /// auto-verified online payment apart from a manually-approved one.
+  reviewed_by           String?                   @db.Uuid
+  /// "RAZORPAY" for a GATEWAY payment; null for UPI_MANUAL/CASH (Phase 13).
+  gateway_provider      String?
+  /// Razorpay order id, created server-side before the owner ever sees
+  /// checkout — the only reason we can find this row again when the webhook
+  /// arrives. Unique: one order is never reused across two payment rows.
+  gateway_order_id      String?                   @unique
+  /// Razorpay payment id, set once the gateway reports a terminal outcome.
+  /// Unique: also acts as a hard duplicate-processing backstop alongside the
+  /// status-guarded update in `reviewPayment` (Phase 13).
+  gateway_payment_id    String?                   @unique
+  created_at            DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime?                 @db.Timestamptz(6)
+
+  profile               profile                @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+  owner_subscriptions   owner_subscriptions    @relation(fields: [subscription_id], references: [id], onDelete: Cascade)
+  subscription_plans    subscription_plans     @relation(fields: [plan_id], references: [id])
+  subscription_invoices subscription_invoices?
+  subscription_payment_gateway_events subscription_payment_gateway_events[]
+
+  @@index([owner_id, created_at(sort: Desc)])
+  @@index([subscription_id])
+  @@index([status, submitted_at])
+  @@index([transaction_reference])
+}
+
+/// Webhook idempotency + audit trail for GATEWAY subscription payments (Phase
+/// 13) — dedicated to platform-billing, deliberately separate from the
+/// tenant-rent `payment_webhook_events` table (that one is keyed to
+/// `PaymentAttempt`/hostel/operational-owner concepts that don't fit an
+/// owner-pays-Stayo payment, and this phase must not touch tenant-rent code).
+/// One row per distinct webhook delivery; `event_hash` is the dedup key so a
+/// duplicate delivery (Razorpay retries on anything but a 2xx) is detected
+/// before any side effect runs.
+model subscription_payment_gateway_events {
+  id                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  event_hash               String    @unique
+  payment_id               String?   @db.Uuid
+  gateway_order_id         String?
+  gateway_payment_id       String?
+  event_type               String?
+  signature_verified       Boolean   @default(false)
+  raw_payload              Json
+  /// RECEIVED → PROCESSED | IGNORED | FAILED
+  processing_status        String    @default("RECEIVED")
+  error_message            String?
+  received_at              DateTime  @default(now()) @db.Timestamptz(6)
+  processed_at             DateTime? @db.Timestamptz(6)
+
+  subscription_payments subscription_payments? @relation(fields: [payment_id], references: [id])
+
+  @@index([payment_id])
+  @@index([gateway_order_id])
+  @@index([received_at])
+}
+
+/// The financial document for an approved subscription payment. One invoice per
+/// payment (`payment_id` UNIQUE). Never cascade-deleted — a financial record is
+/// removed only by an explicit, deliberate operation.
+///
+/// Stayo is NOT GST-registered: there is no tax computation anywhere in this
+/// phase. `tax_paise` exists only so a future registered-entity flow needs no
+/// schema migration; it is always 0 today.
+model subscription_invoices {
+  id                    String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  owner_id              String                    @db.Uuid
+  subscription_id       String                    @db.Uuid
+  payment_id            String                    @unique @db.Uuid
+  invoice_number        String                    @unique
+  billing_period_start  DateTime                  @db.Date
+  billing_period_end    DateTime                  @db.Date
+  /// Total charged (Phase 6.6: `plan_amount_paise + extra_bed_amount_paise +
+  /// tax_paise`, enforced by `subscription-invoice-service.ts`, never by a DB
+  /// constraint — matches how `tax_paise` was already handled).
+  amount_paise          Int
+  /// Reserved for a future GST-registered flow. Always 0 in this phase.
+  tax_paise             Int                       @default(0)
+  /// Extra beds this invoice covers (business rules, 2026-09-10) — the
+  /// subscription's resulting extra-bed TOTAL after this payment (not the
+  /// incremental delta bought on this occasion — see `extra_bed_amount_paise`
+  /// for what was actually charged this time).
+  extra_beds            Int                       @default(0)
+  /// Portion of `amount_paise` attributable to the plan itself (full price or
+  /// prorated upgrade delta, depending on payment kind) — Phase 6.6, so an
+  /// invoice can show the plan amount separately from the extra-bed amount.
+  plan_amount_paise      Int                       @default(0)
+  /// Per-bed price (paise) actually used for this invoice's extra-bed charge,
+  /// SNAPSHOTTED at invoice creation (Phase 6.6) — a later admin edit to the
+  /// plan's `extra_bed_price_paise` must never change what an old invoice
+  /// says it charged. `null` when this invoice has no extra beds.
+  extra_bed_unit_price_paise Int?
+  /// `extra_beds bought THIS invoice × extra_bed_unit_price_paise` — the
+  /// actual paise charged for extra beds on this invoice (Phase 6.6). For an
+  /// EXTRA_BEDS top-up this is priced on the INCREMENTAL beds only, even
+  /// though `extra_beds` above stores the new total. `plan_amount_paise +
+  /// extra_bed_amount_paise + tax_paise === amount_paise`, always.
+  extra_bed_amount_paise Int                       @default(0)
+  currency              String                    @default("INR")
+  payment_method        SubscriptionPaymentMethod
+  transaction_reference String?
+  /// URL / storage reference for the generated invoice document (later phase).
+  document_url          String?
+  notes                 String?
+  issued_at             DateTime                  @default(now()) @db.Timestamptz(6)
+  created_at            DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime?                 @db.Timestamptz(6)
+
+  profile               profile               @relation(fields: [owner_id], references: [id])
+  owner_subscriptions   owner_subscriptions   @relation(fields: [subscription_id], references: [id])
+  subscription_payments subscription_payments @relation(fields: [payment_id], references: [id])
+
+  @@index([owner_id, issued_at(sort: Desc)])
+  @@index([subscription_id])
+}
+
+/// Owner's billing contact/identity for Stayo subscription invoices. Separate
+/// from tenant-rent billing data and from the `profiles` payout_* fields (which
+/// are where Stayo sends the owner their settled rent — the opposite direction).
+model owner_billing_profiles {
+  owner_id        String    @id @db.Uuid
+  billing_name    String?
+  billing_email   String?
+  billing_phone   String?
+  billing_address String?
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime? @db.Timestamptz(6)
+
+  profile profile @relation(fields: [owner_id], references: [id], onDelete: Cascade)
 }

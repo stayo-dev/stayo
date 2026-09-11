@@ -17,6 +17,7 @@ import { isPhoneAlreadyProven } from "./invitation-phone-trust";
 import { resolveInvitedProfile, resolveActivationEmail, realEmailOrNull } from "./invited-profile-resolver";
 import { normalizeOnboardingEmail } from "../../../lib/services/auth/email-otp-service";
 import { initializeActiveUnacceptedTenancy } from "./owner-managed-tenancy-service";
+import { assertOwnerCanActivateTenant } from "@/src/services/platform-billing/tenant-activation-guard";
 import {
   TenancyEligibilityError,
   tenancyEligibilityService,
@@ -1772,6 +1773,14 @@ export class TenantInvitationLifecycleService {
           invitation_expires_at: null,
           ...(passwordHash ? { password_hash: passwordHash } : {}),
         },
+      });
+      // ADR-172 Phase 3: the owner's Stayo subscription must be active and have
+      // capacity. `tenantId` is passed so a new-model tenancy that is already
+      // ACTIVE (acceptance pending) is not double-counted against the ceiling.
+      await assertOwnerCanActivateTenant(tenant.owner_id || invitation.owner_id, {
+        tx,
+        tenantId: tenant.id,
+        context: "invitation-complete-activation",
       });
       await tx.tenants.update({
         where: { id: tenant.id },

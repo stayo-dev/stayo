@@ -45,14 +45,19 @@ export async function GET(req: NextRequest) {
       prisma.hostels.count({ where: { listing_status: "LIVE" } }),
       prisma.tenants.count(),
       prisma.tenants.count({ where: { status: "ACTIVE" } }),
-      prisma.hostel_subscriptions.findMany({ select: { status: true, billing_cycle: true, amount: true } }),
-      prisma.platform_invoices.aggregate({ where: { status: "PAID", paid_at: { gte: monthStart } }, _sum: { amount: true } }),
-      // Pending Dues here means unpaid PLATFORM subscription invoices (what
-      // hostel owners owe Stayo) — same domain as /api/platform-admin/
-      // revenue's `pending_collections`, deliberately NOT tenant-level rent
-      // dues (a different revenue stream: what tenants owe their hostel).
-      prisma.platform_invoices.aggregate({ where: { status: { in: ["PENDING", "FAILED"] } }, _sum: { amount: true } }),
-      prisma.platform_invoices.aggregate({ where: { status: "PAID" }, _sum: { amount: true } }),
+      // ADR-172: Stayo billing is owner-level now. MRR = current plan price of
+      // every ACTIVE owner_subscription. The deprecated per-hostel
+      // hostel_subscriptions / platform_invoices tables are no longer read here.
+      prisma.owner_subscriptions.findMany({
+        where: { status: "ACTIVE" },
+        select: { subscription_plans: { select: { price_paise: true } } },
+      }),
+      prisma.subscription_invoices.aggregate({ where: { issued_at: { gte: monthStart } }, _sum: { amount_paise: true } }),
+      // "Pending" for the admin's queue is subscription payments awaiting
+      // review (SUBMITTED / UNDER_REVIEW) — the thing an admin can act on.
+      // Deliberately NOT tenant-level rent dues (a different revenue stream).
+      prisma.subscription_payments.count({ where: { status: { in: ["SUBMITTED", "UNDER_REVIEW"] } } }),
+      prisma.subscription_invoices.aggregate({ _sum: { amount_paise: true } }),
       prisma.hostels.findMany({
         orderBy: { created_at: "desc" },
         take: 3,
@@ -64,13 +69,16 @@ export async function GET(req: NextRequest) {
       prisma.profile.count({ where: { role: "OWNER" } }),
     ]);
 
-    // MRR composed the same way as /api/platform-admin/revenue — one
-    // recurring-revenue figure, not reimplemented differently here.
+    // MRR composed the same way as /api/platform-admin/revenue (owner-level,
+    // ADR-172) — one recurring-revenue figure, in rupees, not reimplemented
+    // differently here. Subscription money is stored in paise.
     let mrr = 0;
-    for (const s of subscriptions) {
-      if (s.status !== "ACTIVE") continue;
-      mrr += s.billing_cycle === "YEARLY" ? Number(s.amount) / 12 : Number(s.amount);
+    for (const s of subscriptions as any[]) {
+      mrr += Number(s.subscription_plans?.price_paise ?? 0) / 100;
     }
+    const collectedThisMonthRupees = Number(collectedThisMonth._sum.amount_paise ?? 0) / 100;
+    const lifetimeRevenueRupees = Number(lifetimePlatformRevenue._sum.amount_paise ?? 0) / 100;
+    const paymentsAwaitingReview = Number(pendingPlatformInvoices ?? 0);
 
     // Per-hostel occupancy/revenue/dues for the 3 preview hostels — same
     // composition as /api/platform-admin/hostels's list endpoint, scoped
@@ -95,8 +103,9 @@ export async function GET(req: NextRequest) {
         total_tenants: totalTenants,
         active_tenants: activeTenants,
         platform_revenue: mrr,
-        collections: Number(collectedThisMonth._sum.amount ?? 0),
-        pending_dues: Number(pendingPlatformInvoices._sum.amount ?? 0),
+        collections: collectedThisMonthRupees,
+        // Count of subscription payments awaiting admin review (not a money sum).
+        pending_dues: paymentsAwaitingReview,
         documents_awaiting_review: documentsAwaitingReview,
         owners_total: ownersTotal,
       },
@@ -115,10 +124,10 @@ export async function GET(req: NextRequest) {
         };
       }),
       revenue_summary: {
-        total_revenue: Number(lifetimePlatformRevenue._sum.amount ?? 0),
+        total_revenue: lifetimeRevenueRupees,
         platform_earnings: mrr,
-        pending_collections: Number(pendingPlatformInvoices._sum.amount ?? 0),
-        this_month: Number(collectedThisMonth._sum.amount ?? 0),
+        pending_collections: paymentsAwaitingReview,
+        this_month: collectedThisMonthRupees,
       },
     });
   } catch (error: any) {

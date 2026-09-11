@@ -56,7 +56,9 @@ export async function composeRecentActivity(limit = 8): Promise<ActivityItem[]> 
   const perSourceTake = Math.max(limit, 10);
   const [recentHostels, recentInvoices, recentServiceRequests] = await Promise.all([
     prisma.hostels.findMany({ orderBy: { created_at: "desc" }, take: perSourceTake, select: { id: true, name: true, created_at: true, verification_status: true, listing_status: true } }),
-    prisma.platform_invoices.findMany({ orderBy: { paid_at: "desc" }, take: perSourceTake, where: { status: "PAID" }, include: { hostels: { select: { name: true } } } }),
+    // ADR-172: owner-level subscription invoices (issued atomically on payment
+    // approval), not the deprecated per-hostel `platform_invoices`.
+    prisma.subscription_invoices.findMany({ orderBy: { issued_at: "desc" }, take: perSourceTake, include: { profile: { select: { name: true } } } }),
     prisma.tenant_service_requests.findMany({
       orderBy: { created_at: "desc" },
       take: perSourceTake,
@@ -73,9 +75,9 @@ export async function composeRecentActivity(limit = 8): Promise<ActivityItem[]> 
     })),
     ...recentInvoices.map((i: any) => ({
       id: `invoice:${i.id}`,
-      time: i.paid_at,
-      title: `Payment collected — ${i.hostels.name}`,
-      sub: `₹${Number(i.amount).toLocaleString("en-IN")}`,
+      time: i.issued_at,
+      title: `Subscription payment — ${i.profile?.name ?? "owner"}`,
+      sub: `₹${Math.round(Number(i.amount_paise) / 100).toLocaleString("en-IN")}`,
       color: "var(--success)",
     })),
     ...recentServiceRequests.map((r: any) => ({

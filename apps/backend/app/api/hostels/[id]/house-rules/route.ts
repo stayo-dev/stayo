@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { prisma } from "@/lib/db";
 
 /**
@@ -39,6 +40,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "hostels.id.house-rules");
     const existing = await prisma.hostels.findFirst({ where: { id, owner_id: scope.owner_id }, select: { id: true } });
     if (!existing) return apiError("Hostel not found", "NOT_FOUND", 404);
 
@@ -52,6 +54,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
     return apiResponse({ sections: updated.house_rules ?? [] });
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     return apiError(error?.message || "Failed to update house rules");
   }
 }

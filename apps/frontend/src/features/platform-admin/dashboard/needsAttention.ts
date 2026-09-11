@@ -90,13 +90,16 @@ export function deriveAttention(kpis: AdminKpis, ownersNeedingAttention = 0): At
     });
   }
 
-  const dues = Number(kpis.pending_dues ?? 0);
-  if (dues > 0) {
+  // ADR-172: `pending_dues` is now the count of owner subscription payments
+  // awaiting admin review (SUBMITTED / UNDER_REVIEW), not a rupee sum of
+  // legacy per-hostel invoices.
+  const paymentsToReview = Number(kpis.pending_dues ?? 0);
+  if (paymentsToReview > 0) {
     items.push({
       code: 'PLATFORM_DUES',
-      label: 'Unpaid platform invoices',
-      count: dues,
-      to: '/admin/revenue',
+      label: plural(paymentsToReview, 'subscription payment to review', 'subscription payments to review'),
+      count: paymentsToReview,
+      to: '/admin/subscriptions',
       severity: 'low',
     });
   }

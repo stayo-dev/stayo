@@ -80,9 +80,14 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         select: { id: true, doc_type: true, status: true, review_note: true, uploaded_at: true, file_url: true },
         orderBy: { uploaded_at: "desc" },
       }),
-      prisma.hostel_subscriptions.findMany({
-        where: { hostel_id: { in: hostelIds } },
-        select: { hostel_id: true, status: true, amount: true, billing_cycle: true, next_renewal_at: true },
+      // ADR-172: one subscription per owner (not per hostel).
+      prisma.owner_subscriptions.findUnique({
+        where: { owner_id: owner.id },
+        select: {
+          status: true,
+          next_renewal_at: true,
+          subscription_plans: { select: { price_paise: true } },
+        },
       }),
       // Last recorded actions. Sparse by nature — only a few services write
       // here — so it is labelled as activity, never as "last seen".
@@ -101,14 +106,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const capacityByHostel = num(capacity, "hostel_id", (r) => Number(r._sum.capacity ?? 0));
     const collectedByHostel = num(collected, "hostel_id", (r) => Number(r._sum.amount_paid ?? 0));
     const duesByHostel = num(dues, "hostel_id", (r) => Number(r._sum.amount ?? 0));
-    // `as const` on the tuple — without it TS widens the pair to an array and
-    // `.get()` resolves to `{}`, losing every field on the subscription.
-    const subByHostel = new Map(subscriptions.map((s: any) => [s.hostel_id, s] as const));
+    const ownerSub: any = subscriptions ?? null;
+    const ownerSubStatus = ownerSub ? String(ownerSub.status) : null;
 
     const hostelRows = hostels.map((h: any) => {
       const beds = capacityByHostel.get(h.id) ?? 0;
       const active = activeByHostel.get(h.id) ?? 0;
-      const sub: any = subByHostel.get(h.id);
       return {
         id: h.id,
         name: h.name,
@@ -122,7 +125,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         occupancy: beds > 0 ? Math.round((active / beds) * 100) : 0,
         collected_this_month: collectedByHostel.get(h.id) ?? 0,
         outstanding: duesByHostel.get(h.id) ?? 0,
-        subscription_status: sub ? String(sub.status) : null,
+        // ADR-172: subscription is owner-level; shown per row for shape only.
+        subscription_status: ownerSubStatus,
         created_at: h.created_at,
       };
     });
@@ -133,13 +137,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const totalActive = sum(activeByHostel);
     const totalTenants = await prisma.tenants.count({ where: { owner_id: owner.id } });
 
-    const mrr = subscriptions.reduce(
-      (acc: number, s: any) =>
-        String(s.status) === "ACTIVE"
-          ? acc + (String(s.billing_cycle) === "YEARLY" ? Number(s.amount) / 12 : Number(s.amount))
-          : acc,
-      0,
-    );
+    const mrr =
+      ownerSub && ownerSubStatus === "ACTIVE"
+        ? Number(ownerSub.subscription_plans?.price_paise ?? 0) / 100
+        : 0;
 
     const verifiedTypes = new Set(
       documents
@@ -174,7 +175,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         documents_rejected: documents.some((d: any) => String(d.status).toUpperCase() === "REJECTED"),
 
         mrr,
-        subscription_statuses: subscriptions.map((s: any) => String(s.status)),
+        subscription_statuses: ownerSub ? [ownerSubStatus as string] : [],
+        next_renewal_at: ownerSub?.next_renewal_at ?? null,
       },
       hostels: hostelRows,
       documents,

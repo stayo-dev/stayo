@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { prisma } from "@/lib/db";
 import { eventSystem } from "@/lib/events";
 import {
@@ -61,6 +62,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const hostelId = params.id;
   try {
+    if (session.role === "OWNER") {
+      await assertOwnerSubscriptionActive(session.sub, "owner.hostels.agreement-template");
+    }
     const hostel = await prisma.hostels.findFirst({
       where: { id: hostelId, owner_id: session.sub },
       include: { profiles: { select: { name: true } } },
@@ -286,6 +290,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     return apiResponse(result);
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     return apiError(error.message || "Failed to handle agreement template request");
   }
 }

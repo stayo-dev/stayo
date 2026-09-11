@@ -7,6 +7,7 @@ import { ApiResponse } from "@/src/lib/api-response";
 import { ApiError } from "@/src/lib/api-error";
 import { propertyService } from "@/lib/services/property-service";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { requireHostelBelongsToOwner } from "@/lib/security/scoped-query";
 
 /**
@@ -43,6 +44,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "floors");
     const body = await req.json().catch(() => ({}));
     const { hostelId, name, sort_order } = body;
 
@@ -58,6 +60,8 @@ export async function POST(req: NextRequest) {
 
     return ApiResponse.success(floor, "Floor created", { status: 201 });
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     const msg = String(error?.message || "Failed to create floor");
     if (msg.startsWith("NOT_FOUND:")) return ApiResponse.error(ApiError.notFound(msg.replace("NOT_FOUND:", "").trim()));
     for (const prefix of ["VALIDATION:", "HOSTEL_ARCHIVED:"]) {

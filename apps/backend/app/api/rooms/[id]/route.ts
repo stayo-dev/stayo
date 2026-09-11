@@ -5,8 +5,7 @@ import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
-
-
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 /**
  * 🏠 ROOM BY ID — Get, Update, Delete
  * GET    /api/rooms/[id]
@@ -50,6 +49,7 @@ export async function PATCH(
 
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "rooms.id");
     const body = await req.json();
 
     const updatedRoom = await propertyService.updateRoom(
@@ -69,6 +69,8 @@ export async function PATCH(
 
     return apiResponse(updatedRoom);
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     const rawMessage = String(error?.message || "Failed to update room");
     const [maybeCode, ...rest] = rawMessage.split(":");
     const normalizedCode = maybeCode?.trim();
@@ -96,6 +98,7 @@ export async function DELETE(
 
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "rooms.id");
     // Verify ownership
     const existing = await prisma.rooms.findUnique({
       where: { id: params.id },
@@ -140,6 +143,8 @@ export async function DELETE(
 
     return new Response(null, { status: 204 });
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     return apiError(error.message || "Failed to delete room");
   }
 }
