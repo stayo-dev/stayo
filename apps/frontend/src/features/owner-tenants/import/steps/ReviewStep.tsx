@@ -3,6 +3,7 @@ import type { ReviewQueue } from '../reviewQueue';
 import { attentionSummary, groupAction } from '../issueCopy';
 import { IssueFix } from './IssueFix';
 import { editCount, hasEdits, type RowEdits } from '../rowEdits';
+import { planFixes } from '../fixStrategy';
 
 interface ReviewStepProps {
   queue: ReviewQueue;
@@ -52,6 +53,9 @@ export function ReviewStep({
   // Rows, not issues. summary.blockers counts problems, and one row with two
   // problems was being reported to the owner as "2 rows" they could not find.
   const blockedRows = needsYou.filter((row) => row.issues.some((i) => i.severity === 'BLOCKER')).length;
+  // Which way of fixing these is genuinely less work — see fixStrategy.
+  const plan = planFixes(queue);
+  const inSheet = plan.strategy === 'IN_SHEET';
 
   return (
     <div className="space-y-4">
@@ -94,8 +98,32 @@ export function ReviewStep({
         );
       })}
 
+      {inSheet && (
+        <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
+          <p className="font-display text-sm font-bold text-foreground">{plan.title}</p>
+          <p className="mt-1 text-[12.5px] font-medium text-muted-foreground">{plan.reason}</p>
+          <button
+            type="button"
+            onClick={onDownloadCorrected}
+            disabled={downloading}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 font-display text-[13px] font-bold text-primary-foreground disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" />
+            {downloading ? 'Preparing your sheet…' : 'Download my sheet with the problems marked'}
+          </button>
+          <p className="mt-2 text-[11.5px] font-medium text-muted-foreground">
+            Red must be fixed · amber is your call · the last column says what&apos;s wrong with each row.
+            Fix them, save, and upload the same file again.
+          </p>
+        </div>
+      )}
+
       {needsYou.length > 0 && (
-        <ul className="space-y-3 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0">
+        <details open={!inSheet} className="group">
+          <summary className="cursor-pointer list-none text-[12.5px] font-semibold text-muted-foreground underline">
+            {inSheet ? 'Or fix them here, one at a time' : ''}
+          </summary>
+        <ul className="mt-3 space-y-3 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0">
           {needsYou.map((row) => (
             <li key={row.row} className="rounded-xl border border-border bg-card p-3.5">
               <div className="flex items-baseline justify-between gap-2">
@@ -134,6 +162,7 @@ export function ReviewStep({
             </li>
           ))}
         </ul>
+        </details>
       )}
 
       {duplicates.length > 0 && (
@@ -194,15 +223,17 @@ export function ReviewStep({
           then upload it again.
         </p>
       )}
-      <button
-        type="button"
-        onClick={onDownloadCorrected}
-        disabled={downloading}
-        className="flex w-full items-center justify-center gap-1.5 text-center text-[12.5px] font-semibold text-muted-foreground underline disabled:opacity-50"
-      >
-        <Download className="h-3.5 w-3.5" />
-        {downloading ? 'Preparing…' : 'Download this sheet with my fixes'}
-      </button>
+      {!inSheet && (
+        <button
+          type="button"
+          onClick={onDownloadCorrected}
+          disabled={downloading}
+          className="flex w-full items-center justify-center gap-1.5 text-center text-[12.5px] font-semibold text-muted-foreground underline disabled:opacity-50"
+        >
+          <Download className="h-3.5 w-3.5" />
+          {downloading ? 'Preparing…' : 'Download this sheet with my fixes'}
+        </button>
+      )}
 
       <p className="text-center text-[12px] font-medium text-muted-foreground">
         Nothing is created until you tap Import — and your tenants aren&apos;t messaged until the step after that.

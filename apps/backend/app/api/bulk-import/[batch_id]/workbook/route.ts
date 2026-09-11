@@ -44,7 +44,7 @@ export async function GET(
   ]
     .slice()
     .sort((a: any, b: any) => Number(a.row ?? 0) - Number(b.row ?? 0))
-    .map((entry: any) => entry.data ?? {});
+    .map((entry: any) => ({ ...(entry.data ?? {}), __issues: entry.issues ?? [] }));
 
   const [rooms, tenantCount] = await Promise.all([
     prisma.rooms.findMany({
@@ -99,6 +99,13 @@ export async function GET(
       payment_method: row.payment_method,
       payment_reference: row.payment_reference,
       notes: row.notes,
+      // Still outstanding, so the sheet can mark exactly where.
+      problems: (row.__issues ?? []).map((issue: any) => ({
+        field: issue.field,
+        severity: issue.severity,
+        title: issue.title,
+        detail: issue.detail,
+      })),
     })),
   });
 
