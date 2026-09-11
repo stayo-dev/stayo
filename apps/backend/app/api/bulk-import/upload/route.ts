@@ -118,6 +118,9 @@ export async function POST(req: NextRequest) {
       row: r.row,
       data: sanitizeImportRowForStorage(r.data),
       warnings: r.warnings,
+      // Persisted, not just returned: the review screen renders issues, and
+      // without these a reload showed every row as clean.
+      issues: r.issues,
     }));
     const hasHistoricalJoinDateWarnings = validation.validRows.some((r) =>
       r.warnings.some((warning) => warning.toLowerCase().includes("historical joining date"))
@@ -144,14 +147,21 @@ export async function POST(req: NextRequest) {
               data: sanitizeImportRowForStorage(r.data),
               errors: r.errors,
               warnings: r.warnings,
+              issues: r.issues,
             })),
             duplicates: validation.duplicates.map((r) => ({
               row: r.row,
               data: sanitizeImportRowForStorage(r.data),
               reason: r.duplicateReason,
               warnings: r.warnings,
+              issues: r.issues,
             })),
             requires_historical_join_date_confirmation: hasHistoricalJoinDateWarnings,
+            summary: {
+              blockers: validation.summary.blockers,
+              choices: validation.summary.choices,
+              warnings: validation.summary.warnings,
+            },
             room_plan: {
               create: roomPlan.create,
               update: roomPlan.update,
@@ -193,6 +203,8 @@ export async function POST(req: NextRequest) {
           invalid_rows: validation.summary.invalid,
           duplicate_rows: validation.summary.duplicates,
           warnings: validation.summary.warnings,
+          blockers: validation.summary.blockers,
+          choices: validation.summary.choices,
           requires_historical_join_date_confirmation: hasHistoricalJoinDateWarnings,
         },
         rooms: {

@@ -71,11 +71,14 @@ export async function closeUnacceptedTenancy(
     });
   }
 
+  // 3. Close open invitations. QUEUED counts: a bulk-imported invitation that
+  // was never sent still belongs to this tenancy, and leaving it open let a
+  // later "send all" message someone whose tenancy had been cancelled.
   // 3. Close open invitations.
   const openInvitations = await tx.tenant_invitations.findMany({
     where: {
       tenant_id: tenantId,
-      status: { in: ["PENDING", "OPENED", "ACTIVATION_STARTED"] },
+      status: { in: ["PENDING", "OPENED", "ACTIVATION_STARTED", "QUEUED"] },
     },
     select: { id: true },
   });

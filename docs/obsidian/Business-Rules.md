@@ -953,6 +953,14 @@ These are rules the product must keep true, because published legal text now ass
 - **Easebuzz verification suite** — the Privacy Policy now discloses sharing owner KYC (typically name, PAN, bank-account and business details) with the payment partner's onboarding and verification service. When the suite is actually wired, confirm the data sent matches that clause, and extend it if residents' details are verified too.
 - **Internal contradiction:** `POST /api/platform-admin/hostels/[id]/subscription` still creates new subscriptions in status `TRIAL` with a 14-day `trial_ends_at`/`next_renewal_at`. Nothing reads `trial_ends_at` and no job bills from `next_renewal_at`, so owners never experience a trial — but the admin console labels every new subscription "Trial", contrary to the policy.
 
+## Bulk import — invitations are created, then sent (2026-09-11, [[Decisions#ADR-182|ADR-182]])
+
+- **An import creates every tenancy but sends nothing.** Rooms, tenancies, obligations and any already-paid settlement all land at confirm; the invitations are written `QUEUED`. The owner sends them afterwards — all at once, or a wave — so onboarding a running hostel gets the books right immediately without forty phones buzzing in the same instant.
+- **The expiry clock starts at send, not at creation.** An invitation that sat queued for a week still gives its tenant the full window.
+- **This is not the removed `suppressInvitationNotification` path.** Acceptance stays mandatory ([[Decisions#ADR-165|ADR-165]]), nothing is attested on the owner's behalf, and the invitation still expires once sent. Only the moment of sending moves.
+- **Neither sweep touches a queued invitation:** both the unaccepted-tenancy expiry and the expiry reminder select explicit status allowlists, so `QUEUED` is excluded. **Consequence worth knowing:** a batch the owner never sends holds its rooms indefinitely — the tenancies are live and nothing expires them. The send step says plainly that nobody has been messaged.
+- **Duplicate detection already covers a queued invitation**, because it is tenancy-based: the tenancy is `INVITED`/`ACTIVE` from the moment of import.
+
 ## Bulk import — the workbook and the rooms it defines (2026-09-11)
 
 See [[Decisions#ADR-181|ADR-181]] for why the template is generated per hostel.
