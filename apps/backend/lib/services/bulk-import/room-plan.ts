@@ -6,6 +6,7 @@ export type ExistingRoom = {
   room_no: string;
   capacity: number;
   base_rent: number | null;
+  room_type: string | null;
   is_active: boolean;
   occupied_count: number;
   reserved_count: number;
@@ -17,8 +18,8 @@ export type RoomPlan = {
   update: Array<{
     id: string;
     room_no: string;
-    from: { capacity: number; base_rent: number | null };
-    to: { capacity?: number; base_rent?: number };
+    from: { capacity: number; base_rent: number | null; room_type: string | null };
+    to: { capacity?: number; base_rent?: number; room_type?: string };
   }>;
   unchanged: string[];
   issues: RowIssue[];
@@ -48,7 +49,9 @@ export function buildRoomPlan(sheet: RoomImportRow[], existing: ExistingRoom[]):
   const seen = new Map<string, number>();
 
   sheet.forEach((row, index) => {
-    const rowNumber = index + FIRST_DATA_ROW;
+    // The row's own line in the spreadsheet when the parser recorded one;
+    // position in the array is wrong as soon as the owner leaves a gap.
+    const rowNumber = row.sheet_row ?? index + FIRST_DATA_ROW;
     const k = key(row.room_no);
 
     if (seen.has(k)) {
@@ -161,10 +164,15 @@ export function buildRoomPlan(sheet: RoomImportRow[], existing: ExistingRoom[]):
       return;
     }
 
-    const to: { capacity?: number; base_rent?: number } = {};
+    const to: { capacity?: number; base_rent?: number; room_type?: string } = {};
     if (row.capacity !== undefined && row.capacity !== match.capacity) to.capacity = row.capacity;
     if (row.base_rent !== undefined && row.base_rent !== (match.base_rent ?? undefined)) {
       to.base_rent = row.base_rent;
+    }
+    // Sharing Type is a column the owner can edit; without this it was a
+    // silent no-op on an existing room.
+    if (row.sharing_type !== undefined && row.sharing_type !== (match.room_type ?? undefined)) {
+      to.room_type = row.sharing_type;
     }
 
     if (Object.keys(to).length === 0) {
@@ -173,7 +181,7 @@ export function buildRoomPlan(sheet: RoomImportRow[], existing: ExistingRoom[]):
       plan.update.push({
         id: match.id,
         room_no: match.room_no,
-        from: { capacity: match.capacity, base_rent: match.base_rent },
+        from: { capacity: match.capacity, base_rent: match.base_rent, room_type: match.room_type },
         to,
       });
     }

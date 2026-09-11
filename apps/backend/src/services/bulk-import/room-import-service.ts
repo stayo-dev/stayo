@@ -124,7 +124,7 @@ export async function applyRoomPlan(
           room_no: room.room_no,
           capacity: edit?.capacity ?? room.capacity,
           base_rent: edit?.base_rent ?? (room.base_rent ?? undefined),
-          room_type: room.room_type ?? undefined,
+          room_type: edit?.room_type ?? (room.room_type ?? undefined),
         };
       }),
       ...creates.map((room) => ({

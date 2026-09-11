@@ -75,3 +75,24 @@ describe("parseRoomsSheet", () => {
     });
   });
 });
+
+describe("row numbers survive the blank rows the template leaves", () => {
+  it("reports the line the owner is actually looking at", () => {
+    const buf = book([
+      {
+        name: ROOMS_SHEET,
+        rows: [
+          { "Room No": "101", Capacity: 3 },
+          { "Room No": "", Capacity: "" },
+          { "Room No": "", Capacity: "" },
+          { "Room No": "201", Capacity: 2 },
+        ],
+      },
+    ]);
+
+    const rooms = parseRoomsSheet(buf);
+    expect(rooms.map((r) => r.room_no)).toEqual(["101", "201"]);
+    // 101 is on sheet row 2; 201 is on row 5, not row 3.
+    expect(rooms.map((r) => r.sheet_row)).toEqual([2, 5]);
+  });
+});

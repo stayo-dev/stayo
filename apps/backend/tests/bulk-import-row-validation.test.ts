@@ -9,6 +9,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 const { mockPrisma } = vi.hoisted(() => ({
   mockPrisma: {
     profile: { findMany: vi.fn() },
+    tenants: { findMany: vi.fn() },
     tenant_invitations: { findMany: vi.fn() },
     rooms: { findMany: vi.fn() },
     hostels: { findUnique: vi.fn() },
@@ -82,6 +83,7 @@ function monthsAgo(offset: number) {
 beforeEach(() => {
   phoneSeq = 0;
   mockPrisma.profile.findMany.mockResolvedValue([]);
+  mockPrisma.tenants.findMany.mockResolvedValue([]);
   mockPrisma.tenant_invitations.findMany.mockResolvedValue([]);
   mockPrisma.hostels.findUnique.mockResolvedValue({ name: "Sri Adithya Boys Hostel" });
   mockPrisma.rooms.findMany.mockResolvedValue([
@@ -300,7 +302,7 @@ describe("every blocked row can be explained to the owner", () => {
   });
 
   it("explains a person already on Stayo as a choice", async () => {
-    mockPrisma.profile.findMany.mockResolvedValue([{ phone: "+919876512345", email: "x@example.com" }]);
+    mockPrisma.tenants.findMany.mockResolvedValue([{ profile: { phone: "+919876512345", email: "x@example.com" } }]);
     const r = await validateOne({ phone: "9876512345" });
     expect(r.issues.map((i) => i.code)).toContain("DUPLICATE_IN_SYSTEM");
   });
@@ -312,7 +314,7 @@ describe("existing tenants are recognised whatever format their phone is stored 
   // against the normalised E.164 row phone therefore never matched a profile,
   // so re-importing an existing tenant created a second tenancy.
   it("matches a profile phone stored as bare 10 digits", async () => {
-    mockPrisma.profile.findMany.mockResolvedValue([{ phone: "9876512345", email: "x@example.com" }]);
+    mockPrisma.tenants.findMany.mockResolvedValue([{ profile: { phone: "9876512345", email: "x@example.com" } }]);
     const r = await validateOne({ phone: "+91 98765 12345" });
     expect(r.isDuplicate).toBe(true);
     expect(r.issues.map((i) => i.code)).toContain("DUPLICATE_IN_SYSTEM");
@@ -325,7 +327,7 @@ describe("existing tenants are recognised whatever format their phone is stored 
   });
 
   it("does not match a different number that shares a prefix", async () => {
-    mockPrisma.profile.findMany.mockResolvedValue([{ phone: "9876512345", email: "x@example.com" }]);
+    mockPrisma.tenants.findMany.mockResolvedValue([{ profile: { phone: "9876512345", email: "x@example.com" } }]);
     const r = await validateOne({ phone: "9876512346" });
     expect(r.isDuplicate).toBe(false);
   });
@@ -387,5 +389,32 @@ describe("a tenant may live in a room the same workbook adds", () => {
     );
 
     expect(result.validRows[0].data.room_id).toBe("room-101");
+  });
+});
+
+describe("a former tenant can come back", () => {
+  // Duplicate detection used to match every tenant profile the owner had ever
+  // had, with no tenancy-status filter — so someone who moved out could never
+  // be imported again, though the single-tenant invite adopts them happily and
+  // the database already allows only one live tenancy per person.
+  it("does not treat a moved-out tenant as a duplicate", async () => {
+    mockPrisma.tenants.findMany.mockResolvedValue([]); // no live tenancy
+    const r = await validateOne({ phone: "9876512345" });
+    expect(r.isDuplicate).toBe(false);
+  });
+
+  it("still blocks someone who is living there right now", async () => {
+    mockPrisma.tenants.findMany.mockResolvedValue([
+      { profile: { phone: "9876512345", email: "x@example.com" } },
+    ]);
+    const r = await validateOne({ phone: "9876512345" });
+    expect(r.isDuplicate).toBe(true);
+  });
+
+  it("asks only for tenancies that still hold a bed", async () => {
+    await validateOne();
+    const where = mockPrisma.tenants.findMany.mock.calls[0][0].where;
+    expect(where.status.in).toEqual(["INVITED", "ACTIVE"]);
+    expect(where.status.in).not.toContain("FORMER_TENANT");
   });
 });

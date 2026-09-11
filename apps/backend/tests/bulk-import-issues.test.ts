@@ -10,6 +10,7 @@ import {
 const { mockPrisma } = vi.hoisted(() => {
   const prisma: any = {
     profile: { findMany: vi.fn() },
+    tenants: { findMany: vi.fn() },
     tenant_invitations: { findMany: vi.fn() },
     rooms: { findMany: vi.fn() },
     hostels: { findUnique: vi.fn() },
@@ -32,6 +33,7 @@ vi.mock("@/lib/services/hostel-billing-preferences-service", () => ({
 
 beforeEach(() => {
   mockPrisma.profile.findMany.mockResolvedValue([]);
+  mockPrisma.tenants.findMany.mockResolvedValue([]);
   mockPrisma.tenant_invitations.findMany.mockResolvedValue([]);
   mockPrisma.rooms.findMany.mockResolvedValue([
     {

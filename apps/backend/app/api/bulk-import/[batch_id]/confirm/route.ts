@@ -5,6 +5,7 @@ export const maxDuration = 300;
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { getLogger } from "@/lib/logger";
 import type { TenantImportRow } from "@/lib/services/bulk-import-validation-service";
 import { tenantInvitationLifecycleService } from "@/src/services/tenants/tenant-invitation-lifecycle-service";
 import { applyRoomPlan } from "@/src/services/bulk-import/room-import-service";
@@ -13,6 +14,8 @@ import type { RoomPlan } from "@/lib/services/bulk-import/room-plan";
 /**
  * Bulk import batch preview.
  */
+const logger = getLogger("bulk-import-confirm");
+
 export async function GET(
   req: NextRequest,
   { params }: { params: { batch_id: string } }
@@ -298,6 +301,9 @@ async function executeInvitationBatch(
         maintenance_type: data.maintenance_type,
         agreement_duration_months: data.agreement_duration_months,
         paid_amount: data.amount_paid,
+        // Honoured now: "No" keeps the deposit owed instead of letting the
+        // settlement swallow it.
+        paid_includes_deposit: data.amount_includes_deposit,
         // amount_includes_deposit is parsed and stored (TenantImportRow,
         // both sanitizers) for a later plan's workbook, but createInvitation
         // never reads it — settlement is plain FIFO over all dues including
@@ -310,6 +316,30 @@ async function executeInvitationBatch(
         notes: data.notes,
         batch_id: batchId,
       }, ownerId);
+
+      // The sheet's Notes column reached bulk_import_rows and stopped there:
+      // createInvitation reads no notes key and `tenants` has no notes column.
+      // A note the owner took the trouble to write belongs on the tenant, so
+      // it becomes a tenant_notes row. Never fatal — the tenancy is already
+      // created, and losing a note must not fail the import.
+      const note = String(data.notes ?? "").trim();
+      if (note && invitationResult.tenant_id) {
+        try {
+          await prisma.tenant_notes.create({
+            data: {
+              tenant_id: invitationResult.tenant_id,
+              owner_id: ownerId,
+              content: note,
+            },
+          });
+        } catch (noteError: any) {
+          logger.warn("bulk_import.note_not_saved", {
+            batch_id: batchId,
+            row: row.row_number,
+            error: String(noteError?.message || noteError),
+          });
+        }
+      }
 
       if (!invitationResult.email_sent) emailFailureCount++;
       successCount++;

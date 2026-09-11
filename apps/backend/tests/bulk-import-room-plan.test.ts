@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { buildRoomPlan, type ExistingRoom } from "@/lib/services/bulk-import/room-plan";
 import type { RoomImportRow } from "@/lib/services/bulk-import/rooms-sheet";
 
@@ -8,6 +8,7 @@ function existing(over: Partial<ExistingRoom> = {}): ExistingRoom {
     room_no: "101",
     capacity: 3,
     base_rent: 8500,
+    room_type: "Triple",
     is_active: true,
     occupied_count: 0,
     reserved_count: 0,
@@ -16,9 +17,15 @@ function existing(over: Partial<ExistingRoom> = {}): ExistingRoom {
   };
 }
 
+let sheetSeq = 0;
 function sheet(over: Partial<RoomImportRow> = {}): RoomImportRow {
-  return { room_no: "101", capacity: 3, base_rent: 8500, floor: 1, ...over };
+  sheetSeq += 1;
+  return { room_no: "101", capacity: 3, base_rent: 8500, floor: 1, sharing_type: "Triple", sheet_row: sheetSeq + 1, ...over };
 }
+
+beforeEach(() => {
+  sheetSeq = 0;
+});
 
 describe("buildRoomPlan", () => {
   it("creates a room the hostel does not have", () => {
@@ -110,5 +117,29 @@ describe("buildRoomPlan", () => {
     );
     expect(plan.issues).toHaveLength(3);
     expect(plan.create).toEqual([]);
+  });
+});
+
+describe("Sharing Type is a column the owner can actually change", () => {
+  it("updates a room whose sharing type was edited", () => {
+    const plan = buildRoomPlan([sheet({ sharing_type: "Four sharing", capacity: 4 })], [existing()]);
+    expect(plan.update[0].to).toMatchObject({ room_type: "Four sharing", capacity: 4 });
+    expect(plan.update[0].from).toMatchObject({ room_type: "Triple" });
+  });
+
+  it("leaves a room alone when only the sharing type's wording matches", () => {
+    const plan = buildRoomPlan([sheet()], [existing()]);
+    expect(plan.update).toEqual([]);
+    expect(plan.unchanged).toEqual(["101"]);
+  });
+
+  it("blames the owner's real spreadsheet line when a room is listed twice", () => {
+    const plan = buildRoomPlan(
+      [sheet({ room_no: "101", sheet_row: 2 }), sheet({ room_no: "101", sheet_row: 9 })],
+      []
+    );
+    const issue = plan.issues.find((i) => i.code === "ROOM_SHEET_DUPLICATE")!;
+    expect(issue.row).toBe(9);
+    expect(issue.detail).toContain("row 2");
   });
 });

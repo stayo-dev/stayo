@@ -13,6 +13,14 @@ import type {
   ValidationResult,
 } from "./types";
 
+/**
+ * A tenancy that still occupies a bed. `INVITED` and `ACTIVE` both do —
+ * under ADR-165 a tenancy is live from invite, before the tenant accepts.
+ * `FORMER_TENANT`, `EXPIRED` and `CANCELLED` do not, so those people can be
+ * imported again.
+ */
+const LIVE_TENANCY_STATUSES = ["INVITED", "ACTIVE"] as const;
+
 /** Mirrors RENT_BACKFILL_CAP_MONTHS in onboarding-financials-service. */
 const RENT_BACKFILL_CAP_MONTHS = 24;
 
@@ -340,6 +348,8 @@ export class BulkImportValidationService {
         issues.push(buildIssue("PAYMENT_METHOD_MISSING", rowNumber, { amountPaid: row.amount_paid }));
       }
 
+      const rowMaintenanceType = row.maintenance_type ?? defaultMaintenanceType;
+
       // Capacity is decided last, after every per-row check that can still
       // push an error (including joining-date validation above) has run. A
       // duplicate row, or one that already failed validation for any reason,
@@ -383,8 +393,11 @@ export class BulkImportValidationService {
           monthly_rent: row.monthly_rent ?? (roomForRow?.base_rent ? Number(roomForRow.base_rent) : undefined),
           advance_deposit: row.security_deposit ?? row.advance_deposit ?? defaultAdvanceDeposit,
           security_deposit: row.security_deposit ?? row.advance_deposit ?? defaultAdvanceDeposit,
-          maintenance_charge: defaultMaintenanceCharge,
-          maintenance_type: defaultMaintenanceType,
+          // The row's own value when the sheet gives one; the batch default
+          // otherwise. A NONE row owes no maintenance whatever the default is.
+          maintenance_charge:
+            rowMaintenanceType === "NONE" ? 0 : row.maintenance_charge ?? defaultMaintenanceCharge,
+          maintenance_type: rowMaintenanceType,
           agreement_duration_months: row.agreement_duration_months,
           amount_paid: row.amount_paid,
           amount_includes_deposit: row.amount_includes_deposit ?? true,
@@ -429,15 +442,20 @@ export class BulkImportValidationService {
     };
   }
 
+  /**
+   * People who cannot be imported again, by phone.
+   *
+   * Scoped to a *live* tenancy, not to every profile the owner has ever had.
+   * Matching every profile meant a former tenant moving back could never be
+   * imported — though the single-tenant invite adopts returning tenants
+   * happily, and the database already allows only one live tenancy per person.
+   */
   private async getExistingPhones(ownerId: string): Promise<Set<string>> {
-    const profiles = await prisma.profile.findMany({
-      where: {
-        owner_id: ownerId,
-        role: "TENANT",
-        phone: { not: null },
-      },
-      select: { phone: true },
+    const live = await prisma.tenants.findMany({
+      where: { owner_id: ownerId, status: { in: LIVE_TENANCY_STATUSES } },
+      select: { profile: { select: { phone: true } } },
     });
+    const profiles = live.map((t: any) => ({ phone: t.profile?.phone ?? null }));
     const invited = await prisma.tenant_invitations.findMany({
       where: {
         owner_id: ownerId,
@@ -454,14 +472,15 @@ export class BulkImportValidationService {
     );
   }
 
+  /** People who cannot be imported again, by email. Live tenancies only. */
   private async getExistingEmails(ownerId: string): Promise<Set<string>> {
-    const profiles = await prisma.profile.findMany({
-      where: {
-        owner_id: ownerId,
-        role: "TENANT",
-      },
-      select: { email: true },
+    const live = await prisma.tenants.findMany({
+      where: { owner_id: ownerId, status: { in: LIVE_TENANCY_STATUSES } },
+      select: { profile: { select: { email: true } } },
     });
+    const profiles = live
+      .map((t: any) => ({ email: t.profile?.email ?? null }))
+      .filter((p: any) => p.email);
     const invited = await prisma.tenant_invitations.findMany({
       where: {
         owner_id: ownerId,
@@ -470,7 +489,7 @@ export class BulkImportValidationService {
       select: { email: true },
     });
     return new Set([
-      ...profiles.map((p: any) => p.email.toLowerCase()),
+      ...profiles.map((p: any) => String(p.email).toLowerCase()),
       ...invited.map((i: any) => String(i.email || "").toLowerCase()).filter(Boolean),
     ]);
   }

@@ -3,6 +3,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 const { mockPrisma } = vi.hoisted(() => {
   const prisma: any = {
     profile: { findMany: vi.fn() },
+    tenants: { findMany: vi.fn() },
     tenant_invitations: { findMany: vi.fn() },
     rooms: { findMany: vi.fn() },
     // Unused today. Task 10 of this plan adds prisma.hostels.findUnique to
@@ -43,6 +44,7 @@ function row(name: string, phone: string, email: string) {
 
 beforeEach(() => {
   mockPrisma.profile.findMany.mockResolvedValue([]);
+  mockPrisma.tenants.findMany.mockResolvedValue([]);
   mockPrisma.tenant_invitations.findMany.mockResolvedValue([]);
   mockPrisma.rooms.findMany.mockResolvedValue([
     {

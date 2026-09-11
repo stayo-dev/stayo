@@ -159,18 +159,25 @@ function normalizeRows(rawData: any[]): TenantImportRow[] {
   const DEPOSIT = ["Deposit", "deposit", "Advance Deposit", "advance_deposit", "Security Deposit", "security_deposit"];
   const MONTHS = ["Agreement Months", "agreement_months", "agreement_duration_months"];
   const PAID = ["Amount Already Paid", "amount_already_paid", "amount_paid", "paid_amount"];
+  const MAINTENANCE = ["Maintenance Charge", "maintenance_charge", "Maintenance", "maintenance"];
+  const MAINTENANCE_TYPE = ["Maintenance Type", "maintenance_type"];
   return rawData.map((row) => ({
     raw_values: {
       monthly_rent: readCell(row, RENT) || undefined,
       security_deposit: readCell(row, DEPOSIT) || undefined,
       agreement_duration_months: readCell(row, MONTHS) || undefined,
       amount_paid: readCell(row, PAID) || undefined,
+      maintenance_charge: readCell(row, MAINTENANCE) || undefined,
     },
     name: readCell(row, ["Full Name", "full_name", "name", "Name", "NAME"]),
     phone: readCell(row, ["Phone Number", "phone_number", "phone", "Phone", "PHONE", "mobile", "Mobile"]),
     email: readCell(row, ["Username", "Email Address", "Email Address_1", "email_address", "email", "Email", "EMAIL"]),
     room_no: readCell(row, ["Current Room", "current_room", "room_no", "room", "Room", "ROOM", "room_number"]),
-    monthly_rent: parseImportNumber(readCell(row, ["Monthly Rent", "monthly_rent", "rent", "Rent"])),
+    monthly_rent: parseImportNumber(readCell(row, RENT)),
+    // Per row, not just per batch: one hostel can charge different
+    // maintenance for different rooms, and the template has the column.
+    maintenance_charge: parseImportNumber(readCell(row, MAINTENANCE)),
+    maintenance_type: normalizeMaintenanceType(readCell(row, MAINTENANCE_TYPE)),
     advance_deposit: parseImportNumber(readCell(row, ["Deposit", "deposit", "Advance Deposit", "advance_deposit", "Security Deposit", "security_deposit"])),
     security_deposit: parseImportNumber(readCell(row, ["Deposit", "deposit", "Advance Deposit", "advance_deposit", "Security Deposit", "security_deposit"])),
     joining_date: readCell(row, ["Joining Date", "joining_date", "Join Date", "join_date"]) || undefined,
@@ -193,6 +200,12 @@ function normalizeRows(rawData: any[]): TenantImportRow[] {
     payment_method: readCell(row, ["Payment Method", "payment_method"]).toUpperCase() || undefined,
     payment_reference: readCell(row, ["Payment Reference", "payment_reference", "reference"]) || undefined,
   }));
+}
+
+/** MONTHLY | ONE_TIME | NONE, or undefined for a blank or unrecognised cell. */
+function normalizeMaintenanceType(value: string): "MONTHLY" | "ONE_TIME" | "NONE" | undefined {
+  const text = String(value ?? "").trim().toUpperCase().replace(/[\s-]+/g, "_");
+  return text === "MONTHLY" || text === "ONE_TIME" || text === "NONE" ? text : undefined;
 }
 
 function readCell(row: Record<string, any>, keys: string[]): string {
