@@ -8,6 +8,18 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-11 — Every existing resident was refused, with nothing on screen to agree to (fixed)
+
+**Symptom.** An owner onboarding a tenant who had lived there since January saw *"Everything checks out"*, pressed Import, and was refused: *"This batch contains historical joining dates. Confirm historical join dates before sending invitations."* They asked where to configure it. There was nowhere — the response carried `requires_historical_join_date_confirmation: true` beside `issues: []` and `choices: 0`.
+
+**Root cause — a gate and its control keyed off different facts.** Confirm demanded consent for *any* joining date before today. The review screen could only produce that consent by acknowledging `BACKFILL_CAPPED`, which fires past **24 months**. Between those two conditions — a resident who joined yesterday or twenty-three months ago, which is nearly every existing resident — the server asked a question the screen had no way to answer. The validator knew: it pushed a warning *string* for exactly these rows, and the gate flag was computed by matching that string; nothing turned it into an issue.
+
+**Why it hid.** The earlier date bug had kept this owner's row in `invalid`, and the gate flag counted only valid rows — so the dead end appeared the moment that bug was fixed. A frontend test even pinned it: *"lets the owner import while only choices remain"*, using `BACKFILL_CAPPED`, asserted the button stayed enabled for back-rent nobody had agreed to.
+
+**Fix.** A `RENT_BACKDATED` issue for every historical joining date within the cap, telling the owner how many months of rent will be created and from when. `HISTORICAL_JOIN_DATE_CODES` / `needsHistoricalJoinDateConfirmation` are the one definition the gate flag is derived from. On screen, those codes **hold Import** until agreed (with a line saying why), the button reads *"Yes, bill from their joining date"* rather than "Got it", and a re-check keeps decisions already made instead of asking again. Pinned by an invariant test — for joining dates 0 to 30 months back, the gate and the issue always agree — and mutation-tested on both sides.
+
+**See:** [[Business-Rules]], [[Changelog]]
+
 ## 2026-09-11 — The import could not run at all: a relation named `hostel` that is called `hostels` (fixed)
 
 **Symptom.** *"We couldn't build that file. Try again in a moment."* on the corrected-sheet download, over a bare `500` with `Content-Length: 0`. Retrying could never work: the fault did not vary. The route's own error told the truth once it was allowed to speak — ``Unknown field `hostel` for include statement on model `bulk_import_batches`. Available options are marked with ?: hostels?``.

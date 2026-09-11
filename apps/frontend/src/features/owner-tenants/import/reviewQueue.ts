@@ -70,7 +70,13 @@ export interface ReviewQueue {
     duplicates: number;
     blockers: number;
     choices: number;
-    /** False while anything blocks, or when there is nothing to import. */
+    /**
+     * Decisions the server will refuse to import without — back-rent for
+     * months already past. Counted apart from other choices because these,
+     * unlike a notice, cannot be skipped.
+     */
+    awaitingConsent: number;
+    /** False while anything blocks, awaits consent, or there is nothing to import. */
     canImport: boolean;
   };
 }
@@ -93,6 +99,25 @@ function byAttention(a: QueueRow, b: QueueRow): number {
   // Within a severity, the owner's own row order — so they walk their
   // spreadsheet top to bottom rather than jumping around it.
   return severity !== 0 ? severity : a.row - b.row;
+}
+
+/**
+ * The codes confirm refuses to import past until the owner agrees — mirrors
+ * `HISTORICAL_JOIN_DATE_CODES` on the server.
+ *
+ * Every one of them must stop the Import button, or the owner presses it and
+ * is refused by the server with nothing on screen to change. That was the
+ * state of things for any resident who joined before today.
+ */
+export const CONSENT_CODES = ['BACKFILL_CAPPED', 'RENT_BACKDATED'] as const;
+
+/**
+ * Whether the owner has agreed to the back-rent — the only thing that may
+ * send `confirm_historical_join_dates`. Sending it because the server asked
+ * would answer the question on their behalf.
+ */
+export function confirmsHistoricalDates(acknowledged: readonly string[]): boolean {
+  return acknowledged.some((code) => (CONSENT_CODES as readonly string[]).includes(code));
 }
 
 /** One tap can settle these; everything else needs the row in front of you. */
@@ -144,6 +169,7 @@ export function buildReviewQueue(preview: PreviewPayload): ReviewQueue {
   const allIssues = withIssues.flatMap((row) => row.issues);
   const blockers = allIssues.filter((i) => i.severity === 'BLOCKER').length;
   const choices = allIssues.filter((i) => i.severity === 'NEEDS_CHOICE').length;
+  const awaitingConsent = allIssues.filter((i) => (CONSENT_CODES as readonly string[]).includes(i.code)).length;
 
   const importable = ready.length + needsYou.filter((row) => worstSeverity(row) !== 'BLOCKER').length;
 
@@ -158,7 +184,8 @@ export function buildReviewQueue(preview: PreviewPayload): ReviewQueue {
       duplicates: duplicates.length,
       blockers,
       choices,
-      canImport: blockers === 0 && importable > 0,
+      awaitingConsent,
+      canImport: blockers === 0 && awaitingConsent === 0 && importable > 0,
     },
   };
 }
@@ -194,4 +221,15 @@ export function applyGroupDecision(queue: ReviewQueue, code: string): ReviewQueu
   });
 
   return next;
+}
+
+/**
+ * A fresh queue, with the decisions the owner has already made still made.
+ *
+ * A re-check rebuilds the queue from the server, which knows nothing of what
+ * was tapped on this screen — so "already living here", agreed a moment ago,
+ * came straight back and the Import button went dead again.
+ */
+export function withDecisions(queue: ReviewQueue, acknowledged: readonly string[]): ReviewQueue {
+  return acknowledged.reduce((current, code) => applyGroupDecision(current, code), queue);
 }

@@ -365,6 +365,21 @@ export class BulkImportValidationService {
           }));
           warnings.push("Historical joining date requires owner confirmation before invitations are sent");
         } else if (parsedJoiningDate < today) {
+          // The owner has to see this and agree to it. Confirm refuses the
+          // batch until they do, and for a long time this branch raised only
+          // a warning string — so the screen showed "everything checks out",
+          // the owner pressed Import, and the server said no, every time,
+          // with nothing anywhere to change. Onboarding a resident who
+          // already lives there is the main thing this feature is for.
+          issues.push(buildIssue("RENT_BACKDATED", rowNumber, {
+            monthsElapsed: billedMonths,
+            joiningDate: formatImportDate(parsedJoiningDate),
+            firstBilledMonth: new Date(
+              parsedJoiningDate.getFullYear(),
+              parsedJoiningDate.getMonth(),
+              1
+            ).toLocaleString("en-IN", { month: "long", year: "numeric" }),
+          }));
           warnings.push("Historical joining date requires owner confirmation before invitations are sent");
         }
       }

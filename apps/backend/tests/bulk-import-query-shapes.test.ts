@@ -134,7 +134,7 @@ describe("what the bulk-import routes ask Prisma for", () => {
           if (PSEUDO_FIELDS.has(key)) continue;
           expect(
             fields.has(key),
-            `${model} has no field "${key}". Real fields: ${[...fields].join(", ")}`
+            `${model} has no field "${key}". Real fields: ${Array.from(fields).join(", ")}`
           ).toBe(true);
         }
       }

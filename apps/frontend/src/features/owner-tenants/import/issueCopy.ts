@@ -10,7 +10,7 @@
  * asserted: the frontend suite renders nothing.
  */
 
-import type { IssueGroup, RowIssue } from './reviewQueue';
+import { CONSENT_CODES, type IssueGroup, type RowIssue } from './reviewQueue';
 
 export type ControlKind = 'text' | 'room' | 'option' | 'date' | 'acknowledge' | 'skip' | 'link';
 
@@ -34,11 +34,19 @@ const CONTROLS: Record<string, { kind: ControlKind; label: string }> = {
   OPEN_TENANT: { kind: 'link', label: 'Open their profile' },
 };
 
+/**
+ * "Got it" is right for a notice and wrong for money. Agreeing that an
+ * existing resident is billed from the month they moved in creates real
+ * dues, so the button says what it does.
+ */
+const CONSENT_LABEL = 'Yes, bill from their joining date';
+
 export function controlFor(issue: RowIssue): IssueControl {
   const control = CONTROLS[issue.fix?.kind] ?? CONTROLS.EDIT_FIELD;
+  const consent = (CONSENT_CODES as readonly string[]).includes(issue.code);
   return {
     kind: control.kind,
-    label: control.label,
+    label: consent && control.kind === 'acknowledge' ? CONSENT_LABEL : control.label,
     options: issue.fix?.options ?? [],
     field: issue.field ?? null,
   };
@@ -52,6 +60,12 @@ export function controlFor(issue: RowIssue): IssueControl {
  */
 export function groupAction(group: IssueGroup): { label: string; note: string } | null {
   if (!group.canApplyToAll) return null;
+  if ((CONSENT_CODES as readonly string[]).includes(group.code)) {
+    return {
+      label: `Yes, bill all ${group.count.toLocaleString('en-IN')} from their joining dates`,
+      note: 'Each tenant gets rent from the month they moved in. What they have already paid comes off it, from the Amount Paid column.',
+    };
+  }
   return {
     label: `Understood — apply to all ${group.count.toLocaleString('en-IN')}`,
     note: `This settles ${group.count.toLocaleString('en-IN')} rows at once. You can still change any of them afterwards.`,
@@ -69,4 +83,21 @@ export function attentionSummary(counts: { needsYou: number; ready: number; dupl
     );
   }
   return parts.length ? parts.join(' · ') : 'Nothing to import yet';
+}
+
+/**
+ * The line under a disabled Import button, saying what is still in the way.
+ *
+ * A dead button with no reason is how the owner ended up asking where to
+ * "configure" something that did not exist. Blocking rows come first — they
+ * need the sheet or an edit, which is more work than one tap.
+ */
+export function importHoldReason(summary: { blockers: number; awaitingConsent: number }): string | null {
+  if (summary.blockers > 0) return null; // the "fix the rows above" line covers it
+  if (summary.awaitingConsent > 0) {
+    return summary.awaitingConsent === 1
+      ? 'Confirm the rent for the tenant above who already lives here, then import.'
+      : `Confirm the rent for the ${summary.awaitingConsent.toLocaleString('en-IN')} tenants above who already live here, then import.`;
+  }
+  return null;
 }

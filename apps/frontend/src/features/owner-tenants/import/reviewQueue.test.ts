@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { applyGroupDecision, buildReviewQueue, type PreviewPayload } from './reviewQueue';
+import {
+  applyGroupDecision,
+  buildReviewQueue,
+  confirmsHistoricalDates,
+  withDecisions,
+  type PreviewPayload,
+} from './reviewQueue';
 
 function issue(over: Partial<any> = {}) {
   return {
@@ -184,9 +190,12 @@ describe('what the owner is told at a glance', () => {
   });
 
   it('lets the owner import while only choices remain', () => {
-    // A capped-backfill row still imports; it is a decision, not a blocker.
+    // A decision, not a blocker. This test used BACKFILL_CAPPED and asserted
+    // it could be imported past — but the server refuses back-rent nobody
+    // agreed to, so that was the dead end itself, pinned. Back-rent now
+    // holds Import (see "a tenant who already lives here").
     const queue = buildReviewQueue(
-      preview({ valid: [row(2, [issue({ code: 'BACKFILL_CAPPED', severity: 'NEEDS_CHOICE', row: 2, fix: { kind: 'ACKNOWLEDGE' } })])] })
+      preview({ valid: [row(2, [issue({ code: 'SOME_CHOICE', severity: 'NEEDS_CHOICE', row: 2, fix: { kind: 'ACKNOWLEDGE' } })])] })
     );
 
     expect(queue.summary.canImport).toBe(true);
@@ -210,5 +219,96 @@ describe('counting rows versus counting problems', () => {
     expect(queue.summary.blockers).toBe(2);
     expect(queue.summary.needsYou).toBe(1);
     expect(queue.needsYou).toHaveLength(1);
+  });
+});
+
+describe('a tenant who already lives here', () => {
+  const backdated = (n: number) =>
+    row(n, [issue({ code: 'RENT_BACKDATED', severity: 'NEEDS_CHOICE', row: n, fix: { kind: 'ACKNOWLEDGE' } })]);
+
+  /**
+   * The owner's import: one resident, joined in January. The server refused
+   * it until they agreed to the back-rent, while this screen enabled Import
+   * and said "Everything checks out" — so every press failed, with nothing
+   * on screen to change.
+   */
+  it('holds Import until the owner agrees to the back-rent', () => {
+    const queue = buildReviewQueue({ valid: [backdated(2)], invalid: [], duplicates: [] });
+
+    expect(queue.summary.awaitingConsent).toBe(1);
+    expect(queue.summary.canImport).toBe(false);
+  });
+
+  it('releases it once they have', () => {
+    const queue = applyGroupDecision(
+      buildReviewQueue({ valid: [backdated(2)], invalid: [], duplicates: [] }),
+      'RENT_BACKDATED'
+    );
+
+    expect(queue.summary.awaitingConsent).toBe(0);
+    expect(queue.summary.canImport).toBe(true);
+  });
+
+  it('holds it for a resident past the 2-year cap too', () => {
+    const queue = buildReviewQueue({
+      valid: [row(3, [issue({ code: 'BACKFILL_CAPPED', severity: 'NEEDS_CHOICE', row: 3, fix: { kind: 'ACKNOWLEDGE' } })])],
+      invalid: [],
+      duplicates: [],
+    });
+
+    expect(queue.summary.canImport).toBe(false);
+  });
+
+  it('does not hold it for an ordinary notice', () => {
+    const queue = buildReviewQueue({
+      valid: [row(4, [issue({ code: 'SOMETHING_ELSE', severity: 'NOTICE', row: 4, fix: { kind: 'ACKNOWLEDGE' } })])],
+      invalid: [],
+      duplicates: [],
+    });
+
+    expect(queue.summary.canImport).toBe(true);
+  });
+});
+
+describe('sending the owner’s consent', () => {
+  it('sends it for either kind of back-rent agreement', () => {
+    expect(confirmsHistoricalDates(['RENT_BACKDATED'])).toBe(true);
+    expect(confirmsHistoricalDates(['BACKFILL_CAPPED'])).toBe(true);
+  });
+
+  /** Sending it because the server asked would answer for the owner. */
+  it('never sends it for anything else', () => {
+    expect(confirmsHistoricalDates([])).toBe(false);
+    expect(confirmsHistoricalDates(['PAYMENT_METHOD_MISSING'])).toBe(false);
+  });
+});
+
+describe('re-checking after a decision', () => {
+  /**
+   * A re-check rebuilds the queue from the server, which knows nothing of
+   * what was tapped here — so an agreement made a moment ago came back as a
+   * question, and Import went dead again.
+   */
+  it('keeps what the owner already agreed to', () => {
+    const fresh = buildReviewQueue({
+      valid: [row(2, [issue({ code: 'RENT_BACKDATED', severity: 'NEEDS_CHOICE', row: 2, fix: { kind: 'ACKNOWLEDGE' } })])],
+      invalid: [],
+      duplicates: [],
+    });
+
+    const queue = withDecisions(fresh, ['RENT_BACKDATED']);
+
+    expect(queue.summary.canImport).toBe(true);
+    expect(queue.needsYou).toHaveLength(0);
+  });
+
+  it('leaves everything else as the server said', () => {
+    const fresh = buildReviewQueue({
+      valid: [],
+      invalid: [row(2, [issue({ code: 'PHONE_INVALID', severity: 'BLOCKER', row: 2, fix: { kind: 'EDIT_FIELD' } })])],
+      duplicates: [],
+    });
+
+    expect(withDecisions(fresh, ['RENT_BACKDATED']).summary.blockers).toBe(1);
   });
 });

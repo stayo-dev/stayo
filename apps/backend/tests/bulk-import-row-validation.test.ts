@@ -1,3 +1,4 @@
+import { needsHistoricalJoinDateConfirmation } from "@/lib/services/bulk-import/issues";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 /**
@@ -717,5 +718,68 @@ describe("dates carrying characters a spreadsheet added", () => {
     const result = await validateOne({ joining_date: "​sometime in Jan​" });
 
     expect(result.issues.map((i: any) => i.code)).toContain("DATE_UNREADABLE");
+  });
+});
+
+describe("a tenant who already lives here", () => {
+  /** Months ago, as DD/MM/YYYY — within the 24-month cap. */
+  const joined = (monthsBack: number) => {
+    const now = new Date();
+    const d = new Date(now.getFullYear(), now.getMonth() - monthsBack, 5);
+    return `05/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+  };
+
+  /**
+   * The owner's import: joined in January, eight months of rent to create.
+   * Confirm refused it until they agreed to the back-rent, but this branch
+   * raised only a warning string — `issues: []`, `choices: 0` — so the review
+   * screen said "Everything checks out" and Import failed every time, with
+   * nothing anywhere to change.
+   */
+  it("asks the owner, rather than only warning", async () => {
+    const result = await validateOne({ joining_date: joined(8) });
+    const issue = result.issues.find((i: any) => i.code === "RENT_BACKDATED");
+
+    expect(issue).toBeDefined();
+    expect(issue.severity).toBe("NEEDS_CHOICE");
+    expect(issue.fix.kind).toBe("ACKNOWLEDGE");
+  });
+
+  it("tells them how many months of rent that creates, and from when", async () => {
+    const result = await validateOne({ joining_date: joined(8) });
+    const issue = result.issues.find((i: any) => i.code === "RENT_BACKDATED");
+
+    expect(issue.detail).toContain("9 months");
+    expect(issue.detail).toMatch(/from [A-Z][a-z]+ \d{4}/);
+  });
+
+  it("does not ask about a tenant joining today", async () => {
+    const today = new Date();
+    const result = await validateOne({
+      joining_date: `${String(today.getDate()).padStart(2, "0")}/${String(today.getMonth() + 1).padStart(2, "0")}/${today.getFullYear()}`,
+    });
+
+    expect(result.issues.map((i: any) => i.code)).not.toContain("RENT_BACKDATED");
+  });
+
+  it("asks once, not twice, for someone past the 2-year cap", async () => {
+    const result = await validateOne({ joining_date: joined(30) });
+    const codes = result.issues.map((i: any) => i.code);
+
+    expect(codes).toContain("BACKFILL_CAPPED");
+    expect(codes).not.toContain("RENT_BACKDATED");
+  });
+
+  /**
+   * The invariant that was broken. Whatever puts a row behind the gate at
+   * confirm must also give the owner something on screen to agree to.
+   */
+  it("never needs a confirmation the screen has no way to give", async () => {
+    for (const months of [0, 1, 8, 23, 30]) {
+      const result = await validateOne({ joining_date: joined(months) });
+      const warned = result.warnings.some((w: string) => /historical joining date/i.test(w));
+
+      expect(needsHistoricalJoinDateConfirmation(result.issues), `${months} months back`).toBe(warned);
+    }
   });
 });
