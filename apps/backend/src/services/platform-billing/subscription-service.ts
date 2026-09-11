@@ -45,19 +45,31 @@ async function requirePlanByCode(code: string) {
 }
 
 /**
- * The owner's subscription, creating a PENDING_PAYMENT one on first access so
- * the rest of the flow always has a row to attach a payment to. Stayo has NO
- * trial — the owner cannot actively use the platform until an admin approves
- * their first payment. Exactly one row can ever exist per owner (`owner_id`
- * UNIQUE) — a lost create race surfaces as P2002 and we re-read.
+ * The owner's subscription, creating a PENDING_PAYMENT one the first time
+ * this is called so the rest of the flow always has a row to attach a
+ * payment to. Stayo has NO trial — the owner cannot actively use the
+ * platform until an admin approves their first payment. Exactly one row can
+ * ever exist per owner (`owner_id` UNIQUE) — a lost create race surfaces as
+ * P2002 and we re-read.
  *
- * The FIRST 10 owner accounts are placed on FOUNDING automatically at this
- * point — the plan is never owner-selectable. The slot is claimed atomically
- * (advisory lock + count inside one transaction, same key as
- * `reserveFoundingSlotInTx`), so concurrent first-access calls cannot both
- * read "9 used" and both take the 10th slot. Once the 10 slots are gone, new
- * owners fall back to the STARTER placeholder. They still pay ₹2,000/month and
- * wait for admin approval either way — only the pre-assigned plan differs.
+ * The FIRST 10 owner accounts to complete onboarding are placed on FOUNDING
+ * automatically at this point — the plan is never owner-selectable. The slot
+ * is claimed atomically (advisory lock + count inside one transaction, same
+ * key as `reserveFoundingSlotInTx`), so concurrent calls cannot both read "9
+ * used" and both take the 10th slot. Once the 10 slots are gone, new owners
+ * fall back to the STARTER placeholder — they still need an admin-confirmed
+ * payment either way, only the pre-assigned plan differs.
+ *
+ * PRIMARY caller (2026-09-12, Founding-onboarding fix): the owner's first
+ * hostel creation (`POST /api/owner/hostels` and
+ * `hostelProvisioningService.provision`) — that is the existing, canonical
+ * "owner completed onboarding" signal already used by the lead-acquisition
+ * funnel (`markHostelCreated`), so Founding rank is pinned to the moment
+ * onboarding actually completes, not to whenever the owner happens to open
+ * the Subscription page. `getForOwner` below still calls this too, but ONLY
+ * as a defensive fallback (e.g. a pre-existing owner from before this hook
+ * existed, or the hostel-creation call failing) — it must never be the
+ * mechanism a normal owner's Founding slot is decided by.
  */
 async function ensureForOwner(ownerId: string) {
   const existing = await prisma.owner_subscriptions.findUnique({ where: { owner_id: ownerId } });
@@ -104,12 +116,29 @@ async function ensureForOwner(ownerId: string) {
   }
 }
 
+/**
+ * 1–10 if `planId` is the owner's CURRENT plan and it is FOUNDING, else
+ * `null`. Rank is derived, not stored — the Nth-earliest `created_at` among
+ * rows currently on FOUNDING (allocation order is already correct because
+ * `ensureForOwner`/`reserveFoundingSlotInTx` serialise on the advisory lock,
+ * so the row that wins the lock first is the row created first). A
+ * downgraded-away owner simply falls out of the ranking.
+ */
+async function foundingPartnerNumber(planId: string | null, createdAt: Date): Promise<number | null> {
+  if (!planId) return null;
+  const foundingPlan = await prisma.subscription_plans.findUnique({ where: { code: FOUNDING_PLAN_CODE }, select: { id: true } });
+  if (!foundingPlan || planId !== foundingPlan.id) return null;
+  return prisma.owner_subscriptions.count({
+    where: { plan_id: foundingPlan.id, created_at: { lte: createdAt } },
+  });
+}
+
 /** Full read model for the owner's own subscription screen. Owner-scoped by construction. */
 async function getForOwner(ownerId: string) {
   const subscription = await ensureForOwner(ownerId);
 
   const { planCapacityService } = await import("./plan-capacity-service");
-  const [plan, pendingPlan, payments, invoices, capacity] = await Promise.all([
+  const [plan, pendingPlan, payments, invoices, capacity, foundingNumber] = await Promise.all([
     prisma.subscription_plans.findUnique({ where: { id: subscription.plan_id } }),
     subscription.pending_plan_id
       ? prisma.subscription_plans.findUnique({ where: { id: subscription.pending_plan_id } })
@@ -128,12 +157,14 @@ async function getForOwner(ownerId: string) {
     // Backend is the source of truth for usage vs capacity — the frontend
     // never recomputes this (ADR-172).
     planCapacityService.getCapacityStatus(ownerId).catch(() => null),
+    foundingPartnerNumber(subscription.plan_id, subscription.created_at),
   ]);
 
   return {
     subscription: {
       id: subscription.id,
       status: subscription.status,
+      founding_partner_number: foundingNumber,
       plan: plan
         ? {
             id: plan.id,
@@ -313,6 +344,7 @@ export const subscriptionService = {
   listPlansForOwner,
   foundingSlotStatus,
   canOwnerTakeFounding,
+  foundingPartnerNumber,
   reserveFoundingSlotInTx,
   requirePlanByCode,
   makeInvoiceNumber,

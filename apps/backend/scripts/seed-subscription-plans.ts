@@ -28,10 +28,17 @@ const prisma = new PrismaClient();
  * hard ceiling (`included_beds + max_extra_beds`, or `null` when unlimited)
  * for every existing display/filter that already reads it.
  *
- * FOUNDING is the first-10-owners launch offer: non-public (never
- * owner-selectable), 250 included beds, and — unlike every other plan — NO
- * ceiling on paid extra beds. Auto-assigned to the first 10 owner accounts at
- * subscription creation (`subscriptionService.ensureForOwner`, ADR-173).
+ * FOUNDING is the first-10-owners launch offer, displayed as "Founding
+ * Partner": non-public (never owner-selectable), 250 included beds, and —
+ * unlike every other plan — NO ceiling on how many extra beds can be
+ * PURCHASED. This does NOT make the active-tenant ceiling itself unlimited:
+ * `effectivePlanCapacity` (subscription-rules.ts) still enforces
+ * `included_beds + extra_beds` for Founding exactly like every other plan
+ * (0/250 shown at first, growing only as extra beds are actually bought at
+ * ₹10/bed) — `max_extra_beds: null` only removes the upper bound on that
+ * purchase, it is not a "capacity is infinite" flag. Auto-assigned to the
+ * first 10 owner accounts at subscription creation
+ * (`subscriptionService.ensureForOwner`, ADR-173/ADR-188).
  *
  * PORTFOLIO: business rules (2026-09-10) explicitly did not define an
  * extra-bed allowance for this tier — `max_extra_beds: 0` and
@@ -51,7 +58,7 @@ const PLANS: Array<{
   is_public: boolean;
 }> = [
   {
-    code: "FOUNDING", name: "Founding", price_paise: 200000,
+    code: "FOUNDING", name: "Founding Partner", price_paise: 200000,
     capacity_min: 1, capacity_max: null,
     included_beds: 250, max_extra_beds: null, extra_bed_price_paise: 1000,
     is_public: false,

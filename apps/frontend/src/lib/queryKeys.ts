@@ -41,6 +41,8 @@ export const queryKeys = {
     subscriptionPlans: () => ownerKey('subscription', 'plans'),
     subscriptionPaymentContext: () => ownerKey('subscription', 'payment-context'),
     subscriptionUpgradePreview: (planId: string, extraBeds = 0) => ownerKey('subscription', 'upgrade-preview', planId, extraBeds),
+    /** Founding Partner Phase 1 dynamic renewal amount — usage-derived, never a stored purchase (2026-09-12). */
+    subscriptionFoundingRenewalPreview: () => ownerKey('subscription', 'founding-renewal-preview'),
   },
 
   notifications: () => ownerKey('notifications'),

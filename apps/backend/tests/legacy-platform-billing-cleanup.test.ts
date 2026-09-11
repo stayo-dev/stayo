@@ -9,7 +9,11 @@ const DEPRECATED_ROUTES = [
   "app/api/platform-admin/hostels/[id]/subscription/route.ts",
   "app/api/platform-admin/hostels/[id]/invoices/route.ts",
   "app/api/platform-admin/revenue/hostels/route.ts",
-  "app/api/platform-admin/revenue/export/route.ts",
+  // NOTE: /api/platform-admin/revenue/export was ALSO originally retired
+  // here, but that was reverted when integrating billing onto `main`
+  // (2026-09-11) — `main` had kept this route live and working, and the
+  // merge preserved it rather than retiring existing functionality. See
+  // docs/obsidian/{Changelog,APIs}.md.
 ];
 
 const ACTIVE_BILLING_ROUTES = [

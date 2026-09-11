@@ -10,8 +10,11 @@
  *   2. requires an active subscription (reuses `requireActiveSubscription`);
  *   3. checks `included_beds + extra_beds` (business rules, 2026-09-10 — the
  *      owner's ACTUAL paid extra beds, never the plan's maximum) against the
- *      count of the owner's ACTIVE tenants. `NULL` (FOUNDING — no extra-bed
- *      ceiling) is always allowed.
+ *      count of the owner's ACTIVE tenants. FOUNDING has a real, growing
+ *      ceiling like every other plan (250 included, ₹10/extra bed) — the
+ *      only thing unbounded is how many extra beds can be PURCHASED, not the
+ *      resulting capacity. `capacity_max: null` only occurs for a legacy
+ *      plan row with no `included_beds` set.
  *
  * Capacity uses the existing tenant lifecycle definition — no new occupancy
  * model. `count(tenants WHERE owner_id = ? AND status = 'ACTIVE')`; invited
@@ -24,13 +27,33 @@ import { eventLog } from "@/lib/services/event-log-service";
 import { SubscriptionError } from "./subscription-errors";
 import { requireActiveSubscription } from "./subscription-access-service";
 import { isBillingEnforced } from "./billing-flags";
-import { effectivePlanCapacity } from "./subscription-rules";
+import { effectivePlanCapacity, FOUNDING_PLAN_CODE } from "./subscription-rules";
+
+/**
+ * The ceiling this ACTIVATION GATE enforces — `null` for FOUNDING (business
+ * rules, 2026-09-12: "no permanent purchase of additional capacity... no
+ * hard maximum" — Phase 1's dynamic-billing model bills the excess at
+ * renewal, it never blocks operational usage), the real
+ * `effectivePlanCapacity` figure for every other plan. Deliberately SEPARATE
+ * from what `loadCapacityStatus`/`getCapacityStatus` returns for DISPLAY —
+ * the owner's usage card still shows the real 250-bed boundary and growing
+ * excess (`FoundingBillingSection`, the owner Subscription page) even though
+ * nothing here will ever actually block them.
+ */
+function gateCapacityMax(
+  plan: { code: string; capacity_max: number | null; included_beds: number | null; max_extra_beds: number | null; extra_bed_price_paise: number | null } | null,
+  extraBeds: number,
+): number | null {
+  if (!plan) return null;
+  if (plan.code === FOUNDING_PLAN_CODE) return null;
+  return plan.included_beds != null ? effectivePlanCapacity(plan, extraBeds) : (plan.capacity_max ?? null);
+}
 
 export const CAPACITY_ERROR_CODE = "SUBSCRIPTION_CAPACITY_REACHED";
 
 export type CapacityStatus = {
   plan_code: string | null;
-  capacity_max: number | null; // null = unlimited (FOUNDING)
+  capacity_max: number | null; // null = unlimited (legacy plan row missing included_beds only — not FOUNDING)
   active_count: number;
   available: number | null; // null = unlimited
   at_limit: boolean;
@@ -145,13 +168,10 @@ async function runAssertCanActivate(
   const plan = subscription
     ? await db.subscription_plans.findUnique({
         where: { id: subscription.plan_id },
-        select: { code: true, capacity_max: true, included_beds: true, max_extra_beds: true },
+        select: { code: true, capacity_max: true, included_beds: true, max_extra_beds: true, extra_bed_price_paise: true },
       })
     : null;
-  const capacityMax: number | null =
-    plan?.included_beds != null
-      ? effectivePlanCapacity(plan, subscription?.extra_beds ?? 0)
-      : (plan?.capacity_max ?? null);
+  const capacityMax: number | null = gateCapacityMax(plan, subscription?.extra_beds ?? 0);
 
   if (capacityMax === null || opts.isRenewal) {
     return {

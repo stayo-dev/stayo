@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
+import { prisma } from "@/lib/db";
 import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import {
   hostelProvisioningService,
@@ -29,7 +30,14 @@ export async function POST(req: NextRequest) {
 
   try {
     if (session.role === "OWNER") {
-      await assertOwnerSubscriptionActive(session.sub, "owner.hostels.provision");
+      // ADR-190: same first-hostel exemption as POST /api/owner/hostels —
+      // see that route for the full reasoning.
+      const existingHostelCount = await prisma.hostels.count({
+        where: { owner_id: session.sub, status: { in: ["ACTIVE", "INACTIVE"] } },
+      });
+      if (existingHostelCount > 0) {
+        await assertOwnerSubscriptionActive(session.sub, "owner.hostels.provision");
+      }
     }
     const body = await req.json().catch(() => ({}));
     const result = await hostelProvisioningService.provision(session.sub, body);

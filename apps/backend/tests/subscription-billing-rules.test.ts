@@ -6,6 +6,7 @@ import {
   canTransition,
   classifyPlanChange,
   computeBillingPeriod,
+  computeFoundingUsageBilling,
   computeUpgradeProration,
   daysBetween,
   roundHalfUp,
@@ -13,6 +14,37 @@ import {
   validatePaymentSubmission,
   validateRejection,
 } from "@/src/services/platform-billing/subscription-rules";
+
+// ── Founding Partner Phase 1 dynamic billing (business rules, 2026-09-12) ──
+describe("computeFoundingUsageBilling — usage-derived, never a carried-over purchase", () => {
+  const founding = { includedBeds: 250, basePricePaise: 200000, extraBedPricePaise: 1000 };
+
+  it.each([
+    [200, 0, 200000],
+    [250, 0, 200000],
+    [251, 1, 201000],
+    [260, 10, 210000],
+    [300, 50, 250000],
+  ])("%i active beds → %i excess → ₹%i total", (activeBeds, excessBeds, totalPaise) => {
+    const result = computeFoundingUsageBilling({ activeBeds, ...founding });
+    expect(result.excessBeds).toBe(excessBeds);
+    expect(result.totalPaise).toBe(totalPaise);
+  });
+
+  it("a lower active-bed count in a later period is NOT held to the previous period's higher quantity — 260 then 240 both recompute independently", () => {
+    const month1 = computeFoundingUsageBilling({ activeBeds: 260, ...founding });
+    expect(month1.totalPaise).toBe(210000);
+    const month2 = computeFoundingUsageBilling({ activeBeds: 240, ...founding });
+    expect(month2.totalPaise).toBe(200000);
+    expect(month2.excessBeds).toBe(0);
+  });
+
+  it("never goes negative for usage below the included count", () => {
+    const result = computeFoundingUsageBilling({ activeBeds: 0, ...founding });
+    expect(result.excessBeds).toBe(0);
+    expect(result.totalPaise).toBe(200000);
+  });
+});
 
 describe("subscription state transitions", () => {
   it("a new owner starts in PENDING_PAYMENT and can only reach ACTIVE / PAUSED / CANCELLED", () => {

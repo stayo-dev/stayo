@@ -6,6 +6,7 @@ import { useToast } from '../layout/toastContext';
 import {
   adminError,
   availableActions,
+  canActivateFounding,
   capacityText,
   formatDate,
   formatPaise,
@@ -195,6 +196,23 @@ function SubscriptionsTab() {
       }
     }, 'Cash payment recorded');
   };
+  const doActivateFounding = (row: any) => {
+    // Server-computed from LIVE active-bed usage (business rules, 2026-09-12) —
+    // never the flat plan price alone, in case the owner already has active
+    // tenants past the 250 included beds at the moment of first activation.
+    const amount = formatPaise(row.founding_calculated_amount_paise ?? row.plan?.price_paise ?? row.amount_paise);
+    if (
+      !window.confirm(
+        `Mark as Paid & Activate?\n\nOwner: ${row.owner?.name ?? row.owner?.id}\nFounding Partner #${row.founding_partner_number ?? '—'}\nActive beds: ${row.usage?.used ?? 0} (${row.plan?.included_beds ?? 250} included, ₹${(row.plan?.extra_bed_price_paise ?? 1000) / 100}/extra bed)\nAmount to activate: ${amount}\n\nOnly confirm once the client has actually paid ${amount} outside Stayo. This activates a one-month subscription immediately.`,
+      )
+    )
+      return;
+    const reference = window.prompt('Payment reference / note (optional):')?.trim() || undefined;
+    run(
+      () => platformAdminService.activateFoundingSubscription(row.id, reference),
+      'Founding Partner subscription activated',
+    );
+  };
 
   const rows = (list.data?.subscriptions ?? []).map((s: any) => ({ ...s, id: s.id }));
   const counts = list.data?.status_counts ?? {};
@@ -262,6 +280,9 @@ function SubscriptionsTab() {
                       {row.plan?.name ?? '—'}
                       {row.extra_beds > 0 ? ` +${row.extra_beds}` : ''}
                     </div>
+                    {row.founding_partner_number != null && (
+                      <div className="truncate text-[10.5px] font-bold text-[#8A6410]">Founding Partner #{row.founding_partner_number}</div>
+                    )}
                     {row.pending_plan && (
                       <div className="truncate text-[10.5px] text-[#8A6410]">→ {row.pending_plan.name} next period</div>
                     )}
@@ -297,6 +318,11 @@ function SubscriptionsTab() {
                 const acts = availableActions(row.status);
                 return (
                   <div className="flex flex-wrap gap-1">
+                    {canActivateFounding(row.status, row.plan?.code) && (
+                      <ActBtn onClick={() => doActivateFounding(row)} primary>
+                        Mark as Paid & Activate
+                      </ActBtn>
+                    )}
                     {acts.includes('pause') && <ActBtn onClick={() => doPause(row.id)}>Pause</ActBtn>}
                     {acts.includes('resume') && <ActBtn onClick={() => doResume(row.id)}>Resume</ActBtn>}
                     {acts.includes('extend') && <ActBtn onClick={() => doExtend(row.id)}>Extend</ActBtn>}

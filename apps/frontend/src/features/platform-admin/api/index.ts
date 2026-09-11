@@ -395,6 +395,16 @@ export const platformAdminService = {
     const response = await api.post(`/platform-admin/subscriptions/${id}/change-plan`, body);
     return unwrap(response);
   },
+  /**
+   * Phase-1 "Mark as Paid & Activate" (business rules, 2026-09-12) — FOUNDING
+   * only. Plan, price, included beds and the one-month period are all
+   * derived server-side; the only thing this ever sends is an optional
+   * free-text payment reference.
+   */
+  activateFoundingSubscription: async (id: string, reference?: string) => {
+    const response = await api.post(`/platform-admin/subscriptions/${id}/activate-founding`, { reference });
+    return unwrap(response) as { payment: any; subscription: any; invoice: any; kind: string };
+  },
 
   getSubscriptionPayments: async (status?: string) => {
     const response = await api.get('/platform-admin/subscription-payments', {

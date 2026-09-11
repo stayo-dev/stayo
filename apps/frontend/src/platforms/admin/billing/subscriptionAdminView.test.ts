@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   adminError,
   availableActions,
+  canActivateFounding,
   capacityText,
   isReviewablePayment,
   overrideActive,
@@ -56,6 +57,19 @@ describe('availableActions', () => {
   });
   it('CANCELLED → only change-plan / cash', () => {
     expect(availableActions('CANCELLED')).toEqual(['change-plan', 'cash']);
+  });
+});
+
+describe('canActivateFounding', () => {
+  it('true only for a FOUNDING subscription still PENDING_PAYMENT', () => {
+    expect(canActivateFounding('PENDING_PAYMENT', 'FOUNDING')).toBe(true);
+  });
+  it('false for FOUNDING once already ACTIVE', () => {
+    expect(canActivateFounding('ACTIVE', 'FOUNDING')).toBe(false);
+  });
+  it('false for a non-FOUNDING plan even if PENDING_PAYMENT', () => {
+    expect(canActivateFounding('PENDING_PAYMENT', 'STARTER')).toBe(false);
+    expect(canActivateFounding('PENDING_PAYMENT', null)).toBe(false);
   });
 });
 

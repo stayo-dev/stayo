@@ -12,6 +12,7 @@ import {
   type HostelProvisionData,
 } from "../../src/validators/hostels";
 import { leadInvitationService } from "../../src/services/platform-leads/lead-invitation-service";
+import { subscriptionService } from "../../src/services/platform-billing/subscription-service";
 
 const logger = getLogger("hostel-provisioning-service");
 
@@ -119,6 +120,13 @@ export class HostelProvisioningService {
     await leadInvitationService
       .markHostelCreated(ownerId)
       .catch((err: any) => logger.error("lead_hostel_created_failed", { error: String(err) }));
+
+    // ADR-188: same Founding-classification hook as POST /api/owner/hostels
+    // — this route is the wizard's one-shot hostel+floors+rooms path, so it
+    // needs the identical trigger. Idempotent, best-effort.
+    await subscriptionService
+      .ensureForOwner(ownerId)
+      .catch((err: any) => logger.error("founding_classification_failed", { error: String(err) }));
 
     return result;
   }

@@ -4,18 +4,19 @@ import { MoreScreenHeader } from '@features/owner-more/components/MoreScreenHead
 import { ownerSubscriptionApi } from '../api';
 import {
   useCancelDowngrade,
+  useFoundingRenewalPreview,
   useOwnerSubscription,
   usePaymentContext,
   useScheduleDowngrade,
+  useSubmitFoundingRenewalPayment,
   useSubmitSubscriptionPayment,
   useSubscriptionPlans,
   useUpgradePreview,
 } from '../hooks/useOwnerSubscription';
-import type { PaymentMethod, PlanSummary, SubscriptionInvoice } from '../api';
+import type { FoundingRenewalPreview, PaymentMethod, PlanSummary, SubscriptionInvoice } from '../api';
 import {
   buildPlanCards,
   canBuyMoreExtraBeds,
-  capacityLabel,
   deriveCapacityView,
   deriveStatusView,
   downgradeNotice,
@@ -62,10 +63,16 @@ export function OwnerSubscriptionPage() {
   const isFoundingOwner = sub?.plan?.code === 'FOUNDING';
   const needsPayment = !!statusView && needsPaymentAction(statusView.status);
   const showPlanPicker = !!statusView && !isFoundingOwner && (needsPayment || statusView.status === 'ACTIVE');
-  const showFoundingPayment = !!statusView && isFoundingOwner && needsPayment;
+  // Founding Partner needs to pay/renew whenever the status card's own CTA
+  // says so — covers first activation (PENDING_PAYMENT), an expired/paused
+  // subscription, AND an ACTIVE one within the "ending soon" window
+  // (business rules, 2026-09-12) — the last of those `needsPaymentAction`
+  // alone would miss, since the subscription is still technically ACTIVE.
+  const foundingActionNeeded = !!statusView && isFoundingOwner && (needsPayment || statusView.primaryAction === 'RENEW');
 
   const plansQuery = useSubscriptionPlans(showPlanPicker);
-  const paymentCtxQuery = usePaymentContext(showPlanPicker || showFoundingPayment);
+  const paymentCtxQuery = usePaymentContext(showPlanPicker || foundingActionNeeded);
+  const foundingPreviewQuery = useFoundingRenewalPreview(isFoundingOwner);
 
   const [selectedPlan, setSelectedPlan] = useState<PlanSummary | null>(null);
   // Extra beds requested for a NEW plan / the Founding payment (business
@@ -120,26 +127,6 @@ export function OwnerSubscriptionPage() {
   const plans = plansQuery.data?.plans ?? [];
   const planCards = buildPlanCards(plans, sub);
 
-  // A synthetic PlanSummary for the auto-assigned FOUNDING plan, so the shared
-  // PaymentPanel can bill it without it ever appearing in the plan picker.
-  const foundingPlan: PlanSummary | null =
-    isFoundingOwner && sub.plan
-      ? {
-          id: sub.plan.id,
-          code: sub.plan.code,
-          name: sub.plan.name,
-          price_paise: sub.plan.price_paise,
-          currency: sub.plan.currency,
-          billing_cycle: 'MONTHLY',
-          capacity_min: 1,
-          capacity_max: sub.plan.capacity_max,
-          included_beds: sub.plan.included_beds,
-          max_extra_beds: sub.plan.max_extra_beds,
-          extra_bed_price_paise: sub.plan.extra_bed_price_paise,
-          is_public: false,
-        }
-      : null;
-
   const statusBody =
     isFoundingOwner && statusView.status === 'PENDING_PAYMENT'
       ? 'Submit your payment to activate your Founding plan. An admin verifies it, then your subscription activates.'
@@ -188,7 +175,14 @@ export function OwnerSubscriptionPage() {
           <div className="flex items-baseline justify-between">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Current plan</p>
-              <p className="mt-0.5 text-[17px] font-extrabold text-foreground">{sub.plan.name}</p>
+              <p className="mt-0.5 flex items-center gap-2 text-[17px] font-extrabold text-foreground">
+                {sub.plan.name}
+                {sub.founding_partner_number != null && (
+                  <span className="rounded-full bg-[#F0E7DF] px-2 py-0.5 text-[10.5px] font-bold uppercase text-[#8A6410]">
+                    Founding Partner #{sub.founding_partner_number}
+                  </span>
+                )}
+              </p>
             </div>
             <p className="text-[14px] font-bold text-foreground">{formatMonthlyPrice(sub.plan.price_paise, sub.plan.code)}</p>
           </div>
@@ -288,44 +282,22 @@ export function OwnerSubscriptionPage() {
         </section>
       )}
 
-      {/* ── Founding plan (auto-assigned) + payment ───────────────── */}
-      {showFoundingPayment && foundingPlan && (
-        <section className="flex flex-col gap-2.5">
-          <h2 className="pl-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Your plan
-          </h2>
-          <div className="flex flex-col items-start gap-1 rounded-[13px] border border-border bg-card px-4 py-3.5">
-            <div className="flex w-full items-baseline justify-between">
-              <span className="text-[14px] font-bold text-foreground">
-                {foundingPlan.name}
-                <span className="ml-2 rounded-full bg-[#F0E7DF] px-1.5 py-0.5 text-[9.5px] font-bold uppercase text-[#8A6410]">
-                  First 10 owners
-                </span>
-              </span>
-              <span className="text-[13px] font-bold text-foreground">
-                {formatMonthlyPrice(foundingPlan.price_paise, foundingPlan.code)}
-              </span>
-            </div>
-            <span className="text-[11.5px] text-muted-foreground">{capacityLabel(foundingPlan)}</span>
-          </div>
-
-          {!paymentsPending && (
-            <PaymentPanel
-              plan={foundingPlan}
-              relation="NEW"
-              amountPaise={foundingPlan.price_paise + extraBeds * (foundingPlan.extra_bed_price_paise ?? 0)}
-              amountLoading={false}
-              amountError={null}
-              upgradePreview={null}
-              periodEnd={sub.current_period_end}
-              paymentContext={paymentCtxQuery.data ?? null}
-              paymentsPending={paymentsPending}
-              extraBeds={extraBeds}
-              onExtraBedsChange={setExtraBeds}
-              onDone={() => undefined}
-            />
-          )}
-        </section>
+      {/* ── Founding Partner billing (business rules, 2026-09-12) ──── */}
+      {isFoundingOwner && (
+        <FoundingBillingSection
+          foundingPartnerNumber={sub.founding_partner_number}
+          isInitialActivation={statusView.status === 'PENDING_PAYMENT'}
+          preview={foundingPreviewQuery.data ?? null}
+          previewLoading={foundingPreviewQuery.isLoading}
+          previewError={
+            foundingPreviewQuery.isError
+              ? mapBackendError(foundingPreviewQuery.error, "Couldn't load the current amount.")
+              : null
+          }
+          actionNeeded={foundingActionNeeded}
+          paymentsPending={paymentsPending}
+          paymentContext={paymentCtxQuery.data ?? null}
+        />
       )}
 
       {/* ── Plans + payment ───────────────────────────────────────── */}
@@ -576,6 +548,247 @@ function HistorySection({
           <div className="divide-y divide-border/60">{items}</div>
         )}
       </div>
+    </section>
+  );
+}
+
+/**
+ * Founding Partner's Phase 1 billing UI (business rules, 2026-09-12). Always
+ * shows the current usage-derived breakdown (rule 14 — no plan picker, no
+ * amount entry, nothing for the owner to calculate), and when a payment is
+ * actually needed (first activation, renewal due/overdue, or the "ending
+ * soon" window while still ACTIVE) reveals a submission form: payment
+ * method, transaction reference, screenshot. The amount itself is never an
+ * input anywhere in this component.
+ */
+function FoundingBillingSection({
+  foundingPartnerNumber,
+  isInitialActivation,
+  preview,
+  previewLoading,
+  previewError,
+  actionNeeded,
+  paymentsPending,
+  paymentContext,
+}: {
+  foundingPartnerNumber: number | null;
+  isInitialActivation: boolean;
+  preview: FoundingRenewalPreview | null;
+  previewLoading: boolean;
+  previewError: string | null;
+  actionNeeded: boolean;
+  paymentsPending: boolean;
+  paymentContext: import('../api').PaymentContext | null;
+}) {
+  const [showForm, setShowForm] = useState(false);
+  const submit = useSubmitFoundingRenewalPayment();
+  const methods = paymentContext?.methods ?? ['UPI_MANUAL', 'CASH'];
+  const [method, setMethod] = useState<PaymentMethod | ''>('');
+  const [reference, setReference] = useState('');
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+
+  const disabled = paymentsPending || submit.isPending;
+
+  const onSubmit = () => {
+    setFormError(null);
+    const check = validatePaymentForm({
+      method,
+      amountPaise: preview?.total_paise ?? null,
+      transactionReference: reference,
+      proofFileUrl: proofFile ? 'pending-upload' : null,
+    });
+    if (check.ok !== true) {
+      setFormError('reason' in check ? check.reason : 'Please check the payment details.');
+      return;
+    }
+    submit.mutate(
+      { input: { payment_method: method as PaymentMethod, transaction_reference: reference.trim() || undefined }, proofFile },
+      {
+        onSuccess: () => {
+          setShowForm(false);
+          setSubmitted(true);
+        },
+        onError: (err) => setFormError(mapBackendError(err)),
+      },
+    );
+  };
+
+  return (
+    <section className="flex flex-col gap-2.5">
+      <h2 className="pl-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {isInitialActivation ? 'Founding Partner activation' : 'Founding Partner billing'}
+      </h2>
+
+      <div className={`${card} p-4`}>
+        <div className="flex items-baseline justify-between">
+          <span className="text-[14px] font-bold text-foreground">
+            Founding Partner{foundingPartnerNumber != null ? ` #${foundingPartnerNumber}` : ''}
+          </span>
+        </div>
+
+        {previewLoading && <p className="mt-2 text-[12.5px] text-muted-foreground">Calculating…</p>}
+        {previewError && <p className="mt-2 text-[12px] font-medium text-destructive">{previewError}</p>}
+
+        {preview && (
+          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[12.5px]">
+            <Row k="Base subscription" v={formatPaise(preview.base_paise)} />
+            <Row k="Included beds" v={String(preview.included_beds ?? 250)} />
+            <Row k="Current active beds" v={String(preview.active_beds)} />
+            <Row k="Additional beds" v={String(preview.excess_beds)} />
+            <Row
+              k="Additional charge"
+              v={preview.excess_beds > 0 ? `${preview.excess_beds} × ${formatPaise(preview.extra_bed_price_paise)} = ${formatPaise(preview.extra_paise)}` : '₹0'}
+            />
+            <Row k="Total payable" v={formatPaise(preview.total_paise)} />
+          </dl>
+        )}
+      </div>
+
+      {actionNeeded && !paymentsPending && !submitted && !showForm && (
+        <button
+          type="button"
+          onClick={() => setShowForm(true)}
+          disabled={!preview}
+          className="rounded-[11px] bg-primary px-4 py-2.5 text-[13.5px] font-bold text-primary-foreground disabled:opacity-50"
+        >
+          {isInitialActivation ? 'Activate Subscription' : 'Renew Subscription'}
+        </button>
+      )}
+
+      {submitted && (
+        <p className={`rounded-xl px-3.5 py-2.5 text-[12.5px] font-medium ${TONE_BG.info}`}>
+          Your payment has been submitted and is awaiting confirmation.
+        </p>
+      )}
+
+      {actionNeeded && showForm && !paymentsPending && (
+        <div className={`${card} flex flex-col gap-3 p-4`}>
+          <div className="flex items-baseline justify-between">
+            <p className="text-[13px] font-bold text-foreground">Amount payable</p>
+            <p className="text-[13px] font-bold text-foreground">{preview ? formatPaise(preview.total_paise) : '—'}</p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <span className={label}>Payment method</span>
+            <div className="flex gap-2">
+              {methods.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => setMethod(m)}
+                  className={`flex-1 rounded-[10px] border px-3 py-2 text-[12.5px] font-semibold ${
+                    method === m ? 'border-primary bg-primary/[0.05] text-primary' : 'border-border text-foreground'
+                  }`}
+                >
+                  {paymentMethodLabel(m)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {method === 'UPI_MANUAL' && (
+            <>
+              <div className="flex items-start gap-2.5 rounded-xl bg-muted px-3 py-2.5">
+                <Landmark className="mt-0.5 h-4 w-4 flex-none text-primary" strokeWidth={2} />
+                <div className="min-w-0 text-[11.5px] leading-[1.5] text-muted-foreground">
+                  {paymentContext?.payee_configured && paymentContext.payee ? (
+                    <>
+                      <p className="font-semibold text-foreground">
+                        {paymentContext.payee.account_name || 'Stayo'}
+                        {paymentContext.payee.upi_vpa ? ` · ${paymentContext.payee.upi_vpa}` : ''}
+                      </p>
+                      {paymentContext.payee.qr_image_url && (
+                        <img
+                          src={paymentContext.payee.qr_image_url}
+                          alt="Stayo payment QR"
+                          className="mt-2 h-36 w-36 rounded-lg border border-border object-contain"
+                        />
+                      )}
+                      {paymentContext.payee.note && <p className="mt-1">{paymentContext.payee.note}</p>}
+                    </>
+                  ) : (
+                    <p>
+                      Stayo&apos;s UPI payment details are being set up. Please contact Stayo for where to send this payment,
+                      then submit your reference and screenshot below.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <label className="flex flex-col gap-1.5">
+                <span className={label}>Transaction / UTR reference</span>
+                <input
+                  className={field}
+                  value={reference}
+                  onChange={(e) => setReference(e.target.value)}
+                  placeholder="e.g. 412345678901"
+                  disabled={disabled}
+                />
+              </label>
+
+              <label className="flex flex-col gap-1.5">
+                <span className={label}>Payment screenshot</span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,application/pdf"
+                  onChange={(e) => setProofFile(e.target.files?.[0] ?? null)}
+                  disabled={disabled}
+                  className="text-[12px] text-muted-foreground file:mr-3 file:rounded-lg file:border file:border-border file:bg-card file:px-3 file:py-1.5 file:text-[12px] file:font-semibold file:text-foreground"
+                />
+              </label>
+            </>
+          )}
+
+          {method === 'CASH' && (
+            <>
+              <p className="rounded-xl bg-muted px-3 py-2 text-[11.5px] text-muted-foreground">
+                Record the cash payment reference you were given by Stayo, then submit. An admin confirms it.
+              </p>
+              <label className="flex flex-col gap-1.5">
+                <span className={label}>Reference (optional)</span>
+                <input
+                  className={field}
+                  value={reference}
+                  onChange={(e) => setReference(e.target.value)}
+                  placeholder="CASH-…"
+                  disabled={disabled}
+                />
+              </label>
+            </>
+          )}
+
+          {formError && (
+            <p className="rounded-xl bg-destructive/10 px-3 py-2 text-[12px] font-medium text-destructive" role="alert">
+              {formError}
+            </p>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={disabled || !method || !preview}
+              onClick={onSubmit}
+              className="rounded-[11px] bg-primary px-4 py-2.5 text-[13.5px] font-bold text-primary-foreground disabled:opacity-50"
+            >
+              {submit.isPending ? 'Submitting…' : 'Submit payment'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowForm(false)}
+              className="rounded-[11px] border border-border px-4 py-2.5 text-[13.5px] font-semibold text-foreground"
+            >
+              Cancel
+            </button>
+          </div>
+          <p className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground">
+            <ShieldCheck className="h-3.5 w-3.5 flex-none" strokeWidth={2} />
+            Your payment is verified by a Stayo admin before your subscription changes.
+          </p>
+        </div>
+      )}
     </section>
   );
 }
