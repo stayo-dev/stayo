@@ -132,18 +132,51 @@ describe("planCapacityService.assertCanActivate", () => {
     t.owner_subscriptions.findUnique.mockImplementation(async ({ select }: any) =>
       select?.status !== undefined
         ? { status: "ACTIVE", admin_override_until: null }
-        : { plan_id: "plan-x" },
+        : { plan_id: "plan-x", extra_beds: 0 },
     );
     t.subscription_plans.findUnique.mockResolvedValue({ code: planCode, capacity_max: capacityMax });
     t.tenants.count.mockResolvedValue(activeCount);
   }
 
-  it("FOUNDING (capacity_max null) → always allowed, no count query", async () => {
+  it("legacy plan with no included_beds set falls back to the raw capacity_max — always allowed when that's null", async () => {
     const t = tx();
-    wire(t, "FOUNDING", null, 5000);
+    wire(t, "LEGACY", null, 5000);
     const status = await planCapacityService.assertCanActivate("owner-A", { tx: t });
     expect(status.capacity_max).toBeNull();
     expect(t.tenants.count).not.toHaveBeenCalled();
+  });
+
+  it("FOUNDING never blocks activation — no hard maximum (business rules, 2026-09-12: usage bills, it never gates)", async () => {
+    const t = tx();
+    t.owner_subscriptions.findUnique.mockImplementation(async ({ select }: any) =>
+      select?.status !== undefined
+        ? { status: "ACTIVE", admin_override_until: null }
+        : { plan_id: "plan-founding", extra_beds: 0 },
+    );
+    t.subscription_plans.findUnique.mockResolvedValue({ code: "FOUNDING", capacity_max: null, included_beds: 250, max_extra_beds: null, extra_bed_price_paise: 1000 });
+    t.tenants.count.mockResolvedValue(500); // way past 250 — still allowed
+
+    const status = await planCapacityService.assertCanActivate("owner-A", { tx: t });
+    expect(status.capacity_max).toBeNull();
+    expect(status.at_limit).toBe(false);
+    // The gate short-circuits before ever counting active tenants — same as
+    // the legacy-null-capacity case above.
+    expect(t.tenants.count).not.toHaveBeenCalled();
+  });
+
+  it("FOUNDING is never blocked regardless of the subscription's stored extra_beds (that field no longer feeds the gate)", async () => {
+    const t = tx();
+    t.owner_subscriptions.findUnique.mockImplementation(async ({ select }: any) =>
+      select?.status !== undefined
+        ? { status: "ACTIVE", admin_override_until: null }
+        : { plan_id: "plan-founding", extra_beds: 50 },
+    );
+    t.subscription_plans.findUnique.mockResolvedValue({ code: "FOUNDING", capacity_max: null, included_beds: 250, max_extra_beds: null, extra_bed_price_paise: 1000 });
+    t.tenants.count.mockResolvedValue(9999);
+
+    const status = await planCapacityService.assertCanActivate("owner-A", { tx: t });
+    expect(status.capacity_max).toBeNull();
+    expect(status.at_limit).toBe(false);
   });
 
   it.each([

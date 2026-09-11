@@ -20,9 +20,11 @@ import {
   canReviewPayment,
   classifyPlanChange,
   computeExpectedTotalPaise,
+  computeFoundingUsageBilling,
   computePlanTotalPaise,
   computeUpgradeProration,
   daysBetween,
+  isPaymentMethod,
   toDateOnly,
   validateExtraBeds,
   validatePaymentSubmission,
@@ -186,6 +188,142 @@ async function recordCashPayment(
 }
 
 /**
+ * Phase-1 Founding Partner one-click admin action ("Mark as Paid &
+ * Activate"): the client pays ₹2,000 to Stayo entirely outside the app, and
+ * the admin confirms it here in a single action instead of the general
+ * two-step record-cash-payment-then-approve flow. Scoped to FOUNDING only —
+ * the admin never types a plan code, price, capacity or expiry; every one of
+ * those is read from the owner's own subscription row (already pinned to
+ * FOUNDING at onboarding, see `subscription-service.ensureForOwner`) and the
+ * canonical `subscription_plans` row for it. Internally this is just
+ * `recordCashPayment` immediately followed by `reviewPayment(APPROVE)` — the
+ * SAME reviewable-payment lifecycle every other subscription payment goes
+ * through (no shortcut that activates a subscription without a payment
+ * record), just composed into one admin click. `reviewPayment`'s own
+ * transaction remains the atomic boundary for the actual state change
+ * (payment → APPROVED, subscription → ACTIVE, invoice issued, one-month
+ * period via `computeBillingPeriod`'s calendar-month arithmetic).
+ */
+/**
+ * The Founding Partner subscription + plan for `ownerId`/`subscriptionId`,
+ * plus the current usage-derived amount (business rules, 2026-09-12 —
+ * `computeFoundingUsageBilling`, driven by the LIVE active-tenant count, never
+ * a stored/previously-purchased extra-bed quantity). Throws `NOT_FOUNDING`
+ * for any other plan — every function below that needs this is Founding-only
+ * for Phase 1.
+ */
+async function loadFoundingUsageAmount(where: { subscriptionId?: string; ownerId?: string }) {
+  const subscription = where.subscriptionId
+    ? await prisma.owner_subscriptions.findUnique({ where: { id: where.subscriptionId } })
+    : await prisma.owner_subscriptions.findUnique({ where: { owner_id: where.ownerId! } });
+  if (!subscription) throw new SubscriptionError("Subscription not found.", "NOT_FOUND", 404);
+
+  const plan = await prisma.subscription_plans.findUnique({ where: { id: subscription.plan_id } });
+  if (!plan || plan.code !== FOUNDING_PLAN_CODE) {
+    throw new SubscriptionError(
+      "This action is only available for Founding Partner subscriptions. Use the standard flow for other plans.",
+      "NOT_FOUNDING",
+      409,
+    );
+  }
+
+  const { planCapacityService } = await import("./plan-capacity-service");
+  const capacity = await planCapacityService.getCapacityStatus(subscription.owner_id);
+  const billing = computeFoundingUsageBilling({
+    activeBeds: capacity.active_count,
+    includedBeds: plan.included_beds ?? 0,
+    basePricePaise: plan.price_paise,
+    extraBedPricePaise: plan.extra_bed_price_paise,
+  });
+
+  return { subscription, plan, activeBeds: capacity.active_count, ...billing };
+}
+
+/**
+ * Admin "Mark as Paid & Activate" (business rules, 2026-09-12) — the amount
+ * is ALWAYS derived from the owner's current active-tenant count, never
+ * hardcoded to the ₹2,000 base: for the ordinary case of a brand-new owner
+ * with no tenants yet this IS ₹2,000, but an owner who already has active
+ * tenants past 250 at the moment of first activation is charged the correct
+ * excess too — the admin never types a plan/price/amount either way.
+ */
+async function markFoundingPaidAndActivate(params: { subscriptionId: string; adminId: string; reference?: string | null }) {
+  const { adminId } = params;
+  const { subscription, plan, excessBeds, totalPaise } = await loadFoundingUsageAmount({ subscriptionId: params.subscriptionId });
+
+  const payment = await recordCashPayment(adminId, {
+    ownerId: subscription.owner_id,
+    planId: plan.id,
+    amountPaise: totalPaise,
+    reference: params.reference ?? null,
+    extraBeds: excessBeds,
+  });
+
+  return reviewPayment({ paymentId: payment.id, decision: "APPROVE", adminId });
+}
+
+/**
+ * Read-only preview for the owner's Subscription page and renewal screen —
+ * what a Founding Partner renewal (or the initial activation, before it's
+ * paid) would cost RIGHT NOW, computed from live usage. Nothing is charged or
+ * changed.
+ */
+async function foundingRenewalPreview(ownerId: string) {
+  const { plan, activeBeds, excessBeds, extraPaise, totalPaise } = await loadFoundingUsageAmount({ ownerId });
+  return {
+    plan_code: plan.code,
+    base_paise: plan.price_paise,
+    included_beds: plan.included_beds,
+    active_beds: activeBeds,
+    excess_beds: excessBeds,
+    extra_bed_price_paise: plan.extra_bed_price_paise,
+    extra_paise: extraPaise,
+    total_paise: totalPaise,
+  };
+}
+
+/**
+ * Owner submits a Founding Partner renewal payment. Deliberately takes NO
+ * amount/extra_beds from the caller (business rules, 2026-09-12, "no manual
+ * amount entry") — `ownerId` is session-resolved, and the amount + excess-bed
+ * count are always the server's own live computation via
+ * `loadFoundingUsageAmount`, exactly what `foundingRenewalPreview` just
+ * showed the owner. Reuses `createSubmittedPayment` (the same SUBMITTED →
+ * admin-review lifecycle every subscription payment goes through) — nothing
+ * about the payment pipeline itself is duplicated.
+ */
+async function submitFoundingRenewalPayment(
+  ownerId: string,
+  input: { payment_method: unknown; transaction_reference?: unknown; proof_file_url?: unknown },
+) {
+  const { subscription, plan, excessBeds, totalPaise } = await loadFoundingUsageAmount({ ownerId });
+
+  if (!isPaymentMethod(input.payment_method) || String(input.payment_method).toUpperCase() === "GATEWAY") {
+    throw new SubscriptionError("payment_method must be UPI_MANUAL or CASH.", "INVALID_PAYMENT", 400);
+  }
+  const method = String(input.payment_method).toUpperCase();
+  const check = validatePaymentSubmission({
+    amount_paise: totalPaise,
+    payment_method: method,
+    transaction_reference: input.transaction_reference,
+    proof_file_url: input.proof_file_url,
+  });
+  if (!check.ok) throw new SubscriptionError(check.reason, "INVALID_PAYMENT", 400);
+
+  return createSubmittedPayment({
+    ownerId,
+    planId: subscription.plan_id ?? plan.id,
+    amountPaise: totalPaise,
+    method,
+    transactionReference: String(input.transaction_reference || "").trim() || null,
+    proofFileUrl: String(input.proof_file_url || "").trim() || null,
+    actorId: ownerId,
+    actorRole: "OWNER",
+    extraBeds: excessBeds,
+  });
+}
+
+/**
  * Read-only: what an owner would pay right now, either to upgrade to
  * `targetPlanId`, or — when `targetPlanId` is their CURRENT plan — to top up
  * to `extraBeds` extra beds without changing plan (business rules,
@@ -270,6 +408,29 @@ async function upgradePreview(ownerId: string, targetPlanId: string, extraBeds =
 }
 
 /**
+ * `classifyPlanChange`, with one Founding-Partner-specific override (business
+ * rules, 2026-09-12): Founding Partner's Phase 1 model has no "buy more beds
+ * without renewing" feature — a same-plan payment always represents a full
+ * period at the current usage-derived amount, never an incremental mid-period
+ * top-up. Without this override, a same-plan FOUNDING payment submitted
+ * while the subscription is still ACTIVE — the normal early/proactive
+ * renewal flow once the owner sees the expiry warning — whose usage-derived
+ * excess-bed count happens to exceed the currently STORED `extra_beds` (from
+ * a past period) would be misclassified as `EXTRA_BEDS`: billed only for the
+ * incremental difference, with NO period extension. That is exactly the
+ * "permanent purchase of additional capacity" behavior the business rules
+ * forbid for Founding Partner. Every other plan's classification (Phase 2+,
+ * out of scope here) is unaffected.
+ */
+function classifyFoundingAwarePlanChange(
+  args: Parameters<typeof classifyPlanChange>[0],
+  planCode: string,
+): PlanChangeKind {
+  const kind = classifyPlanChange(args);
+  return planCode === FOUNDING_PLAN_CODE && kind === "EXTRA_BEDS" ? "RENEWAL" : kind;
+}
+
+/**
  * Read-only: what a SUBMITTED/UNDER_REVIEW payment's total SHOULD be, per the
  * same server-authoritative math the approval path uses — for detecting a
  * mismatch against what the payment actually declares (Phase 6.9). Never
@@ -300,7 +461,7 @@ async function getExpectedAmount(paymentId: string): Promise<{
   const currentExtraBeds = Math.max(0, Math.trunc(Number(subscription.extra_beds) || 0));
   const requestedExtraBeds = Math.max(0, Math.trunc(Number(payment.extra_beds) || 0));
 
-  const kind = classifyPlanChange({
+  const kind = classifyFoundingAwarePlanChange({
     currentStatus: subscription.status as SubscriptionStatus,
     currentPlanPricePaise: subscription.status === "ACTIVE" ? currentPlan?.price_paise ?? null : null,
     selectedPlanPricePaise: selectedPlan.price_paise,
@@ -309,7 +470,7 @@ async function getExpectedAmount(paymentId: string): Promise<{
     pendingPlanId: subscription.pending_plan_id,
     currentExtraBeds,
     requestedExtraBeds,
-  });
+  }, selectedPlan.code);
 
   let daysRemaining = 0;
   let daysInPeriod = 0;
@@ -573,7 +734,7 @@ async function reviewPayment(params: {
     const requestedExtraBeds = Math.max(0, Math.trunc(Number(payment.extra_beds) || 0));
     const currentExtraBeds = Math.max(0, Math.trunc(Number(subscription.extra_beds) || 0));
 
-    const kind = classifyPlanChange({
+    const kind = classifyFoundingAwarePlanChange({
       currentStatus: subscription.status as SubscriptionStatus,
       currentPlanPricePaise: subscription.status === "ACTIVE" ? currentPlan?.price_paise ?? null : null,
       selectedPlanPricePaise: selectedPlan.price_paise,
@@ -582,7 +743,7 @@ async function reviewPayment(params: {
       pendingPlanId: subscription.pending_plan_id,
       currentExtraBeds,
       requestedExtraBeds,
-    });
+    }, selectedPlan.code);
 
     // Extra-bed quantity — re-validated at approval time too (the plan's
     // allowance could have changed since submission); never exceeds the
@@ -738,6 +899,9 @@ async function reviewPayment(params: {
 export const subscriptionPaymentService = {
   submitPayment,
   recordCashPayment,
+  markFoundingPaidAndActivate,
+  foundingRenewalPreview,
+  submitFoundingRenewalPayment,
   upgradePreview,
   reviewPayment,
   planApprovalOutcome,

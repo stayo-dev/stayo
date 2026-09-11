@@ -31,9 +31,10 @@ const PORTFOLIO = { id: "p-portfolio", code: "PORTFOLIO", price_paise: 799900, i
 const PLAN_BY_ID: Record<string, any> = { [FOUNDING.id]: FOUNDING, [STARTER.id]: STARTER, [GROWTH.id]: GROWTH, [PROFESSIONAL.id]: PROFESSIONAL, [PORTFOLIO.id]: PORTFOLIO };
 
 describe("effectivePlanCapacity — pure", () => {
-  it("FOUNDING has no ceiling regardless of extra_beds", () => {
-    expect(effectivePlanCapacity(FOUNDING, 0)).toBeNull();
-    expect(effectivePlanCapacity(FOUNDING, 10_000)).toBeNull();
+  it("FOUNDING: real, growing ceiling like every other plan — no upper bound on how many extra beds can be bought", () => {
+    expect(effectivePlanCapacity(FOUNDING, 0)).toBe(250);
+    expect(effectivePlanCapacity(FOUNDING, 10)).toBe(260);
+    expect(effectivePlanCapacity(FOUNDING, 10_000)).toBe(10_250); // no cap on the purchase itself
   });
 
   it("STARTER: included + extra_beds, capped at max_extra_beds", () => {
@@ -192,12 +193,15 @@ describe("plan-capacity-service.getCapacityStatus — uses included_beds + the o
     expect(status2.at_limit).toBe(true);
   });
 
-  it("FOUNDING owner is unlimited no matter how many extra beds they've bought", async () => {
+  it("FOUNDING owner's ceiling is real and grows with what they've bought — 250 + 400 extra = 650, no upper bound on the purchase itself", async () => {
     db.owner_subscriptions.findUnique.mockResolvedValue({ plan_id: FOUNDING.id, extra_beds: 400 });
     db.tenants.count.mockResolvedValue(650);
     const status = await planCapacityService.getCapacityStatus("owner-founding");
-    expect(status.capacity_max).toBeNull();
-    expect(status.at_limit).toBe(false);
+    expect(status.capacity_max).toBe(650);
+    expect(status.at_limit).toBe(true);
+    db.tenants.count.mockResolvedValue(649);
+    const status2 = await planCapacityService.getCapacityStatus("owner-founding");
+    expect(status2.at_limit).toBe(false);
   });
 
   it("PORTFOLIO owner's ceiling stays at included_beds (500) — no extra beds can be bought to move it", async () => {

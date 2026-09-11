@@ -68,9 +68,38 @@ export interface StatusView {
   primaryAction: 'CHOOSE_PLAN' | 'RENEW' | 'CONTACT_STAYO' | null;
 }
 
-export function deriveStatusView(sub: Pick<OwnerSubscription, 'status' | 'next_renewal_at'>): StatusView {
+/** Renewal-proximity window (business rules, 2026-09-12) — inside this many days of `next_renewal_at`, an otherwise-ACTIVE subscription shows an "ending soon" warning instead of the plain positive state. Does NOT change `status` itself — only PAUSED (written by `runExpirySweep`) is a real backend state change; this is purely a same-status warning derived from the date already on the row. */
+const EXPIRING_SOON_WINDOW_DAYS = 7;
+
+export function deriveStatusView(
+  sub: Pick<OwnerSubscription, 'status' | 'next_renewal_at'>,
+  now: Date = new Date(),
+): StatusView {
   switch (sub.status) {
-    case 'ACTIVE':
+    case 'ACTIVE': {
+      const renewal = sub.next_renewal_at ? new Date(sub.next_renewal_at) : null;
+      const daysLeft = renewal ? Math.ceil((renewal.getTime() - now.getTime()) / 86_400_000) : null;
+      const expiringSoon = daysLeft != null && daysLeft <= EXPIRING_SOON_WINDOW_DAYS && daysLeft >= 0;
+      if (daysLeft === 1) {
+        return {
+          status: 'ACTIVE',
+          label: 'Ending soon',
+          tone: 'warning',
+          headline: 'Your subscription expires tomorrow',
+          body: 'Please renew to continue using Stayo.',
+          primaryAction: 'RENEW',
+        };
+      }
+      if (expiringSoon) {
+        return {
+          status: 'ACTIVE',
+          label: 'Ending soon',
+          tone: 'warning',
+          headline: 'Your subscription is ending soon',
+          body: `Your subscription expires on ${formatDate(sub.next_renewal_at)}. Please renew to continue using Stayo.`,
+          primaryAction: 'RENEW',
+        };
+      }
       return {
         status: 'ACTIVE',
         label: 'Active',
@@ -81,6 +110,7 @@ export function deriveStatusView(sub: Pick<OwnerSubscription, 'status' | 'next_r
           : 'Your subscription is active.',
         primaryAction: null,
       };
+    }
     case 'PENDING_PAYMENT':
       return {
         status: 'PENDING_PAYMENT',
@@ -91,12 +121,17 @@ export function deriveStatusView(sub: Pick<OwnerSubscription, 'status' | 'next_r
         primaryAction: 'CHOOSE_PLAN',
       };
     case 'PAUSED':
+      // This IS the "expired" state in canonical Stayo terminology — the
+      // lifecycle sweep (`runExpirySweep`) writes PAUSED, never EXPIRED, when
+      // a paid period ends with no active admin override (business rules,
+      // 2026-09-12 — reusing the existing state rather than introducing a
+      // conflicting new one).
       return {
         status: 'PAUSED',
-        label: 'Paused',
+        label: 'Expired',
         tone: 'critical',
-        headline: 'Your subscription is paused because the paid period has ended',
-        body: 'Renew your subscription to resume managing your hostels. Your data is safe.',
+        headline: 'Your subscription has expired',
+        body: 'Please renew your subscription to continue using Stayo. Your data, tenants and properties are safe.',
         primaryAction: 'RENEW',
       };
     case 'EXPIRED':

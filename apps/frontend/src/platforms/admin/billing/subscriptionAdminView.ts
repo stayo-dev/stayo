@@ -125,6 +125,16 @@ export function availableActions(status: string): Array<'pause' | 'resume' | 'ex
   }
 }
 
+/**
+ * Phase-1 "Mark as Paid & Activate" quick action (business rules,
+ * 2026-09-12) — only meaningful for a FOUNDING subscription still awaiting
+ * its first payment. Every other plan/status keeps using the general
+ * cash-then-approve flow (`availableActions`'s `cash` action).
+ */
+export function canActivateFounding(status: string, planCode: string | null | undefined): boolean {
+  return status === 'PENDING_PAYMENT' && planCode === 'FOUNDING';
+}
+
 export function overrideActive(admin_override_until: string | null | undefined, now: Date = new Date()): boolean {
   if (!admin_override_until) return false;
   const d = new Date(admin_override_until);

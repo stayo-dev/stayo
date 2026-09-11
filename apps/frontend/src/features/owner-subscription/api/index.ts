@@ -53,6 +53,8 @@ export interface SubscriptionUsage {
 export interface OwnerSubscription {
   id: string;
   status: SubscriptionStatus;
+  /** 1–10 when this owner currently holds the FOUNDING plan, else null. */
+  founding_partner_number: number | null;
   plan: {
     id: string;
     code: string;
@@ -160,6 +162,29 @@ export interface SubmitPaymentInput {
   extra_beds?: number;
 }
 
+/**
+ * Founding Partner Phase 1 dynamic renewal amount (business rules,
+ * 2026-09-12) — always derived server-side from the owner's LIVE active-tenant
+ * count, never a stored/previously-purchased quantity. Nothing here is
+ * editable by the owner.
+ */
+export interface FoundingRenewalPreview {
+  plan_code: string;
+  base_paise: number;
+  included_beds: number | null;
+  active_beds: number;
+  excess_beds: number;
+  extra_bed_price_paise: number | null;
+  extra_paise: number;
+  total_paise: number;
+}
+
+export interface FoundingRenewalPaymentInput {
+  payment_method: PaymentMethod;
+  transaction_reference?: string;
+  proof_file_url?: string;
+}
+
 export const ownerSubscriptionApi = {
   getOverview: async (): Promise<SubscriptionOverview> => {
     const r = await api.get('/owner/subscription');
@@ -213,6 +238,25 @@ export const ownerSubscriptionApi = {
   cancelDowngrade: async (): Promise<{ pending_plan: null }> => {
     const r = await api.delete('/owner/subscription/downgrade');
     return unwrap(r);
+  },
+
+  /** Founding Partner only. Read-only — nothing charged or changed. */
+  getFoundingRenewalPreview: async (): Promise<FoundingRenewalPreview> => {
+    const r = await api.get('/owner/subscription/founding-renewal-preview');
+    return unwrap(r) as FoundingRenewalPreview;
+  },
+
+  /**
+   * Founding Partner only. Deliberately sends NO amount/extra_beds — the
+   * backend computes both from the owner's live active-tenant count.
+   */
+  submitFoundingRenewalPayment: async (input: FoundingRenewalPaymentInput): Promise<SubscriptionPayment> => {
+    const r = await api.post('/owner/subscription/founding-renewal-payments', {
+      payment_method: input.payment_method,
+      transaction_reference: input.transaction_reference,
+      proof_file_url: input.proof_file_url,
+    });
+    return unwrap(r) as SubscriptionPayment;
   },
 
   /**

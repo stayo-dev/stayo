@@ -45,6 +45,7 @@ const plan = (over: Partial<PlanSummary>): PlanSummary => ({
 const sub = (over: Partial<OwnerSubscription>): OwnerSubscription => ({
   id: 's',
   status: 'ACTIVE',
+  founding_partner_number: null,
   plan: {
     id: 'p-growth',
     code: 'GROWTH',
@@ -86,10 +87,40 @@ describe('formatting', () => {
 // ── status ────────────────────────────────────────────────────────────────
 describe('deriveStatusView', () => {
   it('ACTIVE → positive, no payment CTA', () => {
-    const v = deriveStatusView(sub({ status: 'ACTIVE' }));
+    const v = deriveStatusView(sub({ status: 'ACTIVE' }), new Date('2026-09-01T00:00:00Z'));
     expect(v.tone).toBe('positive');
     expect(v.headline).toBe('Subscription active');
     expect(v.primaryAction).toBeNull();
+  });
+
+  it('ACTIVE within 7 days of renewal → "ending soon" warning, not the plain positive state', () => {
+    const v = deriveStatusView(
+      sub({ status: 'ACTIVE', next_renewal_at: '2026-10-01' }),
+      new Date('2026-09-25T00:00:00Z'),
+    );
+    expect(v.tone).toBe('warning');
+    expect(v.headline).toBe('Your subscription is ending soon');
+    expect(v.body).toMatch(/please renew to continue using stayo/i);
+    expect(v.primaryAction).toBe('RENEW');
+  });
+
+  it('ACTIVE exactly one day from renewal → distinct "expires tomorrow" copy', () => {
+    const v = deriveStatusView(
+      sub({ status: 'ACTIVE', next_renewal_at: '2026-10-01' }),
+      new Date('2026-09-30T00:00:00Z'),
+    );
+    expect(v.tone).toBe('warning');
+    expect(v.headline).toBe('Your subscription expires tomorrow');
+    expect(v.body).toMatch(/please renew to continue using stayo/i);
+    expect(v.primaryAction).toBe('RENEW');
+  });
+
+  it('ACTIVE more than 7 days from renewal stays the plain positive state', () => {
+    const v = deriveStatusView(
+      sub({ status: 'ACTIVE', next_renewal_at: '2026-10-01' }),
+      new Date('2026-09-20T00:00:00Z'),
+    );
+    expect(v.tone).toBe('positive');
   });
 
   it('PENDING_PAYMENT → "Payment required to start managing Stayo" + choose-plan CTA', () => {
@@ -98,10 +129,13 @@ describe('deriveStatusView', () => {
     expect(v.primaryAction).toBe('CHOOSE_PLAN');
   });
 
-  it('PAUSED → explains the period ended + renew CTA', () => {
+  it('PAUSED (the canonical "expired" state) → explains the period ended + renew CTA + data is safe', () => {
     const v = deriveStatusView(sub({ status: 'PAUSED' }));
     expect(v.tone).toBe('critical');
-    expect(v.headline).toMatch(/paused because the paid period has ended/i);
+    expect(v.label).toBe('Expired');
+    expect(v.headline).toMatch(/subscription has expired/i);
+    expect(v.body).toMatch(/renew your subscription to continue using stayo/i);
+    expect(v.body).toMatch(/data.*safe/i);
     expect(v.primaryAction).toBe('RENEW');
   });
 

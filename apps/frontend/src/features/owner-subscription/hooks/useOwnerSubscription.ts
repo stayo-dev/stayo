@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@lib/queryKeys';
 import {
   ownerSubscriptionApi,
+  type FoundingRenewalPaymentInput,
   type SubmitPaymentInput,
 } from '../api';
 
@@ -81,6 +82,34 @@ export function useCancelDowngrade() {
     mutationFn: () => ownerSubscriptionApi.cancelDowngrade(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.owner.subscription() });
+    },
+  });
+}
+
+/** Founding Partner Phase 1 — the current usage-derived renewal amount. Read-only. */
+export function useFoundingRenewalPreview(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.owner.subscriptionFoundingRenewalPreview(),
+    queryFn: () => ownerSubscriptionApi.getFoundingRenewalPreview(),
+    enabled,
+    staleTime: 15_000,
+  });
+}
+
+export function useSubmitFoundingRenewalPayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { input: FoundingRenewalPaymentInput; proofFile?: File | null }) => {
+      let proofUrl = args.input.proof_file_url;
+      if (args.proofFile) {
+        const uploaded = await ownerSubscriptionApi.uploadProof(args.proofFile);
+        proofUrl = uploaded.url;
+      }
+      return ownerSubscriptionApi.submitFoundingRenewalPayment({ ...args.input, proof_file_url: proofUrl });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.owner.subscription() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.owner.subscriptionFoundingRenewalPreview() });
     },
   });
 }

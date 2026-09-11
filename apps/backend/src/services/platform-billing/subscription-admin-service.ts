@@ -13,7 +13,7 @@ import { prisma } from "@/lib/db";
 import { eventLog } from "@/lib/services/event-log-service";
 import { SubscriptionError } from "./subscription-errors";
 import { subscriptionService } from "./subscription-service";
-import { canTransition, computePlanTotalPaise, effectivePlanCapacity, FOUNDING_PLAN_CODE, validateExtraBeds, type SubscriptionStatus } from "./subscription-rules";
+import { canTransition, computeFoundingUsageBilling, computePlanTotalPaise, effectivePlanCapacity, FOUNDING_PLAN_CODE, validateExtraBeds, type SubscriptionStatus } from "./subscription-rules";
 
 type Tx = any;
 
@@ -259,17 +259,32 @@ async function listSubscriptions(params: { status?: string; planCode?: string; s
   ]);
 
   const ownerIds = rows.map((r: any) => r.owner_id);
-  const [activeCounts, latestPayments] = await Promise.all([
+  const [activeCounts, latestPayments, foundingRows] = await Promise.all([
     prisma.tenants.groupBy({ by: ["owner_id"], where: { owner_id: { in: ownerIds }, status: "ACTIVE" }, _count: { _all: true } }),
     prisma.subscription_payments.findMany({
       where: { owner_id: { in: ownerIds } },
       orderBy: { created_at: "desc" },
       select: { owner_id: true, status: true, amount_paise: true, payment_method: true, submitted_at: true, created_at: true },
     }),
+    // Rank of EVERY current FOUNDING holder (not just this page) so a row's
+    // number is correct regardless of paging/sort — see
+    // `subscriptionService.foundingPartnerNumber` for the same rule computed
+    // per-owner.
+    (async () => {
+      const foundingPlan = await prisma.subscription_plans.findUnique({ where: { code: FOUNDING_PLAN_CODE }, select: { id: true } });
+      if (!foundingPlan) return [] as Array<{ id: string }>;
+      return prisma.owner_subscriptions.findMany({
+        where: { plan_id: foundingPlan.id },
+        orderBy: { created_at: "asc" },
+        select: { id: true },
+      });
+    })(),
   ]);
   const activeByOwner = new Map(activeCounts.map((r: any) => [r.owner_id, r._count._all]));
   const latestByOwner = new Map<string, any>();
   for (const p of latestPayments) if (!latestByOwner.has(p.owner_id)) latestByOwner.set(p.owner_id, p);
+  const foundingNumberBySubscriptionId = new Map<string, number>();
+  foundingRows.forEach((r: any, i: number) => foundingNumberBySubscriptionId.set(r.id, i + 1));
 
   // Resolve plan_id -> code for the plan-code filter-chip counts.
   const planIds = planGroups.map((g: any) => g.plan_id);
@@ -293,10 +308,26 @@ async function listSubscriptions(params: { status?: string; planCode?: string; s
           ? effectivePlanCapacity(r.subscription_plans, r.extra_beds ?? 0)
           : (r.subscription_plans?.capacity_max ?? null);
       const latest = latestByOwner.get(r.owner_id) ?? null;
+      // Founding Partner's Phase 1 dynamic amount (business rules,
+      // 2026-09-12) — what "Mark as Paid & Activate" would actually charge
+      // RIGHT NOW, computed from live usage, so the admin's confirm dialog
+      // never shows a stale flat ₹2,000 when the owner already has active
+      // tenants past the included 250.
+      const foundingLivePreview =
+        r.subscription_plans?.code === FOUNDING_PLAN_CODE
+          ? computeFoundingUsageBilling({
+              activeBeds: Number(used),
+              includedBeds: r.subscription_plans.included_beds ?? 0,
+              basePricePaise: r.subscription_plans.price_paise,
+              extraBedPricePaise: r.subscription_plans.extra_bed_price_paise,
+            })
+          : null;
       return {
         id: r.id,
         owner: r.profile,
         status: r.status,
+        founding_partner_number: foundingNumberBySubscriptionId.get(r.id) ?? null,
+        founding_calculated_amount_paise: foundingLivePreview?.totalPaise ?? null,
         plan: r.subscription_plans
           ? {
               code: r.subscription_plans.code,
@@ -364,10 +395,22 @@ async function getSubscriptionDetail(subscriptionId: string) {
     sub.subscription_plans?.included_beds != null
       ? effectivePlanCapacity(sub.subscription_plans, sub.extra_beds ?? 0)
       : (sub.subscription_plans?.capacity_max ?? null);
+  const foundingNumber = await subscriptionService.foundingPartnerNumber(sub.plan_id, sub.created_at);
+  const foundingLivePreview =
+    sub.subscription_plans?.code === FOUNDING_PLAN_CODE
+      ? computeFoundingUsageBilling({
+          activeBeds: activeCount,
+          includedBeds: sub.subscription_plans.included_beds ?? 0,
+          basePricePaise: sub.subscription_plans.price_paise,
+          extraBedPricePaise: sub.subscription_plans.extra_bed_price_paise,
+        })
+      : null;
   return {
     subscription: {
       id: sub.id,
       status: sub.status,
+      founding_partner_number: foundingNumber,
+      founding_calculated_amount_paise: foundingLivePreview?.totalPaise ?? null,
       owner: sub.profile,
       plan: sub.subscription_plans,
       pending_plan: sub.pending_plan,

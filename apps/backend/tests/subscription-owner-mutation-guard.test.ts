@@ -96,6 +96,8 @@ describe("billing and payment submission remain accessible while PENDING_PAYMENT
       "app/api/owner/subscription/payments/route.ts",
       "app/api/owner/subscription/plans/route.ts",
       "app/api/owner/subscription/upgrade-preview/route.ts",
+      "app/api/owner/subscription/founding-renewal-preview/route.ts",
+      "app/api/owner/subscription/founding-renewal-payments/route.ts",
     ]) {
       expect(read(rel)).not.toMatch(/assertOwnerSubscriptionActive|requireActiveSubscription/);
     }

@@ -302,16 +302,24 @@ export type ExtraBedPlan = {
 
 /**
  * The owner's effective active-tenant ceiling on `plan` with `extraBeds`
- * currently active — `included_beds + extraBeds`, or `null` (unlimited) when
- * the plan has no extra-bed ceiling. This is the number
- * `plan-capacity-service` enforces against; `subscription_plans.capacity_max`
- * (the plan's own hard ceiling assuming the MAXIMUM extra beds) stays a
- * separate, informational/display figure.
+ * currently active — always `included_beds + extraBeds`, capped at
+ * `max_extra_beds` when the plan has one. `max_extra_beds: null` (FOUNDING)
+ * means no upper bound on how many extra beds can be BOUGHT — it does not
+ * mean the active-tenant ceiling itself is infinite. A FOUNDING owner with 0
+ * extra beds is still capped at `included_beds` (e.g. 250) and must buy more
+ * beds, same ₹10/bed mechanism as every other plan, to raise it further; the
+ * only difference from a plan like STARTER is there's no maximum on how many
+ * they can buy. This is the number `plan-capacity-service` enforces against
+ * and the owner's live usage view (`0 / 250`, growing with purchases) reads;
+ * `subscription_plans.capacity_max` (the plan's own advertised ceiling,
+ * assuming a plan-defined MAXIMUM extra-bed purchase) stays a separate,
+ * informational/display-only figure.
  */
-export function effectivePlanCapacity(plan: ExtraBedPlan, extraBeds: number): number | null {
-  if (plan.max_extra_beds === null) return null; // FOUNDING — no ceiling regardless of extraBeds
+export function effectivePlanCapacity(plan: ExtraBedPlan, extraBeds: number): number {
   const included = plan.included_beds ?? 0;
-  return included + Math.max(0, Math.min(extraBeds, plan.max_extra_beds));
+  const bought = Math.max(0, extraBeds);
+  const capped = plan.max_extra_beds === null ? bought : Math.min(bought, plan.max_extra_beds);
+  return included + capped;
 }
 
 /**
@@ -352,6 +360,31 @@ export function validateExtraBeds(plan: ExtraBedPlan, extraBeds: number): GuardR
 export function computePlanTotalPaise(plan: { price_paise: number } & Pick<ExtraBedPlan, "extra_bed_price_paise">, extraBeds: number): number {
   const perBed = plan.extra_bed_price_paise ?? 0;
   return plan.price_paise + Math.max(0, extraBeds) * perBed;
+}
+
+/**
+ * Founding Partner's Phase 1 billing model (business rules, 2026-09-12) —
+ * deliberately DIFFERENT from `computePlanTotalPaise`'s "requested extra
+ * beds" semantics used by the (out-of-scope, Phase 2+) normal-plan recurring
+ * extra-bed purchase. There is no such thing as "buying" extra beds for
+ * Founding Partner: every activation/renewal recomputes the excess directly
+ * from the owner's CURRENT active-tenant count against `included_beds`, so a
+ * quantity from a past period never carries forward — a month with fewer
+ * active beds simply costs less, automatically, with no owner action.
+ *
+ * `excessBeds = max(0, activeBeds − includedBeds)`,
+ * `totalPaise = basePricePaise + excessBeds × extraBedPricePaise`.
+ */
+export function computeFoundingUsageBilling(params: {
+  activeBeds: number;
+  includedBeds: number;
+  basePricePaise: number;
+  extraBedPricePaise: number | null;
+}): { excessBeds: number; extraPaise: number; totalPaise: number } {
+  const excessBeds = Math.max(0, Math.trunc(params.activeBeds) - Math.trunc(params.includedBeds));
+  const perBed = params.extraBedPricePaise ?? 0;
+  const extraPaise = excessBeds * perBed;
+  return { excessBeds, extraPaise, totalPaise: params.basePricePaise + extraPaise };
 }
 
 // ────────────────────────────────────────────────────────────────────────────

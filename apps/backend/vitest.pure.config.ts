@@ -145,6 +145,7 @@ export default defineConfig({
       'tests/subscription-billing-rules.test.ts',
       // ADR-172 Phase 2 — service layer; `vi.mock('@/lib/db')`, no client, no database.
       'tests/subscription-billing-service.test.ts',
+      'tests/subscription-founding-onboarding-trigger.test.ts',
       // ADR-172 Phase 3 — enforcement (access + capacity + override); mocks `@/lib/db`.
       'tests/subscription-enforcement.test.ts',
       // ADR-172 Phase 3 — lifecycle expiry + renewal; mocks `@/lib/db`.

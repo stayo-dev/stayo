@@ -140,7 +140,19 @@ export async function POST(req: NextRequest) {
 
   try {
     if (session.role === "OWNER") {
-      await assertOwnerSubscriptionActive(session.sub, "owner.hostels.create");
+      // ADR-190: the owner's FIRST hostel is the onboarding-completing action
+      // that creates their subscription row in the first place
+      // (`ensureForOwner`, called below once the hostel exists) — it cannot
+      // also require that row to already be ACTIVE, or no new owner could
+      // ever get past onboarding once PLATFORM_BILLING_ENFORCED is on. Every
+      // hostel after the first is a genuine "using the platform more" action
+      // and stays gated as before.
+      const existingHostelCount = await prisma.hostels.count({
+        where: { owner_id: session.sub, status: { in: ["ACTIVE", "INACTIVE"] } },
+      });
+      if (existingHostelCount > 0) {
+        await assertOwnerSubscriptionActive(session.sub, "owner.hostels.create");
+      }
     }
     const body = await req.json();
     const { propertyService } = await import("@/lib/services/property-service");
@@ -214,6 +226,20 @@ export async function POST(req: NextRequest) {
     // hostel creation.
     const { leadInvitationService } = await import("@/src/services/platform-leads/lead-invitation-service");
     await leadInvitationService.markHostelCreated(session.sub);
+
+    // ADR-188: first hostel creation is the existing "owner completed
+    // onboarding" signal (same milestone the funnel line above tracks) — so
+    // it is also the moment Founding Partner rank (#1–#10) is decided.
+    // Idempotent (a no-op once the owner already has a row) and best-effort:
+    // a transient failure here must never fail hostel creation, and the
+    // Subscription page's own `ensureForOwner` call remains a safety-net
+    // fallback for the rare case this one didn't fire.
+    try {
+      const { subscriptionService } = await import("@/src/services/platform-billing/subscription-service");
+      await subscriptionService.ensureForOwner(hostel.owner_id);
+    } catch (subErr) {
+      console.error("[owner.hostels.POST] ensureForOwner (Founding classification) failed — non-fatal", subErr);
+    }
 
     const result = await propertyService.getOwnerProfile(session.sub);
     return apiResponse({
