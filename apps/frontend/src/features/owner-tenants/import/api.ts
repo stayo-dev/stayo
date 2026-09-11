@@ -112,6 +112,12 @@ export async function revalidateRows(input: {
   return response.data?.data ?? response.data;
 }
 
+/** The batch as a workbook again, carrying whatever the owner has fixed. */
+export async function downloadCorrected(batchId: string): Promise<Blob> {
+  const response = await api.get(`/bulk-import/${batchId}/workbook`, { responseType: 'blob' });
+  return response.data;
+}
+
 /** Send the invitations this import queued — all of them, or a wave. */
 export async function sendInvitations(
   batchId: string,

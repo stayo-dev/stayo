@@ -262,7 +262,7 @@ describe("every blocked row can be explained to the owner", () => {
   it("gives every row with an error at least one BLOCKER issue", async () => {
     const rows = [
       row({ name: "" }),
-      row({ email: "" }),
+      // A blank email is allowed now — only a wrong one blocks.
       row({ email: "not-an-email" }),
       row({ phone: "123" }),
       row({ room_no: "" }),
@@ -458,5 +458,112 @@ describe("paying more than the tenant owes", () => {
   it("says nothing when no amount was paid", async () => {
     const r = await validateOne({ joining_date: monthsBack(2), monthly_rent: 8500 });
     expect(r.issues.map((i) => i.code)).not.toContain("OVERPAID");
+  });
+});
+
+describe('email is optional', () => {
+  // createInvitation requires a name, a phone and a room — not an email — and
+  // the invitation goes out over WhatsApp. Demanding one here blocked rows the
+  // rest of the system would have accepted.
+  it('accepts a tenant with no email at all', async () => {
+    const r = await validateOne({ email: '' });
+    expect(r.errors).toEqual([]);
+    expect(r.issues.map((i) => i.code)).not.toContain('EMAIL_INVALID');
+  });
+
+  it('accepts a whitespace-only email cell', async () => {
+    const r = await validateOne({ email: '   ' });
+    expect(r.errors).toEqual([]);
+  });
+
+  it('still rejects an email that was typed wrong', async () => {
+    // Given one, it has to be usable — a typo is worse than a blank.
+    const r = await validateOne({ email: 'ravi@gmail' });
+    expect(r.issues.map((i) => i.code)).toContain('EMAIL_INVALID');
+  });
+
+  it('does not treat two blank emails as the same person', async () => {
+    const result = await bulkImportValidationService.validateRows(
+      [row({ email: '' }), row({ email: '' })],
+      HOSTEL_ID,
+      OWNER_ID,
+      {}
+    );
+
+    expect(result.duplicates).toEqual([]);
+    expect(result.validRows).toHaveLength(2);
+  });
+
+  it('still catches a genuine duplicate email', async () => {
+    const result = await bulkImportValidationService.validateRows(
+      [row({ email: 'same@example.com' }), row({ email: 'same@example.com' })],
+      HOSTEL_ID,
+      OWNER_ID,
+      {}
+    );
+
+    expect(result.duplicates).toHaveLength(1);
+  });
+
+  it('still requires the phone, which is how the invitation reaches them', async () => {
+    const r = await validateOne({ email: '', phone: '' });
+    expect(r.issues.map((i) => i.code)).toContain('PHONE_INVALID');
+  });
+});
+
+describe("a real generated workbook with the email cell left blank", () => {
+  // Mirrors what an owner actually does: download the template, type over the
+  // example row, leave Email empty. This goes through the real parser rather
+  // than a hand-built row object.
+  it("parses and validates without complaining about the missing email", async () => {
+    const { buildImportWorkbook } = await import("@/lib/services/bulk-import/template-builder");
+    const { parseTenantWorkbook, TENANTS_SHEET } = await import("@/lib/services/bulk-import/workbook-parser");
+    const XLSX = await import("xlsx");
+
+    const buf = await buildImportWorkbook({
+      hostel: { id: HOSTEL_ID, name: "Sri Adithya Boys Hostel" },
+      dueDay: 5,
+      rooms: [{ room_no: "101", floor: 1, capacity: 3, room_type: "Triple", base_rent: 8500, occupied_count: 0 }],
+      tenantCount: 0,
+    });
+
+    // Type over the example row, exactly as the owner did — Email left blank.
+    const wb = XLSX.read(buf, { type: "buffer", raw: true });
+    const sheet = wb.Sheets[TENANTS_SHEET];
+    sheet["A2"] = { t: "s", v: "Locus" };
+    sheet["B2"] = { t: "s", v: "8008046952" };
+    delete sheet["C2"];
+    sheet["D2"] = { t: "s", v: "101" };
+    const edited = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+
+    const rows = parseTenantWorkbook(edited, "tenant-import.xlsx");
+    const result = await bulkImportValidationService.validateRows(rows, HOSTEL_ID, OWNER_ID, {});
+
+    expect(result.invalidRows).toEqual([]);
+    expect(result.validRows).toHaveLength(1);
+    expect(result.validRows[0].data.name).toBe("Locus");
+    expect(result.summary.blockers).toBe(0);
+  });
+});
+
+describe("a date typed into a real spreadsheet, not a text cell", () => {
+  // LibreOffice and Excel turn a typed date into a date-formatted cell, which
+  // SheetJS hands back as a fractional serial like "46276.00011574074" — not
+  // the text the owner sees. Nothing tested that path before.
+  it.each([
+    ["46276", "a whole serial"],
+    ["46276.00011574074", "a serial carrying a time fraction"],
+    ["46276.999", "a serial just short of midnight"],
+  ])("reads %s (%s) as a real date", (value) => {
+    const parsed = parseImportDate(value);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.getFullYear()).toBe(2026);
+    expect(parsed!.getMonth()).toBe(8);
+    expect(parsed!.getDate()).toBe(11);
+  });
+
+  it("stores it as ISO, the same as a typed date", async () => {
+    const r = await validateOne({ joining_date: "46276.00011574074" });
+    expect(r.data.joining_date).toBe("2026-09-11");
   });
 });
