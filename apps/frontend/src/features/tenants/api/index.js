@@ -28,10 +28,15 @@ export const tenantService = {
         try {
             const response = await api.get(`/tenants/${tenantId}/documents`);
             const data = unwrap(response);
-            return data?.documents ?? (Array.isArray(data) ? data : []);
+            if (Array.isArray(data)) return { documents: data, required_documents: [] };
+            return {
+                documents: Array.isArray(data?.documents) ? data.documents : [],
+                required_documents: Array.isArray(data?.required_documents) ? data.required_documents : [],
+            };
         } catch {
             const full = await tenantService.getFull(tenantId);
-            return full?.identification_documents ?? full?.documents ?? [];
+            const documents = full?.identification_documents ?? full?.documents ?? [];
+            return { documents, required_documents: [] };
         }
     },
     verifyDocument: async (tenantId, docId) => {
