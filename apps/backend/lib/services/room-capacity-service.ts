@@ -7,7 +7,15 @@ import { prisma } from "../db";
  * unpaid joiner left their room looking vacant and invitable.
  */
 type DbClient = typeof prisma | any;
-const ACTIVE_INVITE_STATUSES = ["PENDING", "OPENED", "ACTIVATION_STARTED"];
+/**
+ * An invitation that is live and holds a bed.
+ *
+ * QUEUED belongs here: a bulk-imported invitation is created but not yet sent,
+ * and it still reserves a room, still blocks a competing invite, and must
+ * still be cancelled with its tenancy. Leaving it out let "send all" message
+ * someone whose tenancy had been cancelled.
+ */
+const ACTIVE_INVITE_STATUSES = ["PENDING", "OPENED", "ACTIVATION_STARTED", "QUEUED"];
 
 export type RoomCapacitySnapshot = {
   room: any;

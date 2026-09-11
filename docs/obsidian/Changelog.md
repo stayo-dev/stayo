@@ -10,6 +10,13 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-11**: **Bulk tenant import — the owner's screen, and sending in waves** ([[Decisions#ADR-182|ADR-182]], [[Features]], [[APIs]]). Third of three plans; the feature is now reachable.
+  - **`ImportTenantsSheet`**: hostel → download a workbook built from that hostel's rooms → upload → review → import → send, opened from the hostel's Tenants page beside **+ Add**. The rows that are fine collapse to one line, a repeated problem is one decision rather than one per row, and the progress bar is real — confirm is chunked, so there is a genuine numerator.
+  - **Invitations are created `QUEUED` and sent by the owner**, all at once or a wave at a time, with each tenant's expiry clock starting when their own invitation goes out. Not a revival of the removed `suppressInvitationNotification` path: acceptance stays mandatory and nothing is attested on the owner's behalf. **No schema change** — status is a plain string, which also sidesteps the deploy-before-migrate hazard.
+  - **Issues and counts are persisted**, so the review screen works on a reload instead of only in the response that created the batch.
+  - **Deleted** the legacy backend import page (526 lines, self-referential, superseded).
+  - **Verified:** 2397 frontend tests (53 new, all in pure modules — the suite renders nothing); backend `test:pure` unchanged apart from the 3 known pre-existing failures; `check:architecture` and the production build both pass. **Not verified against a live database**, and no import has been run end to end.
+
 - **2026-09-11**: **Bulk tenant import — the seven gaps are closed** ([[Business-Rules]]). Each had been parsed, stored, and then quietly not honoured, which is exactly what a UI turns into a lie — so they are settled before the owner-facing screens are built.
   - **"Paid Includes Deposit = No" is obeyed.** Settlement ran FIFO across every due including the deposit, so the answer changed nothing. The invite path now uses `receivePayment`'s obligation filter and measures the amount against the dues excluding the deposit.
   - **Maintenance is read per row**, not only per batch — one hostel can charge different maintenance for different rooms in one import.

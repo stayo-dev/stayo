@@ -62,7 +62,12 @@ export async function GET(
           valid_rows: batch.valid_rows,
           invalid_rows: batch.failed_rows,
           duplicate_rows: batch.duplicate_rows,
-          warnings: validationPayload.valid_rows.reduce((sum, row: any) => sum + (row.warnings?.length || 0), 0),
+          warnings: validationPayload.summary?.warnings
+            ?? validationPayload.valid_rows.reduce((sum, row: any) => sum + (row.warnings?.length || 0), 0),
+          // Served so the review screen can say "2 need you" without walking
+          // every row itself — and so it works on a reload.
+          blockers: validationPayload.summary?.blockers ?? 0,
+          choices: validationPayload.summary?.choices ?? 0,
           requires_historical_join_date_confirmation: Boolean(validationPayload.requires_historical_join_date_confirmation),
         },
         defaults: validationPayload.defaults || {},
@@ -209,7 +214,8 @@ export async function POST(
 
 function getValidationPayload(raw: unknown): {
   defaults?: Record<string, unknown>;
-  valid_rows: Array<{ row: number; data: TenantImportRow; warnings?: string[] }>;
+  valid_rows: Array<{ row: number; data: TenantImportRow; warnings?: string[]; issues?: any[] }>;
+  summary?: { blockers?: number; choices?: number; warnings?: number };
   room_plan?: RoomPlan;
   invalid?: Array<Record<string, unknown>>;
   duplicates?: Array<Record<string, unknown>>;
@@ -224,6 +230,7 @@ function getValidationPayload(raw: unknown): {
     defaults: payload.defaults,
     valid_rows: Array.isArray(payload.valid_rows) ? payload.valid_rows : [],
     room_plan: payload.room_plan,
+    summary: payload.summary,
     invalid: Array.isArray(payload.invalid) ? payload.invalid : [],
     duplicates: Array.isArray(payload.duplicates) ? payload.duplicates : [],
     requires_historical_join_date_confirmation: Boolean(payload.requires_historical_join_date_confirmation),
@@ -309,6 +316,11 @@ async function executeInvitationBatch(
         joining_date: data.joining_date,
         notes: data.notes,
         batch_id: batchId,
+        // Created, not sent. The owner sends in waves from the import's last
+        // step, so an import of forty residents does not put forty messages
+        // on forty phones at once — and each tenant's expiry clock starts
+        // when their own invitation actually goes out.
+        dispatch: "DEFERRED",
       }, ownerId);
 
       // The sheet's Notes column reached bulk_import_rows and stopped there:
@@ -335,7 +347,10 @@ async function executeInvitationBatch(
         }
       }
 
-      if (!invitationResult.email_sent) emailFailureCount++;
+      // A queued invitation was never sent, so it has not failed to send.
+      // Counting it would report every imported row as an email failure.
+      const queued = Boolean(invitationResult.queued);
+      if (!queued && !invitationResult.email_sent) emailFailureCount++;
       successCount++;
       await prisma.bulk_import_rows.update({
         where: { id: row.id },
@@ -344,7 +359,7 @@ async function executeInvitationBatch(
           invitation_id: invitationResult.invitation_id,
           reservation_id: invitationResult.reservation_id,
           execution_status: "SUCCESS",
-          email_status: invitationResult.email_sent ? "SENT" : "FAILED",
+          email_status: queued ? "QUEUED" : invitationResult.email_sent ? "SENT" : "FAILED",
           error_message: invitationResult.email_error || null,
           executed_at: new Date(),
         },
@@ -435,6 +450,10 @@ async function executeInvitationBatch(
 function sanitizeImportRowForPreview(row: { row: number; data: TenantImportRow }) {
   return {
     row: row.row,
+    // At the row, not inside `data`: the review screen reads `row.issues`, and
+    // nesting them here made every valid row look clean on a reload — the
+    // exact defect persisting them was meant to fix.
+    issues: (row as any).issues ?? [],
     data: {
       name: row.data.name,
       phone: row.data.phone,
