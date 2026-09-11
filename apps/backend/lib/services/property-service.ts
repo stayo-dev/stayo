@@ -8,7 +8,15 @@ import { eventLog } from "@/lib/services/event-log-service";
 import { planFloorRoomSave } from "./property/floor-room-plan";
 import { planHostelDeletion } from "./property/hostel-deletion-plan";
 
-const ACTIVE_INVITE_STATUSES = ["PENDING", "OPENED", "ACTIVATION_STARTED"];
+/**
+ * An invitation that is live and holds a bed.
+ *
+ * QUEUED belongs here: a bulk-imported invitation is created but not yet sent,
+ * and it still reserves a room, still blocks a competing invite, and must
+ * still be cancelled with its tenancy. Leaving it out let "send all" message
+ * someone whose tenancy had been cancelled.
+ */
+const ACTIVE_INVITE_STATUSES = ["PENDING", "OPENED", "ACTIVATION_STARTED", "QUEUED"];
 
 function invitedOccupantsFromReservations(reservations: any[] = []) {
   return reservations

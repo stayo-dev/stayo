@@ -39,7 +39,11 @@ export function useImportTenants(hostelId: string | null) {
     templateDownloaded,
     batchId: upload?.batch_id ?? null,
     imported: Boolean(confirmState && confirmState.progress.remaining === 0),
-    queuedInvitations: confirmState ? confirmState.result.success_count - (sendResult?.sent ?? 0) : 0,
+    importing: busy === 'import',
+    anySent: (sendResult?.sent ?? 0) > 0,
+    // progress.succeeded is the batch total; result.success_count is only
+    // this chunk, which offered to send 15 of a 40-row import.
+    queuedInvitations: confirmState ? Math.max(0, confirmState.progress.succeeded - (sendResult?.sent ?? 0)) : 0,
   };
 
   const stage: Stage = stageFor(state);
@@ -58,8 +62,13 @@ export function useImportTenants(hostelId: string | null) {
       const link = document.createElement('a');
       link.href = url;
       link.download = 'tenant-import.xlsx';
+      // Appended, and the URL revoked on the next tick: a detached anchor
+      // does not fire outside Chromium, and revoking synchronously can cancel
+      // the download before it starts.
+      document.body.appendChild(link);
       link.click();
-      URL.revokeObjectURL(url);
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
       setTemplateDownloaded(true);
     } catch (e: any) {
       setError(readError(e, "We couldn't build your sheet. Try again in a moment."));
@@ -104,9 +113,10 @@ export function useImportTenants(hostelId: string | null) {
     setBusy('import');
     setError(null);
 
-    const confirmHistorical =
-      upload.validation.requires_historical_join_date_confirmation ||
-      acknowledged.includes('BACKFILL_CAPPED');
+    // Only the owner's own acknowledgement counts. Sending true because the
+    // server *asked* for confirmation would answer the question on their
+    // behalf, which is the whole point of the gate.
+    const confirmHistorical = acknowledged.includes('BACKFILL_CAPPED');
 
     try {
       let guard = 0;
@@ -133,12 +143,22 @@ export function useImportTenants(hostelId: string | null) {
       setBusy('send');
       setError(null);
       try {
-        const result = await sendInvitations(upload.batch_id, limit ? { limit } : {});
-        setSendResult((current) => ({
-          sent: (current?.sent ?? 0) + result.sent,
-          failed: result.failed,
-          remaining: result.remaining,
-        }));
+        // The route sends a bounded slice so a large batch cannot outrun the
+        // function's time limit — so "send all" is a loop, like the import.
+        let guard = 0;
+        let total = 0;
+        let last = { sent: 0, failed: 0, remaining: 0 };
+        do {
+          last = await sendInvitations(upload.batch_id, limit ? { limit } : {});
+          total += last.sent;
+          setSendResult((current) => ({
+            sent: (current?.sent ?? 0) + last.sent,
+            failed: last.failed,
+            remaining: last.remaining,
+          }));
+          guard += 1;
+        } while (!limit && last.remaining > 0 && last.sent > 0 && guard < 50);
+        void total;
       } catch (e: any) {
         setError(readError(e, "We couldn't send those invitations. Nothing was lost — try again."));
       } finally {

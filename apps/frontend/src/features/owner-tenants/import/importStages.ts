@@ -17,7 +17,11 @@ export interface ImportState {
   batchId: string | null;
   /** True once every row has been attempted. */
   imported: boolean;
+  /** True while chunks are still running — the progress bar's stage. */
+  importing: boolean;
   queuedInvitations: number;
+  /** True once the owner has sent at least one wave. */
+  anySent: boolean;
 }
 
 export const STAGE_LABELS: Record<Stage, string> = {
@@ -34,8 +38,13 @@ export function stageFor(state: ImportState): Stage {
   // Once a batch exists the download is behind them, whether or not this
   // session is the one that downloaded it.
   if (state.batchId) {
+    // Running: the determinate bar has its own stage, or it would never show.
+    if (state.importing) return 'IMPORT';
     if (!state.imported) return 'REVIEW';
-    return state.queuedInvitations > 0 ? 'SEND' : 'IMPORT';
+    // After the import, sending is the last step — including once everything
+    // has gone out, so the owner sees that it did rather than being bounced
+    // back to the progress screen.
+    return state.queuedInvitations > 0 || state.anySent ? 'SEND' : 'IMPORT';
   }
   return state.templateDownloaded ? 'UPLOAD' : 'DOWNLOAD';
 }

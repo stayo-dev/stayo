@@ -41,12 +41,20 @@ export async function POST(
     const invitationIds = Array.isArray(body?.invitation_ids)
       ? body.invitation_ids.map((id: unknown) => String(id))
       : undefined;
-    const limit = Number(body?.limit);
+    // A bounded slice even when the caller asks for "everything": each send is
+    // a WhatsApp or email round-trip, and 150 of them would outrun the
+    // function's time limit. The response says what is left, and the client
+    // calls again — the same shape as confirm.
+    const MAX_PER_REQUEST = 40;
+    const requested = Number(body?.limit);
+    const limit = Number.isFinite(requested) && requested > 0
+      ? Math.min(Math.trunc(requested), MAX_PER_REQUEST)
+      : MAX_PER_REQUEST;
 
     const result = await tenantInvitationLifecycleService.dispatchQueuedInvitations(session.sub, {
       batchId: batch.id,
       invitationIds,
-      limit: Number.isFinite(limit) && limit > 0 ? limit : undefined,
+      limit,
     });
 
     return apiResponse(
@@ -54,6 +62,7 @@ export async function POST(
         batch_id: batch.id,
         sent: result.sent,
         failed: result.failed,
+        skipped: result.skipped,
         remaining: result.remaining,
         errors: result.errors.slice(0, 50),
       },

@@ -22,7 +22,14 @@ import {
 } from "./tenancy-eligibility-service";
 import { markLeadJoinedForTenant } from "@/src/services/admissions/lead-joined-transition";
 
-type InvitationStatus = "PENDING" | "OPENED" | "ACTIVATION_STARTED" | "ACTIVATED" | "EXPIRED" | "CANCELLED";
+type InvitationStatus =
+  | "QUEUED"
+  | "PENDING"
+  | "OPENED"
+  | "ACTIVATION_STARTED"
+  | "ACTIVATED"
+  | "EXPIRED"
+  | "CANCELLED";
 type ReservationReleaseReason =
   | "ACTIVATED"
   | "EXPIRED"
@@ -31,7 +38,15 @@ type ReservationReleaseReason =
   /** The invitee accepted a different hostel's invitation, so this bed is free again. */
   | "JOINED_ELSEWHERE";
 
-const ACTIVE_INVITE_STATUSES: InvitationStatus[] = ["PENDING", "OPENED", "ACTIVATION_STARTED"];
+/**
+ * An invitation that is live and holds a bed.
+ *
+ * QUEUED belongs here: a bulk-imported invitation is created but not yet sent,
+ * and it still reserves a room, still blocks a competing invite, and must
+ * still be cancelled with its tenancy. Leaving it out let "send all" message
+ * someone whose tenancy had been cancelled.
+ */
+const ACTIVE_INVITE_STATUSES: InvitationStatus[] = ["PENDING", "OPENED", "ACTIVATION_STARTED", "QUEUED"];
 const DEFAULT_INVITE_DAYS = 7;
 
 function normalizeEmail(email: unknown) {
@@ -247,6 +262,7 @@ export class TenantInvitationLifecycleService {
 
     let sent = 0;
     let failed = 0;
+    let skipped = 0;
     const errors: Array<{ invitation_id: string; error: string }> = [];
 
     for (const invitation of queued) {
@@ -255,11 +271,26 @@ export class TenantInvitationLifecycleService {
         const room = await prisma.rooms.findUnique({ where: { id: invitation.room_id } });
         if (!tenant || !room) throw new Error("NOT_FOUND: Tenancy or room missing");
 
+        // The tenancy may have been cancelled between import and send. Sending
+        // then would hand a live activation link to someone whose tenancy no
+        // longer exists.
+        if (!["INVITED", "ACTIVE"].includes(String(tenant.status))) {
+          skipped++;
+          continue;
+        }
+
         const expiresAt = addDays(DEFAULT_INVITE_DAYS);
-        const live = await prisma.tenant_invitations.update({
-          where: { id: invitation.id },
+        // Claim it: the status change is the lock. Two overlapping "send all"
+        // requests would otherwise both read it as QUEUED and send it twice.
+        const claimed = await prisma.tenant_invitations.updateMany({
+          where: { id: invitation.id, status: "QUEUED" },
           data: { status: "PENDING", expires_at: expiresAt },
         });
+        if (claimed.count === 0) {
+          skipped++;
+          continue;
+        }
+        const live = await prisma.tenant_invitations.findUniqueOrThrow({ where: { id: invitation.id } });
         await prisma.tenant_invitation_reservations.updateMany({
           where: { invitation_id: invitation.id, status: "ACTIVE" },
           data: { expires_at: expiresAt },
@@ -283,7 +314,7 @@ export class TenantInvitationLifecycleService {
       },
     });
 
-    return { sent, failed, remaining, errors };
+    return { sent, failed, skipped, remaining, errors };
   }
 
   async createInvitation(data: any, ownerId: string) {

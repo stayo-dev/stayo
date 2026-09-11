@@ -24,6 +24,11 @@ interface ReviewStepProps {
 export function ReviewStep({ queue, rooms, onAcknowledgeGroup, onImport, busy }: ReviewStepProps) {
   const { summary, groups, needsYou, duplicates } = queue;
   const blocked = summary.blockers > 0;
+  // Everything that is not blocked imports — a row whose only issue is a
+  // decision goes in too, so counting just the untouched ones understated it
+  // and could read "Import 0 tenants" on a button that worked.
+  const importable =
+    summary.ready + needsYou.filter((row) => !row.issues.some((i) => i.severity === 'BLOCKER')).length;
 
   return (
     <div className="space-y-4">
@@ -139,7 +144,9 @@ export function ReviewStep({ queue, rooms, onAcknowledgeGroup, onImport, busy }:
         disabled={!summary.canImport || busy}
         className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 font-display text-sm font-bold text-primary-foreground disabled:opacity-50"
       >
-        {busy ? 'Importing…' : `Import ${summary.ready.toLocaleString('en-IN')} ${summary.ready === 1 ? 'tenant' : 'tenants'}`}
+        {busy
+          ? 'Importing…'
+          : `Import ${importable.toLocaleString('en-IN')} ${importable === 1 ? 'tenant' : 'tenants'}`}
         {!busy && <ArrowRight className="h-4 w-4" />}
       </button>
 

@@ -91,3 +91,47 @@ describe("the rule this does not break", () => {
     expect(deferredBranch).not.toContain("activation_completed_at");
   });
 });
+
+describe('QUEUED is an active invitation everywhere, not just in the sweeps', () => {
+  // The first version of this change checked only the two expiry sweeps. The
+  // same allowlist governs cancelling, capacity and competing invites — and
+  // leaving QUEUED out of those let "send all" message a tenant whose tenancy
+  // had been cancelled, and let a queued invite's bed look free.
+  const CAPACITY = readFileSync("lib/services/room-capacity-service.ts", "utf8");
+  const PROPERTY = readFileSync("lib/services/property-service.ts", "utf8");
+  const CLOSURE = readFileSync("src/services/tenants/unaccepted-tenancy-closure.ts", "utf8");
+  const TENANTS = readFileSync("src/services/tenants/tenant-service.ts", "utf8");
+
+  it.each([
+    ["the invitation lifecycle", LIFECYCLE],
+    ["room capacity", CAPACITY],
+    ["the property read model", PROPERTY],
+    ["tenancy closure", CLOSURE],
+    ["tenant service", TENANTS],
+  ])("counts a queued invitation in %s", (_name, source) => {
+    expect(source).toContain('"ACTIVATION_STARTED", "QUEUED"');
+  });
+
+  it("re-checks the tenancy before sending, in case it was cancelled meanwhile", () => {
+    const dispatchFn = LIFECYCLE.slice(
+      LIFECYCLE.indexOf("async dispatchQueuedInvitations"),
+      LIFECYCLE.indexOf("async createInvitation")
+    );
+    expect(dispatchFn).toContain('["INVITED", "ACTIVE"].includes(String(tenant.status))');
+  });
+
+  it("claims each invitation with a status-guarded write, so two senders cannot both send it", () => {
+    const dispatchFn = LIFECYCLE.slice(
+      LIFECYCLE.indexOf("async dispatchQueuedInvitations"),
+      LIFECYCLE.indexOf("async createInvitation")
+    );
+    expect(dispatchFn).toContain('where: { id: invitation.id, status: "QUEUED" }');
+    expect(dispatchFn).toContain("claimed.count === 0");
+  });
+
+  it("does not record a queued row as an email failure", () => {
+    const confirm = readFileSync("app/api/bulk-import/[batch_id]/confirm/route.ts", "utf8");
+    expect(confirm).toContain('email_status: queued ? "QUEUED"');
+    expect(confirm).toContain("!queued && !invitationResult.email_sent");
+  });
+});

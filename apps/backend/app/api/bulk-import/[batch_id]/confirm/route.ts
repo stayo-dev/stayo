@@ -347,7 +347,10 @@ async function executeInvitationBatch(
         }
       }
 
-      if (!invitationResult.email_sent) emailFailureCount++;
+      // A queued invitation was never sent, so it has not failed to send.
+      // Counting it would report every imported row as an email failure.
+      const queued = Boolean(invitationResult.queued);
+      if (!queued && !invitationResult.email_sent) emailFailureCount++;
       successCount++;
       await prisma.bulk_import_rows.update({
         where: { id: row.id },
@@ -356,7 +359,7 @@ async function executeInvitationBatch(
           invitation_id: invitationResult.invitation_id,
           reservation_id: invitationResult.reservation_id,
           execution_status: "SUCCESS",
-          email_status: invitationResult.email_sent ? "SENT" : "FAILED",
+          email_status: queued ? "QUEUED" : invitationResult.email_sent ? "SENT" : "FAILED",
           error_message: invitationResult.email_error || null,
           executed_at: new Date(),
         },
@@ -447,6 +450,10 @@ async function executeInvitationBatch(
 function sanitizeImportRowForPreview(row: { row: number; data: TenantImportRow }) {
   return {
     row: row.row,
+    // At the row, not inside `data`: the review screen reads `row.issues`, and
+    // nesting them here made every valid row look clean on a reload — the
+    // exact defect persisting them was meant to fix.
+    issues: (row as any).issues ?? [],
     data: {
       name: row.data.name,
       phone: row.data.phone,
@@ -461,7 +468,6 @@ function sanitizeImportRowForPreview(row: { row: number; data: TenantImportRow }
       payment_method: row.data.payment_method,
       joining_date: row.data.joining_date,
       rent_source: row.data.rent_source,
-      issues: (row as any).issues ?? [],
       warnings: (row as any).warnings || [],
     },
   };

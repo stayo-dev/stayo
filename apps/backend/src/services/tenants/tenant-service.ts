@@ -1077,7 +1077,7 @@ export class TenantService {
     // funnel the invitation table already tracks (PENDING → OPENED →
     // ACTIVATION_STARTED) which no surface was exposing.
     const liveInvitation = (legacyTenant.tenant_invitations ?? []).find((inv: any) =>
-      ["PENDING", "OPENED", "ACTIVATION_STARTED"].includes(String(inv.status))
+      ["PENDING", "OPENED", "ACTIVATION_STARTED", "QUEUED"].includes(String(inv.status))
     ) ?? legacyTenant.tenant_invitations?.[0] ?? null;
 
     const invitationSummary = liveInvitation
@@ -1329,7 +1329,7 @@ export class TenantService {
         status: true,
         acceptance_status: true,
         tenant_invitations: {
-          where: { status: { in: ["PENDING", "OPENED", "ACTIVATION_STARTED"] as any } },
+          where: { status: { in: ["PENDING", "OPENED", "ACTIVATION_STARTED", "QUEUED"] as any } },
           select: { id: true },
         },
         room_allocations: { where: { is_active: true, end_date: null }, select: { id: true } },
@@ -1397,7 +1397,7 @@ export class TenantService {
     await prisma.$transaction(async (tx: any) => {
       if (invitationIds.length > 0) {
         await tx.tenant_invitations.updateMany({
-          where: { id: { in: invitationIds }, status: { in: ["PENDING", "OPENED", "ACTIVATION_STARTED"] as any } },
+          where: { id: { in: invitationIds }, status: { in: ["PENDING", "OPENED", "ACTIVATION_STARTED", "QUEUED"] as any } },
           data: { status: "CANCELLED" as any, cancelled_at: now, updated_at: now },
         });
 
