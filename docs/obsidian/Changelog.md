@@ -13,7 +13,8 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 - **2026-09-11**: **Bulk import — email is optional, and rows are fixed on screen** ([[Business-Rules]], [[APIs]]). Found by actually running an import.
   - **Email is no longer required.** `createInvitation` needs a name, a phone and a room — the invitation goes out over WhatsApp — but bulk import demanded an email anyway and blocked rows the rest of the system would have accepted.
   - **Each error now carries its own control**: a text field, a room dropdown or a date picker, under the sentence explaining the problem. Re-checking runs those edits through `revalidate`, the same validation as the file, and Import stays disabled until they have been checked.
-  - **`GET …/workbook`** hands the corrected sheet back, so the owner's copy matches Stayo and a later re-upload cannot undo their fixes.
+  - **`GET …/workbook`** hands the corrected sheet back, so the owner's copy matches Stayo and a later re-upload cannot undo their fixes — **with every remaining problem coloured in the cell it belongs to** (red blocks, amber is a choice), the message as a cell note, and a "What to fix" column at the end.
+  - **The screen picks the cheaper path.** A handful of problems leads with in-place editing; a lot of them leads with the marked-up file, because forty single-field web edits with no fill-down is worse than Excel.
   - **Fixed:** the review screen said "Fix the 2 rows above" for one row with two problems — `summary.blockers` counts problems, not rows.
   - **Covered a path nothing tested:** a date typed into a real spreadsheet arrives as a fractional serial (`46276.00011574074`), not the text the owner sees.
 
