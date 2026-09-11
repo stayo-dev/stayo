@@ -10,6 +10,12 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-11**: **Bulk import — confirm was broken against a real database** ([[Bugs]], [[Backend]]). Found when an owner's corrected-sheet download returned a bare 500.
+  - **`include: { hostel: … }` where the relation is `hostels`.** The download was the lesser half: the same name appears twice in `confirm/route.ts`, including the POST that creates the tenants, so the import had never been able to run outside mocks. `prisma` is exported as `any`, so it type-checked; the test fixtures supplied `hostel` too, so the suite was holding the wrong name in place.
+  - **`tests/bulk-import-query-shapes.test.ts`** now checks every `include`/`select` in every bulk-import route against `Prisma.dmmf`, the generated client's own datamodel — no mock in between. Mutation-tested on both clause types, with a vacuity check so a scanner that stops finding anything fails rather than passes.
+  - **The workbook route reports what went wrong** instead of an empty 500 the screen could only render as "try again in a moment", for a fault that never varied.
+  - **Verified:** 283 bulk-import tests; `test:pure` 1725 passing with the 3 known pre-existing failures.
+
 - **2026-09-11**: **Bulk import — a valid sheet is no longer blocked, and the stepper fits a phone** ([[Bugs]], [[Features]]).
   - **A default joining date can only stop a row that uses it.** An owner whose every date was correct was blocked by *"2026-09-11 isn't a full date"* — that day's date, the default for rows that leave the column blank, which their row did not. The blocker's own fix pointed at the cell that was already right, so re-checking could never clear it. The default is now parsed once rather than once per row, and the default *we* generate is a `Date` from the start instead of a string we build and immediately read back.
   - **Dates survive the trip through a spreadsheet.** A zero-width space, a left-to-right mark, an en dash, fullwidth digits or a non-breaking space each render as an ordinary date and each was rejected — an error with no visible cause. Normalised before matching.

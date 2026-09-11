@@ -29,95 +29,112 @@ export async function GET(
     return apiError("Only owners/admins can download an import", "FORBIDDEN", 403);
   }
 
-  const batch = await prisma.bulk_import_batches.findFirst({
-    where: { id: params.batch_id, owner_id: session.sub },
-    include: { hostel: { select: { id: true, name: true, preferences_config: true } } },
-  });
-  if (!batch) return apiError("Batch not found", "NOT_FOUND", 404);
+  try {
+    const batch = await prisma.bulk_import_batches.findFirst({
+      where: { id: params.batch_id, owner_id: session.sub },
+      include: { hostels: { select: { id: true, name: true, preferences_config: true } } },
+    });
+    if (!batch) return apiError("Batch not found", "NOT_FOUND", 404);
 
-  const payload = (batch.validation_errors ?? {}) as any;
-  // Every row the batch knows about, back in the owner's own order.
-  const rows = [
-    ...(Array.isArray(payload.valid_rows) ? payload.valid_rows : []),
-    ...(Array.isArray(payload.invalid) ? payload.invalid : []),
-    ...(Array.isArray(payload.duplicates) ? payload.duplicates : []),
-  ]
-    .slice()
-    .sort((a: any, b: any) => Number(a.row ?? 0) - Number(b.row ?? 0))
-    .map((entry: any) => ({ ...(entry.data ?? {}), __issues: entry.issues ?? [] }));
+    const payload = (batch.validation_errors ?? {}) as any;
+    // Every row the batch knows about, back in the owner's own order.
+    const rows = [
+      ...(Array.isArray(payload.valid_rows) ? payload.valid_rows : []),
+      ...(Array.isArray(payload.invalid) ? payload.invalid : []),
+      ...(Array.isArray(payload.duplicates) ? payload.duplicates : []),
+    ]
+      .slice()
+      .sort((a: any, b: any) => Number(a.row ?? 0) - Number(b.row ?? 0))
+      .map((entry: any) => ({ ...(entry.data ?? {}), __issues: entry.issues ?? [] }));
 
-  const [rooms, tenantCount] = await Promise.all([
-    prisma.rooms.findMany({
-      where: { hostel_id: batch.hostel_id },
-      select: {
-        room_no: true,
-        floor: true,
-        capacity: true,
-        room_type: true,
-        base_rent: true,
-        _count: {
-          select: {
-            room_allocations: {
-              where: { is_active: true, end_date: null, tenant: { status: "ACTIVE" } },
+    const [rooms, tenantCount] = await Promise.all([
+      prisma.rooms.findMany({
+        where: { hostel_id: batch.hostel_id },
+        select: {
+          room_no: true,
+          floor: true,
+          capacity: true,
+          room_type: true,
+          base_rent: true,
+          _count: {
+            select: {
+              room_allocations: {
+                where: { is_active: true, end_date: null, tenant: { status: "ACTIVE" } },
+              },
             },
           },
         },
-      },
-      orderBy: [{ floor: "asc" }, { room_no: "asc" }],
-    }),
-    prisma.tenants.count({ where: { hostel_id: batch.hostel_id, status: "ACTIVE" } }),
-  ]);
+        orderBy: [{ floor: "asc" }, { room_no: "asc" }],
+      }),
+      prisma.tenants.count({ where: { hostel_id: batch.hostel_id, status: "ACTIVE" } }),
+    ]);
 
-  const resolvedDueDay = Number(resolvePreferences(batch.hostel).due_day);
-  const dueDay = resolvedDueDay >= 1 && resolvedDueDay <= 28 ? resolvedDueDay : 5;
+    const resolvedDueDay = Number(resolvePreferences(batch.hostels).due_day);
+    const dueDay = resolvedDueDay >= 1 && resolvedDueDay <= 28 ? resolvedDueDay : 5;
 
-  const workbook = await buildImportWorkbook({
-    hostel: { id: batch.hostel.id, name: batch.hostel.name },
-    dueDay,
-    rooms: rooms.map((room: any) => ({
-      room_no: room.room_no,
-      floor: room.floor,
-      capacity: room.capacity,
-      room_type: room.room_type,
-      base_rent: room.base_rent,
-      occupied_count: room._count?.room_allocations ?? 0,
-    })),
-    tenantCount,
-    tenants: rows.map((row: any) => ({
-      name: row.name,
-      phone: row.phone,
-      email: row.email,
-      room_no: row.room_no,
-      monthly_rent: row.monthly_rent,
-      joining_date: row.joining_date,
-      security_deposit: row.security_deposit ?? row.advance_deposit,
-      maintenance_charge: row.maintenance_charge,
-      maintenance_type: row.maintenance_type,
-      agreement_duration_months: row.agreement_duration_months,
-      amount_paid: row.amount_paid,
-      amount_includes_deposit: row.amount_includes_deposit,
-      payment_method: row.payment_method,
-      payment_reference: row.payment_reference,
-      notes: row.notes,
-      // Still outstanding, so the sheet can mark exactly where.
-      problems: (row.__issues ?? []).map((issue: any) => ({
-        field: issue.field,
-        severity: issue.severity,
-        title: issue.title,
-        detail: issue.detail,
+    const workbook = await buildImportWorkbook({
+      hostel: { id: batch.hostels.id, name: batch.hostels.name },
+      dueDay,
+      rooms: rooms.map((room: any) => ({
+        room_no: room.room_no,
+        floor: room.floor,
+        capacity: room.capacity,
+        room_type: room.room_type,
+        base_rent: room.base_rent,
+        occupied_count: room._count?.room_allocations ?? 0,
       })),
-    })),
-  });
+      tenantCount,
+      tenants: rows.map((row: any) => ({
+        name: row.name,
+        phone: row.phone,
+        email: row.email,
+        room_no: row.room_no,
+        monthly_rent: row.monthly_rent,
+        joining_date: row.joining_date,
+        security_deposit: row.security_deposit ?? row.advance_deposit,
+        maintenance_charge: row.maintenance_charge,
+        maintenance_type: row.maintenance_type,
+        agreement_duration_months: row.agreement_duration_months,
+        amount_paid: row.amount_paid,
+        amount_includes_deposit: row.amount_includes_deposit,
+        payment_method: row.payment_method,
+        payment_reference: row.payment_reference,
+        notes: row.notes,
+        // Still outstanding, so the sheet can mark exactly where.
+        problems: (row.__issues ?? []).map((issue: any) => ({
+          field: issue.field,
+          severity: issue.severity,
+          title: issue.title,
+          detail: issue.detail,
+        })),
+      })),
+    });
 
-  const slug =
-    batch.hostel.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "hostel";
+    const slug =
+      batch.hostels.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "hostel";
 
-  return new NextResponse(workbook as any, {
-    status: 200,
-    headers: {
-      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="${slug}-tenant-import-corrected.xlsx"`,
-      "Cache-Control": "no-store",
-    },
-  });
+    return new NextResponse(workbook as any, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="${slug}-tenant-import-corrected.xlsx"`,
+        "Cache-Control": "no-store",
+      },
+    });
+
+  } catch (error: any) {
+    // Without this the route answered a failure with a bare 500 and an empty
+    // body, which the screen could only render as "we couldn't build that
+    // file, try again in a moment" — advice that was never going to work,
+    // for a fault that never varied. Say what broke.
+    console.error("[bulk-import] corrected workbook failed", {
+      batch_id: params.batch_id,
+      error: error?.message,
+    });
+    return apiError(
+      "We couldn't rebuild your sheet. Your import is safe — nothing was changed. Try the download again, and if it keeps failing you can carry on and import from what's on screen.",
+      "WORKBOOK_BUILD_FAILED",
+      500
+    );
+  }
 }
