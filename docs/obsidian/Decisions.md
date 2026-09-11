@@ -2820,3 +2820,19 @@ See [[Features]], [[Changelog]], [[Business-Rules]].
   - The dusk and night step bodies are now cream, not tinted — the atmosphere lives in the header and the splash. A fully dark body after dusk would need every on-ground element in every step re-inked; deliberately not done.
   - In-card accent text that uses Terra Cotta `#A45D44` on cream (e.g. OTP "Resend", document "Upload") sits at ~4.4:1 — the brand accent's own contrast on its own cream, unchanged here; the pre-blue design values were kept.
 - **See:** [[Bugs]], [[Frontend]], [[Changelog]], [[Decisions#ADR-111|ADR-111]], [[Decisions#ADR-072|ADR-072]]
+
+### ADR-185 — A step's primary action is never disabled for validation; it guides instead (2026-09-11)
+
+- **Status:** Accepted.
+- **Context:** the tenant onboarding blocked in two ways, both of which end in a support call at the volume this flow is about to take. The Identity step's "Verify & Continue" and the Password step's button were **disabled** whenever their checks failed — no reason given, no next move. Everywhere else, `submitProfile` stopped at the first problem and wrote one line into the banner at the top of the screen ("Profile photo is required"), while the field itself, potentially a screen away, was not marked at all.
+- **Decision — tapping a blocked action explains and navigates.** `guidance/Guidance.tsx` marks everything outstanding at once, scrolls to the first, focuses it and pulses it. Buttons are disabled only while genuinely busy (uploading, submitting). A disabled button is a dead end; a button that answers "what's missing?" is a map.
+- **Decision — nothing is marked until the tenant tries to continue.** Red ink on a field nobody has reached yet reads as being told off mid-form. After the first blocked attempt, marks update live and the list only shrinks.
+- **Decision — the rules live in one pure module.** `guidance/stepIssues.ts` returns issues in screen order, restating no rules of its own: phone/OTP trust from `identityVerification`, email from `emailVerification`, documents from `onboardingKyc`, dates from `dateOfBirth`. It only turns them into words. Tested without a DOM, per this app's node-only setup; `guidance/revealTarget.ts` does the scroll maths and is tested the same way.
+- **Decision — the copy states the action, never the verdict.** "Upload a photo of your College ID", "Enter the 6-digit code we sent to 98765 43210" — a test asserts no message says "invalid". The summary above the action bar counts what is *left*, not what is wrong ("2 things left"), and each entry is a shortcut to its field.
+- **Consequences / guardrails:**
+  - Fields are anchored **by id, not CSS selector** (`useFieldGuidance`), so a renamed class cannot silently break the jump — the same reasoning as [[Decisions#ADR-175|ADR-175]]'s spotlight.
+  - Accessibility is part of the mechanism, not a pass afterwards: `aria-invalid` + `aria-describedby` on the control, an icon and words alongside every colour (WCAG 1.4.1), a polite live region for the count, and `prefers-reduced-motion` turning the pulse into a steady ring and the scroll into a jump.
+  - **Scroll insets are measured, not assumed.** The sticky action bar carries `data-step-action-bar` and is measured at reveal time, because the summary sits inside it and changes its height; a step also grows extra bottom space while the summary shows, or the last field on a step cannot be lifted clear of the list naming it.
+  - Some fields (the photo picker, every document row) are a visible label over a `display:none` file input, which cannot take focus — those focus their container instead, so focus never silently stays on `<body>`.
+  - Anything that gates a submit must be added to `stepIssues.ts`, or the button will appear to do nothing. That is the one way this can regress.
+- **See:** [[Features]], [[Frontend]], [[Changelog]], [[Decisions#ADR-111|ADR-111]], [[Decisions#ADR-184|ADR-184]]

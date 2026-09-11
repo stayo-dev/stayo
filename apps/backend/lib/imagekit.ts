@@ -1,4 +1,5 @@
 import ImageKit from "@imagekit/nodejs";
+import { toUploadable } from "./imagekit-uploadable";
 
 const privateKey = process.env.IMAGEKIT_PRIVATE_KEY || "dummy_key";
 const urlEndpoint = process.env.IMAGEKIT_URL_ENDPOINT || "https://ik.imagekit.io/dummy";
@@ -40,7 +41,9 @@ export const imagekit = new Proxy(rawImagekit, {
                 };
               }
               const originalUpload = Reflect.get(filesTarget, filesProp, filesReceiver);
-              return originalUpload.apply(filesTarget, [options]);
+              // A raw Buffer would be sent as one form field per byte — see imagekit-uploadable.
+              const file = await toUploadable(options.file, options.fileName || "upload");
+              return originalUpload.apply(filesTarget, [{ ...options, file }]);
             };
           }
           return Reflect.get(filesTarget, filesProp, filesReceiver);

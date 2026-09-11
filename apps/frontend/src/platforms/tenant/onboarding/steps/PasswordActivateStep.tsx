@@ -5,6 +5,7 @@ import type { ActivationStep } from '../activationTypes';
 import { passwordStrength } from './passwordPolicy';
 import { BackButton, PrimaryActionButton, StepActionBar } from './shared';
 import { FLOW_INK } from '../skyTheme';
+import { GuidanceNote, GuidanceSummary, useFieldGuidance, useGuidance } from '../guidance/Guidance';
 
 /**
  * Step 4 — "Set Your Password", matching `Stayo Onboarding.dc.html`'s Step 4
@@ -60,6 +61,9 @@ export function PasswordActivateStep({
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const strength = passwordStrength(password);
+  const guidance = useGuidance();
+  const passwordGuide = useFieldGuidance('password');
+  const confirmGuide = useFieldGuidance('confirm_password');
   const showMatch = confirmPassword.length > 0;
   const passwordsMatch = password.length > 0 && password === confirmPassword;
 
@@ -96,7 +100,7 @@ export function PasswordActivateStep({
         <div className="mt-[13px] text-[12.5px] font-bold" style={{ color: '#3A342E' }}>
           New Password <span style={{ color: '#D0473A' }}>*</span>
         </div>
-        <div className="flex items-center gap-2" style={inputWrap}>
+        <div ref={passwordGuide.ref} className={`flex items-center gap-2 ${passwordGuide.className}`} style={{ ...inputWrap, border: `1px solid ${passwordGuide.invalid ? '#D0473A' : '#E7DDCE'}` }}>
           <input
             type={showPassword ? 'text' : 'password'}
             value={password}
@@ -104,11 +108,13 @@ export function PasswordActivateStep({
             placeholder="Create a password"
             className="min-w-0 flex-1 text-sm font-medium"
             style={inputBase}
+            {...passwordGuide.aria}
           />
           <button type="button" onClick={() => setShowPassword((v) => !v)} className="flex-none" style={{ color: '#8A7F75' }} aria-label={showPassword ? 'Hide password' : 'Show password'}>
             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>
         </div>
+        <GuidanceNote field="password" />
         {password && (
           <>
             <div className="mt-2.5 h-[5px] overflow-hidden rounded-full" style={{ background: '#EDE4D6' }}>
@@ -121,7 +127,7 @@ export function PasswordActivateStep({
         <div className="mt-[13px] text-[12.5px] font-bold" style={{ color: '#3A342E' }}>
           Confirm Password <span style={{ color: '#D0473A' }}>*</span>
         </div>
-        <div className="flex items-center gap-2" style={inputWrap}>
+        <div ref={confirmGuide.ref} className={`flex items-center gap-2 ${confirmGuide.className}`} style={{ ...inputWrap, border: `1px solid ${confirmGuide.invalid ? '#D0473A' : '#E7DDCE'}` }}>
           <input
             type={showConfirmPassword ? 'text' : 'password'}
             value={confirmPassword}
@@ -129,6 +135,7 @@ export function PasswordActivateStep({
             placeholder="Re-enter password"
             className="min-w-0 flex-1 text-sm font-medium"
             style={inputBase}
+            {...confirmGuide.aria}
           />
           <button
             type="button"
@@ -140,6 +147,7 @@ export function PasswordActivateStep({
             {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>
         </div>
+        <GuidanceNote field="confirm_password" />
         {showMatch && (
           <div className="mt-2 flex items-center gap-1.5 text-[11.5px] font-bold" style={{ color: passwordsMatch ? '#1F7A52' : '#D0473A' }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="flex-none">
@@ -164,9 +172,16 @@ export function PasswordActivateStep({
         </div>
       )}
 
-      <StepActionBar>
+      <StepActionBar summary={<GuidanceSummary />}>
         <BackButton title="Back" onClick={() => goToStep('AGREEMENT')} />
-        <PrimaryActionButton onClick={onActivate} disabled={submitting || password.length < 8 || password !== confirmPassword}>
+        {/* Never disabled for a validation reason — tapping it says what is missing. */}
+        <PrimaryActionButton
+          onClick={() => {
+            if (guidance.block()) return;
+            onActivate();
+          }}
+          disabled={submitting}
+        >
           {submitting ? <StayoLoader size="sm" label={null} /> : <CheckCircle2 className="h-4 w-4" />}
           Create Account &amp; Continue
         </PrimaryActionButton>

@@ -26,6 +26,7 @@ export default defineConfig({
     environment: 'node',
     include: [
       'tests/rent-generation-exit-date-join.test.ts',
+      'tests/imagekit-uploadable.test.ts',
       'tests/push-policy.test.ts',
       'tests/push-send-window.test.ts',
       'tests/push-delivery.test.ts',

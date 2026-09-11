@@ -1,5 +1,3 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { FLOW_GROUND, FLOW_INK, INTRO_CARD_INK, PANEL_INK, skyEnv, type ThemePhase } from './skyTheme';
 import { contrast, hsl, parseColor, worstContrast, type Stop } from './skyContrast';
@@ -124,25 +122,19 @@ describe('brand', () => {
    * grey-blue glow — both desaturated, both part of the scene rather than an
    * accent.
    */
-  const ROOT = path.resolve(__dirname);
+  /** Every source file in the onboarding, read through Vite rather than fs — no node types needed. */
+  const SOURCES = import.meta.glob('./**/*.{ts,tsx,css}', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
   const COLOUR = /#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b|rgba?\([^)]*\)/g;
   const COOL_CLASS = /\b(?:bg|text|border|ring|from|via|to|fill|stroke|shadow|outline|decoration)-(?:blue|indigo|sky|violet|cyan|purple|info)(?:-\d{2,3})?\b/;
 
-  function sources(dir: string): string[] {
-    return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
-      const full = path.join(dir, e.name);
-      if (e.isDirectory()) return sources(full);
-      return /\.(tsx?|css)$/.test(e.name) && !/\.test\.ts$/.test(e.name) ? [full] : [];
-    });
-  }
-
   it('no cool-hued accent colours anywhere in the onboarding', () => {
     const offenders: string[] = [];
-    for (const file of sources(ROOT)) {
-      fs.readFileSync(file, 'utf8')
+    for (const [file, contents] of Object.entries(SOURCES)) {
+      if (/\.test\.tsx?$/.test(file)) continue;
+      contents
         .split('\n')
         .forEach((line, i) => {
-          const where = `${path.relative(ROOT, file)}:${i + 1}`;
+          const where = `${file}:${i + 1}`;
           if (COOL_CLASS.test(line)) offenders.push(`${where} ${line.trim()}`);
           for (const literal of line.match(COLOUR) ?? []) {
             let parsed;

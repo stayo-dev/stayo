@@ -86,6 +86,9 @@ export const tenantService = {
         formData.append('file', file);
         const response = await api.post('/tenants/activate/photo', formData, {
             headers: { 'Content-Type': 'multipart/form-data' },
+            // Files are compressed on the device first (under ~1MB), so this is generous;
+            // without it a stalled connection left the upload spinner running forever.
+            timeout: 90_000,
         });
         return unwrap(response);
     },
@@ -96,6 +99,9 @@ export const tenantService = {
         formData.append('file', file);
         const response = await api.post('/tenants/activate/documents', formData, {
             headers: { 'Content-Type': 'multipart/form-data' },
+            // Files are compressed on the device first (under ~1MB), so this is generous;
+            // without it a stalled connection left the upload spinner running forever.
+            timeout: 90_000,
         });
         return unwrap(response);
     },

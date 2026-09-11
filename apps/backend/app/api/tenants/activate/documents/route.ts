@@ -5,6 +5,7 @@ import { NextRequest } from "next/server";
 import { apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { imagekit } from "@/lib/imagekit";
+import { toUploadable } from "@/lib/imagekit-uploadable";
 import { eventLog } from "@/lib/services/event-log-service";
 import { withOnboardingMetrics } from "@/lib/onboarding-metrics";
 import type { Prisma } from "@prisma/client";
@@ -104,11 +105,13 @@ export async function POST(req: NextRequest) {
       return withOnboardingMetrics(apiError("File must be under 5MB", "VALIDATION_ERROR", 400), { startedAt });
     }
 
+    const fileName = file.name || `${docType.toLowerCase()}.jpg`;
     const buffer = Buffer.from(await file.arrayBuffer());
     externalCalls = 1;
     const upload = await imagekit.files.upload({
-      file: buffer,
-      fileName: file.name || `${docType.toLowerCase()}.jpg`,
+      // Never a raw Buffer — the SDK would send it as one form field per byte. See imagekit-uploadable.
+      file: (await toUploadable(buffer, fileName, file.type)) as File,
+      fileName,
       folder: `owners/${tenant.owner_id}/tenants/${tenant.id}/documents/${docType}`,
       useUniqueFileName: true,
       tags: [docType, tenant.id],

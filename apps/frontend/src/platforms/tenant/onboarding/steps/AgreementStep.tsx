@@ -1,10 +1,12 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useState, type ReactNode } from 'react';
 import type { ActivationContext, ActivationStep } from '../activationTypes';
 import { CommitmentSheet, TheWordCard } from './CommitmentCeremony';
 import { hasStatableTerm, type AgreementTerm, type CommitmentChecks } from './commitmentTerm';
 import { SignatureSheet } from './SignatureSheet';
 import { BackButton, PrimaryActionButton, StepActionBar } from './shared';
 import { FLOW_INK } from '../skyTheme';
+import { Guidance, GuidanceNote, GuidanceSummary, useFieldGuidance, useGuidance } from '../guidance/Guidance';
+import { agreementIssues } from '../guidance/stepIssues';
 
 /**
  * Step 3 — "Review & Sign Agreement" (moved after Identity, ADR-070).
@@ -39,6 +41,67 @@ import { FLOW_INK } from '../skyTheme';
  * `SignatureSheet` — the design's full-screen pad — instead of the generic
  * dialog that used to wrap the owner-side `SignaturePad`.
  */
+
+/** One acknowledgement, anchored so guidance can scroll to the unticked one. */
+function AckRow({ ackKey, label, checked, onChange }: { ackKey: string; label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  const guide = useFieldGuidance(`ack:${ackKey}`);
+  return (
+    <div ref={guide.ref} className={guide.className}>
+      <label className="flex items-start gap-2 text-xs leading-relaxed" style={{ color: '#3A342E' }}>
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          className="mt-0.5 h-3.5 w-3.5 flex-none accent-primary"
+          style={guide.invalid ? { outline: '2px solid #D0473A', outlineOffset: 2 } : undefined}
+          {...guide.aria}
+        />
+        <span>{label}</span>
+      </label>
+      <GuidanceNote field={`ack:${ackKey}`} />
+    </div>
+  );
+}
+
+/** The signature rows, and every signature-related message beneath them. */
+function SignatureAnchor({ children }: { children: ReactNode }) {
+  const guide = useFieldGuidance('tenant_signature');
+  return (
+    <div ref={guide.ref} className={guide.className}>
+      {children}
+      <GuidanceNote field="tenant_signature" />
+      <GuidanceNote field="tenant_signature_name" />
+      <GuidanceNote field="guardian_signature_name" />
+      <GuidanceNote field="guardian_relation" />
+    </div>
+  );
+}
+
+/** The action bar, inside the Guidance scope so the primary action can guide instead of refusing. */
+function AgreementActions({ isBusy, agreementSigned, onBack, onProceed }: { isBusy: boolean; agreementSigned: boolean; onBack: () => void; onProceed: () => void }) {
+  const guidance = useGuidance();
+  return (
+    <StepActionBar summary={<GuidanceSummary />}>
+      <BackButton title="Back to Identity" onClick={onBack} />
+      <PrimaryActionButton
+        type="button"
+        disabled={isBusy}
+        onClick={() => {
+          if (guidance.block()) return;
+          onProceed();
+        }}
+      >
+        {!isBusy && !agreementSigned && (
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M8 12.5l2.5 2.5L16 9" />
+          </svg>
+        )}
+        {isBusy ? 'Saving…' : agreementSigned ? 'Proceed to Account' : 'Submit & sign contract'}
+      </PrimaryActionButton>
+    </StepActionBar>
+  );
+}
 
 const REQUIRED_ACKS: { key: string; label: string }[] = [
   { key: 'fee_refund_rules', label: 'I understand hostel fee and refund rules' },
@@ -128,8 +191,8 @@ export function AgreementStep({
   const tenantSignatureName = tenantSigName || agreement.tenant_signature_name || '';
   const guardianSignatureName = guardianName || agreement.guardian_signature_name || '';
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: FormEvent) => {
+    e?.preventDefault();
     if (agreementSigned) {
       goToStep('ACTIVATE');
       return;
@@ -210,7 +273,21 @@ export function AgreementStep({
 
   const isBusy = busy || submitting;
 
+  // Acknowledgements only count while they are on screen (they are hidden once
+  // RULES is accepted), and a signed agreement has nothing left to ask for.
+  const issues = agreementSigned
+    ? []
+    : agreementIssues({
+        acknowledgements: rulesAccepted ? {} : Object.fromEntries(REQUIRED_ACKS.map((a) => [a.key, acks[a.key] === true])),
+        tenantSignature: tenantHasSignature,
+        tenantSignatureName,
+        guardianSignature: guardianHasSignature,
+        guardianSignatureName,
+        guardianRelation: String(guardianRelation || agreement.guardian_relation || ''),
+      });
+
   return (
+    <Guidance issues={issues}>
     <form onSubmit={handleSubmit} style={{ animation: 'obFade .25s ease' }}>
       {/* The term, stated before anything is signed rather than discovered in
           the PDF afterwards. */}
@@ -301,15 +378,13 @@ export function AgreementStep({
             </div>
             <div className="mt-2.5 flex flex-col gap-1.5">
               {REQUIRED_ACKS.map((a) => (
-                <label key={a.key} className="flex items-start gap-2 text-xs leading-relaxed" style={{ color: '#3A342E' }}>
-                  <input
-                    type="checkbox"
-                    checked={acks[a.key] === true}
-                    onChange={(e) => setAcks({ ...acks, [a.key]: e.target.checked })}
-                    className="mt-0.5 h-3.5 w-3.5 flex-none accent-primary"
-                  />
-                  <span>{a.label}</span>
-                </label>
+                <AckRow
+                  key={a.key}
+                  ackKey={a.key}
+                  label={a.label}
+                  checked={acks[a.key] === true}
+                  onChange={(v) => setAcks({ ...acks, [a.key]: v })}
+                />
               ))}
             </div>
           </>
@@ -329,6 +404,7 @@ export function AgreementStep({
         </span>
       </div>
 
+      <SignatureAnchor>
       <div className="mb-2 mt-[15px] text-[10px] font-extrabold uppercase" style={{ color: '#9A8F84', letterSpacing: '.08em' }}>
         Choose who signs
       </div>
@@ -457,6 +533,8 @@ export function AgreementStep({
         </div>
       </button>
 
+      </SignatureAnchor>
+
       {activeSigType === 'tenant' && (
         <SignatureSheet
           mode="tenant"
@@ -485,18 +563,13 @@ export function AgreementStep({
         />
       )}
 
-      <StepActionBar>
-        <BackButton title="Back to Identity" onClick={() => goToStep('PROFILE')} />
-        <PrimaryActionButton type="submit" disabled={isBusy}>
-          {!isBusy && !agreementSigned && (
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="9" />
-              <path d="M8 12.5l2.5 2.5L16 9" />
-            </svg>
-          )}
-          {isBusy ? 'Saving…' : agreementSigned ? 'Proceed to Account' : 'Submit & sign contract'}
-        </PrimaryActionButton>
-      </StepActionBar>
+      <AgreementActions
+        isBusy={isBusy}
+        agreementSigned={agreementSigned}
+        onBack={() => goToStep('PROFILE')}
+        onProceed={() => void handleSubmit()}
+      />
     </form>
+    </Guidance>
   );
 }

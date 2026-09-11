@@ -207,3 +207,26 @@
 .ob-track-leg-f { animation: obLegF 0.5s ease-in-out infinite; }
 .ob-track-breathe { animation: obBreathe 2.6s ease-in-out infinite; }
 .ob-track-zzz { animation: obZzz 2.6s ease-in-out infinite; }
+
+/* ── Guidance: the field the tenant has just been sent to ─────────────────
+   One pulse, on one element at a time (von Restorff — two competing
+   highlights is the same as none). The ring sits outside the control's own
+   border so a field keeps its error border underneath. See guidance/. */
+.ob-attention {
+  border-radius: 12px;
+  animation: obAttention 1.6s ease-out 1;
+}
+@keyframes obAttention {
+  0% { box-shadow: 0 0 0 0 rgba(208, 71, 58, 0.42); }
+  55% { box-shadow: 0 0 0 7px rgba(208, 71, 58, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(208, 71, 58, 0); }
+}
+
+/* Motion is decoration here; the ring is the message. Anyone who has asked for
+   less motion still gets a steady ring, and the scroll jumps rather than glides. */
+@media (prefers-reduced-motion: reduce) {
+  .ob-attention {
+    animation: none;
+    box-shadow: 0 0 0 3px rgba(208, 71, 58, 0.38);
+  }
+}

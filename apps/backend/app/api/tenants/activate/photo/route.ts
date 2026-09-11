@@ -5,6 +5,7 @@ import { NextRequest } from "next/server";
 import { apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { imagekit } from "@/lib/imagekit";
+import { toUploadable } from "@/lib/imagekit-uploadable";
 import { withOnboardingMetrics } from "@/lib/onboarding-metrics";
 import { tenantInvitationLifecycleService } from "@/src/services/tenants/tenant-invitation-lifecycle-service";
 import { activationSubjectFromRequest } from "@/src/services/tenants/activation-request-subject";
@@ -39,11 +40,13 @@ export async function POST(req: NextRequest) {
 
     const tenant = resolved.tenant;
 
+    const fileName = file.name || "profile.jpg";
     const buffer = Buffer.from(await file.arrayBuffer());
     externalCalls = 1;
     const upload = await imagekit.files.upload({
-      file: buffer,
-      fileName: file.name || "profile.jpg",
+      // Never a raw Buffer — the SDK would send it as one form field per byte. See imagekit-uploadable.
+      file: (await toUploadable(buffer, fileName, file.type)) as File,
+      fileName,
       folder: `owners/${tenant.owner_id}/tenants/${tenant.id}/documents/PROFILE_PHOTO`,
       useUniqueFileName: true,
       tags: ["PROFILE_PHOTO", tenant.id],

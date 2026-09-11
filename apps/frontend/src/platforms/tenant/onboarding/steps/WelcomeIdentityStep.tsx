@@ -1,9 +1,10 @@
-import { FormEvent, useState } from 'react';
-import { canSubmitIdentity, needsPhoneOtp, type PhoneTrust } from './identityVerification';
-import { emailAllowsSubmit, emailFieldPhase, emailHelperText, looksLikeEmail, type EmailRequirement } from './emailVerification';
+import { FormEvent, useState, type ReactNode } from 'react';
+import { needsPhoneOtp, type PhoneTrust } from './identityVerification';
+import { emailFieldPhase, emailHelperText, looksLikeEmail, type EmailRequirement } from './emailVerification';
 import type { EmailVerificationState } from '../useEmailVerification';
 import DateOfBirthField from './DateOfBirthField';
 import { FLOW_INK } from '../skyTheme';
+import { GuidanceNote, GuidanceSummary, useFieldGuidance, useGuidance } from '../guidance/Guidance';
 import { AlertCircle, Camera, CheckCircle2, FileText, Mail, Receipt, Send, User } from 'lucide-react';
 import { StayoLoader } from '@shared/ui/brand';
 import type { ActivationContext, ActivationStep } from '../activationTypes';
@@ -23,6 +24,17 @@ export type ProfileDraft = {
 };
 
 const GENDERS = ['Male', 'Female', 'Other'];
+
+/** Anchors a KYC row so guidance can scroll to the exact document that is missing. */
+function DocRow({ docType, children }: { docType: string; children: ReactNode }) {
+  const guide = useFieldGuidance(`doc:${docType}`);
+  return (
+    <div ref={guide.ref} className={guide.className}>
+      {children}
+      <GuidanceNote field={`doc:${docType}`} />
+    </div>
+  );
+}
 
 /**
  * Steps 1+2 — "Welcome" and "Identity", merged into one component. ADR-070:
@@ -121,6 +133,7 @@ const cardWrap = { background: '#F6F1EA', borderRadius: 10, border: '1px solid #
 const inputBase = { width: '100%', border: 'none', outline: 'none', background: 'transparent', color: '#2A2521', padding: '11px 0' };
 
 function PhoneField({
+  field,
   value,
   onChange,
   placeholder,
@@ -131,6 +144,8 @@ function PhoneField({
   countdown,
   sent,
 }: {
+  /** Guidance anchor id — 'phone' or 'guardian_phone'. */
+  field: string;
   value: string;
   onChange: (v: string) => void;
   placeholder: string;
@@ -142,9 +157,11 @@ function PhoneField({
   sent: boolean;
 }) {
   const mobileValid = value.length === 10;
-  const border = verified ? '#1F9D57' : mobileValid ? '#B46A55' : '#E7DDCE';
+  const guide = useFieldGuidance(field);
+  const border = guide.invalid ? '#D0473A' : verified ? '#1F9D57' : mobileValid ? '#B46A55' : '#E7DDCE';
   return (
-    <div className="flex items-center gap-2.5" style={{ ...cardWrap, border: `1.5px solid ${border}`, transition: 'border-color .2s' }}>
+    <div>
+    <div ref={guide.ref} className={`flex items-center gap-2.5 ${guide.className}`} style={{ ...cardWrap, border: `1.5px solid ${border}`, transition: 'border-color .2s' }}>
       <span className="flex-none text-sm font-bold" style={{ color: '#8A7F75' }}>
         +91
       </span>
@@ -158,6 +175,7 @@ function PhoneField({
         disabled={disabled || (sent && countdown > 0)}
         className="min-w-0 flex-1 text-sm font-semibold"
         style={inputBase}
+        {...guide.aria}
       />
       {verified ? (
         <div className="flex flex-none items-center gap-1.5 text-[11px] font-extrabold" style={{ color: '#1F7A52' }}>
@@ -178,6 +196,8 @@ function PhoneField({
           {sending ? 'Sending' : countdown > 0 ? `${countdown}s` : sent ? 'Resend' : 'Send'}
         </button>
       ) : null}
+    </div>
+    <GuidanceNote field={field} />
     </div>
   );
 }
@@ -203,7 +223,8 @@ function EmailField({
 }) {
   const phase = emailFieldPhase({ entered: value, verifiedAs: state.verifiedAs, codeSentTo: state.codeSentTo });
   const valid = looksLikeEmail(value);
-  const border = phase === 'verified' ? '#1F9D57' : valid ? '#B46A55' : '#E7DDCE';
+  const guide = useFieldGuidance('email');
+  const border = guide.invalid ? '#D0473A' : phase === 'verified' ? '#1F9D57' : valid ? '#B46A55' : '#E7DDCE';
 
   const onCode = (raw: string) => {
     const digits = raw.replace(/\D/g, '').slice(0, 6);
@@ -214,7 +235,7 @@ function EmailField({
 
   return (
     <div>
-      <div className="flex items-center gap-2.5" style={{ ...cardWrap, border: `1.5px solid ${border}`, transition: 'border-color .2s' }}>
+      <div ref={guide.ref} className={`flex items-center gap-2.5 ${guide.className}`} style={{ ...cardWrap, border: `1.5px solid ${border}`, transition: 'border-color .2s' }}>
         <Mail className="h-4 w-4 flex-none" style={{ color: '#8A7F75' }} />
         <input
           type="email"
@@ -230,6 +251,7 @@ function EmailField({
           placeholder="you@gmail.com"
           className="min-w-0 flex-1 text-sm font-semibold"
           style={inputBase}
+          {...guide.aria}
         />
         {phase === 'verified' ? (
           <div className="flex flex-none items-center gap-1.5 text-[11px] font-extrabold" style={{ color: '#1F7A52' }}>
@@ -296,6 +318,7 @@ function EmailField({
           {emailHelperText(phase, state.codeSentTo)}
         </div>
       )}
+      <GuidanceNote field="email" />
     </div>
   );
 }
@@ -320,9 +343,10 @@ function OtpBlock({
   /** Server-side verification failure, shown inline under the box per the design. */
   error?: string;
 }) {
-  const borderColor = error ? '#D0473A' : otp.length === 6 ? '#1F9D57' : '#E7DDCE';
+  const guide = useFieldGuidance('otp');
+  const borderColor = error || guide.invalid ? '#D0473A' : otp.length === 6 ? '#1F9D57' : '#E7DDCE';
   return (
-    <div className="ob-up-fast mt-2.5 rounded-[11px]" style={{ background: '#FBF7F1', border: '1px solid #EEE3D4', padding: '12px 13px' }}>
+    <div ref={guide.ref} className={`ob-up-fast mt-2.5 rounded-[11px] ${guide.className}`} style={{ background: '#FBF7F1', border: '1px solid #EEE3D4', padding: '12px 13px' }}>
       <div className="flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-[11.5px] font-bold" style={{ color: '#1F7A52' }}>
           <Send className="h-3 w-3" />
@@ -345,8 +369,10 @@ function OtpBlock({
           placeholder="— — — — — —"
           className="font-display w-full text-center text-[17px] font-bold"
           style={{ ...inputBase, letterSpacing: '.4em' }}
+          {...guide.aria}
         />
       </div>
+      {!error && <GuidanceNote field="otp" />}
       {error ? (
         <div className="mt-1.5 flex items-center gap-1.5 text-[11.5px] font-bold" style={{ color: '#D0473A' }}>
           <AlertCircle className="h-3 w-3 flex-none" />
@@ -409,6 +435,11 @@ export function WelcomeIdentityStep({
   setLocalPhase,
 }: WelcomeIdentityStepProps) {
   const [busy, setBusy] = useState(false);
+  const guidance = useGuidance();
+  const photoGuide = useFieldGuidance('photo');
+  const genderGuide = useFieldGuidance('gender');
+  const dobGuide = useFieldGuidance('date_of_birth');
+  const guardianNameGuide = useFieldGuidance('guardian_name');
 
   const allocation = [
     { label: 'Room', value: ctx.room_summary.room_number || 'Assigned' },
@@ -479,6 +510,9 @@ export function WelcomeIdentityStep({
   const renderIdentity = (showAccountFields: boolean) => {
     const handleSubmit = async (e: FormEvent) => {
       e.preventDefault();
+      // Nothing is submitted while something is outstanding — the tenant is
+      // shown what and sent to it, rather than met with a dead button.
+      if (guidance.block()) return;
       setBusy(true);
       try {
         if (showAccountFields) {
@@ -494,11 +528,6 @@ export function WelcomeIdentityStep({
     // A number the invitation was delivered to needs no code; editing it
     // re-arms verification. See identityVerification.
     const otpRequired = showAccountFields && needsPhoneOtp({ enteredPhone: account.phone, trust: phoneTrust });
-    const canSubmit = showAccountFields
-      ? canSubmitIdentity({ enteredPhone: account.phone, trust: phoneTrust, otp: account.otp, otpSent }) &&
-        emailAllowsSubmit(emailRequirement, account.email, emailVerification?.verifiedAs ?? null)
-      : true;
-
     return (
       <form onSubmit={handleSubmit} style={{ animation: 'obFade .25s ease' }}>
         <div className="flex items-start gap-[11px]">
@@ -522,7 +551,7 @@ export function WelcomeIdentityStep({
         </div>
 
         {/* Profile photo — circular avatar + edit badge */}
-        <div className="mt-4.5 flex flex-col items-center gap-2.5">
+        <div ref={photoGuide.ref} className={`mt-4.5 flex flex-col items-center gap-2.5 ${photoGuide.className}`}>
           <label className="relative cursor-pointer" style={{ width: 88, height: 88 }}>
             <div className="h-full w-full overflow-hidden rounded-full" style={{ padding: 3, background: 'linear-gradient(135deg,#B46A55,#D2986C)' }}>
               {profilePhotoPreview ? (
@@ -539,7 +568,7 @@ export function WelcomeIdentityStep({
             >
               <Camera className="h-3.5 w-3.5 text-white" />
             </span>
-            <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => onPhotoChange(e.target.files?.[0])} />
+            <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => onPhotoChange(e.target.files?.[0])} {...photoGuide.aria} />
           </label>
           <div className="text-center">
             <div className="text-[12.5px] font-bold" style={{ color: '#3A342E' }}>
@@ -554,6 +583,7 @@ export function WelcomeIdentityStep({
                     ? '✓ Photo uploaded — tap to change'
                     : 'Tap to upload — helps staff recognise you'}
             </div>
+            <GuidanceNote field="photo" />
           </div>
         </div>
 
@@ -565,6 +595,7 @@ export function WelcomeIdentityStep({
               </div>
               <div className="mt-1.5">
                 <PhoneField
+                  field="phone"
                   value={account.phone}
                   onChange={(v) => setAccount({ ...account, phone: v })}
                   placeholder="10-digit mobile number"
@@ -622,7 +653,12 @@ export function WelcomeIdentityStep({
             <div className="mb-1.5 text-[11px] font-bold uppercase" style={label}>
               Gender {requiredMark}
             </div>
-            <div className="flex gap-2">
+            <div
+              ref={genderGuide.ref}
+              className={`flex gap-2 ${genderGuide.className}`}
+              // The group is marked, not each option — three red buttons reads as three errors.
+              style={genderGuide.invalid ? { outline: '1.5px solid #D0473A', outlineOffset: 3, borderRadius: 12 } : undefined}
+            >
               {GENDERS.map((g) => {
                 const on = profile.gender === g;
                 return (
@@ -631,13 +667,18 @@ export function WelcomeIdentityStep({
                     type="button"
                     onClick={() => setProfile({ ...profile, gender: g })}
                     className="flex-1 rounded-[10px] px-1.5 py-2.5 text-center text-[12.5px] font-semibold"
-                    style={{ background: on ? '#F3E7E0' : '#F6F1EA', border: on ? '1.5px solid #B46A55' : '1px solid #E7DDCE', color: on ? '#A45D44' : '#4A433C' }}
+                    style={{
+                      background: on ? '#F3E7E0' : '#F6F1EA',
+                      border: on ? '1.5px solid #B46A55' : '1px solid #E7DDCE',
+                      color: on ? '#A45D44' : '#4A433C',
+                    }}
                   >
                     {g}
                   </button>
                 );
               })}
             </div>
+            <GuidanceNote field="gender" />
           </div>
           )}
 
@@ -645,25 +686,31 @@ export function WelcomeIdentityStep({
             <div className="mb-1.5 text-[11px] font-bold uppercase" style={label}>
               Date of Birth {requiredMark}
             </div>
-            <DateOfBirthField
-              value={profile.date_of_birth}
-              onChange={(iso) => setProfile({ ...profile, date_of_birth: iso })}
-            />
+            <div ref={dobGuide.ref} className={dobGuide.className}>
+              <DateOfBirthField
+                value={profile.date_of_birth}
+                onChange={(iso) => setProfile({ ...profile, date_of_birth: iso })}
+                invalid={dobGuide.invalid}
+              />
+            </div>
+            <GuidanceNote field="date_of_birth" />
           </div>
 
           <div>
             <div className="mb-1.5 text-[11px] font-bold uppercase" style={label}>
               Guardian Full Name {isStudent ? requiredMark : optionalMark}
             </div>
-            <div style={cardWrap}>
+            <div ref={guardianNameGuide.ref} className={guardianNameGuide.className} style={{ ...cardWrap, border: `1px solid ${guardianNameGuide.invalid ? '#D0473A' : '#E7DDCE'}` }}>
               <input
                 value={profile.guardian_name || ''}
                 onChange={(e) => setProfile({ ...profile, guardian_name: e.target.value })}
                 placeholder="Parent or guardian name"
                 className="text-sm font-medium"
                 style={inputBase}
+                {...guardianNameGuide.aria}
               />
             </div>
+            <GuidanceNote field="guardian_name" />
           </div>
 
           <div>
@@ -671,6 +718,7 @@ export function WelcomeIdentityStep({
               Guardian Mobile {isStudent ? requiredMark : optionalMark}
             </div>
             <PhoneField
+              field="guardian_phone"
               value={profile.guardian_phone || ''}
               onChange={(v) => setProfile({ ...profile, guardian_phone: v })}
               placeholder="Guardian mobile number"
@@ -731,7 +779,8 @@ export function WelcomeIdentityStep({
               const rejected = status === 'REJECTED';
               const tone = verified || pending ? '#1F7A52' : rejected ? '#D0473A' : '#B46A55';
               return (
-                <label key={docType} className="flex cursor-pointer items-center gap-2.5" style={{ ...cardWrap, padding: '10px 13px' }}>
+                <DocRow key={docType} docType={docType}>
+                <label className="flex cursor-pointer items-center gap-2.5" style={{ ...cardWrap, padding: '10px 13px' }}>
                   <span className="flex h-8 w-8 flex-none items-center justify-center rounded-lg" style={{ background: '#F3E7E0', color: tone }}>
                     {uploading ? <StayoLoader size="sm" label={null} /> : <FileText className="h-4 w-4" />}
                   </span>
@@ -771,6 +820,7 @@ export function WelcomeIdentityStep({
                     }}
                   />
                 </label>
+                </DocRow>
               );
             })}
           </div>
@@ -782,13 +832,15 @@ export function WelcomeIdentityStep({
           </div>
         )}
 
-        <StepActionBar>
+        <StepActionBar summary={<GuidanceSummary />}>
           {showAccountFields ? (
             <BackButton title="Back to Welcome" onClick={() => setLocalPhase('welcome')} />
           ) : (
             <BackButton title="Back to Welcome" onClick={() => goToStep('ACCOUNT')} />
           )}
-          <PrimaryActionButton type="submit" disabled={isBusy || photoUploading || !canSubmit}>
+          {/* Disabled only while genuinely busy: a validation-disabled button
+              gives the tenant no reason and no next move. See guidance/. */}
+          <PrimaryActionButton type="submit" disabled={isBusy || photoUploading}>
             {(isBusy || photoUploading) && <StayoLoader size="sm" label={null} />}
             {photoUploading ? 'Uploading photo…' : isBusy ? 'Saving…' : 'Verify & Continue'}
           </PrimaryActionButton>

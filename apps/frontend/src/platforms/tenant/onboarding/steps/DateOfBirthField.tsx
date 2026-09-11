@@ -97,12 +97,15 @@ export default function DateOfBirthField({
   value,
   onChange,
   today = new Date(),
+  invalid = false,
 }: {
   /** `YYYY-MM-DD`, or '' when nothing has been chosen. */
   value: string;
   onChange: (iso: string) => void;
   /** Injectable so the surrounding logic stays testable and deterministic. */
   today?: Date;
+  /** Marked by the step's guidance when this is what the tenant still owes. */
+  invalid?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const committed = useMemo(() => parseISODate(value), [value]);
@@ -141,7 +144,7 @@ export default function DateOfBirthField({
         className="flex w-full items-center gap-2.5 rounded-[10px] text-left"
         style={{
           background: '#F6F1EA',
-          border: `1px solid ${committed ? '#E7DDCE' : '#E7DDCE'}`,
+          border: `1px solid ${invalid ? '#D0473A' : '#E7DDCE'}`,
           padding: '11px 13px',
         }}
       >

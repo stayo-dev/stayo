@@ -15,6 +15,10 @@ import { PasswordActivateStep } from './steps/PasswordActivateStep';
 import { WelcomeSummaryStep } from './steps/WelcomeSummaryStep';
 import { useEmailVerification } from './useEmailVerification';
 import { kycDocLabel, missingKycDocs, type OnboardingDocItem } from './onboardingKyc';
+import { prepareImageForUpload } from './compressImage';
+import { isImage, uploadProblem } from './uploadImagePolicy';
+import { Guidance } from './guidance/Guidance';
+import { identityIssues, passwordIssues } from './guidance/stepIssues';
 import {
   activationMessages,
   clearProfileDraft,
@@ -386,19 +390,58 @@ export function ActivationPage() {
       (ctx?.tenant?.phone_2 && profile.guardian_phone === phoneDigits(ctx?.tenant?.phone_2) && ctx?.verification_status?.guardian_verified) ||
       (guardianOtpVerified && profile.guardian_phone === guardianVerifiedPhone));
 
+  /**
+   * Everything the Identity step can still be missing, in one place — fed to
+   * `<Guidance>` so the step can point at whichever of it is outstanding.
+   * Computed here because this is where the state lives; the rules themselves
+   * are in guidance/stepIssues.ts.
+   */
+  const identityState = {
+    showAccountFields: activeStep === 'ACCOUNT',
+    phone: account.phone,
+    otp: account.otp,
+    otpSent,
+    phoneTrust: ctx?.phone_trust ?? null,
+    emailRequirement: ctx?.email_requirement ?? null,
+    email: account.email,
+    emailVerifiedAs: emailVerification.verifiedAs ?? null,
+    genderRequired: ctx?.identity_fields?.required ?? true,
+    gender: profile.gender || '',
+    dateOfBirth: profile.date_of_birth || '',
+    profileType: String(profile.profile_type || ctx?.tenant?.profile_type || 'STUDENT'),
+    guardianName: profile.guardian_name || '',
+    guardianPhone: profile.guardian_phone || '',
+    guardianVerified: Boolean(isGuardianPhoneVerified),
+    photoUploaded: Boolean(profilePhotoFile || profilePhotoPreview),
+    docItems,
+  };
+
+  /**
+   * Photo and KYC uploads compress on the device first, then check the result
+   * against the server's limits — never the other way round. Checking the raw
+   * file first refused every ordinary camera photo (3-8MB) against the 2MB
+   * photo limit before compression could run. See uploadImagePolicy.ts.
+   */
   const handlePhotoChange = async (file?: File) => {
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) return setError('Image must be under 2MB');
-    setProfilePhotoFile(file);
-    const reader = new FileReader();
-    reader.onloadend = () => setProfilePhotoPreview(reader.result as string);
-    reader.readAsDataURL(file);
+    if (!isImage(file.type)) return setError(uploadProblem(file, 'photo') || 'Choose a photo');
 
     setPhotoUploading(true);
     setError('');
     try {
-      const compressedFile = await compressImageIfNeeded(file);
-      const uploadRes = await tenantService.uploadActivationPhoto(token, compressedFile);
+      const ready = await prepareImageForUpload(file, 'photo');
+      const problem = uploadProblem(ready, 'photo');
+      if (problem) {
+        setError(problem);
+        return;
+      }
+      // Kept as the compressed file, so the retry in submitProfile() sends this and not the camera original.
+      setProfilePhotoFile(ready);
+      const reader = new FileReader();
+      reader.onloadend = () => setProfilePhotoPreview(reader.result as string);
+      reader.readAsDataURL(ready);
+
+      const uploadRes = await tenantService.uploadActivationPhoto(token, ready);
       if (uploadRes?.photo_url) {
         setProfilePhotoPreview(uploadRes.photo_url);
         setProfilePhotoFile(null);
@@ -419,58 +462,11 @@ export function ActivationPage() {
     }
   };
 
-  const compressImageIfNeeded = async (file: File): Promise<File> => {
-    const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-    if (!IMAGE_MIME_TYPES.includes(file.type)) return file;
-    if (file.size < 500 * 1024) return file;
-
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const maxDim = 1600;
-          let width = img.width;
-          let height = img.height;
-          if (width > height && width > maxDim) {
-            height = (height * maxDim) / width;
-            width = maxDim;
-          } else if (height > maxDim) {
-            width = (width * maxDim) / height;
-            height = maxDim;
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) ctx.drawImage(img, 0, 0, width, height);
-          canvas.toBlob(
-            (blob) => {
-              if (blob) {
-                resolve(new File([blob], file.name, { type: 'image/webp', lastModified: file.lastModified }));
-              } else {
-                resolve(file);
-              }
-            },
-            'image/webp',
-            0.8
-          );
-        };
-        img.src = e.target?.result as string;
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
   const handleDocUpload = async (docType: string, file?: File) => {
     if (!file) return;
-    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
-    if (!allowed.includes(file.type)) {
-      setDocErrors((prev) => ({ ...prev, [docType]: 'Use a JPG, PNG, WEBP, or PDF file' }));
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setDocErrors((prev) => ({ ...prev, [docType]: 'File must be under 5MB' }));
+    const setDocError = (message: string) => setDocErrors((prev) => ({ ...prev, [docType]: message }));
+    if (!isImage(file.type) && file.type !== 'application/pdf') {
+      setDocError(uploadProblem(file, 'document') || 'Use a photo of the document, or a PDF.');
       return;
     }
     setDocErrors((prev) => {
@@ -480,8 +476,13 @@ export function ActivationPage() {
     });
     setDocUploading(docType);
     try {
-      const compressedFile = await compressImageIfNeeded(file);
-      const uploadRes = await tenantService.uploadActivationDocument(token, docType, compressedFile);
+      const ready = await prepareImageForUpload(file, 'document');
+      const problem = uploadProblem(ready, 'document');
+      if (problem) {
+        setDocError(problem);
+        return;
+      }
+      const uploadRes = await tenantService.uploadActivationDocument(token, docType, ready);
       setDocItems((prev) => {
         const updated = [...prev];
         const index = updated.findIndex((d) => d.doc_type === docType);
@@ -491,10 +492,11 @@ export function ActivationPage() {
         return updated;
       });
     } catch (err: any) {
-      setDocErrors((prev) => ({
-        ...prev,
-        [docType]: err?.response?.data?.error?.message || err?.message || 'Upload failed — please try again',
-      }));
+      setDocError(
+        err?.response
+          ? err.response.data?.error?.message || 'Upload failed — please try again'
+          : "The upload didn't finish — check your connection and try again.",
+      );
     } finally {
       setDocUploading(null);
     }
@@ -645,6 +647,7 @@ export function ActivationPage() {
         {activationResult && <WelcomeSummaryStep ctx={ctx} tenantName={ctx.agreement?.tenant_signature_name || ctx.profile?.name || ''} entering={entering} onEnter={enterStayo} />}
 
         {!activationResult && (activeStep === 'ACCOUNT' || activeStep === 'PROFILE') && (
+          <Guidance issues={welcomeLocalPhase === 'identity' || activeStep === 'PROFILE' ? identityIssues(identityState) : []}>
           <WelcomeIdentityStep
             ctx={ctx}
             activeStep={activeStep}
@@ -692,6 +695,7 @@ export function ActivationPage() {
             localPhase={welcomeLocalPhase}
             setLocalPhase={setWelcomeLocalPhase}
           />
+          </Guidance>
         )}
 
         {!activationResult && (activeStep === 'RULES' || activeStep === 'AGREEMENT') && (
@@ -711,6 +715,7 @@ export function ActivationPage() {
         )}
 
         {!activationResult && activeStep === 'ACTIVATE' && (
+          <Guidance issues={passwordIssues({ password: account.password, confirm: account.confirm_password })}>
           <PasswordActivateStep
             password={account.password}
             setPassword={(v) => setAccount({ ...account, password: v })}
@@ -728,6 +733,7 @@ export function ActivationPage() {
               })
             }
           />
+          </Guidance>
         )}
     </ActivationLayout>
     </ThemeProvider>

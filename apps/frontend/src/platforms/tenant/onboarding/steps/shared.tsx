@@ -112,9 +112,17 @@ export function BackButton({ onClick, title }: { onClick: () => void; title: str
  *
  * `ActivationLayout` reserves 108px of bottom padding for this.
  */
-export function StepActionBar({ children }: { children: ReactNode }) {
+export function StepActionBar({ children, summary }: { children: ReactNode; summary?: ReactNode }) {
   return (
-    <div className="fixed bottom-0 left-1/2 z-[2] w-full max-w-md -translate-x-1/2 p-3" style={{ background: `linear-gradient(180deg,transparent,${FLOW_GROUND} 30%)` }}>
+    <div
+      // Measured by guidance/Guidance.tsx so a field it scrolls to never lands
+      // behind this bar — whose height changes with the summary above it.
+      data-step-action-bar
+      className="fixed bottom-0 left-1/2 z-[2] w-full max-w-md -translate-x-1/2 p-3"
+      style={{ background: `linear-gradient(180deg,transparent,${FLOW_GROUND} 30%)` }}
+    >
+      {/* What is still outstanding, directly above the action it blocks. */}
+      {summary}
       <div
         className="flex items-center gap-2.5 rounded-[15px] border p-2.5"
         style={{

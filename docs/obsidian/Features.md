@@ -207,6 +207,19 @@ Four changes to the owner's 4-step Invite Tenant wizard (Tenant → Stay → Mon
 
 See [[Decisions#ADR-163|ADR-163]], [[Business-Rules]], [[APIs]].
 
+### Tenant onboarding — guidance to whatever is missing (2026-09-11)
+
+Nothing in the wizard refuses silently any more. Built for the volume ahead: every one of these was otherwise a support call.
+
+- **The primary action is never disabled for a validation reason** ([[Decisions#ADR-185|ADR-185]]). Tapping it while something is outstanding marks every outstanding item, scrolls to the first, focuses it and pulses it once. Disabled only while uploading or submitting.
+- **The field says what to do**, not what is wrong: "Upload a photo of your College ID", "Enter the 6-digit code we sent to 98765 43210". A test asserts no message says "invalid".
+- **A count above the action bar** — "3 things left" — with a tappable shortcut per item (first four, then "+N more"). Progress language, not blame.
+- **Marks appear only after the tenant tries to continue**, then update live as each is fixed.
+- **Accessible by construction:** `aria-invalid`/`aria-describedby`, an icon and words beside every colour, a polite live region for the count, and `prefers-reduced-motion` honoured.
+- **Covers** the Identity step (photo, mobile, OTP, email, gender, date of birth, guardian name/mobile, each KYC document), the Agreement step (each acknowledgement, signatures and the relationship), and the Password step.
+- **Key files:** `platforms/tenant/onboarding/guidance/` — `stepIssues.ts` + `.test.ts` (the rules, pure), `revealTarget.ts` + `.test.ts` (scroll maths, pure), `Guidance.tsx` (context, anchors, the note and the summary); wired through `ActivationPage.tsx`, `steps/{WelcomeIdentityStep,AgreementStep,PasswordActivateStep,DateOfBirthField,shared}.tsx` and `onboarding.css`.
+- **Depends on:** [[Frontend]] (the pattern to follow when adding a field), [[Business-Rules]] (what each step requires).
+
 ### Tenant activation — link expiry, visible and reminded (2026-08-25)
 
 An invitation lasts **7 days** from sending (`DEFAULT_INVITE_DAYS`; a resend resets the clock), and until now said nothing in between.
