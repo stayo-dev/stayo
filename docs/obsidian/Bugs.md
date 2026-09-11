@@ -8,6 +8,18 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-11 — Tenant onboarding shipped in blue, and its labels vanished after dark (fixed)
+
+**Symptom.** Every stage of the tenant onboarding — splash, journey track, buttons, the building's STAYO sign, the email/phone fields, the celebration screen — rendered indigo-blue instead of Stayo's Warm Clay, and the dusk sky turned from a sunset into a blue gradient. Separately, text went missing depending on the hour: in the daytime the wizard header's hostel name was white on a pale sky (1.6:1); after dusk the Identity form's field labels ("Gender", "Date of birth", "Guardian mobile", "Documents") were near-white on cream, while "Profile photo" was dark ink on dark sky.
+
+**Root cause — the palette.** Commit `3f6b5793` (2026-09-10, *"switch to blue accent"*) replaced every `#B46A55`-family value in `platforms/tenant/onboarding/` with `#3b5fa8`/`#2d4480` — the project's `--info` blue — including `skyTheme.ts`'s dusk gradient. It rode in alongside unrelated upload-performance work and reached `dev` and `main`. Nothing flagged it: the onboarding hardcodes its colours rather than using the tokens, and `check-brand-fossils` only watches the retired navy/saffron values, not blue. Later code (the email field, ADR-183) then copied the blue from its phone-field twin.
+
+**Root cause — legibility.** The wizard's sky gradient was sized to the **whole page**, while its text colours were one-per-phase. On a long step the dark part stretched down into the form, so where a label landed on the gradient depended on the step's length — no single colour could be right. ADR-111's `onSky*` tokens made on-sky text light after dark, which fixed labels high on the page and broke those lower down; text that never used the tokens stayed dark and broke the other way. No test could see any of it: the colours were only ever checked by eye, in whichever phase the clock showed.
+
+**Fix** ([[Decisions#ADR-184|ADR-184]]). The palette hunks of `3f6b5793` are reverted (its profile-photo placeholder icon and upload changes are kept) and the three copied blues corrected. The sky now paints only the header band, with stops relative to the band, ending on the body's cream ground; step bodies use one fixed ink set. Header, panel, splash-card and pill colours were re-tuned so each clears WCAG AA over the rows it sits on. `skyTheme.test.ts` checks all of it per phase and fails on any saturated cool colour in the onboarding — run against `origin/dev` it flags 72 lines in 12 files.
+
+**See:** [[Frontend]], [[Changelog]], [[Decisions#ADR-111|ADR-111]]
+
 ## 2026-09-11 — An imported resident could never be nudged (fixed)
 
 **Symptom.** "Nudge on WhatsApp" on a tenant imported with rent already paid answered *"VALIDATION_ERROR: Cannot edit or resend invitation after payments have been recorded for this tenant"* — prefix and all, code `ERROR`.

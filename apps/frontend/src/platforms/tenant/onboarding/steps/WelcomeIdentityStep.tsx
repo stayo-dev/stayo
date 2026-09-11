@@ -3,7 +3,7 @@ import { canSubmitIdentity, needsPhoneOtp, type PhoneTrust } from './identityVer
 import { emailAllowsSubmit, emailFieldPhase, emailHelperText, looksLikeEmail, type EmailRequirement } from './emailVerification';
 import type { EmailVerificationState } from '../useEmailVerification';
 import DateOfBirthField from './DateOfBirthField';
-import { useSky } from '../skyContext';
+import { FLOW_INK } from '../skyTheme';
 import { AlertCircle, Camera, CheckCircle2, FileText, Mail, Receipt, Send, User } from 'lucide-react';
 import { StayoLoader } from '@shared/ui/brand';
 import type { ActivationContext, ActivationStep } from '../activationTypes';
@@ -115,7 +115,8 @@ interface WelcomeIdentityStepProps {
   setLocalPhase: (phase: 'welcome' | 'identity') => void;
 }
 
-const label = { color: '#7A6F63', letterSpacing: '.05em' };
+// Field labels sit on the step body's ground, which is the same at every hour — see FLOW_INK.
+const label = { color: FLOW_INK.label, letterSpacing: '.05em' };
 const cardWrap = { background: '#F6F1EA', borderRadius: 10, border: '1px solid #E7DDCE', padding: '0 13px' };
 const inputBase = { width: '100%', border: 'none', outline: 'none', background: 'transparent', color: '#2A2521', padding: '11px 0' };
 
@@ -141,7 +142,7 @@ function PhoneField({
   sent: boolean;
 }) {
   const mobileValid = value.length === 10;
-  const border = verified ? '#1F9D57' : mobileValid ? '#3b5fa8' : '#E7DDCE';
+  const border = verified ? '#1F9D57' : mobileValid ? '#B46A55' : '#E7DDCE';
   return (
     <div className="flex items-center gap-2.5" style={{ ...cardWrap, border: `1.5px solid ${border}`, transition: 'border-color .2s' }}>
       <span className="flex-none text-sm font-bold" style={{ color: '#8A7F75' }}>
@@ -171,7 +172,7 @@ function PhoneField({
           onClick={onSend}
           disabled={sending || countdown > 0}
           className="flex flex-none items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold text-white disabled:opacity-60"
-          style={{ background: '#3b5fa8', boxShadow: '0 4px 11px rgba(180,106,85,.28)' }}
+          style={{ background: '#B46A55', boxShadow: '0 4px 11px rgba(180,106,85,.28)' }}
         >
           <Send className="h-3 w-3" />
           {sending ? 'Sending' : countdown > 0 ? `${countdown}s` : sent ? 'Resend' : 'Send'}
@@ -202,7 +203,7 @@ function EmailField({
 }) {
   const phase = emailFieldPhase({ entered: value, verifiedAs: state.verifiedAs, codeSentTo: state.codeSentTo });
   const valid = looksLikeEmail(value);
-  const border = phase === 'verified' ? '#1F9D57' : valid ? '#3b5fa8' : '#E7DDCE';
+  const border = phase === 'verified' ? '#1F9D57' : valid ? '#B46A55' : '#E7DDCE';
 
   const onCode = (raw: string) => {
     const digits = raw.replace(/\D/g, '').slice(0, 6);
@@ -243,7 +244,7 @@ function EmailField({
             onClick={() => void state.sendCode(value)}
             disabled={state.sending || (phase === 'code' && state.countdown > 0)}
             className="flex flex-none items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold text-white disabled:opacity-60"
-            style={{ background: '#3b5fa8', boxShadow: '0 4px 11px rgba(180,106,85,.28)' }}
+            style={{ background: '#B46A55', boxShadow: '0 4px 11px rgba(180,106,85,.28)' }}
           >
             <Send className="h-3 w-3" />
             {state.sending ? 'Sending' : phase === 'code' ? (state.countdown > 0 ? `${state.countdown}s` : 'Resend') : 'Send code'}
@@ -278,7 +279,7 @@ function EmailField({
             />
           </div>
           {state.verifying && (
-            <div className="mt-1.5 text-[11px] font-semibold" style={{ color: '#2d4480' }}>
+            <div className="mt-1.5 text-[11px] font-semibold" style={{ color: '#A45D44' }}>
               Checking…
             </div>
           )}
@@ -327,7 +328,7 @@ function OtpBlock({
           <Send className="h-3 w-3" />
           Code sent to +91 {phone}
         </span>
-        <button type="button" onClick={onResend} disabled={sending || countdown > 0} className="font-display text-[11.5px] font-bold disabled:opacity-60" style={{ color: '#2d4480' }}>
+        <button type="button" onClick={onResend} disabled={sending || countdown > 0} className="font-display text-[11.5px] font-bold disabled:opacity-60" style={{ color: '#A45D44' }}>
           {countdown > 0 ? `Resend in ${countdown}s` : 'Resend'}
         </button>
       </div>
@@ -408,10 +409,6 @@ export function WelcomeIdentityStep({
   setLocalPhase,
 }: WelcomeIdentityStepProps) {
   const [busy, setBusy] = useState(false);
-  const sky = useSky();
-  // Shadows the module-level constant: these labels sit directly on the sky
-  // gradient, so their colour has to follow the hour rather than assume cream.
-  const label = { color: sky.onSkyLabel, letterSpacing: '.05em' };
 
   const allocation = [
     { label: 'Room', value: ctx.room_summary.room_number || 'Assigned' },
@@ -456,9 +453,9 @@ export function WelcomeIdentityStep({
     <div className="mt-4">
       <div
         className="flex items-center gap-2.5 rounded-[10px] p-[11px_13px]"
-        style={{ background: '#F6F1EA', borderLeft: '3px solid #3b5fa8' }}
+        style={{ background: '#F6F1EA', borderLeft: '3px solid #B46A55' }}
       >
-        <div className="flex h-7 w-7 flex-none items-center justify-center rounded-lg" style={{ background: '#F3E7E0', color: '#3b5fa8' }}>
+        <div className="flex h-7 w-7 flex-none items-center justify-center rounded-lg" style={{ background: '#F3E7E0', color: '#B46A55' }}>
           <Receipt className="h-3.5 w-3.5" />
         </div>
         <div className="min-w-0">
@@ -505,7 +502,7 @@ export function WelcomeIdentityStep({
     return (
       <form onSubmit={handleSubmit} style={{ animation: 'obFade .25s ease' }}>
         <div className="flex items-start gap-[11px]">
-          <div className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px]" style={{ background: '#F3E7E0', color: '#3b5fa8' }}>
+          <div className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px]" style={{ background: '#F3E7E0', color: '#B46A55' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="8" r="4" />
               <path d="M4.5 20c0-4 3.8-6 7.5-6s7.5 2 7.5 6" />
@@ -514,11 +511,11 @@ export function WelcomeIdentityStep({
           <div>
             <div
               className="font-display text-[18px] font-extrabold tracking-tight"
-              style={{ color: sky.onSkyTitle, textShadow: sky.onSkyShadow }}
+              style={{ color: FLOW_INK.title }}
             >
               Identity Profile
             </div>
-            <div className="mt-1 text-xs leading-relaxed" style={{ color: sky.onSkyBody }}>
+            <div className="mt-1 text-xs leading-relaxed" style={{ color: FLOW_INK.body }}>
               Confirm your details to complete the admission record.
             </div>
           </div>
@@ -527,7 +524,7 @@ export function WelcomeIdentityStep({
         {/* Profile photo — circular avatar + edit badge */}
         <div className="mt-4.5 flex flex-col items-center gap-2.5">
           <label className="relative cursor-pointer" style={{ width: 88, height: 88 }}>
-            <div className="h-full w-full overflow-hidden rounded-full" style={{ padding: 3, background: 'linear-gradient(135deg,#3b5fa8,#2d4480)' }}>
+            <div className="h-full w-full overflow-hidden rounded-full" style={{ padding: 3, background: 'linear-gradient(135deg,#B46A55,#D2986C)' }}>
               {profilePhotoPreview ? (
                 <img src={profilePhotoPreview} alt="Profile" className="h-full w-full rounded-full object-cover" />
               ) : (
@@ -538,7 +535,7 @@ export function WelcomeIdentityStep({
             </div>
             <span
               className="absolute flex items-center justify-center rounded-full"
-              style={{ bottom: -2, right: -2, width: 28, height: 28, background: '#3b5fa8', border: '3px solid #fff', boxShadow: '0 3px 8px rgba(59,95,168,.4)' }}
+              style={{ bottom: -2, right: -2, width: 28, height: 28, background: '#B46A55', border: '3px solid #fff', boxShadow: '0 3px 8px rgba(180,106,85,.4)' }}
             >
               <Camera className="h-3.5 w-3.5 text-white" />
             </span>
@@ -634,7 +631,7 @@ export function WelcomeIdentityStep({
                     type="button"
                     onClick={() => setProfile({ ...profile, gender: g })}
                     className="flex-1 rounded-[10px] px-1.5 py-2.5 text-center text-[12.5px] font-semibold"
-                    style={{ background: on ? '#F3E7E0' : '#F6F1EA', border: on ? '1.5px solid #3b5fa8' : '1px solid #E7DDCE', color: on ? '#2d4480' : '#4A433C' }}
+                    style={{ background: on ? '#F3E7E0' : '#F6F1EA', border: on ? '1.5px solid #B46A55' : '1px solid #E7DDCE', color: on ? '#A45D44' : '#4A433C' }}
                   >
                     {g}
                   </button>
@@ -685,7 +682,7 @@ export function WelcomeIdentityStep({
               sent={guardianOtpSent}
             />
             {isGuardianPhoneVerified && (
-              <button type="button" onClick={() => setGuardianOverrideUnlocked(true)} className="mt-1.5 text-[11px] font-semibold" style={{ color: '#3b5fa8' }}>
+              <button type="button" onClick={() => setGuardianOverrideUnlocked(true)} className="mt-1.5 text-[11px] font-semibold" style={{ color: '#B46A55' }}>
                 Edit guardian mobile
               </button>
             )}
@@ -720,7 +717,7 @@ export function WelcomeIdentityStep({
           <div className="mb-1.5 text-[11px] font-bold uppercase" style={label}>
             Documents
           </div>
-          <div className="mb-2 text-[11px] leading-relaxed" style={{ color: sky.onSkyBody }}>
+          <div className="mb-2 text-[11px] leading-relaxed" style={{ color: FLOW_INK.body }}>
             Required for admission — your hostel verifies these separately.
           </div>
           <div className="flex flex-col gap-2">
@@ -732,7 +729,7 @@ export function WelcomeIdentityStep({
               const verified = status === 'APPROVED' || status === 'VERIFIED';
               const pending = status === 'PENDING';
               const rejected = status === 'REJECTED';
-              const tone = verified || pending ? '#1F7A52' : rejected ? '#D0473A' : '#3b5fa8';
+              const tone = verified || pending ? '#1F7A52' : rejected ? '#D0473A' : '#B46A55';
               return (
                 <label key={docType} className="flex cursor-pointer items-center gap-2.5" style={{ ...cardWrap, padding: '10px 13px' }}>
                   <span className="flex h-8 w-8 flex-none items-center justify-center rounded-lg" style={{ background: '#F3E7E0', color: tone }}>
@@ -759,7 +756,7 @@ export function WelcomeIdentityStep({
                       </div>
                     )}
                   </div>
-                  <span className="flex-none text-[11px] font-bold" style={{ color: '#2d4480' }}>
+                  <span className="flex-none text-[11px] font-bold" style={{ color: '#A45D44' }}>
                     {rejected ? 'Upload again' : verified || pending ? 'Replace' : 'Upload'}
                   </span>
                   <input
@@ -804,16 +801,16 @@ export function WelcomeIdentityStep({
   if (activeStep === 'ACCOUNT' && accountVerified) {
     return (
       <div style={{ animation: 'obFade .25s ease' }}>
-        <p className="font-display text-[10px] font-extrabold uppercase" style={{ color: sky.greetAccent, letterSpacing: '.1em' }}>
+        <p className="font-display text-[10px] font-extrabold uppercase" style={{ color: FLOW_INK.stepEyebrow, letterSpacing: '.1em' }}>
           Step 1 of {stageCount}
         </p>
         <h2
           className="font-display mt-1.5 text-[19px] font-extrabold leading-tight tracking-tight"
-          style={{ color: sky.onSkyTitle, textShadow: sky.onSkyShadow }}
+          style={{ color: FLOW_INK.title }}
         >
           Welcome to Stayo
         </h2>
-        <p className="mt-1.5 text-xs leading-relaxed" style={{ color: sky.onSkyBody }}>
+        <p className="mt-1.5 text-xs leading-relaxed" style={{ color: FLOW_INK.body }}>
           Confirm your stay details and billing preference to begin.
         </p>
         {roomAllocationCard}
@@ -830,16 +827,16 @@ export function WelcomeIdentityStep({
   if (activeStep === 'ACCOUNT' && localPhase === 'welcome') {
     return (
       <div style={{ animation: 'obFade .25s ease' }}>
-        <p className="font-display text-[10px] font-extrabold uppercase" style={{ color: sky.greetAccent, letterSpacing: '.1em' }}>
+        <p className="font-display text-[10px] font-extrabold uppercase" style={{ color: FLOW_INK.stepEyebrow, letterSpacing: '.1em' }}>
           Step 1 of {stageCount}
         </p>
         <h2
           className="font-display mt-1.5 text-[19px] font-extrabold leading-tight tracking-tight"
-          style={{ color: sky.onSkyTitle, textShadow: sky.onSkyShadow }}
+          style={{ color: FLOW_INK.title }}
         >
           Welcome to Stayo
         </h2>
-        <p className="mt-1.5 text-xs leading-relaxed" style={{ color: sky.onSkyBody }}>
+        <p className="mt-1.5 text-xs leading-relaxed" style={{ color: FLOW_INK.body }}>
           Confirm your stay details and billing preference to begin.
         </p>
         {roomAllocationCard}

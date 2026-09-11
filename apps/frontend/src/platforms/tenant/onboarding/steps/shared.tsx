@@ -1,6 +1,7 @@
 import { InputHTMLAttributes, ReactNode } from 'react';
 import { StayoLoader } from '@shared/ui/brand';
 import { fieldClass } from './stepStyles';
+import { FLOW_GROUND } from '../skyTheme';
 
 /**
  * Small presentational pieces shared by the activation step components.
@@ -113,7 +114,7 @@ export function BackButton({ onClick, title }: { onClick: () => void; title: str
  */
 export function StepActionBar({ children }: { children: ReactNode }) {
   return (
-    <div className="fixed bottom-0 left-1/2 z-[2] w-full max-w-md -translate-x-1/2 p-3" style={{ background: 'linear-gradient(180deg,transparent,#F6F1EA 30%)' }}>
+    <div className="fixed bottom-0 left-1/2 z-[2] w-full max-w-md -translate-x-1/2 p-3" style={{ background: `linear-gradient(180deg,transparent,${FLOW_GROUND} 30%)` }}>
       <div
         className="flex items-center gap-2.5 rounded-[15px] border p-2.5"
         style={{
@@ -151,7 +152,7 @@ export function PrimaryActionButton({
       onClick={onClick}
       disabled={disabled}
       className="flex flex-1 items-center justify-center gap-2 rounded-[11px] py-3.5 font-display text-sm font-bold text-white disabled:opacity-60"
-      style={{ background: dark ? '#1B1714' : '#3b5fa8', boxShadow: dark ? '0 6px 16px rgba(27,23,20,.3)' : '0 6px 16px rgba(59,95,168,.3)' }}
+      style={{ background: dark ? '#1B1714' : '#B46A55', boxShadow: dark ? '0 6px 16px rgba(27,23,20,.3)' : '0 6px 16px rgba(180,106,85,.3)' }}
     >
       {children}
     </button>

@@ -4,7 +4,7 @@ import { StayoLoader } from '@shared/ui/brand';
 import type { ActivationStep } from '../activationTypes';
 import { passwordStrength } from './passwordPolicy';
 import { BackButton, PrimaryActionButton, StepActionBar } from './shared';
-import { useSky } from '../skyContext';
+import { FLOW_INK } from '../skyTheme';
 
 /**
  * Step 4 — "Set Your Password", matching `Stayo Onboarding.dc.html`'s Step 4
@@ -57,7 +57,6 @@ export function PasswordActivateStep({
   goToStep,
   onActivate,
 }: PasswordActivateStepProps) {
-  const sky = useSky();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const strength = passwordStrength(password);
@@ -67,7 +66,7 @@ export function PasswordActivateStep({
   return (
     <div className="ob-fade-fast">
       <div className="flex items-start gap-[11px]">
-        <div className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px]" style={{ background: '#F3E7E0', color: '#3b5fa8' }}>
+        <div className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px]" style={{ background: '#F3E7E0', color: '#B46A55' }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
             <rect x="5" y="10" width="14" height="10" rx="2" />
             <path d="M8 10V7a4 4 0 0 1 8 0v3" />
@@ -76,11 +75,11 @@ export function PasswordActivateStep({
         <div>
           <div
             className="font-display text-[18px] font-extrabold tracking-tight"
-            style={{ color: sky.onSkyTitle, textShadow: sky.onSkyShadow }}
+            style={{ color: FLOW_INK.title }}
           >
             Set Your Password
           </div>
-          <div className="mt-1 text-xs leading-relaxed" style={{ color: sky.onSkyBody }}>
+          <div className="mt-1 text-xs leading-relaxed" style={{ color: FLOW_INK.body }}>
             Create a login password to secure your Stayo account.
           </div>
         </div>
@@ -160,7 +159,7 @@ export function PasswordActivateStep({
             </p>
           </div>
           <div className="mt-2.5 h-1.5 overflow-hidden rounded-full" style={{ background: '#EDE4D6' }}>
-            <div className="h-full rounded-full transition-[width] duration-500 ease-out" style={{ width: activationProgressWidth, background: '#3b5fa8' }} />
+            <div className="h-full rounded-full transition-[width] duration-500 ease-out" style={{ width: activationProgressWidth, background: '#B46A55' }} />
           </div>
         </div>
       )}

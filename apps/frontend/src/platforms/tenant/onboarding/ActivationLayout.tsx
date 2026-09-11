@@ -2,8 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 import './onboarding.css';
 import { ActivationProgress, type ActivationVisualStep } from './ActivationProgress';
-import { hostelInitials, skyEnv, THEME_CYCLE, type ThemePhase } from './skyTheme';
-import { SkyProvider } from './skyContext';
+import { FLOW_GROUND, hostelInitials, skyEnv, THEME_CYCLE, type ThemePhase } from './skyTheme';
 import LinkExpiryNotice from './LinkExpiryNotice';
 
 interface ActivationLayoutProps {
@@ -68,11 +67,19 @@ function useIdleBored(resetKey: unknown): boolean {
  * dual-brand lockup (Stayo icon × hostel badge/initials, ADR-070) and the
  * 5-node journey track (`ActivationProgress.tsx`).
  *
- * Body content renders directly over the gradient (no enclosing white
- * card) — matching the design, where only specific elements (room-summary
- * tiles, form fields, the sticky action bar) are their own cards, not the
- * whole step. Bottom padding clears the sticky action bar each step renders
- * via `StepActionBar` (`steps/shared.tsx`).
+ * The sky is painted on the header band only; the step body sits on
+ * `FLOW_GROUND` (cream) at every hour. The design's gradient already resolves
+ * to cream a little below the progress panel, but it was sized to the whole
+ * page, so on a long step the dark part stretched down into the form and the
+ * body's text landed on a different colour depending on the step's length —
+ * no text colour could be right everywhere. Sizing the sky to the header
+ * keeps the design's look and gives every piece of body text one known
+ * background. The header's own text follows the phase via `lockup*` tokens.
+ *
+ * Body content has no enclosing white card — matching the design, where only
+ * specific elements (room-summary tiles, form fields, the sticky action bar)
+ * are their own cards, not the whole step. Bottom padding clears the sticky
+ * action bar each step renders via `StepActionBar` (`steps/shared.tsx`).
  */
 export function ActivationLayout({
   activeStep,
@@ -99,7 +106,7 @@ export function ActivationLayout({
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden" style={{ background: sky.flowGradient, transition: 'background 1.2s ease' }}>
+    <div className="relative min-h-screen overflow-hidden" style={{ background: FLOW_GROUND }}>
       {error && (
         <div
           role="alert"
@@ -118,94 +125,101 @@ export function ActivationLayout({
         </div>
       )}
 
-      {/* `relative` so the sky furniture's percentage offsets resolve against this
-          column, not the viewport — the design authors them against a 402px frame. */}
-      <div className="relative mx-auto w-full max-w-md">
-        {/* sky furniture — stars, clouds and the tap-to-cycle sun/moon */}
-        <div className="pointer-events-none absolute inset-0 z-0" style={{ opacity: sky.starOpacity, transition: 'opacity 1.2s ease' }}>
-          <span className="ob-twinkle absolute h-0.5 w-0.5 rounded-full bg-white" style={{ top: 76, left: '32.8%', animationDelay: '.3s' }} />
-          <span className="ob-twinkle absolute h-0.5 w-0.5 rounded-full bg-white" style={{ top: 112, left: '17.4%', animationDuration: '3s', animationDelay: '.7s' }} />
-          <span className="ob-twinkle absolute h-0.5 w-0.5 rounded-full bg-white" style={{ top: 58, left: '52.2%', animationDuration: '3.3s', animationDelay: '1s' }} />
-        </div>
-        <div className="ob-drift-flow pointer-events-none absolute z-0 h-[14px] w-[52px] rounded-full" style={{ top: 70, left: '6.5%', background: sky.cloudFill }} />
-        <div className="ob-drift2-flow pointer-events-none absolute z-0 h-[11px] w-10 rounded-full" style={{ top: 120, left: '52.2%', background: sky.cloudFill2 }} />
+      {/* Header band — the only part of the wizard painted with the sky. Full
+          width, so the sky still spans the screen on a wide display; the
+          gradient's stops are percentages of this band, not of the page. */}
+      <div style={{ background: sky.flowGradient, transition: 'background 1.2s ease' }}>
+        {/* `relative` so the sky furniture's percentage offsets resolve against this
+            column, not the viewport — the design authors them against a 402px frame. */}
+        <div className="relative mx-auto w-full max-w-md">
+          {/* sky furniture — stars, clouds and the tap-to-cycle sun/moon */}
+          <div className="pointer-events-none absolute inset-0 z-0" style={{ opacity: sky.starOpacity, transition: 'opacity 1.2s ease' }}>
+            <span className="ob-twinkle absolute h-0.5 w-0.5 rounded-full bg-white" style={{ top: 76, left: '32.8%', animationDelay: '.3s' }} />
+            <span className="ob-twinkle absolute h-0.5 w-0.5 rounded-full bg-white" style={{ top: 112, left: '17.4%', animationDuration: '3s', animationDelay: '.7s' }} />
+            <span className="ob-twinkle absolute h-0.5 w-0.5 rounded-full bg-white" style={{ top: 58, left: '52.2%', animationDuration: '3.3s', animationDelay: '1s' }} />
+          </div>
+          <div className="ob-drift-flow pointer-events-none absolute z-0 h-[14px] w-[52px] rounded-full" style={{ top: 70, left: '6.5%', background: sky.cloudFill }} />
+          <div className="ob-drift2-flow pointer-events-none absolute z-0 h-[11px] w-10 rounded-full" style={{ top: 120, left: '52.2%', background: sky.cloudFill2 }} />
 
-        {sky.showSun && (
-          <button
-            type="button"
-            onClick={cycleTheme}
-            title="Tap to change theme"
-            aria-label="Change sky theme"
-            className="ob-glow-flow absolute right-[30px] top-11 z-[3] h-10 w-10 rounded-full"
-            style={{ background: sky.sunFill, boxShadow: sky.sunGlow }}
-          />
-        )}
-        {sky.showMoon && (
-          <button
-            type="button"
-            onClick={cycleTheme}
-            title="Tap to change theme"
-            aria-label="Change sky theme"
-            className="absolute right-[30px] top-11 z-[3] h-[38px] w-[38px] rounded-full"
-            style={{ background: '#EDE9DE', boxShadow: '0 0 26px rgba(220,225,240,.4), inset -11px -5px 0 -2px rgba(160,168,190,.35)' }}
-          />
-        )}
+          {sky.showSun && (
+            <button
+              type="button"
+              onClick={cycleTheme}
+              title="Tap to change theme"
+              aria-label="Change sky theme"
+              className="ob-glow-flow absolute right-[30px] top-11 z-[3] h-10 w-10 rounded-full"
+              style={{ background: sky.sunFill, boxShadow: sky.sunGlow }}
+            />
+          )}
+          {sky.showMoon && (
+            <button
+              type="button"
+              onClick={cycleTheme}
+              title="Tap to change theme"
+              aria-label="Change sky theme"
+              className="absolute right-[30px] top-11 z-[3] h-[38px] w-[38px] rounded-full"
+              style={{ background: '#EDE9DE', boxShadow: '0 0 26px rgba(220,225,240,.4), inset -11px -5px 0 -2px rgba(160,168,190,.35)' }}
+            />
+          )}
 
-        <div className="relative z-[2] px-3 pb-2 pt-11">
-          <div className="flex items-center gap-[9px] px-1 pb-3.5">
-            <img src="/stayo-icon.png" alt="Stayo" className="h-[38px] w-[38px] flex-none rounded-[11px]" style={{ boxShadow: '0 4px 12px rgba(180,106,85,.4)' }} />
-            <span className="flex-none text-[15px]" style={{ color: '#C9BDAF' }}>
-              ×
-            </span>
-            {hostelLogoUrl ? (
-              <img src={hostelLogoUrl} alt={hostelName || 'Hostel'} className="h-[38px] w-[38px] flex-none rounded-[11px] object-cover" style={{ boxShadow: '0 4px 12px rgba(34,30,26,.32)' }} />
-            ) : (
-              <div className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px]" style={{ background: '#221E1A', boxShadow: '0 4px 12px rgba(34,30,26,.32)' }}>
-                <span className="font-display text-sm font-extrabold" style={{ color: '#F0E4D6' }}>
-                  {hostelInitials(hostelName || '')}
-                </span>
+          <div className="relative z-[2] px-3 pb-2 pt-11">
+            <div className="flex items-center gap-[9px] px-1 pb-3.5">
+              <img src="/stayo-icon.png" alt="Stayo" className="h-[38px] w-[38px] flex-none rounded-[11px]" style={{ boxShadow: '0 4px 12px rgba(180,106,85,.4)' }} />
+              <span className="flex-none text-[15px]" style={{ color: sky.lockupSep }}>
+                ×
+              </span>
+              {hostelLogoUrl ? (
+                <img src={hostelLogoUrl} alt={hostelName || 'Hostel'} className="h-[38px] w-[38px] flex-none rounded-[11px] object-cover" style={{ boxShadow: '0 4px 12px rgba(34,30,26,.32)' }} />
+              ) : (
+                <div className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px]" style={{ background: '#221E1A', boxShadow: '0 4px 12px rgba(34,30,26,.32)' }}>
+                  <span className="font-display text-sm font-extrabold" style={{ color: '#F0E4D6' }}>
+                    {hostelInitials(hostelName || '')}
+                  </span>
+                </div>
+              )}
+              <div className="ml-0.5 min-w-0">
+                {/* Phase-aware: dark ink on the pale daytime sky, light after dusk. */}
+                <div className="text-[9.5px] font-bold uppercase tracking-[.14em]" style={{ color: sky.lockupEyebrow }}>
+                  Tenant Admission
+                </div>
+                <div className="mt-px truncate font-display text-[15px] font-extrabold tracking-tight" style={{ color: sky.lockupTitle }}>
+                  {hostelName || 'Stayo'}
+                </div>
               </div>
-            )}
-            <div className="ml-0.5 min-w-0">
-              <div className="text-[9.5px] font-bold uppercase tracking-[.14em]" style={{ color: '#B7ADA2' }}>
-                Tenant Admission
-              </div>
-              <div className="mt-px truncate font-display text-[15px] font-extrabold tracking-tight text-white">{hostelName || 'Stayo'}</div>
+            </div>
+
+            <div
+              className="rounded-2xl border"
+              style={{
+                // Phase-aware: the panel's contents are dark ink, so it has to stay
+                // a light surface at every hour. See panelBg in skyTheme.
+                background: sky.panelBg,
+                backdropFilter: 'blur(16px) saturate(150%)',
+                WebkitBackdropFilter: 'blur(16px) saturate(150%)',
+                borderColor: sky.panelBorder,
+                boxShadow: '0 8px 26px rgba(20,16,13,.16)',
+                padding: '11px 14px 12px',
+              }}
+            >
+              <ActivationProgress
+                activeStep={activeStep}
+                currentStep={currentStep}
+                completedSteps={completedSteps}
+                onStepClick={onStepClick}
+                agreementRequired={agreementRequired}
+                bored={bored}
+                gender={gender}
+              />
+              {/* How long the link has left — quiet until it matters. */}
+              <LinkExpiryNotice expiresAt={linkExpiresAt} held={linkHeld} />
             </div>
           </div>
-
-          <div
-            className="rounded-2xl border"
-            style={{
-              // Phase-aware: the panel's contents are dark ink, so it has to stay
-              // a light surface at every hour. See panelBg in skyTheme.
-              background: sky.panelBg,
-              backdropFilter: 'blur(16px) saturate(150%)',
-              WebkitBackdropFilter: 'blur(16px) saturate(150%)',
-              borderColor: sky.panelBorder,
-              boxShadow: '0 8px 26px rgba(20,16,13,.16)',
-              padding: '11px 14px 12px',
-            }}
-          >
-            <ActivationProgress
-              activeStep={activeStep}
-              currentStep={currentStep}
-              completedSteps={completedSteps}
-              onStepClick={onStepClick}
-              agreementRequired={agreementRequired}
-              bored={bored}
-              gender={gender}
-            />
-            {/* How long the link has left — quiet until it matters. */}
-            <LinkExpiryNotice expiresAt={linkExpiresAt} held={linkHeld} />
-          </div>
         </div>
+      </div>
 
-        <div className="relative z-[1]" style={{ padding: '14px 14px 108px' }}>
-          {/* Steps render straight over the gradient, so they need the phase to
-              pick legible text colours. See skyContext. */}
-          <SkyProvider value={sky}>{children}</SkyProvider>
-        </div>
+      {/* Step body — on FLOW_GROUND at every hour, so steps use the fixed FLOW_INK. */}
+      <div className="relative z-[1] mx-auto w-full max-w-md" style={{ padding: '14px 14px 108px' }}>
+        {children}
       </div>
     </div>
   );

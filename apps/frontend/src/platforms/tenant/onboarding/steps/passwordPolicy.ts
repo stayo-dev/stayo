@@ -21,7 +21,7 @@ export function passwordStrength(password: string): PasswordStrengthResult {
   if (/[^A-Za-z0-9]/.test(password)) score += 1;
 
   if (score <= 1) return { label: 'Weak', width: '25%', color: 'bg-red-500', textColor: 'text-red-700' };
-  if (score === 2) return { label: 'Fair', width: '50%', color: 'bg-blue-500', textColor: 'text-blue-700' };
+  if (score === 2) return { label: 'Fair', width: '50%', color: 'bg-amber-500', textColor: 'text-amber-700' };
   if (score === 3) return { label: 'Good', width: '75%', color: 'bg-lime-500', textColor: 'text-lime-700' };
   return { label: 'Strong', width: '100%', color: 'bg-emerald-500', textColor: 'text-emerald-700' };
 }
