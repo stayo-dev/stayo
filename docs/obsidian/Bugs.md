@@ -8,6 +8,18 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-11 — Every tenant document preview failed with a 401 in production (fixed)
+
+**Symptom.** On `/owner/tenants/verifications` (and the tenant profile's document preview) the image was broken; the network tab showed `GET https://api.yourstayo.com/api/tenants/…/documents/…/download → 401`, requested as a plain `<img>` with no session, and the button read "Open in new tab".
+
+**Root cause — a same-origin base met an absolute link.** Production is built with `VITE_API_URL="/api"` (confirmed from the live bundle), proxied to the backend. The backend writes document links as absolute URLs on its own public host, `api.yourstayo.com`. `resolveDocumentSource` — which decides whether a URL may carry the session, so a token is never handed to ImageKit — ruled that under a same-origin base "an absolute URL is never ours". Every tenant document was therefore treated as a third-party file and loaded without auth. Latent alongside it: a URL it *did* accept was passed whole to an API client that prefixes its own base, requesting `/api/api/…`.
+
+**Fix.** An absolute link whose path sits under the API base is fetched **through our own base, by path** — the client re-issues it against `/api`, so the session can only ever reach our server, even if the link names some other host. Authenticated sources now carry a base-relative path, which also removes the double-join. Third-party files, look-alike hosts and sibling paths stay `direct`, as before; `documentSource.test.ts` pins the production case and the safety cases. Verified that `yourstayo.com/api/…/download` reaches the backend (its own JSON 401 unauthenticated).
+
+**Lesson.** The rule was written and tested against an absolute API base; production runs the other configuration. A test per real deployment shape would have caught it.
+
+**See:** [[Frontend]], [[Changelog]]
+
 ## 2026-09-11 — A tenant's photo was held and never shown, and a withdrawn charge vanished (fixed)
 
 **Symptom.** Tenants appeared as initials across the owner app — the tenants list, the collection queue, Quick Collect — including tenants whose photo was sitting in `tenants.photo_url`. Separately, an owner who added a charge by mistake had no way to correct or remove it.

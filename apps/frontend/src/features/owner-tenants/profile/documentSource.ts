@@ -39,8 +39,8 @@ export function resolveDocumentSource(
 
   const relative = raw.startsWith('/');
 
+  let parsed: URL | null = null;
   if (!relative) {
-    let parsed: URL;
     try {
       parsed = new URL(raw);
     } catch {
@@ -51,36 +51,58 @@ export function resolveDocumentSource(
     if (!RENDERABLE_PROTOCOLS.has(parsed.protocol)) return null;
   }
 
-  return { mode: isOurApi(raw, apiBaseUrl, relative) ? 'authenticated' : 'direct', url: raw };
+  const clientPath = ourApiPath(raw, parsed, apiBaseUrl);
+  return clientPath === null ? { mode: 'direct', url: raw } : { mode: 'authenticated', url: clientPath };
 }
 
-function isOurApi(url: string, apiBaseUrl: string, relative: boolean): boolean {
+/**
+ * If this URL is one of our API's routes, the path to request **relative to the
+ * API client's base**; otherwise null.
+ *
+ * Returning a base-relative path rather than the URL itself does two things.
+ * The client joins its own base, so the request goes to *our* API whatever host
+ * the link names — the session token can only ever reach our server. And it
+ * cannot be joined twice: handing "/api/tenants/…" to a client whose base is
+ * "/api" requested "/api/api/tenants/…".
+ */
+function ourApiPath(raw: string, parsed: URL | null, apiBaseUrl: string): string | null {
   const base = apiBaseUrl.trim().replace(/\/+$/, '');
-  if (!base) return false;
+  if (!base) return null;
 
   if (base.startsWith('/')) {
-    // Same-origin API. A relative document URL is ours only if it sits under
-    // the API path; an absolute one never is.
-    return relative && isUnderPath(url, base);
+    // Same-origin API (production: "/api", proxied to the backend). The backend
+    // writes download links as absolute URLs on its own public host, which is
+    // not this origin — so an absolute URL is judged by its path. That is safe
+    // precisely because the request is re-issued against our base: a link
+    // naming another host with an /api path still only ever reaches us.
+    const path = parsed ? parsed.pathname : raw.split(/[?#]/)[0];
+    const search = parsed ? parsed.search : raw.includes('?') ? raw.slice(raw.indexOf('?')).split('#')[0] : '';
+    return isUnderPath(path, base) ? stripBase(path, base) + search : null;
   }
 
   // Absolute API base. A relative URL resolves against the app's origin, not
   // the API host, so it is not ours.
-  if (relative) return false;
+  if (!parsed) return null;
 
-  let target: URL;
   let apiUrl: URL;
   try {
-    target = new URL(url);
     apiUrl = new URL(base);
   } catch {
-    return false;
+    return null;
   }
 
   // Compared as whole origins, so `api.stayo.test.evil.com` cannot match
   // `api.stayo.test` the way a `startsWith` on the string would.
-  if (target.origin !== apiUrl.origin) return false;
-  return isUnderPath(target.pathname, apiUrl.pathname.replace(/\/+$/, ''));
+  if (parsed.origin !== apiUrl.origin) return null;
+  const basePath = apiUrl.pathname.replace(/\/+$/, '');
+  return isUnderPath(parsed.pathname, basePath) ? stripBase(parsed.pathname, basePath) + parsed.search : null;
+}
+
+/** "/api/tenants/x" under "/api" → "/tenants/x". */
+function stripBase(path: string, base: string): string {
+  if (!base || base === '/') return path;
+  const rest = path.slice(base.length);
+  return rest.startsWith('/') ? rest : `/${rest}`;
 }
 
 /** True when `path` is `prefix` itself or a segment beneath it — never a sibling sharing a prefix. */

@@ -72,9 +72,47 @@ describe('resolveDocumentSource', () => {
     expect(resolveDocumentSource('data:text/html,<script>', API)).toBeNull();
   });
 
-  it('carries the url through unchanged', () => {
-    const url = `${API}/tenants/t1/documents/d1/download`;
-    expect(resolveDocumentSource(url, API)?.url).toBe(url);
+  it('hands the API client a path relative to its base, so it is never joined twice', () => {
+    // The client prefixes its own base. Passing it "/api/tenants/…" under a
+    // "/api" base requested "/api/api/tenants/…".
+    expect(resolveDocumentSource(`${API}/tenants/t1/documents/d1/download`, API)?.url).toBe('/tenants/t1/documents/d1/download');
+    expect(resolveDocumentSource('/api/tenants/t1/documents/d1/download', '/api')?.url).toBe('/tenants/t1/documents/d1/download');
+  });
+
+  it('keeps a query string on the request path', () => {
+    expect(resolveDocumentSource(`${API}/tenants/t1/documents/d1/download?v=2`, API)?.url).toBe('/tenants/t1/documents/d1/download?v=2');
+  });
+});
+
+describe('resolveDocumentSource — production: a same-origin "/api" base', () => {
+  /*
+   * Production is built with VITE_API_URL="/api" (proxied to the backend),
+   * while the backend writes download links as absolute URLs on its own public
+   * host. The old rule — "under a same-origin base an absolute URL is never
+   * ours" — sent every tenant document to an <img src> with no session, and
+   * the API answered 401. Seen on /owner/tenants/verifications, 2026-09-11.
+   */
+  const BASE = '/api';
+
+  it('authenticates our backend’s absolute download link, and fetches it through our own base', () => {
+    const source = resolveDocumentSource('https://api.yourstayo.com/api/tenants/t1/documents/d1/download', BASE);
+    expect(source).toEqual({ mode: 'authenticated', url: '/tenants/t1/documents/d1/download' });
+  });
+
+  it('still never authenticates a third-party file', () => {
+    expect(resolveDocumentSource('https://ik.imagekit.io/stayo/doc.jpg', BASE)?.mode).toBe('direct');
+  });
+
+  it('is safe even for a hostile host with an /api path — the request goes to our base, not to it', () => {
+    // The session is attached to a request against OUR origin; the named host
+    // receives nothing. The url returned has no host at all.
+    const source = resolveDocumentSource('https://evil.example/api/tenants/t1/documents/d1/download', BASE);
+    expect(source?.url.startsWith('/')).toBe(true);
+    expect(source?.url).not.toContain('evil.example');
+  });
+
+  it('does not authenticate a sibling path that merely starts with "/api"', () => {
+    expect(resolveDocumentSource('https://api.yourstayo.com/apiary/x.jpg', BASE)?.mode).toBe('direct');
   });
 });
 
