@@ -29,6 +29,9 @@ export function ReviewStep({ queue, rooms, onAcknowledgeGroup, onImport, busy }:
   // and could read "Import 0 tenants" on a button that worked.
   const importable =
     summary.ready + needsYou.filter((row) => !row.issues.some((i) => i.severity === 'BLOCKER')).length;
+  // Rows, not issues. summary.blockers counts problems, and one row with two
+  // problems was being reported to the owner as "2 rows" they could not find.
+  const blockedRows = needsYou.filter((row) => row.issues.some((i) => i.severity === 'BLOCKER')).length;
 
   return (
     <div className="space-y-4">
@@ -152,8 +155,8 @@ export function ReviewStep({ queue, rooms, onAcknowledgeGroup, onImport, busy }:
 
       {blocked && (
         <p className="text-center text-[12px] font-medium text-muted-foreground">
-          Fix the {summary.blockers.toLocaleString('en-IN')} {summary.blockers === 1 ? 'row' : 'rows'} above in your
-          sheet, then upload it again.
+          Fix {blockedRows === 1 ? 'the row' : `the ${blockedRows.toLocaleString('en-IN')} rows`} above in your sheet,
+          then upload it again.
         </p>
       )}
       <p className="text-center text-[12px] font-medium text-muted-foreground">

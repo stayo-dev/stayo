@@ -157,10 +157,12 @@ const COPY: Record<IssueCode, (c: IssueContext) => Copy> = {
     fix: { kind: "EDIT_FIELD" },
   }),
   EMAIL_INVALID: (c) => ({
+    // The blank case is no longer raised by validation — email is optional —
+    // but the wording stays for any caller that does require one.
     title: isBlank(c.value)
       ? `This tenant's email address is missing.`
       : `"${c.value}" isn't a valid email address.`,
-    detail: `Enter an email like name@example.com — their invitation and receipts go there.`,
+    detail: `Enter an email like name@example.com, or leave it blank — we invite tenants on WhatsApp.`,
     field: "email",
     fix: { kind: "EDIT_FIELD" },
   }),

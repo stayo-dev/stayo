@@ -102,6 +102,7 @@ function buildCover(sheet: ExcelJS.Worksheet, input: TemplateInput) {
     "Filling in the columns",
     "• Dates are DD/MM/YYYY — 05/01/2026 means 5 January 2026, not 1 May.",
     "• Amounts are in ₹. Digits only, like 8500 — a ₹ sign and commas are fine.",
+    "• Email is optional. We invite tenants on WhatsApp, so a mobile number is what we need.",
     "• Leave Monthly Rent blank to use the room's own rent.",
     "• Already living here? Put their real joining date, and what they have already paid in Amount Already Paid. We will work out what is still owed.",
     "• Paste values, not formulas — we cannot read a formula, only the value it produces.",
