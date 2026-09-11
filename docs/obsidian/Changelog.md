@@ -10,6 +10,13 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-11**: **Bulk import — email is optional, and rows are fixed on screen** ([[Business-Rules]], [[APIs]]). Found by actually running an import.
+  - **Email is no longer required.** `createInvitation` needs a name, a phone and a room — the invitation goes out over WhatsApp — but bulk import demanded an email anyway and blocked rows the rest of the system would have accepted.
+  - **Each error now carries its own control**: a text field, a room dropdown or a date picker, under the sentence explaining the problem. Re-checking runs those edits through `revalidate`, the same validation as the file, and Import stays disabled until they have been checked.
+  - **`GET …/workbook`** hands the corrected sheet back, so the owner's copy matches Stayo and a later re-upload cannot undo their fixes.
+  - **Fixed:** the review screen said "Fix the 2 rows above" for one row with two problems — `summary.blockers` counts problems, not rows.
+  - **Covered a path nothing tested:** a date typed into a real spreadsheet arrives as a fractional serial (`46276.00011574074`), not the text the owner sees.
+
 - **2026-09-11**: **Bulk tenant import — the owner's screen, and sending in waves** ([[Decisions#ADR-182|ADR-182]], [[Features]], [[APIs]]). Third of three plans; the feature is now reachable.
   - **`ImportTenantsSheet`**: hostel → download a workbook built from that hostel's rooms → upload → review → import → send, opened from the hostel's Tenants page beside **+ Add**. The rows that are fine collapse to one line, a repeated problem is one decision rather than one per row, and the progress bar is real — confirm is chunked, so there is a genuine numerator.
   - **Invitations are created `QUEUED` and sent by the owner**, all at once or a wave at a time, with each tenant's expiry clock starting when their own invitation goes out. Not a revival of the removed `suppressInvitationNotification` path: acceptance stays mandatory and nothing is attested on the owner's behalf. **No schema change** — status is a plain string, which also sidesteps the deploy-before-migrate hazard.

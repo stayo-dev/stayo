@@ -243,6 +243,7 @@ Added 2026-07-26 for the real StayO tenant app (Home/Money/Room/Profile tabs) �
 **Changes 2026-09-11 (the owner's flow — [[Decisions#ADR-182|ADR-182]]):**
 - **Row `issues` and the `blockers`/`choices` counts are persisted** on the batch and returned by `GET …/confirm`, so the review screen works on a reload rather than only in the response that created the batch.
 - **`POST /api/bulk-import/[batch_id]/confirm` creates invitations `QUEUED`** — the tenancy, rooms, obligations and settlement all happen, but nothing is sent.
+- **`GET /api/bulk-import/[batch_id]/workbook`** (new) rebuilds the batch as an `.xlsx` with the owner's on-screen fixes written in — same sheets, same hostel stamp, same room dropdown, the worked example replaced by the real rows. So the spreadsheet on their machine matches what Stayo holds, and re-uploading it cannot undo their corrections.
 - **`POST /api/bulk-import/[batch_id]/dispatch`** (new) sends them: `{ invitation_ids?, limit? }` → `{ sent, failed, remaining, errors }`. No body sends the whole batch. Idempotent — anything no longer `QUEUED` is skipped, so a double-tapped "send all" cannot message a tenant twice. **Each tenant's `expires_at` is recomputed at send**, so an invitation that sat queued still gives them the full window.
 
 **Changes 2026-09-11 (the workbook and chunked execution — [[Decisions#ADR-181|ADR-181]]):**
