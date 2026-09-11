@@ -14,6 +14,7 @@ import { useDocumentVerification } from '../hooks/useDocumentVerification';
 import { DocumentReviewCard } from '../documents/DocumentReviewCard';
 import { documentTypeLabel, type ReviewDocument } from '../documents/kycDocuments';
 import { RejectDocumentSheet } from '../documents/RejectDocumentSheet';
+import { DocumentDecisionBar } from '../documents/DocumentDecisionBar';
 import type { TenantDetailTab } from '../types';
 import { InvitedTenantProfileView } from '../components/InvitedTenantProfileView';
 import { showsInvitationManagement } from '../invitationManagement';
@@ -611,6 +612,22 @@ export function TenantDetailPage() {
         url={previewDoc?.url ?? null}
         fileName={previewDoc?.fileName ?? 'document'}
       >
+        {/* Decide while looking at it: the card's Approve/Reject meant closing
+            the image first and judging from memory. */}
+        {previewDoc?.doc && previewDoc.doc.status === 'PENDING' && (
+          <DocumentDecisionBar
+            busy={verification.isApproving || verification.isRejecting}
+            pending={verification.isApproving ? 'approve' : null}
+            onApprove={() => {
+              const docId = previewDoc.doc!.id;
+              verification.approve({ documentId: docId }, { onSuccess: () => setPreviewDoc(null) });
+            }}
+            onReject={() => {
+              setRejectingDoc(previewDoc.doc!);
+              setPreviewDoc(null);
+            }}
+          />
+        )}
         {previewDoc?.doc && <DocumentThread tenantId={tenant.id} doc={previewDoc.doc} />}
       </DocumentPreviewSheet>
       {correctingPaymentId && (

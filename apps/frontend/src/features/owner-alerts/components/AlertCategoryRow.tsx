@@ -5,10 +5,17 @@ interface AlertCategoryRowProps {
   description: string;
   count: number;
   onClick: () => void;
+  /**
+   * For a category that is waiting on the owner (documents to review), not just
+   * informing them: the count turns clay when there is something to do, so it
+   * stands out from the informational categories around it.
+   */
+  actionable?: boolean;
 }
 
 /** One category on the Alerts menu — a full-width card-button, same convention as `TenantRow`. */
-export function AlertCategoryRow({ label, description, count, onClick }: AlertCategoryRowProps) {
+export function AlertCategoryRow({ label, description, count, onClick, actionable = false }: AlertCategoryRowProps) {
+  const needsYou = actionable && count > 0;
   return (
     <button
       type="button"
@@ -20,7 +27,11 @@ export function AlertCategoryRow({ label, description, count, onClick }: AlertCa
         <div className="mt-0.5 truncate text-[11.5px] text-muted-foreground">{description}</div>
       </div>
       <div className="flex flex-none items-center gap-1.5">
-        <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold text-muted-foreground">{count}</span>
+        <span
+          className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${needsYou ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
+        >
+          {count}
+        </span>
         <ChevronRight className="h-4 w-4 text-muted-foreground" strokeWidth={1.8} />
       </div>
     </button>

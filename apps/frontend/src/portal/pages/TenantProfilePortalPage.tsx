@@ -1,3 +1,4 @@
+import { RejectedDocumentNotice } from '@features/tenant-portal/components/RejectedDocumentNotice';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -1027,10 +1028,22 @@ export function TenantProfilePortalPage() {
                           : 'bg-amber-500/10 text-amber-600'
                     }`}
                   >
-                    {status}
+                    {/* Words, not status codes: "REJECTED" told a tenant nothing about what to do. */}
+                    {status === 'APPROVED' || status === 'VERIFIED' || d.is_verified
+                      ? 'Verified'
+                      : status === 'REJECTED'
+                        ? 'Needs a new copy'
+                        : 'Being reviewed'}
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground">Uploaded {fmtDate(String(d.uploaded_at || d.created_at))}</p>
+                {status === 'REJECTED' && (
+                  <RejectedDocumentNotice
+                    docType={String(d.doc_type)}
+                    label={String(d.doc_type_label ?? d.doc_type)}
+                    reason={[...chatMessages].reverse().find((m) => m.sender === 'owner')?.message ?? null}
+                  />
+                )}
                 {d.doc_number && (
                   <p className="text-xs text-muted-foreground">Document no. {String(d.doc_number)}</p>
                 )}

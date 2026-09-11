@@ -207,6 +207,19 @@ Four changes to the owner's 4-step Invite Tenant wizard (Tenant → Stay → Mon
 
 See [[Decisions#ADR-163|ADR-163]], [[Business-Rules]], [[APIs]].
 
+### Tenant document verification — reviewed from Alerts, decided while looking (2026-09-11)
+
+The backend has long been able to verify, reject and thread messages on a tenant's KYC documents; the owner app never gave it a front door, and the tenant had no way to answer a rejection.
+
+- **Alerts › Documents**, listed first with its live count ("3 uploads from 2 tenants to review") in clay — the only category waiting *on* the owner rather than informing them. Same pending-documents query as the Home dashboard's KYC card, so the counts agree.
+- **The review queue is a review, not a list** (`/owner/tenants/verifications`). One document fills the screen with whose it is above it (name, room, how long it has waited), a full-width inline preview that opens full-screen on tap, and a reminder to check the name matches. Reject / Approve sit in a sticky bar in thumb reach; the moment a decision lands the next document is on screen — advanced locally from this session's decisions (`reviewQueue.ts`, tested), not after a refetch. "Up next" lists the rest and any can be jumped to. Mobile first; on a wide screen the same column is centred.
+- **Reject asks for a reason** — one-tap presets or the owner's own words — which the tenant reads verbatim.
+- **No "approve all"**, deliberately: the point is that each document was looked at before it was approved.
+- **Tenant profile › Documents**: the preview sheet now carries the same Approve / Reject bar (`DocumentDecisionBar`), so the owner decides while looking at the image instead of closing it and judging from memory. The preview itself (`DocumentPreviewPane`) is shared with the queue.
+- **Tenant side closes the loop.** The tenant's Documents screen says *Verified / Being reviewed / Needs a new copy* instead of raw status codes, and a rejected document shows the owner's reason with an **Upload a new copy** button. Images are resized on the phone first (the onboarding upload policy); the replacement lands PENDING and reappears in the owner's queue.
+- **Key files:** `features/owner-tenants/documents/{reviewQueue.ts,DocumentDecisionBar.tsx}`, `profile/DocumentPreviewPane.tsx`, `pages/PendingVerificationsPage.tsx`, `features/owner-alerts/pages/AlertsPage.tsx`, `features/tenant-portal/components/RejectedDocumentNotice.tsx`. No backend change.
+- **Depends on:** [[APIs]] (the existing `/api/tenants/[id]/documents/*` and `POST /api/tenants/me/documents`), [[Business-Rules]] (KYC never blocks onboarding).
+
 ### Owner-side: faces, reach, and correcting a charge (2026-09-11)
 
 Three gaps reported together, all of them the product holding information it never showed.

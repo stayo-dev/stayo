@@ -32,7 +32,7 @@ export const PAGE_HEADERS: Record<string, PageHeader> = {
   '/owner/food/polls': { title: 'Food polls', subtitle: 'Ask residents what to cook' },
   '/owner/hostels': { title: 'Hostels', subtitle: 'Your properties' },
   '/owner/hostels/new': { title: 'Add a hostel', subtitle: 'Name it, raise the floors, fill the rooms' },
-  '/owner/alerts': { title: 'Alerts', subtitle: 'Leads, messages, renewals and tenant requests' },
+  '/owner/alerts': { title: 'Alerts', subtitle: 'Documents, leads, messages, renewals and requests' },
   '/owner/agreements/review': { title: 'Review agreements', subtitle: 'Renewals and agreements needing a decision' },
   '/owner/rooms/vacant': { title: 'Fill vacant beds', subtitle: 'Empty beds across your hostels' },
   '/owner/more': { title: 'Settings', subtitle: 'Your account and each hostel’s rules' },

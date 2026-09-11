@@ -1,211 +1,241 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Check, Download, Eye, ShieldCheck, X } from 'lucide-react';
+import { ArrowLeft, ChevronRight, ShieldCheck, X } from 'lucide-react';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { EmptyState } from '@shared/ui-patterns/EmptyState';
 import { usePendingVerifications } from '../hooks/usePendingVerifications';
 import { useDocumentVerification } from '../hooks/useDocumentVerification';
 import { RejectDocumentSheet } from '../documents/RejectDocumentSheet';
+import { DocumentDecisionBar } from '../documents/DocumentDecisionBar';
 import { documentTypeLabel } from '../documents/kycDocuments';
-import { APP_SURFACE, APP_GRID } from '@shared/ui/surface';
-import { useIsDesktop } from '@/app/components/ui/use-desktop';
-
-const card =
-  'flex flex-col gap-3 rounded-[18px] border border-border bg-card p-3.5 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]';
-const actionBtn =
-  'flex flex-1 items-center justify-center gap-1.5 rounded-[10px] py-2.5 font-display text-[12.5px] font-bold disabled:opacity-50';
+import { currentItem, flattenQueue, queueProgress, upNext, type QueueItem } from '../documents/reviewQueue';
+import { DocumentPreviewPane } from '../profile/DocumentPreviewPane';
+import { APP_SURFACE } from '@shared/ui/surface';
 
 function waitedFor(iso: string | null) {
   if (!iso) return null;
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return null;
   const days = Math.floor((Date.now() - then) / 86_400_000);
-  if (days <= 0) return 'today';
-  if (days === 1) return '1 day';
-  return `${days} days`;
+  if (days <= 0) return 'Uploaded today';
+  if (days === 1) return 'Waiting 1 day';
+  return `Waiting ${days} days`;
 }
 
 /**
- * The owner's pending-KYC queue, reached from the Home dashboard's "Verify
- * Pending KYC" card — which counted real documents and did nothing when
- * tapped, because there was nowhere for it to go.
+ * Reviewing tenants' KYC uploads — reached from Alerts › Documents, the Home
+ * dashboard's "Verify pending KYC" card, and a tenant's own profile.
  *
- * Grouped by tenant rather than listed by document: the owner is deciding
- * about a person, and the person who has waited longest is the one whose
- * move-in is blocked.
+ * Built as a review, not a list. One document fills the screen with whose it
+ * is above it, Reject / Approve sit in a sticky bar in thumb reach, and the
+ * moment a decision lands the next document is on screen (see reviewQueue.ts).
+ * An owner clearing twenty uploads does twenty decisions, not forty taps.
+ *
+ * Mobile first. The preview is full-width and opens full-screen on tap,
+ * because a name or an Aadhaar number has to actually be read before it is
+ * approved — the old version only offered "View" in a new tab. On a wide
+ * screen the same column is simply centred.
+ *
+ * There is deliberately no "approve all": the point of the screen is that the
+ * owner looked at each document before saying yes to it.
  */
 export function PendingVerificationsPage() {
   const navigate = useNavigate();
-  const isDesktop = useIsDesktop();
   const [searchParams] = useSearchParams();
   const focusTenantId = searchParams.get('tenantId');
 
-  const { groups, documentCount, tenantCount, isLoading, isError, refetch } = usePendingVerifications();
+  const { groups, isLoading, isError, refetch } = usePendingVerifications();
   const verification = useDocumentVerification(undefined);
-  const [rejecting, setRejecting] = useState<
-    { documentId: string; docType: string; tenantId: string; tenantName: string } | null
-  >(null);
 
-  const visible = focusTenantId ? groups.filter((g) => g.tenantId === focusTenantId) : groups;
+  // Decided in this session — the queue advances off this, not the refetch.
+  const [decided, setDecided] = useState<Set<string>>(() => new Set());
+  const [picked, setPicked] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState<QueueItem | null>(null);
+  const [pending, setPending] = useState<{ id: string; kind: 'approve' | 'reject' } | null>(null);
+
+  const queue = useMemo(() => {
+    const all = flattenQueue(groups);
+    return focusTenantId ? all.filter((i) => i.tenantId === focusTenantId) : all;
+  }, [groups, focusTenantId]);
+
+  const current = currentItem(queue, decided, picked);
+  const progress = queueProgress(queue, decided);
+  const next = upNext(queue, decided, current?.id ?? null);
+
+  const markDecided = (id: string) => {
+    setDecided((prev) => new Set(prev).add(id));
+    setPicked(null);
+    // Back to the top for the next document, so its owner is the first thing read.
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  };
+
+  const approve = (item: QueueItem) => {
+    setPending({ id: item.id, kind: 'approve' });
+    verification.approve(
+      { documentId: item.id, targetTenantId: item.tenantId },
+      { onSuccess: () => markDecided(item.id), onSettled: () => setPending(null) },
+    );
+  };
 
   return (
     <ThemeProvider theme="product">
-      {/* Desktop (lg+, ADR-171 Phase 2.4): the 480px APP_FRAME is dropped and
-          content is capped/centred at max-w-[860px] to match the shared
-          WorkQueue treatment (this queue predates WorkQueue and keeps its own
-          layout); the "← Home" back row is hidden. Below lg it is the unchanged
-          full-screen takeover. This route sits outside OwnerAppShell, so it
-          scopes the StayO theme itself and never reaches isOwnerFullBleedPath. */}
-      <div className={isDesktop ? `min-h-screen bg-background ${APP_GRID}` : APP_SURFACE}>
-        {!isDesktop && (
-          <div className="flex items-center gap-2.5 px-4 pb-1.5 pt-6 sm:px-6">
+      <div className={APP_SURFACE}>
+        <div className="mx-auto w-full max-w-[560px]">
+          <div className="flex items-center gap-2.5 px-4 pb-1.5 pt-6">
             <button
               type="button"
-              onClick={() => navigate('/owner/home')}
+              onClick={() => navigate(-1)}
               aria-label="Back"
-              className="flex h-8.5 w-8.5 flex-none items-center justify-center rounded-full border border-border bg-card"
+              className="flex h-11 w-11 flex-none items-center justify-center rounded-full border border-border bg-card"
             >
               <ArrowLeft className="h-4 w-4 text-muted-foreground" strokeWidth={1.9} />
             </button>
-            <span className="text-[13px] font-medium text-muted-foreground">Home</span>
+            <div className="min-w-0">
+              <h1 className="font-display text-[19px] font-extrabold leading-tight tracking-tight text-foreground">Verify documents</h1>
+              <p className="text-[12px] text-muted-foreground">
+                {isLoading
+                  ? 'Loading…'
+                  : progress.remaining === 0
+                    ? 'Nothing waiting on you'
+                    : `${progress.remaining} left · ${progress.tenants} tenant${progress.tenants === 1 ? '' : 's'}`}
+              </p>
+            </div>
           </div>
-        )}
 
-        <div className={isDesktop ? 'mx-auto w-full max-w-[860px] px-4 pb-3 pt-6 sm:px-6' : 'px-4 pb-3 pt-1 sm:px-6'}>
-          <h1 className="font-display text-[21px] font-extrabold tracking-tight text-foreground">Verify KYC</h1>
-          <p className="mt-1 text-[12.5px] text-muted-foreground">
-            {isLoading
-              ? 'Loading…'
-              : documentCount === 0
-                ? 'Nothing waiting on you'
-                : `${documentCount} document${documentCount === 1 ? '' : 's'} from ${tenantCount} tenant${tenantCount === 1 ? '' : 's'}`}
-          </p>
-        </div>
-
-        <div className={`flex flex-col gap-3 px-4 pb-10 sm:px-6${isDesktop ? ' mx-auto w-full max-w-[860px]' : ''}`}>
-          {isLoading && (
-            <>
-              <div className="h-32 animate-pulse rounded-[18px] bg-muted" />
-              <div className="h-32 animate-pulse rounded-[18px] bg-muted" />
-            </>
+          {/* Session progress — only once something has been decided, so an untouched queue isn't a 0% bar. */}
+          {progress.decided > 0 && progress.remaining > 0 && (
+            <div className="mx-4 mt-2 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden>
+              <div
+                className="h-full rounded-full bg-success transition-[width] duration-300"
+                style={{ width: `${(progress.decided / (progress.decided + progress.remaining)) * 100}%` }}
+              />
+            </div>
           )}
 
-          {isError && !isLoading && (
-            <EmptyState
-              icon={<X className="h-5 w-5" />}
-              title="Couldn't load the queue"
-              description="Something went wrong fetching pending documents."
-              action={
-                <button
-                  type="button"
-                  onClick={() => refetch()}
-                  className="rounded-xl bg-primary px-5 py-2.5 font-display text-sm font-bold text-primary-foreground"
-                >
-                  Try again
-                </button>
-              }
-            />
-          )}
+          <div className="flex flex-col gap-3 px-4 pb-36 pt-3">
+            {isLoading && <div className="h-[420px] animate-pulse rounded-[18px] bg-muted" />}
 
-          {/* Zero pending is a finished state, not an empty list. */}
-          {!isLoading && !isError && visible.length === 0 && (
-            <EmptyState
-              icon={<ShieldCheck className="h-5 w-5 text-success" />}
-              title={focusTenantId ? 'Nothing pending for this tenant' : 'All caught up'}
-              description={
-                focusTenantId
-                  ? 'Every document for this tenant has been reviewed.'
-                  : 'Every tenant document has been reviewed. New uploads will appear here.'
-              }
-              action={
-                <button
-                  type="button"
-                  onClick={() => navigate('/owner/tenants')}
-                  className="rounded-xl border border-border bg-card px-5 py-2.5 font-display text-sm font-bold text-foreground"
-                >
-                  View tenants
-                </button>
-              }
-            />
-          )}
-
-          {visible.map((group) => (
-            <div key={group.tenantId} className={card}>
-              <div className="flex items-start gap-3">
-                <div className="min-w-0 flex-1">
+            {isError && !isLoading && (
+              <EmptyState
+                icon={<X className="h-5 w-5" />}
+                title="Couldn't load the queue"
+                description="Something went wrong fetching pending documents."
+                action={
                   <button
                     type="button"
-                    onClick={() => navigate(`/owner/tenants/${group.tenantId}`)}
-                    className="text-left font-display text-[14.5px] font-bold text-foreground underline-offset-2 hover:underline"
+                    onClick={() => refetch()}
+                    className="min-h-11 rounded-xl bg-primary px-5 py-2.5 font-display text-sm font-bold text-primary-foreground"
                   >
-                    {group.tenantName}
+                    Try again
                   </button>
-                  <div className="mt-0.5 text-[11.5px] text-muted-foreground">
-                    Room {group.roomNo} · {group.hostelName}
-                  </div>
-                </div>
-                {waitedFor(group.waitingSince) && (
-                  <span className="flex-none rounded-full bg-warning/10 px-2.5 py-1 font-display text-[11px] font-bold text-warning">
-                    {waitedFor(group.waitingSince)}
-                  </span>
-                )}
-              </div>
+                }
+              />
+            )}
 
-              <div className="flex flex-col gap-2.5 border-t border-border/60 pt-3">
-                {group.documents.map((doc) => (
-                  <div key={doc.id} className="flex flex-col gap-2 rounded-[14px] bg-muted/40 p-3">
-                    <div className="text-[12.5px] font-bold text-foreground">{documentTypeLabel(doc.docType)}</div>
-                    <div className="flex gap-2">
-                      {doc.downloadUrl && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => window.open(doc.downloadUrl!, '_blank', 'noopener,noreferrer')}
-                            className={`${actionBtn} border border-border bg-card text-foreground`}
-                          >
-                            <Eye className="h-3.5 w-3.5" strokeWidth={1.9} />
-                            View
-                          </button>
-                          <a href={doc.downloadUrl} download className={`${actionBtn} border border-border bg-card text-foreground`}>
-                            <Download className="h-3.5 w-3.5" strokeWidth={1.9} />
-                            Save
-                          </a>
-                        </>
-                      )}
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => verification.approve({ documentId: doc.id, targetTenantId: group.tenantId })}
-                        disabled={verification.isApproving}
-                        className={`${actionBtn} bg-success text-white`}
-                      >
-                        <Check className="h-3.5 w-3.5" strokeWidth={2.4} />
-                        Approve
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setRejecting({
-                            documentId: doc.id,
-                            docType: doc.docType,
-                            tenantId: group.tenantId,
-                            tenantName: group.tenantName,
-                          })
-                        }
-                        disabled={verification.isRejecting}
-                        className={`${actionBtn} border border-destructive/30 bg-card text-destructive`}
-                      >
-                        <X className="h-3.5 w-3.5" strokeWidth={2.4} />
-                        Reject
-                      </button>
+            {/* Zero pending is a finished state, not an empty list. */}
+            {!isLoading && !isError && !current && (
+              <EmptyState
+                icon={<ShieldCheck className="h-5 w-5 text-success" />}
+                title={progress.decided > 0 ? 'All done' : focusTenantId ? 'Nothing pending for this tenant' : 'All caught up'}
+                description={
+                  progress.decided > 0
+                    ? `You reviewed ${progress.decided} document${progress.decided === 1 ? '' : 's'}. Tenants see your decisions straight away.`
+                    : 'Every tenant document has been reviewed. New uploads will appear here.'
+                }
+                action={
+                  <button
+                    type="button"
+                    onClick={() => navigate('/owner/tenants')}
+                    className="min-h-11 rounded-xl border border-border bg-card px-5 py-2.5 font-display text-sm font-bold text-foreground"
+                  >
+                    View tenants
+                  </button>
+                }
+              />
+            )}
+
+            {current && (
+              <div className="flex flex-col gap-3 rounded-[18px] border border-border bg-card p-3.5 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]">
+                {/* Whose it is, first — the thing to check the document against. */}
+                <button
+                  type="button"
+                  onClick={() => navigate(`/owner/tenants/${current.tenantId}`)}
+                  className="flex min-h-11 items-center gap-2 text-left"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-display text-[15px] font-bold text-foreground">{current.tenantName}</div>
+                    <div className="truncate text-[11.5px] text-muted-foreground">
+                      Room {current.roomNo} · {current.hostelName}
                     </div>
                   </div>
+                  <ChevronRight className="h-4 w-4 flex-none text-muted-foreground" />
+                </button>
+
+                <div className="flex items-center justify-between gap-2 border-t border-border/60 pt-3">
+                  <span className="font-display text-[16px] font-extrabold text-foreground">{documentTypeLabel(current.docType)}</span>
+                  {waitedFor(current.uploadedAt) && (
+                    <span className="flex-none rounded-full bg-warning/10 px-2.5 py-1 text-[11px] font-bold text-warning">
+                      {waitedFor(current.uploadedAt)}
+                    </span>
+                  )}
+                </div>
+
+                {/* key: a fresh pane per document, so the previous image never flashes under the next name. */}
+                <DocumentPreviewPane
+                  key={current.id}
+                  url={current.downloadUrl}
+                  title={`${documentTypeLabel(current.docType)} — ${current.tenantName}`}
+                  fileName={`${current.docType.toLowerCase()}-${current.tenantName.replace(/\s+/g, '-').toLowerCase()}`}
+                  imageMaxHeight="max-h-[46dvh]"
+                />
+
+                <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+                  Check the name and photo match <span className="font-semibold text-foreground">{current.tenantName}</span>, and that
+                  the details are readable.
+                </p>
+              </div>
+            )}
+
+            {current && next.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <div className="px-1 text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">Up next · {next.length}</div>
+                {next.slice(0, 6).map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setPicked(item.id);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="flex min-h-12 items-center gap-2 rounded-[14px] border border-border bg-card px-3 text-left"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[13px] font-semibold text-foreground">{item.tenantName}</div>
+                      <div className="truncate text-[11px] text-muted-foreground">{documentTypeLabel(item.docType)}</div>
+                    </div>
+                    <ChevronRight className="h-4 w-4 flex-none text-muted-foreground" />
+                  </button>
                 ))}
               </div>
-            </div>
-          ))}
+            )}
+          </div>
         </div>
+
+        {/* Thumb-reach decision bar, pinned while a document is on screen. */}
+        {current && (
+          <div
+            className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-background/95 px-4 pb-[max(env(safe-area-inset-bottom),12px)] pt-3 backdrop-blur"
+          >
+            <div className="mx-auto w-full max-w-[560px]">
+              <DocumentDecisionBar
+                onApprove={() => approve(current)}
+                onReject={() => setRejecting(current)}
+                busy={pending != null}
+                pending={pending?.id === current.id ? pending.kind : null}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       <RejectDocumentSheet
@@ -216,12 +246,18 @@ export function PendingVerificationsPage() {
         onClose={() => setRejecting(null)}
         onConfirm={async (reason) => {
           if (!rejecting) return;
-          await verification.rejectAsync({
-            documentId: rejecting.documentId,
-            reason,
-            targetTenantId: rejecting.tenantId,
-          });
-          setRejecting(null);
+          const item = rejecting;
+          setPending({ id: item.id, kind: 'reject' });
+          try {
+            await verification.rejectAsync({ documentId: item.id, reason, targetTenantId: item.tenantId });
+            setRejecting(null);
+            markDecided(item.id);
+          } catch {
+            // useDocumentVerification has already shown the error; the sheet stays
+            // open with the reason intact so the owner can try again.
+          } finally {
+            setPending(null);
+          }
         }}
       />
     </ThemeProvider>
