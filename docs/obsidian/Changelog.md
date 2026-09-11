@@ -10,6 +10,8 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-11**: **Floors can be renamed from the Rooms tab** ([[Features]]). A pencil on each floor opens *Edit floor* — name, a rooms/beds/free summary, and delete (moved here, and now explains why it's unavailable). Names are checked for blank, length and duplicates within the hostel, identically on create and rename; the API reports those as 400s instead of a 500. 8 backend and 9 frontend tests; the duplicate check is mutation-tested.
+
 - **2026-09-11**: **Bulk import — a finish worth hearing, and invitations that say whether they arrived** ([[Bugs]], [[Features]]).
   - **The end of a clean import celebrates**: the Stayo success sound and haptic (`playSuccessFeedback`, as on the five money screens), the onboarding confetti, and a check that draws itself. Only for a clean finish — a run where any row failed stays quiet, so the confetti never drowns out who didn't make it. Confetti moved to `shared/ui-patterns/confetti.ts`, now shared with owner onboarding.
   - **Send reports delivery, not attempts.** An owner read "Every invitation has been sent" while no WhatsApp arrived; dispatch had counted every attempt as sent and discarded the provider's error. Undelivered invitations now come back with the reason and the link, with *Share on WhatsApp* and *Copy link* beside each. "Nudge on WhatsApp" reads the real outcome too.

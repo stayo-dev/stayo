@@ -206,6 +206,33 @@ export function useHostelRooms(hostelId: string) {
     onSuccess: invalidate,
   });
 
+  /**
+   * Renames a floor through the existing `PATCH /floors/:id`. Optimistic, like
+   * reorder: the header changes as Save is tapped, and a refusal (a name
+   * another floor already has) puts the old one back.
+   */
+  const renameFloorMutation = useMutation({
+    mutationFn: ({ floorId, name }: { floorId: string; name: string }) => floorService.update(floorId, { name }),
+
+    onMutate: async ({ floorId, name }) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<BackendFloorGroup[]>(queryKey);
+      if (previous) {
+        queryClient.setQueryData<BackendFloorGroup[]>(
+          queryKey,
+          previous.map((floor) => (floor.id === floorId ? { ...floor, name } : floor)),
+        );
+      }
+      return { previous };
+    },
+
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(queryKey, context.previous);
+    },
+
+    onSettled: invalidate,
+  });
+
   return {
     floors,
     roomsByFloor,
@@ -228,5 +255,7 @@ export function useHostelRooms(hostelId: string) {
     isDeletingRoom: deleteRoomMutation.isPending,
     deleteFloor: deleteFloorMutation.mutateAsync,
     isDeletingFloor: deleteFloorMutation.isPending,
+    renameFloor: (floorId: string, name: string) => renameFloorMutation.mutateAsync({ floorId, name }),
+    isRenamingFloor: renameFloorMutation.isPending,
   };
 }
