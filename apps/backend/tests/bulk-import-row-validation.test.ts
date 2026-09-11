@@ -418,3 +418,44 @@ describe("a former tenant can come back", () => {
     expect(where.status.in).not.toContain("FORMER_TENANT");
   });
 });
+
+describe("paying more than the tenant owes", () => {
+  // createInvitation refuses this at execution, one row at a time, after other
+  // rows have already been created. The owner should see it in the preview,
+  // with the real figures.
+  function monthsBack(n: number) {
+    const d = new Date();
+    d.setMonth(d.getMonth() - n);
+    return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+  }
+
+  it("flags an amount well above the dues as a choice, not a silent pass", async () => {
+    const r = await validateOne({
+      joining_date: monthsBack(1),
+      monthly_rent: 8500,
+      amount_paid: 500000,
+      payment_method: "CASH",
+    });
+
+    const issue = r.issues.find((i) => i.code === "OVERPAID");
+    expect(issue).toBeDefined();
+    expect(issue!.severity).toBe("NEEDS_CHOICE");
+    expect(issue!.detail).toContain("5,00,000");
+  });
+
+  it("accepts an amount within the dues", async () => {
+    const r = await validateOne({
+      joining_date: monthsBack(2),
+      monthly_rent: 8500,
+      amount_paid: 8500,
+      payment_method: "CASH",
+    });
+
+    expect(r.issues.map((i) => i.code)).not.toContain("OVERPAID");
+  });
+
+  it("says nothing when no amount was paid", async () => {
+    const r = await validateOne({ joining_date: monthsBack(2), monthly_rent: 8500 });
+    expect(r.issues.map((i) => i.code)).not.toContain("OVERPAID");
+  });
+});

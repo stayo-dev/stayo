@@ -4,6 +4,7 @@ import { buildIssue, type RowIssue } from "./issues";
 import { formatImportDate, monthsBetween, parseImportDate } from "./dates";
 import { indianPhoneKey, isSpreadsheetFormula, isValidImportEmail, normalizeImportPhone } from "./identity";
 import { nearestRoomNumbers } from "./room-resolution";
+import { planRowFinancials } from "./financial-plan";
 import { parseTenantWorkbook } from "./workbook-parser";
 import type {
   ImportDefaults,
@@ -118,6 +119,7 @@ export class BulkImportValidationService {
     const hostel = await prisma.hostels.findUnique({ where: { id: hostelId }, select: { name: true } });
     const hostelName = hostel?.name ?? "this hostel";
     const billingDefaults = await hostelBillingPreferencesService.getBillingDefaults(hostelId);
+    const dueDay = Number((billingDefaults as any)?.due_day) || 5;
     // Keyed to the row number that first used the value, so a duplicate can
     // tell the owner which row it repeats.
     const phonesSeen = new Map<string, number>();
@@ -349,6 +351,38 @@ export class BulkImportValidationService {
       }
 
       const rowMaintenanceType = row.maintenance_type ?? defaultMaintenanceType;
+
+      // An amount above what the tenant owes is refused by createInvitation at
+      // execution. Catching it here means the owner fixes it in the preview,
+      // with the real figures, instead of one row failing mid-import.
+      if (parsedJoiningDate && (row.amount_paid ?? 0) > 0 && errors.length === 0) {
+        const financials = planRowFinancials(
+          {
+            ...row,
+            joining_date: formatImportDate(parsedJoiningDate),
+            monthly_rent: row.monthly_rent ?? (roomForRow?.base_rent ? Number(roomForRow.base_rent) : 0),
+            security_deposit: row.security_deposit ?? row.advance_deposit ?? defaultAdvanceDeposit,
+            maintenance_charge: rowMaintenanceType === "NONE" ? 0 : row.maintenance_charge ?? defaultMaintenanceCharge,
+            maintenance_type: rowMaintenanceType,
+          },
+          { dueDay, today }
+        );
+        if (financials && financials.unallocated > 0.01) {
+          errors.push({
+            row: rowNumber,
+            field: "amount_paid",
+            message: `Amount already paid exceeds what is owed (₹${financials.totalOwed.toFixed(2)})`,
+            value: row.amount_paid,
+          });
+          issues.push(
+            buildIssue("OVERPAID", rowNumber, {
+              amountPaid: row.amount_paid,
+              amountOwed: financials.totalOwed,
+              joiningDate: formatImportDate(parsedJoiningDate),
+            })
+          );
+        }
+      }
 
       // Capacity is decided last, after every per-row check that can still
       // push an error (including joining-date validation above) has run. A
