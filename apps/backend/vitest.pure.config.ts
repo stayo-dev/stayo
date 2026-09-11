@@ -188,6 +188,8 @@ export default defineConfig({
       'tests/bulk-import-dispatch-delivery.test.ts',
       'tests/placeholder-email.test.ts',
       'tests/floor-rename.test.ts',
+      'tests/email-otp-service.test.ts',
+      'tests/activation-email-gate.test.ts',
       'tests/build-without-env.test.ts',
     ],
     alias: {

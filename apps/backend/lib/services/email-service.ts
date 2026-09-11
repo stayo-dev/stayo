@@ -174,6 +174,41 @@ export class EmailService {
   }
 
   /** Owner-lead activation link (owner-acquisition funnel, phase 2) — WhatsApp fallback. */
+  /**
+   * The code a tenant types to prove the address they gave at onboarding.
+   *
+   * The code sits in the subject as well as the body, so it can be read from
+   * the notification without opening the mail — the owner is usually standing
+   * next to the tenant while they onboard. Names are escaped: they are typed
+   * by people, and this is HTML.
+   */
+  static async sendVerificationCode(data: {
+    toEmail: string;
+    code: string;
+    tenantName?: string | null;
+    hostelName?: string | null;
+    expiresInMinutes: number;
+  }) {
+    const esc = (value: string) =>
+      value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+    const name = data.tenantName ? esc(String(data.tenantName).trim()) : "";
+    const hostel = data.hostelName ? esc(String(data.hostelName).trim()) : "";
+    const code = esc(data.code);
+    const subject = `${data.code} is your Stayo verification code`;
+    const html = emailShell({
+      title: "Confirm your email",
+      subtitle: hostel ? `You're joining ${hostel}.` : "You're setting up your Stayo account.",
+      preheader: `Your code is ${data.code}. It expires in ${data.expiresInMinutes} minutes.`,
+      body: `
+        <p style="margin:0 0 14px;">${name ? `Hello <strong>${name}</strong>,` : "Hello,"}</p>
+        <p style="margin:0 0 14px;">Enter this code to confirm this is your email. You'll use it to sign in to Stayo and to receive your receipts.</p>
+        <p style="margin:18px 0;font-size:30px;font-weight:800;letter-spacing:8px;text-align:center;">${code}</p>
+        ${emailNote(`The code expires in ${data.expiresInMinutes} minutes. If you didn't ask for it, you can ignore this email — nothing changes without the code.`)}
+      `,
+    });
+    return this.sendEmail(data.toEmail, subject, html);
+  }
+
   static async sendOwnerActivation(data: {
     toEmail: string;
     ownerName: string;

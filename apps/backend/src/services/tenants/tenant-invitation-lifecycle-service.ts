@@ -15,6 +15,7 @@ import { selectCurrentTenancy } from "@/lib/tenancy/active-tenancy";
 import { recordWhatsAppDelivery, readWhatsAppDeliveredAt } from "./invitation-delivery-trust";
 import { isPhoneAlreadyProven } from "./invitation-phone-trust";
 import { resolveInvitedProfile, resolveActivationEmail, realEmailOrNull } from "./invited-profile-resolver";
+import { normalizeOnboardingEmail } from "../../../lib/services/auth/email-otp-service";
 import { initializeActiveUnacceptedTenancy } from "./owner-managed-tenancy-service";
 import {
   TenancyEligibilityError,
@@ -1370,12 +1371,17 @@ export class TenantInvitationLifecycleService {
       );
     }
 
-    // Not asked for on the Identity screen any more — see resolveActivationEmail.
-    const normalizedEmail = resolveActivationEmail({
-      profile: resolved.profile,
-      invitation,
-      phone: primaryPhone,
-    });
+    // The address the tenant proved with a code on the Identity screen — the
+    // ACCOUNT step will not reach here without one (or without an existing
+    // login of their own). resolveActivationEmail remains the fallback only
+    // for that existing-login case, where it returns their own address.
+    const normalizedEmail =
+      normalizeOnboardingEmail(data?.verified_email) ??
+      resolveActivationEmail({
+        profile: resolved.profile,
+        invitation,
+        phone: primaryPhone,
+      });
     if (!normalizedEmail) {
       throw new Error("VALIDATION_ERROR: This invitation is missing both an email address and a phone number");
     }

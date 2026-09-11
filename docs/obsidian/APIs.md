@@ -229,6 +229,8 @@ Added 2026-07-26 for the real StayO tenant app (Home/Money/Room/Profile tabs) �
 
 ## Bulk Import
 
+**Onboarding email (2026-09-11, [[Decisions#ADR-183|ADR-183]]):** `POST /api/tenants/activate/email/send` `{ token, email }` → emails a six-digit code (`409 EMAIL_TAKEN` if another account signs in with it, `429 OTP_RATE_LIMITED`, `502 EMAIL_SEND_FAILED` rather than a success nobody receives); `POST /api/tenants/activate/email/verify` `{ token, email, code }` → `{ verified, email }`. Token-scoped under the public `/api/tenants/activate` prefix; refused (`409 EMAIL_ALREADY_SET`) for someone who already signs in with a real address. `GET` activation context now carries `email_requirement: { required, email, verified_email }`. `POST /api/bulk-import/[batch_id]/dispatch` now returns `undelivered[]` (`invitation_id, name, phone, reason, activation_link`) and counts `sent` only for real deliveries.
+
 `/api/bulk-import/upload` (parses XLSX/CSV, max 5MB), `/api/bulk-import/revalidate`, `/api/bulk-import/template`, `/api/bulk-import/[batch_id]` (status + funnel), `/api/bulk-import/[batch_id]/confirm` (GET preview / POST execute, idempotent retry-safe), `/api/bulk-import/google-form-prompt` (**OWNER only**).
 
 **Changes 2026-09-10 (backend correctness pass — see [[Bugs]], [[Business-Rules]]):**

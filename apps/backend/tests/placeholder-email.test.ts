@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Pure: the resolver module imports the client, and nothing here queries it.
+vi.mock("@/lib/db", () => ({ prisma: {} }));
 import {
   isPlaceholderEmail,
   realEmailOrNull,

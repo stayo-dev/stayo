@@ -62,6 +62,16 @@ export const tenantService = {
         const response = await api.patch('/tenants/activate', { token, step, data });
         return unwrap(response);
     },
+    // The onboarding email step: a code to the address the tenant typed, then
+    // its check. Token-scoped — see /api/tenants/activate/email/*.
+    sendActivationEmailCode: async ({ token, email }) => {
+        const response = await api.post('/tenants/activate/email/send', { token, email });
+        return unwrap(response);
+    },
+    verifyActivationEmailCode: async ({ token, email, code }) => {
+        const response = await api.post('/tenants/activate/email/verify', { token, email, code });
+        return unwrap(response);
+    },
     sendPhoneOtp: async ({ phone, purpose }) => {
         const response = await api.post('/auth/send-phone-otp', { phone, purpose });
         return unwrap(response);

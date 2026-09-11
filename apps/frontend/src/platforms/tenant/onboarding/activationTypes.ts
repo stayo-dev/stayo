@@ -43,6 +43,8 @@ export type ActivationContext = {
    * OTP, which is the safe default.
    */
   phone_trust?: { phone: string | null; trusted: boolean } | null;
+  /** Whether the Identity screen must collect and prove an email — see steps/emailVerification. */
+  email_requirement?: { required: boolean; email: string | null; verified_email: string | null } | null;
   /**
    * Which identity fields still have to be asked for. `required: false` means
    * the hostel's own type already establishes the gender, so the selector is
