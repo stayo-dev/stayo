@@ -1159,7 +1159,96 @@ export class TenantInvitationLifecycleService {
       orderBy: { created_at: "desc" },
     });
     if (!invitation) throw new Error("NOT_FOUND: Invitation not found");
+    // A nudge — the same link, again — is not an edit. Sending it through
+    // `resendInvitation` regenerated the tenant's dues, which is why that path
+    // refuses once payments exist, and so every imported resident with rent
+    // already paid could never be nudged. Only an edit to the terms, or an
+    // invitation the expiry sweep has already closed, needs the full path.
+    if (invitation.status !== "EXPIRED" && !changesInvitationTerms(overrides, invitation)) {
+      return this.nudgeInvitation(invitation.id, actor, { email: overrides?.email });
+    }
     return this.resendInvitation(invitation.id, actor, overrides);
+  }
+
+  /**
+   * Sends the tenant the same activation link again, and restarts its week.
+   *
+   * No new invitation version, no reservation churn, no dues touched: the
+   * offer is unchanged, so the tenant's money is too. That is what makes it
+   * safe for a tenant with payments on record — an imported resident whose
+   * paid-up months were settled at import. `resendInvitation` rebuilds the
+   * obligations and must keep refusing there; this does not go near them.
+   *
+   * `email`, when given, becomes the fallback address if WhatsApp fails — the
+   * owner's rescue for a message that didn't arrive. It is delivery only: the
+   * tenant still proves their own address at onboarding (ADR-183).
+   */
+  async nudgeInvitation(invitationId: string, actor?: { id: string; role: string }, options: { email?: string } = {}) {
+    const invitation = await prisma.tenant_invitations.findUnique({
+      where: { id: invitationId },
+      include: { tenant: true, room: { include: { hostels: true } } },
+    });
+    if (!invitation || !invitation.tenant) throw new Error("NOT_FOUND: Invitation not found");
+    if (actor?.role === "OWNER" && invitation.owner_id !== actor.id) {
+      throw new Error("FORBIDDEN: You can only resend your own invitations");
+    }
+    if (invitation.room?.hostels?.status === "ARCHIVED") {
+      throw new Error("VALIDATION_ERROR: Cannot resend invitation for an archived hostel");
+    }
+    if (invitation.room?.hostels?.status === "INACTIVE") {
+      throw new Error("VALIDATION_ERROR: Cannot resend invitation for an inactive hostel");
+    }
+    if (invitation.status === "ACTIVATED") throw new Error("BAD_REQUEST: Tenant is already active");
+    if (invitation.status === "CANCELLED") throw new Error("BAD_REQUEST: Invitation is cancelled");
+    if (!["PENDING", "OPENED", "ACTIVATION_STARTED", "QUEUED"].includes(String(invitation.status))) {
+      throw new Error("BAD_REQUEST: This invitation can't be re-sent — send a new one");
+    }
+    // The tenancy itself must still be live. A closed one (cancelled, or ended
+    // by the expiry sweep) must not get a working link back.
+    if (!["INVITED", "ACTIVE"].includes(String(invitation.tenant.status))) {
+      throw new Error("BAD_REQUEST: This tenancy has ended — send a new invitation instead");
+    }
+
+    const fallbackEmail = realEmailOrNull(options.email ? normalizeEmail(options.email) : null);
+    const expiresAt = addDays(DEFAULT_INVITE_DAYS);
+    const live = await prisma.$transaction(async (tx: any) => {
+      await tx.tenant_invitation_reservations.updateMany({
+        where: { invitation_id: invitation.id, status: "ACTIVE" },
+        data: { expires_at: expiresAt },
+      });
+      return tx.tenant_invitations.update({
+        where: { id: invitation.id },
+        data: {
+          expires_at: expiresAt,
+          // A queued import invitation was never sent; nudging it sends it.
+          ...(invitation.status === "QUEUED" ? { status: "PENDING" } : {}),
+          ...(fallbackEmail ? { email: fallbackEmail } : {}),
+        },
+      });
+    });
+
+    const owner = await prisma.profile.findUnique({ where: { id: invitation.owner_id } });
+    if (!owner) throw new Error("NOT_FOUND: Owner profile not found");
+    const activationLink = frontendUrl(`/activate/${live.token}`);
+    const delivery = await this.dispatchInvitationNotification(live, invitation.tenant, invitation.room, owner, activationLink);
+    await recordWhatsAppDelivery(live.id, delivery.whatsapp_sent);
+
+    await eventLog.log("tenant_invitation_nudged", invitation.owner_id, {
+      invitation_id: live.id,
+      tenant_id: invitation.tenant_id,
+      whatsapp_sent: delivery.whatsapp_sent,
+      email_sent: delivery.email_sent,
+    }, invitation.tenant_id);
+
+    return {
+      invitation_id: live.id,
+      tenant_id: invitation.tenant_id,
+      activation_link: activationLink,
+      phone: live.phone,
+      email: realEmailOrNull(live.email),
+      expires_at: expiresAt.toISOString(),
+      ...delivery,
+    };
   }
 
   async resolveByToken(token: string, options: { markOpened?: boolean } = {}) {
@@ -1841,4 +1930,41 @@ function describeDeliveryFailure(delivery: {
       : "The message didn't go through.";
   }
   return raw.length > 200 ? `${raw.slice(0, 197)}…` : raw;
+}
+
+/**
+ * Whether a resend request edits the offer rather than just re-sending it.
+ *
+ * `email` is not a term: it is where the fallback message goes. `phone` counts
+ * only when it actually differs — the resend endpoint receives the phone as the
+ * invitation's own identifier.
+ */
+const TERM_OVERRIDE_KEYS = [
+  "name",
+  "room_id",
+  "monthly_rent",
+  "security_deposit",
+  "advance_amount",
+  "advance_deposit",
+  "maintenance_amount",
+  "maintenance_charge",
+  "maintenance_type",
+  "payment_frequency",
+  "agreement_duration_months",
+  "agreement_start_date",
+  "joining_date",
+  "joined_on",
+];
+
+export function changesInvitationTerms(overrides: any, invitation: { phone?: string | null }): boolean {
+  if (!overrides || typeof overrides !== "object") return false;
+  if (TERM_OVERRIDE_KEYS.some((key) => overrides[key] !== undefined && overrides[key] !== null && overrides[key] !== "")) {
+    return true;
+  }
+  if (overrides.phone) {
+    const next = normalizeIndianPhone(overrides.phone);
+    const current = invitation.phone ? normalizeIndianPhone(invitation.phone) : null;
+    return Boolean(next && next !== current);
+  }
+  return false;
 }

@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error: {
-            message: result.whatsapp_error || result.email_error || result.message || "Delivery failed",
+            message: result.whatsapp_error || result.email_error || (result as any).message || "Delivery failed",
             code: result.needs_email ? "EMAIL_FALLBACK_REQUIRED" : "DELIVERY_FAILED",
           },
         },
@@ -48,6 +48,15 @@ export async function POST(req: NextRequest) {
     if (msg.startsWith("BAD_REQUEST")) return apiError(msg.split(": ")[1] ?? msg, "VALIDATION_ERROR", 400);
     if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
     if (msg.startsWith("INTERNAL_ERROR")) return apiError(msg.split(": ")[1] ?? msg, "INTERNAL_ERROR", 500);
+    // These reach an owner's screen. They used to arrive with their internal
+    // prefix intact — "VALIDATION_ERROR: Cannot edit or resend…", code
+    // "ERROR", status 500 — which read as a crash rather than a rule.
+    for (const [prefix, code, status] of [
+      ["VALIDATION_ERROR", "VALIDATION_ERROR", 400],
+      ["CAPACITY_EXCEEDED", "CAPACITY_EXCEEDED", 409],
+    ] as const) {
+      if (msg.startsWith(`${prefix}:`)) return apiError(msg.slice(prefix.length + 1).trim(), code, status);
+    }
     return apiError(msg || "Failed to resend invitation");
   }
 }

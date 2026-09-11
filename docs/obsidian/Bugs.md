@@ -8,6 +8,16 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-11 — An imported resident could never be nudged (fixed)
+
+**Symptom.** "Nudge on WhatsApp" on a tenant imported with rent already paid answered *"VALIDATION_ERROR: Cannot edit or resend invitation after payments have been recorded for this tenant"* — prefix and all, code `ERROR`.
+
+**Root cause — a nudge routed through an edit.** The button calls `POST /api/tenants/resend-invitation` with just the phone, which went to `resendInvitation`: a new invitation version, the reservation released and re-taken, and **the tenant's pending dues deleted and regenerated**. That last step is why it refuses once payments exist — regenerating could rebuild backdated rent and settle the paid amount twice — and the lock is right. But bulk import records an existing resident's paid-up months *as payments at import*, so every such tenant hit the lock on the one action that changes no money.
+
+**Fix.** `resendInvitationByEmail` now tells a nudge from an edit (`changesInvitationTerms`: rent, deposit, room, dates, name, a different phone; `email` is a delivery address, not a term). A nudge goes to `nudgeInvitation`: the **same** invitation and token, the week restarted on the invitation and its bed hold, a queued import invitation sent, an optional fallback email recorded — and no obligation, payment or version touched. Edits, and invitations the expiry sweep has already closed (`EXPIRED`, room freed, dues voided), keep the full path and its lock. The route strips internal prefixes, so a genuine refusal reads as a rule (400) rather than a crash.
+
+**See:** [[Business-Rules]], [[Changelog]]
+
 ## 2026-09-11 — "Every invitation has been sent" while no WhatsApp arrived (fixed)
 
 **Symptom.** After the first successful bulk import, the owner pressed Send. The screen said *"Every invitation has been sent"*, the tenant's timeline ticked *"Invitation sent"*, and no WhatsApp arrived. The owner's page also listed the tenant's email as `+918008046952@hms.temp`.

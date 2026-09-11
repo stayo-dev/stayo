@@ -10,6 +10,8 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-11**: **Imported residents can be nudged** ([[Bugs]]). "Nudge on WhatsApp" was refused for any tenant with payments on record — which is every resident imported with paid history — because it ran through the full resend that regenerates dues. A nudge now re-sends the same link and restarts its week without touching money; term edits keep the lock. 19 tests, routing and the ended-tenancy guard mutation-tested.
+
 - **2026-09-11**: **Tenants prove a real email at onboarding** ([[Decisions#ADR-183|ADR-183]], [[Database]], [[APIs]]). Anyone invited by phone alone used to finish with `<phone>@hms.temp` as their login. The Identity screen now requires an email confirmed by a six-digit code; the ACCOUNT step refuses without it and writes the proved address everywhere the stand-in went. Taken addresses are refused, not adopted; someone who already signs in with their own address is not asked. New table `email_verification_otps` — **applied to production before merge**, along with the missing `tenant_invitations.whatsapp_delivered_at`. 30 new backend tests (service and gate, both mutation-tested) and 15 frontend.
 
 - **2026-09-11**: **Floors can be renamed from the Rooms tab** ([[Features]]). A pencil on each floor opens *Edit floor* — name, a rooms/beds/free summary, and delete (moved here, and now explains why it's unavailable). Names are checked for blank, length and duplicates within the hostel, identically on create and rename; the API reports those as 400s instead of a 500. 8 backend and 9 frontend tests; the duplicate check is mutation-tested.
