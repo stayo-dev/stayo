@@ -2,6 +2,7 @@ import { prisma } from "../../db";
 import { hostelBillingPreferencesService } from "../hostel-billing-preferences-service";
 import { buildIssue, type RowIssue } from "./issues";
 import { formatImportDate, monthsBetween, parseImportDate } from "./dates";
+import { pendingRoomId } from "./room-plan";
 import { indianPhoneKey, isSpreadsheetFormula, isValidImportEmail, normalizeImportPhone } from "./identity";
 import { nearestRoomNumbers } from "./room-resolution";
 import { planRowFinancials } from "./financial-plan";
@@ -116,7 +117,7 @@ export class BulkImportValidationService {
       ...pendingRooms
         .filter((r) => !savedRoomNumbers.has(String(r.room_no).trim().toUpperCase()))
         .map((r) => ({
-          id: `pending:${String(r.room_no).trim()}`,
+          id: pendingRoomId(r.room_no),
           room_no: String(r.room_no).trim(),
           is_active: true,
           capacity: Number(r.capacity ?? 1),

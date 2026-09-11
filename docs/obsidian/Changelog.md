@@ -10,6 +10,8 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-11**: **Bulk import — a tenant can move into a room the same sheet creates** ([[Bugs]]). The first import to reach execution on a real database created room 401 and then failed its tenant on `pending:401`, the placeholder validation uses for a room that doesn't exist yet. Confirm now swaps it for the real room, looked up by number within the hostel, and says in plain words if the room was never made. 293 bulk-import tests; mutation-tested.
+
 - **2026-09-11**: **Bulk import — existing residents can be imported** ([[Business-Rules]], [[Bugs]]).
   - **The back-rent question is now asked.** Confirm refuses a historical joining date without the owner's consent, but the screen could only give consent past 24 months — so every resident who joined before today was refused after "Everything checks out", with nothing to change. A `RENT_BACKDATED` issue now says how many months of rent will be created and from when, and one tap agrees to it (or one tap for all of them).
   - **Import waits for that agreement**, with a line under the button saying why, instead of failing at the server. The button says *"Yes, bill from their joining date"* — "Got it" is wrong for money.

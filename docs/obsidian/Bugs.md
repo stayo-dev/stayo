@@ -8,6 +8,18 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-11 — A tenant in a room the sheet created failed on its placeholder id (fixed)
+
+**Symptom.** The first import to reach execution against a real database created room 401 from the Rooms sheet — `rooms.created: 1` — and then failed the tenant who lived in it: ``Invalid `prisma.rooms.findFirst()` invocation … Error creating UUID, invalid character … found `p` at 1``.
+
+**Root cause — a placeholder that was never swapped back.** Validation has to accept a tenant in a room that does not exist yet (the template tells owners to add a missing room on the Rooms sheet and then use it), so it checks the row against a stand-in room whose id is `pending:<room_no>`. That id was stored on the row and handed to `createInvitation` at confirm unchanged. `rooms.id` is a UUID; the `p` is the first letter of `pending`. Confirm creates the rooms before any tenant precisely so they can be referenced — nothing then referenced them.
+
+**Why it hid.** Every confirm test used a fixture with a real-looking `room_id`, and `createInvitation` is mocked, so no test ever put a pending room through execution. It is also the first bug in this feature that could only appear *after* the three before it were fixed: the date blocker, the `hostels` relation and the back-rent gate each stopped the import earlier.
+
+**Fix.** `resolveRoomId` in the confirm route swaps a placeholder for the room that now exists, looked up by number within the batch's hostel (so a later chunk finds rooms an earlier one made). If the room is missing it fails that row in the owner's words instead of a Prisma error. The placeholder has one definition — `PENDING_ROOM_PREFIX` / `isPendingRoomId` in `room-plan.ts`. The failed attempt created nothing: `createInvitation` reads the room before any write.
+
+**See:** [[Changelog]], [[APIs]]
+
 ## 2026-09-11 — Every existing resident was refused, with nothing on screen to agree to (fixed)
 
 **Symptom.** An owner onboarding a tenant who had lived there since January saw *"Everything checks out"*, pressed Import, and was refused: *"This batch contains historical joining dates. Confirm historical join dates before sending invitations."* They asked where to configure it. There was nowhere — the response carried `requires_historical_join_date_confirmation: true` beside `issues: []` and `choices: 0`.
