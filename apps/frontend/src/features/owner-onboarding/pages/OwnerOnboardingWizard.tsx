@@ -8,27 +8,13 @@ import { onboardingSceneState } from '../components/onboardingScene';
 import { WelcomeStep } from '../components/steps/WelcomeStep';
 import { KycStep } from '../components/steps/KycStep';
 import { SuccessStep } from '../components/steps/SuccessStep';
+import { buildConfetti } from '@shared/ui-patterns/confetti';
 
 const MILESTONE_NAMES = ['Verified', 'Ready'];
 const MILESTONE_MAP: Record<string, number> = {
   kyc: 0,
   success: 1,
 };
-
-const CONFETTI_COLORS = ['#A45D44', '#D2986C', '#EBD9C4', '#1F8A5B', '#F4C67A'];
-
-function buildConfetti() {
-  return Array.from({ length: 46 }, (_, i) => {
-    const left = Math.round(((i * 137.5) % 100) + (i % 5) * 2);
-    const size = 7 + (i % 4) * 3;
-    const dur = 2.6 + (i % 5) * 0.5;
-    const delay = (i % 9) * 0.18;
-    const rot = `${i % 2 ? '' : '-'}${200 + (i % 5) * 140}deg`;
-    const color = CONFETTI_COLORS[i % CONFETTI_COLORS.length];
-    const round = i % 3 === 0 ? '50%' : '2px';
-    return { id: i, left, size, dur, delay, rot, color, round };
-  });
-}
 
 /**
  * The onboarding wizard, per Owner Onboarding.dc.html — a single route with

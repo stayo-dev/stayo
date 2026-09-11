@@ -90,6 +90,29 @@ export function canAdoptByContact(
  * The Gmail-only rule is gone with the field. It rejected perfectly good
  * addresses people had already signed up with.
  */
+/**
+ * The domain of the stand-in address above. Never a real mailbox.
+ *
+ * `profiles.email` is NOT NULL and unique, so a tenant invited by phone alone
+ * is stored with `<phone>@hms.temp` until they give a real address. That
+ * value is a storage key, not contact information: it must never be shown to
+ * an owner as the tenant's email (it was — on the invitation screen), and
+ * nothing may send to it (the email fallback would have, for an invitation
+ * row that had picked it up).
+ */
+export const PLACEHOLDER_EMAIL_DOMAIN = "hms.temp";
+
+export function isPlaceholderEmail(email: unknown): boolean {
+  return typeof email === "string" && email.trim().toLowerCase().endsWith(`@${PLACEHOLDER_EMAIL_DOMAIN}`);
+}
+
+/** A real address, or null — the placeholder counts as none. */
+export function realEmailOrNull(email: unknown): string | null {
+  if (typeof email !== "string") return null;
+  const trimmed = email.trim();
+  return trimmed && !isPlaceholderEmail(trimmed) ? trimmed : null;
+}
+
 export function resolveActivationEmail(input: {
   profile: { email?: string | null } | null;
   invitation: { email?: string | null } | null;
@@ -102,7 +125,7 @@ export function resolveActivationEmail(input: {
   if (fromInvitation) return fromInvitation;
 
   const phone = String(input.phone || "").trim();
-  return phone ? `${phone}@hms.temp` : null;
+  return phone ? `${phone}@${PLACEHOLDER_EMAIL_DOMAIN}` : null;
 }
 
 /**

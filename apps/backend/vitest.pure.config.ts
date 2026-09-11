@@ -185,6 +185,8 @@ export default defineConfig({
       'tests/bulk-import-deferred-dispatch.test.ts',
       'tests/bulk-import-deposit-flag.test.ts',
       'tests/bulk-import-query-shapes.test.ts',
+      'tests/bulk-import-dispatch-delivery.test.ts',
+      'tests/placeholder-email.test.ts',
       'tests/build-without-env.test.ts',
     ],
     alias: {

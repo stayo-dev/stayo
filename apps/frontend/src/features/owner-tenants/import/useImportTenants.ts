@@ -13,8 +13,9 @@ import {
 } from './api';
 import { editRow, mergeEdits, type RowEdits } from './rowEdits';
 import { buildReviewQueue, applyGroupDecision, confirmsHistoricalDates, withDecisions, type ReviewQueue } from './reviewQueue';
-import { describeProgress, type ProgressView } from './importProgress';
+import { celebrationFor, describeProgress, type ProgressView } from './importProgress';
 import { stageFor, type ImportState, type Stage } from './importStages';
+import { anyDispatched, invitationsWaiting, mergeSendResult, shouldSendMore, type SendResult } from './dispatchOutcome';
 
 /**
  * The import, as one piece of state the screen renders.
@@ -36,7 +37,7 @@ export function useImportTenants(hostelId: string | null) {
   const [edits, setEdits] = useState<RowEdits>({});
   const [busy, setBusy] = useState<null | 'template' | 'upload' | 'import' | 'send' | 'recheck' | 'corrected'>(null);
   const [error, setError] = useState<string | null>(null);
-  const [sendResult, setSendResult] = useState<{ sent: number; remaining: number; failed: number } | null>(null);
+  const [sendResult, setSendResult] = useState<SendResult | null>(null);
 
   const state: ImportState = {
     hostelId,
@@ -44,13 +45,16 @@ export function useImportTenants(hostelId: string | null) {
     batchId: upload?.batch_id ?? null,
     imported: Boolean(confirmState && confirmState.progress.remaining === 0),
     importing: busy === 'import',
-    anySent: (sendResult?.sent ?? 0) > 0,
-    // progress.succeeded is the batch total; result.success_count is only
-    // this chunk, which offered to send 15 of a 40-row import.
-    queuedInvitations: confirmState ? Math.max(0, confirmState.progress.succeeded - (sendResult?.sent ?? 0)) : 0,
+    // Anything attempted keeps the Send step up — including a send where
+    // nothing arrived, which is precisely when the owner needs that screen.
+    anySent: anyDispatched(sendResult),
+    queuedInvitations: confirmState ? invitationsWaiting(confirmState.progress.succeeded, sendResult) : 0,
   };
 
   const stage: Stage = stageFor(state);
+  // Derived, not stored: it exists exactly when the last chunk reported a
+  // clean finish, and `reset()` clearing `confirmState` clears it with it.
+  const celebration = celebrationFor(confirmState?.progress);
   const progress: ProgressView = useMemo(
     () => describeProgress(confirmState?.progress, confirmState?.rooms),
     [confirmState]
@@ -202,20 +206,14 @@ export function useImportTenants(hostelId: string | null) {
       try {
         // The route sends a bounded slice so a large batch cannot outrun the
         // function's time limit — so "send all" is a loop, like the import.
-        let guard = 0;
-        let total = 0;
-        let last = { sent: 0, failed: 0, remaining: 0 };
+        let attempts = 0;
+        let chunk;
         do {
-          last = await sendInvitations(upload.batch_id, limit ? { limit } : {});
-          total += last.sent;
-          setSendResult((current) => ({
-            sent: (current?.sent ?? 0) + last.sent,
-            failed: last.failed,
-            remaining: last.remaining,
-          }));
-          guard += 1;
-        } while (!limit && last.remaining > 0 && last.sent > 0 && guard < 50);
-        void total;
+          chunk = await sendInvitations(upload.batch_id, limit ? { limit } : {});
+          const received = chunk;
+          setSendResult((current) => mergeSendResult(current, received));
+          attempts += 1;
+        } while (shouldSendMore(chunk, { limit, attempts }));
       } catch (e: any) {
         setError(readError(e, "We couldn't send those invitations. Nothing was lost — try again."));
       } finally {
@@ -243,6 +241,7 @@ export function useImportTenants(hostelId: string | null) {
     upload,
     queue,
     progress,
+    celebration,
     sendResult,
     busy,
     error,

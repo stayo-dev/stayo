@@ -7,6 +7,7 @@ import { normalizeWhatsAppPhone } from "@/lib/services/notifications/providers/w
 import { eventLog } from "@/lib/services/event-log-service";
 import { planFloorRoomSave } from "./property/floor-room-plan";
 import { planHostelDeletion } from "./property/hostel-deletion-plan";
+import { realEmailOrNull } from "@/src/services/tenants/invited-profile-resolver";
 
 /**
  * An invitation that is live and holds a bed.
@@ -922,7 +923,7 @@ export class PropertyService {
 	        return {
 	          tenant_id: tenant.id,
 	          name: profile?.name ?? invitation?.name ?? "Tenant",
-	          email: profile?.email ?? tenant.personal_email ?? invitation?.email ?? null,
+	          email: realEmailOrNull(profile?.email) ?? realEmailOrNull(tenant.personal_email) ?? realEmailOrNull(invitation?.email),
 	          phone: profile?.phone ?? tenant.phone_1 ?? invitation?.phone ?? null,
 	          joined_date: a.start_date,
 	          rent: Number(tenant.monthly_rent),
@@ -1020,7 +1021,7 @@ export class PropertyService {
 	        tenant_id: tenant.id,
 	        profile_id: profile?.id ?? tenant.profile_id ?? null,
 	        name: profile?.name ?? invitation?.name ?? "Tenant",
-	        email: profile?.email ?? tenant.personal_email ?? invitation?.email ?? null,
+	        email: realEmailOrNull(profile?.email) ?? realEmailOrNull(tenant.personal_email) ?? realEmailOrNull(invitation?.email),
 	        phone: profile?.phone ?? tenant.phone_1 ?? invitation?.phone ?? null,
 	        joined_date: a.start_date,
 	        rent: Number(tenant.monthly_rent),

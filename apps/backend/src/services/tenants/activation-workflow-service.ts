@@ -100,6 +100,7 @@ import {
   getActiveTemplateAndSyncRuleVersion,
   interpolateRulesContent
 } from "../../utils/default-rules";
+import { realEmailOrNull } from "./invited-profile-resolver";
 
 const DEFAULT_RULE_CONTENT = DEFAULT_AGREEMENT_TEMPLATE;
 
@@ -659,7 +660,7 @@ export class ActivationWorkflowService {
       profile: {
         id: profile?.id || null,
         name: profile?.name || invitation?.name || null,
-        email: profile?.email || invitation?.email || null,
+        email: realEmailOrNull(profile?.email) ?? realEmailOrNull(invitation?.email),
         phone: profile?.phone || invitation?.phone || tenant.phone_1 || null,
       },
       /**

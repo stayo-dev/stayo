@@ -14,6 +14,7 @@ import {
   Undo2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { buildActivationShareText, buildWhatsAppShareUrl, resolveResendDelivery } from '../invite/inviteDelivery';
 import { StatusPill } from '@shared/ui-patterns/StatusPill';
 import { canonicalPhone, formatIndianPhone, toLocalPhone } from '@shared/lib/phone';
 import { queryKeys } from '@lib/queryKeys';
@@ -143,12 +144,39 @@ export function InvitedTenantProfileView({ tenant }: { tenant: RealTenantDetail 
     },
   });
 
+  // Reads what the resend actually did. It used to toast "Invitation resent"
+  // on any 2xx, but that route answers 202 with a failure body when nothing
+  // went out — so a nudge that reached nobody looked exactly like one that
+  // worked. When it fails, the owner is offered their own WhatsApp instead.
   const handleResend = async () => {
     setIsResending(true);
     try {
-      await tenantService.resendInvitation(tenant.phone);
+      const response = await tenantService.resendInvitation(tenant.phone);
+      const outcome = resolveResendDelivery(response, invitation?.activationLink ?? null);
       refresh();
-      toast.success('Invitation resent');
+      if (outcome.channel === 'whatsapp') {
+        toast.success('Sent on WhatsApp');
+      } else if (outcome.channel === 'email') {
+        toast.success(outcome.sentTo ? `Sent by email to ${outcome.sentTo}` : 'Sent by email');
+      } else {
+        const link = outcome.activationLink;
+        toast.error(`Didn’t reach ${tenant.name || 'them'} on WhatsApp`, {
+          description: outcome.reason ?? 'Share the link yourself — it works just the same.',
+          duration: 12000,
+          action:
+            link && tenant.phone
+              ? {
+                  label: 'Share yourself',
+                  onClick: () =>
+                    window.open(
+                      buildWhatsAppShareUrl(tenant.phone, buildActivationShareText(tenant.name || '', link)),
+                      '_blank',
+                      'noopener'
+                    ),
+                }
+              : undefined,
+        });
+      }
     } catch (error: any) {
       toast.error(error?.response?.data?.error?.message || 'Failed to resend invitation');
     } finally {
@@ -342,7 +370,7 @@ export function InvitedTenantProfileView({ tenant }: { tenant: RealTenantDetail 
           <div className="divide-y divide-border/60">
             <TermRow label="Name" value={draft.name} changed={changedFields.has('name')} onClick={() => setEditingField('name')} />
             <TermRow label="Phone" value={formatIndianPhone(draft.phone)} changed={changedFields.has('phone')} onClick={() => setEditingField('phone')} />
-            <TermRow label="Email" value={draft.email || 'Not added'} changed={changedFields.has('email')} onClick={() => setEditingField('email')} />
+            <TermRow label="Email" value={draft.email || 'Tenant adds it at sign-up'} changed={changedFields.has('email')} onClick={() => setEditingField('email')} />
           </div>
         </section>
 

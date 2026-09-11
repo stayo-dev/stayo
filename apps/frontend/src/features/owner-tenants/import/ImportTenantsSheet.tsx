@@ -10,6 +10,7 @@ import { UploadStep } from './steps/UploadStep';
 import { ReviewStep } from './steps/ReviewStep';
 import { ImportRunStep } from './steps/ImportRunStep';
 import { SendInvitesStep } from './steps/SendInvitesStep';
+import { ImportCelebration } from './steps/ImportCelebration';
 
 interface ImportTenantsSheetProps {
   open: boolean;
@@ -135,13 +136,21 @@ export function ImportTenantsSheet({ open, onClose, hostelId: initialHostelId = 
         />
       )}
 
+      {/* Above whichever screen the import finished on — Send when there are
+          invitations to go out, the progress screen when there are none. */}
+      {importer.celebration && (nav.current === 'IMPORT' || nav.current === 'SEND') && (
+        <div className="mb-4">
+          <ImportCelebration tenants={importer.celebration.tenants} />
+        </div>
+      )}
+
       {nav.current === 'IMPORT' && <ImportRunStep progress={importer.progress} onDone={onClose} />}
 
       {nav.current === 'SEND' && (
         <SendInvitesStep
           progress={importer.progress}
           waiting={importer.state.queuedInvitations}
-          sent={importer.sendResult?.sent ?? 0}
+          result={importer.sendResult}
           busy={importer.busy === 'send'}
           onSendAll={() => importer.send()}
           onSendWave={() => importer.send(10)}

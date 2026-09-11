@@ -96,3 +96,19 @@ export function describeProgress(
         : null,
   };
 }
+
+/**
+ * Whether the end of an import has earned the Stayo confirmation.
+ *
+ * Only a clean finish. The sound and the confetti say "everyone you imported
+ * is in", and the owner will take them at their word — so a run where every
+ * row failed (the owner's own first import: `succeeded: 0, failed: 1`) must
+ * not celebrate, and nor may one where some rows failed, because the
+ * confetti would drown out the list of people who did not make it.
+ */
+export function celebrationFor(progress: ImportProgress | null | undefined): { tenants: number } | null {
+  if (!progress) return null;
+  if (progress.stage !== 'DONE' || progress.remaining > 0) return null;
+  if (progress.failed > 0 || progress.succeeded <= 0) return null;
+  return { tenants: progress.succeeded };
+}
