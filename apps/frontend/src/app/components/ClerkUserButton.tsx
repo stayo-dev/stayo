@@ -35,23 +35,15 @@ export function ClerkUserButton() {
   );
 }
 
-/**
- * The same button, positioned for the mobile shells (owner, tenant), which have
- * a bottom nav and no header bar to hang it in.
+/*
+ * There is deliberately no floating version of this button any more.
  *
- * Fixed rather than in-flow so it cannot reflow a layout that was extracted
- * pixel-for-pixel from the design files — and because it collapses to nothing
- * whenever there is no Clerk session, which is every session today, it adds no
- * element to the current DOM at all.
+ * `ClerkAccountSlot` pinned it `fixed` to the top-right corner of the owner and
+ * tenant shells, on the reasoning that it "renders nothing, because nobody is
+ * signed in through Clerk today". Once people were, it rendered — on top of
+ * every page's own top-right action ("Collect rent" on Money, "+ Invite" on
+ * Tenants). A fixed element in the corner of a design whose primary actions
+ * live in that corner cannot be positioned safely, so the button is now placed
+ * in-flow where account things already are: the owner's Settings header and the
+ * tenant's profile header. The admin console keeps its in-flow placement.
  */
-export function ClerkAccountSlot() {
-  const clerk = useClerkSessionState();
-
-  if (clerkPresence(clerk) !== 'signed-in') return null;
-
-  return (
-    <div className="fixed right-3 top-3 z-50 sm:right-[max(0.75rem,calc(50%-232px))]">
-      <ClerkUserButton />
-    </div>
-  );
-}

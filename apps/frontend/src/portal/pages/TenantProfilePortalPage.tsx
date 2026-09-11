@@ -1,3 +1,4 @@
+import { ClerkUserButton } from '@/app/components/ClerkUserButton';
 import { RejectedDocumentNotice } from '@features/tenant-portal/components/RejectedDocumentNotice';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -418,6 +419,11 @@ export function TenantProfilePortalPage() {
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 <TenantStatusBadge status={String(t.status)} size="sm" />
               </div>
+            </div>
+            {/* Account management (Clerk), in the profile header rather than
+                floating over every tenant page. Renders nothing without a Clerk session. */}
+            <div className="flex-none">
+              <ClerkUserButton />
             </div>
           </div>
         </div>

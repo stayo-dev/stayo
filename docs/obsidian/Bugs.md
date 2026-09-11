@@ -8,6 +8,18 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-11 — The Clerk account badge sat on top of every page's main button (fixed)
+
+**Symptom.** A black "CS" avatar covered "Collect rent" on Money and "+ Invite" on Tenants — the top-right action of every owner (and tenant) screen. On Money, "Collect rent" had also wrapped onto two lines.
+
+**Root cause — an assumption that expired.** `ClerkAccountSlot` pinned Clerk's `<UserButton>` `fixed` to the top-right corner of the owner and tenant shells, justified in its own comment by "renders nothing, because nobody is signed in through Clerk today" (ADR-176 Phase 2). Once owners signed in through Clerk it rendered — in the one corner where this design puts each page's primary action. Separately, Money's hostel `<select>` sized itself to its widest option ("Business Overall (HQ) · September"), and with no `min-w-0` on the title block nor `flex-none`/`whitespace-nowrap` on the actions, that width pushed "Collect rent" onto two lines.
+
+**Fix.** No floating account button: it is placed in-flow beside the owner's name on Settings and in the tenant's profile header (the admin console already had it in-flow). Money's title block shrinks and truncates, the actions never wrap, both buttons are 44px, the export icon is a download arrow (it was an upload arrow) with a label, and the scope option reads "All hostels" like desktop instead of "All expenses".
+
+**Lesson.** "Renders nothing today" is not a layout guarantee; a component that is placed on that basis breaks the day the condition changes.
+
+**See:** [[Frontend]], [[Changelog]], [[Decisions#ADR-176|ADR-176]]
+
 ## 2026-09-11 — Every tenant document preview failed with a 401 in production (fixed)
 
 **Symptom.** On `/owner/tenants/verifications` (and the tenant profile's document preview) the image was broken; the network tab showed `GET https://api.yourstayo.com/api/tenants/…/documents/…/download → 401`, requested as a plain `<img>` with no session, and the button read "Open in new tab".

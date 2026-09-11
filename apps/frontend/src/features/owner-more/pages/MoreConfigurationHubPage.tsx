@@ -1,3 +1,4 @@
+import { ClerkUserButton } from '@/app/components/ClerkUserButton';
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight, LogOut } from 'lucide-react';
 import { useProfileHeader } from '../hooks/useProfileHeader';
@@ -56,11 +57,16 @@ export function MoreConfigurationHubPage() {
             {identity.initials}
           </span>
         )}
-        <div className="flex min-w-0 flex-col gap-0.5">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <h1 className="truncate font-display text-[22px] font-extrabold tracking-tight text-foreground">
             {identity.name}
           </h1>
           {identity.sub && <p className="truncate text-[12.5px] text-muted-foreground">{identity.sub}</p>}
+        </div>
+        {/* Account management (Clerk) — here, beside the owner's own name, rather
+            than floating over every page. Renders nothing without a Clerk session. */}
+        <div className="flex-none">
+          <ClerkUserButton />
         </div>
       </div>
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { ChevronDown, Upload } from 'lucide-react';
+import { ChevronDown, Download } from 'lucide-react';
 import { useIsDesktop } from '@/app/components/ui/use-desktop';
 import { useSelectedHostel } from '@features/owner-session/useSelectedHostel';
 import { QuickCollectModal } from '@features/owner-tenants/quick-collect/QuickCollectModal';
@@ -262,8 +262,13 @@ export function MoneyPage() {
           : 'flex flex-col gap-3.5 px-4 pb-8 pt-6 sm:px-6'
       }
     >
-      <div className="flex items-center justify-between">
-        <div>
+      {/*
+        The title block may shrink; the actions may not. A <select> is as wide as
+        its widest option ("Business Overall (HQ) · September"), and with nothing
+        stopping it that width pushed "Collect rent" onto two lines.
+      */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <h1 className="font-display text-[22px] font-extrabold tracking-tight text-foreground">Money</h1>
           <div className="mt-0.5 flex items-center gap-1">
             {isDesktop ? (
@@ -280,9 +285,11 @@ export function MoneyPage() {
               <select
                 value={hostelFilter}
                 onChange={(e) => setHostelFilter(e.target.value)}
-                className="cursor-pointer border-none bg-transparent text-[12.5px] font-semibold text-muted-foreground focus:outline-none"
+                aria-label="Which hostel"
+                className="w-full max-w-full cursor-pointer truncate border-none bg-transparent text-[12.5px] font-semibold text-muted-foreground focus:outline-none"
               >
-                <option value="all">All Expenses · {real.overview.month}</option>
+                {/* A hostel scope, so it says so — the same words desktop uses. */}
+                <option value="all">All hostels · {real.overview.month}</option>
                 <option value="business">Business Overall (HQ) · {real.overview.month}</option>
                 {real.hostelOptions.map((h: { id: string; name: string }) => (
                   <option key={h.id} value={h.id}>
@@ -293,21 +300,24 @@ export function MoneyPage() {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-none items-center gap-2">
           {/* One export for the whole tab, not one per tab: the owner chooses a
-              document by who it is for, and the right rows follow. */}
+              document by who it is for, and the right rows follow. A download
+              arrow, because the owner is taking a report away — the old upload
+              arrow read as "add a file". */}
           <button
             type="button"
             onClick={() => money.openModal('export')}
-            aria-label="Export"
-            className="rounded-xl border border-border bg-card p-2.5 text-muted-foreground"
+            aria-label="Export a report"
+            title="Export a report"
+            className="flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-card text-foreground"
           >
-            <Upload className="h-4 w-4" />
+            <Download className="h-[18px] w-[18px]" strokeWidth={2} />
           </button>
           <button
             type="button"
             onClick={() => (money.tab === 'expenses' ? handleOpenAddExpense() : money.openModal(null))}
-            className="rounded-xl bg-primary px-4 py-2.5 font-display text-[13px] font-bold text-primary-foreground"
+            className="flex h-11 items-center whitespace-nowrap rounded-xl bg-primary px-4 font-display text-[13.5px] font-bold text-primary-foreground shadow-[0_4px_12px_rgba(180,106,85,0.28)]"
           >
             {money.tab === 'expenses' ? '+ Add expense' : 'Collect rent'}
           </button>
