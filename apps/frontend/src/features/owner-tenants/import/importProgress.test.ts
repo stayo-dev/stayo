@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { describeProgress } from './importProgress';
+import { celebrationFor } from './importProgress';
 
 const progress = (over: Partial<Parameters<typeof describeProgress>[0]> = {}) => ({
   total: 60,
@@ -79,5 +80,32 @@ describe('edges', () => {
 
   it('cannot report more processed than the batch holds', () => {
     expect(describeProgress(progress({ total: 10, processed: 999 })).percent).toBe(100);
+  });
+});
+
+describe('celebrating the end of an import', () => {
+  const done = (over: Partial<Parameters<typeof celebrationFor>[0] & object> = {}) => ({
+    total: 1, processed: 1, remaining: 0, succeeded: 1, failed: 0, stage: 'DONE' as const, ...over,
+  });
+
+  it('celebrates a clean finish, and counts who made it', () => {
+    expect(celebrationFor(done({ total: 12, processed: 12, succeeded: 12 }))).toEqual({ tenants: 12 });
+  });
+
+  /** The owner's own first run: the room was made, the tenant was not. */
+  it('stays quiet when every row failed', () => {
+    expect(celebrationFor(done({ succeeded: 0, failed: 1 }))).toBeNull();
+  });
+
+  it('stays quiet when some rows failed — the list of who did not make it matters more', () => {
+    expect(celebrationFor(done({ total: 3, processed: 3, succeeded: 2, failed: 1 }))).toBeNull();
+  });
+
+  it('waits for the last chunk', () => {
+    expect(celebrationFor(done({ remaining: 5, stage: 'TENANTS' }))).toBeNull();
+  });
+
+  it('says nothing before there is a result', () => {
+    expect(celebrationFor(null)).toBeNull();
   });
 });

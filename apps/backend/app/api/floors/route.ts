@@ -60,6 +60,9 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     const msg = String(error?.message || "Failed to create floor");
     if (msg.startsWith("NOT_FOUND:")) return ApiResponse.error(ApiError.notFound(msg.replace("NOT_FOUND:", "").trim()));
+    for (const prefix of ["VALIDATION:", "HOSTEL_ARCHIVED:"]) {
+      if (msg.startsWith(prefix)) return ApiResponse.error(ApiError.badRequest(msg.slice(prefix.length).trim()));
+    }
     return ApiResponse.error(ApiError.internal("Failed to create floor", error));
   }
 }

@@ -14,7 +14,8 @@ import { financialService } from "../payments/financial-service";
 import { selectCurrentTenancy } from "@/lib/tenancy/active-tenancy";
 import { recordWhatsAppDelivery, readWhatsAppDeliveredAt } from "./invitation-delivery-trust";
 import { isPhoneAlreadyProven } from "./invitation-phone-trust";
-import { resolveInvitedProfile, resolveActivationEmail } from "./invited-profile-resolver";
+import { resolveInvitedProfile, resolveActivationEmail, realEmailOrNull } from "./invited-profile-resolver";
+import { normalizeOnboardingEmail } from "../../../lib/services/auth/email-otp-service";
 import { initializeActiveUnacceptedTenancy } from "./owner-managed-tenancy-service";
 import {
   TenancyEligibilityError,
@@ -155,11 +156,14 @@ export class TenantInvitationLifecycleService {
     // 2. Fallback: Email (only if WhatsApp failed/not sent AND email exists)
     let emailSent = false;
     let emailError: string | undefined = undefined;
-    if (!whatsappSent && invitation.email) {
+    // A `@hms.temp` stand-in is not an address. Treating it as one reported an
+    // invitation "sent by email" that no inbox could ever receive.
+    const deliverableEmail = realEmailOrNull(invitation.email);
+    if (!whatsappSent && deliverableEmail) {
       try {
         const roommates = await this.getRoommateNames(room.id);
         const emailResult = await EmailService.sendInvitation({
-          toEmail: invitation.email,
+          toEmail: deliverableEmail,
           tenantName: invitation.name,
           ownerName: owner.name || "The Owner",
           hostelName: room.hostels.name,
@@ -187,7 +191,7 @@ export class TenantInvitationLifecycleService {
       provider_message_id: providerMessageId,
       email_sent: emailSent,
       email_error: emailError,
-      needs_email: !whatsappSent && !invitation.email,
+      needs_email: !whatsappSent && !deliverableEmail,
     };
   }
 
@@ -264,6 +268,18 @@ export class TenantInvitationLifecycleService {
     let failed = 0;
     let skipped = 0;
     const errors: Array<{ invitation_id: string; error: string }> = [];
+    // Out of the queue, link live, but nothing reached the tenant. These used
+    // to be counted as `sent`: the screen said "every invitation has been
+    // sent" while the delivery result — WhatsApp error and all — was recorded
+    // and thrown away. The single-invite flow learnt this lesson already
+    // (`inviteDelivery.ts`); bulk dispatch had not.
+    const undelivered: Array<{
+      invitation_id: string;
+      name: string;
+      phone: string | null;
+      reason: string;
+      activation_link: string;
+    }> = [];
 
     for (const invitation of queued) {
       try {
@@ -299,7 +315,17 @@ export class TenantInvitationLifecycleService {
         const activationLink = frontendUrl(`/activate/${live.token}`);
         const delivery = await this.dispatchInvitationNotification(live, tenant, room, owner, activationLink);
         await recordWhatsAppDelivery(live.id, delivery.whatsapp_sent);
-        sent++;
+        if (delivery.whatsapp_sent || delivery.email_sent) {
+          sent++;
+        } else {
+          undelivered.push({
+            invitation_id: live.id,
+            name: String(live.name || ""),
+            phone: live.phone ?? null,
+            reason: describeDeliveryFailure(delivery),
+            activation_link: activationLink,
+          });
+        }
       } catch (error: any) {
         failed++;
         errors.push({ invitation_id: invitation.id, error: String(error?.message || error) });
@@ -314,7 +340,7 @@ export class TenantInvitationLifecycleService {
       },
     });
 
-    return { sent, failed, skipped, remaining, errors };
+    return { sent, failed, skipped, remaining, errors, undelivered };
   }
 
   async createInvitation(data: any, ownerId: string) {
@@ -1345,12 +1371,17 @@ export class TenantInvitationLifecycleService {
       );
     }
 
-    // Not asked for on the Identity screen any more — see resolveActivationEmail.
-    const normalizedEmail = resolveActivationEmail({
-      profile: resolved.profile,
-      invitation,
-      phone: primaryPhone,
-    });
+    // The address the tenant proved with a code on the Identity screen — the
+    // ACCOUNT step will not reach here without one (or without an existing
+    // login of their own). resolveActivationEmail remains the fallback only
+    // for that existing-login case, where it returns their own address.
+    const normalizedEmail =
+      normalizeOnboardingEmail(data?.verified_email) ??
+      resolveActivationEmail({
+        profile: resolved.profile,
+        invitation,
+        phone: primaryPhone,
+      });
     if (!normalizedEmail) {
       throw new Error("VALIDATION_ERROR: This invitation is missing both an email address and a phone number");
     }
@@ -1790,3 +1821,24 @@ export class TenantInvitationLifecycleService {
 }
 
 export const tenantInvitationLifecycleService = new TenantInvitationLifecycleService();
+
+/**
+ * Why nothing reached the tenant, short enough for an owner to read.
+ *
+ * The provider's own message is kept — it is the only diagnosis there is, and
+ * throwing it away is why a failed WhatsApp send was indistinguishable from a
+ * delivered one — but capped, because Meta errors can be a paragraph of JSON.
+ */
+function describeDeliveryFailure(delivery: {
+  whatsapp_error?: string;
+  email_error?: string;
+  needs_email?: boolean;
+}): string {
+  const raw = String(delivery.whatsapp_error || delivery.email_error || "").trim();
+  if (!raw) {
+    return delivery.needs_email
+      ? "WhatsApp didn't go through and there's no email to fall back on."
+      : "The message didn't go through.";
+  }
+  return raw.length > 200 ? `${raw.slice(0, 197)}…` : raw;
+}

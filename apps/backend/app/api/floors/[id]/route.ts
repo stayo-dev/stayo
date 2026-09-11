@@ -35,6 +35,11 @@ export async function PATCH(
   } catch (error: any) {
     const msg = String(error?.message || "Failed to update floor");
     if (msg.startsWith("NOT_FOUND:")) return ApiResponse.error(ApiError.notFound(msg.replace("NOT_FOUND:", "").trim()));
+    // The owner's own mistake, in their words — not "Failed to update floor"
+    // over a 500, which read as the app breaking rather than a name clashing.
+    for (const prefix of ["VALIDATION:", "HOSTEL_ARCHIVED:"]) {
+      if (msg.startsWith(prefix)) return ApiResponse.error(ApiError.badRequest(msg.slice(prefix.length).trim()));
+    }
     return ApiResponse.error(ApiError.internal("Failed to update floor", error));
   }
 }

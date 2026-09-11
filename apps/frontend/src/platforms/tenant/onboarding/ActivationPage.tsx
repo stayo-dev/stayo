@@ -13,6 +13,7 @@ import { AgreementStep } from './steps/AgreementStep';
 import { WelcomeIdentityStep, type ProfileDraft } from './steps/WelcomeIdentityStep';
 import { PasswordActivateStep } from './steps/PasswordActivateStep';
 import { WelcomeSummaryStep } from './steps/WelcomeSummaryStep';
+import { useEmailVerification } from './useEmailVerification';
 import { kycDocLabel, missingKycDocs, type OnboardingDocItem } from './onboardingKyc';
 import {
   activationMessages,
@@ -77,6 +78,7 @@ export function ActivationPage() {
   const [accountOtpError, setAccountOtpError] = useState('');
 
   const [account, setAccount] = useState({ password: '', confirm_password: '', phone: '', otp: '', email: '' });
+  const emailVerification = useEmailVerification(token, ctx?.email_requirement);
   const [otpSent, setOtpSent] = useState(false);
   const [otpSending, setOtpSending] = useState(false);
   const [otpCountdown, setOtpCountdown] = useState(0);
@@ -143,12 +145,11 @@ export function ActivationPage() {
       setAccount((prev) => ({
         ...prev,
         phone: prev.phone || phoneDigits(data.tenant?.phone_1 || data.profile?.phone),
-        // Pre-filled from whatever the owner captured at invite (which, for a
-        // lead-accepted tenant, traces back to the enquiry) — still editable,
-        // and submit's Gmail-format validation is unchanged, so a non-Gmail
-        // invite email just shows up ready to correct rather than retyped
-        // from scratch.
-        email: prev.email || String(data.profile?.email || ''),
+        // An address already proved for this invitation first, then whatever
+        // the owner typed at invite — editable, and confirmed by a code
+        // either way. Never the `@hms.temp` stand-in: the server no longer
+        // returns it.
+        email: prev.email || String(data.email_requirement?.email || data.profile?.email || ''),
       }));
 
       const backendProfile: ProfileDraft = {
@@ -331,10 +332,9 @@ export function ActivationPage() {
 
   const submitAccount = async (): Promise<boolean> => {
     setAccountOtpError('');
-    // The email is no longer collected here — the backend derives it from the
-    // account this invitation belongs to, or from the invitation itself. It was
-    // only ever a way to re-type an address we already had, and typing it
-    // correctly is what used to fail as "already registered".
+    // The email is collected again — mandatory, and proved with a code before
+    // this is enabled (see steps/emailVerification). The server checks the
+    // proof itself; `account.email` is the address it will look up.
     const ok = await submitStep('ACCOUNT', account);
     if (!ok) setAccountOtpError(lastStepErrorRef.current || 'Incorrect code — please try again');
     return ok;
@@ -650,6 +650,8 @@ export function ActivationPage() {
             activeStep={activeStep}
             accountVerified={Boolean(ctx.activation_state?.account_setup_completed)}
             phoneTrust={ctx.phone_trust ?? null}
+            emailRequirement={ctx.email_requirement ?? null}
+            emailVerification={emailVerification}
             genderRequired={ctx.identity_fields?.required ?? true}
             profileCompleted={completed.has('PROFILE') || Boolean(ctx.activation_state?.profile_completed)}
             account={account}

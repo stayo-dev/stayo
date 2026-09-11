@@ -65,6 +65,10 @@ export async function POST(
         skipped: result.skipped,
         remaining: result.remaining,
         errors: result.errors.slice(0, 50),
+        // Out of the queue with a live link, but nothing reached the tenant.
+        // The screen must say so and offer the link — see
+        // dispatchQueuedInvitations.
+        undelivered: result.undelivered.slice(0, 50),
       },
       200
     );

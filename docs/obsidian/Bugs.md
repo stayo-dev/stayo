@@ -8,6 +8,20 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-11 — "Every invitation has been sent" while no WhatsApp arrived (fixed)
+
+**Symptom.** After the first successful bulk import, the owner pressed Send. The screen said *"Every invitation has been sent"*, the tenant's timeline ticked *"Invitation sent"*, and no WhatsApp arrived. The owner's page also listed the tenant's email as `+918008046952@hms.temp`.
+
+**Root cause — delivery was recorded and thrown away.** `dispatchQueuedInvitations` incremented `sent` for every invitation it moved out of the queue. `dispatchInvitationNotification` returned `whatsapp_sent`, `whatsapp_error` and `email_sent`; the dispatcher used the first to stamp `whatsapp_delivered_at` and discarded the rest. The single-invite flow had already been fixed for exactly this — `inviteDelivery.ts` opens with "an owner could send twenty invitations, see twenty success screens, and have nothing reach anyone" — and bulk dispatch reintroduced it. The owner page's "Nudge on WhatsApp" had the same flaw: it toasted "Invitation resent" on any 2xx, though the resend route answers 202 with a failure body.
+
+**The placeholder address.** `profiles.email` is NOT NULL and unique, so a tenant invited by phone alone gets `<phone>@hms.temp` (`resolveActivationEmail`). It was shown to owners as the tenant's email on every owner read, and the email fallback treated it as deliverable — an invitation row in production already carried one, so a resend would have reported "sent by email" to a mailbox that cannot exist.
+
+**Why the WhatsApp itself failed is still unknown.** The provider's error was the one piece of evidence, and it was discarded. It is now returned (`undelivered[].reason`), shown on the Send screen and in the nudge's toast, so the next attempt names the cause.
+
+**Fix.** Dispatch counts a send only when WhatsApp or email delivered it; everything else comes back as `undelivered` with the reason and the activation link, and the screen offers *Share on WhatsApp* from the owner's own phone and *Copy link*. The send loop progresses on anything that left the queue, not on `sent > 0`, so a WhatsApp outage no longer strands the rest of the queue. `isPlaceholderEmail` / `realEmailOrNull` mask the stand-in on every owner- and tenant-facing read and block it as an email target. **Not yet masked:** `payment-service.ts`'s `tenant_email` (receipts, gateway) — deferred until the financial safety checks can be run against it.
+
+**See:** [[Changelog]], [[Business-Rules]]
+
 ## 2026-09-11 — A tenant in a room the sheet created failed on its placeholder id (fixed)
 
 **Symptom.** The first import to reach execution against a real database created room 401 from the Rooms sheet — `rooms.created: 1` — and then failed the tenant who lived in it: ``Invalid `prisma.rooms.findFirst()` invocation … Error creating UUID, invalid character … found `p` at 1``.

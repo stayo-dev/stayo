@@ -7,6 +7,39 @@ import { normalizeWhatsAppPhone } from "@/lib/services/notifications/providers/w
 import { eventLog } from "@/lib/services/event-log-service";
 import { planFloorRoomSave } from "./property/floor-room-plan";
 import { planHostelDeletion } from "./property/hostel-deletion-plan";
+import { realEmailOrNull } from "@/src/services/tenants/invited-profile-resolver";
+
+/** Long enough for "Ground floor — annexe block", short enough to fit a floor header on a phone. */
+export const FLOOR_NAME_MAX = 40;
+
+/**
+ * A floor name the owner can actually tell apart — trimmed, non-empty, short
+ * enough for a phone header, and not already taken in this hostel.
+ *
+ * A floor's name is how the owner finds it: on the Rooms tab, in the import
+ * workbook's Rooms sheet, on every room's "Floor" line. A blank one became an
+ * unlabelled section, and two floors both called "Ground" made either one
+ * impossible to pick out. Shared by create and rename so the two cannot
+ * disagree about what a valid name is.
+ */
+async function usableFloorName(hostelId: string, raw: unknown, exceptFloorId?: string): Promise<string> {
+  const name = String(raw ?? "").trim().replace(/\s+/g, " ");
+  if (!name) throw new Error("VALIDATION: Give the floor a name");
+  if (name.length > FLOOR_NAME_MAX) {
+    throw new Error(`VALIDATION: Keep the floor name under ${FLOOR_NAME_MAX} characters`);
+  }
+  const clash = await prisma.floors.findFirst({
+    where: {
+      hostel_id: hostelId,
+      ...(exceptFloorId ? { id: { not: exceptFloorId } } : {}),
+      name: { equals: name, mode: "insensitive" },
+    },
+    select: { id: true },
+  });
+  if (clash) throw new Error(`VALIDATION: This hostel already has a floor called "${name}"`);
+  return name;
+}
+
 
 /**
  * An invitation that is live and holds a bed.
@@ -622,7 +655,7 @@ export class PropertyService {
       data: {
         hostel_id: hostelId,
         owner_id: ownerId,
-        name: data.name.trim(),
+        name: await usableFloorName(hostelId, data.name),
         sort_order: data.sort_order ?? 0,
       },
     });
@@ -638,7 +671,9 @@ export class PropertyService {
     if (floor.hostel.status === "INACTIVE") throw new Error("VALIDATION: Cannot modify rooms/floors of an inactive hostel");
 
     const updateData: any = {};
-    if (data.name !== undefined) updateData.name = data.name.trim();
+    if (data.name !== undefined) {
+      updateData.name = await usableFloorName(floor.hostel_id, data.name, floorId);
+    }
     if (data.sort_order !== undefined) updateData.sort_order = Number(data.sort_order);
     if (Object.keys(updateData).length === 0) return floor;
 
@@ -922,7 +957,7 @@ export class PropertyService {
 	        return {
 	          tenant_id: tenant.id,
 	          name: profile?.name ?? invitation?.name ?? "Tenant",
-	          email: profile?.email ?? tenant.personal_email ?? invitation?.email ?? null,
+	          email: realEmailOrNull(profile?.email) ?? realEmailOrNull(tenant.personal_email) ?? realEmailOrNull(invitation?.email),
 	          phone: profile?.phone ?? tenant.phone_1 ?? invitation?.phone ?? null,
 	          joined_date: a.start_date,
 	          rent: Number(tenant.monthly_rent),
@@ -1020,7 +1055,7 @@ export class PropertyService {
 	        tenant_id: tenant.id,
 	        profile_id: profile?.id ?? tenant.profile_id ?? null,
 	        name: profile?.name ?? invitation?.name ?? "Tenant",
-	        email: profile?.email ?? tenant.personal_email ?? invitation?.email ?? null,
+	        email: realEmailOrNull(profile?.email) ?? realEmailOrNull(tenant.personal_email) ?? realEmailOrNull(invitation?.email),
 	        phone: profile?.phone ?? tenant.phone_1 ?? invitation?.phone ?? null,
 	        joined_date: a.start_date,
 	        rent: Number(tenant.monthly_rent),

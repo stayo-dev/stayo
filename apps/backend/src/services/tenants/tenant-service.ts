@@ -37,6 +37,7 @@ import {
 } from "../change-management";
 import { ChangeCategory, ChangeApprovalLevel } from "@prisma/client";
 import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
+import { realEmailOrNull } from "./invited-profile-resolver";
 
 const logger = getLogger("tenant-service");
 
@@ -385,7 +386,7 @@ export class TenantService {
         payment_summary: summary,
         // Denormalized top-level fields consumed by the frontend
         name: tenant.profiles?.name ?? null,
-        email: tenant.profiles?.email ?? null,
+        email: realEmailOrNull(tenant.profiles?.email),
         phone: tenant.profiles?.phone ?? tenant.phone_1 ?? null,
         room_no: firstAllocation?.room?.room_no ?? null,
         room_number: firstAllocation?.room?.room_no ?? null,
@@ -851,7 +852,7 @@ export class TenantService {
         processed_at: req.processed_at,
         processed_by: req.processed_by,
         tenant_name: profile?.name ?? tenant.name ?? "Tenant",
-        tenant_email: profile?.email ?? "",
+        tenant_email: realEmailOrNull(profile?.email) ?? "",
         tenant_phone: profile?.phone ?? tenant.phone_1 ?? "",
         room_no: room?.room_no || null
       };
@@ -1124,7 +1125,7 @@ export class TenantService {
       guardian_name: legacyTenant.guardian_name,
       guardian_phone: legacyTenant.phone_2 || legacyTenant.profile?.emergency_contact || "",
       guardian_relation: legacyTenant.guardian_relation,
-      email: legacyTenant.profile?.email || "",
+      email: realEmailOrNull(legacyTenant.profile?.email) ?? "",
       profile_type: legacyTenant.profile_type,
       roll_number: legacyTenant.roll_number,
       course: legacyTenant.course,

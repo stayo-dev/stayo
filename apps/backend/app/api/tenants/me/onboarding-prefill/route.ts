@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { profileIdentityService } from "@/src/services/profile/profile-identity-service";
 import { ApiResponse } from "@/src/lib/api-response";
 import { ApiError } from "@/src/lib/api-error";
+import { realEmailOrNull } from "@/src/services/tenants/invited-profile-resolver";
 
 /**
  * What the activation form should open with (phase B).
@@ -37,7 +38,7 @@ export async function GET(req: NextRequest) {
       // Account-level fields the form also asks for, so the client has one
       // place to read defaults from rather than stitching two responses.
       name: profile?.name ?? null,
-      email: profile?.email ?? null,
+      email: realEmailOrNull(profile?.email),
       phone: profile?.phone ?? null,
       emergency_contact: profile?.emergency_contact ?? null,
       ...identity,

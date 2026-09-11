@@ -11,6 +11,7 @@ import { RoomsReorderPanel } from '../components/RoomsReorderPanel';
 import { RoomSheetModal } from '../room-sheet/RoomSheetModal';
 import { AddRoomModal } from '../add-room/AddRoomModal';
 import { AddFloorModal } from '../add-floor/AddFloorModal';
+import { EditFloorSheet } from '../edit-floor/EditFloorSheet';
 import type { RoomWithOccupants } from '../types';
 
 /**
@@ -39,6 +40,7 @@ export function HostelRoomsPage() {
   const [roomSheetRoom, setRoomSheetRoom] = useState<RoomWithOccupants | null>(null);
   const [addRoomOpen, setAddRoomOpen] = useState(false);
   const [addFloorOpen, setAddFloorOpen] = useState(false);
+  const [editingFloorId, setEditingFloorId] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -218,15 +220,7 @@ export function HostelRoomsPage() {
                 onToggle={() => toggleFloor(floor.id)}
                 onOpenRoom={setRoomSheetRoom}
                 onAssignRoom={() => setInviteOpen(true)}
-                isDeleting={layout.isDeletingFloor}
-                onDelete={async () => {
-                  try {
-                    await layout.deleteFloor(floor.id);
-                    stayoToast.success(`${floor.name} deleted.`);
-                  } catch (error) {
-                    stayoToast.error(removalError(error, 'Could not delete this floor.'));
-                  }
-                }}
+                onEdit={() => setEditingFloorId(floor.id)}
               />
             );
           })}
@@ -287,6 +281,43 @@ export function HostelRoomsPage() {
           setAddRoomOpen(false);
         }}
       />
+      {(() => {
+        // Counted from every room on the floor, not the search-filtered list
+        // the cards render — "delete this floor" must not appear because a
+        // search happened to hide its rooms.
+        const floor = layout.floors.find((f) => f.id === editingFloorId) ?? null;
+        const rooms = floor ? layout.roomsByFloor.get(floor.id) ?? [] : [];
+        const beds = rooms.flatMap((room) => room.beds);
+        return (
+          <EditFloorSheet
+            floor={floor}
+            summary={{
+              rooms: rooms.length,
+              beds: beds.length,
+              vacantBeds: beds.filter((bed) => bed.status === 'vacant').length,
+            }}
+            otherNames={layout.floors.filter((f) => f.id !== editingFloorId).map((f) => f.name)}
+            saving={layout.isRenamingFloor}
+            deleting={layout.isDeletingFloor}
+            onClose={() => setEditingFloorId(null)}
+            onRename={async (name) => {
+              await layout.renameFloor(floor!.id, name);
+              stayoToast.success(`Renamed to ${name}.`);
+              setEditingFloorId(null);
+            }}
+            onDelete={async () => {
+              try {
+                await layout.deleteFloor(floor!.id);
+                stayoToast.success(`${floor!.name} deleted.`);
+                setEditingFloorId(null);
+              } catch (error) {
+                stayoToast.error(removalError(error, 'Could not delete this floor.'));
+              }
+            }}
+          />
+        );
+      })()}
+
       <AddFloorModal
         open={addFloorOpen}
         nextFloorLabel={`${layout.floors.length + 1}th Floor`}

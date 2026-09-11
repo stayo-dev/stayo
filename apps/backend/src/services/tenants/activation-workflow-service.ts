@@ -82,7 +82,8 @@ const REQUIRED_ACKNOWLEDGEMENTS = [
 
 import { getActiveTenancy, selectCurrentTenancy } from "@/lib/tenancy/active-tenancy";
 import { isPhoneAlreadyProven } from "./invitation-phone-trust";
-import { resolveActivationEmail } from "./invited-profile-resolver";
+import { realEmailOrNull } from "./invited-profile-resolver";
+import { emailOtpService, normalizeOnboardingEmail } from "../../../lib/services/auth/email-otp-service";
 import { resolveGenderRequirement } from "./identity-field-policy";
 import { buildCommitmentRecord } from "./agreement-commitment";
 import { isAccountSetupComplete } from "./activation-account-state";
@@ -659,7 +660,7 @@ export class ActivationWorkflowService {
       profile: {
         id: profile?.id || null,
         name: profile?.name || invitation?.name || null,
-        email: profile?.email || invitation?.email || null,
+        email: realEmailOrNull(profile?.email) ?? realEmailOrNull(invitation?.email),
         phone: profile?.phone || invitation?.phone || tenant.phone_1 || null,
       },
       /**
@@ -690,6 +691,14 @@ export class ActivationWorkflowService {
         tenantGender: tenant.gender,
         hostelType: hostel?.hostel_type,
       }),
+      /**
+       * Whether the Identity screen must collect an email and prove it with a
+       * code, what to prefill, and whether this invitation already proved one
+       * (so a reload does not ask twice). One server-side rule — the same
+       * `hasOwnLogin` the ACCOUNT step enforces — so the screen and the
+       * mutation cannot disagree about who is asked.
+       */
+      email_requirement: await this.describeEmailRequirement(profile, invitation),
       phone_trust: {
         phone: invitation?.phone ? normalizeIndianPhone(invitation.phone) : (tenant.phone_1 || null),
         trusted: isPhoneAlreadyProven({
@@ -1211,6 +1220,10 @@ export class ActivationWorkflowService {
       }
     }
 
+    // Mandatory, and proved: the address this account will sign in with and
+    // receive receipts at. Checked before either branch below writes one.
+    const accountEmail = await this.resolveAccountEmail(profile, invitation, data);
+
     // Keyed on whether the tenancy is *bound*, not on whether we found an
     // account. Those used to be the same question; they are not any more, since
     // the resolver now hands back the invitee's existing account before
@@ -1226,19 +1239,17 @@ export class ActivationWorkflowService {
       await tenantInvitationLifecycleService.startActivation(token, {
         ...data,
         phone: primaryPhone,
+        verified_email: accountEmail.email,
       });
+      if (accountEmail.verificationId) await emailOtpService.consume(accountEmail.verificationId);
       return;
     }
     if (!profile) throw new Error("INVALID_TRANSITION: Complete account setup from a valid invitation");
 
-    // No longer collected on the Identity screen. `profiles.email` is this
-    // person's login, and a form that rewrites it mid-onboarding could only do
-    // harm: leaving it unchanged used to be rejected as "already registered",
-    // and changing it would silently alter how they sign in.
-    const normalizedEmail = resolveActivationEmail({ profile, invitation, phone: primaryPhone });
-    if (!normalizedEmail) {
-      throw new Error("VALIDATION_ERROR: This invitation is missing both an email address and a phone number");
-    }
+    // Collected again, and proved with a code (see resolveAccountEmail). For
+    // someone who already signs in with a real address this is that address,
+    // unchanged — onboarding still never rewrites an existing login.
+    const normalizedEmail = accountEmail.email;
 
     // Kept, because this still writes an email onto a profile: it must never
     // take an address another account already owns (`profiles.email` is unique,
@@ -1283,8 +1294,72 @@ export class ActivationWorkflowService {
           },
         });
       }
+      if (accountEmail.verificationId) await emailOtpService.consume(accountEmail.verificationId, tx);
     });
     await eventLog.log("account_setup_completed", tenant.owner_id || null, { tenant_id: tenant.id, hostel_id: tenant.hostel_id }, tenant.id);
+  }
+
+  /**
+   * The email this account will carry, and the verification that proves it.
+   *
+   * Onboarding used to finish with `<phone>@hms.temp` for anyone invited by
+   * phone alone — the stand-in NOT NULL `profiles.email` needs — and that
+   * became their login and the address their owner was shown. It is now
+   * mandatory and proved: the tenant enters an address, confirms the code
+   * emailed to it, and only then can this step complete.
+   *
+   * The one exception is a person who already signs in with a real address of
+   * their own. That is their login, and onboarding has no business changing
+   * it (ADR-110) — they are not asked again. An owner-typed address is *not*
+   * that exception: nobody has proved it, so it is only offered as a prefill.
+   */
+  private async describeEmailRequirement(
+    profile: any | null,
+    invitation: any | null
+  ): Promise<{ required: boolean; email: string | null; verified_email: string | null }> {
+    if (hasOwnLogin(profile)) {
+      return { required: false, email: String(profile.email).trim().toLowerCase(), verified_email: null };
+    }
+    // Never allowed to break the context itself — the screen must still load
+    // to say what is wrong, even if the verification table is unavailable.
+    const verified = invitation?.id
+      ? await emailOtpService.latestVerifiedEmail(invitation.id).catch(() => null)
+      : null;
+    return {
+      required: true,
+      email: verified ?? realEmailOrNull(profile?.email) ?? realEmailOrNull(invitation?.email),
+      verified_email: verified,
+    };
+  }
+
+  private async resolveAccountEmail(
+    profile: any | null,
+    invitation: any | null,
+    data: any
+  ): Promise<{ email: string; verificationId: string | null }> {
+    if (hasOwnLogin(profile)) {
+      return { email: String(profile.email).trim().toLowerCase(), verificationId: null };
+    }
+
+    const email = normalizeOnboardingEmail(data?.email);
+    if (!email) {
+      throw new Error("VALIDATION_ERROR: Add your email address and confirm it with the code we send you");
+    }
+    if (!invitation?.id) {
+      throw new Error("VALIDATION_ERROR: Open your invitation link again to confirm your email");
+    }
+    const verification = await emailOtpService.findVerified({ invitationId: invitation.id, email });
+    if (!verification) {
+      throw new Error("VALIDATION_ERROR: Confirm your email with the code we sent before continuing");
+    }
+    // Taken since the code was sent? Say so, rather than fail on the unique
+    // constraint with an opaque P2002.
+    try {
+      await emailOtpService.assertAvailable(email, profile?.id ?? null);
+    } catch (error: any) {
+      throw new Error(`VALIDATION_ERROR: ${error?.message || "That email already has a Stayo account. Use a different email."}`);
+    }
+    return { email, verificationId: verification.id };
   }
 
   private async saveProfile(profile: any, tenant: any, data: any) {
@@ -1660,3 +1735,15 @@ export class ActivationWorkflowService {
 }
 
 export const activationWorkflowService = new ActivationWorkflowService();
+
+
+/**
+ * Someone who already signs in with a real address of their own — the one
+ * case the onboarding email step is skipped. A placeholder never counts, even
+ * on an account that has a login: those people were never asked, and are now.
+ */
+export function hasOwnLogin(profile: any | null): boolean {
+  if (!profile) return false;
+  if (!realEmailOrNull(profile.email)) return false;
+  return Boolean(profile.auth_user_id || profile.password_hash);
+}

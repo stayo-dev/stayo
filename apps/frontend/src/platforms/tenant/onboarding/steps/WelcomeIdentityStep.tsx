@@ -1,8 +1,10 @@
 import { FormEvent, useState } from 'react';
 import { canSubmitIdentity, needsPhoneOtp, type PhoneTrust } from './identityVerification';
+import { emailAllowsSubmit, emailFieldPhase, emailHelperText, looksLikeEmail, type EmailRequirement } from './emailVerification';
+import type { EmailVerificationState } from '../useEmailVerification';
 import DateOfBirthField from './DateOfBirthField';
 import { useSky } from '../skyContext';
-import { AlertCircle, Camera, CheckCircle2, FileText, Receipt, Send, User } from 'lucide-react';
+import { AlertCircle, Camera, CheckCircle2, FileText, Mail, Receipt, Send, User } from 'lucide-react';
 import { StayoLoader } from '@shared/ui/brand';
 import type { ActivationContext, ActivationStep } from '../activationTypes';
 import { currency, fmtDate } from '../activationTypes';
@@ -50,7 +52,9 @@ interface WelcomeIdentityStepProps {
   activeStep: 'ACCOUNT' | 'PROFILE';
   accountVerified: boolean;
   profileCompleted: boolean;
-  account: { phone: string; otp: string; email: string };
+  // The parent passes its whole account draft; spreading it back through
+  // `setAccount` must keep the password fields it carries.
+  account: { phone: string; otp: string; email: string; password: string; confirm_password: string };
   setAccount: (next: { phone: string; otp: string; email: string; password: string; confirm_password: string }) => void;
   otpSent: boolean;
   otpSending: boolean;
@@ -83,6 +87,9 @@ interface WelcomeIdentityStepProps {
   submitting: boolean;
   /** What the invitation proved about the number, from the activation context. */
   phoneTrust?: PhoneTrust | null;
+  /** Whether this screen must collect and prove an email — see emailVerification. */
+  emailRequirement?: EmailRequirement | null;
+  emailVerification?: EmailVerificationState;
   /**
    * Whether the gender selector must be rendered. False when the hostel's own
    * type already establishes it (a boys'/girls' hostel answered the question by
@@ -174,6 +181,124 @@ function PhoneField({
   );
 }
 
+/**
+ * The onboarding email, proved with a code — the address the tenant will sign
+ * in with and get receipts at. Replaces `<phone>@hms.temp`, which is what
+ * anyone invited by phone alone used to end up with as their login.
+ *
+ * Styled as the phone field's twin, so the two proofs on this screen read as
+ * the same kind of thing. The code checks itself on the sixth digit: the
+ * tenant is often standing at the reception desk, and every extra tap is a
+ * chance to give up.
+ */
+function EmailField({
+  value,
+  onChange,
+  state,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  state: EmailVerificationState;
+}) {
+  const phase = emailFieldPhase({ entered: value, verifiedAs: state.verifiedAs, codeSentTo: state.codeSentTo });
+  const valid = looksLikeEmail(value);
+  const border = phase === 'verified' ? '#1F9D57' : valid ? '#3b5fa8' : '#E7DDCE';
+
+  const onCode = (raw: string) => {
+    const digits = raw.replace(/\D/g, '').slice(0, 6);
+    state.setCode(digits);
+    state.setError('');
+    if (digits.length === 6 && !state.verifying) void state.verify(value, digits);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center gap-2.5" style={{ ...cardWrap, border: `1.5px solid ${border}`, transition: 'border-color .2s' }}>
+        <Mail className="h-4 w-4 flex-none" style={{ color: '#8A7F75' }} />
+        <input
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          autoCapitalize="none"
+          spellCheck={false}
+          value={value}
+          onChange={(e) => {
+            onChange(e.target.value.trim());
+            state.setError('');
+          }}
+          placeholder="you@gmail.com"
+          className="min-w-0 flex-1 text-sm font-semibold"
+          style={inputBase}
+        />
+        {phase === 'verified' ? (
+          <div className="flex flex-none items-center gap-1.5 text-[11px] font-extrabold" style={{ color: '#1F7A52' }}>
+            <span className="flex h-5 w-5 items-center justify-center rounded-full" style={{ background: '#1F9D57' }}>
+              <CheckCircle2 className="h-3 w-3 text-white" strokeWidth={2.6} />
+            </span>
+            Verified
+          </div>
+        ) : valid ? (
+          <button
+            type="button"
+            onClick={() => void state.sendCode(value)}
+            disabled={state.sending || (phase === 'code' && state.countdown > 0)}
+            className="flex flex-none items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold text-white disabled:opacity-60"
+            style={{ background: '#3b5fa8', boxShadow: '0 4px 11px rgba(180,106,85,.28)' }}
+          >
+            <Send className="h-3 w-3" />
+            {state.sending ? 'Sending' : phase === 'code' ? (state.countdown > 0 ? `${state.countdown}s` : 'Resend') : 'Send code'}
+          </button>
+        ) : null}
+      </div>
+
+      {phase === 'code' && (
+        <div className="ob-up-fast mt-2.5 rounded-[11px]" style={{ background: '#FBF7F1', border: '1px solid #EEE3D4', padding: '12px 13px' }}>
+          <div className="text-xs font-semibold" style={{ color: '#3A342E' }}>
+            Enter the code from your email
+          </div>
+          <div
+            className="mt-1.5 flex items-center rounded-[10px] bg-white"
+            style={{
+              border: `1.5px solid ${state.error ? '#D0473A' : state.code.length === 6 ? '#1F9D57' : '#E7DDCE'}`,
+              padding: '0 14px',
+              transition: 'border-color .2s',
+            }}
+          >
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              value={state.code}
+              onChange={(e) => onCode(e.target.value)}
+              placeholder="— — — — — —"
+              aria-label="6-digit code from your email"
+              className="font-display w-full text-center text-[17px] font-bold"
+              style={{ ...inputBase, letterSpacing: '.4em' }}
+            />
+          </div>
+          {state.verifying && (
+            <div className="mt-1.5 text-[11px] font-semibold" style={{ color: '#2d4480' }}>
+              Checking…
+            </div>
+          )}
+        </div>
+      )}
+
+      {state.error ? (
+        <div className="mt-1.5 flex items-center gap-1.5 text-[11.5px] font-bold" style={{ color: '#D0473A' }}>
+          <AlertCircle className="h-3 w-3 flex-none" />
+          {state.error}
+        </div>
+      ) : (
+        <div className="mt-1.5 text-[11.5px] font-medium" style={{ color: phase === 'verified' ? '#1F7A52' : '#8A7F75' }}>
+          {emailHelperText(phase, state.codeSentTo)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OtpBlock({
   phone,
   otp,
@@ -240,6 +365,8 @@ export function WelcomeIdentityStep({
   activeStep,
   accountVerified,
   phoneTrust,
+  emailRequirement,
+  emailVerification,
   genderRequired = true,
   profileCompleted,
   account,
@@ -371,7 +498,8 @@ export function WelcomeIdentityStep({
     // re-arms verification. See identityVerification.
     const otpRequired = showAccountFields && needsPhoneOtp({ enteredPhone: account.phone, trust: phoneTrust });
     const canSubmit = showAccountFields
-      ? canSubmitIdentity({ enteredPhone: account.phone, trust: phoneTrust, otp: account.otp, otpSent })
+      ? canSubmitIdentity({ enteredPhone: account.phone, trust: phoneTrust, otp: account.otp, otpSent }) &&
+        emailAllowsSubmit(emailRequirement, account.email, emailVerification?.verifiedAs ?? null)
       : true;
 
     return (
@@ -474,14 +602,20 @@ export function WelcomeIdentityStep({
               )}
             </div>
 
-            {/*
-              The Gmail ID field was here. It asked for an address we already
-              hold — from the account this invitation belongs to, or from the
-              invitation itself — and writing it back over `profiles.email`
-              meant this screen could change the invitee's *login*. Leaving it
-              as it was is what produced "An account with this email address
-              already exists". The backend derives it now.
-            */}
+            {emailRequirement?.required && emailVerification && (
+              <div className="mt-4">
+                <div className="text-[12.5px] font-bold" style={{ color: '#3A342E' }}>
+                  Email <span style={{ color: '#D0473A' }}>*</span>
+                </div>
+                <div className="mt-1.5">
+                  <EmailField
+                    value={account.email}
+                    onChange={(v) => setAccount({ ...account, email: v })}
+                    state={emailVerification}
+                  />
+                </div>
+              </div>
+            )}
           </>
         )}
 

@@ -10,6 +10,16 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-11**: **Tenants prove a real email at onboarding** ([[Decisions#ADR-183|ADR-183]], [[Database]], [[APIs]]). Anyone invited by phone alone used to finish with `<phone>@hms.temp` as their login. The Identity screen now requires an email confirmed by a six-digit code; the ACCOUNT step refuses without it and writes the proved address everywhere the stand-in went. Taken addresses are refused, not adopted; someone who already signs in with their own address is not asked. New table `email_verification_otps` — **applied to production before merge**, along with the missing `tenant_invitations.whatsapp_delivered_at`. 30 new backend tests (service and gate, both mutation-tested) and 15 frontend.
+
+- **2026-09-11**: **Floors can be renamed from the Rooms tab** ([[Features]]). A pencil on each floor opens *Edit floor* — name, a rooms/beds/free summary, and delete (moved here, and now explains why it's unavailable). Names are checked for blank, length and duplicates within the hostel, identically on create and rename; the API reports those as 400s instead of a 500. 8 backend and 9 frontend tests; the duplicate check is mutation-tested.
+
+- **2026-09-11**: **Bulk import — a finish worth hearing, and invitations that say whether they arrived** ([[Bugs]], [[Features]]).
+  - **The end of a clean import celebrates**: the Stayo success sound and haptic (`playSuccessFeedback`, as on the five money screens), the onboarding confetti, and a check that draws itself. Only for a clean finish — a run where any row failed stays quiet, so the confetti never drowns out who didn't make it. Confetti moved to `shared/ui-patterns/confetti.ts`, now shared with owner onboarding.
+  - **Send reports delivery, not attempts.** An owner read "Every invitation has been sent" while no WhatsApp arrived; dispatch had counted every attempt as sent and discarded the provider's error. Undelivered invitations now come back with the reason and the link, with *Share on WhatsApp* and *Copy link* beside each. "Nudge on WhatsApp" reads the real outcome too.
+  - **`@hms.temp` is never shown or sent to.** It is a storage key for a NOT NULL column; owner screens now show the email as blank ("Tenant adds it at sign-up").
+  - **Verified:** 2468 frontend tests, 317 across bulk-import and invitation suites, production build; `test:pure` 1741 passing with the 3 known pre-existing failures. Delivery counting and the placeholder guard are mutation-tested.
+
 - **2026-09-11**: **Bulk import — a tenant can move into a room the same sheet creates** ([[Bugs]]). The first import to reach execution on a real database created room 401 and then failed its tenant on `pending:401`, the placeholder validation uses for a room that doesn't exist yet. Confirm now swaps it for the real room, looked up by number within the hostel, and says in plain words if the room was never made. 293 bulk-import tests; mutation-tested.
 
 - **2026-09-11**: **Bulk import — existing residents can be imported** ([[Business-Rules]], [[Bugs]]).

@@ -7,6 +7,7 @@ import { apiError, apiResponse } from "@/lib/utils/api-utils";
 import { prisma } from "@/lib/db";
 import { financialService } from "@/src/services/payments/financial-service";
 import { tenantFinancialLedgerService } from "@/src/services/payments/tenant-financial-ledger-service";
+import { realEmailOrNull } from "@/src/services/tenants/invited-profile-resolver";
 
 /**
  * GET /api/payments/quick-collect/search?search=...
@@ -165,7 +166,7 @@ export async function GET(req: NextRequest) {
         id: t.id,
         name: t.profiles?.name || "Tenant",
         phone: t.profiles?.phone || t.phone_1 || "N/A",
-        email: t.profiles?.email || t.personal_email || "",
+        email: realEmailOrNull(t.profiles?.email) ?? realEmailOrNull(t.personal_email) ?? "",
         hostel_name: t.hostels?.name || "N/A",
         hostel_id: t.hostel_id,
         room_no: roomNo,

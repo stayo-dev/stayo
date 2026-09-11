@@ -12,6 +12,7 @@ import { roomCapacityService } from "../../../lib/services/room-capacity-service
 import { tenantInvitationLifecycleService } from "./tenant-invitation-lifecycle-service";
 import { selectCurrentTenancy } from "@/lib/tenancy/active-tenancy";
 import { tenancyEligibilityService } from "./tenancy-eligibility-service";
+import { realEmailOrNull } from "./invited-profile-resolver";
 
 const logger = getLogger("invitation-service");
 
@@ -307,7 +308,7 @@ export class InvitationService {
     const resolved = await tenantInvitationLifecycleService.resolveByToken(token);
     return {
       valid: true,
-      email: resolved.profile?.email || resolved.invitation?.email,
+      email: realEmailOrNull(resolved.profile?.email) ?? realEmailOrNull(resolved.invitation?.email),
       name: resolved.profile?.name || resolved.invitation?.name,
     };
   }

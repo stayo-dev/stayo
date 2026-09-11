@@ -119,13 +119,32 @@ export async function downloadCorrected(batchId: string): Promise<Blob> {
 }
 
 /** Send the invitations this import queued — all of them, or a wave. */
+/** Out of the queue with a live link, but nothing reached the tenant. */
+export interface UndeliveredInvitation {
+  invitation_id: string;
+  name: string;
+  phone: string | null;
+  reason: string;
+  activation_link: string;
+}
+
+export interface DispatchChunk {
+  sent: number;
+  failed: number;
+  remaining: number;
+  errors: Array<{ invitation_id: string; error: string }>;
+  undelivered: UndeliveredInvitation[];
+}
+
 export async function sendInvitations(
   batchId: string,
   options: { limit?: number; invitationIds?: string[] } = {}
-): Promise<{ sent: number; failed: number; remaining: number; errors: Array<{ invitation_id: string; error: string }> }> {
+): Promise<DispatchChunk> {
   const response = await api.post(`/bulk-import/${batchId}/dispatch`, {
     ...(options.limit ? { limit: options.limit } : {}),
     ...(options.invitationIds?.length ? { invitation_ids: options.invitationIds } : {}),
   });
-  return response.data?.data ?? response.data;
+  const body = response.data?.data ?? response.data ?? {};
+  // A backend from before `undelivered` existed simply has none to report.
+  return { ...body, undelivered: Array.isArray(body.undelivered) ? body.undelivered : [] };
 }

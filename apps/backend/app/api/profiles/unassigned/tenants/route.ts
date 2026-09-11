@@ -6,6 +6,7 @@ import { getSession, apiError, apiResponse } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
 import { prisma } from "@/lib/db";
 import { requireHostelBelongsToOwner } from "@/lib/security/scoped-query";
+import { realEmailOrNull } from "@/src/services/tenants/invited-profile-resolver";
 
 
 /**
@@ -61,7 +62,7 @@ export async function GET(req: NextRequest) {
       profile_id: tenant.profile_id,
       tenant_id: tenant.id,
       name: tenant.profiles?.name ?? "Tenant",
-      email: tenant.profiles?.email ?? tenant.personal_email ?? null,
+      email: realEmailOrNull(tenant.profiles?.email) ?? realEmailOrNull(tenant.personal_email),
       phone: tenant.profiles?.phone ?? tenant.phone_1 ?? null,
       status: tenant.status,
     }));
