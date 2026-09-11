@@ -62,7 +62,12 @@ export async function GET(
           valid_rows: batch.valid_rows,
           invalid_rows: batch.failed_rows,
           duplicate_rows: batch.duplicate_rows,
-          warnings: validationPayload.valid_rows.reduce((sum, row: any) => sum + (row.warnings?.length || 0), 0),
+          warnings: validationPayload.summary?.warnings
+            ?? validationPayload.valid_rows.reduce((sum, row: any) => sum + (row.warnings?.length || 0), 0),
+          // Served so the review screen can say "2 need you" without walking
+          // every row itself — and so it works on a reload.
+          blockers: validationPayload.summary?.blockers ?? 0,
+          choices: validationPayload.summary?.choices ?? 0,
           requires_historical_join_date_confirmation: Boolean(validationPayload.requires_historical_join_date_confirmation),
         },
         defaults: validationPayload.defaults || {},
@@ -209,7 +214,8 @@ export async function POST(
 
 function getValidationPayload(raw: unknown): {
   defaults?: Record<string, unknown>;
-  valid_rows: Array<{ row: number; data: TenantImportRow; warnings?: string[] }>;
+  valid_rows: Array<{ row: number; data: TenantImportRow; warnings?: string[]; issues?: any[] }>;
+  summary?: { blockers?: number; choices?: number; warnings?: number };
   room_plan?: RoomPlan;
   invalid?: Array<Record<string, unknown>>;
   duplicates?: Array<Record<string, unknown>>;
@@ -224,6 +230,7 @@ function getValidationPayload(raw: unknown): {
     defaults: payload.defaults,
     valid_rows: Array.isArray(payload.valid_rows) ? payload.valid_rows : [],
     room_plan: payload.room_plan,
+    summary: payload.summary,
     invalid: Array.isArray(payload.invalid) ? payload.invalid : [],
     duplicates: Array.isArray(payload.duplicates) ? payload.duplicates : [],
     requires_historical_join_date_confirmation: Boolean(payload.requires_historical_join_date_confirmation),
@@ -449,6 +456,7 @@ function sanitizeImportRowForPreview(row: { row: number; data: TenantImportRow }
       payment_method: row.data.payment_method,
       joining_date: row.data.joining_date,
       rent_source: row.data.rent_source,
+      issues: (row as any).issues ?? [],
       warnings: (row as any).warnings || [],
     },
   };
