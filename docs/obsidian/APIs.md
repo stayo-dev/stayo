@@ -238,7 +238,12 @@ Added 2026-07-26 for the real StayO tenant app (Home/Money/Room/Profile tabs) �
 - **The stored `joining_date` is ISO `YYYY-MM-DD`**, taken from the date validation parsed — never the raw cell text, which `createInvitation`'s `new Date()` would misread (DD/MM as MM/DD; Excel serials as a far-future year).
 - **`GET …/confirm` preview** now includes `amount_paid`, `payment_method`, `agreement_duration_months` and `rent_source` (`SHEET` when the owner typed the rent, else `ROOM_CONFIG`).
 - **`POST …/confirm`** executes from `bulk_import_rows` by primary key (previously matched `(email, phone)` with `updateMany`) and forwards the full term set to `createInvitation`, sending maintenance as **`maintenance_amount`** — the key that service reads. `amount_includes_deposit` is deliberately not forwarded (nothing reads it).
-- A legacy owner page at `apps/backend/app/(dashboard)/owner/bulk-import/` still posts `billing_start_mode`; it is now ignored.
+- The legacy owner page that posted `billing_start_mode` was deleted 2026-09-11; `apps/frontend`'s `ImportTenantsSheet` is now the only caller.
+
+**Changes 2026-09-11 (the owner's flow — [[Decisions#ADR-182|ADR-182]]):**
+- **Row `issues` and the `blockers`/`choices` counts are persisted** on the batch and returned by `GET …/confirm`, so the review screen works on a reload rather than only in the response that created the batch.
+- **`POST /api/bulk-import/[batch_id]/confirm` creates invitations `QUEUED`** — the tenancy, rooms, obligations and settlement all happen, but nothing is sent.
+- **`POST /api/bulk-import/[batch_id]/dispatch`** (new) sends them: `{ invitation_ids?, limit? }` → `{ sent, failed, remaining, errors }`. No body sends the whole batch. Idempotent — anything no longer `QUEUED` is skipped, so a double-tapped "send all" cannot message a tenant twice. **Each tenant's `expires_at` is recomputed at send**, so an invitation that sat queued still gives them the full window.
 
 **Changes 2026-09-11 (the workbook and chunked execution — [[Decisions#ADR-181|ADR-181]]):**
 - **`GET /api/bulk-import/template` now requires `hostel_id`** and returns an **`.xlsx` workbook built for that hostel**, not a static CSV. Three sheets: a locked `Read me` carrying the hostel id in **cell B2** (moving that cell breaks every workbook an owner already downloaded), a `Rooms` sheet pre-filled with the hostel's rooms plus blank rows, and a `Tenants` sheet whose Room column is a dropdown bound to a `RoomList` defined name. Maintenance type, paid-includes-deposit and payment method are dropdowns too. 400 when `hostel_id` is missing, 404 for a hostel the caller does not own.
