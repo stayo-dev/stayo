@@ -741,16 +741,16 @@ describe("a tenant who already lives here", () => {
     const issue = result.issues.find((i: any) => i.code === "RENT_BACKDATED");
 
     expect(issue).toBeDefined();
-    expect(issue.severity).toBe("NEEDS_CHOICE");
-    expect(issue.fix.kind).toBe("ACKNOWLEDGE");
+    expect(issue!.severity).toBe("NEEDS_CHOICE");
+    expect(issue!.fix.kind).toBe("ACKNOWLEDGE");
   });
 
   it("tells them how many months of rent that creates, and from when", async () => {
     const result = await validateOne({ joining_date: joined(8) });
     const issue = result.issues.find((i: any) => i.code === "RENT_BACKDATED");
 
-    expect(issue.detail).toContain("9 months");
-    expect(issue.detail).toMatch(/from [A-Z][a-z]+ \d{4}/);
+    expect(issue!.detail).toContain("9 months");
+    expect(issue!.detail).toMatch(/from [A-Z][a-z]+ \d{4}/);
   });
 
   it("does not ask about a tenant joining today", async () => {

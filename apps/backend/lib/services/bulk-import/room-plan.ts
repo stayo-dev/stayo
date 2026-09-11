@@ -25,6 +25,25 @@ export type RoomPlan = {
   issues: RowIssue[];
 };
 
+/**
+ * The stand-in id a tenant row gets for a room the same workbook will create.
+ *
+ * Validation has to let a tenant name a room that does not exist yet — the
+ * template tells owners to add a missing room on the Rooms sheet and then use
+ * it — so the row is checked against a placeholder. The placeholder must never
+ * leave the import: `rooms.id` is a UUID, and handing it `pending:401` threw
+ * inside `createInvitation` for exactly the tenant this path was built for.
+ */
+export const PENDING_ROOM_PREFIX = "pending:";
+
+export function pendingRoomId(roomNo: string): string {
+  return `${PENDING_ROOM_PREFIX}${String(roomNo).trim()}`;
+}
+
+export function isPendingRoomId(id: unknown): id is string {
+  return typeof id === "string" && id.startsWith(PENDING_ROOM_PREFIX);
+}
+
 /** Rooms-sheet data starts at row 2, under the header. */
 const FIRST_DATA_ROW = 2;
 

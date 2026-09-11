@@ -277,3 +277,83 @@ describe("the Notes column reaches the tenant", () => {
   });
 });
 
+
+describe("a tenant in a room the same sheet creates", () => {
+  const REAL_ROOM_ID = "99999999-9999-9999-9999-999999999999";
+
+  beforeEach(() => {
+    // The owner's import: one tenant in room 401, which the Rooms sheet adds.
+    // Validation let the row through against a placeholder, since 401 did not
+    // exist yet.
+    rows = [
+      {
+        id: "row-1",
+        row_number: 2,
+        hostel_id: HOSTEL_ID,
+        mapped_data: { ...rowData(1), room_no: "401", room_id: "pending:401" },
+        execution_status: "PENDING",
+        tenant_id: null,
+        invitation_id: null,
+        reservation_id: null,
+      },
+    ];
+    mockPrisma.rooms = { findFirst: vi.fn().mockResolvedValue({ id: REAL_ROOM_ID }) };
+  });
+
+  /**
+   * The placeholder reached `createInvitation` as a room id, and `rooms.id` is
+   * a UUID: "Error creating UUID … found `p` at 1". Room 401 had been created
+   * a moment earlier; the tenant still failed.
+   */
+  it("is invited into the room that now exists, not the placeholder", async () => {
+    await confirm();
+
+    expect(mockLifecycle.createInvitation).toHaveBeenCalledWith(
+      expect.objectContaining({ room_id: REAL_ROOM_ID }),
+      "owner-1"
+    );
+  });
+
+  it("never hands a placeholder to createInvitation", async () => {
+    await confirm();
+
+    expect(mockLifecycle.createInvitation).toHaveBeenCalled();
+    for (const [args] of mockLifecycle.createInvitation.mock.calls) {
+      expect(String(args.room_id)).not.toMatch(/^pending:/);
+    }
+  });
+
+  /** Every hostel has a room 101 — the lookup must not leave this one. */
+  it("finds the room within this hostel only", async () => {
+    await confirm();
+
+    expect(mockPrisma.rooms.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ hostel_id: HOSTEL_ID, is_active: true }),
+      })
+    );
+  });
+
+  it("tells the owner in plain words when the room was never made", async () => {
+    mockPrisma.rooms.findFirst.mockResolvedValue(null);
+
+    const data = await confirm();
+
+    expect(mockLifecycle.createInvitation).not.toHaveBeenCalled();
+    expect(data.progress.failed).toBe(1);
+    expect(data.result.errors[0].error).toMatch(/Room 401 wasn't created/);
+    expect(data.result.errors[0].error).not.toMatch(/UUID|prisma/i);
+  });
+
+  it("leaves a room that already existed alone", async () => {
+    rows[0].mapped_data = rowData(1); // room_id "room-101", a real room
+
+    await confirm();
+
+    expect(mockPrisma.rooms.findFirst).not.toHaveBeenCalled();
+    expect(mockLifecycle.createInvitation).toHaveBeenCalledWith(
+      expect.objectContaining({ room_id: "room-101" }),
+      "owner-1"
+    );
+  });
+});

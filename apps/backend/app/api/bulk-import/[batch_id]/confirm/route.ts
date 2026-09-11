@@ -4,6 +4,7 @@ export const maxDuration = 300;
 
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
+import { isPendingRoomId, PENDING_ROOM_PREFIX } from "@/lib/services/bulk-import/room-plan";
 import { prisma } from "@/lib/db";
 import { getLogger } from "@/lib/logger";
 import type { TenantImportRow } from "@/lib/services/bulk-import-validation-service";
@@ -293,11 +294,12 @@ async function executeInvitationBatch(
     const data = row.mapped_data as TenantImportRow;
 
     try {
+      const roomId = await resolveRoomId(data, row.hostel_id);
       const invitationResult: any = await tenantInvitationLifecycleService.createInvitation({
         name: data.name,
         email: data.email,
         phone: data.phone,
-        room_id: data.room_id,
+        room_id: roomId,
         monthly_rent: data.monthly_rent,
         advance_deposit: data.advance_deposit,
         // createInvitation reads `maintenance_amount`, not
@@ -471,4 +473,35 @@ function sanitizeImportRowForPreview(row: { row: number; data: TenantImportRow }
       warnings: (row as any).warnings || [],
     },
   };
+}
+
+/**
+ * The real id of the room a row names.
+ *
+ * A tenant in a room the same workbook creates was validated against a
+ * placeholder (`pending:401`), because the room did not exist yet. By the time
+ * the row executes it does — rooms are created first, on the first chunk — so
+ * the placeholder is swapped for the row that now exists. Looked up by number,
+ * within this hostel only, so a later chunk finds rooms an earlier one made.
+ *
+ * Passing the placeholder through was the bug: `rooms.id` is a UUID, and
+ * `createInvitation` threw "Error creating UUID … found `p`" for exactly the
+ * tenant this path exists for.
+ */
+async function resolveRoomId(data: TenantImportRow, hostelId: string): Promise<string> {
+  if (data.room_id && !isPendingRoomId(data.room_id)) return String(data.room_id);
+
+  const roomNo = String(data.room_no ?? "").trim() || String(data.room_id ?? "").slice(PENDING_ROOM_PREFIX.length);
+  const room = await prisma.rooms.findFirst({
+    where: { hostel_id: hostelId, room_no: { equals: roomNo, mode: "insensitive" }, is_active: true },
+    select: { id: true },
+  });
+  if (!room) {
+    // Said in the owner's terms. The room plan runs before any tenant and
+    // reports its own failures; this row can only land once the room exists.
+    throw new Error(
+      `Room ${roomNo} wasn't created, so this tenant couldn't be added to it. Check the Rooms sheet for room ${roomNo}, or pick an existing room, and import this tenant again.`
+    );
+  }
+  return room.id;
 }
