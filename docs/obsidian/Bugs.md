@@ -8,6 +8,18 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-11 — Seven bulk-import columns were read, stored, and then ignored (fixed)
+
+**Symptom.** An owner filling in the import template correctly got a tenancy that disagreed with what they had typed. Answering "No" to *Paid Includes Deposit* changed nothing — settlement still swallowed the deposit. A per-row maintenance charge was discarded in favour of the batch value. A Notes cell reached `bulk_import_rows` and stopped there. A tenant who had moved out could never be imported back. An overpaid row previewed clean and then failed inside `createInvitation`, one row at a time, after other rows had already been created.
+
+**Root cause — a column with no consumer looks identical to a column that works.** Each of these was parsed and persisted, so every surface that echoed the sheet back to the owner showed the right answer; only the code that acts on it was missing. `receivePayment` had accepted an `obligationIdFilter` all along, and `buildInviteSettlementPreview` had accepted `amountIncludesDeposit` all along — the preview honoured the flag the real path ignored.
+
+**Why it hid.** Nothing fails when a key is merely unread. The same shape produced [[Bugs#2026-09-10 — Bulk import ignored the maintenance an owner set, and could not record rent already paid (fixed)|the maintenance_amount defect the day before]]: a test that asserts a value was *stored* passes whether or not anything consumes it.
+
+**Fix.** Each column now has a consumer, and the review that followed caught two more of the same family: duplicate detection selected a `profile` relation that is really called `profiles` (`prisma` is exported as `any`, so it compiled and would have thrown on every upload), and the due day was read off `BillingDefaults`, which has no such field, pinning every preview to the 5th. The query shape is now verified against the generated client rather than assumed.
+
+**See:** [[Business-Rules]], [[Changelog]], [[Decisions#ADR-181|ADR-181]]
+
 ## 2026-09-10 — Bulk import billed from a different joining date than it validated (fixed)
 
 **Symptom.** An owner who typed a joining date in the Indian format the import's own messages ask for — `05/01/2026` for 5 January — would have had the tenant billed from **1 May**, losing four months of back-rent. `13/01/2026` passed preview and failed at confirm; an Excel date cell became the year 46026, so no back-rent at all.

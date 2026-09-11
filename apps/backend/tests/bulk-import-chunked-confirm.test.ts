@@ -14,6 +14,7 @@ const { mockPrisma, mockLifecycle, mockRooms } = vi.hoisted(() => {
   const prisma: any = {
     bulk_import_batches: { findFirst: vi.fn(), update: vi.fn() },
     bulk_import_rows: { findMany: vi.fn(), update: vi.fn(), count: vi.fn() },
+    tenant_notes: { create: vi.fn() },
   };
   return {
     mockPrisma: prisma,
@@ -118,6 +119,7 @@ beforeEach(() => {
     return row;
   });
 
+  mockPrisma.tenant_notes.create.mockResolvedValue({});
   mockLifecycle.createInvitation.mockResolvedValue({
     tenant_id: "t", invitation_id: "i", reservation_id: "r", email_sent: true,
   });
@@ -241,3 +243,35 @@ describe("chunked confirm", () => {
     expect(final.failed_rows).toBe(1);
   });
 });
+
+describe("the Notes column reaches the tenant", () => {
+  // Notes were parsed, stored on the import row, and then dropped:
+  // createInvitation reads no notes key and `tenants` has no notes column.
+  it("saves a note the owner wrote against the tenant", async () => {
+    rows = [{ ...rows[0], mapped_data: { ...rows[0].mapped_data, notes: "Paid in cash to the warden" } }];
+
+    await confirm({ chunk_size: 1 });
+
+    expect(mockPrisma.tenant_notes.create).toHaveBeenCalledWith({
+      data: { tenant_id: "t", owner_id: "owner-1", content: "Paid in cash to the warden" },
+    });
+  });
+
+  it("writes nothing when the column is blank", async () => {
+    rows = [{ ...rows[0], mapped_data: { ...rows[0].mapped_data, notes: "   " } }];
+    await confirm({ chunk_size: 1 });
+    expect(mockPrisma.tenant_notes.create).not.toHaveBeenCalled();
+  });
+
+  it("does not fail the import when the note cannot be saved", async () => {
+    rows = [{ ...rows[0], mapped_data: { ...rows[0].mapped_data, notes: "Something" } }];
+    mockPrisma.tenant_notes.create.mockRejectedValue(new Error("db down"));
+
+    const data = await confirm({ chunk_size: 1 });
+
+    // The tenancy exists; losing the note must not undo that.
+    expect(data.result.success_count).toBe(1);
+    expect(data.progress.failed).toBe(0);
+  });
+});
+

@@ -124,7 +124,7 @@ export async function applyRoomPlan(
           room_no: room.room_no,
           capacity: edit?.capacity ?? room.capacity,
           base_rent: edit?.base_rent ?? (room.base_rent ?? undefined),
-          room_type: room.room_type ?? undefined,
+          room_type: edit?.room_type ?? (room.room_type ?? undefined),
         };
       }),
       ...creates.map((room) => ({
@@ -161,6 +161,7 @@ export async function applyRoomPlan(
         data: {
           ...(edit.to.capacity !== undefined ? { capacity: edit.to.capacity } : {}),
           ...(edit.to.base_rent !== undefined ? { base_rent: edit.to.base_rent } : {}),
+          ...(edit.to.room_type !== undefined ? { room_type: edit.to.room_type } : {}),
           updated_at: new Date(),
         },
       });

@@ -10,6 +10,7 @@ import {
 const { mockPrisma } = vi.hoisted(() => {
   const prisma: any = {
     profile: { findMany: vi.fn() },
+    tenants: { findMany: vi.fn() },
     tenant_invitations: { findMany: vi.fn() },
     rooms: { findMany: vi.fn() },
     hostels: { findUnique: vi.fn() },
@@ -32,6 +33,7 @@ vi.mock("@/lib/services/hostel-billing-preferences-service", () => ({
 
 beforeEach(() => {
   mockPrisma.profile.findMany.mockResolvedValue([]);
+  mockPrisma.tenants.findMany.mockResolvedValue([]);
   mockPrisma.tenant_invitations.findMany.mockResolvedValue([]);
   mockPrisma.rooms.findMany.mockResolvedValue([
     {
@@ -53,9 +55,10 @@ describe("severity", () => {
     expect(severityOf("PAYMENT_METHOD_MISSING")).toBe("BLOCKER");
   });
 
-  it("lets the owner decide on capped backfill and overpayment", () => {
+  it("lets the owner decide on capped backfill and duplicates", () => {
     expect(severityOf("BACKFILL_CAPPED")).toBe("NEEDS_CHOICE");
-    expect(severityOf("OVERPAID")).toBe("NEEDS_CHOICE");
+    // OVERPAID blocks: createInvitation refuses the row until it changes.
+    expect(severityOf("OVERPAID")).toBe("BLOCKER");
     expect(severityOf("DUPLICATE_IN_SYSTEM")).toBe("NEEDS_CHOICE");
   });
 });
@@ -85,7 +88,7 @@ describe("copy", () => {
     expect(issue.detail).toContain("90,000");
     expect(issue.detail).toContain("76,500");
     expect(issue.detail).toContain("13,500");
-    expect(issue.severity).toBe("NEEDS_CHOICE");
+    expect(issue.severity).toBe("BLOCKER");
   });
 
   it("asks for dates in Indian format", () => {

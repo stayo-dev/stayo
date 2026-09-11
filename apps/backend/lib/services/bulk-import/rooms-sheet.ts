@@ -7,6 +7,12 @@ export type RoomImportRow = {
   capacity?: number;
   sharing_type?: string;
   base_rent?: number;
+  /**
+   * The row's real line in the spreadsheet. Blank rows are dropped, and the
+   * template leaves 40 of them, so a position in the returned array is not
+   * the line the owner is looking at.
+   */
+  sheet_row?: number;
   /** The owner's own text, so a cell we cannot read is quoted back as typed. */
   raw_values?: Partial<Record<"capacity" | "base_rent" | "floor", string>>;
 };
@@ -38,11 +44,16 @@ export function parseRoomsSheet(fileBuffer: Buffer): RoomImportRow[] {
   const rows = XLSX.utils.sheet_to_json<any>(workbook.Sheets[name], { raw: true, defval: "" });
 
   return rows
-    .map((row) => {
+    .map((row, index) => {
       const capacityText = cell(row, ["Capacity", "capacity", "Beds", "beds"]);
       const rentText = cell(row, ["Base Rent", "base_rent", "Rent", "rent"]);
       const floorText = cell(row, ["Floor", "floor"]);
       return {
+        // SheetJS records each row's real line in `__rowNum__` (0-based, so
+        // +1). Genuinely empty rows are dropped from the array entirely, and
+        // the template leaves forty of them, so a position in the array is not
+        // the line the owner is looking at.
+        sheet_row: Number.isFinite(row.__rowNum__) ? Number(row.__rowNum__) + 1 : index + 2,
         room_no: cell(row, ["Room No", "Room", "room_no", "room", "Room Number", "room_number"]),
         floor: parseImportNumber(floorText),
         capacity: parseImportNumber(capacityText),

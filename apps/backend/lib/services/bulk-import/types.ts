@@ -37,7 +37,12 @@ export interface TenantImportRow {
    * read ("TBD") is quoted back to them as typed rather than as NaN. Not
    * persisted — `sanitize-row.ts` is an allowlist that omits it.
    */
-  raw_values?: Partial<Record<"monthly_rent" | "security_deposit" | "amount_paid" | "agreement_duration_months", string>>;
+  raw_values?: Partial<
+    Record<
+      "monthly_rent" | "security_deposit" | "amount_paid" | "agreement_duration_months" | "maintenance_charge",
+      string
+    >
+  >;
 }
 
 export interface ImportDefaults {

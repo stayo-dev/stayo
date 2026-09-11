@@ -492,10 +492,36 @@ export class TenantInvitationLifecycleService {
           capacity.room.hostel_id,
           tx
         );
-        const due = Number(owed?.total_due || 0);
+        // "Paid includes deposit = No" means this money is rent and
+        // maintenance only; the deposit stays owed. Without a filter the
+        // planner settles FIFO across everything, including the deposit
+        // obligation, and the owner's answer was silently ignored.
+        const includesDeposit = data.paid_includes_deposit !== false && data.amount_includes_deposit !== false;
+        let obligationIdFilter: string[] | undefined;
+        let due = Number(owed?.total_due || 0);
+
+        if (!includesDeposit) {
+          const settleable = await tx.rent_obligations.findMany({
+            where: {
+              tenant_id: tenant.id,
+              hostel_id: capacity.room.hostel_id,
+              is_superseded: false,
+              obligation_type: { not: "SECURITY_DEPOSIT" },
+            },
+            select: { id: true, total_amount: true, amount: true },
+          });
+          obligationIdFilter = settleable.map((row: any) => row.id);
+          due = settleable.reduce(
+            (sum: number, row: any) => sum + Number(row.total_amount ?? row.amount ?? 0),
+            0
+          );
+        }
+
         if (paidAmount > due + 0.01) {
           throw new Error(
-            `VALIDATION_ERROR: Cannot record ₹${paidAmount.toFixed(2)} — only ₹${due.toFixed(2)} is owed`
+            includesDeposit
+              ? `VALIDATION_ERROR: Cannot record ₹${paidAmount.toFixed(2)} — only ₹${due.toFixed(2)} is owed`
+              : `VALIDATION_ERROR: Cannot record ₹${paidAmount.toFixed(2)} — only ₹${due.toFixed(2)} is owed excluding the deposit. Tick "paid includes deposit" if the deposit is part of this amount.`
           );
         }
 
@@ -505,6 +531,7 @@ export class TenantInvitationLifecycleService {
             tenantId: tenant.id,
             hostelId: capacity.room.hostel_id,
             amountPaid: paidAmount,
+            ...(obligationIdFilter ? { obligationIdFilter } : {}),
             paymentMethod: String(data.payment_method),
             referenceNumber: data.payment_reference || undefined,
             paymentDate: new Date(),
