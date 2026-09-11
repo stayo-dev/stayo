@@ -1,6 +1,6 @@
 import { AlertTriangle, ArrowRight, CheckCircle2, Download, RefreshCw, Users } from 'lucide-react';
 import type { ReviewQueue } from '../reviewQueue';
-import { attentionSummary, groupAction } from '../issueCopy';
+import { attentionSummary, groupAction, importHoldReason } from '../issueCopy';
 import { IssueFix } from './IssueFix';
 import { editCount, hasEdits, type RowEdits } from '../rowEdits';
 import { planFixes } from '../fixStrategy';
@@ -217,6 +217,9 @@ export function ReviewStep({
         {!busy && <ArrowRight className="h-4 w-4" />}
       </button>
 
+      {importHoldReason(summary) && (
+        <p className="text-center text-[12px] font-semibold text-foreground">{importHoldReason(summary)}</p>
+      )}
       {blocked && (
         <p className="text-center text-[12px] font-medium text-muted-foreground">
           Fix {blockedRows === 1 ? 'the row' : `the ${blockedRows.toLocaleString('en-IN')} rows`} above in your sheet,

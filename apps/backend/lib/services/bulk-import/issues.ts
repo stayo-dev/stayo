@@ -27,6 +27,7 @@ export const ISSUE_CODES = [
   "PAYMENT_METHOD_MISSING",
   "OVERPAID",
   "BACKFILL_CAPPED",
+  "RENT_BACKDATED",
   "FORMULA_IN_CELL",
   "DATE_UNREADABLE",
   "HOSTEL_STAMP_MISMATCH",
@@ -107,7 +108,27 @@ const SEVERITY: Record<IssueCode, IssueSeverity> = {
   // date changes, so calling it a choice under-counts what stops an import.
   OVERPAID: "BLOCKER",
   BACKFILL_CAPPED: "NEEDS_CHOICE",
+  RENT_BACKDATED: "NEEDS_CHOICE",
 };
+
+/**
+ * The codes that mean "this import creates rent for months already past".
+ *
+ * Confirm refuses a batch carrying any of them until the owner says yes, so
+ * every one of them must also reach the review screen as something they can
+ * actually say yes *to*. Keeping the list here, rather than re-deriving it
+ * from a warning string, is what stops those two drifting apart — they did,
+ * and the result was an import that could not be run: the server demanded a
+ * confirmation and sent the screen no issue to confirm.
+ */
+export const HISTORICAL_JOIN_DATE_CODES: IssueCode[] = ["BACKFILL_CAPPED", "RENT_BACKDATED"];
+
+/** Whether a set of issues puts a batch behind the historical-dates gate. */
+export function needsHistoricalJoinDateConfirmation(
+  issues: Array<{ code: string }>
+): boolean {
+  return issues.some((issue) => HISTORICAL_JOIN_DATE_CODES.includes(issue.code as IssueCode));
+}
 
 export function severityOf(code: IssueCode): IssueSeverity {
   return SEVERITY[code];
@@ -247,6 +268,14 @@ const COPY: Record<IssueCode, (c: IssueContext) => Copy> = {
     field: "joining_date",
     fix: { kind: "ACKNOWLEDGE" },
   }),
+  RENT_BACKDATED: (c) => ({
+    title: `This tenant was already living here.`,
+    detail: `They joined ${c.joiningDate ?? "earlier"}, so we'll create rent for each month from ${
+      c.firstBilledMonth ?? "their joining month"
+    } to this one — ${c.monthsElapsed ?? "several"} ${c.monthsElapsed === 1 ? "month" : "months"}. Anything they have already paid goes in the Amount Paid column and is settled against those months.`,
+    field: "joining_date",
+    fix: { kind: "ACKNOWLEDGE" },
+  }),
   FORMULA_IN_CELL: (c) => ({
     title: c.fieldLabel ? `The ${c.fieldLabel} cell contains a formula.` : `This cell contains a formula.`,
     detail: `We can't read formulas — only the values they produce. In Excel, copy the cell and use Paste Special → Values.`,
@@ -310,6 +339,7 @@ const GROUP_TITLE: Record<IssueCode, (count: number) => string> = {
   PAYMENT_METHOD_MISSING: (n) => `${n} rows have an amount paid but no payment method.`,
   OVERPAID: (n) => `${n} rows show more paid than the tenant owes.`,
   BACKFILL_CAPPED: (n) => `${n} tenants joined more than 2 years ago.`,
+  RENT_BACKDATED: (n) => `${n} tenants were already living here.`,
   FORMULA_IN_CELL: (n) => `${n} rows contain a spreadsheet formula.`,
   DATE_UNREADABLE: (n) => `${n} rows have a missing or unreadable joining date.`,
   HOSTEL_STAMP_MISMATCH: () => `This file was made for a different hostel.`,

@@ -10,6 +10,13 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-11**: **Bulk import — existing residents can be imported** ([[Business-Rules]], [[Bugs]]).
+  - **The back-rent question is now asked.** Confirm refuses a historical joining date without the owner's consent, but the screen could only give consent past 24 months — so every resident who joined before today was refused after "Everything checks out", with nothing to change. A `RENT_BACKDATED` issue now says how many months of rent will be created and from when, and one tap agrees to it (or one tap for all of them).
+  - **Import waits for that agreement**, with a line under the button saying why, instead of failing at the server. The button says *"Yes, bill from their joining date"* — "Got it" is wrong for money.
+  - **The gate is derived from the issues**, not from matching a warning string, so the server's question and the screen's control share one definition.
+  - **A re-check keeps decisions already made** rather than asking again.
+  - **Verified:** 288 bulk-import tests, 2449 frontend tests, production build; `test:pure` 1730 passing with the 3 known pre-existing failures. Both the backend issue and the frontend gate are mutation-tested.
+
 - **2026-09-11**: **Bulk import — confirm was broken against a real database** ([[Bugs]], [[Backend]]). Found when an owner's corrected-sheet download returned a bare 500.
   - **`include: { hostel: … }` where the relation is `hostels`.** The download was the lesser half: the same name appears twice in `confirm/route.ts`, including the POST that creates the tenants, so the import had never been able to run outside mocks. `prisma` is exported as `any`, so it type-checked; the test fixtures supplied `hostel` too, so the suite was holding the wrong name in place.
   - **`tests/bulk-import-query-shapes.test.ts`** now checks every `include`/`select` in every bulk-import route against `Prisma.dmmf`, the generated client's own datamodel — no mock in between. Mutation-tested on both clause types, with a vacuity check so a scanner that stops finding anything fails rather than passes.

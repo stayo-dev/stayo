@@ -12,7 +12,7 @@ import {
   type UploadResult,
 } from './api';
 import { editRow, mergeEdits, type RowEdits } from './rowEdits';
-import { buildReviewQueue, applyGroupDecision, type ReviewQueue } from './reviewQueue';
+import { buildReviewQueue, applyGroupDecision, confirmsHistoricalDates, withDecisions, type ReviewQueue } from './reviewQueue';
 import { describeProgress, type ProgressView } from './importProgress';
 import { stageFor, type ImportState, type Stage } from './importStages';
 
@@ -122,14 +122,14 @@ export function useImportTenants(hostelId: string | null) {
         rows: mergeEdits(queue, edits),
       });
       setUpload((current) => (current ? { ...current, ...result } : result));
-      setQueue(buildReviewQueue(result.preview));
+      setQueue(withDecisions(buildReviewQueue(result.preview), acknowledged));
       setEdits({});
     } catch (e: any) {
       setError(readError(e, "We couldn't re-check those changes. Nothing was lost — try again."));
     } finally {
       setBusy(null);
     }
-  }, [upload, hostelId, queue, edits]);
+  }, [upload, hostelId, queue, edits, acknowledged]);
 
   /** The owner's own file back, with the fixes in it. */
   const getCorrectedSheet = useCallback(async () => {
@@ -173,7 +173,7 @@ export function useImportTenants(hostelId: string | null) {
     // Only the owner's own acknowledgement counts. Sending true because the
     // server *asked* for confirmation would answer the question on their
     // behalf, which is the whole point of the gate.
-    const confirmHistorical = acknowledged.includes('BACKFILL_CAPPED');
+    const confirmHistorical = confirmsHistoricalDates(acknowledged);
 
     try {
       let guard = 0;

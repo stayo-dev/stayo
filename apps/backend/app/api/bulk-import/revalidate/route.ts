@@ -7,6 +7,7 @@ import { bulkImportValidationService } from "@/lib/services/bulk-import-validati
 import { prisma } from "@/lib/db";
 import crypto from "crypto";
 import { sanitizeImportRowForStorage } from "@/lib/services/bulk-import/sanitize-row";
+import { needsHistoricalJoinDateConfirmation } from "@/lib/services/bulk-import/issues";
 
 /**
  * 🔄 Bulk Import - Revalidate Editable Grid
@@ -105,8 +106,11 @@ export async function POST(req: NextRequest) {
       // without these a reload showed every row as clean.
       issues: r.issues,
     }));
+    // Read off the issues, not a warning string: the gate at confirm and the
+    // control on the review screen must come from the same fact, or the
+    // owner is refused a confirmation they have no way to give.
     const hasHistoricalJoinDateWarnings = validation.validRows.some((r) =>
-      r.warnings.some((warning) => warning.toLowerCase().includes("historical joining date"))
+      needsHistoricalJoinDateConfirmation(r.issues ?? [])
     );
 
     await prisma.$transaction(async (tx: any) => {
