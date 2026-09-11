@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { requireHostelBelongsToOwner } from "@/lib/security/scoped-query";
 import { prisma } from "@/lib/db";
 import { notificationService } from "@/lib/services/notification-service";
@@ -58,6 +59,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "food.voting-periods");
     const body = await req.json().catch(() => ({}));
     const { hostelId, month: monthStr, votingStartsAt, votingEndsAt } = body;
 
@@ -105,6 +107,8 @@ export async function POST(req: NextRequest) {
         });
         created = true;
       } catch (error: any) {
+        const billing = billingErrorResponse(error);
+        if (billing) return billing;
         // Lost the create race on the (hostel_id, month) unique key. The
         // winner owns the round and its notification; this request is left
         // holding an edit of the window.

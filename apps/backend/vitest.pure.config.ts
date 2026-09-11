@@ -138,6 +138,37 @@ export default defineConfig({
       'tests/whatsapp-guardian-activation-template.test.ts',
       // Reads schema.prisma and the source as text — no client, no database.
       'tests/whatsapp-prisma-accessors.test.ts',
+      // ADR-172 owner subscription billing — Phase 1 schema guard. Reads
+      // schema.prisma as text; no client, no database.
+      'tests/subscription-billing-schema.test.ts',
+      // ADR-172 Phase 2 — pure rules (proration, transitions, guards).
+      'tests/subscription-billing-rules.test.ts',
+      // ADR-172 Phase 2 — service layer; `vi.mock('@/lib/db')`, no client, no database.
+      'tests/subscription-billing-service.test.ts',
+      // ADR-172 Phase 3 — enforcement (access + capacity + override); mocks `@/lib/db`.
+      'tests/subscription-enforcement.test.ts',
+      // ADR-172 Phase 3 — lifecycle expiry + renewal; mocks `@/lib/db`.
+      'tests/subscription-lifecycle.test.ts',
+      // ADR-172 Phase 3 correction — owner-mutation subscription gate; mocks `@/lib/db` + reads route files.
+      'tests/subscription-owner-mutation-guard.test.ts',
+      // ADR-172 Phase 5 — admin ops + downgrade + cash; mocks `@/lib/db`.
+      'tests/subscription-admin.test.ts',
+      // ADR-172 Phase 6.1 — legacy per-hostel platform billing cleanup.
+      'tests/legacy-platform-billing-cleanup.test.ts',
+      // ADR-172 Phase 6.2 — subscription invoice document (content model + generation).
+      'tests/subscription-invoice-content.test.ts',
+      'tests/subscription-invoice-document.test.ts',
+      // ADR-172 Phase 6.3 — billing error standardization + audit hardening.
+      'tests/subscription-error-mapping.test.ts',
+      'tests/subscription-audit-events.test.ts',
+      // Updated capacity model — included beds + paid extra beds (2026-09-10).
+      'tests/subscription-extra-beds.test.ts',
+      // Phase 6.6 — recurring paid extra-bed billing.
+      'tests/subscription-extra-beds-recurring.test.ts',
+      // Phase 6.9 — payment-amount mismatch hardening.
+      'tests/subscription-payment-mismatch.test.ts',
+      // Phase 6.9 — route-handler-level HTTP tests (see file header for scope/limitation).
+      'tests/subscription-route-http.test.ts',
       // The receipt's content model — no pdf-lib, no fonts, no I/O.
       'tests/receipt-content.test.ts',
       // The printed weekly menu's content model. Same split as the receipt —

@@ -12,6 +12,7 @@ import { prisma } from "@/lib/db";
 import { propertyService } from "@/lib/services/property-service";
 import { roomCapacityService } from "@/lib/services/room-capacity-service";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { assertHostelBelongsToOwner, requireHostelBelongsToOwner } from "@/lib/security/scoped-query";
 import { eventSystem } from "@/lib/events";
 
@@ -184,6 +185,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "rooms");
     const body = await req.json().catch(() => ({}));
     console.log(`[rooms.POST] Creating room for owner ${scope.owner_id}`, body);
     
@@ -251,6 +253,8 @@ export async function POST(req: NextRequest) {
 
     return ApiResponse.success(room, "Room created successfully", { status: 201 });
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     console.error("Detailed API Error [rooms.POST]:", error);
     return ApiResponse.error(error);
   }

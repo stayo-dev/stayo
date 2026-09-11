@@ -17,6 +17,7 @@ import { eventLog } from "../../../lib/services/event-log-service";
 import { eventSystem } from "../../../lib/events";
 import { tenantInvitationLifecycleService } from "./tenant-invitation-lifecycle-service";
 import { AgreementGenerationService } from "./agreement-generation-service";
+import { assertOwnerCanActivateTenant } from "@/src/services/platform-billing/tenant-activation-guard";
 import { currentAgreementWhere, isCurrentAgreementStatus, isSignedAgreementStatus } from "./agreement-status";
 import { canEnterActivation, hasCompletedActivation, ACTIVATABLE_STATUSES } from "./activation-entry";
 import { resolveActivationSubject, type ActivationSubjectRef } from "./activation-subject";
@@ -1670,6 +1671,14 @@ export class ActivationWorkflowService {
         if (profileUpdate.count !== 1) {
           throw new Error("INVALID: Activation token has already been used");
         }
+
+        // ADR-172 Phase 3: the owner's Stayo subscription must be active and
+        // have capacity before this legacy-path tenancy goes ACTIVE.
+        await assertOwnerCanActivateTenant(tenantNow.owner_id, {
+          tx,
+          tenantId: tenantNow.id,
+          context: "activation-workflow-legacy",
+        });
 
         const tenantUpdate = await tx.tenants.updateMany({
           where: {

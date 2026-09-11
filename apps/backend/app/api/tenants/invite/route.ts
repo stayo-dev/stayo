@@ -5,6 +5,7 @@ import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { invitationService } from "@/src/services/tenants/invitation-service";
 import { InvitationSchema } from "@/lib/validators";
+import { billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 
 
 /**
@@ -29,6 +30,15 @@ export async function POST(req: NextRequest) {
     
     return apiResponse(result, (result?.whatsapp_sent || result?.email_sent) ? 201 : 202);
   } catch (error: any) {
+    // A new-model invite makes the tenant ACTIVE immediately, so this reaches
+    // `initializeActiveUnacceptedTenancy`'s capacity/inactive-subscription
+    // guard (one of the ADR-172 tenant-activation paths) — keep its 402/409
+    // rather than falling through to the message-prefix parsing below, whose
+    // sentence-shaped SubscriptionError message has no "CODE:" prefix and
+    // would otherwise default to a 500.
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
+
     // The tenancy-eligibility refusal carries a structured payload the invite form
     // renders as "already a tenant at …" — flattening it into a message string
     // would throw away the disclosure scope that decides what the owner may see.

@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { prisma } from "@/lib/db";
 
 /**
@@ -138,6 +139,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    if (session.role === "OWNER") {
+      await assertOwnerSubscriptionActive(session.sub, "owner.hostels.create");
+    }
     const body = await req.json();
     const { propertyService } = await import("@/lib/services/property-service");
 
@@ -218,6 +222,8 @@ export async function POST(req: NextRequest) {
       id: hostel.id,
     });
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     const msg = typeof error === "string" ? error : (error && typeof error.message === "string" ? error.message : String(error));
     if (msg.startsWith("PLAN_LIMIT:")) {
       const code = msg.replace("PLAN_LIMIT:", "").trim();

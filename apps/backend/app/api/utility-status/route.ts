@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { requireHostelBelongsToOwner } from "@/lib/security/scoped-query";
 import { prisma } from "@/lib/db";
 import { UtilityType, UtilityStatus } from "@prisma/client";
@@ -49,6 +50,7 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "utility-status");
     const body = await req.json().catch(() => ({}));
     const { hostelId, utility, status, note } = body;
 
@@ -69,6 +71,8 @@ export async function PATCH(req: NextRequest) {
 
     return apiResponse(row);
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     const msg = String(error?.message || "Failed to update utility status");
     if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
     if (msg.startsWith("HOSTEL_CONTEXT_REQUIRED")) return apiError(msg.split(": ")[1] ?? msg, "HOSTEL_CONTEXT_REQUIRED", 400);

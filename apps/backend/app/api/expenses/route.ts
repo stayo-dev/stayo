@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { requireHostelBelongsToOwner } from "@/lib/security/scoped-query";
 import { expenseService } from "@/lib/services/expense-service";
 import { imagekit } from "@/lib/imagekit";
@@ -144,6 +145,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "expenses");
     const { body, receiptFile } = await parseExpenseCreateBody(req);
 
     if (!body.title || !body.amount || !body.date || !body.category) {
@@ -180,6 +182,8 @@ export async function POST(req: NextRequest) {
     });
     return apiResponse(expense, 201);
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     const msg = String(error?.message || "");
     if (msg.startsWith("VALIDATION"))
       return apiError(msg.split(": ")[1] ?? msg, "VALIDATION_ERROR", 400);

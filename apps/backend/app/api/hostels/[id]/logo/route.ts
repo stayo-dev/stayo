@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { prisma } from "@/lib/db";
 import { imagekit } from "@/lib/imagekit";
 import { eventLog } from "@/lib/services/event-log-service";
@@ -31,6 +32,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const session = await getSession(req);
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "hostels.id.logo");
     await assertOwnedHostel(params.id, scope.owner_id);
 
     const formData = await req.formData();
@@ -63,6 +65,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     return apiResponse({ success: true, logo_url: updatedHostel.logo_url });
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     console.error("[HOSTEL_LOGO_UPLOAD_ERROR]:", error);
     return toApiError(error);
   }
@@ -72,6 +76,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   const session = await getSession(req);
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "hostels.id.logo");
     await assertOwnedHostel(params.id, scope.owner_id);
 
     await prisma.hostels.update({ where: { id: params.id }, data: { logo_url: null } });
@@ -84,6 +89,8 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
     return apiResponse({ success: true, logo_url: null });
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     console.error("[HOSTEL_LOGO_DELETE_ERROR]:", error);
     return toApiError(error);
   }

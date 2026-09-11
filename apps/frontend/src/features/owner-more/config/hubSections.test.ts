@@ -24,10 +24,11 @@ describe('hubGroups', () => {
     }
   });
 
-  it('links to exactly the four screens an owner\'s account has', () => {
+  it('links to exactly the screens an owner\'s account has', () => {
     expect(hubGroups().flatMap((g) => g.rows).map((r) => r.route)).toEqual([
       '/owner/more/profile',
       '/owner/more/password',
+      '/owner/more/subscription',
       '/owner/more/payout-account',
       '/owner/more/help',
     ]);

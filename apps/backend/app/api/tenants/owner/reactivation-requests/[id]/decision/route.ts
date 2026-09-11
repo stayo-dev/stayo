@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { tenantService } from "@/src/services/tenants/tenant-service";
+import { billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 
 
 /**
@@ -38,6 +39,11 @@ export async function POST(
 
     return apiResponse(result);
   } catch (error: any) {
+    // processReactivationRequest is one of the ADR-172 tenant-activation
+    // paths — an approve decision can hit the capacity/inactive-subscription
+    // guard, which must keep its 402/409, not fall through to a 500 below.
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     const msg = typeof error?.message === "string" ? error.message : String(error ?? "Unknown error");
     if (msg.startsWith("NOT_FOUND")) return apiError(msg.split(": ")[1] ?? msg, "NOT_FOUND", 404);
     if (msg.startsWith("VALIDATION")) return apiError(msg.split(": ")[1] ?? msg, "VALIDATION_ERROR", 400);

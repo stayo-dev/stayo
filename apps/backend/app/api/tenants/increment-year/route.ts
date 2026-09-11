@@ -7,6 +7,7 @@ import { ApiResponse } from "@/src/lib/api-response";
 import { ApiError } from "@/src/lib/api-error";
 import { tenantService } from "@/src/services/tenants/tenant-service";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { requireHostelBelongsToOwner } from "@/lib/security/scoped-query";
 
 /**
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "tenants.increment-year");
     const body = await req.json().catch(() => ({}));
     const hostelId = body.hostelId;
 
@@ -60,6 +62,8 @@ export async function POST(req: NextRequest) {
     const result = await tenantService.executeIncrementYear(hostelId, scope.owner_id);
     return ApiResponse.success(result);
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     console.error("Error in POST [tenants.increment-year]:", error);
     return ApiResponse.error(new ApiError(error.message || "Internal Server Error"));
   }

@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { assertHostelBelongsToOwner } from "@/lib/security/scoped-query";
 import { hostelBillingPreferencesService } from "@/lib/services/hostel-billing-preferences-service";
 
@@ -45,6 +46,7 @@ export async function PATCH(
 
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "hostels.id.billing-defaults");
     await assertHostelBelongsToOwner(scope.owner_id, params.id);
     const body = await req.json();
     const billing_defaults = await hostelBillingPreferencesService.updateBillingDefaults(
@@ -54,6 +56,8 @@ export async function PATCH(
     );
     return apiResponse({ billing_defaults });
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     return toApiError(error);
   }
 }

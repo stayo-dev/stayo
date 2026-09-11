@@ -15,6 +15,10 @@ const FINANCIAL_ERROR_CODES = new Set([
   "DEPOSIT_OUTSTANDING",
   "MAINTENANCE_OUTSTANDING",
   "ONBOARDING_FINANCIALS_INCOMPLETE",
+  // ADR-172 Phase 3: the owner's Stayo subscription gate surfaces these with a
+  // machine-readable code + status, not a bare message.
+  "SUBSCRIPTION_INACTIVE",
+  "SUBSCRIPTION_CAPACITY_REACHED",
 ]);
 
 function normalizeActivationError(error: any, fallback: string) {

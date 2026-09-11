@@ -8,6 +8,7 @@ import { ApiResponse } from "@/src/lib/api-response";
 import { ApiError } from "@/src/lib/api-error";
 import { tenantService } from "@/src/services/tenants/tenant-service";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { invitationService } from "@/src/services/tenants/invitation-service";
 import { InvitationUpdateSchema, TenantProfileUpdateSchema } from "@/lib/validators";
 import { assertBodySize } from "@/lib/security/api-guard";
@@ -59,6 +60,7 @@ export async function PUT(
     if (sizeError) return sizeError;
 
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "tenants.id");
     const body = await req.json().catch(() => ({}));
 
     if (body?.invitation_edit === true) {
@@ -92,6 +94,8 @@ export async function PUT(
       return ApiResponse.success(result.changeRequest, result.changeRequest.message, { status: 202 });
     }
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     console.error(`Detailed API Error [tenants.id.PUT] (${params.id}):`, error);
     const msg = typeof error?.message === "string" ? error.message : String(error);
     
@@ -117,6 +121,7 @@ export async function DELETE(
 
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "tenants.id");
     console.log(`[tenants.id.DELETE] Deleting tenant ${params.id} for owner ${scope.owner_id}`);
     
     const result = await tenantService.deleteTenant(params.id, scope.owner_id);
@@ -124,6 +129,8 @@ export async function DELETE(
     console.log(`[tenants.id.DELETE] Tenant ${params.id} deleted successfully`);
     return ApiResponse.success(result);
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     console.error(`Detailed API Error [tenants.id.DELETE] (${params.id}):`, error);
     const msg = typeof error?.message === "string" ? error.message : String(error);
     

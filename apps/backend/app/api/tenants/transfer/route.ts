@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { tenantTransferService } from "@/src/services/tenants/tenant-transfer-service";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
-
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 /**
  * 🔄 POST /api/tenants/transfer
  *
@@ -22,6 +22,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    if (session.role === "OWNER") {
+      await assertOwnerSubscriptionActive(resolveOwnerScope(session).owner_id, "tenants.transfer");
+    }
     const body = await req.json();
     const { tenantId, targetRoomId, reason, notes } = body;
 
@@ -41,6 +44,8 @@ export async function POST(req: NextRequest) {
 
     return apiResponse(result);
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     const msg = error.message || "Transfer failed";
     if (msg.startsWith("NOT_FOUND:")) return apiError(msg, "NOT_FOUND", 404);
     if (msg.startsWith("VALIDATION_ERROR:")) return apiError(msg, "VALIDATION_ERROR", 400);

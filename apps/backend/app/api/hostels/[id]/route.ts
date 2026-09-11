@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { prisma } from "@/lib/db";
 import { eventLog } from "@/lib/services/event-log-service";
 
@@ -58,8 +59,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "hostels.id.patch");
     const body = await req.json().catch(() => ({}));
-    
+
     console.log(`[hostels.id.PATCH] Updating hostel ${params.id} for owner ${scope.owner_id}`, body);
 
     const { propertyService } = await import("@/lib/services/property-service");
@@ -107,6 +109,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       hostel
     });
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     console.error(`Detailed API Error [hostels.id.PATCH] (${params.id}):`, error);
     const msg = String(error?.message || "Failed to update hostel");
     
@@ -133,6 +137,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "hostels.id.delete");
     const { propertyService } = await import("@/lib/services/property-service");
 
     // Accept optional archive_reason from request body
@@ -153,6 +158,8 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       message: "Hostel archived successfully",
     });
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     console.error(`Detailed API Error [hostels.id.DELETE] (${params.id}):`, error);
     const msg = String(error?.message || "Failed to archive hostel");
     

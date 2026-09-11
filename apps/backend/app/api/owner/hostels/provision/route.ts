@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import {
   hostelProvisioningService,
   HostelAlreadyExistsError,
@@ -27,10 +28,15 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    if (session.role === "OWNER") {
+      await assertOwnerSubscriptionActive(session.sub, "owner.hostels.provision");
+    }
     const body = await req.json().catch(() => ({}));
     const result = await hostelProvisioningService.provision(session.sub, body);
     return apiResponse(result, 201);
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     // A duplicate is recoverable, not fatal: hand back the hostel that already
     // exists so the client can offer to open it rather than dead-ending the
     // owner on step 11 the way the old flow did.

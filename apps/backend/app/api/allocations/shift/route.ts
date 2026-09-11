@@ -5,6 +5,7 @@ import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { roomAllocationService } from "@/src/services/rooms/room-allocation-service";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { z } from "zod";
 
 const ShiftSchema = z.object({
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest) {
 
     const { tenant_id, new_room_id, shift_date } = validated.data;
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "allocations.shift");
 
     // Delegate the complex transactional logic to our established roomAllocationService
     const newAllocation = await roomAllocationService.shiftRoom(
@@ -57,6 +59,8 @@ export async function POST(req: NextRequest) {
 
     return apiResponse(newAllocation, 201);
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     const rawMessage = String(error?.message || "Failed to shift tenant room");
     const [maybeCode, ...rest] = rawMessage.split(":");
     const normalizedCode = maybeCode?.trim();

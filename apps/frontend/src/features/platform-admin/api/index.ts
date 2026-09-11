@@ -298,33 +298,12 @@ export const platformAdminService = {
     return unwrap(response);
   },
 
-  getPlans: async () => {
-    const response = await api.get('/platform-admin/plans');
-    return unwrap(response).plans as any[];
-  },
-  createPlan: async (data: { name: string; priceAmount: number; billingCycle: string; description?: string }) => {
-    const response = await api.post('/platform-admin/plans', data);
-    return unwrap(response);
-  },
-  assignSubscription: async (hostelId: string, data: { planId: string; autopayEnabled?: boolean }) => {
-    const response = await api.post(`/platform-admin/hostels/${hostelId}/subscription`, data);
-    return unwrap(response);
-  },
-  recordInvoice: async (hostelId: string) => {
-    const response = await api.post(`/platform-admin/hostels/${hostelId}/invoices`);
-    return unwrap(response);
-  },
-  getRevenue: async () => {
-    const response = await api.get('/platform-admin/revenue');
-    return unwrap(response) as { kpis: any; metrics: any };
-  },
-  getRevenueHostels: async (params: { search?: string; status?: string } = {}) => {
-    const response = await api.get('/platform-admin/revenue/hostels', { params });
-    return unwrap(response).hostels as any[];
-  },
-  exportRevenueReport: (report: string) => {
-    window.open(`${api.defaults.baseURL}/platform-admin/revenue/export?report=${report}`, '_blank');
-  },
+  // ── Legacy per-hostel platform billing (REMOVED — ADR-172) ────────────────
+  // `getPlans`/`createPlan`/`assignSubscription`/`recordInvoice`/`getRevenue`/
+  // `getRevenueHostels`/`exportRevenueReport` are gone. Stayo billing is
+  // owner-level: use `getSubscriptions`, `getSubscriptionRevenue`,
+  // `getSubscriptionPlans`, `getSubscriptionPayments` and the subscription
+  // action methods below. The backend routes now return 410.
 
   getDashboard: async () => {
     const response = await api.get('/platform-admin/dashboard');
@@ -367,5 +346,121 @@ export const platformAdminService = {
   sendBroadcast: async (message: string, hostelId?: string) => {
     const response = await api.post('/platform-admin/broadcast', { message, hostel_id: hostelId });
     return unwrap(response) as { sent: number; total: number };
+  },
+
+  // ── Owner subscription billing (ADR-172, Phase 5) ──────────────────────────
+  // The frontend never computes prices, proration, capacity or FOUNDING
+  // eligibility — it displays backend values and submits identifiers.
+
+  getSubscriptions: async (params: { status?: string; planCode?: string; search?: string; limit?: number; offset?: number } = {}) => {
+    const { planCode, ...rest } = params;
+    const response = await api.get('/platform-admin/subscriptions', {
+      params: { ...rest, plan_code: planCode },
+    });
+    return unwrap(response) as {
+      subscriptions: any[];
+      total: number;
+      limit: number;
+      offset: number;
+      has_more: boolean;
+      status_counts: Record<string, number>;
+      /** Founding/Starter/Growth/Professional/Portfolio counts (business rules, 2026-09-10). */
+      plan_counts: Record<string, number>;
+    };
+  },
+  getSubscriptionDetail: async (id: string) => {
+    const response = await api.get(`/platform-admin/subscriptions/${id}`);
+    return unwrap(response) as { subscription: any; payments: any[]; invoices: any[] };
+  },
+  pauseSubscription: async (id: string, reason: string) => {
+    const response = await api.post(`/platform-admin/subscriptions/${id}/pause`, { reason });
+    return unwrap(response);
+  },
+  resumeSubscription: async (id: string, reason: string) => {
+    const response = await api.post(`/platform-admin/subscriptions/${id}/resume`, { reason });
+    return unwrap(response);
+  },
+  extendSubscription: async (id: string, body: { days?: number; until?: string; reason: string }) => {
+    const response = await api.post(`/platform-admin/subscriptions/${id}/override`, body);
+    return unwrap(response);
+  },
+  clearSubscriptionOverride: async (id: string, reason?: string) => {
+    const response = await api.delete(`/platform-admin/subscriptions/${id}/override`, { data: { reason } });
+    return unwrap(response);
+  },
+  changeSubscriptionPlan: async (
+    id: string,
+    body: { plan_id: string; effective: 'IMMEDIATE' | 'NEXT_PERIOD'; reason: string; extra_beds?: number },
+  ) => {
+    const response = await api.post(`/platform-admin/subscriptions/${id}/change-plan`, body);
+    return unwrap(response);
+  },
+
+  getSubscriptionPayments: async (status?: string) => {
+    const response = await api.get('/platform-admin/subscription-payments', {
+      params: status ? { status } : undefined,
+    });
+    return unwrap(response) as { payments: any[]; total: number };
+  },
+  approveSubscriptionPayment: async (id: string) => {
+    const response = await api.post(`/platform-admin/subscription-payments/${id}/approve`, {});
+    return unwrap(response) as { payment: any; subscription: any; invoice: any; kind: string };
+  },
+  rejectSubscriptionPayment: async (id: string, reason: string) => {
+    const response = await api.post(`/platform-admin/subscription-payments/${id}/reject`, { reason });
+    return unwrap(response);
+  },
+  recordCashSubscriptionPayment: async (body: {
+    owner_id: string;
+    plan_id: string;
+    amount_paise: number;
+    reference?: string;
+    extra_beds?: number;
+  }) => {
+    const response = await api.post('/platform-admin/subscription-payments/cash', body);
+    return unwrap(response) as { id: string; status: string };
+  },
+
+  getSubscriptionPlans: async () => {
+    const response = await api.get('/platform-admin/plans');
+    return unwrap(response) as { plans: any[] };
+  },
+
+  getSubscriptionRevenue: async () => {
+    const response = await api.get('/platform-admin/revenue');
+    return unwrap(response) as {
+      currency: string;
+      kpis: Record<string, number>;
+      subscriptions: Record<string, number>;
+      payments: Record<string, number>;
+      plan_distribution: any[];
+    };
+  },
+
+  /**
+   * Download a subscription invoice PDF for an admin session. The backend
+   * proxies the document (existing `requireAdmin` gate); the raw storage URL is
+   * never exposed.
+   */
+  downloadSubscriptionInvoice: async (invoiceId: string): Promise<{ blob: Blob; filename: string }> => {
+    const response = await api.get(`/platform-admin/subscription-invoices/${invoiceId}`, { responseType: 'blob' });
+    const disposition = String(response.headers?.['content-disposition'] ?? '');
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    return { blob: response.data as Blob, filename: match?.[1] ?? `${invoiceId}.pdf` };
+  },
+
+  getBillingSettings: async () => {
+    const response = await api.get('/platform-admin/billing-settings');
+    return unwrap(response) as { settings: any; configured: boolean };
+  },
+  saveBillingSettings: async (settings: Record<string, unknown>) => {
+    const response = await api.put('/platform-admin/billing-settings', settings);
+    return unwrap(response) as { settings: any };
+  },
+  uploadBillingQr: async (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await api.post('/platform-admin/billing-settings/qr', form);
+    return unwrap(response) as { url: string };
   },
 };

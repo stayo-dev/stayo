@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
+import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { requireHostelBelongsToOwner } from "@/lib/security/scoped-query";
 import { prisma } from "@/lib/db";
 
@@ -56,6 +57,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const scope = resolveOwnerScope(session);
+    await assertOwnerSubscriptionActive(scope.owner_id, "hostel-events");
     const body = await req.json().catch(() => ({}));
     const { hostelId, title, eventDate, description } = body;
 
@@ -80,6 +82,8 @@ export async function POST(req: NextRequest) {
 
     return apiResponse(event, 201);
   } catch (error: any) {
+    const billing = billingErrorResponse(error);
+    if (billing) return billing;
     const msg = String(error?.message || "Failed to create event");
     if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
     if (msg.startsWith("HOSTEL_CONTEXT_REQUIRED")) return apiError(msg.split(": ")[1] ?? msg, "HOSTEL_CONTEXT_REQUIRED", 400);

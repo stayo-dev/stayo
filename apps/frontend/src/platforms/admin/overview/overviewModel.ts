@@ -47,10 +47,11 @@ export function buildKpis(kpis: DashboardKpis | undefined): KpiCard[] {
       // The design says "Revenue today". /platform-admin/dashboard returns
       // `collections`, which is month-to-date — so the label follows the data,
       // not the mockup. Same number under the design's label would misreport
-      // the business by roughly 30x.
-      label: 'Revenue this month',
+      // the business by roughly 30x. ADR-172: this is Stayo subscription
+      // revenue (what owners pay Stayo), not tenant rent.
+      label: 'Subscription revenue',
       value: k.collections == null ? DASH : formatInr(k.collections),
-      sub: 'collected across all hostels',
+      sub: 'owner plans, this month',
     },
     {
       key: 'leads',

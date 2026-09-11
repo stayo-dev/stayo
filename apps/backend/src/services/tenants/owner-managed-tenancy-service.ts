@@ -5,6 +5,7 @@ import { ensureActiveAllocation } from "./tenancy-allocation";
 import { planObligationLinking } from "./obligation-linking";
 import { resolveActivationEmail } from "./invited-profile-resolver";
 import { TenancyEligibilityError } from "./tenancy-eligibility-service";
+import { assertOwnerCanActivateTenant } from "@/src/services/platform-billing/tenant-activation-guard";
 
 export interface InitializeActiveUnacceptedTenancyParams {
   /** Caller must already hold the row lock on `roomId` (`SELECT ... FOR UPDATE`) — see `ensureActiveAllocation`. */
@@ -183,6 +184,15 @@ export async function initializeActiveUnacceptedTenancy(
   const { tx, tenantId, ownerId, displayName, phone } = params;
 
   const { profileId, allocationCreated } = await linkTenancyProfileAndAllocation(params);
+
+  // ADR-172 Phase 3: the owner's Stayo subscription must be active and have
+  // capacity before this tenancy goes live. Runs inside the caller's
+  // transaction, immediately before the ACTIVE write.
+  await assertOwnerCanActivateTenant(ownerId, {
+    tx,
+    tenantId,
+    context: "owner-managed-invite",
+  });
 
   await tx.tenants.update({
     where: { id: tenantId },
