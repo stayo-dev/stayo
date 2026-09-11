@@ -44,13 +44,6 @@ export async function POST(req: NextRequest) {
       return apiError("Hostel not found or access denied", "NOT_FOUND", 404);
     }
 
-    const validation = await bulkImportValidationService.validateRows(
-      rows,
-      hostel_id,
-      session.sub,
-      import_defaults || {}
-    );
-
     // Editing rows used to create a *new* batch every time, orphaning the
     // previous one with a full copy of every tenant's name, phone and email in
     // `validation_errors`. A dozen edits left a dozen copies. When the client
@@ -80,6 +73,30 @@ export async function POST(req: NextRequest) {
     // hold, so it must survive an edit to a tenant row.
     const previousRoomPlan = (existing?.validation_errors as any)?.room_plan;
     const batchId = existing?.id ?? crypto.randomUUID();
+
+    // The same rescue for the owner's defaults. The client does not resend
+    // them, and falling back to `{}` means the default joining date silently
+    // becomes today — which changes how many months of rent get backfilled,
+    // for every row, because they corrected one.
+    const previousDefaults = (existing?.validation_errors as any)?.defaults;
+    const effectiveDefaults =
+      import_defaults && Object.keys(import_defaults).length > 0
+        ? import_defaults
+        : previousDefaults && typeof previousDefaults === "object"
+          ? previousDefaults
+          : {};
+
+    const validation = await bulkImportValidationService.validateRows(
+      rows,
+      hostel_id,
+      session.sub,
+      effectiveDefaults,
+      // The rooms the uploaded workbook adds, exactly as `upload` passed them.
+      // Without these a re-check judges every row against the database alone,
+      // so a tenant in a room the same sheet creates is told their room does
+      // not exist — on the second pass, having been accepted on the first.
+      pendingRoomsFrom(previousRoomPlan)
+    );
     const validRowsForImport = validation.validRows.map((r) => ({
       row: r.row,
       data: sanitizeImportRowForStorage(r.data),
@@ -104,7 +121,7 @@ export async function POST(req: NextRequest) {
         duplicate_rows: validation.summary.duplicates,
         status: "VALIDATED",
         validation_errors: {
-          defaults: import_defaults || {},
+          defaults: effectiveDefaults,
           valid_rows: validRowsForImport,
           invalid: validation.invalidRows.map((r) => ({
             row: r.row,
@@ -176,6 +193,19 @@ export async function POST(req: NextRequest) {
           choices: validation.summary.choices,
           requires_historical_join_date_confirmation: hasHistoricalJoinDateWarnings,
         },
+        // Only when the batch actually carried a plan: the client merges this
+        // response over the upload's, and a zeroed `rooms` would erase the
+        // "your sheet also adds N rooms" line that is still true.
+        ...(previousRoomPlan
+          ? {
+              rooms: {
+                to_create: pendingRoomsFrom(previousRoomPlan).length,
+                to_update: Array.isArray(previousRoomPlan.update) ? previousRoomPlan.update.length : 0,
+                unchanged: Array.isArray(previousRoomPlan.unchanged) ? previousRoomPlan.unchanged.length : 0,
+                issues: Array.isArray(previousRoomPlan.issues) ? previousRoomPlan.issues : [],
+              },
+            }
+          : {}),
         preview: {
           valid: validation.validRows.map(sanitizeValidatedRow),
           invalid: validation.invalidRows.map(sanitizeValidatedRow),
@@ -213,3 +243,23 @@ function sanitizeValidatedRow(row: any) {
   };
 }
 
+/**
+ * The rooms a stored room plan will create, in the shape `validateRows` wants.
+ *
+ * Defensive about the stored JSON: it is whatever an earlier version of the
+ * upload route wrote, and a re-check that throws on an old batch would strand
+ * the owner mid-import with no way back but a fresh upload.
+ */
+function pendingRoomsFrom(
+  roomPlan: any
+): Array<{ room_no: string; capacity?: number; base_rent?: number }> {
+  const create = roomPlan?.create;
+  if (!Array.isArray(create)) return [];
+  return create
+    .filter((room: any) => room && String(room.room_no || "").trim())
+    .map((room: any) => ({
+      room_no: String(room.room_no).trim(),
+      capacity: room.capacity == null ? undefined : Number(room.capacity),
+      base_rent: room.base_rent == null ? undefined : Number(room.base_rent),
+    }));
+}

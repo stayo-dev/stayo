@@ -8,6 +8,24 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-11 — Re-checking an edited import forgot what the workbook was adding (fixed)
+
+**Symptom.** An owner fixed one row in the review screen and the re-check told them "Room 401 not found in hostel" — while the same screen still read *"Your sheet also adds 1 room."* The upload had accepted that tenant; the re-check would not. There was no move the owner could make that satisfied both sentences, because the room genuinely does not exist yet and the template's own instructions tell them to add it on the Rooms sheet and then use it.
+
+**Root cause — an argument added on one path only.** `validateRows` takes a `pendingRooms` list precisely so a tenant may reference a room the same workbook creates. `upload` passed it; `revalidate` did not, so a re-check judged every row against the database alone. The room plan itself was not lost — `revalidate` already rescued it from the stored batch to keep it through an edit — it was rescued *after* validation had already run without it.
+
+**The same defect, twice.** Looking for the first one found a second: the owner's import defaults were rescued no better. The client does not resend them, and `revalidate` fell back to `{}`, so the default joining date became today. Correcting a phone number would have quietly changed how many months of back-rent every row generated — the money bug of [[Bugs#2026-09-10 — Bulk import billed from a different joining date than it validated (fixed)|the day before]] by a different route.
+
+**Why it hid.** Both paths call the same validator, so the two look interchangeable when read. The existing test asserted the room plan was *stored* through an edit — which it was — not that anything validated against it. That is the same shape as the columns that were read, stored and ignored, below: storage is not use.
+
+**Also fixed in the same pass.** `isSpreadsheetFormula` rejected any cell starting `=`, `+`, `-` or `@`, so `+918008046952` — how a great many people write an Indian mobile — was reported as "this cell contains a formula", an error with no possible fix. A formula needs something to act on; digits, spaces, brackets and dashes after the sign are a phone number.
+
+**Not reproduced.** The same report included two "isn't a full date" errors, on `2026-09-11` and `2026-01-01`. Every version of the parser back to the single-file service accepts `YYYY-MM-DD`, and both values parse in current code, so the build that produced them was not this one. Pinned by tests rather than changed on a guess.
+
+**Fix.** `revalidate` resolves the batch, its room plan and its defaults *before* validating, and passes both in; it also returns the room counts so the review screen keeps saying what is coming. See [[APIs#POST /api/bulk-import/revalidate|the endpoint]].
+
+**See:** [[Features]], [[Changelog]], [[Decisions#ADR-181|ADR-181]]
+
 ## 2026-09-11 — Seven bulk-import columns were read, stored, and then ignored (fixed)
 
 **Symptom.** An owner filling in the import template correctly got a tenancy that disagreed with what they had typed. Answering "No" to *Paid Includes Deposit* changed nothing — settlement still swallowed the deposit. A per-row maintenance charge was discarded in favour of the batch value. A Notes cell reached `bulk_import_rows` and stopped there. A tenant who had moved out could never be imported back. An overpaid row previewed clean and then failed inside `createInvitation`, one row at a time, after other rows had already been created.

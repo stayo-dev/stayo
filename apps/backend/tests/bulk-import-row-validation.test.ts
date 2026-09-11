@@ -567,3 +567,74 @@ describe("a date typed into a real spreadsheet, not a text cell", () => {
     expect(r.data.joining_date).toBe("2026-09-11");
   });
 });
+
+describe("a phone number written the way people write it", () => {
+  // "+91 80080 46952" is how a great many people write an Indian mobile. The
+  // formula guard keyed on the leading character alone, so it told owners
+  // their phone cell "contains a formula" — an error with no possible fix,
+  // because the number was right.
+  it.each(["+918008046952", "+91 80080 46952", "+91-80080-46952"])(
+    "accepts %s without calling it a formula",
+    async (phone) => {
+      const r = await validateOne({ phone });
+      expect(r.issues.map((i) => i.code)).not.toContain("FORMULA_IN_CELL");
+      expect(r.errors).toEqual([]);
+      expect(r.data.phone).toBe("+918008046952");
+    }
+  );
+
+  it("still refuses a cell that would actually execute", async () => {
+    const r = await validateOne({ name: "=SUM(A1:A2)" });
+    expect(r.issues.map((i) => i.code)).toContain("FORMULA_IN_CELL");
+  });
+
+  it("still refuses the classic injection payload", async () => {
+    // A leading minus followed by anything but number punctuation.
+    const r = await validateOne({ notes: "-cmd|'/c calc'!A0" });
+    expect(r.issues.map((i) => i.code)).toContain("FORMULA_IN_CELL");
+  });
+
+  it("still refuses a cell reference behind a plus", async () => {
+    const r = await validateOne({ name: "+A1" });
+    expect(r.issues.map((i) => i.code)).toContain("FORMULA_IN_CELL");
+  });
+});
+
+describe("dates the owner reported as rejected", () => {
+  /**
+   * An owner saw "2026-09-11 isn't a full date" — the date our own default
+   * generates — beside "2026-01-01 isn't a full date" on the row. Neither is
+   * reproducible: both are the ISO form the parser has accepted since the
+   * service was a single file. These pin that, so the day a change breaks ISO
+   * the suite says so instead of an owner discovering it mid-import.
+   */
+  it("accepts the joining date our own default produces", async () => {
+    const today = new Date();
+    const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(
+      today.getDate()
+    ).padStart(2, "0")}`;
+
+    const result = await bulkImportValidationService.validateRows(
+      [row({ joining_date: "" })],
+      HOSTEL_ID,
+      OWNER_ID,
+      { joining_date: iso }
+    );
+    const only = [...result.validRows, ...result.invalidRows, ...result.duplicates][0];
+
+    expect(only.issues.map((i: any) => i.code)).not.toContain("DATE_UNREADABLE");
+  });
+
+  it.each(["2026-09-11", "2026-01-01", "2026-1-1"])("accepts %s on the row", async (joining_date) => {
+    const result = await validateOne({ joining_date });
+
+    expect(result.issues.map((i: any) => i.code)).not.toContain("DATE_UNREADABLE");
+    expect(result.data.joining_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("still refuses a date that is not one", async () => {
+    const result = await validateOne({ joining_date: "next monday" });
+
+    expect(result.issues.map((i: any) => i.code)).toContain("DATE_UNREADABLE");
+  });
+});
