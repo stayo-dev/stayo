@@ -31,6 +31,25 @@ const HEADER_FILL: ExcelJS.Fill = {
   fgColor: { argb: "FFF2EDE7" },
 };
 
+/** A tenant row written back into the sheet, in the header's order. */
+export type TenantRowValues = {
+  name?: string;
+  phone?: string;
+  email?: string;
+  room_no?: string;
+  monthly_rent?: number;
+  joining_date?: string;
+  security_deposit?: number;
+  maintenance_charge?: number;
+  maintenance_type?: string;
+  agreement_duration_months?: number;
+  amount_paid?: number;
+  amount_includes_deposit?: boolean;
+  payment_method?: string;
+  payment_reference?: string;
+  notes?: string;
+};
+
 export type TemplateInput = {
   hostel: { id: string; name: string };
   /** The hostel's own rent due day, 1–28. */
@@ -44,6 +63,14 @@ export type TemplateInput = {
     occupied_count: number;
   }>;
   tenantCount: number;
+  /**
+   * Rows to write into the Tenants sheet instead of the worked example.
+   *
+   * This is how the owner gets their own file back with the fixes they made
+   * on screen already in it — so the spreadsheet they keep matches what Stayo
+   * has, and re-uploading it does not undo their corrections.
+   */
+  tenants?: TenantRowValues[];
 };
 
 const ROOM_HEADERS = ["Room No", "Floor", "Capacity", "Sharing Type", "Base Rent", "Currently Occupied"];
@@ -163,8 +190,34 @@ function buildTenants(sheet: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, inpu
   sheet.addRow(TENANT_HEADERS);
   styleHeader(sheet.getRow(1));
 
+  // Real rows when we have them: this is the owner's corrected file, not a
+  // blank template, so the example would be noise.
+  if (input.tenants?.length) {
+    for (const tenant of input.tenants) {
+      sheet.addRow([
+        tenant.name ?? "",
+        tenant.phone ?? "",
+        tenant.email ?? "",
+        tenant.room_no ?? "",
+        tenant.monthly_rent ?? "",
+        tenant.joining_date ?? "",
+        tenant.security_deposit ?? "",
+        tenant.maintenance_charge ?? "",
+        tenant.maintenance_type ?? "",
+        tenant.agreement_duration_months ?? "",
+        tenant.amount_paid ?? "",
+        tenant.amount_includes_deposit === undefined ? "" : tenant.amount_includes_deposit ? "YES" : "NO",
+        tenant.payment_method ?? "",
+        tenant.payment_reference ?? "",
+        tenant.notes ?? "",
+      ]);
+    }
+  }
+
   const exampleRoom = input.rooms[0]?.room_no ?? "101";
-  const example = sheet.addRow([
+  const example = input.tenants?.length
+    ? null
+    : sheet.addRow([
     EXAMPLE_ROW_NAME,
     "9876543210",
     "student@example.com",
@@ -181,7 +234,7 @@ function buildTenants(sheet: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, inpu
     "",
     "Already living here since January",
   ]);
-  example.font = GREY;
+  if (example) example.font = GREY;
 
   // The dropdown's source. The range runs past the rooms that exist today so
   // a room the owner adds on the Rooms sheet appears here too.

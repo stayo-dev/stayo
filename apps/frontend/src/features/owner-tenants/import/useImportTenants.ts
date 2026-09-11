@@ -3,12 +3,15 @@ import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@lib/queryKeys';
 import {
   confirmChunk,
+  downloadCorrected,
   downloadTemplate,
+  revalidateRows,
   sendInvitations,
   uploadWorkbook,
   type ConfirmResult,
   type UploadResult,
 } from './api';
+import { editRow, mergeEdits, type RowEdits } from './rowEdits';
 import { buildReviewQueue, applyGroupDecision, type ReviewQueue } from './reviewQueue';
 import { describeProgress, type ProgressView } from './importProgress';
 import { stageFor, type ImportState, type Stage } from './importStages';
@@ -30,7 +33,8 @@ export function useImportTenants(hostelId: string | null) {
   const [queue, setQueue] = useState<ReviewQueue | null>(null);
   const [confirmState, setConfirmState] = useState<ConfirmResult | null>(null);
   const [acknowledged, setAcknowledged] = useState<string[]>([]);
-  const [busy, setBusy] = useState<null | 'template' | 'upload' | 'import' | 'send'>(null);
+  const [edits, setEdits] = useState<RowEdits>({});
+  const [busy, setBusy] = useState<null | 'template' | 'upload' | 'import' | 'send' | 'recheck' | 'corrected'>(null);
   const [error, setError] = useState<string | null>(null);
   const [sendResult, setSendResult] = useState<{ sent: number; remaining: number; failed: number } | null>(null);
 
@@ -95,6 +99,59 @@ export function useImportTenants(hostelId: string | null) {
     },
     [hostelId]
   );
+
+  const applyEdit = useCallback((row: number, field: string, value: string) => {
+    setEdits((current) => editRow(current, row, field, value));
+  }, []);
+
+  /**
+   * Runs the owner's in-screen fixes through the same checks as the file.
+   *
+   * `revalidate` re-runs the whole batch in place, so the corrected rows
+   * replace the old ones rather than accumulating — and the batch keeps its
+   * id, which is what lets the owner come back to it.
+   */
+  const recheck = useCallback(async () => {
+    if (!upload?.batch_id || !hostelId || !queue) return;
+    setBusy('recheck');
+    setError(null);
+    try {
+      const result = await revalidateRows({
+        batchId: upload.batch_id,
+        hostelId,
+        rows: mergeEdits(queue, edits),
+      });
+      setUpload((current) => (current ? { ...current, ...result } : result));
+      setQueue(buildReviewQueue(result.preview));
+      setEdits({});
+    } catch (e: any) {
+      setError(readError(e, "We couldn't re-check those changes. Nothing was lost — try again."));
+    } finally {
+      setBusy(null);
+    }
+  }, [upload, hostelId, queue, edits]);
+
+  /** The owner's own file back, with the fixes in it. */
+  const getCorrectedSheet = useCallback(async () => {
+    if (!upload?.batch_id) return;
+    setBusy('corrected');
+    setError(null);
+    try {
+      const blob = await downloadCorrected(upload.batch_id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'tenant-import-corrected.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (e: any) {
+      setError(readError(e, "We couldn't build that file. Try again in a moment."));
+    } finally {
+      setBusy(null);
+    }
+  }, [upload]);
 
   const acknowledgeGroup = useCallback((code: string) => {
     setQueue((current) => (current ? applyGroupDecision(current, code) : current));
@@ -174,6 +231,7 @@ export function useImportTenants(hostelId: string | null) {
     setQueue(null);
     setConfirmState(null);
     setAcknowledged([]);
+    setEdits({});
     setSendResult(null);
     setError(null);
     setBusy(null);
@@ -190,6 +248,10 @@ export function useImportTenants(hostelId: string | null) {
     error,
     getTemplate,
     submitFile,
+    edits,
+    applyEdit,
+    recheck,
+    getCorrectedSheet,
     acknowledgeGroup,
     runImport,
     send,

@@ -158,3 +158,77 @@ describe("row numbers stay true to the spreadsheet", () => {
     expect(rows[1].name).toBe("Ravi Kumar");
   });
 });
+
+describe("handing the owner their corrected file back", () => {
+  // Small fixes are made on screen, not in Excel — which would leave the
+  // spreadsheet on their machine out of step with what Stayo has, and
+  // re-uploading it would undo the work.
+  const CORRECTED = [
+    {
+      name: "Shiva Prakash Chidiri",
+      phone: "8008046952",
+      email: "",
+      room_no: "101",
+      monthly_rent: 8500,
+      joining_date: "2026-01-05",
+      security_deposit: 25500,
+      maintenance_charge: 500,
+      maintenance_type: "ONE_TIME",
+      agreement_duration_months: 11,
+      amount_paid: 76500,
+      amount_includes_deposit: true,
+      payment_method: "CASH",
+      notes: "Already living here",
+    },
+  ];
+
+  it("writes the real rows instead of the worked example", async () => {
+    const buf = await buildImportWorkbook({ ...INPUT, tenants: CORRECTED });
+    const rows = parseTenantWorkbook(buf as Buffer, "corrected.xlsx");
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].name).toBe("Shiva Prakash Chidiri");
+    expect(rows.some((r) => r.is_example)).toBe(false);
+  });
+
+  it("keeps every value the owner fixed", async () => {
+    const buf = await buildImportWorkbook({ ...INPUT, tenants: CORRECTED });
+    const [row] = parseTenantWorkbook(buf as Buffer, "corrected.xlsx");
+
+    expect(row).toMatchObject({
+      phone: "8008046952",
+      room_no: "101",
+      monthly_rent: 8500,
+      joining_date: "2026-01-05",
+      maintenance_charge: 500,
+      maintenance_type: "ONE_TIME",
+      agreement_duration_months: 11,
+      amount_paid: 76500,
+      payment_method: "CASH",
+    });
+    expect(row.amount_includes_deposit).toBe(true);
+  });
+
+  it("leaves a blank email blank, rather than writing the word undefined", async () => {
+    const buf = await buildImportWorkbook({ ...INPUT, tenants: CORRECTED });
+    const [row] = parseTenantWorkbook(buf as Buffer, "corrected.xlsx");
+    expect(row.email).toBe("");
+  });
+
+  it("is still a working template — rooms, stamp and dropdown intact", async () => {
+    const buf = await buildImportWorkbook({ ...INPUT, tenants: CORRECTED });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf as any);
+
+    expect(String(wb.getWorksheet(COVER_SHEET)!.getCell(HOSTEL_ID_CELL).value)).toBe(INPUT.hostel.id);
+    expect(wb.getWorksheet(TENANTS_SHEET)!.getCell("D2").dataValidation?.formulae?.[0]).toBe("RoomList");
+    expect(parseRoomsSheet(buf as Buffer).map((r) => r.room_no)).toEqual(["101", "G1"]);
+  });
+
+  it("still writes the example when there is nothing to correct", async () => {
+    const buf = await buildImportWorkbook({ ...INPUT, tenants: [] });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf as any);
+    expect(String(wb.getWorksheet(TENANTS_SHEET)!.getCell("A2").value)).toBe(EXAMPLE_ROW_NAME);
+  });
+});
