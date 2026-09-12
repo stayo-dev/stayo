@@ -293,6 +293,20 @@ See [[APIs]], [[Changelog]].
 | **Common Stayo Profile** | `/profile`, `/profile/details`, `/profile/history`, `/profile/documents`, `/profile/saved`, `/profile/enquiries(/:id)` | See "Common Stayo Profile" below. Shared, app-wide tab — **kept in v1** (mounted directly under `SeekerAppShell`, no longer nested in `DiscoverRoutes`). `/profile/saved` + `/profile/enquiries` still routed but have no marketplace data to show. |
 | Receipt verification | `/verify/r/:token` | `/api/verify/receipt` — public, signed-token |
 
+### The Stayo dog on the login card (2026-09-12)
+
+The brand mascot leans over the top edge of the one login surface every role uses (`LoginModal`, [[Decisions#ADR-035|ADR-035]]) and reacts to the person, not to itself ([[Decisions#ADR-191|ADR-191]], [[Frontend]] "The Stayo dog"):
+
+- **Watches the cursor** (pupils, head tilt, ears a beat behind) on a mouse; on a phone it watches the field being filled in.
+- **Reads along** while an email or name is typed.
+- **Covers its eyes with its paws** while the password field has focus — and **peeks** with one eye when "show password" is on. Pressing show/hide never uncovers it. This is the one reaction nothing else outranks.
+- **Raises its brows for Caps Lock**, alongside a "Caps Lock is on" line under the password (new; announced to screen readers).
+- **Thinks** while the login or Google redirect is in flight; **shows sympathy** (ears down, small head shake) for 2.4s after a failure, ending the moment a field is focused; **celebrates** a success for one 600ms beat before the redirect (0 under reduced motion).
+- **Dozes off** after 30s untouched and startles awake; wags when its head is tapped.
+- The "Signed in" handoff overlays (`LandingPage`, `DiscoverAuthContext`) show it waving.
+
+It is decorative by contract: `aria-hidden`, no tab stop, every state also said in text, hidden on screens under 560px tall. Login logic, validation, error copy and Google are unchanged.
+
 ### Stayo Discover — the public hostel marketplace (2026-08-15; nav restructured 2026-08-16) — **SHELVED for v1, 2026-09-03 ([[Decisions#ADR-170|ADR-170]])**
 
 - **Routes:** `/discover` (Explore), `/discover/search`, `/discover/h/:slug` (listing detail), `/discover/h/:slug/enquire`. **Saved/Enquiries/Profile moved to `/profile/*`** (`/profile/saved`, `/profile/enquiries`, `/profile/enquiries/:id`, `/profile`, `/profile/details`, `/profile/history`, `/profile/documents`) as of ADR-078 — they're account-level, not Explore-level, and are no longer primary bottom-nav tabs. Explore no longer has its own 4-tab shell (`DiscoverShell` retired as a nav owner, its non-nav helpers `DiscoverEmpty`/`HostelCardSkeleton`/`PrimaryButton` still used); the shared `AppShell`/`AppBottomNav` (`app/layouts/AppShell.tsx`, `app/nav/appNavConfig.ts`) now owns the outer bottom nav everywhere: **Explore | Profile** with no tenancy, **Explore | Dashboard | Profile** with a live tenancy (`tenant_status` `INVITED`/`ACTIVE`).

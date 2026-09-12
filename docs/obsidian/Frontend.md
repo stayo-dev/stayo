@@ -202,6 +202,24 @@ Notes that matter when touching this:
 - **Full brand screen vs. layout skeleton**: cold boundaries where nothing is mounted yet (platform entry, auth gates, public/auth/journey routes) get `StayoLoadingScreen`; page-to-page transitions *inside* an already-mounted shell (`OwnerProviderShell`, `TenantProviderShell`) keep their layout skeletons, which preserve perceived speed better.
 - `PageError` and `ErrorCard` (`shared/ui/error/`) kept their exact prop signatures through the redesign — only their surface changed, so every existing caller still works. `ErrorCard` is theme-tokenized (it always renders inside a themed shell); `PageError` is not, for the reason above.
 
+## The Stayo dog — `shared/ui/brand/mascot/`
+
+The brand's golden-retriever companion, as **one code-rigged inline SVG** — not six images. The brand art (`Stayo-Brand-Assetes/MascotStayoDog/`) is six poses on one skeleton with named groups, so an expression is a choice of variant per part (eyes, brows, mouth, ears, tail, arms) plus a tilt. Where it may appear is governed by [[Decisions#ADR-191|ADR-191]]: **never as a loader** (waits stay the four windows above), moments-only in the owner app. Spec: `docs/superpowers/specs/2026-09-12-stayo-dog-mascot-design.md`.
+
+| Use | |
+|---|---|
+| `<StayoDog companion={dog.companion} framing="rim" />` + `useDogCompanion({ active })` | reacts to a form. Spread `dog.bind.textField` on text inputs, `dog.bind.passwordGroup(shown)` on the wrapper around each password input **and** its reveal button, `dog.bind.passwordInput` on the input, `dog.bind.revealButton.onMouseDown` on the reveal button; call `dog.submit()`, `dog.failed()`, `await dog.celebrate()`. Render `dog.capsLock` as text. |
+| `<StayoDog expression="waving" />` | holds one expression (the "Signed in" handoff overlays). |
+
+Notes that matter when touching this:
+
+- **No React render per frame.** `StayoDog` renders the artwork once; a `requestAnimationFrame` loop reads the companion (`read(now)`), springs every part toward `rigTargets(...)` with `stepSpring`, and writes SVG `transform`s directly. Mood lives in a ref, so wiring the dog into a form costs the form zero re-renders — except `capsLock`, which is state because it is shown as text.
+- **All decisions are pure and tested** (`dogMood`, `dogGaze`, `dogRig`, `dogExpressions`, `dogSpring`, `dogMotionProfile` — 97 tests). The priority ladder in `dogMood.ts` puts **the password rung above the error hold**: covering its eyes on the password is the privacy message, so nothing but the login outcome interrupts it. Change the ladder there and the tests say what broke.
+- **The feel lives in `dogTuning.ts`**, signed off on an interactive prototype. The numbers interact; judge changes together, not one at a time.
+- **Reduced motion:** springs snap, no blink/wag/breath/tracking — but poses still change (it still covers its eyes). **Touch:** no cursor tracking; the gaze follows the focused field.
+- **`LoginModal`'s `Dialog.Content` is two layers** since the dog arrived: an outer positioning shell and an inner scrolling card. The dog sits outside the scroll box (inside it would be clipped) and adds no layout height. Hidden at `(max-height: 560px)`.
+- **Derived v1 art** (covering, peeking, concerned, curious, the forearms, the rim paws) is built from existing shapes in `dogParts.tsx`, flagged for the designer to refine. The source SVGs are untouched.
+
 ## Enforced architectural boundaries
 
 `scripts/check-architecture.mjs` fails the build if: raw `fetch()`/`axios` is used outside `@lib/api-client` in `app/`, `platforms/`, `shared/ui`, `features/`, `portal/`, or `context/`; `src/portal` gains a file outside its allowlist (above); `src/shared` imports from `app|platforms|portal|features|domains|services`.
