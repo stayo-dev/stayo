@@ -4,6 +4,10 @@ tags: [todo, backlog]
 
 # TODO / Backlog
 
+## `identification_documents.doc_number` is written by nothing (2026-09-12, [[Bugs]])
+
+- [ ] **Decide whether we collect document numbers at all, then make the code say so.** The column is nullable, and after the 2026-09-12 fix it is **read by exactly one masked display and written by no live path** — onboarding (`POST /tenants/activate/documents`) and the tenant profile picker both send `doc_type` + `file` only, and the sole collector left is the frozen legacy `TenantProfilePortalPage`. Two honest options: ask for the number at upload (an Aadhaar last-4 is genuinely useful to an owner reconciling a scan against a person), or drop the column and the masking with it. What it must not stay is a field that looks populated in the schema and never is — that shape is what produced the "Not uploaded" bug. Note `document-vault-service`'s `identity_documents.doc_number` is a **separate** column with the same name and the same question outstanding. — **related:** [[Database]], [[Bugs]].
+
 ## Cron gaps left open by the MVP trim (2026-09-06, [[Decisions#ADR-177|ADR-177]])
 
 ADR-177 was scheduling-only — it changed no route code. These were found during that audit and deliberately not fixed in the same change.

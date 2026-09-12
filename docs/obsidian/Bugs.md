@@ -8,6 +8,24 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-12 — A tenant's own Aadhaar read "Not uploaded" after they uploaded it, and no tenant could open any document they had uploaded (fixed)
+
+**Symptom.** Reported by the product owner as "tenant is not able to see/edit his profile and the documents that he uploaded", with screenshots of `/profile → Personal information` showing **Aadhaar: Not uploaded** for a resident who had uploaded one during onboarding. Editing was **not** broken — the product owner confirmed saving works — which is what narrowed this to a read-side defect.
+
+**Root cause (1) — the row answered a different question than it appeared to.** `profileEditConfigs.ts` derived the Aadhaar row from `maskAadhaar(aadhaarDoc?.doc_number)` alone, and `maskAadhaar` returned the literal string `"Not uploaded"` for anything under four digits. `identification_documents.doc_number` is **nullable and no current upload path writes it**: `POST /tenants/activate/documents` (onboarding) and the Personal-information picker both send only `doc_type` + `file`, and `createSupersedingDocument` stores `doc_number: args.docNumber ?? null`. The only code that ever collected a number is the frozen legacy `TenantProfilePortalPage`. So the row was reporting *"we do not know your Aadhaar number"* in the words *"you have not uploaded your Aadhaar"* — **deterministically, for every tenant, including immediately after a successful upload**. The edit field inherited the same value, so its button also said "Upload" rather than "Replace", and the tenant could re-upload forever into an unchanging message.
+
+**Root cause (2) — the tenant-side viewer was never built.** `GET /api/tenants/:id/documents/:docId/download` has authorised `session.role === "TENANT" && docTenant.profile_id === session.sub` all along, and every document row carries a `download_url`. But `ProfileDocumentsPage` listed the tenant's documents with no way to open any of them — the owner could look at a resident's Aadhaar; the resident who uploaded it could not. Not a regression: the affordance never existed on this screen. (The 2026-09-11 entry below fixed the *auth* on this same download path for the surfaces that did have a viewer; this fixes the surface that had none.)
+
+**Also found in the same screen.** The vault section rendered `dateLabel(d.uploaded_at)`, but `VaultDocument` (and `document-vault-service`'s `DOCUMENT_SELECT`) expose **`created_at`** — so every vault row printed an em-dash. `vite build` uses esbuild and does not typecheck, which is why a property that does not exist on the type shipped.
+
+**Fix.** `aadhaarRow(doc)` (exported and unit-tested) separates *existence* from *number*: no document → "Not uploaded"; a number on file → the masked number, mono; otherwise → "Uploaded · Pending verification" / "Uploaded · Verified" / "Rejected — upload again". `ProfileEditField` gains `mono?`, so a status sentence is no longer set in a document-number typeface. `ProfileDocumentsPage` reuses `DocumentPreviewSheet` unchanged — the owner side's viewer, which since 2026-09-11 re-issues an authenticated link against our own base by path and leaves third-party vault URLs `direct` — and the rejected row is split so the text opens the document while the pill still re-uploads. Vault rows read `created_at`.
+
+**Verified:** 11 new tests in `profileEditConfigs.test.ts` (9 red before the change, all green after); full frontend suite 2761 across 187 files; `check:architecture`, `check:brand-fossils`, `check:branding` and a production `vite build` all pass; `tsc` adds no new errors. **Not verified in a browser or against production data** — the local `.env` points at a different Supabase project than the one serving `yourstayo.com`, so the reported tenant's rows were never read. Root cause (1) is deterministic from the code and needs no data to confirm; the preview sheet has **never been exercised with a tenant session**, only with an owner's.
+
+**Wider point.** `doc_number` is now written by nothing and read by one masked display. Either onboarding should collect it or the column should go — see [[TODO]].
+
+**See:** [[Frontend]], [[Changelog]]
+
 ## 2026-09-11 — Push notifications could not be switched on by anyone (fixed)
 
 **Symptom.** Zero rows in `push_subscriptions` in production, twelve days after web push shipped ([[Decisions#ADR-158|ADR-158]]). Tapping "Enable" did nothing; an owner who allowed notifications from the browser's site settings saw no way to turn them on at all.

@@ -32,6 +32,8 @@ export interface ProfileEditField {
   optional?: boolean;
   /** For type: 'document' — tapping the row opens the document-upload flow instead of an input (e.g. Aadhaar). */
   docType?: string;
+  /** For type: 'document' — whether `value` is a document number (mono) or a status sentence. */
+  mono?: boolean;
 }
 
 export interface ProfileEditSection {
@@ -232,9 +234,9 @@ export function ProfileEditScreen({
                         >
                           <span className="min-w-0">
                             <span className="mb-0.5 block text-[11.5px] font-semibold text-[#8A7F75]">{field.label}</span>
-                            {/* Mono is for document numbers. "Not uploaded" is a sentence. */}
+                            {/* Mono is for document numbers. A status line is a sentence. */}
                             {field.value ? (
-                              <span className="block truncate font-mono text-sm font-medium text-foreground">{field.value}</span>
+                              <span className={`block truncate text-sm font-medium text-foreground${field.mono ? ' font-mono' : ''}`}>{field.value}</span>
                             ) : (
                               <span className="block text-sm font-medium text-[#B0A597]">Not uploaded yet</span>
                             )}

@@ -10,9 +10,45 @@ const dateFull = (v: unknown) => (v ? new Date(String(v)).toLocaleDateString('en
 const dateMonthYear = (v: unknown) => (v ? new Date(String(v)).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : '—');
 const maskAadhaar = (docNumber?: string | null) => {
   const digits = (docNumber ?? '').replace(/\D/g, '');
-  if (digits.length < 4) return 'Not uploaded';
+  if (digits.length < 4) return null;
   return `XXXX XXXX ${digits.slice(-4)}`;
 };
+
+/** The shape the Aadhaar row and its edit field are both rendered from. */
+export interface AadhaarRow {
+  text: string;
+  /** Mono is for document numbers. Everything else here is a sentence. */
+  mono: boolean;
+  /** Whether a document exists at all — drives Upload vs. Replace. */
+  uploaded: boolean;
+}
+
+/**
+ * What the Aadhaar row should say.
+ *
+ * This used to be `maskAadhaar(doc?.doc_number)` on its own, which told every
+ * tenant who *had* uploaded an Aadhaar that it was "Not uploaded":
+ * `identification_documents.doc_number` is optional and **no current upload
+ * path writes it** — neither onboarding (`POST /tenants/activate/documents`)
+ * nor this screen's own picker sends a number; only the frozen legacy portal
+ * ever collected one. So the row answered "do we know your number?" while
+ * appearing to answer "have you uploaded it?", and the tenant re-uploaded
+ * into an unchanging message. Existence and status are what the row is for;
+ * the number is a bonus when we happen to have it. See [[Bugs]].
+ */
+export function aadhaarRow(doc?: { doc_number?: string | null; document_status?: string | null; is_verified?: boolean | null } | null): AadhaarRow {
+  if (!doc) return { text: 'Not uploaded', mono: false, uploaded: false };
+
+  const masked = maskAadhaar(doc.doc_number);
+  if (masked) return { text: masked, mono: true, uploaded: true };
+
+  const status = String(doc.document_status ?? '').toUpperCase();
+  if (status === 'REJECTED') return { text: 'Rejected — upload again', mono: false, uploaded: true };
+  if (doc.is_verified === true || status === 'APPROVED' || status === 'VERIFIED') {
+    return { text: 'Uploaded · Verified', mono: false, uploaded: true };
+  }
+  return { text: 'Uploaded · Pending verification', mono: false, uploaded: true };
+}
 const YEAR_SUFFIX: Record<number, string> = { 1: 'st', 2: 'nd', 3: 'rd' };
 const ordinalYear = (n: unknown) => {
   const num = Number(n);
@@ -51,7 +87,7 @@ export function buildProfileEditConfigs(
   const p = profile ?? {};
   const c = contacts ?? {};
   const aadhaarDoc = (documents ?? []).find((d: any) => d.doc_type === 'AADHAAR');
-  const aadhaarMasked = maskAadhaar(aadhaarDoc?.doc_number);
+  const aadhaar = aadhaarRow(aadhaarDoc);
   const isVerified = verification?.overall === 'VERIFIED';
 
   const phoneValue = c.tenant_phone?.value ?? t.phone_1 ?? p.phone ?? '';
@@ -83,7 +119,7 @@ export function buildProfileEditConfigs(
           kind: 'rows',
           title: 'Government ID',
           rows: [
-            { label: 'Aadhaar', value: aadhaarMasked, mono: true },
+            { label: 'Aadhaar', value: aadhaar.text, mono: aadhaar.mono },
             { label: 'PAN', value: dash(t.pan_number), mono: true },
           ],
         },
@@ -101,7 +137,7 @@ export function buildProfileEditConfigs(
         {
           title: 'Government ID',
           fields: [
-            { key: 'aadhaar', label: 'Aadhaar', type: 'document', docType: 'AADHAAR', value: aadhaarMasked === 'Not uploaded' ? '' : aadhaarMasked },
+            { key: 'aadhaar', label: 'Aadhaar', type: 'document', docType: 'AADHAAR', value: aadhaar.uploaded ? aadhaar.text : '', mono: aadhaar.mono },
             { key: 'pan_number', label: 'PAN', type: 'text', value: t.pan_number ?? '', placeholder: 'ABCDE1234F', optional: true },
           ] as ProfileEditField[],
         },
