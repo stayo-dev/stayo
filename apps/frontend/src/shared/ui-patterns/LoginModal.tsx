@@ -4,7 +4,14 @@ import { Eye, EyeOff, X } from 'lucide-react';
 import { cn } from '@shared/lib/cn';
 import { useAuth } from '@context/AuthContext';
 import { ClerkGoogleSignIn } from './ClerkGoogleSignIn';
-import { StayoLoader, StayoMark, StayoWordmark } from '@shared/ui/brand';
+import {
+  RIM_OVERLAP_PERCENT,
+  StayoDog,
+  StayoLoader,
+  StayoMark,
+  StayoWordmark,
+  useDogCompanion,
+} from '@shared/ui/brand';
 import {
   MIN_SIGNUP_PASSWORD_LENGTH,
   toTenantSignupPayload,
@@ -92,6 +99,8 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
   const [error, setError] = useState('');
   /** Per-field signup messages, shown under the field they belong to. */
   const [fieldErrors, setFieldErrors] = useState<TenantSignupErrors>({});
+  /** The Stayo dog peeking over the card — see `shared/ui/brand/mascot`. */
+  const dog = useDogCompanion({ active: open });
 
   const isOwner = mode === 'owner';
   const isLogin = isOwner || tab === 'login';
@@ -122,12 +131,16 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
   const submitLogin = async () => {
     if (!form.email.trim() || !form.password.trim()) {
       setError('Please fill in all fields.');
+      dog.failed();
       return;
     }
     setError('');
     setSubmitting(true);
+    dog.submit();
     try {
       const user = await login(form.email, form.password);
+      // One bounded beat for the dog to celebrate; the session already exists.
+      await dog.celebrate();
       onSuccess({
         role: String(user.role ?? ''),
         name: user.name ?? form.email.split('@')[0],
@@ -136,6 +149,7 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
+      dog.failed();
     } finally {
       setSubmitting(false);
     }
@@ -146,13 +160,16 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
     if (!validation.valid) {
       setFieldErrors(validation.errors);
       setError('');
+      dog.failed();
       return;
     }
     setFieldErrors({});
     setError('');
     setSubmitting(true);
+    dog.submit();
     try {
       const user = await signUpTenant(toTenantSignupPayload(form));
+      await dog.celebrate();
       onSuccess({
         role: String(user.role ?? ''),
         name: user.name ?? form.name.trim(),
@@ -161,6 +178,7 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
       });
     } catch (err) {
       setError(getMessage(err, 'Could not create your account.'));
+      dog.failed();
     } finally {
       setSubmitting(false);
     }
@@ -169,6 +187,17 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     return isTenantSignup ? submitSignup() : submitLogin();
+  };
+
+  const toggleShowPassword = () => {
+    const next = !showPassword;
+    setShowPassword(next);
+    dog.setPasswordVisible(next);
+  };
+  const toggleShowConfirmPassword = () => {
+    const next = !showConfirmPassword;
+    setShowConfirmPassword(next);
+    dog.setPasswordVisible(next);
   };
 
   /**
@@ -186,285 +215,303 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
     <Dialog.Root open={open} onOpenChange={handleOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[500] bg-[rgba(47,40,35,0.5)] backdrop-blur-[3px] data-[state=open]:animate-in data-[state=open]:fade-in data-[state=open]:duration-200" />
+        {/*
+          Two layers since the Stayo dog arrived. The outer shell only
+          positions; the inner card scrolls. The dog leans over the card's top
+          edge from outside it — inside a scrolling box it would be clipped.
+          The dog adds no height to the layout, so the card sits exactly where
+          it always did.
+        */}
         <Dialog.Content
           className={cn(
-            'fixed z-[500] flex flex-col bg-card p-6 pb-6 shadow-[0_40px_90px_-30px_rgba(47,47,47,0.5)]',
-            'inset-x-0 bottom-0 max-h-[88vh] overflow-y-auto rounded-t-[22px] pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]',
+            'fixed z-[500] inset-x-0 bottom-0',
             'data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=open]:duration-300',
-            'sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-[420px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-[22px]',
+            'sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-[420px] sm:-translate-x-1/2 sm:-translate-y-1/2',
           )}
         >
-          <Dialog.Close
-            aria-label="Close"
-            className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-[10px] border border-border bg-card"
+          {/* Hidden below 560px of height (a phone in landscape, a raised
+              keyboard): the sheet must never be pushed off screen for it. */}
+          <div
+            className="pointer-events-none absolute bottom-full left-1/2 z-10 w-[168px] sm:w-[184px] [@media(max-height:560px)]:hidden"
+            style={{ transform: `translate(-50%, ${RIM_OVERLAP_PERCENT}%)` }}
           >
-            <X className="h-4 w-4 text-foreground" />
-          </Dialog.Close>
-
-          {/* The real lockup, not a typeset word. `StayoMark` + `StayoWordmark`
-              inherit `currentColor`, so the brand's terracotta comes from the
-              same `--primary` token the rest of the sheet uses rather than a
-              second hard-coded value that could drift from it. */}
-          <div className="mb-1.5 flex items-center gap-2 text-primary">
-            <StayoMark className="h-[22px] w-auto" />
-            <StayoWordmark className="h-[15px] w-auto" />
+            <StayoDog companion={dog.companion} framing="rim" />
           </div>
+          <div
+            className={cn(
+              'relative flex flex-col bg-card p-6 pb-6 shadow-[0_40px_90px_-30px_rgba(47,47,47,0.5)]',
+              // Leaves room above the sheet for the dog on a phone; where the
+              // dog hides (short screens) the sheet gets its full 88vh back.
+              'max-h-[min(88vh,calc(100dvh_-_8.5rem))] overflow-y-auto rounded-t-[22px] pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]',
+              '[@media(max-height:560px)]:max-h-[88vh] sm:rounded-[22px]',
+            )}
+          >
+            <Dialog.Close
+              aria-label="Close"
+              className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-[10px] border border-border bg-card"
+            >
+              <X className="h-4 w-4 text-foreground" />
+            </Dialog.Close>
 
-          {isOwner ? (
-            <>
-              <Dialog.Title className="mb-1 mt-3.5 font-display text-[22px] font-extrabold text-foreground">
-                Login
-              </Dialog.Title>
-              <Dialog.Description className="mb-5 text-sm leading-normal text-muted-foreground">
-                Log in with your existing Stayo owner credentials.
-              </Dialog.Description>
-            </>
-          ) : (
-            <>
-              <Dialog.Title className="mb-1 mt-3.5 font-display text-[22px] font-extrabold text-foreground">
-                {isLogin ? 'Welcome back' : 'Create your account'}
-              </Dialog.Title>
-              <Dialog.Description className="mb-4.5 text-sm leading-normal text-muted-foreground">
-                {isLogin ? 'Log in to continue.' : 'Browse, save and enquire about stays.'}
-              </Dialog.Description>
-
-              <div className="relative mb-5 flex gap-0 rounded-[13px] border border-border bg-muted p-1.5">
-                <div
-                  aria-hidden="true"
-                  className={cn(
-                    'absolute inset-y-1.5 z-0 w-[calc(50%-6px)] rounded-[9px] bg-primary shadow-[0_6px_16px_-8px_rgba(164,93,68,0.55)] transition-transform duration-300 ease-out',
-                    isLogin ? 'translate-x-0' : 'translate-x-full',
-                  )}
-                />
-                {(['login', 'signup'] as const).map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => {
-                      setTab(value);
-                      setError('');
-                    }}
-                    className={cn(
-                      'relative z-10 flex-1 rounded-[9px] px-2.5 py-2 font-display text-[13.5px] font-bold transition-colors',
-                      (value === 'login') === isLogin ? 'text-primary-foreground' : 'text-muted-foreground',
-                    )}
-                  >
-                    {value === 'login' ? 'Log In' : 'Sign Up'}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-
-          {isTenantSignup ? (
-            <>
-              <form onSubmit={onSubmit} className="flex flex-col gap-3.5" noValidate>
-                <label className="block">
-                  <span className={labelClass}>FULL NAME</span>
-                  <input
-                    value={form.name}
-                    onChange={(e) => set('name', e.target.value)}
-                    placeholder="Riya Sharma"
-                    autoComplete="name"
-                    aria-invalid={Boolean(fieldErrors.name)}
-                    className={cn(inputClass, fieldErrors.name && errorInputClass)}
-                  />
-                  <FieldError message={fieldErrors.name} />
-                </label>
-
-                <label className="block">
-                  <span className={labelClass}>EMAIL</span>
-                  <input
-                    value={form.email}
-                    onChange={(e) => set('email', e.target.value)}
-                    placeholder="you@example.com"
-                    inputMode="email"
-                    autoComplete="email"
-                    aria-invalid={Boolean(fieldErrors.email)}
-                    className={cn(inputClass, fieldErrors.email && errorInputClass)}
-                  />
-                  <FieldError message={fieldErrors.email} />
-                </label>
-
-                <label className="block">
-                  <span className={labelClass}>PASSWORD</span>
-                  <div className="relative">
-                    <input
-                      value={form.password}
-                      onChange={(e) => set('password', e.target.value)}
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder={`At least ${MIN_SIGNUP_PASSWORD_LENGTH} characters`}
-                      autoComplete="new-password"
-                      aria-invalid={Boolean(fieldErrors.password)}
-                      className={cn(inputClass, 'pr-11', fieldErrors.password && errorInputClass)}
-                    />
-                    <RevealButton shown={showPassword} onToggle={() => setShowPassword((v) => !v)} />
-                  </div>
-                  <FieldError message={fieldErrors.password} />
-                </label>
-
-                <label className="block">
-                  <span className={labelClass}>CONFIRM PASSWORD</span>
-                  <div className="relative">
-                    <input
-                      value={form.confirmPassword}
-                      onChange={(e) => set('confirmPassword', e.target.value)}
-                      type={showConfirmPassword ? 'text' : 'password'}
-                      placeholder="Type it again"
-                      autoComplete="new-password"
-                      aria-invalid={Boolean(fieldErrors.confirmPassword)}
-                      className={cn(inputClass, 'pr-11', fieldErrors.confirmPassword && errorInputClass)}
-                    />
-                    <RevealButton
-                      shown={showConfirmPassword}
-                      onToggle={() => setShowConfirmPassword((v) => !v)}
-                    />
-                  </div>
-                  <FieldError message={fieldErrors.confirmPassword} />
-                </label>
-
-                {error && (
-                  <div className="rounded-[9px] bg-destructive/10 px-3 py-2.5 text-[12.5px] font-semibold text-destructive">
-                    {error}
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="mt-1 flex w-full items-center justify-center gap-2.5 rounded-xl bg-primary px-4 py-3.5 font-display text-[15px] font-bold text-primary-foreground shadow-[0_14px_28px_-14px_rgba(164,93,68,0.6)] disabled:opacity-75"
-                >
-                  {submitting && <StayoLoader size="sm" label={null} />}
-                  {submitting ? 'Creating your account…' : 'Create Account'}
-                </button>
-              </form>
-
-              <div className="my-4 flex items-center gap-3">
-                <span className="h-px flex-1 bg-border" />
-                <span className="font-display text-[11px] font-bold tracking-wider text-muted-foreground">OR</span>
-                <span className="h-px flex-1 bg-border" />
-              </div>
-              <ClerkGoogleSignIn>
-                {({ disabled, onClick, busy }) => (
-                  <button
-                    type="button"
-                    onClick={onClick}
-                    disabled={disabled || busy}
-                    className="flex w-full items-center justify-center gap-2.5 rounded-xl border-[1.5px] border-border bg-card px-4 py-3 font-display text-[14.5px] font-bold text-foreground transition-colors hover:border-primary disabled:opacity-75"
-                  >
-                    {busy ? <StayoLoader size="sm" label={null} /> : <GoogleMark />}
-                    {busy ? 'Please wait…' : 'Continue with Google'}
-                  </button>
-                )}
-              </ClerkGoogleSignIn>
-
-              {/* Said once, here, because it's the question this form raises:
-                  there's no phone field, and an enquiry obviously needs one. */}
-              <p className="mt-4 text-center text-[12px] leading-normal text-muted-foreground">
-                We'll ask for your phone number and verify it once — when you're ready to send an enquiry.
-              </p>
-            </>
-          ) : (
-            <>
-              <form onSubmit={onSubmit} className="flex flex-col gap-3.5">
-                <label className="block">
-                  <span className={labelClass}>EMAIL</span>
-                  <input
-                    value={form.email}
-                    onChange={(e) => set('email', e.target.value)}
-                    placeholder="you@example.com"
-                    inputMode="email"
-                    autoComplete="email"
-                    className={inputClass}
-                  />
-                </label>
-                <label className="block">
-                  <span className={labelClass}>PASSWORD</span>
-                  <div className="relative">
-                    <input
-                      value={form.password}
-                      onChange={(e) => set('password', e.target.value)}
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder="••••••••"
-                      autoComplete="current-password"
-                      className={`${inputClass} pr-11`}
-                    />
-                    <RevealButton shown={showPassword} onToggle={() => setShowPassword((v) => !v)} />
-                  </div>
-                </label>
-
-                {error && (
-                  <div className="rounded-[9px] bg-destructive/10 px-3 py-2.5 text-[12.5px] font-semibold text-destructive">
-                    {error}
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="mt-1 flex w-full items-center justify-center gap-2.5 rounded-xl bg-primary px-4 py-3.5 font-display text-[15px] font-bold text-primary-foreground shadow-[0_14px_28px_-14px_rgba(164,93,68,0.6)] disabled:opacity-75"
-                >
-                  {submitting && <StayoLoader size="sm" label={null} />}
-                  {submitting ? 'Please wait…' : 'Log In'}
-                </button>
-              </form>
-
-              <div className="my-4 flex items-center gap-3">
-                <span className="h-px flex-1 bg-border" />
-                <span className="font-display text-[11px] font-bold tracking-wider text-muted-foreground">OR</span>
-                <span className="h-px flex-1 bg-border" />
-              </div>
-              <ClerkGoogleSignIn>
-                {({ disabled, onClick, busy }) => (
-                  <button
-                    type="button"
-                    onClick={onClick}
-                    disabled={disabled || busy}
-                    className="flex w-full items-center justify-center gap-2.5 rounded-xl border-[1.5px] border-border bg-card px-4 py-3 font-display text-[14.5px] font-bold text-foreground transition-colors hover:border-primary disabled:opacity-75"
-                  >
-                    {busy ? <StayoLoader size="sm" label={null} /> : <GoogleMark />}
-                    {busy ? 'Please wait…' : 'Continue with Google'}
-                  </button>
-                )}
-              </ClerkGoogleSignIn>
-              <a
-                href="/forgot-password"
-                className="mt-4 text-center text-[12.5px] font-semibold text-primary hover:underline"
-              >
-                Forgot password?
-              </a>
-            </>
-          )}
-
-          {!isOwner && (
-            /*
-             * The doorway into the claim flow.
-             *
-             * A tenant whose owner has been keeping their records has a real
-             * profile with a real phone number and NO password -- so logging in
-             * with their own number returns "Invalid email, phone, or password".
-             * The system knows their hostel, room and payment history and tells
-             * them they do not exist. Without this, their only ways in were
-             * typing /claim from memory or clicking a months-old invite link.
-             *
-             * Deliberately always shown, and deliberately not driven by what
-             * was typed: a login form that answered "that number belongs to a
-             * tenant" would let anyone enumerate which phone numbers live in
-             * which hostels. Proof of the number comes from the OTP inside the
-             * claim flow, and nothing is revealed before it.
-             */
-            <div className="mt-5 border-t border-border pt-4 text-center">
-              <p className="text-[12.5px] leading-normal text-muted-foreground">
-                Already staying at a hostel and your owner set you up?
-              </p>
-              <a
-                href="/claim"
-                className="mt-1 inline-block font-display text-[13px] font-bold text-primary hover:underline"
-              >
-                Take charge of your account
-              </a>
+            {/* The real lockup, not a typeset word. `StayoMark` + `StayoWordmark`
+                inherit `currentColor`, so the brand's terracotta comes from the
+                same `--primary` token the rest of the sheet uses rather than a
+                second hard-coded value that could drift from it. */}
+            <div className="mb-1.5 flex items-center gap-2 text-primary">
+              <StayoMark className="h-[22px] w-auto" />
+              <StayoWordmark className="h-[15px] w-auto" />
             </div>
-          )}
+
+            {isOwner ? (
+              <>
+                <Dialog.Title className="mb-1 mt-3.5 font-display text-[22px] font-extrabold text-foreground">
+                  Login
+                </Dialog.Title>
+                <Dialog.Description className="mb-5 text-sm leading-normal text-muted-foreground">
+                  Log in with your existing Stayo owner credentials.
+                </Dialog.Description>
+              </>
+            ) : (
+              <>
+                <Dialog.Title className="mb-1 mt-3.5 font-display text-[22px] font-extrabold text-foreground">
+                  {isLogin ? 'Welcome back' : 'Create your account'}
+                </Dialog.Title>
+                <Dialog.Description className="mb-4.5 text-sm leading-normal text-muted-foreground">
+                  {isLogin ? 'Log in to continue.' : 'Browse, save and enquire about stays.'}
+                </Dialog.Description>
+
+                <div className="relative mb-5 flex gap-0 rounded-[13px] border border-border bg-muted p-1.5">
+                  <div
+                    aria-hidden="true"
+                    className={cn(
+                      'absolute inset-y-1.5 z-0 w-[calc(50%-6px)] rounded-[9px] bg-primary shadow-[0_6px_16px_-8px_rgba(164,93,68,0.55)] transition-transform duration-300 ease-out',
+                      isLogin ? 'translate-x-0' : 'translate-x-full',
+                    )}
+                  />
+                  {(['login', 'signup'] as const).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        setTab(value);
+                        setError('');
+                      }}
+                      className={cn(
+                        'relative z-10 flex-1 rounded-[9px] px-2.5 py-2 font-display text-[13.5px] font-bold transition-colors',
+                        (value === 'login') === isLogin ? 'text-primary-foreground' : 'text-muted-foreground',
+                      )}
+                    >
+                      {value === 'login' ? 'Log In' : 'Sign Up'}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {isTenantSignup ? (
+              <>
+                <form onSubmit={onSubmit} className="flex flex-col gap-3.5" noValidate>
+                  <label className="block">
+                    <span className={labelClass}>FULL NAME</span>
+                    <input
+                      value={form.name}
+                      onChange={(e) => set('name', e.target.value)}
+                      placeholder="Riya Sharma"
+                      autoComplete="name"
+                      {...dog.bind.textField}
+                      aria-invalid={Boolean(fieldErrors.name)}
+                      className={cn(inputClass, fieldErrors.name && errorInputClass)}
+                    />
+                    <FieldError message={fieldErrors.name} />
+                  </label>
+
+                  <label className="block">
+                    <span className={labelClass}>EMAIL</span>
+                    <input
+                      value={form.email}
+                      onChange={(e) => set('email', e.target.value)}
+                      placeholder="you@example.com"
+                      inputMode="email"
+                      autoComplete="email"
+                      {...dog.bind.textField}
+                      aria-invalid={Boolean(fieldErrors.email)}
+                      className={cn(inputClass, fieldErrors.email && errorInputClass)}
+                    />
+                    <FieldError message={fieldErrors.email} />
+                  </label>
+
+                  <label className="block">
+                    <span className={labelClass}>PASSWORD</span>
+                    <div className="relative" {...dog.bind.passwordGroup(showPassword)}>
+                      <input
+                        value={form.password}
+                        onChange={(e) => set('password', e.target.value)}
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder={`At least ${MIN_SIGNUP_PASSWORD_LENGTH} characters`}
+                        autoComplete="new-password"
+                        {...dog.bind.passwordInput}
+                        aria-invalid={Boolean(fieldErrors.password)}
+                        className={cn(inputClass, 'pr-11', fieldErrors.password && errorInputClass)}
+                      />
+                      <RevealButton
+                        shown={showPassword}
+                        onToggle={toggleShowPassword}
+                        onMouseDown={dog.bind.revealButton.onMouseDown}
+                      />
+                    </div>
+                    <FieldError message={fieldErrors.password} />
+                  </label>
+
+                  <label className="block">
+                    <span className={labelClass}>CONFIRM PASSWORD</span>
+                    <div className="relative" {...dog.bind.passwordGroup(showConfirmPassword)}>
+                      <input
+                        value={form.confirmPassword}
+                        onChange={(e) => set('confirmPassword', e.target.value)}
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        placeholder="Type it again"
+                        autoComplete="new-password"
+                        {...dog.bind.passwordInput}
+                        aria-invalid={Boolean(fieldErrors.confirmPassword)}
+                        className={cn(inputClass, 'pr-11', fieldErrors.confirmPassword && errorInputClass)}
+                      />
+                      <RevealButton
+                        shown={showConfirmPassword}
+                        onToggle={toggleShowConfirmPassword}
+                        onMouseDown={dog.bind.revealButton.onMouseDown}
+                      />
+                    </div>
+                    <FieldError message={fieldErrors.confirmPassword} />
+                    {/* Once, under the pair: it applies to both password fields. */}
+                    <CapsLockHint on={dog.capsLock} />
+                  </label>
+
+                  {error && (
+                    <div className="rounded-[9px] bg-destructive/10 px-3 py-2.5 text-[12.5px] font-semibold text-destructive">
+                      {error}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="mt-1 flex w-full items-center justify-center gap-2.5 rounded-xl bg-primary px-4 py-3.5 font-display text-[15px] font-bold text-primary-foreground shadow-[0_14px_28px_-14px_rgba(164,93,68,0.6)] disabled:opacity-75"
+                  >
+                    {submitting && <StayoLoader size="sm" label={null} />}
+                    {submitting ? 'Creating your account…' : 'Create Account'}
+                  </button>
+                </form>
+
+                <div className="my-4 flex items-center gap-3">
+                  <span className="h-px flex-1 bg-border" />
+                  <span className="font-display text-[11px] font-bold tracking-wider text-muted-foreground">OR</span>
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+                <GoogleButton onBusy={dog.submit} />
+
+                {/* Said once, here, because it's the question this form raises:
+                    there's no phone field, and an enquiry obviously needs one. */}
+                <p className="mt-4 text-center text-[12px] leading-normal text-muted-foreground">
+                  We'll ask for your phone number and verify it once — when you're ready to send an enquiry.
+                </p>
+              </>
+            ) : (
+              <>
+                <form onSubmit={onSubmit} className="flex flex-col gap-3.5">
+                  <label className="block">
+                    <span className={labelClass}>EMAIL</span>
+                    <input
+                      value={form.email}
+                      onChange={(e) => set('email', e.target.value)}
+                      placeholder="you@example.com"
+                      inputMode="email"
+                      autoComplete="email"
+                      {...dog.bind.textField}
+                      className={inputClass}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className={labelClass}>PASSWORD</span>
+                    <div className="relative" {...dog.bind.passwordGroup(showPassword)}>
+                      <input
+                        value={form.password}
+                        onChange={(e) => set('password', e.target.value)}
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="••••••••"
+                        autoComplete="current-password"
+                        {...dog.bind.passwordInput}
+                        className={`${inputClass} pr-11`}
+                      />
+                      <RevealButton
+                        shown={showPassword}
+                        onToggle={toggleShowPassword}
+                        onMouseDown={dog.bind.revealButton.onMouseDown}
+                      />
+                    </div>
+                    <CapsLockHint on={dog.capsLock} />
+                  </label>
+
+                  {error && (
+                    <div className="rounded-[9px] bg-destructive/10 px-3 py-2.5 text-[12.5px] font-semibold text-destructive">
+                      {error}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="mt-1 flex w-full items-center justify-center gap-2.5 rounded-xl bg-primary px-4 py-3.5 font-display text-[15px] font-bold text-primary-foreground shadow-[0_14px_28px_-14px_rgba(164,93,68,0.6)] disabled:opacity-75"
+                  >
+                    {submitting && <StayoLoader size="sm" label={null} />}
+                    {submitting ? 'Please wait…' : 'Log In'}
+                  </button>
+                </form>
+
+                <div className="my-4 flex items-center gap-3">
+                  <span className="h-px flex-1 bg-border" />
+                  <span className="font-display text-[11px] font-bold tracking-wider text-muted-foreground">OR</span>
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+                <GoogleButton onBusy={dog.submit} />
+                <a
+                  href="/forgot-password"
+                  className="mt-4 text-center text-[12.5px] font-semibold text-primary hover:underline"
+                >
+                  Forgot password?
+                </a>
+              </>
+            )}
+
+            {!isOwner && (
+              /*
+               * The doorway into the claim flow.
+               *
+               * A tenant whose owner has been keeping their records has a real
+               * profile with a real phone number and NO password -- so logging in
+               * with their own number returns "Invalid email, phone, or password".
+               * The system knows their hostel, room and payment history and tells
+               * them they do not exist. Without this, their only ways in were
+               * typing /claim from memory or clicking a months-old invite link.
+               *
+               * Deliberately always shown, and deliberately not driven by what
+               * was typed: a login form that answered "that number belongs to a
+               * tenant" would let anyone enumerate which phone numbers live in
+               * which hostels. Proof of the number comes from the OTP inside the
+               * claim flow, and nothing is revealed before it.
+               */
+              <div className="mt-5 border-t border-border pt-4 text-center">
+                <p className="text-[12.5px] leading-normal text-muted-foreground">
+                  Already staying at a hostel and your owner set you up?
+                </p>
+                <a
+                  href="/claim"
+                  className="mt-1 inline-block font-display text-[13px] font-bold text-primary hover:underline"
+                >
+                  Take charge of your account
+                </a>
+              </div>
+            )}
+          </div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
@@ -483,11 +530,67 @@ function FieldError({ message }: { message?: string }) {
   return <p className="mt-1.5 text-[11.5px] font-semibold text-destructive">{message}</p>;
 }
 
-function RevealButton({ shown, onToggle }: { shown: boolean; onToggle: () => void }) {
+/**
+ * "Continue with Google" via Clerk. The dog thinks for as long as the button
+ * says "Please wait…" — from the click until the browser leaves for Google.
+ */
+function GoogleButton({ onBusy }: { onBusy: () => void }) {
+  return (
+    <ClerkGoogleSignIn>
+      {({ disabled, onClick, busy }) => (
+        <>
+          <WhenBusy busy={busy} onBusy={onBusy} />
+          <button
+            type="button"
+            onClick={onClick}
+            disabled={disabled || busy}
+            className="flex w-full items-center justify-center gap-2.5 rounded-xl border-[1.5px] border-border bg-card px-4 py-3 font-display text-[14.5px] font-bold text-foreground transition-colors hover:border-primary disabled:opacity-75"
+          >
+            {busy ? <StayoLoader size="sm" label={null} /> : <GoogleMark />}
+            {busy ? 'Please wait…' : 'Continue with Google'}
+          </button>
+        </>
+      )}
+    </ClerkGoogleSignIn>
+  );
+}
+
+/** Calls `onBusy` when `busy` turns on. A render prop can't run effects itself. */
+function WhenBusy({ busy, onBusy }: { busy: boolean; onBusy: () => void }) {
+  useEffect(() => {
+    if (busy) onBusy();
+  }, [busy, onBusy]);
+  return null;
+}
+
+/**
+ * Said in words as well as by the dog's raised brows (spec principle 4). The
+ * live region is always mounted so the announcement is reliable; it is empty,
+ * and takes no space, while Caps Lock is off.
+ */
+function CapsLockHint({ on }: { on: boolean }) {
+  return (
+    <p role="status" className={cn('text-[11.5px] font-semibold text-primary', on && 'mt-1.5')}>
+      {on ? 'Caps Lock is on' : ''}
+    </p>
+  );
+}
+
+function RevealButton({
+  shown,
+  onToggle,
+  onMouseDown,
+}: {
+  shown: boolean;
+  onToggle: () => void;
+  /** Keeps the caret in the password field, so the dog never stops covering. */
+  onMouseDown?: React.MouseEventHandler<HTMLButtonElement>;
+}) {
   return (
     <button
       type="button"
       onClick={onToggle}
+      onMouseDown={onMouseDown}
       aria-label={shown ? 'Hide password' : 'Show password'}
       aria-pressed={shown}
       className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted-foreground transition-colors hover:text-primary"

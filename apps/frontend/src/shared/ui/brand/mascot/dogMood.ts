@@ -64,7 +64,6 @@ export type DogMoodEvent =
   | { type: 'submit' }
   | { type: 'failed'; now: number }
   | { type: 'succeeded' }
-  | { type: 'reset' }
   | { type: 'activity'; now: number }
   | { type: 'pointer'; now: number }
   | { type: 'boop'; now: number };
@@ -95,8 +94,6 @@ export function dogMoodReducer(state: DogMoodState, event: DogMoodEvent): DogMoo
       return { ...state, phase: 'error', errorAt: event.now };
     case 'succeeded':
       return { ...state, phase: 'success' };
-    case 'reset':
-      return { ...state, phase: 'idle', passwordVisible: false, capsLock: false };
     case 'activity':
       return withActivity(state, event.now);
     case 'pointer':

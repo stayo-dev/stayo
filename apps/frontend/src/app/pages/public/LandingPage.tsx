@@ -7,6 +7,7 @@ import {
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Check, LayoutGrid, Menu, X } from 'lucide-react';
 import { LoginModal, type LoginModalUser } from '@shared/ui-patterns/LoginModal';
+import { StayoDog } from '@shared/ui/brand';
 import { HeroShowcase } from './components/HeroShowcase';
 import { MarketingFooter } from './components/MarketingFooter';
 import { TrishulMark } from '@shared/ui-patterns/TrishulMark';
@@ -200,6 +201,7 @@ export function LandingPage() {
           aria-live="polite"
         >
           <div className="w-full max-w-[20rem] rounded-[20px] bg-card p-5 text-center shadow-2xl">
+            <StayoDog expression="waving" className="mx-auto mb-2 w-[104px]" />
             <p className="font-display text-[14px] font-bold text-foreground">Signed in</p>
             <p className="mt-1.5 text-[12.5px] leading-[1.6] text-muted-foreground">{handoff.message}</p>
             <p className="mt-3 text-[11.5px] font-semibold text-primary">Taking you there…</p>

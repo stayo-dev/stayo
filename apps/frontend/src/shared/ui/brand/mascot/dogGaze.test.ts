@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { armTransform, caretTarget, headTiltFor, nextBlinkDelay, pupilOffset } from './dogGaze';
+import { FORM_GAZE, THINKING_GAZE, armTransform, caretTarget, chooseGaze, headTiltFor, nextBlinkDelay, pupilOffset } from './dogGaze';
 
 const EYE = { x: 130, y: 112 };
 
@@ -102,5 +102,46 @@ describe('nextBlinkDelay', () => {
   it('adds up to four seconds of jitter so blinks never feel metronomic', () => {
     expect(nextBlinkDelay(4, 0.5)).toBe(6000);
     expect(nextBlinkDelay(4, 0.999)).toBeLessThan(8000);
+  });
+});
+
+describe('chooseGaze', () => {
+  const pointer = { x: 900, y: 40 };
+  const caret = { x: 520, y: 400 };
+  const fieldCenter = { x: 600, y: 400 };
+  const base = { animate: true, trackPointer: true, pointer, caret, fieldCenter };
+
+  it('looks at nothing with its eyes covered or closed', () => {
+    expect(chooseGaze('covering', base)).toBeNull();
+    expect(chooseGaze('sleepy', base)).toBeNull();
+  });
+
+  it('looks up into its thought bubble while thinking, whatever the cursor does', () => {
+    expect(chooseGaze('thinking', base)).toEqual(THINKING_GAZE);
+  });
+
+  it('reads along at the end of the typed text, not at the cursor', () => {
+    expect(chooseGaze('reading', base)).toEqual({ space: 'screen', ...caret });
+  });
+
+  it('peeks at the password field itself', () => {
+    expect(chooseGaze('peeking', base)).toEqual({ space: 'screen', ...fieldCenter });
+  });
+
+  it('follows the cursor when it is tracking one', () => {
+    expect(chooseGaze('attentive', base)).toEqual({ space: 'screen', ...pointer });
+  });
+
+  it('watches the focused field on touch, where there is no cursor', () => {
+    expect(chooseGaze('neutral', { ...base, trackPointer: false, pointer: null })).toEqual({ space: 'screen', ...fieldCenter });
+  });
+
+  it('looks down at the form when there is nothing more specific', () => {
+    expect(chooseGaze('neutral', { ...base, trackPointer: false, pointer: null, fieldCenter: null })).toEqual(FORM_GAZE);
+  });
+
+  it('holds one calm gaze at the form under reduced motion, instead of darting after each keystroke', () => {
+    expect(chooseGaze('reading', { ...base, animate: false })).toEqual(FORM_GAZE);
+    expect(chooseGaze('attentive', { ...base, animate: false })).toEqual(FORM_GAZE);
   });
 });

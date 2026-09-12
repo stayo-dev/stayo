@@ -140,8 +140,4 @@ describe('resolveExpression — the login outcome', () => {
   it('celebrates over everything else, the password field included', () => {
     expect(expr(after({ type: 'focus', field: 'password' }, { type: 'submit' }, { type: 'succeeded' }))).toBe('celebrating');
   });
-
-  it('returns to rest when the form is reset', () => {
-    expect(expr(after({ type: 'submit' }, { type: 'succeeded' }, { type: 'reset' }))).toBe('neutral');
-  });
 });

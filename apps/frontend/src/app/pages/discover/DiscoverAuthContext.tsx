@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { LoginModal, type LoginModalUser } from '@shared/ui-patterns/LoginModal';
+import { StayoDog } from '@shared/ui/brand';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import {
   HANDOFF_DELAY_MS,
@@ -112,6 +113,7 @@ export function DiscoverAuthProvider({ children }: { children: ReactNode }) {
           aria-live="polite"
         >
           <div className="w-full max-w-[20rem] rounded-[20px] bg-white p-5 text-center shadow-2xl">
+            <StayoDog expression="waving" className="mx-auto mb-2 w-[104px]" />
             <p className="text-[14px] font-bold text-[#221E1A]">Signed in</p>
             <p className="mt-1.5 text-[12.5px] leading-[1.6] text-[#6E6459]">{handoff.message}</p>
             <p className="mt-3 text-[11.5px] font-semibold text-[#B46A55]">Taking you there…</p>

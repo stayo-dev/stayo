@@ -7,9 +7,44 @@
  *
  * PURE — no DOM, runs under vitest's node environment.
  */
+import type { DogExpressionName } from './dogExpressions';
+
 export interface Point {
   x: number;
   y: number;
+}
+
+/**
+ * Something to look at, tagged with its coordinate space: `screen` points
+ * come from the page (cursor, a field) and are converted by the component;
+ * `art` points are fixed places in the rig's own drawing.
+ */
+export type DogGaze = ({ space: 'screen' } & Point) | ({ space: 'art' } & Point) | null;
+
+/** Up and to the right, into the thought bubble. */
+export const THINKING_GAZE: DogGaze = { space: 'art', x: 205, y: 55 };
+/** Down at the form below the dog. */
+export const FORM_GAZE: DogGaze = { space: 'art', x: 150, y: 320 };
+
+/**
+ * What the dog looks at for an expression. Specific beats general: the
+ * bubble while thinking, the typed text while reading, the password field
+ * while peeking; then the cursor if it is tracking one; then the focused
+ * field; then the form. Under reduced motion it holds one calm gaze at the
+ * form rather than darting after every keystroke.
+ */
+export function chooseGaze(
+  expression: DogExpressionName,
+  input: { animate: boolean; trackPointer: boolean; pointer: Point | null; caret: Point | null; fieldCenter: Point | null },
+): DogGaze {
+  if (expression === 'covering' || expression === 'sleepy') return null;
+  if (!input.animate) return FORM_GAZE;
+  if (expression === 'thinking') return THINKING_GAZE;
+  if (expression === 'reading' && input.caret) return { space: 'screen', ...input.caret };
+  if (expression === 'peeking' && input.fieldCenter) return { space: 'screen', ...input.fieldCenter };
+  if (input.trackPointer && input.pointer) return { space: 'screen', ...input.pointer };
+  if (input.fieldCenter) return { space: 'screen', ...input.fieldCenter };
+  return FORM_GAZE;
 }
 
 /** Centre of the head in the art: the head circle is `cx=150 cy=128`. */
