@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Stayo Mascot — Golden Retriever Companion</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap');
+  :root{
+    --warm-clay:#B46A55; --terra-cotta:#A45D44; --dusty-orange:#D2986C;
+    --latte:#EBD9C4; --charcoal:#2F2F2F; --cream:#F7F3EE;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:var(--cream);color:var(--charcoal);font-family:'Inter',sans-serif;}
+  h1,h2,h3,h4{font-family:'Manrope',sans-serif;margin:0;}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 40px;}
+
+  .top{background:var(--charcoal); color:var(--cream); padding:22px 0;}
+  .top .wrap{display:flex; justify-content:space-between; align-items:center; font-size:13px;}
+  .top .pill{background:var(--warm-clay); color:#fff; padding:5px 12px; border-radius:20px; font-size:11px; font-weight:600;}
+
+  header.hero{padding:64px 0 40px;}
+  .kicker{font-size:13px; font-weight:700; color:var(--warm-clay); letter-spacing:.02em;}
+  h1.title{font-size:38px; font-weight:800; margin-top:10px; max-width:680px; line-height:1.15;}
+  p.lede{margin-top:14px; max-width:640px; color:#5a534d; font-size:16px; line-height:1.6;}
+
+  .rationale{background:var(--latte); border-radius:16px; padding:22px 26px; margin-top:30px; font-size:14.5px; color:#5a3f30; max-width:760px;}
+  .rationale b{color:var(--terra-cotta);}
+
+  section{padding:50px 0;}
+  section.alt{background:#fff; border-top:1px solid rgba(47,47,47,.08); border-bottom:1px solid rgba(47,47,47,.08);}
+  .section-head{max-width:640px; margin-bottom:36px;}
+  .section-num{font-family:'Manrope'; font-weight:700; color:var(--warm-clay); font-size:14px; margin-bottom:8px;}
+  .section-head h2{font-size:26px; font-weight:800;}
+  .section-head p{margin-top:10px; color:#5a534d; font-size:15px;}
+
+  .mgrid{display:grid; grid-template-columns:repeat(3,1fr); gap:22px;}
+  .mcard{background:#fff; border:1px solid rgba(47,47,47,.1); border-radius:16px; padding:20px; text-align:center;}
+  .mstage{background:var(--latte); border-radius:12px; padding:10px;}
+  .mstage svg{width:100%; height:auto; display:block;}
+  .mname{font-family:'Manrope'; font-weight:800; font-size:15px; margin-top:14px;}
+  .muse{font-size:12.5px; color:#8a8078; margin-top:5px; line-height:1.4;}
+  .mfile{font-size:10.5px; color:var(--warm-clay); margin-top:10px; font-family:monospace; background:var(--cream); border-radius:6px; padding:4px 8px; display:inline-block;}
+
+  .buildgrid{display:grid; grid-template-columns:1fr 1fr; gap:40px; align-items:start;}
+  .layerlist{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px;}
+  .layerlist li{display:flex; gap:12px; align-items:flex-start; font-size:14px;}
+  .layerlist .dot{width:10px;height:10px;border-radius:50%; background:var(--warm-clay); margin-top:5px; flex:none;}
+  .layerlist code{background:var(--cream); border-radius:4px; padding:1px 6px; font-size:12.5px; color:var(--terra-cotta);}
+
+  .anim-note{background:var(--cream); border:1px solid rgba(47,47,47,.1); border-radius:14px; padding:22px 24px;}
+  .anim-note h4{font-size:14px; font-weight:800; margin-bottom:10px;}
+  .anim-note p{font-size:13.5px; color:#5a534d; line-height:1.6; margin-bottom:10px;}
+
+  .placement-row{display:grid; grid-template-columns:repeat(3,1fr); gap:20px;}
+  .placement{border:1px solid rgba(47,47,47,.1); border-radius:14px; padding:20px; background:#fff;}
+  .placement .where{font-family:'Manrope'; font-weight:800; font-size:14px;}
+  .placement .mood{font-size:12px; color:var(--warm-clay); font-weight:700; margin-top:4px;}
+  .placement p{font-size:13px; color:#5a534d; margin-top:8px; line-height:1.5;}
+
+  .nextup{margin-top:20px; border-top:1px solid rgba(47,47,47,.12); padding-top:30px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;}
+  .nextup .left{font-size:13px; color:#8a8078;}
+  .nextup .left b{display:block; color:var(--charcoal); font-family:'Manrope'; font-size:16px; margin-top:2px;}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="wrap">
+    <span style="font-family:'Manrope';font-weight:700;">Stayo</span>
+    <span class="pill">Mascot — v1 concept sheet</span>
+  </div>
+</div>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="kicker">BRAND CHARACTER — GOLDEN RETRIEVER COMPANION</div>
+    <h1 class="title">Meet the Stayo dog</h1>
+    <p class="lede">Built in the same rounded, geometric language as the "S" mark — flat shapes, no outlines, six-colour palette only — so it can sit next to the logo without looking like a separate brand. Six emotion states below, each exported as its own SVG with named layers, ready to be rigged for motion.</p>
+    <div class="rationale"><b>Why this works for Stayo specifically:</b> a golden retriever's fur sits almost exactly inside your existing Warm Clay / Terra Cotta / Dusty Orange range — nothing was recoloured to force the fit. The temperament fits too: a golden retriever reads as loyal, unthreatening, and eager to help, which is the same "responsible partner" feeling the Launch Kit is built around, just carried onto screen.</div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <div class="section-num">Emotion set — v1</div>
+      <h2>Six states, one character</h2>
+      <p>Same head size, body silhouette and proportions throughout — only ears, brows, eyes, mouth, tail and paws change. That consistency is what will make the later animation read as one character moving, not six different drawings.</p>
+    </div>
+    <div class="mgrid">
+    <div class="mcard">
+      <div class="mstage"><svg viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+  <g id="tail"><path d="M205 250 C240 255 255 240 258 215 C260 235 248 268 210 272 Z" fill="#A45D44"/></g>
+  <g id="body">
+    <path d="M95 300 C90 230 100 190 150 185 C200 190 210 230 205 300 Z" fill="#B46A55"/>
+    <ellipse cx="150" cy="255" rx="34" ry="40" fill="#EBD9C4"/>
+  </g>
+
+  <g id="head-group" transform="rotate(0 150 130)">
+    <g id="ear-left"><path d="M96 92 C68 100 58 145 78 185 C90 205 108 200 110 178 C112 150 108 115 96 92 Z" fill="#A45D44"/></g>
+    <g id="ear-right"><path d="M204 92 C232 100 242 145 222 185 C210 205 192 200 190 178 C188 150 192 115 204 92 Z" fill="#A45D44"/></g>
+    <circle id="head" cx="150" cy="128" r="62" fill="#B46A55"/>
+    <ellipse id="muzzle" cx="150" cy="152" rx="36" ry="26" fill="#EBD9C4"/>
+    <circle id="nose" cx="150" cy="140" r="7" fill="#2F2F2F"/>
+    <g id="eyebrow-left"></g>
+    <g id="eyebrow-right"></g>
+    <g id="eye-left"><circle cx="130" cy="112" r="8" fill="#2F2F2F"/><circle cx="132.5" cy="109" r="2.4" fill="#F7F3EE"/></g>
+    <g id="eye-right"><circle cx="170" cy="112" r="8" fill="#2F2F2F"/><circle cx="172.5" cy="109" r="2.4" fill="#F7F3EE"/></g>
+    <g id="mouth"><path d="M138 158 Q150 168 162 158" stroke="#2F2F2F" stroke-width="4.5" fill="none" stroke-linecap="round"/></g>
+    
+  </g>
+<g id="paws"><ellipse cx="122" cy="292" rx="16" ry="10" fill="#EBD9C4"/><ellipse cx="178" cy="292" rx="16" ry="10" fill="#EBD9C4"/></g></svg></div>
+      <div class="mname">Neutral / Idle</div>
+      <div class="muse">Default resting state — nav bar, empty states, general presence</div>
+      <div class="mfile">stayo-mascot-neutral.svg</div>
+    </div>
+    <div class="mcard">
+      <div class="mstage"><svg viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+  <g id="tail"><path d="M205 240 C245 230 268 200 262 170 C275 195 268 240 215 258 Z" fill="#A45D44"/></g>
+  <g id="body">
+    <path d="M95 300 C90 230 100 190 150 185 C200 190 210 230 205 300 Z" fill="#B46A55"/>
+    <ellipse cx="150" cy="255" rx="34" ry="40" fill="#EBD9C4"/>
+  </g>
+
+  <g id="head-group" transform="rotate(0 150 130)">
+    <g id="ear-left"><path d="M100 88 C74 84 60 118 74 158 C86 180 104 172 108 150 C112 128 110 105 100 88 Z" fill="#A45D44"/></g>
+    <g id="ear-right"><path d="M200 88 C226 84 240 118 226 158 C214 180 196 172 192 150 C188 128 190 105 200 88 Z" fill="#A45D44"/></g>
+    <circle id="head" cx="150" cy="128" r="62" fill="#B46A55"/>
+    <ellipse id="muzzle" cx="150" cy="152" rx="36" ry="26" fill="#EBD9C4"/>
+    <circle id="nose" cx="150" cy="140" r="7" fill="#2F2F2F"/>
+    <g id="eyebrow-left"></g>
+    <g id="eyebrow-right"></g>
+    <g id="eye-left"><path d="M120 112 Q130 100 140 112" stroke="#2F2F2F" stroke-width="5" fill="none" stroke-linecap="round"/></g>
+    <g id="eye-right"><path d="M160 112 Q170 100 180 112" stroke="#2F2F2F" stroke-width="5" fill="none" stroke-linecap="round"/></g>
+    <g id="mouth">
+  <path d="M128 156 Q150 182 172 156 Q168 168 150 170 Q132 168 128 156 Z" fill="#2F2F2F"/>
+  <path d="M138 165 C136 190 138 212 150 216 C162 212 164 190 162 165 Z" fill="#C97B6E"/>
+  <path d="M150 172 L150 210" stroke="#A45D44" stroke-width="2" opacity="0.5"/>
+</g>
+    
+  </g>
+<g id="paws"><ellipse cx="122" cy="292" rx="16" ry="10" fill="#EBD9C4"/><ellipse cx="178" cy="292" rx="16" ry="10" fill="#EBD9C4"/></g></svg></div>
+      <div class="mname">Happy / Welcome</div>
+      <div class="muse">Login screen, successful sign-in, greeting the owner by name</div>
+      <div class="mfile">stayo-mascot-happy.svg</div>
+    </div>
+    <div class="mcard">
+      <div class="mstage"><svg viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+  <g id="tail"><path d="M205 240 C245 230 268 200 262 170 C275 195 268 240 215 258 Z" fill="#A45D44"/></g>
+  <g id="body">
+    <path d="M95 300 C90 230 100 190 150 185 C200 190 210 230 205 300 Z" fill="#B46A55"/>
+    <ellipse cx="150" cy="255" rx="34" ry="40" fill="#EBD9C4"/>
+  </g>
+
+  <g id="head-group" transform="rotate(0 150 130)">
+    <g id="ear-left"><path d="M100 88 C74 84 60 118 74 158 C86 180 104 172 108 150 C112 128 110 105 100 88 Z" fill="#A45D44"/></g>
+    <g id="ear-right"><path d="M204 92 C232 100 242 145 222 185 C210 205 192 200 190 178 C188 150 192 115 204 92 Z" fill="#A45D44"/></g>
+    <circle id="head" cx="150" cy="128" r="62" fill="#B46A55"/>
+    <ellipse id="muzzle" cx="150" cy="152" rx="36" ry="26" fill="#EBD9C4"/>
+    <circle id="nose" cx="150" cy="140" r="7" fill="#2F2F2F"/>
+    <g id="eyebrow-left"></g>
+    <g id="eyebrow-right"></g>
+    <g id="eye-left"><path d="M120 112 Q130 100 140 112" stroke="#2F2F2F" stroke-width="5" fill="none" stroke-linecap="round"/></g>
+    <g id="eye-right"><path d="M160 112 Q170 100 180 112" stroke="#2F2F2F" stroke-width="5" fill="none" stroke-linecap="round"/></g>
+    <g id="mouth"><path d="M138 158 Q150 168 162 158" stroke="#2F2F2F" stroke-width="4.5" fill="none" stroke-linecap="round"/></g>
+    
+  </g>
+<g id="paws">
+    <ellipse cx="178" cy="292" rx="16" ry="10" fill="#EBD9C4"/>
+    <g id="paw-wave" transform="rotate(-18 108 200)">
+      <path d="M96 260 C86 220 90 165 104 118 C114 130 118 175 116 220 C116 240 108 255 96 260 Z" fill="#B46A55"/>
+      <ellipse cx="107" cy="114" rx="15" ry="11" fill="#EBD9C4"/>
+    </g>
+  </g></svg></div>
+      <div class="mname">Waving / Onboarding</div>
+      <div class="muse">First-time walkthrough, get-started moments</div>
+      <div class="mfile">stayo-mascot-waving.svg</div>
+    </div>
+    <div class="mcard">
+      <div class="mstage"><svg viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+  <g id="tail"><path d="M205 250 C240 255 255 240 258 215 C260 235 248 268 210 272 Z" fill="#A45D44"/></g>
+  <g id="body">
+    <path d="M95 300 C90 230 100 190 150 185 C200 190 210 230 205 300 Z" fill="#B46A55"/>
+    <ellipse cx="150" cy="255" rx="34" ry="40" fill="#EBD9C4"/>
+  </g>
+
+  <g id="head-group" transform="rotate(-8 150 130)">
+    <g id="ear-left"><path d="M96 92 C68 100 58 145 78 185 C90 205 108 200 110 178 C112 150 108 115 96 92 Z" fill="#A45D44"/></g>
+    <g id="ear-right"><path d="M204 92 C232 100 242 145 222 185 C210 205 192 200 190 178 C188 150 192 115 204 92 Z" fill="#A45D44"/></g>
+    <circle id="head" cx="150" cy="128" r="62" fill="#B46A55"/>
+    <ellipse id="muzzle" cx="150" cy="152" rx="36" ry="26" fill="#EBD9C4"/>
+    <circle id="nose" cx="150" cy="140" r="7" fill="#2F2F2F"/>
+    <g id="eyebrow-left"><path d="M114 88 Q128 74 146 84" stroke="#2F2F2F" stroke-width="4" fill="none" stroke-linecap="round"/></g>
+    <g id="eyebrow-right"></g>
+    <g id="eye-left"><circle cx="130" cy="110" r="8" fill="#2F2F2F"/><circle cx="133" cy="105" r="2.4" fill="#F7F3EE"/></g>
+    <g id="eye-right"><circle cx="170" cy="110" r="8" fill="#2F2F2F"/><circle cx="173" cy="105" r="2.4" fill="#F7F3EE"/></g>
+    <g id="mouth"><path d="M144 160 Q150 164 156 160" stroke="#2F2F2F" stroke-width="4" fill="none" stroke-linecap="round"/></g>
+    
+  </g>
+<g id="paws"><ellipse cx="122" cy="292" rx="16" ry="10" fill="#EBD9C4"/><ellipse cx="178" cy="292" rx="16" ry="10" fill="#EBD9C4"/></g><g id="thought-bubble">
+    <circle cx="220" cy="88" r="5" fill="#EBD9C4" stroke="#A45D44" stroke-width="2"/>
+    <circle cx="235" cy="70" r="7" fill="#EBD9C4" stroke="#A45D44" stroke-width="2"/>
+    <ellipse cx="256" cy="45" rx="26" ry="20" fill="#EBD9C4" stroke="#A45D44" stroke-width="2"/>
+    <circle cx="248" cy="40" r="3" fill="#A45D44"/>
+    <circle cx="257" cy="40" r="3" fill="#A45D44"/>
+    <circle cx="266" cy="40" r="3" fill="#A45D44"/>
+  </g></svg></div>
+      <div class="mname">Thinking / Loading</div>
+      <div class="muse">Data loading, report generating, processing states</div>
+      <div class="mfile">stayo-mascot-thinking.svg</div>
+    </div>
+    <div class="mcard">
+      <div class="mstage"><svg viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+  <g id="tail"><path d="M200 225 C232 190 260 150 250 115 C275 140 278 205 215 245 Z" fill="#A45D44"/></g>
+  <g id="body">
+    <path d="M95 300 C90 230 100 190 150 185 C200 190 210 230 205 300 Z" fill="#B46A55"/>
+    <ellipse cx="150" cy="255" rx="34" ry="40" fill="#EBD9C4"/>
+  </g>
+
+  <g id="head-group" transform="rotate(0 150 130)">
+    <g id="ear-left"><path d="M100 88 C74 84 60 118 74 158 C86 180 104 172 108 150 C112 128 110 105 100 88 Z" fill="#A45D44"/></g>
+    <g id="ear-right"><path d="M200 88 C226 84 240 118 226 158 C214 180 196 172 192 150 C188 128 190 105 200 88 Z" fill="#A45D44"/></g>
+    <circle id="head" cx="150" cy="128" r="62" fill="#B46A55"/>
+    <ellipse id="muzzle" cx="150" cy="152" rx="36" ry="26" fill="#EBD9C4"/>
+    <circle id="nose" cx="150" cy="140" r="7" fill="#2F2F2F"/>
+    <g id="eyebrow-left"><path d="M116 92 Q130 84 142 92" stroke="#2F2F2F" stroke-width="4" fill="none" stroke-linecap="round"/></g>
+    <g id="eyebrow-right"><path d="M158 92 Q170 84 184 92" stroke="#2F2F2F" stroke-width="4" fill="none" stroke-linecap="round"/></g>
+    <g id="eye-left"><path d="M120 112 Q130 100 140 112" stroke="#2F2F2F" stroke-width="5" fill="none" stroke-linecap="round"/></g>
+    <g id="eye-right"><path d="M160 112 Q170 100 180 112" stroke="#2F2F2F" stroke-width="5" fill="none" stroke-linecap="round"/></g>
+    <g id="mouth">
+  <path d="M124 154 Q150 190 176 154 Q170 172 150 176 Q130 172 124 154 Z" fill="#2F2F2F"/>
+  <path d="M136 166 C134 196 138 220 150 224 C162 220 166 196 164 166 Z" fill="#C97B6E"/>
+</g>
+    
+  </g>
+<g id="paws">
+    <g id="paw-left-up" transform="rotate(-40 90 210)">
+      <path d="M90 258 C78 220 78 168 92 120 C104 130 112 174 112 218 C112 240 104 254 90 258 Z" fill="#B46A55"/>
+      <ellipse cx="100" cy="116" rx="14" ry="10" fill="#EBD9C4"/>
+    </g>
+    <g id="paw-right-up" transform="rotate(40 210 210)">
+      <path d="M210 258 C222 220 222 168 208 120 C196 130 188 174 188 218 C188 240 196 254 210 258 Z" fill="#B46A55"/>
+      <ellipse cx="200" cy="116" rx="14" ry="10" fill="#EBD9C4"/>
+    </g>
+  </g><g id="sparkles"><path d="M60 60 L63 67 L70 70 L63 73 L60 80 L57 73 L50 70 L57 67 Z" fill="#D2986C"/><path d="M240 50 L243 57 L250 60 L243 63 L240 70 L237 63 L230 60 L237 57 Z" fill="#D2986C"/><path d="M258 130 L261 137 L268 140 L261 143 L258 150 L255 143 L248 140 L255 137 Z" fill="#D2986C"/><path d="M50 150 L53 157 L60 160 L53 163 L50 170 L47 163 L40 160 L47 157 Z" fill="#D2986C"/></g></svg></div>
+      <div class="mname">Celebrating / Success</div>
+      <div class="muse">Rent collected, task completed, milestone reached</div>
+      <div class="mfile">stayo-mascot-celebrating.svg</div>
+    </div>
+    <div class="mcard">
+      <div class="mstage"><svg viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+  <g id="tail"><path d="M205 250 C240 255 255 240 258 215 C260 235 248 268 210 272 Z" fill="#A45D44"/></g>
+  <g id="body">
+    <path d="M95 300 C90 230 100 190 150 185 C200 190 210 230 205 300 Z" fill="#B46A55"/>
+    <ellipse cx="150" cy="255" rx="34" ry="40" fill="#EBD9C4"/>
+  </g>
+
+  <g id="head-group" transform="rotate(4 150 130)">
+    <g id="ear-left"><path d="M96 92 C68 100 58 145 78 185 C90 205 108 200 110 178 C112 150 108 115 96 92 Z" fill="#A45D44"/></g>
+    <g id="ear-right"><path d="M204 92 C232 100 242 145 222 185 C210 205 192 200 190 178 C188 150 192 115 204 92 Z" fill="#A45D44"/></g>
+    <circle id="head" cx="150" cy="128" r="62" fill="#B46A55"/>
+    <ellipse id="muzzle" cx="150" cy="152" rx="36" ry="26" fill="#EBD9C4"/>
+    <circle id="nose" cx="150" cy="140" r="7" fill="#2F2F2F"/>
+    <g id="eyebrow-left"></g>
+    <g id="eyebrow-right"></g>
+    <g id="eye-left"><path d="M121 113 Q130 118 139 113" stroke="#2F2F2F" stroke-width="4" fill="none" stroke-linecap="round"/></g>
+    <g id="eye-right"><path d="M161 113 Q170 118 179 113" stroke="#2F2F2F" stroke-width="4" fill="none" stroke-linecap="round"/></g>
+    <g id="mouth"><path d="M144 160 Q150 164 156 160" stroke="#2F2F2F" stroke-width="4" fill="none" stroke-linecap="round"/></g>
+    <g id="zzz" font-family="Manrope, sans-serif" font-weight="800" fill="#D2986C"><text x="205" y="75" font-size="22">z</text><text x="222" y="55" font-size="17">z</text><text x="236" y="38" font-size="13">z</text></g>
+  </g>
+<g id="paws"><ellipse cx="122" cy="292" rx="16" ry="10" fill="#EBD9C4"/><ellipse cx="178" cy="292" rx="16" ry="10" fill="#EBD9C4"/></g></svg></div>
+      <div class="mname">Sleepy / Empty state</div>
+      <div class="muse">No data yet, quiet dashboard, night-time / inactive screens</div>
+      <div class="mfile">stayo-mascot-sleepy.svg</div>
+    </div>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="section-num">Where each state gets used</div>
+      <h2>Mapped to real screens</h2>
+    </div>
+    <div class="placement-row">
+      <div class="placement"><div class="where">Login screen</div><div class="mood">Happy</div><p>Sits beside the password field, tongue-out and tail mid-wag — the first face an owner sees each morning.</p></div>
+      <div class="placement"><div class="where">Onboarding walkthrough</div><div class="mood">Waving</div><p>Greets a brand-new account on step one, paw raised, before handing off to the setup checklist.</p></div>
+      <div class="placement"><div class="where">Marketing / landing page hero</div><div class="mood">Celebrating</div><p>Paired with a headline about rent collected or time saved — the highest-energy pose, used sparingly.</p></div>
+      <div class="placement"><div class="where">Report / dashboard loading</div><div class="mood">Thinking</div><p>Head tilted, thought bubble — replaces a plain spinner wherever a report or sync takes a few seconds.</p></div>
+      <div class="placement"><div class="where">Empty states</div><div class="mood">Sleepy</div><p>"No bookings yet" or a quiet overnight dashboard — keeps an empty screen from feeling broken.</p></div>
+      <div class="placement"><div class="where">Nav bar / footer presence</div><div class="mood">Neutral</div><p>Small, static, always-there version — the one users see most and should never get tired of.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <div class="section-num">Built for motion</div>
+      <h2>How this is structured for animation later</h2>
+      <p>Every SVG uses the same named groups, so a single Lottie or GSAP rig can drive all six states without redrawing anything.</p>
+    </div>
+    <div class="buildgrid">
+      <ul class="layerlist">
+        <li><span class="dot"></span><div><code>#ear-left</code> / <code>#ear-right</code> — independent flap/perk rotation</div></li>
+        <li><span class="dot"></span><div><code>#eye-left</code> / <code>#eye-right</code> — swap between dot, arc, and closed shapes for blinking</div></li>
+        <li><span class="dot"></span><div><code>#eyebrow-left</code> / <code>#eyebrow-right</code> — raise for surprise or curiosity</div></li>
+        <li><span class="dot"></span><div><code>#mouth</code> — smile / open-pant / big-open, swappable independent of the eyes</div></li>
+        <li><span class="dot"></span><div><code>#tail</code> — three positions (down, mid, high) built to interpolate as a wag loop</div></li>
+        <li><span class="dot"></span><div><code>#paws</code> — down / one-raised / both-raised, drawn in front of the head group so a raised paw is never clipped</div></li>
+        <li><span class="dot"></span><div><code>#head-group</code> — wraps the whole head as one transform target, already used for the thinking tilt</div></li>
+      </ul>
+      <div class="anim-note">
+        <h4>Suggested first animations to build</h4>
+        <p><b>Idle loop (2–3s):</b> tail sways between down and mid, one slow blink — keeps the neutral pose from feeling static without demanding attention.</p>
+        <p><b>Tail wag (0.4s loop):</b> interpolate the three tail shapes on a sine ease for happy/celebrating states.</p>
+        <p><b>Blink (120ms):</b> swap eye-open → eye-closed → eye-open on a random 4–8s interval for any resting state.</p>
+        <p><b>Wave-in (0.6s, one-shot):</b> raise the wave paw from the down position on entry to onboarding, then hold.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="wrap">
+  <div class="nextup">
+    <div class="left"><span style="font-family:'Manrope';font-weight:800;color:var(--warm-clay);font-size:13px;">FEEDBACK</span><b>Tell me which pose(s) to refine, or which new state to add next (error/confused? celebrating variant for milestones?) — I'll take it from here the same way we did the box.</b></div>
+  </div>
+</div>
+
+</body>
+</html>
