@@ -36,7 +36,7 @@ Shelved 2026-09-03 ([[Decisions#ADR-170|ADR-170]]), restored 2026-09-13. Every i
 - [ ] **Pre-existing `tsc` errors now sit on live code.** `EnquiryPage.tsx` (2) and `enquiryPhoneVerification.test.ts` (2) misuse a `FieldValidation` discriminated union; `hostelCardFacts.test.ts` (1) has a `DiscoverCard` optional/required mismatch. Invisible while the surface was unrouted, and `vite build` does not typecheck, so they ship as-is. `EnquiryPage` is on the enquiry critical path.
 - [ ] **Discover's branding was never checked against the ADR-172 `:root` swap.** Seven surfaces — `ExplorePage`, `ListingPage`, `SavedPage`, `EnquiriesPage`, `DiscoverProfilePage`, `SupportTicketsPage`, `MoveInDateField` — were unrouted when the brand tokens changed, and `discoverTheme.ts` hard-codes its palette outside any theme scope. `check:brand` passes (no *retired* values), which is not the same as looking right. Needs eyes, not grep.
 - [ ] **The owner Hostels row says "Listing"; the drilldown tab it opens says "Marketing".** Each was restored to its own documented wording. Pick one word.
-- [ ] **An enquiry can arrive with no move-in date** ([[Decisions#ADR-158|ADR-158]]) — the existing open item further down this file is now reachable again, and no owner-side surface has ever been checked for how it renders the absence.
+- [x] **An enquiry with no move-in date renders safely** ([[Decisions#ADR-158|ADR-158]]) — checked as part of this revival, see the (now closed) item further down. One copy nit remains: the WhatsApp template says "Not specified" where the seeker-facing word is "Flexible".
 
 ## An owner-turned-tenant-of-another-hostel cannot yet reach that tenant portal (2026-09-01, [[Decisions#ADR-162|ADR-162]])
 
@@ -54,12 +54,13 @@ The Explore "Already staying at a hostel?" prompt was removed — see [[Changelo
 - [ ] **Surface the waiting tenancy at enquiry time instead.** Since [[Decisions#ADR-078|ADR-078]] a seeker verifies their number when they send their first enquiry, and `verifyOtp` writes `phone_verified`/`mobile_verified` on every profile matching it. At that moment the backend can look up an `OWNER_MANAGED` tenancy on that number and tell them it is waiting.
 - [ ] **Decide whether that can skip the claim OTP.** It should not be assumed. `TENANCY_CLAIM` is deliberately absent from `SKIPPABLE_OTP_PURPOSES` ([[Business-Rules]]) and the claim consumes a single-use proof, because claiming transfers a financial record. Reusing an enquiry-time verification means accepting a *stale* proof of possession — a real weakening of a deliberate control, and a product/security call rather than a refactor. An intermediate option is to keep the OTP but pre-fill the number and skip straight to the tenancy, so the ceremony is one tap rather than a flow.
 
-## An enquiry can now arrive with no move-in date (2026-08-30)
+## ~~An enquiry can now arrive with no move-in date~~ — CHECKED, no defect (2026-09-13)
 
-[[Decisions#ADR-158|ADR-158]] made the seeker's move-in date default to "Flexible" and send nothing, rather than defaulting to today. The field was always optional at the API, but in practice every enquiry carried a date, so owner-side surfaces have never had to render its absence.
+[[Decisions#ADR-158|ADR-158]] made the seeker's move-in date default to "Flexible" and send nothing. Raised 2026-08-30 as a risk to owner-side rendering; **verified while un-shelving the marketplace** ([[Decisions#ADR-192|ADR-192]]), because the enquiry intake became reachable again.
 
-- [ ] **Check every owner-side surface that shows an enquiry's move-in date** renders a missing one as "Flexible" rather than blank, "Invalid date", or today. The owner enquiry list/detail, the lead funnel, and any WhatsApp notification template that interpolates it.
-- [ ] **Decide whether "Flexible" should sort differently** in the owner's enquiry queue — a seeker with no date is not necessarily less urgent than one moving in next month.
+- [x] **Every owner-side surface named degrades gracefully — none of the feared "blank / Invalid date / today" is possible.** `visitor_leads` has **no move-in date column at all** (checked against `schema.prisma`), so there is no date field for a list or detail screen to render badly. The date reaches the owner only inside the free-text `notes`, composed by `buildEnquiryNote`, which guards each clause (`if (input.moveInDate)`) and simply omits the "Move-in …" phrase when there is none. No owner or admin lead surface renders a move-in date — a grep of `features/hostel-leads/` and the admin `LeadsPage` finds no reference. The WhatsApp enquiry template does interpolate one, through `safe(input.moveInDate, "Not specified")`, which substitutes the fallback for null, undefined and empty alike.
+- [ ] **Copy nit, not a defect:** that template renders **"Not specified"** where ADR-158's seeker-facing word is **"Flexible"**. Same meaning, two vocabularies. Worth aligning when the enquiry templates are next touched — they are still pending Meta approval.
+- [ ] **Still genuinely open — sort order.** Whether a dateless enquiry should sort differently in the owner's queue was never decided. A seeker with no date is not necessarily less urgent than one moving in next month. Unchanged by this check.
 
 ## Piece B must restore the payout-account action (2026-08-30)
 
