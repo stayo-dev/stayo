@@ -30,12 +30,11 @@ const EnquiryDetailPage = lazy(() =>
 /**
  * The one common Stayo Profile route tree (ADR-074's portable profile,
  * promoted app-wide) — `/profile/*`, not duplicated under `/discover/profile`
- * and `/tenant/profile`. Mounted directly under the shared `SeekerAppShell`
- * (`AppRouter.tsx`) alongside `TenantRoutes` — so Profile shares one
- * `AuthProvider` + `DiscoverAuthProvider` (in-place sign-in, no `/login`
- * redirect) with the Tenant Dashboard, rather than standing up a second
- * provider tree. (Until v1's ADR-170 this was nested inside `DiscoverRoutes`;
- * the marketplace is shelved but this hub stayed.)
+ * and `/tenant/profile`. Mounted as siblings inside `DiscoverRoutes`, which
+ * itself nests under the shared `SeekerAppShell` (`AppRouter.tsx`) alongside
+ * `TenantRoutes` — so Profile shares one `AuthProvider` + `DiscoverAuthProvider`
+ * (in-place sign-in, no `/login` redirect) with both Explore *and* the Tenant
+ * Dashboard, rather than standing up a second provider tree.
  *
  * Page components still live under `app/pages/discover/*` and are still
  * named for their Discover origin (`DiscoverProfilePage`, `ProfileEditPage`)

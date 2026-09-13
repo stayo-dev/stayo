@@ -138,9 +138,34 @@ export const HELP_GUIDES: HelpGuide[] = [
   },
 
   // ---- Owner --------------------------------------------------------------
-  // The two "Discover listing" entries (owner-listing-not-live,
-  // owner-cannot-edit-listing) were removed in v1 — ADR-170, the marketplace
-  // is shelved. Restore them from git history when v2 brings Discover back.
+  /*
+   * The two "Discover listing" entries are restored with the marketplace.
+   * Their original `action.to` was `/owner/more/hostel`, which is no longer
+   * the listing editor — that path now renders MoreHostelIdentityPage (name,
+   * address, GST, logo). Both now point at `/owner/hostels`, whose per-hostel
+   * "Listing" row opens the Marketing tab that actually holds review status.
+   */
+  {
+    id: 'owner-listing-not-live',
+    audience: ['owner'],
+    question: 'My photos or amenities are not showing on Discover',
+    answer:
+      'Listing edits go to Stayo for a quick review before they go public — that is what keeps every listing on Discover trustworthy. Your hostel page shows whether the current version is in review or live.',
+    action: { label: 'Open my hostel', to: '/owner/hostels' },
+    keywords: [
+      'discover', 'listing', 'photos', 'amenities', 'not showing', 'review',
+      'pending', 'live', 'publish', 'facilities',
+    ],
+  },
+  {
+    id: 'owner-cannot-edit-listing',
+    audience: ['owner'],
+    question: 'I cannot edit my amenities or listing right now',
+    answer:
+      'While a version is in review it is locked, so your submitted copy and the live copy cannot drift apart. It unlocks as soon as Stayo approves or returns it — usually the same day.',
+    action: { label: 'Check review status', to: '/owner/hostels' },
+    keywords: ['cannot edit', 'locked', 'disabled', 'greyed', 'amenities', 'read only'],
+  },
   {
     id: 'owner-payment-not-showing',
     audience: ['owner'],

@@ -280,16 +280,16 @@ See [[APIs]], [[Changelog]].
 
 ## Public-facing (`apps/frontend` public routes)
 
-> **v1 scope (2026-09-03, [[Decisions#ADR-170|ADR-170]]):** the **Stayo Discover** marketplace and the **owner listing/marketing** flow are **shelved for v2**. Frontend routes are unmounted; `/api/discover/*` and the marketing/listing admin routes return **`410`** unless `MARKETPLACE_ENABLED=true`. All code is retained on disk. The rows and sections below describe the shelved feature as built — treat them as **inactive in v1** until the flag is flipped.
+> **Live again (2026-09-13, [[Decisions#ADR-192|ADR-192]]):** the **Stayo Discover** marketplace and the **owner listing/marketing** flow are **restored**. Frontend routes are mounted and the `410` gate is deleted from `middleware.ts` (the `MARKETPLACE_ENABLED` flag no longer exists). The rows and sections below describe **current** behaviour. They were marked shelved between 2026-09-03 and 2026-09-13.
 
 | Feature | Route | Backing |
 |---|---|---|
-| ~~Welcome screen (audience chooser)~~ **shelved v1** | `/` | `app/pages/public/WelcomePage.tsx` — unrouted in v1 ([[Decisions#ADR-170|ADR-170]]); `/` renders `LandingPage` again. |
+| Welcome screen (audience chooser) | `/` | `app/pages/public/WelcomePage.tsx` — routed again at `/` ([[Decisions#ADR-192|ADR-192]]), for every visitor including signed-in owners. `/owners` is the owner landing page. |
 | StayO marketing landing page | `/` (v1), `/owners`, `/login` (popup open) | `app/pages/public/LandingPage.tsx` — see "StayO owner acquisition journey" below. Held `/` until ADR-071's fork, **back at `/` from 2026-09-03** (ADR-170); a signed-in owner with a hostel is auto-forwarded to `/owner/home`. |
 | Legacy marketing site (remaining pages) | `/about`, `/facilities`, `/rooms`, `/gallery`, `/location`, `/contact`, `/pricing` | `app/pages/public/*`, Sanity CMS (`lib/sanity/`) — not yet migrated to the StayO design |
 | Legal pages | `/legal/*` | `content/legal.ts` |
 | Hostel admissions microsite | `/visit/:hostelSlug` | `/api/visit/[hostelSlug]*` — public lead capture, honeypot-protected |
-| ~~**Stayo Discover (hostel marketplace)**~~ **shelved v1** | `/discover`, `/discover/search`, `/discover/h/:slug` | `/api/discover/*` — **routes unmounted, API returns `410`** in v1 ([[Decisions#ADR-170|ADR-170]]). See "Stayo Discover" below. |
+| **Stayo Discover (hostel marketplace)** | `/discover`, `/discover/search`, `/discover/h/:slug` | `/api/discover/*` — **routes mounted, API live** ([[Decisions#ADR-192|ADR-192]]). See "Stayo Discover" below. |
 | **Common Stayo Profile** | `/profile`, `/profile/details`, `/profile/history`, `/profile/documents`, `/profile/saved`, `/profile/enquiries(/:id)` | See "Common Stayo Profile" below. Shared, app-wide tab — **kept in v1** (mounted directly under `SeekerAppShell`, no longer nested in `DiscoverRoutes`). `/profile/saved` + `/profile/enquiries` still routed but have no marketplace data to show. |
 | Receipt verification | `/verify/r/:token` | `/api/verify/receipt` — public, signed-token |
 
@@ -307,7 +307,7 @@ The brand mascot leans over the top edge of the one login surface every role use
 
 It is decorative by contract: `aria-hidden`, no tab stop, every state also said in text, hidden on screens under 560px tall. Login logic, validation, error copy and Google are unchanged.
 
-### Stayo Discover — the public hostel marketplace (2026-08-15; nav restructured 2026-08-16) — **SHELVED for v1, 2026-09-03 ([[Decisions#ADR-170|ADR-170]])**
+### Stayo Discover — the public hostel marketplace (2026-08-15; nav restructured 2026-08-16; shelved 2026-09-03, **restored 2026-09-13** [[Decisions#ADR-192|ADR-192]])
 
 - **Routes:** `/discover` (Explore), `/discover/search`, `/discover/h/:slug` (listing detail), `/discover/h/:slug/enquire`. **Saved/Enquiries/Profile moved to `/profile/*`** (`/profile/saved`, `/profile/enquiries`, `/profile/enquiries/:id`, `/profile`, `/profile/details`, `/profile/history`, `/profile/documents`) as of ADR-078 — they're account-level, not Explore-level, and are no longer primary bottom-nav tabs. Explore no longer has its own 4-tab shell (`DiscoverShell` retired as a nav owner, its non-nav helpers `DiscoverEmpty`/`HostelCardSkeleton`/`PrimaryButton` still used); the shared `AppShell`/`AppBottomNav` (`app/layouts/AppShell.tsx`, `app/nav/appNavConfig.ts`) now owns the outer bottom nav everywhere: **Explore | Profile** with no tenancy, **Explore | Dashboard | Profile** with a live tenancy (`tenant_status` `INVITED`/`ACTIVE`).
 - **Why its own route tree and not a tab in `/tenant/*`:** almost everyone using Discover has no tenancy. Behind the tenant portal's guard, browsing would require a sign-in (killing SEO and the top of the funnel) and every seeker would be bounced to onboarding. There is **no route guard** on `/discover`; the authenticated Profile page renders an in-place sign-in prompt rather than redirecting. The server is the real boundary.
@@ -458,7 +458,7 @@ An audit of all four builder screens (Name → Floors → Rooms → Review), pro
 - **The search bar follows you down the page, 2026-09-02.** On Explore, the hero's search affordance — the one-tap pill on a phone, the Where/What bar on a laptop — used to scroll away with the dark header, so browsing the results meant scrolling back up to change city or start a query. A slimmer copy now slides down and pins to the top of the viewport the moment the hero bar leaves it (Airbnb-style), on a light blurred ground, and retracts when you scroll back to the hero. Both copies are one component (`app/pages/discover/components/DiscoverSearchBar.tsx`, `variant="hero" | "sticky"`) sharing the same handlers and city popover, so they cannot drift apart. The trigger is the hero bar's own `getBoundingClientRect()` (not a pixel threshold), so it lands right at every breakpoint; the scroll subscription is `@shared/lib/scroll`'s `subscribeToScroll` (the app's `<body>` is the scroll container, so `window.scrollY` is always 0 — same reason as the landing-page nav). The pinned bar is always mounted and only transforms, so it slides both ways with no mount flash and honours `prefers-reduced-motion`. See [[Frontend]], [[Changelog]].
 - **Status:** not verified against a live database and not driven in a browser. See [[Decisions#ADR-073|ADR-073]], [[APIs]], [[Database]], [[Changelog]].
 
-### Welcome screen — the audience fork at `/` (2026-08-14) — **SHELVED for v1, 2026-09-03 ([[Decisions#ADR-170|ADR-170]])**
+### Welcome screen — the audience fork at `/` (2026-08-14; shelved 2026-09-03, **restored 2026-09-13** [[Decisions#ADR-192|ADR-192]])
 
 > v1 removed the tenant-facing side entirely, so `/` no longer needs to ask which audience you are — it renders `LandingPage` (owner marketing/login) directly, as it did before ADR-071. `WelcomePage.tsx` + `welcome.css` are kept on disk for when v2 restores the tenant side.
 
@@ -1022,9 +1022,9 @@ Three changes to the owner Configuration surface, each fixing something that was
   **Fourth follow-up, same day (2026-08-14): Emergency Contact removed from Identity outright, by explicit direct instruction.** No design-fidelity ambiguity this time and no relocation needed (unlike Profile Type/Guardian Relation) — emergency contact was never collected anywhere else in the activation flow, so this is a straightforward field removal. `saveProfile()`'s `emergencyPhone` requirement relaxed the same way Guardian Relation's was: format-validated only if a value is ever supplied, no longer required to complete Profile. Collectible later from the tenant portal profile if an owner/tenant wants it on file. See [[Decisions#ADR-070|ADR-070]]'s second amendment and [[Business-Rules]].
 
 
-### Hostel Marketing page (owner) — rebuilt to `Stayo App.dc.html`, with a weekly mess menu (2026-08-15) — **SHELVED for v1, 2026-09-03 ([[Decisions#ADR-170|ADR-170]])**
+### Hostel Marketing page (owner) — rebuilt to `Stayo App.dc.html`, with a weekly mess menu (2026-08-15; shelved 2026-09-03, **restored 2026-09-13** [[Decisions#ADR-192|ADR-192]])
 
-> v1 removed the **Marketing** tab from the Hostel Drill-down sub-nav; `/owner/hostels/:hostelId/marketing` redirects to Overview and `/api/owner/hostels/[id]/marketing/*` + `/api/platform-admin/marketing-reviews/*` return `410` unless `MARKETPLACE_ENABLED=true`. `HostelMarketingPage.tsx` and `features/hostel-drilldown/marketing/*` are kept on disk. Everything below describes the shelved feature as built.
+> The **Marketing** tab is back in the Hostel Drill-down sub-nav and `/owner/hostels/:hostelId/marketing` renders `HostelMarketingPage` again ([[Decisions#ADR-192|ADR-192]]); the marketing/listing APIs answer normally. The owner Hostels tab also gained a per-hostel **Listing** row pointing at it — that page was built while the marketplace was shelved, so the row is new rather than restored. Everything below describes current behaviour.
 
 - **Route:** `/owner/hostels/:hostelId/marketing`, inside the Hostel Drill-down's sub-nav.
 - **What it does:** the owner writes the Discovery listing for one hostel and sends it to Stayo for review. Nine sections in the design's order — **Status** (dark `#2A2521` card: publish toggle, revision-state label, views/enquiries stats, Preview), **Template**, **Photos**, **Beds & pricing**, **Mess menu**, **Basics**, **Amenities**, **Getting around**, **Reviews** (locked) — over a gradient save bar. Every editable row opens the design's own sheet rather than editing inline.

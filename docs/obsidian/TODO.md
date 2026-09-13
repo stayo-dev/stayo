@@ -18,17 +18,25 @@ ADR-177 was scheduling-only — it changed no route code. These were found durin
 - [x] **Fold all six crons into `vercel.json` and retire `.github/workflows/backend-cron.yml`.** Done 2026-09-08, [[Decisions#ADR-179|ADR-179]]. `keep-warm.yml` (5-minute `/api/health` ping) stays on GitHub — a sub-daily schedule fails Hobby deployment — and is now the only GitHub Actions schedule in the repo; it can move too on Pro.
 - [ ] **Re-schedule `hostel-invariants` and `migration-audit` once something reads their output.** Descheduled because they write to `financial_invariant_failures` / `migration_audit_runs`, which no surface renders and no alert watches. They are useful jobs attached to nothing — weekly, plus somewhere to see the result, would make them worth running again.
 
-## v2 — un-shelve the Stayo Discover marketplace (2026-09-03, [[Decisions#ADR-170|ADR-170]])
+## ~~v2 — un-shelve the Stayo Discover marketplace~~ — DONE 2026-09-13 ([[Decisions#ADR-192|ADR-192]])
 
-v1 removed the public marketplace + owner listing/marketing surfaces from the frontend and gated the APIs behind `MARKETPLACE_ENABLED`. All code is on disk. To bring it back:
+Shelved 2026-09-03 ([[Decisions#ADR-170|ADR-170]]), restored 2026-09-13. Every item below is complete.
 
-- [ ] **Backend:** set `MARKETPLACE_ENABLED=true` in the deployed backend env (and `.env` / `.env.test` locally). Confirm `/api/discover/hostels`, `/api/owner/hostels/<id>/marketing`, `/api/platform-admin/marketing-reviews` stop returning `410`. Then delete the `1b.` marketplace gate in `apps/backend/middleware.ts` once it is permanently on.
-- [ ] **Router:** re-register `DiscoverRoutes()` in `apps/frontend/src/app/router/AppRouter.tsx` (it currently mounts `ProfileRoutes()` directly — keep `/profile` working after re-nesting or leave it hoisted).
-- [ ] **`/`:** decide whether `/` returns to the `WelcomePage` audience fork (revert `PublicRoutes.tsx` + remove the returning-owner auto-forward added to `LandingPage.tsx`) or stays owner-first with a separate tenant entry point.
-- [ ] **Nav:** restore the `{ to: '/discover', label: 'Explore', Icon: Compass }` entries in `apps/frontend/src/app/nav/appNavConfig.ts` (`EXPLORE_PROFILE_TABS` + `ACTIVE_TENANT_TABS`) and revert `appNavConfig.test.ts` / `tenancyState.test.ts` / `crossSurfaceLogin.test.ts` / `crossSurfaceLogin.ts` / `AuthCallbackPage.tsx` / `ProtectedTenantRoute.tsx` / `TenantFarewellPage.tsx` / `guideCopy.ts` back to routing no-tenancy users at `/discover`.
-- [ ] **Owner:** restore the `marketing` tab in `HostelDrilldownLayout.tsx` and the real `<Route path="marketing">` (with its lazy `HostelMarketingPage` import) in `OwnerRoutes.tsx`.
-- [ ] **Admin:** restore `/admin/listings*` routes + imports in `AdminRoutes.tsx`, the `Hostel Listings` nav item in `adminNav.ts`, its `pageHeaders.ts` entry, the Overview review-queue `listings` row in `overviewModel.ts` + `OverviewPage.tsx`, and revert `adminNav.test.ts` / `overviewModel.test.ts`.
-- [ ] **Docs:** flip the "SHELVED for v1" banners in [[Features]], [[APIs]], [[Frontend]] back off.
+- [x] **Backend:** the `410` gate is **deleted** from `apps/backend/middleware.ts` rather than switched on — there is no `MARKETPLACE_ENABLED` variable any more, so nothing needs setting in any environment.
+- [x] **Router:** `DiscoverRoutes()` re-registered in `AppRouter.tsx`, nesting `ProfileRoutes()` as it originally did.
+- [x] **`/`:** back to the `WelcomePage` audience fork, for every visitor — the ADR-170 signed-in-owner auto-forward is removed.
+- [x] **Nav:** `Explore` restored to `EXPLORE_PROFILE_TABS` + `ACTIVE_TENANT_TABS`, and every ex-`/discover` redirect fallback points back at `/discover`.
+- [x] **Owner:** the `marketing` tab and its real route are back — resolved onto `main`'s nested master-detail drilldown, not the pre-shelve flat tree.
+- [x] **Admin:** `/admin/listings*`, the nav item, the page header and the Overview review-queue row all restored.
+- [x] **Docs:** the "SHELVED for v1" banners in [[Features]], [[APIs]], [[Frontend]] and `docs/product/feature-scope-v1.md` now describe current behaviour and date the period they were true for.
+
+### Opened by the revival — still to do
+
+- [ ] **Nothing has been exercised in a running app.** The revival is verified by 2761 unit tests, a production build and route reading only. No browser session, no enquiry submitted end to end, no listing put through owner edit → admin review → live, no move-out walked. **This is the single largest gap** — the surfaces were unrouted for ten days and are now reachable by the public.
+- [ ] **Pre-existing `tsc` errors now sit on live code.** `EnquiryPage.tsx` (2) and `enquiryPhoneVerification.test.ts` (2) misuse a `FieldValidation` discriminated union; `hostelCardFacts.test.ts` (1) has a `DiscoverCard` optional/required mismatch. Invisible while the surface was unrouted, and `vite build` does not typecheck, so they ship as-is. `EnquiryPage` is on the enquiry critical path.
+- [ ] **Discover's branding was never checked against the ADR-172 `:root` swap.** Seven surfaces — `ExplorePage`, `ListingPage`, `SavedPage`, `EnquiriesPage`, `DiscoverProfilePage`, `SupportTicketsPage`, `MoveInDateField` — were unrouted when the brand tokens changed, and `discoverTheme.ts` hard-codes its palette outside any theme scope. `check:brand` passes (no *retired* values), which is not the same as looking right. Needs eyes, not grep.
+- [ ] **The owner Hostels row says "Listing"; the drilldown tab it opens says "Marketing".** Each was restored to its own documented wording. Pick one word.
+- [ ] **An enquiry can arrive with no move-in date** ([[Decisions#ADR-158|ADR-158]]) — the existing open item further down this file is now reachable again, and no owner-side surface has ever been checked for how it renders the absence.
 
 ## An owner-turned-tenant-of-another-hostel cannot yet reach that tenant portal (2026-09-01, [[Decisions#ADR-162|ADR-162]])
 

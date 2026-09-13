@@ -437,7 +437,7 @@ Public (no session — added to `middleware.ts`'s `PUBLIC_ROUTES`), backing the 
 
 ## Stayo Discover — Public Marketplace (`/api/discover/*`)
 
-> **SHELVED for v1 (2026-09-03, [[Decisions#ADR-170|ADR-170]]).** `middleware.ts` returns **`410 { error.code: 'MARKETPLACE_DISABLED' }`** for every `/api/discover/*` path unless `process.env.MARKETPLACE_ENABLED === 'true'`. Route handlers and `src/services/discovery/*` are unchanged on disk. **Exception:** `GET /api/discover/hostels/[slug]/reviews` and `/api/platform-admin/reviews*` are **not** blocked — existing resident reviews stay readable/moderatable; only new review POSTs (under `/api/discover`) are gone with the rest.
+> **LIVE again (2026-09-13, [[Decisions#ADR-192|ADR-192]]).** The `410 MARKETPLACE_DISABLED` gate that ADR-170 added to `middleware.ts` is **deleted**, and there is no `MARKETPLACE_ENABLED` flag any more — every `/api/discover/*` route answers normally. Browse stays anonymous and the rest stays authenticated exactly as before: `PUBLIC_ROUTES` lists `/api/discover/hostels` and `/api/discover/share` only, so `/api/discover/enquiries` and `/api/discover/saved` still require a session (`requireSeeker`).
 
 **Added 2026-08-15 ([[Decisions#ADR-073|ADR-073]]).** The public hostel-browsing surface backing `/discover`. Split auth: browse is public, everything else needs a seeker session.
 
@@ -520,7 +520,7 @@ Frontend: `features/profile/api`'s `profileService.listSupportTickets`/`createSu
 
 ## Hostel Marketing Page & Approval (`/api/owner/hostels/[id]/marketing*`, `/api/platform-admin/marketing-reviews*`)
 
-> **SHELVED for v1 (2026-09-03, [[Decisions#ADR-170|ADR-170]]).** `middleware.ts` returns **`410 MARKETPLACE_DISABLED`** for `/api/owner/hostels/{id}/marketing/*`, `/api/platform-admin/marketing-reviews/*`, `/api/platform-admin/platform-listings/*`, and `/api/platform-admin/hostels/{id}/{approve,reject,suspend}-listing` / `listing-review` unless `MARKETPLACE_ENABLED === 'true'`. Handlers and `src/services/marketing/*` unchanged on disk.
+> **LIVE again (2026-09-13, [[Decisions#ADR-192|ADR-192]]).** `/api/owner/hostels/{id}/marketing/*`, `/api/platform-admin/marketing-reviews/*`, `/api/platform-admin/platform-listings/*` and `/api/platform-admin/hostels/{id}/{approve,reject,suspend}-listing` / `listing-review` all answer normally — the ADR-170 gate is deleted from `middleware.ts`. Handlers and `src/services/marketing/*` were never changed.
 
 **Added 2026-08-15 ([[Decisions#ADR-076|ADR-076]]).** Owner-authored Discovery listing content, and the review cycle every version passes through.
 

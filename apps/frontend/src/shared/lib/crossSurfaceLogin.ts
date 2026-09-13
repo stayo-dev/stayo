@@ -64,10 +64,8 @@ export function crossSurfaceHandoff(
           message: "This account is a resident account, so we're opening your tenant dashboard.",
         }
       : {
-          // v1 (ADR-170): no marketplace to browse, so a resident account
-          // with no active tenancy lands on the shared Profile hub.
-          path: '/profile',
-          message: "This account is a resident account — opening your Stayo profile.",
+          path: '/discover',
+          message: "This account is a resident account, so we're taking you back to browsing hostels.",
         };
   }
   return null;

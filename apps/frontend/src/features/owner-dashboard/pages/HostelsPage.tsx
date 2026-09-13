@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bed, Building2, ChevronRight, Plus, Settings2, Users } from 'lucide-react';
+import { Bed, Building2, ChevronRight, Megaphone, Plus, Settings2, Users } from 'lucide-react';
 import { useOwnerDashboard } from '../hooks/useOwnerDashboard';
 import { useHostelOrder } from '../property-order/useHostelOrder';
 import { moveItem } from '../property-order/hostelSort';
@@ -70,7 +70,11 @@ export function HostelsPage() {
     ? [
         { key: 'rooms', label: single.needsRooms ? 'Add rooms' : 'Rooms & beds', icon: Bed },
         { key: 'tenants', label: 'Tenants', icon: Users },
-        // 'Listing' (the Stayo Discover marketing editor) removed in v1 — ADR-170.
+        /* `key` is the route segment — this opens the drilldown's Marketing
+           tab, where the public Stayo Discover listing is edited. Restored
+           with the marketplace; this page was built while it was shelved, so
+           the row is new here rather than reverted. */
+        { key: 'marketing', label: 'Listing', icon: Megaphone },
         { key: 'settings', label: 'Settings', icon: Settings2 },
       ]
     : [];

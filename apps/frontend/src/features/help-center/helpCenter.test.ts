@@ -25,6 +25,8 @@ const REAL_ROUTES = new Set([
   '/owner/money/collect',
   '/owner/money/payouts',
   '/owner/more/hostel',
+  /* The hostels list; its per-hostel 'Listing' row opens the Marketing tab. */
+  '/owner/hostels',
   '/owner/alerts/requests',
   '/owner/home',
   '/owner/rooms/vacant',

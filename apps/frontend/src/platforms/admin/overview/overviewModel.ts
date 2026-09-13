@@ -150,7 +150,7 @@ export type ReviewRow = {
   unavailable?: boolean;
 };
 
-export function buildReviewQueue({ kyc }: { kyc: number }): ReviewRow[] {
+export function buildReviewQueue({ kyc, listings }: { kyc: number; listings: number }): ReviewRow[] {
   return [
     {
       key: 'kyc',
@@ -162,8 +162,16 @@ export function buildReviewQueue({ kyc }: { kyc: number }): ReviewRow[] {
       border: '#F0DFC4',
       ink: '#B8792B',
     },
-    // The 'Hostels to publish' row (Stayo Discover approval queue) was
-    // removed in v1 — ADR-170, marketplace shelved.
+    {
+      key: 'listings',
+      title: 'Hostels to publish',
+      sub: 'Awaiting Discovery approval',
+      count: listings,
+      to: '/admin/listings',
+      tint: '#F5E9E3',
+      border: '#ECD9CF',
+      ink: '#B46A55',
+    },
     {
       key: 'reports',
       title: 'Urgent bug reports',

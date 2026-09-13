@@ -22,7 +22,7 @@ export const WELCOME_COPY: Record<WelcomeStopId, Note> = {
   },
   nav: {
     title: 'Everything else lives down here',
-    body: 'Room is your bed, your roommates and where you report a problem. Food is this week’s menu and the kitchen polls. Payments is every month and every receipt. Profile is your details and documents.',
+    body: 'Room is your bed, your roommates and where you report a problem. Food is this week’s menu and the kitchen polls. Payments is every month and every receipt. Explore is other Stayo hostels, for whenever you next need one. Profile is your details and documents.',
   },
 };
 

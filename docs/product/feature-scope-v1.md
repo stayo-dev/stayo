@@ -476,7 +476,7 @@ Basic Branding
 
 The following features are intentionally excluded from Version 1.
 
-> **Enforced in code as of 2026-09-03** (see `docs/obsidian/Decisions.md` ADR-170). The Stayo Discover marketplace, the owner listing/marketing flow, the audience-fork `WelcomePage` at `/`, and the "Explore" nav tab were built ahead of v1 and are now **shelved for v2**: frontend routes are unmounted and the backend APIs (`/api/discover/*`, `/api/owner/hostels/*/marketing/*`, `/api/platform-admin/marketing-reviews/*`) return `410` unless `MARKETPLACE_ENABLED=true`. All code is retained on disk.
+> **Reversed 2026-09-13** (see `docs/obsidian/Decisions.md` ADR-192). The shelving described here held from 2026-09-03 to 2026-09-13 only. The Stayo Discover marketplace, the owner listing/marketing flow, the audience-fork `WelcomePage` at `/`, and the "Explore" nav tab are **live again**: the frontend routes are re-registered and the `410 MARKETPLACE_DISABLED` gate has been deleted from `middleware.ts` outright (no `MARKETPLACE_ENABLED` flag — it no longer exists). Read the paragraph below as the historical v1 scope, not as current behaviour.
 
 Marketplace Discovery
 
