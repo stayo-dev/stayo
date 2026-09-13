@@ -1,3 +1,5 @@
+import crypto from "crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 /**
@@ -24,14 +26,19 @@ export async function getOrCreatePlatformOwnerProfile(): Promise<string> {
   if (existing) return existing.id;
 
   const created = await prisma.profile.create({
+    // `prisma` is exported as `any`, so without `satisfies` nothing checks
+    // this payload at compile time — which is how a missing `id` shipped.
     data: {
+      // profiles.id has no DB default — real accounts reuse their auth user
+      // id. This sentinel has no auth user, so it mints its own.
+      id: crypto.randomUUID(),
       email: PLATFORM_OWNER_EMAIL,
       name: "Stayo Platform",
       role: "OWNER",
       // Never signable-in: this is a foreign-key placeholder, not an account.
       is_active: false,
       is_profile_completed: true,
-    },
+    } satisfies Prisma.profileUncheckedCreateInput,
     select: { id: true },
   });
   return created.id;
