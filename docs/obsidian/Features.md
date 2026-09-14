@@ -303,7 +303,7 @@ The brand mascot leans over the top edge of the one login surface every role use
 - **Raises its brows for Caps Lock**, alongside a "Caps Lock is on" line under the password (new; announced to screen readers).
 - **Thinks** while the login or Google redirect is in flight; **shows sympathy** (ears down, small head shake) for 2.4s after a failure, ending the moment a field is focused; **celebrates** a success for one 600ms beat before the redirect (0 under reduced motion).
 - **Dozes off** after 30s untouched and startles awake; wags when its head is tapped.
-- The "Signed in" handoff overlays (`LandingPage`, `DiscoverAuthContext`) show it waving.
+- The "Signed in" handoff overlays (`LandingPage`, `DiscoverAuthContext`) show it waving. Since 2026-09-14 the wave is the designer's own raised leg, swung from the shoulder in bursts (`dogWave.ts`); before that it was the rim forearm pivoting at the paw — see [[Changelog]].
 
 It is decorative by contract: `aria-hidden`, no tab stop, every state also said in text, hidden on screens under 560px tall. Login logic, validation, error copy and Google are unchanged.
 
@@ -985,7 +985,21 @@ Three changes to the owner Configuration surface, each fixing something that was
 
 **Not verified in a browser.** No tenant has been onboarded end-to-end through an agreement-free hostel, and no deposit has been resolved through a real invite since the mode became writable.
 
+### Owner Rooms tab: the hostel as a building, a face in every bed (2026-09-14)
+
+- **Status:** built on `feat/ui-ux-polish`, not yet merged · [[Decisions#ADR-199|ADR-199]] · **verified** against the real page over fake data in Chrome (phone and desktop); **not yet** against a real backend
+- **Owner-facing?** yes · **Tenant-facing?** no
+- **Route:** `/owner/hostels/:hostelId/rooms`
+- **What the owner sees:** three numbers that double as filters (free beds · overdue · invited); a search that finds a room **or a person**; a sticky lift strip once there are three or more floors; then the building — a roof with "X of Y beds filled", floors top to bottom, each room a tile of faces (photo, initials when there is none, a red dot when the backend says `OVERDUE`, dashed amber for an invite, dashed `+` for a free bed), and the ground with its entrance. A one-time tip explains it and a legend sits underneath. A hostel with no floors gets the Stayo dog and "Add your first floor".
+- **What the owner can do from it:** add a floor from the roof (name and room numbers suggested); add a room from the dashed `+` under any floor (number, beds and rent prefilled from its neighbours, with "Add another"); rename or remove a floor from its plate; open a room to invite someone into a free bed of **that** room, open a tenant's profile, move a tenant (`ChangeRoomSheet`), change the number of beds, edit or delete the room; Arrange (the old Reorder) for order.
+- **Key files:** Backend — `lib/services/property/room-occupants.ts` (new, pure) + `tests/room-occupants.test.ts`, `lib/services/property-service.ts` (`getFloorsWithRooms`). Frontend — `features/hostel-drilldown/building/*` (new: `buildingModel`, `roomSuggestions`, `liftStrip` + tests; `HostelBuilding`, `FloorBand`, `RoomTile`, `BedFace`, `LensChips`, `LiftStrip`, `BuildingTip`, `BuildingLegend`, `BuildingSkeleton`, `EmptyBuilding`), `pages/HostelRoomsPage.tsx`, `room-sheet/RoomSheetModal.tsx`, `add-room/AddRoomModal.tsx`, `add-floor/AddFloorModal.tsx`, `edit-floor/EditFloorSheet.tsx`, `shared/lib/photoThumbnail.ts` (+ test), `shared/ui/TenantAvatar.tsx` (`tile` shape), `owner-tenants/invite/steps/StayStep.tsx`, `styles/theme.css`. Deleted — `components/FloorGroup.tsx`, `components/RoomRow.tsx`.
+- **Depends on:** [[APIs]] (`GET /api/rooms?grouped=true` — occupants now carry `photo_url` and `payment_status`), `tenants.photo_url` (required at activation, so activated tenants have a face).
+- **Not in this change:** which physical bed a tenant sleeps in (no per-bed identity in the backend), dragging tenants between rooms, a "moving out soon" marker (`tenants.exit_date` exists), a compact mode for 100+ bed hostels.
+- **See:** [[Decisions#ADR-199|ADR-199]], [[Frontend]], [[Bugs]], [[Changelog]]
+
 ### Owner Rooms tab: floors collapse to an accordion, rooms drag-reorder within a floor (2026-08-10)
+
+> **Superseded 2026-09-14 ([[Decisions#ADR-199|ADR-199]]):** the accordion described here is gone — the Rooms tab is now the building above. Reorder survives as **Arrange**.
 
 - **Status:** shipped, verified in a real browser session (Playwright against the live dev DB — see below)
 - **Owner-facing?** yes · **Tenant-facing?** no

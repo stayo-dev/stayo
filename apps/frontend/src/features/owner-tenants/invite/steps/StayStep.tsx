@@ -106,7 +106,10 @@ export function StayStep({ data, setD, hostels }: StayStepProps) {
     if (data.preferredRoomId) {
       const room = seatGridRooms.find((r) => r.id === data.preferredRoomId);
       if (room && room.available > 0) {
-        setD({ roomId: room.id, roomLabel: room.roomNo });
+        // Through `selectRoom`, like a tap would: the room's rent and the
+        // hostel's defaults fill in too. Setting only the id left the rent
+        // blank when the invite came from a free bed on the Rooms tab.
+        selectRoom(room.id);
         setActiveFloorId(room.floorId);
         return;
       }

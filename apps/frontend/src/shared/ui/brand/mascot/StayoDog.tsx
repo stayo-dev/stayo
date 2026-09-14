@@ -38,6 +38,7 @@ import {
 import { REST_ARMS, rigTargets, type RigTargets } from './dogRig';
 import { stepSpring, type SpringState } from './dogSpring';
 import { DOG_TUNING } from './dogTuning';
+import { WAVE, waveSwing } from './dogWave';
 import { readDogMotionProfile, type DogCompanion } from './useDogCompanion';
 
 import './stayo-dog.css';
@@ -53,6 +54,8 @@ export { RIM_OVERLAP_PERCENT, rimCenteringOffsetPx, rimExposedHeightPx };
 const RISE_FROM = 84;
 /** How often the SVG's screen transform is re-read; it only moves on layout changes. */
 const CTM_REFRESH_MS = 200;
+/** Degrees out to the side the waving paw starts from, sweeping up into its pose. */
+const WAVE_RISE_FROM = -50;
 
 type StayoDogProps = { framing?: DogFraming; className?: string } & (
   | { companion: DogCompanion; expression?: undefined }
@@ -61,7 +64,7 @@ type StayoDogProps = { framing?: DogFraming; className?: string } & (
 
 type SpringKey =
   | 'rot' | 'hx' | 'hy' | 'plx' | 'ply' | 'prx' | 'pry' | 'earL' | 'earR' | 'eye'
-  | 'lRaise' | 'lLean' | 'lX' | 'lY' | 'rRaise' | 'rLean' | 'rX' | 'rY' | 'rise';
+  | 'lRaise' | 'lLean' | 'lX' | 'lY' | 'rRaise' | 'rLean' | 'rX' | 'rY' | 'wave' | 'rise';
 
 /** Which spring family each value belongs to — they differ in stiffness and damping. */
 const SPRING_FAMILY: Record<SpringKey, 'head' | 'pupil' | 'ear' | 'paw' | 'rise'> = {
@@ -69,7 +72,7 @@ const SPRING_FAMILY: Record<SpringKey, 'head' | 'pupil' | 'ear' | 'paw' | 'rise'
   plx: 'pupil', ply: 'pupil', prx: 'pupil', pry: 'pupil',
   earL: 'ear', earR: 'ear',
   lRaise: 'paw', lLean: 'paw', lX: 'paw', lY: 'paw', rRaise: 'paw', rLean: 'paw', rX: 'paw', rY: 'paw',
-  rise: 'rise',
+  wave: 'paw', rise: 'rise',
 };
 
 /** [stiffness, damping ratio] per family. Pupils are quicker than the head; ears lag behind it. */
@@ -118,6 +121,7 @@ export function StayoDog({ framing = 'full', className, companion, expression }:
       rise: part('rise'), torso: part('torso'), head: part('head'), earL: part('ear-l'), earR: part('ear-r'),
       ballL: part('ball-l'), ballR: part('ball-r'), tailPivot: part('tail-pivot'), armL: part('arm-l'), armR: part('arm-r'),
       rimPaws: part('rim-paws'), bubble: part('bubble'), sparkles: part('sparkles'), zzz: part('zzz'),
+      wavePaw: part('wave-paw'), footL: part('foot-l'),
     };
     const variantParts = ['brows', 'mouth', 'tail', 'ear-l', 'ear-r', 'eye-l', 'eye-r'].map((n) => [n, part(n)] as const);
 
@@ -128,10 +132,13 @@ export function StayoDog({ framing = 'full', className, companion, expression }:
     spring('eye', 1);
     spring('lRaise', 0); spring('lLean', REST_ARMS.l.lean); spring('lX', REST_ARMS.l.padX); spring('lY', REST_ARMS.l.padY);
     spring('rRaise', 0); spring('rLean', REST_ARMS.r.lean); spring('rX', REST_ARMS.r.padX); spring('rY', REST_ARMS.r.padY);
+    spring('wave', 0);
     spring('rise', framing === 'rim' && animateAtStart ? RISE_FROM : 0);
 
     let arms: RigTargets['arms'] = REST_ARMS;
     let shown: string | null = null;
+    let waveStart = 0;
+    let wasWaving = false;
     let nextBlink = performance.now() + nextBlinkDelay(DOG_TUNING.blinkEveryS, Math.random());
     let blinkUntil = 0;
     let ctm: DOMMatrix | null = null;
@@ -168,6 +175,9 @@ export function StayoDog({ framing = 'full', className, companion, expression }:
       const { expression: name, capsBrows, gaze, shakeAt } = source.read(now);
       const { animate } = source.profile();
       const E: DogExpression = DOG_EXPRESSIONS[name];
+      const waving = E.arms[0] === 'wave';
+      if (waving && !wasWaving) waveStart = now;
+      wasWaving = waving;
 
       const key = `${name}|${capsBrows}`;
       if (key !== shown) {
@@ -196,7 +206,7 @@ export function StayoDog({ framing = 'full', className, companion, expression }:
         earL: springs.rot.x + t.earSpread, earR: springs.rot.x - t.earSpread, eye: t.eyeScale,
         lRaise: t.arms.l.raise, lLean: t.arms.l.lean, lX: t.arms.l.padX, lY: t.arms.l.padY,
         rRaise: t.arms.r.raise, rLean: t.arms.r.lean, rX: t.arms.r.padX, rY: t.arms.r.padY,
-        rise: 0,
+        wave: waving ? 1 : 0, rise: 0,
       };
       for (const k of Object.keys(springs) as SpringKey[]) {
         if (!animate) {
@@ -220,7 +230,7 @@ export function StayoDog({ framing = 'full', className, companion, expression }:
       const shake = animate && shakeAt > 0 && sinceShake < 1 ? 7 * Math.sin(sinceShake * 2 * Math.PI * 4.5) * Math.exp(-sinceShake * 5) : 0;
       const breath = animate ? 0.9 * Math.sin((now / 1000) * 2 * Math.PI * 0.25) : 0;
       const wag = animate ? E.wag * 11 * Math.sin((now / 1000) * 2 * Math.PI * DOG_TUNING.wagHz) : 0;
-      const wave = animate && E.arms[1] === 'wave' ? 14 * Math.sin((now / 1000) * 2 * Math.PI * 2) : 0;
+      const swing = animate && waving ? waveSwing((now - waveStart) / 1000) : 0;
 
       const f = (n: number) => n.toFixed(2);
       el.rise?.setAttribute('transform', `translate(0 ${f(s('rise'))})`);
@@ -239,7 +249,14 @@ export function StayoDog({ framing = 'full', className, companion, expression }:
         return `translate(${f(a.x)} ${f(a.y)}) rotate(${f(a.rotate)})`;
       };
       el.armL?.setAttribute('transform', arm(s('lRaise'), s('lLean'), s('lX'), s('lY')));
-      el.armR?.setAttribute('transform', arm(s('rRaise'), s('rLean') + wave, s('rX'), s('rY')));
+      el.armR?.setAttribute('transform', arm(s('rRaise'), s('rLean'), s('rX'), s('rY')));
+      // The waving leg turns about its own base, so the shoulder stays put:
+      // it sweeps up from the side as it rises, then swings to wave. (Sliding
+      // it up its own length instead drags it across the belly.)
+      const waveAngle = swing + (1 - s('wave')) * WAVE_RISE_FROM;
+      el.wavePaw?.setAttribute('transform', `rotate(${f(waveAngle)} ${WAVE.pivot.x} ${WAVE.pivot.y})`);
+      if (el.wavePaw) el.wavePaw.style.opacity = clamp01(s('wave') * 3).toFixed(3);
+      if (el.footL) el.footL.style.opacity = clamp01(1 - s('wave') * 3).toFixed(3);
       if (framing === 'full') {
         if (el.armL) el.armL.style.opacity = String(clamp01(s('lRaise') * 3));
         if (el.armR) el.armR.style.opacity = String(clamp01(s('rRaise') * 3));
@@ -248,7 +265,7 @@ export function StayoDog({ framing = 'full', className, companion, expression }:
         // A paw lifting off the rim becomes the paw rising over the eyes.
         const settled = clamp01(1 - s('rise') / 30);
         const [pl, pr] = Array.from(el.rimPaws.children) as SVGElement[];
-        pl.style.opacity = (clamp01(1 - s('lRaise') * 1.6) * settled).toFixed(3);
+        pl.style.opacity = (clamp01(1 - Math.max(s('lRaise'), s('wave')) * 1.6) * settled).toFixed(3);
         pr.style.opacity = (clamp01(1 - s('rRaise') * 1.6) * settled).toFixed(3);
       }
     };

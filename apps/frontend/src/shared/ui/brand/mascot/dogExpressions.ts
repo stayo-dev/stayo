@@ -54,7 +54,7 @@ export const DOG_EXPRESSIONS = {
   concerned: { eyes: 'open', brows: 'concerned', mouth: 'wobble', ears: 'droop', tail: 'down', wag: 0, arms: ['down', 'down'], dip: 3 },
   happy: { eyes: 'happy', brows: 'none', mouth: 'pant', ears: 'perk', tail: 'mid', wag: 1, arms: ['down', 'down'] },
   celebrating: { eyes: 'happy', brows: 'raised', mouth: 'big', ears: 'perk', tail: 'high', wag: 1.4, arms: ['cheer', 'cheer'], extra: 'sparkles' },
-  waving: { eyes: 'happy', brows: 'none', mouth: 'smile', ears: 'perk', tail: 'mid', wag: 0.8, arms: ['down', 'wave'] },
+  waving: { eyes: 'happy', brows: 'none', mouth: 'smile', ears: 'perk', tail: 'mid', wag: 0.8, arms: ['wave', 'down'] },
   sleepy: { eyes: 'closed', brows: 'none', mouth: 'small', ears: 'rest', tail: 'down', wag: 0, arms: ['down', 'down'], tilt: 4, extra: 'zzz', still: true },
 } as const satisfies Record<string, DogExpression>;
 
@@ -69,7 +69,9 @@ export const PAW_PAD_RADIUS = { x: 15, y: 12 } as const;
 /**
  * Where each raised paw's pad lands, and the forearm's lean in degrees.
  * `down` has no entry: a lowered arm keeps its last lean and sinks behind the
- * rim along it (see `armTransform`).
+ * rim along it (see `armTransform`). Nor does `wave`: the waving paw is the
+ * designer's own raised leg (`WavePaw` in `dogParts.tsx`, swung by `dogWave`),
+ * so the forearm stays down under it.
  */
 export const ARM_POSES = {
   l: {
@@ -81,6 +83,5 @@ export const ARM_POSES = {
     cover: { lean: -12, x: 170, y: 112 },
     peek: { lean: -12, x: 178, y: 148 },
     cheer: { lean: 22, x: 228, y: 108 },
-    wave: { lean: 22, x: 228, y: 104 },
   },
 } as const satisfies Record<'l' | 'r', Partial<Record<DogArmPose, { lean: number; x: number; y: number }>>>;

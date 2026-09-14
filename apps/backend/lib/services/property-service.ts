@@ -8,6 +8,7 @@ import { eventLog } from "@/lib/services/event-log-service";
 import { planFloorRoomSave } from "./property/floor-room-plan";
 import { planHostelDeletion } from "./property/hostel-deletion-plan";
 import { realEmailOrNull } from "@/src/services/tenants/invited-profile-resolver";
+import { activeOccupant, invitedOccupantsFromReservations } from "./property/room-occupants";
 
 /** Long enough for "Ground floor — annexe block", short enough to fit a floor header on a phone. */
 export const FLOOR_NAME_MAX = 40;
@@ -40,37 +41,6 @@ async function usableFloorName(hostelId: string, raw: unknown, exceptFloorId?: s
   return name;
 }
 
-
-/**
- * An invitation that is live and holds a bed.
- *
- * QUEUED belongs here: a bulk-imported invitation is created but not yet sent,
- * and it still reserves a room, still blocks a competing invite, and must
- * still be cancelled with its tenancy. Leaving it out let "send all" message
- * someone whose tenancy had been cancelled.
- */
-const ACTIVE_INVITE_STATUSES = ["PENDING", "OPENED", "ACTIVATION_STARTED", "QUEUED"];
-
-function invitedOccupantsFromReservations(reservations: any[] = []) {
-  return reservations
-    .filter((reservation: any) => ACTIVE_INVITE_STATUSES.includes(String(reservation.invitation?.status || "")))
-    .map((reservation: any) => ({
-      tenant_id: reservation.tenant_id,
-      profile_id: reservation.tenant?.profile_id ?? null,
-      invitation_id: reservation.invitation_id,
-      name: reservation.invitation?.name ?? reservation.tenant?.profiles?.name ?? "Invited tenant",
-      email: reservation.invitation?.email ?? reservation.tenant?.personal_email ?? null,
-      phone: reservation.invitation?.phone ?? reservation.tenant?.phone_1 ?? null,
-      joined_date: reservation.tenant?.joined_on ?? reservation.reserved_at,
-      rent: Number(reservation.tenant?.monthly_rent || 0),
-      pending_dues: 0,
-      payment_status: "INVITED",
-      status: "INVITED",
-      invite_status: reservation.invitation?.status || "PENDING",
-      occupant_type: "INVITED",
-      badge: "Invited",
-    }));
-}
 
 export class PropertyService {
   async getOwnerProfile(userId: string) {
@@ -949,22 +919,10 @@ export class PropertyService {
     const unassigned: any = { id: "__unassigned", name: "Unassigned", sort_order: 999, rooms: [] };
 
     rooms.forEach((room: any) => {
-	      const tenants = room.room_allocations.map((a: any) => {
-	        const tenant = a.tenant;
-	        const profile = tenant.profiles;
-	        const invitation = tenant.tenant_invitations?.[0];
-	        const summary = financialService.getTenantPaymentSummary(tenant.id, tenant.rent_obligations || []);
-	        return {
-	          tenant_id: tenant.id,
-	          name: profile?.name ?? invitation?.name ?? "Tenant",
-	          email: realEmailOrNull(profile?.email) ?? realEmailOrNull(tenant.personal_email) ?? realEmailOrNull(invitation?.email),
-	          phone: profile?.phone ?? tenant.phone_1 ?? invitation?.phone ?? null,
-	          joined_date: a.start_date,
-	          rent: Number(tenant.monthly_rent),
-	          pending_dues: Number(summary.pending_amount || 0),
-          status: tenant.status,
-        };
-      });
+      // Photo and overdue verdict ride along for the building view (ADR-199).
+      const tenants = room.room_allocations.map((a: any) =>
+        activeOccupant(a, financialService.getTenantPaymentSummary(a.tenant.id, a.tenant.rent_obligations || [])),
+      );
 
       const invitedTenants = invitedOccupantsFromReservations(room.tenant_invitation_reservations);
       const displayTenants = [...tenants, ...invitedTenants];

@@ -3,9 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { getInitials } from '@features/tenants/utils/normalize';
+import { photoThumbnail } from '@shared/lib/photoThumbnail';
+import { TenantAvatar } from '@shared/ui/TenantAvatar';
 import { Trash2 } from 'lucide-react';
+import { BedFace } from '../building/BedFace';
+import { countSlots, roomBedSlots } from '../building/buildingModel';
 import { canDeleteRoom } from '../propertyRemoval';
-import type { Floor, RoomWithOccupants } from '../types';
+import type { Floor, RoomOccupant, RoomWithOccupants } from '../types';
+
+/** The backend refuses a room with more beds than this (`property-service`). */
+const MAX_BEDS = 20;
 
 interface RoomSheetModalProps {
   open: boolean;
@@ -14,8 +21,11 @@ interface RoomSheetModalProps {
   /** All floors on this hostel, for the "move to floor" reassignment select. */
   floors: Floor[];
   onClose: () => void;
-  onAssign: () => void;
-  onSaveDetails: (data: { room_no: string; base_rent: number; floor_id?: string }) => Promise<void>;
+  /** Invite someone into a free bed in this room — the wizard opens with it chosen. */
+  onInvite: () => void;
+  /** Move a resident to another room (the tenant profile's `ChangeRoomSheet`). */
+  onMoveTenant?: (occupant: RoomOccupant) => void;
+  onSaveDetails: (data: { room_no: string; base_rent: number; floor_id?: string; capacity?: number }) => Promise<void>;
   isSaving?: boolean;
   /**
    * Delete this room for good. `DELETE /api/rooms/:id` is a real delete, not
@@ -35,7 +45,8 @@ export function RoomSheetModal({
   floor,
   floors,
   onClose,
-  onAssign,
+  onInvite,
+  onMoveTenant,
   onSaveDetails,
   isSaving,
   onDelete,
@@ -48,6 +59,7 @@ export function RoomSheetModal({
   const [number, setNumber] = useState('');
   const [rent, setRent] = useState('');
   const [floorId, setFloorId] = useState('');
+  const [beds, setBeds] = useState(0);
   // Per room, never reviewed, never public — see the tenant Room spec §4.
   const [wifiName, setWifiName] = useState('');
   const [wifiPassword, setWifiPassword] = useState('');
@@ -75,6 +87,7 @@ export function RoomSheetModal({
       setNumber(room.number);
       setRent(String(room.rent));
       setFloorId(room.floorId);
+      setBeds(room.beds.length);
       setWifiName((room as any)?.wifiName ?? (room as any)?.wifi_name ?? '');
       setWifiPassword((room as any)?.wifiPassword ?? (room as any)?.wifi_password ?? '');
       const space = (room as any).space ?? {};
@@ -103,6 +116,8 @@ export function RoomSheetModal({
         wifi_name: wifiName.trim() || null,
         wifi_password: wifiPassword.trim() || null,
         ...(floorId && floorId !== room.floorId ? { floor_id: floorId } : {}),
+        // Only when changed, so a stale count never rides along on a rename.
+        ...(beds !== room.beds.length ? { capacity: beds } : {}),
         // Empty means "not measured", which the listing shows as nothing at
         // all rather than as a zero.
         length_ft: lengthFt === '' ? null : Number(lengthFt),
@@ -119,12 +134,16 @@ export function RoomSheetModal({
     }
   };
 
-  const occupied = room.beds.filter((b) => b.status === 'occupied').length;
-  const vacant = room.beds.filter((b) => b.status === 'vacant').length;
-  const reserved = room.beds.filter((b) => b.status === 'reserved').length;
+  const slots = roomBedSlots(room);
+  const counts = countSlots(slots);
+  const occupied = counts.tenants;
+  const vacant = counts.free;
+  const reserved = counts.invited;
   const deleteBlocker = canDeleteRoom({ occupiedBeds: occupied, reservedBeds: reserved }).reason;
   const residents = room.occupants;
   const pendingDues = residents.reduce((sum, t) => sum + t.pending_dues, 0);
+  /** Beds can go down only to the ones taken — the server refuses fewer. */
+  const minBeds = Math.max(1, occupied + reserved);
 
   return (
     <BottomSheet
@@ -134,7 +153,7 @@ export function RoomSheetModal({
         <span className="flex flex-col">
           <span>Room {room.number}</span>
           <span className="text-[11.5px] font-normal text-muted-foreground">
-            {floor?.name} · {occupied}/{room.beds.length} beds occupied
+            {floor?.name ?? 'No floor'} · {occupied}/{slots.length} beds filled
           </span>
         </span>
       }
@@ -331,7 +350,37 @@ export function RoomSheetModal({
               </select>
             </label>
           )}
-          <p className="text-[11px] text-muted-foreground">Bed count can't be changed here — it can't safely go below the {occupied} bed{occupied === 1 ? '' : 's'} currently occupied.</p>
+          <div>
+            <span className={labelStyle}>Beds in this room</span>
+            <div className="mt-1.5 flex items-center justify-between rounded-[11px] border border-border bg-card p-2">
+              <button
+                type="button"
+                aria-label="One bed fewer"
+                disabled={beds <= minBeds}
+                onClick={() => setBeds((b) => Math.max(minBeds, b - 1))}
+                className="flex h-9.5 w-9.5 items-center justify-center rounded-lg bg-muted font-display text-xl font-bold text-primary disabled:opacity-40"
+              >
+                −
+              </button>
+              <span className="font-display text-2xl font-extrabold tabular-nums text-foreground">{beds}</span>
+              <button
+                type="button"
+                aria-label="One more bed"
+                disabled={beds >= MAX_BEDS}
+                onClick={() => setBeds((b) => Math.min(MAX_BEDS, b + 1))}
+                className="flex h-9.5 w-9.5 items-center justify-center rounded-lg bg-foreground font-display text-xl font-bold text-background disabled:opacity-40"
+              >
+                +
+              </button>
+            </div>
+            {minBeds > 1 && (
+              <p className="mt-1.5 text-[11px] text-muted-foreground">
+                At least {minBeds} — {occupied > 0 ? `${occupied} lived in` : ''}
+                {occupied > 0 && reserved > 0 ? ' and ' : ''}
+                {reserved > 0 ? `${reserved} held for an invite` : ''}.
+              </p>
+            )}
+          </div>
 
           {/* Deleting lives inside edit mode, behind two taps, and states its
               own reason when it can't be done — the backend refuses an
@@ -382,6 +431,48 @@ export function RoomSheetModal({
         </div>
       ) : (
         <div className="flex flex-col gap-4">
+          {/* The beds, as the building shows them — but big enough to tap.
+              A free bed is one tap from inviting someone into this room. */}
+          <div>
+            <div className="flex flex-wrap justify-center gap-x-3.5 gap-y-3 rounded-2xl border border-border bg-card px-3 py-3.5">
+              {slots.map((slot) => {
+                const first = slot.kind === 'free' ? 'Invite' : (slot.name ?? 'Invited').split(' ')[0];
+                const open = () => {
+                  if (slot.kind === 'free') onInvite();
+                  else if (slot.tenantId) navigate(`/owner/tenants/${slot.tenantId}`);
+                };
+                const label =
+                  slot.kind === 'free'
+                    ? `Invite someone into a free bed in room ${room.number}`
+                    : slot.kind === 'invited'
+                      ? `${slot.name ?? 'Someone'}, invited — open their profile`
+                      : `${slot.name}${slot.overdue ? ', overdue' : ''} — open their profile`;
+                return (
+                  <button
+                    key={slot.key}
+                    type="button"
+                    onClick={open}
+                    disabled={slot.kind !== 'free' && !slot.tenantId}
+                    aria-label={label}
+                    className="flex w-[58px] flex-col items-center gap-1 rounded-xl p-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <BedFace slot={slot} size="sheet" />
+                    <span
+                      className={`max-w-full truncate text-[10.5px] font-semibold ${
+                        slot.kind === 'free' ? 'text-success' : slot.kind === 'invited' ? 'text-warning' : 'text-muted-foreground'
+                      }`}
+                    >
+                      {first}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {vacant > 0 && (
+              <p className="mt-1.5 text-center text-[11px] text-muted-foreground">Tap a free bed to invite someone into this room</p>
+            )}
+          </div>
+
           <div className="flex gap-2.5">
             <div className="flex-1 rounded-2xl border border-border bg-card p-3.5">
               <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Monthly rent</div>
@@ -389,50 +480,74 @@ export function RoomSheetModal({
             </div>
             <div className="flex-1 rounded-2xl border border-border bg-card p-3.5">
               <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Pending dues</div>
-              <div className="mt-0.5 font-display text-lg font-extrabold tabular-nums text-destructive">₹{pendingDues.toLocaleString('en-IN')}</div>
+              <div className={`mt-0.5 font-display text-lg font-extrabold tabular-nums ${pendingDues > 0 ? 'text-destructive' : 'text-foreground'}`}>
+                ₹{pendingDues.toLocaleString('en-IN')}
+              </div>
             </div>
           </div>
 
           <div>
             <div className="mb-2 flex items-baseline justify-between">
-              <span className="text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">Current residents</span>
-              <span className="text-[10.5px] font-semibold text-primary">{vacant} beds available</span>
+              <span className="text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">Residents</span>
+              <span className="text-[10.5px] font-semibold text-primary">
+                {vacant} bed{vacant === 1 ? '' : 's'} free
+              </span>
             </div>
             <div className="overflow-hidden rounded-2xl border border-border bg-card">
-              {residents.length === 0 && (
-                <p className="p-4 text-center text-[12.5px] text-muted-foreground">No active tenants</p>
-              )}
-              {residents.map((t) => (
-                <button
-                  key={t.tenant_id}
-                  type="button"
-                  onClick={() => navigate(`/owner/tenants/${t.tenant_id}`)}
-                  className="flex w-full items-center gap-3 border-b border-border/60 p-3.5 text-left last:border-none"
-                >
-                  <span className="flex h-9.5 w-9.5 flex-none items-center justify-center rounded-full bg-foreground font-display text-xs font-bold text-background">
-                    {getInitials(t.name)}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-display text-[13.5px] font-bold text-foreground">{t.name}</div>
-                    <div className="mt-0.5 text-[11.5px] text-muted-foreground">₹{t.rent.toLocaleString('en-IN')}/mo</div>
+              {residents.length === 0 && <p className="p-4 text-center text-[12.5px] text-muted-foreground">No one lives here yet</p>}
+              {residents.map((t) => {
+                const invited = t.occupant_type === 'INVITED';
+                const overdue = t.payment_status === 'OVERDUE';
+                return (
+                  <div key={t.tenant_id} className="flex items-center gap-2 border-b border-border/60 last:border-none">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/owner/tenants/${t.tenant_id}`)}
+                      className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-3.5 text-left"
+                    >
+                      <TenantAvatar
+                        name={t.name}
+                        initials={getInitials(t.name)}
+                        photoUrl={photoThumbnail(t.photo_url, 38)}
+                        className="h-9.5 w-9.5 text-xs"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-display text-[13.5px] font-bold text-foreground">{t.name}</div>
+                        <div className="mt-0.5 text-[11.5px] text-muted-foreground">
+                          {invited ? (
+                            <span className="font-semibold text-warning">Invited · not moved in yet</span>
+                          ) : overdue ? (
+                            <span className="font-semibold text-destructive">Overdue · ₹{t.pending_dues.toLocaleString('en-IN')}</span>
+                          ) : t.pending_dues > 0 ? (
+                            <>₹{t.rent.toLocaleString('en-IN')}/mo · ₹{t.pending_dues.toLocaleString('en-IN')} due</>
+                          ) : (
+                            <>₹{t.rent.toLocaleString('en-IN')}/mo</>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                    {onMoveTenant && !invited && (
+                      <button
+                        type="button"
+                        onClick={() => onMoveTenant(t)}
+                        className="flex-none rounded-lg border border-border px-2.5 py-1.5 font-display text-[11.5px] font-bold text-foreground hover:bg-muted"
+                      >
+                        Move
+                      </button>
+                    )}
+                    <span aria-hidden="true" className="flex-none pr-3.5 text-muted-foreground">
+                      ›
+                    </span>
                   </div>
-                  {t.pending_dues > 0 ? (
-                    <div className="flex flex-none flex-col items-end gap-0.5">
-                      <span className="text-[10px] font-bold uppercase tracking-wide text-warning">Due</span>
-                      <span className="font-display text-[11.5px] font-bold tabular-nums text-destructive">₹{t.pending_dues.toLocaleString('en-IN')}</span>
-                    </div>
-                  ) : (
-                    <span className="flex-none text-muted-foreground">›</span>
-                  )}
-                </button>
-              ))}
+                );
+              })}
               {vacant > 0 && (
                 <button
                   type="button"
-                  onClick={onAssign}
+                  onClick={onInvite}
                   className="flex w-full items-center justify-center gap-1.5 border-t border-border/60 bg-muted/50 p-3 font-display text-[12.5px] font-bold text-primary"
                 >
-                  + Assign {vacant} vacant bed{vacant > 1 ? 's' : ''}
+                  + Invite someone into this room
                 </button>
               )}
             </div>

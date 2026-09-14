@@ -8,11 +8,21 @@ export interface RoomOccupant {
   rent: number;
   pending_dues: number;
   status: string;
+  /** Uploaded at onboarding (`tenants.photo_url`); null when there is none. */
+  photo_url?: string | null;
+  /**
+   * The backend's own verdict from `getTenantPaymentSummary()` — `OVERDUE`
+   * drives the red dot on the Rooms tab. Never infer it from `pending_dues`,
+   * which includes rent that is not yet due.
+   */
+  payment_status?: string;
+  /** `INVITED` for someone holding a bed who has not moved in yet. */
+  occupant_type?: string;
 }
 
-/** Real room shape — same bed/id/rent fields the mock `Room` type has (so
- * `RoomRow`/`FloorGroup` need no changes), plus the real per-occupant detail
- * `RoomSheetModal` needs instead of a mock tenant lookup. */
+/** Real room shape — the bed/id/rent fields the mock `Room` type has, plus the
+ * real per-occupant detail the building (`building/buildingModel`) and
+ * `RoomSheetModal` draw from. */
 export interface RoomWithOccupants {
   id: string;
   number: string;
