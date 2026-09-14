@@ -724,3 +724,24 @@ Clerk-path rejections, both `403`: `NO_STAYO_ACCOUNT` (Clerk knows them, we have
 **`middleware.ts`** gains `CLERK_BEARER_ROUTES` — currently just `/api/auth/me`, **exact**-matched via a `Set`. Its only effect: a token rejected by *both* the Supabase and legacy verifiers falls through as anonymous rather than 401, so the route can verify it as a Clerk token. This does **not** make the route public — `PUBLIC_ROUTES` is prefix-matched and an entry there would also have exposed `/api/auth/me`-prefixed siblings.
 
 Related: [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[Business-Rules]], [[Changelog]]
+
+## Stay Status (ADR-193)
+
+Six endpoints. Every write goes through `stayService.recordStayEvent`, which is channel-agnostic — the WhatsApp slice will call it unchanged with `source: WHATSAPP`. Errors use the standard envelope via `stayErrorResponse`. See [[Decisions#ADR-193|ADR-193]], [[Database]], [[Business-Rules]].
+
+| Method | Path | Who | Notes |
+|---|---|---|---|
+| GET | `/api/tenant/stay` | TENANT | `{ tenantId, hostel, resident, stay }`. `stay` carries the derived `status`, the active `leave`, and the date window (`today`, `suggestedReturn`, `minReturnDate`, `maxReturnDate`), all IST. |
+| POST | `/api/tenant/stay/events` | TENANT | `{ type, leaveType?, expectedReturnDate?, source: "QR"\|"APP", idempotencyKey }` → `{ stay }`. Tenant and hostel come from the session's live tenancy; a `tenantId` in the body is ignored. 409 `STAY_INELIGIBLE` when not a resident. |
+| GET | `/api/hostels/[id]/stay` | OWNER | The board: `residents`, `hereTonight`, `away`, `late`, `beds`, `meals`, `backToday[]`, `lateList[]`, `awayList[]`, `roomsToCheck[]`, `here[]`, plus the same date window. |
+| POST | `/api/hostels/[id]/stay/tenants/[tenantId]/events` | OWNER | Same body minus `source` (always `OWNER`). Types limited to `LEAVE_STARTED`, `RETURN_DATE_CHANGED`, `RETURNED`, `LEAVE_CANCELLED` — an owner cannot confirm presence. A non-UUID tenant id is 404; a non-resident is 409. |
+| GET | `/api/owner/stay/summary` | OWNER | Portfolio totals + per-hostel breakdown for Home's Tonight row. Takes **no** `hostelId`, like `/api/owner/portfolio/summary`. |
+| GET | `/api/hostels/[id]/stay/poster` | OWNER | The A4 QR poster as PDF bytes (`Content-Disposition: attachment`). Built with the installed `qrcode` + `pdf-lib`; encodes `frontendUrl('/stay/<id>')`. |
+
+**Event types:** `LEAVE_STARTED`, `RETURN_DATE_CHANGED`, `RETURNED`, `LEAVE_CANCELLED`, `PRESENCE_CONFIRMED` (QR-only, deduped to one per tenant per IST day).
+
+**Idempotency:** every tenant/owner write needs an `idempotencyKey` (8–100 of `[A-Za-z0-9_-]`, e.g. a `crypto.randomUUID()`); it is stored namespaced by tenant. A replayed key records nothing and returns the current stay. Presence confirmations key themselves as `presence:<tenantId>:<istDate>`.
+
+**Error codes:** `STAY_INELIGIBLE` (409), `NO_ACTIVE_LEAVE` (409), `ON_LEAVE` (409), `TOO_SOON` / `TOO_FAR` / `INVALID_DATE` / `INVALID_LEAVE_TYPE` / `UNKNOWN_TYPE` / `INVALID_REQUEST` (400). Messages are tenant-facing and reach the screen verbatim through `parseApiError`.
+
+Owner routes use `resolveOwnerScope` → `requireHostelBelongsToOwner`, and `src/services/stay` plus the three stay route folders are now in `architectural-invariants-check.ts`'s scan roots.

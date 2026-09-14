@@ -1461,3 +1461,28 @@ Seven documents, each with a version, an effective date and a labelled "In short
 - **Build guard:** `npm run build` runs `scripts/check-legal.mjs`, which fails on a named gateway, a UPI app presented as the processor, a placeholder in legal copy, a GSTIN claim, or third-party analytics.
 - **Not yet built:** the document-library redesign, unified footer and in-app policy rows (Phase 2); grievance ticket intake to replace the `mailto:` contact form (Phase 3); versioned acceptance records and clickwrap capture (Phase 4).
 
+
+## Stay Status — who is here tonight (Phase 1, 2026-09-14)
+
+The occupancy engine behind "how is my hostel today?". See [[Decisions#ADR-193|ADR-193]], [[Business-Rules]], [[Database]], [[APIs]].
+
+**What a tenant can do** (under two seconds, one tap in the common case):
+
+- **Scan the hostel QR** → `/stay/:hostelId`. Present: "You're in ✓", no button. Away: one full-width **I'm back**.
+- **More** reveals Going home and Vacation (when present), or Change return date and Cancel leave (when away). Progressive disclosure — never long-press.
+- **Going home** offers a single smart-default button: Thursday and Friday suggest **this Sunday**, every other day **tomorrow**; "Other date" opens a picker. A return date is always required — it is what makes "back today" and "late" possible.
+- The **same panel** appears as a card on Tenant Home (`source: APP` instead of `QR`).
+- A tenant signs in **on the QR page itself**; it never bounces them to `/login` and loses the code.
+
+**What an owner sees:**
+
+- **Home → Tonight**: here tonight (caption: the meal estimate), back today (caption turns red when someone is late), rooms to check. Hidden entirely until someone lives there.
+- **`/owner/stay`**: "N here tonight", "≈ N for dinner & breakfast · +k late may turn up", "N beds free", then Late → Back today → Rooms to check → Away → everyone here (collapsed). One action per person — **Mark back** or **Put on leave** — with edits behind that row's More.
+- **Print hostel QR** downloads an A4 PDF poster (hostel name, "Back? Scan me.", a large code) to laminate by the entrance. The code encodes `/stay/<hostelId>` and never changes.
+- An owner can move the stay of an **owner-managed** tenant, who has no login and therefore no other route.
+
+**What it deliberately is not:** attendance. Silence means Present; nobody is asked to check in. *Checked out* stays the move-out lifecycle and is not a Stay state.
+
+**Not built yet:** the WhatsApp flows (Going home / I'm back / the evening "staying tonight?"), Away Today, the real meal forecast with participation history, housekeeping tasks, temporary-vs-permanent vacancy, guardian notifications and owner push alerts. Each is a new event type or read model over `stay_events`, not a change to it.
+
+**Not yet exercised anywhere:** no QR has been scanned by a phone, and the DB-backed test has never run (the test Supabase project is unreachable). The migration is unapplied.

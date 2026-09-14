@@ -501,3 +501,19 @@ Every `supabase.auth.signInWithOAuth({ provider: 'google' })` is gone — `AuthC
 **Known gap:** Google *signup* for a brand-new person does not work yet — see the ADR. Existing users are unaffected.
 
 Related: [[Decisions#ADR-176|ADR-176]], [[APIs]], [[Features]], [[Changelog]]
+
+## Stay Status surfaces (ADR-193)
+
+| Path | Role |
+|---|---|
+| `features/stay/stayState.ts` (+ `.test.ts`) | The pure screen models: `screenFor` (never more than one primary action), `friendlyDate`, `scanViewFor`, `shouldConfirmPresence`, `boardSections`, `roomLines`, `boardHeadline`, `tonightCards`. All copy decisions live here and are tested. |
+| `features/stay/api`, `types.ts` | The endpoint wrappers and wire types; keys in `lib/queryKeys.ts` under `queryKeys.stay`. |
+| `features/stay/hooks/useMyStay.ts` | Tenant query + write. The mutation writes the returned stay straight into the cache, so the screen turns over on the frame the answer lands. |
+| `features/stay/components/StayActionPanel.tsx` | The shared tenant panel (QR `full` and Home `card`). Optimistic *I'm back*. |
+| `features/stay/components/ReturnDateSheet.tsx` | One smart-default button, with "Other date" disclosed beneath. |
+| `platforms/tenant/pages/StayScanPage.tsx` | `/stay/:hostelId`, mounted **outside** `TenantProviderShell` beside the farewell route, and signing people in itself so a scanned link is never lost. |
+| `features/owner-stay/*` | `useStay` hooks, `TonightSection` (Home) and `StayBoardPage` (`/owner/stay`, `?hostelId=` like the kitchen sheet, with `HostelSwitcher`). |
+
+Tenant Home renders `stayBlock` in **both** layout branches, and Owner Home renders `TonightSection` above the Action Center from `useOwnerDashboard().tonight`.
+
+Related: [[Features]], [[APIs]], [[Decisions#ADR-193|ADR-193]]

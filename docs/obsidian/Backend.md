@@ -126,3 +126,22 @@ npm run check:payment-production
 - [[Database]] for schema/migrations
 - [[Business-Rules]] for the domain rules these services enforce
 - [[Frontend]] for the client side of this API
+
+## `src/services/stay/` — Stay Status (ADR-193)
+
+The event core is pure and the I/O is thin, so the rules are tested without a database.
+
+| File | Responsibility |
+|---|---|
+| `stay-status.ts` | `deriveStayStatus`, `isHereTonight`, `validateReturnDate` (tomorrow → +90 days), `smartReturnDate` (Thu/Fri → Sunday, else tomorrow), the `LeaveType`/`StaySource` guards. Pure. |
+| `stay-events.ts` | `StayEvent`/`LeaveState` shapes, **`applyStayEvent`** (the one place stay semantics live) and `replayStayEvents`. Pure. |
+| `stay-board.ts` | `buildStayBoard` — the owner's answers — plus `summarizeHostel`/`summarizePortfolio`. Pure. |
+| `stay-rows.ts` | row ↔ domain mappers (`@db.Date` ↔ `YYYY-MM-DD`). Pure. |
+| `stay-errors.ts` | `StayError`, the reason → status/message table, `stayErrorResponse`. |
+| `stay-service.ts` | `recordStayEvent` (the single write path), `getMyStay`, `getHostelBoard`, `getPortfolioSummary`. Takes injectable `db`/`capacity`, which is how it is unit-tested with mocks. |
+
+- **A write is one transaction**: append the event, then create or optimistically move the projection (pinned on `last_event_id`). A `P2002` or a lost race is swallowed — the other writer already recorded the tenant's intent, and this transaction rolled back whole, so stream and projection still agree.
+- Also touched: `lib/timezone.ts` gains `istDateOf`/`istToday`/`addDaysIso`/`daysBetweenIso`/`weekdayOfIso` (`payout-promise.ts` re-exports `istDateOf` from there now); `room-capacity-service.ts` exports `OCCUPYING_ALLOCATION_WHERE`; `lib/pdf/stay-poster-pdf-lib.ts` renders the QR poster and `menu-template-pdf-lib.ts` now exports `loadFonts` for it.
+- `architectural-invariants-check.ts` scans `src/services/stay`, `app/api/tenant/stay`, `app/api/owner/stay` and `app/api/hostels/[id]/stay`.
+
+Related: [[APIs]], [[Database]], [[Business-Rules]], [[Decisions#ADR-193|ADR-193]]

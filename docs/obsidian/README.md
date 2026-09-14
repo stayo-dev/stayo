@@ -41,6 +41,7 @@ Read the relevant row **before** writing code, not after — these pages exist t
 | Work on the tenant portal | [[Frontend]] — **read the frozen `src/portal/` allowlist section before adding any file there** — + [[Features]] |
 | Touch anything under `/owner/food`, `/tenant/food`, `app/api/food/*` or the food schema | [[Food]] **first, in full** — it is the module page, and §2 (a schedule is one repeating week, not calendar dates) and §6 (every week-reader consumes `WeekGrid`, never raw schedule rows) are both binding constraints that are easy to violate by accident. Then [[APIs]] and [[Database]] for endpoint/schema detail |
 | Touch move-out / exit / settlement | [[Business-Rules]] (Settlement section) + [[Database]] (`move_out_requests` + satellite tables) |
+| Touch Stay Status — the QR page, leave, occupancy, or anything meant to read "who is here tonight" | [[Decisions#ADR-193\|ADR-193]] **first** — `stay_events` is append-only and every surface is a projection of it, so new work is a new event type or read model, never a change to the core. Then [[Business-Rules]] (Stay Status), [[Database]] (`stay_events`, `stay_leaves`) and [[APIs]] |
 | Touch WhatsApp, email, or reminders | [[Business-Rules]] (Notification triggers) + [[Backend]] (Notification services section) |
 | About to make a call with long-term architectural consequences | [[Decisions]] first, to check whether a prior ADR already covers this; add a new one when you decide |
 | Just fixed something that revealed a real design gap | [[Bugs]] |

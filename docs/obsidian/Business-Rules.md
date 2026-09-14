@@ -1068,3 +1068,16 @@ A manual (no-gateway) payment's declared `amount_paise` is never authoritative f
 - The frontend never queries these tables directly via a Supabase client (verified: zero `supabase.from(...)` hits on these table names anywhere in `apps/frontend/src`) — every read/write goes through the Next.js API routes.
 - RLS was therefore only ever protecting against one thing: the public Supabase `anon` key (extractable from any deployed frontend bundle) being used to query these tables directly via PostgREST, bypassing the app's authorization entirely. Migration `20260910040000_subscription_billing_rls` closes this — READ-ONLY policies, scoped to `profiles.auth_user_id = auth.uid()` (**not** `owner_id = auth.uid()` — those are deliberately different columns, see [[Database]] Auth/session model) for an owner's own rows, or any row for `profiles.role = 'ADMIN'`. No INSERT/UPDATE/DELETE policy exists for `anon`/`authenticated` on any of the four tables, since the app never legitimately writes through that path.
 - Applied to the **dev** database only; verified afterward that the backend's own queries were unaffected (same row counts, same query results, before and after).
+
+## Stay Status (ADR-193)
+
+- **Silence means Present.** A resident who says nothing is staying tonight. Stay tracks *intent*, not movement — nobody is asked to check in, and there is no Unknown state. See [[Decisions#ADR-193|ADR-193]].
+- **A resident is** a `tenants` row with `status = 'ACTIVE'` holding an allocation that is `is_active` with `end_date IS NULL` — `OCCUPYING_ALLOCATION_WHERE`, the same predicate `roomCapacityService` counts beds with. `INVITED` and `FORMER_TENANT` cannot update a stay (409 `STAY_INELIGIBLE`). It follows that **here tonight + away = occupied beds**.
+- **Status is derived** from the active leave and **IST** today (never `hostels.timezone`, which is `UTC`): no leave → PRESENT; return date today → RETURNING_TODAY; return date past → LATE; otherwise ON_LEAVE.
+- **Here tonight = present + due back today.** A **late** resident is *not* counted — they said they would be back and are not — but is surfaced separately ("+k late may turn up") so the kitchen can judge.
+- **A return date is required**, from tomorrow to 90 days out. Leave starts today; planned future start dates are not built yet.
+- **Repeat taps are safe by design.** A second Going home while already away is a no-op, and so is I'm back when not away. Changing the date to the same date is a no-op. Cancelling or changing a leave that does not exist is a 409. An owner cannot record a presence confirmation.
+- **A QR scan by someone already present** records `PRESENCE_CONFIRMED`, at most once per tenant per IST day.
+- **"Late", not "overdue".** In this product "overdue" means unpaid rent; using it for people would collide with every money surface.
+- **Checked out is not a Stay state.** It remains the move-out lifecycle ([[Business-Rules]] move-out section); Stay never writes to it. A leave left open by a departure is inert, because every read filters to residents.
+- **Owner-entered updates are normal**, not an override of last resort: `OWNER_MANAGED` residents have no login, so `source: OWNER` is their only path.

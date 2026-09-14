@@ -673,3 +673,43 @@ Related: [[Decisions#ADR-176|ADR-176]], [[Decisions#ADR-031|ADR-031]], [[APIs]],
 - **New table `email_verification_otps`** (migration `20260911120000_email_verification_otps`), sibling of `phone_verification_otps`: `invitation_id`, `email`, `otp_hash` (bcrypt), `purpose`, `status` (`PENDING → VERIFIED → CONSUMED`, or `EXPIRED`/`LOCKED`/`FAILED`), `attempts`/`max_attempts`, `expires_at`, `verified_at`, `consumed_at`, `failure_reason`, `request_ip`. Prisma model `EmailVerificationOtp`. See [[Decisions#ADR-183|ADR-183]].
 - **Applied to production (`qgfyfbdccjnibdhhvnsr`) on 2026-09-11**, together with `20260825090000_invitation_whatsapp_delivery` (`tenant_invitations.whatsapp_delivered_at`). That column had been hand-applied to the *previous* production project and never to this one; the code reading and writing it swallows errors, so WhatsApp-delivery phone trust was silently inert.
 - **A drift check found production matching `schema.prisma` exactly** (129 models, every column). Of the columns only raw-SQL migrations add, **still absent and deliberately left alone**: 074 `hostels.navigation` and 075 `settlement_items.expected_payout_date` / `gateway_transactions.tenant_id` (pending features whose owners have not released them — 075 touches settlement money); 072 `hostel_reviews.rating_value` / `rating_location` (**dropped on purpose by 076** — do not re-apply 072); and legacy columns superseded by later ones (`tenants.advance_deposit`, `payment_attempts.invoice_id`, `tenants.aadhaar_number`, `tenants.blood_group`, `exit_settlement_transactions.advance_balance`, `whatsapp_owner_sessions.connected_hostel_id`) that no code reads. **Unknown / needs clarification:** whether 074 and 075 should now be applied to this project.
+
+## Stay Status tables (ADR-193, migration `20260914100000_stay_status_events`)
+
+**New tables only.** Nothing was added to `tenants`, `hostels` or `rooms`: declaring a field on an existing Prisma model changes every query that does not select it, which is what broke production on 2026-08-22.
+
+**Applied: nowhere yet, as of 2026-09-14.** The test project `qsjrazcbtpmubclkevwi` answers `tenant/user not found` on both poolers (paused or deleted), and production (`qgfyfbdccjnibdhhvnsr`) awaits the owner's go-ahead. The Stay endpoints 500 until it is applied; nothing else is affected, because no other query reads these tables.
+
+### `stay_events` — append-only, the source of truth
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | uuid PK | `gen_random_uuid()` |
+| `seq` | bigserial, unique | **The replay order.** Folding is by `seq`, never by timestamp. |
+| `tenant_id` | uuid → `tenants` ON DELETE CASCADE | |
+| `hostel_id` | uuid → `hostels` ON DELETE CASCADE | |
+| `room_id` | uuid → `rooms` ON DELETE SET NULL | The room **as it was at the time**, so housekeeping/trends survive a transfer. |
+| `type` | text | `LEAVE_STARTED` / `RETURN_DATE_CHANGED` / `RETURNED` / `LEAVE_CANCELLED` / `PRESENCE_CONFIRMED`. A plain string, validated in the service — the repo's convention. |
+| `effective_date` | date | The **IST** calendar date the event applies to. |
+| `occurred_at` | timestamptz | |
+| `leave_type` | text null | `GOING_HOME` / `VACATION` |
+| `expected_return_date` | date null | |
+| `source` | text | `QR` / `APP` / `OWNER` / `WHATSAPP` |
+| `actor_profile_id` | uuid null, `actor_role` text | who pressed the button |
+| `idempotency_key` | text, **unique** | namespaced `"<tenantId>:<clientKey>"`, or `"presence:<tenantId>:<istDate>"` |
+| `schema_version` | int (1), `payload` jsonb | room for later event types to carry more |
+
+Indexes: `(hostel_id, occurred_at)`, `(tenant_id, seq)`, `(hostel_id, effective_date, type)`.
+**Trigger `stay_events_no_update`** raises on UPDATE — append-only enforced by the database, not by convention. DELETE is deliberately left alone so the tenant/hostel cascades still work when a tenancy is erased.
+
+### `stay_leaves` — the projection (rebuildable)
+
+`id` (= the opening `LEAVE_STARTED` event's id), `tenant_id`, `hostel_id`, `leave_type`, `start_date`, `expected_return_date`, `status` (`ACTIVE`/`RETURNED`/`CANCELLED`), `returned_at`, `last_event_id`, `created_at`, `updated_at`.
+
+- **`stay_leaves_one_active_per_tenant`** — a partial unique index on `(tenant_id) WHERE status = 'ACTIVE'`. This is the concurrency guard: two simultaneous "Going home" taps both write, the second violates it, its whole transaction (event included) rolls back, and the tenant still has exactly one leave. Prisma cannot express a partial unique index, so it lives only in the migration.
+- Writes are pinned optimistically on `last_event_id`, so a concurrent update that moved the leave first causes this one to roll back rather than overwrite.
+- `(hostel_id, status, expected_return_date)` for the board.
+
+Both tables have **RLS enabled with no policies**: PostgREST's `anon`/`authenticated` roles see nothing, and the backend's connection bypasses RLS. Same pattern as the subscription-billing tables.
+
+**Status is not stored anywhere.** PRESENT / ON_LEAVE / RETURNING_TODAY / LATE are derived from the active leave and IST today. See [[Business-Rules]] and [[Decisions#ADR-193|ADR-193]].
