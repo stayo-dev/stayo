@@ -47,6 +47,13 @@ export const queryKeys = {
 
   notifications: () => ownerKey('notifications'),
 
+  /** Stay Status (ADR-193). The tenant key sits beside the other ['tenant', …] keys. */
+  stay: {
+    mine: () => ['tenant', 'stay'],
+    board: (hostelId: string | null | undefined) => hostelKey(hostelId, 'stay', 'board'),
+    summary: () => ownerKey('stay', 'summary'),
+  },
+
   portfolio: {
     all: () => ownerKey('portfolio'),
     summary: () => ownerKey('portfolio', 'summary'),
