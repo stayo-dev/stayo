@@ -10,6 +10,14 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-14**: **WhatsApp rent reminders and payment receipts actually send** ([[Bugs]], [[Decisions#ADR-196|ADR-196]], [[Frontend]], [[Backend]]).
+  - **They had never worked.** The code sent template names (`rent_overdue_warm_v1` and three siblings) that were not registered in the WABA, so Meta rejected every one with `132001`. Production `whatsapp_logs` held four rows ever, all onboarding templates; not a single rent reminder had been written.
+  - **And nobody could tell**, because the owner's button toasted "Reminder sent" on any HTTP 200, discarding the per-channel delivery report the backend had always returned.
+  - **The generation switch is gone.** One entry per template holds name, language, parameter order and the approved body, all changing together — a rename moves the `{{n}}` vector with it, so it is a code change, not an env var. The four `WHATSAPP_*_TEMPLATE` variables are now inert.
+  - **The UI reports what happened:** success, a warning when one channel failed, an error when nothing was delivered — and "Reminded" only latches on a real delivery, so a failed send stays retryable. A channel the owner switched off is not a warning.
+  - **Drift is now a test failure:** the four names and languages are pinned against the live WABA listing, bodies must have gap-free `1..N` placeholders, and the built vector's length and order are asserted. The existing `whatsapp-guardian-reminders.test.ts` had been failing on `main` for exactly this drift and is green again.
+  - **Confirmed live:** resident's reminder `READ`, guardian's `DELIVERED`, and the payment link opened from the message — the first rent reminders this product has ever delivered.
+
 - **2026-09-14**: **The kitchen is told how many to cook for, learned from what it actually served** ([[Features]], [[APIs]], [[Database]], [[Business-Rules]], [[Food]], [[Decisions#ADR-195|ADR-195]]).
   - **Why not just the headcount:** participation is lopsided — nearly everyone eats dinner, far fewer eat lunch — so occupancy shown as a meal number would overstate lunch every day and be abandoned. Nothing in Stayo recorded how many people actually ate, so this slice creates that ground truth first.
   - **The kitchen sheet asks one number per meal** once its serving window closes, and shows the expected count beside today's and tomorrow's menus. `≈ 34 · from the last 2 weeks` when inferred; a bare `31 · still learning what people actually eat` until a meal has three logged days. Re-entering a count corrects it.

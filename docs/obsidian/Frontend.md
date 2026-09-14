@@ -453,6 +453,27 @@ StayO is getting a real desktop application layout for owner + tenant. **The bre
 
 **Do not `import` the desktop primitives** unless executing a plan phase. `MasterDetail`/`AppConsoleShell`/`adaptive-surface` are in `app/` (not `shared/ui/`) because `check-architecture.mjs` forbids `shared/` → `app/` imports.
 
+## Reminder outcomes (ADR-196)
+
+`features/notifications/useSendReminder.ts` is the owner's one-tap "Remind"
+(rendered by `owner-tenants/components/TenantQuickActions.tsx`, and by the
+unmounted `ReminderActionBar`). It used to call `toast.success('Reminder sent')`
+in `onSuccess` and discard the body — so a reminder Meta had rejected looked
+identical to one that landed, which is how [[Bugs]]' 2026-09-14 outage stayed
+invisible for weeks.
+
+The reading now lives in `features/notifications/reminderOutcome.ts`, a pure
+module under test (the frontend suite is node-only, so decision logic goes in
+`.ts` and components stay thin renderers):
+
+- `success: false` still arrives as **HTTP 200** — `apiResponse` spreads the
+  payload over `{ success: true }`, so `{ success: false, message }` wins on the
+  spread. Treated as an error, showing the backend's own sentence.
+- A channel **attempted and not sent** is a failure and names its `error_code`.
+- A channel **skipped because the owner switched it off** (`WHATSAPP_DISABLED`,
+  `TENANT_EMAIL_MISSING`, `NO_TENANT_ACCOUNT`, …) is not a warning.
+- `delivered` gates the "Reminded" latch, so a failed send stays retryable.
+
 ## See also
 - [[APIs]] for the endpoint shapes feature wrappers call
 - [[Features]] for what's built on top of this structure
