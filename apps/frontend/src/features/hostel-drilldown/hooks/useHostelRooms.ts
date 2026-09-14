@@ -63,9 +63,9 @@ function mapRoom(hostelId: string, floorId: string, room: BackendRoom): RoomWith
  * Real floor/room data for the Rooms tab, replacing `useRoomsLayout`'s mock
  * source. Per-bed identity isn't a real backend concept (see the backend
  * readiness audit) — `beds[]` is synthesized from the real `occupied`/
- * `reserved`/`capacity` counts the backend already computes, in the same
- * shape `RoomRow`/`FloorGroup`/`RoomLayoutCard` already expect, so none of
- * those presentational components needed to change.
+ * `reserved`/`capacity` counts the backend already computes. The building
+ * (`building/buildingModel.roomBedSlots`) pairs those counts with `occupants`
+ * to put a face on each bed; `RoomsReorderPanel` still draws them as dots.
  */
 export function useHostelRooms(hostelId: string) {
   const queryClient = useQueryClient();

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { BottomSheet } from '@shared/ui-patterns/BottomSheet';
 import type { Floor } from '@shared/mocks/rooms';
 import { canDeleteFloor } from '../propertyRemoval';
@@ -16,6 +16,8 @@ interface EditFloorSheetProps {
   onClose: () => void;
   onRename: (name: string) => Promise<void>;
   onDelete: () => Promise<void>;
+  /** Add a room to this floor — the same as the "+" under its plate on the building. */
+  onAddRoom?: () => void;
 }
 
 const labelStyle = 'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground';
@@ -44,6 +46,7 @@ export function EditFloorSheet({
   onClose,
   onRename,
   onDelete,
+  onAddRoom,
 }: EditFloorSheetProps) {
   const [name, setName] = useState(floor?.name ?? '');
   const [serverError, setServerError] = useState<string | null>(null);
@@ -121,8 +124,18 @@ export function EditFloorSheet({
         <div className="rounded-2xl border border-border bg-muted/40 px-3.5 py-3">
           <p className="font-display text-[13px] font-bold text-foreground">{describeFloor(summary)}</p>
           <p className="mt-0.5 text-[11.5px] text-muted-foreground">
-            To change the order of floors, use Reorder on the Rooms tab.
+            To change the order of floors, use Arrange (⇅) on the Rooms tab.
           </p>
+          {onAddRoom && (
+            <button
+              type="button"
+              onClick={onAddRoom}
+              className="mt-2.5 inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-dashed border-primary/60 bg-card px-3 font-display text-[12.5px] font-bold text-primary hover:bg-primary/5"
+            >
+              <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+              Add a room here
+            </button>
+          )}
         </div>
 
         <div className="border-t border-border pt-3.5">

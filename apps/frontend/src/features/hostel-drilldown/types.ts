@@ -20,9 +20,9 @@ export interface RoomOccupant {
   occupant_type?: string;
 }
 
-/** Real room shape — same bed/id/rent fields the mock `Room` type has (so
- * `RoomRow`/`FloorGroup` need no changes), plus the real per-occupant detail
- * `RoomSheetModal` needs instead of a mock tenant lookup. */
+/** Real room shape — the bed/id/rent fields the mock `Room` type has, plus the
+ * real per-occupant detail the building (`building/buildingModel`) and
+ * `RoomSheetModal` draw from. */
 export interface RoomWithOccupants {
   id: string;
   number: string;
