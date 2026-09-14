@@ -11,7 +11,16 @@ interface BackendRoom {
   floor_id: string | null;
   occupied: number;
   reserved: number;
-  tenants: Array<{ tenant_id: string; name: string; rent: number; pending_dues: number; status: string }>;
+  tenants: Array<{
+    tenant_id: string;
+    name: string;
+    rent: number;
+    pending_dues: number;
+    status: string;
+    photo_url?: string | null;
+    payment_status?: string;
+    occupant_type?: string;
+  }>;
 }
 
 interface BackendFloorGroup {
@@ -28,6 +37,9 @@ function mapRoom(hostelId: string, floorId: string, room: BackendRoom): RoomWith
     rent: t.rent,
     pending_dues: t.pending_dues,
     status: t.status,
+    photo_url: t.photo_url ?? null,
+    payment_status: t.payment_status,
+    occupant_type: t.occupant_type,
   }));
   const beds: RoomWithOccupants['beds'] = [];
   for (let i = 0; i < room.occupied; i++) beds.push({ id: `${room.id}-o${i}`, status: 'occupied', tenantId: occupants[i]?.tenant_id });
