@@ -4379,6 +4379,24 @@ model stay_events {
   @@index([hostel_id, effective_date, type], map: "stay_events_hostel_date_type_idx")
 }
 
+/// What the kitchen actually served (meal forecast, ADR-194). A measurement,
+/// not an event: one row per hostel/date/meal, and re-entry corrects it.
+/// `headcount_at_log` is the frozen denominator of the learned ratio.
+model meal_service_logs {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hostel_id        String   @db.Uuid
+  serve_date       DateTime @db.Date
+  meal_type        String
+  served_count     Int
+  headcount_at_log Int
+  recorded_by      String?  @db.Uuid
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@unique([hostel_id, serve_date, meal_type], map: "meal_service_logs_hostel_date_meal_key")
+  @@index([hostel_id, meal_type, serve_date(sort: Desc)], map: "meal_service_logs_hostel_meal_date_idx")
+}
+
 /// Projection of `stay_events`: one row per leave. Rebuildable by replay.
 /// "One ACTIVE leave per tenant" is a partial unique index in the migration
 /// (`stay_leaves_one_active_per_tenant`) — Prisma cannot express it.
