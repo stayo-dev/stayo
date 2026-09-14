@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Eye, EyeOff, X } from 'lucide-react';
 import { cn } from '@shared/lib/cn';
@@ -6,6 +6,7 @@ import { useAuth } from '@context/AuthContext';
 import { ClerkGoogleSignIn } from './ClerkGoogleSignIn';
 import {
   RIM_OVERLAP_PERCENT,
+  rimCenteringOffsetPx,
   StayoDog,
   StayoLoader,
   StayoMark,
@@ -18,6 +19,14 @@ import {
   validateTenantSignup,
   type TenantSignupErrors,
 } from '@shared/lib/tenantSignupForm';
+
+/**
+ * How far the centred card moves down to make room for the dog leaning on it,
+ * derived from the art rather than guessed — `184` is the desktop dog's width
+ * (`sm:w-[184px]` below). Also sets the card's height cap, so a long form
+ * cannot grow into the dog's space.
+ */
+const DOG_RISE_PX = Math.round(rimCenteringOffsetPx(184));
 
 export type LoginModalMode = 'owner' | 'tenant';
 
@@ -41,10 +50,9 @@ interface LoginModalForm {
   name: string;
   email: string;
   password: string;
-  confirmPassword: string;
 }
 
-const EMPTY_FORM: LoginModalForm = { name: '', email: '', password: '', confirmPassword: '' };
+const EMPTY_FORM: LoginModalForm = { name: '', email: '', password: '' };
 
 const inputClass =
   'w-full rounded-[11px] border-[1.5px] border-border bg-muted px-3.5 py-2.5 text-[14.5px] font-medium text-foreground transition-colors focus:border-primary focus:outline-none';
@@ -94,7 +102,6 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
   const [tab, setTab] = useState<'login' | 'signup'>(initialTab);
   const [form, setForm] = useState<LoginModalForm>(EMPTY_FORM);
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   /** Per-field signup messages, shown under the field they belong to. */
@@ -111,7 +118,6 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
     setTab(isOwner ? 'login' : initialTab);
     setForm(EMPTY_FORM);
     setShowPassword(false);
-    setShowConfirmPassword(false);
     setError('');
     setFieldErrors({});
     setSubmitting(false);
@@ -194,11 +200,6 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
     setShowPassword(next);
     dog.setPasswordVisible(next);
   };
-  const toggleShowConfirmPassword = () => {
-    const next = !showConfirmPassword;
-    setShowConfirmPassword(next);
-    dog.setPasswordVisible(next);
-  };
 
   /**
    * Tenant mode allows Google to create a new account (alongside the password
@@ -226,8 +227,15 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
           className={cn(
             'fixed z-[500] inset-x-0 bottom-0',
             'data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=open]:duration-300',
-            'sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-[420px] sm:-translate-x-1/2 sm:-translate-y-1/2',
+            'sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-[420px] sm:-translate-x-1/2',
+            // Centring the card alone leaves `(viewport - card) / 2` above it,
+            // which is less than the dog needs — its head was cut off by the
+            // top of the window. Shifting down by half the dog centres the two
+            // as the one object the eye reads. See `dogRimFit`.
+            'sm:translate-y-[calc(-50%+var(--dog-rise))]',
+            '[@media(max-height:560px)]:sm:-translate-y-1/2',
           )}
+          style={{ '--dog-rise': `${DOG_RISE_PX}px` } as CSSProperties}
         >
           {/* Hidden below 560px of height (a phone in landscape, a raised
               keyboard): the sheet must never be pushed off screen for it. */}
@@ -240,9 +248,15 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
           <div
             className={cn(
               'relative flex flex-col bg-card p-6 pb-6 shadow-[0_40px_90px_-30px_rgba(47,47,47,0.5)]',
-              // Leaves room above the sheet for the dog on a phone; where the
-              // dog hides (short screens) the sheet gets its full 88vh back.
-              'max-h-[min(88vh,calc(100dvh_-_8.5rem))] overflow-y-auto rounded-t-[22px] pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]',
+              // Room for the dog above (twice the shift, since the card is
+              // centred) plus a little air, so a tall form cannot grow into the
+              // dog's space or off the bottom of the window. Where the dog
+              // hides (short screens) the card gets its full 88vh back.
+              'max-h-[min(88vh,calc(100dvh_-_var(--dog-rise)_*_2_-_1rem))]',
+              'overflow-y-auto overscroll-contain rounded-t-[22px] pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]',
+              // Only shows when a form genuinely overflows; the native bar cut
+              // across the card's rounded corner.
+              '[scrollbar-width:thin] [scrollbar-color:var(--border)_transparent]',
               '[@media(max-height:560px)]:max-h-[88vh] sm:rounded-[22px]',
             )}
           >
@@ -276,11 +290,11 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
                 <Dialog.Title className="mb-1 mt-3.5 font-display text-[22px] font-extrabold text-foreground">
                   {isLogin ? 'Welcome back' : 'Create your account'}
                 </Dialog.Title>
-                <Dialog.Description className="mb-4.5 text-sm leading-normal text-muted-foreground">
+                <Dialog.Description className="mb-4 text-sm leading-normal text-muted-foreground">
                   {isLogin ? 'Log in to continue.' : 'Browse, save and enquire about stays.'}
                 </Dialog.Description>
 
-                <div className="relative mb-5 flex gap-0 rounded-[13px] border border-border bg-muted p-1.5">
+                <div className="relative mb-4 flex gap-0 rounded-[13px] border border-border bg-muted p-1.5">
                   <div
                     aria-hidden="true"
                     className={cn(
@@ -310,7 +324,7 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
 
             {isTenantSignup ? (
               <>
-                <form onSubmit={onSubmit} className="flex flex-col gap-3.5" noValidate>
+                <form onSubmit={onSubmit} className="flex flex-col gap-3" noValidate>
                   <label className="block">
                     <span className={labelClass}>FULL NAME</span>
                     <input
@@ -360,29 +374,6 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
                       />
                     </div>
                     <FieldError message={fieldErrors.password} />
-                  </label>
-
-                  <label className="block">
-                    <span className={labelClass}>CONFIRM PASSWORD</span>
-                    <div className="relative" {...dog.bind.passwordGroup(showConfirmPassword)}>
-                      <input
-                        value={form.confirmPassword}
-                        onChange={(e) => set('confirmPassword', e.target.value)}
-                        type={showConfirmPassword ? 'text' : 'password'}
-                        placeholder="Type it again"
-                        autoComplete="new-password"
-                        {...dog.bind.passwordInput}
-                        aria-invalid={Boolean(fieldErrors.confirmPassword)}
-                        className={cn(inputClass, 'pr-11', fieldErrors.confirmPassword && errorInputClass)}
-                      />
-                      <RevealButton
-                        shown={showConfirmPassword}
-                        onToggle={toggleShowConfirmPassword}
-                        onMouseDown={dog.bind.revealButton.onMouseDown}
-                      />
-                    </div>
-                    <FieldError message={fieldErrors.confirmPassword} />
-                    {/* Once, under the pair: it applies to both password fields. */}
                     <CapsLockHint on={dog.capsLock} />
                   </label>
 
@@ -402,7 +393,7 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
                   </button>
                 </form>
 
-                <div className="my-4 flex items-center gap-3">
+                <div className="my-3.5 flex items-center gap-3">
                   <span className="h-px flex-1 bg-border" />
                   <span className="font-display text-[11px] font-bold tracking-wider text-muted-foreground">OR</span>
                   <span className="h-px flex-1 bg-border" />
@@ -411,7 +402,7 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
 
                 {/* Said once, here, because it's the question this form raises:
                     there's no phone field, and an enquiry obviously needs one. */}
-                <p className="mt-4 text-center text-[12px] leading-normal text-muted-foreground">
+                <p className="mt-3.5 text-center text-[12px] leading-normal text-muted-foreground">
                   We'll ask for your phone number and verify it once — when you're ready to send an enquiry.
                 </p>
               </>
@@ -467,7 +458,7 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
                   </button>
                 </form>
 
-                <div className="my-4 flex items-center gap-3">
+                <div className="my-3.5 flex items-center gap-3">
                   <span className="h-px flex-1 bg-border" />
                   <span className="font-display text-[11px] font-bold tracking-wider text-muted-foreground">OR</span>
                   <span className="h-px flex-1 bg-border" />
@@ -499,17 +490,14 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
                * which hostels. Proof of the number comes from the OTP inside the
                * claim flow, and nothing is revealed before it.
                */
-              <div className="mt-5 border-t border-border pt-4 text-center">
-                <p className="text-[12.5px] leading-normal text-muted-foreground">
-                  Already staying at a hostel and your owner set you up?
-                </p>
-                <a
-                  href="/claim"
-                  className="mt-1 inline-block font-display text-[13px] font-bold text-primary hover:underline"
-                >
+              /* One line rather than a stacked question and answer: it is an
+                 aside for the few it applies to, not a third way in. */
+              <p className="mt-4 border-t border-border pt-3.5 text-center text-[12.5px] leading-normal text-muted-foreground">
+                Already staying at a hostel and your owner set you up?{' '}
+                <a href="/claim" className="font-display font-bold text-primary hover:underline">
                   Take charge of your account
                 </a>
-              </div>
+              </p>
             )}
           </div>
         </Dialog.Content>

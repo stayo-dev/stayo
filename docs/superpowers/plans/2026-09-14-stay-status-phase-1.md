@@ -326,7 +326,7 @@ import { addDaysIso, daysBetweenIso, weekdayOfIso } from "@/lib/timezone";
 /**
  * Stay Status rules — pure. Status is never stored: it is derived from the
  * tenant's active leave (or its absence) and IST today. Silence = Present.
- * See ADR-193 and docs/superpowers/specs/2026-09-14-stay-status-design.md.
+ * See ADR-194 and docs/superpowers/specs/2026-09-14-stay-status-design.md.
  */
 
 export const LEAVE_TYPES = ["GOING_HOME", "VACATION"] as const;
@@ -562,7 +562,7 @@ describe("replayStayEvents", () => {
 import { isLeaveType, validateReturnDate, type LeaveType, type StaySource } from "./stay-status";
 
 /**
- * The Stay Status core (ADR-193). `stay_events` is the permanent truth; the
+ * The Stay Status core (ADR-194). `stay_events` is the permanent truth; the
  * `stay_leaves` projection and every screen are derived from it. This reducer
  * is the only place stay semantics live — the write path and replay both call
  * it, so the projection can always be rebuilt and can never disagree.
@@ -1010,7 +1010,7 @@ git commit -m "feat(stay): owner board read model — answers, not states"
 - [ ] **Step 1: Write the migration** `apps/backend/prisma/migrations/20260914100000_stay_status_events/migration.sql`
 
 ```sql
--- Stay Status (ADR-193): the event store and its one projection.
+-- Stay Status (ADR-194): the event store and its one projection.
 --
 -- `stay_events` is the permanent truth — every stay update is appended here
 -- and never edited. `stay_leaves` is a projection of it (who is on leave now),
@@ -1078,7 +1078,7 @@ CREATE INDEX IF NOT EXISTS "stay_leaves_hostel_status_return_idx"
 CREATE OR REPLACE FUNCTION "stay_events_refuse_update"() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
-  RAISE EXCEPTION 'stay_events is append-only (ADR-193)';
+  RAISE EXCEPTION 'stay_events is append-only (ADR-194)';
 END;
 $$;
 DROP TRIGGER IF EXISTS "stay_events_no_update" ON "stay_events";
@@ -1094,7 +1094,7 @@ ALTER TABLE "stay_leaves" ENABLE ROW LEVEL SECURITY;
 - [ ] **Step 2: Add the Prisma models.** Append to `apps/backend/prisma/schema.prisma`:
 
 ```prisma
-/// Stay Status event store (ADR-193). Append-only — the permanent truth;
+/// Stay Status event store (ADR-194). Append-only — the permanent truth;
 /// every stay surface is a projection of it. A DB trigger refuses UPDATE.
 /// No Prisma relations on purpose: nothing else reads through them, and
 /// adding back-relations to `tenants`/`hostels` buys nothing.
@@ -1509,7 +1509,7 @@ import { eventToRow, leaveFromRow, leaveToRow, toDbDate } from "./stay-rows";
 import { ineligible, invalidRequest, rejection } from "./stay-errors";
 
 /**
- * Stay Status I/O (ADR-193). `recordStayEvent` is the ONE write path — app,
+ * Stay Status I/O (ADR-194). `recordStayEvent` is the ONE write path — app,
  * QR, owner and (later) WhatsApp all call it. It appends to `stay_events` and
  * moves the `stay_leaves` projection in one transaction, using the pure
  * reducer. Reads compose the existing resident predicate and
@@ -1821,7 +1821,7 @@ import { loadFonts } from "./menu-template-pdf-lib";
  * The hostel's Stay QR, for a wall by the entrance. Laminated once, scanned
  * hundreds of times a day, read from arm's length by someone walking in with
  * a bag — so: one hostel name, one instruction, one very large code. The QR
- * encodes `/stay/<hostelId>` and never changes. See ADR-193.
+ * encodes `/stay/<hostelId>` and never changes. See ADR-194.
  */
 
 const PAGE_W = 595.28; // A4 portrait
@@ -2071,7 +2071,7 @@ import { stayErrorResponse } from "@/src/services/stay/stay-errors";
  * GET /api/tenant/stay — the signed-in tenant's stay: hostel, whether they
  * are a resident, their derived status, and the date window for leave
  * (today, suggested return, min/max). The QR page and Tenant Home render
- * straight from this. See ADR-193.
+ * straight from this. See ADR-194.
  */
 export async function GET(req: NextRequest) {
   const session = await getSession(req);
@@ -2154,7 +2154,7 @@ import { stayErrorResponse } from "@/src/services/stay/stay-errors";
 /**
  * GET /api/hostels/[id]/stay — the owner's Stay board for one hostel:
  * here tonight, meals, back today, late, rooms to check, beds free.
- * Answers, not states. See ADR-193.
+ * Answers, not states. See ADR-194.
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession(req);
@@ -2474,7 +2474,7 @@ git commit -m "test(stay): Postgres proves one-active-leave, key dedupe, replay 
 - [ ] **Step 1: Write the wire types** `apps/frontend/src/features/stay/types.ts`
 
 ```ts
-/** Wire types for Stay Status — mirror `apps/backend/src/services/stay/*`. See ADR-193. */
+/** Wire types for Stay Status — mirror `apps/backend/src/services/stay/*`. See ADR-194. */
 
 export type StayStatus = 'PRESENT' | 'ON_LEAVE' | 'RETURNING_TODAY' | 'LATE';
 export type LeaveType = 'GOING_HOME' | 'VACATION';
@@ -2582,7 +2582,7 @@ export const stayApi = {
 - [ ] **Step 3: Add the query keys.** In `apps/frontend/src/lib/queryKeys.ts`, add this member to the `queryKeys` object, directly after `notifications: () => ownerKey('notifications'),`:
 
 ```ts
-  /** Stay Status (ADR-193). The tenant key sits beside the other ['tenant', …] keys. */
+  /** Stay Status (ADR-194). The tenant key sits beside the other ['tenant', …] keys. */
   stay: {
     mine: () => ['tenant', 'stay'],
     board: (hostelId: string | null | undefined) => hostelKey(hostelId, 'stay', 'board'),
@@ -2752,7 +2752,7 @@ import type { MyStay, StayBoard, StaySummary, SuggestedReturn, TenantStay } from
 /**
  * Stay Status screen models — pure, so the two-second rule and the
  * "one primary action" rule are tested, not hoped for. Components render
- * these and decide nothing. See ADR-193.
+ * these and decide nothing. See ADR-194.
  */
 
 export type MoreAction = 'GOING_HOME' | 'VACATION' | 'CHANGE_DATE' | 'CANCEL_LEAVE';
@@ -3230,7 +3230,7 @@ import { SCAN_MESSAGE, scanViewFor, shouldConfirmPresence } from '@features/stay
 
 /**
  * `/stay/:hostelId` — what the hostel's laminated QR opens. Scan, one tap,
- * done (ADR-193). Present: "You're in ✓", no button. Away: one big I'm back.
+ * done (ADR-194). Present: "You're in ✓", no button. Away: one big I'm back.
  * Everything else is behind More. Signs a first-time visitor in right here
  * and stays on this URL — see TenantRoutes for why it is outside the tenant
  * gate.
@@ -3307,7 +3307,7 @@ and inside `TenantRoutes()`, directly after the `/tenant/farewell` `<Route>`:
 
 ```tsx
       {/*
-        * The hostel QR (ADR-193). Also OUTSIDE `TenantProviderShell`: that
+        * The hostel QR (ADR-194). Also OUTSIDE `TenantProviderShell`: that
         * gate sends a signed-out visitor to /login — the owner landing — and
         * drops this path, so a first scan would end on /tenant/home. The page
         * signs people in itself and stays put: scan, sign in once, tap, done.
@@ -3420,7 +3420,7 @@ import type { TonightCards } from '@features/stay/stayState';
 /**
  * Owner Home's answer to "how is my hostel tonight?" — three numbers, each a
  * question answered, all opening the Stay board. Rendered only once someone
- * lives here (`tonightCards` returns null before that). See ADR-193.
+ * lives here (`tonightCards` returns null before that). See ADR-194.
  */
 export function TonightSection({ cards, onOpen }: { cards: TonightCards; onOpen: () => void }) {
   return (
@@ -3453,7 +3453,7 @@ export function TonightSection({ cards, onOpen }: { cards: TonightCards; onOpen:
     - Import `TonightSection` and `type TonightCards`.
     - Add these to the props interface:
       ```ts
-      /** Stay Status answers (ADR-193); null until someone lives here. */
+      /** Stay Status answers (ADR-194); null until someone lives here. */
       tonight?: TonightCards | null;
       onOpenStay?: () => void;
       ```
@@ -3762,7 +3762,7 @@ git fetch origin && git show origin/main:docs/obsidian/Decisions.md | grep -oE '
 grep -oE '^## ADR-[0-9]+' docs/obsidian/Decisions.md | sort -t- -k2 -n | tail -1
 ```
 
-Use the next free number (193 as of 2026-09-14). If it's taken by merge time, renumber every `ADR-193` in the vault **and in code comments** (`grep -rn "ADR-193" apps docs`).
+Use the next free number (193 as of 2026-09-14). If it's taken by merge time, renumber every `ADR-194` in the vault **and in code comments** (`grep -rn "ADR-194" apps docs`).
 
 - [ ] **Step 2: Write the ADR** in `Decisions.md`, following the file's existing ADR format. Its content:
   - **Title:** "Stay Status: stay_events is the permanent truth; every surface is a projection"
@@ -3778,7 +3778,7 @@ Use the next free number (193 as of 2026-09-14). If it's taken by merge time, re
   - **Consequences:** future modules (meals, housekeeping, guardians, analytics, WhatsApp) are new event types and read models. The date and time copy is English-only for now.
   - **Rejected alternatives:** a status column on `tenants` (the blast-radius rule, and no history); computing vacancy again; `window.print()` for the poster.
 
-- [ ] **Step 3: Update the other vault pages.** Each links `[[Decisions#ADR-193|ADR-193]]` and at least one other note.
+- [ ] **Step 3: Update the other vault pages.** Each links `[[Decisions#ADR-194|ADR-194]]` and at least one other note.
   - **Features.md:** a "Stay Status (Phase 1)" entry covering what a tenant can do, what an owner sees, and the entry points (`/stay/:hostelId`, the Tenant Home block, the Home Tonight row, `/owner/stay`, the poster).
   - **APIs.md:** the six endpoints with auth, body and response, copied from Task 8's wire-contract table and route docblocks.
   - **Database.md:** `stay_events` and `stay_leaves`, column by column, with the partial unique index, the append-only trigger, RLS-with-no-policies, the migration folder name, and **whether it has been applied to test and prod** (state exactly what Task 14 verified).
@@ -3804,9 +3804,9 @@ Use the next free number (193 as of 2026-09-14). If it's taken by merge time, re
 - [ ] **Step 5: Check the vault's links, then commit**
 
 ```bash
-grep -c "ADR-193" docs/obsidian/*.md
+grep -c "ADR-194" docs/obsidian/*.md
 git add docs
-git commit -m "docs(stay): ADR-193, vault pages, schema and spec brought in line with the build"
+git commit -m "docs(stay): ADR-194, vault pages, schema and spec brought in line with the build"
 ```
 
 ---

@@ -9,7 +9,7 @@ import { SCAN_MESSAGE, scanViewFor, shouldConfirmPresence } from '@features/stay
 
 /**
  * `/stay/:hostelId` — what the hostel's laminated QR opens. Scan, one tap,
- * done (ADR-193). Present: "You're in ✓", no button. Away: one big I'm back.
+ * done (ADR-194). Present: "You're in ✓", no button. Away: one big I'm back.
  * Everything else is behind More. Signs a first-time visitor in right here
  * and stays on this URL — see TenantRoutes for why it is outside the tenant
  * gate.

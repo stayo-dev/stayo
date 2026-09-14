@@ -18,7 +18,7 @@ interface ReturnDateSheetProps {
  * Going home is ONE button — the smart default ("Back Sunday" Thu–Fri,
  * otherwise "Back tomorrow") — with any other date one tap further down.
  * Vacation and changing a date have no sensible default, so they open on
- * the picker. See ADR-193.
+ * the picker. See ADR-194.
  */
 export function ReturnDateSheet({ mode, suggested, minDate, maxDate, initialDate, onPick, onClose }: ReturnDateSheetProps) {
   const [showPicker, setShowPicker] = useState(mode !== 'GOING_HOME');

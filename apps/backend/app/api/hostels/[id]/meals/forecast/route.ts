@@ -14,7 +14,7 @@ import { mealErrorResponse } from "@/src/services/meals/meal-errors";
  * How many to cook for, per day and meal — learned from what this hostel
  * actually served, or the plain headcount while it is still learning.
  * Defaults to today and tomorrow, which is what the kitchen sheet shows.
- * See ADR-194.
+ * See ADR-195.
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession(req);

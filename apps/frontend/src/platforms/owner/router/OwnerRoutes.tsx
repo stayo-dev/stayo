@@ -244,7 +244,7 @@ export function OwnerRoutes() {
         <Route path="/owner/food" element={<FoodPage />} />
         <Route path="/owner/food/meal-plan" element={<MealPlanPage />} />
         <Route path="/owner/food/kitchen" element={<KitchenSheetPage />} />
-        {/* Stay Status (ADR-193) — tonight's occupancy, opened from Home's Tonight row. */}
+        {/* Stay Status (ADR-194) — tonight's occupancy, opened from Home's Tonight row. */}
         <Route path="/owner/stay" element={<StayBoardPage />} />
         <Route path="/owner/food/polls" element={<FoodPollsPage />} />
         {/* Meal Timings and the Weekly Timetable were merged into one Meal

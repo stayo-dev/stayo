@@ -674,13 +674,13 @@ Related: [[Decisions#ADR-176|ADR-176]], [[Decisions#ADR-031|ADR-031]], [[APIs]],
 - **Applied to production (`qgfyfbdccjnibdhhvnsr`) on 2026-09-11**, together with `20260825090000_invitation_whatsapp_delivery` (`tenant_invitations.whatsapp_delivered_at`). That column had been hand-applied to the *previous* production project and never to this one; the code reading and writing it swallows errors, so WhatsApp-delivery phone trust was silently inert.
 - **A drift check found production matching `schema.prisma` exactly** (129 models, every column). Of the columns only raw-SQL migrations add, **still absent and deliberately left alone**: 074 `hostels.navigation` and 075 `settlement_items.expected_payout_date` / `gateway_transactions.tenant_id` (pending features whose owners have not released them — 075 touches settlement money); 072 `hostel_reviews.rating_value` / `rating_location` (**dropped on purpose by 076** — do not re-apply 072); and legacy columns superseded by later ones (`tenants.advance_deposit`, `payment_attempts.invoice_id`, `tenants.aadhaar_number`, `tenants.blood_group`, `exit_settlement_transactions.advance_balance`, `whatsapp_owner_sessions.connected_hostel_id`) that no code reads. **Unknown / needs clarification:** whether 074 and 075 should now be applied to this project.
 
-## Stay Status tables (ADR-193, migration `20260914100000_stay_status_events`)
+## Stay Status tables (ADR-194, migration `20260914100000_stay_status_events`)
 
 **New tables only.** Nothing was added to `tenants`, `hostels` or `rooms`: declaring a field on an existing Prisma model changes every query that does not select it, which is what broke production on 2026-08-22.
 
 **Applied 2026-09-14 to production `qgfyfbdccjnibdhhvnsr`** and to the dev sandbox `xhoqkhwsnqfwhjsffybs`. Production was verified object by object, not by trusting the success message: 16 + 11 columns, 9 indexes, `stay_leaves_one_active_per_tenant` carrying the right `WHERE (status = 'ACTIVE'::text)`, the `stay_events_no_update` trigger present, RLS enabled on both tables with **0 policies** (the backend connection bypasses RLS), and 0 rows. The test project `qsjrazcbtpmubclkevwi` answers `tenant/user not found` on both poolers (paused or deleted) and could not be used at all.
 
-**Proven against real Postgres on the sandbox** (raw SQL, rows cleaned up afterwards): a duplicate `idempotency_key` is rejected (`23505`); an `UPDATE` on `stay_events` raises *"stay_events is append-only (ADR-193)"*; a second `ACTIVE` leave for one tenant is rejected (`23505`); and a new leave **is** allowed once the previous one is `RETURNED`, which is what makes the index correctly partial. The service-level DB suite (`tests/stay-service.db.test.ts`) still has not run: Prisma's engine cannot reach this project's pooler from the development machine on either port, though a raw `pg` client can.
+**Proven against real Postgres on the sandbox** (raw SQL, rows cleaned up afterwards): a duplicate `idempotency_key` is rejected (`23505`); an `UPDATE` on `stay_events` raises *"stay_events is append-only (ADR-194)"*; a second `ACTIVE` leave for one tenant is rejected (`23505`); and a new leave **is** allowed once the previous one is `RETURNED`, which is what makes the index correctly partial. The service-level DB suite (`tests/stay-service.db.test.ts`) still has not run: Prisma's engine cannot reach this project's pooler from the development machine on either port, though a raw `pg` client can.
 
 ### `stay_events` — append-only, the source of truth
 
@@ -714,11 +714,11 @@ Indexes: `(hostel_id, occurred_at)`, `(tenant_id, seq)`, `(hostel_id, effective_
 
 Both tables have **RLS enabled with no policies**: PostgREST's `anon`/`authenticated` roles see nothing, and the backend's connection bypasses RLS. Same pattern as the subscription-billing tables.
 
-**Status is not stored anywhere.** PRESENT / ON_LEAVE / RETURNING_TODAY / LATE are derived from the active leave and IST today. See [[Business-Rules]] and [[Decisions#ADR-193|ADR-193]].
+**Status is not stored anywhere.** PRESENT / ON_LEAVE / RETURNING_TODAY / LATE are derived from the active leave and IST today. See [[Business-Rules]] and [[Decisions#ADR-194|ADR-194]].
 
-## `meal_service_logs` (ADR-194, migration `20260915090000_meal_service_logs`)
+## `meal_service_logs` (ADR-195, migration `20260915090000_meal_service_logs`)
 
-What the kitchen actually served — the ground truth every meal forecast is learned from. See [[Decisions#ADR-194|ADR-194]] and [[Business-Rules]].
+What the kitchen actually served — the ground truth every meal forecast is learned from. See [[Decisions#ADR-195|ADR-195]] and [[Business-Rules]].
 
 | Column | Type | Notes |
 |---|---|---|

@@ -20,7 +20,7 @@ import { useOwnerStayAction, useStayBoard } from '../hooks/useStay';
  * how many meals, who is late, who is back today, which rooms need a look.
  * Each person has one action; edits live behind that row's More. The hostel
  * rides on `?hostelId=` like the kitchen sheet — never "the first hostel".
- * See ADR-193.
+ * See ADR-194.
  */
 export function StayBoardPage() {
   const session = useOwnerSession();

@@ -84,7 +84,7 @@ export function TenantRoutes() {
         <Route index element={<TenantFarewellPage />} />
       </Route>
       {/*
-        * The hostel QR (ADR-193). Also OUTSIDE `TenantProviderShell`: that
+        * The hostel QR (ADR-194). Also OUTSIDE `TenantProviderShell`: that
         * gate sends a signed-out visitor to /login — the owner landing — and
         * drops this path, so a first scan would end on /tenant/home. The page
         * signs people in itself and stays put: scan, sign in once, tap, done.

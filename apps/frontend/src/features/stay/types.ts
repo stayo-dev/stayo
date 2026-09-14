@@ -1,4 +1,4 @@
-/** Wire types for Stay Status — mirror `apps/backend/src/services/stay/*`. See ADR-193. */
+/** Wire types for Stay Status — mirror `apps/backend/src/services/stay/*`. See ADR-194. */
 
 export type StayStatus = 'PRESENT' | 'ON_LEAVE' | 'RETURNING_TODAY' | 'LATE';
 export type LeaveType = 'GOING_HOME' | 'VACATION';
@@ -57,7 +57,7 @@ export interface StayBoard extends DateWindow {
   awayList: Array<BoardPerson & { leaveType: LeaveType; expectedReturnDate: string }>;
   roomsToCheck: Array<{ roomId: string; roomNo: string; reason: 'EMPTY_TONIGHT' | 'BACK_TODAY'; names: string[] }>;
   here: BoardPerson[];
-  /** Tonight's dinner, learned from served counts (ADR-194). Null until it is. */
+  /** Tonight's dinner, learned from served counts (ADR-195). Null until it is. */
   mealForecast?: { expected: number; basis: 'learned' | 'headcount'; samples?: number } | null;
 }
 
@@ -75,6 +75,6 @@ export interface StayHostelSummary {
 export interface StaySummary {
   totals: Omit<StayHostelSummary, 'hostelId' | 'hostelName'>;
   hostels: StayHostelSummary[];
-  /** Tonight's dinner across the portfolio, learned from served counts (ADR-194). */
+  /** Tonight's dinner across the portfolio, learned from served counts (ADR-195). */
   mealForecast?: { expected: number; basis: 'learned' | 'headcount' } | null;
 }

@@ -65,7 +65,7 @@ export function KitchenSheetPage() {
   // than shown as a dash every day — see ADR-147.
   const served = slotsInUse(schedule.weekGrid);
 
-  // How many to cook for, and the measurement it learns from (ADR-194).
+  // How many to cook for, and the measurement it learns from (ADR-195).
   const meals = useMealForecast(hostelId ?? undefined);
   const todayDate = meals.forecast?.today ?? '';
   const tomorrowDate = meals.forecast?.days[1]?.date ?? '';

@@ -31,7 +31,7 @@ export type RoomCapacitySnapshot = {
 /**
  * "This allocation occupies a bed" — the one predicate for who lives in a room.
  * Stay Status counts residents with exactly this, so its here-tonight + away
- * always equals `occupied` here. Change it here or nowhere. (ADR-193)
+ * always equals `occupied` here. Change it here or nowhere. (ADR-194)
  */
 export const OCCUPYING_ALLOCATION_WHERE = {
   is_active: true,

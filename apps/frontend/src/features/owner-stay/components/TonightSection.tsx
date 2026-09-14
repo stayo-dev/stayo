@@ -4,7 +4,7 @@ import type { TonightCards } from '@features/stay/stayState';
 /**
  * Owner Home's answer to "how is my hostel tonight?" — three numbers, each a
  * question answered, all opening the Stay board. Rendered only once someone
- * lives here (`tonightCards` returns null before that). See ADR-193.
+ * lives here (`tonightCards` returns null before that). See ADR-194.
  */
 export function TonightSection({ cards, onOpen }: { cards: TonightCards; onOpen: () => void }) {
   return (

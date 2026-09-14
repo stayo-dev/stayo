@@ -5,7 +5,7 @@ import type { MealTimings } from '@features/food/mealTimings';
  * The kitchen's numbers, as a screen needs them. Pure: the copy rules and the
  * "is this meal loggable yet" decision are tested here, so the page only
  * renders. See docs/superpowers/specs/2026-09-14-meal-forecast-design.md
- * and ADR-194.
+ * and ADR-195.
  */
 
 export type MealType = 'BREAKFAST' | 'LUNCH' | 'SNACKS' | 'DINNER';

@@ -12,7 +12,7 @@ import { mealForecastService } from "@/src/services/meals/meal-forecast-service"
 /**
  * GET /api/hostels/[id]/stay — the owner's Stay board for one hostel:
  * here tonight, meals, back today, late, rooms to check, beds free.
- * Answers, not states. See ADR-193.
+ * Answers, not states. See ADR-194.
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession(req);

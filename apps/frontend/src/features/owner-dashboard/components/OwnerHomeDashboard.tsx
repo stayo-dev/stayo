@@ -48,7 +48,7 @@ interface OwnerHomeDashboardProps {
   properties?: MockProperty[];
   alertCount?: number;
   actionCenter?: ActionCenterData;
-  /** Stay Status answers (ADR-193); null until someone lives here. */
+  /** Stay Status answers (ADR-194); null until someone lives here. */
   tonight?: TonightCards | null;
   onOpenStay?: () => void;
   collection?: CollectionData;
@@ -236,7 +236,7 @@ export function OwnerHomeDashboard({
           reading "Collect Rent ₹0", which teaches nothing and looks broken.
           See `homeSections.ts`. */}
       {/* Tonight's occupancy, above the money work: it is the question an owner
-          opens the app with in the morning (ADR-193). */}
+          opens the app with in the morning (ADR-194). */}
       {tonight && onOpenStay && <TonightSection cards={tonight} onOpen={onOpenStay} />}
 
       {sections.actionCenter && (

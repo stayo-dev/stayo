@@ -162,7 +162,7 @@ export function TenantHomePage() {
   );
 
   // Same panel as the QR screen, source APP: one line, at most one button,
-  // More for the rest (ADR-193).
+  // More for the rest (ADR-194).
   const stayBlock = stay.mine?.resident && stay.mine.stay && stay.mine.hostel && (
     <div className="flex flex-col gap-2.5">
       <span className={sectionLabel}>Your stay</span>

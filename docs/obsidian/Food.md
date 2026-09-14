@@ -590,13 +590,13 @@ Each row in `AddFoodPopover` carries an `×` that asks for confirmation inline o
 - **Dish names are title-cased for display** ([[Decisions#ADR-142|ADR-142]]). Only real dish names — the empty-slot placeholder stays product copy, which the existing tests caught when it briefly became "Not Set".
 - **Send on WhatsApp still shares text from the owner's own WhatsApp.** `wa.me` cannot carry a file, and the backend's Meta media path sends *from Stayo's number to a known recipient* — kitchen groups are not in the system, so text remains the right transport.
 
-## The module now has a headcount and a measurement (2026-09-14, ADR-194)
+## The module now has a headcount and a measurement (2026-09-14, ADR-195)
 
 Two things this page previously recorded as absent now exist:
 
 - **A served-count measurement.** `meal_service_logs` records how many were actually served, per hostel, date and meal, entered on the kitchen sheet once a serving window closes. §2's "the schedule is one repeating week, not calendar dates" ceiling is **unchanged** — this table is dated, the menu still is not.
-- **A headcount-derived forecast.** `src/services/meals` turns those logs into a per-meal ratio (median of the last 14 logged days, minimum 3) and multiplies it by the live occupancy from [[Decisions#ADR-193|ADR-193]]. The kitchen sheet shows the result beside each meal, marked `≈` when it is inferred.
+- **A headcount-derived forecast.** `src/services/meals` turns those logs into a per-meal ratio (median of the last 14 logged days, minimum 3) and multiplies it by the live occupancy from [[Decisions#ADR-194|ADR-194]]. The kitchen sheet shows the result beside each meal, marked `≈` when it is inferred.
 
 The old inline `eligibleCount` (ACTIVE tenants, repeated per poll/publish route) is untouched and still does its own job — the forecast does **not** use it, because a resident on leave is not a diner.
 
-Related: [[Decisions#ADR-194|ADR-194]], [[Features]], [[Database]]
+Related: [[Decisions#ADR-195|ADR-195]], [[Features]], [[Database]]

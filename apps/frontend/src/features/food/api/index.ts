@@ -8,7 +8,7 @@ function unwrap(response: { data: any }) {
 }
 
 export const foodService = {
-  /** Meal forecast (ADR-194) — how many to cook for, and what was actually served. */
+  /** Meal forecast (ADR-195) — how many to cook for, and what was actually served. */
   getMealForecast: async (hostelId: string, range?: { from?: string; to?: string }) => {
     const response = await api.get(`/hostels/${hostelId}/meals/forecast`, { params: range });
     const { success: _success, ...rest } = (response.data ?? {}) as any;

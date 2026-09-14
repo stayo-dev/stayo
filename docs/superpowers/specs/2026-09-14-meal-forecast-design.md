@@ -1,7 +1,7 @@
 # Meal forecast — Stay Status Phase 2a design
 
 **Date:** 2026-09-14 · **Status:** approved, not yet built · **Branch:** to be cut from `origin/dev`
-**Builds on:** [[Decisions#ADR-193|ADR-193]] (Stay Status Phase 1) · **Spec:** this file · **Food audit:** `docs/audits/stay-status-audit.md` §Food
+**Builds on:** [[Decisions#ADR-194|ADR-194]] (Stay Status Phase 1) · **Spec:** this file · **Food audit:** `docs/audits/stay-status-audit.md` §Food
 
 ## 1. The question this answers
 
@@ -21,7 +21,7 @@ Two consequences, both binding:
 - A number shown to a cook is either **learned from that hostel's own history** or **honestly labelled as a headcount**. Never a guess dressed as a forecast.
 - The learning costs the kitchen **one number per meal**, entered where they already stand. No new screen, no tenant-facing chore.
 
-It stays inside ADR-193's architecture: a new read model plus one new table, with no change to `stay_events` or the reducer.
+It stays inside ADR-194's architecture: a new read model plus one new table, with no change to `stay_events` or the reducer.
 
 ## 3. Decisions taken with the user (2026-09-14)
 
@@ -29,7 +29,7 @@ It stays inside ADR-193's architecture: a new read model plus one new table, wit
 |---|---|---|
 | D1 | **Learn the ratio from actual served counts.** The cook logs how many were served; we divide by that day's headcount. | It is the only source that reflects this hostel, and it compounds — it is also exactly the data a future prediction model would need. Rejected: owner-set ratios (never improve, go stale) and tenant-declared skips (a daily decision for every resident, against the two-second rule, and only as good as participation). |
 | D2 | **Away Today is dropped, not deferred again.** | Phase 1 deferred it "until meals exist". With ratios learned from actuals, the population's day-out pattern is already inside the lunch ratio, and an overnight absence is leave, which already reduces the headcount. It would add a third tenant state to buy accuracy we get for free. |
-| D3 | **Served counts live in their own table**, not on `stay_events`. | They are a hostel-and-date fact; `stay_events.tenant_id` is `NOT NULL`, and widening the event stream to carry non-tenant facts would corrupt the one thing ADR-193 protects. |
+| D3 | **Served counts live in their own table**, not on `stay_events`. | They are a hostel-and-date fact; `stay_events.tenant_id` is `NOT NULL`, and widening the event stream to carry non-tenant facts would corrupt the one thing ADR-194 protects. |
 | D4 | **Median over the last 14 logged days, minimum 3.** | Median so one festival dinner or one exam-week lunch cannot move the number. 14 days so a hostel's term-time rhythm dominates. 3 so it starts helping within a week. |
 | D5 | **Entry lives on the kitchen sheet.** | `/owner/food/kitchen` is already the cook's screen — deliberately the dumbest screen in the product, big type, no navigation. The number is entered where the meal was served. |
 | D6 | **Per-weekday ratios are out of scope.** | Sunday lunch genuinely differs, but 4 meals × 7 days = 28 buckets needs far more history than 4. Revisit once logs accumulate. |
@@ -130,7 +130,7 @@ Owner scoping is Phase 1's: `resolveOwnerScope` → `requireHostelBelongsToOwner
 - **Pure, backend:** the median (even/odd counts, one outlier), the 14-day window, the 3-sample threshold, `headcount_at_log = 0` exclusion, ratios above 1, and `headcountOn` across a leave's start and return date.
 - **Pure, frontend:** the two copy states, and which meals offer entry given `meal_timings` and the clock.
 - **Mocked service:** upsert corrects rather than duplicates; the implausible-count and future-date rejections; the forecast composes residents + leaves + logs.
-- **DB-backed:** the `(hostel_id, serve_date, meal_type)` uniqueness under a double submit. **Expected to remain unrun** — the test Supabase project is paused or deleted and Prisma cannot reach a pooler from the dev machine (raw `pg` can; see ADR-193's consequences).
+- **DB-backed:** the `(hostel_id, serve_date, meal_type)` uniqueness under a double submit. **Expected to remain unrun** — the test Supabase project is paused or deleted and Prisma cannot reach a pooler from the dev machine (raw `pg` can; see ADR-194's consequences).
 - Gates as before: `check:invariants`, `test:pure`, frontend `npm test`, `check:architecture`, `vite build`, filtered `tsc`.
 
 ## 10. Honest limits

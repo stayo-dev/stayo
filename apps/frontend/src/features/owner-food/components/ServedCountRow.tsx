@@ -12,7 +12,7 @@ interface ServedCountRowProps {
  * "How many did you serve?" — one number, entered by the person who served it.
  * Deliberately blunt: a numeric keypad, a wide tap target and nothing else,
  * because this sits on the kitchen wall screen (ADR-144's audience). Every
- * number entered here is what the forecast learns from (ADR-194).
+ * number entered here is what the forecast learns from (ADR-195).
  */
 export function ServedCountRow({ label, served, busy, onSave }: ServedCountRowProps) {
   const [value, setValue] = useState(served === null ? '' : String(served));

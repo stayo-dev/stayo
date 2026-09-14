@@ -1,4 +1,4 @@
--- Stay Status (ADR-193): the event store and its one projection.
+-- Stay Status (ADR-194): the event store and its one projection.
 --
 -- `stay_events` is the permanent truth — every stay update is appended here
 -- and never edited. `stay_leaves` is a projection of it (who is on leave now),
@@ -66,7 +66,7 @@ CREATE INDEX IF NOT EXISTS "stay_leaves_hostel_status_return_idx"
 CREATE OR REPLACE FUNCTION "stay_events_refuse_update"() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
-  RAISE EXCEPTION 'stay_events is append-only (ADR-193)';
+  RAISE EXCEPTION 'stay_events is append-only (ADR-194)';
 END;
 $$;
 DROP TRIGGER IF EXISTS "stay_events_no_update" ON "stay_events";

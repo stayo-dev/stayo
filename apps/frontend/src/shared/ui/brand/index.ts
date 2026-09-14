@@ -25,6 +25,8 @@ export { HostelScene, MAX_DRAWN_FLOORS, type HostelSceneState } from './HostelSc
 export {
   StayoDog,
   RIM_OVERLAP_PERCENT,
+  rimCenteringOffsetPx,
+  rimExposedHeightPx,
   useDogCompanion,
   DOG_EXPRESSIONS,
   type DogCompanion,

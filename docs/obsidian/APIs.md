@@ -725,9 +725,9 @@ Clerk-path rejections, both `403`: `NO_STAYO_ACCOUNT` (Clerk knows them, we have
 
 Related: [[Decisions#ADR-176|ADR-176]], [[Frontend]], [[Business-Rules]], [[Changelog]]
 
-## Stay Status (ADR-193)
+## Stay Status (ADR-194)
 
-Six endpoints. Every write goes through `stayService.recordStayEvent`, which is channel-agnostic — the WhatsApp slice will call it unchanged with `source: WHATSAPP`. Errors use the standard envelope via `stayErrorResponse`. See [[Decisions#ADR-193|ADR-193]], [[Database]], [[Business-Rules]].
+Six endpoints. Every write goes through `stayService.recordStayEvent`, which is channel-agnostic — the WhatsApp slice will call it unchanged with `source: WHATSAPP`. Errors use the standard envelope via `stayErrorResponse`. See [[Decisions#ADR-194|ADR-194]], [[Database]], [[Business-Rules]].
 
 | Method | Path | Who | Notes |
 |---|---|---|---|
@@ -746,7 +746,7 @@ Six endpoints. Every write goes through `stayService.recordStayEvent`, which is 
 
 Owner routes use `resolveOwnerScope` → `requireHostelBelongsToOwner`, and `src/services/stay` plus the three stay route folders are now in `architectural-invariants-check.ts`'s scan roots.
 
-## Meal forecast (ADR-194)
+## Meal forecast (ADR-195)
 
 | Method | Path | Who | Notes |
 |---|---|---|---|
@@ -757,4 +757,4 @@ Rejections from `recordServed`, all `400 INVALID_REQUEST`: a future `serveDate`,
 
 **Two Stay responses gained a field.** `GET /api/hostels/[id]/stay` and `GET /api/owner/stay/summary` now carry `mealForecast: { expected, basis, samples? } | null` for **tonight's dinner**, composed **in the route** (meals may read Stay; Stay never reads meals) and resolving to `null` if the meals call fails, so Home never breaks on it.
 
-Related: [[Decisions#ADR-194|ADR-194]], [[Database]], [[Business-Rules]]
+Related: [[Decisions#ADR-195|ADR-195]], [[Database]], [[Business-Rules]]

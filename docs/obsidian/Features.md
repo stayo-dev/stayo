@@ -315,7 +315,7 @@ It is decorative by contract: `aria-hidden`, no tab stop, every state also said 
 - **What it shows, and what it deliberately doesn't.** Real: name, city, address, photos, starting price (`min(rooms.base_rent)`), live vacancy, sharing types from `rooms.capacity`, audience from `hostel_type`, meals from `food_included`, the verified badge. **Omitted rather than faked:** star ratings, review counts, the amenity grid, and distance-to-campus — none of that is modelled, and there is no lat/lng anywhere. An unpriced room reads "Price on request", never "₹0". Listings therefore look thinner than the prototype on purpose; the layouts reserve the space.
 - **Filters** are all column-backed: city, price range, sharing type, audience, meals-included, has-vacancy, plus free-text over name/address/city. No geo search and no college proximity in this phase.
 - **Enquiries are `visitor_leads` rows** (`source: 'DISCOVER'`), landing in the owner's existing inbox, scoring and funnel — no parallel entity. Owner approval routes into `POST /api/leads/[id]/convert-to-invitation` — **as of 2026-08-20 ([[Decisions#ADR-087|ADR-087]]), this is now an actually-wired live path**, and **as of 2026-08-24 ([[Decisions#ADR-104|ADR-104]]) accepting and inviting are one act**: the Accept button writes nothing and the lead advances to `INVITED` only when the invitation is really sent, so abandoning the wizard no longer leaves an "Accepted" enquiry nobody was invited to (the owner Leads tab's Accept action → the pre-filled Add Tenant wizard → this endpoint on submit; previously the endpoint existed with no frontend caller at all), so an accepted enquiry becomes a real tenant invitation feeding the existing onboarding flow. The seeker sees a projected 3-step stage (`SENT`/`REVIEWING`/`ACCEPTED`/`CLOSED`), never the owner's raw funnel status — `REJECTED` (new alongside `ACCEPTED`/`ON_HOLD`, see below) projects as `CLOSED`, same as `LOST`.
-- **~~The account is the existing one (phone-OTP signup)~~ — superseded 2026-08-16, then partly restored 2026-08-24.** A Discover account is created either by **Google** (see [[#Google auto-provisioning + phone verification at enquiry (2026-08-16)]] below) or by an **email + password form** on `LoginModal`'s Sign Up tab — name, email, password, confirm password, no phone ([[Decisions#ADR-113|ADR-113]], see [[#Email + password signup returns, without the phone step (2026-08-24)]]). Same account shape either way: `role = TENANT`, no `tenants` row, Supabase-linked at creation; later becomes the person's tenancy via owner invite.
+- **~~The account is the existing one (phone-OTP signup)~~ — superseded 2026-08-16, then partly restored 2026-08-24.** A Discover account is created either by **Google** (see [[#Google auto-provisioning + phone verification at enquiry (2026-08-16)]] below) or by an **email + password form** on `LoginModal`'s Sign Up tab — name, email, password, no phone ([[Decisions#ADR-113|ADR-113]], see [[#Email + password signup returns, without the phone step (2026-08-24)]]). Same account shape either way: `role = TENANT`, no `tenants` row, Supabase-linked at creation; later becomes the person's tenancy via owner invite.
 - **Scope — phase C remains.** C: owner listing content (amenities, distances, bed tiers). **D (reviews and ratings) shipped 2026-08-19, extended 2026-08-25 — see [[#Resident Reviews — hostel-specific categories, Overall Experience, and admin insights (2026-08-25)]] below.** E (owner listing marketing page) explicitly deferred by the owner. Aadhaar KYC is out — it needs a licensed AUA/KUA integration, a commercial and regulatory dependency rather than a coding task. **Phase B shipped 2026-08-15 — see below.**
 
 ### The portable Stayo profile (2026-08-15, phase B)
@@ -331,7 +331,7 @@ It is decorative by contract: `aria-hidden`, no tab stop, every state also said 
 
 ### Email + password signup returns, without the phone step (2026-08-24)
 
-- **What changed:** `LoginModal`'s Sign Up tab (tenant mode — Discover and `/login`) takes **name, email, password and confirm password** and submits to the existing `POST /api/auth/tenant-signup`. "Continue with Google" stays beneath an OR divider. Google-only signup, from 2026-08-16, meant someone without a Google account had **no way** to create a Stayo account at all — `signUpTenant()` and its endpoint existed but were unreachable.
+- **What changed:** `LoginModal`'s Sign Up tab (tenant mode — Discover and `/login`) takes **name, email, password and confirm password** and submits to the existing `POST /api/auth/tenant-signup` (the confirmation was dropped 2026-09-14, [[Decisions#ADR-193|ADR-193]]). "Continue with Google" stays beneath an OR divider. Google-only signup, from 2026-08-16, meant someone without a Google account had **no way** to create a Stayo account at all — `signUpTenant()` and its endpoint existed but were unreachable.
 - **The phone step did not come back.** [[Decisions#ADR-078|ADR-078]] moved phone verification to enquiry time and it stays there, so `phone` is now **optional** end to end: `TenantSignupSchema`, `authService.selfSignUpTenant()`, `AuthContext.signUpTenant()`. A password-created account is born the same shape a Google one is — `phone: null`, `phone_verified: false` — and gets its verified number from `EnquiryPage`'s inline confirm → OTP → send flow. The Sign Up tab says so in one line under the Google button, because a signup form with no phone field on a product whose point is contacting owners otherwise raises exactly that question.
 - **A supplied phone is still gated.** `/api/auth/tenant-signup` runs the unchanged `resolveSignupPhoneVerification()` OTP check whenever a `phone` is present. The loosening permits **no** number, never an **unverified** one.
 - **`selfSignUpTenant` skips the duplicate-phone lookup when there's no phone.** `profiles.phone` is nullable *and* unique, so `findFirst({ where: { phone: null } })` would match the first phone-less account and reject every signup after it. Two tests guard this.
@@ -1464,7 +1464,7 @@ Seven documents, each with a version, an effective date and a labelled "In short
 
 ## Stay Status — who is here tonight (Phase 1, 2026-09-14)
 
-The occupancy engine behind "how is my hostel today?". See [[Decisions#ADR-193|ADR-193]], [[Business-Rules]], [[Database]], [[APIs]].
+The occupancy engine behind "how is my hostel today?". See [[Decisions#ADR-194|ADR-194]], [[Business-Rules]], [[Database]], [[APIs]].
 
 **What a tenant can do** (under two seconds, one tap in the common case):
 
@@ -1489,7 +1489,7 @@ The occupancy engine behind "how is my hostel today?". See [[Decisions#ADR-193|A
 
 ## Meal forecast — how many to cook for (Phase 2a, 2026-09-14)
 
-Built on [[Decisions#ADR-194|ADR-194]]; reads the occupancy engine from [[Decisions#ADR-193|ADR-193]]. See also [[Food]].
+Built on [[Decisions#ADR-195|ADR-195]]; reads the occupancy engine from [[Decisions#ADR-194|ADR-194]]. See also [[Food]].
 
 **What the kitchen sees** on `/owner/food/kitchen`:
 - Each of today's meals carries an expected number, and each of tomorrow's carries one too — the sheet's whole purpose is "prep tonight".

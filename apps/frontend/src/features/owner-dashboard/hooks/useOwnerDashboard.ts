@@ -104,7 +104,7 @@ export function useOwnerDashboard() {
   // owner-managed adoption) — who hasn't taken charge of their account yet is
   // `access_mode = OWNER_MANAGED` now, not `status = INVITED`.
   /**
-   * Stay Status (ADR-193). Its own endpoint, composed here like every other
+   * Stay Status (ADR-194). Its own endpoint, composed here like every other
    * Home card. A failure leaves `data` undefined, so `tonight` is null and the
    * row simply doesn't render — Home never depends on it.
    */

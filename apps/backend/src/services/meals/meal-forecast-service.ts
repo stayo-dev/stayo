@@ -16,7 +16,7 @@ import {
 import { invalidRequest } from "./meal-errors";
 
 /**
- * The meal forecast (ADR-194). Composes Stay's residents and leaves with this
+ * The meal forecast (ADR-195). Composes Stay's residents and leaves with this
  * hostel's own service history; it never recalculates occupancy and never
  * touches `stay_events`. Composition with Stay runs one way only — meals may
  * read Stay, Stay never reads meals — so the Stay surfaces borrow tonight's

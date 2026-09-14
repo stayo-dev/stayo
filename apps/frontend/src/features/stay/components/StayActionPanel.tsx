@@ -21,7 +21,7 @@ interface StayActionPanelProps {
  * One status line, at most one button, everything else behind More.
  * I'm back is optimistic — the welcome shows on the tap, and only an error
  * takes it back — because the two-second rule is about how it feels.
- * See ADR-193.
+ * See ADR-194.
  */
 export function StayActionPanel({ stay, hostelName, source, variant, onRecord, busy }: StayActionPanelProps) {
   const screen = screenFor(stay, hostelName);

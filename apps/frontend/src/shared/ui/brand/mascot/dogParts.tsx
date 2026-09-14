@@ -14,6 +14,8 @@
  * (`arm-l`/`arm-r`), the concerned brows, the wobble mouth, the closed-eye
  * cover and the rim paws are built from existing shapes, not the source files.
  */
+import { RIM_Y } from './dogRimFit';
+
 export const DOG_COLORS = {
   clay: '#B46A55',
   terra: '#A45D44',
@@ -25,7 +27,7 @@ export const DOG_COLORS = {
 } as const;
 
 /** Where the card's top edge crosses the dog in `rim` framing, in art units. */
-export const RIM_Y = 214;
+export { RIM_Y };
 
 export type DogFraming = 'rim' | 'full';
 

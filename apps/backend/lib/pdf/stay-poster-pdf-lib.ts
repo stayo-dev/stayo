@@ -8,7 +8,7 @@ import { loadFonts } from "./menu-template-pdf-lib";
  * The hostel's Stay QR, for a wall by the entrance. Laminated once, scanned
  * hundreds of times a day, read from arm's length by someone walking in with
  * a bag — so: one hostel name, one instruction, one very large code. The QR
- * encodes `/stay/<hostelId>` and never changes. See ADR-193.
+ * encodes `/stay/<hostelId>` and never changes. See ADR-194.
  *
  * A designed PDF rather than a print view, for the kitchen sheet's reason
  * (ADR-144): phone print dialogs are unreliable on the devices owners use.

@@ -18,7 +18,7 @@ import { eventToRow, leaveFromRow, leaveToRow, toDbDate } from "./stay-rows";
 import { ineligible, invalidRequest, rejection } from "./stay-errors";
 
 /**
- * Stay Status I/O (ADR-193). `recordStayEvent` is the ONE write path — app,
+ * Stay Status I/O (ADR-194). `recordStayEvent` is the ONE write path — app,
  * QR, owner and (later) WhatsApp all call it. It appends to `stay_events` and
  * moves the `stay_leaves` projection in one transaction, using the pure
  * reducer. Reads compose the existing resident predicate and

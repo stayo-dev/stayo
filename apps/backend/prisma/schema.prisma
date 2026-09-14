@@ -4352,7 +4352,7 @@ model owner_billing_profiles {
   profile profile @relation(fields: [owner_id], references: [id], onDelete: Cascade)
 }
 
-/// Stay Status event store (ADR-193). Append-only — the permanent truth;
+/// Stay Status event store (ADR-194). Append-only — the permanent truth;
 /// every stay surface is a projection of it. A DB trigger refuses UPDATE.
 /// No Prisma relations on purpose: nothing reads through them, and adding
 /// back-relations to `tenants`/`hostels` buys nothing.
@@ -4379,7 +4379,7 @@ model stay_events {
   @@index([hostel_id, effective_date, type], map: "stay_events_hostel_date_type_idx")
 }
 
-/// What the kitchen actually served (meal forecast, ADR-194). A measurement,
+/// What the kitchen actually served (meal forecast, ADR-195). A measurement,
 /// not an event: one row per hostel/date/meal, and re-entry corrects it.
 /// `headcount_at_log` is the frozen denominator of the learned ratio.
 model meal_service_logs {

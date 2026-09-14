@@ -14,7 +14,7 @@ import { mealErrorResponse } from "@/src/services/meals/meal-errors";
  *
  * What the kitchen actually served — the measurement every forecast is learned
  * from. PUT, not POST: there is one truth per hostel, date and meal, and
- * re-entering it corrects a typo rather than adding a second opinion. See ADR-194.
+ * re-entering it corrects a typo rather than adding a second opinion. See ADR-195.
  */
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession(req);

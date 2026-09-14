@@ -127,7 +127,7 @@ npm run check:payment-production
 - [[Business-Rules]] for the domain rules these services enforce
 - [[Frontend]] for the client side of this API
 
-## `src/services/stay/` — Stay Status (ADR-193)
+## `src/services/stay/` — Stay Status (ADR-194)
 
 The event core is pure and the I/O is thin, so the rules are tested without a database.
 
@@ -144,9 +144,9 @@ The event core is pure and the I/O is thin, so the rules are tested without a da
 - Also touched: `lib/timezone.ts` gains `istDateOf`/`istToday`/`addDaysIso`/`daysBetweenIso`/`weekdayOfIso` (`payout-promise.ts` re-exports `istDateOf` from there now); `room-capacity-service.ts` exports `OCCUPYING_ALLOCATION_WHERE`; `lib/pdf/stay-poster-pdf-lib.ts` renders the QR poster and `menu-template-pdf-lib.ts` now exports `loadFonts` for it.
 - `architectural-invariants-check.ts` scans `src/services/stay`, `app/api/tenant/stay`, `app/api/owner/stay` and `app/api/hostels/[id]/stay`.
 
-Related: [[APIs]], [[Database]], [[Business-Rules]], [[Decisions#ADR-193|ADR-193]]
+Related: [[APIs]], [[Database]], [[Business-Rules]], [[Decisions#ADR-194|ADR-194]]
 
-## `src/services/meals/` — the meal forecast (ADR-194)
+## `src/services/meals/` — the meal forecast (ADR-195)
 
 | File | Responsibility |
 |---|---|
@@ -159,4 +159,4 @@ Related: [[APIs]], [[Database]], [[Business-Rules]], [[Decisions#ADR-193|ADR-193
 - Composition is one-way: meals read Stay; Stay never reads meals. The Stay board and owner summary routes borrow tonight's dinner themselves, tolerating failure.
 - `architectural-invariants-check.ts` scans `src/services/meals` and `app/api/hostels/[id]/meals`.
 
-Related: [[APIs]], [[Database]], [[Decisions#ADR-194|ADR-194]]
+Related: [[APIs]], [[Database]], [[Decisions#ADR-195|ADR-195]]

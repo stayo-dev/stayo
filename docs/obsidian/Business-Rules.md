@@ -306,7 +306,7 @@ Phase 1 of the Business Recovery Platform (`docs/business-logic/business-recover
 Added 2026-07-31 ([[Decisions#ADR-035|ADR-035]]).
 
 1. **Owners** self-sign-up via `/api/auth/owner-signup`. **As of [[Decisions#ADR-159|ADR-159]] (2026-08-31) this is no longer optional** — the lead → admin approval → activation-link funnel is the *only* path: `lead_token` is required, resolved server-side against `platform_lead_invitations` before any account is created, and name/hostel name/phone are always taken from the `platform_leads` row the token belongs to, never from the request body (so activation can't be completed under a different identity than the lead it's for, and phone — already OTP-verified at lead capture — is never re-verified). `profiles.role = OWNER`, `owner_id = own id`. Only email (when the lead has no `google_email`) and a password are ever collected at activation.
-2. **Tenants** self-sign-up via `/api/auth/tenant-signup`, creating a **marketplace account**: `role: TENANT`, `owner_id` null, **no `tenants` row**. This account can browse and enquire; it is not a tenant of any hostel. Two ways in, both producing the identical account: **email + password** (name, email, password, confirm password) or **Google**. **Neither collects a phone number** — as of [[Decisions#ADR-113|ADR-113]] `phone` is optional on this endpoint, so a marketplace account is born `phone: null, phone_verified: false` and the number is collected **and verified once, at the enquiry**, per [[Decisions#ADR-078|ADR-078]]. A phone sent to the signup endpoint anyway must still carry a fresh verified-or-skipped OTP; the rule permits *no* number, never an *unverified* one.
+2. **Tenants** self-sign-up via `/api/auth/tenant-signup`, creating a **marketplace account**: `role: TENANT`, `owner_id` null, **no `tenants` row**. This account can browse and enquire; it is not a tenant of any hostel. Two ways in, both producing the identical account: **email + password** (name, email, password — no confirmation since [[Decisions#ADR-194|ADR-194]]) or **Google**. **Neither collects a phone number** — as of [[Decisions#ADR-113|ADR-113]] `phone` is optional on this endpoint, so a marketplace account is born `phone: null, phone_verified: false` and the number is collected **and verified once, at the enquiry**, per [[Decisions#ADR-078|ADR-078]]. A phone sent to the signup endpoint anyway must still carry a fresh verified-or-skipped OTP; the rule permits *no* number, never an *unverified* one.
 3. **A tenant *of a hostel*** is only ever created by an owner's invitation + activation. That flow reuses an existing marketplace profile rather than creating a second one; whether it may do so is decided by the tenancy-eligibility rule below.
 4. **Admins** are never self-serve — first via `scripts/bootstrap-platform-admin.ts`, later by invitation.
 
@@ -1069,9 +1069,9 @@ A manual (no-gateway) payment's declared `amount_paise` is never authoritative f
 - RLS was therefore only ever protecting against one thing: the public Supabase `anon` key (extractable from any deployed frontend bundle) being used to query these tables directly via PostgREST, bypassing the app's authorization entirely. Migration `20260910040000_subscription_billing_rls` closes this — READ-ONLY policies, scoped to `profiles.auth_user_id = auth.uid()` (**not** `owner_id = auth.uid()` — those are deliberately different columns, see [[Database]] Auth/session model) for an owner's own rows, or any row for `profiles.role = 'ADMIN'`. No INSERT/UPDATE/DELETE policy exists for `anon`/`authenticated` on any of the four tables, since the app never legitimately writes through that path.
 - Applied to the **dev** database only; verified afterward that the backend's own queries were unaffected (same row counts, same query results, before and after).
 
-## Stay Status (ADR-193)
+## Stay Status (ADR-194)
 
-- **Silence means Present.** A resident who says nothing is staying tonight. Stay tracks *intent*, not movement — nobody is asked to check in, and there is no Unknown state. See [[Decisions#ADR-193|ADR-193]].
+- **Silence means Present.** A resident who says nothing is staying tonight. Stay tracks *intent*, not movement — nobody is asked to check in, and there is no Unknown state. See [[Decisions#ADR-194|ADR-194]].
 - **A resident is** a `tenants` row with `status = 'ACTIVE'` holding an allocation that is `is_active` with `end_date IS NULL` — `OCCUPYING_ALLOCATION_WHERE`, the same predicate `roomCapacityService` counts beds with. `INVITED` and `FORMER_TENANT` cannot update a stay (409 `STAY_INELIGIBLE`). It follows that **here tonight + away = occupied beds**.
 - **Status is derived** from the active leave and **IST** today (never `hostels.timezone`, which is `UTC`): no leave → PRESENT; return date today → RETURNING_TODAY; return date past → LATE; otherwise ON_LEAVE.
 - **Here tonight = present + due back today.** A **late** resident is *not* counted — they said they would be back and are not — but is surfaced separately ("+k late may turn up") so the kitchen can judge.
@@ -1082,7 +1082,7 @@ A manual (no-gateway) payment's declared `amount_paise` is never authoritative f
 - **Checked out is not a Stay state.** It remains the move-out lifecycle ([[Business-Rules]] move-out section); Stay never writes to it. A leave left open by a departure is inert, because every read filters to residents.
 - **Owner-entered updates are normal**, not an override of last resort: `OWNER_MANAGED` residents have no login, so `source: OWNER` is their only path.
 
-## Meal forecast (ADR-194)
+## Meal forecast (ADR-195)
 
 - **A headcount is not a meal count.** The expected number is `headcount × a ratio learned from this hostel's own served counts` — never a raw headcount presented as a forecast.
 - **The ratio is the median of `served ÷ headcount` over the last 14 logged days**, and needs **3** samples before it is used. Median, so one festival dinner cannot move a fortnight's cooking.
@@ -1090,6 +1090,6 @@ A manual (no-gateway) payment's declared `amount_paise` is never authoritative f
 - **A zero-turnout day is data; a day with no residents is not** (it would divide by zero and teaches nothing).
 - **Below 3 samples the screen shows the headcount and says so** — `still learning what people actually eat` versus `from the last 2 weeks`. `≈` marks every inferred number.
 - **The denominator is frozen at entry.** Editing or cancelling a leave later never changes a past day's ratio.
-- **A resident counts on their return date**, matching [[Decisions#ADR-193|ADR-193]]'s `isHereTonight`; and **a leave's effective end is the day someone actually returned** when that was earlier than planned.
+- **A resident counts on their return date**, matching [[Decisions#ADR-194|ADR-194]]'s `isHereTonight`; and **a leave's effective end is the day someone actually returned** when that was earlier than planned.
 - **Logging is corrective:** re-entering a served count replaces it. Rejected are future dates, days more than 28 days old, and counts above 3× the headcount.
 - **Tenants declare nothing.** Away Today was dropped rather than built, because the learned lunch ratio already absorbs the population's day-out pattern.

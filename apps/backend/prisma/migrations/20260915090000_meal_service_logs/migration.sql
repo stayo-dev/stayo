@@ -1,4 +1,4 @@
--- Meal forecast (Phase 2a, ADR-194): what the kitchen actually served.
+-- Meal forecast (Phase 2a, ADR-195): what the kitchen actually served.
 --
 -- The ground truth a forecast is learned from. Unlike `stay_events` this is a
 -- MEASUREMENT, not an event log: re-entering a number corrects it, because a

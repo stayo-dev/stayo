@@ -3,7 +3,7 @@ import type { MyStay, StayBoard, StaySummary, SuggestedReturn, TenantStay } from
 /**
  * Stay Status screen models — pure, so the two-second rule and the
  * "one primary action" rule are tested, not hoped for. Components render
- * these and decide nothing. See ADR-193.
+ * these and decide nothing. See ADR-194.
  */
 
 export type MoreAction = 'GOING_HOME' | 'VACATION' | 'CHANGE_DATE' | 'CANCEL_LEAVE';

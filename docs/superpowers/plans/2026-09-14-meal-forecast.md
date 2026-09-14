@@ -1594,7 +1594,7 @@ git fetch origin && git show origin/main:docs/obsidian/Decisions.md | grep -oE '
 
 Use the next free number (194 as of 2026-09-14). Follow the `### ADR-NNN — title (date)` format of the entries at the end of the file.
 
-- [ ] **Step 2: Write ADR-194**, covering:
+- [ ] **Step 2: Write ADR-195**, covering:
   - **Context:** a headcount is not a meal count; nothing recorded what was eaten.
   - **Decision:** learn a per-meal ratio from served counts; median of the last 14 logged days, minimum 3; ratios above 1 kept.
   - **Decision:** `headcount_at_log` is frozen at entry, so editing a leave cannot rewrite a past ratio.
@@ -1605,7 +1605,7 @@ Use the next free number (194 as of 2026-09-14). Follow the `### ADR-NNN — tit
   - **Consequences:** honest headcount until 3 samples; one ratio per meal, not per weekday; accuracy still rests on tenants reporting leave, which has never happened in production.
   - **Rejected:** owner-set ratios (go stale), tenant-declared skips (a daily decision for everyone), per-weekday buckets (28 buckets, far too little data).
 
-- [ ] **Step 3: Update the vault** — each page links `[[Decisions#ADR-194|ADR-194]] plus one other note:
+- [ ] **Step 3: Update the vault** — each page links `[[Decisions#ADR-195|ADR-195]] plus one other note:
   - `Features.md`: a "Meal forecast" section — what the kitchen sheet now shows and asks, and that tenants see nothing new.
   - `APIs.md`: the two endpoints, and the `mealForecast` field added to the two Stay responses.
   - `Database.md`: `meal_service_logs` column by column, the unique index, the frozen denominator, RLS, and **where it is applied**.
@@ -1617,7 +1617,7 @@ Use the next free number (194 as of 2026-09-14). Follow the `### ADR-NNN — tit
 
 ```bash
 git add docs
-git commit -m "docs(meals): ADR-194 and the vault pages for the learned meal forecast"
+git commit -m "docs(meals): ADR-195 and the vault pages for the learned meal forecast"
 ```
 
 ---

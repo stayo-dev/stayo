@@ -1,7 +1,7 @@
 import { isLeaveType, validateReturnDate, type LeaveType, type StaySource } from "./stay-status";
 
 /**
- * The Stay Status core (ADR-193). `stay_events` is the permanent truth; the
+ * The Stay Status core (ADR-194). `stay_events` is the permanent truth; the
  * `stay_leaves` projection and every screen are derived from it. This reducer
  * is the only place stay semantics live — the write path and replay both call
  * it, so the projection can always be rebuilt and can never disagree.

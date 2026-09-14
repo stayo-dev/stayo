@@ -1,6 +1,6 @@
 # Stay Status — Phase 1 core design
 
-> **Built 2026-09-14. Six things differ from the design below; the code and [[Decisions#ADR-193|ADR-193]] are authoritative where they disagree.**
+> **Built 2026-09-14. Six things differ from the design below; the code and [[Decisions#ADR-194|ADR-194]] are authoritative where they disagree.**
 > 1. **`RETURNED` with no active leave is a no-op, not a rejection** (as is a second `LEAVE_STARTED`) — tapping *I'm back* twice should not produce an error.
 > 2. **The QR artefact is an A4 PDF poster** at `GET /api/hostels/[id]/stay/poster`, not an SVG route — matching the kitchen sheet's precedent (ADR-144) that phone print dialogs are unreliable.
 > 3. **The QR page signs people in itself.** `/stay/:hostelId` mounts outside `TenantProviderShell`, so `ProtectedTenantRoute` was **not** changed and `safeReturnPath` was never needed: `/login` is the owner landing page, which drops the path and hands a tenant to `/tenant/home` after a 1.6s handoff.

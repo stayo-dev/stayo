@@ -3,7 +3,7 @@ import { addDaysIso, daysBetweenIso, weekdayOfIso } from "@/lib/timezone";
 /**
  * Stay Status rules — pure. Status is never stored: it is derived from the
  * tenant's active leave (or its absence) and IST today. Silence = Present.
- * See ADR-193 and docs/superpowers/specs/2026-09-14-stay-status-design.md.
+ * See ADR-194 and docs/superpowers/specs/2026-09-14-stay-status-design.md.
  */
 
 export const LEAVE_TYPES = ["GOING_HOME", "VACATION"] as const;

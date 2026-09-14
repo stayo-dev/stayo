@@ -47,13 +47,13 @@ export const queryKeys = {
 
   notifications: () => ownerKey('notifications'),
 
-  /** Meal forecast (ADR-194). Hostel-scoped, as the invariant check requires. */
+  /** Meal forecast (ADR-195). Hostel-scoped, as the invariant check requires. */
   meals: {
     forecast: (hostelId: string | null | undefined, from?: string, to?: string) =>
       hostelKey(hostelId, 'meals', 'forecast', from ?? 'today', to ?? 'tomorrow'),
   },
 
-  /** Stay Status (ADR-193). The tenant key sits beside the other ['tenant', …] keys. */
+  /** Stay Status (ADR-194). The tenant key sits beside the other ['tenant', …] keys. */
   stay: {
     mine: () => ['tenant', 'stay'],
     board: (hostelId: string | null | undefined) => hostelKey(hostelId, 'stay', 'board'),

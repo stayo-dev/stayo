@@ -25,7 +25,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: [
-      // Stay Status (ADR-193) — pure core, mocked service and routes.
+      // Stay Status (ADR-194) — pure core, mocked service and routes.
       'tests/timezone-ist.test.ts',
       'tests/stay-status.test.ts',
       'tests/stay-events.test.ts',
@@ -33,7 +33,7 @@ export default defineConfig({
       'tests/stay-service.test.ts',
       'tests/stay-poster-pdf.test.ts',
       'tests/stay-routes.test.ts',
-      // Meal forecast (ADR-194).
+      // Meal forecast (ADR-195).
       'tests/meal-ratio.test.ts',
       'tests/meal-forecast-service.test.ts',
       'tests/meal-routes.test.ts',
