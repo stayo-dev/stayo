@@ -109,6 +109,32 @@ export function buildStayBoard(input: {
   };
 }
 
+/** A leave as the headcount needs it: with its start, so any date can be asked about. */
+export interface HeadcountLeave {
+  tenantId: string;
+  startDate: string;
+  expectedReturnDate: string;
+}
+
+/**
+ * How many residents are sleeping here on `date` — the denominator of every
+ * meal forecast. A leave covers a date when it started on or before it and the
+ * return date is still ahead, so a resident is counted again **on** the day
+ * they come back, exactly as `isHereTonight` treats RETURNING_TODAY. Leaves
+ * belonging to non-residents are ignored, so a stale row from a departed
+ * tenancy cannot bend the number.
+ */
+export function headcountOn(
+  residents: Array<{ tenantId: string }>,
+  leaves: HeadcountLeave[],
+  date: string,
+): number {
+  const away = new Set(
+    leaves.filter((l) => l.startDate <= date && l.expectedReturnDate > date).map((l) => l.tenantId),
+  );
+  return residents.filter((r) => !away.has(r.tenantId)).length;
+}
+
 export interface StayHostelSummary {
   hostelId: string;
   hostelName: string;

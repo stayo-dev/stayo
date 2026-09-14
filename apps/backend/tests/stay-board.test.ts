@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildStayBoard, summarizeHostel, summarizePortfolio, type BoardResident } from "@/src/services/stay/stay-board";
+import { buildStayBoard, headcountOn, summarizeHostel, summarizePortfolio, type BoardResident } from "@/src/services/stay/stay-board";
 
 const TODAY = "2026-09-14";
 const R = (tenantId: string, roomNo: string, name = tenantId): BoardResident => ({ tenantId, name, roomId: `room-${roomNo}`, roomNo });
@@ -77,6 +77,41 @@ describe("buildStayBoard answers the owner's questions", () => {
         expect(bd.hereTonight + bd.away).toBe(2);
       }
     }
+  });
+});
+
+describe("headcountOn — the denominator for a meal forecast", () => {
+  const people = [{ tenantId: "A" }, { tenantId: "B" }, { tenantId: "C" }];
+  const leave = (tenantId: string, startDate: string, expectedReturnDate: string) => ({ tenantId, startDate, expectedReturnDate });
+
+  it("counts everyone when nobody is away", () => {
+    expect(headcountOn(people, [], "2026-09-14")).toBe(3);
+  });
+
+  it("does not count someone whose leave covers the date", () => {
+    expect(headcountOn(people, [leave("B", "2026-09-12", "2026-09-20")], "2026-09-14")).toBe(2);
+  });
+
+  it("counts them again on their return date", () => {
+    const away = [leave("B", "2026-09-12", "2026-09-14")];
+    expect(headcountOn(people, away, "2026-09-13")).toBe(2);
+    expect(headcountOn(people, away, "2026-09-14")).toBe(3);
+  });
+
+  it("counts them on the day before the leave starts, not on the first day", () => {
+    const away = [leave("B", "2026-09-15", "2026-09-18")];
+    expect(headcountOn(people, away, "2026-09-14")).toBe(3);
+    expect(headcountOn(people, away, "2026-09-15")).toBe(2);
+  });
+
+  it("answers for tomorrow, which is the point of it", () => {
+    const away = [leave("A", "2026-09-10", "2026-09-16"), leave("C", "2026-09-15", "2026-09-17")];
+    expect(headcountOn(people, away, "2026-09-14")).toBe(2);
+    expect(headcountOn(people, away, "2026-09-15")).toBe(1);
+  });
+
+  it("ignores a leave belonging to someone who no longer lives here", () => {
+    expect(headcountOn(people, [leave("Z", "2026-09-01", "2026-12-01")], "2026-09-14")).toBe(3);
   });
 });
 
