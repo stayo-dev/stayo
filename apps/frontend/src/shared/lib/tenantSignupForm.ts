@@ -1,10 +1,13 @@
 /**
- * Rules for the Sign Up tab of `shared/ui-patterns/LoginModal` (ADR-096).
+ * Rules for the Sign Up tab of `shared/ui-patterns/LoginModal` (ADR-096,
+ * ADR-193).
  *
- * Signing up is name + email + password + confirm password — no phone. The
- * number is asked for once, at the moment it's actually needed (sending an
- * enquiry), which is where ADR-078 moved it and where a Google-created account
- * already gets it.
+ * Signing up is name + email + password — no confirmation, no phone. The
+ * confirmation field went in ADR-193: the password is typed once and checked by
+ * eye, since the field has a reveal button and a Caps Lock hint. The number is
+ * asked for once, at the moment it's actually needed (sending an enquiry),
+ * which is where ADR-078 moved it and where a Google-created account already
+ * gets it.
  *
  * The rules live here rather than inside the component for the reason every
  * pure module in this app does: `apps/frontend` tests run in a node
@@ -23,7 +26,6 @@ export interface TenantSignupFields {
   name: string;
   email: string;
   password: string;
-  confirmPassword: string;
 }
 
 export type TenantSignupField = keyof TenantSignupFields;
@@ -37,7 +39,7 @@ export interface TenantSignupValidation {
   firstError: string | null;
 }
 
-const FIELD_ORDER: TenantSignupField[] = ['name', 'email', 'password', 'confirmPassword'];
+const FIELD_ORDER: TenantSignupField[] = ['name', 'email', 'password'];
 
 // Deliberately loose: the same "something@something.something" shape the input's
 // own `type="email"` accepts. Anything stricter rejects real addresses, and the
@@ -60,13 +62,6 @@ export function validateTenantSignup(fields: TenantSignupFields): TenantSignupVa
     errors.password = `Use at least ${MIN_SIGNUP_PASSWORD_LENGTH} characters.`;
   } else if (fields.password.length > MAX_SIGNUP_PASSWORD_LENGTH) {
     errors.password = `Keep it under ${MAX_SIGNUP_PASSWORD_LENGTH} characters.`;
-  }
-
-  // Only worth saying once the password itself is usable — telling someone the
-  // two don't match while they're still typing the first one is noise.
-  if (!errors.password) {
-    if (!fields.confirmPassword) errors.confirmPassword = 'Please re-enter your password.';
-    else if (fields.confirmPassword !== fields.password) errors.confirmPassword = "Passwords don't match.";
   }
 
   const firstErrorField = FIELD_ORDER.find((field) => errors[field]);

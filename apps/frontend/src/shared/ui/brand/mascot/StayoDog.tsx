@@ -27,7 +27,14 @@ import { cn } from '@shared/lib/cn';
 
 import { DOG_EXPRESSIONS, type DogExpression, type DogExpressionName } from './dogExpressions';
 import { armTransform, nextBlinkDelay, type DogGaze, type Point } from './dogGaze';
-import { DogArt, RIM_Y, type DogFraming } from './dogParts';
+import { DogArt, type DogFraming } from './dogParts';
+import {
+  DOG_VIEWBOX,
+  DOG_VIEWBOX_WIDTH,
+  RIM_OVERLAP_PERCENT,
+  rimCenteringOffsetPx,
+  rimExposedHeightPx,
+} from './dogRimFit';
 import { REST_ARMS, rigTargets, type RigTargets } from './dogRig';
 import { stepSpring, type SpringState } from './dogSpring';
 import { DOG_TUNING } from './dogTuning';
@@ -35,14 +42,12 @@ import { readDogMotionProfile, type DogCompanion } from './useDogCompanion';
 
 import './stayo-dog.css';
 
-const VIEWBOX = { rim: { y: 8, h: 218 }, full: { y: 0, h: 300 } } as const;
+const VIEWBOX = DOG_VIEWBOX;
 
-/**
- * In `rim` framing, how far the SVG hangs below the card's top edge, as a
- * percentage of its own height: the rim line (art y 214) sits 12 units above
- * the bottom of the 218-unit-tall view box.
- */
-export const RIM_OVERLAP_PERCENT = ((VIEWBOX.rim.y + VIEWBOX.rim.h - RIM_Y) / VIEWBOX.rim.h) * 100;
+// The layout numbers (view box, overlap, how much of the dog shows above a
+// card) live in `dogRimFit` so the node-only test suite can check them without
+// rendering any of this. Re-exported here because this is where callers look.
+export { RIM_OVERLAP_PERCENT, rimCenteringOffsetPx, rimExposedHeightPx };
 
 /** How far below the rim the dog starts its entrance, in art units. */
 const RISE_FROM = 84;
@@ -261,7 +266,7 @@ export function StayoDog({ framing = 'full', className, companion, expression }:
   return (
     <svg
       ref={svgRef}
-      viewBox={`0 ${box.y} 300 ${box.h}`}
+      viewBox={`0 ${box.y} ${DOG_VIEWBOX_WIDTH} ${box.h}`}
       aria-hidden="true"
       focusable="false"
       className={cn('pointer-events-none block h-auto w-full overflow-visible', className)}
