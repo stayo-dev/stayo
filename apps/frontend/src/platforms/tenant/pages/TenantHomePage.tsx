@@ -11,6 +11,8 @@ import { useTenantFoodPolls } from '@features/food/hooks/useTenantFoodPolls';
 import { useNow } from '@features/food/hooks/useNow';
 import { nextServingAt } from '@features/food/mealTimings';
 import { NextServingCard } from '@features/food/components/NextServingCard';
+import { useMyStay } from '@features/stay/hooks/useMyStay';
+import { StayActionPanel } from '@features/stay/components/StayActionPanel';
 import { ActivePollCard } from '@features/food/components/ActivePollCard';
 import { formatCellItems } from '@features/owner-food/weekGrid';
 import { PaySheet } from '@features/tenant-financials/components/PaySheet';
@@ -62,6 +64,7 @@ export function TenantHomePage() {
   const mealTimings = useTenantMealTimings();
   const polls = useTenantFoodPolls();
   const now = useNow();
+  const stay = useMyStay();
 
   /*
    * The welcome tour's anchors. Refs, not selectors — see `Spotlight`.
@@ -156,6 +159,22 @@ export function TenantHomePage() {
       onEnable={push.enable}
       onDismiss={push.dismiss}
     />
+  );
+
+  // Same panel as the QR screen, source APP: one line, at most one button,
+  // More for the rest (ADR-193).
+  const stayBlock = stay.mine?.resident && stay.mine.stay && stay.mine.hostel && (
+    <div className="flex flex-col gap-2.5">
+      <span className={sectionLabel}>Your stay</span>
+      <StayActionPanel
+        stay={stay.mine.stay}
+        hostelName={stay.mine.hostel.name}
+        source="APP"
+        variant="card"
+        onRecord={stay.record}
+        busy={stay.isRecording}
+      />
+    </div>
   );
 
   const foodBlock = home.todaysMeals.length > 0 && (
@@ -309,6 +328,7 @@ export function TenantHomePage() {
           <div className="grid grid-cols-[1fr_380px] items-start gap-6">
             <div className="flex min-w-0 flex-col gap-6">
               {rentCard}
+              {stayBlock}
               {pushCard}
               {foodBlock}
               {pollBlock}
@@ -325,6 +345,7 @@ export function TenantHomePage() {
         <div className="flex flex-col gap-6 px-4 sm:px-6">
           {profileNudge}
           {rentCard}
+          {stayBlock}
           {pushCard}
           {foodBlock}
           {pollBlock}

@@ -20,6 +20,7 @@ const TenantProfilePortalPage = lazy(() =>
 const TenantMoveOutPage = lazy(() => import('@/portal/pages/TenantMoveOutPage').then((m) => ({ default: m.TenantMoveOutPage })));
 const TenantRenewalPage = lazy(() => import('../pages/TenantRenewalPage').then((m) => ({ default: m.TenantRenewalPage })));
 const TenantFarewellPage = lazy(() => import('../pages/TenantFarewellPage').then((m) => ({ default: m.TenantFarewellPage })));
+const StayScanPage = lazy(() => import('../pages/StayScanPage').then((m) => ({ default: m.StayScanPage })));
 const TenantPaymentReturnPage = lazy(() =>
   import('@/portal/pages/TenantPaymentReturnPage').then((m) => ({ default: m.TenantPaymentReturnPage })),
 );
@@ -82,6 +83,13 @@ export function TenantRoutes() {
       <Route path="/tenant/farewell" element={<ProtectedFarewellRoute />}>
         <Route index element={<TenantFarewellPage />} />
       </Route>
+      {/*
+        * The hostel QR (ADR-193). Also OUTSIDE `TenantProviderShell`: that
+        * gate sends a signed-out visitor to /login — the owner landing — and
+        * drops this path, so a first scan would end on /tenant/home. The page
+        * signs people in itself and stays put: scan, sign in once, tap, done.
+        */}
+      <Route path="/stay/:hostelId" element={<StayScanPage />} />
       {tenantAppRoutes()}
     </>
   );
