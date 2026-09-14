@@ -20,8 +20,12 @@ interface TenantAvatarProps {
   photoUrl?: string | null;
   /** Tailwind sizing classes — the caller owns the scale. */
   className?: string;
-  /** Rounded-square by default; circular where the surrounding rhythm is round. */
-  shape?: 'square' | 'circle';
+  /**
+   * Rounded-square by default; circular where the surrounding rhythm is round;
+   * `tile` for the small squares packed into a room on the Rooms tab, where a
+   * 16px radius on a 23px face would make it a circle.
+   */
+  shape?: 'square' | 'circle' | 'tile';
 }
 
 export function TenantAvatar({
@@ -32,7 +36,7 @@ export function TenantAvatar({
   shape = 'square',
 }: TenantAvatarProps) {
   const [failed, setFailed] = useState(false);
-  const radius = shape === 'circle' ? 'rounded-full' : 'rounded-2xl';
+  const radius = shape === 'circle' ? 'rounded-full' : shape === 'tile' ? 'rounded-[6px]' : 'rounded-2xl';
 
   if (photoUrl && !failed) {
     return (
