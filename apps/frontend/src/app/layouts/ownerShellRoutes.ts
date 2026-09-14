@@ -10,7 +10,7 @@
  *   `/owner/tenants/activations`), moved *inside* `OwnerAppShell` in Phase 2.8 —
  *   full-screen takeovers below `lg`, console pages at `lg+`;
  * - the Hostel Drilldown pane and its tabs (`/owner/hostels/:hostelId[/overview
- *   |rooms|tenants|settings|marketing]`, nested under `/owner/hostels`).
+ *   |rooms|tenants|settings|marketing|activity]`, nested under `/owner/hostels`).
  *
  * The Hostel Builder (`/owner/hostels/new`, `/owner/hostels/:hostelId/build`) is
  * a full-screen flow declared *outside* `OwnerAppShell` — it never reaches this
@@ -34,7 +34,7 @@ export function isOwnerFullBleedPath(pathname: string): boolean {
   // `/owner/hostels/<id>` or `<id>/<drilldown tab>` — the master-detail pane.
   // Not `/owner/hostels/new` (the builder) and not `<id>/build` (resume builder)
   // — both are outside `OwnerAppShell` and never reach here; excluded defensively.
-  if (/^\/owner\/hostels\/(?!new(?:\/|$))[^/]+(?:\/(overview|rooms|tenants|settings|marketing))?$/.test(pathname)) {
+  if (/^\/owner\/hostels\/(?!new(?:\/|$))[^/]+(?:\/(overview|rooms|tenants|settings|marketing|activity))?$/.test(pathname)) {
     return true;
   }
 

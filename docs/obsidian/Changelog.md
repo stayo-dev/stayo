@@ -23,6 +23,15 @@ All notable changes to this project are documented in this file, in [Keep a Chan
   - It now uses the designer's own raised leg (`paw-wave` in `stayo-mascot-waving.svg`, on the viewer's left), which sweeps up from the side and then waves from the shoulder in bursts: three swings, a beat of rest in the drawn pose, then again. It swings further outward than inward, so the paw never crosses the eye, and the left foot lifts as the leg rises. Under reduced motion it holds the drawn pose.
   - The timing is a pure, tested module (`shared/ui/brand/mascot/dogWave.ts`, 7 tests); `waving` is now `['wave', 'down']`, and `ARM_POSES.r.wave` is gone.
 
+- **2026-09-14**: **Each hostel now shows what has been happening in it** ([[Decisions#ADR-198|ADR-198]]). A "Recent activity" card on the drilldown's Overview tab, and a new **Activity** tab (`/owner/hostels/:hostelId/activity`) — filterable by category, searchable, paged.
+  - **The backend was already built and completely unwired.** Nothing in `apps/frontend` called `/api/owner/activity-logs`; [[Features]] listed an `ActivityLogsView` that did not exist. Row corrected.
+  - **One feed, not a fourth.** The 796-line handler is now ~100 lines composing `lib/services/hostel-activity-feed-service.ts`. `/api/activity` and `/api/activity/list` were left alone.
+  - **The expensive half is opt-in** via `include=events`, so opening a hostel never pays for the whole-history balance reconstruction.
+  - **Fixed — cross-hostel leak** in both audit-table reads ([[Bugs]]); each table scoped by a different mechanism. **Fixed — room changes were invisible** (logged, never read). **Fixed — "Cash Position ₹0 → ₹0".**
+  - **Migration 082** adds `activity_logs`' first indexes ([[Database]]). **Unapplied.**
+  - **Verified:** 14 new backend tests + 19 new frontend tests; frontend 192 files / 2820 tests pass on main; `check:architecture`, legal, brand-fossil and branding checks plus production build pass; `tsc` clean on every changed file. **Not verified:** no browser run, no real data; the DB-backed backend suite cannot run (test project paused). Pre-existing on main and untouched here: 2 `test:pure` failures (both in `agreement-requirement.test.ts`) and 2 `check:invariants` FAILs.
+  - **Deliberately not done:** logging coverage was not widened. **Found, not fixed:** the data-retention cron deletes audit rows per owner while resolving retention per hostel.
+
 - **2026-09-14**: **The payment page looks like Stayo** ([[Decisions#ADR-197|ADR-197]], [[Features]], [[Backend]]).
   - `/pay/{token}` is the only Stayo surface most residents and guardians ever see — it is where a rent reminder lands — and it was in the wrong typeface, the wrong palette, and carried no Stayo identity at all.
   - Now on the brand pair (Manrope + Inter) and the **marketing** token palette, because the reader has never seen the owner app. Facts become a labelled list, the CTA names the amount, and a `Payments secured by Stayo` footer discloses the channel without posing as the counterparty.

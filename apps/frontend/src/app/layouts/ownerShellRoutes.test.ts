@@ -32,6 +32,8 @@ describe('isOwnerFullBleedPath', () => {
     expect(isOwnerFullBleedPath('/owner/hostels/abc123/rooms')).toBe(true);
     expect(isOwnerFullBleedPath('/owner/hostels/abc123/tenants')).toBe(true);
     expect(isOwnerFullBleedPath('/owner/hostels/abc123/settings')).toBe(true);
+    expect(isOwnerFullBleedPath('/owner/hostels/abc123/marketing')).toBe(true);
+    expect(isOwnerFullBleedPath('/owner/hostels/abc123/activity')).toBe(true);
   });
 
   it('is false for the Hostels list itself', () => {

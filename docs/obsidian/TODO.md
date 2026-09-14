@@ -4,6 +4,13 @@ tags: [todo, backlog]
 
 # TODO / Backlog
 
+## Restore production's missing integrity guards (2026-09-14, [[Database]])
+
+- [ ] **Apply 075 and 082 to production.** Both additive and safe; 082's `CONCURRENTLY` must be dropped in the Supabase SQL editor (it runs in a transaction) — the table is small enough that a plain build is instant.
+- [ ] **Run the duplicate pre-check, then restore the unique guards whose count is zero.** Nine "at most one live X" partial unique indexes are absent in production — including the ones that stop double-billing a tenant-month and a tenant holding two beds. Listed in [[Database]]. Any non-zero count means production *already* holds the duplicates the rule exists to prevent, and those rows need a decision before the index can exist.
+- [ ] **Decide on `owner_documents_profile_type_active_key`.** It is not partial — it includes `is_active` as a key column, so it forbids two *inactive* documents of one type, i.e. it blocks document history. Probably a bug in the original migration; confirm before restoring it.
+- [ ] **Re-run the catalog audit with case-insensitive name matching** to settle the mixed-case Prisma objects the first run could not judge.
+
 ## `identification_documents.doc_number` is written by nothing (2026-09-12, [[Bugs]])
 
 - [ ] **Decide whether we collect document numbers at all, then make the code say so.** The column is nullable, and after the 2026-09-12 fix it is **read by exactly one masked display and written by no live path** — onboarding (`POST /tenants/activate/documents`) and the tenant profile picker both send `doc_type` + `file` only, and the sole collector left is the frozen legacy `TenantProfilePortalPage`. Two honest options: ask for the number at upload (an Aadhaar last-4 is genuinely useful to an owner reconciling a scan against a person), or drop the column and the masking with it. What it must not stay is a field that looks populated in the schema and never is — that shape is what produced the "Not uploaded" bug. Note `document-vault-service`'s `identity_documents.doc_number` is a **separate** column with the same name and the same question outstanding. — **related:** [[Database]], [[Bugs]].
