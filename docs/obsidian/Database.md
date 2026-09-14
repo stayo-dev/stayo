@@ -735,4 +735,4 @@ What the kitchen actually served — the ground truth every meal forecast is lea
 - Index `(hostel_id, meal_type, serve_date DESC)` — the exact shape of the ratio query.
 - RLS enabled, no policies, like the Stay tables.
 
-**Applied:** see the [[Changelog]] entry for the date it reached production. Nothing else reads this table, so deploy order only affects the meals endpoints.
+**Applied 2026-09-14 to production `qgfyfbdccjnibdhhvnsr`**, verified directly: 9 columns, 3 indexes (pkey, the `(hostel_id, serve_date, meal_type)` unique key, the ratio index), RLS on, 0 rows — no probe rows were written. Nothing else reads this table, so deploy order only affects the meals endpoints.
