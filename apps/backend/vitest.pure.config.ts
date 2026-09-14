@@ -204,6 +204,14 @@ export default defineConfig({
       'tests/clerk-me-handshake.test.ts',
       'tests/auth-me-dual-session.test.ts',
       'tests/clerk-controlled-onboarding.test.ts',
+      // Profile takeover (C1, 2026-09-14 audit): who may read/write a profile
+      // by id, what a profile response may carry, and that a Supabase identity
+      // is never attached to a profile by email match. All `vi.mock` the DB.
+      // The source-level hardening spec only `fs.read`s source files; it sat in
+      // the DB suite and so went unrun whenever the test DB was down.
+      'tests/profiles-route-authorization.test.ts',
+      'tests/supabase-session-linking.test.ts',
+      'tests/auth-hardening-security.test.ts',
       // Bulk import: parse-stage failures must name the real cause. The
       // row-limit message used to be swallowed by parseFile's own catch.
       'tests/bulk-import-parse-errors.test.ts',

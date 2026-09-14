@@ -96,7 +96,7 @@ sequenceDiagram
   MW->>MW: checkIdleTimeoutEdge() (Redis) — Supabase-mode only
   MW-->>API: x-auth-mode: supabase, x-auth-user-id, x-auth-session-id, ...
   API->>Sess: getSession(req)
-  Sess->>Sess: resolveSupabaseSession() — profiles lookup by auth_user_id, else email; owner_id self-heal; tenant_id resolve
+  Sess->>Sess: resolveSupabaseSession() — profiles lookup by auth_user_id only (no email fallback, ADR-200); owner_id self-heal; tenant_id resolve
   Sess-->>API: AuthPayload {sub, role, email, owner_id, tenant_id, sid}
 ```
 

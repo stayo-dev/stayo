@@ -10,6 +10,13 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-14**: **Security — closed an account takeover reachable from public owner signup** ([[Decisions#ADR-200|ADR-200]], [[Bugs]], [[APIs]], [[Backend]]).
+  - `/api/profiles/[id]` (GET, PUT) is self-or-ADMIN only; it used to let any owner read and rewrite every profile.
+  - Profile updates through `userService.updateProfile` no longer change `email` or `phone`; the verified email and phone flows are unchanged.
+  - Profile responses no longer include `password_hash`, `invitation_token` or `auth_user_id`.
+  - A Supabase token is resolved by its linked profile only — never matched to a profile by email.
+  - `tests/auth-hardening-security.test.ts` now runs in `test:pure`. **Not yet run against a real database.**
+
 - **2026-09-14**: **The Rooms tab is the hostel, drawn as a building** ([[Decisions#ADR-199|ADR-199]], [[Features]], [[Frontend]], [[APIs]], [[Bugs]]).
   - The floor accordion and its bed dots are gone. Floors stack top to bottom like the real building, every room is a tile of the faces that live in it (photo, initials, a red dot when the backend says overdue, dashed amber for an invite, `+` for a free bed), and the roof says how many beds are filled. A long floor wraps rather than shrinking faces; three or more floors get a sticky lift strip.
   - Free beds, overdue and invited are filters over the building; search finds a room or a person and shows where they are.
