@@ -13,6 +13,7 @@ const TABS = [
   { to: 'tenants', label: 'Tenants' },
   { to: 'marketing', label: 'Marketing' },
   { to: 'settings', label: 'Settings' },
+  { to: 'activity', label: 'Activity' },
 ];
 
 /**

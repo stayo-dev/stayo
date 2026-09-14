@@ -8,6 +8,49 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-14 — Nothing sticky stuck on a page the document scrolls (fixed)
+
+**Symptom.** Found while building the Rooms tab's lift strip ([[Decisions#ADR-199|ADR-199]]): a `sticky top-0` strip scrolled off the top of the screen with the rest of the page. Measured in Chrome over the real page: after scrolling 1115px the strip sat at −713px and its "which floor is on screen" tracking stayed on the top floor.
+
+**Root cause.** `theme.css` set `overflow-x: hidden` on **both** `html` and `body`. With the root's overflow set, `body`'s is not propagated to the viewport, so `<body>` becomes a scroll container of its own — one that never scrolls, because its height is its content. `position: sticky` binds to the nearest scroll container, so every sticky element on a document-scrolled page stuck to `<body>` and travelled with it. That covers any `sticky top-0` header rendered on such a page, including the desktop drilldown's tab row whose comment says it "stays put while a tab's content scrolls under it".
+
+**Fix.** `overflow-x: clip` declared after `hidden` on both: `clip` cuts off sideways overflow the same way without creating a scroll container; `hidden` remains for browsers that predate `clip`, which keep today's behaviour. Verified: the strip now sits at 0px and tracks the right floor; no horizontal overflow at 360, 390 or 1200px.
+
+**Not verified.** Every other sticky header on a document-scrolled page now sticks, as each was written to — none has been looked at individually since the change.
+
+**See:** [[Decisions#ADR-199|ADR-199]], [[Frontend]], [[Changelog]]
+
+## 2026-09-14 — Four small Rooms-tab faults fixed with the building (fixed)
+
+- **"Assign" forgot the room.** `HostelRoomsPage` passed `onAssignRoom={() => setInviteOpen(true)}` — the room was dropped, so inviting from room 103 opened the wizard with no room chosen. A free bed now opens the wizard with `preferredRoomId`/`preferredFloorId`, and the wizard's preferred-room preselect goes through `selectRoom`, so the room's rent defaults apply too (the preselect used to set only the id — a gap the enquiry → invite path shared).
+- **The room sheet showed a stale room.** It held the room object it was opened with, so an edit or a move did not show until it was closed and reopened. It now reads the room from live data by id.
+- **"+ Add floor" suggested "2th Floor"** (`${n + 1}th Floor`) and numbered the rooms it created `"Four-01"` (the first four letters of the name). It now suggests the next floor in the owner's own naming style and numbers rooms from the floor's plate (`401…`); both are pure and tested in `roomSuggestions.ts`.
+- **The add sheets kept stale state.** Both were always mounted and seeded their fields once, so a second "Add room" opened on whatever floor was last picked. They reset from fresh defaults on every open.
+
+**See:** [[Decisions#ADR-199|ADR-199]], [[Features]], [[Changelog]]
+
+## 2026-09-14 — Every WhatsApp rent reminder and payment receipt had been failing at Meta, while the owner's dashboard said "Reminder sent" (fixed)
+
+**Symptom.** Reported by the product owner: "when owner clicks on send reminder on a particular tenant, actual WhatsApp message is not received by the tenant... owner received that reminder has been sent, but tenant did not receive any reminder."
+
+**Root cause (1) — the code sent template names that had never existed at Meta.** `rent-reminder-template-contract.ts` carried two generations per template and chose between them with an env var: set `WHATSAPP_RENT_OVERDUE_TEMPLATE` to the approved v2 name and that template starts sending v2, and — in the file's own words — *"Until then v1 keeps sending, unchanged."* **That premise was false.** The four v1 names (`rent_due_reminder_v1`, `rent_due_today_v1`, `rent_overdue_warm_v1`, `stayo_payment_receipt_v1`) were not registered in this WABA at all. Reading the live template list back from `GET /{waba-id}/message_templates` returned 27 templates, **none of them a `*_v1` name**. So the "safe fallback" was not an older working path — it was a guaranteed Meta error `132001`, *"Template name does not exist in the translation"*, on every send. The four env vars had never been set, so every rent reminder and every WhatsApp payment receipt had been failing since the v2 templates were submitted.
+
+**Corroboration.** `whatsapp_logs` in production held **four rows in total** — all `stayo_tenant_onboarding_complete` / `stayo_guardian_whatsapp_activated`, all `READ`. **Not one rent-reminder row had ever been written**, and `reminder_logs` was empty. The provider, token, phone number ID and the onboarding templates were all healthy the whole time; only the rent path was dead.
+
+**Root cause (2) — the one surface that could have reported it was hard-coded to report success.** `useSendReminder.ts` did `onSuccess: () => toast.success('Reminder sent')`, discarding the response body. The backend has always returned a per-channel delivery report *and* an accurate sentence — `"Reminder recorded…; WhatsApp skipped (WHATSAPP_DISABLED)"`, or `success: false, "No unpaid obligations found"` (which still arrives as HTTP 200, because `apiResponse` spreads the payload over `{ success: true }`). A reminder that reached nobody looked exactly like one that landed. **This is why root cause (1) survived weeks of an owner watching it.**
+
+**Contributing — WhatsApp reminders were also off for the hostel.** `reminders.channels.whatsapp` was `false` on the only live hostel, and `lib/preferences.ts` defaults `reminder_whatsapp: false`, so the send short-circuited as `WHATSAPP_DISABLED` before reaching the provider. Turning it on is what exposed the `132001` underneath. **Both gates had to be wrong for the symptom to look like silence rather than an error.**
+
+**Fix.** The generation switch and its four env vars are gone ([[Decisions#ADR-196|ADR-196]]): one entry per template holds name, language, parameter order and a copy of the approved body, all changing together, because a rename is never *just* a rename — the parameter vector moves with it. `buildRentReminderBodyParameters` now also checks its vector length against the declared count, turning a silent `132000` into a thrown error with the obligation id in hand. On the frontend, `describeReminderOutcome` (pure, 7 tests) reads the delivery report and picks success / warning / error, and the "Reminded" button only latches on an actual delivery, so a failed send stays retryable.
+
+**A live drift check, retained.** `whatsapp-rent-template-contract.test.ts` asserts the four names and languages against what the WABA returned on 2026-09-14, that each body's `{{n}}` placeholders are `1..N` with no gaps, and that the built vector's length and order match. The pre-existing `whatsapp-guardian-reminders.test.ts` was **already failing on `main`** for exactly this reason — it asserted `stayo_rent_overdue` against a contract that said `stayo_rent_overdue_reminder` — and is now green.
+
+**Verified:** backend `test:pure` 2361 passing, the 2 remaining failures (`agreement-requirement.test.ts`) confirmed pre-existing by running them on a pristine `origin/main` worktree; `tsc` adds no new errors; frontend 2781 tests across 189 files plus `check:architecture`. **Verified end to end on production (2026-09-14 01:15–01:26 UTC):** the same `whatsapp_logs` row that had failed `132001` was re-reserved by the `ON CONFLICT … WHERE status = 'FAILED'` clause and is now `READ` by the resident (`stayo_rent_overdue_reminder`, `wamid.…09AA541CEF2394B3EE`); the guardian escalation fired separately at 13 days overdue and is `DELIVERED`. The payment-link button resolves — `/pay/{token}` was opened from the message. The copy has now been seen on a handset.
+
+**Wider point.** Configuration cannot be the thing that decides whether a provider call is well-formed. The env var was meant to be a safe rollout switch and was in practice a kill switch nobody knew was pulled — see [[Decisions#ADR-196|ADR-196]].
+
+**See:** [[Decisions#ADR-196|ADR-196]], [[Frontend]], [[Backend]], [[Changelog]], [[TODO]]
+
 ## 2026-09-12 — A tenant's own Aadhaar read "Not uploaded" after they uploaded it, and no tenant could open any document they had uploaded (fixed)
 
 **Symptom.** Reported by the product owner as "tenant is not able to see/edit his profile and the documents that he uploaded", with screenshots of `/profile → Personal information` showing **Aadhaar: Not uploaded** for a resident who had uploaded one during onboarding. Editing was **not** broken — the product owner confirmed saving works — which is what narrowed this to a read-side defect.
@@ -2640,3 +2683,13 @@ Related: [[Decisions#ADR-176|ADR-176]], [[Database]], [[Backend]], [[Changelog]]
 - **Root cause:** the dog is deliberately positioned *outside* the card's scroll box and "adds no layout height" — which is what keeps the card where it has always been, but also means the centring never accounted for it. A dialog centred with `-translate-y-1/2` leaves `(viewport − card) / 2` above itself; with the four-field signup form that was ~109px against the ~126px the rim-framed dog stands. The taller the form, the less room, so the longest form on the card was the one that clipped. The second cause was independent: the form was simply taller than the card's own height cap.
 - **Fix** ([[Decisions#ADR-193|ADR-193]]): the card shifts down by half the dog's exposed height and reserves twice that in its height cap, so the card and the dog centre as one object; the confirm-password field is dropped, which removes the overflow at the source. The geometry moved into a pure, tested `dogRimFit.ts` because the node-only suite cannot render the dog to measure it.
 - **Lesson:** "adds no layout height" solves clipping *inside* a scroll box and creates it *outside* one. Anything that overhangs a centred element has to be added back into the centring by hand — and it fails first on the tallest content, which is the case least likely to be the one you look at. See [[Changelog]].
+
+## Owner activity timeline leaked other hostels' audit rows onto every hostel's feed (2026-09-14)
+
+- **Area:** [[Backend]] — `app/api/owner/activity-logs/route.ts`, now `lib/services/hostel-activity-feed-service.ts`
+- **Symptom:** Latent, because nothing rendered the endpoint. For a multi-hostel owner, hostel A's timeline also listed hostel B's settings changes, rent runs, agreement-template updates, expense edits/deletions and agreement renewals. Every other source in the handler was correctly hostel-scoped, which made the two leaking reads easy to miss.
+- **Root cause:** Both audit tables were queried with `owner_id: scope.owner_id` and no hostel predicate — because neither has a `hostel_id` column. `activity_logs` records it inside `metadata`; `system_event_logs` does not record it at all.
+- **Fix:** `activity_logs` filters `metadata->>'hostel_id'` in raw SQL — safe because every writer of the entity types read sets it. `system_event_logs` could **not** use that filter: its `AGREEMENT_RENEWED` rows carry `tenant_id` and no hostel, so it would have silently returned zero renewals — it joins `tenants` instead. Migration 082 adds the supporting index. Regression tests in `tests/hostel-activity-feed.test.ts`.
+- **Also fixed:** (1) `ROOM` create/update/delete rows were written but never selected — room changes were invisible, and nothing reconstructs rooms from live tables. The third "logged but never read back" instance in this one query. (2) A missing position rendered as "Cash Position ₹0 → ₹0".
+- **Still open:** `/api/cron/data-retention` resolves `data_retention_months` **per hostel** but deletes audit rows **per owner**, so one short-retention hostel wipes history for hostels set to retain longer. Not fixed here.
+- **See:** [[Decisions#ADR-198|ADR-198]], [[Changelog]], [[APIs]], [[Database]], [[Features]]

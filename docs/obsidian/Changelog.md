@@ -10,6 +10,44 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-14**: **The Rooms tab is the hostel, drawn as a building** ([[Decisions#ADR-199|ADR-199]], [[Features]], [[Frontend]], [[APIs]], [[Bugs]]).
+  - The floor accordion and its bed dots are gone. Floors stack top to bottom like the real building, every room is a tile of the faces that live in it (photo, initials, a red dot when the backend says overdue, dashed amber for an invite, `+` for a free bed), and the roof says how many beds are filled. A long floor wraps rather than shrinking faces; three or more floors get a sticky lift strip.
+  - Free beds, overdue and invited are filters over the building; search finds a room or a person and shows where they are.
+  - Every structural action is one or two taps from the picture: add a floor on the roof, add a room with the `+` under a floor (prefilled, with "Add another"), rename or remove a floor from its plate, and from a room's sheet invite into a free bed of that room, move a tenant, change the number of beds, edit or delete the room.
+  - `GET /api/rooms?grouped=true` occupants gain `photo_url` and `payment_status` (additive). Photos load as ImageKit face crops.
+  - Fixed on the way: `position: sticky` never stuck on document-scrolled pages (`overflow-x: clip`), "Assign" forgot the room, the room sheet showed a stale room, "2th Floor" / "Four-01", and add sheets that kept stale state.
+  - Frontend 2872 tests; the real page driven in Chrome at phone and desktop widths over fake data. **Not yet run against a real backend.**
+
+- **2026-09-14**: **The Stayo dog waves properly** ([[Features]], [[Frontend]]).
+  - The "Signed in" handoff wave reused the long forearm built for leaning over the login card, on the wrong side, and rotated it about the **paw**. On the standing dog it showed as a stick from the belly to the ear that see-sawed across the chest while the paw stayed still.
+  - It now uses the designer's own raised leg (`paw-wave` in `stayo-mascot-waving.svg`, on the viewer's left), which sweeps up from the side and then waves from the shoulder in bursts: three swings, a beat of rest in the drawn pose, then again. It swings further outward than inward, so the paw never crosses the eye, and the left foot lifts as the leg rises. Under reduced motion it holds the drawn pose.
+  - The timing is a pure, tested module (`shared/ui/brand/mascot/dogWave.ts`, 7 tests); `waving` is now `['wave', 'down']`, and `ARM_POSES.r.wave` is gone.
+
+- **2026-09-14**: **Each hostel now shows what has been happening in it** ([[Decisions#ADR-198|ADR-198]]). A "Recent activity" card on the drilldown's Overview tab, and a new **Activity** tab (`/owner/hostels/:hostelId/activity`) — filterable by category, searchable, paged.
+  - **The backend was already built and completely unwired.** Nothing in `apps/frontend` called `/api/owner/activity-logs`; [[Features]] listed an `ActivityLogsView` that did not exist. Row corrected.
+  - **One feed, not a fourth.** The 796-line handler is now ~100 lines composing `lib/services/hostel-activity-feed-service.ts`. `/api/activity` and `/api/activity/list` were left alone.
+  - **The expensive half is opt-in** via `include=events`, so opening a hostel never pays for the whole-history balance reconstruction.
+  - **Fixed — cross-hostel leak** in both audit-table reads ([[Bugs]]); each table scoped by a different mechanism. **Fixed — room changes were invisible** (logged, never read). **Fixed — "Cash Position ₹0 → ₹0".**
+  - **Migration 082** adds `activity_logs`' first indexes ([[Database]]). **Unapplied.**
+  - **Verified:** 14 new backend tests + 19 new frontend tests; frontend 192 files / 2820 tests pass on main; `check:architecture`, legal, brand-fossil and branding checks plus production build pass; `tsc` clean on every changed file. **Not verified:** no browser run, no real data; the DB-backed backend suite cannot run (test project paused). Pre-existing on main and untouched here: 2 `test:pure` failures (both in `agreement-requirement.test.ts`) and 2 `check:invariants` FAILs.
+  - **Deliberately not done:** logging coverage was not widened. **Found, not fixed:** the data-retention cron deletes audit rows per owner while resolving retention per hostel.
+
+- **2026-09-14**: **The payment page looks like Stayo** ([[Decisions#ADR-197|ADR-197]], [[Features]], [[Backend]]).
+  - `/pay/{token}` is the only Stayo surface most residents and guardians ever see — it is where a rent reminder lands — and it was in the wrong typeface, the wrong palette, and carried no Stayo identity at all.
+  - Now on the brand pair (Manrope + Inter) and the **marketing** token palette, because the reader has never seen the owner app. Facts become a labelled list, the CTA names the amount, and a `Payments secured by Stayo` footer discloses the channel without posing as the counterparty.
+  - **The dog appears on Paid, Expired and Error — never on the payment form.** [[Decisions#ADR-191|ADR-191]] puts it at human moments and calls it never-decoration; a mascot watching someone enter an amount trades trust for warmth on the one screen where trust is the product.
+  - Still one self-contained HTML response with no JS bundle: a resident on mobile data should not boot a SPA to pay rent.
+  - Fixed along the way: the client script restored the button with `innerText`, destroying the padlock icon the first time a failed attempt re-enabled it.
+  - **Not seen in a browser** — no browser tool in this session, so the layout is reasoned about and unit-tested, not observed.
+
+- **2026-09-14**: **WhatsApp rent reminders and payment receipts actually send** ([[Bugs]], [[Decisions#ADR-196|ADR-196]], [[Frontend]], [[Backend]]).
+  - **They had never worked.** The code sent template names (`rent_overdue_warm_v1` and three siblings) that were not registered in the WABA, so Meta rejected every one with `132001`. Production `whatsapp_logs` held four rows ever, all onboarding templates; not a single rent reminder had been written.
+  - **And nobody could tell**, because the owner's button toasted "Reminder sent" on any HTTP 200, discarding the per-channel delivery report the backend had always returned.
+  - **The generation switch is gone.** One entry per template holds name, language, parameter order and the approved body, all changing together — a rename moves the `{{n}}` vector with it, so it is a code change, not an env var. The four `WHATSAPP_*_TEMPLATE` variables are now inert.
+  - **The UI reports what happened:** success, a warning when one channel failed, an error when nothing was delivered — and "Reminded" only latches on a real delivery, so a failed send stays retryable. A channel the owner switched off is not a warning.
+  - **Drift is now a test failure:** the four names and languages are pinned against the live WABA listing, bodies must have gap-free `1..N` placeholders, and the built vector's length and order are asserted. The existing `whatsapp-guardian-reminders.test.ts` had been failing on `main` for exactly this drift and is green again.
+  - **Confirmed live:** resident's reminder `READ`, guardian's `DELIVERED`, and the payment link opened from the message — the first rent reminders this product has ever delivered.
+
 - **2026-09-14**: **The kitchen is told how many to cook for, learned from what it actually served** ([[Features]], [[APIs]], [[Database]], [[Business-Rules]], [[Food]], [[Decisions#ADR-195|ADR-195]]).
   - **Why not just the headcount:** participation is lopsided — nearly everyone eats dinner, far fewer eat lunch — so occupancy shown as a meal number would overstate lunch every day and be abandoned. Nothing in Stayo recorded how many people actually ate, so this slice creates that ground truth first.
   - **The kitchen sheet asks one number per meal** once its serving window closes, and shows the expected count beside today's and tomorrow's menus. `≈ 34 · from the last 2 weeks` when inferred; a bare `31 · still learning what people actually eat` until a meal has three logged days. Re-entering a count corrects it.

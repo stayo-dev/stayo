@@ -1,7 +1,7 @@
 import { onboardingTemplateName as onboardingTemplateNameValue } from "./onboarding-template-contract";
 import {
+  RENT_REMINDER_TEMPLATES,
   RentReminderKind,
-  rentReminderGeneration,
   rentReminderTemplateLanguage,
   rentReminderTemplateName,
 } from "./rent-reminder-template-contract";
@@ -29,13 +29,6 @@ export type RentReminderTemplateVariables = {
   prefs?: Partial<HostelPreferences>;
 };
 
-type TemplateDefinition = {
-  metaName: string;
-  languageCode: string;
-  templateBody: string;
-  buildParameters: (data: RentReminderTemplateVariables) => string[];
-};
-
 /** Maps the local enum onto the contract's kinds. One concept, two spellings. */
 const TEMPLATE_KIND: Record<WhatsAppRentReminderTemplate, RentReminderKind> = {
   [WhatsAppRentReminderTemplate.RENT_DUE_REMINDER]: "DUE_SOON",
@@ -45,15 +38,16 @@ const TEMPLATE_KIND: Record<WhatsAppRentReminderTemplate, RentReminderKind> = {
 };
 
 /**
- * Generation-2 parameter builders.
+ * Body parameter builders, one per template.
  *
- * These differ from v1 in more than wording — each one inserts the hostel's
- * name, which is what makes a message about money recognisable rather than
- * suspicious. They are only ever reached when the matching env var names the
- * approved v2 template, so name and parameter shape can never disagree.
- * See `rent-reminder-template-contract.ts`.
+ * Each inserts the hostel's name, which is what makes a message about money
+ * recognisable rather than suspicious. The order here must match
+ * `RENT_REMINDER_TEMPLATES[kind].parameters`, which mirrors the body Meta
+ * approved — `whatsapp-rent-template-contract.test.ts` asserts that it does.
+ * A vector of the right length in the wrong order is not an API error; it is
+ * a message that reads fine and says the wrong thing.
  */
-const V2_PARAMETERS: Record<WhatsAppRentReminderTemplate, (data: RentReminderTemplateVariables) => string[]> = {
+const BODY_PARAMETERS: Record<WhatsAppRentReminderTemplate, (data: RentReminderTemplateVariables) => string[]> = {
   [WhatsAppRentReminderTemplate.RENT_DUE_REMINDER]: (data) => [
     data.tenantName || "Resident",
     data.hostelName || "your hostel",
@@ -95,51 +89,14 @@ function formatTemplateAmount(amount: number): string {
   }).format(value);
 }
 
-const TEMPLATE_REGISTRY: Record<WhatsAppRentReminderTemplate, TemplateDefinition> = {
-  [WhatsAppRentReminderTemplate.RENT_DUE_REMINDER]: {
-    metaName: "rent_due_reminder_v1",
-    languageCode: "en_IN",
-    templateBody: "Hello *{{1}}*, your rent of *₹{{3}}* for *{{4}}* is due in *{{2}}* days (on *{{5}}*). Please pay on time to avoid late fees. - HMS",
-    buildParameters: (data) => [
-      data.tenantName || "Tenant",
-      String(Math.abs(data.daysOverdue)),
-      formatTemplateAmount(data.amount),
-      formatMonthYear(data.rentMonth, data.prefs),
-      formatDate(data.dueDate, data.prefs),
-    ],
-  },
-  [WhatsAppRentReminderTemplate.RENT_DUE_TODAY]: {
-    metaName: "rent_due_today_v1",
-    languageCode: "en",
-    templateBody: "Hello *{{1}}*, this is a reminder that your rent of *₹{{2}}* for *{{3}}* is due *TODAY*. Please pay using the app to avoid late fees. - HMS",
-    buildParameters: (data) => [
-      data.tenantName || "Tenant",
-      formatTemplateAmount(data.amount),
-      formatMonthYear(data.rentMonth, data.prefs),
-    ],
-  },
-  [WhatsAppRentReminderTemplate.RENT_OVERDUE_REMINDER]: {
-    metaName: "rent_overdue_warm_v1",
-    languageCode: "en_IN",
-    templateBody: "Hello *{{1}}*, your rent of *₹{{2}}* for *{{3}}* was due on *{{4}}* and is now overdue by *{{5}}* days. Please make payment as soon as possible. - HMS",
-    buildParameters: (data) => [
-      data.tenantName || "Tenant",
-      formatTemplateAmount(data.amount),
-      formatMonthYear(data.rentMonth, data.prefs),
-      formatDate(data.dueDate, data.prefs),
-      String(Math.max(1, Math.floor(data.daysOverdue))),
-    ],
-  },
-};
-
 export function renderWhatsAppTemplatePreview(
   template: WhatsAppRentReminderTemplate,
   data: RentReminderTemplateVariables
 ): string {
-  const def = TEMPLATE_REGISTRY[template];
-  if (!def) return "";
-  const params = def.buildParameters(data);
-  let body = def.templateBody;
+  const build = BODY_PARAMETERS[template];
+  if (!build) return "";
+  const params = build(data);
+  let body = RENT_REMINDER_TEMPLATES[TEMPLATE_KIND[template]].body;
   params.forEach((param, index) => {
     body = body.replace(new RegExp(`\\{\\{${index + 1}\\}\\}`, "g"), param);
   });
@@ -162,17 +119,22 @@ export function getMetaTemplateLanguage(template: WhatsAppRentReminderTemplate):
 
 export function buildRentReminderBodyParameters(data: RentReminderTemplateVariables): string[] {
   const template = selectRentReminderTemplate(data.daysOverdue);
-  const generation = rentReminderGeneration(TEMPLATE_KIND[template]);
-
-  const build =
-    generation === "v2" ? V2_PARAMETERS[template] : TEMPLATE_REGISTRY[template].buildParameters;
-
-  const params = build(data).map((value) => String(value).trim());
+  const kind = TEMPLATE_KIND[template];
+  const params = BODY_PARAMETERS[template](data).map((value) => String(value).trim());
 
   // An empty parameter is a 400 from Meta, and a reminder that never arrives.
   // Fail here, where the obligation id is still in hand to log against.
   if (params.some((value) => !value)) {
-    throw new Error(`Invalid WhatsApp template variables for ${template} (${generation})`);
+    throw new Error(`Invalid WhatsApp template variables for ${template}`);
+  }
+
+  // The count Meta will reject on, checked against the name we are about to
+  // send under. Cheap, and it turns a silent 132000 into a logged obligation id.
+  const declared = RENT_REMINDER_TEMPLATES[kind].parameters.length;
+  if (params.length !== declared) {
+    throw new Error(
+      `WhatsApp template ${rentReminderTemplateName(kind)} expects ${declared} parameters, built ${params.length}`
+    );
   }
 
   return params;

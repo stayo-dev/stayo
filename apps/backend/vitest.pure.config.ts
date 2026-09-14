@@ -25,6 +25,8 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: [
+      // The Rooms tab as a building (ADR-199) — who is in each room.
+      'tests/room-occupants.test.ts',
       // Stay Status (ADR-194) — pure core, mocked service and routes.
       'tests/timezone-ist.test.ts',
       'tests/stay-status.test.ts',
@@ -147,6 +149,8 @@ export default defineConfig({
       'tests/whatsapp-command-center-vocabulary.test.ts',
       'tests/whatsapp-command-center-formatting.test.ts',
       'tests/whatsapp-guardian-reminders.test.ts',
+      'tests/whatsapp-rent-template-contract.test.ts',
+      'tests/pay-page-brand.test.ts',
       'tests/whatsapp-guardian-activation-template.test.ts',
       // Reads schema.prisma and the source as text — no client, no database.
       'tests/whatsapp-prisma-accessors.test.ts',
@@ -237,6 +241,9 @@ export default defineConfig({
       'tests/activation-email-gate.test.ts',
       'tests/invitation-nudge.test.ts',
       'tests/build-without-env.test.ts',
+      // The per-hostel activity feed. Mocks `@/lib/db` entirely — the raw
+      // log reads are asserted as SQL text, so no client is constructed.
+      'tests/hostel-activity-feed.test.ts',
     ],
     alias: {
       // More specific than the catch-all `@` entry below, and must come

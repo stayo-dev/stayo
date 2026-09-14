@@ -6,6 +6,7 @@ import { queryKeys } from '@lib/queryKeys';
 import { useState } from 'react';
 import { Archive } from 'lucide-react';
 import { ArchiveHostelModal } from '@features/owner-dashboard/components/ArchiveHostelModal';
+import { RecentActivityCard } from '@features/hostel-activity/components/RecentActivityCard';
 
 function formatLakh(value: number) {
   if (Math.abs(value) >= 100000) return `₹${(value / 100000).toFixed(1)}L`;
@@ -122,6 +123,12 @@ export function HostelOverviewPage() {
         </div>
         <span className="flex-none rounded-lg border-[1.5px] border-primary px-3.5 py-2 font-display text-xs font-bold text-primary">Open tenants</span>
       </button>
+
+      {/* What has actually been happening here — payments, expenses, check-ins,
+          move-outs, room and settings changes — newest first. Asks the server
+          for events only, so opening a hostel does not pay for the full
+          timeline's balance reconstruction. */}
+      <RecentActivityCard hostelId={hostelId} />
 
       {/* A second entry point to the archive flow the dashboard's hostel menu
           already owns — the same `ArchiveHostelModal`, deliberately not a

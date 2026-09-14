@@ -29,6 +29,9 @@ const HostelDrilldownLayout = lazy(() =>
 const HostelOverviewPage = lazy(() =>
   import('@features/hostel-drilldown/pages/HostelOverviewPage').then((m) => ({ default: m.HostelOverviewPage })),
 );
+const HostelActivityPage = lazy(() =>
+  import('@features/hostel-activity/pages/HostelActivityPage').then((m) => ({ default: m.HostelActivityPage })),
+);
 const HostelRoomsPage = lazy(() => import('@features/hostel-drilldown/pages/HostelRoomsPage').then((m) => ({ default: m.HostelRoomsPage })));
 const HostelBuilderPage = lazy(() =>
   import('@features/owner-hostel-builder/pages/HostelBuilderPage').then((m) => ({ default: m.HostelBuilderPage })),
@@ -213,6 +216,7 @@ export function OwnerRoutes() {
             <Route path="tenants" element={<HostelTenantsPage />} />
             <Route path="marketing" element={<HostelMarketingPage />} />
             <Route path="settings" element={<HostelSettingsPage />} />
+            <Route path="activity" element={<HostelActivityPage />} />
           </Route>
         </Route>
 

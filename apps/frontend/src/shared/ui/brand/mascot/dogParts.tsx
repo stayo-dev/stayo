@@ -11,7 +11,7 @@
  * `stayo-loading.css`: the dog is brand art, not themed UI.
  *
  * DERIVED v1 ART — for the designer to refine: the forearms and paw pads
- * (`arm-l`/`arm-r`), the concerned brows, the wobble mouth, the closed-eye
+ * (`arm-l`/`arm-r`; the waving paw is the designer's own, see `WavePaw`), the concerned brows, the wobble mouth, the closed-eye
  * cover and the rim paws are built from existing shapes, not the source files.
  */
 import { RIM_Y } from './dogRimFit';
@@ -59,6 +59,23 @@ function Arm({ side }: { side: 'l' | 'r' }) {
   );
 }
 
+/**
+ * The waving paw, lifted from `paw-wave` in `stayo-mascot-waving.svg` with its
+ * pose (`rotate(-18 108 200)`). A body-coloured leg rather than a forearm, so
+ * it reads as the dog's own front leg. The frame loop rotates the inner group
+ * about `WAVE.pivot` (`dogWave.ts`), the base of the leg, and slides it up as it rises.
+ */
+function WavePaw() {
+  return (
+    <g transform="rotate(-18 108 200)">
+      <g data-part="wave-paw">
+        <path d="M96 260 C86 220 90 165 104 118 C114 130 118 175 116 220 C116 240 108 255 96 260 Z" fill={C.clay} />
+        <ellipse cx={107} cy={114} rx={15} ry={11} fill={C.latte} />
+      </g>
+    </g>
+  );
+}
+
 function Star({ x, y }: { x: number; y: number }) {
   return <path className="stayo-dog__sparkle" d={`M${x} ${y} l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 Z`} fill={C.dusty} />;
 }
@@ -86,7 +103,8 @@ export function DogArt({ clipId, framing }: { clipId: string; framing: DogFramin
             <ellipse cx={150} cy={255} rx={34} ry={40} fill={C.latte} />
             {!rim && (
               <>
-                <ellipse cx={122} cy={292} rx={16} ry={10} fill={C.latte} />
+                {/* Lifts off the ground as the same leg rises to wave. */}
+                <ellipse data-part="foot-l" cx={122} cy={292} rx={16} ry={10} fill={C.latte} />
                 <ellipse cx={178} cy={292} rx={16} ry={10} fill={C.latte} />
               </>
             )}
@@ -136,6 +154,7 @@ export function DogArt({ clipId, framing }: { clipId: string; framing: DogFramin
           </g>
           <Arm side="l" />
           <Arm side="r" />
+          <WavePaw />
         </g>
       </g>
       {rim && (

@@ -151,6 +151,12 @@ export const queryKeys = {
     all: (hostelId: string) => hostelKey(hostelId, 'activity'),
     list: (hostelId: string, params?: object) =>
       hostelKey(hostelId, 'activity', 'list', params ?? {}),
+    /** Overview's five-row preview. Separate from `feed` so paging the full
+        history never evicts the card, and vice versa. */
+    recent: (hostelId: string, limit: number) => hostelKey(hostelId, 'activity', 'recent', limit),
+    /** The full history screen, keyed by its filters. */
+    feed: (hostelId: string, filters?: object) =>
+      hostelKey(hostelId, 'activity', 'feed', filters ?? {}),
   },
 
   admissions: {

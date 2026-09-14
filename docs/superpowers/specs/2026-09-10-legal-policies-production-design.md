@@ -466,9 +466,31 @@ immediate acknowledgement with a reference number, which satisfies the 24- and 4
 acknowledgement obligations without manual action, and the ticket table is the required record.
 What remains genuinely manual is the 15-day resolution.
 
-**The one real hazard is publishing a channel nobody monitors.** An unwatched `grievance@` is
-worse than none — it is documented non-compliance with a timestamp on it. The role must not be
-published until the inbox is monitored.
+**Monitoring is already solved.** `grievance@yourstayo.com` is an **alias of the primary
+`admin@yourstayo.com` mailbox**, not a separate inbox — so it lands where the founder already
+reads, and the "unwatched inbox" hazard does not arise. Three things must still be configured, or
+the alias creates new problems of its own:
+
+1. **Enable "send mail as" for the alias**, so replies to a grievance leave *from*
+   `grievance@yourstayo.com`. A complainant who writes to `grievance@` and is answered by
+   `admin@` sees an inconsistent trail, and so would anyone auditing the response later.
+2. **Filter and label the statutory-clock addresses** (`grievance@`, `legal@`, `privacy@`) on
+   arrival. All thirteen aliases land in one mailbox, which means a complaint carrying a 24-hour
+   acknowledgement obligation sits in the same stream as marketing mail. A label is the cheapest
+   possible guard against missing a statutory deadline.
+3. **Publish only the addresses actually serviced.** Every published address is a promise to
+   answer it. The documents publish four — `support@` (first response), `grievance@` (Grievance
+   Officer), `privacy@` (DPDP data rights) and `contact@` (general/business) — and deliberately
+   do not surface the remaining aliases.
+
+**The escalation ladder must not pretend to be a department.** At two people, Level 1 support and
+the Grievance Officer are the same person reading the same mailbox. The Contact page should not
+imply otherwise. The escalation is nonetheless real, and the copy should say why: raising a matter
+to the Grievance Officer starts a **statutory clock and creates a formal record**, which is what
+changes — not who reads it. Honest, and still meaningful to the complainant.
+
+Email remains the fallback channel; the ticket intake (§9) is the primary one precisely because it
+timestamps the acknowledgement automatically rather than relying on someone remembering to.
 
 ## 10. UI/UX — accessible, not advertised
 

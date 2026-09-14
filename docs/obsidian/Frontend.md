@@ -71,7 +71,8 @@ Routes: `/admin` (Overview), `/leads`, `/owners`, `/kyc`, `/reviews`, `/revenue`
 | `tenant-portal` | Yes | Separate from `features/tenants` (owner-side) — tenant-portal-specific API + `useTenantDashboard.ts`, which defines its **own parallel `tenantQueryKeys`** rather than using the centralized `lib/queryKeys.ts`. Intentional split or drift — **Unknown**. |
 | `agreements`, `auth`, `dashboard`, `expenses`, `move-out`, `notifications`, `owners`, `reports`, `rooms` | Yes | Thin per-domain API wrappers, mostly `.js` files. |
 | `admissions` | Yes | Plus a visitor-facing component (`components/visitor/`). |
-| `activity` | Yes | Activity/audit log listing. |
+| `activity` | Yes | An `activityListService` wrapper over `/api/activity/list`. **Exported from `services/index.ts` and imported by nothing** (checked 2026-09-14) — not the live activity surface. |
+| `hostel-activity` | Yes | **The live per-hostel activity feed** (2026-09-14, [[Decisions#ADR-198|ADR-198]]). `RecentActivityCard` on the drilldown's Overview tab, and `HostelActivityPage` as the drilldown's **Activity** tab (`/owner/hostels/:hostelId/activity`, added to `isOwnerFullBleedPath`), over `/api/owner/activity-logs?include=events`. Day-grouping, IST formatting, actor labels and category tones live in the pure `groupActivityEvents.ts`; the components are thin renderers over it. |
 | `settings` | **No** `api/` folder — only `settingsHooks.ts`. Where its data access goes through was not traced — **Unknown**. |
 | `recovery` | Yes | Thin wrapper (`recoveryService.createCase/validate/execute/getById`) over the Business Recovery Platform's `/api/recovery/cases/*` routes. No components of its own — consumed by `app/components/modals/CorrectPaymentModal.tsx` (Reverse + Transfer correction flow; mounted on `TenantDetailPage`'s Activity tab since 2026-08-27. Before that it had **no mount point anywhere in the app** — its only one was `TenantProfilePage`, which had zero importers and so was already unreachable to users before that page was deleted, meaning a built correction platform sat behind a button nobody could press. Transfer mode also uses `features/payments/api`'s `paymentService.quickCollectSearch` for the destination-tenant picker). See [[Features]] (Correct Payment (Reverse / Transfer)). |
 
@@ -221,6 +222,7 @@ Notes that matter when touching this:
 - **Because it adds no height, the centring has to allow for it** ([[Decisions#ADR-193|ADR-193]]). A card centred on its own leaves `(viewport − card) / 2` above it, which is less than the ~126px the rim dog stands, so its head was clipped by the top of the window. The shell translates by `calc(-50% + var(--dog-rise))` and caps the card's height at `100dvh − var(--dog-rise) * 2 − 1rem`, both from `--dog-rise` = `rimCenteringOffsetPx(184)`. **Any other card the dog leans on needs the same two rules** — the dog does not make room for itself.
 - **The layout numbers are pure and tested** in `dogRimFit.ts` (`rimDogHeightPx`, `rimExposedHeightPx`, `rimCenteringOffsetPx`, plus `RIM_Y`, the view box and `RIM_OVERLAP_PERCENT`, which live there rather than in `StayoDog.tsx`/`dogParts.tsx`). The node-only suite cannot render the dog to measure it, so derive from these rather than hardcoding pixels.
 - **Derived v1 art** (covering, peeking, concerned, curious, the forearms, the rim paws) is built from existing shapes in `dogParts.tsx`, flagged for the designer to refine. The source SVGs are untouched.
+- **The waving paw is not a forearm.** It is the designer's `paw-wave` leg (`WavePaw` in `dogParts.tsx`), rotated by `waveSwing()` from `dogWave.ts` about `WAVE.pivot`, the base of the leg. The forearms (`arm-l`/`arm-r`) are built to reach over the card's rim; on the standing dog nothing hides their lower end, and rotating one moves the whole stick. So a gesture that belongs to the standing dog gets its own part, not a forearm pose ([[Changelog]], 2026-09-14).
 
 ## Enforced architectural boundaries
 
@@ -259,6 +261,10 @@ The StayO redesign is being built in place inside this same tree, per the design
   **Where "home" points, after the split.** The rule is **logos mean "front door" and go to `/`; content CTAs and route guards go to `/owners`.** So `LandingPage`'s own Stayo logo (previously an in-page `#top` anchor, since this page *was* `/`) plus `MarketingLayout`'s and `CompanyPage`'s logos → `/`; the owner-lead dead-ends (`EnquiryStatusPage`, `OwnerLeadInvitePage`), `JourneyShell`/`OwnerOnboardingWizard`'s mid-flow chrome, `RequireMockOwnerJourney`'s guard, `CompanyPage`'s "Explore Stayo" CTA and `LandingPage`'s `/login`-modal-close redirect → `/owners`. `ProtectedRoute` (no session) and `ProtectedTenantRoute` → `/login`, because re-asking someone whose session just expired which audience they belong to, instead of letting them sign back in, loses the thread. Three stay on `/` deliberately: the 404 CTA, the receipt-verification shell (`PublicLayout`, tenant-facing), and `ProtectedRoute`'s wrong-role branch, where the chooser is genuinely the right question.
 
   **The fork is two-way, and that is load-bearing.** `/` renders for everyone, signed-in owners included — an owner has to be able to reach the tenant side once hostel listings live there. A hard redirect for authenticated owners was written and reverted the same day for exactly that reason; see [[Decisions#ADR-071|ADR-071]] point 4. The tenant side's own way back is deferred until that page is designed. See [[Features]].
+
+- **`features/hostel-drilldown/building/`** (2026-09-14, [[Decisions#ADR-199|ADR-199]]) — the Rooms tab as a building. Every decision is in three pure, tested modules: `buildingModel.ts` (`stackFloors` — highest `order` on top, `__unassigned` kept aside; `floorLevel`/`floorPlate` — "Second floor", "2nd floor", "Floor 2" → `2`, ground → `G`; `roomBedSlots` — pairs the backend's occupied/reserved counts with `occupants`, people winning when the two disagree; counts, `roomMatches`, `slotEmphasis`, `roomAriaLabel`), `roomSuggestions.ts` (next room number, room defaults, next floor name in the owner's own style, numbers for a new floor) and `liftStrip.ts` (when to show it, which floor is active — including at the bottom, where the lowest floors can't reach the line). Components (`HostelBuilding`, `FloorBand`, `RoomTile`, `BedFace`, `LensChips`, `LiftStrip`, …) only draw.
+
+  **Things that will bite:** (1) the overdue dot is `payment_status === 'OVERDUE'` from the backend — never derive it from `pending_dues`, which includes rent not yet due. (2) A room tile is **one** button; faces are `aria-hidden` and the tile's `aria-label` is the content — put new per-bed actions in `RoomSheetModal`, not on the 23px faces. (3) Tile width comes from `tileMinWidthPx(widest room on the floor)` and the grid wraps; do not shrink faces to fit more across. (4) Photos go through `shared/lib/photoThumbnail.ts`, which asks ImageKit for a face-centred crop at 2×. (5) The lift strip is `sticky top-0 lg:top-[41px]` (under the desktop drilldown's sticky tab row), and sticky only works on document-scrolled pages because `theme.css` sets `overflow-x: clip` on `html`/`body` — putting `hidden` back alone breaks every sticky header on such pages (see [[Bugs]]).
 
 - **`features/hostel-drilldown/marketing/`** (2026-08-15) — the owner Marketing page's sheet set, sitting beside the page it serves rather than in `shared/`: `MarketingSheet.tsx` (the design's sheet header/footer/chip/input vocabulary, wrapping the shared `BottomSheet` in `hideHeader` mode), the five bottom sheets (`Template`/`Basics`/`Amenity`/`Bed`/`Place`/`MessMenu`), two full-screen portalled overlays (`PhotosScreen`, `PreviewScreen`), `amenityIcons.ts` (label→glyph, shared by the editor and the preview so one amenity cannot pick up two different marks), and `marketingTheme.ts`.
 
@@ -452,6 +458,27 @@ StayO is getting a real desktop application layout for owner + tenant. **The bre
 - **Not touched:** every data hook and mutation (`useUpdateOwnerProfile`, the billing-policy save mutations, etc.), all backend contracts, `hubSections.ts`'s grouping, `MoreScreenHeader.tsx`'s own markup, the two `BottomSheet`s' content, Owner Tenants/Money/Hostels/Food, `WorkQueue`, the existing Owner shell architecture, Tenant/Profile work from Phases 3.1–3.6.
 
 **Do not `import` the desktop primitives** unless executing a plan phase. `MasterDetail`/`AppConsoleShell`/`adaptive-surface` are in `app/` (not `shared/ui/`) because `check-architecture.mjs` forbids `shared/` → `app/` imports.
+
+## Reminder outcomes (ADR-196)
+
+`features/notifications/useSendReminder.ts` is the owner's one-tap "Remind"
+(rendered by `owner-tenants/components/TenantQuickActions.tsx`, and by the
+unmounted `ReminderActionBar`). It used to call `toast.success('Reminder sent')`
+in `onSuccess` and discard the body — so a reminder Meta had rejected looked
+identical to one that landed, which is how [[Bugs]]' 2026-09-14 outage stayed
+invisible for weeks.
+
+The reading now lives in `features/notifications/reminderOutcome.ts`, a pure
+module under test (the frontend suite is node-only, so decision logic goes in
+`.ts` and components stay thin renderers):
+
+- `success: false` still arrives as **HTTP 200** — `apiResponse` spreads the
+  payload over `{ success: true }`, so `{ success: false, message }` wins on the
+  spread. Treated as an error, showing the backend's own sentence.
+- A channel **attempted and not sent** is a failure and names its `error_code`.
+- A channel **skipped because the owner switched it off** (`WHATSAPP_DISABLED`,
+  `TENANT_EMAIL_MISSING`, `NO_TENANT_ACCOUNT`, …) is not a warning.
+- `delivered` gates the "Reminded" latch, so a failed send stays retryable.
 
 ## See also
 - [[APIs]] for the endpoint shapes feature wrappers call
