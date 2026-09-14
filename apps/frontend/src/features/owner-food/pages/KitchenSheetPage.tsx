@@ -11,6 +11,10 @@ import { useIsDesktop } from '@/app/components/ui/use-desktop';
 import { HostelSwitcher } from '../components/HostelSwitcher';
 import { useFoodSchedule } from '../hooks/useFoodSchedule';
 import { useMealTimings } from '../hooks/useMealTimings';
+import { useMealForecast } from '../hooks/useMealForecast';
+import { canLogNow, entryFor, expectedLabel, honestyLine, SLOT_TO_MEAL_TYPE } from '../mealForecast';
+import { ServedCountRow } from '../components/ServedCountRow';
+import { parseApiError } from '@lib/errors';
 import { buildKitchenMessage, whatsappShareUrl } from '../kitchenSheet';
 import { cellAt, dayKeyFor, DAY_ORDER, formatCellItems, isFilled, slotsInUse, type WeekGridCell } from '../weekGrid';
 
@@ -60,6 +64,21 @@ export function KitchenSheetPage() {
   // Meals this kitchen actually runs. One it never runs is dropped rather
   // than shown as a dash every day — see ADR-147.
   const served = slotsInUse(schedule.weekGrid);
+
+  // How many to cook for, and the measurement it learns from (ADR-194).
+  const meals = useMealForecast(hostelId ?? undefined);
+  const todayDate = meals.forecast?.today ?? '';
+  const tomorrowDate = meals.forecast?.days[1]?.date ?? '';
+  const nowHHmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+  const logServed = async (slot: (typeof served)[number], count: number) => {
+    try {
+      await meals.logServed({ serveDate: todayDate, mealType: SLOT_TO_MEAL_TYPE[slot], servedCount: count });
+      stayoToast.success('Saved');
+    } catch (error) {
+      stayoToast.error(parseApiError(error) || 'Could not save that count.');
+    }
+  };
 
   const message = buildKitchenMessage({ grid: schedule.weekGrid, now, hostelName, timings: mealTimings });
 
@@ -132,6 +151,16 @@ export function KitchenSheetPage() {
               <span className={`font-display text-[24px] font-extrabold tracking-tight ${isFilled(cell) ? 'text-foreground' : 'italic text-muted-foreground/60'}`}>
                 {dishes(cell)}
               </span>
+              {(() => {
+                const entry = entryFor(meals.forecast, todayDate, slot);
+                if (!entry) return null;
+                return (
+                  <span className="ml-auto flex-none text-right">
+                    <span className="block font-display text-[22px] font-extrabold tabular-nums text-foreground">{expectedLabel(entry)}</span>
+                    <span className="block text-[10.5px] text-muted-foreground">{honestyLine(entry)}</span>
+                  </span>
+                );
+              })()}
             </div>
           );
         })}
@@ -153,11 +182,42 @@ export function KitchenSheetPage() {
                 <dd className={`text-[14px] font-semibold ${isFilled(cell) ? 'text-foreground' : 'italic text-muted-foreground/60'}`}>
                   {dishes(cell)}
                 </dd>
+                {(() => {
+                  const entry = entryFor(meals.forecast, tomorrowDate, slot);
+                  return entry ? (
+                    <dd className="ml-auto text-[13px] font-bold tabular-nums text-muted-foreground">{expectedLabel(entry)}</dd>
+                  ) : null;
+                })()}
               </div>
             );
           })}
         </dl>
       </div>
+
+      {/* The measurement the forecast learns from. Only meals that have
+          actually been served are asked about — see `canLogNow`. */}
+      {(() => {
+        const loggable = served.filter((slot) =>
+          canLogNow({ entry: entryFor(meals.forecast, todayDate, slot), slot, timings: mealTimings, nowHHmm, isToday: true }),
+        );
+        if (loggable.length === 0) return null;
+        return (
+          <div className="rounded-2xl border border-border p-4">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">How many did you serve?</span>
+            <div className="mt-1 divide-y divide-border">
+              {loggable.map((slot) => (
+                <ServedCountRow
+                  key={slot}
+                  label={MEAL_CATEGORY_META[slot].label}
+                  served={entryFor(meals.forecast, todayDate, slot)?.served ?? null}
+                  busy={meals.isLogging}
+                  onSave={(count) => logServed(slot, count)}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="flex gap-2.5 print:hidden">
         <button
