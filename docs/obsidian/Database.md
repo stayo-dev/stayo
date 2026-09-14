@@ -753,3 +753,28 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_activity_logs_owner_ts
 - **`system_event_logs` needs nothing:** the feed resolves its hostel by joining `tenants`, covered by existing indexes.
 - **Status: unapplied** to any database.
 - **See:** [[Decisions#ADR-198|ADR-198]], [[APIs]], [[Changelog]]
+
+## Production is missing hand-written integrity guards (audit, 2026-09-14)
+
+Measured against production (`qgfyfbdccjnibdhhvnsr`, confirmed via `/api/health`) by looking up, by name, every object each file in `migrations/` and `apps/backend/prisma/migrations/` creates. **Tables and columns are broadly present; hand-written partial unique indexes, CHECK constraints and many plain indexes are not.** That is the signature of a database built from `schema.prisma` rather than from the migration files: Prisma can express a table, a column and a plain `@@index`, but not a partial unique index or a CHECK — so a project move keeps the former and silently drops the latter. It matches the earlier note that "prod project moves drop hand-applied SQL".
+
+**Missing, and these are the ones that matter — "at most one live X" rules the code is written against:**
+
+| Guard | From | Prevents |
+|---|---|---|
+| `idx_rent_obligations_tenant_month_type_active` | prisma `20260622120000` | two live RENT obligations for one tenant-month (double billing) |
+| `idx_room_allocations_active_tenant_unique` | prisma `20260506193000` | one tenant in two beds at once |
+| `tenants_one_live_tenancy_per_profile` | 062 | two live tenancies for one person |
+| `tenants_one_live_tenancy_per_phone` | prisma `20260827180000` | the same, keyed by phone |
+| `identification_documents_one_active_per_type` | 080 | two active documents of one type |
+| `platform_leads_one_active_lead_per_phone` | 078 | duplicate owner applications |
+| `visitor_leads_one_active_lead_per_hostel_phone` | 079 | duplicate enquiries per hostel |
+| `hostel_marketing_one_draft_per_hostel`, `…_one_approved_per_hostel` | 066 | two drafts / two live listings |
+
+Also missing: migrations **075** (payout promise date + payer attribution — code degrades gracefully without it) and **082** (activity-feed indexes), plus CHECK constraints from 073 (`rooms_space_check`) and 076 (`hostel_reviews_category_range_v2`, `hostel_reviews_status_check`), and dozens of plain performance indexes.
+
+**Do not "apply everything missing".** Many objects in the early migrations (046–061, May 2026 prisma dirs) were **deliberately decommissioned** later — `plans`, `owner_invoices`, `tenant_advance_ledger`, the overflow-billing tables, and the `*_new` enum-swap temporaries — so their absence is correct.
+
+**Reliability of this audit.** Objects with lowercase names are reliable. The run compared table/index names case-sensitively, so mixed-case Prisma names (e.g. `RenewalOffer`, `Agreement_*_idx`) may be reported missing when present — those are excluded above. A re-run with the fix was blocked, so treat mixed-case findings as **Unknown / needs clarification**. Each unique guard can fail to build if production already holds duplicates; check before applying (see [[TODO]]).
+
+See [[TODO]], [[Business-Rules]], [[Decisions#ADR-198|ADR-198]] (082), [[Bugs]].
