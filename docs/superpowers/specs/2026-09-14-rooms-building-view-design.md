@@ -1,6 +1,6 @@
 # Rooms tab as a building — design
 
-**Date:** 2026-09-14 · **Branch:** `feat/ui-ux-polish` · **ADR:** 199 · **Status:** approved by the user in brainstorming (visual companion, three screens)
+**Date:** 2026-09-14 · **Branch:** `feat/ui-ux-polish` · **ADR:** 199 · **Status:** approved by the user in brainstorming (visual companion, three screens); built — where the build differs, this page says so
 
 ## Why
 
@@ -13,7 +13,7 @@ The goal is to make the tab **the hostel, drawn as a building**, with every tena
 Top to bottom:
 
 1. **Lens chips**, replacing the three stat cards: `N free beds` · `N overdue` · `N invited`. Tapping a chip *filters by emphasis*: matching beds glow, everything else fades to about 25%. Tapping it again clears the filter. Only one lens is active at a time. A chip whose count is 0 is shown but disabled.
-2. **Search + actions row:** `Search room or tenant…` · `+ Add` (menu: Add room / Add floor) · `⇅` (Arrange: the existing reorder mode, ADR-064, unchanged).
+2. **Search + actions row:** `Room or tenant…` · `+ Add` (opens Add room on the top floor — its floor picker already offers `+ New` floor, so no menu was needed) · `⇅ Arrange` (the existing reorder mode, ADR-064, unchanged; icon-only below 380px).
 3. **Lift strip.** Shown only when the hostel has ≥ 3 floors. It is a sticky row of chips in lift-panel order (G, 1, 2 …). Each chip shows the floor's plate label and free beds, plus a red dot when someone on that floor is overdue. It lights up the floor currently in view, and a tap scrolls to that floor.
 4. **First-visit tip card**, dismissible, remembered per browser in `localStorage` (a convenience, not state): *"This is your hostel. Tap a room to see who lives there, invite someone into a free bed, or edit it. Tap a floor number to rename or remove it."*
 5. **The building:**

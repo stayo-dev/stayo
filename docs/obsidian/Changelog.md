@@ -10,6 +10,14 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-14**: **The Rooms tab is the hostel, drawn as a building** ([[Decisions#ADR-199|ADR-199]], [[Features]], [[Frontend]], [[APIs]], [[Bugs]]).
+  - The floor accordion and its bed dots are gone. Floors stack top to bottom like the real building, every room is a tile of the faces that live in it (photo, initials, a red dot when the backend says overdue, dashed amber for an invite, `+` for a free bed), and the roof says how many beds are filled. A long floor wraps rather than shrinking faces; three or more floors get a sticky lift strip.
+  - Free beds, overdue and invited are filters over the building; search finds a room or a person and shows where they are.
+  - Every structural action is one or two taps from the picture: add a floor on the roof, add a room with the `+` under a floor (prefilled, with "Add another"), rename or remove a floor from its plate, and from a room's sheet invite into a free bed of that room, move a tenant, change the number of beds, edit or delete the room.
+  - `GET /api/rooms?grouped=true` occupants gain `photo_url` and `payment_status` (additive). Photos load as ImageKit face crops.
+  - Fixed on the way: `position: sticky` never stuck on document-scrolled pages (`overflow-x: clip`), "Assign" forgot the room, the room sheet showed a stale room, "2th Floor" / "Four-01", and add sheets that kept stale state.
+  - Frontend 2872 tests; the real page driven in Chrome at phone and desktop widths over fake data. **Not yet run against a real backend.**
+
 - **2026-09-14**: **The Stayo dog waves properly** ([[Features]], [[Frontend]]).
   - The "Signed in" handoff wave reused the long forearm built for leaning over the login card, on the wrong side, and rotated it about the **paw**. On the standing dog it showed as a stick from the belly to the ear that see-sawed across the chest while the paw stayed still.
   - It now uses the designer's own raised leg (`paw-wave` in `stayo-mascot-waving.svg`, on the viewer's left), which sweeps up from the side and then waves from the shoulder in bursts: three swings, a beat of rest in the drawn pose, then again. It swings further outward than inward, so the paw never crosses the eye, and the left foot lifts as the leg rises. Under reduced motion it holds the drawn pose.

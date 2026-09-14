@@ -8,6 +8,27 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-14 — Nothing sticky stuck on a page the document scrolls (fixed)
+
+**Symptom.** Found while building the Rooms tab's lift strip ([[Decisions#ADR-199|ADR-199]]): a `sticky top-0` strip scrolled off the top of the screen with the rest of the page. Measured in Chrome over the real page: after scrolling 1115px the strip sat at −713px and its "which floor is on screen" tracking stayed on the top floor.
+
+**Root cause.** `theme.css` set `overflow-x: hidden` on **both** `html` and `body`. With the root's overflow set, `body`'s is not propagated to the viewport, so `<body>` becomes a scroll container of its own — one that never scrolls, because its height is its content. `position: sticky` binds to the nearest scroll container, so every sticky element on a document-scrolled page stuck to `<body>` and travelled with it. That covers any `sticky top-0` header rendered on such a page, including the desktop drilldown's tab row whose comment says it "stays put while a tab's content scrolls under it".
+
+**Fix.** `overflow-x: clip` declared after `hidden` on both: `clip` cuts off sideways overflow the same way without creating a scroll container; `hidden` remains for browsers that predate `clip`, which keep today's behaviour. Verified: the strip now sits at 0px and tracks the right floor; no horizontal overflow at 360, 390 or 1200px.
+
+**Not verified.** Every other sticky header on a document-scrolled page now sticks, as each was written to — none has been looked at individually since the change.
+
+**See:** [[Decisions#ADR-199|ADR-199]], [[Frontend]], [[Changelog]]
+
+## 2026-09-14 — Four small Rooms-tab faults fixed with the building (fixed)
+
+- **"Assign" forgot the room.** `HostelRoomsPage` passed `onAssignRoom={() => setInviteOpen(true)}` — the room was dropped, so inviting from room 103 opened the wizard with no room chosen. A free bed now opens the wizard with `preferredRoomId`/`preferredFloorId`, and the wizard's preferred-room preselect goes through `selectRoom`, so the room's rent defaults apply too (the preselect used to set only the id — a gap the enquiry → invite path shared).
+- **The room sheet showed a stale room.** It held the room object it was opened with, so an edit or a move did not show until it was closed and reopened. It now reads the room from live data by id.
+- **"+ Add floor" suggested "2th Floor"** (`${n + 1}th Floor`) and numbered the rooms it created `"Four-01"` (the first four letters of the name). It now suggests the next floor in the owner's own naming style and numbers rooms from the floor's plate (`401…`); both are pure and tested in `roomSuggestions.ts`.
+- **The add sheets kept stale state.** Both were always mounted and seeded their fields once, so a second "Add room" opened on whatever floor was last picked. They reset from fresh defaults on every open.
+
+**See:** [[Decisions#ADR-199|ADR-199]], [[Features]], [[Changelog]]
+
 ## 2026-09-14 — Every WhatsApp rent reminder and payment receipt had been failing at Meta, while the owner's dashboard said "Reminder sent" (fixed)
 
 **Symptom.** Reported by the product owner: "when owner clicks on send reminder on a particular tenant, actual WhatsApp message is not received by the tenant... owner received that reminder has been sent, but tenant did not receive any reminder."
