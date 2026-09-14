@@ -127,6 +127,28 @@ describe('owner board — answers in priority order', () => {
   });
 });
 
+describe('a learned meal forecast replaces the headcount', () => {
+  it('uses it in the board headline, and says where it came from', () => {
+    const learned = { ...board, mealForecast: { expected: 26, basis: 'learned' as const, samples: 9 } };
+    expect(boardHeadline(learned).meals).toBe('≈ 26 for dinner · from the last 2 weeks');
+  });
+
+  it('keeps the honest headcount while a hostel is still learning', () => {
+    expect(boardHeadline({ ...board, mealForecast: { expected: 3, basis: 'headcount' as const, samples: 1 } }).meals)
+      .toBe('≈ 3 for dinner & breakfast · +1 late may turn up');
+    expect(boardHeadline(board).meals).toBe('≈ 3 for dinner & breakfast · +1 late may turn up');
+  });
+
+  it('does the same on Home', () => {
+    const summary = {
+      totals: { residents: 6, hereTonight: 3, backToday: 2, late: 0, roomsToCheck: 2, mealsExpected: 3 },
+      hostels: [],
+      mealForecast: { expected: 26, basis: 'learned' as const },
+    };
+    expect(tonightCards(summary)?.hereTonight.caption).toBe('≈ 26 meals');
+  });
+});
+
 describe('tonightCards — Owner Home', () => {
   const summary = (late: number, residents = 6) => ({
     totals: { residents, hereTonight: 3, backToday: 2, late, roomsToCheck: 2, mealsExpected: 3 },

@@ -170,9 +170,15 @@ export function roomLines(board: StayBoard): Array<{ roomId: string; text: strin
 
 export function boardHeadline(board: StayBoard): { here: string; meals: string; beds: string } {
   const lateNote = board.meals.lateMayTurnUp > 0 ? ` · +${board.meals.lateMayTurnUp} late may turn up` : '';
+  // A learned number is the better answer and replaces the headcount outright;
+  // the late note only belongs on the headcount, which cannot know about them.
+  const meals =
+    board.mealForecast && board.mealForecast.basis === 'learned'
+      ? `≈ ${board.mealForecast.expected} for dinner · from the last 2 weeks`
+      : `≈ ${board.meals.expected} for dinner & breakfast${lateNote}`;
   return {
     here: `${board.hereTonight} here tonight`,
-    meals: `≈ ${board.meals.expected} for dinner & breakfast${lateNote}`,
+    meals,
     beds: `${board.beds.free} ${board.beds.free === 1 ? 'bed' : 'beds'} free`,
   };
 }
@@ -188,7 +194,13 @@ export function tonightCards(summary: StaySummary | undefined): TonightCards | n
   if (!summary || summary.totals.residents === 0) return null;
   const t = summary.totals;
   return {
-    hereTonight: { value: t.hereTonight, caption: `≈ ${t.mealsExpected} meals` },
+    hereTonight: {
+      value: t.hereTonight,
+      caption:
+        summary.mealForecast?.basis === 'learned'
+          ? `≈ ${summary.mealForecast.expected} meals`
+          : `≈ ${t.mealsExpected} meals`,
+    },
     backToday: { value: t.backToday, caption: t.late > 0 ? `${t.late} late` : 'Expected back', tone: t.late > 0 ? 'danger' : 'default' },
     roomsToCheck: { value: t.roomsToCheck, caption: 'Empty or returning' },
   };

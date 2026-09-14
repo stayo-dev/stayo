@@ -57,6 +57,8 @@ export interface StayBoard extends DateWindow {
   awayList: Array<BoardPerson & { leaveType: LeaveType; expectedReturnDate: string }>;
   roomsToCheck: Array<{ roomId: string; roomNo: string; reason: 'EMPTY_TONIGHT' | 'BACK_TODAY'; names: string[] }>;
   here: BoardPerson[];
+  /** Tonight's dinner, learned from served counts (ADR-194). Null until it is. */
+  mealForecast?: { expected: number; basis: 'learned' | 'headcount'; samples?: number } | null;
 }
 
 export interface StayHostelSummary {
@@ -73,4 +75,6 @@ export interface StayHostelSummary {
 export interface StaySummary {
   totals: Omit<StayHostelSummary, 'hostelId' | 'hostelName'>;
   hostels: StayHostelSummary[];
+  /** Tonight's dinner across the portfolio, learned from served counts (ADR-194). */
+  mealForecast?: { expected: number; basis: 'learned' | 'headcount' } | null;
 }
