@@ -50,3 +50,37 @@ export function formatIST(date: Date | string, options: Intl.DateTimeFormatOptio
   const d = date instanceof Date ? date : new Date(date);
   return d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", ...options });
 }
+
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+/** The IST calendar date of an instant, as YYYY-MM-DD. */
+export function istDateOf(instant: Date | string): string {
+  const ms = new Date(instant).getTime();
+  if (!Number.isFinite(ms)) throw new Error("istDateOf: invalid instant");
+  return new Date(ms + IST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+/**
+ * Today's IST calendar date. Stay Status's only "today" — it never reads
+ * `hostels.timezone`, which defaults to `UTC` and is `UTC` in production.
+ */
+export function istToday(now: Date = new Date()): string {
+  return istDateOf(now);
+}
+
+/** Whole-day arithmetic on YYYY-MM-DD, done in UTC so no DST can shift it. */
+export function addDaysIso(isoDate: string, days: number): string {
+  const d = new Date(`${isoDate}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Days from `from` to `to` (YYYY-MM-DD); negative when `to` is earlier. */
+export function daysBetweenIso(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00.000Z`) - Date.parse(`${from}T00:00:00.000Z`)) / 86_400_000);
+}
+
+/** 0 = Sunday … 6 = Saturday. */
+export function weekdayOfIso(isoDate: string): number {
+  return new Date(`${isoDate}T00:00:00.000Z`).getUTCDay();
+}

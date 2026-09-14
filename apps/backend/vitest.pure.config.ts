@@ -25,6 +25,8 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: [
+      // Stay Status (ADR-193) — pure core, mocked service and routes.
+      'tests/timezone-ist.test.ts',
       'tests/rent-generation-exit-date-join.test.ts',
       'tests/imagekit-uploadable.test.ts',
       'tests/push-policy.test.ts',

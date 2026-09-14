@@ -13,6 +13,8 @@
  * PURE MODULE — no I/O, runs under vitest.pure.config.ts. Keep it that way.
  */
 
+import { istDateOf } from "@/lib/timezone";
+
 /**
  * The commitment: two working days after capture.
  *
@@ -23,14 +25,8 @@
  */
 export const PAYOUT_WORKING_DAYS = 2;
 
-const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-
-/** The IST calendar date of an instant, as YYYY-MM-DD. */
-export function istDateOf(instant: Date | string): string {
-  const ms = new Date(instant).getTime();
-  if (!Number.isFinite(ms)) throw new Error("istDateOf: invalid instant");
-  return new Date(ms + IST_OFFSET_MS).toISOString().slice(0, 10);
-}
+/** The IST calendar date of an instant — now shared with Stay Status via `lib/timezone`. */
+export { istDateOf };
 
 function isWeekend(isoDate: string): boolean {
   const day = new Date(`${isoDate}T00:00:00.000Z`).getUTCDay();

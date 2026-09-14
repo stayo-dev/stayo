@@ -28,6 +28,17 @@ export type RoomCapacitySnapshot = {
   state: "vacant" | "reserved" | "partial" | "full";
 };
 
+/**
+ * "This allocation occupies a bed" — the one predicate for who lives in a room.
+ * Stay Status counts residents with exactly this, so its here-tonight + away
+ * always equals `occupied` here. Change it here or nowhere. (ADR-193)
+ */
+export const OCCUPYING_ALLOCATION_WHERE = {
+  is_active: true,
+  end_date: null,
+  tenant: { status: "ACTIVE" },
+};
+
 export class RoomCapacityService {
   async getRoomCapacitySnapshot(
     roomId: string,
@@ -51,9 +62,7 @@ export class RoomCapacityService {
     const activeAllocations = await db.roomAllocation.findMany({
       where: {
         room_id: roomId,
-        is_active: true,
-        end_date: null,
-        tenant: { status: "ACTIVE" },
+        ...OCCUPYING_ALLOCATION_WHERE,
       },
       select: {
         tenant_id: true,
@@ -112,9 +121,7 @@ export class RoomCapacityService {
     const activeAllocations = await db.roomAllocation.findMany({
       where: {
         hostel_id: hostelId,
-        is_active: true,
-        end_date: null,
-        tenant: { status: "ACTIVE" },
+        ...OCCUPYING_ALLOCATION_WHERE,
       },
       select: {
         room_id: true,
