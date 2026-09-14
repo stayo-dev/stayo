@@ -8,6 +8,16 @@ function unwrap(response: { data: any }) {
 }
 
 export const foodService = {
+  /** Meal forecast (ADR-194) — how many to cook for, and what was actually served. */
+  getMealForecast: async (hostelId: string, range?: { from?: string; to?: string }) => {
+    const response = await api.get(`/hostels/${hostelId}/meals/forecast`, { params: range });
+    const { success: _success, ...rest } = (response.data ?? {}) as any;
+    return rest as { today: string; days: Array<{ date: string; meals: any[] }> };
+  },
+  recordMealServed: async (hostelId: string, body: { serveDate: string; mealType: string; servedCount: number }) => {
+    const response = await api.put(`/hostels/${hostelId}/meals/served`, body);
+    return (response.data as any)?.entry;
+  },
   getMenuItems: async (hostelId: string, params: { mealType?: string; includeInactive?: boolean } = {}) => {
     const response = await api.get('/food/menu-items', { params: { hostelId, ...params } });
     return unwrap(response).items as any[];

@@ -47,6 +47,12 @@ export const queryKeys = {
 
   notifications: () => ownerKey('notifications'),
 
+  /** Meal forecast (ADR-194). Hostel-scoped, as the invariant check requires. */
+  meals: {
+    forecast: (hostelId: string | null | undefined, from?: string, to?: string) =>
+      hostelKey(hostelId, 'meals', 'forecast', from ?? 'today', to ?? 'tomorrow'),
+  },
+
   /** Stay Status (ADR-193). The tenant key sits beside the other ['tenant', …] keys. */
   stay: {
     mine: () => ['tenant', 'stay'],
