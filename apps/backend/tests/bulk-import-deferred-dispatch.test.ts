@@ -98,7 +98,9 @@ describe('QUEUED is an active invitation everywhere, not just in the sweeps', ()
   // leaving QUEUED out of those let "send all" message a tenant whose tenancy
   // had been cancelled, and let a queued invite's bed look free.
   const CAPACITY = readFileSync("lib/services/room-capacity-service.ts", "utf8");
-  const PROPERTY = readFileSync("lib/services/property-service.ts", "utf8");
+  // The read model's invited-occupant list moved out of property-service into
+  // its pure helper (ADR-199); the rule it must keep lives there now.
+  const PROPERTY = readFileSync("lib/services/property/room-occupants.ts", "utf8");
   const CLOSURE = readFileSync("src/services/tenants/unaccepted-tenancy-closure.ts", "utf8");
   const TENANTS = readFileSync("src/services/tenants/tenant-service.ts", "utf8");
 
