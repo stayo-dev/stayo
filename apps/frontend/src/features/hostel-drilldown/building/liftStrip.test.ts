@@ -41,4 +41,29 @@ describe('activeFloorId', () => {
   });
 
   it('is nothing when there are no floors', () => expect(activeFloorId([], 60)).toBeNull());
+
+  describe('at the bottom of the building, where the lowest floors can never reach the line', () => {
+    const bottom = [
+      { id: 'f2', top: -300 },
+      { id: 'f1', top: 90 },
+      { id: 'g', top: 320 },
+    ];
+
+    it('lights the floor just tapped, not the one above it', () => {
+      expect(activeFloorId(bottom, 60, { atEnd: true, requested: 'g' })).toBe('g');
+      expect(activeFloorId(bottom, 60, { atEnd: true, requested: 'f1' })).toBe('f1');
+    });
+
+    it('lights the lowest floor when nothing was tapped', () => {
+      expect(activeFloorId(bottom, 60, { atEnd: true })).toBe('g');
+    });
+
+    it('ignores a tap on a floor that is not in the building', () => {
+      expect(activeFloorId(bottom, 60, { atEnd: true, requested: 'gone' })).toBe('g');
+    });
+
+    it('goes back to the line once the bottom is left', () => {
+      expect(activeFloorId(bottom, 60, { atEnd: false, requested: 'g' })).toBe('f2');
+    });
+  });
 });

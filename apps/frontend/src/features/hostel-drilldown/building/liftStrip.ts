@@ -18,9 +18,21 @@ export function showLiftStrip(floorCount: number): boolean {
  * The floor being looked at: the last one (top to bottom) whose top edge has
  * reached `line` — the bottom of the sticky strip, in viewport pixels. Before
  * any has, the top floor.
+ *
+ * At the bottom of the building (`atEnd`: the lowest floor is fully in view)
+ * the lowest floors can never scroll up to the line, so tapping "G" would
+ * leave "1" lit. There the floor just tapped wins, else the lowest floor.
  */
-export function activeFloorId(bands: { id: string; top: number }[], line: number): string | null {
+export function activeFloorId(
+  bands: { id: string; top: number }[],
+  line: number,
+  opts: { atEnd?: boolean; requested?: string | null } = {},
+): string | null {
   if (bands.length === 0) return null;
+  if (opts.atEnd) {
+    const requested = opts.requested && bands.some((b) => b.id === opts.requested) ? opts.requested : null;
+    return requested ?? bands[bands.length - 1]!.id;
+  }
   let active = bands[0]!.id;
   for (const band of bands) {
     if (band.top <= line) active = band.id;

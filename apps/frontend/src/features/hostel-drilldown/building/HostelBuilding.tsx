@@ -45,6 +45,8 @@ export function HostelBuilding({ floors, roomsByFloor, lens, query, isLoading, o
 
   const bands = useRef(new Map<string, HTMLElement>());
   const strip = useRef<HTMLDivElement>(null);
+  /** The floor last tapped on the lift strip, until it scrolls out of view. */
+  const requested = useRef<string | null>(null);
   const [active, setActive] = useState<string | null>(null);
 
   const bandRef = useCallback(
@@ -63,11 +65,16 @@ export function HostelBuilding({ floors, roomsByFloor, lens, query, isLoading, o
     const measure = () => {
       frame = 0;
       const line = (strip.current?.getBoundingClientRect().bottom ?? 0) + 12;
-      const tops = stacked.flatMap((f) => {
+      const rects = stacked.flatMap((f) => {
         const el = bands.current.get(f.id);
-        return el ? [{ id: f.id, top: el.getBoundingClientRect().top }] : [];
+        return el ? [{ id: f.id, rect: el.getBoundingClientRect() }] : [];
       });
-      setActive(activeFloorId(tops, line));
+      const tapped = requested.current ? rects.find((r) => r.id === requested.current) : undefined;
+      if (tapped && (tapped.rect.bottom < 0 || tapped.rect.top > window.innerHeight)) requested.current = null;
+      // The lowest floor fully on screen is as far down as the building goes.
+      const lowest = rects[rects.length - 1];
+      const atEnd = Boolean(lowest && lowest.rect.bottom <= window.innerHeight);
+      setActive(activeFloorId(rects.map((r) => ({ id: r.id, top: r.rect.top })), line, { atEnd, requested: requested.current }));
     };
     const onScroll = () => {
       if (!frame) frame = requestAnimationFrame(measure);
@@ -83,6 +90,8 @@ export function HostelBuilding({ floors, roomsByFloor, lens, query, isLoading, o
   }, [withStrip, stacked]);
 
   const jump = (id: string) => {
+    requested.current = id;
+    setActive(id);
     bands.current.get(id)?.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
   };
 

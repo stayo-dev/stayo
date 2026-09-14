@@ -172,14 +172,25 @@
     min-width: 0;
   }
 
+  /*
+   * `clip`, with `hidden` as the fallback for browsers that predate it.
+   * `hidden` on both html and body makes <body> a scroll container that never
+   * scrolls, and every `position: sticky` on a page the document scrolls then
+   * sticks to that instead of the screen — so it scrolls away. `clip` cuts
+   * off sideways overflow the same way without creating a scroll container.
+   * Found through the Rooms tab's lift strip (ADR-199); it also frees every
+   * other `sticky top-0` header on a document-scrolled page.
+   */
   html {
     overflow-x: hidden;
+    overflow-x: clip;
     scroll-behavior: smooth;
   }
 
   body {
     @apply bg-background text-foreground;
     overflow-x: hidden;
+    overflow-x: clip;
     -webkit-tap-highlight-color: transparent;
     -webkit-text-size-adjust: 100%;
     padding-bottom: env(safe-area-inset-bottom, 0px);

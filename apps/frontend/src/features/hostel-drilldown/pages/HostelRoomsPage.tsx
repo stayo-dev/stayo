@@ -228,7 +228,7 @@ export function HostelRoomsPage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search room or tenant…"
+                placeholder="Room or tenant…"
                 aria-label="Search room or tenant"
                 className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground focus:outline-none"
               />
@@ -249,10 +249,12 @@ export function HostelRoomsPage() {
               type="button"
               onClick={startReorder}
               disabled={layout.floors.length === 0}
+              aria-label="Arrange floors and rooms"
               className="flex flex-none items-center gap-1.5 rounded-[10px] border border-border px-3 py-2.5 font-display text-xs font-bold text-foreground disabled:opacity-50"
             >
               <ArrowUpDown className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
-              Arrange
+              {/* The word goes on the narrowest phones, so the search keeps room to be read. */}
+              <span className="hidden min-[380px]:inline">Arrange</span>
             </button>
           </div>
           {noMatch && <p className="px-1 text-[12px] text-muted-foreground">No room or tenant matches “{search.trim()}”.</p>}
