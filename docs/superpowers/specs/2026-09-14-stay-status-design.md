@@ -1,6 +1,14 @@
 # Stay Status — Phase 1 core design
 
-**Date:** 2026-09-14 · **Status:** approved · **Branch:** `feat/stay-status`
+> **Built 2026-09-14. Six things differ from the design below; the code and [[Decisions#ADR-193|ADR-193]] are authoritative where they disagree.**
+> 1. **`RETURNED` with no active leave is a no-op, not a rejection** (as is a second `LEAVE_STARTED`) — tapping *I'm back* twice should not produce an error.
+> 2. **The QR artefact is an A4 PDF poster** at `GET /api/hostels/[id]/stay/poster`, not an SVG route — matching the kitchen sheet's precedent (ADR-144) that phone print dialogs are unreliable.
+> 3. **The QR page signs people in itself.** `/stay/:hostelId` mounts outside `TenantProviderShell`, so `ProtectedTenantRoute` was **not** changed and `safeReturnPath` was never needed: `/login` is the owner landing page, which drops the path and hands a tenant to `/tenant/home` after a 1.6s handoff.
+> 4. **An owner event for a non-resident returns 409 `STAY_INELIGIBLE`**, the same as the tenant path; only a malformed tenant id is 404.
+> 5. **The meal answer always shows**, labelled "based on who's staying" — the condition on meal timings was dropped as a decision the owner should not have to make.
+> 6. **`stay_events` gained `seq BIGSERIAL`** as the total replay order; folding never depends on timestamps.
+
+**Date:** 2026-09-14 · **Status:** approved, built · **Branch:** `feat/stay-status`
 **Source:** PRD "Stayo Stay Status System v1.0" · **Audit:** [`docs/audits/stay-status-audit.md`](../../audits/stay-status-audit.md)
 
 ## 1. The rule this design exists to protect
