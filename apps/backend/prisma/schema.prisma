@@ -4351,3 +4351,49 @@ model owner_billing_profiles {
 
   profile profile @relation(fields: [owner_id], references: [id], onDelete: Cascade)
 }
+
+/// Stay Status event store (ADR-193). Append-only — the permanent truth;
+/// every stay surface is a projection of it. A DB trigger refuses UPDATE.
+/// No Prisma relations on purpose: nothing reads through them, and adding
+/// back-relations to `tenants`/`hostels` buys nothing.
+model stay_events {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  seq                  BigInt    @unique @default(autoincrement())
+  tenant_id            String    @db.Uuid
+  hostel_id            String    @db.Uuid
+  room_id              String?   @db.Uuid
+  type                 String
+  effective_date       DateTime  @db.Date
+  occurred_at          DateTime  @default(now()) @db.Timestamptz(6)
+  leave_type           String?
+  expected_return_date DateTime? @db.Date
+  source               String
+  actor_profile_id     String?   @db.Uuid
+  actor_role           String
+  idempotency_key      String    @unique
+  schema_version       Int       @default(1)
+  payload              Json      @default("{}")
+
+  @@index([hostel_id, occurred_at], map: "stay_events_hostel_occurred_idx")
+  @@index([tenant_id, seq], map: "stay_events_tenant_seq_idx")
+  @@index([hostel_id, effective_date, type], map: "stay_events_hostel_date_type_idx")
+}
+
+/// Projection of `stay_events`: one row per leave. Rebuildable by replay.
+/// "One ACTIVE leave per tenant" is a partial unique index in the migration
+/// (`stay_leaves_one_active_per_tenant`) — Prisma cannot express it.
+model stay_leaves {
+  id                   String    @id @db.Uuid
+  tenant_id            String    @db.Uuid
+  hostel_id            String    @db.Uuid
+  leave_type           String
+  start_date           DateTime  @db.Date
+  expected_return_date DateTime  @db.Date
+  status               String    @default("ACTIVE")
+  returned_at          DateTime? @db.Timestamptz(6)
+  last_event_id        String    @db.Uuid
+  created_at           DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@index([hostel_id, status, expected_return_date], map: "stay_leaves_hostel_status_return_idx")
+}
