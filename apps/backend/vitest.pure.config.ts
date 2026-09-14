@@ -30,6 +30,7 @@ export default defineConfig({
       'tests/stay-status.test.ts',
       'tests/stay-events.test.ts',
       'tests/stay-board.test.ts',
+      'tests/stay-service.test.ts',
       'tests/rent-generation-exit-date-join.test.ts',
       'tests/imagekit-uploadable.test.ts',
       'tests/push-policy.test.ts',

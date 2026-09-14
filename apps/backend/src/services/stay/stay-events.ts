@@ -136,5 +136,5 @@ export function replayStayEvents(events: StayEvent[]): LeaveState[] {
     if (result.after.status === "ACTIVE") activeByTenant.set(event.tenantId, result.after);
     else activeByTenant.delete(event.tenantId);
   }
-  return [...leavesById.values()];
+  return Array.from(leavesById.values());
 }

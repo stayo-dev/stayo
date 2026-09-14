@@ -80,15 +80,15 @@ export function buildStayBoard(input: {
   for (const p of people) byRoomId.set(p.r.roomId, [...(byRoomId.get(p.r.roomId) ?? []), p]);
   const names = (list: Placed[]) => list.map((p) => p.r.name).sort();
   const roomsToCheck: StayBoard["roomsToCheck"] = [];
-  for (const [roomId, members] of byRoomId) {
+  byRoomId.forEach((members: Placed[], roomId: string) => {
     const roomNo = members[0].r.roomNo;
     if (members.every((p) => !isHereTonight(p.status))) {
       roomsToCheck.push({ roomId, roomNo, reason: "EMPTY_TONIGHT", names: names(members) });
-      continue;
+      return;
     }
     const due = members.filter((p) => p.status === "RETURNING_TODAY");
     if (due.length > 0) roomsToCheck.push({ roomId, roomNo, reason: "BACK_TODAY", names: names(due) });
-  }
+  });
   roomsToCheck.sort((a, b) => a.roomNo.localeCompare(b.roomNo, undefined, { numeric: true }));
 
   const sum = (pick: (r: BoardRoom) => number) => input.rooms.reduce((total, r) => total + pick(r), 0);
