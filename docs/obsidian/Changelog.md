@@ -10,6 +10,14 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-14**: **The payment page looks like Stayo** ([[Decisions#ADR-197|ADR-197]], [[Features]], [[Backend]]).
+  - `/pay/{token}` is the only Stayo surface most residents and guardians ever see — it is where a rent reminder lands — and it was in the wrong typeface, the wrong palette, and carried no Stayo identity at all.
+  - Now on the brand pair (Manrope + Inter) and the **marketing** token palette, because the reader has never seen the owner app. Facts become a labelled list, the CTA names the amount, and a `Payments secured by Stayo` footer discloses the channel without posing as the counterparty.
+  - **The dog appears on Paid, Expired and Error — never on the payment form.** [[Decisions#ADR-191|ADR-191]] puts it at human moments and calls it never-decoration; a mascot watching someone enter an amount trades trust for warmth on the one screen where trust is the product.
+  - Still one self-contained HTML response with no JS bundle: a resident on mobile data should not boot a SPA to pay rent.
+  - Fixed along the way: the client script restored the button with `innerText`, destroying the padlock icon the first time a failed attempt re-enabled it.
+  - **Not seen in a browser** — no browser tool in this session, so the layout is reasoned about and unit-tested, not observed.
+
 - **2026-09-14**: **WhatsApp rent reminders and payment receipts actually send** ([[Bugs]], [[Decisions#ADR-196|ADR-196]], [[Frontend]], [[Backend]]).
   - **They had never worked.** The code sent template names (`rent_overdue_warm_v1` and three siblings) that were not registered in the WABA, so Meta rejected every one with `132001`. Production `whatsapp_logs` held four rows ever, all onboarding templates; not a single rent reminder had been written.
   - **And nobody could tell**, because the owner's button toasted "Reminder sent" on any HTTP 200, discarding the per-channel delivery report the backend had always returned.

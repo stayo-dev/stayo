@@ -148,6 +148,7 @@ export default defineConfig({
       'tests/whatsapp-command-center-formatting.test.ts',
       'tests/whatsapp-guardian-reminders.test.ts',
       'tests/whatsapp-rent-template-contract.test.ts',
+      'tests/pay-page-brand.test.ts',
       'tests/whatsapp-guardian-activation-template.test.ts',
       // Reads schema.prisma and the source as text — no client, no database.
       'tests/whatsapp-prisma-accessors.test.ts',
