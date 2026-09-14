@@ -1486,3 +1486,22 @@ The occupancy engine behind "how is my hostel today?". See [[Decisions#ADR-193|A
 **Not built yet:** the WhatsApp flows (Going home / I'm back / the evening "staying tonight?"), Away Today, the real meal forecast with participation history, housekeeping tasks, temporary-vs-permanent vacancy, guardian notifications and owner push alerts. Each is a new event type or read model over `stay_events`, not a change to it.
 
 **Not yet exercised anywhere:** no QR has been scanned by a phone, and the DB-backed test has never run (the test Supabase project is unreachable). The migration is unapplied.
+
+## Meal forecast — how many to cook for (Phase 2a, 2026-09-14)
+
+Built on [[Decisions#ADR-194|ADR-194]]; reads the occupancy engine from [[Decisions#ADR-193|ADR-193]]. See also [[Food]].
+
+**What the kitchen sees** on `/owner/food/kitchen`:
+- Each of today's meals carries an expected number, and each of tomorrow's carries one too — the sheet's whole purpose is "prep tonight".
+- `≈ 34` means inferred from this hostel's own history (`from the last 2 weeks`). A bare `31` is the plain headcount (`still learning what people actually eat`). The mark is the honesty.
+- Once a meal's serving window has closed, the sheet asks **"How many did you serve?"** — one number, a numeric keypad, one tap to save. Re-entering corrects it.
+
+**What the owner sees:** Home's Tonight caption and the Stay board headline switch to the learned dinner count once there is one, and stay on the honest headcount until then.
+
+**What tenants see:** nothing new. No extra state, no daily decision — deliberately (the alternative, tenant-declared meal skips, was rejected in the ADR).
+
+**How it learns:** median of `served ÷ headcount` over the last 14 logged days, needing 3 before it will speak. The headcount is frozen at entry, so editing a leave later cannot rewrite a past day's ratio.
+
+**Not built:** per-weekday ratios (Sunday really is different), ingredient and cost forecasting, per-tenant meal skips, Away Today.
+
+**Not yet exercised:** no kitchen has logged a single meal, so every hostel is still in the learning state and no ratio exists anywhere.

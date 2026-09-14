@@ -145,3 +145,18 @@ The event core is pure and the I/O is thin, so the rules are tested without a da
 - `architectural-invariants-check.ts` scans `src/services/stay`, `app/api/tenant/stay`, `app/api/owner/stay` and `app/api/hostels/[id]/stay`.
 
 Related: [[APIs]], [[Database]], [[Business-Rules]], [[Decisions#ADR-193|ADR-193]]
+
+## `src/services/meals/` — the meal forecast (ADR-194)
+
+| File | Responsibility |
+|---|---|
+| `meal-ratio.ts` | `median`, `mealRatio` (14-day window, 3-sample floor), `forecastMeal`, the meal-type guard. Pure. |
+| `meal-forecast-service.ts` | `getForecast` and `recordServed`; composes Stay's residents and leaves with this hostel's logs. Injectable `db`, so it is unit-tested with mocks. |
+| `meal-errors.ts` | `MealError` and `mealErrorResponse`, mirroring the Stay pair. |
+
+- `stay-board.ts` gained **`headcountOn(residents, leaves, date)`** — pure, and the reason *tomorrow* can be answered at all.
+- `leavesFrom` reads `ACTIVE` **and** `RETURNED` leaves and treats `returned_at`'s IST date as the real end, so a past day's headcount is right and an early return shortens the leave.
+- Composition is one-way: meals read Stay; Stay never reads meals. The Stay board and owner summary routes borrow tonight's dinner themselves, tolerating failure.
+- `architectural-invariants-check.ts` scans `src/services/meals` and `app/api/hostels/[id]/meals`.
+
+Related: [[APIs]], [[Database]], [[Decisions#ADR-194|ADR-194]]

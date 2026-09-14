@@ -745,3 +745,16 @@ Six endpoints. Every write goes through `stayService.recordStayEvent`, which is 
 **Error codes:** `STAY_INELIGIBLE` (409), `NO_ACTIVE_LEAVE` (409), `ON_LEAVE` (409), `TOO_SOON` / `TOO_FAR` / `INVALID_DATE` / `INVALID_LEAVE_TYPE` / `UNKNOWN_TYPE` / `INVALID_REQUEST` (400). Messages are tenant-facing and reach the screen verbatim through `parseApiError`.
 
 Owner routes use `resolveOwnerScope` → `requireHostelBelongsToOwner`, and `src/services/stay` plus the three stay route folders are now in `architectural-invariants-check.ts`'s scan roots.
+
+## Meal forecast (ADR-194)
+
+| Method | Path | Who | Notes |
+|---|---|---|---|
+| GET | `/api/hostels/[id]/meals/forecast?from=&to=` | OWNER | `{ today, days: [{ date, meals: [{ mealType, expected, basis, samples, ratio, headcount, served }] }] }`. Defaults to today + tomorrow; at most 14 days per call. `basis` is `learned` or `headcount`, and the UI must label the second honestly. |
+| PUT | `/api/hostels/[id]/meals/served` | OWNER | `{ serveDate, mealType, servedCount }` → `{ entry }`. **PUT, not POST:** one truth per hostel/date/meal, so re-entry corrects a typo. |
+
+Rejections from `recordServed`, all `400 INVALID_REQUEST`: a future `serveDate`, a date more than 28 days old, an unknown `mealType`, a negative or fractional count, and a count above **3× the headcount** (a slipped keypad, not a feast). Zero is accepted — nobody came is a real answer.
+
+**Two Stay responses gained a field.** `GET /api/hostels/[id]/stay` and `GET /api/owner/stay/summary` now carry `mealForecast: { expected, basis, samples? } | null` for **tonight's dinner**, composed **in the route** (meals may read Stay; Stay never reads meals) and resolving to `null` if the meals call fails, so Home never breaks on it.
+
+Related: [[Decisions#ADR-194|ADR-194]], [[Database]], [[Business-Rules]]

@@ -715,3 +715,24 @@ Indexes: `(hostel_id, occurred_at)`, `(tenant_id, seq)`, `(hostel_id, effective_
 Both tables have **RLS enabled with no policies**: PostgREST's `anon`/`authenticated` roles see nothing, and the backend's connection bypasses RLS. Same pattern as the subscription-billing tables.
 
 **Status is not stored anywhere.** PRESENT / ON_LEAVE / RETURNING_TODAY / LATE are derived from the active leave and IST today. See [[Business-Rules]] and [[Decisions#ADR-193|ADR-193]].
+
+## `meal_service_logs` (ADR-194, migration `20260915090000_meal_service_logs`)
+
+What the kitchen actually served — the ground truth every meal forecast is learned from. See [[Decisions#ADR-194|ADR-194]] and [[Business-Rules]].
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | uuid PK | |
+| `hostel_id` | uuid → `hostels` ON DELETE CASCADE | |
+| `serve_date` | date | the **IST** calendar date served |
+| `meal_type` | text | `BREAKFAST` / `LUNCH` / `SNACKS` / `DINNER`, validated in the service |
+| `served_count` | int, `CHECK >= 0` | zero is meaningful: nobody came |
+| `headcount_at_log` | int, `CHECK >= 0` | **the frozen denominator** — the `stay_leaves` projection keeps moving, and a leave cancelled next week must not rewrite last Tuesday's ratio |
+| `recorded_by` | uuid null | who entered it |
+| `created_at`, `updated_at` | timestamptz | |
+
+- **Unique `(hostel_id, serve_date, meal_type)`** — one truth per meal, which is what makes re-entry a correction rather than a second opinion. This is the deliberate difference from `stay_events`, which is append-only.
+- Index `(hostel_id, meal_type, serve_date DESC)` — the exact shape of the ratio query.
+- RLS enabled, no policies, like the Stay tables.
+
+**Applied:** see the [[Changelog]] entry for the date it reached production. Nothing else reads this table, so deploy order only affects the meals endpoints.

@@ -517,3 +517,15 @@ Related: [[Decisions#ADR-176|ADR-176]], [[APIs]], [[Features]], [[Changelog]]
 Tenant Home renders `stayBlock` in **both** layout branches, and Owner Home renders `TonightSection` above the Action Center from `useOwnerDashboard().tonight`.
 
 Related: [[Features]], [[APIs]], [[Decisions#ADR-193|ADR-193]]
+
+## Meal forecast surfaces (ADR-194)
+
+| Path | Role |
+|---|---|
+| `features/owner-food/mealForecast.ts` (+ `.test.ts`) | The pure display model: `entryFor`, `expectedLabel` (the `≈`), `honestyLine`, `canLogNow`, and `SLOT_TO_MEAL_TYPE` — the one place the kitchen sheet's lowercase slots meet the API's uppercase meal types. |
+| `features/owner-food/hooks/useMealForecast.ts` | Query + corrective upsert; invalidates the forecast **and** both Stay keys, since tonight's dinner rides on them. |
+| `features/owner-food/components/ServedCountRow.tsx` | "How many did you serve?" — a numeric keypad, a save tap, nothing else. |
+| `features/owner-food/pages/KitchenSheetPage.tsx` | Expected numbers on today and tomorrow, and the logging block for meals whose window has closed. |
+| `features/stay/stayState.ts` | `boardHeadline` and `tonightCards` prefer a **learned** forecast and otherwise keep the honest headcount. |
+
+Related: [[Features]], [[APIs]], [[Decisions#ADR-194|ADR-194]]

@@ -1081,3 +1081,15 @@ A manual (no-gateway) payment's declared `amount_paise` is never authoritative f
 - **"Late", not "overdue".** In this product "overdue" means unpaid rent; using it for people would collide with every money surface.
 - **Checked out is not a Stay state.** It remains the move-out lifecycle ([[Business-Rules]] move-out section); Stay never writes to it. A leave left open by a departure is inert, because every read filters to residents.
 - **Owner-entered updates are normal**, not an override of last resort: `OWNER_MANAGED` residents have no login, so `source: OWNER` is their only path.
+
+## Meal forecast (ADR-194)
+
+- **A headcount is not a meal count.** The expected number is `headcount × a ratio learned from this hostel's own served counts` — never a raw headcount presented as a forecast.
+- **The ratio is the median of `served ÷ headcount` over the last 14 logged days**, and needs **3** samples before it is used. Median, so one festival dinner cannot move a fortnight's cooking.
+- **Ratios above 1 are kept**, not clamped: guests and staff eat too.
+- **A zero-turnout day is data; a day with no residents is not** (it would divide by zero and teaches nothing).
+- **Below 3 samples the screen shows the headcount and says so** — `still learning what people actually eat` versus `from the last 2 weeks`. `≈` marks every inferred number.
+- **The denominator is frozen at entry.** Editing or cancelling a leave later never changes a past day's ratio.
+- **A resident counts on their return date**, matching [[Decisions#ADR-193|ADR-193]]'s `isHereTonight`; and **a leave's effective end is the day someone actually returned** when that was earlier than planned.
+- **Logging is corrective:** re-entering a served count replaces it. Rejected are future dates, days more than 28 days old, and counts above 3× the headcount.
+- **Tenants declare nothing.** Away Today was dropped rather than built, because the learned lunch ratio already absorbs the population's day-out pattern.
