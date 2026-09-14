@@ -239,6 +239,9 @@ export default defineConfig({
       'tests/activation-email-gate.test.ts',
       'tests/invitation-nudge.test.ts',
       'tests/build-without-env.test.ts',
+      // The per-hostel activity feed. Mocks `@/lib/db` entirely — the raw
+      // log reads are asserted as SQL text, so no client is constructed.
+      'tests/hostel-activity-feed.test.ts',
     ],
     alias: {
       // More specific than the catch-all `@` entry below, and must come

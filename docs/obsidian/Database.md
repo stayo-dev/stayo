@@ -736,3 +736,20 @@ What the kitchen actually served — the ground truth every meal forecast is lea
 - RLS enabled, no policies, like the Stay tables.
 
 **Applied 2026-09-14 to production `qgfyfbdccjnibdhhvnsr`**, verified directly: 9 columns, 3 indexes (pkey, the `(hostel_id, serve_date, meal_type)` unique key, the ratio index), RLS on, 0 rows — no probe rows were written. Nothing else reads this table, so deploy order only affects the meals endpoints.
+
+## Migration 082 — `activity_logs` gains the indexes it never had (2026-09-14)
+
+Two btree indexes, **deliberately not in `schema.prisma`** — the first is an expression index on a JSON key Prisma cannot express, and both serve raw SQL only. Code is correct whether or not the file has been applied, just slower; it also stays clear of the new-Prisma-field blast radius (see migration 074).
+
+```sql
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_activity_logs_owner_hostel_ts
+  ON activity_logs (owner_id, (metadata->>'hostel_id'), timestamp DESC);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_activity_logs_owner_ts
+  ON activity_logs (owner_id, timestamp DESC);
+```
+
+- **Why.** `activity_logs` has no `hostel_id` column and, before this, **no indexes at all**. The per-hostel feed now filters `metadata->>'hostel_id'` ([[Bugs]]); the retention cron deletes by owner + timestamp.
+- **`CONCURRENTLY` — run it outside a transaction block.**
+- **`system_event_logs` needs nothing:** the feed resolves its hostel by joining `tenants`, covered by existing indexes.
+- **Status: unapplied** to any database.
+- **See:** [[Decisions#ADR-198|ADR-198]], [[APIs]], [[Changelog]]
