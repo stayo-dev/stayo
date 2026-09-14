@@ -9,6 +9,7 @@ import { financialService } from "@/src/services/payments/financial-service";
 import { getProviderContext } from "@/src/services/payments/merchant-context";
 import { getLogger } from "@/lib/logger";
 import { frontendUrl } from "@/lib/config/domains";
+import { DOG_CONCERNED, DOG_HAPPY, stayoMark } from "./brand";
 
 const logger = getLogger("api.payments.pay");
 
@@ -90,38 +91,33 @@ function renderPage(content: {
 
           <button type="button" id="pay-btn" class="pay-btn">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            Proceed to Secure Payment
+            Pay ${formatCurrency(amount || 0)} securely
           </button>
           <div id="error-message" class="error-msg" style="display: none;"></div>
         `;
       case "PAID":
         return `
           <div class="status-card paid">
-            <div class="status-icon">
-              <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-            </div>
-            <p class="status-text">Payment Completed</p>
-            <p class="status-sub">This obligation has been fully settled. Thank you!</p>
+            <div class="dog-stage">${DOG_HAPPY}</div>
+            ${amount ? `<p class="status-amount">${formatCurrency(amount)}</p>` : ""}
+            <p class="status-text">Rent paid${dueMonth ? ` for ${dueMonth}` : ""}</p>
+            <p class="status-sub">That's settled — nothing more to do. Your receipt is on its way to you on WhatsApp.</p>
           </div>
         `;
       case "EXPIRED":
         return `
           <div class="status-card expired">
-            <div class="status-icon">
-              <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#dc2626" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            </div>
-            <p class="status-text">Payment Link Expired</p>
-            <p class="status-sub">Please contact your hostel administration for a new payment link.</p>
+            <div class="dog-stage">${DOG_CONCERNED}</div>
+            <p class="status-text">This link has expired</p>
+            <p class="status-sub">Payment links last seven days. ${supportPhone ? "Ask" : "Ask"} ${hostelName} for a fresh one and it will arrive on WhatsApp.</p>
           </div>
         `;
       case "ERROR":
         return `
           <div class="status-card error">
-            <div class="status-icon">
-              <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#dc2626" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-            </div>
+            <div class="dog-stage">${DOG_CONCERNED}</div>
             <p class="status-text">${errorMessage || "Something went wrong"}</p>
-            <p class="status-sub">Please contact your hostel for assistance.</p>
+            <p class="status-sub">Nothing has been charged. ${hostelName} can send you a new link.</p>
           </div>
         `;
     }
@@ -148,6 +144,10 @@ function renderPage(content: {
         });
 
         const payBtn = document.getElementById('pay-btn');
+        // The idle label, captured once. Restoring it with innerHTML keeps the
+        // padlock and the amount; the old code assigned innerText, which threw
+        // the icon away the first time the button was ever re-enabled.
+        const payBtnIdleLabel = payBtn ? payBtn.innerHTML : '';
         const errorMsg = document.getElementById('error-message');
         const logoUrl = "${logoUrl}";
 
@@ -210,7 +210,7 @@ function renderPage(content: {
             const enteredAmount = Number(amountInput ? amountInput.value : 0);
             if (!enteredAmount || enteredAmount <= 0) {
               payBtn.disabled = false;
-              payBtn.innerText = 'Proceed to Secure Payment';
+              payBtn.innerHTML = payBtnIdleLabel;
               if (errorMsg) { errorMsg.textContent = 'Please enter an amount before proceeding.'; errorMsg.style.display = 'block'; }
               return;
             }
@@ -218,7 +218,7 @@ function renderPage(content: {
               const confirmed = window.confirm('That is a large amount (₹' + enteredAmount.toLocaleString('en-IN') + '). Are you sure you want to proceed?');
               if (!confirmed) {
                 payBtn.disabled = false;
-                payBtn.innerText = 'Proceed to Secure Payment';
+                payBtn.innerHTML = payBtnIdleLabel;
                 return;
               }
             }
@@ -347,13 +347,13 @@ function renderPage(content: {
                       errorMsg.style.display = 'block';
                     }
                     payBtn.disabled = false;
-                    payBtn.innerText = 'Proceed to Secure Payment';
+                    payBtn.innerHTML = payBtnIdleLabel;
                   }
                 },
                 modal: {
                   ondismiss: () => {
                     payBtn.disabled = false;
-                    payBtn.innerText = 'Proceed to Secure Payment';
+                    payBtn.innerHTML = payBtnIdleLabel;
                   }
                 }
               };
@@ -395,7 +395,7 @@ function renderPage(content: {
                 errorMsg.style.display = 'block';
               }
               payBtn.disabled = false;
-              payBtn.innerText = 'Proceed to Secure Payment';
+              payBtn.innerHTML = payBtnIdleLabel;
             }
           });
         }
@@ -427,366 +427,274 @@ function renderPage(content: {
   <meta name="robots" content="noindex, nofollow">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   ${razorpayScript}
   <style>
+    /*
+     * Stayo brand tokens, mirroring apps/frontend/src/styles/tokens/marketing.css.
+     * The marketing palette rather than the product one: this page is read by a
+     * resident or a guardian who has never seen the owner app, reached from a
+     * WhatsApp message — a public surface, not a logged-in one.
+     */
+    :root {
+      --bg: #fbefe9;
+      --card: #ffffff;
+      --fg: #2f2f2f;
+      --muted-fg: #7a6e64;
+      --primary: #a45d44;
+      --primary-fg: #ffffff;
+      --secondary: #f3e7dd;
+      --accent: #d2986c;
+      --soft: #fbf8f3;
+      --line: rgba(47, 47, 47, 0.1);
+      --success: #1f8a5b;
+      --danger: #b8442f;
+      --radius: 18px;
+      --shadow: 0 1px 2px rgba(47, 32, 24, 0.04), 0 12px 32px -12px rgba(47, 32, 24, 0.16);
+    }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { -webkit-text-size-adjust: 100%; }
     body {
-      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #FAF9F6;
-      color: #1E293B;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
       min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px 16px;
-    }
-    .container {
-      max-width: 480px;
-      width: 100%;
-      background: #ffffff;
-      border-radius: 24px;
-      padding: 36px 28px;
-      box-shadow: 0 10px 30px -5px rgba(24, 24, 27, 0.04), 0 1px 3px rgba(24, 24, 27, 0.01);
-      border: 1px solid rgba(226, 232, 240, 0.8);
-      text-align: center;
-      animation: fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
-    }
-    @keyframes fadeInUp {
-      from { opacity: 0; transform: translateY(16px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .wa-banner {
-      background: #F0FDF4;
-      border: 1px solid #DCFCE7;
-      border-radius: 16px;
-      padding: 14px 16px;
-      margin-bottom: 24px;
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      text-align: left;
-      font-size: 13px;
-      color: #166534;
-      font-weight: 500;
-      line-height: 1.4;
-    }
-    .wa-banner svg {
-      flex-shrink: 0;
-      color: #16A34A;
-      margin-top: 2px;
-    }
-    .wa-badge {
-      display: inline-block;
-      font-size: 10px;
-      text-transform: uppercase;
-      font-weight: 700;
-      color: #16A34A;
-      letter-spacing: 0.5px;
-      margin-bottom: 2px;
-    }
-    .header-section {
+      min-height: 100dvh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      margin-bottom: 28px;
-    }
-    .hostel-logo-container {
-      width: 64px;
-      height: 64px;
-      background: #FFF7ED;
-      border: 1px solid #FFEDD5;
-      border-radius: 20px;
-      display: flex;
-      align-items: center;
       justify-content: center;
-      margin-bottom: 16px;
-      overflow: hidden;
+      padding: 24px 16px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
     }
-    .hostel-logo {
+    h1, h2, .display { font-family: Manrope, Inter, sans-serif; }
+    .container {
+      max-width: 448px;
       width: 100%;
-      height: 100%;
-      object-fit: cover;
+      background: var(--card);
+      border-radius: 26px;
+      padding: 28px 24px 24px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--line);
+      text-align: center;
+      animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
     }
-    .hostel-logo-fallback {
-      font-size: 28px;
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: none; }
     }
+
+    /* ── The WhatsApp continuity banner ───────────────────────────────── */
+    .wa-banner {
+      background: var(--soft);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin-bottom: 22px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      text-align: left;
+      font-size: 13px;
+      color: var(--fg);
+      line-height: 1.45;
+    }
+    .wa-banner svg { flex-shrink: 0; color: var(--success); margin-top: 1px; }
+    .wa-badge {
+      display: block;
+      font-size: 10px;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--success);
+      letter-spacing: 0.6px;
+      margin-bottom: 2px;
+      font-family: Manrope, Inter, sans-serif;
+    }
+
+    /* ── Whose page this is ───────────────────────────────────────────── */
+    .header-section { display: flex; flex-direction: column; align-items: center; margin-bottom: 22px; }
+    .hostel-logo-container {
+      width: 60px; height: 60px;
+      background: var(--secondary);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 14px; overflow: hidden;
+    }
+    .hostel-logo { width: 100%; height: 100%; object-fit: cover; }
+    .hostel-logo-fallback { font-size: 26px; line-height: 1; }
     .hostel-name {
-      font-size: 18px;
-      font-weight: 750;
-      color: #0F172A;
-      margin-bottom: 4px;
-      line-height: 1.2;
+      font-family: Manrope, Inter, sans-serif;
+      font-size: 19px; font-weight: 800; letter-spacing: -0.01em;
+      color: var(--fg); margin-bottom: 6px; line-height: 1.25;
     }
     .verified-badge {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 12px;
-      color: #16A34A;
-      font-weight: 600;
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 12px; font-weight: 600; color: var(--success);
+      background: rgba(31, 138, 91, 0.08);
+      border-radius: 999px; padding: 4px 10px;
     }
-    .verified-badge svg {
-      fill: #16A34A;
-      color: white;
-    }
+
+    /* ── The facts, as a quiet list rather than four boxes ─────────────── */
     .details-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-      margin-bottom: 24px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 18px;
       text-align: left;
     }
     .detail-card {
-      background: #F8FAFC;
-      border: 1px solid #F1F5F9;
-      border-radius: 14px;
-      padding: 12px 14px;
+      display: flex; align-items: baseline; justify-content: space-between;
+      gap: 12px; padding: 11px 14px;
+      border-bottom: 1px solid var(--line);
     }
-    .detail-card .label {
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: #64748B;
-      margin-bottom: 4px;
-      font-weight: 600;
+    .detail-card:last-child { border-bottom: 0; }
+    .label {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.55px; color: var(--muted-fg);
+      font-family: Manrope, Inter, sans-serif;
     }
-    .detail-card .val {
-      font-size: 13px;
-      color: #0f172a;
-      font-weight: 700;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
+    .val { font-size: 14px; font-weight: 600; color: var(--fg); text-align: right; min-width: 0; overflow-wrap: anywhere; }
+    .val.pending { color: var(--accent); }
+
+    /* ── The number, which is what the page is for ─────────────────────── */
     .amount-card {
-      background: linear-gradient(135deg, #FFF7ED 0%, #FFFDFA 100%);
-      border: 1px solid #FFEDD5;
-      border-radius: 18px;
-      padding: 24px 20px;
-      margin-bottom: 24px;
+      background: var(--soft);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 18px 16px; margin-bottom: 14px;
     }
-    .amount-card .label {
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: #C2410C;
-      font-weight: 700;
-      margin-bottom: 4px;
-    }
-    .amount-card .amount {
-      font-size: 38px;
-      font-weight: 800;
-      color: #F97316;
-      letter-spacing: -1px;
-      line-height: 1.1;
-    }
-    .amount-card .due-month {
-      font-size: 13px;
-      color: #9A3412;
-      margin-top: 6px;
-      font-weight: 500;
-    }
+    .amount-card .label { display: block; margin-bottom: 10px; text-align: center; }
     .amount-input-row {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      background: #ffffff;
-      border: 1.5px solid #FED7AA;
-      border-radius: 12px;
-      padding: 10px 14px;
+      display: flex; align-items: center; justify-content: center; gap: 2px;
+      background: var(--card);
+      border: 1.5px solid var(--line);
+      border-radius: 14px; padding: 10px 14px;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .amount-input-row:focus-within {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(164, 93, 68, 0.12);
     }
     .amount-currency {
-      font-size: 28px;
-      font-weight: 800;
-      color: #F97316;
-      line-height: 1;
+      font-family: Manrope, Inter, sans-serif;
+      font-size: 26px; font-weight: 800; color: var(--primary);
     }
     .amount-input {
-      flex: 1;
-      min-width: 0;
-      border: none;
-      outline: none;
-      background: transparent;
-      font-family: inherit;
-      font-size: 28px;
-      font-weight: 800;
-      color: #0f172a;
-      letter-spacing: -0.5px;
+      font-family: Manrope, Inter, sans-serif;
+      font-size: 30px; font-weight: 800; letter-spacing: -0.02em;
+      color: var(--fg); background: transparent; border: 0; outline: none;
+      width: 100%; max-width: 220px; text-align: left;
       -moz-appearance: textfield;
     }
     .amount-input::-webkit-outer-spin-button,
-    .amount-input::-webkit-inner-spin-button {
-      -webkit-appearance: none;
-      margin: 0;
-    }
+    .amount-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+    /* ── Where the money lands ─────────────────────────────────────────── */
     .breakdown-box {
-      margin-bottom: 24px;
-      text-align: left;
-      background: #ffffff;
-      border: 1px solid #F1F5F9;
-      border-radius: 16px;
-      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 14px 16px; margin-bottom: 18px; text-align: left;
     }
     .breakdown-title {
-      font-size: 11px;
-      font-weight: 700;
-      color: #64748B;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 12px;
-    }
-    .breakdown-table {
-      width: 100%;
-      border-collapse: collapse;
+      font-family: Manrope, Inter, sans-serif;
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.55px; color: var(--muted-fg); margin-bottom: 10px;
     }
     .breakdown-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      font-size: 13px;
-      color: #475569;
-      padding: 8px 0;
-      border-bottom: 1px dashed #F1F5F9;
+      display: flex; justify-content: space-between; gap: 12px;
+      font-size: 13.5px; padding: 5px 0; color: var(--fg);
     }
-    .breakdown-row:last-child {
-      border-bottom: none;
-    }
-    .breakdown-row span:last-child {
-      text-align: right;
-      font-weight: 600;
-      color: #0f172a;
-      white-space: nowrap;
-    }
-    .breakdown-row.total {
-      border-bottom: none;
-      padding-top: 12px;
-      font-weight: 800;
-      color: #0f172a;
-      font-size: 15px;
-    }
-    .breakdown-row.total span:last-child {
-      font-size: 16px;
-      color: #F97316;
-      font-weight: 800;
-    }
-    .breakdown-loading {
-      font-size: 13px;
-      color: #94A3B8;
-      padding: 4px 0;
-    }
-    .breakdown-error {
-      font-size: 13px;
-      color: #DC2626;
-      font-weight: 500;
-      padding: 4px 0;
-    }
+    .breakdown-row span:last-child { font-weight: 700; font-variant-numeric: tabular-nums; }
+    .breakdown-loading { font-size: 13px; color: var(--muted-fg); }
+    .breakdown-error { font-size: 13px; color: var(--danger); font-weight: 600; line-height: 1.45; }
+
+    /* ── The one action ───────────────────────────────────────────────── */
     .pay-btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
       width: 100%;
-      padding: 16px;
-      font-size: 16px;
-      font-weight: 700;
-      color: #ffffff;
-      background: linear-gradient(135deg, #F97316 0%, #EA580C 100%);
-      border: none;
-      border-radius: 14px;
-      cursor: pointer;
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-      box-shadow: 0 8px 24px rgba(249, 115, 22, 0.2);
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      font-family: Manrope, Inter, sans-serif;
+      font-size: 15.5px; font-weight: 800;
+      color: var(--primary-fg); background: var(--primary);
+      border: 0; border-radius: 15px; padding: 16px 20px;
+      cursor: pointer; min-height: 54px;
+      box-shadow: 0 8px 20px -8px rgba(164, 93, 68, 0.55);
+      transition: transform 0.12s ease, background 0.15s ease, box-shadow 0.15s ease;
+      -webkit-tap-highlight-color: transparent;
     }
-    .pay-btn:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 12px 28px rgba(249, 115, 22, 0.3);
-    }
-    .pay-btn:active {
-      transform: translateY(0);
-    }
-    .pay-btn:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-      transform: none;
-      box-shadow: none;
-    }
+    .pay-btn:hover { background: #8f5039; }
+    .pay-btn:active { transform: scale(0.985); }
+    .pay-btn:focus-visible { outline: 3px solid rgba(164, 93, 68, 0.35); outline-offset: 2px; }
+    .pay-btn:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
     .error-msg {
-      background: #FEF2F2;
-      border: 1px solid #FEE2E2;
-      color: #EF4444;
-      padding: 12px 16px;
-      border-radius: 12px;
-      margin-top: 16px;
-      font-size: 13px;
-      text-align: left;
-      font-weight: 500;
+      margin-top: 12px; font-size: 13px; font-weight: 600;
+      color: var(--danger); background: rgba(184, 68, 47, 0.07);
+      border-radius: 12px; padding: 10px 12px; line-height: 1.45;
     }
-    .status-card {
-      background: #ffffff;
-      border: 1px solid #F1F5F9;
-      border-radius: 18px;
-      padding: 32px 20px;
-      margin-bottom: 16px;
-    }
+
+    /* ── Outcome states. ADR-191: the dog belongs to these, not to the
+         payment form — nobody wants a cartoon watching them send money. ── */
+    .status-card { padding: 6px 0 2px; }
+    .dog-stage { width: 148px; height: 148px; margin: 0 auto 4px; }
+    .dog { width: 100%; height: 100%; display: block; }
     .status-icon {
-      width: 56px;
-      height: 56px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0 auto 16px;
+      width: 44px; height: 44px; border-radius: 999px;
+      display: inline-flex; align-items: center; justify-content: center;
+      margin-bottom: 12px;
     }
-    .status-card.paid .status-icon { background: #E8F5E9; border: 1px solid #C8E6C9; }
-    .status-card.pending .status-icon { background: #FFF7ED; border: 1px solid #FFEDD5; }
-    .status-card.expired .status-icon { background: #FEF2F2; border: 1px solid #FEE2E2; }
-    .status-card.error .status-icon { background: #FEF2F2; border: 1px solid #FEE2E2; }
-    .status-text { font-size: 18px; font-weight: 800; color: #0f172a; margin-bottom: 6px; }
-    .status-sub { font-size: 13px; color: #64748b; line-height: 1.5; }
+    .status-card.paid .status-icon { background: rgba(31, 138, 91, 0.1); }
+    .status-card.expired .status-icon,
+    .status-card.error .status-icon { background: rgba(184, 68, 47, 0.08); }
+    .status-text {
+      font-family: Manrope, Inter, sans-serif;
+      font-size: 19px; font-weight: 800; letter-spacing: -0.01em;
+      color: var(--fg); margin-bottom: 6px; line-height: 1.3;
+    }
+    .status-sub { font-size: 14px; color: var(--muted-fg); line-height: 1.5; }
+    .status-amount {
+      font-family: Manrope, Inter, sans-serif;
+      font-size: 28px; font-weight: 800; color: var(--success);
+      letter-spacing: -0.02em; margin-bottom: 6px;
+    }
+
+    /* ── Why this page can be trusted ─────────────────────────────────── */
     .trust-container {
-      margin-top: 24px;
-      padding-top: 20px;
-      border-top: 1px solid #F1F5F9;
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px;
+      margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line);
       text-align: left;
     }
     .trust-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      color: #475569;
-      font-weight: 500;
+      display: flex; align-items: center; gap: 7px;
+      font-size: 12.5px; font-weight: 600; color: var(--muted-fg);
     }
-    .trust-item svg {
-      color: #16A34A;
-      flex-shrink: 0;
-    }
+    .trust-item svg { flex-shrink: 0; color: var(--accent); }
+    .support { margin-top: 16px; font-size: 13px; color: var(--muted-fg); }
+    .support a { color: var(--primary); font-weight: 700; text-decoration: none; }
     .footer-section {
-      margin-top: 28px;
-      padding-top: 20px;
-      border-top: 1px solid #F1F5F9;
-      text-align: center;
-      font-size: 12px;
-      color: #64748B;
-      line-height: 1.5;
+      margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line);
+      font-size: 12px; color: var(--muted-fg); line-height: 1.5;
     }
-    .footer-hostel-info {
-      font-weight: 600;
-      color: #334155;
-      margin-bottom: 4px;
+    .footer-hostel-info { font-weight: 700; color: var(--fg); margin-bottom: 2px; }
+
+    /* ── Stayo disclosed as the channel, never as the counterparty.
+         Same promise as the WhatsApp template footer.  ─────────────────── */
+    .stayo-footer {
+      display: flex; align-items: center; justify-content: center; gap: 7px;
+      margin-top: 18px; font-size: 11.5px; font-weight: 600;
+      color: var(--muted-fg); letter-spacing: 0.01em;
     }
-    .support {
-      margin-top: 12px;
-      font-size: 12px;
-      color: #64748b;
+    .stayo-footer .mark { color: var(--primary); display: block; }
+
+    @media (max-width: 380px) {
+      .container { padding: 22px 18px 20px; border-radius: 22px; }
+      .amount-input { font-size: 26px; }
+      .trust-container { grid-template-columns: 1fr; }
     }
-    .support a { color: #F97316; font-weight: 600; text-decoration: none; }
-    .support a:hover { text-decoration: underline; }
+    @media (prefers-reduced-motion: reduce) {
+      .container { animation: none; }
+      .pay-btn { transition: none; }
+    }
   </style>
 </head>
 <body>
@@ -807,20 +715,20 @@ function renderPage(content: {
     ${status === "DUE" ? `
       <div class="details-grid">
         <div class="detail-card">
-          <p class="label">Resident</p>
-          <p class="val" title="${tenantName}">${tenantName}</p>
+          <span class="label">Resident</span>
+          <span class="val" title="${tenantName}">${tenantName}</span>
         </div>
         <div class="detail-card">
-          <p class="label">Room No</p>
-          <p class="val">${roomNo}</p>
+          <span class="label">Room</span>
+          <span class="val">${roomNo}</span>
         </div>
         <div class="detail-card">
-          <p class="label">Rent Period</p>
-          <p class="val">${dueMonth || "N/A"}</p>
+          <span class="label">Rent period</span>
+          <span class="val">${dueMonth || "N/A"}</span>
         </div>
         <div class="detail-card">
-          <p class="label">Payment Status</p>
-          <p class="val" style="color: #F97316;">Pending</p>
+          <span class="label">Status</span>
+          <span class="val pending">Pending</span>
         </div>
       </div>
     ` : ""}
@@ -856,6 +764,17 @@ function renderPage(content: {
         <p>${hostelAddress}</p>
       </div>
     ` : ""}
+
+    <!--
+      Stayo names itself as the channel, never as the counterparty — the same
+      promise the WhatsApp template footer makes. The reader's trust is in
+      their own hostel, whose name is at the top; this says who carried the
+      message and who is securing the payment.
+    -->
+    <div class="stayo-footer">
+      <span class="mark">${stayoMark(15)}</span>
+      <span>Payments secured by Stayo</span>
+    </div>
   </div>
   ${clientScript}
 </body>

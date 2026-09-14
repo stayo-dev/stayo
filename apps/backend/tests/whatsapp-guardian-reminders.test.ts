@@ -4,9 +4,8 @@ import {
   decideGuardianReminder,
 } from "@/lib/services/notifications/command-center/guardian-reminder-policy";
 import {
+  RENT_REMINDER_FOOTER,
   RENT_REMINDER_TEMPLATES,
-  RENT_REMINDER_V2_FOOTER,
-  rentReminderGeneration,
   rentReminderParameterNames,
   rentReminderTemplateName,
 } from "@/lib/services/notifications/providers/whatsapp/rent-reminder-template-contract";
@@ -59,59 +58,35 @@ describe("guardian reminder policy", () => {
   });
 });
 
-describe("rent reminder template generations", () => {
-  const originalEnv = { ...process.env };
-
-  afterEach(() => {
-    process.env = { ...originalEnv };
-  });
-
-  it("keeps generation 1 live until an approved v2 name is configured", () => {
+describe("rent reminder template copy", () => {
+  /**
+   * The generation switch these tests used to cover is gone (ADR-196). It
+   * chose between an approved template and a `*_v1` name that had never
+   * existed in this WABA, so its "safe" default was a guaranteed Meta 132001.
+   * Name, language and parameter order now live in one entry per template and
+   * are asserted against the live WABA listing in
+   * `whatsapp-rent-template-contract.test.ts`.
+   */
+  it("resolves a name without reading the environment", () => {
     delete process.env.WHATSAPP_RENT_DUE_TODAY_TEMPLATE;
-
-    expect(rentReminderGeneration("DUE_TODAY")).toBe("v1");
-    expect(rentReminderTemplateName("DUE_TODAY")).toBe("rent_due_today_v1");
-    expect(rentReminderParameterNames("DUE_TODAY")).toEqual(["tenant_name", "amount", "rent_month"]);
-  });
-
-  it("switches name, language and parameter shape together — never one without the others", () => {
-    process.env.WHATSAPP_RENT_DUE_TODAY_TEMPLATE = "stayo_rent_due_today";
-
-    expect(rentReminderGeneration("DUE_TODAY")).toBe("v2");
     expect(rentReminderTemplateName("DUE_TODAY")).toBe("stayo_rent_due_today");
-    // Generation 2 adds the hostel name — the reader's trust anchor.
-    expect(rentReminderParameterNames("DUE_TODAY")).toContain("hostel_name");
   });
 
-  it("switches each template independently, so approvals need not land together", () => {
-    process.env.WHATSAPP_RENT_OVERDUE_TEMPLATE = "stayo_rent_overdue";
-    delete process.env.WHATSAPP_RENT_DUE_SOON_TEMPLATE;
-
-    expect(rentReminderGeneration("OVERDUE")).toBe("v2");
-    expect(rentReminderGeneration("DUE_SOON")).toBe("v1");
+  it("names the hostel in every reminder — the reader's trust anchor", () => {
+    for (const kind of ["DUE_SOON", "DUE_TODAY", "OVERDUE", "PAYMENT_RECEIPT"] as const) {
+      expect(rentReminderParameterNames(kind), kind).toContain("hostel_name");
+    }
   });
 
-  it("does not treat an unrelated override as a v2 rollout", () => {
-    // A name that is not the declared v2 name keeps the v1 parameter shape —
-    // sending v2 parameters at a v1 template is a 400 from Meta.
-    process.env.WHATSAPP_RENT_OVERDUE_TEMPLATE = "some_other_template";
-
-    expect(rentReminderGeneration("OVERDUE")).toBe("v1");
-    expect(rentReminderTemplateName("OVERDUE")).toBe("some_other_template");
-    expect(rentReminderParameterNames("OVERDUE")).not.toContain("hostel_name");
-  });
-
-  it("carries no 'HMS' anywhere in generation 2, and no instruction to use an app", () => {
+  it("carries no 'HMS' anywhere, and no instruction to use an app", () => {
     for (const kind of ["DUE_SOON", "DUE_TODAY", "OVERDUE"] as const) {
-      const body = RENT_REMINDER_TEMPLATES[kind].v2.body;
+      const body = RENT_REMINDER_TEMPLATES[kind].body;
       expect(body, kind).not.toContain("HMS");
       // Guardians have no app; the payment button is the whole route.
       expect(body.toLowerCase(), kind).not.toContain("using the app");
-      // Every generation-2 body names the hostel.
-      expect(body, kind).toContain("{{2}}");
     }
 
-    expect(RENT_REMINDER_V2_FOOTER).not.toContain("HMS");
-    expect(RENT_REMINDER_V2_FOOTER).toContain("Stayo");
+    expect(RENT_REMINDER_FOOTER).not.toContain("HMS");
+    expect(RENT_REMINDER_FOOTER).toContain("Stayo");
   });
 });
