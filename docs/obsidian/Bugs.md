@@ -8,6 +8,18 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-14 — Any owner could read and run platform-wide financial reconciliation (fixed)
+
+**Symptom.** Found by the 2026-09-14 security audit (finding C2). Three routes under `/api/admin/finance/reconciliation/*` gated on `role === "OWNER"`. Owner signup is public, so any owner could `GET issues` (every owner's issues — `?ownerId=` made the read cross-owner), `PATCH issues/[issueId]` (mutate any issue), and `POST scan` (run/persist a platform-wide detector scan).
+
+**Root cause.** Wrong role in the gate (`OWNER` where `ADMIN` was meant), and the read trusted a caller-supplied `ownerId` filter. Middleware only authenticates; the route handler is the sole authorization gate, so a mis-gated route is fully exposed.
+
+**Fix.** [[Decisions#ADR-202|ADR-202]]: the three routes now use a new shared `requireAdmin` (`lib/security/authz.ts`); `ownerId`/`hostelId` are admin-only, UUID-validated filters. An enumerating test (`tests/admin-routes-guarded.test.ts`) asserts every `/api/admin/**` route is admin-gated or a 410 stub, so this class of mistake fails CI before shipping. No frontend called these routes; real admins are unaffected.
+
+**Wider finding (inventoried, not fixed — Phase D):** authorization is hand-rolled across the codebase (~123 `role ===/!== "OWNER"`, ~65 `role !== "ADMIN"`, ~183 role-array checks, and 29 duplicate local `requireAdmin` defs under `/api/platform-admin/**`). Converging onto the shared helpers is follow-up work.
+
+**See:** [[Decisions#ADR-202|ADR-202]], [[APIs]], [[Backend]], [[Changelog]]
+
 ## 2026-09-14 — Nothing sticky stuck on a page the document scrolls (fixed)
 
 **Symptom.** Found while building the Rooms tab's lift strip ([[Decisions#ADR-199|ADR-199]]): a `sticky top-0` strip scrolled off the top of the screen with the rest of the page. Measured in Chrome over the real page: after scrolling 1115px the strip sat at −713px and its "which floor is on screen" tracking stayed on the top floor.

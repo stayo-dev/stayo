@@ -583,6 +583,7 @@ No migration — `hostel_marketing_revisions.content` is a JSON column and this 
 ## Flagged for follow-up (not guessed — genuinely unclear from the code)
 
 - **No auth guard found**: `GET /api/owner/integrity`, `GET /api/metrics`, `GET /api/debug/whatsapp-health` (low-risk — booleans only, no secrets).
+- **`/api/admin/finance/reconciliation/{issues,issues/[issueId],scan}` are platform-admin only as of 2026-09-14** ([[Decisions#ADR-202|ADR-202]], audit C2). They gated on `role === "OWNER"`, so any owner could list/mutate every owner's reconciliation issues and run a platform-wide scan; `ownerId`/`hostelId` are now admin-only drill-down filters (UUID-validated), not an authorization scope. Guarded by the new shared `requireAdmin` in `lib/security/authz.ts`; an enumerating test (`tests/admin-routes-guarded.test.ts`) now asserts every `/api/admin/**` route is admin-gated or a 410 stub. No frontend called these routes.
 - **Alias/re-export routes** (thin pass-throughs, not independent logic): `/api/admissions/leads(/analytics)` → `/api/leads(/analytics)`; `/api/allocations/my-room` → `/api/tenants/me/room`; `/api/payments/offline` and `/api/owner/payments/offline` → `/api/payments/record-offline`.
 - **Apparent duplicate**: `/api/owners/invitations` vs `/api/tenants/invite` — same underlying `invitationService.inviteTenant` call. The owner invite modal uses `/api/owners/invitations`; `/api/tenants/invite` differs only in also accepting ADMIN.
 

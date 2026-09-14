@@ -10,6 +10,11 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-14**: **Security — platform-admin reconciliation routes locked to ADMIN** ([[Decisions#ADR-202|ADR-202]], [[Bugs]], [[APIs]]).
+  - `/api/admin/finance/reconciliation/{issues,issues/[issueId],scan}` gated on OWNER; any owner could read every owner's issues, mutate them, and run a platform-wide scan. Now ADMIN-only via the new shared `requireAdmin` (`lib/security/authz.ts`); `ownerId`/`hostelId` are admin-only UUID-validated filters.
+  - New `tests/admin-routes-guarded.test.ts` enumerates every `/api/admin/**` route and asserts it is admin-gated or a 410 stub — so a future admin route can't ship ungated.
+  - Phase D: inventoried ~29 duplicate `requireAdmin` defs and hundreds of manual role checks for later convergence; no refactor yet.
+
 - **2026-09-14**: **The Rooms tab is the hostel, drawn as a building** ([[Decisions#ADR-199|ADR-199]], [[Features]], [[Frontend]], [[APIs]], [[Bugs]]).
   - The floor accordion and its bed dots are gone. Floors stack top to bottom like the real building, every room is a tile of the faces that live in it (photo, initials, a red dot when the backend says overdue, dashed amber for an invite, `+` for a free bed), and the roof says how many beds are filled. A long floor wraps rather than shrinking faces; three or more floors get a sticky lift strip.
   - Free beds, overdue and invited are filters over the building; search finds a room or a person and shows where they are.
