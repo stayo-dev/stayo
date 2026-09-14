@@ -8,6 +8,18 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-14 — OTP and migration tables were readable and writable by the public anon key (fix committed, not deployed)
+
+**Symptom.** Found by the 2026-09-14 security audit (finding C3). On production, as the public `anon` role, a probe read 2 `email_verification_otps` rows and 96 `_prisma_migrations` rows and held INSERT/UPDATE/DELETE on both.
+
+**Root cause.** `email_verification_otps` (and `_prisma_migrations`) shipped with RLS **off** and full `anon`+`authenticated` grants — its `20260911120000` migration, unlike the `phone_verification_otps` sibling, never enabled RLS. Both tables are PostgREST-exposed, so the anon key (in every deployed bundle) could forge a `VERIFIED` OTP row (bypassing the ADR-183 email proof), reset `attempts` to brute-force a live code, read pending onboarding emails + IPs, or delete migration bookkeeping.
+
+**Fix.** [[Decisions#ADR-201|ADR-201]]: migration `20260916000000_otp_tables_rls_lockdown` enables RLS and revokes both public roles on both tables (deny-all — the backend uses the RLS-bypassing connection). Reproducible in the repo, not a dashboard change. Proof: `scripts/verify-otp-rls.sql`; guards: `tests/otp-rls-lockdown.test.ts` + `tests/otp-rls-db.test.ts`.
+
+**Not fixed yet in production.** The migration is committed but **not applied to any database** — production stays exposed until it ships through the normal deploy. Verification so far was a rolled-back probe on production (confirmed the fix denies anon all four ops) that left prod state unchanged.
+
+**See:** [[Decisions#ADR-201|ADR-201]], [[Database]], [[Changelog]]
+
 ## 2026-09-14 — Nothing sticky stuck on a page the document scrolls (fixed)
 
 **Symptom.** Found while building the Rooms tab's lift strip ([[Decisions#ADR-199|ADR-199]]): a `sticky top-0` strip scrolled off the top of the screen with the rest of the page. Measured in Chrome over the real page: after scrolling 1115px the strip sat at −713px and its "which floor is on screen" tracking stayed on the top floor.
