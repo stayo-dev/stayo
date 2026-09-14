@@ -95,6 +95,8 @@ export function OwnerDashboardPreviewPage() {
         properties={dash.properties}
         alertCount={dash.alertCount}
         actionCenter={dash.actionCenter}
+        tonight={dash.tonight}
+        onOpenStay={() => navigate('/owner/stay')}
         collection={dash.collection}
         spendAnomaly={dash.spendAnomaly}
         sections={sections}

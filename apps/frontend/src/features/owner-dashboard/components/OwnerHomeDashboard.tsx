@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, Search, Plus, UtensilsCrossed, ChevronRight, TrendingUp } from 'lucide-react';
 import { StatCard } from '@shared/ui-patterns/StatCard';
+import { TonightSection } from '@features/owner-stay/components/TonightSection';
+import type { TonightCards } from '@features/stay/stayState';
 import { DarkHeroCard } from '@shared/ui-patterns/DarkHeroCard';
 import { StatusPill } from '@shared/ui-patterns/StatusPill';
 import { MEAL_CATEGORY_META } from '@shared/mocks/food';
@@ -46,6 +48,9 @@ interface OwnerHomeDashboardProps {
   properties?: MockProperty[];
   alertCount?: number;
   actionCenter?: ActionCenterData;
+  /** Stay Status answers (ADR-193); null until someone lives here. */
+  tonight?: TonightCards | null;
+  onOpenStay?: () => void;
   collection?: CollectionData;
   /**
    * One category that rose sharply this month, or null in an ordinary month.
@@ -114,6 +119,8 @@ export function OwnerHomeDashboard({
   properties = mockProperties,
   alertCount = mockAlertCount,
   actionCenter = mockActionCenter,
+  tonight = null,
+  onOpenStay,
   collection = mockCollection,
   spendAnomaly = null,
   sections = { search: true, actionCenter: true, monthCard: true, hostels: true, setupMode: false },
@@ -228,6 +235,10 @@ export function OwnerHomeDashboard({
           have landed. Shown to a new owner it was four zeros and a dark card
           reading "Collect Rent ₹0", which teaches nothing and looks broken.
           See `homeSections.ts`. */}
+      {/* Tonight's occupancy, above the money work: it is the question an owner
+          opens the app with in the morning (ADR-193). */}
+      {tonight && onOpenStay && <TonightSection cards={tonight} onOpen={onOpenStay} />}
+
       {sections.actionCenter && (
       <section className="flex flex-col gap-3" ref={actionCenterRef}>
         <div className="flex items-baseline justify-between">

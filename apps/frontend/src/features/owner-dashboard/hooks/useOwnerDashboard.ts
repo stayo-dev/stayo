@@ -6,6 +6,8 @@ import { tenantService } from '@features/tenants/api';
 import { agreementService } from '@features/agreements/api';
 import { useHostelPolicy } from '@features/settings/settingsHooks';
 import { useAlerts } from '@features/owner-alerts/hooks/useAlerts';
+import { useStaySummary } from '@features/owner-stay/hooks/useStay';
+import { tonightCards } from '@features/stay/stayState';
 import { queryKeys } from '@lib/queryKeys';
 import type { MockProperty } from '@shared/mocks/dashboard';
 import { leftLabel, monthCash } from '../monthCash';
@@ -101,6 +103,13 @@ export function useOwnerDashboard() {
   // became ACTIVE from the moment it's invited (see createInvitation's
   // owner-managed adoption) — who hasn't taken charge of their account yet is
   // `access_mode = OWNER_MANAGED` now, not `status = INVITED`.
+  /**
+   * Stay Status (ADR-193). Its own endpoint, composed here like every other
+   * Home card. A failure leaves `data` undefined, so `tonight` is null and the
+   * row simply doesn't render — Home never depends on it.
+   */
+  const staySummaryQuery = useStaySummary();
+
   const invitedQuery = useQuery({
     queryKey: queryKeys.owner.invitedCounts(hostelIds),
     queryFn: async () => {
@@ -234,6 +243,8 @@ export function useOwnerDashboard() {
     ownerName: session.ownerName?.split(' ')[0] || 'Owner',
     properties,
     actionCenter,
+    /** Tonight's answers: here tonight, back today, rooms to check. Null until someone lives here. */
+    tonight: tonightCards(staySummaryQuery.data),
     collection,
     spendAnomaly,
     alertCount,
