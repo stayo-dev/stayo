@@ -52,7 +52,7 @@ const BRAND_MARK = path.join(process.cwd(), "lib", "pdf", "brand", "stayo-mark.p
 const DAY_COL_W = 104;
 const MEAL_COL_W = (CONTENT_W - DAY_COL_W) / 4;
 
-interface Fonts {
+export interface Fonts {
   regular: PDFFont;
   medium: PDFFont;
   display: PDFFont;
@@ -73,7 +73,7 @@ interface Fonts {
  * Inter, incidentally, is the same face the receipt embeds for its own reason
  * (it carries `₹`, U+20B9, which pdf-lib's built-in Helvetica cannot encode).
  */
-async function loadFonts(pdfDoc: PDFDocument): Promise<Fonts> {
+export async function loadFonts(pdfDoc: PDFDocument): Promise<Fonts> {
   pdfDoc.registerFontkit(fontkit);
   const [regular, medium, display] = await Promise.all([
     fs.readFile(path.join(FONT_DIR, "inter-400.ttf")),
