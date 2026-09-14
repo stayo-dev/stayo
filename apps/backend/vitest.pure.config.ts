@@ -25,6 +25,8 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: [
+      // The Rooms tab as a building (ADR-199) — who is in each room.
+      'tests/room-occupants.test.ts',
       // Stay Status (ADR-194) — pure core, mocked service and routes.
       'tests/timezone-ist.test.ts',
       'tests/stay-status.test.ts',
