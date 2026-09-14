@@ -11,7 +11,6 @@ const valid: TenantSignupFields = {
   name: 'Riya Sharma',
   email: 'riya@example.com',
   password: 'correct-horse',
-  confirmPassword: 'correct-horse',
 };
 
 describe('validateTenantSignup', () => {
@@ -23,7 +22,7 @@ describe('validateTenantSignup', () => {
   });
 
   it('names every empty field rather than a single generic complaint', () => {
-    const result = validateTenantSignup({ name: '', email: '', password: '', confirmPassword: '' });
+    const result = validateTenantSignup({ name: '', email: '', password: '' });
     expect(Object.keys(result.errors).sort()).toEqual(['email', 'name', 'password']);
     expect(result.valid).toBe(false);
   });
@@ -55,27 +54,22 @@ describe('validateTenantSignup', () => {
 
   it('enforces the same password bounds the backend does', () => {
     const short = 'a'.repeat(MIN_SIGNUP_PASSWORD_LENGTH - 1);
-    expect(validateTenantSignup({ ...valid, password: short, confirmPassword: short }).errors.password).toBeTruthy();
+    expect(validateTenantSignup({ ...valid, password: short }).errors.password).toBeTruthy();
 
     const exact = 'a'.repeat(MIN_SIGNUP_PASSWORD_LENGTH);
-    expect(validateTenantSignup({ ...valid, password: exact, confirmPassword: exact }).valid).toBe(true);
+    expect(validateTenantSignup({ ...valid, password: exact }).valid).toBe(true);
 
     const long = 'a'.repeat(MAX_SIGNUP_PASSWORD_LENGTH + 1);
-    expect(validateTenantSignup({ ...valid, password: long, confirmPassword: long }).errors.password).toBeTruthy();
+    expect(validateTenantSignup({ ...valid, password: long }).errors.password).toBeTruthy();
   });
 
-  it('rejects a confirmation that differs, including by case or trailing space', () => {
-    expect(validateTenantSignup({ ...valid, confirmPassword: 'Correct-horse' }).errors.confirmPassword).toBeTruthy();
-    expect(validateTenantSignup({ ...valid, confirmPassword: 'correct-horse ' }).errors.confirmPassword).toBeTruthy();
-    expect(validateTenantSignup({ ...valid, confirmPassword: '' }).errors.confirmPassword).toBeTruthy();
-  });
-
-  // Saying "passwords don't match" while the first one is still too short sends
-  // someone to fix the wrong field.
-  it('stays quiet about the confirmation while the password itself is unusable', () => {
-    const result = validateTenantSignup({ ...valid, password: 'short', confirmPassword: '' });
-    expect(result.errors.password).toBeTruthy();
-    expect(result.errors.confirmPassword).toBeUndefined();
+  // ADR-193 dropped the confirm-password field. A password typed once is
+  // checked by eye (the reveal button) and by Caps Lock hint, not by a second
+  // field — so nothing here may complain about a confirmation.
+  it('has no opinion about a confirmation field', () => {
+    const result = validateTenantSignup(valid);
+    expect(result.errors).not.toHaveProperty('confirmPassword');
+    expect(Object.keys(result.errors)).toHaveLength(0);
   });
 });
 
@@ -86,7 +80,6 @@ describe('toTenantSignupPayload', () => {
         name: '  Riya Sharma  ',
         email: '  Riya@Example.COM ',
         password: ' spaces are real ',
-        confirmPassword: ' spaces are real ',
       }),
     ).toEqual({
       name: 'Riya Sharma',

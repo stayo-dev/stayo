@@ -218,6 +218,8 @@ Notes that matter when touching this:
 - **The feel lives in `dogTuning.ts`**, signed off on an interactive prototype. The numbers interact; judge changes together, not one at a time.
 - **Reduced motion:** springs snap, no blink/wag/breath/tracking — but poses still change (it still covers its eyes). **Touch:** no cursor tracking; the gaze follows the focused field.
 - **`LoginModal`'s `Dialog.Content` is two layers** since the dog arrived: an outer positioning shell and an inner scrolling card. The dog sits outside the scroll box (inside it would be clipped) and adds no layout height. Hidden at `(max-height: 560px)`.
+- **Because it adds no height, the centring has to allow for it** ([[Decisions#ADR-193|ADR-193]]). A card centred on its own leaves `(viewport − card) / 2` above it, which is less than the ~126px the rim dog stands, so its head was clipped by the top of the window. The shell translates by `calc(-50% + var(--dog-rise))` and caps the card's height at `100dvh − var(--dog-rise) * 2 − 1rem`, both from `--dog-rise` = `rimCenteringOffsetPx(184)`. **Any other card the dog leans on needs the same two rules** — the dog does not make room for itself.
+- **The layout numbers are pure and tested** in `dogRimFit.ts` (`rimDogHeightPx`, `rimExposedHeightPx`, `rimCenteringOffsetPx`, plus `RIM_Y`, the view box and `RIM_OVERLAP_PERCENT`, which live there rather than in `StayoDog.tsx`/`dogParts.tsx`). The node-only suite cannot render the dog to measure it, so derive from these rather than hardcoding pixels.
 - **Derived v1 art** (covering, peeking, concerned, curious, the forearms, the rim paws) is built from existing shapes in `dogParts.tsx`, flagged for the designer to refine. The source SVGs are untouched.
 
 ## Enforced architectural boundaries
