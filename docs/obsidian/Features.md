@@ -303,7 +303,7 @@ The brand mascot leans over the top edge of the one login surface every role use
 - **Raises its brows for Caps Lock**, alongside a "Caps Lock is on" line under the password (new; announced to screen readers).
 - **Thinks** while the login or Google redirect is in flight; **shows sympathy** (ears down, small head shake) for 2.4s after a failure, ending the moment a field is focused; **celebrates** a success for one 600ms beat before the redirect (0 under reduced motion).
 - **Dozes off** after 30s untouched and startles awake; wags when its head is tapped.
-- The "Signed in" handoff overlays (`LandingPage`, `DiscoverAuthContext`) show it waving.
+- The "Signed in" handoff overlays (`LandingPage`, `DiscoverAuthContext`) show it waving. Since 2026-09-14 the wave is the designer's own raised leg, swung from the shoulder in bursts (`dogWave.ts`); before that it was the rim forearm pivoting at the paw — see [[Changelog]].
 
 It is decorative by contract: `aria-hidden`, no tab stop, every state also said in text, hidden on screens under 560px tall. Login logic, validation, error copy and Google are unchanged.
 

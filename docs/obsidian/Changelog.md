@@ -10,6 +10,11 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-14**: **The Stayo dog waves properly** ([[Features]], [[Frontend]]).
+  - The "Signed in" handoff wave reused the long forearm built for leaning over the login card, on the wrong side, and rotated it about the **paw**. On the standing dog it showed as a stick from the belly to the ear that see-sawed across the chest while the paw stayed still.
+  - It now uses the designer's own raised leg (`paw-wave` in `stayo-mascot-waving.svg`, on the viewer's left), which sweeps up from the side and then waves from the shoulder in bursts: three swings, a beat of rest in the drawn pose, then again. It swings further outward than inward, so the paw never crosses the eye, and the left foot lifts as the leg rises. Under reduced motion it holds the drawn pose.
+  - The timing is a pure, tested module (`shared/ui/brand/mascot/dogWave.ts`, 7 tests); `waving` is now `['wave', 'down']`, and `ARM_POSES.r.wave` is gone.
+
 - **2026-09-14**: **The payment page looks like Stayo** ([[Decisions#ADR-197|ADR-197]], [[Features]], [[Backend]]).
   - `/pay/{token}` is the only Stayo surface most residents and guardians ever see — it is where a rent reminder lands — and it was in the wrong typeface, the wrong palette, and carried no Stayo identity at all.
   - Now on the brand pair (Manrope + Inter) and the **marketing** token palette, because the reader has never seen the owner app. Facts become a labelled list, the CTA names the amount, and a `Payments secured by Stayo` footer discloses the channel without posing as the counterparty.

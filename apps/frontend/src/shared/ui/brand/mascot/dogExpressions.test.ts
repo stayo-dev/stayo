@@ -10,8 +10,8 @@ const SOURCE_POSES: Record<string, Partial<(typeof DOG_EXPRESSIONS)[DogExpressio
   neutral: { eyes: 'open', brows: 'none', mouth: 'smile', ears: 'rest', tail: 'down', arms: ['down', 'down'] },
   // stayo-mascot-happy.svg: arc eyes, open pant with tongue, perked ears, mid tail.
   happy: { eyes: 'happy', brows: 'none', mouth: 'pant', ears: 'perk', tail: 'mid', arms: ['down', 'down'] },
-  // stayo-mascot-waving.svg: arc eyes, smile, mid tail, one paw raised.
-  waving: { eyes: 'happy', mouth: 'smile', tail: 'mid', arms: ['down', 'wave'] },
+  // stayo-mascot-waving.svg: arc eyes, smile, mid tail, the viewer's-left paw raised (`paw-wave`).
+  waving: { eyes: 'happy', mouth: 'smile', tail: 'mid', arms: ['wave', 'down'] },
   // stayo-mascot-thinking.svg: head rotated -8°, one raised brow, small mouth, thought bubble.
   thinking: { eyes: 'open', brows: 'curious', mouth: 'small', tail: 'down', tilt: -8, extra: 'bubble' },
   // stayo-mascot-celebrating.svg: arc eyes, both brows, big open mouth, high tail, both paws up, sparkles.
