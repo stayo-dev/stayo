@@ -33,6 +33,8 @@ export default defineConfig({
       'tests/stay-service.test.ts',
       'tests/stay-poster-pdf.test.ts',
       'tests/stay-routes.test.ts',
+      // Meal forecast (ADR-194).
+      'tests/meal-ratio.test.ts',
       'tests/rent-generation-exit-date-join.test.ts',
       'tests/imagekit-uploadable.test.ts',
       'tests/push-policy.test.ts',
