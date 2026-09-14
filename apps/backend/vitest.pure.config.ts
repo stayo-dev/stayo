@@ -36,6 +36,7 @@ export default defineConfig({
       // Meal forecast (ADR-194).
       'tests/meal-ratio.test.ts',
       'tests/meal-forecast-service.test.ts',
+      'tests/meal-routes.test.ts',
       'tests/rent-generation-exit-date-join.test.ts',
       'tests/imagekit-uploadable.test.ts',
       'tests/push-policy.test.ts',

@@ -7,6 +7,7 @@ import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
 import { requireHostelBelongsToOwner } from "@/lib/security/scoped-query";
 import { stayService } from "@/src/services/stay/stay-service";
 import { stayErrorResponse } from "@/src/services/stay/stay-errors";
+import { mealForecastService } from "@/src/services/meals/meal-forecast-service";
 
 /**
  * GET /api/hostels/[id]/stay — the owner's Stay board for one hostel:
@@ -20,7 +21,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const scope = resolveOwnerScope(session);
     await requireHostelBelongsToOwner(scope.owner_id, id);
-    return apiResponse(await stayService.getHostelBoard(id));
+    // Composed here, not inside either service: meals may read Stay, Stay must
+    // never read meals. A meals failure must not cost the owner their board.
+    const [board, forecast] = await Promise.all([
+      stayService.getHostelBoard(id),
+      mealForecastService.getForecast(id, {}).catch(() => null),
+    ]);
+    const dinner = forecast?.days[0]?.meals.find((m) => m.mealType === "DINNER") ?? null;
+    return apiResponse({
+      ...board,
+      mealForecast: dinner ? { expected: dinner.expected, basis: dinner.basis, samples: dinner.samples } : null,
+    });
   } catch (error) {
     return stayErrorResponse(error);
   }

@@ -23,7 +23,7 @@ const checks: Array<{
   },
   {
     name: "operational backend must not use optional hostelId service contracts",
-    roots: ["lib/services", "app/api/dashboard", "app/api/analytics", "app/api/rooms", "app/api/tenants", "app/api/payments", "app/api/expenses", "app/api/food", "app/api/announcements", "app/api/hostel-events", "app/api/service-requests", "app/api/utility-status", "src/services/stay", "app/api/tenant/stay", "app/api/owner/stay", "app/api/hostels/[id]/stay"],
+    roots: ["lib/services", "app/api/dashboard", "app/api/analytics", "app/api/rooms", "app/api/tenants", "app/api/payments", "app/api/expenses", "app/api/food", "app/api/announcements", "app/api/hostel-events", "app/api/service-requests", "app/api/utility-status", "src/services/stay", "app/api/tenant/stay", "app/api/owner/stay", "app/api/hostels/[id]/stay", "src/services/meals", "app/api/hostels/[id]/meals"],
     pattern: /hostelId\?:\s*string|hostelId\?:\s*string\s*\|/,
     allow: [
       /architectural-invariants-check\.ts$/,
@@ -36,7 +36,7 @@ const checks: Array<{
   },
   {
     name: "operational code must not select first hostel as fallback",
-    roots: ["lib/services", "app/api/dashboard", "app/api/analytics", "app/api/rooms", "app/api/tenants", "app/api/payments", "app/api/expenses", "app/api/food", "app/api/announcements", "app/api/hostel-events", "app/api/service-requests", "app/api/utility-status", "src/services/stay", "app/api/tenant/stay", "app/api/owner/stay", "app/api/hostels/[id]/stay"],
+    roots: ["lib/services", "app/api/dashboard", "app/api/analytics", "app/api/rooms", "app/api/tenants", "app/api/payments", "app/api/expenses", "app/api/food", "app/api/announcements", "app/api/hostel-events", "app/api/service-requests", "app/api/utility-status", "src/services/stay", "app/api/tenant/stay", "app/api/owner/stay", "app/api/hostels/[id]/stay", "src/services/meals", "app/api/hostels/[id]/meals"],
     pattern: /findFirst\([\s\S]{0,220}owner_id[\s\S]{0,220}hostel|hostels\s*\[\s*0\s*\]/,
     allow: [
       /architectural-invariants-check\.ts$/,
