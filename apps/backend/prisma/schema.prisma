@@ -868,7 +868,11 @@ model profile {
   // record; the two share relations are this profile acting as an *owner* who
   // verified or rejected someone else's document.
   identity                                                          profile_identity?
-  identity_documents                                                identity_documents[]
+  // Meet your host (ADR-200). Relation fields add no scalar columns to
+  // `profiles`, so `getSession()`'s profile reads are unaffected.
+  host_profile                                                      owner_host_profile?   @relation("OwnerHostProfile")
+  host_profiles_edited                                              owner_host_profile[]  @relation("OwnerHostProfileUpdater")
+  identity_documents                                             identity_documents[]
   verified_document_shares                                          identity_document_shares[] @relation("DocumentShareVerifier")
   rejected_document_shares                                          identity_document_shares[] @relation("DocumentShareRejecter")
   history_disclosures                                               residency_history_disclosures[] @relation("HistoryDisclosureSubject")
@@ -1558,6 +1562,28 @@ model profile_identity {
   profile           profile   @relation(fields: [profile_id], references: [id], onDelete: Cascade)
 
   @@map("profile_identity")
+}
+
+/// The owner as residents meet them on a public listing (ADR-200) — their own
+/// words, languages, and the year they started. A table of its own, never
+/// columns on `profile_identity`: see migration 083 for why. `bio_hidden` and
+/// `photo_hidden` are set by a Stayo admin only; an owner edit never touches
+/// them. Read through `src/services/host-profile/host-profile-service.ts`.
+model owner_host_profile {
+  profile_id    String    @id @db.Uuid
+  bio           String?
+  languages     String[]  @default([])
+  hosting_since Int?      @db.SmallInt
+  bio_hidden    Boolean   @default(false)
+  photo_hidden  Boolean   @default(false)
+  updated_by    String?   @db.Uuid
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime? @db.Timestamptz(6)
+
+  profile       profile   @relation("OwnerHostProfile", fields: [profile_id], references: [id], onDelete: Cascade)
+  updater       profile?  @relation("OwnerHostProfileUpdater", fields: [updated_by], references: [id], onDelete: SetNull)
+
+  @@map("owner_host_profiles")
 }
 
 /// The document vault: one row per file the person has ever uploaded. No
