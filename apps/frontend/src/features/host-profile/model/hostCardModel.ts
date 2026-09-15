@@ -118,7 +118,7 @@ export function buildHostCard(
 
   return {
     variant,
-    heading: variant === 'note' ? 'A note from your host' : 'Meet your host',
+    heading: 'Meet your host',
     name,
     initial: (name ?? 'S').charAt(0).toUpperCase(),
     photoUrl: host.photo_url || null,
@@ -128,6 +128,53 @@ export function buildHostCard(
     facts: hostFacts(host),
     stats: hostStats(host, { includeSince: variant === 'note' }),
     ctaLabel: name ? `Enquire with ${name}` : 'Enquire',
+  };
+}
+
+export interface HostByline {
+  /** "Hosted by Shiva Prakash" — the full name, as everywhere else (ADR-200). */
+  title: string;
+  /** "Owner · On Stayo since Sep 2026", built from whatever is actually known. */
+  line: string;
+  name: string | null;
+  initial: string;
+  photoUrl: string | null;
+  verified: boolean;
+}
+
+/**
+ * The one-line host attribution that sits near the top of a listing, above the
+ * beds and the rent — Airbnb's "Hosted by …" row.
+ *
+ * Deliberately carries no bio, no stats and no button: those belong to the
+ * full card at the foot of the page. This row answers only "is there a person
+ * behind this listing, and who?" before a reader reaches the price.
+ */
+export function buildHostByline(host: PublicHost | null | undefined): HostByline | null {
+  if (!host) return null;
+
+  const since = formatMonthYear(host.listed_since, 'short');
+  const photoUrl = host.photo_url || null;
+
+  if (host.platform_listed) {
+    return {
+      title: 'Listed by Stayo',
+      line: since ? `On Stayo since ${since}` : 'On Stayo',
+      name: null,
+      initial: 'S',
+      photoUrl: null,
+      verified: false,
+    };
+  }
+
+  const name = host.name?.trim() || null;
+  return {
+    title: name ? `Hosted by ${name}` : 'Hosted by the owner',
+    line: ['Owner', since ? `On Stayo since ${since}` : null].filter(Boolean).join(' · '),
+    name,
+    initial: (name ?? 'S').charAt(0).toUpperCase(),
+    photoUrl,
+    verified: Boolean(host.verified),
   };
 }
 
