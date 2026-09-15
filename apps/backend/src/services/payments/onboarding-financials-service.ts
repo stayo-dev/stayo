@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { getLogger } from "@/lib/logger";
 import { resolvePreferences } from "@/lib/preferences";
 import { addUtcMonths, dueDateForMonth, lastDayOfUtcMonth } from "./rent-schedule-dates";
+import { isUnacceptedTenancy } from "../tenants/invitation-edit-window";
 
 const logger = getLogger("onboarding-financials");
 
@@ -63,13 +64,23 @@ export class OnboardingFinancialsService {
 
     const tenant = await tx.tenants.findUnique({
       where: { id: tenantId },
-      select: { id: true, owner_id: true, hostel_id: true, status: true, security_deposit: true },
+      select: { id: true, owner_id: true, hostel_id: true, status: true, acceptance_status: true, security_deposit: true },
     });
     if (!tenant) throw new Error("NOT_FOUND: Tenant not found");
     if (tenant.owner_id !== ownerId || tenant.hostel_id !== hostelId) {
       throw new Error("FORBIDDEN: Tenant does not match onboarding financial scope");
     }
-    if (tenant.status !== "INVITED") {
+    /**
+     * ADR-208. This was `tenant.status !== "INVITED"`, which ADR-165 made
+     * permanently true for owner-managed tenancies — they are ACTIVE from
+     * birth with `acceptance_status = PENDING`.
+     *
+     * It mattered far more than a skipped create. `resendInvitation` deletes
+     * the tenant's unpaid obligations and *then* calls this to rebuild them,
+     * so a silent skip here means an edited invitation leaves the tenant
+     * owing nothing at all. Both guards had to move together.
+     */
+    if (!isUnacceptedTenancy({ status: tenant.status, acceptanceStatus: tenant.acceptance_status })) {
       return { createdObligations: [], createdObligationIds: [], skipped: true, reason: "TENANT_NOT_INVITED" };
     }
 

@@ -9,6 +9,7 @@ import { eventLog } from "../../../lib/services/event-log-service";
 import { frontendUrl } from "../../../lib/config/domains";
 import { roomCapacityService } from "../../../lib/services/room-capacity-service";
 import { tenantInvitationLifecycleService } from "./tenant-invitation-lifecycle-service";
+import { canEditInvitation } from "./invitation-edit-window";
 import { selectCurrentTenancy } from "@/lib/tenancy/active-tenancy";
 import { tenancyEligibilityService } from "./tenancy-eligibility-service";
 import { realEmailOrNull } from "./invited-profile-resolver";
@@ -555,18 +556,26 @@ export class InvitationService {
   ) {
     const tenant = await prisma.tenants.findFirst({
       where: { id: tenantId, owner_id: ownerId },
-      include: {
-        payments: { select: { id: true }, take: 1 },
-      },
+      select: { id: true, status: true, acceptance_status: true },
     });
 
     if (!tenant) throw new Error("NOT_FOUND: Tenant invitation not found");
-    if (tenant.status !== "INVITED") {
-      throw new Error("VALIDATION: Invitation can be edited only before tenant activation");
-    }
-    if (tenant.payments.length > 0) {
-      throw new Error("VALIDATION: Invitation cannot be edited after payment activity exists");
-    }
+
+    /**
+     * ADR-208. This used to be `tenant.status !== "INVITED"`, which ADR-165
+     * made permanently true: an invited tenancy is now born ACTIVE with
+     * `acceptance_status = PENDING`. Every owner who tapped "Review & send"
+     * was told the tenant had activated, for tenants who plainly had not.
+     *
+     * The payments check that stood here is gone with it. An unaccepted
+     * tenancy is live, so it accrues obligations and payments before
+     * acceptance — refusing on "any payment exists" refused the normal case.
+     * The regeneration it guarded is payment-safe on its own: `resendInvitation`
+     * deletes only obligations with no payments attached, and
+     * `initializeOnboardingFinancials` skips any period that already has one.
+     */
+    const verdict = canEditInvitation({ status: tenant.status, acceptanceStatus: tenant.acceptance_status });
+    if (!verdict.allowed) throw new Error(`VALIDATION: ${verdict.reason}`);
 
     // Delegate the update and resend logic to the lifecyle service to ensure consistency (reservations, obligations, token rotation, delivery)
     return tenantInvitationLifecycleService.resendInvitationByEmail(
