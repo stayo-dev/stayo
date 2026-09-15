@@ -34,6 +34,11 @@ vi.mock("@/src/services/admissions/admissions-service", () => ({
   },
 }));
 
+const { mockGetPublicHost } = vi.hoisted(() => ({ mockGetPublicHost: vi.fn() }));
+vi.mock("@/src/services/host-profile/host-profile-service", () => ({
+  hostProfileService: { getPublicHost: mockGetPublicHost },
+}));
+
 vi.mock("@/lib/services/notification-service", () => ({
   notificationService: { createNotification: vi.fn(async () => undefined) },
 }));
@@ -133,6 +138,26 @@ describe("discovery visibility", () => {
     await discoveryService.getListing("sunrise-residency");
 
     expect(hostels().findFirst.mock.calls[0][0].where.public_slug).toBe("sunrise-residency");
+  });
+
+  it("puts the owner's host card on the listing, and survives it failing", async () => {
+    hostels().findFirst.mockResolvedValueOnce({ id: "h1", owner_id: "o1", hostel_type: "BOYS", food_included: true, profiles: { name: "Shiva Prakash" } });
+    (prisma as any).hostel_marketing_revisions.findFirst.mockResolvedValueOnce(null);
+    mockGetPublicHost.mockResolvedValueOnce({
+      name: "Shiva Prakash", photo_url: null, bio: "Hello", languages: [], hosting_since: null,
+      verified: false, listed_since: null, stats: { review_count: 0, rating: null, residents: null },
+    });
+    const listing: any = await discoveryService.getListing("sunrise-residency");
+    expect(mockGetPublicHost).toHaveBeenCalledWith("o1");
+    expect(listing.host.bio).toBe("Hello");
+    expect(hostels().findFirst.mock.calls[0][0].select.owner_id).toBe(true);
+
+    hostels().findFirst.mockResolvedValueOnce({ id: "h1", owner_id: "o1", hostel_type: "BOYS", food_included: true, profiles: { name: "Shiva Prakash" } });
+    (prisma as any).hostel_marketing_revisions.findFirst.mockResolvedValueOnce(null);
+    mockGetPublicHost.mockRejectedValueOnce(new Error("db down"));
+    const degraded: any = await discoveryService.getListing("sunrise-residency");
+    expect(degraded.host.name).toBe("Shiva Prakash");
+    expect(degraded.host.bio).toBeNull();
   });
 
   it("never writes listing or verification status (ADR-040)", async () => {

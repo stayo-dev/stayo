@@ -162,14 +162,45 @@ describe("listingPhotos", () => {
 });
 
 describe("host", () => {
-  it("names the owner the way a review names its author", () => {
+  const hostProfile = {
+    name: "Shiva Prakash",
+    photo_url: "https://ik.example/p.jpg",
+    bio: "I started Sri Adithya in 2015.",
+    languages: ["Telugu", "Hindi"],
+    hosting_since: 2015,
+    verified: true,
+    listed_since: "2026-09-10T00:00:00.000Z",
+    stats: { review_count: 36, rating: 4.8, residents: 240 },
+  };
+
+  it("carries the host card as the host-profile service built it — full name included (ADR-200)", () => {
     const out = projectListing({
       detail,
-      visible: { ...visible, owner: { name: "Ravi Kumar" }, created_at: "2026-01-04T00:00:00Z" },
+      visible: { ...visible, owner: { name: "Shiva Prakash" }, created_at: "2026-01-04T00:00:00Z" },
       marketing,
+      hostProfile,
     });
-    expect(out.host.name).toBe("Ravi K.");
-    expect(out.host.listed_since).toBe("2026-01-04T00:00:00Z");
+    expect(out.host).toEqual({ platform_listed: false, ...hostProfile });
+  });
+
+  it("falls back to the owner's full name and the hostel's date when the host read failed", () => {
+    const out = projectListing({
+      detail,
+      visible: { ...visible, owner: { name: "  Ravi   Kumar " }, created_at: "2026-01-04T00:00:00Z" },
+      marketing,
+      hostProfile: null,
+    });
+    expect(out.host).toEqual({
+      platform_listed: false,
+      name: "Ravi Kumar",
+      photo_url: null,
+      bio: null,
+      languages: [],
+      hosting_since: null,
+      verified: false,
+      listed_since: "2026-01-04T00:00:00Z",
+      stats: { review_count: 0, rating: null, residents: null },
+    });
   });
 
   it("never names the sentinel profile behind a platform listing", () => {
@@ -179,8 +210,11 @@ describe("host", () => {
       detail,
       visible: { ...visible, listing_source: "PLATFORM_LISTED", owner: { name: "Stayo Platform" } },
       marketing,
+      hostProfile,
     });
     expect(out.host.name).toBeNull();
+    expect(out.host.bio).toBeNull();
+    expect(out.host.photo_url).toBeNull();
     expect(out.host.platform_listed).toBe(true);
   });
 

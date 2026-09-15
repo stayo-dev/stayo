@@ -19,6 +19,7 @@ import { getOrSetJson, invalidateTag } from "@/lib/redis/cache";
 import { admissionsService, ACTIVE_LEAD_STATUSES } from "@/src/services/admissions/admissions-service";
 import { notificationService } from "@/lib/services/notification-service";
 import { marketingPageService } from "@/src/services/marketing/marketing-page-service";
+import { hostProfileService } from "@/src/services/host-profile/host-profile-service";
 
 /**
  * Stayo Discover — the public marketplace surface.
@@ -490,18 +491,17 @@ export class DiscoveryService {
         hostel_type: true,
         food_included: true,
         listing_source: true,
-        // "Managed by …, on Stayo since …" — the one thing on this page that
-        // says a person runs this hostel. Name only: a public listing is not
-        // the place for an owner's phone or email, and the hostel's own
-        // business number is already on it.
+        // Who runs it — see the host card (ADR-200). The relation on `hostels`
+        // is `profiles`, not `owner`; its name is only the fallback when the
+        // host card cannot be read.
+        owner_id: true,
         created_at: true,
-        // The relation on `hostels` is `profiles`, not `owner`.
         profiles: { select: { name: true } },
       },
     });
     if (!visible) throw ApiError.notFound("This hostel is not listed on Stayo");
 
-    const [detail, marketing, navigation] = await Promise.all([
+    const [detail, marketing, navigation, hostProfile] = await Promise.all([
       admissionsService.getPublicHostel(slug),
       // Only ever the APPROVED revision. A draft or a submission awaiting
       // review is invisible here by construction — there is no code path from
@@ -524,6 +524,17 @@ export class DiscoveryService {
         `;
         return rows[0]?.navigation ?? null;
       }),
+      /**
+       * The host card (ADR-200). Read beside the listing and tolerantly: a
+       * failure here — including migration 083 not being applied — renders
+       * the bare owner name instead of 500ing the page.
+       */
+      visible.listing_source === "PLATFORM_LISTED" || !visible.owner_id
+        ? Promise.resolve(null)
+        : hostProfileService.getPublicHost(visible.owner_id).catch((error: unknown) => {
+            console.warn("[discovery.getListing] host card unavailable:", error instanceof Error ? error.message : error);
+            return null;
+          }),
     ]);
 
     // One projection, shared with the admin preview — see listing-projection.ts
@@ -532,6 +543,7 @@ export class DiscoveryService {
       detail,
       visible: { ...visible, owner: visible.profiles, navigation },
       marketing,
+      hostProfile,
     });
   }
 

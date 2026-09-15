@@ -1,5 +1,9 @@
 import { parseNavigation } from "./hostel-navigation";
 import { summariseSpace } from "./room-space";
+// The pure helper, not the service: that would pull `@/lib/db` into this graph.
+import { fullName } from "../host-profile/bio-rules";
+// Type-only — erased at runtime, so no database client enters this module.
+import type { PublicHost } from "../host-profile/host-profile-service";
 
 /**
  * The one projection from stored content to a Discovery listing payload.
@@ -23,9 +27,17 @@ export type ProjectListingInput = {
     listing_source?: string | null;
     created_at?: Date | string | null;
     owner?: { name?: string | null } | null;
+    owner_id?: string | null;
   };
   /** The marketing revision's validated content, or null when never approved. */
   marketing: any | null;
+  /**
+   * The owner's host card from `hostProfileService.getPublicHost` — hidden
+   * fields already dropped. Null when it could not be read (or for a platform
+   * listing); the projection then falls back to the bare name so a host-card
+   * failure never takes a listing down.
+   */
+  hostProfile?: PublicHost | null;
   /** True when serving an unapproved revision to an admin. */
   preview?: boolean;
 };
@@ -104,9 +116,9 @@ export function listingMedia(marketing: any | null, fallback: string[] = []): Li
 }
 
 /**
- * "Ravi K." — the owner as a public listing names them. Same rule as a review
- * author: enough to read as a person, never a full identity beside a business
- * a stranger can walk into.
+ * "Ravi K." — the rule for a *review's author*: enough to read as a person,
+ * never a full identity. Since ADR-200 host cards use the full name instead
+ * (`fullName` in host-profile/bio-rules); this stays for reviewers.
  */
 export function hostName(fullName: string | null | undefined): string | null {
   const parts = String(fullName ?? "").trim().split(/\s+/).filter(Boolean);
@@ -129,7 +141,7 @@ export function bedTierSpace(bedTiers: any[], rooms: any[]) {
   });
 }
 
-export function projectListing({ detail, visible, marketing, preview = false }: ProjectListingInput) {
+export function projectListing({ detail, visible, marketing, hostProfile = null, preview = false }: ProjectListingInput) {
   const platformListed = String(visible.listing_source ?? "OWNER_MANAGED") === "PLATFORM_LISTED";
 
   return {
@@ -189,20 +201,37 @@ export function projectListing({ detail, visible, marketing, preview = false }: 
      * somewhere to live. This is the single most important flag here.
      */
     /**
-     * Who runs this place, and since when.
+     * Who runs this place — the "Meet your host" card (ADR-200).
      *
      * A listing with no human attached is a database row; every marketplace
-     * that trades on trust puts a person on the page. First name and last
-     * initial only — the same rule as a review's author (`reviewerDisplayName`)
-     * — and nothing else: no phone, no email. A PLATFORM_LISTED hostel has no
-     * real owner, so it says so rather than naming the sentinel profile.
+     * that trades on trust puts a person on the page. Since ADR-200 that
+     * person is named in full, with their photo, their own words and the
+     * stats they earned — and still never a phone or email (the bio rules
+     * refuse both). A PLATFORM_LISTED hostel has no real owner, so it says so
+     * rather than naming the sentinel profile.
      */
     host: platformListed
-      ? { name: null, listed_since: visible.created_at ?? null, platform_listed: true }
-      : {
-          name: hostName(visible.owner?.name),
+      ? {
+          platform_listed: true,
+          name: null,
+          photo_url: null,
+          bio: null,
+          languages: [],
+          hosting_since: null,
+          verified: false,
           listed_since: visible.created_at ?? null,
+          stats: { review_count: 0, rating: null, residents: null },
+        }
+      : {
           platform_listed: false,
+          name: hostProfile?.name ?? fullName(visible.owner?.name),
+          photo_url: hostProfile?.photo_url ?? null,
+          bio: hostProfile?.bio ?? null,
+          languages: hostProfile?.languages ?? [],
+          hosting_since: hostProfile?.hosting_since ?? null,
+          verified: hostProfile?.verified ?? false,
+          listed_since: hostProfile?.listed_since ?? visible.created_at ?? null,
+          stats: hostProfile?.stats ?? { review_count: 0, rating: null, residents: null },
         },
 
     availability_confirmed: !platformListed,

@@ -8,6 +8,7 @@ import { admissionsService } from "@/src/services/admissions/admissions-service"
 import { projectListing } from "@/src/services/discovery/listing-projection";
 import { readNavigationSafely } from "@/src/services/discovery/hostel-navigation";
 import { normaliseContent } from "@/src/services/marketing/marketing-content";
+import { hostProfileService } from "@/src/services/host-profile/host-profile-service";
 
 function requireAdmin(session: any): asserts session is { sub: string; role: string } {
   if (!session || session.role !== "ADMIN") throw new Error("FORBIDDEN: Admin access only");
@@ -50,6 +51,7 @@ export async function GET(
         hostel_type: true,
         food_included: true,
         listing_source: true,
+        owner_id: true,
       },
     });
     if (!hostel) return apiError("Hostel not found", "NOT_FOUND", 404);
@@ -77,12 +79,19 @@ export async function GET(
       return rows[0]?.navigation ?? null;
     });
 
+    // The same host card the live page shows (ADR-200), read the same tolerant way.
+    const hostProfile =
+      hostel.listing_source === "PLATFORM_LISTED" || !hostel.owner_id
+        ? null
+        : await hostProfileService.getPublicHost(hostel.owner_id).catch(() => null);
+
     return apiResponse({
       revision: { id: revision.id, version: revision.version, status: revision.status },
       listing: projectListing({
         detail,
         visible: { ...hostel, navigation },
         marketing: content,
+        hostProfile,
         preview: true,
       }),
     });
