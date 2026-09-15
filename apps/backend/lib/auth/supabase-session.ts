@@ -45,58 +45,26 @@ const REJECT_NOT_ACTIVATED =
   "Your account isn't activated yet. Please use the activation link sent to you, then sign in.";
 
 export async function resolveSupabaseSession(ctx: SupabaseSessionContext): Promise<ResolveResult> {
-  let profile = await prisma.profile.findUnique({
+  const profile = await prisma.profile.findUnique({
     where: { auth_user_id: ctx.authUserId },
   });
 
   if (!profile) {
-    // Not yet linked — fall back to matching by email (same trust model
-    // googleLogin() used before this migration: Supabase has already
-    // verified the identity provider handshake, we just look up our own
-    // record). Google sign-in specifically must never auto-provision an
-    // account — see tests/auth-hardening-security.test.ts.
-    const byEmail = await prisma.profile.findUnique({
-      where: { email: ctx.email.toLowerCase() },
+    // A token no profile is linked to is refused — never matched by email.
+    // An email match used to link the token here (overwriting any existing
+    // link), so anyone who could get a Supabase session for an email — a
+    // self-signup with the public anon key, or an address they had just
+    // written onto someone else's profile — became that profile. A profile
+    // gains a Supabase identity only where the backend has proved the
+    // password first (`ensureSupabaseIdentity`) or at signup, born linked.
+    await eventLog.log("AUTH_SUPABASE_UNLINKED_REJECTED", null, {
+      auth_user_id: ctx.authUserId,
+      email: ctx.email,
+      provider: ctx.provider,
+      ip_address: ctx.ipAddress || null,
+      user_agent: ctx.userAgent || null,
     });
-
-    if (!byEmail) {
-      await eventLog.log("AUTH_GOOGLE_REJECTED", null, {
-        email: ctx.email,
-        reason: "NO_EXISTING_ACCOUNT",
-        ip_address: ctx.ipAddress || null,
-        user_agent: ctx.userAgent || null,
-      });
-      return { ok: false, code: "NO_STAYO_ACCOUNT", message: REJECT_NO_ACCOUNT };
-    }
-
-    if (!byEmail.is_active) {
-      await eventLog.log("AUTH_GOOGLE_REJECTED", byEmail.owner_id, {
-        email: ctx.email,
-        profile_id: byEmail.id,
-        reason: "ACCOUNT_DISABLED",
-        ip_address: ctx.ipAddress || null,
-        user_agent: ctx.userAgent || null,
-      });
-      return { ok: false, code: "ACCOUNT_DISABLED", message: REJECT_DISABLED };
-    }
-
-    // Link — but only on a verified email, strictly more verification than
-    // the raw OAuth2 flow this replaces (which discarded email_verified
-    // entirely).
-    if (ctx.provider !== "google" || ctx.emailVerified) {
-      await prisma.profile.update({
-        where: { id: byEmail.id },
-        data: { auth_user_id: ctx.authUserId, auth_linked_at: new Date() },
-      });
-      await eventLog.log("AUTH_SUPABASE_IDENTITY_LINKED", byEmail.owner_id, {
-        email: ctx.email,
-        profile_id: byEmail.id,
-        provider: ctx.provider,
-      });
-      profile = byEmail;
-    } else {
-      return { ok: false, code: "NO_STAYO_ACCOUNT", message: REJECT_NO_ACCOUNT };
-    }
+    return { ok: false, code: "NO_STAYO_ACCOUNT", message: REJECT_NO_ACCOUNT };
   }
 
   if (!profile.is_active) {
