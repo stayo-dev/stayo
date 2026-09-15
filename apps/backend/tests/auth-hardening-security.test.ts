@@ -70,21 +70,25 @@ describe("Supabase session resolution: no auto-provisioning", () => {
     expect(sessionModule).toContain('liveTenancy?.status === "INVITED"');
   });
 
-  it("resolveSupabaseSession only links on a verified email for Google", () => {
-    // Strictly more verification than the raw OAuth2 flow it replaced,
-    // which discarded email_verified entirely — see ADR-031.
-    expect(sessionModule).toContain("emailVerified");
+  // C1 (2026-09-14 audit): these used to require that an unlinked token be
+  // linked to the profile sharing its email — the path that let anyone holding
+  // a Supabase session for an address take over that profile. The behaviour is
+  // pinned in tests/supabase-session-linking.test.ts; these stop it returning.
+  it("resolveSupabaseSession never looks a profile up by email", () => {
+    expect(sessionModule).not.toMatch(/where:\s*\{\s*email/);
+  });
+
+  it("resolveSupabaseSession never writes a profile's identity link", () => {
+    // The owner_id self-heal is the one legitimate profile write left here.
+    expect(sessionModule).not.toMatch(/data:\s*\{[^}]*auth_user_id/);
+    expect(sessionModule).not.toContain("AUTH_SUPABASE_IDENTITY_LINKED");
   });
 
   it("resolveSupabaseSession logs rejected attempts to event log", () => {
+    expect(sessionModule).toContain("AUTH_SUPABASE_UNLINKED_REJECTED");
     expect(sessionModule).toContain("AUTH_GOOGLE_REJECTED");
-    expect(sessionModule).toContain("NO_EXISTING_ACCOUNT");
     expect(sessionModule).toContain("ACCOUNT_DISABLED");
     expect(sessionModule).toContain("TENANCY_NOT_ACTIVATED");
-  });
-
-  it("resolveSupabaseSession logs successful identity links", () => {
-    expect(sessionModule).toContain("AUTH_SUPABASE_IDENTITY_LINKED");
   });
 });
 

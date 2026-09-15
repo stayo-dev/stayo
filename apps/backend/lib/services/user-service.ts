@@ -6,6 +6,20 @@ export class BaseService {
 }
 
 /**
+ * Columns no profile response may carry: `password_hash` can be cracked
+ * offline, a live `invitation_token` activates the account, and
+ * `auth_user_id` is the identity link itself. Stripped after the read rather
+ * than excluded by a `select`, so the query itself is unchanged.
+ */
+const CREDENTIAL_FIELDS = ["password_hash", "invitation_token", "auth_user_id"] as const;
+
+function withoutCredentials<T extends Record<string, any>>(profile: T): Omit<T, (typeof CREDENTIAL_FIELDS)[number]> {
+  const safe: Record<string, any> = { ...profile };
+  for (const field of CREDENTIAL_FIELDS) delete safe[field];
+  return safe as Omit<T, (typeof CREDENTIAL_FIELDS)[number]>;
+}
+
+/**
  * Example UserService for handling profile-related operations
  */
 export class UserService extends BaseService {
@@ -20,7 +34,7 @@ export class UserService extends BaseService {
     // into a single JSON object instead of an array here, which crashes
     // every consumer expecting `tenants` to be a list.
     const liveTenancy = await getActiveTenancy(profile.id);
-    return { ...profile, tenants: liveTenancy ? [liveTenancy] : [] };
+    return { ...withoutCredentials(profile), tenants: liveTenancy ? [liveTenancy] : [] };
   }
 
   async updateProfile(userId: string, data: any) {
@@ -28,10 +42,13 @@ export class UserService extends BaseService {
       throw new Error("Invalid profile update payload");
     }
 
+    // `email` and `phone` are sign-in identifiers, so they are deliberately
+    // absent: email changes go through the OTP-verified
+    // `/api/profile/contact/email/*` flow, phone through `PATCH /api/profile`,
+    // which resets `phone_verified`. Writing them here unverified is what let
+    // one account's email be pointed at another person's inbox.
     const allowedFields = [
       "name",
-      "email",
-      "phone",
       "address",
       "city",
       "state",
@@ -47,10 +64,11 @@ export class UserService extends BaseService {
       }
     }
 
-    return this.db.profile.update({
+    const updated = await this.db.profile.update({
       where: { id: userId },
       data: filteredData,
     });
+    return withoutCredentials(updated);
   }
 }
 

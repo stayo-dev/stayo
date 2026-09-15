@@ -8,6 +8,18 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-14 — Any owner could take over any account, ADMIN included (fixed)
+
+**Symptom.** Found by the 2026-09-14 authentication/authorization audit (finding C1), not by an incident. Reproduced in `tests/supabase-session-linking.test.ts` before the fix: a Supabase token that no profile was linked to resolved `ok: true` as the profile sharing its email.
+
+**Root cause.** Two faults that are each bad and, chained, a full takeover. (1) `/api/profiles/[id]` checked only `role === "TENANT"`, so any OWNER — owner signup is public — could `GET` any profile's full row (`password_hash`, a live `invitation_token`) and `PUT` its `email`/`phone` through `userService.updateProfile`, unverified. (2) `resolveSupabaseSession()` fell back to matching `profiles.email` when a token's `sub` was unknown, and wrote the caller's id into that profile's `auth_user_id` even when it was already linked to someone else. Attack: sign up as an owner, point the victim's email at your own inbox, sign up at Supabase with that address via the public anon key, and every route treated you as the victim.
+
+**Fix.** [[Decisions#ADR-205|ADR-205]]: the route serves self or ADMIN only; `updateProfile` no longer writes `email` or `phone` (each has a verified path already); profile responses omit `password_hash`, `invitation_token` and `auth_user_id`; `resolveSupabaseSession()` resolves by `auth_user_id` alone and refuses anything else as `NO_STAYO_ACCOUNT`.
+
+**Not verified.** Against a real database — the DB-backed suite is unrunnable while the test project is paused. Whether production Supabase allows public email signup (which step 3 of the attack needed) was never read; it no longer matters for this path.
+
+**See:** [[Decisions#ADR-205|ADR-205]], [[APIs]], [[Backend]], [[Changelog]]
+
 ## 2026-09-14 — Nothing sticky stuck on a page the document scrolls (fixed)
 
 **Symptom.** Found while building the Rooms tab's lift strip ([[Decisions#ADR-199|ADR-199]]): a `sticky top-0` strip scrolled off the top of the screen with the rest of the page. Measured in Chrome over the real page: after scrolling 1115px the strip sat at −713px and its "which floor is on screen" tracking stayed on the top floor.

@@ -5,6 +5,14 @@ import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { userService } from "@/lib/services/user-service";
 
+/**
+ * Only the profile's own holder, or a platform admin. This used to restrict
+ * TENANTs alone, so any OWNER — and owner signup is public — could read and
+ * rewrite every profile on the platform.
+ */
+function mayAccessProfile(session: { sub: string; role: string }, profileId: string) {
+  return session.sub === profileId || session.role === "ADMIN";
+}
 
 /**
  * 👤 PROFILE BY ID
@@ -18,9 +26,7 @@ export async function GET(
   if (!session) return apiError("Unauthorized", "UNAUTHORIZED", 401);
 
   try {
-    // Permission check: Tenants can only see their own profile.
-    // Owners/Admins can see any profile.
-    if (session.role === "TENANT" && session.sub !== params.id) {
+    if (!mayAccessProfile(session, params.id)) {
       return apiError("Forbidden", "FORBIDDEN", 403);
     }
 
@@ -42,10 +48,8 @@ export async function PUT(
   if (!session) return apiError("Unauthorized", "UNAUTHORIZED", 401);
 
   try {
-    // Permission check: Tenants can only update their own profile.
-    // Owners/Admins can update any profile.
-    if (session.role === "TENANT" && session.sub !== params.id) {
-       return apiError("Forbidden", "FORBIDDEN", 403);
+    if (!mayAccessProfile(session, params.id)) {
+      return apiError("Forbidden", "FORBIDDEN", 403);
     }
 
     const body = await req.json();
