@@ -19,6 +19,17 @@ Log of significant bugs — open and fixed. Not meant to replace an issue tracke
 **Not verified.** Against a real database — the DB-backed suite is unrunnable while the test project is paused. Whether production Supabase allows public email signup (which step 3 of the attack needed) was never read; it no longer matters for this path.
 
 **See:** [[Decisions#ADR-205|ADR-205]], [[APIs]], [[Backend]], [[Changelog]]
+## 2026-09-14 — OTP and migration tables were readable and writable by the public anon key (fix committed, not deployed)
+
+**Symptom.** Found by the 2026-09-14 security audit (finding C3). On production, as the public `anon` role, a probe read 2 `email_verification_otps` rows and 96 `_prisma_migrations` rows and held INSERT/UPDATE/DELETE on both.
+
+**Root cause.** `email_verification_otps` (and `_prisma_migrations`) shipped with RLS **off** and full `anon`+`authenticated` grants — its `20260911120000` migration, unlike the `phone_verification_otps` sibling, never enabled RLS. Both tables are PostgREST-exposed, so the anon key (in every deployed bundle) could forge a `VERIFIED` OTP row (bypassing the ADR-183 email proof), reset `attempts` to brute-force a live code, read pending onboarding emails + IPs, or delete migration bookkeeping.
+
+**Fix.** [[Decisions#ADR-201|ADR-201]]: migration `20260916000000_otp_tables_rls_lockdown` enables RLS and revokes both public roles on both tables (deny-all — the backend uses the RLS-bypassing connection). Reproducible in the repo, not a dashboard change. Proof: `scripts/verify-otp-rls.sql`; guards: `tests/otp-rls-lockdown.test.ts` + `tests/otp-rls-db.test.ts`.
+
+**Not fixed yet in production.** The migration is committed but **not applied to any database** — production stays exposed until it ships through the normal deploy. Verification so far was a rolled-back probe on production (confirmed the fix denies anon all four ops) that left prod state unchanged.
+
+**See:** [[Decisions#ADR-201|ADR-201]], [[Database]], [[Changelog]]
 
 ## 2026-09-14 — Nothing sticky stuck on a page the document scrolls (fixed)
 

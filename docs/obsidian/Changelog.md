@@ -23,6 +23,12 @@ All notable changes to this project are documented in this file, in [Keep a Chan
   - Profile responses no longer include `password_hash`, `invitation_token` or `auth_user_id`.
   - A Supabase token is resolved by its linked profile only — never matched to a profile by email.
   - `tests/auth-hardening-security.test.ts` now runs in `test:pure`. **Not yet run against a real database.**
+- **2026-09-14**: **Security — locked down two public-readable backend tables** ([[Decisions#ADR-201|ADR-201]], [[Bugs]], [[Database]]).
+  - `email_verification_otps` and `_prisma_migrations` shipped with RLS off and full `anon`/`authenticated` grants; anyone with the public anon key could read and write them via PostgREST.
+  - Migration `20260916000000_otp_tables_rls_lockdown` enables RLS and revokes both public roles on both tables (deny-all; the backend bypasses RLS).
+  - Added `scripts/verify-otp-rls.sql` (post-deploy proof) and regression tests `otp-rls-lockdown` (pure) + `otp-rls-db` (runtime).
+  - OTP schema audit: hashing, server-side expiry, non-resettable attempts, no replay, no cleanup-reopen — all hold, no code change.
+  - **Migration not yet applied to any database** — production stays exposed until deploy.
 
 - **2026-09-14**: **The Rooms tab is the hostel, drawn as a building** ([[Decisions#ADR-199|ADR-199]], [[Features]], [[Frontend]], [[APIs]], [[Bugs]]).
   - The floor accordion and its bed dots are gone. Floors stack top to bottom like the real building, every room is a tile of the faces that live in it (photo, initials, a red dot when the backend says overdue, dashed amber for an invite, `+` for a free bed), and the roof says how many beds are filled. A long floor wraps rather than shrinking faces; three or more floors get a sticky lift strip.
