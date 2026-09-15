@@ -30,6 +30,8 @@ export default defineConfig({
       // Delete, retire or refuse a room (ADR-207) — the rule behind the
       // RESTRICT foreign key that made edited rooms undeletable.
       'tests/room-removal-plan.test.ts',
+      // The invitation edit window (ADR-208) — the ADR-165 guards that went stale.
+      'tests/invitation-edit-window.test.ts',
       // Stay Status (ADR-194) — pure core, mocked service and routes.
       'tests/timezone-ist.test.ts',
       'tests/stay-status.test.ts',

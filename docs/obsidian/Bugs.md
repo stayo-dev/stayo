@@ -2774,3 +2774,28 @@ Foreign key constraint violated: `room_activity_logs_room_id_fkey (index)`
 **Not verified.** Not run against a real backend; confirmed against production data by query, not by opening the sheet.
 
 **See:** [[Decisions#ADR-206|ADR-206]], [[Business-Rules]], [[Frontend]], [[Changelog]]
+
+## 2026-09-15 — The owner could never edit an open invitation, and fixing it naively would have erased the tenant's dues (fixed)
+
+**Symptom.** Reported by the owner. Changing an invited tenant's room and deposit and tapping **Review & send** returned `VALIDATION_ERROR: Invitation can be edited only before tenant activation` — for a tenant whose own screen read "Tenant opened the link · They have seen the terms but have not registered yet".
+
+**Root cause.** [[Decisions#ADR-165|ADR-165]] made an invited tenancy live from creation: `tenants.status = 'ACTIVE'` with the person's own agreement tracked on `acceptance_status`. Guards written before that asked `status === 'INVITED'`, which ADR-165 made permanently false. Four consumers needed migrating; two were done and two were missed, both on the edit path:
+
+| Guard | Migrated? |
+|---|---|
+| `showsInvitationManagement` (frontend) | yes — `acceptanceStatus === 'PENDING'` |
+| `resendInvitation` | yes — `tenantAlreadyOwnerManaged` |
+| `invitationService.updateInvitation` | **no** — threw the error above |
+| `initializeOnboardingFinancials` | **no** — returned `TENANT_NOT_INVITED` silently |
+
+So a migrated frontend rendered a button that a stale backend refused 100% of the time. The tenancy in the report was `ACTIVE` / `PENDING` with 3 obligations and 2 payments — an ordinary owner-added resident.
+
+**The design gap, and the near miss.** The second guard is the real lesson. `resendInvitation` deletes the tenant's unpaid obligations and *then* calls `initializeOnboardingFinancials` to rebuild them. Had only the visible guard been fixed, every edited invitation would have deleted the tenant's dues and regenerated none — silently, because that guard returns a skip rather than throwing. The error message being complained about was the only thing preventing a money bug. A predicate duplicated across five services is what let half of them go stale unnoticed.
+
+**Fix.** [[Decisions#ADR-208|ADR-208]]: one pure `isUnacceptedTenancy` used by both guards, requiring a *live* status as well as `PENDING` (a cancelled tenancy keeps `acceptance_status = PENDING` by design). The blanket "cannot be edited after payment activity exists" refusal is deleted — an unaccepted tenancy legitimately has payments now, and the regeneration is payment-safe by construction.
+
+**Still open.** `showsInvitationManagement` has no liveness check, so the frontend will show the invitation screen for a **cancelled** tenancy; the backend now refuses those, so the buttons fail rather than misfire. `onboarding-maintenance-repair-service` still selects `status: "INVITED"` and has therefore found no candidates since ADR-165 — unclear whether it is still meant to.
+
+**Not verified.** The edit has never been executed — no DB-backed test covers it and it was not run against a real backend.
+
+**See:** [[Decisions#ADR-208|ADR-208]], [[Decisions#ADR-165|ADR-165]], [[APIs]], [[Changelog]]

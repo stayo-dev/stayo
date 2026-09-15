@@ -10,6 +10,14 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-15**: **An open invitation can be edited again — and the fix that would have erased dues** ([[Decisions#ADR-208|ADR-208]], [[Bugs]], [[APIs]]).
+  - Editing an invited tenant's offer returned `Invitation can be edited only before tenant activation` for tenants who had not activated. [[Decisions#ADR-165|ADR-165]] made an invited tenancy `ACTIVE` with `acceptance_status = PENDING` from creation; the frontend and `resendInvitation` were migrated to that signal, `updateInvitation` was not. The button has never worked for any tenancy created since.
+  - **`initializeOnboardingFinancials` carried the same stale check and skipped *silently*.** `resendInvitation` deletes unpaid obligations and then calls it to rebuild them, so fixing only the visible guard would have left edited tenancies owing nothing. Both moved together.
+  - One pure `isUnacceptedTenancy` now answers "has the tenant agreed yet?" for both, and requires a live status as well — `closeUnacceptedTenancy` leaves `acceptance_status` at `PENDING`, so acceptance alone would treat a cancelled invitation as editable.
+  - The blanket "cannot be edited after payment activity exists" refusal is **deleted**: an unaccepted tenancy accrues obligations and payments for weeks now, and the regeneration already protects paid obligations (`payments: { none: {} }`, plus per-period skip on rebuild).
+  - Refusals name the real state — accepted tenancies are pointed at the change-request flow, cancelled ones at inviting again.
+  - **Not verified:** the edit has never been executed against a database.
+
 - **2026-09-15**: **Arrange mode becomes the building, and a room with history is retired rather than refused** ([[Decisions#ADR-206|ADR-206]], [[Decisions#ADR-207|ADR-207]], [[Bugs]], [[Frontend]], [[APIs]]).
   - **Deleting a room no longer fails on a foreign key.** Five `ON DELETE RESTRICT` constraints point at `rooms`, and the endpoint guarded only *active* tenants and reservations — so a room that had merely been **edited once** became permanently undeletable, answering the owner with raw Prisma text. `planRoomRemoval` now decides between three outcomes: refuse (someone lives there), purge (never used — its unread `room_activity_logs` go in the same transaction), or retire (`is_active: false`, history intact). No migration: the fix is application code, so it works the moment it deploys.
   - **Re-adding a removed room number works.** `POST /api/rooms` matched on active rooms only, while `@@unique([hostel_id, room_no])` covers retired ones — it now revives the retired row instead of colliding with it.
