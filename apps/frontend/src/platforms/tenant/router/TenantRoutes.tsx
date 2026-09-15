@@ -3,6 +3,7 @@ import { Navigate, Route, useNavigate } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import { TenantProviderShell } from './TenantProviderShell';
 import { ProtectedFarewellRoute } from '@/app/components/ProtectedFarewellRoute';
+import { NotFoundPage } from '@/app/pages/public/NotFoundPage';
 
 const TenantAppShell = lazy(() =>
   import('@/app/layouts/TenantAppShell').then((m) => ({ default: m.TenantAppShell })),
@@ -133,6 +134,10 @@ function tenantAppRoutes() {
           </div>
         }
       />
+
+      {/* An unknown `/tenant/**` URL keeps the tenant in their own app
+          (ADR-209), rather than falling through to the public 404. */}
+      <Route path="/tenant/*" element={<NotFoundPage />} />
     </Route>
   );
 }

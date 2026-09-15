@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
 import { hostelLeadsApi } from '@features/hostel-leads/api';
+import { PageError } from '@shared/ui/error/PageError';
+import { StayoLoadingScreen } from '@shared/ui/brand';
 
 /**
  * Public enquiry-status page, reached from the "Track Status" button in the
@@ -11,7 +13,7 @@ import { hostelLeadsApi } from '@features/hostel-leads/api';
 export function EnquiryStatusPage() {
   const { token = '' } = useParams<{ token: string }>();
 
-  const { data, isLoading, isError, error } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['enquiry-status', token],
     queryFn: () => hostelLeadsApi.getEnquiryStatus(token),
     enabled: Boolean(token),
@@ -20,45 +22,46 @@ export function EnquiryStatusPage() {
   const isNotFound = (error as { response?: { status?: number } } | null)?.response?.status === 404;
 
   if (isLoading) {
-    return (
-      <main className="min-h-screen bg-[#FDF8F3] px-5 py-16">
-        <div className="mx-auto max-w-md animate-pulse space-y-4">
-          <div className="h-6 w-2/3 rounded bg-black/10" />
-          <div className="h-32 rounded-2xl bg-black/5" />
-        </div>
-      </main>
-    );
+    return <StayoLoadingScreen />;
   }
 
   if ((isError && isNotFound) || (!isError && !data)) {
     return (
-      <main className="min-h-screen bg-[#FDF8F3] px-5 py-16">
-        <div className="mx-auto max-w-md rounded-2xl border border-black/10 bg-white p-6 text-center">
-          <h1 className="text-lg font-semibold text-[#2B1B12]">We couldn't find that enquiry</h1>
-          <p className="mt-2 text-sm text-[#6B5B52]">
-            This link may be mistyped or no longer valid. If you submitted an enquiry recently,
-            check the most recent message we sent you on WhatsApp.
-          </p>
-          <Link to="/owners" className="mt-5 inline-block text-sm font-medium text-[#B45309] underline">
+      <main className="min-h-screen bg-background px-5 py-16">
+        <PageError
+          title="We couldn't find that enquiry"
+          description="This link may be mistyped or no longer valid."
+          action="If you enquired recently, check the most recent message we sent you on WhatsApp."
+          className="mx-auto max-w-md rounded-[20px] border border-border"
+        />
+        <p className="mt-6 text-center">
+          <Link to="/owners" className="text-sm font-semibold text-primary hover:underline">
             Back to Stayo
           </Link>
-        </div>
+        </p>
       </main>
     );
   }
 
   if (isError || !data) {
+    // Was a hand-rolled card in hardcoded hex (#FDF8F3 / #2B1B12 / #B45309),
+    // which could not follow the theme and looked like a different product
+    // from every other failure in the app. ADR-209.
     return (
-      <main className="min-h-screen bg-[#FDF8F3] px-5 py-16">
-        <div className="mx-auto max-w-md rounded-2xl border border-black/10 bg-white p-6 text-center">
-          <h1 className="text-lg font-semibold text-[#2B1B12]">Something went wrong</h1>
-          <p className="mt-2 text-sm text-[#6B5B52]">
-            We couldn't load your enquiry status right now. Please try again in a moment.
-          </p>
-          <Link to="/owners" className="mt-5 inline-block text-sm font-medium text-[#B45309] underline">
+      <main className="min-h-screen bg-background px-5 py-16">
+        <PageError
+          error={error}
+          title="We couldn't load your enquiry"
+          description="Your enquiry is safe — we just couldn't reach it right now."
+          action="Try again in a moment."
+          onRetry={() => refetch()}
+          className="mx-auto max-w-md rounded-[20px] border border-border"
+        />
+        <p className="mt-6 text-center">
+          <Link to="/owners" className="text-sm font-semibold text-primary hover:underline">
             Back to Stayo
           </Link>
-        </div>
+        </p>
       </main>
     );
   }

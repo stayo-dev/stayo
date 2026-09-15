@@ -17,6 +17,8 @@ import { AlertTriangle, Lock, RefreshCw, SearchX, ServerCrash, WifiOff } from 'l
 import { cn } from '@shared/lib/cn';
 
 import { StayoMark } from './StayoMark';
+import { StayoDog } from './mascot';
+import { errorMascotExpression, showsErrorMascot } from './errorMascot';
 import './stayo-loading.css';
 
 export type StayoErrorTone = 'network' | 'auth' | 'notFound' | 'server' | 'generic';
@@ -48,6 +50,12 @@ export interface StayoErrorScreenProps {
   detail?: string;
   /** `screen` fills the viewport; `inset` fills its parent box. */
   variant?: 'screen' | 'inset';
+  /**
+   * Whether the Stayo dog sits under the mark. Defaults to on for `screen`
+   * and off for `inset` — see `showsErrorMascot`. Pass `false` to suppress it
+   * on a surface where a companion would be the wrong register.
+   */
+  mascot?: boolean;
   className?: string;
 }
 
@@ -61,9 +69,11 @@ export function StayoErrorScreen({
   secondaryAction,
   detail,
   variant = 'inset',
+  mascot,
   className,
 }: StayoErrorScreenProps) {
   const Icon = TONE_ICON[tone];
+  const withDog = showsErrorMascot(variant, mascot);
 
   return (
     <div
@@ -85,6 +95,18 @@ export function StayoErrorScreen({
           </span>
         </div>
       </div>
+
+      {/*
+        The dog waits outside the house whose lights are out. Decorative: the
+        title and description already say everything it expresses, and a
+        screen reader announcing "a concerned dog" would only delay the one
+        line that matters.
+      */}
+      {withDog ? (
+        <div className="pointer-events-none mt-1 flex justify-center" aria-hidden="true">
+          <StayoDog expression={errorMascotExpression(tone)} className="w-[clamp(84px,13vw,116px)]" />
+        </div>
+      ) : null}
 
       <div className="stayo-load__status" style={{ gap: 12 }}>
         <h2 className="stayo-load__title">{title}</h2>

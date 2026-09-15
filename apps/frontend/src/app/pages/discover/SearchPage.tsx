@@ -16,6 +16,7 @@ import { FootprintTrail } from './components/FootprintTrail';
 import { HostelCard } from './components/HostelCard';
 import { DiscoverEmpty, HostelCardSkeleton, PrimaryButton } from './components/DiscoverShell';
 import { AUDIENCE_LABEL, C, FONT, PAGE_SHELL, RESULTS_GRID, formatRupees } from './discoverTheme';
+import { PageError } from '@shared/ui/error/PageError';
 
 const SHARING_OPTIONS = [1, 2, 3, 4, 6];
 const AUDIENCE_OPTIONS: HostelType[] = ['BOYS', 'GIRLS', 'CO_LIVING', 'WORKING_PROS'];
@@ -67,7 +68,7 @@ export function SearchPage() {
     [applied, debouncedQuery, sort],
   );
 
-  const { data, isLoading, isError, refetch } = useDiscoverSearch(filters);
+  const { data, isLoading, isError, error, refetch } = useDiscoverSearch(filters);
   const { data: saved } = useSavedHostels();
   const toggleSaved = useToggleSaved();
   const savedIds = useMemo(() => new Set((saved ?? []).map((item) => item.id)), [saved]);
@@ -202,11 +203,16 @@ export function SearchPage() {
         {isLoading && <HostelCardSkeleton count={4} className={RESULTS_GRID} />}
 
         {isError && (
-          <DiscoverEmpty
-            icon={Search}
+          /* A failure is not an empty result. `DiscoverEmpty` says "nothing
+             matched", which is a statement about the search; this is a
+             statement about the connection. ADR-209. */
+          <PageError
+            error={error}
             title="Search didn't load"
-            body="Something went wrong reaching Stayo. Check your connection and try again."
-            action={<PrimaryButton onClick={() => refetch()}>Try again</PrimaryButton>}
+            description="We couldn't reach Stayo just then."
+            action="Check your connection and try again."
+            onRetry={() => refetch()}
+            className="rounded-[20px] border border-border"
           />
         )}
 
