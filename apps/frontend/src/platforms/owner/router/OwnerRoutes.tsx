@@ -73,6 +73,7 @@ const MoreConfigInviteDefaultsPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigInviteDefaultsPage').then((m) => ({ default: m.MoreConfigInviteDefaultsPage })),
 );
 const MoreProfilePage = lazy(() => import('@features/owner-more/pages/MoreProfilePage').then((m) => ({ default: m.MoreProfilePage })));
+const HostProfilePage = lazy(() => import('@features/host-profile/pages/HostProfilePage').then((m) => ({ default: m.HostProfilePage })));
 const HostelsPage = lazy(() =>
   import('@features/owner-dashboard/pages/HostelsPage').then((m) => ({ default: m.HostelsPage })),
 );
@@ -266,6 +267,7 @@ export function OwnerRoutes() {
             bookmarks and back-stack entries still land somewhere real. */}
         <Route path="/owner/more/billing" element={<Navigate to="/owner/more/configuration/finance/billing-policy" replace />} />
         <Route path="/owner/more/profile" element={<MoreProfilePage />} />
+        <Route path="/owner/more/host-profile" element={<HostProfilePage />} />
         <Route path="/owner/more/password" element={<MorePasswordPage />} />
         <Route path="/owner/more/payout-account" element={<MorePayoutAccountPage />} />
         <Route path="/owner/more/subscription" element={<OwnerSubscriptionPage />} />

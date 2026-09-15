@@ -57,12 +57,23 @@ export function MoreConfigurationHubPage() {
             {identity.initials}
           </span>
         )}
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <button
+          type="button"
+          onClick={() => navigate('/owner/more/host-profile')}
+          className="flex min-w-0 flex-1 flex-col gap-0.5 text-left"
+        >
           <h1 className="truncate font-display text-[22px] font-extrabold tracking-tight text-foreground">
             {identity.name}
           </h1>
           {identity.sub && <p className="truncate text-[12.5px] text-muted-foreground">{identity.sub}</p>}
-        </div>
+          {/* ADR-200: the owner's name leads to how residents meet them —
+              the Airbnb "Show profile" pattern, and the way to the pride
+              screen without adding a fifth row to a list kept to four. */}
+          <span className="mt-0.5 flex items-center gap-1 text-[12.5px] font-semibold text-primary">
+            See how residents meet you
+            <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.2} />
+          </span>
+        </button>
         {/* Account management (Clerk) — here, beside the owner's own name, rather
             than floating over every page. Renders nothing without a Clerk session. */}
         <div className="flex-none">

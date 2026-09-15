@@ -131,6 +131,8 @@ export function MoreProfilePage() {
     onSuccess: () => {
       stayoToast.success('Photo updated');
       queryClient.invalidateQueries({ queryKey: queryKeys.owner.profile() });
+      // The host card shows this photo too (ADR-200).
+      queryClient.invalidateQueries({ queryKey: queryKeys.owner.hostProfile() });
     },
     onError: () => stayoToast.error('Could not upload that photo'),
   });
@@ -140,6 +142,7 @@ export function MoreProfilePage() {
     onSuccess: () => {
       stayoToast.success('Photo removed');
       queryClient.invalidateQueries({ queryKey: queryKeys.owner.profile() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.owner.hostProfile() });
     },
     onError: () => stayoToast.error('Could not remove your photo'),
   });
