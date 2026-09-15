@@ -41,6 +41,7 @@ export default defineConfig({
       'tests/meal-routes.test.ts',
       // Meet your host (ADR-200).
       'tests/host-profile-bio-rules.test.ts',
+      'tests/host-profile-service.test.ts',
       'tests/rent-generation-exit-date-join.test.ts',
       'tests/imagekit-uploadable.test.ts',
       'tests/push-policy.test.ts',
