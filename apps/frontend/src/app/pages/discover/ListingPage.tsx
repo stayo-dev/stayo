@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { marketingPreviewService } from '@features/hostel-marketing/api';
+import { HostCard } from '@features/host-profile/components/HostCard';
 import {
   ChevronLeft,
   ChevronRight,
@@ -666,39 +667,27 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
             </p>
           )}
 
-          {/* ── Who runs it ────────────────────────────────────────────── */}
+          {/* ── Meet your host (ADR-200) ───────────────────────────────── */}
           {/*
-            A listing with nobody attached is a database row. Airbnb puts the
-            host on the page for the same reason: somebody is answerable for
-            this place. Name and start date only — a public listing is not
-            where an owner's phone number goes, and the hostel's own business
-            number is already above.
+            The person before the price: a listing with nobody attached is a
+            database row. Full name, photo and the owner's own words — never a
+            phone or email (the backend's bio rules refuse both). In an admin
+            preview the Enquire button renders but stays inert.
           */}
-          {(data?.host?.name || data?.host?.listed_since) && (
-            <div
-              className="mt-5 flex items-center gap-3 border-t pt-5"
-              style={{ borderColor: C.line }}
-            >
-              <span
-                className="flex h-11 w-11 flex-none items-center justify-center rounded-full text-[15px] font-extrabold"
-                style={{ fontFamily: FONT.display, background: C.clayPaleBg, color: C.clayDeep }}
-              >
-                {(data.host.name ?? 'S').trim().charAt(0).toUpperCase()}
-              </span>
-              <div className="min-w-0">
-                <p className="text-[13.5px] font-bold" style={{ fontFamily: FONT.display, color: C.text }}>
-                  {data.host.platform_listed
-                    ? 'Listed by Stayo'
-                    : data.host.name
-                      ? `Managed by ${data.host.name}`
-                      : 'Managed by the owner'}
-                </p>
-                <p className="mt-0.5 text-[11.5px]" style={{ color: C.textMuted }}>
-                  {data.host.listed_since
-                    ? `On Stayo since ${new Date(data.host.listed_since).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}`
-                    : 'On Stayo'}
-                </p>
-              </div>
+          {data?.host && (
+            <div className="mt-5 border-t pt-5" style={{ borderColor: C.line }}>
+              <HostCard
+                host={data.host}
+                hostelName={hostel.name}
+                onEnquire={
+                  previewRevisionId
+                    ? undefined
+                    : () =>
+                        navigate(`/discover/h/${slug}/enquire`, {
+                          state: { roomCapacity: selectedOption?.capacity, hostelName: hostel.name },
+                        })
+                }
+              />
             </div>
           )}
 
