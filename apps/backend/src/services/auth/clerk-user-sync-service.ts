@@ -9,10 +9,12 @@
  *      role, a tenancy, a hostel or money. `users` answers "who is this login?";
  *      `profiles` answers "what may they do?". A compromised or misconfigured
  *      webhook must not be able to grant anyone anything.
- *   2. **The webhook never provisions a business account.** It links to an
- *      existing `profiles` row by email when one is there, and otherwise leaves
- *      `profile_id` null. This is the same no-auto-provisioning rule ADR-031
- *      established and ADR-073 upheld, carried across the vendor change.
+ *   2. **The webhook never provisions a business account, and never links by
+ *      email.** It links a login to a `profiles` row only when the Clerk user
+ *      carries `external_id` = that profile's id — a value only our backend
+ *      sets (`credential-service.ensureLogin`). Anything else leaves
+ *      `profile_id` null. Matching by email (ADR-176's first design) is gone:
+ *      identity is never reconstructed from an address (ADR-204).
  *   3. **Deletion is deactivation.** `user.deleted` sets `is_active = false`; no
  *      path here deletes a row or touches the linked profile. Obligations,
  *      payments and receipts outlive the login that created them.
@@ -121,19 +123,23 @@ export type SyncOutcome =
   | "ignored_unhandled_type"
   | "already_deactivated";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
- * Find the `profiles` row this login belongs to, by email.
+ * Find the `profiles` row this login belongs to — by the Clerk user's
+ * `external_id`, which is our own profile id, set only by our backend.
  *
- * Returns null rather than creating one — see rule 2 in the module header.
+ * Returns null rather than creating anything — see rule 2 in the module header.
  */
 export async function findLinkableProfileId(
-  email: string | null,
+  externalId: string | null | undefined,
   clerkUserId: string,
 ): Promise<string | null> {
-  if (!email) return null;
+  const id = String(externalId ?? "").trim();
+  if (!UUID_RE.test(id)) return null;
 
   const profile = await prisma.profile.findUnique({
-    where: { email },
+    where: { id },
     select: { id: true, login: { select: { clerk_user_id: true } } },
   });
   if (!profile) return null;
@@ -141,9 +147,8 @@ export async function findLinkableProfileId(
   // `profile_id` is unique, so a profile already bound to a different Clerk
   // account cannot be claimed by this one. Returning null leaves the new login
   // unlinked and logs it, rather than throwing a constraint error that Svix
-  // would retry forever. Two logins for one business identity is a real
-  // condition to investigate — a duplicate signup, or an email reused after a
-  // move-out — and the resolution is a human decision, not an overwrite.
+  // would retry forever. Two logins for one business identity is a human
+  // decision, not an overwrite.
   const boundTo = profile.login?.clerk_user_id;
   if (boundTo && boundTo !== clerkUserId) {
     logger.warn("clerk.profile_link.conflict", {
@@ -165,7 +170,7 @@ export async function findLinkableProfileId(
  */
 export async function handleUserCreated(data: ClerkUserData): Promise<SyncOutcome> {
   const fields = extractAllowedProfileFields(data);
-  const profileId = await findLinkableProfileId(fields.email, data.id);
+  const profileId = await findLinkableProfileId(data.external_id, data.id);
   const updatedAt = clerkUpdatedAt(data);
 
   await prisma.users.upsert({
@@ -173,8 +178,8 @@ export async function handleUserCreated(data: ClerkUserData): Promise<SyncOutcom
     create: {
       clerk_user_id: data.id,
       ...fields,
-      // Null when no profile matches, or when the match is already bound to a
-      // different Clerk account — see findLinkableProfileId.
+      // Null unless external_id names a profile not bound elsewhere — see
+      // findLinkableProfileId.
       profile_id: profileId,
       clerk_updated_at: updatedAt,
     },
@@ -215,7 +220,7 @@ export async function handleUserUpdated(data: ClerkUserData): Promise<SyncOutcom
   const fields = extractAllowedProfileFields(data);
 
   if (!existing) {
-    const profileId = await findLinkableProfileId(fields.email, data.id);
+    const profileId = await findLinkableProfileId(data.external_id, data.id);
     await prisma.users.create({
       data: {
         clerk_user_id: data.id,
@@ -228,16 +233,22 @@ export async function handleUserUpdated(data: ClerkUserData): Promise<SyncOutcom
     return "created";
   }
 
+  // An unlinked login gains a link when its external_id is set later — the
+  // operator-reviewed adoption in scripts/migrate-logins-to-clerk.ts. An
+  // existing link is never re-pointed by a webhook.
+  const lateLink = existing.profile_id ? null : await findLinkableProfileId(data.external_id, data.id);
+
   await prisma.users.update({
     where: { clerk_user_id: data.id },
     data: {
       ...fields,
+      ...(lateLink ? { profile_id: lateLink } : {}),
       clerk_updated_at: incomingUpdatedAt,
       updated_at: new Date(),
     },
   });
 
-  logger.info("clerk.user.updated", { clerk_user_id: data.id });
+  logger.info("clerk.user.updated", { clerk_user_id: data.id, linked_late: Boolean(lateLink) });
   return "updated";
 }
 
@@ -345,21 +356,17 @@ function toSnapshot(row: IdentityRow, created: boolean): ClerkIdentitySnapshot {
 }
 
 /**
- * Idempotently resolve a verified Clerk session to a `users` row.
+ * Idempotently resolve a verified Clerk session to a `users` row (the
+ * `GET /me` handshake, outside /api).
  *
  * Read-then-create, with the unique index on `clerk_user_id` as the actual
- * guarantee rather than the read. Two requests racing — which is the normal
- * case, since a SPA can fire this from several components at once on first
- * load — both miss the read and both attempt the insert; one wins, the other
- * gets P2002 and re-reads. Without that catch the loser would 500, and the
- * "never create duplicate users" requirement would rest on a check-then-act
- * that the database is free to interleave.
+ * guarantee rather than the read: two racing requests both miss the read, one
+ * insert wins, the other gets P2002 and re-reads.
  *
- * It never creates a `profiles` row. When the token carries an email (only if
- * the Clerk JWT template provides one) it links to an *existing* profile under
- * the same rule the webhook uses — one implementation, in
- * `findLinkableProfileId`, which also refuses to steal a profile already bound
- * to another Clerk account.
+ * It never creates a `profiles` row and never links one. A row created here
+ * is an unlinked identity; linking happens only by id, through the webhook's
+ * `external_id` or our own provisioning (ADR-204). The `email` it may carry
+ * is stored as a mirrored display field, nothing more.
  */
 export async function ensureUserForClerkSession(identity: {
   clerkUserId: string;
@@ -373,22 +380,18 @@ export async function ensureUserForClerkSession(identity: {
   if (existing) return toSnapshot(existing, false);
 
   const email = identity.email ? identity.email.trim().toLowerCase() : null;
-  const profileId = await findLinkableProfileId(email, identity.clerkUserId);
 
   try {
     const created = (await prisma.users.create({
       data: {
         clerk_user_id: identity.clerkUserId,
         email,
-        profile_id: profileId,
+        profile_id: null,
       },
       select: IDENTITY_SELECT,
     })) as IdentityRow;
 
-    logger.info("clerk.me.user_created", {
-      clerk_user_id: identity.clerkUserId,
-      linked_profile: Boolean(profileId),
-    });
+    logger.info("clerk.me.user_created", { clerk_user_id: identity.clerkUserId });
     return toSnapshot(created, true);
   } catch (error) {
     // P2002 = unique constraint. Another request won the race; its row is the

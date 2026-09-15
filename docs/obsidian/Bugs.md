@@ -41,6 +41,15 @@ Log of significant bugs — open and fixed. Not meant to replace an issue tracke
 **Wider finding (inventoried, not fixed — Phase D):** authorization is hand-rolled across the codebase (~123 `role ===/!== "OWNER"`, ~65 `role !== "ADMIN"`, ~183 role-array checks, and 29 duplicate local `requireAdmin` defs under `/api/platform-admin/**`). Converging onto the shared helpers is follow-up work.
 
 **See:** [[Decisions#ADR-202|ADR-202]], [[APIs]], [[Backend]], [[Changelog]]
+## 2026-09-14 — H2: a password reset did not end the old password or its sessions (fixed on a branch, 2026-09-15)
+
+**Symptom (audit finding, not a user report).** After a "successful" password reset the old password could still sign in and every existing session stayed alive.
+
+**Root cause.** Two password stores and the wrong revocation key. Login checked `profiles.password_hash`, then minted a Supabase session; the Supabase password was a second copy. `completePasswordReset` updated the hash and only *best-effort* synced Supabase — `ensureSupabaseIdentity` returns early for an already-linked account, so the Supabase password never changed, and a failure was logged as a warning while the reset reported success. `resetOnboardingPassword` never touched Supabase at all. Revocation deny-listed `profile.id`, but middleware checks a Supabase token's `sub` (= `auth_user_id`), so JIT-linked accounts were never revoked, and a Supabase refresh token minted fresh access tokens past any deny-list. GoTrue is public, so the old Supabase password worked against it directly.
+
+**Fix** ([[Decisions#ADR-204|ADR-204]]). Not a repair inside Supabase Auth — the first attempt (`c2fe07d1`, deleting `auth.sessions`/`auth.refresh_tokens`) was withdrawn because it deepened the coupling. Clerk became the only credential store and session authority: every password write goes through `credentialService.setPassword`, which writes Clerk, revokes every Clerk session, deny-lists the Clerk user id and nulls the local hash, and **throws** on any Clerk failure. `getSession()` refuses pre-Clerk tokens for a moved profile, which is what ends an old Supabase session without calling Supabase.
+
+**Lesson.** A credential kept in two places is a reset that can half-succeed. And a revocation deny-list is only as good as the match between the key it writes and the key the verifier reads.
 
 ## 2026-09-14 — Nothing sticky stuck on a page the document scrolls (fixed)
 

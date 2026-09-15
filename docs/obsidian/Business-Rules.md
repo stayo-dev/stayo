@@ -318,7 +318,7 @@ Changed by [[Decisions#ADR-054|ADR-054]] and [[Decisions#ADR-055|ADR-055]].
 
 **Google sign-in** is available to **every** role — owner, tenant, admin. Two rules survive that change and are load-bearing:
 
-1. **It never creates an account — on the plain login path.** `resolveSupabaseSession()` still matches only an existing `profiles` row, by `auth_user_id` or by verified email, and rejects an unknown email with `NO_STAYO_ACCOUNT`, whatever the role. Tenancy remains an owner-initiated relationship.
+1. **It never creates an account — on the plain login path.** `resolveSupabaseSession()` still matches only an existing `profiles` row, by `auth_user_id` or by verified email, and rejects an unknown email with `NO_STAYO_ACCOUNT`, whatever the role. Tenancy remains an owner-initiated relationship. *(2026-09-15, [[Decisions#ADR-204|ADR-204]]: on the Clerk path there is no email match at all — a Google sign-in resolves only if its Clerk user is linked by id, which happens when our backend created that Clerk user with the profile's email and Clerk attached the Google account to it.)*
 2. **It cannot skip activation.** A TENANT whose live tenancy is `INVITED` is rejected with `TENANCY_NOT_ACTIVATED` — the same gate `authService.login()` applies. Previously the blanket tenant block enforced this by accident; now it is explicit.
 
 **Amendment, 2026-08-16 ([[Decisions#ADR-078|ADR-078]]):** rule 1 gained one narrow, explicit exception for **tenants only**, not a relaxation of the rule itself. `POST /api/auth/google/provision` — a separate endpoint, calling a separate function (`provisionMarketplaceTenantFromSupabase()`), never invoked from the login path — may create a new `role: TENANT` marketplace profile (no `tenants` row) when Google has verified the email and no `profiles` row exists for it at all. `resolveSupabaseSession()` itself is unmodified and still enforces rule 1 exactly as before for every other caller, including this same person's *next* login. Owners and admins can never be created this way — nothing calls the provisioning endpoint for `mode="owner"`. See [[Decisions#ADR-078|ADR-078]] for the full design and the invariant test that pins this.
@@ -330,7 +330,15 @@ Changed by [[Decisions#ADR-054|ADR-054]] and [[Decisions#ADR-055|ADR-055]].
 | Email | Possession of the account's inbox | 1 hour | Resend link to `/reset-password` |
 | Phone | A 6-digit WhatsApp OTP | **5 minutes** | Token returned in the API response |
 
-The phone token is short because, unlike an emailed link, it is handed straight to the browser. Both channels submit to `POST /api/auth/reset-password`, so revocation of all other sessions, the one-time-use lock and Supabase identity sync happen once, in one place.
+The phone token is short because, unlike an emailed link, it is handed straight to the browser. Both channels submit to `POST /api/auth/reset-password`, so the one-time-use lock, the credential write and session revocation happen once, in one place.
+
+**Since [[Decisions#ADR-204|ADR-204]] (2026-09-15) the credential and the sessions are Clerk's, and the rules are:**
+
+1. **A password is set in exactly one place: Clerk.** Reset, change, the onboarding first password, tenant activation and signup all go through `credentialService.setPassword` / `ensureLogin`. No code writes `profiles.password_hash`.
+2. **Every password write signs the person out everywhere** — every Clerk session revoked, tokens already minted deny-listed, pre-Clerk sessions refused. **Change password includes the device it was done on**; the person signs in again with the new password.
+3. **A write that did not reach Clerk is a failure, never a success.** The user sees an error and can retry; the reset link is spent either way.
+4. **The proof of ownership is ours** (the emailed link, the WhatsApp code) because it has to reach phone-only tenants whose email is a placeholder. Clerk's own password rules still apply: a breached or too-weak password is refused with Clerk's explanation.
+5. **Identity is never inferred from an email.** A sign-in resolves to a profile only through `users.profile_id`, which our backend writes by id. A signup whose email Clerk already holds (e.g. from someone's Google sign-in) is refused, not merged.
 
 Rules that must not be relaxed:
 

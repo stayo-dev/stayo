@@ -160,14 +160,12 @@ describe("authorisation continues to come from database roles only", () => {
     expect(prisma.profile.upsert).not.toHaveBeenCalled();
   });
 
-  it("links to an existing profile by email, and does not steal a bound one", async () => {
-    prisma.profile.findUnique.mockResolvedValue({
-      id: "profile-1",
-      login: { clerk_user_id: "user_someone_else" },
-    });
+  it("never links a profile by email, even an unbound one with that exact address (ADR-204)", async () => {
+    prisma.profile.findUnique.mockResolvedValue({ id: "profile-1", email: "ada@example.com", login: null });
 
     await ensureUserForClerkSession({ clerkUserId: "user_2abc", email: "ada@example.com" });
 
+    expect(prisma.profile.findUnique).not.toHaveBeenCalled();
     expect(prisma.users.create.mock.calls[0][0].data.profile_id).toBeNull();
   });
 

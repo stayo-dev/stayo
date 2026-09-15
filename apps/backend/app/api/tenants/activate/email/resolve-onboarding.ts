@@ -25,7 +25,7 @@ export async function resolveOnboardingForEmail(token: unknown): Promise<
   if (!resolved?.invitation?.id || !resolved?.tenant) {
     return { ok: false, status: 410, code: "INVALID", message: "This invitation link has expired or isn't valid any more" };
   }
-  if (hasOwnLogin(resolved.profile)) {
+  if (await hasOwnLogin(resolved.profile)) {
     return {
       ok: false,
       status: 409,

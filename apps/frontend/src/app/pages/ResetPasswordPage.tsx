@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { AlertCircle, ArrowLeft, CheckCircle2, LockKeyhole } from 'lucide-react';
 import { authService } from '@/features/auth/api';
-import { supabase } from '@lib/supabaseClient';
+import { clearLocalSessions } from '@lib/auth/establishSession';
 import { StayoLoader } from '@shared/ui/brand';
 
 function readResetToken(search: string, hash: string) {
@@ -61,10 +61,9 @@ export function ResetPasswordPage() {
         newPassword,
         confirmPassword,
       });
-      // ADR-031: no more ownerUser/tenantUser localStorage — sign the
-      // Supabase client out locally too, matching "this signs out all
-      // devices" (the backend already revoked every session server-side).
-      await supabase.auth.signOut();
+      // The backend has already revoked every session at Clerk (ADR-204);
+      // drop whatever this browser still holds, whichever provider.
+      await clearLocalSessions();
       setSuccess(result?.message || 'Password reset successfully. Please sign in again.');
       window.setTimeout(() => navigate('/login?signin=1', { replace: true }), 1400);
     } catch (err: any) {

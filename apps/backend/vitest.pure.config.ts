@@ -226,6 +226,11 @@ export default defineConfig({
       // /api/admin route is admin-gated or decommissioned. Both mock/read only.
       'tests/reconciliation-admin-authz.test.ts',
       'tests/admin-routes-guarded.test.ts',
+      // Clerk is the only authentication provider (ADR-204) — Clerk-native H2.
+      'tests/credential-service.test.ts',
+      'tests/password-flows-clerk.test.ts',
+      'tests/clerk-session-resolver.test.ts',
+      'tests/tenant-self-signup.test.ts',
       // Bulk import: parse-stage failures must name the real cause. The
       // row-limit message used to be swallowed by parseFile's own catch.
       'tests/bulk-import-parse-errors.test.ts',
