@@ -10,6 +10,8 @@ export const queryKeys = {
   owner: {
     hostels: () => ownerKey('hostels'),
     profile: () => ownerKey('profile'),
+    /** Meet your host (ADR-200) — the owner's public host card and its draft source. */
+    hostProfile: () => ownerKey('host-profile'),
     /** Today's collection queue; hostel-scoped when a hostel is chosen. See ADR-045. */
     collectionQueue: (hostelId?: string) => ownerKey('collection-queue', hostelId ?? 'all'),
     pendingDocuments: () => ownerKey('pending-documents'),
