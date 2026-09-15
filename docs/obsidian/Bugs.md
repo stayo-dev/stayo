@@ -2727,3 +2727,50 @@ Related: [[Decisions#ADR-176|ADR-176]], [[Database]], [[Backend]], [[Changelog]]
 - **Also fixed:** (1) `ROOM` create/update/delete rows were written but never selected — room changes were invisible, and nothing reconstructs rooms from live tables. The third "logged but never read back" instance in this one query. (2) A missing position rendered as "Cash Position ₹0 → ₹0".
 - **Still open:** `/api/cron/data-retention` resolves `data_retention_months` **per hostel** but deletes audit rows **per owner**, so one short-retention hostel wipes history for hostels set to retain longer. Not fixed here.
 - **See:** [[Decisions#ADR-198|ADR-198]], [[Changelog]], [[APIs]], [[Database]], [[Features]]
+
+## 2026-09-15 — A room that had ever been edited could never be deleted (fixed)
+
+**Symptom.** Reported by the owner. Deleting room 602 — a room nobody had ever lived in — put a raw Prisma error into the toast:
+
+```
+Invalid `prisma.rooms.delete()` invocation:
+Foreign key constraint violated: `room_activity_logs_room_id_fkey (index)`
+```
+
+**Root cause.** Five foreign keys point at `rooms` with `ON DELETE RESTRICT` (`room_activity_logs`, `room_allocations`, `room_reservations`, `tenant_invitations`, `tenant_invitation_reservations` — read from production 2026-09-15). `DELETE /api/rooms/[id]` guarded only **active** allocations and **active** invitation reservations, then called `prisma.rooms.delete()` — so every other RESTRICT could still fire. `room_activity_logs` made it routine rather than rare: it is written on every room edit and **nothing in the codebase reads it**, so a single rename was enough to make a room permanently undeletable. The route's catch then returned `error.message` verbatim, which is how Prisma's internal text reached the owner.
+
+**The design gap.** Not the missing guard — the missing *decision*. The endpoint had one outcome (delete) where the domain has three, and no answer at all for "the owner wants this room gone but its history must survive". `planFloorRoomSave` had already solved that for the hostel builder by retiring rooms; the single-room endpoint never learned it.
+
+**Fix.** [[Decisions#ADR-207|ADR-207]]: `planRoomRemoval` decides refuse / purge / retire. Unread activity logs are cleared in the same transaction as a purge rather than being allowed to block one. `POST /api/rooms` revives a retired number instead of colliding with it on the unique index. The `DELETE` catch no longer returns a Prisma message.
+
+**Not verified.** The route has never been executed — no DB-backed test covers it, the test database is unavailable, and this was not run against a real backend.
+
+**See:** [[Decisions#ADR-207|ADR-207]], [[APIs]], [[Database]], [[Changelog]]
+
+## 2026-09-15 — Arrange mode drew the hostel upside down (fixed)
+
+**Symptom.** Reported by the owner as the building and the reorder view being "quite opposite in direction". The Rooms tab showed the 5th floor at the top and Ground at the bottom; tapping **Arrange** showed Ground at the top and the 5th floor at the bottom.
+
+**Root cause.** Two renderings of one hostel, each with its own ordering decision. `HostelBuilding` stacked with `stackFloors` (`b.order - a.order`, highest first, [[Decisions#ADR-199|ADR-199]]); `startReorder` seeded `RoomsReorderPanel` with `a.order - b.order`, lowest first. Neither was wrong on its own terms, and nothing tied them together.
+
+**The design gap.** [[Decisions#ADR-199|ADR-199]] redrew the tab as a building and left the mode that edits it as a list. Once one surface has two drawings, a comparator in either can drift without anything failing.
+
+**Fix.** [[Decisions#ADR-206|ADR-206]]: Arrange **is** the building, handed the stack the page already computed, so only one comparator remains. `floorOrderForSave` is the single named place the top-down stack becomes the ascending `sort_order` the API wants, and it is used on both sides of the change check.
+
+**Not verified.** Not run against a real backend or a real device; the drag gesture is unexercised by a human.
+
+**See:** [[Decisions#ADR-206|ADR-206]], [[Frontend]], [[Changelog]]
+
+## 2026-09-15 — The room sheet called a room half empty and completely full at once (fixed)
+
+**Symptom.** Reported by the owner while trying to reconcile the ground floor's numbers. Room G02's sheet header read **"2/4 beds filled"** directly above a residents strip reading **"0 beds free"**.
+
+**Root cause.** Two counts of the same room, taken differently, in one sheet. The header used `counts.tenants` (people who live there); the residents line used `counts.free` (beds neither occupied nor held). G02 had 2 tenants and 2 beds held for open invitations, so the header ignored the held beds and the strip subtracted them.
+
+**Not a double count.** The building was right throughout: 5 tenants + 2 held beds across the ground floor, 13 of 20 free. The two held beds were live `OPENED` invitations. All five `tenant_invitation_reservations` rows for the hostel read `RELEASED`, which looks alarming and is not — each was released with reason `INVITE_LINKED` within ~0.3 s of creation, because the hold moves onto the invitation once it is linked. That is why `room-capacity-service` takes `Math.max(reservations, activeInvitations)`; it is working as designed.
+
+**Fix.** The header counts held beds as taken and names them: "4/4 beds taken · 2 held for invites". A bed held for an invite is not a free bed, and the sheet now says so once rather than twice, differently.
+
+**Not verified.** Not run against a real backend; confirmed against production data by query, not by opening the sheet.
+
+**See:** [[Decisions#ADR-206|ADR-206]], [[Business-Rules]], [[Frontend]], [[Changelog]]

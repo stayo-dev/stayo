@@ -36,6 +36,7 @@ export async function GET(
 }
 
 import { propertyService } from "@/lib/services/property-service";
+import { planRoomRemoval } from "@/lib/services/property/room-removal-plan";
 import { eventSystem } from "@/lib/events";
 
 export async function PATCH(
@@ -117,21 +118,49 @@ export async function DELETE(
       return apiError("Cannot perform operational actions on an inactive hostel", "VALIDATION_ERROR", 400);
     }
 
-    // Check for active allocations
-    const activeAllocations = await prisma.roomAllocation.count({
-      where: { room_id: params.id, is_active: true, end_date: null },
+    // Everything attached to the room, live and historical. The live counts
+    // decide whether removal is allowed at all; the totals decide whether the
+    // row can go or has to be retired. See `planRoomRemoval` (ADR-207).
+    const [activeAllocations, activeInvitationReservations, allocations, invitations, invitationReservations, reservations] =
+      await Promise.all([
+        prisma.roomAllocation.count({ where: { room_id: params.id, is_active: true, end_date: null } }),
+        prisma.tenant_invitation_reservations.count({ where: { room_id: params.id, status: "ACTIVE" } }),
+        prisma.roomAllocation.count({ where: { room_id: params.id } }),
+        prisma.tenant_invitations.count({ where: { room_id: params.id } }),
+        prisma.tenant_invitation_reservations.count({ where: { room_id: params.id } }),
+        prisma.room_reservations.count({ where: { room_id: params.id } }),
+      ]);
+
+    const plan = planRoomRemoval({
+      activeAllocations,
+      activeInvitationReservations,
+      allocations,
+      invitations,
+      invitationReservations,
+      reservations,
     });
-    if (activeAllocations > 0) {
-      return apiError("Cannot delete room with active tenants", "VALIDATION_ERROR", 400);
-    }
-    const activeReservations = await prisma.tenant_invitation_reservations.count({
-      where: { room_id: params.id, status: "ACTIVE" },
-    });
-    if (activeReservations > 0) {
-      return apiError("Cannot delete room with active invitation reservations", "VALIDATION_ERROR", 400);
+
+    if (plan.action === "refuse") {
+      return apiError(plan.reason, "VALIDATION_ERROR", 400);
     }
 
-    await prisma.rooms.delete({ where: { id: params.id } });
+    if (plan.action === "purge") {
+      // `room_activity_logs` has a RESTRICT foreign key and no reader anywhere
+      // in the codebase, so it is cleared with the room rather than allowed to
+      // block it. One transaction: the room never outlives its logs.
+      await prisma.$transaction(async (tx: any) => {
+        await tx.room_activity_logs.deleteMany({ where: { room_id: params.id } });
+        await tx.rooms.delete({ where: { id: params.id } });
+      });
+    } else {
+      // Retired, not deleted: `GET /api/rooms` filters on `is_active`, so the
+      // room leaves the building while its allocations, obligations and
+      // receipts stay attached to it.
+      await prisma.rooms.update({
+        where: { id: params.id },
+        data: { is_active: false, updated_at: new Date() },
+      });
+    }
 
     await eventSystem.trigger("room_deleted", {
       room_id: params.id,
@@ -139,12 +168,17 @@ export async function DELETE(
       hostel_id: existing.hostel_id,
       owner_id: scope.owner_id,
       user_id: scope.actor_id,
+      retained: plan.action === "retire",
     }).catch((e: any) => console.error("Failed to trigger room_deleted event:", e));
 
     return new Response(null, { status: 204 });
   } catch (error: any) {
     const billing = billingErrorResponse(error);
     if (billing) return billing;
-    return apiError(error.message || "Failed to delete room");
+    // Never hand a raw Prisma message to the owner — a leaked
+    // "Invalid `prisma.rooms.delete()` invocation" is exactly what this route
+    // used to show when a RESTRICT foreign key fired.
+    console.error("Detailed API Error [rooms.DELETE]:", error);
+    return apiError("Could not delete this room. Please try again.", "DELETE_ERROR", 500);
   }
 }

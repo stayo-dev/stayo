@@ -65,7 +65,7 @@ function mapRoom(hostelId: string, floorId: string, room: BackendRoom): RoomWith
  * readiness audit) — `beds[]` is synthesized from the real `occupied`/
  * `reserved`/`capacity` counts the backend already computes. The building
  * (`building/buildingModel.roomBedSlots`) pairs those counts with `occupants`
- * to put a face on each bed; `RoomsReorderPanel` still draws them as dots.
+ * to put a face on each bed, in the tab and in arrange mode alike.
  */
 export function useHostelRooms(hostelId: string) {
   const queryClient = useQueryClient();
@@ -111,9 +111,9 @@ export function useHostelRooms(hostelId: string) {
   }, [allRooms]);
 
   /**
-   * Persists a floor's room order, staged locally in `RoomsReorderPanel` and
-   * committed here only when the owner taps Save on the Rooms tab's Reorder
-   * mode (ADR-064). Optimistic: the cache is updated immediately so the list
+   * Persists a floor's room order, staged locally in `ArrangeBuilding` and
+   * committed here only when the owner taps Save on the Rooms tab's Arrange
+   * mode (ADR-064, ADR-206). Optimistic: the cache is updated immediately so the list
    * doesn't snap back while the request is in flight. `floorId` is the
    * frontend's `"__unassigned"` sentinel for rooms with no floor_id — mapped
    * to `null` for the API, matched back against `f.id` for the cache write.

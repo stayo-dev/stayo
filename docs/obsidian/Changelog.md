@@ -10,6 +10,15 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-15**: **Arrange mode becomes the building, and a room with history is retired rather than refused** ([[Decisions#ADR-206|ADR-206]], [[Decisions#ADR-207|ADR-207]], [[Bugs]], [[Frontend]], [[APIs]]).
+  - **Deleting a room no longer fails on a foreign key.** Five `ON DELETE RESTRICT` constraints point at `rooms`, and the endpoint guarded only *active* tenants and reservations — so a room that had merely been **edited once** became permanently undeletable, answering the owner with raw Prisma text. `planRoomRemoval` now decides between three outcomes: refuse (someone lives there), purge (never used — its unread `room_activity_logs` go in the same transaction), or retire (`is_active: false`, history intact). No migration: the fix is application code, so it works the moment it deploys.
+  - **Re-adding a removed room number works.** `POST /api/rooms` matched on active rooms only, while `@@unique([hostel_id, room_no])` covers retired ones — it now revives the retired row instead of colliding with it.
+  - **Arrange is the same building, not a list beside it.** The Rooms tab drew floors top-down and Arrange drew them bottom-up, so entering the mode turned the hostel upside down. `ArrangeBuilding` replaces `RoomsReorderPanel`: same roof, bands, plates and ground, fed the stack the page already computed. `floorOrderForSave` is the one named reversal the ascending `sort_order` column needs.
+  - Rooms are dragged **within their floor's grid** — press and hold (~220 ms, haptic) so the page still scrolls over a dense grid, immediate on a mouse — and floors by their plate. Arrow keys move both, closing the keyboard gap [[Decisions#ADR-062|ADR-062]] left open. Geometry is pure (`arrangeModel`, 28 tests). Moving a room to a *different* floor deliberately stays in the room sheet.
+  - **The room sheet no longer contradicts itself.** Its header counted only tenants while the residents strip excluded held beds, so a full 4-bed room read "2/4 beds filled" above "0 beds free". It now reads "4/4 beds taken · 2 held for invites".
+  - `RoomsReorderPanel` and `BedStatusDots` deleted — nothing else imported them.
+  - **Not verified:** none of this was run against a real backend, a real database or a real device. The delete route in particular has never been executed.
+
 - **2026-09-15**: **The host moves to Airbnb's two placements, and migration 083 is applied to production** ([[Decisions#ADR-200|ADR-200]], [[Features]], [[Business-Rules]]).
   - The listing led with the whole host card, which pushed "Choose your bed" and the rent below the fold. It now shows a one-line **"Hosted by {full name}"** byline there instead, and the full **"Meet your host"** card — bio, stats, Enquire button, trust note — after the reviews. `buildHostByline` is the new pure helper; `buildHostCard` is unchanged, so the owner's preview and the admin drawer are unaffected.
   - The card's heading no longer flips to "A note from your host" when a bio exists; a section heading at the foot of the page should not move about.
