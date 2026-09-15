@@ -39,6 +39,8 @@ export default defineConfig({
       'tests/meal-ratio.test.ts',
       'tests/meal-forecast-service.test.ts',
       'tests/meal-routes.test.ts',
+      // Meet your host (ADR-200).
+      'tests/host-profile-bio-rules.test.ts',
       'tests/rent-generation-exit-date-join.test.ts',
       'tests/imagekit-uploadable.test.ts',
       'tests/push-policy.test.ts',
