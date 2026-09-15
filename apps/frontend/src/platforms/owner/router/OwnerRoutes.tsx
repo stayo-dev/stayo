@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Navigate, Route, useLocation } from 'react-router-dom';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
+import { NotFoundPage } from '@/app/pages/public/NotFoundPage';
 import { StayoLoadingScreen } from '@shared/ui/brand';
 
 const OwnerAppShell = lazy(() =>
@@ -324,6 +325,13 @@ export function OwnerRoutes() {
           so this standalone route wins the match. */}
       <Route path="/owner/hostels/new" element={<HostelBuilderPage />} />
       <Route path="/owner/hostels/:hostelId/build" element={<HostelBuilderPage />} />
+
+      {/* An unknown `/owner/**` URL is answered inside the console (ADR-209).
+          The app-wide catch-all sits outside every shell, so before this an
+          owner who mistyped a URL was dropped onto the public marketing site
+          and offered "Find a stay". Static segments out-rank a splat in React
+          Router's ranking, so this only matches what nothing above did. */}
+      <Route path="/owner/*" element={<NotFoundPage />} />
     </Route>
   );
 }

@@ -29,6 +29,7 @@ import { DiscoverEmpty, HostelCardSkeleton, PrimaryButton } from './components/D
 import { DiscoverSearchBar } from './components/DiscoverSearchBar';
 import { C, FONT, PAGE_SHELL, RESULTS_GRID } from './discoverTheme';
 import { FootprintTrail } from './components/FootprintTrail';
+import { PageError } from '@shared/ui/error/PageError';
 
 /** Shortcuts that map onto real filters — nothing here is decorative. */
 const QUICK_FILTERS: { label: string; icon: typeof Search; patch: Partial<DiscoverFilters> }[] = [
@@ -120,7 +121,7 @@ export function ExplorePage() {
     [city],
   );
 
-  const { data, isLoading, isError, refetch } = useDiscoverSearch(filters);
+  const { data, isLoading, isError, error, refetch } = useDiscoverSearch(filters);
   const { data: saved } = useSavedHostels();
   const toggleSaved = useToggleSaved();
 
@@ -402,11 +403,16 @@ export function ExplorePage() {
         {isLoading && <HostelCardSkeleton count={4} className={RESULTS_GRID} />}
 
         {isError && (
-          <DiscoverEmpty
-            icon={Compass}
+          /* A failure is not an empty result. `DiscoverEmpty` says "nothing
+             matched", which is a statement about the search; this is a
+             statement about the connection. ADR-209. */
+          <PageError
+            error={error}
             title="Couldn't load hostels"
-            body="Something went wrong reaching Stayo. Check your connection and try again."
-            action={<PrimaryButton onClick={() => refetch()}>Try again</PrimaryButton>}
+            description="We couldn't reach Stayo just then."
+            action="Check your connection and try again."
+            onRetry={() => refetch()}
+            className="rounded-[20px] border border-border"
           />
         )}
 

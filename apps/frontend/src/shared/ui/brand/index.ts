@@ -21,6 +21,7 @@ export { StayoWordmark } from './StayoWordmark';
 export { StayoLoader, StayoLoadingBlock, type StayoLoaderSize, type StayoLoaderProps } from './StayoLoader';
 export { StayoLoadingScreen, STAYO_LOADING_LINES, type StayoLoadingScreenProps } from './StayoLoadingScreen';
 export { StayoErrorScreen, type StayoErrorScreenProps, type StayoErrorTone } from './StayoErrorScreen';
+export { errorMascotExpression, showsErrorMascot } from './errorMascot';
 export { HostelScene, MAX_DRAWN_FLOORS, type HostelSceneState } from './HostelScene';
 export {
   StayoDog,
