@@ -4,6 +4,7 @@ import { LogIn } from 'lucide-react';
 import api from '@lib/api-client';
 import { supabase } from '@lib/supabaseClient';
 import { hasClerkSession, subscribeToClerkSession, pickSessionSource } from '@lib/auth/clerkBrowser';
+import { establishSession, clearLocalSessions, SessionEstablishmentError } from '@lib/auth/establishSession';
 import { queryClient } from '@lib/queryClient';
 import { useIdleSessionTimeout } from '@shared/hooks/useIdleSessionTimeout';
 import { clearIntentionalSignOut, markIntentionalSignOut } from '@lib/sessionSignOutIntent';
@@ -78,20 +79,6 @@ type LogoutOptions = {
 type SessionExpiryReason = 'inactive' | 'max_age' | 'reuse' | 'expired';
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-
-/**
- * The credentials were accepted but `supabase.auth.setSession()` refused the
- * tokens — an environment/configuration fault (e.g. backend and frontend on
- * different Supabase projects), not a network or password problem. Its own
- * type exists so the login catch can say something true about it instead of
- * falling through to the "no `.response`" branch and blaming the network.
- */
-class SessionEstablishmentError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'SessionEstablishmentError';
-  }
-}
 
 const normalizeRole = (role: unknown) => (role || '').toString().toLowerCase();
 
@@ -184,7 +171,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       /* clear local session even if server logout fails */
     }
-    await supabase.auth.signOut();
+    // Both providers, locally: Clerk's session (the backend has already
+    // revoked it server-side) and any pre-Clerk Supabase one.
+    await clearLocalSessions();
     setUser(null);
     queryClient.clear();
     clearSessionScopedStorage(options);
@@ -269,6 +258,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // An explicit Supabase sign-out still clears everything: during the
       // migration a browser holds at most one of these, never both.
       if (event === 'SIGNED_OUT') {
+        // Dropping a leftover Supabase session after a Clerk sign-in fires
+        // this too (establishSession does exactly that) — that is not a
+        // sign-out of the person, who is signed in with Clerk.
+        if (hasClerkSession()) {
+          resolve(false);
+          return;
+        }
         setUser(null);
         setLoading(false);
         return;
@@ -304,14 +300,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       queryClient.clear();
       clearSessionScopedStorage();
 
-      const { access_token, refresh_token } = response.data;
-      const { error: sessionError } = await supabase.auth.setSession({ access_token, refresh_token });
-      // Marked so the catch below doesn't mislabel it. A setSession failure
-      // means Supabase itself rejected the token the backend just minted —
-      // in production that turned out to be the backend verifying against a
-      // different Supabase project — and reporting it as "check your
-      // internet" sent debugging in exactly the wrong direction for hours.
-      if (sessionError) throw new SessionEstablishmentError(sessionError.message);
+      // A Clerk ticket, redeemed with Clerk (ADR-204). A failure here is
+      // marked so the catch below doesn't mislabel it: the password was
+      // accepted, and "check your internet" would send debugging the wrong way.
+      await establishSession(response.data);
 
       // Built directly from /auth/login's own response rather than waiting
       // on the auth-state listener's GET /auth/me round-trip, so the
@@ -363,14 +355,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       queryClient.clear();
       clearSessionScopedStorage();
 
-      const { access_token, refresh_token } = response.data;
-      const { error: sessionError } = await supabase.auth.setSession({ access_token, refresh_token });
-      if (sessionError) throw new Error(sessionError.message);
+      await establishSession(response.data);
 
       const userData = buildAuthUser({ ...response.data, email: normalizedEmail });
       setUser(userData);
       return userData;
     } catch (error: unknown) {
+      if (error instanceof SessionEstablishmentError) {
+        throw new Error('Your account was created, but this device could not start a session. Please sign in.');
+      }
       if (!(error as { response?: unknown })?.response) {
         throw new Error('Unable to connect. Check your internet.');
       }

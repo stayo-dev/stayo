@@ -2,6 +2,7 @@ import { prisma, supabase as supabaseAdmin } from "@/lib/db";
 import { getActiveTenancy } from "@/lib/tenancy/active-tenancy";
 import { eventLog } from "@/lib/services/event-log-service";
 import { markUserSessionsRevokedAfter } from "@/lib/redis/session-revocation";
+import { credentialService } from "@/src/services/auth/credential-service";
 
 /**
  * Closing a Stayo account.
@@ -125,6 +126,18 @@ export async function closeAccount(input: {
   // The real lock. Order matters: if this throws, the profile is already
   // anonymised and the account is unusable anyway — the reverse order could
   // leave a live login pointing at a scrubbed profile.
+  //
+  // Clerk first (ADR-204): it is the login. Sessions revoked, the Clerk user
+  // deleted, our `users` row deactivated.
+  try {
+    await credentialService.closeLogin(input.profileId);
+  } catch (error: any) {
+    // Logged, not thrown, for the same reason as below — and the profile is
+    // already inactive, which getSession() refuses on every request.
+    console.error("[ACCOUNT_CLOSURE] clerk close failed", error?.message || error);
+  }
+
+  // Transition only (removed in Phase 4): a pre-Clerk Supabase identity.
   if (profile.auth_user_id) {
     try {
       await supabaseAdmin.auth.admin.deleteUser(profile.auth_user_id);

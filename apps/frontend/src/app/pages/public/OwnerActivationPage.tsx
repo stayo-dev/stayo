@@ -116,12 +116,8 @@ export function OwnerActivationPage() {
 
       const { queryClient } = await import('@lib/queryClient');
       queryClient.clear();
-      const { supabase } = await import('@lib/supabaseClient');
-      const { error: sessionError } = await supabase.auth.setSession({
-        access_token: result.access_token,
-        refresh_token: result.refresh_token,
-      });
-      if (sessionError) throw sessionError;
+      const { establishSession } = await import('@lib/auth/establishSession');
+      await establishSession(result);
 
       stayoToast.success('Account activated — welcome to Stayo.');
       navigate('/owner/home', { replace: true });

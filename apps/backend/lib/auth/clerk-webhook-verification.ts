@@ -56,6 +56,12 @@ export interface ClerkUserData {
   first_name?: string | null;
   last_name?: string | null;
   image_url?: string | null;
+  /**
+   * Set only by our own backend when it creates the Clerk user
+   * (`credential-service.ensureLogin`): the `profiles.id` this login belongs
+   * to. The only thing the webhook links on (ADR-204) — never the email.
+   */
+  external_id?: string | null;
   /** Clerk stamps these as epoch milliseconds, not ISO strings. */
   updated_at?: number | null;
   created_at?: number | null;

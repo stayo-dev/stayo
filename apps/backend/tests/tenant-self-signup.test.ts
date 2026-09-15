@@ -2,38 +2,24 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { prisma } from "@/lib/db";
 import { authService } from "@/lib/services/auth-service";
 
-vi.mock("@/lib/db", () => {
-  const supabaseMock = {
-    auth: {
-      admin: {
-        createUser: vi.fn(),
-        updateUserById: vi.fn().mockResolvedValue({ error: null }),
-        deleteUser: vi.fn().mockResolvedValue({}),
-      },
-    },
-  };
-  return {
-    prisma: {
-      profile: { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
-      tenants: { findUnique: vi.fn() },
-      // auth.users lookup used to adopt an orphaned Supabase identity.
-      $queryRaw: vi.fn(),
-    },
-    supabase: supabaseMock,
-  };
-});
+/**
+ * Self-serve tenant signup (ADR-035), born on Clerk (ADR-204).
+ *
+ * The account is a `profiles` row with our own UUID and a Clerk login bound
+ * to it by id. There is no local password hash and no Supabase identity —
+ * the orphaned-Supabase-identity adoption this file used to pin is gone, and
+ * its Clerk analogue (an address Clerk already holds) is refused, not adopted.
+ */
 
-vi.mock("@/lib/auth", async () => ({
-  hashPassword: vi.fn().mockResolvedValue("hashed"),
-  verifyPassword: vi.fn(),
+const { ensureLogin } = vi.hoisted(() => ({ ensureLogin: vi.fn() }));
+
+vi.mock("@/lib/db", () => ({
+  prisma: {
+    profile: { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+    tenants: { findUnique: vi.fn() },
+  },
 }));
-
-const NEW_USER_ID = "11111111-2222-3333-4444-555555555555";
-
-async function supabaseAdmin() {
-  const mod: any = await import("@/lib/db");
-  return mod.supabase.auth.admin;
-}
+vi.mock("@/src/services/auth/credential-service", () => ({ credentialService: { ensureLogin } }));
 
 const input = {
   email: "  Student@Example.com  ",
@@ -43,47 +29,16 @@ const input = {
   phoneVerified: false,
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 describe("selfSignUpTenant — marketplace account", () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.clearAllMocks();
     (prisma as any).profile.findUnique.mockResolvedValue(null);
     (prisma as any).profile.findFirst.mockResolvedValue(null);
     (prisma as any).profile.create.mockImplementation(async ({ data }: any) => data);
-    (prisma as any).$queryRaw.mockResolvedValue([]); // no orphaned auth user
-    (await supabaseAdmin()).createUser.mockResolvedValue({
-      data: { user: { id: NEW_USER_ID } },
-      error: null,
-    });
-  });
-
-  it("adopts an orphaned Supabase identity instead of failing", async () => {
-    // Real case: signing in with Google on the lead flow creates an auth.users
-    // row with no profile behind it. A blind createUser is then rejected and
-    // the route surfaced an opaque 500.
-    const ORPHAN_ID = "99999999-8888-7777-6666-555555555555";
-    (prisma as any).$queryRaw.mockResolvedValue([{ id: ORPHAN_ID }]);
-    const admin = await supabaseAdmin();
-
-    const profile: any = await authService.selfSignUpTenant(input);
-
-    expect(admin.createUser).not.toHaveBeenCalled();
-    expect(admin.updateUserById).toHaveBeenCalledWith(ORPHAN_ID, expect.objectContaining({
-      password: input.password,
-      email_confirm: true,
-    }));
-    expect(profile.id).toBe(ORPHAN_ID);
-    expect(profile.auth_user_id).toBe(ORPHAN_ID);
-  });
-
-  it("never deletes an adopted identity when the profile insert fails", async () => {
-    const ORPHAN_ID = "99999999-8888-7777-6666-555555555555";
-    (prisma as any).$queryRaw.mockResolvedValue([{ id: ORPHAN_ID }]);
-    (prisma as any).profile.create.mockRejectedValue(new Error("db down"));
-    const admin = await supabaseAdmin();
-
-    await expect(authService.selfSignUpTenant(input)).rejects.toThrow("db down");
-    // Deleting it would destroy a Supabase user that predates this signup.
-    expect(admin.deleteUser).not.toHaveBeenCalled();
+    (prisma as any).profile.delete.mockResolvedValue({});
+    ensureLogin.mockResolvedValue("user_2new");
   });
 
   it("creates a TENANT profile and never a tenants row", async () => {
@@ -91,8 +46,6 @@ describe("selfSignUpTenant — marketplace account", () => {
 
     expect(profile.role).toBe("TENANT");
     expect((prisma as any).tenants.findUnique).not.toHaveBeenCalled();
-    // A tenants row would bind this person to a hostel/room/agreement that
-    // does not exist yet — creating one here is the bug this guards against.
     expect((prisma as any).profile.create).toHaveBeenCalledTimes(1);
     const created = (prisma as any).profile.create.mock.calls[0][0].data;
     expect(created).not.toHaveProperty("tenants");
@@ -108,13 +61,14 @@ describe("selfSignUpTenant — marketplace account", () => {
     expect(profile.is_profile_completed).toBe(true);
   });
 
-  it("normalises the email and is born linked to its Supabase identity", async () => {
+  it("normalises the email, uses our own id, and is born with a Clerk login — no hash, no Supabase", async () => {
     const profile: any = await authService.selfSignUpTenant(input);
 
     expect(profile.email).toBe("student@example.com");
-    expect(profile.id).toBe(NEW_USER_ID);
-    expect(profile.auth_user_id).toBe(NEW_USER_ID);
-    expect(profile.auth_linked_at).toBeInstanceOf(Date);
+    expect(profile.id).toMatch(UUID_RE);
+    expect(profile).not.toHaveProperty("auth_user_id");
+    expect(profile).not.toHaveProperty("password_hash");
+    expect(ensureLogin).toHaveBeenCalledWith(profile, { kind: "new", password: input.password });
   });
 
   it("carries the caller's phone-verification result onto the profile", async () => {
@@ -122,30 +76,19 @@ describe("selfSignUpTenant — marketplace account", () => {
     expect(unverified.phone_verified).toBe(false);
     expect(unverified.mobile_verified).toBe(false);
 
-    vi.clearAllMocks();
-    (prisma as any).profile.findUnique.mockResolvedValue(null);
-    (prisma as any).profile.findFirst.mockResolvedValue(null);
-    (prisma as any).profile.create.mockImplementation(async ({ data }: any) => data);
-    (await supabaseAdmin()).createUser.mockResolvedValue({
-      data: { user: { id: NEW_USER_ID } },
-      error: null,
-    });
-
     const verified: any = await authService.selfSignUpTenant({ ...input, phoneVerified: true });
     expect(verified.phone_verified).toBe(true);
     expect(verified.mobile_verified).toBe(true);
   });
 
-  it("rejects a duplicate email before touching Supabase", async () => {
+  it("rejects a duplicate email before touching Clerk", async () => {
     (prisma as any).profile.findUnique.mockResolvedValue({ id: "existing" });
 
     await expect(authService.selfSignUpTenant(input)).rejects.toThrow("ALREADY_EXISTS");
-    expect((await supabaseAdmin()).createUser).not.toHaveBeenCalled();
+    expect(ensureLogin).not.toHaveBeenCalled();
   });
 
-  // ADR-096: the Sign Up tab asks for name, email and password only — the
-  // number is collected and verified at enquiry time, so the row is born the
-  // same shape a Google-provisioned one is.
+  // ADR-096: name, email and password only — the number comes at enquiry time.
   it("creates an account with no phone at all", async () => {
     const { phone, ...withoutPhone } = input;
     const profile: any = await authService.selfSignUpTenant({ ...withoutPhone, phoneVerified: false });
@@ -164,27 +107,27 @@ describe("selfSignUpTenant — marketplace account", () => {
     expect((prisma as any).profile.findFirst).not.toHaveBeenCalled();
   });
 
-  it("rejects a duplicate phone before touching Supabase", async () => {
+  it("rejects a duplicate phone before touching Clerk", async () => {
     (prisma as any).profile.findFirst.mockResolvedValue({ id: "existing" });
 
     await expect(authService.selfSignUpTenant(input)).rejects.toThrow("ALREADY_EXISTS");
-    expect((await supabaseAdmin()).createUser).not.toHaveBeenCalled();
+    expect(ensureLogin).not.toHaveBeenCalled();
   });
 
-  it("rolls the Supabase user back if the profile insert fails", async () => {
-    (prisma as any).profile.create.mockRejectedValue(new Error("db down"));
-
-    await expect(authService.selfSignUpTenant(input)).rejects.toThrow("db down");
-    expect((await supabaseAdmin()).deleteUser).toHaveBeenCalledWith(NEW_USER_ID);
-  });
-
-  it("throws loudly when the Supabase identity cannot be created", async () => {
-    (await supabaseAdmin()).createUser.mockResolvedValue({
-      data: { user: null },
-      error: { message: "email taken upstream" },
-    });
+  it("removes the profile again when Clerk cannot create the login", async () => {
+    ensureLogin.mockRejectedValue(new Error("INTERNAL: Clerk unreachable"));
 
     await expect(authService.selfSignUpTenant(input)).rejects.toThrow("INTERNAL");
-    expect((prisma as any).profile.create).not.toHaveBeenCalled();
+    const createdId = (prisma as any).profile.create.mock.calls[0][0].data.id;
+    expect((prisma as any).profile.delete).toHaveBeenCalledWith({ where: { id: createdId } });
+  });
+
+  it("refuses — never adopts — an address Clerk already holds (e.g. from a Google sign-in)", async () => {
+    ensureLogin.mockRejectedValue(
+      Object.assign(new Error("That email address is taken."), { status: 422, errors: [{ code: "form_identifier_exists" }] }),
+    );
+
+    await expect(authService.selfSignUpTenant(input)).rejects.toThrow(/^ALREADY_EXISTS/);
+    expect((prisma as any).profile.delete).toHaveBeenCalledTimes(1);
   });
 });

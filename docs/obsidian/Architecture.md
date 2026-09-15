@@ -72,7 +72,7 @@ graph LR
 
 ## Auth flow ([[Decisions#ADR-031|ADR-031]], 2026-07-28)
 
-Supabase Auth is the single identity provider; `getSession()` remains the one seam every route relies on, now resolving role/owner_id/tenant_id Node-side per request rather than trusting long-lived JWT claims (see [[Backend#Auth/session model|Backend]] for why the Custom Access Token Hook approach was rejected). Password login stays backend-mediated — the SPA never calls Supabase's password-grant endpoint directly.
+Supabase Auth is the single identity provider; **Superseded 2026-09-15 by [[Decisions#ADR-204|ADR-204]]: Clerk is the only authentication provider and session authority; Supabase is only the database. The sentence that follows describes the pre-Clerk design.** `getSession()` remains the one seam every route relies on, now resolving role/owner_id/tenant_id Node-side per request rather than trusting long-lived JWT claims (see [[Backend#Auth/session model|Backend]] for why the Custom Access Token Hook approach was rejected). Password login stays backend-mediated — the SPA never calls Supabase's password-grant endpoint directly.
 
 ```mermaid
 sequenceDiagram

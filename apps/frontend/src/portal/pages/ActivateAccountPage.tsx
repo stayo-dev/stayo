@@ -917,21 +917,14 @@ export function ActivateAccountPage() {
         // Auto-login: the backend now sets hms_session + hms_refresh_token cookies
         // and returns session data in the response body
         const session = (result as any)?.session;
-        if (session?.access_token && session?.refresh_token) {
+        if (session?.sign_in_ticket || (session?.access_token && session?.refresh_token)) {
           try {
-            // ADR-031: hand the real Supabase session to the Supabase
-            // client directly — it persists/refreshes itself from here.
-            // AuthContext's own onAuthStateChange listener picks this up
-            // and hydrates `user` from GET /auth/me; no more hand-written
-            // localStorage.
-            const { supabase } = await import('@lib/supabaseClient');
+            // ADR-204: a Clerk ticket (or, from a backend mid-deploy, the
+            // legacy pair) — establishSession handles both.
+            const { establishSession } = await import('@lib/auth/establishSession');
             const { queryClient } = await import('@lib/queryClient');
             queryClient.clear();
-            const { error } = await supabase.auth.setSession({
-              access_token: session.access_token,
-              refresh_token: session.refresh_token,
-            });
-            if (error) throw error;
+            await establishSession(session);
 
             navigate('/tenant/home', { replace: true });
             return true;

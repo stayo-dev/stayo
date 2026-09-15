@@ -104,6 +104,12 @@ npm run check:payment-production
 
 ## Auth/session model
 
+> **2026-09-15 — [[Decisions#ADR-204|ADR-204]]: Clerk is the only authentication provider; this section's Supabase description is now the *transition* path.**
+> - **Credentials:** `src/services/auth/credential-service.ts` is the only module that sets, checks or changes a password, or revokes sessions (Clerk Backend API via `lib/auth/clerk-backend.ts`). It never touches Supabase Auth (source-guarded in `tests/credential-service.test.ts`). `password_hash` is no longer written; the bullet below saying it is "kept permanently" is obsolete — step-up (`confirm-identity`) and phone/onboarding login check the password through Clerk.
+> - **Sessions:** sign-in returns a single-use Clerk ticket (`issueSignInTicket`); `middleware.ts` verifies Clerk tokens on every route (`lib/auth/clerk-jwt-edge.ts`) with `x-auth-mode: clerk`; `getSession()` resolves via `lib/auth/clerk-session-resolver.ts` (`users.clerk_user_id → profile_id`, no email). Supabase/legacy tokens are refused for any profile with a Clerk login.
+> - **Revocation:** Clerk `signOutOfOtherSessions` + explicit revoke of every live session + Redis `user-revoked-after` on the Clerk user id. Logout revokes the device's Clerk `sid`; logout-all and every password write revoke all.
+> - **Migration:** `migrateOnSignIn` moves an account on its first password sign-in; `npm run migrate:logins-to-clerk` bulk-imports bcrypt digests. Everything Supabase below is removed in Phase 4 — checklist in `docs/design/2026-09-15-clerk-only-auth.md`.
+
 **Supabase Auth is the sole session/identity provider (ADR-031, `docs/obsidian/Decisions.md`).** The previous custom JWT+refresh-token system (dead `SessionLifecycleService.rotateRefreshToken()`, the raw-OAuth2 `googleLogin()`) is gone.
 
 - Access token: a real Supabase-issued JWT (ES256), verified in `middleware.ts` via `lib/auth/supabase-jwt-edge.ts`'s `verifySupabaseAccessToken()` against Supabase's JWKS endpoint (`createRemoteJWKSet` — local verification, no per-request network call, no shared secret).

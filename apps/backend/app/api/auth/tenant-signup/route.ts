@@ -7,11 +7,8 @@ import { authService } from "@/lib/services/auth-service";
 import { TenantSignupSchema } from "@/lib/validators";
 import { rateLimitService } from "@/lib/services/rate-limit-service";
 import { getClientIp } from "@/lib/security/api-guard";
-import {
-  ACCESS_TOKEN_MAX_AGE_SECONDS,
-  getSessionCookieOptions,
-  TENANT_REFRESH_DAYS,
-} from "@/lib/services/session-lifecycle-service";
+import { TENANT_REFRESH_DAYS } from "@/lib/services/session-lifecycle-service";
+import { clientAcceptsClerkTicket, setLegacySessionCookies } from "@/lib/auth/session-capabilities";
 import { setCsrfCookie } from "@/lib/security/csrf";
 import { normalizeWhatsAppPhone } from "@/lib/services/notifications/providers/whatsapp";
 import { resolveSignupPhoneVerification } from "@/lib/services/auth/signup-phone-verification-gate";
@@ -92,19 +89,14 @@ export async function POST(req: NextRequest) {
       profile,
       null,
       null,
-      { ipAddress: ip, userAgent: req.headers.get("user-agent") },
+      { ipAddress: ip, userAgent: req.headers.get("user-agent"), acceptsClerkTicket: clientAcceptsClerkTicket(req) },
       password,
     );
 
     // ADR-031: refresh_token is included in the JSON body — the frontend
     // needs it for supabase.auth.setSession(). See app/api/auth/login/route.ts.
     const response = NextResponse.json({ success: true, ...sessionResult }, { status: 201 });
-    response.cookies.set("hms_session", sessionResult.access_token, {
-      ...getSessionCookieOptions(ACCESS_TOKEN_MAX_AGE_SECONDS),
-    });
-    response.cookies.set("hms_refresh_token", sessionResult.refresh_token, {
-      ...getSessionCookieOptions(60 * 60 * 24 * TENANT_REFRESH_DAYS),
-    });
+    setLegacySessionCookies(response, sessionResult);
     setCsrfCookie(response, 60 * 60 * 24 * TENANT_REFRESH_DAYS);
 
     return response;

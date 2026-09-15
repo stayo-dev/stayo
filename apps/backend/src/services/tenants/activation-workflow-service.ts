@@ -1,5 +1,5 @@
 import { prisma } from "../../../lib/db";
-import { hashPassword } from "../../../lib/auth";
+import { credentialService } from "@/src/services/auth/credential-service";
 import { normalizeIndianPhone, assertGuardianPhoneNotTenant } from "../../../lib/utils/phone-utils";
 import { normalizeWhatsAppPhone } from "../../../lib/services/notifications/providers/whatsapp/meta-provider";
 
@@ -830,7 +830,7 @@ export class ActivationWorkflowService {
     return requiredKycDocTypes(profileType);
   }
 
-  async mutate(ref: ActivationCredential, step: ActivationStep, data: any, context: { ip: string; userAgent: string }) {
+  async mutate(ref: ActivationCredential, step: ActivationStep, data: any, context: { ip: string; userAgent: string; acceptsClerkTicket?: boolean }) {
     if (!["ACCOUNT", "RULES", "AGREEMENT", "PROFILE", "ACTIVATE"].includes(step)) {
       throw new Error("VALIDATION_ERROR: Unsupported activation step");
     }
@@ -914,7 +914,7 @@ export class ActivationWorkflowService {
         updatedProfile,
         activatedTenancy?.id || null,
         activatedTenancy?.profile_completed || false,
-        { ipAddress: context.ip, userAgent: context.userAgent },
+        { ipAddress: context.ip, userAgent: context.userAgent, acceptsClerkTicket: context.acceptsClerkTicket },
         activationPassword,
         activatedTenancy?.status || null
       ) : null;
@@ -1268,10 +1268,10 @@ export class ActivationWorkflowService {
       mobile_verified: true,
       phone_verified: true,
     };
-    if (password || confirmPassword) {
+    const settingPassword = Boolean(password || confirmPassword);
+    if (settingPassword) {
       if (password.length < 8) throw new Error("VALIDATION_ERROR: Password must be at least 8 characters");
       if (password !== confirmPassword) throw new Error("VALIDATION_ERROR: Passwords do not match");
-      profileUpdate.password_hash = await hashPassword(password);
     }
 
     await prisma.$transaction(async (tx: any) => {
@@ -1297,6 +1297,10 @@ export class ActivationWorkflowService {
       }
       if (accountEmail.verificationId) await emailOtpService.consume(accountEmail.verificationId, tx);
     });
+    // The password is Clerk's (ADR-204), written after the profile carries its
+    // final email — that address becomes the Clerk login's email when this is
+    // the account's first credential.
+    if (settingPassword) await credentialService.setPassword({ ...profile, email: normalizedEmail }, password);
     await eventLog.log("account_setup_completed", tenant.owner_id || null, { tenant_id: tenant.id, hostel_id: tenant.hostel_id }, tenant.id);
   }
 
@@ -1318,7 +1322,7 @@ export class ActivationWorkflowService {
     profile: any | null,
     invitation: any | null
   ): Promise<{ required: boolean; email: string | null; verified_email: string | null }> {
-    if (hasOwnLogin(profile)) {
+    if (await hasOwnLogin(profile)) {
       return { required: false, email: String(profile.email).trim().toLowerCase(), verified_email: null };
     }
     // Never allowed to break the context itself — the screen must still load
@@ -1338,7 +1342,7 @@ export class ActivationWorkflowService {
     invitation: any | null,
     data: any
   ): Promise<{ email: string; verificationId: string | null }> {
-    if (hasOwnLogin(profile)) {
+    if (await hasOwnLogin(profile)) {
       return { email: String(profile.email).trim().toLowerCase(), verificationId: null };
     }
 
@@ -1626,12 +1630,11 @@ export class ActivationWorkflowService {
 
     const password = String(data?.password || "");
     const confirmPassword = String(data?.confirm_password || data?.confirmPassword || "");
-    let passwordHash: string | undefined;
-    if (password || confirmPassword) {
+    const settingPassword = Boolean(password || confirmPassword);
+    if (settingPassword) {
       if (password.length < 8) throw new Error("VALIDATION_ERROR: Password must be at least 8 characters");
       if (password !== confirmPassword) throw new Error("VALIDATION_ERROR: Passwords do not match");
-      passwordHash = await hashPassword(password);
-    } else if (!profile.password_hash) {
+    } else if (!(await credentialService.hasCredential(profile))) {
       throw new Error("VALIDATION_ERROR: Password is required to activate your account");
     }
 
@@ -1651,6 +1654,9 @@ export class ActivationWorkflowService {
 
       this.validateOperationalInviteData(tenantNow);
 
+      // Clerk first, before anything commits — see completeActivation.
+      if (settingPassword) await credentialService.setPassword(profile, password);
+
       const completedAt = new Date();
       await prisma.$transaction(async (tx: any) => {
         const profileUpdate = await tx.profile.updateMany({
@@ -1665,7 +1671,6 @@ export class ActivationWorkflowService {
             is_profile_completed: true,
             invitation_token: null,
             invitation_expires_at: null,
-            ...(passwordHash ? { password_hash: passwordHash } : {}),
           },
         });
         if (profileUpdate.count !== 1) {
@@ -1751,8 +1756,12 @@ export const activationWorkflowService = new ActivationWorkflowService();
  * case the onboarding email step is skipped. A placeholder never counts, even
  * on an account that has a login: those people were never asked, and are now.
  */
-export function hasOwnLogin(profile: any | null): boolean {
+export async function hasOwnLogin(profile: any | null): Promise<boolean> {
   if (!profile) return false;
   if (!realEmailOrNull(profile.email)) return false;
-  return Boolean(profile.auth_user_id || profile.password_hash);
+  // `auth_user_id` / `password_hash` are the pre-Clerk login markers, kept
+  // only until every profile has moved (Phase 4 removes both). A Clerk login
+  // is the real answer — a profile born on Clerk has neither marker.
+  if (profile.auth_user_id || profile.password_hash) return true;
+  return Boolean((await credentialService.findLogin(profile.id))?.isActive);
 }

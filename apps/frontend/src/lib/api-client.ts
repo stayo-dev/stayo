@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { supabase } from './supabaseClient';
 import { shouldSuppressExpiryNotice } from './sessionSignOutIntent';
-import { getClerkToken } from './auth/clerkBrowser';
+import { getClerkToken, signOutClerk } from './auth/clerkBrowser';
+import { AUTH_CAPABILITIES, AUTH_CAPABILITIES_HEADER, isSessionEndedCode } from './auth/sessionHandoff';
 
 // StayO requires an explicit API base URL in every environment (dev, staging,
 // production) via VITE_API_URL — no hardcoded host, no silent fallback. See
@@ -36,7 +37,11 @@ const baseURL = normalizeApiUrl(configuredApiUrl);
 const api = axios.create({
   baseURL,
   withCredentials: true,
-  headers: { 'Content-Type': 'application/json' },
+  // Tells the backend this build can redeem a Clerk sign-in ticket, so every
+  // sign-in answers with one (ADR-204). Sent on every request because the
+  // sign-in endpoints are many (login, signup, activation) and a header that
+  // is always present cannot be forgotten on the next one.
+  headers: { 'Content-Type': 'application/json', [AUTH_CAPABILITIES_HEADER]: AUTH_CAPABILITIES },
 });
 
 let inMemoryCsrfToken: string | null = null;
@@ -170,22 +175,18 @@ api.interceptors.request.use(
     if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
       if (config.headers) delete config.headers['Content-Type'];
     }
-    // ADR-031: the token comes from Supabase's own client-side session
-    // (persisted + auto-refreshed by the SDK), not a custom in-memory
-    // variable. `getSession()` returns the current session synchronously
-    // from local storage and only hits the network if a refresh is due.
+    // ADR-204: Clerk is the session authority, so its token goes first. Clerk
+    // refreshes it itself; `getToken()` returns the cached one until it is
+    // near expiry. A Supabase session is used only when Clerk has none — an
+    // account signed in before the cutover that has not moved yet — and that
+    // fallback is deleted in Phase 4.
     if (!isPublicAuthRequest(config.url)) {
-      const { data } = await supabase.auth.getSession();
-      if (data.session?.access_token) {
-        config.headers.Authorization = `Bearer ${data.session.access_token}`;
+      const clerkToken = await getClerkToken();
+      if (clerkToken) {
+        config.headers.Authorization = `Bearer ${clerkToken}`;
       } else {
-        // ADR-176 Phase 3: no Supabase session, so try Clerk. Supabase is
-        // checked first deliberately — every already-signed-in user keeps the
-        // session they have, and a half-finished Clerk sign-in can never
-        // displace a working one. Absent Clerk, this is null and the request
-        // goes out unauthenticated exactly as it did before.
-        const clerkToken = await getClerkToken();
-        if (clerkToken) config.headers.Authorization = `Bearer ${clerkToken}`;
+        const { data } = await supabase.auth.getSession();
+        if (data.session?.access_token) config.headers.Authorization = `Bearer ${data.session.access_token}`;
       }
     }
     if (isUnsafeMethod(config.method) && !isPublicAuthRequest(config.url)) await ensureCsrfToken();
@@ -228,8 +229,11 @@ api.interceptors.response.use(
       }
     }
 
-    if (error.response?.status === 401 && (code === 'SESSION_INACTIVE' || code === 'SESSION_REVOKED')) {
-      await supabase.auth.signOut();
+    // The session is over (idle, revoked — e.g. a password reset or change —
+    // or a pre-Clerk token for an account that has moved). Drop whichever
+    // provider holds it, locally, and let the UI react.
+    if (error.response?.status === 401 && isSessionEndedCode(code)) {
+      await Promise.all([signOutClerk(), supabase.auth.signOut({ scope: 'local' }).catch(() => undefined)]);
       notifySessionExpired(getSessionExpiryNotice(error.response?.data));
     }
     return Promise.reject(error);

@@ -7,8 +7,9 @@ import { authService } from "@/lib/services/auth-service";
 import { LoginSchema } from "@/lib/validators";
 import { rateLimitService } from "@/lib/services/rate-limit-service";
 import { getClientIp } from "@/lib/security/api-guard";
-import { ACCESS_TOKEN_MAX_AGE_SECONDS, getSessionCookieOptions, TENANT_REFRESH_DAYS } from "@/lib/services/session-lifecycle-service";
+import { TENANT_REFRESH_DAYS } from "@/lib/services/session-lifecycle-service";
 import { setCsrfCookie } from "@/lib/security/csrf";
+import { clientAcceptsClerkTicket, setLegacySessionCookies } from "@/lib/auth/session-capabilities";
 
 
 /**
@@ -45,6 +46,7 @@ export async function POST(req: NextRequest) {
       loginResult = await authService.login(email, password, {
         ipAddress: ip,
         userAgent: req.headers.get("user-agent"),
+        acceptsClerkTicket: clientAcceptsClerkTicket(req),
       });
     } catch (loginErr: any) {
       // Record failed attempt before re-throwing
@@ -68,12 +70,7 @@ export async function POST(req: NextRequest) {
       ...loginResult,
     }, { status: 200 });
 
-    response.cookies.set("hms_session", loginResult.access_token, {
-      ...getSessionCookieOptions(ACCESS_TOKEN_MAX_AGE_SECONDS),
-    });
-    response.cookies.set("hms_refresh_token", loginResult.refresh_token, {
-      ...getSessionCookieOptions(60 * 60 * 24 * TENANT_REFRESH_DAYS),
-    });
+    setLegacySessionCookies(response, loginResult);
     setCsrfCookie(response, 60 * 60 * 24 * TENANT_REFRESH_DAYS);
 
     console.log(`[auth.login] Login successful for ${email}`);
@@ -117,6 +114,9 @@ export async function POST(req: NextRequest) {
     }
     if (message.startsWith("VALIDATION_ERROR")) {
       return apiError(message.split(": ")[1] || "Validation failed", "VALIDATION_ERROR", 400);
+    }
+    if (message.startsWith("CLIENT_UPDATE_REQUIRED")) {
+      return apiError(message.split(": ")[1] || "Reload the page and sign in again", "CLIENT_UPDATE_REQUIRED", 409);
     }
 
     /**

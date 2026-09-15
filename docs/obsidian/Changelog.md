@@ -10,6 +10,14 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-15**: **Clerk is the only authentication provider; H2 fixed Clerk-natively** ([[Decisions#ADR-204|ADR-204]], [[Bugs]], [[APIs]], [[Database]], [[Backend]], [[Frontend]]). Plan, inventory and removal checklist: `docs/design/2026-09-15-clerk-only-auth.md`.
+  - Password reset (email link and WhatsApp code), change password, the onboarding first password, tenant activation, signups and the platform-admin invite all write the password to **Clerk** through `credentialService` — never to `profiles.password_hash`, never to Supabase Auth. Every password write revokes every Clerk session (Clerk's `signOutOfOtherSessions` + an explicit revoke of each live session + a Redis deny-list on the Clerk user id). **Change password now signs you out on every device, this one included.**
+  - Sign-in ends in a Clerk session: the backend checks the password with Clerk and returns a single-use sign-in ticket the SPA redeems. `middleware.ts` verifies Clerk tokens on every route; `getSession()` resolves the profile by Clerk user id through `users` — never by email.
+  - Pre-Clerk sessions: a Supabase or legacy token is refused for any profile that has moved onto Clerk; an account moves on its first sign-in (password carried across) or via `npm run migrate:logins-to-clerk` (bcrypt digests imported — no forced reset).
+  - The Clerk webhook links by `external_id` (our profile id), no longer by email. Signup refuses an address Clerk already holds instead of adopting it. Account closure deletes the Clerk user.
+  - New: `lib/auth/clerk-backend.ts`, `clerk-jwt-edge.ts`, `clerk-session-resolver.ts`, `session-capabilities.ts`, `src/services/auth/credential-service.ts`, `scripts/migrate-logins-to-clerk.ts`; frontend `lib/auth/establishSession.ts`, `clerkTicket.ts`, `sessionHandoff.ts`. `@clerk/shared` is now a direct frontend dependency (it was already installed transitively).
+  - **Precondition:** migration 081 (`users`) must exist in production before deploy. **Not verified against a real Clerk instance or in a browser.**
+
 - **2026-09-14**: **The Rooms tab is the hostel, drawn as a building** ([[Decisions#ADR-199|ADR-199]], [[Features]], [[Frontend]], [[APIs]], [[Bugs]]).
   - The floor accordion and its bed dots are gone. Floors stack top to bottom like the real building, every room is a tile of the faces that live in it (photo, initials, a red dot when the backend says overdue, dashed amber for an invite, `+` for a free bed), and the roof says how many beds are filled. A long floor wraps rather than shrinking faces; three or more floors get a sticky lift strip.
   - Free beds, overdue and invited are filters over the building; search finds a room or a person and shows where they are.

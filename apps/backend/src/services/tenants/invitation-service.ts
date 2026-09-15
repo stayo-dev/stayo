@@ -1,5 +1,4 @@
 import { prisma } from "../../../lib/db";
-import { hashPassword } from "../../../lib/auth";
 import crypto from "crypto";
 import { eventSystem } from "../../../lib/events";
 import { EmailService } from "../../../lib/services/email-service";
@@ -293,14 +292,14 @@ export class InvitationService {
     };
   }
 
-  async activateTenant(token: string, password: string) {
+  async activateTenant(token: string, password: string, acceptsClerkTicket = false) {
     logger.info("Delegating account activation to unified activation workflow", { token_fingerprint: tokenFingerprint(token) });
     const { activationWorkflowService } = await import("./activation-workflow-service");
     return await activationWorkflowService.mutate(
       token,
       "ACTIVATE",
       { password, confirm_password: password },
-      { ip: "127.0.0.1", userAgent: "Legacy API Activation Path" }
+      { ip: "127.0.0.1", userAgent: "Legacy API Activation Path", acceptsClerkTicket }
     );
   }
 

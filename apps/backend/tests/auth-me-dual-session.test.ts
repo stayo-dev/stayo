@@ -1,14 +1,9 @@
 /**
- * `GET /api/auth/me` accepts a Clerk session as well as a Supabase one
- * (ADR-176 Phase 3, minimal dual session authority).
+ * Clerk is the session authority on every route (ADR-204), superseding
+ * ADR-176 Phase 3's "Clerk only on /api/auth/me" dual authority.
  *
- * The properties that matter: the Supabase path is untouched, Clerk is only
- * consulted when Supabase found nothing, and a Clerk session still cannot
- * invent authority — the role comes from `profiles` or the request is refused.
- *
- * Source-level invariants plus the middleware contract; the route's own
- * behaviour is covered by tests/clerk-me-handshake.test.ts, which exercises
- * `ensureUserForClerkSession` directly.
+ * Source-level invariants for middleware.ts, getSession() and /api/auth/me.
+ * The resolver's behaviour is exercised in tests/clerk-session-resolver.test.ts.
  */
 
 import { describe, expect, it } from "vitest";
@@ -21,43 +16,76 @@ const read = (rel: string) => fs.readFileSync(path.join(root, rel), "utf8");
 
 const ROUTE = read("app/api/auth/me/route.ts");
 const MIDDLEWARE = read("middleware.ts");
+const GET_SESSION = read("lib/auth.ts");
 
-describe("the Supabase path is unchanged", () => {
-  it("still resolves a Supabase session first", () => {
-    expect(ROUTE).toContain("const session = await getSession(req);");
-    expect(ROUTE).toContain("resolveSupabaseSession");
+describe("middleware verifies Clerk session tokens on every route", () => {
+  it("runs the Clerk verifier before Supabase and legacy", () => {
+    const clerkAt = MIDDLEWARE.indexOf("await verifyClerkAccessToken(token)");
+    const supabaseAt = MIDDLEWARE.indexOf("await verifySupabaseAccessToken(token)");
+    const legacyAt = MIDDLEWARE.indexOf("const legacyPayload = await verifyToken(token);");
+    expect(clerkAt).toBeGreaterThan(-1);
+    expect(supabaseAt).toBeGreaterThan(clerkAt);
+    expect(legacyAt).toBeGreaterThan(supabaseAt);
   });
 
-  it("consults Clerk only after Supabase returns nothing", () => {
-    const supabaseAt = ROUTE.indexOf("await getSession(req)");
-    const clerkAt = ROUTE.indexOf("clerkResolution(req)");
+  it("no longer carries the /api/auth/me-only fall-through", () => {
+    // That set let an unverifiable token through as anonymous on one path so
+    // the route could try Clerk itself. Middleware now verifies Clerk, so a
+    // token nobody accepts is a 401 everywhere.
+    expect(MIDDLEWARE).not.toContain("CLERK_BEARER_ROUTES");
+  });
 
-    expect(clerkAt).toBeGreaterThan(supabaseAt);
-    // The Clerk call must sit inside the `if (!session)` branch.
-    // Anchored on the profile lookup rather than the first `try {` — the Clerk
-    // block now has a try of its own, and anchoring there truncated this slice.
-    const branch = ROUTE.slice(
-      ROUTE.indexOf("if (!session) {"),
-      ROUTE.indexOf("const profile = await prisma.profile.findUnique"),
+  it("revokes Clerk tokens by the Clerk user id and session id", () => {
+    const block = MIDDLEWARE.slice(MIDDLEWARE.indexOf("if (clerkClaims) {"), MIDDLEWARE.indexOf("} else if (supabaseClaims) {"));
+    expect(block).toContain('requestHeaders.set("x-auth-mode", "clerk")');
+    expect(block).toContain("revocationSubject = clerkClaims.sub");
+    expect(block).toContain("sid = clerkClaims.sid");
+  });
+
+  it("applies the idle timeout to Clerk sessions too", () => {
+    expect(MIDDLEWARE).toContain('authMode === "clerk" || authMode === "supabase"');
+  });
+
+  it("lets the capability header through CORS", () => {
+    expect(MIDDLEWARE).toContain("X-Auth-Capabilities");
+  });
+
+  it("does not make /api/auth/me public", () => {
+    const publicBlock = MIDDLEWARE.slice(
+      MIDDLEWARE.indexOf("const PUBLIC_ROUTES = ["),
+      MIDDLEWARE.indexOf("];", MIDDLEWARE.indexOf("const PUBLIC_ROUTES = [")),
     );
-    expect(branch).toContain("clerkResolution(req)");
-  });
-
-  it("keeps the Supabase-specific rejection codes", () => {
-    expect(ROUTE).toContain("supabaseRejection");
+    expect(publicBlock).not.toContain("/api/auth/me");
   });
 });
 
-describe("the Clerk path cannot invent authority", () => {
-  it("refuses a Clerk session with no linked profile", () => {
-    expect(ROUTE).toContain("NO_STAYO_ACCOUNT");
+describe("getSession resolves identity by id and cuts off pre-Clerk tokens", () => {
+  it("resolves a Clerk session through the id-only resolver", () => {
+    expect(GET_SESSION).toContain('authMode === "clerk"');
+    expect(GET_SESSION).toContain("resolveClerkSession(");
   });
 
-  it("refuses a deactivated login", () => {
-    // `user.deleted` from the webhook sets is_active = false; that must not
-    // become a working sign-in just because Clerk still issues a token.
-    expect(ROUTE).toContain("snapshot.isActive");
-    expect(ROUTE).toContain("ACCOUNT_DISABLED");
+  it("refuses a legacy or Supabase token for a profile that has moved onto Clerk", () => {
+    const legacy = GET_SESSION.slice(GET_SESSION.indexOf('authMode === "legacy"'), GET_SESSION.indexOf('authMode === "supabase"'));
+    expect(legacy).toContain("profileHasClerkLogin(userId)");
+    const supabase = GET_SESSION.slice(GET_SESSION.indexOf('authMode === "supabase"'));
+    expect(supabase).toContain("profileHasClerkLogin(result.payload.sub)");
+  });
+});
+
+describe("/api/auth/me", () => {
+  it("authenticates only through getSession — no route-local Clerk verifier", () => {
+    expect(ROUTE).toContain("const session = await getSession(req);");
+    expect(ROUTE).not.toContain("verifyClerkSession");
+    expect(ROUTE).not.toContain("ensureUserForClerkSession");
+  });
+
+  it("explains a rejection with a specific code", () => {
+    // NO_STAYO_ACCOUNT / ACCOUNT_DISABLED / TENANCY_NOT_ACTIVATED come from
+    // the resolver's own result, passed straight through.
+    expect(ROUTE).toContain("resolveClerkSession(");
+    expect(ROUTE).toContain("apiError(result.message, result.code, 403)");
+    expect(ROUTE).toContain("SIGN_IN_AGAIN");
   });
 
   it("never assigns a role — the profile is looked up, not created", () => {
@@ -65,56 +93,13 @@ describe("the Clerk path cannot invent authority", () => {
     expect(ROUTE).not.toMatch(/prisma\.profile\.(create|upsert)/);
   });
 
-  it("never lets a Clerk-path failure escape as an unlogged 500", () => {
-    // This block sits outside the route's main try/catch, so an unguarded throw
-    // here produced an opaque 500 with no log line — which is what made the
-    // first real Clerk sign-in un-diagnosable from the outside.
-    const guarded = ROUTE.slice(ROUTE.indexOf("let clerk:"), ROUTE.indexOf("if (clerk.rejection)"));
-    expect(guarded).toContain("try {");
-    expect(guarded).toContain("catch");
-    expect(guarded).toContain("logger.error");
-    expect(guarded).toContain("CLERK_RESOLUTION_FAILED");
-  });
-
-  it("logs the Prisma error code, which names a migration gap directly", () => {
-    // P2021 = table missing, P2022 = column missing. Either says "migration"
-    // faster than any stack trace.
+  it("logs the Prisma error code when explaining fails, which names a migration gap", () => {
     expect(ROUTE).toContain("?.code");
+    expect(ROUTE).toContain("logger.error");
   });
 
-  it("reads the profile by the id the resolver returned", () => {
+  it("reads the profile by the id getSession returned", () => {
+    expect(ROUTE).toContain("const profileId = session.sub;");
     expect(ROUTE).toContain("where: { id: profileId }");
-  });
-});
-
-describe("middleware lets a Clerk bearer reach the route", () => {
-  it("allow-lists exactly /api/auth/me, exact-matched", () => {
-    expect(MIDDLEWARE).toContain('CLERK_BEARER_ROUTES = new Set(["/api/auth/me"])');
-    // A Set + .has() is an exact match. PUBLIC_ROUTES is prefix-matched, and a
-    // prefix entry here would also expose /api/auth/me-anything.
-    expect(MIDDLEWARE).toContain("CLERK_BEARER_ROUTES.has(pathname)");
-  });
-
-  it("falls through only after BOTH verifiers have rejected the token", () => {
-    const fallthrough = MIDDLEWARE.indexOf("CLERK_BEARER_ROUTES.has(pathname)");
-    const legacyCheck = MIDDLEWARE.indexOf("const legacyPayload = await verifyToken(token);");
-
-    expect(legacyCheck).toBeGreaterThan(-1);
-    expect(fallthrough).toBeGreaterThan(legacyCheck);
-  });
-
-  it("falls through as anonymous, so the route must authenticate the caller", () => {
-    const idx = MIDDLEWARE.indexOf("CLERK_BEARER_ROUTES.has(pathname)");
-    expect(MIDDLEWARE.slice(idx, idx + 120)).toContain("asAnonymous()");
-  });
-
-  it("does not make /api/auth/me public", () => {
-    // Public means "identity headers stripped and no verification at all" for
-    // every caller; this route still verifies, just with a third verifier.
-    const publicBlock = MIDDLEWARE.slice(
-      MIDDLEWARE.indexOf("const PUBLIC_ROUTES = ["),
-      MIDDLEWARE.indexOf("];", MIDDLEWARE.indexOf("const PUBLIC_ROUTES = [")),
-    );
-    expect(publicBlock).not.toContain("/api/auth/me");
   });
 });
