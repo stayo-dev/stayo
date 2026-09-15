@@ -3,6 +3,8 @@ export const runtime = "nodejs";
 
 import type { NextRequest } from "next/server";
 import { apiResponse, apiError, getSession } from "@/lib/auth";
+import { requireAdmin } from "@/lib/security/authz";
+import { isValidUuid } from "@/lib/security/api-guard";
 import { prisma } from "@/lib/db";
 
 const ALLOWED_STATUS = new Set(["OPEN", "INVESTIGATING", "RESOLVED", "IGNORED"]);
@@ -19,13 +21,16 @@ const ALLOWED_SEVERITY = new Set(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
  *
  * Lists persisted reconciliation issues. Sorted by severity (CRITICAL
  * first) then detected_at DESC so the loudest fires float to the top.
- * Owner-accessible.
+ *
+ * Platform-admin only (C2, 2026-09-14 audit): this was `role === "OWNER"`, so
+ * any owner reached every owner's issues. `ownerId`/`hostelId` are now
+ * admin-only drill-down filters, not an authorization scope — a non-admin
+ * never gets here at all.
  */
 export async function GET(req: NextRequest) {
   const session = await getSession(req);
-  if (!session || session.role !== "OWNER") {
-    return apiError("Owner access required", "FORBIDDEN", 403);
-  }
+  const denied = requireAdmin(session);
+  if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status") || "OPEN";
@@ -37,6 +42,8 @@ export async function GET(req: NextRequest) {
 
   if (!ALLOWED_STATUS.has(status)) return apiError("Invalid status", "BAD_REQUEST", 400);
   if (severity && !ALLOWED_SEVERITY.has(severity)) return apiError("Invalid severity", "BAD_REQUEST", 400);
+  if (ownerId && !isValidUuid(ownerId)) return apiError("Invalid ownerId", "BAD_REQUEST", 400);
+  if (hostelId && !isValidUuid(hostelId)) return apiError("Invalid hostelId", "BAD_REQUEST", 400);
 
   const where: Record<string, any> = { status };
   if (severity) where.severity = severity;
