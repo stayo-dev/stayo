@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { marketingPreviewService } from '@features/hostel-marketing/api';
-import { HostCard } from '@features/host-profile/components/HostCard';
+import { HostByline, HostCard } from '@features/host-profile/components/HostCard';
 import {
   ChevronLeft,
   ChevronRight,
@@ -667,27 +667,16 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
             </p>
           )}
 
-          {/* ── Meet your host (ADR-200) ───────────────────────────────── */}
+          {/* ── Hosted by (ADR-200, revised) ───────────────────────────── */}
           {/*
-            The person before the price: a listing with nobody attached is a
-            database row. Full name, photo and the owner's own words — never a
-            phone or email (the backend's bio rules refuse both). In an admin
-            preview the Enquire button renders but stays inert.
+            One line, above the beds and the rent: a reader should know a
+            person stands behind this listing before they reach the price.
+            The bio, the stats and the Enquire button are the full card's job,
+            at the foot of the page — Airbnb's two-placement pattern.
           */}
           {data?.host && (
-            <div className="mt-5 border-t pt-5" style={{ borderColor: C.line }}>
-              <HostCard
-                host={data.host}
-                hostelName={hostel.name}
-                onEnquire={
-                  previewRevisionId
-                    ? undefined
-                    : () =>
-                        navigate(`/discover/h/${slug}/enquire`, {
-                          state: { roomCapacity: selectedOption?.capacity, hostelName: hostel.name },
-                        })
-                }
-              />
+            <div className="mt-4 border-t pt-4" style={{ borderColor: C.line }}>
+              <HostByline host={data.host} />
             </div>
           )}
 
@@ -1189,6 +1178,34 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
             <ReviewsSection slug={slug} hostelName={hostel.name} />
           </div>
         </div>
+
+        {/* ── Meet your host (ADR-200, revised) ─────────────────────────────
+            The full card sits here, after the reviews, where Airbnb puts it:
+            by this point a reader has seen the rooms, the food and what
+            residents said, and the remaining question is who they would be
+            living with. Full name, photo and the owner's own words — never a
+            phone or email (the backend's bio rules refuse both). In an admin
+            preview the Enquire button renders but stays inert. */}
+        {data?.host && !data.host.platform_listed && (
+          <div className="mx-auto mt-4 w-full max-w-[860px] lg:mt-6 lg:max-w-[1180px] lg:px-8">
+            <div className="rounded-[24px] px-5 py-6 lg:px-8" style={{ background: C.paper }}>
+              <div className="lg:max-w-[560px]">
+                <HostCard
+                  host={data.host}
+                  hostelName={hostel.name}
+                  onEnquire={
+                    previewRevisionId
+                      ? undefined
+                      : () =>
+                          navigate(`/discover/h/${slug}/enquire`, {
+                            state: { roomCapacity: selectedOption?.capacity, hostelName: hostel.name },
+                          })
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {tourOpen && (

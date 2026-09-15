@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildHostCard, buildMilestones, draftFrom, formatMonthYear, hiddenNotice, hostFacts,
+  buildHostByline, buildHostCard, buildMilestones, draftFrom, formatMonthYear, hiddenNotice, hostFacts,
   hostingYears, languagesPhrase, publicView, residentsLabel, toggleLanguage, withDraft,
 } from './hostCardModel';
 import type { EditableHost, PublicHost } from './types';
@@ -47,7 +47,7 @@ describe('buildHostCard', () => {
   it('leads with the owner\'s own words when there are some', () => {
     const card = buildHostCard(HOST, { hostelName: 'Sri Adithya Boys Hostel' })!;
     expect(card.variant).toBe('note');
-    expect(card.heading).toBe('A note from your host');
+    expect(card.heading).toBe('Meet your host');
     expect(card.name).toBe('Shiva Prakash');
     expect(card.bio).toBe('I started Sri Adithya in 2015.');
     expect(card.role).toBe('Owner');
@@ -97,6 +97,40 @@ describe('buildHostCard', () => {
     expect(buildHostCard(HOST)!.initial).toBe('S');
     expect(buildHostCard({ ...HOST, name: null })!.initial).toBe('S');
     expect(buildHostCard({ ...HOST, name: 'ravi kumar' })!.initial).toBe('R');
+  });
+});
+
+describe('buildHostByline', () => {
+  it('names the host in full, above the price, with no bio or button', () => {
+    const byline = buildHostByline(HOST)!;
+    expect(byline.title).toBe('Hosted by Shiva Prakash');
+    expect(byline.line).toBe('Owner · On Stayo since Sep 2026');
+    expect(byline.photoUrl).toBe('https://ik.example/p.jpg');
+    expect(byline.verified).toBe(true);
+    // The byline carries nothing the full card owns.
+    expect(byline).not.toHaveProperty('bio');
+    expect(byline).not.toHaveProperty('ctaLabel');
+    expect(byline).not.toHaveProperty('stats');
+  });
+
+  it('says Stayo listed it rather than naming a sentinel profile', () => {
+    const byline = buildHostByline({ ...HOST, platform_listed: true, name: null })!;
+    expect(byline.title).toBe('Listed by Stayo');
+    expect(byline.line).toBe('On Stayo since Sep 2026');
+    expect(byline.photoUrl).toBeNull();
+  });
+
+  it('still attributes the listing when the owner has no name on file', () => {
+    expect(buildHostByline({ ...HOST, name: '  ' })!.title).toBe('Hosted by the owner');
+  });
+
+  it('drops the date rather than inventing one', () => {
+    expect(buildHostByline({ ...HOST, listed_since: null })!.line).toBe('Owner');
+  });
+
+  it('renders nothing without a host', () => {
+    expect(buildHostByline(null)).toBeNull();
+    expect(buildHostByline(undefined)).toBeNull();
   });
 });
 
