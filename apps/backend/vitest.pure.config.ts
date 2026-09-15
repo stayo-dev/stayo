@@ -221,6 +221,11 @@ export default defineConfig({
       // browser-Supabase read path. Only reads source files. The runtime proof
       // lives in tests/otp-rls-db.test.ts (DB-backed, not in this pure suite).
       'tests/otp-rls-lockdown.test.ts',
+      // Admin-route authorization (C2, 2026-09-14 audit): the reconciliation
+      // routes flipped from OWNER to ADMIN, and an enumerating guard that every
+      // /api/admin route is admin-gated or decommissioned. Both mock/read only.
+      'tests/reconciliation-admin-authz.test.ts',
+      'tests/admin-routes-guarded.test.ts',
       // Bulk import: parse-stage failures must name the real cause. The
       // row-limit message used to be swallowed by parseFile's own catch.
       'tests/bulk-import-parse-errors.test.ts',
