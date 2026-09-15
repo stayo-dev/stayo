@@ -441,6 +441,27 @@ Public (no session — added to `middleware.ts`'s `PUBLIC_ROUTES`), backing the 
 
 **Added 2026-08-15 ([[Decisions#ADR-073|ADR-073]]).** The public hostel-browsing surface backing `/discover`. Split auth: browse is public, everything else needs a seeker session.
 
+### Meet your host — the listing's `host`, and who edits it (2026-09-15, [[Decisions#ADR-200|ADR-200]])
+
+`GET /api/discover/hostels/:slug`'s `host` (and the admin marketing preview's) is now the full host card:
+
+```ts
+host: { platform_listed, name /* full name */, photo_url, bio, languages, hosting_since,
+        verified, listed_since, stats: { review_count, rating, residents } }
+```
+
+It is built by `hostProfileService.getPublicHost(ownerId)`, with hidden bio/photo already `null`. If that read fails for any reason (including migration 083 not applied), the listing still renders with `name` = the owner's full name and everything else empty/zero. A `PLATFORM_LISTED` hostel always gets `name: null` and no card. `name` was "Ravi K." before this change.
+
+| Route | Who | Notes |
+|---|---|---|
+| `GET /api/owner/me/host-profile` | OWNER | The owner's card **plus** their own words even when hidden, and `bio_hidden`/`photo_hidden`. |
+| `PUT /api/owner/me/host-profile` | OWNER | `{bio, languages, hosting_since}`, upserted and live on save. Hide flags in the body are ignored. `400 VALIDATION_ERROR` carries the owner-facing reason ("Remove the phone number — residents reach you through Stayo."). |
+| `GET /api/platform-admin/owners/:id/host-profile` | ADMIN | As the owner GET, plus `updated_at`, `updated_by_name`. 404 if the profile isn't an OWNER. |
+| `PATCH /api/platform-admin/owners/:id/host-profile` | ADMIN | Any of `{name, bio, languages, hosting_since, bio_hidden, photo_hidden}`; only the keys sent change. `name` writes `profiles.name`. Same bio rules as the owner. Empty patch → 400. Event-logged `OWNER_HOST_PROFILE_ADMIN_EDIT`. |
+| `POST` / `DELETE /api/platform-admin/owners/:id/photo` | ADMIN | Replace (multipart `file`, JPEG/PNG/WEBP, 2MB) or clear `profile_identity.photo_url`, via the same `lib/owner-photo.ts` helper `POST/DELETE /api/owner/me/photo` now uses. Event-logged. |
+
+Owner and admin writes return `503 HOST_PROFILE_UNAVAILABLE` until migration 083 exists ([[Database]]). All handlers are thin; logic is in `src/services/host-profile/`.
+
 ### Reviews
 
 Shipped 2026-08-19 ([[Decisions#ADR-086|ADR-086]]); the identity-aware GET fix and the "hide when empty" UI both landed 2026-08-24 ([[Decisions#ADR-101|ADR-101]], [[Decisions#ADR-102|ADR-102]]) — see [[Bugs]] for the eligibility-always-`SIGNED_OUT` root cause. Category set, the Overall Experience field, the `CHANGES_REQUESTED` status and the insights endpoint below added 2026-08-25 ([[Decisions#ADR-115|ADR-115]]).

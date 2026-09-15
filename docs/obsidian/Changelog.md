@@ -10,6 +10,14 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-15**: **Meet your host: the owner in full, in their own words, on every Discover listing** ([[Decisions#ADR-200|ADR-200]], [[Features]], [[APIs]], [[Database]], [[Business-Rules]]).
+  - The listing's "Managed by Ravi K." line becomes a host card, placed above "Choose your bed". With a bio it's "A note from your host": the owner's words in a serif quote, signed with their photo (verified tick if their ID is verified), **full name**, and "running hostels since" / "speaks" facts. Without one it's "Meet your host", led by photo and name, never "No description yet". Below: up to three earned stats (rating, residents, on Stayo since, each left out when zero or unknown), an "Enquire with {full name}" button and a trust note.
+  - Owners get **Profile → Your host profile** (`/owner/more/host-profile`, reached by tapping their name): milestones, a live preview that is the public card itself, the story box (500 chars, no phones or links), languages and a year picker. Saves go live; the photo still changes on Details, which now also refreshes the card.
+  - Admins get a **Public host profile** section in the Owners drawer: the same card, edit name/story/languages/year, hide the bio or photo, replace or remove the photo. Every write is attributed and event-logged.
+  - New backend-only table `owner_host_profiles` (migration 083, **not applied anywhere yet**), five routes, and a listing `host` payload that now carries the card. The public read degrades to the bare name on any failure, so the listing never 500s before 083 lands.
+  - The owner-photo upload moved into a shared `lib/owner-photo.ts`, used by both the owner's route and the admin's.
+  - Backend pure suite green apart from the 2 pre-existing `agreement-requirement` failures; frontend 2908 tests, `check:architecture` and `npm run build` pass. **Not yet run against a real database or in a browser.**
+
 - **2026-09-14**: **The Rooms tab is the hostel, drawn as a building** ([[Decisions#ADR-199|ADR-199]], [[Features]], [[Frontend]], [[APIs]], [[Bugs]]).
   - The floor accordion and its bed dots are gone. Floors stack top to bottom like the real building, every room is a tile of the faces that live in it (photo, initials, a red dot when the backend says overdue, dashed amber for an invite, `+` for a free bed), and the roof says how many beds are filled. A long floor wraps rather than shrinking faces; three or more floors get a sticky lift strip.
   - Free beds, overdue and invited are filters over the building; search finds a room or a person and shows where they are.

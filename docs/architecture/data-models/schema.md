@@ -1125,6 +1125,8 @@ profile represents a persisted HMS domain record.
 - relates to profile through other_profiles.
 - relates to refresh_tokens through refresh_tokens.
 - relates to tenants through tenants.
+- relates to owner_host_profile through host_profile (the owner's own host card, ADR-200).
+- relates to owner_host_profile through host_profiles_edited (host cards this profile last edited).
 
 **Status values (if applicable):**
 | Value | Meaning |
@@ -1135,6 +1137,31 @@ profile represents a persisted HMS domain record.
 1. The database stores this record with the fields listed above.
 2. Backend services apply business rules before creating or changing it.
 3. UI screens receive normalized versions through API routes.
+
+## owner_host_profile
+
+The owner as residents meet them on a public listing (ADR-200): their own words, languages and the year they started. Mapped to `owner_host_profiles`, created by `migrations/083_owner_host_profiles.sql` (RLS on, no policies, backend-only). The photo stays on `profile_identity.photo_url`, and the stats shown beside it are counted live, not stored.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| profile_id | String | yes | Primary identifier; the owner's `profiles.id`. Cascades on delete. |
+| bio | String? | no | The owner's story, max 500 characters. No phone numbers, emails, links or handles (enforced in `src/services/host-profile/bio-rules.ts`). |
+| languages | String[] | no | Languages spoken, from a fixed list of 12, max 6. Has a database default (empty). |
+| hosting_since | Int? | no | Self-reported year the owner started running hostels (1950 to the current year). |
+| bio_hidden | Boolean | no | Admin-only: keeps the bio off the public listing. Has a database default (false). |
+| photo_hidden | Boolean | no | Admin-only: keeps the photo off the public listing. Has a database default (false). |
+| updated_by | String? | no | The profile (owner or admin) that last wrote the row. Set null on delete. |
+| created_at | DateTime | no | Creation timestamp. Has a database default. |
+| updated_at | DateTime? | no | Last write. |
+
+**Relationships:**
+- relates to profile through profile (the owner).
+- relates to profile through updater (the last editor).
+
+**How this works:**
+1. The owner saves their story, languages and year from "Your host profile"; it is public immediately.
+2. An admin can edit the same fields, or hide the bio/photo; a hide survives the owner's later edits.
+3. The Discover listing reads it through `hostProfileService.getPublicHost`, with hidden fields already removed.
 
 ## PhoneVerificationOtp
 

@@ -432,6 +432,24 @@ Prisma exposes this as **two relations on the same table**, which is easy to mis
 
 The owner Leads tab's Accept/Hold/Reject actions ([[Decisions#ADR-087|ADR-087]]) added three values to the app-level `LEAD_STATUSES` const (`src/services/admissions/admissions-service.ts`) — `status` remains a plain `String` column, so this is a zero-migration change, same convention as the `'DISCOVER'` source value above. No new table: Hold's owner-typed reason is stored as an ordinary row in the pre-existing `lead_notes` table (`lead_id`, `owner_id`, `note`, `created_at`) — the same table a plain enquiry note already used. `ACCEPTED` and `ON_HOLD` were also added to the exported `ACTIVE_LEAD_STATUSES` list (used by Discover's re-enquiry de-duplication, [[Decisions#ADR-073|ADR-073]]) — a lead the owner has accepted or put on hold is still "open" for that purpose; `REJECTED`, like `LOST`, is not.
 
+## `owner_host_profiles` — the owner's own words on a listing (2026-09-15, migration 083, **NOT applied to any database**)
+
+[[Decisions#ADR-200|ADR-200]]. One row per owner, keyed by `profile_id` (PK, FK `profiles`, cascade):
+
+| Column | Type | Notes |
+|---|---|---|
+| `bio` | `text` | `CHECK char_length(bio) <= 500`. Null = no words yet. |
+| `languages` | `text[]` | Default `'{}'`. Subset of a fixed 12-language list, max 6 (enforced in `bio-rules.ts`). |
+| `hosting_since` | `smallint` | `CHECK 1950–2100`; the service also caps it at the current year. |
+| `bio_hidden`, `photo_hidden` | `boolean` | Default false. **Admin-only**; an owner write never touches them. |
+| `updated_by` | `uuid` | FK `profiles`, `SET NULL`. The owner or the admin who last wrote. |
+| `created_at`, `updated_at` | `timestamptz` | |
+
+- **RLS on, no policies**: invisible to `anon`/`authenticated` via PostgREST. The backend's connections bypass RLS (traced in [[Decisions#ADR-189|ADR-189]]); unlike ADR-189's billing tables, there is not even a read policy, because nothing reads this table from the client.
+- **Why not columns on `profile_identity`:** that table is read or upserted without a `select` in `src/services/profile/profile-identity-service.ts`, `app/api/tenants/me/complete-profile/route.ts` and `scripts/backfill-profile-identity.ts` (checked 2026-09-15). A column declared in Prisma before its migration is applied would break all of them. That's the 2026-08-22 `navigation` outage pattern, see the note on `hostels.navigation` above. A new model only affects its own queries.
+- **Prisma:** `model owner_host_profile`, with `host_profile` / `host_profiles_edited` relation fields on `profile`. They are relation fields only, adding no scalar columns, so `getSession()`'s profile reads are unchanged.
+- **Before the migration is applied:** the public listing reads the table tolerantly (a `P2021` becomes "no bio"). Owner and admin writes return `503 HOST_PROFILE_UNAVAILABLE`. Apply by hand on the canonical project; never `prisma migrate deploy`.
+
 ## The portable profile — `profile_identity` + the document vault (2026-08-15, migration 064)
 
 Three new tables ([[Decisions#ADR-074|ADR-074]]). Nothing is dropped or altered, and there is no backfill in the migration.

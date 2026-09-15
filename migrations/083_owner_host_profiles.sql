@@ -11,8 +11,8 @@
 -- outage. A new model only affects its own queries, and the public listing
 -- reads this one tolerantly (a missing table reads as "no bio").
 --
--- RLS ON, NO POLICIES: backend-only, like ADR-189's billing tables. The
--- backend connection bypasses RLS; anon/authenticated see nothing via
+-- RLS ON, NO POLICIES: backend-only. The backend connection bypasses RLS
+-- (see ADR-189); anon/authenticated see nothing via
 -- PostgREST.
 --
 -- Apply via the Supabase SQL editor or psql. Idempotent. Never
