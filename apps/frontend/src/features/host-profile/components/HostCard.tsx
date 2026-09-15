@@ -1,6 +1,6 @@
 import { Check, ShieldCheck } from 'lucide-react';
 import { C, FONT } from '@/app/pages/discover/discoverTheme';
-import { buildHostCard, type HostCardModel } from '../model/hostCardModel';
+import { buildHostByline, buildHostCard, type HostCardModel } from '../model/hostCardModel';
 import type { PublicHost } from '../model/types';
 
 /**
@@ -18,7 +18,9 @@ import type { PublicHost } from '../model/types';
 
 const SERIF = "Georgia, 'Times New Roman', serif";
 
-function HostPhoto({ card, size }: { card: HostCardModel; size: number }) {
+type PhotoFields = Pick<HostCardModel, 'photoUrl' | 'initial' | 'verified' | 'name'>;
+
+function HostPhoto({ card, size }: { card: PhotoFields; size: number }) {
   const tick = Math.round(size * 0.36);
   return (
     <span className="relative flex-none" style={{ width: size, height: size }}>
@@ -147,5 +149,30 @@ export function HostCard({
         Pay and talk through Stayo, so there's a record of everything.
       </p>
     </section>
+  );
+}
+
+/**
+ * The one-line "Hosted by …" row near the top of a listing (ADR-200, revised
+ * 2026-09-15 to Airbnb's two-placement pattern).
+ *
+ * A reader meets the person before they reach the rent, but the bio, the
+ * stats and the Enquire button wait for `HostCard` at the foot of the page —
+ * so the beds and the price stay where a listing's readers expect them.
+ */
+export function HostByline({ host }: { host: PublicHost | null | undefined }) {
+  const byline = buildHostByline(host);
+  if (!byline) return null;
+
+  return (
+    <div className="flex items-center gap-3">
+      <HostPhoto card={{ ...byline, name: byline.name }} size={40} />
+      <div className="min-w-0">
+        <p className="truncate text-[13.5px] font-bold" style={{ fontFamily: FONT.display, color: C.text }}>
+          {byline.title}
+        </p>
+        <p className="mt-0.5 truncate text-[11.5px]" style={{ color: C.textMuted }}>{byline.line}</p>
+      </div>
+    </div>
   );
 }
