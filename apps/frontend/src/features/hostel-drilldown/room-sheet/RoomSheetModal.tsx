@@ -153,7 +153,17 @@ export function RoomSheetModal({
         <span className="flex flex-col">
           <span>Room {room.number}</span>
           <span className="text-[11.5px] font-normal text-muted-foreground">
-            {floor?.name ?? 'No floor'} · {occupied}/{slots.length} beds filled
+            {/*
+              A bed held for an invite is not a free bed, and this line used to
+              say it was: it counted only tenants, so a full 4-bed room with two
+              residents and two open invites read "2/4 beds filled" directly
+              above "0 beds free" — the same sheet calling the room half empty
+              and completely full. Held beds are counted here and named
+              separately, so the two lines agree and the owner can see where the
+              missing beds went.
+            */}
+            {floor?.name ?? 'No floor'} · {occupied + reserved}/{slots.length} beds taken
+            {reserved > 0 && ` · ${reserved} held for ${reserved === 1 ? 'an invite' : 'invites'}`}
           </span>
         </span>
       }

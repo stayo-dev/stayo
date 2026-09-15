@@ -215,31 +215,47 @@ export async function POST(req: NextRequest) {
       return ApiResponse.error(ApiError.forbidden("Cannot perform operational actions on an inactive hostel"));
     }
 
-    // Check for duplicate room number
+    // Check for duplicate room number. Retired rooms are deliberately included:
+    // `@@unique([hostel_id, room_no])` covers them, so a room retired by
+    // `DELETE /api/rooms/:id` (ADR-207) still owns its number. Filtering on
+    // `is_active: true` here let the insert through and then died on a raw
+    // Postgres constraint error, leaving the owner unable to re-add a number
+    // they had just removed. Same reasoning as `planFloorRoomSave`.
     const existing = await roomRepository.findFirst({
-      where: { hostel_id: hostel.id, room_no: validated.data.room_no, is_active: true },
+      where: { hostel_id: hostel.id, room_no: validated.data.room_no },
     });
-    
-    if (existing) {
+
+    if (existing && existing.is_active) {
       console.warn(`[rooms.POST] Room ${validated.data.room_no} already exists in hostel ${hostel.id}`);
       return ApiResponse.error(ApiError.conflict(`Room ${validated.data.room_no} already exists`));
     }
 
-    const room = await roomRepository.create({
-      data: {
-        id: crypto.randomUUID(),
-        hostel_id: hostel.id,
-        room_no: validated.data.room_no,
-        capacity: validated.data.capacity,
-        floor: validated.data.floor,
-        floor_id: validated.data.floor_id,
-        room_type: validated.data.room_type,
-        base_rent: validated.data.base_rent,
-        wifi_name: validated.data.wifi_name,
-        wifi_password: validated.data.wifi_password,
-        notes: validated.data.notes,
-      },
-    });
+    const fields = {
+      capacity: validated.data.capacity,
+      floor: validated.data.floor,
+      floor_id: validated.data.floor_id,
+      room_type: validated.data.room_type,
+      base_rent: validated.data.base_rent,
+      wifi_name: validated.data.wifi_name,
+      wifi_password: validated.data.wifi_password,
+      notes: validated.data.notes,
+    };
+
+    // Adding back a retired number revives that row rather than inserting a
+    // second one — the history hanging off it stays where it is.
+    const room = existing
+      ? await roomRepository.update({
+          where: { id: existing.id },
+          data: { ...fields, is_active: true, sort_order: null, updated_at: new Date() },
+        })
+      : await roomRepository.create({
+          data: {
+            id: crypto.randomUUID(),
+            hostel_id: hostel.id,
+            room_no: validated.data.room_no,
+            ...fields,
+          },
+        });
 
     console.log(`[rooms.POST] Room created: ${room.id}`);
     await eventSystem.trigger("room_created", {

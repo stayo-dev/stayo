@@ -8,7 +8,7 @@ import { ErrorCard } from '@shared/ui/error/ErrorCard';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import type { Floor } from '@shared/mocks/rooms';
 import { useHostelRooms } from '../hooks/useHostelRooms';
-import { RoomsReorderPanel } from '../components/RoomsReorderPanel';
+import { ArrangeBuilding } from '../building/ArrangeBuilding';
 import { RoomSheetModal } from '../room-sheet/RoomSheetModal';
 import { AddRoomModal, type AddRoomDefaults } from '../add-room/AddRoomModal';
 import { AddFloorModal } from '../add-floor/AddFloorModal';
@@ -17,6 +17,7 @@ import { BuildingTip } from '../building/BuildingTip';
 import { HostelBuilding } from '../building/HostelBuilding';
 import { LensChips } from '../building/LensChips';
 import { countRooms, floorPlate, roomMatches, stackFloors, type Lens } from '../building/buildingModel';
+import { floorOrderForSave, orderChanged } from '../building/arrangeModel';
 import { mostCommon, newFloorRoomNumbers, nextRoomNumber, suggestFloorName, suggestRoomDefaults } from '../building/roomSuggestions';
 import type { RoomOccupant, RoomWithOccupants } from '../types';
 
@@ -46,8 +47,10 @@ const roomLike = (room: RoomWithOccupants) => ({ number: room.number, capacity: 
  * the roof adds a floor, the "+" under a floor adds a room there, a floor's
  * plate edits it, a room opens its sheet, a free bed invites into it.
  *
- * "Arrange" (ADR-064) still swaps the building for `RoomsReorderPanel`,
- * where floors and rooms are dragged into place and saved explicitly.
+ * "Arrange" (ADR-064) no longer swaps the building for a list — as of
+ * ADR-206 it *is* the building, drawn by `ArrangeBuilding` from the same
+ * `stackFloors`, with floors and rooms picked up in place and saved
+ * explicitly.
  */
 export function HostelRoomsPage() {
   const { hostelId } = useParams<{ hostelId: string }>();
@@ -69,13 +72,19 @@ export function HostelRoomsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   /**
-   * "Arrange" mode (ADR-064): drag floors and rooms into place, nothing
-   * persists until Save. `pendingFloors`/`pendingRoomsByFloor` are a local
-   * staging copy, seeded from `layout` when the mode is entered and diffed
-   * against it on Save so only floors/rooms that actually moved are written.
+   * "Arrange" mode (ADR-064, redrawn as the building itself in ADR-206): drag
+   * floors and rooms into place, nothing persists until Save.
+   * `pendingStack`/`pendingRoomsByFloor` are a local staging copy, seeded from
+   * `layout` when the mode is entered and diffed against it on Save so only
+   * floors/rooms that actually moved are written.
+   *
+   * `pendingStack` is held **top floor first**, the order the building draws,
+   * so arrange mode and the tab it came from can never disagree about which
+   * way the hostel points. `floorOrderForSave` does the single reversal the
+   * ascending `sort_order` column needs.
    */
   const [reorderMode, setReorderMode] = useState(false);
-  const [pendingFloors, setPendingFloors] = useState<Floor[]>([]);
+  const [pendingStack, setPendingStack] = useState<Floor[]>([]);
   const [pendingRoomsByFloor, setPendingRoomsByFloor] = useState<Map<string, RoomWithOccupants[]>>(new Map());
   const [isSavingOrder, setIsSavingOrder] = useState(false);
 
@@ -87,7 +96,7 @@ export function HostelRoomsPage() {
   const noMatch = searching && !allRooms.some((room) => roomMatches(room, search));
 
   const startReorder = () => {
-    setPendingFloors([...layout.floors].sort((a, b) => a.order - b.order));
+    setPendingStack(stacked);
     setPendingRoomsByFloor(new Map(layout.roomsByFloor));
     setReorderMode(true);
   };
@@ -96,13 +105,15 @@ export function HostelRoomsPage() {
     setIsSavingOrder(true);
     try {
       const tasks: Promise<unknown>[] = [];
-      const originalFloorIds = [...layout.floors].sort((a, b) => a.order - b.order).map((f) => f.id);
-      const newFloorIds = pendingFloors.map((f) => f.id);
-      if (newFloorIds.join() !== originalFloorIds.join()) tasks.push(layout.reorderFloors(newFloorIds));
+      // Both sides go through `floorOrderForSave`, so the comparison and the
+      // write agree about direction even when neither has changed.
+      const originalFloorIds = floorOrderForSave(stacked);
+      const newFloorIds = floorOrderForSave(pendingStack);
+      if (orderChanged(originalFloorIds, newFloorIds)) tasks.push(layout.reorderFloors(newFloorIds));
       for (const [floorId, rooms] of pendingRoomsByFloor) {
         const originalIds = (layout.roomsByFloor.get(floorId) ?? []).map((r) => r.id);
         const newIds = rooms.map((r) => r.id);
-        if (newIds.join() !== originalIds.join()) tasks.push(layout.reorderRooms(floorId, newIds));
+        if (orderChanged(originalIds, newIds)) tasks.push(layout.reorderRooms(floorId, newIds));
       }
       await Promise.all(tasks);
       setReorderMode(false);
@@ -210,7 +221,7 @@ export function HostelRoomsPage() {
           >
             Cancel
           </button>
-          <span className="flex-1 text-center text-[11.5px] text-muted-foreground">Drag ⠿ to reorder floors and rooms</span>
+          <span className="flex-1 text-center text-[11.5px] text-muted-foreground">Hold a room or a floor to move it</span>
           <button
             type="button"
             onClick={saveReorder}
@@ -264,10 +275,10 @@ export function HostelRoomsPage() {
       {layout.isError ? (
         <ErrorCard compact error={layout.error} onRetry={() => layout.refetch()} />
       ) : reorderMode ? (
-        <RoomsReorderPanel
-          floors={pendingFloors}
+        <ArrangeBuilding
+          stacked={pendingStack}
           roomsByFloor={pendingRoomsByFloor}
-          onFloorsChange={setPendingFloors}
+          onStackChange={setPendingStack}
           onRoomsChange={(floorId, rooms) => setPendingRoomsByFloor((prev) => new Map(prev).set(floorId, rooms))}
         />
       ) : (
