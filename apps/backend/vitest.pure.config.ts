@@ -216,6 +216,11 @@ export default defineConfig({
       'tests/profiles-route-authorization.test.ts',
       'tests/supabase-session-linking.test.ts',
       'tests/auth-hardening-security.test.ts',
+      // OTP-table lockdown (C3, 2026-09-14 audit): source-level guard that the
+      // RLS/revoke migration stays intact and the OTP service never grows a
+      // browser-Supabase read path. Only reads source files. The runtime proof
+      // lives in tests/otp-rls-db.test.ts (DB-backed, not in this pure suite).
+      'tests/otp-rls-lockdown.test.ts',
       // Bulk import: parse-stage failures must name the real cause. The
       // row-limit message used to be swallowed by parseFile's own catch.
       'tests/bulk-import-parse-errors.test.ts',
