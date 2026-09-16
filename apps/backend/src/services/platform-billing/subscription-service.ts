@@ -70,6 +70,16 @@ async function requirePlanByCode(code: string) {
  * as a defensive fallback (e.g. a pre-existing owner from before this hook
  * existed, or the hostel-creation call failing) — it must never be the
  * mechanism a normal owner's Founding slot is decided by.
+ *
+ * SECOND caller (Admin -> Add Owner, direct/field marketing): `lead-
+ * invitation-service.ts`'s `activateInvitationForOwner` also calls this,
+ * immediately at signup completion, but ONLY for leads tagged
+ * `acquisition_source: DIRECT_ADMIN` — an admin has already hand-picked
+ * that owner's plan before the invitation was even sent, so there is
+ * nothing to gain from waiting for a hostel to exist. This does not affect
+ * organic/website owners: for them the PRIMARY caller above is unchanged,
+ * and the "first 10 owners" auto-Founding-assignment inside this function
+ * still only ever fires from that hostel-creation trigger.
  */
 async function ensureForOwner(ownerId: string) {
   const existing = await prisma.owner_subscriptions.findUnique({ where: { owner_id: ownerId } });

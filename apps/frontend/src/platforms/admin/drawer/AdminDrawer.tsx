@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
+import { Avatar } from '../ui/Avatar';
 
 /**
  * Drawer chrome only — header, scrolling body, optional sticky footer.
@@ -10,7 +11,7 @@ import { X } from 'lucide-react';
  * (see drawerParam.ts), not here.
  */
 export function AdminDrawer({
-  title, subtitle, initials, tint = '#B46A55', radius = 'rounded-xl',
+  title, subtitle, initials, tint = '#B46A55', radius = 'rounded-xl', photoUrl,
   onClose, footer, children,
 }: {
   title: string;
@@ -18,6 +19,8 @@ export function AdminDrawer({
   initials: string;
   tint?: string;
   radius?: string;
+  /** The subject's stored photo, when one exists — falls back to initials. */
+  photoUrl?: string | null;
   onClose: () => void;
   footer?: ReactNode;
   children: ReactNode;
@@ -38,12 +41,7 @@ export function AdminDrawer({
       />
       <div className="relative flex h-screen w-[580px] max-w-[94vw] animate-[adDrawer_.28s_cubic-bezier(.22,1,.36,1)] flex-col bg-[#F7F3EF] shadow-[-24px_0_60px_rgba(30,20,12,.24)]">
         <div className="flex flex-none items-center gap-3 border-b border-[#E9DFD3] bg-white px-6 py-5">
-          <span
-            className={`flex h-[46px] w-[46px] flex-none items-center justify-center ${radius} font-admin text-base font-bold text-white`}
-            style={{ background: tint }}
-          >
-            {initials}
-          </span>
+          <Avatar photoUrl={photoUrl} initials={initials} tint={tint} size={46} radius={radius} />
           <div className="min-w-0 flex-1">
             <div className="truncate font-admin text-[17px] font-extrabold tracking-[-0.02em] text-[#221E1A]">
               {title}

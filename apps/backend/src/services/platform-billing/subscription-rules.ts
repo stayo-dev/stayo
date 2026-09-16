@@ -69,7 +69,8 @@ export function canTransition(from: SubscriptionStatus, to: SubscriptionStatus):
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Payment review guards — mirrors owner-documents/document-review-guards.ts
+// Payment review guards — mirrors the pattern the (now removed) admin
+// owner-document review guard used.
 // ────────────────────────────────────────────────────────────────────────────
 
 export const REVIEWABLE_PAYMENT_STATUSES = ["SUBMITTED", "UNDER_REVIEW"] as const;

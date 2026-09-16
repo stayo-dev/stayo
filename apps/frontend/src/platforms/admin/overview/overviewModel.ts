@@ -20,13 +20,14 @@ export type KpiCard = {
   delta?: string;
   deltaTone?: 'green' | 'amber';
   unavailable?: boolean;
+  /** Present when the card should navigate somewhere on click. */
+  to?: string;
 };
 
 type DashboardKpis = {
   new_leads?: number;
   active_hostels?: number;
   owners_total?: number;
-  documents_awaiting_review?: number;
   collections?: number;
   pending_approvals?: number;
 };
@@ -37,9 +38,8 @@ function num(value: number | undefined): string {
   return value == null ? DASH : Number(value).toLocaleString('en-IN');
 }
 
-export function buildKpis(kpis: DashboardKpis | undefined): KpiCard[] {
+export function buildKpis(kpis: DashboardKpis | undefined, openReports?: number): KpiCard[] {
   const k = kpis ?? {};
-  const pendingKyc = k.documents_awaiting_review;
 
   return [
     {
@@ -52,41 +52,39 @@ export function buildKpis(kpis: DashboardKpis | undefined): KpiCard[] {
       label: 'Subscription revenue',
       value: k.collections == null ? DASH : formatInr(k.collections),
       sub: 'owner plans, this month',
+      to: '/admin/revenue',
     },
     {
       key: 'leads',
       label: 'New leads',
       value: num(k.new_leads),
       sub: 'from the landing page',
+      to: '/admin/leads',
     },
-    {
-      key: 'kyc',
-      label: 'Pending KYC',
-      value: num(pendingKyc),
-      sub: 'documents awaiting review',
-      // "action" is a nudge, not a measurement — only shown when there is
-      // genuinely something to act on.
-      delta: pendingKyc ? 'action' : undefined,
-      deltaTone: 'amber',
-    },
+    // 'Pending KYC' removed with the KYC Approvals screen it linked to.
     {
       key: 'hostels',
       label: 'Live hostels',
       value: num(k.active_hostels),
       sub: 'discoverable to tenants',
+      // No dedicated hostel-listings screen exists in v1 (marketplace admin
+      // shelved — ADR-170); Owners is where a hostel's status actually
+      // surfaces today, via the owner drawer.
+      to: '/admin/owners',
     },
     {
       key: 'owners',
       label: 'Active owners',
       value: num(k.owners_total),
       sub: 'on the platform',
+      to: '/admin/owners',
     },
     {
       key: 'reports',
       label: 'Open reports',
-      value: DASH,
-      sub: 'no report backend yet',
-      unavailable: true,
+      value: num(openReports),
+      sub: 'from owners, tenants & reservations',
+      to: '/admin/reports',
     },
   ];
 }
@@ -104,6 +102,12 @@ export type FunnelRow = { key: string; label: string; count: number; width: stri
  * The design's first row, "Landing visitors", is deliberately absent — that
  * needs web analytics this platform does not collect, and inventing it would
  * make every conversion rate below it fictional.
+ *
+ * Every `PlatformLeadStatus` must land in exactly one bucket below, or a lead
+ * sitting in that status is silently dropped from the funnel entirely
+ * (including "Leads captured", which is meant to be the full inflow).
+ * CONTACTED / DEMO / NEGOTIATING sit between the initial review and a formal
+ * approval decision, so they fold into "In review" alongside UNDER_REVIEW.
  */
 export function buildFunnel(counts: Record<string, number>): FunnelRow[] {
   const c = (key: string) => Number(counts?.[key] ?? 0);
@@ -112,7 +116,7 @@ export function buildFunnel(counts: Record<string, number>): FunnelRow[] {
   const created = live + c('HOSTEL_CREATED');
   const activated = created + c('OWNER_ACTIVATED');
   const invited = activated + c('INVITE_SENT') + c('APPROVED');
-  const reviewed = invited + c('UNDER_REVIEW');
+  const reviewed = invited + c('UNDER_REVIEW') + c('CONTACTED') + c('DEMO') + c('NEGOTIATING');
   const captured = reviewed + c('NEW') + c('LOST');
 
   const rows: Omit<FunnelRow, 'width'>[] = [
@@ -150,38 +154,20 @@ export type ReviewRow = {
   unavailable?: boolean;
 };
 
-export function buildReviewQueue({ kyc, listings }: { kyc: number; listings: number }): ReviewRow[] {
+export function buildReviewQueue({ reports }: { reports: number }): ReviewRow[] {
   return [
-    {
-      key: 'kyc',
-      title: 'Owner KYC to verify',
-      sub: 'Onboarding documents submitted',
-      count: kyc,
-      to: '/admin/kyc',
-      tint: '#FBF1DE',
-      border: '#F0DFC4',
-      ink: '#B8792B',
-    },
-    {
-      key: 'listings',
-      title: 'Hostels to publish',
-      sub: 'Awaiting Discovery approval',
-      count: listings,
-      to: '/admin/listings',
-      tint: '#F5E9E3',
-      border: '#ECD9CF',
-      ink: '#B46A55',
-    },
+    // The 'Owner KYC to verify' row was removed with the KYC Approvals
+    // screen it linked to. The 'Hostels to publish' row (Stayo Discover
+    // approval queue) was removed in v1 — ADR-170, marketplace shelved.
     {
       key: 'reports',
-      title: 'Urgent bug reports',
-      sub: 'Reporting backend not built yet',
-      count: DASH,
+      title: 'Open reports',
+      sub: 'From owners, tenants & reservations',
+      count: reports,
       to: '/admin/reports',
       tint: '#FBEFE9',
       border: '#EFD6CE',
       ink: '#B3402F',
-      unavailable: true,
     },
   ];
 }

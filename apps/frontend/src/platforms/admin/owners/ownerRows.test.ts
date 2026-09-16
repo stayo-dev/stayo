@@ -1,14 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import { toOwnerRows, ownerStats, formatInr } from './ownerRows';
 
+// Field names match the real `/platform-admin/owners` response shape
+// (route.ts): `capacity`, `collected_this_month`, `plan_name` — not the
+// `beds`/`monthly_revenue`/`plan` names this fixture used to use, which
+// silently mapped to `undefined` on every real request and always showed
+// 0 beds / ₹0 GMV / "Unassigned" regardless of the actual owner.
 const api = [
   {
-    id: 'o1', name: 'Sunrise Residency', city: 'Guntur', hostels: 3, beds: 137,
-    monthly_revenue: 820000, plan: 'Pro', is_active: true,
+    id: 'o1', name: 'Sunrise Residency', city: 'Guntur', hostels: 3, capacity: 137,
+    collected_this_month: 820000, plan_name: 'Pro', is_active: true,
+    photo_url: 'https://ik.imagekit.io/stayo/owners/o1-photo.jpg',
   },
   {
-    id: 'o2', name: 'Coliv Spaces', city: null, hostels: 0, beds: 0,
-    monthly_revenue: 0, plan: null, is_active: false,
+    id: 'o2', name: 'Coliv Spaces', city: null, hostels: 0, capacity: 0,
+    collected_this_month: 0, plan_name: null, is_active: false, photo_url: null,
   },
 ];
 
@@ -59,6 +65,14 @@ describe('toOwnerRows', () => {
 
   it('tolerates an empty list', () => {
     expect(toOwnerRows([])).toEqual([]);
+  });
+
+  it('carries the uploaded photo through when the owner has one', () => {
+    expect(toOwnerRows(api)[0].photoUrl).toBe('https://ik.imagekit.io/stayo/owners/o1-photo.jpg');
+  });
+
+  it('falls back to null (not a broken image) when no photo was uploaded', () => {
+    expect(toOwnerRows(api)[1].photoUrl).toBeNull();
   });
 });
 

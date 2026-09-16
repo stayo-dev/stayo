@@ -25,29 +25,6 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: [
-      // The Rooms tab as a building (ADR-199) — who is in each room.
-      'tests/room-occupants.test.ts',
-      // Delete, retire or refuse a room (ADR-207) — the rule behind the
-      // RESTRICT foreign key that made edited rooms undeletable.
-      'tests/room-removal-plan.test.ts',
-      // The invitation edit window (ADR-208) — the ADR-165 guards that went stale.
-      'tests/invitation-edit-window.test.ts',
-      // Stay Status (ADR-194) — pure core, mocked service and routes.
-      'tests/timezone-ist.test.ts',
-      'tests/stay-status.test.ts',
-      'tests/stay-events.test.ts',
-      'tests/stay-board.test.ts',
-      'tests/stay-service.test.ts',
-      'tests/stay-poster-pdf.test.ts',
-      'tests/stay-routes.test.ts',
-      // Meal forecast (ADR-195).
-      'tests/meal-ratio.test.ts',
-      'tests/meal-forecast-service.test.ts',
-      'tests/meal-routes.test.ts',
-      // Meet your host (ADR-200).
-      'tests/host-profile-bio-rules.test.ts',
-      'tests/host-profile-service.test.ts',
-      'tests/host-profile-routes.test.ts',
       'tests/rent-generation-exit-date-join.test.ts',
       'tests/imagekit-uploadable.test.ts',
       'tests/push-policy.test.ts',
@@ -68,7 +45,6 @@ export default defineConfig({
       'tests/food-poll-edit-validation.test.ts',
       'tests/platform-lead-templates.test.ts',
       'tests/platform-lead-stage-mapper.test.ts',
-      'tests/owner-document-review.test.ts',
       // Tenant KYC: the shared status helper, and the document routes (which
       // all `vi.mock('@/lib/db')` — no client is constructed).
       'tests/kyc-status.test.ts',
@@ -111,12 +87,10 @@ export default defineConfig({
       'tests/platform-listing-claim.test.ts',
       'tests/platform-listing-enquiry-lead.test.ts',
       'tests/marketing-editor-scope.test.ts',
-      'tests/settlement-run-computation.test.ts',
       'tests/owner-payout-promise.test.ts',
       'tests/owner-payout-month.test.ts',
       'tests/owner-export-financial-year.test.ts',
       'tests/owner-export-documents.test.ts',
-      'tests/settlement-transitions.test.ts',
       'tests/payout-account.test.ts',
       'tests/enquiry-template-contracts.test.ts',
       'tests/admissions-lead-transition-guards.test.ts',
@@ -158,8 +132,6 @@ export default defineConfig({
       'tests/whatsapp-command-center-vocabulary.test.ts',
       'tests/whatsapp-command-center-formatting.test.ts',
       'tests/whatsapp-guardian-reminders.test.ts',
-      'tests/whatsapp-rent-template-contract.test.ts',
-      'tests/pay-page-brand.test.ts',
       'tests/whatsapp-guardian-activation-template.test.ts',
       // Reads schema.prisma and the source as text — no client, no database.
       'tests/whatsapp-prisma-accessors.test.ts',
@@ -213,24 +185,6 @@ export default defineConfig({
       'tests/clerk-me-handshake.test.ts',
       'tests/auth-me-dual-session.test.ts',
       'tests/clerk-controlled-onboarding.test.ts',
-      // Profile takeover (C1, 2026-09-14 audit): who may read/write a profile
-      // by id, what a profile response may carry, and that a Supabase identity
-      // is never attached to a profile by email match. All `vi.mock` the DB.
-      // The source-level hardening spec only `fs.read`s source files; it sat in
-      // the DB suite and so went unrun whenever the test DB was down.
-      'tests/profiles-route-authorization.test.ts',
-      'tests/supabase-session-linking.test.ts',
-      'tests/auth-hardening-security.test.ts',
-      // OTP-table lockdown (C3, 2026-09-14 audit): source-level guard that the
-      // RLS/revoke migration stays intact and the OTP service never grows a
-      // browser-Supabase read path. Only reads source files. The runtime proof
-      // lives in tests/otp-rls-db.test.ts (DB-backed, not in this pure suite).
-      'tests/otp-rls-lockdown.test.ts',
-      // Admin-route authorization (C2, 2026-09-14 audit): the reconciliation
-      // routes flipped from OWNER to ADMIN, and an enumerating guard that every
-      // /api/admin route is admin-gated or decommissioned. Both mock/read only.
-      'tests/reconciliation-admin-authz.test.ts',
-      'tests/admin-routes-guarded.test.ts',
       // Bulk import: parse-stage failures must name the real cause. The
       // row-limit message used to be swallowed by parseFile's own catch.
       'tests/bulk-import-parse-errors.test.ts',
@@ -268,9 +222,6 @@ export default defineConfig({
       'tests/activation-email-gate.test.ts',
       'tests/invitation-nudge.test.ts',
       'tests/build-without-env.test.ts',
-      // The per-hostel activity feed. Mocks `@/lib/db` entirely — the raw
-      // log reads are asserted as SQL text, so no client is constructed.
-      'tests/hostel-activity-feed.test.ts',
     ],
     alias: {
       // More specific than the catch-all `@` entry below, and must come

@@ -10,9 +10,9 @@ import { requireAdmin, subscriptionErrorResponse } from "@/src/services/platform
 /**
  * POST /api/platform-admin/subscription-payments/[id]/approve
  *
- * Admin-only (ADR-172, Phase 2). Follows the same review posture as
- * `app/api/platform-admin/owner-documents/[id]/review/route.ts`: the uploader
- * (owner) can never do this, and a payment can be approved only once.
+ * Admin-only (ADR-172, Phase 2). Follows the same review posture the (now
+ * removed) owner-document review route used: the uploader (owner) can never
+ * do this, and a payment can be approved only once.
  *
  * One transaction: payment → APPROVED, subscription activated/updated (billing
  * period, next renewal, plan applied — upgrade immediate, downgrade deferred to

@@ -40,6 +40,12 @@
   100% { transform: translateX(0); opacity: 1; }
 }
 
+/* Mirror of adDrawer for the mobile nav, which slides in from the left. */
+@keyframes adDrawerLeft {
+  0% { transform: translateX(-40px); opacity: 0.4; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
 /* Scrollbar treatment from the design's helmet block. */
 .admin-console ::-webkit-scrollbar {
   width: 9px;
