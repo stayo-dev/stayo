@@ -169,6 +169,19 @@ export function deriveHostelSections(source: ConfigSource): ConfigSection[] {
           state: agreementMonths ? 'configured' : 'attention',
           route: AGREEMENT_DURATION_ROUTE,
         },
+        {
+          key: 'guardian-verification',
+          title: 'Guardian verification',
+          // Never 'attention'. Both answers are legitimate choices an owner is
+          // entitled to make, and an absent flag means the strict one — so
+          // there is no gap here to nag about, only a setting to read. ADR-212.
+          detail:
+            String(tenantRules?.guardian_verification ?? '').toUpperCase() === 'OPTIONAL'
+              ? 'Recorded, not chased'
+              : 'Chased until verified',
+          state: 'configured',
+          route: '/owner/more/configuration/guardian-verification',
+        },
       ],
     },
   ];

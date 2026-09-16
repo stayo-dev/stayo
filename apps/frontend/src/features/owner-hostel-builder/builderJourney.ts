@@ -1,5 +1,5 @@
 import type { BuilderStage } from './useHostelBuilder';
-import { agreementStepBlocker, type AgreementChoice } from './agreementSetup';
+import { onboardingRulesStepBlocker, type AgreementChoice, type GuardianChoice } from './agreementSetup';
 
 /**
  * Where the owner is in the build, and how much is left.
@@ -90,6 +90,7 @@ export function continueBlocker(
     hostelType?: string | null;
     floorBlocker: string | null;
     agreementChoice?: AgreementChoice;
+    guardianChoice?: GuardianChoice;
     hasSignature?: boolean;
   },
 ): string | null {
@@ -102,6 +103,12 @@ export function continueBlocker(
     return null;
   }
   if (stage === 'fill') return state.floorBlocker;
-  if (stage === 'agreement') return agreementStepBlocker(state.agreementChoice ?? null, Boolean(state.hasSignature));
+  if (stage === 'agreement') {
+    return onboardingRulesStepBlocker(
+      state.agreementChoice ?? null,
+      Boolean(state.hasSignature),
+      state.guardianChoice ?? null,
+    );
+  }
   return null;
 }

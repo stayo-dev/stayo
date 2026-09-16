@@ -112,6 +112,11 @@ const MoreConfigAgreementRequirementPage = lazy(() =>
     default: m.MoreConfigAgreementRequirementPage,
   })),
 );
+const MoreConfigGuardianVerificationPage = lazy(() =>
+  import('@features/owner-more/pages/MoreConfigGuardianVerificationPage').then((m) => ({
+    default: m.MoreConfigGuardianVerificationPage,
+  })),
+);
 const MoreConfigNotificationsPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigNotificationsPage').then((m) => ({ default: m.MoreConfigNotificationsPage })),
 );
@@ -296,6 +301,7 @@ export function OwnerRoutes() {
         <Route path="/owner/more/configuration/agreements/edit" element={<MoreConfigAgreementEditorPage />} />
         <Route path="/owner/more/configuration/agreements/template" element={<MoreConfigAgreementTemplatePage />} />
         <Route path="/owner/more/configuration/agreements/requirement" element={<MoreConfigAgreementRequirementPage />} />
+        <Route path="/owner/more/configuration/guardian-verification" element={<MoreConfigGuardianVerificationPage />} />
         <Route path="/owner/more/configuration/agreements/clauses" element={<MoreConfigAgreementClausesPage />} />
         <Route path="/owner/more/configuration/agreements/signature" element={<MoreConfigAgreementSignaturePage />} />
         <Route path="/owner/more/configuration/notifications" element={<MoreConfigNotificationsPage />} />
