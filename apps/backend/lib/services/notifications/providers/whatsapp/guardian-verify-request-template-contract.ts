@@ -15,16 +15,22 @@
  * So the guardian answers directly: one message, one button, nothing to read
  * out, nothing to type. The tenant's only job is to ask.
  *
- * The approved template:
+ * The template as actually submitted (2026-09-16, `guardian_invitation`, UTILITY/en):
  *
- *   Header: Confirm your ward
- *   Body:   Hello {{1}}, {{2}} has listed you as their parent/guardian for
- *           their stay at {{3}} on Stayo. Please confirm so we can keep you
- *           updated about their stay, rent and safety.
- *           If you do not know this person, ignore this message.
- *   Footer: Stayo Property Management
- *   Button: [Yes, I confirm] — quick reply, payload "ConfirmWard"
- *   Validity: 24 hours
+ *   Body:   Hello {{1}},
+ *           {{2}} has listed you as their *parent/guardian* for their stay at
+ *           {{3}} on Stayo.
+ *           Please confirm so we can keep you updated about their stay, rent
+ *           and safety.
+ *
+ *           _If you do not know this person, please ignore this message._
+ *   Button: [Yes, I confirm] — a static quick reply
+ *   Validity: 12 hours
+ *
+ * No header and no footer, unlike its sibling
+ * `stayo_guardian_whatsapp_activated`. Nothing here depends on either — this
+ * module only ever supplies BODY parameters — so the difference is cosmetic,
+ * recorded so the next reader is not looking for components that do not exist.
  *
  * ── Three things this contract exists to protect ──
  *
@@ -55,13 +61,34 @@ import { tenantDisplayName } from "./guardian-activation-template-contract";
 export const GUARDIAN_VERIFY_REQUEST_TEMPLATE = {
   envVar: "WHATSAPP_GUARDIAN_VERIFY_TEMPLATE",
   languageEnvVar: "WHATSAPP_GUARDIAN_VERIFY_LANGUAGE",
-  defaultName: "stayo_guardian_verify_request",
+  /**
+   * Breaks this account's `stayo_*` naming convention because the template was
+   * created by hand as `guardian_invitation` and Meta does not allow renaming —
+   * the choice is this name or a second submission and another review cycle.
+   * The default points at the template that really exists, so a misconfigured
+   * environment fails by falling back to the OTP relay rather than by sending
+   * to a name nothing answers to.
+   */
+  defaultName: "guardian_invitation",
   defaultLanguage: "en",
   /** BODY {{1}}, {{2}}, {{3}} in order. */
   bodyParameters: ["guardian_name", "tenant_name", "hostel_name"] as const,
-  /** One quick-reply button. Its payload is a keyword, not an id. */
+  /**
+   * One quick-reply button.
+   *
+   * `payload` is the id we would send if this were ever made a *dynamic* quick
+   * reply. The submitted template uses a **static** one, so Meta echoes the
+   * button's own text back on tap — which is why `isGuardianConfirmReply`
+   * matches both spellings rather than just this payload.
+   */
   quickReply: { text: "Yes, I confirm", payload: "ConfirmWard" },
-  /** How long a request stands before the guardian has to be asked again. */
+  /**
+   * How long an outstanding request stands before the guardian must be asked
+   * again. Deliberately longer than the template's own 12-hour *delivery*
+   * validity: that window governs whether WhatsApp still bothers to deliver an
+   * undelivered message, while this one governs how long a guardian who did
+   * receive it has to actually pick up their phone and tap.
+   */
   validityHours: 24,
 } as const;
 

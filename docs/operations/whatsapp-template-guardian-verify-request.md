@@ -1,4 +1,15 @@
-# Template: `stayo_guardian_verify_request`
+# Template: `guardian_invitation`
+
+> **Status, 2026-09-16:** submitted and **PENDING** Meta review, as `guardian_invitation` —
+> *not* the `stayo_guardian_verify_request` this document originally proposed. Meta does not allow
+> renaming a template, so the code's default was changed to match reality rather than the
+> convention. What is actually live differs from the draft below in three ways, all harmless:
+> **no header**, **no footer**, and a **12-hour** delivery validity. The body variables and the
+> quick-reply text are exactly as specified, which is all the code depends on.
+>
+> A PENDING template **cannot be sent**, so the feature stays on the OTP fallback until it is
+> APPROVED *and* `WHATSAPP_GUARDIAN_VERIFY_TEMPLATE` is set.
+
 
 The message that removes the code relay from guardian verification (ADR-212, `docs/obsidian/Decisions.md`).
 Submit this in WhatsApp Manager → Manage templates → Create template, or with the API call at the
@@ -9,7 +20,7 @@ relay — nothing breaks, the friction just stays.
 
 | Field | Value |
 |---|---|
-| **Name** | `stayo_guardian_verify_request` |
+| **Name** | `guardian_invitation` (as submitted) |
 | **Category** | **Utility** — not Marketing. It is a confirmation request about an existing relationship the tenant asserted, not a promotion. Marketing would also make it opt-out-able and more expensive. |
 | **Language** | English (`en`) |
 
@@ -65,7 +76,7 @@ Yes, I confirm
 Set both, in Vercel and in the root `.env`:
 
 ```
-WHATSAPP_GUARDIAN_VERIFY_TEMPLATE=stayo_guardian_verify_request
+WHATSAPP_GUARDIAN_VERIFY_TEMPLATE=guardian_invitation
 WHATSAPP_GUARDIAN_VERIFY_LANGUAGE=en
 ```
 

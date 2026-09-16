@@ -25,7 +25,10 @@ afterEach(() => {
 
 describe("guardian verify-request template contract", () => {
   it("falls back to the default name and language", () => {
-    expect(guardianVerifyRequestTemplateName()).toBe("stayo_guardian_verify_request");
+    // `guardian_invitation`, not a `stayo_*` name: the template was created by
+    // hand under that name and Meta does not allow renaming. The default has to
+    // match what actually exists on the WABA.
+    expect(guardianVerifyRequestTemplateName()).toBe("guardian_invitation");
     expect(guardianVerifyRequestTemplateLanguage()).toBe("en");
   });
 
@@ -38,8 +41,16 @@ describe("guardian verify-request template contract", () => {
 
   it("reports itself unconfigured until a template name is set, so the caller can fall back", () => {
     expect(isGuardianVerifyRequestConfigured()).toBe(false);
-    process.env[GUARDIAN_VERIFY_REQUEST_TEMPLATE.envVar] = "stayo_guardian_verify_request";
+    process.env[GUARDIAN_VERIFY_REQUEST_TEMPLATE.envVar] = "guardian_invitation";
     expect(isGuardianVerifyRequestConfigured()).toBe(true);
+  });
+
+  it("recognises the static quick reply Meta actually echoes back", () => {
+    // The submitted template uses a *static* quick reply, so a tap arrives as
+    // the button's own text rather than as `quickReply.payload`. Both must
+    // resolve, or the button does nothing.
+    expect(isGuardianConfirmReply(GUARDIAN_VERIFY_REQUEST_TEMPLATE.quickReply.text)).toBe(true);
+    expect(isGuardianConfirmReply(GUARDIAN_VERIFY_REQUEST_TEMPLATE.quickReply.payload)).toBe(true);
   });
 
   it("carries a quick reply whose payload is a keyword, not a CC: id", () => {
