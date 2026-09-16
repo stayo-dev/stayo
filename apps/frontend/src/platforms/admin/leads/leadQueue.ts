@@ -95,6 +95,17 @@ export function canReject(status: string): boolean {
   return s === 'NEW' || s === 'UNDER_REVIEW';
 }
 
+/**
+ * Can this lead still be marked lost? Mirrors REJECTABLE_STATUSES /
+ * canRejectLead on the server (the same guard backs POST .../lost) — once an
+ * activation link has been issued, or the owner is already on the platform,
+ * "lost" no longer means anything and the server rejects it.
+ */
+export function canMarkLost(status: string): boolean {
+  const s = String(status).toUpperCase();
+  return s === 'NEW' || s === 'UNDER_REVIEW' || s === 'CONTACTED' || s === 'DEMO' || s === 'NEGOTIATING';
+}
+
 /** Can this lead be approved (or its failed send retried)? */
 export function canApprove(status: string): boolean {
   return isActionable(status);

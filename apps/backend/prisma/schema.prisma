@@ -3619,6 +3619,14 @@ enum ListingSource {
 /// historical row; migration 067 moved every row to CONTACTED and no code
 /// path writes it. Postgres cannot drop an enum value without recreating the
 /// type, so it stays.
+/// How a lead entered the acquisition funnel. WEBSITE is the public lead
+/// form (docs/obsidian ADR context: self-serve capture); DIRECT_ADMIN is an
+/// admin-started field/direct-marketing onboarding (Admin -> Add Owner).
+enum PlatformLeadAcquisitionSource {
+  WEBSITE
+  DIRECT_ADMIN
+}
+
 enum PlatformLeadStatus {
   NEW
   UNDER_REVIEW
@@ -3730,6 +3738,19 @@ model platform_leads {
 
   created_at         DateTime           @default(now()) @db.Timestamptz(6)
   updated_at         DateTime?          @db.Timestamptz(6)
+
+  /// Defaults every existing/website row to WEBSITE — zero behavior change
+  /// for the public lead form. Set to DIRECT_ADMIN only by
+  /// POST /api/platform-admin/owners (Admin -> Add Owner).
+  acquisition_source PlatformLeadAcquisitionSource @default(WEBSITE)
+  /// Admin's plan choice for a DIRECT_ADMIN lead, captured before the owner
+  /// account (and therefore any owner_subscriptions row) exists. Applied by
+  /// LeadInvitationService.activateInvitationForOwner once signup completes;
+  /// never read for WEBSITE leads.
+  intended_plan_code String?
+  /// Admin profile id who set intended_plan_code, for SUBSCRIPTION_PLAN_CHANGED
+  /// audit attribution when the plan is actually applied at signup completion.
+  intended_plan_set_by String?
 
   activities platform_lead_activities[]
   lead_notes platform_lead_notes[]

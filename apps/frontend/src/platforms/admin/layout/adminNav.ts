@@ -1,6 +1,6 @@
 import {
-  LayoutGrid, TrendingUp, Users, ShieldCheck, Building2,
-  BarChart3, Wallet, CreditCard, Bug, Megaphone, Settings, Star } from 'lucide-react';
+  LayoutGrid, TrendingUp, Users,
+  BarChart3, CreditCard, Bug, Megaphone, Settings, Star } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export type AdminNavItem = {
@@ -16,7 +16,6 @@ export type AdminNavGroup = { label: string; items: AdminNavItem[] };
 
 export type AdminNavCounts = {
   leads?: number;
-  kyc?: number;
   listings?: number;
   /** Reviews waiting to be published — nothing reaches a listing without this. */
   reviews?: number;
@@ -53,8 +52,8 @@ export function buildAdminNav(counts: AdminNavCounts): AdminNavGroup[] {
     {
       label: 'Review',
       items: [
-        item('/admin/kyc', 'KYC Approvals', ShieldCheck, counts.kyc ?? 0, 'amber'),
-        item('/admin/listings', 'Hostel Listings', Building2, counts.listings ?? 0, 'accent'),
+        // 'KYC Approvals' removed from the console entirely.
+        // 'Hostel Listings' (Stayo Discover marketplace admin) shelved for v1 — ADR-170.
         item('/admin/reviews', 'Reviews', Star, counts.reviews ?? 0, 'amber'),
       ],
     },
@@ -62,7 +61,6 @@ export function buildAdminNav(counts: AdminNavCounts): AdminNavGroup[] {
       label: 'Business',
       items: [
         item('/admin/revenue', 'Revenue & Analytics', BarChart3),
-        item('/admin/settlements', 'Settlements', Wallet),
         item('/admin/subscriptions', 'Subscriptions', CreditCard),
       ],
     },

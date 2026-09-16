@@ -53,3 +53,6 @@ apps/backend/scratch/
 # Obsidian writes per-machine workspace and UI state here when docs/obsidian is
 # opened as a vault. The notes are the shared artefact; the window layout is not.
 /docs/obsidian/.obsidian/
+
+# Vercel CLI project link, per-machine
+.vercel/

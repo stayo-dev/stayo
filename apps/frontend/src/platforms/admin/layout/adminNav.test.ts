@@ -13,26 +13,24 @@ describe('buildAdminNav', () => {
   });
 
   it('omits a badge when the count is zero or missing', () => {
-    const groups = buildAdminNav({ kyc: 0 });
-    const kyc = groups.flatMap((g) => g.items).find((i) => i.to === '/admin/kyc');
-    expect(kyc?.badge).toBe(0);
+    const groups = buildAdminNav({ reviews: 0 });
+    const reviews = groups.flatMap((g) => g.items).find((i) => i.to === '/admin/reviews');
+    expect(reviews?.badge).toBe(0);
   });
 
   it('shows a badge when there is real work waiting', () => {
-    const groups = buildAdminNav({ kyc: 4, listings: 2 });
-    const items = groups.flatMap((g) => g.items);
-    expect(items.find((i) => i.to === '/admin/kyc')?.badge).toBe(4);
-    expect(items.find((i) => i.to === '/admin/listings')?.badge).toBe(2);
     expect(buildAdminNav({ reviews: 3 }).flatMap((g) => g.items).find((i) => i.to === '/admin/reviews')?.badge)
       .toBe(3);
   });
 
   it('exposes every screen the console routes to', () => {
+    // 'Hostel Listings' dropped in v1 (ADR-170) — marketplace shelved.
+    // 'KYC Approvals' removed from the console entirely.
     const paths = buildAdminNav({}).flatMap((g) => g.items).map((i) => i.to);
     expect(paths).toEqual([
       '/admin', '/admin/leads', '/admin/owners',
-      '/admin/kyc', '/admin/listings', '/admin/reviews',
-      '/admin/revenue', '/admin/settlements', '/admin/subscriptions',
+      '/admin/reviews',
+      '/admin/revenue', '/admin/subscriptions',
       '/admin/reports', '/admin/broadcasts', '/admin/settings',
     ]);
   });
@@ -50,6 +48,6 @@ describe('isNavItemActive', () => {
   });
 
   it('stays lit on a nested child route', () => {
-    expect(isNavItemActive('/admin/listings', '/admin/listings/abc')).toBe(true);
+    expect(isNavItemActive('/admin/owners', '/admin/owners/abc')).toBe(true);
   });
 });

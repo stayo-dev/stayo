@@ -4,6 +4,7 @@ import {
   availableActions,
   canActivateFounding,
   capacityText,
+  initialsOf,
   isReviewablePayment,
   overrideActive,
   paymentStatusView,
@@ -11,6 +12,23 @@ import {
   revenueTiles,
   subStatusView,
 } from './subscriptionAdminView';
+
+describe('initialsOf', () => {
+  it('takes the first letter of the first two words, uppercased', () => {
+    expect(initialsOf('Shiva Prakash')).toBe('SP');
+    expect(initialsOf('srinivas rao')).toBe('SR');
+  });
+
+  it('falls back to "?" for a missing or blank name', () => {
+    expect(initialsOf(null)).toBe('?');
+    expect(initialsOf(undefined)).toBe('?');
+    expect(initialsOf('  ')).toBe('?');
+  });
+
+  it('takes just one initial for a single-word name', () => {
+    expect(initialsOf('Shiva')).toBe('S');
+  });
+});
 
 describe('subStatusView', () => {
   it('maps the four live statuses', () => {

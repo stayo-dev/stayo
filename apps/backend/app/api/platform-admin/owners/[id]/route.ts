@@ -54,7 +54,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     });
     const hostelIds = hostels.map((h: { id: string }) => h.id);
 
-    const [activeTenants, capacity, collected, dues, documents, subscriptions, activity] = await Promise.all([
+    const [activeTenants, capacity, collected, dues, documents, identity, subscriptions, activity] = await Promise.all([
       prisma.tenants.groupBy({
         by: ["hostel_id"],
         where: { hostel_id: { in: hostelIds }, status: "ACTIVE" },
@@ -80,13 +80,19 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         select: { id: true, doc_type: true, status: true, review_note: true, uploaded_at: true, file_url: true },
         orderBy: { uploaded_at: "desc" },
       }),
+      // The owner's profile picture — stored on `profile_identity.photo_url`,
+      // never on `profile` (see app/api/owner/me/photo/route.ts).
+      prisma.profile_identity.findUnique({
+        where: { profile_id: owner.id },
+        select: { photo_url: true },
+      }),
       // ADR-172: one subscription per owner (not per hostel).
       prisma.owner_subscriptions.findUnique({
         where: { owner_id: owner.id },
         select: {
           status: true,
           next_renewal_at: true,
-          subscription_plans: { select: { price_paise: true } },
+          subscription_plans: { select: { price_paise: true, code: true, name: true } },
         },
       }),
       // Last recorded actions. Sparse by nature — only a few services write
@@ -154,9 +160,13 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         name: owner.name,
         email: owner.email,
         phone: owner.phone,
-        city: owner.city,
+        // An owner's own profile.city is essentially never filled in — the
+        // real city lives on their hostel. Fall back to the first hostel's
+        // city rather than showing a dash when one exists.
+        city: owner.city ?? hostels[0]?.city ?? null,
         joined_at: owner.created_at,
         is_active: owner.is_active,
+        photo_url: identity?.photo_url ?? null,
 
         hostels: hostels.length,
         hostels_live: hostelRows.filter((h: any) => h.listing_status === "LIVE").length,
@@ -175,6 +185,11 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         documents_rejected: documents.some((d: any) => String(d.status).toUpperCase() === "REJECTED"),
 
         mrr,
+        // Whatever plan the owner is on right now, active or not (see the
+        // same note in platform-admin/owners/route.ts) — "Unassigned" is
+        // reserved for owners with no `owner_subscriptions` row at all.
+        plan_name: ownerSub?.subscription_plans?.name ?? null,
+        plan_code: ownerSub?.subscription_plans?.code ?? null,
         subscription_statuses: ownerSub ? [ownerSubStatus as string] : [],
         next_renewal_at: ownerSub?.next_renewal_at ?? null,
       },

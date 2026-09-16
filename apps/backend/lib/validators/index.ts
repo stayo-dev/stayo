@@ -80,6 +80,19 @@ export const LeadSelfServeSchema = z.object({
   current_tooling: z.string().trim().max(120).optional(),
 });
 
+// Admin -> Add Owner (field/direct marketing). Only the 3 fields the admin
+// collects in person; hostel name, city etc. are filled in later by the
+// owner during real onboarding. See POST /api/platform-admin/owners.
+export const AdminAddOwnerSchema = z.object({
+  name: z.string().trim().min(2),
+  email: z.string().trim().email(),
+  phone: z.string().trim().min(8).max(20),
+});
+
+export const OnboardingSetupSchema = z.object({
+  plan_code: z.string().trim().min(1),
+});
+
 export const LeadLinkEmailSchema = z.object({
   google_email: z.string().trim().email().max(255),
 });

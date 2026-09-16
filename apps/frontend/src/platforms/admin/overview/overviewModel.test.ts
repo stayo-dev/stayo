@@ -5,17 +5,16 @@ const kpis = {
   new_leads: 47,
   active_hostels: 3910,
   owners_total: 1284,
-  documents_awaiting_review: 4,
   collections: 342000,
   pending_approvals: 6,
 };
 
 describe('buildKpis', () => {
-  it('returns the design\'s six cards, in order', () => {
+  it('returns five cards, in order (KYC Approvals was removed)', () => {
     const cards = buildKpis(kpis);
-    expect(cards).toHaveLength(6);
+    expect(cards).toHaveLength(5);
     expect(cards.map((c) => c.key)).toEqual([
-      'revenue', 'leads', 'kyc', 'hostels', 'owners', 'reports',
+      'revenue', 'leads', 'hostels', 'owners', 'reports',
     ]);
   });
 
@@ -29,16 +28,15 @@ describe('buildKpis', () => {
     expect(buildKpis(kpis).find((c) => c.key === 'revenue')?.label).toBe('Subscription revenue');
   });
 
-  it('marks the KYC card as needing action only when something is pending', () => {
-    expect(buildKpis(kpis).find((c) => c.key === 'kyc')?.delta).toBe('action');
-    expect(buildKpis({ ...kpis, documents_awaiting_review: 0 }).find((c) => c.key === 'kyc')?.delta)
-      .toBeUndefined();
+  it('reports the open-ticket count passed in, and routes to Reports & Bugs', () => {
+    const reports = buildKpis(kpis, 7).find((c) => c.key === 'reports');
+    expect(reports?.value).toBe('7');
+    expect(reports?.unavailable).toBeUndefined();
+    expect(reports?.to).toBe('/admin/reports');
   });
 
-  it('shows open reports as unavailable rather than as zero', () => {
-    const reports = buildKpis(kpis).find((c) => c.key === 'reports');
-    expect(reports?.value).toBe('—');
-    expect(reports?.unavailable).toBe(true);
+  it('shows open reports as an em dash when the count is not passed in', () => {
+    expect(buildKpis(kpis).find((c) => c.key === 'reports')?.value).toBe('—');
   });
 
   it('never invents a delta for metrics the API returns no comparison for', () => {
@@ -47,16 +45,22 @@ describe('buildKpis', () => {
     expect(cards.find((c) => c.key === 'owners')?.delta).toBeUndefined();
   });
 
+  it('routes every card somewhere, so the whole KPI row is clickable', () => {
+    const cards = buildKpis(kpis, 7);
+    expect(cards.every((c) => typeof c.to === 'string' && c.to.startsWith('/admin'))).toBe(true);
+  });
+
   it('survives a missing kpis payload', () => {
     const cards = buildKpis(undefined);
-    expect(cards).toHaveLength(6);
+    expect(cards).toHaveLength(5);
     expect(cards.find((c) => c.key === 'leads')?.value).toBe('—');
   });
 });
 
 describe('buildFunnel', () => {
   const counts = {
-    NEW: 100, UNDER_REVIEW: 40, APPROVED: 10, INVITE_SENT: 20,
+    NEW: 100, UNDER_REVIEW: 40, CONTACTED: 5, DEMO: 3, NEGOTIATING: 2,
+    APPROVED: 10, INVITE_SENT: 20,
     OWNER_ACTIVATED: 15, HOSTEL_CREATED: 8, LIVE: 12, LOST: 25,
   };
 
@@ -64,7 +68,17 @@ describe('buildFunnel', () => {
     const rows = buildFunnel(counts);
     const captured = rows.find((r) => r.key === 'captured');
     // every lead ever captured, lost ones included
-    expect(captured?.count).toBe(230);
+    expect(captured?.count).toBe(240);
+  });
+
+  it('folds CONTACTED/DEMO/NEGOTIATING into "In review" instead of dropping them', () => {
+    // Previously these three statuses were never read by buildFunnel, so a
+    // lead sitting in one of them vanished from every stage, including
+    // "Leads captured" (the intended full-inflow count).
+    const rows = buildFunnel(counts);
+    const reviewed = rows.find((r) => r.key === 'reviewed');
+    // invited(65) + UNDER_REVIEW(40) + CONTACTED(5) + DEMO(3) + NEGOTIATING(2)
+    expect(reviewed?.count).toBe(115);
   });
 
   it('counts a lead that went live as having passed through every earlier stage', () => {
@@ -103,19 +117,18 @@ describe('conversionRate', () => {
 });
 
 describe('buildReviewQueue', () => {
-  it('keeps the design\'s three rows', () => {
-    expect(buildReviewQueue({ kyc: 4, listings: 2 })).toHaveLength(3);
+  it('keeps just the reports row (KYC and Discovery listings rows were both removed)', () => {
+    expect(buildReviewQueue({ reports: 2 })).toHaveLength(1);
   });
 
-  it('routes each row to the screen that clears it', () => {
-    const rows = buildReviewQueue({ kyc: 4, listings: 2 });
-    expect(rows.find((r) => r.key === 'kyc')?.to).toBe('/admin/kyc');
-    expect(rows.find((r) => r.key === 'listings')?.to).toBe('/admin/listings');
+  it('routes the row to the screen that clears it', () => {
+    const rows = buildReviewQueue({ reports: 2 });
+    expect(rows.find((r) => r.key === 'reports')?.to).toBe('/admin/reports');
   });
 
-  it('shows the bug-report row as unavailable, not as an empty queue', () => {
-    const reports = buildReviewQueue({ kyc: 0, listings: 0 }).find((r) => r.key === 'reports');
-    expect(reports?.unavailable).toBe(true);
-    expect(reports?.count).toBe('—');
+  it('reports the open-ticket count passed in, not a placeholder', () => {
+    const reports = buildReviewQueue({ reports: 3 }).find((r) => r.key === 'reports');
+    expect(reports?.unavailable).toBeUndefined();
+    expect(reports?.count).toBe(3);
   });
 });

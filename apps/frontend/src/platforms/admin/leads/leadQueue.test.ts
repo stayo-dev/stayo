@@ -3,6 +3,7 @@ import {
   isActionable,
   canApprove,
   canReject,
+  canMarkLost,
   sortForQueue,
   ageLabel,
   isStale,
@@ -52,6 +53,17 @@ describe('actionability', () => {
     expect(canReject('UNDER_REVIEW')).toBe(true);
     expect(canReject('APPROVED')).toBe(false);
     expect(canReject('INVITE_SENT')).toBe(false);
+  });
+
+  // Regression: the drawer was offering "Mark lost" on an already-converted
+  // lead (status LIVE) — the server's canRejectLead guard would refuse it,
+  // but the button had no business being there in the first place.
+  it('stops offering mark-lost once the lead is in flight or already won', () => {
+    expect(canMarkLost('NEW')).toBe(true);
+    expect(canMarkLost('NEGOTIATING')).toBe(true);
+    for (const s of ['APPROVED', 'INVITE_SENT', 'OWNER_ACTIVATED', 'HOSTEL_CREATED', 'LIVE', 'LOST']) {
+      expect(canMarkLost(s)).toBe(false);
+    }
   });
 
   it('never shows a raw enum value as a label', () => {

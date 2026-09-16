@@ -40,7 +40,10 @@ export async function GET(req: NextRequest) {
       documentsAwaitingReview,
       ownersTotal,
     ] = await Promise.all([
-      prisma.platform_leads.count({ where: { status: "NEW" } }),
+      // Admin -> Add Owner leads (acquisition_source DIRECT_ADMIN) are a
+      // manual onboarding action, not a landing-page lead — this card's own
+      // subtitle says "from the landing page", so they're excluded.
+      prisma.platform_leads.count({ where: { status: "NEW", acquisition_source: "WEBSITE" } }),
       prisma.hostels.count({ where: { verification_status: "PENDING" } }),
       prisma.hostels.count({ where: { listing_status: "LIVE" } }),
       prisma.tenants.count(),

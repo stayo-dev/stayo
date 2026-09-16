@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { platformAdminService } from '@features/platform-admin/api';
 import { DrawerSection, KeyValueRows } from './AdminDrawer';
-import { HostProfileSection } from './HostProfileSection';
 import { formatInr } from '../owners/ownerRows';
 
 const STATUS_COLOR: Record<string, string> = {
@@ -73,11 +72,13 @@ export function OwnerDrawerBody({ ownerId }: { ownerId: string }) {
                 </span>
               ),
             },
+            // "Unassigned" — not blank — when the owner has no
+            // `owner_subscriptions` row at all (pre-ADR-172-backfill gap),
+            // matching the Owners table's own convention.
+            { k: 'Plan', v: owner.plan_name || 'Unassigned' },
           ]}
         />
       </DrawerSection>
-
-      <HostProfileSection ownerId={ownerId} />
 
       <DrawerSection title="This month">
         <KeyValueRows

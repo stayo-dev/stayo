@@ -36,26 +36,15 @@ export function RevenuePage() {
     <div className="flex flex-col gap-5 p-5 lg:p-7">
       <p className="text-[12px] text-[#7A6F63]">
         <span className="font-semibold text-[#221E1A]">Stayo subscription revenue</span> — what owners pay Stayo to use the
-        platform. This is separate from tenant rent (which owners collect from their tenants and is shown under Settlements /
-        Owners). No GST is applied.
+        platform. This is separate from tenant rent, which owners collect from their tenants directly. No GST is applied.
       </p>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard label="MRR" value={t.mrr} sub="active subscriptions" />
         <StatCard label="ARR" value={t.arr} />
         <StatCard label="Collected this month" value={t.collectedThisMonth} sub={`${d.kpis?.invoices_this_month ?? 0} invoices`} />
-        <StatCard label="Lifetime collected" value={t.lifetime} sub={`${d.kpis?.invoices_lifetime ?? 0} invoices`} />
         <StatCard label="Active subscriptions" value={String(t.activeSubs)} />
         <StatCard label="Payments to review" value={String(t.pendingReview)} valueTone={t.pendingReview > 0 ? 'amber' : 'ink'} />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <StatCard label="Pending payment" value={String(d.subscriptions?.pending_payment ?? 0)} />
-        <StatCard label="Paused" value={String(d.subscriptions?.paused ?? 0)} />
-        <StatCard label="Expired" value={String(d.subscriptions?.expired ?? 0)} />
-        <StatCard label="Cancelled" value={String(d.subscriptions?.cancelled ?? 0)} />
-        <StatCard label="Approved payments" value={String(d.payments?.approved ?? 0)} />
-        <StatCard label="Rejected payments" value={String(d.payments?.rejected ?? 0)} />
       </div>
 
       <section className="flex flex-col gap-2">
@@ -80,6 +69,23 @@ export function RevenuePage() {
                 return null;
             }
           }}
+          renderMobileCard={(row: any) => (
+            <div className="flex items-center justify-between gap-3">
+              <span className="min-w-0 truncate text-[13px] font-semibold text-[#221E1A]">{planLabel(row)}</span>
+              <div className="flex flex-none items-center gap-3 text-right">
+                <div>
+                  <div className="text-[9px] font-bold uppercase tracking-[.05em] text-[#A2978B]">Owners</div>
+                  <div className="text-[12.5px] font-semibold text-[#221E1A]">{row.owners}</div>
+                </div>
+                <div>
+                  <div className="text-[9px] font-bold uppercase tracking-[.05em] text-[#A2978B]">Plan MRR</div>
+                  <div className="text-[12.5px] font-semibold text-[#221E1A]">
+                    {row.price_paise != null ? formatPaise(row.price_paise * row.owners) : '—'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         />
       </section>
     </div>
