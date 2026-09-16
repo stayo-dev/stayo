@@ -21,6 +21,10 @@ export type CreatePlatformLeadInput = {
   current_tooling?: string | null;
   phone_verified: boolean;
   acquisition_source: "WEBSITE" | "DIRECT_ADMIN";
+  /** Which landing-page surface produced the lead, e.g. "landing_page" / "pricing_plan". */
+  source?: string | null;
+  /** `subscription_plans.code` the visitor clicked "Subscribe" on, when opened from the pricing section. */
+  plan_code?: string | null;
 };
 
 export type CreatePlatformLeadResult =
@@ -53,6 +57,8 @@ export async function createPlatformLead(input: CreatePlatformLeadInput): Promis
         bed_count: input.bed_count ?? null,
         pain_point: input.pain_point || null,
         current_tooling: input.current_tooling || null,
+        source: input.source || null,
+        plan_code: input.plan_code || null,
         status: "NEW",
         acquisition_source: input.acquisition_source,
         tracking_token: crypto.randomBytes(32).toString("hex"),

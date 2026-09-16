@@ -13,6 +13,7 @@ import {
   conversationProgress,
   buildLeadPayload,
   type LeadAnswers,
+  type LeadContext,
 } from '../leadConversation';
 
 interface HostelLeadModalProps {
@@ -20,6 +21,10 @@ interface HostelLeadModalProps {
   onClose: () => void;
   prefillName?: string;
   googleEmail?: string;
+  /** Where this conversation was opened from — e.g. a pricing-plan "Subscribe" click. */
+  context?: LeadContext;
+  /** Shown above the first question when `context.planCode` is set, so the plan choice is visibly carried over. */
+  planLabel?: string;
 }
 
 const inputStyle =
@@ -42,7 +47,7 @@ type Stage = 'questions' | 'otp' | 'done' | 'duplicate';
  * All step/validation logic lives in the pure, tested `leadConversation`
  * module; this component is the renderer.
  */
-export function HostelLeadModal({ open, onClose, prefillName, googleEmail }: HostelLeadModalProps) {
+export function HostelLeadModal({ open, onClose, prefillName, googleEmail, context, planLabel }: HostelLeadModalProps) {
   const [stage, setStage] = useState<Stage>('questions');
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<LeadAnswers>(EMPTY_ANSWERS);
@@ -76,7 +81,7 @@ export function HostelLeadModal({ open, onClose, prefillName, googleEmail }: Hos
   const validationError = validateAnswer(index, answers);
 
   const saveLead = async () => {
-    const result = await hostelLeadsApi.submitLead(buildLeadPayload(answers, googleEmail));
+    const result = await hostelLeadsApi.submitLead(buildLeadPayload(answers, googleEmail, context));
     setTrackingToken(result.tracking_token);
     setStage(result.duplicate ? 'duplicate' : 'done');
   };
@@ -216,6 +221,12 @@ export function HostelLeadModal({ open, onClose, prefillName, googleEmail }: Hos
 
           {stage === 'questions' && (
             <>
+              {planLabel && (
+                <div className="mb-4 inline-flex w-fit items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-[12px] font-bold text-primary">
+                  <Check className="h-3 w-3" strokeWidth={3} />
+                  {planLabel}
+                </div>
+              )}
               <Dialog.Title className="mb-1 font-display text-[21px] font-extrabold leading-tight text-foreground">
                 {question.prompt}
               </Dialog.Title>

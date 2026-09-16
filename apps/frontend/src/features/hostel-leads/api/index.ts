@@ -28,6 +28,8 @@ export const hostelLeadsApi = {
     pain_point?: string;
     current_tooling?: string;
     google_email?: string;
+    source?: string;
+    plan_code?: string;
   }) => {
     const response = await api.post('/leads/self-serve', data);
     return response.data as { success: boolean; id: string; status: string; tracking_token: string; duplicate: boolean };

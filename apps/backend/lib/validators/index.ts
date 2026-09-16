@@ -78,6 +78,11 @@ export const LeadSelfServeSchema = z.object({
   // the column should never absorb an essay from a crafted request.
   pain_point: z.string().trim().max(120).optional(),
   current_tooling: z.string().trim().max(120).optional(),
+  // Acquisition surface (e.g. "landing_page", "pricing_plan") and, when the
+  // visitor clicked "Subscribe" on a specific tier, that plan's
+  // subscription_plans.code — free-form on both, see schema.prisma comments.
+  source: z.string().trim().max(60).optional(),
+  plan_code: z.string().trim().max(40).optional(),
 });
 
 // Admin -> Add Owner (field/direct marketing). Only the 3 fields the admin

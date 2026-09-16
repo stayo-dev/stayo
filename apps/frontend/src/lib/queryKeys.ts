@@ -206,6 +206,10 @@ export const queryKeys = {
     disclosures: () => ['profile', 'residency-history', 'disclosures'],
   },
 
+  public: {
+    subscriptionPlans: () => ['public', 'subscription-plans'],
+  },
+
   discover: {
     reviews: (slug: string) => ['discover', 'reviews', slug],
     all: () => ['discover'],

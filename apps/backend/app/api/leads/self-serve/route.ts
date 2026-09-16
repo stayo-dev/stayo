@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     if (!validated.success) {
       return apiError("Validation error", "VALIDATION_ERROR", 400);
     }
-    const { name, hostel_name, phone, google_email, city, bed_count, pain_point, current_tooling } =
+    const { name, hostel_name, phone, google_email, city, bed_count, pain_point, current_tooling, source, plan_code } =
       validated.data;
 
     const normalizedPhone = normalizeWhatsAppPhone(phone);
@@ -49,6 +49,8 @@ export async function POST(req: NextRequest) {
       bed_count,
       pain_point,
       current_tooling,
+      source,
+      plan_code,
       acquisition_source: "WEBSITE",
     });
     if (result.duplicate) {

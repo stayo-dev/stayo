@@ -42,6 +42,10 @@ const PUBLIC_ROUTES = [
   "/api/webhooks/notifications/whatsapp",
   "/api/webhooks/payments/razorpay",
   "/api/plans",
+  // Landing page pricing section — prices/capacity are business rules, not
+  // secrets, and the route returns no owner-specific data. Exact path, not
+  // the broader "/api/public" prefix — this list is prefix-matched.
+  "/api/public/subscription-plans",
   "/api/revalidate",
   "/api/payments/pay/",
   // Vercel-Cron hits these with `Authorization: Bearer $CRON_SECRET`,

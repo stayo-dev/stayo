@@ -312,12 +312,13 @@ async function reserveFoundingSlotInTx(tx: Tx, ownerId: string, foundingPlanId: 
 }
 
 /**
- * Plans an owner may choose — public plans only. FOUNDING is never selectable:
- * it is auto-assigned to the first 10 owners at subscription creation
- * (`ensureForOwner`), so it must not appear here for anyone. `ownerId` is kept
- * for signature stability with the route.
+ * Public plans only — FOUNDING is never included: it is auto-assigned to the
+ * first 10 owners at subscription creation (`ensureForOwner`), never
+ * selectable. Contains no owner-specific data, so this is safe to call from
+ * an unauthenticated route (the marketing site's pricing section) as well as
+ * the owner-session-gated plan picker.
  */
-async function listPlansForOwner(_ownerId: string) {
+async function listPublicPlans() {
   const plans = await prisma.subscription_plans.findMany({
     where: { is_active: true },
     orderBy: { price_paise: "asc" },
@@ -341,7 +342,13 @@ async function listPlansForOwner(_ownerId: string) {
       max_extra_beds: p.max_extra_beds,
       extra_bed_price_paise: p.extra_bed_price_paise,
       is_public: p.is_public,
+      description: p.description,
     }));
+}
+
+/** `ownerId` is kept for signature stability with the owner-session route. */
+async function listPlansForOwner(_ownerId: string) {
+  return listPublicPlans();
 }
 
 function makeInvoiceNumber(): string {
@@ -352,6 +359,7 @@ export const subscriptionService = {
   ensureForOwner,
   getForOwner,
   listPlansForOwner,
+  listPublicPlans,
   foundingSlotStatus,
   canOwnerTakeFounding,
   foundingPartnerNumber,
