@@ -3,6 +3,8 @@ import { needsPhoneOtp, type PhoneTrust } from './identityVerification';
 import { emailFieldPhase, emailHelperText, looksLikeEmail, type EmailRequirement } from './emailVerification';
 import type { EmailVerificationState } from '../useEmailVerification';
 import DateOfBirthField from './DateOfBirthField';
+import { GuardianDeferralBlock } from './GuardianDeferralBlock';
+import type { GuardianDeferralReason } from '@features/guardian-verification/guardianVerification';
 import { FLOW_INK } from '../skyTheme';
 import { GuidanceNote, GuidanceSummary, useFieldGuidance, useGuidance } from '../guidance/Guidance';
 import { AlertCircle, Camera, CheckCircle2, FileText, Mail, Receipt, Send, User } from 'lucide-react';
@@ -89,6 +91,17 @@ interface WelcomeIdentityStepProps {
   guardianOtpSending: boolean;
   guardianOtpCountdown: number;
   guardianOtpVerifying: boolean;
+  /** ADR-212 — send the one-tap confirmation request to the guardian. */
+  onAskGuardianToConfirm: () => void;
+  askingGuardian: boolean;
+  /** A request is out and we are waiting on the guardian's tap. */
+  guardianRequestSent: boolean;
+  /** Whether this hostel chases an unverified number, which decides what we promise. */
+  guardianChased: boolean;
+  /** When we will ask again, computed before anything is saved. */
+  guardianDeadline: Date | null;
+  guardianDeferralReason: GuardianDeferralReason | null;
+  onGuardianDeferralReasonChange: (reason: GuardianDeferralReason | null) => void;
   onSendGuardianOtp: () => void;
   onVerifyGuardianOtp: () => void;
   profileDraftStatus: 'idle' | 'restored' | 'saving' | 'saved';
@@ -417,6 +430,13 @@ export function WelcomeIdentityStep({
   guardianOtpSending,
   guardianOtpCountdown,
   guardianOtpVerifying,
+  onAskGuardianToConfirm,
+  askingGuardian,
+  guardianRequestSent,
+  guardianChased,
+  guardianDeadline,
+  guardianDeferralReason,
+  onGuardianDeferralReasonChange,
   onSendGuardianOtp,
   onVerifyGuardianOtp,
   profileDraftStatus,
@@ -754,6 +774,47 @@ export function WelcomeIdentityStep({
                 >
                   {guardianOtpVerifying ? 'Verifying...' : 'Verify Code'}
                 </button>
+              </>
+            )}
+            {/* ADR-212. Offered only once there is a number to verify, and
+                always below both ways of verifying it — see the component's
+                own note on why the order is the design. */}
+            {!isGuardianPhoneVerified && Boolean(profile.guardian_phone) && (
+              <>
+                {guardianRequestSent && (
+                  /* Waiting is the normal state here, not a pending failure —
+                     said plainly so nobody re-sends three times or assumes it
+                     broke. */
+                  <div className="mt-2.5 rounded-[10px] px-3 py-2.5" style={{ background: '#EAF6EF' }}>
+                    <div className="text-[12px] font-bold" style={{ color: '#1F7A52' }}>
+                      Sent to {String(profile.guardian_name || '').trim() || 'your guardian'}
+                    </div>
+                    <p className="mt-0.5 text-[11px] leading-relaxed" style={{ color: '#4A6B58' }}>
+                      They just need to tap “Yes, I confirm” on WhatsApp. You can carry on — this
+                      updates on its own.
+                    </p>
+                  </div>
+                )}
+                {!guardianOtpSent && !guardianRequestSent && (
+                  <button
+                    type="button"
+                    onClick={onAskGuardianToConfirm}
+                    disabled={askingGuardian}
+                    className="mt-2.5 w-full rounded-[10px] py-2.5 text-xs font-bold text-white disabled:opacity-60"
+                    style={{ background: '#B46A55' }}
+                  >
+                    {askingGuardian
+                      ? 'Sending…'
+                      : `Ask ${String(profile.guardian_name || '').trim() || 'them'} to confirm`}
+                  </button>
+                )}
+                <GuardianDeferralBlock
+                  guardianName={profile.guardian_name}
+                  chased={guardianChased}
+                  deadline={guardianDeadline}
+                  reason={guardianDeferralReason}
+                  onReasonChange={onGuardianDeferralReasonChange}
+                />
               </>
             )}
           </div>

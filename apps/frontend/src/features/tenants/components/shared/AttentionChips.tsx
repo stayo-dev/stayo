@@ -7,6 +7,7 @@ import {
   ClipboardCheck,
   UserX,
   UserCog,
+  ShieldAlert,
 } from 'lucide-react';
 import type { NormalizedTenant } from '@features/tenants/utils/normalize';
 
@@ -66,11 +67,33 @@ export function AttentionChips({ tenant, className = '' }: AttentionChipsProps) 
       icon: ClipboardCheck,
     },
     {
-      label: 'Guardian Unverified',
+      /*
+        This chip used to read "Guardian Unverified" while firing on
+        `!guardianPhone` — a *missing* number, which is a different thing and
+        the only thing it could mean back when every tenant's guardian was
+        verified before they could activate at all.
+        ADR-212 makes unverified a real, ordinary state, so the two are now
+        told apart and this one says what it actually checks.
+      */
+      label: 'No Guardian Number',
       show: !tenant.guardianPhone,
       bgColor: 'bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200 dark:border-yellow-900/30',
       textColor: 'text-yellow-700 dark:text-yellow-400',
       icon: UserX,
+    },
+    {
+      /*
+        Amber, never red, and never shown for a hostel that has chosen not to
+        chase it — `guardianVerificationChased` carries that decision through.
+        A parent who has not tapped a button has done nothing wrong, and an
+        owner's list should not imply otherwise about someone who never agreed
+        to be on it.
+      */
+      label: 'Guardian Not Verified',
+      show: Boolean(tenant.guardianPhone) && tenant.guardianVerified === false && tenant.guardianVerificationChased !== false,
+      bgColor: 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/30',
+      textColor: 'text-amber-700 dark:text-amber-400',
+      icon: ShieldAlert,
     },
     {
       label: 'Profile Incomplete',

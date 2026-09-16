@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { GuardianDeferralReason } from '@features/guardian-verification/guardianVerification';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
 import { resolveError, toErrorLine } from '@shared/errors';
@@ -94,6 +95,11 @@ export function ActivationPage() {
   const [guardianOtpVerified, setGuardianOtpVerified] = useState(false);
   const [guardianVerifiedPhone, setGuardianVerifiedPhone] = useState('');
   const [guardianOtpVerifying, setGuardianOtpVerifying] = useState(false);
+  // ADR-212 — the guardian-side confirmation, and the deferral that replaces
+  // the old hard gate.
+  const [askingGuardian, setAskingGuardian] = useState(false);
+  const [guardianRequestSent, setGuardianRequestSent] = useState(false);
+  const [guardianDeferralReason, setGuardianDeferralReason] = useState<GuardianDeferralReason | null>(null);
   const [guardianOverrideUnlocked, setGuardianOverrideUnlocked] = useState(false);
 
   const [profile, setProfile] = useState<ProfileDraft>({
@@ -344,6 +350,67 @@ export function ActivationPage() {
     return ok;
   };
 
+  /**
+   * Ask the guardian to confirm, instead of making the tenant relay a code
+   * (ADR-212).
+   *
+   * Falls back to the OTP path rather than erroring when the WhatsApp template
+   * is not live yet — Meta's approval has a lead time, and "we can't do that
+   * right now" is a worse answer than the one that has always worked.
+   */
+  /**
+   * Whether this hostel chases an unverified guardian number, and the date it
+   * would ask again. Both come from the server (ADR-212) — the screen renders
+   * the promise, it does not compute it, so what a tenant is told and what
+   * actually happens cannot drift apart.
+   *
+   * The deadline is derived here rather than read back, because it has to be
+   * shown at the moment of deferring — before anything has been saved and
+   * therefore before any deadline exists on the record.
+   */
+  const guardianChased = ctx?.verification_status?.guardian_chased ?? true;
+  const guardianDeadline = useMemo(() => {
+    const stored = ctx?.verification_status?.guardian_deadline_at;
+    if (stored) return new Date(stored);
+    if (!guardianChased) return null;
+    const date = new Date();
+    date.setDate(date.getDate() + 7);
+    return date;
+  }, [ctx?.verification_status?.guardian_deadline_at, guardianChased]);
+
+  const handleAskGuardianToConfirm = async () => {
+    const phone = (profile.guardian_phone || '').trim();
+    if (!phone) return setError('Please enter a parent/guardian mobile number first.');
+    const invalidMessage = invalidPhoneMessage({ guardian: phone }, ['guardian']);
+    if (invalidMessage) return setError(invalidMessage);
+    const duplicateMessage = duplicatePhoneMessage({ primary: profile.phone, guardian: phone });
+    if (duplicateMessage) return setError(duplicateMessage);
+
+    setAskingGuardian(true);
+    setError('');
+    try {
+      // Saved first: the request message names the guardian and the resident,
+      // and it reads both back off the tenancy — so a number typed but not yet
+      // submitted would send a message about the previous one.
+      await tenantService.updateActivationWorkflow({
+        token,
+        step: 'PROFILE',
+        data: { ...profile, guardian_verification_deferred_reason: null },
+      }).catch(() => undefined);
+
+      const result = await tenantService.sendGuardianConfirmRequest({ token });
+      if (result?.fallback_to_otp) {
+        await handleSendGuardianOtp();
+        return;
+      }
+      setGuardianRequestSent(true);
+    } catch (err: any) {
+      setError(err?.response?.data?.error?.message || 'Could not reach your guardian. Try the code instead.');
+    } finally {
+      setAskingGuardian(false);
+    }
+  };
+
   const handleSendGuardianOtp = async () => {
     const phone = (profile.guardian_phone || '').trim();
     if (!phone) return setError('Please enter a parent/guardian mobile number first.');
@@ -523,8 +590,19 @@ export function ActivationPage() {
       setError(duplicateMessage);
       return false;
     }
-    if ((isStudent || profile.guardian_phone) && !isGuardianPhoneVerified) {
-      setError('Please verify the parent/guardian phone number first.');
+    /**
+     * ADR-212. Unverified is no longer a dead end — but it is still not the
+     * default way through. The tenant has to have *said* they cannot do it now,
+     * which is one deliberate tap rather than a form they can submit past
+     * without noticing the question.
+     *
+     * The message names the way out rather than only the obstacle. "Verify
+     * first" was true and useless to someone whose parent was not answering.
+     */
+    if ((isStudent || profile.guardian_phone) && !isGuardianPhoneVerified && !guardianDeferralReason) {
+      setError(
+        'Verify the parent/guardian number, or tell us why it can’t be confirmed right now.',
+      );
       return false;
     }
     if (!profilePhotoFile && !profilePhotoPreview) {
@@ -547,7 +625,15 @@ export function ActivationPage() {
         const uploadRes = await tenantService.uploadActivationPhoto(token, profilePhotoFile);
         if (uploadRes?.photo_url) photoUrl = uploadRes.photo_url;
       }
-      const saved = await submitStep('PROFILE', { ...profile, photo_url: photoUrl, guardian_otp: guardianOtp });
+      const saved = await submitStep('PROFILE', {
+        ...profile,
+        photo_url: photoUrl,
+        guardian_otp: guardianOtp,
+        // ADR-212. Sent only when the tenant actually chose to defer — the
+        // backend reads its absence as "no deferral this time", which is what
+        // keeps a later save from re-stamping a clock that already started.
+        ...(guardianDeferralReason ? { guardian_verification_deferred_reason: guardianDeferralReason } : {}),
+      });
       if (saved) {
         clearProfileDraft(draftKey);
         setProfileDraftStatus('idle');
@@ -678,6 +764,13 @@ export function ActivationPage() {
             guardianOtpSending={guardianOtpSending}
             guardianOtpCountdown={guardianOtpCountdown}
             guardianOtpVerifying={guardianOtpVerifying}
+            onAskGuardianToConfirm={handleAskGuardianToConfirm}
+            askingGuardian={askingGuardian}
+            guardianRequestSent={guardianRequestSent}
+            guardianChased={guardianChased}
+            guardianDeadline={guardianDeadline}
+            guardianDeferralReason={guardianDeferralReason}
+            onGuardianDeferralReasonChange={setGuardianDeferralReason}
             onSendGuardianOtp={handleSendGuardianOtp}
             onVerifyGuardianOtp={handleVerifyGuardianOtp}
             profileDraftStatus={profileDraftStatus}

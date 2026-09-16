@@ -77,6 +77,18 @@ export const tenantService = {
         const response = await api.post('/tenants/activate/email/verify', { token, email, code });
         return unwrap(response);
     },
+    /**
+     * Ask the guardian to confirm with one tap, instead of relaying a code
+     * (ADR-212). Token-scoped, because mid-onboarding there is no session yet.
+     *
+     * `fallback_to_otp` in the response is not an error — it means the WhatsApp
+     * template is not live in this environment, and the caller should offer the
+     * code path instead.
+     */
+    sendGuardianConfirmRequest: async ({ token }) => {
+        const response = await api.post('/tenants/activate/guardian-request', { token });
+        return unwrap(response);
+    },
     sendPhoneOtp: async ({ phone, purpose }) => {
         const response = await api.post('/auth/send-phone-otp', { phone, purpose });
         return unwrap(response);

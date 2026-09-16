@@ -48,7 +48,12 @@ export interface ConfigSource {
     } | null;
     receipts?: { prefix?: string; format?: string; auto_email?: boolean; footer?: string } | null;
     branding?: { logo_url?: string | null; primary_color?: string | null; accent_color?: string | null } | null;
-    tenant_rules?: { invite_expiry_hours?: number; required_profile_fields?: string[] } | null;
+    tenant_rules?: {
+      invite_expiry_hours?: number;
+      required_profile_fields?: string[];
+      /** ADR-212. Absent means chased, matching the backend default. */
+      guardian_verification?: string;
+    } | null;
   } | null;
   counts: { properties: number; floors: number; rooms: number; beds: number };
 }

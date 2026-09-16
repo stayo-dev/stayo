@@ -33,7 +33,15 @@ export type ActivationContext = {
     activation_completed: boolean;
   };
   current_step: ActivationStep;
-  verification_status?: { guardian_verified?: boolean; emergency_verified?: boolean };
+  verification_status?: {
+    guardian_verified?: boolean;
+    emergency_verified?: boolean;
+    /** ADR-212 — all four computed server-side so the screen never decides policy. */
+    guardian_policy?: 'MANDATORY' | 'OPTIONAL';
+    guardian_state?: 'NOT_APPLICABLE' | 'VERIFIED' | 'PENDING_UNCHASED' | 'PENDING_GRACE' | 'PENDING_OVERDUE';
+    guardian_deadline_at?: string | null;
+    guardian_chased?: boolean;
+  };
   profile: { name?: string; email?: string; phone?: string };
   /**
    * The number the invitation was addressed to, and whether the backend can
