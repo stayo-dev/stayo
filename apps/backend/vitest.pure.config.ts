@@ -222,6 +222,12 @@ export default defineConfig({
       'tests/activation-email-gate.test.ts',
       'tests/invitation-nudge.test.ts',
       'tests/build-without-env.test.ts',
+      // ADR-212 — guardian verification as a hostel policy. Pure: takes the
+      // database's answers as arguments and reads nothing itself.
+      'tests/guardian-verification.test.ts',
+      // ADR-212 — the guardian-side confirmation: template contract and the
+      // multi-ward resolution. Both pure.
+      'tests/guardian-verify-request.test.ts',
     ],
     alias: {
       // More specific than the catch-all `@` entry below, and must come

@@ -56,6 +56,14 @@ type VerifyOtpInput = {
   otp: string;
   purpose: string;
   requestIp?: string | null;
+  /**
+   * The tenancy this verification is being taken for, stamped onto the row so
+   * the proof cannot later be read as belonging to a different tenant
+   * (ADR-212). Optional, because most purposes here — login, password reset,
+   * enquiry capture — are about a *person*, not a tenancy, and have nothing
+   * meaningful to put in it.
+   */
+  tenantId?: string | null;
 };
 
 export class AuthOtpService {
@@ -351,6 +359,10 @@ export class AuthOtpService {
             status: "VERIFIED",
             verified_at: now,
             provider_status: "VERIFIED",
+            // ADR-212. Written on verification rather than on send: a code is
+            // issued to a phone number, but it is only ever *proof* about the
+            // tenancy that was being onboarded when it came back.
+            ...(input.tenantId ? { tenant_id: input.tenantId } : {}),
           },
         });
 

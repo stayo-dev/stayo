@@ -11,6 +11,13 @@ function safeNormalizeWhatsApp(val: string | null | undefined): string {
     return "";
   }
 }
+import { isGuardianPhoneVerifiedForTenant } from "./guardian-verification-store";
+import {
+  isGuardianDeferralReason,
+  readGuardianVerificationPolicy,
+  resolveGuardianVerification,
+  type GuardianVerificationPolicy,
+} from "./guardian-verification";
 import { getTenantOperationalContext } from "../../../lib/hostel-context";
 import { allocationReconciliationService } from "../../../lib/services/allocation-reconciliation-service";
 import { eventLog } from "../../../lib/services/event-log-service";
@@ -625,16 +632,11 @@ export class ActivationWorkflowService {
 
     const gPhone = safeNormalizeWhatsApp(tenant.phone_2 || tenant.guardian_phone);
     const ePhone = safeNormalizeWhatsApp(tenant.phone_3 || tenant.emergency_contact);
+    const guardianPolicy = await this.resolveGuardianVerificationPolicy(tenant.hostel_id);
 
-    const guardianVerifiedRecord = gPhone
-      ? await prisma.phoneVerificationOtp.findFirst({
-        where: {
-          phone: gPhone,
-          purpose: "ParentVerify",
-          status: "VERIFIED",
-        },
-      })
-      : null;
+    const guardianVerified = gPhone
+      ? await isGuardianPhoneVerifiedForTenant(tenant.id, gPhone)
+      : false;
 
     const emergencyVerifiedRecord = ePhone
       ? await prisma.phoneVerificationOtp.findFirst({
@@ -646,11 +648,30 @@ export class ActivationWorkflowService {
       })
       : null;
 
+    /**
+     * ADR-212. The screen never decides the policy, the deadline or whether a
+     * wall is due — it renders what this says. The rule and the validation that
+     * enforces it come from one pure module either way, so the Identity screen
+     * and `saveProfile` cannot drift apart.
+     */
+    const guardianStatus = resolveGuardianVerification({
+      policy: guardianPolicy,
+      hasGuardianPhone: Boolean(gPhone),
+      verified: guardianVerified,
+      guardianRequired: String(tenant.profile_type || "STUDENT").toUpperCase() === "STUDENT",
+      deferredAt: tenant.guardian_verification_deferred_at || null,
+      now: new Date(),
+    });
+
     return {
       token_status: "VALID",
       verification_status: {
-        guardian_verified: guardianVerifiedRecord ? true : false,
+        guardian_verified: guardianVerified,
         emergency_verified: emergencyVerifiedRecord ? true : false,
+        guardian_policy: guardianPolicy,
+        guardian_state: guardianStatus.state,
+        guardian_deadline_at: guardianStatus.deadlineAt,
+        guardian_chased: guardianStatus.chased,
       },
       activation_state: state,
       activation_financial_status: activationFinancialStatus,
@@ -984,6 +1005,22 @@ export class ActivationWorkflowService {
       select: { preferences_config: true },
     });
     return isAgreementRequired(hostel?.preferences_config);
+  }
+
+  /**
+   * The hostel's guardian-verification policy (ADR-212). Deliberately mirrors
+   * `resolveAgreementRequired` above, down to selecting only
+   * `preferences_config` — this schema's `hostels` reads are explicit about
+   * their columns, and a `select`-less read here would ask for every column the
+   * model declares, which is how one field addition took production down on
+   * 2026-08-22.
+   */
+  private async resolveGuardianVerificationPolicy(hostelId: string): Promise<GuardianVerificationPolicy> {
+    const hostel = await prisma.hostels.findUnique({
+      where: { id: hostelId },
+      select: { preferences_config: true },
+    });
+    return readGuardianVerificationPolicy(hostel?.preferences_config);
   }
 
   private async signAgreement(profile: any, tenant: any, data: any, context: { ip: string; userAgent: string }, invitation?: any) {
@@ -1411,29 +1448,52 @@ export class ActivationWorkflowService {
 
     const currentGuardianPhone = tenant.phone_2 || tenant.guardian_phone;
     const isGuardianVerified = guardianPhone
-      ? await prisma.phoneVerificationOtp.findFirst({
-        where: {
-          phone: safeNormalizeWhatsApp(guardianPhone),
-          purpose: "ParentVerify",
-          status: "VERIFIED",
-        },
-      })
-      : null;
+      ? await isGuardianPhoneVerifiedForTenant(tenant.id, guardianPhone)
+      : false;
+
+    /**
+     * ADR-212: an unverified guardian no longer stops this save.
+     *
+     * It used to. A tenant standing at the reception desk whose parent was
+     * asleep, abroad, or simply not answering could not finish onboarding at
+     * all, and the hostel's real remedy was to abandon the attempt and try
+     * again another day. The verification was never the problem — waiting on
+     * an unreachable third party to let a present tenant continue was.
+     *
+     * So a code, when one is supplied, is still checked exactly as strictly as
+     * before: a *wrong* code is a hard failure, because accepting a bad proof
+     * would be worse than having none. What changed is that supplying no code
+     * is now a deferral rather than a rejection, and the deferral is recorded
+     * with the date and the reason so it can be chased rather than forgotten.
+     */
+    let guardianDeferral: { deferredAt: Date; reason: string | null } | null = null;
 
     if (guardianPhone && !isGuardianVerified) {
       const guardianOtp = data?.guardian_otp ? String(data.guardian_otp).trim() : "";
-      if (!guardianOtp) {
-        throw new Error("VALIDATION_ERROR: Verification code is required to verify the parent/guardian mobile number");
-      }
-      try {
-        await authOtpService.verifyPhoneOtp({
-          phone: guardianPhone,
-          otp: guardianOtp,
-          purpose: "ParentVerify",
-          requestIp: null,
-        });
-      } catch (otpErr: any) {
-        throw new Error(`VALIDATION_ERROR: Parent/Guardian mobile verification failed: ${otpErr.message || "Invalid or expired code"}`);
+      if (guardianOtp) {
+        try {
+          await authOtpService.verifyPhoneOtp({
+            phone: guardianPhone,
+            otp: guardianOtp,
+            purpose: "ParentVerify",
+            requestIp: null,
+            tenantId: tenant.id,
+          });
+        } catch (otpErr: any) {
+          throw new Error(`VALIDATION_ERROR: Parent/Guardian mobile verification failed: ${otpErr.message || "Invalid or expired code"}`);
+        }
+      } else {
+        const reason = isGuardianDeferralReason(data?.guardian_verification_deferred_reason)
+          ? String(data.guardian_verification_deferred_reason)
+          : null;
+        // Keep the original timestamp on a re-save. The clock measures how long
+        // the tenant has had, not how recently they edited their address — and
+        // restarting it on every profile edit would make the deadline
+        // unreachable by simply using the app.
+        guardianDeferral = {
+          deferredAt: tenant.guardian_verification_deferred_at || new Date(),
+          reason: reason ?? tenant.guardian_verification_deferred_reason ?? null,
+        };
       }
     }
 
@@ -1478,6 +1538,13 @@ export class ActivationWorkflowService {
           job_role: profileType === "WORKING_PROFESSIONAL" ? data?.job_role || undefined : null,
           photo_url: data?.photo_url || undefined,
           onboarding_last_activity_at: new Date(),
+          // ADR-212. Written through `compactObject`'s `undefined` skip, so a
+          // tenant who verified on this save leaves the deferral columns
+          // untouched rather than overwriting them with nulls — the record of
+          // *having* deferred is worth keeping once the clock has stopped
+          // mattering.
+          guardian_verification_deferred_at: guardianDeferral?.deferredAt ?? undefined,
+          guardian_verification_deferred_reason: guardianDeferral?.reason ?? undefined,
         }),
       });
       await tx.agreement.updateMany({
@@ -1503,7 +1570,13 @@ export class ActivationWorkflowService {
     // `guardian_phone` and the hostel back from the committed row rather than
     // re-deriving them here, so it cannot describe a tenancy that rolled back.
     // Non-blocking — onboarding never fails because WhatsApp did.
-    if (guardianPhone) {
+    //
+    // ADR-212 narrowed the condition from "a guardian number was entered" to
+    // "a guardian number was *proved*". The template says "Guardian Access
+    // Activated" and invites the reader to tap [Help]; sending that to a number
+    // whose owner has confirmed nothing would announce access that does not
+    // exist, to someone who may not know they were named at all.
+    if (guardianPhone && !guardianDeferral) {
       try {
         const { sendGuardianActivation } = await import(
           "@/lib/services/notifications/command-center/guardian-activation"
@@ -1601,25 +1674,22 @@ export class ActivationWorkflowService {
       throw new Error("VALIDATION_ERROR: Required activation steps are incomplete");
     }
 
-    // Explicitly enforce OTP verification on the backend before finalizing activation
-    const isStudent = String(tenantNow.profile_type || "STUDENT").toUpperCase() === "STUDENT";
-    const hasGuardian = Boolean(tenantNow.phone_2 || tenantNow.guardian_phone);
-    if (isStudent || hasGuardian) {
-      const gPhone = safeNormalizeWhatsApp(tenantNow.phone_2 || tenantNow.guardian_phone);
-      if (!gPhone) {
-        throw new Error("VALIDATION_ERROR: Parent/Guardian phone number is required");
-      }
-      const gVerified = await prisma.phoneVerificationOtp.findFirst({
-        where: {
-          phone: gPhone,
-          purpose: "ParentVerify",
-          status: "VERIFIED",
-        },
-      });
-      if (!gVerified) {
-        throw new Error("VALIDATION_ERROR: Parent/Guardian phone number must be verified via OTP");
-      }
-    }
+    /**
+     * ADR-212 removed a second, independent guardian-OTP gate that stood here.
+     *
+     * It re-read the OTP trail and threw
+     * "Parent/Guardian phone number must be verified via OTP" for any STUDENT,
+     * or anyone who had entered a guardian number at all — duplicating a check
+     * `saveProfile` had already made, and making an unreachable parent the last
+     * thing standing between a tenant and their own account.
+     *
+     * A STUDENT is still required to *give* a guardian number (`saveProfile`
+     * enforces that, and still does). What no longer happens is blocking
+     * activation on a third party confirming it. An unverified guardian is now
+     * a state the product carries and chases — a badge, a dated deferral, and a
+     * skippable wall in a MANDATORY hostel — rather than a door that will not
+     * open.
+     */
 
     // Emergency contact is no longer collected on the Identity screen
     // (ADR-070 amendment) — informational only, never required to activate.
