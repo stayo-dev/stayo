@@ -1918,8 +1918,14 @@ model tenants {
   /// convention for descriptive statuses; the set is enforced by
   /// `isGuardianDeferralReason` at the service boundary.
   guardian_verification_deferred_reason String?
-  /// ADR-212. How many times the overdue wall has been shown, so it can back
-  /// off to every third dashboard entry rather than escalating in volume.
+  /// ADR-212. When to ask again. Set to `deferred_at + 7 days` on the first
+  /// deferral and pushed forward 3 days by each "Not now", so the wall's
+  /// back-off is a date rather than a counter — a counter incremented only on
+  /// dismissal cannot gate the very prompt that produces dismissals.
+  guardian_verification_next_prompt_at  DateTime? @db.Timestamptz(6)
+  /// ADR-212. How many times the tenant has dismissed the overdue wall. Kept
+  /// for reporting and for any future escalation rule; it does not gate the
+  /// prompt itself.
   guardian_verification_prompt_count    Int       @default(0)
   personal_email                    String?
   college_name                      String?

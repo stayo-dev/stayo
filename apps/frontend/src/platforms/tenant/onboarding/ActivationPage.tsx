@@ -389,16 +389,27 @@ export function ActivationPage() {
     setAskingGuardian(true);
     setError('');
     try {
-      // Saved first: the request message names the guardian and the resident,
-      // and it reads both back off the tenancy — so a number typed but not yet
-      // submitted would send a message about the previous one.
+      /*
+        Saved first, because the message names the guardian and the resident and
+        reads both back off the tenancy — a number typed but not yet submitted
+        would otherwise send a message about the previous one.
+
+        The failure is deliberately swallowed rather than surfaced: the PROFILE
+        step validates the *whole* form, so a tenant who has filled in their
+        guardian but not yet their photo would be shown an unrelated complaint
+        about a photo when all they asked for was a confirmation message.
+        Swallowing it is only safe because the request itself carries the number
+        on screen and the backend refuses to send if it does not match what was
+        actually stored — so a failed save produces a clear "save your details
+        first", never a message to the wrong handset.
+      */
       await tenantService.updateActivationWorkflow({
         token,
         step: 'PROFILE',
         data: { ...profile, guardian_verification_deferred_reason: null },
       }).catch(() => undefined);
 
-      const result = await tenantService.sendGuardianConfirmRequest({ token });
+      const result = await tenantService.sendGuardianConfirmRequest({ token, guardianPhone: phone });
       if (result?.fallback_to_otp) {
         await handleSendGuardianOtp();
         return;

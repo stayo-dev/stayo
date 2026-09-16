@@ -23,14 +23,17 @@
 ALTER TABLE "public"."tenants"
   ADD COLUMN IF NOT EXISTS "guardian_verification_deferred_at" TIMESTAMPTZ(6),
   ADD COLUMN IF NOT EXISTS "guardian_verification_deferred_reason" TEXT,
+  ADD COLUMN IF NOT EXISTS "guardian_verification_next_prompt_at" TIMESTAMPTZ(6),
   ADD COLUMN IF NOT EXISTS "guardian_verification_prompt_count" INTEGER NOT NULL DEFAULT 0;
 
 COMMENT ON COLUMN "public"."tenants"."guardian_verification_deferred_at" IS
   'ADR-212. When the tenant chose to verify their guardian later. Starts the 7-day grace clock in a MANDATORY hostel. NULL means never deferred, which is not the same as verified.';
 COMMENT ON COLUMN "public"."tenants"."guardian_verification_deferred_reason" IS
   'ADR-212. One of NOT_REACHABLE_NOW | TRAVELLING | NO_WHATSAPP | PREFER_NOT_TO. A fixed set rather than free text so an owner can act on it.';
+COMMENT ON COLUMN "public"."tenants"."guardian_verification_next_prompt_at" IS
+  'ADR-212. When to ask again: deferred_at + 7 days on the first deferral, pushed forward 3 days by each dismissal. The wall backs off by date, not by a counter.';
 COMMENT ON COLUMN "public"."tenants"."guardian_verification_prompt_count" IS
-  'ADR-212. How many times the overdue wall has been shown, so it can back off to every third dashboard entry instead of escalating in volume.';
+  'ADR-212. How many times the tenant has dismissed the overdue wall. Reporting only — it does not gate the prompt.';
 
 -- ── 2. Scope a verification to the tenancy it was taken for ─────────────────
 -- The onboarding check was `{ phone, purpose: 'ParentVerify', status: 'VERIFIED' }`

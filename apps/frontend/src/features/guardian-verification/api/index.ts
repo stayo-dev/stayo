@@ -31,9 +31,17 @@ export const guardianVerificationApi = {
   status: async (): Promise<GuardianVerificationStatus> =>
     unwrap(await api.get('/tenants/me/guardian-verification')),
 
-  /** Ask the guardian to confirm with one tap. */
-  requestConfirmation: async (): Promise<{ sent: boolean; fallback_to_otp: boolean }> =>
-    unwrap(await api.post('/tenants/me/guardian-verification/request')),
+  /**
+   * Ask the guardian to confirm with one tap.
+   *
+   * `guardianPhone` is the number the caller believes it is messaging; the
+   * backend refuses to send if it does not match the tenancy's own record,
+   * because the template names this resident to someone who may never have
+   * heard of Stayo. Post-onboarding the two effectively always agree, so it is
+   * optional here — the guard matters most on the activation screen.
+   */
+  requestConfirmation: async (guardianPhone?: string): Promise<{ sent: boolean; fallback_to_otp: boolean }> =>
+    unwrap(await api.post('/tenants/me/guardian-verification/request', { guardian_phone: guardianPhone })),
 
   /** "Not now" on the wall. Counted so the wall can back off. */
   dismiss: async (): Promise<{ dismissed: boolean }> =>

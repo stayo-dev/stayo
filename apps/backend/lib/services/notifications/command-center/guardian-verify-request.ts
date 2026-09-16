@@ -53,6 +53,7 @@ export type GuardianVerifyRequestResult = {
     | "NO_GUARDIAN_PHONE"
     | "GUARDIAN_SAME_AS_RESIDENT"
     | "ALREADY_VERIFIED"
+    | "GUARDIAN_PHONE_NOT_SAVED"
     | "TEMPLATE_NOT_CONFIGURED"
     | "SEND_FAILED";
 };
@@ -65,7 +66,39 @@ function safeNormalize(phone: string): string {
   }
 }
 
-export async function sendGuardianVerifyRequest(tenantId: string): Promise<GuardianVerifyRequestResult> {
+/**
+ * Do these two numbers refer to the same handset?
+ *
+ * Compared on the last ten digits rather than by equality, because this
+ * codebase stores Indian numbers in two formats — `profiles.phone` holds bare
+ * ten digits, `tenant_invitations.phone` holds E.164 — and a `===` between them
+ * is silently always false. ADR-110's trust check shipped with exactly that
+ * bug, passing every unit test because the fixtures shared the code's wrong
+ * assumption.
+ */
+function sameHandset(a: string, b: string): boolean {
+  const left = String(a || "").replace(/\D/g, "").slice(-10);
+  const right = String(b || "").replace(/\D/g, "").slice(-10);
+  return left.length === 10 && left === right;
+}
+
+export async function sendGuardianVerifyRequest(
+  tenantId: string,
+  /**
+   * The number the *caller* believes it is messaging.
+   *
+   * Optional, but the onboarding screen always passes it, and this is the check
+   * that makes the feature safe there. The template names the resident and the
+   * hostel, so it is sent to someone who may never have heard of Stayo — and
+   * mid-onboarding the tenancy's stored number can lag what the tenant has
+   * typed, because the profile save that persists it can fail (a missing photo
+   * is enough). Without this guard a failed save meant telling a *previous*
+   * guardian, or a stranger on an old number, that they had been listed as this
+   * person's guardian. Refusing is the only safe answer; the caller saves and
+   * retries.
+   */
+  expectedGuardianPhone?: string | null,
+): Promise<GuardianVerifyRequestResult> {
   try {
     const tenant = await prisma.tenants.findUnique({
       where: { id: tenantId },
@@ -87,8 +120,12 @@ export async function sendGuardianVerifyRequest(tenantId: string): Promise<Guard
     const guardianPhone = (tenant.guardian_phone || tenant.phone_2 || "").trim();
     if (!guardianPhone) return { sent: false, fallbackToOtp: false, reason: "NO_GUARDIAN_PHONE" };
 
+    if (expectedGuardianPhone && !sameHandset(expectedGuardianPhone, guardianPhone)) {
+      return { sent: false, fallbackToOtp: false, reason: "GUARDIAN_PHONE_NOT_SAVED" };
+    }
+
     const residentPhone = (tenant.phone_1 || tenant.profiles?.phone || "").trim();
-    if (residentPhone && safeNormalize(guardianPhone) === safeNormalize(residentPhone)) {
+    if (residentPhone && sameHandset(guardianPhone, residentPhone)) {
       // One handset in both fields. Asking someone to confirm that they are
       // their own guardian proves nothing about anybody.
       return { sent: false, fallbackToOtp: false, reason: "GUARDIAN_SAME_AS_RESIDENT" };

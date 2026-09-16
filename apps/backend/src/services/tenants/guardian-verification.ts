@@ -54,6 +54,15 @@ export type GuardianVerificationState =
 export const GUARDIAN_GRACE_DAYS = 7;
 
 /**
+ * How long a "Not now" on the wall buys, in days.
+ *
+ * Shorter than the first grace window on purpose: the first deferral is
+ * someone saying "not at this desk, right now", which deserves a real week.
+ * A dismissal is someone saying "not this time", which deserves a few days.
+ */
+export const GUARDIAN_SNOOZE_DAYS = 3;
+
+/**
  * Why a tenant deferred. A fixed set rather than free text, because the value
  * of asking is that the owner can *act* on the answer — "no WhatsApp" needs a
  * phone call, "travelling" needs patience, and free text needs reading.
@@ -100,6 +109,16 @@ export interface GuardianVerificationInput {
   guardianRequired: boolean;
   /** When the tenant chose to come back to it later, if they ever did. */
   deferredAt: Date | null;
+  /**
+   * When to ask again — the deadline the tenant was actually promised.
+   *
+   * Separate from `deferredAt`, which records when they *first* deferred and
+   * never moves again. This one is pushed forward by each dismissal, so the
+   * wall's back-off is a date rather than a counter. An older tenancy that
+   * deferred before this field existed has null here and falls back to
+   * `deferredAt + GUARDIAN_GRACE_DAYS`, which is exactly what it was promised.
+   */
+  nextPromptAt: Date | null;
   /** Evaluation time, injected so the deadline is testable. */
   now: Date;
 }
@@ -121,14 +140,20 @@ function addDays(date: Date, days: number): Date {
 }
 
 /**
- * The deadline a deferral created, or null if there is no clock running.
+ * The date the tenant was promised, or null if no clock is running.
  *
  * Exported because the Identity screen has to promise the date *at the moment
  * of deferring* — "we'll ask again on 23 Sep" — before any row has been
  * written, so it cannot read the answer back off a status.
  */
-export function guardianDeadline(deferredAt: Date | null): Date | null {
+export function guardianDeadline(deferredAt: Date | null, nextPromptAt: Date | null = null): Date | null {
+  if (nextPromptAt) return nextPromptAt;
   return deferredAt ? addDays(deferredAt, GUARDIAN_GRACE_DAYS) : null;
+}
+
+/** When to ask again after a "Not now". */
+export function nextPromptAfterDismissal(now: Date): Date {
+  return addDays(now, GUARDIAN_SNOOZE_DAYS);
 }
 
 export function resolveGuardianVerification(
@@ -160,7 +185,7 @@ export function resolveGuardianVerification(
     return { ...idle, state: "PENDING_UNCHASED" };
   }
 
-  const deadlineAt = guardianDeadline(input.deferredAt);
+  const deadlineAt = guardianDeadline(input.deferredAt, input.nextPromptAt);
 
   // A MANDATORY tenancy with no deferral on record is one that has not been
   // asked yet — mid-onboarding, or created before this feature existed. It is
@@ -179,17 +204,20 @@ export function resolveGuardianVerification(
 }
 
 /**
- * Whether the wall should actually be shown on *this* dashboard entry.
+ * Whether the wall is due on this dashboard entry.
  *
- * Separate from `wallDue` because being overdue is a state, while showing the
- * wall is an event with a frequency. The rule is back off, don't escalate: the
- * wall appears the first time it comes due, then on every third entry after
- * that. Volume is what turns a reminder into noise a person learns to dismiss
- * without reading, and a tenant who has seen it twice already knows what it
- * says.
+ * This is deliberately just `wallDue` — the back-off lives in a *date*
+ * (`nextPromptAt`, pushed forward by `GUARDIAN_SNOOZE_DAYS` on each "Not now"),
+ * not in a counter.
+ *
+ * It was a counter first, and that was a bug worth remembering: the rule was
+ * "show it, then every third entry", with the count incremented on dismissal.
+ * But a dismissal can only happen when the wall is *shown*, so the count went
+ * 0 → shown → dismissed → 1, and `1 % 3 !== 0` meant it was never shown again
+ * and the count could never reach 3. The wall appeared exactly once per
+ * tenancy, for ever. A counter that only advances on the event it gates cannot
+ * gate that event.
  */
-export function shouldShowGuardianWall(status: GuardianVerificationStatus, promptCount: number): boolean {
-  if (!status.wallDue) return false;
-  if (promptCount <= 0) return true;
-  return promptCount % 3 === 0;
+export function shouldShowGuardianWall(status: GuardianVerificationStatus): boolean {
+  return status.wallDue;
 }

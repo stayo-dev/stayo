@@ -51,7 +51,7 @@ export function GuardianVerificationCard() {
       <button
         type="button"
         disabled={request.isPending || request.isSuccess}
-        onClick={() => request.mutate()}
+        onClick={() => request.mutate(undefined)}
         className="mt-3 flex w-full items-center justify-center gap-1 rounded-xl bg-primary py-2.5 font-display text-[13px] font-bold text-primary-foreground disabled:opacity-60"
       >
         {request.isSuccess ? 'Sent — waiting for them' : request.isPending ? 'Sending…' : copy.primaryAction}

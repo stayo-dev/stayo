@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
         guardian_phone: true,
         profile_type: true,
         guardian_verification_deferred_at: true,
+        guardian_verification_next_prompt_at: true,
         guardian_verification_prompt_count: true,
         hostels: { select: { preferences_config: true } },
       },
@@ -58,6 +59,7 @@ export async function GET(req: NextRequest) {
       verified: await isGuardianPhoneVerifiedForTenant(tenant.id, guardianPhone),
       guardianRequired: String(tenant.profile_type || "STUDENT").toUpperCase() === "STUDENT",
       deferredAt: tenant.guardian_verification_deferred_at,
+      nextPromptAt: tenant.guardian_verification_next_prompt_at,
       now: new Date(),
     });
 
@@ -69,7 +71,7 @@ export async function GET(req: NextRequest) {
       // The last four digits only. The number is already on the tenant's own
       // record, but a status endpoint has no reason to restate it in full.
       guardian_phone_hint: guardianPhone ? String(guardianPhone).slice(-4) : null,
-      show_wall: shouldShowGuardianWall(status, tenant.guardian_verification_prompt_count ?? 0),
+      show_wall: shouldShowGuardianWall(status),
     });
   } catch (error: any) {
     return apiError(error?.message || "Failed to read guardian verification status", "ERROR", 500);

@@ -23,7 +23,11 @@ export function useGuardianVerification(enabled = true) {
 export function useRequestGuardianConfirmation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: guardianVerificationApi.requestConfirmation,
+    // Takes the number explicitly rather than passing the API function
+    // straight through, so callers inside the app — where the stored number is
+    // the only number — can call `mutate()` with nothing and let the backend
+    // read it off the tenancy.
+    mutationFn: (guardianPhone?: string) => guardianVerificationApi.requestConfirmation(guardianPhone),
     onSuccess: () => qc.invalidateQueries({ queryKey: guardianVerificationKey() }),
   });
 }

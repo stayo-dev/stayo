@@ -13,6 +13,7 @@ function safeNormalizeWhatsApp(val: string | null | undefined): string {
 }
 import { isGuardianPhoneVerifiedForTenant } from "./guardian-verification-store";
 import {
+  guardianDeadline,
   isGuardianDeferralReason,
   readGuardianVerificationPolicy,
   resolveGuardianVerification,
@@ -660,6 +661,7 @@ export class ActivationWorkflowService {
       verified: guardianVerified,
       guardianRequired: String(tenant.profile_type || "STUDENT").toUpperCase() === "STUDENT",
       deferredAt: tenant.guardian_verification_deferred_at || null,
+      nextPromptAt: tenant.guardian_verification_next_prompt_at || null,
       now: new Date(),
     });
 
@@ -1466,7 +1468,7 @@ export class ActivationWorkflowService {
      * is now a deferral rather than a rejection, and the deferral is recorded
      * with the date and the reason so it can be chased rather than forgotten.
      */
-    let guardianDeferral: { deferredAt: Date; reason: string | null } | null = null;
+    let guardianDeferral: { deferredAt: Date; nextPromptAt: Date; reason: string | null } | null = null;
 
     if (guardianPhone && !isGuardianVerified) {
       const guardianOtp = data?.guardian_otp ? String(data.guardian_otp).trim() : "";
@@ -1490,8 +1492,13 @@ export class ActivationWorkflowService {
         // the tenant has had, not how recently they edited their address — and
         // restarting it on every profile edit would make the deadline
         // unreachable by simply using the app.
+        const deferredAt = tenant.guardian_verification_deferred_at || new Date();
         guardianDeferral = {
-          deferredAt: tenant.guardian_verification_deferred_at || new Date(),
+          deferredAt,
+          // Likewise kept, not recomputed: a tenant who has already dismissed
+          // the wall once has a date nearer than `deferredAt + 7`, and re-saving
+          // their profile must not push it back out to the original promise.
+          nextPromptAt: tenant.guardian_verification_next_prompt_at || guardianDeadline(deferredAt)!,
           reason: reason ?? tenant.guardian_verification_deferred_reason ?? null,
         };
       }
@@ -1544,6 +1551,7 @@ export class ActivationWorkflowService {
           // *having* deferred is worth keeping once the clock has stopped
           // mattering.
           guardian_verification_deferred_at: guardianDeferral?.deferredAt ?? undefined,
+          guardian_verification_next_prompt_at: guardianDeferral?.nextPromptAt ?? undefined,
           guardian_verification_deferred_reason: guardianDeferral?.reason ?? undefined,
         }),
       });

@@ -32,7 +32,10 @@ export async function POST(req: NextRequest) {
       return apiError("Invalid or expired activation link", "INVALID", 410);
     }
 
-    const result = await sendGuardianVerifyRequest(resolved.tenant.id);
+    const result = await sendGuardianVerifyRequest(
+      resolved.tenant.id,
+      body?.guardian_phone ? String(body.guardian_phone) : null,
+    );
 
     if (!result.sent && !result.fallbackToOtp) {
       return apiError(
@@ -40,7 +43,13 @@ export async function POST(req: NextRequest) {
           ? "This guardian number is already verified"
           : result.reason === "NO_GUARDIAN_PHONE"
             ? "Add a parent or guardian number first"
-            : "That number cannot be used as a guardian number",
+            : result.reason === "GUARDIAN_PHONE_NOT_SAVED"
+              // The number on screen is not the number on the record, so we do
+              // not know who we would actually be messaging. Never guess: the
+              // template names the resident and the hostel to someone who may
+              // never have heard of Stayo.
+              ? "Save your details first, then ask them to confirm"
+              : "That number cannot be used as a guardian number",
         result.reason || "ERROR",
         400,
       );

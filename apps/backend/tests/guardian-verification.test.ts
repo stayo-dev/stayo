@@ -4,6 +4,8 @@ import {
   shouldShowGuardianWall,
   guardianDeadline,
   isGuardianDeferralReason,
+  nextPromptAfterDismissal,
+  GUARDIAN_SNOOZE_DAYS,
   readGuardianVerificationPolicy,
   GUARDIAN_GRACE_DAYS,
   type GuardianVerificationInput,
@@ -18,6 +20,7 @@ function input(overrides: Partial<GuardianVerificationInput> = {}): GuardianVeri
     verified: false,
     guardianRequired: true,
     deferredAt: null,
+    nextPromptAt: null,
     now: NOW,
     ...overrides,
   };
@@ -115,6 +118,13 @@ describe("guardianDeadline", () => {
     expect(days).toBe(GUARDIAN_GRACE_DAYS);
   });
 
+  it("falls back to the original promise for a tenancy with no next prompt", () => {
+    // Rows deferred before `next_prompt_at` existed get exactly what they were
+    // told: seven days from the deferral.
+    expect(guardianDeadline(new Date("2026-09-16T10:00:00.000Z"), null)?.toISOString())
+      .toBe("2026-09-23T10:00:00.000Z");
+  });
+
   it("crosses a month boundary correctly", () => {
     expect(guardianDeadline(new Date("2026-09-28T10:00:00.000Z"))?.toISOString())
       .toBe("2026-10-05T10:00:00.000Z");
@@ -128,18 +138,56 @@ describe("shouldShowGuardianWall", () => {
 
   it("never shows when the wall is not due", () => {
     const grace = resolveGuardianVerification(input({ deferredAt: new Date("2026-09-15T10:00:00.000Z") }));
-    expect(shouldShowGuardianWall(grace, 0)).toBe(false);
-    expect(shouldShowGuardianWall(grace, 99)).toBe(false);
+    expect(shouldShowGuardianWall(grace)).toBe(false);
   });
 
-  it("shows the first time it comes due", () => {
+  it("shows once it comes due", () => {
     expect(overdue.wallDue).toBe(true);
-    expect(shouldShowGuardianWall(overdue, 0)).toBe(true);
+    expect(shouldShowGuardianWall(overdue)).toBe(true);
   });
 
-  it("backs off to every third entry rather than every entry", () => {
-    const shown = [1, 2, 3, 4, 5, 6].map((count) => shouldShowGuardianWall(overdue, count));
-    expect(shown).toEqual([false, false, true, false, false, true]);
+  it("comes back after a dismissal, rather than being silenced for ever", () => {
+    // Regression. The back-off was a counter incremented on dismissal and
+    // gated on `promptCount % 3`, so: 0 -> shown -> dismissed -> 1, and
+    // 1 % 3 !== 0 blocked it permanently while the count could never advance.
+    // The wall appeared exactly once per tenancy. A counter that only moves on
+    // the event it gates cannot gate that event — so the back-off is a date.
+    const dismissedAt = new Date("2026-09-16T10:00:00.000Z");
+    const nextPromptAt = nextPromptAfterDismissal(dismissedAt);
+
+    const rightAfterDismissing = resolveGuardianVerification(
+      input({ deferredAt: new Date("2026-09-01T10:00:00.000Z"), nextPromptAt, now: dismissedAt }),
+    );
+    expect(shouldShowGuardianWall(rightAfterDismissing)).toBe(false);
+
+    const afterTheSnooze = resolveGuardianVerification(
+      input({
+        deferredAt: new Date("2026-09-01T10:00:00.000Z"),
+        nextPromptAt,
+        now: new Date(nextPromptAt.getTime() + 1000),
+      }),
+    );
+    expect(shouldShowGuardianWall(afterTheSnooze)).toBe(true);
+  });
+
+  it("snoozes by less than the original grace window", () => {
+    // A first deferral is "not at this desk, right now" and earns a week; a
+    // dismissal is "not this time" and earns a few days.
+    expect(GUARDIAN_SNOOZE_DAYS).toBeLessThan(7);
+    const from = new Date("2026-09-16T10:00:00.000Z");
+    const days = (nextPromptAfterDismissal(from).getTime() - from.getTime()) / 86_400_000;
+    expect(days).toBe(GUARDIAN_SNOOZE_DAYS);
+  });
+
+  it("prefers an explicit next prompt over the original deferral's deadline", () => {
+    const status = resolveGuardianVerification(
+      input({
+        deferredAt: new Date("2026-09-01T10:00:00.000Z"),
+        nextPromptAt: new Date("2026-09-20T10:00:00.000Z"),
+      }),
+    );
+    expect(status.deadlineAt?.toISOString()).toBe("2026-09-20T10:00:00.000Z");
+    expect(status.state).toBe("PENDING_GRACE");
   });
 });
 

@@ -62,7 +62,7 @@ export function GuardianVerificationWall() {
         <button
           type="button"
           disabled={request.isPending || request.isSuccess}
-          onClick={() => request.mutate()}
+          onClick={() => request.mutate(undefined)}
           className="mt-5 w-full rounded-xl bg-primary py-3 font-display text-[14px] font-bold text-primary-foreground disabled:opacity-60"
         >
           {request.isSuccess ? 'Sent — waiting for them' : request.isPending ? 'Sending…' : copy.primaryAction}
