@@ -824,7 +824,8 @@ Migration `prisma/migrations/20260916120000_guardian_verification_policy`. **App
 |---|---|---|
 | `guardian_verification_deferred_at` | `timestamptz(6)?` | When the tenant chose to verify later. Starts the fixed 7-day clock in a MANDATORY hostel. NULL = never deferred, which is **not** the same as verified. |
 | `guardian_verification_deferred_reason` | `text?` | `NOT_REACHABLE_NOW \| TRAVELLING \| NO_WHATSAPP \| PREFER_NOT_TO`. A plain string, not a Prisma enum, matching this schema's convention for descriptive statuses; the set is enforced by `isGuardianDeferralReason` at the service boundary. |
-| `guardian_verification_prompt_count` | `int` default `0` | How many times the overdue wall has been dismissed, so it can back off to every third dashboard entry rather than escalate in volume. |
+| `guardian_verification_next_prompt_at` | `timestamptz(6)?` | When to ask again. `deferred_at + 7 days` on the first deferral, pushed forward 3 days by each dismissal. The back-off is a **date**, not a counter — see [[Bugs]] for why the counter version could only fire once. |
+| `guardian_verification_prompt_count` | `int` default `0` | How many times the tenant has dismissed the overdue wall. Reporting only; it gates nothing. |
 
 **On `phone_verification_otps`** — `tenant_id uuid?` (FK → `tenants.id`, `ON DELETE SET NULL`, plus index `(tenant_id, purpose, status)`).
 

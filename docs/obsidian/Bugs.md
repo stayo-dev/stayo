@@ -2813,3 +2813,23 @@ So a migrated frontend rendered a button that a stale backend refused 100% of th
 **Not verified.** No DB-backed test run against a real database for the restored models; the fix relies on schema/type validation and a diff-against-parent comparison, not an end-to-end exercise of host-profile, stay-status, or meal-forecast flows.
 
 **See:** [[Decisions#ADR-210|ADR-210]], [[Decisions#ADR-200|ADR-200]], [[Decisions#ADR-194|ADR-194]], [[Decisions#ADR-195|ADR-195]], [[Decisions#ADR-192|ADR-192]], [[Changelog]]
+
+## Guardian verification wall could only ever appear once (2026-09-16, caught pre-merge)
+
+**Status:** Fixed on `feat/guardian-verification-policy` before the migration was applied. Never reached any database, so no data is affected.
+
+**What broke.** The overdue wall's back-off was "show it, then on every third dashboard entry", gated on `shouldShowGuardianWall(status, promptCount)` returning `promptCount % 3 === 0`, with `promptCount` incremented by the dismiss endpoint. But a dismissal can only happen when the wall is *shown*. So the sequence was `0 → shown → dismissed → 1`, and `1 % 3 !== 0` blocked it permanently while the counter — which only advances on dismissal — could never reach 3. **The wall would have appeared exactly once per tenancy, for ever**, and the back-off described in [[Decisions#ADR-212|ADR-212]] would not have existed.
+
+**The general shape.** A counter that only advances on the event it gates cannot gate that event. Worth recognising: it type-checks, it unit-tests green against hand-written counts (the original test asserted `[false, false, true, …]` for counts 1–6 — all values the system can never actually reach), and it fails only as a slow absence of behaviour nobody reports.
+
+**Fix.** The back-off moved into a date, `tenants.guardian_verification_next_prompt_at`: set to `deferred_at + 7 days` on the first deferral and pushed forward `GUARDIAN_SNOOZE_DAYS` (3) by each dismissal. `shouldShowGuardianWall` is now just `status.wallDue`. `guardian_verification_prompt_count` survives for reporting but gates nothing. Regression test: "comes back after a dismissal, rather than being silenced for ever".
+
+## Guardian confirmation request could be sent to the wrong handset (2026-09-16, caught pre-merge)
+
+**Status:** Fixed on the same branch, pre-merge. Never shipped.
+
+**What broke.** The onboarding "Ask them to confirm" button saved the profile first and swallowed the failure (`.catch(() => undefined)`), then called the send endpoint — which reads `guardian_phone` **off the tenancy**. The PROFILE step validates the whole form, so a perfectly ordinary state (guardian filled in, profile photo not yet uploaded) made the save fail silently. The message then went to whatever number was *already stored*: a previously-saved guardian, or a stranger on an old number — and that message names the resident and the hostel to someone who may never have heard of Stayo.
+
+**Fix.** The request now carries the number the caller believes it is messaging, and `sendGuardianVerifyRequest` refuses with `GUARDIAN_PHONE_NOT_SAVED` if it does not match the tenancy's own record; the tenant is told to save first. Comparison is on the **last ten digits**, not equality — this codebase stores Indian numbers in two formats (`profiles.phone` bare, `tenant_invitations.phone` E.164), and ADR-110's trust check already shipped once with a `===` that was silently always false. The swallow is kept deliberately (surfacing "profile photo is required" to someone who asked to message their parent is worse), and is only safe *because* of the server-side guard.
+
+Related: [[Decisions#ADR-212|ADR-212]], [[Business-Rules]], [[Database]]
