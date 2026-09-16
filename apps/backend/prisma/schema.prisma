@@ -868,7 +868,11 @@ model profile {
   // record; the two share relations are this profile acting as an *owner* who
   // verified or rejected someone else's document.
   identity                                                          profile_identity?
-  identity_documents                                                identity_documents[]
+  // Meet your host (ADR-200). Relation fields add no scalar columns to
+  // `profiles`, so `getSession()`'s profile reads are unaffected.
+  host_profile                                                      owner_host_profile?   @relation("OwnerHostProfile")
+  host_profiles_edited                                              owner_host_profile[]  @relation("OwnerHostProfileUpdater")
+  identity_documents                                             identity_documents[]
   verified_document_shares                                          identity_document_shares[] @relation("DocumentShareVerifier")
   rejected_document_shares                                          identity_document_shares[] @relation("DocumentShareRejecter")
   history_disclosures                                               residency_history_disclosures[] @relation("HistoryDisclosureSubject")
@@ -1558,6 +1562,28 @@ model profile_identity {
   profile           profile   @relation(fields: [profile_id], references: [id], onDelete: Cascade)
 
   @@map("profile_identity")
+}
+
+/// The owner as residents meet them on a public listing (ADR-200) — their own
+/// words, languages, and the year they started. A table of its own, never
+/// columns on `profile_identity`: see migration 083 for why. `bio_hidden` and
+/// `photo_hidden` are set by a Stayo admin only; an owner edit never touches
+/// them. Read through `src/services/host-profile/host-profile-service.ts`.
+model owner_host_profile {
+  profile_id    String    @id @db.Uuid
+  bio           String?
+  languages     String[]  @default([])
+  hosting_since Int?      @db.SmallInt
+  bio_hidden    Boolean   @default(false)
+  photo_hidden  Boolean   @default(false)
+  updated_by    String?   @db.Uuid
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime? @db.Timestamptz(6)
+
+  profile       profile   @relation("OwnerHostProfile", fields: [profile_id], references: [id], onDelete: Cascade)
+  updater       profile?  @relation("OwnerHostProfileUpdater", fields: [updated_by], references: [id], onDelete: SetNull)
+
+  @@map("owner_host_profiles")
 }
 
 /// The document vault: one row per file the person has ever uploaded. No
@@ -4371,4 +4397,68 @@ model owner_billing_profiles {
   updated_at      DateTime? @db.Timestamptz(6)
 
   profile profile @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+}
+
+/// Stay Status event store (ADR-194). Append-only — the permanent truth;
+/// every stay surface is a projection of it. A DB trigger refuses UPDATE.
+/// No Prisma relations on purpose: nothing reads through them, and adding
+/// back-relations to `tenants`/`hostels` buys nothing.
+model stay_events {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  seq                  BigInt    @unique @default(autoincrement())
+  tenant_id            String    @db.Uuid
+  hostel_id            String    @db.Uuid
+  room_id              String?   @db.Uuid
+  type                 String
+  effective_date       DateTime  @db.Date
+  occurred_at          DateTime  @default(now()) @db.Timestamptz(6)
+  leave_type           String?
+  expected_return_date DateTime? @db.Date
+  source               String
+  actor_profile_id     String?   @db.Uuid
+  actor_role           String
+  idempotency_key      String    @unique
+  schema_version       Int       @default(1)
+  payload              Json      @default("{}")
+
+  @@index([hostel_id, occurred_at], map: "stay_events_hostel_occurred_idx")
+  @@index([tenant_id, seq], map: "stay_events_tenant_seq_idx")
+  @@index([hostel_id, effective_date, type], map: "stay_events_hostel_date_type_idx")
+}
+
+/// What the kitchen actually served (meal forecast, ADR-195). A measurement,
+/// not an event: one row per hostel/date/meal, and re-entry corrects it.
+/// `headcount_at_log` is the frozen denominator of the learned ratio.
+model meal_service_logs {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hostel_id        String   @db.Uuid
+  serve_date       DateTime @db.Date
+  meal_type        String
+  served_count     Int
+  headcount_at_log Int
+  recorded_by      String?  @db.Uuid
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@unique([hostel_id, serve_date, meal_type], map: "meal_service_logs_hostel_date_meal_key")
+  @@index([hostel_id, meal_type, serve_date(sort: Desc)], map: "meal_service_logs_hostel_meal_date_idx")
+}
+
+/// Projection of `stay_events`: one row per leave. Rebuildable by replay.
+/// "One ACTIVE leave per tenant" is a partial unique index in the migration
+/// (`stay_leaves_one_active_per_tenant`) — Prisma cannot express it.
+model stay_leaves {
+  id                   String    @id @db.Uuid
+  tenant_id            String    @db.Uuid
+  hostel_id            String    @db.Uuid
+  leave_type           String
+  start_date           DateTime  @db.Date
+  expected_return_date DateTime  @db.Date
+  status               String    @default("ACTIVE")
+  returned_at          DateTime? @db.Timestamptz(6)
+  last_event_id        String    @db.Uuid
+  created_at           DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@index([hostel_id, status, expected_return_date], map: "stay_leaves_hostel_status_return_idx")
 }

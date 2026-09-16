@@ -280,6 +280,7 @@ Since ADR-031, new sessions are minted by Supabase (`signInWithSupabasePassword(
 | `HostelVerificationStatus` | PENDING, VERIFIED |
 | `HostelListingStatus` | DRAFT, LIVE, SUSPENDED |
 | `PlatformLeadStatus` | NEW, UNDER_REVIEW, APPROVED, INVITE_SENT, OWNER_ACTIVATED, HOSTEL_CREATED, LIVE, LOST — **replaced outright** 2026-07-29 (ADR-032; was NEW/CONTACTED/DEMO_SCHEDULED/ONBOARDING/ACTIVE/LOST). `APPROVED` onward is system-managed, not manually settable — see [[APIs]] |
+| `PlatformLeadAcquisitionSource` | WEBSITE, DIRECT_ADMIN — added 2026-09-16, see `platform_leads` acquisition-source section below |
 | `SubscriptionBillingCycle` | MONTHLY, YEARLY |
 | `HostelSubscriptionStatus` | TRIAL, ACTIVE, RENEWAL_DUE, PAYMENT_FAILED, CANCELLED |
 | `PlatformInvoiceStatus` | PENDING, PAID, FAILED |
@@ -564,6 +565,15 @@ A partial unique index, `platform_leads_one_active_lead_per_phone`, enforces `ON
 - **Empty phone is excluded** because `platform-listing-leads.ts`'s `buildPlatformLeadFromEnquiry` (Discover's "demand evidence" sales leads, one raised per newly-enquired *listed* hostel) deliberately writes `phone: ""` and dedupes by `hostel_name` instead — a bare phone-only index would have let only the very first such row across the whole table succeed, silently breaking that unrelated feature for every hostel after the first.
 
 Enforced at the DB level specifically so a concurrent double-submit (two requests for the same phone racing each other) cannot slip two active rows past an application-level check alone — `POST /api/leads/self-serve` and `POST /api/platform-admin/leads` both still do their own `findFirst` pre-check first as the fast/friendly path, and both catch a `P2002` from losing the race. See [[Business-Rules]], [[APIs]], [[Features]].
+
+### `platform_leads` — acquisition source and admin-set intended plan (2026-09-16)
+
+Two migrations, both idempotent `ADD COLUMN IF NOT EXISTS` / `CREATE TYPE ... EXCEPTION WHEN duplicate_object`:
+
+- **`20260916000000_platform_leads_acquisition_source`** adds `acquisition_source PlatformLeadAcquisitionSource NOT NULL DEFAULT 'WEBSITE'` (new enum `PlatformLeadAcquisitionSource { WEBSITE, DIRECT_ADMIN }`) and `intended_plan_code TEXT NULL`. Every existing/website-originated row defaults to `WEBSITE` — zero behavior change for the public lead-capture form ([[Features]]). `DIRECT_ADMIN` is set only by `POST /api/platform-admin/owners` (the Admin → Add Owner flow, see [[Features]], [[APIs]]).
+- **`20260916000100_platform_leads_intended_plan_admin`** adds `intended_plan_set_by TEXT NULL` — the admin profile id who chose `intended_plan_code`, so the eventual `SUBSCRIPTION_PLAN_CHANGED` audit entry (fired later, at owner-signup completion, not at the admin's action) attributes to a real actor.
+
+`intended_plan_code`/`intended_plan_set_by` are captured before a real owner account (and therefore any `owner_subscriptions` row) exists — a `DIRECT_ADMIN` lead's plan choice is applied for real by `LeadInvitationService.activateInvitationForOwner` once the owner completes signup via the invitation link. Never read for `WEBSITE` leads. See [[Business-Rules]] and [[Decisions#ADR-210|ADR-210]].
 
 ### `visitor_leads` — one active lead per (hostel, phone) (2026-09-01, migration 079, [[Decisions#ADR-162|ADR-162]])
 

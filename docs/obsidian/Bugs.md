@@ -2799,3 +2799,17 @@ So a migrated frontend rendered a button that a stale backend refused 100% of th
 **Not verified.** The edit has never been executed — no DB-backed test covers it and it was not run against a real backend.
 
 **See:** [[Decisions#ADR-208|ADR-208]], [[Decisions#ADR-165|ADR-165]], [[APIs]], [[Changelog]]
+
+## 2026-09-16 — Committing an unrelated stale working tree deleted four live Prisma models and re-shelved Hostel Listings (caught before push, fixed)
+
+**Symptom.** Commit `49886a08` (Add Owner + Lead Pipeline flows, Settlements/KYC removal — see [[Decisions#ADR-210|ADR-210]]) also removed four unrelated Prisma models still referenced by live service code — `owner_host_profile` ([[Decisions#ADR-200|ADR-200]], applied to production 2026-09-15), `stay_events`/`stay_leaves` ([[Decisions#ADR-194|ADR-194]]) and `meal_service_logs` ([[Decisions#ADR-195|ADR-195]]) — and separately reverted `AdminRoutes.tsx` to redirect `/admin/hostels` and `/admin/listings*` away again, citing ADR-170, which [[Decisions#ADR-192|ADR-192]] had already superseded three days earlier. Neither change was mentioned in the commit message.
+
+**Root cause.** The working tree being committed had a large number of pre-existing uncommitted changes of unclear provenance (likely a stale branch or file state layered under the intentional new work) at the time it was committed to `main`; the commit was staged and made without diffing the full change set against recent history first, so the accidental reversion rode along with the intended feature work.
+
+**Caught by.** The routine documentation pass required by CLAUDE.md's Documentation Rules — updating [[Database]], [[APIs]], [[Features]] and [[Changelog]] for the commit required reading `schema.prisma` and `AdminRoutes.tsx` closely enough to notice both models and routes disagreed with what the vault already recorded as current and recently shipped.
+
+**Fix.** Same day, before any push to `origin/main`: the four Prisma models were restored verbatim (verified with `prisma validate`, `prisma generate`, and a clean `tsc --noEmit` diff against the pre-regression baseline) and `AdminRoutes.tsx`'s Hostel Listings routes/lazy imports were restored to byte-for-byte match `HEAD~1`, leaving only the intended Settlements/KYC removal as a real diff. `git diff HEAD~1` on both files was used to confirm no other unintended changes remained.
+
+**Not verified.** No DB-backed test run against a real database for the restored models; the fix relies on schema/type validation and a diff-against-parent comparison, not an end-to-end exercise of host-profile, stay-status, or meal-forecast flows.
+
+**See:** [[Decisions#ADR-210|ADR-210]], [[Decisions#ADR-200|ADR-200]], [[Decisions#ADR-194|ADR-194]], [[Decisions#ADR-195|ADR-195]], [[Decisions#ADR-192|ADR-192]], [[Changelog]]
