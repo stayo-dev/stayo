@@ -834,4 +834,4 @@ Migration `prisma/migrations/20260916120000_guardian_verification_policy`. **App
 - **`ON DELETE SET NULL`, not `CASCADE`** — the trail is an audit record of what was sent to a real handset, and deleting a tenancy must not erase the evidence.
 - The index is **not** partial on `tenant_id IS NOT NULL`, even though every lookup lands there: Prisma cannot express a partial index, and a declared index that does not match the applied one is drift nobody notices until it matters.
 
-**Not applied anywhere as of writing** — see [[Decisions#ADR-212|ADR-212]]'s "Not verified". Migrations here are applied by hand via the Supabase SQL editor or psql (`prisma migrate deploy` is unusable against this project), so never assume one has run: check `information_schema`.
+**Applied to production 2026-09-17** and verified against `information_schema`. Migrations here are applied with `npm run db:apply -- <file>` (`apps/backend/scripts/apply-sql.ts`) — `prisma migrate deploy` is unusable against this project and `prisma db execute` cannot reach the pooler. Never assume a migration has run; the runner's `--dry-run` tells you, and several older migrations are still outstanding.
