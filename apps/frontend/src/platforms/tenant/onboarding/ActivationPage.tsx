@@ -697,6 +697,7 @@ export function ActivationPage() {
         {!activationResult && (activeStep === 'RULES' || activeStep === 'AGREEMENT') && (
           <AgreementStep
             ctx={ctx}
+            activationToken={token}
             completedSteps={completed}
             submitting={submitting}
             guardianName={profile.guardian_name}

@@ -111,19 +111,99 @@ describe('passwordIssues', () => {
 });
 
 describe('agreementIssues', () => {
+  /** Read and ticked: the state everything else varies from. */
+  const base = {
+    acknowledgements: { rules: true },
+    readCompleted: true,
+    tenantSignature: true,
+    tenantSignatureName: 'Shiva',
+    guardianSignature: false,
+    guardianSignatureName: '',
+    guardianRelation: '',
+  };
+
   it('wants every rule ticked before the signatures', () => {
-    const issues = agreementIssues({ acknowledgements: { rules: true, dues: false }, tenantSignature: false, tenantSignatureName: '', guardianSignature: false, guardianSignatureName: '', guardianRelation: '' });
+    const issues = agreementIssues({ ...base, acknowledgements: { rules: true, dues: false } });
     expect(issues[0]).toMatchObject({ field: 'ack:dues' });
   });
-  it('accepts either signature, but wants a name with it', () => {
-    const ticked = { acknowledgements: { rules: true }, guardianSignature: false, guardianSignatureName: '', guardianRelation: '' };
-    expect(agreementIssues({ ...ticked, tenantSignature: true, tenantSignatureName: 'Shiva' })).toEqual([]);
-    expect(agreementIssues({ ...ticked, tenantSignature: true, tenantSignatureName: '' })[0]).toMatchObject({ field: 'tenant_signature_name' });
-    expect(agreementIssues({ ...ticked, tenantSignature: false, tenantSignatureName: '' })[0]).toMatchObject({ field: 'tenant_signature' });
+
+  it('is satisfied by a read document, ticked rules and a signed name', () => {
+    expect(agreementIssues(base)).toEqual([]);
   });
+
+  it('wants a typed name with the signature', () => {
+    expect(agreementIssues({ ...base, tenantSignatureName: '' })[0]).toMatchObject({ field: 'tenant_signature_name' });
+  });
+
   it('wants the relationship when a guardian signs', () => {
-    const issues = agreementIssues({ acknowledgements: { rules: true }, tenantSignature: true, tenantSignatureName: 'Shiva', guardianSignature: true, guardianSignatureName: 'Ramesh', guardianRelation: '' });
+    const issues = agreementIssues({ ...base, guardianSignature: true, guardianSignatureName: 'Ramesh' });
     expect(issues[0]).toMatchObject({ field: 'guardian_relation' });
+  });
+
+  // ── The read gate ──────────────────────────────────────────────────────
+  it('blocks signing until the document has been read to the end', () => {
+    const issues = agreementIssues({ ...base, readCompleted: false });
+    expect(issues.some((i) => i.field === 'agreement_document')).toBe(true);
+  });
+
+  it('asks for the read before it asks for a signature', () => {
+    // There is no point telling someone to sign a document they have not opened.
+    const issues = agreementIssues({
+      ...base, readCompleted: false, tenantSignature: false, tenantSignatureName: '',
+    });
+    expect(issues[0].field).toBe('agreement_document');
+  });
+
+  it('stops asking once the document has been read', () => {
+    expect(agreementIssues(base).some((i) => i.field === 'agreement_document')).toBe(false);
+  });
+
+  // ── The tenant must sign ───────────────────────────────────────────────
+  it('does not accept a guardian signature in place of the tenant\'s', () => {
+    // "tenant, guardian, or both" is exactly what allowed a tenancy to be
+    // activated with no signature from the person who lives there.
+    const issues = agreementIssues({
+      ...base,
+      tenantSignature: false,
+      tenantSignatureName: '',
+      guardianSignature: true,
+      guardianSignatureName: 'Ramesh',
+      guardianRelation: 'Father',
+    });
+    expect(issues.some((i) => i.field === 'tenant_signature')).toBe(true);
+  });
+
+  it('accepts the tenant signing alone when no guardian is required', () => {
+    expect(agreementIssues({ ...base, guardianRequired: false })).toEqual([]);
+  });
+
+  // ── Guardian co-signature, when the hostel asks for one ────────────────
+  it('requires a guardian signature when the hostel policy asks for one', () => {
+    const issues = agreementIssues({ ...base, guardianRequired: true });
+    expect(issues.some((i) => i.field === 'guardian_signature')).toBe(true);
+  });
+
+  it('requires the guardian name and relationship too when one is required', () => {
+    const signed = { ...base, guardianRequired: true, guardianSignature: true };
+    expect(agreementIssues(signed).some((i) => i.field === 'guardian_signature_name')).toBe(true);
+    expect(agreementIssues({ ...signed, guardianSignatureName: 'Ramesh' })[0])
+      .toMatchObject({ field: 'guardian_relation' });
+  });
+
+  it('is satisfied by a complete guardian co-signature when one is required', () => {
+    expect(agreementIssues({
+      ...base,
+      guardianRequired: true,
+      guardianSignature: true,
+      guardianSignatureName: 'Ramesh',
+      guardianRelation: 'Father',
+    })).toEqual([]);
+  });
+
+  it('treats an absent guardianRequired flag as not required', () => {
+    // Matches the backend default: a hostel predating the setting must not
+    // suddenly block its tenants.
+    expect(agreementIssues(base)).toEqual([]);
   });
 });
 
