@@ -28,6 +28,8 @@ Every task's requirements implicitly include these.
 - **No autoplaying video anywhere on `/`.**
 - **Migration `085` must be applied to production BEFORE the code that queries the table deploys.** Several earlier migrations are recorded as unapplied; `085` joins that queue and needs applying explicitly.
 - **`npm run build` does NOT typecheck** — it is `check:architecture && vite build && branding-check`, and esbuild skips type checking. Run `npx tsc --noEmit` filtered to your own files.
+- **Use the brand pack at `Stayo-Brand-Assetes/`, not hand-picked hexes.** Palette: Warm Clay `#B46A55`, Terra Cotta `#A45D44`, Dusty Orange `#D2986C`, Latte `#EBD9C4`, Charcoal `#2F2F2F`, Cream `#F7F3EE`. The mark is the S-monogram already shipped as `StayoMark` (viewBox `0 0 539 727`, geometry lifted from the brand vector) — **never redraw it**. The header/footer lockup is the horizontal logo.
+- **No green.** The brand has no success colour. Availability ("3 beds free") uses `#3F6B50`, a muted warm-leaning green chosen for 6.1:1 on white — never a Tailwind `emerald-*`, which is off-palette.
 - **ADR number is 214.** Highest on `origin/main` is ADR-213. Re-check `git show origin/main:docs/obsidian/Decisions.md | grep -oE 'ADR-[0-9]+' | sort -n | tail -1` at merge time — numbers collide across concurrent branches.
 
 ## Danger: the local `.env` points at PRODUCTION
@@ -246,7 +248,7 @@ git commit -m "feat(home): derive the live-city chip from real listings"
 // apps/frontend/src/app/pages/public/home/homeFeatured.test.ts
 import { describe, expect, it } from 'vitest';
 import type { DiscoverCard } from '@features/discover/api';
-import { planFeatured, EDITORIAL_MAX, GRID_MAX } from './homeFeatured';
+import { homeSupplyState, planFeatured, EDITORIAL_MAX, GRID_MAX } from './homeFeatured';
 
 function card(id: string, photos: string[] = []): DiscoverCard {
   return {
@@ -289,6 +291,24 @@ describe('planFeatured', () => {
   it('treats exactly EDITORIAL_MAX as editorial', () => {
     const exact = Array.from({ length: EDITORIAL_MAX }, (_, i) => card(`h${i}`));
     expect(planFeatured(exact).layout).toBe('editorial');
+  });
+});
+
+describe('homeSupplyState', () => {
+  it('is loading while the query is in flight, even with nothing yet', () => {
+    expect(homeSupplyState(true, 0)).toBe('loading');
+  });
+
+  it('stays loading when a refetch is in flight over existing cards', () => {
+    expect(homeSupplyState(true, 3)).toBe('loading');
+  });
+
+  it('is empty only once the query has settled with nothing', () => {
+    expect(homeSupplyState(false, 0)).toBe('empty');
+  });
+
+  it('is ready when listings exist', () => {
+    expect(homeSupplyState(false, 2)).toBe('ready');
   });
 });
 ```
@@ -337,12 +357,28 @@ export function planFeatured(cards: DiscoverCard[]): FeaturedPlan {
   }
   return { layout: 'grid', cards: cards.slice(0, GRID_MAX), lead, showBrowseAll: true };
 }
+
+export type HomeSupplyState = 'loading' | 'empty' | 'ready';
+
+/**
+ * Loading is not the same as empty, and conflating them is a real bug.
+ *
+ * On first paint the listings query has no data, so a page that branches on
+ * `cards.length === 0` alone renders the zero-supply layout — brand-only hero,
+ * no city chip, no listings — and then pops into the real page a moment later.
+ * Every first visit would flash the wrong page, and the wrong page happens to
+ * be the one that says Stayo has nothing.
+ */
+export function homeSupplyState(isLoading: boolean, cardCount: number): HomeSupplyState {
+  if (isLoading) return 'loading';
+  return cardCount === 0 ? 'empty' : 'ready';
+}
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `cd apps/frontend && npx vitest run src/app/pages/public/home/homeFeatured.test.ts`
-Expected: PASS, 6 tests.
+Expected: PASS, 10 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1456,7 +1492,10 @@ export function PublicHeader() {
           {door.label}
         </Link>
 
-        <Link to="/login" className="hidden h-11 items-center px-3 text-sm font-semibold text-foreground/80 hover:text-primary sm:inline-flex">
+        {/* Visible at every width. `LandingPage` shipped this exact bug once —
+            login left out of the mobile menu made signing in impossible on a
+            phone — and a homepage that hides it repeats it. */}
+        <Link to="/login" className="inline-flex h-11 flex-none items-center px-2.5 text-[13.5px] font-semibold text-foreground/80 hover:text-primary sm:px-3 sm:text-sm">
           Log in
         </Link>
       </div>
@@ -1496,7 +1535,7 @@ git commit -m "feat(home): one public header with a permanent owner door"
 
 **Interfaces:**
 - Consumes: `planFeatured`/`FeaturedPlan` (Task 2), `listingPhotoUrl` (Task 3), `validateCoverage`/`CoveragePayload` (Task 4), `useSubmitCoverageRequest` (Task 10), `hostelCardFacts` from `@/app/pages/discover/hostelCardFacts`, `DiscoverCard`.
-- Produces: `<HomeHero cityLabel ctaCity lead onAskCoverage />`, `<FeaturedHostels plan />`, `<CoverageRequestSection source variant />`, `<TrustSection />`, `<HowItWorks />`, `<OwnerBand />`.
+- Produces: `<HomeHero cityLabel ctaCity lead loading />`, `<FeaturedHostels plan loading />`, `<CoverageRequestSection source variant />`, `<TrustSection />`, `<HowItWorks />`, `<OwnerBand />`.
 
 **Reference:** the approved visual design is the canvas at https://claude.ai/artifact/3EvwF3FiM5Kzz52M5TMML3 — desktop, 390px mobile, and the zero-listings hero. Match its hierarchy and copy; use theme tokens (`bg-background`, `text-foreground`, `bg-card`, `border-border`, `text-muted-foreground`, `bg-primary`, `font-display`) rather than the canvas's literal hexes, so dark mode and the marketing theme both work.
 
@@ -1519,6 +1558,8 @@ interface HomeHeroProps {
   ctaCity: string | null;
   /** The listing whose photograph fronts the page, if any. */
   lead: DiscoverCard | null;
+  /** Listings are still in flight — withhold the empty treatment. */
+  loading: boolean;
 }
 
 /**
@@ -1530,7 +1571,7 @@ interface HomeHeroProps {
  * no stock photography, because a stock hostel is exactly the lie the whole
  * product is positioned against.
  */
-export function HomeHero({ cityLabel, ctaCity, lead }: HomeHeroProps) {
+export function HomeHero({ cityLabel, ctaCity, lead, loading }: HomeHeroProps) {
   const facts = lead ? hostelCardFacts(lead) : null;
   const photo = listingPhotoUrl(facts?.photo ?? null, 620);
 
@@ -1579,7 +1620,11 @@ export function HomeHero({ cityLabel, ctaCity, lead }: HomeHeroProps) {
           </ul>
         </div>
 
-        {lead && facts && photo && lead.slug && (
+        {loading && (
+          <div className="h-[280px] w-full animate-pulse rounded-3xl bg-secondary sm:h-[430px]" aria-hidden="true" />
+        )}
+
+        {!loading && lead && facts && photo && lead.slug && (
           <div className="relative">
             <Link to={`/discover/h/${lead.slug}`} className="block">
               <img
@@ -1623,13 +1668,25 @@ import { hostelCardFacts } from '@/app/pages/discover/hostelCardFacts';
 import { listingPhotoUrl } from './listingPhoto';
 import type { FeaturedPlan } from './homeFeatured';
 
+/**
+ * ONE link, not a card containing a button.
+ *
+ * The first pass wrapped the photo in a link and put a second link in the
+ * footer, so the card looked entirely clickable while only two parts of it
+ * were — and a keyboard user hit two tab stops for one destination. The whole
+ * card is the target; "View listing" is an affordance, not a second control.
+ */
 function FeaturedHostelCard({ hostel }: { hostel: DiscoverCard }) {
   const facts = hostelCardFacts(hostel);
   const photo = listingPhotoUrl(facts.photo, 560);
 
   return (
-    <article className="overflow-hidden rounded-[22px] border border-border bg-card">
-      <Link to={hostel.slug ? `/discover/h/${hostel.slug}` : '/discover'} className="block">
+    <Link
+      to={hostel.slug ? `/discover/h/${hostel.slug}` : '/discover'}
+      className="block overflow-hidden rounded-[22px] border border-border bg-card no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      aria-label={`${hostel.name}, ${facts.location}`}
+    >
+      <div className="block">
         <div className="relative">
           {photo ? (
             <img src={photo} alt={hostel.name} width={560} height={240} className="h-[190px] w-full object-cover sm:h-[240px]" />
@@ -1637,12 +1694,12 @@ function FeaturedHostelCard({ hostel }: { hostel: DiscoverCard }) {
             <div className="h-[190px] w-full bg-secondary sm:h-[240px]" />
           )}
           {hostel.verified && (
-            <span className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-background px-3 py-1.5 text-[11.5px] font-bold text-emerald-700">
+            <span className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-background px-3 py-1.5 text-[11.5px] font-bold text-[#3F6B50]">
               <Check className="h-3 w-3" strokeWidth={2.6} aria-hidden="true" /> Verified
             </span>
           )}
         </div>
-      </Link>
+      </div>
 
       <div className="p-5 sm:p-6">
         <div className="flex items-baseline gap-3">
@@ -1661,17 +1718,14 @@ function FeaturedHostelCard({ hostel }: { hostel: DiscoverCard }) {
           {facts.audience && <span className="rounded-full bg-secondary px-3 py-1.5 text-[12.5px] font-semibold text-foreground/80">{facts.audience}</span>}
         </div>
 
-        <div className="mt-5 flex items-center gap-3">
-          <span className="flex-1 text-[13.5px] font-bold text-emerald-700">{facts.availability.label}</span>
-          <Link
-            to={hostel.slug ? `/discover/h/${hostel.slug}` : '/discover'}
-            className="inline-flex h-11 items-center rounded-xl bg-foreground px-5 font-display text-sm font-bold text-background"
-          >
-            View listing
-          </Link>
+        <div className="mt-5 flex items-center gap-3 border-t border-border pt-4">
+          <span className="flex-1 text-[13.5px] font-bold text-[#3F6B50]">{facts.availability.label}</span>
+          <span className="inline-flex items-center gap-1.5 font-display text-sm font-bold text-primary" aria-hidden="true">
+            View listing <ArrowRight className="h-4 w-4" strokeWidth={2.3} />
+          </span>
         </div>
       </div>
-    </article>
+    </Link>
   );
 }
 
@@ -1682,7 +1736,18 @@ function FeaturedHostelCard({ hostel }: { hostel: DiscoverCard }) {
  * honesty rather than an apology for size, and it stays true automatically:
  * the heading does not have to change when supply grows, only the layout does.
  */
-export function FeaturedHostels({ plan }: { plan: FeaturedPlan }) {
+export function FeaturedHostels({ plan, loading }: { plan: FeaturedPlan; loading: boolean }) {
+  // A skeleton row, never the "we have nothing" framing, while data is in flight.
+  if (loading) {
+    return (
+      <section className="bg-card px-4 py-16 sm:px-6 sm:py-20" aria-busy="true">
+        <div className="mx-auto grid max-w-6xl gap-6 sm:grid-cols-2">
+          <div className="h-[420px] animate-pulse rounded-[22px] bg-secondary" />
+          <div className="h-[420px] animate-pulse rounded-[22px] bg-secondary" />
+        </div>
+      </section>
+    );
+  }
   if (plan.layout === 'none') return null;
 
   return (
@@ -2019,7 +2084,7 @@ import { HomeHero } from './home/HomeHero';
 import { HowItWorks } from './home/HowItWorks';
 import { OwnerBand } from './home/OwnerBand';
 import { TrustSection } from './home/TrustSection';
-import { planFeatured } from './home/homeFeatured';
+import { homeSupplyState, planFeatured } from './home/homeFeatured';
 import { citiesFromFacets, liveCities, liveCityLabel, primaryCity } from './home/liveCities';
 
 /** Enough to fill the grid and derive the city list; the rest is `/discover`. */
@@ -2036,7 +2101,7 @@ const HOME_LISTING_LIMIT = 12;
  * (ADR-071 point 4, which was reverted in a day the one time it was violated).
  */
 export function HomePage() {
-  const { data } = useDiscoverSearch({ limit: HOME_LISTING_LIMIT, sort: 'recommended' });
+  const { data, isLoading } = useDiscoverSearch({ limit: HOME_LISTING_LIMIT, sort: 'recommended' });
 
   useEffect(() => {
     document.title = 'Stayo — hostel living, sorted';
@@ -2051,13 +2116,22 @@ export function HomePage() {
     return faceted.length > 0 ? faceted : liveCities(cards);
   }, [data, cards]);
 
+  const state = homeSupplyState(isLoading, cards.length);
+
   return (
     <ThemeProvider theme="marketing">
       <div className="min-h-screen bg-background text-foreground">
         <PublicHeader />
-        <HomeHero cityLabel={liveCityLabel(cities)} ctaCity={primaryCity(cities)} lead={plan.lead} />
-        <FeaturedHostels plan={plan} />
-        <CoverageRequestSection source={plan.layout === 'none' ? 'HOME_EMPTY' : 'HOME'} />
+        {/* While loading, the chip and the lead photo are withheld rather than
+            replaced with the zero-supply treatment — see `homeSupplyState`. */}
+        <HomeHero
+          cityLabel={state === 'ready' ? liveCityLabel(cities) : null}
+          ctaCity={state === 'ready' ? primaryCity(cities) : null}
+          lead={state === 'ready' ? plan.lead : null}
+          loading={state === 'loading'}
+        />
+        <FeaturedHostels plan={plan} loading={state === 'loading'} />
+        <CoverageRequestSection source={state === 'empty' ? 'HOME_EMPTY' : 'HOME'} />
         <TrustSection />
         <HowItWorks />
         <OwnerBand />
@@ -2295,6 +2369,8 @@ Report explicitly:
 ## Self-Review
 
 **Spec coverage.** §1 context → Task 13's route swap. §2 decisions 1/4/5/8/9/10 → Tasks 11–13; decision 2 (no URL split) → no code, recorded in ADR-214 (Task 15); decision 3 (trust line) → Task 12 `TrustSection`; decision 6 → Tasks 6–10; decision 7 → enforced throughout, no stock imagery anywhere; decision 11 (`/owners` untouched) → no task, deliberately; decision 12 → Task 13 step 4. §4 page table → Tasks 11–13. §5 file structure → Tasks 1–5, 10–13. §6 imagery → Tasks 3 and 12. §7 data/API → Tasks 6–9; phase 2 aggregate explicitly out of scope. §8 SEO → Task 14. §9 verification → Task 16. §10 docs → Task 15. §11 open questions → Task 16 step 5.
+
+**Fixed after a second design review (2026-09-18):** the loading-vs-empty flash (`homeSupplyState`), the listing card being a card-with-a-button-inside-a-link rather than one link, `Log in` hidden below `sm`, and Tailwind `emerald-*` in place of a brand tone. The artboards were also rebuilt on the real brand pack.
 
 **Known gap, deliberate:** the zero-listings hero is handled by `HomeHero` rendering without the photo block and `CoverageRequestSection` receiving `HOME_EMPTY`, rather than a separate component. The canvas's third artboard shows a distinct layout for that state; if the rendered result is weaker than the canvas, split it into `HomeHeroEmpty.tsx` — but do not build both up front for a state the business may leave within weeks.
 
