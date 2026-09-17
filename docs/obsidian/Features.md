@@ -1530,3 +1530,11 @@ Built on [[Decisions#ADR-195|ADR-195]]; reads the occupancy engine from [[Decisi
 **Not built:** per-weekday ratios (Sunday really is different), ingredient and cost forecasting, per-tenant meal skips, Away Today.
 
 **Not yet exercised:** no kitchen has logged a single meal, so every hostel is still in the learning state and no ratio exists anywhere.
+
+
+### The agreement a tenant reads and signs (2026-09-18)
+
+- **Where:** `/activate/agreement` (onboarding reader), the Agreement step of tenant activation, and `GET /api/agreements/[id]/document` for a logged-in reader.
+- **What:** the tenant opens the real agreement — the owner's own clauses, interpolated with their rent, room and dates, followed by the platform's legal frame — on a full screen with a reading-progress bar. Reaching the end unlocks signing; the read is recorded against the agreement as evidence. Signing is by drawn or photographed signature exactly as before ([[Decisions#ADR-140|ADR-140]] unchanged).
+- **Notes:** the document is composed once on the backend and rendered twice (HTML and PDF) from the same model, so what is read and what is filed cannot drift — see [[Decisions#ADR-214|ADR-214]]. Each signature carries its own IST timestamp, IP, device and browser. The owner's key terms are surfaced on the step's card before the tenant opens the document.
+- **Not verified:** never opened in a browser; no real tenant has read or signed through it.

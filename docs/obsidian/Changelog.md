@@ -10,6 +10,18 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-18**: **The agreement a tenant signs is now the agreement the owner wrote** ([[Decisions#ADR-214|ADR-214]], [[Decisions#ADR-215|ADR-215]], [[Decisions#ADR-216|ADR-216]], [[Decisions#ADR-217|ADR-217]], [[Bugs]], [[APIs]], [[Database]]).
+  - The document an owner drafted, the document a tenant was shown, and the PDF that was filed were three artifacts composed by three pieces of code. They are now **one composed model with two renderers** — HTML for reading, pdf-lib for the file — with a `contentHash` that makes the agreement checkable rather than assumed.
+  - **The tenant was being shown a hardcoded contract** containing none of the owner's clauses: a facts grid numbered "1.", a jump to a fabricated "6. Management Rights", no sections 2–5. The clauses were reaching the client and nothing read them; the frozen legacy portal had rendered them correctly, so this was a regression. The stub is deleted.
+  - **The PDF did not exist until after the signature was captured**, so there was nothing to preview even in principle. The document now opens on its own full screen before signing, and the read is recorded server-side (`document_opened_at`, `document_read_completed_at`) so a reload cannot skip it.
+  - **Every variable an owner inserted printed literally in signed agreements.** The editor wrote `{VAR}`; the interpolator matched only `{{VAR}}`. Both forms are now accepted — no migration needed.
+  - **A clause an owner deleted still printed on the signed PDF**: the rules loop iterated categories raw and never checked the enabled flag.
+  - **A guardian-only signature could activate a tenancy.** The tenant now always signs; a guardian co-signature is required only when the hostel asks for one. Already-signed guardian-only agreements stay valid.
+  - **Each signature is stamped with its provenance** — moment in IST, originating IP, device, OS and browser — identical in the reader and the PDF. Unsigned panels are stamped with nothing.
+  - The legal notice claiming "digital signatures ... are legally binding" is **removed with nothing in its place**: a drawn PNG is an electronic signature, not a digital signature under IT Act s.3.
+  - Migration `085` is **committed unapplied**; the test database is unreachable from the development environment.
+
+
 - **2026-09-15**: **An open invitation can be edited again — and the fix that would have erased dues** ([[Decisions#ADR-208|ADR-208]], [[Bugs]], [[APIs]]).
   - Editing an invited tenant's offer returned `Invitation can be edited only before tenant activation` for tenants who had not activated. [[Decisions#ADR-165|ADR-165]] made an invited tenancy `ACTIVE` with `acceptance_status = PENDING` from creation; the frontend and `resendInvitation` were migrated to that signal, `updateInvitation` was not. The button has never worked for any tenancy created since.
   - **`initializeOnboardingFinancials` carried the same stale check and skipped *silently*.** `resendInvitation` deletes unpaid obligations and then calls it to rebuild them, so fixing only the visible guard would have left edited tenancies owing nothing. Both moved together.
