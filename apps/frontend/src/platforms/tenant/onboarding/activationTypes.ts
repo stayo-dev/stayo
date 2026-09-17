@@ -25,6 +25,8 @@ export type ActivationContext = {
     blocked_steps: ActivationStep[];
     /** False when this hostel does not require a signed agreement (ADR-059). */
     agreement_required?: boolean;
+    /** True when this hostel requires a parent/guardian co-signature (ADR-216). */
+    guardian_signature_required?: boolean;
     account_setup_completed: boolean;
     rules_accepted: boolean;
     agreement_signed: boolean;
@@ -92,6 +94,9 @@ export type ActivationContext = {
     status: string;
     signed_at?: string | null;
     pdf_url?: string | null;
+    /** Set once the tenant has read the document to the end — gates signing. */
+    document_read_completed_at?: string | null;
+    document_opened_at?: string | null;
     content_snapshot: Record<string, any>;
     tenant_signature_url?: string | null;
     tenant_signature_name?: string | null;

@@ -154,7 +154,8 @@ export function AgreementStep({
    * cannot skip the gate, and so the evidence outlives the session.
    */
   const readCompletedAt = (agreement as any)?.document_read_completed_at ?? null;
-  const guardianRequired = Boolean((ctx as any)?.policy?.tenant_rules?.guardian_signature_required);
+  /** Published by the backend on the activation state; absent means not required. */
+  const guardianRequired = Boolean(ctx.activation_state?.guardian_signature_required);
   const rulesAccepted = completedSteps.has('RULES') || Boolean(ctx.activation_state?.rules_accepted);
   const agreementSigned = completedSteps.has('AGREEMENT') || Boolean(ctx.activation_state?.agreement_signed);
 
