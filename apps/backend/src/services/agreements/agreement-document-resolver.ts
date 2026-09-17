@@ -23,7 +23,19 @@ const EM_DASH = "—";
 
 export function agreementDocumentInputFromRenderData(
   data: AgreementData,
-  opts: { reference: string; versionNumber: number; status: string; verificationUrl: string | null },
+  opts: {
+    reference: string;
+    versionNumber: number;
+    status: string;
+    verificationUrl: string | null;
+    /**
+     * Defaults to true: a stored agreement is being issued, so an unresolved
+     * token must blank rather than print as a token on something being signed.
+     * The owner's own preview passes false, because a typo'd token has to stay
+     * visible to the person who can still fix it.
+     */
+    isFinal?: boolean;
+  },
 ): AgreementDocumentInput {
   const joining = formatAgreementDate(data.agreementStartDate || data.joiningDate);
   const maintenance = Number(data.maintenanceCharge || 0);
@@ -63,8 +75,7 @@ export function agreementDocumentInputFromRenderData(
       OWNER_NAME: data.ownerName,
       JOINING_DATE: joining,
     },
-    // A stored agreement is being issued, not drafted.
-    isFinal: true,
+    isFinal: opts.isFinal ?? true,
     signatures: {
       tenantName: data.tenantSignatureName ?? null,
       tenantSignatureUrl: data.tenantSignatureUrl ?? null,
