@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   AlertTriangle, BedDouble, ChevronRight, Clock, FileText, GripVertical, ImagePlus, Lock, Plus,
   Share2, Star,
@@ -7,6 +7,8 @@ import {
 
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { useShareHostel } from '@shared/hooks/useShareHostel';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { hostProfileService } from '@features/host-profile/api';
 import { LIFECYCLE_STEPS, listingLifecycle, primaryActionLabel } from '../marketing/listingLifecycle';
 import {
   useMarketingEditor,
@@ -17,6 +19,7 @@ import {
 import {
   EMPTY_MARKETING_CONTENT,
   MESS_TYPE_LABELS,
+  marketingService,
   type MarketingBed,
   type MarketingContent,
   type MarketingPlace,
@@ -91,8 +94,19 @@ const NEW_BED: MarketingBed = {
   availability: 'BEDS_LEFT',
 };
 
-export function HostelMarketingPage() {
+/**
+ * `ownerId`/`onEditHostProfile` are only ever passed by the admin console
+ * (`AdminListingEditorPage`) — the owner route mounts this with neither, and
+ * the Host profile card below falls back to the owner's own session
+ * (`hostProfileService.getMine`) and to navigating straight to
+ * `/owner/more/host-profile`, exactly as it does everywhere else in the app.
+ */
+export function HostelMarketingPage({
+  ownerId, onEditHostProfile, isAdmin,
+}: { ownerId?: string; onEditHostProfile?: () => void; isAdmin?: boolean } = {}) {
   const { hostelId } = useParams<{ hostelId: string }>();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data, isLoading } = useMarketingEditor(hostelId);
   const save = useSaveMarketingDraft(hostelId);
   const submit = useSubmitMarketing(hostelId);
@@ -110,6 +124,14 @@ export function HostelMarketingPage() {
   }, [data?.draft.content, dirty]);
 
   const { share } = useShareHostel();
+
+  // One host profile per owner (ADR-200), reused across every hostel they
+  // run — not per-listing data, so it is fetched, not part of `content`.
+  const hostProfile = useQuery({
+    queryKey: ownerId ? ['admin', 'owner', ownerId, 'host-profile'] : ['owner', 'host-profile', 'mine'],
+    queryFn: () => (ownerId ? hostProfileService.getForOwner(ownerId) : hostProfileService.getMine()),
+    staleTime: 30_000,
+  });
 
   /**
    * An owner can only share a listing the public can actually open: an
@@ -156,10 +178,39 @@ export function HostelMarketingPage() {
     });
 
   /**
+   * Admin is both editor and approver, so send→queue→reopen→approve is pure
+   * busywork when *admin themselves* wrote the change (as opposed to
+   * reviewing something an owner submitted, which still goes through the
+   * Hostel Listings review drawer as normal — this does not touch that path).
+   * Chains the exact same three existing endpoints a queue-based publish
+   * would use — save, submit, approve — nothing new server-side, just no
+   * round trip through the queue for edits admin made themselves.
+   */
+  const publishAsAdmin = useMutation({
+    mutationFn: async () => {
+      const saved: any = await save.mutateAsync(content);
+      const submitted: any = await submit.mutateAsync();
+      return marketingService.approve(submitted?.id ?? saved?.id, 'Published directly by admin');
+    },
+    onSuccess: () => {
+      setDirty(false);
+      queryClient.invalidateQueries({ queryKey: ['discover'] });
+      stayoToast.success('Published — live on Discovery');
+    },
+    onError: (error: any) =>
+      stayoToast.error(error?.response?.data?.message ?? 'Could not publish'),
+  });
+
+  const publishing = save.isPending || submit.isPending || publishAsAdmin.isPending;
+
+  /**
    * The design's status toggle. Off→on sends the draft for review; on→off
    * withdraws it. Saving first is implicit: submitting a version an owner can
    * see unsaved edits on top of is the bug the old "Save your changes first"
    * toast existed to prevent, and doing it for them is better than refusing.
+   *
+   * For admin, off→on publishes directly instead of queueing (see
+   * `publishAsAdmin` above) — everything else about the toggle is unchanged.
    */
   const onPrimaryAction = () => {
     if (lifecycle.action === 'WITHDRAW') {
@@ -173,8 +224,17 @@ export function HostelMarketingPage() {
       stayoToast.info(issues[0]);
       return;
     }
+    if (isAdmin && (lifecycle.action === 'SUBMIT' || lifecycle.action === 'RESUBMIT')) {
+      publishAsAdmin.mutate();
+      return;
+    }
     onSave({ thenSubmit: true });
   };
+
+  const primaryLabel =
+    isAdmin && (lifecycle.action === 'SUBMIT' || lifecycle.action === 'RESUBMIT')
+      ? 'Save & publish'
+      : primaryActionLabel(lifecycle.action);
 
   if (isLoading) {
     return (
@@ -239,22 +299,22 @@ export function HostelMarketingPage() {
             {lifecycle.detail}
           </p>
 
-          {primaryActionLabel(lifecycle.action) && (
+          {primaryLabel && (
             <button
               type="button"
               onClick={onPrimaryAction}
-              disabled={save.isPending || submit.isPending || withdraw.isPending}
+              disabled={publishing || withdraw.isPending}
               className="mt-3 w-full rounded-[12px] px-4 py-2.5 font-display text-[13px] font-bold transition-opacity disabled:opacity-60"
               style={{
                 background: lifecycle.action === 'WITHDRAW' ? 'rgba(255,255,255,.12)' : 'var(--primary)',
                 color: '#fff',
               }}
             >
-              {save.isPending || submit.isPending
-                ? 'Sending…'
+              {publishing
+                ? (isAdmin ? 'Publishing…' : 'Sending…')
                 : withdraw.isPending
                   ? 'Withdrawing…'
-                  : primaryActionLabel(lifecycle.action)}
+                  : primaryLabel}
             </button>
           )}
 
@@ -702,6 +762,41 @@ export function HostelMarketingPage() {
           </Row>
         </Card>
 
+        {/* ── Host profile ─────────────────────────────────────────────── */}
+        <Card padded>
+          <div className="flex items-center gap-[11px]">
+            {hostProfile.data?.photo_url ? (
+              <img
+                src={hostProfile.data.photo_url}
+                alt=""
+                className="h-[38px] w-[38px] flex-none rounded-full object-cover"
+              />
+            ) : (
+              <span
+                className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-full font-display text-[13px] font-bold text-white"
+                style={{ background: M.ink }}
+              >
+                {(hostProfile.data?.name ?? '?').slice(0, 2).toUpperCase()}
+              </span>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="font-display text-[13.5px] font-bold text-foreground">
+                {hostProfile.data?.name ?? 'Host profile'}
+              </p>
+              <p className="truncate text-[11.5px] text-muted-foreground">
+                {hostProfile.data?.bio || 'Shown on the listing as "Meet your host" — not set yet'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => (onEditHostProfile ? onEditHostProfile() : navigate('/owner/more/host-profile'))}
+              className="flex-none font-display text-[12.5px] font-bold text-primary"
+            >
+              Edit
+            </button>
+          </div>
+        </Card>
+
         {/* ── Amenities ────────────────────────────────────────────────── */}
         <Card padded>
           <div className="mb-1 flex items-baseline justify-between">
@@ -914,9 +1009,26 @@ export function HostelMarketingPage() {
         </section>
       </div>
 
-      {/* ── Save bar ───────────────────────────────────────────────────── */}
+      {/*
+        ── Save bar ───────────────────────────────────────────────────────
+        `fixed inset-x-0 bottom-0` is correct in the owner app: this whole
+        page IS the phone-width viewport, so pinning to its edges pins to the
+        real screen edges. Mounted inside the admin console (a wide desktop
+        shell with its own sidebar), the same `fixed` positioning ignores the
+        480px card it visually sits in — spanning the entire browser window
+        and landing on top of the admin sidebar's own footer. `isAdmin` keeps
+        the owner app's real mobile bar unchanged and renders this in normal
+        flow instead — the last thing in the card, not escaping it.
+      */}
       {!locked && (
-        <div className="fixed inset-x-0 bottom-0 z-30 flex gap-2.5 px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-5 bg-gradient-to-t from-background from-[22%] to-transparent">
+        <div
+          className={
+            isAdmin
+              ? 'relative z-30 flex gap-2.5 border-t px-5 py-4'
+              : 'fixed inset-x-0 bottom-0 z-30 flex gap-2.5 px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-5 bg-gradient-to-t from-background from-[22%] to-transparent'
+          }
+          style={isAdmin ? { borderColor: M.outline } : undefined}
+        >
           <button
             type="button"
             onClick={() => setSheet({ kind: 'preview' })}
@@ -927,17 +1039,19 @@ export function HostelMarketingPage() {
           </button>
           <button
             type="button"
-            onClick={() => onSave({ thenSubmit: true })}
-            disabled={issues.length > 0 || save.isPending || submit.isPending}
+            onClick={() => (isAdmin ? publishAsAdmin.mutate() : onSave({ thenSubmit: true }))}
+            disabled={issues.length > 0 || publishing}
             title={issues[0]}
             className="flex-1 rounded-[13px] bg-primary py-3.5 font-display text-[13.5px] font-bold text-primary-foreground disabled:opacity-50"
             style={{ boxShadow: '0 8px 20px rgba(180,106,85,.3)' }}
           >
             {issues.length > 0
               ? issues[0]
-              : save.isPending || submit.isPending
-                ? 'Sending…'
-                : 'Save & send for review'}
+              : publishing
+                ? (isAdmin ? 'Publishing…' : 'Sending…')
+                : isAdmin
+                  ? 'Save & publish'
+                  : 'Save & send for review'}
           </button>
         </div>
       )}

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { PenLine, Search } from 'lucide-react';
+import { PenLine, Search, Eye, Plus } from 'lucide-react';
 import { platformAdminService } from '@features/platform-admin/api';
 import { useMarketingQueue, useReviewDecision } from '@features/hostel-marketing/hooks/useMarketing';
 import { EmptyState, FilterChips } from '../ui';
@@ -17,7 +17,17 @@ import { StayoListedPanel } from '../listings/StayoListedPanel';
 import { NavigationBlock } from '../listings/NavigationBlock';
 import { AddressBlock } from '../listings/AddressBlock';
 import { LiveListingControls } from '../listings/LiveListingControls';
+import { AddHostelListingModal } from '../listings/AddHostelListingModal';
 import { tintForId } from '../theme/palette';
+
+function timeAgo(iso: string): string {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
 
 const STATUS_PILL: Record<string, { bg: string; color: string; label: string }> = {
   PENDING: { bg: '#FBF1DE', color: '#B8792B', label: 'Awaiting review' },
@@ -37,6 +47,10 @@ export function ListingsPage() {
   const [sendBackNote, setSendBackNote] = useState('');
   const [sendingBack, setSendingBack] = useState(false);
   const [search, setSearch] = useState('');
+  const [addingListing, setAddingListing] = useState(false);
+  const [rejecting, setRejecting] = useState<{ id: string; name: string } | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectSubmitting, setRejectSubmitting] = useState(false);
 
   /**
    * A card is a hostel; the review is of a revision. The pending queue is the
@@ -114,20 +128,34 @@ export function ListingsPage() {
     }
   };
 
-  const reject = async (id: string, name: string) => {
-    // A reason is required server-side, and the owner sees it — sending an
-    // empty string would leave them with nothing to fix.
-    const reason = window.prompt(`Why is "${name}" being sent back?`)?.trim();
-    if (!reason) {
-      fireToast('A reason is required to reject a listing', 'no');
+  /**
+   * A real modal, not `window.prompt` — a browser can silently suppress a
+   * native dialog (Chrome does this after a page has shown a couple already,
+   * and in some embedded/PWA contexts) and `prompt()` then just returns
+   * `null`, with no error and no visible sign anything was blocked. That read
+   * as "reject isn't giving me permission" — it was the dialog never opening,
+   * not a real authorization failure.
+   */
+  const confirmReject = async () => {
+    if (!rejecting) return;
+    const reason = rejectReason.trim();
+    if (reason.length < 4) {
+      fireToast('A reason is required so the owner knows what to fix', 'no');
       return;
     }
+    setRejectSubmitting(true);
     try {
-      await platformAdminService.rejectListing(id, reason);
+      await platformAdminService.rejectListing(rejecting.id, reason);
       refreshHostels();
       fireToast('Listing sent back to the owner');
-    } catch {
-      fireToast('Could not reject that listing', 'no');
+      setRejecting(null);
+      setRejectReason('');
+    } catch (error: any) {
+      // Surface the server's actual reason (validation message, 403, etc.)
+      // instead of one generic string that hides what really happened.
+      fireToast(error?.response?.data?.error?.message ?? 'Could not reject that listing', 'no');
+    } finally {
+      setRejectSubmitting(false);
     }
   };
 
@@ -157,7 +185,28 @@ export function ListingsPage() {
             />
           </div>
         )}
+        {tab !== 'stayo' && (
+          <button
+            type="button"
+            onClick={() => setAddingListing(true)}
+            title="Author a listing for a hostel that's already on Stayo"
+            className="ml-auto flex flex-none items-center gap-1.5 rounded-xl bg-[#B46A55] px-3.5 py-2 font-admin text-[12px] font-bold text-white shadow-[0_4px_12px_rgba(180,106,85,.24)]"
+          >
+            <Plus className="h-3.5 w-3.5" strokeWidth={2.4} />
+            Add hostel listing
+          </button>
+        )}
       </div>
+
+      {addingListing && (
+        <AddHostelListingModal
+          onClose={() => setAddingListing(false)}
+          onPick={(hostelId) => {
+            setAddingListing(false);
+            navigate(`/admin/listings/${hostelId}/edit`);
+          }}
+        />
+      )}
 
       {tab === 'stayo' ? (
         <StayoListedPanel />
@@ -239,6 +288,10 @@ export function ListingsPage() {
                     )}
                   </div>
 
+                  {h.listing_updated_at && (
+                    <div className="text-[10.5px] text-[#A2978B]">Listing updated {timeAgo(h.listing_updated_at)}</div>
+                  )}
+
                   {/* Footer pinned to the bottom so cards in a row align even
                       when names wrap to two lines. */}
                   <div className="mt-auto flex items-center gap-1.5 pt-1">
@@ -251,12 +304,27 @@ export function ListingsPage() {
                       <PenLine className="h-3 w-3" strokeWidth={2} />
                       Page
                     </button>
+                    {h.preview_revision_id && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); navigate(`/admin/listings/preview/${h.preview_revision_id}`); }}
+                        title="Preview this hostel's listing"
+                        className="flex items-center gap-1.5 rounded-[9px] border border-[#E9DFD3] bg-white px-2.5 py-1.5 text-[11.5px] font-semibold text-[#5A5147] hover:border-[#B46A55] hover:text-[#B46A55]"
+                      >
+                        <Eye className="h-3 w-3" strokeWidth={2} />
+                        Preview
+                      </button>
+                    )}
                     <div className="flex-1" />
                     {pending && (
                       <>
                         <button
                           type="button"
-                          onClick={(e) => { e.stopPropagation(); reject(h.id, h.name); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRejecting({ id: h.id, name: h.name });
+                            setRejectReason('');
+                          }}
                           className="rounded-[9px] border border-[#E6C7BF] bg-[#FBEFE9] px-2.5 py-1.5 font-admin text-[11.5px] font-bold text-[#B3402F]"
                         >
                           Reject
@@ -393,6 +461,55 @@ export function ListingsPage() {
             <NoSubmission hostelId={detail.id} onWrite={() => navigate(`/admin/listings/${detail.id}/edit`)} />
           )}
         </AdminDrawer>
+      )}
+
+      {rejecting && (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={() => !rejectSubmitting && setRejecting(null)}
+            className="absolute inset-0 bg-[rgba(28,22,18,.44)]"
+          />
+          <div className="relative w-full max-w-[440px] overflow-hidden rounded-[20px] bg-white shadow-[0_24px_60px_rgba(30,20,12,.3)]">
+            <div className="border-b border-[#F2ECE5] px-6 py-5">
+              <div className="font-admin text-[16px] font-extrabold tracking-[-0.01em] text-[#221E1A]">
+                Reject listing
+              </div>
+              <div className="mt-0.5 text-[12px] text-[#8A7F75]">{rejecting.name}</div>
+            </div>
+            <div className="px-6 py-5">
+              <label className="mb-1.5 block text-[11.5px] font-semibold text-[#5A5147]">
+                Why is this being rejected?
+              </label>
+              <textarea
+                autoFocus
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="The owner sees this and acts on it"
+                className="min-h-[90px] w-full resize-y rounded-[11px] border border-[#E7DDD1] bg-[#FCFAF7] px-3.5 py-2.5 text-[13px] text-[#2A2521] outline-none focus:border-[#B46A55] focus:bg-white"
+              />
+            </div>
+            <div className="flex gap-3 border-t border-[#F2ECE5] px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setRejecting(null)}
+                disabled={rejectSubmitting}
+                className="flex-1 rounded-xl border border-[#E9DFD3] bg-white py-3 font-admin text-[13px] font-bold text-[#5A5147] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmReject}
+                disabled={rejectSubmitting || rejectReason.trim().length < 4}
+                className="flex-[1.4] rounded-xl bg-[#B3402F] py-3 font-admin text-[13px] font-bold text-white disabled:opacity-40"
+              >
+                {rejectSubmitting ? 'Rejecting…' : 'Reject listing'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

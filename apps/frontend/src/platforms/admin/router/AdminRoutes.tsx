@@ -1,5 +1,7 @@
 import { lazy } from 'react';
 import { Navigate, Route } from 'react-router-dom';
+import { AdminHomeDispatch } from './AdminHomeDispatch';
+import { RequireAdminOnly } from './RequireAdminOnly';
 
 const AdminConsoleShell = lazy(() =>
   import('../layout/AdminConsoleShell').then((m) => ({ default: m.AdminConsoleShell })),
@@ -9,6 +11,11 @@ const AdminProviderShell = lazy(() =>
 );
 
 const OverviewPage = lazy(() => import('../pages/OverviewPage').then((m) => ({ default: m.OverviewPage })));
+const ManagerDashboardPage = lazy(() => import('../pages/ManagerDashboardPage').then((m) => ({ default: m.ManagerDashboardPage })));
+const ManagersPage = lazy(() => import('../pages/ManagersPage').then((m) => ({ default: m.ManagersPage })));
+const ActivityPage = lazy(() => import('../pages/ActivityPage').then((m) => ({ default: m.ActivityPage })));
+const OnboardingMonitorPage = lazy(() => import('../pages/OnboardingMonitorPage').then((m) => ({ default: m.OnboardingMonitorPage })));
+const ManagerHostelDetailPage = lazy(() => import('../pages/ManagerHostelDetailPage').then((m) => ({ default: m.ManagerHostelDetailPage })));
 const LeadsPage = lazy(() => import('../pages/LeadsPage').then((m) => ({ default: m.LeadsPage })));
 const OwnersPage = lazy(() => import('../pages/OwnersPage').then((m) => ({ default: m.OwnersPage })));
 const ListingsPage = lazy(() => import('../pages/ListingsPage').then((m) => ({ default: m.ListingsPage })));
@@ -18,13 +25,15 @@ const SubscriptionsPage = lazy(() => import('../pages/SubscriptionsPage').then((
 const ReportsPage = lazy(() => import('../pages/ReportsPage').then((m) => ({ default: m.ReportsPage })));
 const BroadcastsPage = lazy(() => import('../pages/BroadcastsPage').then((m) => ({ default: m.BroadcastsPage })));
 /**
- * The owner's marketing editor, reused verbatim. Stayo's team authors and
- * manages listing pages for any hostel — including ones an owner already runs
- * — so the admin console mounts the same component rather than growing a
- * second editor that would drift from it.
+ * The owner's marketing editor, reused verbatim (wrapped in admin desktop
+ * chrome by `AdminListingEditorPage` — a back button, hostel context, and a
+ * centered phone-width frame; the editor itself is untouched). Stayo's team
+ * authors and manages listing pages for any hostel — including ones an owner
+ * already runs — so the admin console mounts the same component rather than
+ * growing a second editor that would drift from it.
  */
-const HostelMarketingPage = lazy(() =>
-  import('@/features/hostel-drilldown/pages/HostelMarketingPage').then((m) => ({ default: m.HostelMarketingPage })),
+const AdminListingEditorPage = lazy(() =>
+  import('../pages/AdminListingEditorPage').then((m) => ({ default: m.AdminListingEditorPage })),
 );
 const ListingPreviewPage = lazy(() => import('../pages/ListingPreviewPage').then((m) => ({ default: m.ListingPreviewPage })));
 const SettingsPage = lazy(() => import('../pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
@@ -54,9 +63,14 @@ export function AdminRoutes() {
   return (
     <Route element={<AdminProviderShell />}>
       <Route element={<AdminConsoleShell />}>
-        <Route path="/admin" element={<OverviewPage />} />
+        {/* ADR-212: a MANAGER session sees its own scoped dashboard; ADMIN sees the platform-wide Overview. Backend-enforced regardless — see AdminHomeDispatch. */}
+        <Route path="/admin" element={<AdminHomeDispatch admin={<OverviewPage />} manager={<ManagerDashboardPage />} />} />
         <Route path="/admin/leads" element={<LeadsPage />} />
         <Route path="/admin/owners" element={<OwnersPage />} />
+        <Route path="/admin/managers" element={<RequireAdminOnly><ManagersPage /></RequireAdminOnly>} />
+        <Route path="/admin/activity" element={<RequireAdminOnly><ActivityPage /></RequireAdminOnly>} />
+        <Route path="/admin/onboarding" element={<OnboardingMonitorPage />} />
+        <Route path="/admin/hostels/:hostelId" element={<ManagerHostelDetailPage />} />
         {/* Listing approval gates whether a hostel is discoverable; the
             marketing-content review (ADR-076) is a tab inside it rather than
             a separate destination — a listing needs both to go live. */}
@@ -65,7 +79,7 @@ export function AdminRoutes() {
         {/* Full-screen: it renders the real Discovery listing, so it must not
             sit inside the console chrome. */}
         <Route path="/admin/listings/preview/:revisionId" element={<ListingPreviewPage />} />
-        <Route path="/admin/listings/:hostelId/edit" element={<HostelMarketingPage />} />
+        <Route path="/admin/listings/:hostelId/edit" element={<AdminListingEditorPage />} />
         <Route path="/admin/revenue" element={<RevenuePage />} />
         <Route path="/admin/subscriptions" element={<SubscriptionsPage />} />
         <Route path="/admin/reports" element={<ReportsPage />} />

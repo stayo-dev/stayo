@@ -22,6 +22,10 @@ const PUBLIC_ROUTES = [
   "/api/leads/self-serve",
   "/api/leads/invitation",
   "/api/leads/track",
+  // Manager invitation/activation (ADR-212) — token-gated, mirrors
+  // /api/leads/invitation above. No session exists yet at this point in the
+  // flow; every route under this prefix validates the token itself.
+  "/api/managers/invitation",
   "/api/auth/csrf",
   "/api/tenants/activate",
   "/api/visit",

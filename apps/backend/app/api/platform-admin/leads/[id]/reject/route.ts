@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { eventLog } from "@/lib/services/event-log-service";
 import { canRejectLead } from "@/src/services/platform-leads/lead-transition-guards";
 import { platformLeadNotificationService } from "@/src/services/platform-leads/platform-lead-notification-service";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 
 /**
  * POST /api/platform-admin/leads/[id]/reject — decline an enquiry and tell
@@ -23,9 +24,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
 
   try {
-    if (!session || session.role !== "ADMIN") {
-      return apiError("Admin access only", "FORBIDDEN", 403);
-    }
+    await requireAdminOrManagerPermission(session, "MANAGE_LEADS");
 
     const body = await req.json().catch(() => ({}));
     const reason = String(body?.reason || "").trim();
@@ -44,7 +43,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       data: { status: "LOST", rejection_reason: reason, updated_at: new Date() },
     });
 
-    await eventLog.log("LEAD_REJECTED", session.sub, { lead_id: id, reason: reason.slice(0, 500) });
+    await eventLog.log("LEAD_REJECTED", session!.sub, { lead_id: id, reason: reason.slice(0, 500) });
 
     // Fire-and-forget — the decision is already recorded; a WhatsApp failure
     // must not roll it back or 500 the admin's request.
@@ -57,6 +56,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     return apiResponse(updated);
   } catch (error: any) {
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
     console.error("Detailed API Error [platform-admin.leads.reject]:", error);
     return apiError("Could not reject this lead.", "INTERNAL_ERROR", 500);
   }

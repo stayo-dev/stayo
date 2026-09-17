@@ -3,11 +3,8 @@ export const runtime = "nodejs";
 
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 import { prisma } from "@/lib/db";
-
-function requireAdmin(session: any): asserts session is { sub: string; role: string } {
-  if (!session || session.role !== "ADMIN") throw new Error("FORBIDDEN: Admin access only");
-}
 
 /**
  * GET /api/platform-admin/leads/[id]/notes
@@ -20,7 +17,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const session = await getSession(req);
   const { id } = await params;
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_LEADS");
     const notes = await prisma.platform_lead_notes.findMany({
       where: { lead_id: id },
       orderBy: { created_at: "desc" },
@@ -50,6 +47,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
   } catch (error: any) {
     const msg = String(error?.message || "Failed to fetch notes");
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
     if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
     return apiError(msg);
   }
@@ -60,7 +58,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const session = await getSession(req);
   const { id } = await params;
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_LEADS");
     const payload = await req.json();
     const body = String(payload?.body || "").trim();
     if (!body) return apiError("A note cannot be empty", "VALIDATION_ERROR", 400);
@@ -69,11 +67,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!lead) return apiError("Lead not found", "NOT_FOUND", 404);
 
     const note = await prisma.platform_lead_notes.create({
-      data: { lead_id: id, body: body.slice(0, 4000), author_id: session.sub ?? null },
+      data: { lead_id: id, body: body.slice(0, 4000), author_id: session!.sub ?? null },
     });
     return apiResponse({ note });
   } catch (error: any) {
     const msg = String(error?.message || "Failed to add note");
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
     if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
     return apiError(msg);
   }

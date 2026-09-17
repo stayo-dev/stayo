@@ -4,7 +4,8 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse } from "@/lib/auth";
 import { subscriptionAdminService } from "@/src/services/platform-billing/subscription-admin-service";
-import { requireAdmin, subscriptionErrorResponse } from "@/src/services/platform-billing/subscription-http";
+import { subscriptionErrorResponse } from "@/src/services/platform-billing/subscription-http";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 
 /**
  * GET /api/platform-admin/subscriptions?status=&search=&limit=&offset=
@@ -17,7 +18,7 @@ import { requireAdmin, subscriptionErrorResponse } from "@/src/services/platform
 export async function GET(req: NextRequest) {
   const session = await getSession(req);
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_SUBSCRIPTIONS");
     const { searchParams } = new URL(req.url);
     const data = await subscriptionAdminService.listSubscriptions({
       status: searchParams.get("status") ?? undefined,

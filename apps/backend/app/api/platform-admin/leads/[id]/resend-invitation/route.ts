@@ -3,11 +3,8 @@ export const runtime = "nodejs";
 
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 import { leadInvitationService } from "@/src/services/platform-leads/lead-invitation-service";
-
-function requireAdmin(session: any) {
-  if (!session || session.role !== "ADMIN") throw new Error("FORBIDDEN: Admin access only");
-}
 
 /**
  * POST /api/platform-admin/leads/[id]/resend-invitation
@@ -22,10 +19,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const session = await getSession(req);
   const { id } = await params;
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_LEADS");
     const result = await leadInvitationService.resendInvitation(id);
     return apiResponse(result);
   } catch (error: any) {
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
     const msg = String(error?.message || "Failed to resend invitation");
     const [maybeCode, ...rest] = msg.split(": ");
     const code = maybeCode?.trim();

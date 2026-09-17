@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { platformAdminService } from '@features/platform-admin/api';
 import { Avatar, DataTable, EmptyState, Field, FilterChips, Modal, MODAL_INPUT, ModalFooter, SegmentedTabs, StatCard, type DataColumn } from '../ui';
-import { tintForId } from '../theme/palette';
+import { ADMIN_CARD, tintForId } from '../theme/palette';
 import { useToast } from '../layout/toastContext';
 import {
   adminError,
@@ -35,17 +35,6 @@ const Pill = ({ label, tone }: { label: string; tone: string }) => (
     {label}
   </span>
 );
-
-const SUB_COLUMNS: DataColumn[] = [
-  { key: 'owner', label: 'Owner', width: '1.6fr' },
-  { key: 'status', label: 'Status', width: '1fr' },
-  { key: 'plan', label: 'Plan', width: '1fr' },
-  { key: 'usage', label: 'Usage', width: '0.8fr' },
-  { key: 'amount', label: 'Amount', width: '0.8fr' },
-  { key: 'renewal', label: 'Renewal', width: '1fr' },
-  { key: 'latest', label: 'Latest payment', width: '1fr' },
-  { key: 'actions', label: '', width: '1.4fr' },
-];
 
 const PAY_COLUMNS: DataColumn[] = [
   { key: 'owner', label: 'Owner', width: '1.4fr' },
@@ -166,135 +155,14 @@ function SubscriptionsTab() {
         <p className="text-[13px] text-[#8A7F75]">Loading subscriptions…</p>
       ) : list.isError ? (
         <EmptyState title="Could not load subscriptions" message={adminError(list.error)} />
+      ) : rows.length === 0 ? (
+        <EmptyState title="No subscriptions" message="No subscriptions match this filter." />
       ) : (
-        <DataTable
-          columns={SUB_COLUMNS}
-          rows={rows}
-          empty="No subscriptions match this filter."
-          renderCell={(row: any, key) => {
-            const sv = subStatusView(row.status);
-            switch (key) {
-              case 'owner':
-                return (
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <Avatar photoUrl={row.owner?.photo_url} initials={initialsOf(row.owner?.name)} tint={tintForId(String(row.owner?.id ?? row.id))} size={32} />
-                    <div className="min-w-0">
-                      <div className="truncate text-[12.5px] font-semibold text-[#221E1A]">{row.owner?.name ?? '—'}</div>
-                      <div className="truncate text-[11px] text-[#8A7F75]">{row.owner?.email ?? row.owner?.phone ?? ''}</div>
-                    </div>
-                  </div>
-                );
-              case 'status':
-                return (
-                  <div className="flex flex-col gap-1">
-                    <Pill label={sv.label} tone={sv.tone} />
-                    {overrideActive(row.admin_override_until) && (
-                      <span className="text-[10px] font-semibold text-[#2E5D77]">Override → {formatDate(row.admin_override_until)}</span>
-                    )}
-                  </div>
-                );
-              case 'plan':
-                return (
-                  <div className="min-w-0">
-                    <div className="truncate text-[12px] text-[#221E1A]">
-                      {row.plan?.name ?? '—'}
-                      {row.extra_beds > 0 ? ` +${row.extra_beds}` : ''}
-                    </div>
-                    {row.founding_partner_number != null && (
-                      <div className="truncate text-[10.5px] font-bold text-[#8A6410]">Founding Partner #{row.founding_partner_number}</div>
-                    )}
-                    {row.pending_plan && (
-                      <div className="truncate text-[10.5px] text-[#8A6410]">→ {row.pending_plan.name} next period</div>
-                    )}
-                  </div>
-                );
-              case 'usage':
-                return <span className="text-[12px] text-[#5A5147]">{capacityText(row.usage)}</span>;
-              case 'amount':
-                return (
-                  <div className="min-w-0">
-                    <span className="text-[12px] font-semibold text-[#221E1A]">
-                      {formatPaise(row.recurring_amount_paise ?? row.amount_paise)}
-                    </span>
-                    {row.extra_beds > 0 && (
-                      <div className="truncate text-[10.5px] text-[#8A7F75]">
-                        {formatPaise(row.amount_paise)} plan + {formatPaise((row.recurring_amount_paise ?? row.amount_paise) - row.amount_paise)} extra beds
-                      </div>
-                    )}
-                  </div>
-                );
-              case 'renewal':
-                return <span className="text-[12px] text-[#5A5147]">{formatDate(row.next_renewal_at)}</span>;
-              case 'latest':
-                return row.latest_payment ? (
-                  <div className="flex flex-col gap-0.5">
-                    <Pill label={paymentStatusView(row.latest_payment.status).label} tone={paymentStatusView(row.latest_payment.status).tone} />
-                    <span className="text-[10.5px] text-[#8A7F75]">{formatPaise(row.latest_payment.amount_paise)}</span>
-                  </div>
-                ) : (
-                  <span className="text-[11px] text-[#B4A99C]">none</span>
-                );
-              case 'actions':
-                return <SubscriptionActions row={row} onOpen={setModal} />;
-              default:
-                return null;
-            }
-          }}
-          renderMobileCard={(row: any) => {
-            const sv = subStatusView(row.status);
-            return (
-              <div className="flex flex-col gap-2.5">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <Avatar photoUrl={row.owner?.photo_url} initials={initialsOf(row.owner?.name)} tint={tintForId(String(row.owner?.id ?? row.id))} size={36} />
-                    <div className="min-w-0">
-                      <div className="truncate text-[13.5px] font-semibold text-[#221E1A]">{row.owner?.name ?? '—'}</div>
-                      <div className="truncate text-[11px] text-[#8A7F75]">{row.owner?.email ?? row.owner?.phone ?? ''}</div>
-                    </div>
-                  </div>
-                  <Pill label={sv.label} tone={sv.tone} />
-                </div>
-
-                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] text-[#5A5147]">
-                  <span className="font-semibold text-[#221E1A]">
-                    {row.plan?.name ?? '—'}
-                    {row.extra_beds > 0 ? ` +${row.extra_beds}` : ''}
-                  </span>
-                  <span className="text-[#D8CFC3]">·</span>
-                  <span>{capacityText(row.usage)}</span>
-                  {row.founding_partner_number != null && (
-                    <span className="font-bold text-[#8A6410]">· Founding #{row.founding_partner_number}</span>
-                  )}
-                  {row.pending_plan && <span className="text-[#8A6410]">· → {row.pending_plan.name} next period</span>}
-                  {overrideActive(row.admin_override_until) && (
-                    <span className="font-semibold text-[#2E5D77]">· Override → {formatDate(row.admin_override_until)}</span>
-                  )}
-                </div>
-
-                <div className="flex items-center justify-between gap-3 rounded-[10px] bg-[#FAF6F1] px-3 py-2">
-                  <div className="min-w-0">
-                    <div className="text-[9px] font-bold uppercase tracking-[.05em] text-[#A2978B]">Amount</div>
-                    <div className="text-[13.5px] font-bold text-[#221E1A]">{formatPaise(row.recurring_amount_paise ?? row.amount_paise)}</div>
-                  </div>
-                  <div className="min-w-0 text-right">
-                    <div className="text-[9px] font-bold uppercase tracking-[.05em] text-[#A2978B]">Renewal</div>
-                    <div className="text-[12px] text-[#5A5147]">{formatDate(row.next_renewal_at)}</div>
-                  </div>
-                  <div className="min-w-0 text-right">
-                    <div className="text-[9px] font-bold uppercase tracking-[.05em] text-[#A2978B]">Latest payment</div>
-                    {row.latest_payment ? (
-                      <Pill label={paymentStatusView(row.latest_payment.status).label} tone={paymentStatusView(row.latest_payment.status).tone} />
-                    ) : (
-                      <span className="text-[11px] text-[#B4A99C]">none</span>
-                    )}
-                  </div>
-                </div>
-
-                <SubscriptionActions row={row} onOpen={setModal} compact />
-              </div>
-            );
-          }}
-        />
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+          {rows.map((row: any) => (
+            <SubscriptionCard key={row.id} row={row} onOpen={setModal} />
+          ))}
+        </div>
       )}
 
       {modal?.type === 'pause' && <PauseModal row={modal.row} onClose={() => setModal(null)} run={run} />}
@@ -303,6 +171,61 @@ function SubscriptionsTab() {
       {modal?.type === 'plan' && <ChangePlanModal row={modal.row} plans={plans} onClose={() => setModal(null)} run={run} />}
       {modal?.type === 'cash' && <CashModal row={modal.row} plans={plans} onClose={() => setModal(null)} run={run} />}
       {modal?.type === 'activateFounding' && <ActivateFoundingModal row={modal.row} onClose={() => setModal(null)} run={run} />}
+    </div>
+  );
+}
+
+function SubscriptionCard({ row, onOpen }: { row: any; onOpen: (m: SubModal) => void }) {
+  const sv = subStatusView(row.status);
+  return (
+    <div className={`${ADMIN_CARD} flex flex-col gap-2.5 p-4`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <Avatar photoUrl={row.owner?.photo_url} initials={initialsOf(row.owner?.name)} tint={tintForId(String(row.owner?.id ?? row.id))} size={36} />
+          <div className="min-w-0">
+            <div className="truncate text-[13.5px] font-semibold text-[#221E1A]">{row.owner?.name ?? '—'}</div>
+            <div className="truncate text-[11px] text-[#8A7F75]">{row.owner?.email ?? row.owner?.phone ?? ''}</div>
+          </div>
+        </div>
+        <Pill label={sv.label} tone={sv.tone} />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] text-[#5A5147]">
+        <span className="font-semibold text-[#221E1A]">
+          {row.plan?.name ?? '—'}
+          {row.extra_beds > 0 ? ` +${row.extra_beds}` : ''}
+        </span>
+        <span className="text-[#D8CFC3]">·</span>
+        <span>{capacityText(row.usage)}</span>
+        {row.founding_partner_number != null && (
+          <span className="font-bold text-[#8A6410]">· Founding #{row.founding_partner_number}</span>
+        )}
+        {row.pending_plan && <span className="text-[#8A6410]">· → {row.pending_plan.name} next period</span>}
+        {overrideActive(row.admin_override_until) && (
+          <span className="font-semibold text-[#2E5D77]">· Override → {formatDate(row.admin_override_until)}</span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 rounded-[10px] bg-[#FAF6F1] px-3 py-2">
+        <div className="min-w-0">
+          <div className="text-[9px] font-bold uppercase tracking-[.05em] text-[#A2978B]">Amount</div>
+          <div className="text-[13.5px] font-bold text-[#221E1A]">{formatPaise(row.recurring_amount_paise ?? row.amount_paise)}</div>
+        </div>
+        <div className="min-w-0">
+          <div className="text-[9px] font-bold uppercase tracking-[.05em] text-[#A2978B]">Renewal</div>
+          <div className="text-[12px] text-[#5A5147]">{formatDate(row.next_renewal_at)}</div>
+        </div>
+        <div className="min-w-0">
+          <div className="text-[9px] font-bold uppercase tracking-[.05em] text-[#A2978B]">Latest payment</div>
+          {row.latest_payment ? (
+            <Pill label={paymentStatusView(row.latest_payment.status).label} tone={paymentStatusView(row.latest_payment.status).tone} />
+          ) : (
+            <span className="text-[11px] text-[#B4A99C]">none</span>
+          )}
+        </div>
+      </div>
+
+      <SubscriptionActions row={row} onOpen={onOpen} compact />
     </div>
   );
 }

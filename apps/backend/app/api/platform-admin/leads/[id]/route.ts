@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 import { prisma } from "@/lib/db";
 // Only these are manually settable via this generic PATCH. APPROVED onward
 // (INVITE_SENT/OWNER_ACTIVATED/HOSTEL_CREATED/LIVE) are system-managed —
@@ -16,16 +17,12 @@ const MANUALLY_SETTABLE_STATUSES = [
   "UNDER_REVIEW",
 ];
 
-function requireAdmin(session: any) {
-  if (!session || session.role !== "ADMIN") throw new Error("FORBIDDEN: Admin access only");
-}
-
 /** GET /api/platform-admin/leads/[id] — includes a timeline of logged events for the admin drawer. */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession(req);
   const { id } = await params;
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_LEADS");
     const lead = await prisma.platform_leads.findUnique({ where: { id } });
     if (!lead) return apiError("Lead not found", "NOT_FOUND", 404);
 
@@ -41,6 +38,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return apiResponse({ ...lead, timeline });
   } catch (error: any) {
     const msg = String(error?.message || "Failed to fetch lead");
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
     if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
     return apiError(msg);
   }
@@ -56,7 +54,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const session = await getSession(req);
   const { id } = await params;
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_LEADS");
     const existing = await prisma.platform_leads.findUnique({ where: { id } });
     if (!existing) return apiError("Lead not found", "NOT_FOUND", 404);
 
@@ -84,6 +82,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return apiResponse(updated);
   } catch (error: any) {
     const msg = String(error?.message || "Failed to update lead");
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
     if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
     return apiError(msg);
   }

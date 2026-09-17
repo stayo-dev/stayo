@@ -5,7 +5,8 @@ import { NextRequest } from "next/server";
 import { getSession, apiResponse } from "@/lib/auth";
 import { subscriptionPaymentService } from "@/src/services/platform-billing/subscription-payment-service";
 import { subscriptionInvoiceDocumentService } from "@/src/services/platform-billing/subscription-invoice-document-service";
-import { requireAdmin, subscriptionErrorResponse } from "@/src/services/platform-billing/subscription-http";
+import { subscriptionErrorResponse } from "@/src/services/platform-billing/subscription-http";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 
 /**
  * POST /api/platform-admin/subscription-payments/[id]/approve
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const session = await getSession(req);
   const { id } = await params;
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_SUBSCRIPTIONS");
     const result = await subscriptionPaymentService.reviewPayment({
       paymentId: id,
       decision: "APPROVE",

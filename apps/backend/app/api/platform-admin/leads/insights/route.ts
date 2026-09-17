@@ -3,11 +3,8 @@ export const runtime = "nodejs";
 
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 import { prisma } from "@/lib/db";
-
-function requireAdmin(session: any): asserts session is { sub: string; role: string } {
-  if (!session || session.role !== "ADMIN") throw new Error("FORBIDDEN: Admin access only");
-}
 
 /**
  * GET /api/platform-admin/leads/insights
@@ -28,7 +25,7 @@ function requireAdmin(session: any): asserts session is { sub: string; role: str
 export async function GET(req: NextRequest) {
   const session = await getSession(req);
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_LEADS");
 
     // Admin -> Add Owner leads (acquisition_source DIRECT_ADMIN) are a manual
     // onboarding action, not a marketing lead — they never went through
@@ -106,6 +103,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (error: any) {
     const msg = String(error?.message || "Failed to fetch lead insights");
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
     if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
     return apiError(msg);
   }

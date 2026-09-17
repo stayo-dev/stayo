@@ -2814,6 +2814,34 @@ So a migrated frontend rendered a button that a stale backend refused 100% of th
 
 **See:** [[Decisions#ADR-210|ADR-210]], [[Decisions#ADR-200|ADR-200]], [[Decisions#ADR-194|ADR-194]], [[Decisions#ADR-195|ADR-195]], [[Decisions#ADR-192|ADR-192]], [[Changelog]]
 
+## 2026-09-17 — Manager activation links 401'd because the route wasn't in middleware's public allowlist (fixed)
+
+**Symptom.** Caught during live integration testing of the new manager-invitation flow ([[Decisions#ADR-212|ADR-212]]), before any real manager hit it. `GET /api/managers/invitation/[token]` and its `send-otp`/`verify-otp`/`activate` siblings all returned `401 {"error":{"message":"Authentication required","code":"UNAUTHORIZED"}}` even with a fresh, valid token and no session — exactly the scenario a just-invited manager is in (they have no account yet, so no session is possible).
+
+**Root cause.** `apps/backend/middleware.ts`'s `PUBLIC_ROUTES` allowlist (prefix-matched) was never updated to include `/api/managers/invitation`. The sibling flow it mirrors, `/api/leads/invitation`, is on that list; the new one was built without adding its own entry, so `middleware.ts` rejected every request before the route handler — which correctly has no session check of its own, by design — ever ran.
+
+**Fix.** Added `"/api/managers/invitation"` to `PUBLIC_ROUTES` in `middleware.ts`, next to `/api/leads/invitation`.
+
+**Lesson.** A new public/token-gated endpoint isn't public until it's on this list — the route handler having no `getSession()` call is necessary but not sufficient, since `middleware.ts` runs first and defaults to requiring a session. Grep `PUBLIC_ROUTES` for the sibling pattern being mirrored before assuming a new "no session needed" route is actually reachable.
+
+**Verified live** (see [[Decisions#ADR-212|ADR-212]] for the full end-to-end test log): the same request sequence — create manager → get invitation context → send OTP → verify OTP (seeded via direct DB write, since the OTP was sent to a fake test phone number) → activate → log in as the manager → confirm JIT Supabase account linking and correct role/permissions in `/api/auth/me` — failed at "get invitation context" before this fix and passed completely after it, against the real dev database.
+
+**See:** [[Decisions#ADR-212|ADR-212]], [[APIs]], [[Changelog]]
+
+## 2026-09-17 — Super Admin Activity feed showed every owner's routine actions, not manager/admin activity (fixed)
+
+**Symptom.** Reported by the user from a screenshot: `/admin/activity` showed a long list of `Allocate`/`Create`/`Update`/`Delete` entries all attributed to "Srinivas Rao," none of them related to any manager action — with the "All managers"/"All hostels" filters at their defaults.
+
+**Root cause.** `GET /api/platform-admin/activity` read `activity_logs` with no scope on the acting user's role at all — only the optional `managerId`/`hostelId`/`actionType`/`entityType`/date filters, all empty by default. `activity_logs` is a pre-existing table that `lib/events/index.ts` (owner-side, unrelated to the Manager feature) already writes to for routine owner actions — tenant/room create/update/allocate — via handlers like `tenant_allocated_room` (`userId: data.owner_id`, `actionType: "ALLOCATE"`). "Srinivas Rao" was that hostel's owner managing his own rooms through the normal owner app; the feed simply returned whatever the newest 50 rows in the whole table were, regardless of who wrote them.
+
+**Fix.** Added a floor scope to the route's SQL — `user_id IN (SELECT id FROM profiles WHERE role IN ('MANAGER', 'ADMIN'))` — applied in the `WHERE` clause itself (not filtered in JS after the fact, so it also governs `LIMIT`/pagination correctly) and unconditionally, so no combination of the optional query params (e.g. passing an owner's id as `managerId`) can widen the feed past it.
+
+**Guarded against recurrence:** `tests/platform-admin-activity-scope.test.ts` — creates real OWNER/MANAGER/ADMIN profiles and real `activity_logs` rows for each (including the exact `ALLOCATE`/`CREATE`/`UPDATE`/`DELETE` action types from the screenshot), then asserts the owner's rows never appear (by default, or via any filter combination) while the manager's and admin's do.
+
+**Verified live**, against the real dev database: all 7 new tests pass (`DATABASE_URL_TEST` pointed at the same Supabase project used for [[Decisions#ADR-212|ADR-212]]'s earlier live verification); test data cleaned up afterward, confirmed empty.
+
+**See:** [[Decisions#ADR-212|ADR-212]], [[APIs]], [[Changelog]]
+
 ## 2026-09-17 — Owner acquisition funnel showed all zeros (fixed)
 
 **Symptom.** Reported by the owner. Platform admin's Overview page — the "Owner acquisition funnel" card (Leads captured / In review / Approved & invited / Account activated / Live on Stayo, plus "Lead → owner conversion") — rendered every stage as `0` and the conversion rate as `—`, despite `platform_leads` holding real rows.

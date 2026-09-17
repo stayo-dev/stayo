@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 
 const TICKET_STATUSES = ["OPEN", "RESOLVED"];
 
@@ -18,9 +19,7 @@ export async function GET(req: NextRequest) {
   const session = await getSession(req);
 
   try {
-    if (!session || session.role !== "ADMIN") {
-      return apiError("Admin access only", "FORBIDDEN", 403);
-    }
+    await requireAdminOrManagerPermission(session, "SUPPORT_REPORTS_BUGS");
 
     const requested = String(req.nextUrl.searchParams.get("status") || "OPEN").toUpperCase();
     if (!TICKET_STATUSES.includes(requested)) {
@@ -46,6 +45,7 @@ export async function GET(req: NextRequest) {
 
     return apiResponse({ tickets, status: requested });
   } catch (error: any) {
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
     console.error("Detailed API Error [platform-admin.support-tickets]:", error);
     return apiError("Could not load the ticket queue.", "INTERNAL_ERROR", 500);
   }

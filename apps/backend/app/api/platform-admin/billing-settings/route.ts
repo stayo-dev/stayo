@@ -5,7 +5,8 @@ import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { eventLog } from "@/lib/services/event-log-service";
-import { requireAdmin, subscriptionErrorResponse } from "@/src/services/platform-billing/subscription-http";
+import { subscriptionErrorResponse } from "@/src/services/platform-billing/subscription-http";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 
 /**
  * GET / PUT /api/platform-admin/billing-settings  (ADR-172, Phase 5)
@@ -49,7 +50,7 @@ function normalise(input: any): BillingSettings {
 export async function GET(req: NextRequest) {
   const session = await getSession(req);
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_SUBSCRIPTIONS");
     const row = await prisma.platform_settings.findUnique({ where: { key: KEY } });
     return apiResponse({ settings: normalise(row?.value ?? {}), configured: Boolean(row?.value) });
   } catch (error) {
@@ -60,7 +61,7 @@ export async function GET(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   const session = await getSession(req);
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_SUBSCRIPTIONS");
     const body = await req.json().catch(() => ({}));
     const next = normalise(body);
 

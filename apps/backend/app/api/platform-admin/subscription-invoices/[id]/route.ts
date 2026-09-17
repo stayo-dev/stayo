@@ -4,7 +4,8 @@ export const maxDuration = 30;
 
 import { NextRequest } from "next/server";
 import { getSession } from "@/lib/auth";
-import { requireAdmin, subscriptionErrorResponse } from "@/src/services/platform-billing/subscription-http";
+import { subscriptionErrorResponse } from "@/src/services/platform-billing/subscription-http";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 import { subscriptionInvoiceDocumentService } from "@/src/services/platform-billing/subscription-invoice-document-service";
 
 /**
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const session = await getSession(req);
   const { id } = await params;
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_SUBSCRIPTIONS");
     const { bytes, fileName } = await subscriptionInvoiceDocumentService.getDocumentBytes(id);
     return new Response(bytes as any, {
       status: 200,

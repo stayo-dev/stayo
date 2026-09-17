@@ -4,22 +4,23 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-
-function requireAdmin(session: any) {
-  if (!session || session.role !== "ADMIN") {
-    throw new Error("FORBIDDEN: Admin access only");
-  }
-}
+import { requireAdminOrManagerPermission, scopeHostelIds } from "@/src/services/managers/manager-authorization";
 
 /**
  * GET /api/platform-admin/hostels?search=&verification=&listing=
  * Platform-wide hostel roster across all owners, with real tenant/occupancy/
  * revenue stats composed from existing tables — not a separate cache.
+ *
+ * A MANAGER with MANAGE_HOSTELS only ever sees hostels assigned to them —
+ * `scopeHostelIds` resolves that server-side from `manager_hostel_assignments`,
+ * never from anything the client sends (spec: "GET /api/hostels returns only
+ * hostels the manager is authorized for").
  */
 export async function GET(req: NextRequest) {
   const session = await getSession(req);
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_HOSTELS");
+    const restrictToHostelIds = await scopeHostelIds(session);
 
     const { searchParams } = new URL(req.url);
     const search = searchParams.get("search")?.trim();
@@ -28,6 +29,7 @@ export async function GET(req: NextRequest) {
 
     const hostels = await prisma.hostels.findMany({
       where: {
+        ...(restrictToHostelIds ? { id: { in: restrictToHostelIds } } : {}),
         ...(search
           ? {
               // An admin searching "Shiva" or a phone number is looking for
@@ -56,6 +58,7 @@ export async function GET(req: NextRequest) {
         address: true,
         verification_status: true,
         listing_status: true,
+        listing_source: true,
         created_at: true,
         owner_id: true,
         profiles: { select: { name: true } },
@@ -100,9 +103,28 @@ export async function GET(req: NextRequest) {
     const duesByHostel = new Map(duesSums.map((r: any) => [r.hostel_id, Number(r._sum.amount ?? 0)]));
     const capacityByHostel = new Map(capacitySums.map((r: any) => [r.hostel_id, Number(r._sum.capacity ?? 0)]));
 
+    // The listing's own "last updated" and which revision to preview — read
+    // from hostel_marketing_revisions rather than hostels.updated_at, since
+    // marketing content lives entirely in the revision, not on the hostel row.
+    const revisionRows = await prisma.hostel_marketing_revisions.findMany({
+      where: { hostel_id: { in: hostelIds } },
+      orderBy: [{ hostel_id: "asc" }, { version: "desc" }],
+      select: { hostel_id: true, id: true, status: true, updated_at: true, created_at: true },
+    });
+    const latestRevisionByHostel = new Map<string, (typeof revisionRows)[number]>();
+    const approvedRevisionByHostel = new Map<string, (typeof revisionRows)[number]>();
+    for (const rev of revisionRows) {
+      if (!latestRevisionByHostel.has(rev.hostel_id)) latestRevisionByHostel.set(rev.hostel_id, rev);
+      if (rev.status === "APPROVED" && !approvedRevisionByHostel.has(rev.hostel_id)) {
+        approvedRevisionByHostel.set(rev.hostel_id, rev);
+      }
+    }
+
     const result = hostels.map((h: any) => {
       const capacity = Number(capacityByHostel.get(h.id) ?? 0);
       const active = Number(activeByHostel.get(h.id) ?? 0);
+      const latestRevision = latestRevisionByHostel.get(h.id);
+      const previewRevision = approvedRevisionByHostel.get(h.id) ?? latestRevision;
       return {
         id: h.id,
         name: h.name,
@@ -112,6 +134,7 @@ export async function GET(req: NextRequest) {
         owner_hostel_count: Number(hostelCountByOwner.get(h.owner_id) ?? 1),
         verification_status: h.verification_status,
         listing_status: h.listing_status,
+        listing_source: h.listing_source,
         subscription_status: h.hostel_subscriptions?.status ?? null,
         tenants: active,
         rooms: h._count.rooms,
@@ -120,13 +143,14 @@ export async function GET(req: NextRequest) {
         revenue: revenueByHostel.get(h.id) ?? 0,
         dues: duesByHostel.get(h.id) ?? 0,
         created_at: h.created_at,
+        listing_updated_at: latestRevision?.updated_at ?? latestRevision?.created_at ?? null,
+        preview_revision_id: previewRevision?.id ?? null,
       };
     });
 
     return apiResponse({ hostels: result });
   } catch (error: any) {
-    const msg = String(error?.message || "Failed to fetch hostels");
-    if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
-    return apiError(msg);
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
+    return apiError(String(error?.message || "Failed to fetch hostels"));
   }
 }

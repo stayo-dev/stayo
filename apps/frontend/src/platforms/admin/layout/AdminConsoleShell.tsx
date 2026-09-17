@@ -10,6 +10,7 @@ import { platformAdminService } from '@features/platform-admin/api';
 import { ACTIONABLE_STATUSES } from '@/platforms/admin/leads/leadQueue';
 import { buildAdminNav, isNavItemActive } from './adminNav';
 import { headerFor } from './pageHeaders';
+import { hasManagerPermission } from '../managers/permissions';
 import { ClerkUserButton } from '@/app/components/ClerkUserButton';
 import { AdminToast, useAdminToast } from '../ui/Toast';
 import { AdminToastContext } from './toastContext';
@@ -128,7 +129,10 @@ function SidebarNav({
  */
 export function AdminConsoleShell() {
   const session = useAdminSession();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
+  const isAdmin = user?.role?.toLowerCase() === 'admin';
+  const can = (permission: Parameters<typeof hasManagerPermission>[2]) =>
+    hasManagerPermission(user?.role, user?.manager_permissions, permission);
   const location = useLocation();
   const navigate = useNavigate();
   const [notifOpen, setNotifOpen] = useState(false);
@@ -153,21 +157,27 @@ export function AdminConsoleShell() {
   const leadCounts = useQuery({
     queryKey: ['admin', 'leads', 'counts'],
     queryFn: () => platformAdminService.getLeads({ source: 'WEBSITE', limit: 1 }),
+    enabled: can('MANAGE_LEADS'),
     ...poll,
   });
   const pendingHostels = useQuery({
     queryKey: ['admin', 'hostels', { verification: 'PENDING' }],
     queryFn: () => platformAdminService.getHostels({ verification: 'PENDING' }),
+    enabled: can('MANAGE_HOSTELS'),
     ...poll,
   });
   const openTickets = useQuery({
     queryKey: ['admin', 'support-tickets', 'OPEN'],
     queryFn: () => platformAdminService.getSupportTickets('OPEN'),
+    enabled: can('SUPPORT_REPORTS_BUGS'),
     ...poll,
   });
   const notifications = useQuery({
     queryKey: ['admin', 'notifications'],
     queryFn: () => platformAdminService.getNotifications(),
+    // Notifications composition (leads/hostels/invoices/service-requests)
+    // has no single permission of its own — Super Admin only for now.
+    enabled: isAdmin,
     ...poll,
   });
 
@@ -175,11 +185,15 @@ export function AdminConsoleShell() {
     (sum, status) => sum + (leadCounts.data?.counts?.[status] ?? 0),
     0,
   );
-  const navGroups = buildAdminNav({
-    leads: actionableLeads,
-    listings: pendingHostels.data?.length ?? 0,
-    reports: openTickets.data?.length ?? 0,
-  });
+  const navGroups = buildAdminNav(
+    {
+      leads: actionableLeads,
+      listings: pendingHostels.data?.length ?? 0,
+      reports: openTickets.data?.length ?? 0,
+    },
+    user?.role,
+    user?.manager_permissions,
+  );
 
   const runSearch = () => {
     const q = globalSearch.trim();

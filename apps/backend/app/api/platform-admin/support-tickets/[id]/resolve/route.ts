@@ -5,6 +5,8 @@ import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { eventLog } from "@/lib/services/event-log-service";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
+import { recordManagerActivity } from "@/src/services/managers/manager-activity";
 
 /**
  * POST /api/platform-admin/support-tickets/[id]/resolve
@@ -20,9 +22,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
 
   try {
-    if (!session || session.role !== "ADMIN") {
-      return apiError("Admin access only", "FORBIDDEN", 403);
-    }
+    await requireAdminOrManagerPermission(session, "SUPPORT_REPORTS_BUGS");
 
     const body = await req.json().catch(() => ({}));
     const note = typeof body?.note === "string" ? body.note.trim() : "";
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       data: {
         status: "RESOLVED",
         resolved_at: new Date(),
-        resolved_by: session.sub,
+        resolved_by: session!.sub,
         admin_note: note || null,
       },
       select: {
@@ -54,11 +54,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     await eventLog.log("PLATFORM_SUPPORT_TICKET_RESOLVED", ticket.profile_id, {
       ticket_id: id,
-      resolved_by: session.sub,
+      resolved_by: session!.sub,
+    });
+
+    await recordManagerActivity({
+      actorProfileId: session!.sub,
+      actorRole: session!.role,
+      actionType: "SUPPORT_REQUEST_RESOLVED",
+      entityType: "SUPPORT_TICKET",
+      entityId: id,
     });
 
     return apiResponse(updated);
   } catch (error: any) {
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
     console.error("Detailed API Error [platform-admin.support-tickets.resolve]:", error);
     return apiError("Could not resolve that ticket.", "INTERNAL_ERROR", 500);
   }

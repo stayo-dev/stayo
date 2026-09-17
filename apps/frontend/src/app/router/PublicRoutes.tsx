@@ -9,6 +9,7 @@ const WelcomePage = lazy(() => import('@/app/pages/public/WelcomePage').then((m)
 const LandingPage = lazy(() => import('@/app/pages/public/LandingPage').then((m) => ({ default: m.LandingPage })));
 const LeadSignupCallbackPage = lazy(() => import('@/app/pages/public/LeadSignupCallbackPage').then((m) => ({ default: m.LeadSignupCallbackPage })));
 const OwnerActivationPage = lazy(() => import('@/app/pages/public/OwnerActivationPage').then((m) => ({ default: m.OwnerActivationPage })));
+const ManagerActivationPage = lazy(() => import('@/app/pages/public/ManagerActivationPage').then((m) => ({ default: m.ManagerActivationPage })));
 const EnquiryStatusPage = lazy(() => import('@/app/pages/public/EnquiryStatusPage').then((m) => ({ default: m.EnquiryStatusPage })));
 const AboutPage = lazy(() => import('@/app/pages/public/AboutPage').then((m) => ({ default: m.AboutPage })));
 const CompanyPage = lazy(() => import('@/app/pages/public/CompanyPage').then((m) => ({ default: m.CompanyPage })));
@@ -103,6 +104,7 @@ export function PublicRoutes() {
         <Route path="/sign-up/*" element={<ClerkSignUpPage />} />
         <Route path="/lead-signup/callback" element={<LeadSignupCallbackPage />} />
         <Route path="/activation/:token" element={<OwnerActivationPage />} />
+        <Route path="/admin/manager-invitation/:token" element={<ManagerActivationPage />} />
         <Route path="/owner-invite/:token" element={<OwnerInviteRedirect />} />
         <Route path="/enquiry/:token" element={<EnquiryStatusPage />} />
         <Route path="/about" element={<AboutPage />} />
