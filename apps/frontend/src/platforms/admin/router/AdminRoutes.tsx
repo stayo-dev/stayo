@@ -63,7 +63,7 @@ export function AdminRoutes() {
   return (
     <Route element={<AdminProviderShell />}>
       <Route element={<AdminConsoleShell />}>
-        {/* ADR-212: a MANAGER session sees its own scoped dashboard; ADMIN sees the platform-wide Overview. Backend-enforced regardless — see AdminHomeDispatch. */}
+        {/* ADR-214: a MANAGER session sees its own scoped dashboard; ADMIN sees the platform-wide Overview. Backend-enforced regardless — see AdminHomeDispatch. */}
         <Route path="/admin" element={<AdminHomeDispatch admin={<OverviewPage />} manager={<ManagerDashboardPage />} />} />
         <Route path="/admin/leads" element={<LeadsPage />} />
         <Route path="/admin/owners" element={<OwnersPage />} />

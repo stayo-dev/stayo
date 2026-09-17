@@ -20,7 +20,7 @@ const COLUMNS: DataColumn[] = [
 ];
 
 /**
- * Super Admin's Managers console (ADR-212) — list + URL-addressable detail
+ * Super Admin's Managers console (ADR-214) — list + URL-addressable detail
  * drawer, mirroring OwnersPage's pattern exactly. ADMIN-only route (see
  * adminNav.ts — this item never renders for a MANAGER session), and every
  * mutation the drawer performs is independently re-checked ADMIN-only

@@ -10,7 +10,7 @@ export interface AdminSession {
 
 /**
  * The platform-admin analog of `useTenantSession()`/`useOwnerSession()`.
- * Admits MANAGER sessions too (ADR-212) — `RequireAdminSession` is the real
+ * Admits MANAGER sessions too (ADR-214) — `RequireAdminSession` is the real
  * gate; this only names the session for display.
  */
 export function useAdminSession(): AdminSession {

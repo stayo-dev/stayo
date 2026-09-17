@@ -2,7 +2,7 @@
  * Hostel setup progress, derived — not stored. Mirrors the `ownerHealth.ts`
  * pattern (`features/platform-admin/owners/ownerHealth.ts`): a hostel's
  * onboarding checklist is computed from signals `GET /platform-admin/hostels`
- * already returns, not tracked in a new table (see Decisions.md ADR-212 —
+ * already returns, not tracked in a new table (see Decisions.md ADR-214 —
  * an earlier stored-state attempt, `owner_onboarding_states`, was found
  * dead/never wired and deliberately not resurrected).
  *

@@ -457,7 +457,7 @@ export const platformAdminService = {
     return unwrap(response) as { url: string };
   },
 
-  // ── Managers (Super Admin -> Manager -> hostel assignment, ADR-212) ────────
+  // ── Managers (Super Admin -> Manager -> hostel assignment, ADR-214) ────────
   // The frontend never decides what a manager may do — every call below is
   // re-checked server-side against manager_permission_grants/
   // manager_hostel_assignments on every request. This layer only shapes

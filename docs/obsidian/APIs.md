@@ -431,7 +431,7 @@ reviewer sees is what the public page renders.
 
 ### Manager role (`/api/platform-admin/managers/*`, `/api/managers/invitation/*`, `/api/platform-admin/activity`), added 2026-09-17
 
-Super Admin → Manager → hostel-assignment system, [[Decisions#ADR-212|ADR-212]]. See [[Database]] for the schema (`manager_profiles`/`manager_permission_grants`/`manager_hostel_assignments`) and [[Business-Rules]] for the permission/scoping rules.
+Super Admin → Manager → hostel-assignment system, [[Decisions#ADR-214|ADR-214]]. See [[Database]] for the schema (`manager_profiles`/`manager_permission_grants`/`manager_hostel_assignments`) and [[Business-Rules]] for the permission/scoping rules.
 
 | Route | Methods | Notes |
 |---|---|---|
@@ -451,7 +451,7 @@ Super Admin → Manager → hostel-assignment system, [[Decisions#ADR-212|ADR-21
 
 `GET/PATCH /api/platform-admin/hostels[/[id]]` and `GET/POST /api/platform-admin/owners` were updated as the reference implementation of manager permission + hostel-scope enforcement: `requireAdmin` was replaced with `requireAdminOrManagerPermission(session, "MANAGE_HOSTELS" | "MANAGE_OWNERS")`, and list/detail responses are filtered through `scopeHostelIds`/`assertHostelAccess` so a MANAGER only ever sees hostels (and, transitively, owners running those hostels) assigned to them — never trusted from the request, always resolved from `manager_hostel_assignments` server-side. `PATCH /api/platform-admin/hostels/[id]` (the address-correction route) now also records a `HOSTEL_UPDATED` activity entry with before/after on every write, as the reference example of automatic activity logging.
 
-**Every other platform-admin route group now has the same `requireAdmin` → `requireAdminOrManagerPermission` substitution applied** (2026-09-17, ADR-212 Phase 2): leads (`MANAGE_LEADS`, `MANAGE_ONBOARDING` on the onboarding-setup route), revenue (`VIEW_REVENUE_ANALYTICS`), subscriptions/subscription-payments/subscription-invoices/plans/billing-settings (`MANAGE_SUBSCRIPTIONS`), support-tickets (`SUPPORT_REPORTS_BUGS` — `.../resolve` also now records a `SUPPORT_REQUEST_RESOLVED` activity entry), broadcast (`MANAGE_BROADCASTS`), settings (`MANAGE_SETTINGS`). Two already-`410`/dead endpoints (`POST /platform-admin/plans`, `GET /platform-admin/revenue/hostels`) were left ADMIN-only since there is no real operation on them to gate. See [[Decisions#ADR-212|ADR-212]] Phase 2 and [[Features]].
+**Every other platform-admin route group now has the same `requireAdmin` → `requireAdminOrManagerPermission` substitution applied** (2026-09-17, ADR-214 Phase 2): leads (`MANAGE_LEADS`, `MANAGE_ONBOARDING` on the onboarding-setup route), revenue (`VIEW_REVENUE_ANALYTICS`), subscriptions/subscription-payments/subscription-invoices/plans/billing-settings (`MANAGE_SUBSCRIPTIONS`), support-tickets (`SUPPORT_REPORTS_BUGS` — `.../resolve` also now records a `SUPPORT_REQUEST_RESOLVED` activity entry), broadcast (`MANAGE_BROADCASTS`), settings (`MANAGE_SETTINGS`). Two already-`410`/dead endpoints (`POST /platform-admin/plans`, `GET /platform-admin/revenue/hostels`) were left ADMIN-only since there is no real operation on them to gate. See [[Decisions#ADR-214|ADR-214]] Phase 2 and [[Features]].
 
 **`/api/managers/invitation/*` must be registered in `middleware.ts`'s `PUBLIC_ROUTES`** (prefix-matched, mirrors `/api/leads/invitation`) — a real gap here was caught by live testing before ship, see [[Bugs]] "Manager activation links 401'd."
 

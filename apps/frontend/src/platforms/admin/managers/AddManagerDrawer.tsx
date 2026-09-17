@@ -24,7 +24,7 @@ const secondaryButtonClass =
 const errorTextClass = 'mt-1.5 text-[12px] font-medium text-[#B3402F]';
 
 /**
- * Super Admin "Add Manager" wizard (ADR-212). 3-step: Details -> Permissions
+ * Super Admin "Add Manager" wizard (ADR-214). 3-step: Details -> Permissions
  * -> Review & Send. `createManager` both creates the account AND sends the
  * activation invitation in one call (unlike Add Owner's separate
  * create-then-approve steps) — see manager-service.ts / manager-invitation-service.ts.

@@ -1109,7 +1109,7 @@ A manual (no-gateway) payment's declared `amount_paise` is never authoritative f
 - **Logging is corrective:** re-entering a served count replaces it. Rejected are future dates, days more than 28 days old, and counts above 3× the headcount.
 - **Tenants declare nothing.** Away Today was dropped rather than built, because the learned lunch ratio already absorbs the population's day-out pattern.
 
-## Manager permissions, hostel assignment and activity logging (2026-09-17, [[Decisions#ADR-212|ADR-212]])
+## Manager permissions, hostel assignment and activity logging (2026-09-17, [[Decisions#ADR-214|ADR-214]])
 
 - **A manager's authority is re-derived on every request, never cached in the session/JWT.** `requireAdminOrManagerPermission` and `assertHostelAccess`/`scopeHostelIds` (`src/services/managers/manager-authorization.ts`) load `manager_permission_grants`/`manager_hostel_assignments` fresh from the DB each call. Revoking a permission or unassigning a hostel takes effect on the manager's very next request — no session invalidation, no logout required.
 - **Permissions are a full-replace set, not additive.** `PATCH /api/platform-admin/managers/[id]` with `{permissions: [...]}` deletes and recreates the manager's grant rows in one transaction — the admin console's permission editor always submits the complete intended set, never a delta.

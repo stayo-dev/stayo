@@ -23,7 +23,7 @@ describe('buildAdminNav — ADMIN session (unrestricted)', () => {
       .toBe(3);
   });
 
-  it('exposes every screen the console routes to, including the Manager-role console (ADR-212)', () => {
+  it('exposes every screen the console routes to, including the Manager-role console (ADR-214)', () => {
     // 'Hostel Listings' restored 2026-09-17 — ADR-170 (shelved for v1) was
     // superseded by ADR-192 (marketplace un-shelved), and the nav item just
     // hadn't caught up until now.
@@ -38,7 +38,7 @@ describe('buildAdminNav — ADMIN session (unrestricted)', () => {
   });
 });
 
-describe('buildAdminNav — MANAGER session (ADR-212, UX gating only)', () => {
+describe('buildAdminNav — MANAGER session (ADR-214, UX gating only)', () => {
   it('with no permissions, sees only Overview — every group with nothing to show is dropped entirely', () => {
     const groups = buildAdminNav({}, 'manager', []);
     expect(groups.map((g) => g.label)).toEqual(['Manage']);

@@ -25,7 +25,7 @@ function formatDate(iso: string | null | undefined): string {
 }
 
 /**
- * The manager detail drawer body (ADR-212) — profile/status, a full-replace
+ * The manager detail drawer body (ADR-214) — profile/status, a full-replace
  * permission editor, hostel assignment (assign/unassign/reassign), and
  * suspend/reactivate/resend-invitation. Every action here is a UX
  * convenience over a backend call that independently re-checks ADMIN access

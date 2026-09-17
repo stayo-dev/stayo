@@ -2816,7 +2816,7 @@ So a migrated frontend rendered a button that a stale backend refused 100% of th
 
 ## 2026-09-17 — Manager activation links 401'd because the route wasn't in middleware's public allowlist (fixed)
 
-**Symptom.** Caught during live integration testing of the new manager-invitation flow ([[Decisions#ADR-212|ADR-212]]), before any real manager hit it. `GET /api/managers/invitation/[token]` and its `send-otp`/`verify-otp`/`activate` siblings all returned `401 {"error":{"message":"Authentication required","code":"UNAUTHORIZED"}}` even with a fresh, valid token and no session — exactly the scenario a just-invited manager is in (they have no account yet, so no session is possible).
+**Symptom.** Caught during live integration testing of the new manager-invitation flow ([[Decisions#ADR-214|ADR-214]]), before any real manager hit it. `GET /api/managers/invitation/[token]` and its `send-otp`/`verify-otp`/`activate` siblings all returned `401 {"error":{"message":"Authentication required","code":"UNAUTHORIZED"}}` even with a fresh, valid token and no session — exactly the scenario a just-invited manager is in (they have no account yet, so no session is possible).
 
 **Root cause.** `apps/backend/middleware.ts`'s `PUBLIC_ROUTES` allowlist (prefix-matched) was never updated to include `/api/managers/invitation`. The sibling flow it mirrors, `/api/leads/invitation`, is on that list; the new one was built without adding its own entry, so `middleware.ts` rejected every request before the route handler — which correctly has no session check of its own, by design — ever ran.
 
@@ -2824,9 +2824,9 @@ So a migrated frontend rendered a button that a stale backend refused 100% of th
 
 **Lesson.** A new public/token-gated endpoint isn't public until it's on this list — the route handler having no `getSession()` call is necessary but not sufficient, since `middleware.ts` runs first and defaults to requiring a session. Grep `PUBLIC_ROUTES` for the sibling pattern being mirrored before assuming a new "no session needed" route is actually reachable.
 
-**Verified live** (see [[Decisions#ADR-212|ADR-212]] for the full end-to-end test log): the same request sequence — create manager → get invitation context → send OTP → verify OTP (seeded via direct DB write, since the OTP was sent to a fake test phone number) → activate → log in as the manager → confirm JIT Supabase account linking and correct role/permissions in `/api/auth/me` — failed at "get invitation context" before this fix and passed completely after it, against the real dev database.
+**Verified live** (see [[Decisions#ADR-214|ADR-214]] for the full end-to-end test log): the same request sequence — create manager → get invitation context → send OTP → verify OTP (seeded via direct DB write, since the OTP was sent to a fake test phone number) → activate → log in as the manager → confirm JIT Supabase account linking and correct role/permissions in `/api/auth/me` — failed at "get invitation context" before this fix and passed completely after it, against the real dev database.
 
-**See:** [[Decisions#ADR-212|ADR-212]], [[APIs]], [[Changelog]]
+**See:** [[Decisions#ADR-214|ADR-214]], [[APIs]], [[Changelog]]
 
 ## 2026-09-17 — Super Admin Activity feed showed every owner's routine actions, not manager/admin activity (fixed)
 
@@ -2838,9 +2838,9 @@ So a migrated frontend rendered a button that a stale backend refused 100% of th
 
 **Guarded against recurrence:** `tests/platform-admin-activity-scope.test.ts` — creates real OWNER/MANAGER/ADMIN profiles and real `activity_logs` rows for each (including the exact `ALLOCATE`/`CREATE`/`UPDATE`/`DELETE` action types from the screenshot), then asserts the owner's rows never appear (by default, or via any filter combination) while the manager's and admin's do.
 
-**Verified live**, against the real dev database: all 7 new tests pass (`DATABASE_URL_TEST` pointed at the same Supabase project used for [[Decisions#ADR-212|ADR-212]]'s earlier live verification); test data cleaned up afterward, confirmed empty.
+**Verified live**, against the real dev database: all 7 new tests pass (`DATABASE_URL_TEST` pointed at the same Supabase project used for [[Decisions#ADR-214|ADR-214]]'s earlier live verification); test data cleaned up afterward, confirmed empty.
 
-**See:** [[Decisions#ADR-212|ADR-212]], [[APIs]], [[Changelog]]
+**See:** [[Decisions#ADR-214|ADR-214]], [[APIs]], [[Changelog]]
 
 ## 2026-09-17 — Owner acquisition funnel showed all zeros (fixed)
 

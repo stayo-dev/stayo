@@ -30,7 +30,7 @@ export type AdminNavCounts = {
 
 /**
  * The sidebar, per the design's four groups (Manage / Review / Business /
- * Support), plus Managers/Activity (ADR-212, Super Admin only) and
+ * Support), plus Managers/Activity (ADR-214, Super Admin only) and
  * Onboarding (manager-visible under MANAGE_ONBOARDING).
  *
  * `role`/`permissions` filter what renders — **UX only**. Every route these

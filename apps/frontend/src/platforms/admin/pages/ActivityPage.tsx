@@ -16,7 +16,7 @@ const selectClass =
   'rounded-xl border border-border bg-white px-3 py-2 text-[12.5px] font-semibold text-[#2A2521] outline-none';
 
 /**
- * Super Admin's manager-activity feed (ADR-212, spec §9). ADMIN-only route.
+ * Super Admin's manager-activity feed (ADR-214, spec §9). ADMIN-only route.
  * Reads `GET /api/platform-admin/activity`, which itself reads the same
  * `activity_logs` table (and `metadata.hostel_id` convention) the
  * owner-facing hostel activity feed already uses — no separate audit store.

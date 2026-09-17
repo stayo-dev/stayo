@@ -22,7 +22,7 @@ interface InvitationContext {
 }
 
 /**
- * Manager invitation/activation (ADR-212). Lands here from the link
+ * Manager invitation/activation (ADR-214). Lands here from the link
  * `manager-invitation-service.sendInvitation` emails when a Super Admin adds
  * a manager. Unlike `OwnerActivationPage`, this does NOT get Supabase tokens
  * back from activation — the backend only sets the manager's password; the

@@ -13,7 +13,7 @@ const COLUMNS: DataColumn[] = [
 ];
 
 /**
- * Super Admin's onboarding-progress-by-hostel view (spec §10, ADR-212).
+ * Super Admin's onboarding-progress-by-hostel view (spec §10, ADR-214).
  * Progress is derived (`onboardingChecklist.ts`), not a stored wizard-step
  * table. "Assigned manager" is resolved client-side from each manager's own
  * active hostel assignments — there is no separate hostel->manager lookup
