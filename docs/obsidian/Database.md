@@ -55,7 +55,12 @@ All three are **nullable and additive**: agreements signed before the read gate 
 
 > **Migration `085`, not `084`.** `dev` tops out at `083` but `main` already carries `084_lead_source_tracking.sql`. Both branches must be checked before taking a number.
 
-**Status: UNAPPLIED.** Written and committed, never run — the test database is unreachable from the development environment. Apply **after** the regenerated Prisma client deploys, per this repo's deploy-before-migrate rule.
+**Status: UNAPPLIED.** Written and committed, never run — the test database is unreachable from the development environment. Apply **before** the regenerated Prisma client deploys. **Migrate FIRST, then deploy the client.** Not the other way round. Prisma requests *all*
+declared scalar columns on any read that passes no explicit `select`, and `Agreement` has **17
+such reads** — including `rent-generation-service`, `financial-service`,
+`billing-transition-service` and the activation workflow itself. Deploying a client that declares
+`document_content_hash` against a database that lacks it 500s every one of them. This is the exact
+shape of the 2026-08-22 `hostels.navigation` outage.
 
 The tenant-contract subsystem — **entirely undocumented in `docs/data-models/schema.md`** (see gap list below). `AgreementTemplate` is a versioned, publishable contract template per hostel (`TemplateStatus`: DRAFT/PUBLISHED/ARCHIVED). `Agreement` is the signed instance (tenant/guardian/owner signature capture with IP/UA, `AgreementStatus`: DRAFT/SIGNED/EXPIRING_SOON/AGREEMENT_EXPIRED/RENEWED/TERMINATED/VOID), self-referentially linked forward/backward through renewals (`renewed_from_agreement_id`/`renewed_to_agreement_id`). `RenewalOffer` carries the proposed renewal terms and its own status lifecycle (`RenewalOfferStatus`). `RenewalTimelineEvent` (added 2026-07-20, migration `20260720000000_renewal_timeline_events`) is a new append-only audit trail — `RenewalTimelineEventType` (OFFER_CREATED/SENT/DISCUSSED/REVISED/ACCEPTED/DECLINED/EXPIRED, DRAFT_CREATED, RENEWAL_ACTIVATED/ACTIVATION_BLOCKED) × `RenewalTimelineActorType` (OWNER/TENANT/SYSTEM) — written by `renewal-timeline-service.ts`, called from inside the same transaction as the mutation it describes wherever the caller already has one open. Closes the gap where owner-side offer actions previously had no queryable DB record at all (only `logger.info()` lines) and tenant-side actions were only partially captured in `RenewalDecision` (no actor-role, no distinct event vocabulary). See [[Decisions]] ADR-016.
 

@@ -15,7 +15,12 @@
 - **Frontend tests are node-environment only.** Match `src/**/*.test.ts`, never `.test.tsx`. No jsdom, no component rendering. Decision logic goes in pure `.ts`; components stay thin renderers.
 - **Backend tests share a real Postgres connection** and run single-worker (`fileParallelism: false`). Do not parallelise.
 - **Run `npm test` on the backend, not `npm run test:pure`.**
-- **Deploy before migrate.** Adding fields to `schema.prisma` has taken production down in this repo. Prisma client ships first, migration second.
+- **Migrate before deploy.** **Migrate FIRST, then deploy the client.** Not the other way round. Prisma requests *all*
+declared scalar columns on any read that passes no explicit `select`, and `Agreement` has **17
+such reads** — including `rent-generation-service`, `financial-service`,
+`billing-transition-service` and the activation workflow itself. Deploying a client that declares
+`document_content_hash` against a database that lacks it 500s every one of them. This is the exact
+shape of the 2026-08-22 `hostels.navigation` outage.
 - **Money is integer paise** wherever payment precision matters. Agreement contract amounts are `Decimal` — do not convert.
 - **A signed agreement is never re-composed against the current template.** It renders from its own `rules_snapshot` / `content_snapshot`.
 - **Variable tokens written by new code are `{{VAR}}`** (double brace). The reader accepts both formats.
@@ -1186,7 +1191,8 @@ Expected: PASS — proves the regenerated client still matches the live schema.
 git add apps/backend/prisma/schema.prisma migrations/
 git commit -m "feat(agreements): record that the tenant read the document
 
-Deploy before migrating: the Prisma client ships first."
+Migrate before deploying: 17 unselected Agreement reads would 500 against a database
+that lacks these columns."
 ```
 
 ---
