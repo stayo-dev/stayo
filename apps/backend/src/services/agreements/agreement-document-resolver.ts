@@ -17,7 +17,7 @@ import type { AgreementDocumentInput } from "./agreement-document";
 // Type-only: importing the value side would drag pdf-lib, Prisma, ImageKit and
 // axios into a module that needs none of them.
 import type { AgreementData } from "../tenants/agreement-generation-service";
-import { formatAgreementDate } from "../tenants/agreement-generation-service";
+import { formatAgreementDate } from "./agreement-dates";
 
 const EM_DASH = "—";
 

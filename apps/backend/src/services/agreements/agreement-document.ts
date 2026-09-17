@@ -250,3 +250,40 @@ export function buildAgreementDocument(input: AgreementDocumentInput): Agreement
     },
   };
 }
+
+/**
+ * The terms band, renumbered for the PDF's own presentation.
+ *
+ * The PDF and the reader show the same clauses in the same order, but they do
+ * not number them identically, because they present the document differently:
+ * the PDF renders the hostel's rules as a separate "HOSTEL RULES &
+ * REGULATIONS" section incorporated by reference, while the reader renders one
+ * continuous instrument. Renumbering from 1 here is what stops the PDF showing
+ * gaps where the rules band took numbers out of the sequence.
+ *
+ * It lives beside the composer, rather than inline in the renderer, so the
+ * mapping the PDF actually runs is the mapping the parity test covers.
+ * Unifying the two presentations is Phase 3.
+ */
+export function pdfTermsList(doc: AgreementDocument): Array<{ number: number; title: string; body: string }> {
+  return doc.blocks
+    .filter((b): b is Extract<DocBlock, { kind: "section" }> => b.kind === "section" && b.band === "terms")
+    .map((section, index) => ({
+      number: index + 1,
+      title: section.title,
+      body: section.clauses.map((clause) => clause.text).join(" "),
+    }));
+}
+
+/** The rules band, as the PDF's incorporated-by-reference section renders it. */
+export function pdfRulesCategories(
+  doc: AgreementDocument,
+): Array<{ title: string; clauses: string[]; severity?: "important" | "standard" }> {
+  return doc.blocks
+    .filter((b): b is Extract<DocBlock, { kind: "section" }> => b.kind === "section" && b.band === "rules")
+    .map((section) => ({
+      title: section.title,
+      clauses: section.clauses.map((clause) => clause.text),
+      severity: section.severity,
+    }));
+}
