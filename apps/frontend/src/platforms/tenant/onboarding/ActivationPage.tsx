@@ -20,7 +20,7 @@ import { kycDocLabel, missingKycDocs, type OnboardingDocItem } from './onboardin
 import { prepareImageForUpload } from './compressImage';
 import { isImage, uploadProblem } from './uploadImagePolicy';
 import { Guidance } from './guidance/Guidance';
-import { identityIssues, passwordIssues } from './guidance/stepIssues';
+import { guardianIssues, identityIssues, passwordIssues } from './guidance/stepIssues';
 import {
   activationMessages,
   clearProfileDraft,
@@ -215,7 +215,6 @@ export function ActivationPage() {
   const currentStep = ctx?.current_step ?? ctx?.activation_state?.current_step;
   const completed = new Set(ctx?.completed_steps ?? ctx?.activation_state?.completed_steps ?? []);
   const activeStep = (visibleStep || currentStep) as ActivationStep | undefined;
-  const isStudent = String(profile.profile_type || ctx?.tenant?.profile_type || 'STUDENT').toUpperCase() === 'STUDENT';
   const activationStageIndex = activationProgress < 40 ? 0 : activationProgress < 78 ? 1 : 2;
   const activationProgressWidth = `${Math.max(8, Math.round(activationProgress))}%`;
 
@@ -488,11 +487,22 @@ export function ActivationPage() {
     gender: profile.gender || '',
     dateOfBirth: profile.date_of_birth || '',
     profileType: String(profile.profile_type || ctx?.tenant?.profile_type || 'STUDENT'),
-    guardianName: profile.guardian_name || '',
-    guardianPhone: profile.guardian_phone || '',
-    guardianVerified: Boolean(isGuardianPhoneVerified),
     photoUploaded: Boolean(profilePhotoFile || profilePhotoPreview),
     docItems,
+  };
+
+  /**
+   * The GUARDIAN step's guidance (ADR-213). Separate from `identityState`
+   * because guidance has to move with the fields it describes — leaving the
+   * guardian rules on Identity is what made Continue report things left to do
+   * and then scroll to controls that were no longer on screen.
+   */
+  const guardianState = {
+    name: profile.guardian_name || '',
+    relation: profile.guardian_relation || '',
+    phone: profile.guardian_phone || '',
+    verified: Boolean(isGuardianPhoneVerified),
+    deferralReason: guardianDeferralReason,
   };
 
   /**
@@ -816,7 +826,7 @@ export function ActivationPage() {
         )}
 
         {!activationResult && activeStep === 'GUARDIAN' && (
-          <Guidance issues={[]}>
+          <Guidance issues={guardianIssues(guardianState)}>
             <GuardianStep
               draft={{
                 guardian_name: profile.guardian_name || '',
@@ -844,6 +854,7 @@ export function ActivationPage() {
               onGuardianDeferralReasonChange={setGuardianDeferralReason}
               submitting={submitting}
               onSubmit={submitGuardian}
+              onBack={() => goToStep('PROFILE')}
             />
           </Guidance>
         )}

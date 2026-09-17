@@ -1,7 +1,8 @@
 import { FormEvent, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { FLOW_INK } from '../skyTheme';
-import { GuidanceNote, useFieldGuidance } from '../guidance/Guidance';
+import { GuidanceNote, GuidanceSummary, useFieldGuidance, useGuidance } from '../guidance/Guidance';
+import { BackButton, PrimaryActionButton, StepActionBar } from './shared';
 import { OtpBlock, PhoneField, cardWrap, inputBase, label } from './phoneFields';
 import { GuardianDeferralBlock } from './GuardianDeferralBlock';
 import type { GuardianDeferralReason } from '@features/guardian-verification/guardianVerification';
@@ -59,6 +60,7 @@ export function GuardianStep({
   onGuardianDeferralReasonChange,
   submitting,
   onSubmit,
+  onBack,
 }: {
   draft: GuardianDraft;
   setDraft: (next: GuardianDraft) => void;
@@ -84,14 +86,20 @@ export function GuardianStep({
   onGuardianDeferralReasonChange: (reason: GuardianDeferralReason | null) => void;
   submitting: boolean;
   onSubmit: () => Promise<boolean>;
+  onBack: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const guidance = useGuidance();
   const nameGuide = useFieldGuidance('guardian_name');
   const relationGuide = useFieldGuidance('guardian_relation');
   const isOther = draft.guardian_relation !== '' && !RELATIONS.includes(draft.guardian_relation as any);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    // Reveals and scrolls to the first outstanding field rather than submitting
+    // — same contract Identity follows, and the reason the rules for this screen
+    // had to move here with it.
+    if (guidance.block()) return;
     setBusy(true);
     try {
       await onSubmit();
@@ -277,14 +285,14 @@ export function GuardianStep({
         </div>
       </div>
 
-      <button
-        type="submit"
-        disabled={isBusy}
-        className="mt-5 w-full rounded-[12px] py-3 font-display text-[14px] font-bold text-white disabled:opacity-60"
-        style={{ background: '#B46A55', boxShadow: '0 6px 16px rgba(180,106,85,.3)' }}
-      >
-        {isBusy ? 'Saving…' : 'Continue'}
-      </button>
+      <StepActionBar summary={<GuidanceSummary />}>
+        <BackButton title="Back to Identity" onClick={onBack} />
+        {/* Disabled only while genuinely busy: a validation-disabled button
+            gives the tenant no reason and no next move. See guidance/. */}
+        <PrimaryActionButton type="submit" disabled={isBusy}>
+          {isBusy ? 'Saving…' : 'Continue'}
+        </PrimaryActionButton>
+      </StepActionBar>
     </form>
   );
 }

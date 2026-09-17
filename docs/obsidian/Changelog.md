@@ -18,6 +18,7 @@ All notable changes to this project are documented in this file, in [Keep a Chan
   - **Fixed:** `activation-workflow-service.ts` carried its own duplicate `ActivationStep` union, which went stale the moment a step was added and made `step === "GUARDIAN"` typecheck as an impossible comparison. It now imports the canonical type.
   - **Fixed:** the two long-standing failures in `tests/agreement-requirement.test.ts`, which asserted the pre-[[Decisions#ADR-070|ADR-070]] step order. **The backend pure suite is green for the first time: 2251/2251.**
   - **Refactor:** `PhoneField` and `OtpBlock` extracted from `WelcomeIdentityStep` into `steps/phoneFields.tsx`, shared by both screens rather than copied.
+  - **Fixed (same day):** the guidance system had been left behind by the split — `identityIssues` still emitted guardian issues anchored to controls Identity no longer renders, so Continue would report things left to do and scroll to nothing. Rules moved to `guardianIssues`; the Guardian step now blocks on guidance and shows the summary like every other step, and a deferral satisfies it exactly as verification does.
   - **Not verified:** no browser. `GuardianStep` has never been rendered — this app's suite is node-only — and nobody has walked the six-step flow end to end.
 
 - **2026-09-16**: **Guardian verification becomes a hostel policy — an unverified guardian no longer blocks a tenant** ([[Decisions#ADR-212|ADR-212]], [[Features]], [[APIs]], [[Database]], [[Business-Rules]]).

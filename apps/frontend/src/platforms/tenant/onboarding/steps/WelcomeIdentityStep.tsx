@@ -18,6 +18,12 @@ export type ProfileDraft = {
   gender: string;
   date_of_birth: string;
   profile_type: string;
+  /*
+    Still on the draft, though this screen no longer renders them: the draft is
+    the tenant record across the whole flow, and the GUARDIAN step (ADR-213)
+    writes these three into the same object so a resumed onboarding restores
+    both halves together.
+  */
   guardian_name: string;
   guardian_phone: string;
   guardian_relation: string;
