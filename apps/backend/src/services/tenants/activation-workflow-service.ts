@@ -100,11 +100,14 @@ import {
   isAgreementRequired,
   nextActivationStep,
   requiredActivationSteps,
+  isGuardianSignatureRequired,
+  validateAgreementSignatures,
   // Imported rather than redeclared: this file carried its own copy of the
   // union, which silently went stale the moment GUARDIAN was added and let
   // `step === "GUARDIAN"` typecheck as an impossible comparison.
   type ActivationStep,
 } from "./agreement-requirement";
+
 import { requiredKycDocTypes, recomputeDocumentVerified } from "./kyc-status";
 import { latestOwnerMessage } from "./document-thread";
 import {
@@ -321,7 +324,18 @@ export class ActivationWorkflowService {
     return isStudent || Boolean(tenant.phone_2 || tenant.guardian_phone);
   }
 
-  private computeState(profile: any, tenant: any, ruleVersion: any, agreementRequired: boolean, invitation?: any | null) {
+  private computeState(
+    profile: any,
+    tenant: any,
+    ruleVersion: any,
+    agreementRequired: boolean,
+    invitation?: any | null,
+    // Defaults to false for the same reason the policy flag does: requiring a
+    // co-signature is a deliberate choice, and a caller that does not know
+    // must not invent the requirement.
+    guardianSignatureRequired: boolean = false,
+  ) {
+
     const latestAcceptance = (tenant.rule_acceptances || []).find((a: any) => a.rule_version_id === ruleVersion.id);
     // See activation-account-state for why this tests `profile_id` and not
     // merely a verified number — it is the 2026-08-25 regression in one line.
@@ -403,10 +417,12 @@ export class ActivationWorkflowService {
       current_step: currentStep,
       completed_steps: completedSteps,
       agreement_required: agreementRequired,
+      guardian_signature_required: guardianSignatureRequired,
       blocked_steps: this.blockedSteps(
         { accountSetupCompleted, rulesAccepted, agreementSigned, profileCompleted, guardianCompleted },
         applicability,
       ),
+
       missing_fields: {
         tier_1_required: missingTier1,
         tier_2_recommended: this.recommendedMissingFields(tenant),
@@ -680,7 +696,7 @@ export class ActivationWorkflowService {
       tenant.agreements = [activeAgreement, ...(tenant.agreements || [])];
     }
 
-    const state = this.computeState(profile, tenant, ruleVersion, await this.resolveAgreementRequired(tenant.hostel_id), invitation);
+    const state = this.computeState(profile, tenant, ruleVersion, await this.resolveAgreementRequired(tenant.hostel_id), invitation, await this.isGuardianSignatureRequiredFor(tenant.hostel_id));
     const activationFinancialStatus = await getActivationFinancialStatus(tenant.id);
     const requiredDocumentTypes = this.requiredDocumentTypes(tenant.profile_type);
     const requiredDocuments = (tenant.identification_documents || []).filter((doc: any) =>
@@ -863,6 +879,10 @@ export class ActivationWorkflowService {
         id: activeAgreement.id,
         status: activeAgreement.status,
         pdf_url: activeAgreement.pdf_url,
+        // The read gate's evidence. Sent so the client can gate signing on the
+        // server's record rather than on its own state, which a reload clears.
+        document_opened_at: activeAgreement.document_opened_at,
+        document_read_completed_at: activeAgreement.document_read_completed_at,
         content_snapshot: activeAgreement.content_snapshot,
         tenant_signature_url: activeAgreement.tenant_signature_url,
         tenant_signature_name: activeAgreement.tenant_signature_name,
@@ -949,7 +969,7 @@ export class ActivationWorkflowService {
       }
     }
 
-    const state = this.computeState(profile, tenant, ruleVersion, await this.resolveAgreementRequired(tenant.hostel_id), invitation);
+    const state = this.computeState(profile, tenant, ruleVersion, await this.resolveAgreementRequired(tenant.hostel_id), invitation, await this.isGuardianSignatureRequiredFor(tenant.hostel_id));
     this.assertTransition(step, state);
 
     if (step === "ACCOUNT") {
@@ -1086,6 +1106,21 @@ export class ActivationWorkflowService {
   }
 
   /**
+   * Whether this hostel requires a parent/guardian co-signature (ADR-218).
+   *
+   * Fetched explicitly by hostel id. The resolved tenant does not include
+   * `hostels`, so reading the policy off it would silently evaluate to "not
+   * required" and the setting would never work.
+   */
+  private async isGuardianSignatureRequiredFor(hostelId: string): Promise<boolean> {
+    const hostel = await prisma.hostels.findUnique({
+      where: { id: hostelId },
+      select: { preferences_config: true },
+    });
+    return isGuardianSignatureRequired(hostel?.preferences_config);
+  }
+
+  /**
    * The hostel's guardian-verification policy (ADR-212). Deliberately mirrors
    * `resolveAgreementRequired` above, down to selecting only
    * `preferences_config` — this schema's `hostels` reads are explicit about
@@ -1094,11 +1129,13 @@ export class ActivationWorkflowService {
    * 2026-08-22.
    */
   private async resolveGuardianVerificationPolicy(hostelId: string): Promise<GuardianVerificationPolicy> {
+
     const hostel = await prisma.hostels.findUnique({
       where: { id: hostelId },
       select: { preferences_config: true },
     });
     return readGuardianVerificationPolicy(hostel?.preferences_config);
+
   }
 
   private async signAgreement(profile: any, tenant: any, data: any, context: { ip: string; userAgent: string }, invitation?: any) {
@@ -1111,24 +1148,23 @@ export class ActivationWorkflowService {
 
     const hasTenantSignature = Boolean(tenantSigUrl && tenantSigName);
     const hasGuardianSignature = Boolean(guardianSigUrl && guardianSigName && guardianRelation);
-    const tenantSignatureStarted = Boolean(tenantSigUrl || tenantSigName);
-    const guardianSignatureStarted = Boolean(guardianSigUrl || guardianSigName);
 
-    if (tenantSignatureStarted && !tenantSigUrl) {
-      throw new Error("VALIDATION_ERROR: Tenant signature is required");
-    }
-    if (tenantSignatureStarted && !tenantSigName) {
-      throw new Error("VALIDATION_ERROR: Tenant typed signature name is required");
-    }
-
-    if (guardianSignatureStarted) {
-      if (!guardianSigUrl) throw new Error("VALIDATION_ERROR: Parent/Guardian signature is required");
-      if (!guardianSigName) throw new Error("VALIDATION_ERROR: Parent/Guardian typed signature name is required");
-      if (!guardianRelation) throw new Error("VALIDATION_ERROR: Parent/Guardian relationship is required");
-    }
-
-    if (!hasTenantSignature && !hasGuardianSignature) {
-      throw new Error("VALIDATION_ERROR: At least one signature is required. Add tenant or parent/guardian signature.");
+    // The tenant signs. This used to accept "at least one signature — tenant or
+    // parent/guardian", so a tenancy could be activated with no signature from
+    // the person who actually lives there.
+    //
+    // This validates a *submission*. Agreements already signed guardian-only
+    // remain valid; nothing here re-checks stored rows. See ADR-216.
+    const signatureProblem = validateAgreementSignatures({
+      tenantSignatureUrl: tenantSigUrl,
+      tenantSignatureName: tenantSigName,
+      guardianSignatureUrl: guardianSigUrl,
+      guardianSignatureName: guardianSigName,
+      guardianRelation: guardianRelation || "",
+      guardianRequired: await this.isGuardianSignatureRequiredFor(tenant.hostel_id),
+    });
+    if (signatureProblem) {
+      throw new Error(`VALIDATION_ERROR: ${signatureProblem}`);
     }
 
     const template = await getActiveTemplateAndSyncRuleVersion(prisma, tenant.hostel_id, "RESIDENCY");
@@ -1289,6 +1325,8 @@ export class ActivationWorkflowService {
     await this.markActivity(tenant, "agreement_signed", {
       agreement_id: signedAgreement.id,
       pdf_url: signedAgreement.pdf_url,
+      document_opened_at: signedAgreement.document_opened_at,
+      document_read_completed_at: signedAgreement.document_read_completed_at,
     });
   }
 
@@ -1785,7 +1823,7 @@ export class ActivationWorkflowService {
     }
 
     // Recompute and check required onboarding steps
-    const state = this.computeState(current, tenantNow, ruleVersion, await this.resolveAgreementRequired(tenantNow.hostel_id), invitation);
+    const state = this.computeState(current, tenantNow, ruleVersion, await this.resolveAgreementRequired(tenantNow.hostel_id), invitation, await this.isGuardianSignatureRequiredFor(tenantNow.hostel_id));
     // `rules_accepted` is only a requirement where the hostel asks for the
     // agreement ceremony — this is a second, independent gate to the one in
     // assertTransition, and missing it here would block activation for
