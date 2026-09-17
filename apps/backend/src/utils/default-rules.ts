@@ -149,15 +149,30 @@ export function getDefaultCategoryById(categoryId: string) {
   return DEFAULT_RULES_TEMPLATE.categories.find((c) => c.id === categoryId) || null;
 }
 
+/**
+ * Substitutes `{{VAR}}` and `{VAR}`.
+ *
+ * Both forms exist in the wild. The stock template and the backend have always
+ * written `{{VAR}}`, but the owner editor's insert chips write `{VAR}`, which
+ * this function did not match — so every variable an owner inserted printed
+ * literally in their tenants' signed agreements.
+ *
+ * Written as two explicit alternatives rather than optional braces
+ * (`\{\{?…\}\}?`), which would also match mismatched pairs such as `{VAR}}` and
+ * silently "repair" malformed input instead of leaving it visible to the owner.
+ */
 export function interpolateText(text: string, variables: Record<string, any>, isFinal: boolean = false): string {
   if (!text) return "";
-  return text.replace(/\{\{\s*([A-Z0-9_]+)\s*\}\}/g, (match, key) => {
-    const trimmedKey = key.trim();
-    if (variables[trimmedKey] !== undefined && variables[trimmedKey] !== null) {
-      return String(variables[trimmedKey]);
-    }
-    return isFinal ? "____" : match;
-  });
+  return text.replace(
+    /\{\{\s*([A-Z0-9_]+)\s*\}\}|\{\s*([A-Z0-9_]+)\s*\}/g,
+    (match, doubleKey, singleKey) => {
+      const key = String(doubleKey ?? singleKey).trim();
+      if (variables[key] !== undefined && variables[key] !== null) {
+        return String(variables[key]);
+      }
+      return isFinal ? "____" : match;
+    },
+  );
 }
 
 export function interpolateRulesContent(rulesContent: any, variables: Record<string, any>, isFinal: boolean = false): any {
