@@ -19,6 +19,7 @@ const AuthCallbackPage = lazy(() => import('@/app/pages/AuthCallbackPage').then(
 const ForgotPasswordPage = lazy(() => import('@/app/pages/ForgotPasswordPage').then((m) => ({ default: m.ForgotPasswordPage })));
 const ResetPasswordPage = lazy(() => import('@/app/pages/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })));
 const ActivationPage = lazy(() => import('@/platforms/tenant/onboarding/ActivationPage').then((m) => ({ default: m.ActivationPage })));
+const AgreementReaderPage = lazy(() => import('@/platforms/tenant/onboarding/AgreementReaderPage').then((m) => ({ default: m.AgreementReaderPage })));
 const CompleteProfilePage = lazy(() => import('@/portal/pages/CompleteProfilePage').then((m) => ({ default: m.CompleteProfilePage })));
 const AuthRouteShell = lazy(() => import('@/app/providers/AuthRouteShell').then((m) => ({ default: m.AuthRouteShell })));
 const ReceiptVerificationPage = lazy(() => import('@/app/pages/public/ReceiptVerificationPage').then((m) => ({ default: m.ReceiptVerificationPage })));
@@ -139,6 +140,12 @@ export function PublicRoutes() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/activate" element={<ActivationPage />} />
+        {/*
+          Declared before `/activate/:token`, and safe regardless: React Router
+          ranks a static segment above a dynamic one, so "agreement" is never
+          mistaken for an activation token.
+        */}
+        <Route path="/activate/agreement" element={<AgreementReaderPage />} />
         <Route path="/activate/:token" element={<ActivationPage />} />
         <Route path="/invite/:token" element={<ActivationPage />} />
         <Route path="/complete-profile" element={<CompleteProfilePage />} />
