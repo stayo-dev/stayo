@@ -319,7 +319,12 @@ Nothing else. The guardian flag is policy JSON. The token fix needs no backfill.
 
 ### 7.1 Two cautions
 
-- **Adding fields to `schema.prisma` has taken production down in this repo before.** The deploy-before-migrate rule applies: Prisma client ships first, migration second.
+- **Adding fields to `schema.prisma` has taken production down in this repo before.** **Migrate FIRST, then deploy the client.** Not the other way round. Prisma requests *all*
+declared scalar columns on any read that passes no explicit `select`, and `Agreement` has **17
+such reads** — including `rent-generation-service`, `financial-service`,
+`billing-transition-service` and the activation workflow itself. Deploying a client that declares
+`document_content_hash` against a database that lacks it 500s every one of them. This is the exact
+shape of the 2026-08-22 `hostels.navigation` outage.
 - **The migration number cannot be chosen from the current checkout.** `migrations/` tops out at `082`, but `083` is recorded as applied on prod, and this working tree is well behind `origin/main`. The same applies to the ADR number — the last known is ADR-213, and ADR numbers have collided in this repo before. **Both are chosen after pulling, not now.**
 
 ---
