@@ -85,6 +85,7 @@ type DocBlock =
   | { kind: 'section';     number: number; title: string;
                            clauses: Array<{ number: string; text: string }>;
                            origin: 'owner' | 'platform';
+                           band: 'terms' | 'rules';
                            severity?: 'important' | 'standard' }
   | { kind: 'execution';   text: string }
   | { kind: 'signatures';  panels: SignaturePanel[] }
@@ -115,6 +116,15 @@ preamble → facts → owner sections → platform legal clauses
 Owner content can only ever occupy the `origin: 'owner'` band. **There is no code path by which an owner can delete the execution block or the attestation.** This is how "guarded boilerplate" is enforced — structurally, not by validation that can be bypassed.
 
 Clause numbering runs continuously across the owner band and the platform band, so the document reads as one instrument rather than two stapled together.
+
+**There are two content bands, not one**, which is why `section` carries a
+`band` discriminator. The PDF renders `terms_and_conditions` as numbered legal
+clauses *and* `rules_content.categories` as a separate "HOSTEL RULES &
+REGULATIONS" section incorporated by reference. **The owner's editor only ever
+touched the second**, so an owner cannot currently edit the numbered clauses of
+their own contract at all. Whether they should be able to is a Phase 2
+decision; Phase 1 only has to stop the two bands being composed by two
+different pieces of code.
 
 ### 3.3 Boilerplate provider
 
@@ -148,9 +158,18 @@ The HTML the tenant read and the PDF generated afterwards both derive from the s
 
 | Surface | Endpoint | Inputs |
 |---|---|---|
-| Tenant reading; signed-agreement view | `GET /api/agreements/[id]/document` | Real agreement, real facts, own `rules_snapshot` |
+| Tenant reading **during onboarding** | `GET /api/tenants/activate/agreement-document?token=` | Real agreement, real facts, own `rules_snapshot` |
+| Signed-agreement view (logged in) | `GET /api/agreements/[id]/document` | Same, session-authorised |
 | Owner draft preview | `POST /api/owner/hostels/[id]/agreement-template/document` | Draft `rules_content` + sample values |
-| PDF | *(no new endpoint)* | Renderer refactored to consume `AgreementDocument` |
+| PDF | *(no new endpoint)* | Renderer consumes `AgreementDocument` for its content |
+
+**Why two read endpoints and not one.** Onboarding happens *before* the tenant
+has an account: `/tenants/activate*` routes resolve their subject with
+`activationSubjectFromRequest`, not `getSession`. A single session-guarded
+endpoint could not serve the screen this whole design exists for. Note also
+that the subject is a discriminated union — `{ ok, mode: 'token', token }`,
+`{ ok, mode: 'session', tenantId }` or `{ ok: false }` — so token mode must go
+through `tenantInvitationLifecycleService.resolveByToken` to reach a tenant.
 
 The existing PDF preview endpoint stays and is **finally wired up** — as "Download a sample PDF", not as the primary preview.
 
@@ -370,5 +389,13 @@ Note: this spec is committed from `feat/clerk-auth-migration` with an unrelated 
 | Item | Blocks | Owner |
 |---|---|---|
 | Legal footer wording (§6.7) | Phase 1 landing, not Phase 1 starting | User |
-| Migration number (§7.1) | Phase 1 migration | Chosen after pulling |
-| ADR numbers (§7.1) | Docs update | Chosen after pulling |
+| ~~Migration number~~ | — | **Resolved: `085`** |
+| ~~ADR numbers~~ | — | **Resolved: `214`, `215`, `216`** |
+
+**How those numbers were chosen (2026-09-17).** They are deliberately *not* the
+next numbers after `dev`'s highest. `dev` tops out at migration `083` and
+ADR-209, but `main` already carries migration `084_lead_source_tracking.sql`
+and ADR-210 through ADR-213. Numbering from `dev` alone would have produced a
+duplicate migration `084` and four duplicate ADRs — the exact collision this
+repository has hit before. **Both sequences must be checked against `main` and
+`dev`, and the number taken above the higher of the two.**
