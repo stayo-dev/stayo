@@ -12,7 +12,7 @@ import {
   platformAttestation,
   preamble,
   standardLegalClauses,
-} from "@/lib/pdf/agreement-content";
+} from "@/src/services/agreements/agreement-boilerplate";
 import { prisma } from "../../../lib/db";
 import { imagekit } from "../../../lib/imagekit";
 import axios from "axios";
@@ -442,7 +442,7 @@ export class AgreementGenerationService {
       }
     };
 
-    // The legal furniture this document was missing. See lib/pdf/agreement-content.
+    // The legal furniture this document was missing. See src/services/agreements/agreement-boilerplate.
     const placeOfExecution = placeFromAddress(data.hostelAddress);
     const executionDateDisplay = data.ownerSignedAt
       ? formatAgreementDate(data.ownerSignedAt)

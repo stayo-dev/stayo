@@ -10,7 +10,7 @@ import {
   rupees,
   standardLegalClauses,
   type AgreementContentInput,
-} from "@/lib/pdf/agreement-content";
+} from "@/src/services/agreements/agreement-boilerplate";
 
 const base = (over: Partial<AgreementContentInput> = {}): AgreementContentInput => ({
   hostelName: "Shoeb's Mansion",
